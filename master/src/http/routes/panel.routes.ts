@@ -90,14 +90,22 @@ panelRoutes.get(
   }),
 );
 
-panelRoutes.post('/pairing-window/open', needs('panels.manage'), (_req, res) => {
-  res.json(panelService.openPairingWindow());
-});
+panelRoutes.post(
+  '/pairing-window/open',
+  needs('panels.manage'),
+  asyncHandler(async (req, res) => {
+    res.json(await panelService.openPairingWindowBy(actorFromRequest(req)));
+  }),
+);
 
-panelRoutes.post('/pairing-window/close', needs('panels.manage'), (_req, res) => {
-  panelService.closePairingWindow();
-  res.status(204).end();
-});
+panelRoutes.post(
+  '/pairing-window/close',
+  needs('panels.manage'),
+  asyncHandler(async (req, res) => {
+    await panelService.closePairingWindowBy(actorFromRequest(req));
+    res.status(204).end();
+  }),
+);
 
 panelRoutes.get(
   '/pairing-window',
@@ -228,11 +236,11 @@ panelRoutes.post(
   '/:id/disconnect',
   needs('panels.manage'),
   asyncHandler(async (req, res) => {
-    const actor = actorFromRequest(req);
-    // Resolved first so a panel id from another company is a 404 here too,
-    // rather than a silent `{ disconnected: false }` that confirms nothing.
-    await panelService.getPanelDetail(actor.tenantId, String(req.params.id));
-    res.json({ disconnected: panelService.disconnectPanel(String(req.params.id)) });
+    // A panel id from another company is a 404 here too, rather than a
+    // silent `{ disconnected: false }` that confirms nothing.
+    res.json({
+      disconnected: await panelService.disconnectPanelByAdmin(String(req.params.id), actorFromRequest(req)),
+    });
   }),
 );
 

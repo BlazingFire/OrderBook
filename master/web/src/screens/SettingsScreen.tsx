@@ -19,6 +19,8 @@
  *
  * The pairing password is deliberately absent from the connection tab: it was
  * shown once at setup and only its hash is stored, so it cannot be shown again.
+ * A Server Master on the Master PC can replace it with the master key; the new
+ * one is shown once, here, and panels already paired keep working.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -33,6 +35,7 @@ import type {
 import { SETTINGS, SETTING_GROUPS } from '@orderbook/shared';
 
 import { api } from '../api';
+import { useMasterKeyPrompt } from '../components/MasterKeyPrompt';
 import { StorageBackupActions } from '../components/StorageBackup';
 import { optionListTransport } from '../transports';
 import {
@@ -54,6 +57,7 @@ import {
   formatBytes,
   formatDateTime,
   t,
+  useConfirm,
   type SettingsTab,
 } from '@orderbook/ui';
 
@@ -74,6 +78,7 @@ export function SettingsScreen({
   permissions,
   settingsRevision = 0,
   sourcesRevision = 0,
+  canChangePairingPassword = false,
 }: {
   /** Which tab is showing — remembered by the shell, chosen here or from the sidebar. */
   tab: string;
@@ -102,6 +107,8 @@ export function SettingsScreen({
   settingsRevision?: number;
   /** Moves on every option-list change; the lead sources list reloads on it. */
   sourcesRevision?: number;
+  /** A Server Master on the Master PC: the connection tab offers a new pairing password. */
+  canChangePairingPassword?: boolean;
 }) {
   const [identity, setIdentity] = useState<MasterIdentity | null>(null);
   const [storage, setStorage] = useState<StorageUsage | null>(null);
@@ -119,6 +126,34 @@ export function SettingsScreen({
     null,
   );
   const [savingKey, setSavingKey] = useState<SettingKey | null>(null);
+
+  const confirm = useConfirm();
+  const masterKey = useMasterKeyPrompt();
+  /** The replacement pairing password, shown once; gone when the screen remounts. */
+  const [newPairingPassword, setNewPairingPassword] = useState<string | null>(null);
+  const [pairingError, setPairingError] = useState<string | null>(null);
+  const [pairingBusy, setPairingBusy] = useState(false);
+
+  async function changePairingPassword(): Promise<void> {
+    const confirmed = await confirm({
+      title: t('masterKey.pairing.change'),
+      body: t('masterKey.pairing.confirm'),
+      confirmLabel: t('masterKey.pairing.change'),
+    });
+    if (!confirmed) return;
+    const token = await masterKey.ask();
+    if (!token) return;
+
+    setPairingBusy(true);
+    setPairingError(null);
+    try {
+      setNewPairingPassword((await api.changePairingPassword(token)).pairingPassword);
+    } catch (caught) {
+      setPairingError(apiErrorText(caught, 'error.requestFailed'));
+    } finally {
+      setPairingBusy(false);
+    }
+  }
 
   /*
    * The usage figures and the connection identity are `settings.manage` at the
@@ -294,52 +329,85 @@ export function SettingsScreen({
       : []),
     ...(canManageSettings
       ? [
-    {
-      id: 'connection',
-      label: t('settings.tab.connection'),
-      render: () => (
-        <SettingsSection
-          title={t('settings.connection.title')}
-          description={t('settings.connection.description')}
-        >
-          {identity ? (
-            <>
-              <KeyValueList
-                items={[
-                  { label: t('settings.connection.company'), value: identity.companyName ?? '—' },
-                  {
-                    label:
-                      identity.lanIps.length > 1
-                        ? t('settings.connection.masterAddresses')
-                        : t('settings.connection.masterAddress'),
-                    value: identity.lanIps.length ? (
-                      <span className="ob-mono">
-                        {identity.lanIps.map((ip) => `${ip}:${identity.port}`).join('  •  ')}
-                      </span>
-                    ) : (
-                      t('settings.connection.noAddress', { port: identity.port })
-                    ),
-                  },
-                  {
-                    label: t('settings.connection.masterId'),
-                    value: <IdField value={identity.masterUniqueId} />,
-                  },
-                  {
-                    label: t('settings.connection.setupCompleted'),
-                    value: formatDateTime(identity.setupCompletedAt),
-                  },
-                ]}
-              />
-              <p className="ob-small" style={{ marginTop: 'var(--s-12)', marginBottom: 0 }}>
-                {t('settings.connection.passwordNote')}
-              </p>
-            </>
-          ) : (
-            <SkeletonKeyValueRows rows={4} />
-          )}
-        </SettingsSection>
-      ),
-    },
+          {
+            id: 'connection',
+            label: t('settings.tab.connection'),
+            render: () => (
+              <SettingsSection
+                title={t('settings.connection.title')}
+                description={t('settings.connection.description')}
+              >
+                {identity ? (
+                  <>
+                    <KeyValueList
+                      items={[
+                        {
+                          label: t('settings.connection.company'),
+                          value: identity.companyName ?? '—',
+                        },
+                        {
+                          label:
+                            identity.lanIps.length > 1
+                              ? t('settings.connection.masterAddresses')
+                              : t('settings.connection.masterAddress'),
+                          value: identity.lanIps.length ? (
+                            <span className="ob-mono">
+                              {identity.lanIps.map((ip) => `${ip}:${identity.port}`).join('  •  ')}
+                            </span>
+                          ) : (
+                            t('settings.connection.noAddress', { port: identity.port })
+                          ),
+                        },
+                        {
+                          label: t('settings.connection.masterId'),
+                          value: <IdField value={identity.masterUniqueId} />,
+                        },
+                        {
+                          label: t('settings.connection.setupCompleted'),
+                          value: formatDateTime(identity.setupCompletedAt),
+                        },
+                      ]}
+                    />
+                    <p className="ob-small" style={{ marginTop: 'var(--s-12)', marginBottom: 0 }}>
+                      {t('settings.connection.passwordNote')}
+                    </p>
+                    {canChangePairingPassword && (
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'flex-start',
+                          gap: 'var(--s-8)',
+                          marginTop: 'var(--s-12)',
+                        }}
+                      >
+                        <Button
+                          variant="secondary"
+                          busy={pairingBusy}
+                          onClick={() => void changePairingPassword()}
+                        >
+                          {t('masterKey.pairing.change')}
+                        </Button>
+                        {pairingError && <FieldError>{pairingError}</FieldError>}
+                        {newPairingPassword && (
+                          <KeyValueList
+                            items={[
+                              {
+                                label: t('masterKey.pairing.newPassword'),
+                                value: <IdField value={newPairingPassword} />,
+                              },
+                            ]}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <SkeletonKeyValueRows rows={4} />
+                )}
+              </SettingsSection>
+            ),
+          },
         ]
       : []),
     // Absent, not empty, without `settings.manage` — the same rule as the
@@ -389,13 +457,16 @@ export function SettingsScreen({
   ];
 
   return (
-    <SettingsPage
-      title={t('settings.title')}
-      subtitle={t('settings.subtitle')}
-      tabs={tabs}
-      activeId={tab}
-      onChange={onTabChange}
-    />
+    <>
+      <SettingsPage
+        title={t('settings.title')}
+        subtitle={t('settings.subtitle')}
+        tabs={tabs}
+        activeId={tab}
+        onChange={onTabChange}
+      />
+      {masterKey.prompt}
+    </>
   );
 }
 

@@ -1073,3 +1073,35 @@ describe('searching the final orders list', () => {
     expect(screen.getByText('ORD-2')).toBeTruthy();
   });
 });
+
+describe('the activity log (1.3)', () => {
+  it('is offered with logs.view and opens the shared Logs screen, read from the Master', async () => {
+    const calls = await boot({
+      permissions: ['logs.view'],
+      route: ({ url }) => {
+        const path = url.split('?')[0];
+        if (path === '/api/logs') {
+          return json({ items: [], nextCursor: null, prevCursor: null, limit: 50 });
+        }
+        if (path === '/api/logs/facets') return json({ actors: [], entityTypes: [], actions: [] });
+        return undefined;
+      },
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTitle(t('nav.logs')));
+      await wait(0);
+    });
+
+    await waitFor(() =>
+      expect(calls.some((call) => call.url.split('?')[0] === '/api/logs')).toBe(true),
+    );
+    await waitFor(() => expect(document.querySelector('[data-screen-search]')).not.toBeNull());
+  });
+
+  it('is not offered without logs.view', async () => {
+    await boot({ permissions: ['orders.view'] });
+
+    expect(screen.queryByTitle(t('nav.logs'))).toBeNull();
+  });
+});

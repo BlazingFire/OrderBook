@@ -211,7 +211,8 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
 
     it('cannot delete or re-tier the seeded Administrator role', async () => {
       const roles = await roleRepo.listRoles(admin.tenantId);
-      const administrator = roles.find((role) => role.isSystem);
+      // The Administrator, not the Server Master role, which is also a system role.
+      const administrator = roles.find((role) => role.isSystem && role.tier === 'admin');
       expect(administrator).toBeDefined();
 
       await expect(roleService.deleteRole(administrator!.id, admin)).rejects.toThrow(/system role/);

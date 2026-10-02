@@ -11,6 +11,8 @@
 
 import type { IsoTimestamp, RecordId, Uuid } from './entities.js';
 import type { CursorQuery } from './inputs.js';
+import type { Locale } from '../i18n/locales.js';
+import type { RoleTier } from './permissions.js';
 
 export type ActivityActorType = 'user' | 'office_panel' | 'system' | 'api_key' | 'connector';
 
@@ -19,6 +21,11 @@ export interface ActivityActor {
   id: RecordId | null;
   /** Denormalised at write time, so a deleted user's name still renders. */
   name: string | null;
+  /**
+   * The user's current role tier, read at list time so a Server Master's rows
+   * can be highlighted. Absent for non-user actors and from an older Master.
+   */
+  tier?: RoleTier;
 }
 
 export interface ActivityLogEntry {
@@ -53,6 +60,8 @@ export interface ActivityLogQuery extends CursorQuery {
   to?: string;
   /** Free text over entity_id and details::text. */
   q?: string;
+  /** Export only: the language of the CSV's `sentence` column. Defaults to English. */
+  locale?: Locale;
 }
 
 export interface ActivityLogFacets {

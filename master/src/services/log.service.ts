@@ -11,13 +11,15 @@ import type {
   ChainVerification,
   ChainVerifyInput,
   CursorPage,
+  Translator,
 } from '@orderbook/shared';
+import { createTranslator, isLocale, renderActivity } from '@orderbook/shared';
 
 import { requirePermission, type ActorContext } from '../domain/actor.js';
 import { resolvePartyScope } from '../domain/party-scope.js';
 import { clampLogPage, decodeLogCursor, encodeLogCursor } from '../domain/log-cursor.js';
 import { db } from '../db/knex.js';
-import { toCsv } from '../lib/csv.js';
+import { csvLines, toCsv } from '../lib/csv.js';
 import { ValidationError } from '../lib/errors.js';
 import * as activityLogRepo from '../repositories/activity-log.repository.js';
 
@@ -28,7 +30,24 @@ const DEFAULT_VERIFY_LIMIT = 10_000;
 const MAX_VERIFY_LIMIT = 200_000;
 
 const EXPORT_BATCH_SIZE = 5_000;
-const EXPORT_HARD_CAP = 250_000;
+
+type ExportLimits = { maxRows: number; maxBytes: number };
+
+/**
+ * The Master's own download. The row cap is the 1.2 one; the byte cap keeps
+ * the in-memory file well inside a low-RAM PC now that each row also carries
+ * a rendered sentence and its details as JSON.
+ */
+export const HTTP_EXPORT_LIMITS: ExportLimits = { maxRows: 250_000, maxBytes: 128 * 1024 * 1024 };
+
+/**
+ * An Office export travels back as one Socket.IO ack, and the ws client drops
+ * the whole Master connection on a frame over 100 MiB. The ack is JSON, which
+ * writes each quote, backslash and line break of the CSV as two bytes, so the
+ * frame can be up to twice the file. The socket path keeps the same row cap
+ * with a byte cap under half the frame limit.
+ */
+export const SOCKET_EXPORT_LIMITS: ExportLimits = { maxRows: 250_000, maxBytes: 45 * 1024 * 1024 };
 
 function assertDateRange(from: string | undefined, to: string | undefined): void {
   if (from !== undefined && !DATE_PATTERN.test(from)) {
@@ -175,9 +194,26 @@ export async function verifyLogChain(input: ChainVerifyInput, actor: ActorContex
   return final;
 }
 
-const CSV_HEADERS = ['id', 'sequence', 'createdAt', 'actorType', 'actorName', 'entityType', 'entityId', 'action', 'hash'];
+/**
+ * The first nine columns are the original export, in their original order;
+ * `sentence` and `details` are appended so a sheet built on the old columns
+ * keeps working.
+ */
+const CSV_HEADERS = [
+  'id',
+  'sequence',
+  'createdAt',
+  'actorType',
+  'actorName',
+  'entityType',
+  'entityId',
+  'action',
+  'hash',
+  'sentence',
+  'details',
+];
 
-function rowFor(entry: ActivityLogEntry): unknown[] {
+function rowFor(entry: ActivityLogEntry, t: Translator): unknown[] {
   return [
     entry.id,
     entry.sequence ?? '',
@@ -188,6 +224,13 @@ function rowFor(entry: ActivityLogEntry): unknown[] {
     entry.entityId,
     entry.action,
     entry.hash ?? '',
+    renderActivity(t, {
+      entityType: entry.entityType,
+      action: entry.action,
+      actorName: entry.actor.name,
+      details: entry.details,
+    }),
+    JSON.stringify(entry.details ?? {}),
   ];
 }
 
@@ -199,19 +242,25 @@ function rowFor(entry: ActivityLogEntry): unknown[] {
  * CSV into one socket ack regardless — there is no streaming transport
  * between the Office server and its browser for this call — and one
  * function serving both transports identically was judged more valuable
- * than a leaner Master-only HTTP path. At the hard cap this is a bounded
- * (~250,000 row) in-memory buffer, not an unbounded one; revisit if a real
- * installation's log volume makes that bound itself the problem.
+ * than a leaner Master-only HTTP path. The file is built a batch at a time
+ * against a running byte count. As in 1.2, an export past the row cap keeps
+ * the newest rows and stops rather than refusing; past the byte cap it stops
+ * at the last whole batch that fits. Either way `truncated` says so, and the
+ * export's own log entry records it.
  */
 export async function exportLogs(
   query: ActivityLogQuery,
   actor: ActorContext,
-): Promise<{ csv: string; rowCount: number }> {
+  limits: ExportLimits = HTTP_EXPORT_LIMITS,
+): Promise<{ csv: string; rowCount: number; truncated: boolean }> {
   requirePermission(actor, 'logs.export');
   assertDateRange(query.from, query.to);
 
-  const rows: unknown[][] = [];
+  const t = createTranslator(isLocale(query.locale) ? query.locale : 'en');
+  const chunks = [toCsv(CSV_HEADERS, [])];
+  let bytes = Buffer.byteLength(chunks[0] as string);
   let rowCount = 0;
+  let truncated = false;
 
   for await (const batch of activityLogRepo.streamForExport(
     actor.tenantId,
@@ -226,13 +275,26 @@ export async function exportLogs(
       q: query.q,
     },
     EXPORT_BATCH_SIZE,
-    EXPORT_HARD_CAP,
+    // One past the limit, so going over it can be told apart from landing on it.
+    limits.maxRows + 1,
   )) {
-    for (const entry of batch) rows.push(rowFor(entry));
-    rowCount += batch.length;
+    const room = limits.maxRows - rowCount;
+    const rows = batch.length > room ? batch.slice(0, room) : batch;
+    const chunk = csvLines(rows.map((entry) => rowFor(entry, t)));
+    if (bytes + Buffer.byteLength(chunk) > limits.maxBytes) {
+      truncated = true;
+      break;
+    }
+    bytes += Buffer.byteLength(chunk);
+    chunks.push(chunk);
+    rowCount += rows.length;
+    if (rows.length < batch.length) {
+      truncated = true;
+      break;
+    }
   }
 
-  const csv = toCsv(CSV_HEADERS, rows);
+  const csv = chunks.join('');
 
   await db().transaction((trx) =>
     activityLogRepo.recordActivity(
@@ -243,12 +305,12 @@ export async function exportLogs(
         action: 'exported',
         actorType: actor.actorType,
         actorId: actor.actorId,
-        details: { rowCount, from: query.from, to: query.to },
+        details: { rowCount, from: query.from, to: query.to, ...(truncated ? { truncated } : {}) },
       },
       actor,
       trx,
     ),
   );
 
-  return { csv, rowCount };
+  return { csv, rowCount, truncated };
 }

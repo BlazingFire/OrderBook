@@ -30,8 +30,13 @@ import type {
   SyncDeltaCursor,
   SyncSnapshot,
 } from '@orderbook/shared';
-import { applyChangeToSnapshot } from '@orderbook/shared';
+import {
+  applyChangeToSnapshot,
+  COMMAND_MIN_PROTOCOL,
+  PANEL_PROTOCOL_VERSION,
+} from '@orderbook/shared';
 
+import { appVersion } from '../lib/app-version.js';
 import { createLogger } from '../lib/logger.js';
 import {
   clearCredentials,
@@ -39,6 +44,7 @@ import {
   masterBaseUrl,
   saveCredentials,
 } from '../services/credentials.store.js';
+import * as offlineAuthEvents from '../services/offline-auth-events.store.js';
 import { buildReport, moveStorage } from '../services/panel-report.service.js';
 import { observe } from '../sync/clock.js';
 import * as localStore from '../sync/local-store.js';
@@ -108,6 +114,16 @@ class MasterConnection extends EventEmitter {
   private lastError: string | null = null;
   private lastSyncedAt: string | null = null;
   private masterVersion: string | null = null;
+  /**
+   * The protocol the Master announced in its last snapshot or delta. Null
+   * until one arrives on this connection; an older Master sends none, which
+   * counts as protocol 1.
+   */
+  private masterProtocol: number | null = null;
+  /** True while offline sign-ins are on their way up, so two snapshots do not send them twice. */
+  private uploadingAuthEvents = false;
+  /** One upload attempt per connection, not one per delta, so a failing one does not repeat on every change. */
+  private authEventsTried = false;
   private masterHost: string | null = null;
   private masterPort: number | null = null;
   private companyName: string | null = null;
@@ -161,6 +177,8 @@ class MasterConnection extends EventEmitter {
         panelId: credentials.panelId,
         panelSecret: credentials.panelSecret,
         ...(cursor ? { syncCursor: cursor } : {}),
+        protocol: PANEL_PROTOCOL_VERSION,
+        appVersion: appVersion(),
       },
       transports: ['websocket'],
       // Retry forever: the Master PC may simply be switched off overnight, and
@@ -172,6 +190,7 @@ class MasterConnection extends EventEmitter {
 
     socket.on('connect', () => {
       this.lastError = null;
+      this.authEventsTried = false;
       this.setState('connected');
       log.info('Connected to Master');
 
@@ -199,6 +218,9 @@ class MasterConnection extends EventEmitter {
     });
 
     socket.on('disconnect', (reason) => {
+      // The Master may come back as a different build, so its protocol is
+      // learned again from the next snapshot rather than assumed.
+      this.masterProtocol = null;
       this.setState('disconnected');
       setTransport(null);
       this.stopReporting();
@@ -215,6 +237,7 @@ class MasterConnection extends EventEmitter {
       this.snapshot = snapshot;
       this.lastSyncedAt = snapshot.serverTime;
       this.masterVersion = snapshot.serverVersion ?? this.masterVersion;
+      this.masterProtocol = snapshot.protocol ?? 1;
       this.bootId = snapshot.bootId ?? null;
       this.emit('snapshot', snapshot);
       log.info(
@@ -230,6 +253,7 @@ class MasterConnection extends EventEmitter {
         // Anything saved while the link was down goes up now. This is the
         // moment the panel stops being behind.
         await flush();
+        await this.uploadOfflineAuthEvents();
       })();
     });
 
@@ -247,6 +271,7 @@ class MasterConnection extends EventEmitter {
       this.bootId = delta.bootId;
       this.lastSyncedAt = delta.serverTime;
       this.masterVersion = delta.serverVersion ?? this.masterVersion;
+      this.masterProtocol = delta.protocol ?? 1;
 
       for (const event of delta.events) this.applyChange(event);
 
@@ -269,6 +294,7 @@ class MasterConnection extends EventEmitter {
         });
         if (delta.serverHlc) await observe(delta.serverHlc);
         await flush();
+        await this.uploadOfflineAuthEvents();
       })();
     });
 
@@ -394,6 +420,33 @@ class MasterConnection extends EventEmitter {
     this.reportTimer = null;
   }
 
+  /**
+   * Hand the Master the sign-ins this panel checked offline, for its audit
+   * trail. Runs once the Master has said which protocol it speaks, which is
+   * why it follows a snapshot or delta rather than the bare connect.
+   *
+   * Dropped only on the Master's acknowledgement. Any failure, including a
+   * Master too old for the command, keeps them for the next connect.
+   */
+  private async uploadOfflineAuthEvents(): Promise<void> {
+    if (this.uploadingAuthEvents || this.authEventsTried) return;
+    this.uploadingAuthEvents = true;
+    this.authEventsTried = true;
+
+    try {
+      const events = await offlineAuthEvents.peek();
+      if (events.length === 0) return;
+
+      await this.command<'auth:offlineEvents', { recorded: number }>('auth:offlineEvents', events);
+      await offlineAuthEvents.drop(events);
+      log.info(`Uploaded ${events.length} offline sign-in record(s) to the Master`);
+    } catch (error) {
+      log.debug(`Could not upload offline sign-ins yet: ${describeError(error)}`);
+    } finally {
+      this.uploadingAuthEvents = false;
+    }
+  }
+
   private async sendReport(): Promise<void> {
     try {
       await this.command<'panel:report', null>('panel:report', await buildReport());
@@ -441,6 +494,25 @@ class MasterConnection extends EventEmitter {
     const socket = this.socket;
     if (!socket || this.state !== 'connected') {
       throw new MasterCommandError('Not connected to the Master Panel', undefined, undefined, true);
+    }
+
+    /*
+     * A Master too old for this command would never acknowledge it, and the
+     * caller would wait out the full ack timeout to learn nothing. The Master
+     * says which protocol it speaks in every snapshot and delta, so refuse at
+     * once and say why. Not `unreachable`: the Master is there, and nothing may
+     * fall back to an offline path over this.
+     */
+    const needs = COMMAND_MIN_PROTOCOL[event] ?? 1;
+    if (needs > (this.masterProtocol ?? 1)) {
+      throw new MasterCommandError(
+        'The Master Panel needs an update before it can do this',
+        'updateNeeded',
+        undefined,
+        false,
+        undefined,
+        'error.updateNeeded.master',
+      );
     }
 
     /*
@@ -608,6 +680,7 @@ class MasterConnection extends EventEmitter {
           this.snapshot = snapshot;
           this.lastSyncedAt = snapshot.serverTime;
           this.masterVersion = snapshot.serverVersion ?? this.masterVersion;
+          this.masterProtocol = snapshot.protocol ?? 1;
           this.bootId = snapshot.bootId ?? this.bootId;
           this.emit('snapshot', snapshot);
           void localStore.setSnapshot(snapshot, this.cursorFrom(snapshot.seq));

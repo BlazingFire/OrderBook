@@ -90,8 +90,9 @@ describe.skipIf(!canRunIntegrationTests)('catalogue export -> import round trip 
   );
 
   it('a real upsert of an unedited export writes nothing: no new row, no activity entry', async () => {
-    const before = await db()('activity_log').where({ entity_type: 'catalog' }).count('* as n').first<{ n: string }>();
+    // Counted after the export, which writes its own `catalog.exported` entry.
     const file = await exportProducts('csv', admin);
+    const before = await db()('activity_log').where({ entity_type: 'catalog' }).count('* as n').first<{ n: string }>();
     const result = await run({ buffer: file.bytes, fileName: file.fileName }, 'upsert', false);
     expect(result).toMatchObject({ created: 0, updated: 0, unchanged: SUB_PRODUCTS, failed: 0 });
     const after = await db()('activity_log').where({ entity_type: 'catalog' }).count('* as n').first<{ n: string }>();

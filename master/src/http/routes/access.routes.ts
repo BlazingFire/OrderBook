@@ -7,7 +7,8 @@
  * never opens a transaction.
  */
 
-import { Router } from 'express';
+import { MASTER_KEY_TOKEN_HEADER } from '@orderbook/shared';
+import { Router, type Request } from 'express';
 
 import { ValidationError } from '../../lib/errors.js';
 import * as roleService from '../../services/role.service.js';
@@ -35,6 +36,15 @@ accessRoutes.use(requireAuth);
  * a transaction.
  */
 const needs = requirePermissionMiddleware;
+
+/**
+ * The master-key token, when the caller sent one. Passed through untouched:
+ * whether a change needs it is the service's decision, not the route's.
+ */
+function masterKey(req: Request): { masterKeyToken?: string } {
+  const token = req.header(MASTER_KEY_TOKEN_HEADER);
+  return token ? { masterKeyToken: token } : {};
+}
 
 // --- The catalogue the permission grid renders from -----------------------
 
@@ -132,7 +142,11 @@ accessRoutes.post(
   '/users',
   needs('users.manage'),
   asyncHandler(async (req, res) => {
-    const { user, secret } = await userService.createUser(req.body, actorFromRequest(req));
+    const { user, secret } = await userService.createUser(
+      req.body,
+      actorFromRequest(req),
+      masterKey(req),
+    );
     res.status(201).json({ user, secret });
   }),
 );
@@ -141,7 +155,14 @@ accessRoutes.put(
   '/users/:id',
   needs('users.manage'),
   asyncHandler(async (req, res) => {
-    res.json(await userService.updateUser(String(req.params.id), req.body, actorFromRequest(req)));
+    res.json(
+      await userService.updateUser(
+        String(req.params.id),
+        req.body,
+        actorFromRequest(req),
+        masterKey(req),
+      ),
+    );
   }),
 );
 
@@ -149,7 +170,9 @@ accessRoutes.delete(
   '/users/:id',
   needs('users.manage'),
   asyncHandler(async (req, res) => {
-    res.json(await userService.deleteUser(String(req.params.id), actorFromRequest(req)));
+    res.json(
+      await userService.deleteUser(String(req.params.id), actorFromRequest(req), masterKey(req)),
+    );
   }),
 );
 
@@ -171,6 +194,7 @@ accessRoutes.post(
       await userService.resetPassword(
         { userId: String(req.params.id), password: req.body?.password },
         actorFromRequest(req),
+        masterKey(req),
       ),
     );
   }),
@@ -220,6 +244,7 @@ accessRoutes.post(
       { currentPassword, newPassword },
       actor.userId ?? '',
       actor.tenantId,
+      masterKey(req),
     );
 
     res.status(204).end();

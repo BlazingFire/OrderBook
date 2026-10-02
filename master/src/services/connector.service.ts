@@ -18,10 +18,14 @@
  * seen what it was going to do, at the rules it is going to do it under.
  */
 
+import { lookup } from 'node:dns/promises';
+import { BlockList, isIP } from 'node:net';
+
 import {
   CONNECTOR_FLAGGABLE_FIELDS,
   CONNECTOR_MIN_INTERVAL_MIN,
   CONNECTOR_TRANSFORMS,
+  MASTER_KEY_TOKEN_HEADER,
   type Connector,
   type ConnectorEntity,
   type ConnectorInput,
@@ -299,6 +303,51 @@ export function assertReachableUrl(raw: string): URL {
   return url;
 }
 
+/** This PC, however it is spelled: the loopback range, and "any address". */
+const SELF_ADDRESSES = new BlockList();
+SELF_ADDRESSES.addSubnet('127.0.0.0', 8, 'ipv4');
+SELF_ADDRESSES.addAddress('0.0.0.0', 'ipv4');
+SELF_ADDRESSES.addAddress('::1', 'ipv6');
+SELF_ADDRESSES.addAddress('::', 'ipv6');
+
+/**
+ * The run-time half of the recursion guard, checked before every request.
+ * Loopback is a security boundary on the Master (setup, restore, the master
+ * key and Server Master sessions trust 127.0.0.1), so a connector must not
+ * reach this process by a name that only resolves to loopback, such as
+ * `localhost.`. Loopback on any other port (Tally on localhost:9000) stays
+ * allowed. `callRemote` runs it again on every redirect hop.
+ *
+ * ponytail: the name is resolved here and again by `fetch`; a DNS server that
+ * answers differently between the two could still slip through. Pinning the
+ * address would need a custom dispatcher.
+ */
+export async function assertNotSelf(url: URL): Promise<void> {
+  const port = url.port ? Number(url.port) : url.protocol === 'https:' ? 443 : 80;
+  if (port !== config.http.port) return;
+
+  const host = url.hostname.replace(/^\[|\]$/g, '');
+  const addresses = isIP(host) ? [{ address: host }] : await lookup(host, { all: true });
+  for (const { address } of addresses) {
+    // BlockList also matches an IPv4-mapped IPv6 address against the IPv4 rules.
+    if (SELF_ADDRESSES.check(address, isIP(address) === 6 ? 'ipv6' : 'ipv4')) {
+      throw new ValidationError('validation.connector.urlSelf');
+    }
+  }
+}
+
+/**
+ * The one header a connector may not set: it carries this Master's own
+ * master-key token, which means nothing to another system. `cookie` stays
+ * allowed, since older remote systems sign in with a session cookie;
+ * `assertNotSelf` is what keeps any credential from being sent back here.
+ */
+export function assertAllowedAuthHeader(header: string | null | undefined): void {
+  if (header && header.trim().toLowerCase() === MASTER_KEY_TOKEN_HEADER) {
+    throw new ValidationError('validation.connector.authHeaderReserved');
+  }
+}
+
 function validated(input: ConnectorInput): Record<string, unknown> {
   const slug = input.slug?.trim();
   const label = input.label?.trim();
@@ -306,6 +355,7 @@ function validated(input: ConnectorInput): Record<string, unknown> {
   if (!label) throw new ValidationError('validation.connector.labelRequired');
 
   const url = assertReachableUrl(input.baseUrl ?? '');
+  assertAllowedAuthHeader(input.authHeader);
 
   const scheduleKind = input.scheduleKind ?? 'manual';
   const intervalMin = input.intervalMin ?? null;

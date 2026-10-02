@@ -100,11 +100,14 @@ dataRoutes.post(
       throw new ValidationError('validation.backup.passphraseRequired');
     }
 
-    const result = await backupExportService.exportBackup({
-      scope,
-      tenantIds: Array.isArray(tenantIds) ? tenantIds.map(String) : undefined,
-      passphrase,
-    });
+    const result = await backupExportService.exportBackup(
+      {
+        scope,
+        tenantIds: Array.isArray(tenantIds) ? tenantIds.map(String) : undefined,
+        passphrase,
+      },
+      actorFromRequest(req),
+    );
 
     res.setHeader('Content-Disposition', `attachment; filename="${result.fileName}"`);
     res.setHeader('Content-Type', 'application/octet-stream');
@@ -135,7 +138,9 @@ dataRoutes.post(
     }
     const confirmWipe = req.body?.confirmWipe === 'true' || req.body?.confirmWipe === true;
 
-    res.json(await backupRestoreService.restoreBackup(req.file.buffer, passphrase, confirmWipe));
+    res.json(
+      await backupRestoreService.restoreBackup(req.file.buffer, passphrase, confirmWipe, actorFromRequest(req)),
+    );
   }),
 );
 

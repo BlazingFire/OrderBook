@@ -28,6 +28,7 @@ import path from 'node:path';
 import { encode as encodeBlurhash } from 'blurhash';
 import sharp from 'sharp';
 
+import { assertMayManageUser } from '../domain/access.js';
 import { requirePermission, type ActorContext } from '../domain/actor.js';
 import { config } from '../config/index.js';
 import { db } from '../db/knex.js';
@@ -87,18 +88,19 @@ export function avatarFilePath(tenantId: string, avatarId: string, variant: stri
  *
  * A person always owns their own, which is the common case and needs no
  * permission at all — it is their face. Changing somebody else's is a roster
- * edit and needs `users.manage`.
+ * edit and needs `users.manage`, and (G9) a target who does not outrank you.
  */
-function assertMayEdit(actor: ActorContext, userId: string): void {
-  if (actor.userId === userId) return;
+function assertMayEdit(actor: ActorContext, user: User): void {
+  if (actor.userId === user.id) return;
   requirePermission(actor, 'users.manage');
+  assertMayManageUser(actor, user.roleTier);
 }
 
 export async function uploadAvatar(
   input: { userId: string; fileBuffer: Buffer },
   actor: ActorContext,
 ): Promise<User> {
-  assertMayEdit(actor, input.userId);
+  if (actor.userId !== input.userId) requirePermission(actor, 'users.manage');
 
   if (input.fileBuffer.length === 0) throw new ValidationError('validation.avatar.fileRequired');
   // Checked before any decode: a decoder is the wrong place to discover that
@@ -109,6 +111,7 @@ export async function uploadAvatar(
 
   const existing = await userRepo.findById(actor.tenantId, input.userId);
   if (!existing) throw new NotFoundError('User');
+  assertMayEdit(actor, existing);
 
   const avatarId = randomUUID();
   // Through the same one-at-a-time gate as product images: both pipelines
@@ -158,10 +161,11 @@ export async function uploadAvatar(
 }
 
 export async function removeAvatar(userId: string, actor: ActorContext): Promise<User> {
-  assertMayEdit(actor, userId);
+  if (actor.userId !== userId) requirePermission(actor, 'users.manage');
 
   const existing = await userRepo.findById(actor.tenantId, userId);
   if (!existing) throw new NotFoundError('User');
+  assertMayEdit(actor, existing);
   // Captured out of the record: the narrowing does not survive into the
   // transaction's closure, and the id is wanted after the row stops naming it.
   const previous = existing.avatar;

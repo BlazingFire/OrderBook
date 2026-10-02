@@ -19,6 +19,7 @@
  */
 
 import type { SessionRejection } from '@orderbook/shared';
+import { isServerMasterTier } from '@orderbook/shared';
 
 import type { ActorContext } from '../domain/actor.js';
 import { UnauthorizedError } from '../lib/errors.js';
@@ -103,11 +104,18 @@ export async function resolvePanelActorAllowingRefusal(
   let rejection: SessionRejection | undefined;
 
   if (actingUserToken) {
+    // No address: a panel never acts as a Server Master, wherever it runs, so
+    // such a token comes back `expired` here. The tier test below repeats the
+    // rule so it does not rest on that default alone.
     const resolution = await resolveSessionDetailedWithPermissions(actingUserToken);
 
     // The tenant check is not paranoia about our own code: it is the one place
     // a token from another company could otherwise be spent against this one.
-    if (resolution.status === 'active' && resolution.user.tenantId === tenantId) {
+    if (
+      resolution.status === 'active' &&
+      resolution.user.tenantId === tenantId &&
+      !isServerMasterTier(resolution.permissions.tier)
+    ) {
       return {
         tokenAccepted: true,
         actor: {
@@ -126,7 +134,13 @@ export async function resolvePanelActorAllowingRefusal(
 
     // A live session for another company is treated as a revocation, not an
     // expiry: this panel has no business holding it under any circumstances.
-    rejection = resolution.status === 'rejected' ? resolution.reason : 'revoked';
+    // A Server Master's is `expired`: the account is fine, just not here.
+    rejection =
+      resolution.status === 'rejected'
+        ? resolution.reason
+        : resolution.user.tenantId === tenantId
+          ? 'expired'
+          : 'revoked';
   }
 
   return {

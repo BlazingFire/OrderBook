@@ -15,7 +15,7 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SyncSnapshot } from '@orderbook/shared';
 
-import { createApp } from '../src/http/app.js';
+import { createApp, SNAPSHOT_POLICY } from '../src/http/app.js';
 import * as localStore from '../src/sync/local-store.js';
 import * as userSession from '../src/services/user-session.service.js';
 
@@ -255,6 +255,7 @@ const FIXTURE: SyncSnapshot = {
   permissions: ['leads.create'],
   serverHlc: '0000001700000000000-00000-MASTER',
   serverTime: NOW,
+  protocol: 2,
 };
 
 const FAKE_SESSION = {
@@ -287,6 +288,17 @@ describe('snapshot for the current user (DSH-1)', () => {
     expect(response.status).toBe(200);
     const expectedKeys = [...Object.keys(FIXTURE), 'pendingCount'].sort();
     expect(Object.keys(response.body).sort()).toEqual(expectedKeys);
+  });
+
+  it("passes the Master's protocol through untouched (it is the same for every reader)", async () => {
+    vi.spyOn(userSession, 'sessionPermissions').mockReturnValue(['leads.create']);
+
+    expect(SNAPSHOT_POLICY.protocol).toBe('passthrough');
+
+    const response = await request(createApp()).get('/api/snapshot');
+
+    expect(response.status).toBe(200);
+    expect(response.body.protocol).toBe(2);
   });
 
   it("replaces the cached permissions with the session's own", async () => {

@@ -19,10 +19,16 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { allPermissions, keysAboveTier } from '@orderbook/shared';
+import { allPermissions, isServerMasterTier, keysAboveTier } from '@orderbook/shared';
 
 import { canRunIntegrationTests } from './helpers/db.js';
-import { resetData, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
+import {
+  createServerMasterUser,
+  resetData,
+  setupDatabase,
+  teardownDatabase,
+  testActor,
+} from './helpers/fixtures.js';
 import type { ActorContext } from '../src/domain/actor.js';
 import * as roleRepo from '../src/repositories/role.repository.js';
 import * as roleService from '../src/services/role.service.js';
@@ -209,6 +215,18 @@ describe.skipIf(!canRunIntegrationTests)('the last-administrator guard', () => {
         userService.updateUser(user.id, { roleId: dispatch.id, expectedVersion: user.sync.version }, admin),
       ).rejects.toThrow(/administrator must remain/i);
     });
+
+    it('lets the last admin-tier user go when Server Masters still administer the company', async () => {
+      // G4 counts the Server Master tier with admin: two of them are still able
+      // to appoint anyone and repair any role, so nobody is locked out.
+      await createServerMasterUser('owner-one');
+      await createServerMasterUser('owner-two');
+      const { user } = await soleAdministrator();
+
+      await expect(
+        userService.updateUser(user.id, { isActive: false, expectedVersion: user.sync.version }, admin),
+      ).resolves.toMatchObject({ isActive: false });
+    });
   });
 
   describe('the error a refusal actually carries', () => {
@@ -311,7 +329,9 @@ describe.skipIf(!canRunIntegrationTests)('the last-administrator guard', () => {
       // grid renders an above-tier key as checked-but-disabled, so it cannot be
       // unticked, it is resubmitted on save, and G2 then rejects the whole save.
       // Both shipped non-admin roles were uneditable through the product.
-      for (const role of await roleService.listRoles(admin)) {
+      // The Server Master role is the exception on purpose: it is frozen whole.
+      const roles = await roleService.listRoles(admin);
+      for (const role of roles.filter((r) => !isServerMasterTier(r.tier))) {
         await expect(
           roleService.updateRole(
             role.id,
@@ -325,6 +345,26 @@ describe.skipIf(!canRunIntegrationTests)('the last-administrator guard', () => {
           ),
         ).resolves.toMatchObject({ id: role.id });
       }
+    });
+
+    it('keeps the Server Master role frozen, even saved back unchanged', async () => {
+      const serverMaster = (await roleService.listRoles(admin)).find((r) => isServerMasterTier(r.tier));
+      expect(serverMaster).toBeDefined();
+
+      await expect(
+        roleService.updateRole(
+          serverMaster!.id,
+          {
+            name: serverMaster!.name,
+            tier: serverMaster!.tier,
+            permissions: serverMaster!.permissions,
+            expectedVersion: serverMaster!.sync.version,
+          },
+          await testActor({
+            permissions: { roleId: null, roleName: 'SM', tier: 'server_master', permissions: allPermissions() },
+          }),
+        ),
+      ).rejects.toThrow(/cannot be renamed, edited or deleted/i);
     });
   });
 

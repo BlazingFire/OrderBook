@@ -412,7 +412,7 @@ export async function administratorActor(tenantId: string): Promise<ActorContext
     .where('u.tenant_id', tenantId)
     .whereNull('u.deleted_at')
     .andWhere('u.is_active', true)
-    .andWhere('r.tier', 'admin')
+    .whereIn('r.tier', ['admin', 'server_master'])
     .orderBy('u.created_at', 'asc')
     .first<{ id: string; display_name: string; role_id: string } | undefined>(
       'u.id',

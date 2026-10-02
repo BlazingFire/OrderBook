@@ -52,7 +52,8 @@ async function load() {
   developer.setDeveloperClockForTest(() => clock);
   const credentials = await import('../src/services/credentials.store.js');
   const userSession = await import('../src/services/user-session.service.js');
-  return { paths: pathsModule.paths, developer, credentials, userSession };
+  const offlineAuthEvents = await import('../src/services/offline-auth-events.store.js');
+  return { paths: pathsModule.paths, developer, credentials, userSession, offlineAuthEvents };
 }
 
 /**
@@ -216,6 +217,16 @@ describe('resetting the panel', () => {
     expect(await credentials.loadCredentials()).toBeNull();
     expect(userSession.currentSession()).toBeNull();
     expect(disconnects).toBe(1);
+  });
+
+  it('forgets offline sign-ins waiting for upload, so the next pairing never receives them', async () => {
+    const { developer, offlineAuthEvents } = await load();
+    await offlineAuthEvents.append({ username: 'kiran', success: true, at: new Date(0).toISOString() });
+    expect(await offlineAuthEvents.peek()).toHaveLength(1);
+
+    await developer.resetPanel();
+
+    expect(await offlineAuthEvents.peek()).toEqual([]);
   });
 
   it('succeeds on a panel that never had any of the files', async () => {

@@ -409,6 +409,20 @@ export async function addRemark(
       },
       trx,
     );
+
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'lead',
+        entityId: input.id,
+        action: 'remark_added',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { text: message.slice(0, 120) },
+      },
+      actor,
+      trx,
+    );
   });
 
   const lead = await leadRepo.findLeadById(actor.tenantId, input.id, UNSCOPED_PARTY_ACCESS);
@@ -644,6 +658,8 @@ export async function deleteLead(
         action: 'deleted',
         actorType: actor.actorType,
         actorId: actor.actorId,
+        // Read by `activityDetail.lead.deleted`, so the log names the order and party.
+        details: { number: existing.id, party: existing.partyName },
       },
       actor,
       trx,
@@ -692,6 +708,8 @@ export async function restoreLead(id: string, actor: ActorContext): Promise<BinR
         action: 'restored',
         actorType: actor.actorType,
         actorId: actor.actorId,
+        // Read by `activityDetail.lead.restored`, so the log names the order and party.
+        details: { number: existing.id, party: existing.partyName },
       },
       actor,
       trx,

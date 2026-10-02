@@ -21,7 +21,7 @@ import type { Express } from 'express';
 
 import { createApp } from '../src/http/app.js';
 import { canRunIntegrationTests } from './helpers/db.js';
-import { resetData, setupDatabase, teardownDatabase } from './helpers/fixtures.js';
+import { FIRST_RUN_ACCOUNTS, resetData, setupDatabase, teardownDatabase } from './helpers/fixtures.js';
 
 let app: Express;
 
@@ -34,15 +34,17 @@ describe.skipIf(!canRunIntegrationTests)('query budget (integration)', () => {
   beforeEach(resetData);
 
   async function signedIn() {
-    const setup = await request(app)
+    await request(app)
       .post('/api/setup/initialize')
-      .send({ companyName: 'Query Budget Co' })
+      .send({ companyName: 'Query Budget Co', accounts: FIRST_RUN_ACCOUNTS })
       .expect(201);
 
+    // The main Server Master, over supertest — loopback, where one may sign in.
+    const main = FIRST_RUN_ACCOUNTS[0]!;
     const agent = request.agent(app);
     await agent
       .post('/api/auth/sign-in')
-      .send({ username: 'admin', password: setup.body.password })
+      .send({ username: main.username, password: main.password })
       .expect(200);
 
     return agent;

@@ -13,7 +13,13 @@ import { DEVELOPER_RESET_CONFIRMATION, DEVELOPER_TOKEN_HEADER } from '@orderbook
 
 import { ValidationError } from '../../lib/errors.js';
 import { seedCatalogue } from '../../services/catalogue-seed.service.js';
-import { developerGate, resetAllData, seedDummyUsers } from '../../services/developer.service.js';
+import {
+  developerGate,
+  lockDeveloper,
+  resetAllData,
+  seedDummyUsers,
+  unlockDeveloper,
+} from '../../services/developer.service.js';
 import { seedSampleData } from '../../services/sample-data.service.js';
 import { asyncHandler } from '../async-handler.js';
 import { actorFromRequest, requireAuth } from '../middleware/require-auth.js';
@@ -62,7 +68,7 @@ developerRoutes.use(
 developerRoutes.post(
   '/unlock',
   asyncHandler(async (req, res) => {
-    res.status(201).json(await developerGate.unlock(req.body?.password));
+    res.status(201).json(await unlockDeveloper(req.body?.password, actorFromRequest(req)));
   }),
 );
 
@@ -70,10 +76,13 @@ developerRoutes.get('/status', (req, res) => {
   res.json(developerGate.status(req.header(DEVELOPER_TOKEN_HEADER)));
 });
 
-developerRoutes.post('/lock', (req, res) => {
-  developerGate.lock(req.header(DEVELOPER_TOKEN_HEADER));
-  res.json({ ok: true });
-});
+developerRoutes.post(
+  '/lock',
+  asyncHandler(async (req, res) => {
+    await lockDeveloper(req.header(DEVELOPER_TOKEN_HEADER), actorFromRequest(req));
+    res.json({ ok: true });
+  }),
+);
 
 developerRoutes.post(
   '/reset-all',
@@ -82,7 +91,7 @@ developerRoutes.post(
     if (req.body?.confirmation !== DEVELOPER_RESET_CONFIRMATION) {
       throw new ValidationError('validation.developer.confirmationRequired');
     }
-    res.json(await resetAllData());
+    res.json(await resetAllData(actorFromRequest(req)));
   }),
 );
 
@@ -90,7 +99,7 @@ developerRoutes.post(
   '/seed-dummy-users',
   asyncHandler(async (req, res) => {
     developerGate.assertUnlocked(req.header(DEVELOPER_TOKEN_HEADER));
-    res.status(201).json(await seedDummyUsers());
+    res.status(201).json(await seedDummyUsers(actorFromRequest(req)));
   }),
 );
 

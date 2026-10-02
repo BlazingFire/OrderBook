@@ -59,7 +59,7 @@ export function ColourName({ hex, name }: { hex?: string; name: string }) {
   );
 }
 
-export type PillTone = 'default' | 'ok' | 'offline' | 'conflict' | 'accent';
+export type PillTone = 'default' | 'ok' | 'offline' | 'conflict' | 'accent' | 'master';
 
 export function StatusPill({
   tone = 'default',

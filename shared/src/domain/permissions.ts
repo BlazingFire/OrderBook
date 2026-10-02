@@ -23,7 +23,12 @@ import type { MessageKey } from '../i18n/keys.js';
 
 // --- Tiers -----------------------------------------------------------------
 
-export const ROLE_TIERS = ['office', 'management', 'admin'] as const;
+/**
+ * Array order is rank: a later tier outranks every earlier one. `server_master`
+ * is appended last, so it sits above `admin` and every ceiling check
+ * (`isPermittedForTier`, `keysAboveTier`) holds it to nothing.
+ */
+export const ROLE_TIERS = ['office', 'management', 'admin', 'server_master'] as const;
 
 export type RoleTier = (typeof ROLE_TIERS)[number];
 
@@ -31,9 +36,23 @@ export function isRoleTier(value: unknown): value is RoleTier {
   return (ROLE_TIERS as readonly unknown[]).includes(value);
 }
 
-/** Ordering, so "at or below my own tier" is a comparison rather than a table. */
+/**
+ * Ordering, so "at or below my own tier" is a comparison rather than a table.
+ * The single rank source: nothing else may number the tiers.
+ */
 export function tierRank(tier: RoleTier): number {
   return ROLE_TIERS.indexOf(tier);
+}
+
+/**
+ * The owner's tier, reserved for the one system role "Server Master". Its
+ * holders sign in only on the Master PC, and their credentials are changed only
+ * with the master key (`./master-key.ts`).
+ */
+export const SERVER_MASTER_TIER = 'server_master' satisfies RoleTier;
+
+export function isServerMasterTier(tier: unknown): boolean {
+  return tier === SERVER_MASTER_TIER;
 }
 
 // --- Modules and their actions --------------------------------------------

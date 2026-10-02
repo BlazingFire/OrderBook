@@ -15,6 +15,7 @@ import { MASTER_MERGE_COLUMNS } from '../domain/merge-columns.js';
 import { resolvePartyScope, UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
 import { db } from '../db/knex.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
+import * as activityLog from '../repositories/activity-log.repository.js';
 import * as leadRepo from '../repositories/lead.repository.js';
 import * as orderRepo from '../repositories/order.repository.js';
 import * as partyRepo from '../repositories/party.repository.js';
@@ -92,6 +93,25 @@ export async function resolveConflict(
       trx,
     );
     if (!row) throw new NotFoundError('Conflict');
+
+    // Logged under the conflicted record's own type, so a party-restricted
+    // reader's log narrows it like any other entry about that record. Two
+    // call sites with literal actions rather than a ternary, so a search for
+    // either action finds where it is written; the entity type is a variable,
+    // so `i18n-tokens.test.ts` checks both tokens by hand.
+    const entry = {
+      tenantId: actor.tenantId,
+      entityType: conflict.entity,
+      entityId: conflict.entityId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      details: { field: conflict.field, conflictId: String(conflict.id) },
+    };
+    if (input.action === 'restoreLoser') {
+      await activityLog.recordActivity({ ...entry, action: 'conflict_restored' }, actor, trx);
+    } else {
+      await activityLog.recordActivity({ ...entry, action: 'conflict_kept' }, actor, trx);
+    }
     return row;
   });
 

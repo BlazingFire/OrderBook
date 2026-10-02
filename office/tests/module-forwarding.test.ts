@@ -105,6 +105,27 @@ describe('module forwarding', () => {
     });
   });
 
+  it('answers 426 with error.updateNeeded.master when the Master is too old for the command', async () => {
+    vi.spyOn(masterConnection, 'command').mockRejectedValue(
+      new MasterCommandError(
+        'The Master Panel needs an update before it can do this',
+        'updateNeeded',
+        undefined,
+        false,
+        undefined,
+        'error.updateNeeded.master',
+      ),
+    );
+
+    const response = await request(createApp()).delete('/api/parties/PT1');
+
+    expect(response.status).toBe(426);
+    expect(response.body).toMatchObject({
+      error: 'updateNeeded',
+      messageKey: 'error.updateNeeded.master',
+    });
+  });
+
   it('forwards a successful command straight through with no queuing', async () => {
     const commandSpy = vi.spyOn(masterConnection, 'command').mockResolvedValue({
       id: 'PT1',

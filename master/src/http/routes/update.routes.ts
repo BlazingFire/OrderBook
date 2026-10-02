@@ -133,11 +133,7 @@ updateRoutes.post(
   '/master/install',
   requirePermissionMiddleware('settings.manage'),
   asyncHandler(async (req, res) => {
-    // Read for its side effect of refusing an unauthenticated caller earlier —
-    // the middleware above has already established the session.
-    actorFromRequest(req);
-
-    const { path, manifest } = await updateService.prepareMasterUpdate();
+    const { path, manifest } = await updateService.prepareMasterUpdate(actorFromRequest(req));
     res.json({ path, manifest });
   }),
 );

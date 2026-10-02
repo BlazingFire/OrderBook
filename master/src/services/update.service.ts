@@ -38,9 +38,12 @@ import type {
 import { isNewer, LEGACY_RELEASE_PLATFORM } from '@orderbook/shared';
 
 import { config } from '../config/index.js';
+import { db } from '../db/knex.js';
+import type { ActorContext } from '../domain/actor.js';
 import { appVersion } from '../lib/app-version.js';
 import { createLogger } from '../lib/logger.js';
 import { verifyManifest } from '../lib/release-signature.js';
+import { recordDetachedActivity } from '../repositories/activity-log.repository.js';
 import { syncFromGitHub } from './github-releases.js';
 import { ValidationError } from '../lib/errors.js';
 
@@ -360,7 +363,9 @@ export function preparedInstaller(): PreparedInstaller | null {
  * and a server that spawns an installer over its own program files is a
  * server that gets replaced mid-request. The shell owns the quit.
  */
-export async function prepareMasterUpdate(): Promise<{ path: string; manifest: ReleaseManifest }> {
+export async function prepareMasterUpdate(
+  actor?: ActorContext,
+): Promise<{ path: string; manifest: ReleaseManifest }> {
   const { available } = await masterAvailability();
   if (!available) throw new ValidationError('validation.updates.noneAvailable');
 
@@ -383,6 +388,24 @@ export async function prepareMasterUpdate(): Promise<{ path: string; manifest: R
     sha256: available.sha256.toLowerCase(),
     version: available.version,
   };
+
+  // Detached: nothing in the database changes, and the shell quits the
+  // Master to run the installer straight after this returns.
+  if (actor) {
+    await recordDetachedActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'master_update',
+        entityId: available.version,
+        action: 'install_started',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { version: available.version },
+      },
+      actor,
+      db(),
+    );
+  }
 
   return { path: file, manifest: available };
 }

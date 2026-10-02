@@ -27,6 +27,7 @@
 
 import {
   PANEL_IRRELEVANT_ENTITIES,
+  PANEL_PROTOCOL_VERSION,
   REPLAYABLE_ENTITIES,
   type ChangedEntity,
   type SyncDelta,
@@ -98,5 +99,6 @@ export async function buildDelta(
     serverHlc,
     serverTime: new Date().toISOString(),
     serverVersion: appVersion(),
+    protocol: PANEL_PROTOCOL_VERSION,
   };
 }

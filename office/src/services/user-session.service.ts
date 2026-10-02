@@ -31,12 +31,13 @@ import type {
   SessionRejection,
   SignedInUser,
 } from '@orderbook/shared';
-import { SETTINGS } from '@orderbook/shared';
+import { SERVER_MASTER_TIER, SETTINGS } from '@orderbook/shared';
 
 import { createLogger } from '../lib/logger.js';
 import { mintVerifier, verifyAgainst } from '../lib/password.js';
 import { MasterCommandError, masterConnection } from '../realtime/master-connection.js';
 import * as attempts from './sign-in-attempts.store.js';
+import * as offlineAuthEvents from './offline-auth-events.store.js';
 import { cacheAvatar } from './avatar-cache.js';
 import { masterFetch } from '../lib/master-fetch.js';
 import * as userStore from './user-store.js';
@@ -225,6 +226,25 @@ async function signInAgainstMaster(username: string, password: string): Promise<
 
   const { token, user, credentialFingerprint } = session;
 
+  /*
+   * A Server Master signs in on the Master PC only. The Master already refuses
+   * one over a panel socket; this is the panel's own half, so a Master that let
+   * one through still leaves nothing behind here: no offline verifier (which
+   * would let the account in with the network cable pulled), and no session.
+   */
+  if (user.roleTier === SERVER_MASTER_TIER) {
+    try {
+      await masterConnection.command('auth:signOut', token);
+    } catch {
+      // The Master expires it on its own; the refusal below stands either way.
+    }
+    throw new SignInError(
+      'Server Master accounts sign in only on the Master PC',
+      'invalid_credentials',
+      'error.unauthorized.serverMasterMasterPcOnly',
+    );
+  }
+
   // The one moment this panel ever holds the plaintext. Mint a verifier from it
   // now — there is no second chance, and the Master will never send us its hash.
   const verifier = await mintVerifier(password);
@@ -316,6 +336,12 @@ async function signInOffline(username: string, password: string): Promise<PanelS
   const matches = await verifyAgainst(password, known?.verifier ?? null);
 
   if (!known || !matches) {
+    await offlineAuthEvents.append({
+      username,
+      ...(known ? { userId: known.userId } : {}),
+      success: false,
+      at: new Date().toISOString(),
+    });
     throw new SignInError(
       'Sign-in failed. With the Master Panel unreachable, only people who have signed in on this panel before can sign in.',
       'unknown_here',
@@ -337,6 +363,14 @@ async function signInOffline(username: string, password: string): Promise<PanelS
   // Presenting the stored token now is harmless while the link is down and
   // means the reconnect re-establishes this person without a second prompt.
   if (known.masterToken) await masterConnection.assume(known.masterToken);
+
+  // The Master cannot log this sign-in now, so it is kept and uploaded on reconnect.
+  await offlineAuthEvents.append({
+    username: known.username,
+    userId: known.userId,
+    success: true,
+    at: new Date().toISOString(),
+  });
 
   log.info(`${known.username} signed in offline against this panel's own record`);
   return current;

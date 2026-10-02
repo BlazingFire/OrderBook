@@ -270,13 +270,43 @@ describe.skipIf(!canRunIntegrationTests)('Logs (integration)', () => {
 
       expect(rowCount).toBeGreaterThan(0);
       const lines = csv.trim().split('\r\n');
-      expect(lines[0]).toBe('id,sequence,createdAt,actorType,actorName,entityType,entityId,action,hash');
+      // The original nine columns first, in order; `sentence` and `details` appended.
+      expect(lines[0]).toBe('id,sequence,createdAt,actorType,actorName,entityType,entityId,action,hash,sentence,details');
       expect(lines).toHaveLength(rowCount + 1);
 
       const exportRow = await db()('activity_log')
         .where({ tenant_id: actor.tenantId, action: 'exported' })
         .first('entity_type');
       expect(exportRow.entity_type).toBe('activity_log');
+    });
+
+    it('keeps the newest rows and says so past either limit, as 1.2 did, rather than refusing', async () => {
+      await catalogService.createParty({ name: 'First Party' }, actor);
+      await catalogService.createParty({ name: 'Second Party' }, actor);
+      const full = await logService.exportLogs({ entityType: 'party' }, actor);
+      expect(full.rowCount).toBeGreaterThan(1);
+      expect(full.truncated).toBe(false);
+
+      const capped = await logService.exportLogs({ entityType: 'party' }, actor, {
+        maxRows: full.rowCount - 1,
+        maxBytes: Infinity,
+      });
+      expect(capped).toMatchObject({ rowCount: full.rowCount - 1, truncated: true });
+      // Newest first, so the capped file is the full one less its oldest row.
+      const fullLines = full.csv.trim().split('\r\n');
+      expect(capped.csv.trim().split('\r\n')).toEqual(fullLines.slice(0, -1));
+
+      // Too small for even one batch: the header alone, still a usable file.
+      const tiny = await logService.exportLogs({ entityType: 'party' }, actor, {
+        maxRows: full.rowCount,
+        maxBytes: 10,
+      });
+      expect(tiny).toMatchObject({ rowCount: 0, truncated: true });
+      expect(tiny.csv.trim()).toBe(fullLines[0]);
+
+      await expect(
+        logService.exportLogs({ entityType: 'party' }, actor, { maxRows: full.rowCount, maxBytes: Infinity }),
+      ).resolves.toMatchObject({ rowCount: full.rowCount, truncated: false });
     });
   });
 });

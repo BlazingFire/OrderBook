@@ -74,6 +74,9 @@ describe('each panel numbers its nav commands in its own sidebar order', () => {
     const ids = sidebarIds(between(source, 'const groups: NavGroup[] = [', '].map((group)'));
 
     expect(ids).toContain('dashboard');
+    // The activity log reached the Office in 1.3 Phase 2, between Settings
+    // and App update in the System group.
+    expect(ids.slice(ids.indexOf('settings'))).toEqual(['settings', 'logs', 'updates']);
 
     expect(navTabs('office')).toEqual(ids);
   });

@@ -266,7 +266,27 @@ export async function exportRows(
     offset += page.items.length;
   }
 
-  return { csv: toCsv([...CSV_HEADERS], rows), rowCount: rows.length };
+  const csv = toCsv([...CSV_HEADERS], rows);
+
+  // After the file is built, in a small transaction of its own, like the log
+  // export: building it wrote nothing.
+  await db().transaction((trx) =>
+    activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'party_access',
+        entityId: actor.tenantId,
+        action: 'exported',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { count: rows.length, parties },
+      },
+      actor,
+      trx,
+    ),
+  );
+
+  return { csv, rowCount: rows.length };
 }
 
 /**

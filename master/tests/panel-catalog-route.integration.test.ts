@@ -251,7 +251,7 @@ describe.skipIf(!canRunIntegrationTests)('the panel catalogue import routes (int
     });
 
     // The person, not the machine, is on the audit row.
-    const [activity] = await db()('activity_log').where({ entity_type: 'catalog' });
+    const [activity] = await db()('activity_log').where({ entity_type: 'catalog', action: 'imported' });
     expect(activity).toMatchObject({ actor_type: 'user', actor_name: 'Sunita Shah' });
   });
 

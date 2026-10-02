@@ -209,6 +209,34 @@ on it.
     the Office shows its device code on the sign-in and connection screens.
   (Earlier, 2026-10-01, parity plan P2 and P4 had already moved the Master's
   digits once, to match Alt+1 to Alt+6 on the Office.)
+- **Release note for 1.3 (Phase 2, 2026-10-03) — Server Masters and the master
+  key.** Put these lines in the release notes:
+  - *A fresh setup creates two Server Master accounts and no `admin`.* The owner
+    types both on the first-run screen (suggested `master` and `master-backup`).
+    Server Masters are above Normal Admin, hold every permission, and sign in
+    **only on the Master PC**.
+  - *An existing installation must set up two Server Masters on the Master PC.*
+    After the update the Master PC's sign-in screen asks for the master key and
+    then the two accounts, with no skip. **LAN admins and Office panels keep
+    working meanwhile**; existing admins stay admins.
+  - *Admins can no longer change a Server Master* (edit, deactivate, delete, reset
+    or demote), and at least two active Server Masters must remain. The admin
+    tier is now shown as **Normal Admin**.
+  - *The master key* (`docs/MASTER_KEY.md`) is asked for on the Master PC to reset
+    a forgotten Server Master password ("Forgot Server Master password?"), to
+    change a Server Master's account, and to change the pairing password
+    (Settings → Connection). Panels already paired keep working after a pairing
+    password change.
+  - *The activity log is on the Office too* (System → Activity log, with
+    `logs.view`), names entity types and actions in the reader's language, and
+    highlights a Server Master's entries. Its CSV gains `sentence` and `details`
+    columns.
+  - *Every remaining action is logged* (remarks, conversions, conflict choices,
+    panel revoke/disconnect, pairing window, developer mode, updates, exports,
+    backups, sign-out, session expiry, offline sign-ins).
+  - *Update the Master before the Offices.* An Office newer than its Master says
+    "update the Master" for a command the Master cannot answer yet instead of
+    waiting out a timeout.
 - **Hindi is 1,245 strings behind** (`grep -c 'TODO(i18n-hi)'
   shared/src/i18n/hi.ts`). The parity test only checks keys exist, so nothing
   fails on it — except an `activity.*` template, where
@@ -761,6 +789,11 @@ terms, multiple contacts); concurrent edits of one lead from two panels
 
 ## Traps worth knowing
 
+- **Every grant migration after `20261001000000_server_master_tier` grants to
+  `tier IN ('admin', 'server_master')`**, with a frozen inline permission list.
+  The Server Master role must hold every permission there is; a grant that
+  names only `admin` leaves it short, and only the `allPermissions()` check in
+  `master/tests/server-master.integration.test.ts` notices.
 - **`npm audit fix` will try to move undici off 5.29.0. Don't let it.** The
   Windows 7 Office build runs on Node 16, and every undici from 6.0 on needs
   Node 18, so the bump breaks that build's `fetch`. The audit's "high" for
@@ -971,6 +1004,46 @@ terms, multiple contacts); concurrent edits of one lead from two panels
 
 Condensed. The full entries are in `git show 5b8ebe2:HANDOFF.md` and in
 `docs/AI_COLLABORATION.md`.
+
+- **2026-10-03 — 1.3 Phase 2: Server Master tier, master key, protocol
+  handshake, complete audit (rule 4), Logs on Office (Claude).** Migration
+  `20261001000000_server_master_tier` (adds the tier and one frozen `is_system`
+  Server Master role per company). Shared: `ROLE_TIERS` gains `server_master`,
+  `master-key.ts`, `DUMMY_SERVER_MASTERS`, `PANEL_PROTOCOL_VERSION = 2`,
+  `COMMAND_MIN_PROTOCOL`, `auth:offlineEvents`, `activityDetail.*` rendering, and
+  the `tier.*`, `masterKey.*`, `logs.entity.*`/`logs.action.*` and new
+  `activity.*` strings with real Hindi. Master: first run makes two Server
+  Masters and no admin; `requireLoopback` on setup and the new
+  `/api/master-key/*`; loopback-only Server Master sign-in and sessions; the
+  target-tier and two-Server-Master guards; master-key tokens on Server Master
+  account changes; `POST /api/setup/pairing-password`; the audit sweep (every gap
+  in rule 4) and the CSV's `sentence`/`details` columns; `actor.tier` on log
+  rows; snapshots and deltas carry `protocol`. Office: never remembers a Server
+  Master, uploads offline sign-ins on reconnect, sends `protocol`/`appVersion`,
+  refuses a too-new command with 426 `error.updateNeeded.master`. ui and web:
+  `TierPill`/`ServerMasterBadge`, `Avatar highlight`, `DataTable rowHighlight`,
+  the shared `ui/src/LogsScreen.tsx` mounted by both panels, the Master's
+  `ServerMasterSetupFlow`, `MasterKeyRecoveryFlow` and `MasterKeyPrompt`, two
+  account blocks on first run, no `admin` prefill, Server Master controls on
+  Roles & users, change pairing password in Settings, and the Office Logs row.
+  Docs: new `docs/MASTER_KEY.md`; `ROLES_AND_USERS.md` §3.2; `DEVELOPER_MODE.md`;
+  `STRUCTURE.md`. **Owed:** `docs/MASTER_KEY.md` carries a placeholder where the
+  plaintext key goes — the implementing session never had it; the owner pastes
+  it in (the hash in `shared/src/domain/master-key.ts` is already the real one).
+  The restore calls `ensureServerMasterRole` for every restored company, so a
+  pre-1.3 backup comes back with the role (the archive restore, when it lands,
+  must do the same). Log exports stop at 250,000 rows, and at 128 MiB on the
+  Master (45 MiB over the Office socket), and refuse past either rather than
+  cut the file short. **Owed (owner decision):** the v1 `.obbackup` restore
+  (`POST /api/storage/restore`) stays on `storage.manage` as the approved plan
+  says, so an admin from any LAN PC can still restore a backup that holds no
+  Server Masters, or a different set, past the rules that otherwise stop an
+  admin removing one. The Master then asks for the master key to set up the
+  missing accounts, so nobody gains the tier this way, but the guarantee that
+  two always remain does not hold across that restore. Phase 8's archive
+  restore is loopback plus master key; whether the v1 restore should follow it
+  is the owner's call. A browser or Electron walk of the new flows is still to
+  do.
 
 - **2026-10-02 — 1.3 Phase 1: shell, Basic Home, Master UI refresh, Inventory UI
   hidden, loading bars, device code, low RAM (Claude).** No migration. Shared:

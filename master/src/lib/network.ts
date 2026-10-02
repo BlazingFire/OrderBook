@@ -56,14 +56,53 @@ export function isLoopbackAddress(address: string | null | undefined): boolean {
   return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
 }
 
+/** The names this PC answers to in a `Host` or `Origin` header. */
+const MASTER_PC_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+function namesThisPc(value: string | string[] | undefined, isOrigin: boolean): boolean {
+  if (typeof value !== 'string') return false;
+  try {
+    return MASTER_PC_HOSTNAMES.has(new URL(isOrigin ? value : `http://${value}`).hostname);
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Whether a request came from a program on the Master PC itself.
+ * Whether a request or socket handshake came from a program on the Master PC
+ * itself, which is what setup, restore, the master key and a Server Master's
+ * session all trust.
  *
- * Read off the socket rather than any header, because `X-Forwarded-For` is
- * whatever the caller chose to write and nothing proxies the Master.
+ * The address is read off the socket, never `X-Forwarded-For`, since nothing
+ * proxies the Master. That alone is not enough: a web page open in a browser
+ * on the Master PC also connects from loopback. So the `Host` header must name
+ * this PC too, which turns away a page that reached the Master through a
+ * hostile name re-pointed at 127.0.0.1, and an `Origin`, when there is one,
+ * must as well, which turns away a form posted from another site. The Master's
+ * own window is always `http://localhost:<port>`, so it passes both.
  */
+export function isOnMasterPc(
+  remoteAddress: string | null | undefined,
+  headers: Record<string, string | string[] | undefined>,
+): boolean {
+  if (!isLoopbackAddress(remoteAddress) || !namesThisPc(headers.host, false)) return false;
+  return headers.origin === undefined || namesThisPc(headers.origin, true);
+}
+
 export function isLoopback(req: Request): boolean {
-  return isLoopbackAddress(req.socket.remoteAddress);
+  return isOnMasterPc(req.socket.remoteAddress, req.headers);
+}
+
+/**
+ * The address to resolve a session against: the caller's own when it is on
+ * the Master PC, otherwise null, so a Server Master's session does not count.
+ * The session code reads the address for nothing but that check.
+ */
+export function masterPcAddress(
+  remoteAddress: string | null | undefined,
+  headers: Record<string, string | string[] | undefined>,
+): string | null {
+  return isOnMasterPc(remoteAddress, headers) ? (remoteAddress ?? null) : null;
 }
 
 /** True when this PC has any non-loopback IPv4 address — the "is it on the network" check. */

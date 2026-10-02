@@ -20,10 +20,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import type { Mutation } from '@orderbook/shared';
 import { createTranslator, initialHlcState, renderActivity, tickHlc } from '@orderbook/shared';
 
+import { acceptAuditEntries, refuseAuditEntries } from './helpers/audit-probe.js';
 import { canRunIntegrationTests } from './helpers/db.js';
 import {
   createTestProduct,
   resetData,
+  setUpFirstRun,
   setupDatabase,
   stageIdByName,
   teardownDatabase,
@@ -33,37 +35,19 @@ import { db } from '../src/db/knex.js';
 import type { ActorContext } from '../src/domain/actor.js';
 import { nextHlc } from '../src/repositories/identity.repository.js';
 import * as catalog from '../src/services/catalog.service.js';
+import * as conflicts from '../src/services/conflict.service.js';
 import * as fields from '../src/services/fields.service.js';
 import * as inventory from '../src/services/inventory.service.js';
 import * as leads from '../src/services/lead.service.js';
 import * as orders from '../src/services/order.service.js';
 import * as panels from '../src/services/panel.service.js';
 import * as partyAccess from '../src/services/party-access.service.js';
-import * as setup from '../src/services/setup.service.js';
 import * as sync from '../src/services/sync.service.js';
 
 const PANEL = 'A3F9K2';
 const en = createTranslator('en');
 
 let actor: ActorContext;
-
-/** Every insert into `activity_log` fails from here until `acceptAuditEntries`. */
-async function refuseAuditEntries(): Promise<void> {
-  await db().raw(`
-    CREATE OR REPLACE FUNCTION audit_probe_refuse() RETURNS trigger AS $$
-    BEGIN
-      RAISE EXCEPTION 'audit probe: refused';
-    END $$ LANGUAGE plpgsql;
-
-    DROP TRIGGER IF EXISTS audit_probe_refuse ON activity_log;
-    CREATE TRIGGER audit_probe_refuse BEFORE INSERT ON activity_log
-      FOR EACH ROW EXECUTE FUNCTION audit_probe_refuse();
-  `);
-}
-
-async function acceptAuditEntries(): Promise<void> {
-  await db().raw('DROP TRIGGER IF EXISTS audit_probe_refuse ON activity_log');
-}
 
 /** A change to `table` that fails at COMMIT — after everything in its transaction, the entry included, ran. */
 async function refuseAtCommit(table: string): Promise<void> {
@@ -249,6 +233,15 @@ describe.skipIf(!canRunIntegrationTests)('audited writes commit with their entry
       expect((await db()('leads').where({ id: lead.id }).first())?.converted_order_id).toBeNull();
     });
 
+    it('adding a remark to a lead', async () => {
+      const { lead } = await seedLead();
+      const before = await countRows('timeline_entries', { parent_id: lead.id });
+      await refuseAuditEntries();
+
+      await expect(leads.addRemark({ id: lead.id, message: 'never saved' }, actor)).rejects.toThrow(/audit probe/);
+      expect(await countRows('timeline_entries', { parent_id: lead.id })).toBe(before);
+    });
+
     it('editing an order', async () => {
       const { order } = await seedOrder();
       await refuseAuditEntries();
@@ -332,9 +325,75 @@ describe.skipIf(!canRunIntegrationTests)('audited writes commit with their entry
       expect((await db()('leads').where({ id: lead.id }).first())?.notes).toBeNull();
     });
 
+    it('first-run setup, whose closing entry is the last statement', async () => {
+      const users = await countRows('users');
+      await refuseAuditEntries('set_up');
+
+      await expect(setUpFirstRun('Shree Ceramics')).rejects.toThrow(/audit probe/);
+      expect(await countRows('master_config')).toBe(0);
+      expect(await countRows('users')).toBe(users);
+    });
+
+    it('opening the pairing window', async () => {
+      await refuseAuditEntries();
+
+      await expect(panels.openPairingWindowBy(actor)).rejects.toThrow(/audit probe/);
+      expect(panels.isAcceptingPairing()).toBe(false);
+    });
+
+    it('closing the pairing window', async () => {
+      panels.openPairingWindow();
+      await refuseAuditEntries();
+
+      await expect(panels.closePairingWindowBy(actor)).rejects.toThrow(/audit probe/);
+      expect(panels.isAcceptingPairing()).toBe(true);
+    });
+
+    describe('resolving a sync conflict', () => {
+      async function seedConflict() {
+        const { lead, product, variant } = await seedLead();
+        await leads.updateLead(
+          lead.id,
+          { items: [{ productId: product.id, variantId: variant.id, quantity: 9, packaging: 'carton' }] },
+          actor,
+        );
+        await sync.applyPush(
+          {
+            mutations: [
+              mergeMutation({
+                kind: 'lead.update',
+                entity: 'lead',
+                entityId: lead.id,
+                hlc: hlcFor(-600_000),
+                fields: ['items'],
+                payload: { items: [{ productId: product.id, variantId: variant.id, quantity: 1, packaging: 'carton' }] },
+              }),
+            ],
+          },
+          await testActor({ deviceCode: PANEL, actorType: 'office_panel' }),
+        );
+        const [conflict] = await conflicts.listConflicts(actor);
+        if (!conflict) throw new Error('The stale push raised no conflict');
+        return { lead, conflict };
+      }
+
+      for (const action of ['keepWinner', 'restoreLoser'] as const) {
+        it(action, async () => {
+          const { lead, conflict } = await seedConflict();
+          await refuseAuditEntries();
+
+          await expect(conflicts.resolveConflict({ conflictId: conflict.id, action }, actor)).rejects.toThrow(
+            /audit probe/,
+          );
+          expect((await db()('sync_conflicts').where({ id: conflict.id }).first())?.resolved_at).toBeNull();
+          expect((await leads.getLead(lead.id, actor)).items[0]?.quantity).toBe(9);
+        });
+      }
+    });
+
     describe('office panels', () => {
       beforeEach(async () => {
-        await setup.runFirstTimeSetup('Shree Ceramics');
+        await setUpFirstRun('Shree Ceramics');
       });
 
       async function pairOne() {
@@ -553,7 +612,7 @@ describe.skipIf(!canRunIntegrationTests)('audited writes commit with their entry
     });
 
     it('pairing a panel names it', async () => {
-      await setup.runFirstTimeSetup('Shree Ceramics');
+      await setUpFirstRun('Shree Ceramics');
       panels.openPairingWindow();
       const paired = await panels.pairPanel({ mode: 'auto', panelName: 'Front Desk', hostname: 'pc1' }, null);
 
@@ -811,7 +870,7 @@ describe.skipIf(!canRunIntegrationTests)('audited writes commit with their entry
         };
       }],
       ['pairing a panel', async () => {
-        await setup.runFirstTimeSetup('Shree Ceramics');
+        await setUpFirstRun('Shree Ceramics');
         panels.openPairingWindow();
         return {
           write: () => panels.pairPanel({ mode: 'auto', panelName: 'Front Desk', hostname: 'pc1' }, null),
@@ -819,7 +878,7 @@ describe.skipIf(!canRunIntegrationTests)('audited writes commit with their entry
         };
       }],
       ['revoking a panel', async () => {
-        await setup.runFirstTimeSetup('Shree Ceramics');
+        await setUpFirstRun('Shree Ceramics');
         panels.openPairingWindow();
         const paired = await panels.pairPanel({ mode: 'auto', panelName: 'Front Desk', hostname: 'pc1' }, null);
         return {
@@ -828,7 +887,7 @@ describe.skipIf(!canRunIntegrationTests)('audited writes commit with their entry
         };
       }],
       ['editing a panel', async () => {
-        await setup.runFirstTimeSetup('Shree Ceramics');
+        await setUpFirstRun('Shree Ceramics');
         panels.openPairingWindow();
         const paired = await panels.pairPanel({ mode: 'auto', panelName: 'Front Desk', hostname: 'pc1' }, null);
         return {

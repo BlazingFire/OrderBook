@@ -9,7 +9,7 @@
  * ship.
  */
 
-import { fieldFor, USER_COLUMNS } from '@orderbook/shared';
+import { fieldFor, isServerMasterTier, USER_COLUMNS } from '@orderbook/shared';
 import type {
   OneTimeSecret,
   PasswordResetInput,
@@ -21,7 +21,9 @@ import type {
 import {
   fieldDiff,
   assertAdministrativeCapabilityRetained,
+  assertMayManageUser,
   assertNameAvailable,
+  assertServerMastersRetained,
   assertTierWithinActor,
   assertVersionMatches,
 } from '../domain/access.js';
@@ -42,9 +44,19 @@ import * as roleRepo from '../repositories/role.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
 import { publishChange } from './change-bus.js';
 import { invalidateSessionsForUser } from './auth.service.js';
+import { masterKeyGate } from './master-key.service.js';
 import { rememberPassword } from './password-vault.service.js';
 
 const USER_FIELDS = ['username', 'displayName', 'roleId', 'isActive'] as const;
+
+/**
+ * What a caller may add to a user change: the master-key token from the
+ * `x-master-key-token` header. Needed only when the change touches a Server
+ * Master's credentials, standing or role, or makes somebody one.
+ */
+export interface MasterKeyOptions {
+  masterKeyToken?: string;
+}
 
 export async function listUsers(actor: ActorContext): Promise<User[]> {
   requirePermission(actor, 'users.manage');
@@ -75,6 +87,7 @@ export async function getUser(id: string, actor: ActorContext): Promise<User> {
 export async function createUser(
   input: UserInput,
   actor: ActorContext,
+  options: MasterKeyOptions = {},
 ): Promise<{ user: User; secret: OneTimeSecret }> {
   requirePermission(actor, 'users.manage');
 
@@ -89,6 +102,8 @@ export async function createUser(
 
   // G3 — you cannot mint someone above yourself.
   assertTierWithinActor(actor, role.tier);
+  // And a new Server Master takes the master key as well as the tier.
+  if (isServerMasterTier(role.tier)) masterKeyGate.assertUnlocked(options.masterKeyToken);
   assertNameAvailable(
     await userRepo.isUsernameTaken(actor.tenantId, username, null),
     'user',
@@ -155,11 +170,16 @@ export async function updateUser(
   id: string,
   input: UserUpdateInput,
   actor: ActorContext,
+  options: MasterKeyOptions = {},
 ): Promise<User> {
   requirePermission(actor, 'users.manage');
 
   const existing = await userRepo.findById(actor.tenantId, id);
   if (!existing) throw new NotFoundError('User');
+
+  // G9, before anything else: nothing about the row may leak through a
+  // version conflict to somebody who may not manage it at all.
+  assertMayManageUser(actor, existing.roleTier);
 
   assertVersionMatches(
     existing.sync.version,
@@ -208,12 +228,14 @@ export async function updateUser(
     details.username = { from: existing.username, to: username };
   }
 
+  let becomesServerMaster = false;
   if (input.roleId !== undefined && input.roleId !== existing.roleId) {
     requirePermission(actor, 'roles.assign');
 
     const role = await roleRepo.findRoleById(actor.tenantId, input.roleId);
     if (!role) throw new ValidationError('validation.user.role.mustExist');
     assertTierWithinActor(actor, role.tier);
+    becomesServerMaster = isServerMasterTier(role.tier);
 
     patch.role_id = role.id;
     details.role = {
@@ -229,12 +251,25 @@ export async function updateUser(
 
   if (Object.keys(patch).length === 0) return existing;
 
+  // A Server Master's username, standing or role — or making somebody one —
+  // takes the master key too. A display name alone does not, and neither does
+  // a form that sends those fields back unchanged.
+  const credentialsOrStandingMoved =
+    (patch.username !== undefined && patch.username !== existing.username) ||
+    (patch.is_active !== undefined && patch.is_active !== existing.isActive) ||
+    patch.role_id !== undefined;
+  const touchesServerMaster =
+    (isServerMasterTier(existing.roleTier) && credentialsOrStandingMoved) || becomesServerMaster;
+  if (touchesServerMaster) masterKeyGate.assertUnlocked(options.masterKeyToken);
+
   await db().transaction(async (trx) => {
     // G4. The lock comes first: two transactions deactivating two *different*
     // administrators touch disjoint rows, so at READ COMMITTED neither blocks
     // the other and both would see one admin remaining.
     await accessGuard.lockTenantAccessGuards(actor.tenantId, trx);
     const adminsBefore = await accessGuard.readAdministrativeCapability(actor.tenantId, trx);
+    // G10 rides the same lock, for the same reason.
+    const serverMastersBefore = await accessGuard.countActiveServerMasters(actor.tenantId, trx);
 
     const hlc = await nextHlc(trx);
     const fieldHlc = { ...existing.sync.fieldHlc };
@@ -256,6 +291,10 @@ export async function updateUser(
     assertAdministrativeCapabilityRetained(
       adminsBefore,
       await accessGuard.readAdministrativeCapability(actor.tenantId, trx),
+    );
+    assertServerMastersRetained(
+      serverMastersBefore,
+      await accessGuard.countActiveServerMasters(actor.tenantId, trx),
     );
 
     await activityLog.recordActivity(
@@ -288,11 +327,18 @@ export async function updateUser(
   return user;
 }
 
-export async function deleteUser(id: string, actor: ActorContext): Promise<User> {
+export async function deleteUser(
+  id: string,
+  actor: ActorContext,
+  options: MasterKeyOptions = {},
+): Promise<User> {
   requirePermission(actor, 'users.manage');
 
   const existing = await userRepo.findById(actor.tenantId, id);
   if (!existing) throw new NotFoundError('User');
+
+  assertMayManageUser(actor, existing.roleTier);
+  if (isServerMasterTier(existing.roleTier)) masterKeyGate.assertUnlocked(options.masterKeyToken);
 
   await db().transaction(async (trx) => {
     // This path previously held no lock at all — it does not call `nextHlc`, so
@@ -300,12 +346,17 @@ export async function deleteUser(id: string, actor: ActorContext): Promise<User>
     // had.
     await accessGuard.lockTenantAccessGuards(actor.tenantId, trx);
     const adminsBefore = await accessGuard.readAdministrativeCapability(actor.tenantId, trx);
+    const serverMastersBefore = await accessGuard.countActiveServerMasters(actor.tenantId, trx);
 
     await userRepo.softDeleteUser(actor.tenantId, id, actorUserId(actor), trx);
 
     assertAdministrativeCapabilityRetained(
       adminsBefore,
       await accessGuard.readAdministrativeCapability(actor.tenantId, trx),
+    );
+    assertServerMastersRetained(
+      serverMastersBefore,
+      await accessGuard.countActiveServerMasters(actor.tenantId, trx),
     );
 
     await activityLog.recordActivity(
@@ -341,6 +392,7 @@ export async function restoreUser(
 
   const existing = await userRepo.findById(actor.tenantId, id, { includeDeleted: true });
   if (!existing) throw new NotFoundError('User');
+  assertMayManageUser(actor, existing.roleTier);
   if (!existing.deletedAt) return existing;
 
   // A user whose role is still in the Bin would come back unable to sign in
@@ -402,11 +454,15 @@ export async function restoreUser(
 export async function resetPassword(
   input: PasswordResetInput,
   actor: ActorContext,
+  options: MasterKeyOptions = {},
 ): Promise<OneTimeSecret> {
   requirePermission(actor, 'users.manage');
 
   const existing = await userRepo.findById(actor.tenantId, input.userId);
   if (!existing) throw new NotFoundError('User');
+
+  assertMayManageUser(actor, existing.roleTier);
+  if (isServerMasterTier(existing.roleTier)) masterKeyGate.assertUnlocked(options.masterKeyToken);
 
   // Same rule as `createUser`, and the same reason it is on the supplied value.
   const supplied = input.password?.trim();

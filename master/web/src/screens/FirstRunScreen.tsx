@@ -1,10 +1,12 @@
 /**
  * First screen on a brand-new installation. Two forks
- * (docs/7-STORAGE-BACKUP-RESTORE.md §5.1): "Set up new site" generates this
- * Master's identity and shows the credentials — the only time the passwords
- * are ever visible, so that screen insists on an explicit acknowledgement
- * before moving on. "Restore from backup" reads an exported file instead and
- * comes up as the site that was backed up.
+ * (docs/7-STORAGE-BACKUP-RESTORE.md §5.1): "Set up new site" asks the owner to
+ * type the two Server Master accounts (suggested `master` and
+ * `master-backup`), generates this Master's identity and shows the connection
+ * details — the only time the pairing password is ever visible, so that screen
+ * insists on an explicit acknowledgement before moving on. No `admin` account
+ * is created. "Restore from backup" reads an exported file instead and comes
+ * up as the site that was backed up. Both run only on the Master PC.
  */
 
 import { useState } from 'react';
@@ -12,6 +14,13 @@ import type { BackupRestorePreview } from '@orderbook/shared';
 
 import { api, ApiError, type FirstRunCredentials } from '../api';
 import { DataDirCard } from '../components/DataDirCard';
+import {
+  accountDrafts,
+  accountDraftsError,
+  ServerMasterAccountFields,
+  toAccountInputs,
+  type AccountDraft,
+} from './ServerMasterSetupFlow';
 import {
   Button,
   Card,
@@ -21,17 +30,20 @@ import {
   Input,
   Logo,
   OfflineBanner,
+  apiErrorText,
   rem,
   t,
 } from '@orderbook/ui';
 
 interface Props {
   onComplete: () => void;
+  /** Setup and restore are refused off the Master PC, so a LAN browser only gets a notice. */
+  onMasterPc: boolean;
 }
 
 type Mode = 'choose' | 'setup' | 'restore';
 
-export function FirstRunScreen({ onComplete }: Props) {
+export function FirstRunScreen({ onComplete, onMasterPc }: Props) {
   const [mode, setMode] = useState<Mode>('choose');
 
   if (mode === 'restore')
@@ -71,16 +83,22 @@ export function FirstRunScreen({ onComplete }: Props) {
             {t('firstRun.setup.title')}
           </h1>
         </div>
-        <Card>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}>
-            <Button variant="primary" onClick={() => setMode('setup')}>
-              {t('firstRun.choose.newSite')}
-            </Button>
-            <Button variant="secondary" onClick={() => setMode('restore')}>
-              {t('firstRun.choose.restore')}
-            </Button>
-          </div>
-        </Card>
+        {!onMasterPc ? (
+          <Card>
+            <p style={{ margin: 0 }}>{t('firstRun.choose.masterPcOnly')}</p>
+          </Card>
+        ) : (
+          <Card>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}>
+              <Button variant="primary" onClick={() => setMode('setup')}>
+                {t('firstRun.choose.newSite')}
+              </Button>
+              <Button variant="secondary" onClick={() => setMode('restore')}>
+                {t('firstRun.choose.restore')}
+              </Button>
+            </div>
+          </Card>
+        )}
 
         {/* Before the company exists is the one moment this folder can be moved
             by pressing a button: it is empty, so there is nothing to lose. */}
@@ -92,17 +110,25 @@ export function FirstRunScreen({ onComplete }: Props) {
 
 function SetupFlow({ onBack, onComplete }: { onBack: () => void; onComplete: () => void }) {
   const [companyName, setCompanyName] = useState('');
+  const [drafts, setDrafts] = useState<AccountDraft[]>(() => accountDrafts(2));
   const [credentials, setCredentials] = useState<FirstRunCredentials | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function generate() {
+    const problem = accountDraftsError(drafts);
+    if (problem) {
+      setError(problem);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      setCredentials(await api.initialize(companyName));
+      setCredentials(await api.initialize(companyName, toAccountInputs(drafts)));
+      // The passwords were typed here; nothing should keep them once set up.
+      setDrafts(accountDrafts(2));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : t('firstRun.error.default'));
+      setError(apiErrorText(caught, 'firstRun.error.default'));
     } finally {
       setBusy(false);
     }
@@ -138,15 +164,25 @@ function SetupFlow({ onBack, onComplete }: { onBack: () => void; onComplete: () 
           </h1>
         </div>
 
-        <OfflineBanner>{t('firstRun.ready.writeDownWarning')}</OfflineBanner>
+        <OfflineBanner>{t('firstRun.ready.writeDownPairing')}</OfflineBanner>
 
         <Card>
-          <h2 className="ob-title" style={{ margin: '0 0 var(--s-12)' }}>
+          <h2 className="ob-title" style={{ margin: '0 0 var(--s-4)' }}>
             {t('firstRun.ready.signInSection')}
           </h2>
+          <p className="ob-small" style={{ marginTop: 0 }}>
+            {t('firstRun.serverMaster.readyHelp')}
+          </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}>
-            <LabeledValue label={t('firstRun.ready.usernameLabel')} value={credentials.username} />
-            <LabeledValue label={t('firstRun.ready.passwordLabel')} value={credentials.password} />
+            {credentials.accounts.map((account, index) => (
+              <LabeledValue
+                key={account.username}
+                label={
+                  index === 0 ? t('firstRun.serverMaster.main') : t('firstRun.serverMaster.backup')
+                }
+                value={account.username}
+              />
+            ))}
           </div>
         </Card>
 
@@ -197,7 +233,7 @@ function SetupFlow({ onBack, onComplete }: { onBack: () => void; onComplete: () 
       <div
         style={{
           width: '100%',
-          maxWidth: rem(420),
+          maxWidth: rem(480),
           display: 'flex',
           flexDirection: 'column',
           gap: 'var(--s-20)',
@@ -220,8 +256,6 @@ function SetupFlow({ onBack, onComplete }: { onBack: () => void; onComplete: () 
           </p>
         </div>
 
-        {error && <FieldError>{error}</FieldError>}
-
         <Card>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
             <FormField label={t('firstRun.setup.companyName')}>
@@ -234,6 +268,14 @@ function SetupFlow({ onBack, onComplete }: { onBack: () => void; onComplete: () 
                 />
               )}
             </FormField>
+            <h2 className="ob-title" style={{ margin: 0 }}>
+              {t('firstRun.serverMaster.title')}
+            </h2>
+            <p className="ob-small" style={{ margin: 0 }}>
+              {t('firstRun.serverMaster.help')}
+            </p>
+            <ServerMasterAccountFields drafts={drafts} onChange={setDrafts} />
+            {error && <FieldError>{error}</FieldError>}
             <Button variant="primary" busy={busy} onClick={() => void generate()}>
               {busy ? t('firstRun.setup.generating') : t('firstRun.setup.generate')}
             </Button>

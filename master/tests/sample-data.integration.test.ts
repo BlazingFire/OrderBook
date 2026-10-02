@@ -51,10 +51,17 @@ describe.skipIf(!canRunIntegrationTests)('sample data seed (integration)', () =>
   afterAll(teardownDatabase);
 
   it('seeds the users, the catalogue, six months of leads and orders, and reports what it made', async () => {
-    // A blank Master: the seed set it up itself and made the three sign-ins.
+    // A blank Master: the seed set it up itself with the two test Server
+    // Masters (1.3 creates no admin at first run), then made the three sign-ins.
     expect(await isSetupComplete()).toBe(true);
     expect(result.pairingPassword).toMatch(/^[A-Z2-9]{10}$/);
-    expect(result.users.map((user) => user.username)).toEqual(['admin', 'management', 'office']);
+    expect(result.users.map((user) => user.username)).toEqual([
+      'master',
+      'master-backup',
+      'admin',
+      'management',
+      'office',
+    ]);
 
     expect(result.counts).toMatchObject({
       parties: SAMPLE_PARTIES.length,

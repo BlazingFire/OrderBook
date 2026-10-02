@@ -24,13 +24,12 @@ import { importProducts } from '../src/services/product-import.service.js';
 import * as inventory from '../src/services/inventory.service.js';
 import * as panels from '../src/services/panel.service.js';
 import * as settings from '../src/services/settings.service.js';
-import * as setup from '../src/services/setup.service.js';
 import * as auth from '../src/services/auth.service.js';
 import * as leads from '../src/services/lead.service.js';
 import * as orders from '../src/services/order.service.js';
 import { buildSnapshot } from '../src/services/snapshot.service.js';
 import { canRunIntegrationTests } from './helpers/db.js';
-import { resetData, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
+import { resetData, setUpFirstRun, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
 
 let actor: ActorContext;
 let app: Express;
@@ -49,7 +48,7 @@ describe.skipIf(!canRunIntegrationTests)('company settings, end to end (integrat
 
   describe('panels.autoPairingEnabled', () => {
     it('refuses an auto pairing even with the window open', async () => {
-      await setup.runFirstTimeSetup(null);
+      await setUpFirstRun();
       await settings.writeSetting(actor, 'panels.autoPairingEnabled', false);
       panels.openPairingWindow();
 
@@ -65,7 +64,7 @@ describe.skipIf(!canRunIntegrationTests)('company settings, end to end (integrat
       // `discovery/responder.ts` advertises `isAutoPairingOpen`. Advertising
       // the raw window instead would put "found, ready to pair" on a panel's
       // screen and then refuse the pairing it asked for.
-      await setup.runFirstTimeSetup(null);
+      await setUpFirstRun();
       panels.openPairingWindow();
 
       expect(await panels.isAutoPairingOpen(actor.tenantId)).toBe(true);
@@ -74,7 +73,7 @@ describe.skipIf(!canRunIntegrationTests)('company settings, end to end (integrat
     });
 
     it('leaves manual pairing working, which is the whole point of turning it off', async () => {
-      const credentials = await setup.runFirstTimeSetup(null);
+      const credentials = await setUpFirstRun();
       await settings.writeSetting(actor, 'panels.autoPairingEnabled', false);
 
       const result = await panels.pairPanel(
@@ -100,9 +99,9 @@ describe.skipIf(!canRunIntegrationTests)('company settings, end to end (integrat
       else process.env.ORDERBOOK_DEVELOPER_PASSWORD = originalOverride;
     });
 
-    /** Signs in as the admin first-run created and returns a cookie-carrying agent. */
+    /** Signs in as the main Server Master first-run created and returns a cookie-carrying agent. */
     async function signedIn() {
-      const credentials = await setup.runFirstTimeSetup(null);
+      const credentials = await setUpFirstRun();
       const agent = request.agent(app);
       await agent
         .post('/api/auth/sign-in')
@@ -153,10 +152,10 @@ describe.skipIf(!canRunIntegrationTests)('company settings, end to end (integrat
       // the session from the setting while the route set the cookie from
       // `config.session.ttlMs`, so the browser forgot a session the server
       // still honoured, or kept one it had dropped.
-      const credentials = await setup.runFirstTimeSetup(null);
+      const credentials = await setUpFirstRun();
       await settings.writeSetting(actor, 'security.sessionHours', 1);
 
-      const signedIn = await auth.signIn(credentials.username, credentials.password, 'browser');
+      const signedIn = await auth.signIn(credentials.username, credentials.password, 'browser', { onMasterPc: true });
       expect(signedIn.sessionTtlMs).toBe(60 * 60 * 1000);
 
       const response = await request(app)
@@ -169,9 +168,9 @@ describe.skipIf(!canRunIntegrationTests)('company settings, end to end (integrat
     });
 
     it('uses the declared default when nobody has set it', async () => {
-      const credentials = await setup.runFirstTimeSetup(null);
+      const credentials = await setUpFirstRun();
 
-      const signedIn = await auth.signIn(credentials.username, credentials.password, 'browser');
+      const signedIn = await auth.signIn(credentials.username, credentials.password, 'browser', { onMasterPc: true });
 
       expect(signedIn.sessionTtlMs).toBe(12 * 60 * 60 * 1000);
     });
@@ -497,19 +496,19 @@ describe.skipIf(!canRunIntegrationTests)('company settings, end to end (integrat
     it('answers the same on the signed-in user and in the snapshot', async () => {
       // Two call sites of one resolver. A switch wired into only one of them
       // works on the Master and does nothing on every panel, or the reverse.
-      const credentials = await setup.runFirstTimeSetup(null);
+      const credentials = await setUpFirstRun();
       await settings.writeSetting(actor, 'leads.followUpDefaultDays', 7);
 
-      const signedIn = await auth.signIn(credentials.username, credentials.password, 'browser');
+      const signedIn = await auth.signIn(credentials.username, credentials.password, 'browser', { onMasterPc: true });
       expect(signedIn.user.features.followUpDefaultDays).toBe(7);
 
       expect((await buildSnapshot(actor)).features).toMatchObject({ followUpDefaultDays: 7 });
     });
 
     it('answers the declared fallback when nothing has been set', async () => {
-      const credentials = await setup.runFirstTimeSetup(null);
+      const credentials = await setUpFirstRun();
 
-      const signedIn = await auth.signIn(credentials.username, credentials.password, 'browser');
+      const signedIn = await auth.signIn(credentials.username, credentials.password, 'browser', { onMasterPc: true });
       // 3 since catalogue v2 (owner's decision, 2026-09-28); it was 0.
       expect(signedIn.user.features.followUpDefaultDays).toBe(3);
     });

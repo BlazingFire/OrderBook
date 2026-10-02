@@ -114,4 +114,50 @@ describe('renderActivity()', () => {
       'Karan ने पार्टी Sharma Tiles जोड़ी',
     );
   });
+
+  it('uses the activityDetail.* sentence when the row carries every field it names', () => {
+    const deleted = {
+      entityType: 'lead',
+      action: 'deleted',
+      actorName: 'Karan',
+      details: { number: 'LD0000000007', party: 'Sharma Tiles' },
+    };
+    expect(renderActivity(createTranslator('en'), deleted)).toBe(
+      'Karan deleted the pending order LD0000000007 for Sharma Tiles',
+    );
+    // A row written before those fields existed keeps its plain sentence.
+    expect(renderActivity(createTranslator('en'), { ...deleted, details: {} })).toBe(
+      'Karan deleted this pending order',
+    );
+  });
+
+  it('translates *Token details, so a setting change reads in the reader’s language', () => {
+    const changed = {
+      entityType: 'setting',
+      action: 'updated',
+      actorName: 'Karan',
+      details: {
+        name: 'security.offlineSignInEnabled',
+        labelToken: 'setting.security.offlineSignInEnabled.label',
+        from: 'true',
+        to: 'false',
+        fromToken: 'settingValue.on',
+        toToken: 'settingValue.off',
+      },
+    };
+    expect(renderActivity(createTranslator('en'), changed)).toBe(
+      'Karan changed Allow signing in while the Master Panel is off from On to Off',
+    );
+    expect(renderActivity(createTranslator('hi'), changed)).toBe(
+      'Karan ने मास्टर पैनल बंद होने पर भी साइन इन करने दें को चालू से बंद किया',
+    );
+    // A *Token value that is not a message key is left alone, never looked up
+    // on the object's prototype.
+    expect(
+      renderActivity(createTranslator('en'), {
+        ...changed,
+        details: { name: 'x', labelToken: 'toString', from: '1', to: '2' },
+      }),
+    ).toBe('Karan changed the setting x');
+  });
 });

@@ -35,6 +35,7 @@
  */
 
 import type { ActivityActor, ActivityLogEntry, ActivityLogFacets, ChainBreak, ChainVerification } from '@orderbook/shared';
+import { isRoleTier } from '@orderbook/shared';
 import type { Knex } from 'knex';
 
 import type { ActorContext } from '../domain/actor.js';
@@ -100,11 +101,13 @@ export async function recordActivity(
  *
  * The rule: a change the Master makes to its own data records its entry with
  * `recordActivity`, inside that change's transaction. This is for the entries
- * that have no such transaction — three kinds today, the first with one known
+ * that have no such transaction — five kinds today, the first with one known
  * exception:
  *
  *  - an **attempt**, recorded the same way whether it was refused or let in —
- *    a sign-in (`auth.service.ts`). A refused one changed nothing, so there is
+ *    a sign-in (`auth.service.ts`), a master key typed on the Master PC
+ *    (`master-key.service.ts`), a developer-mode password
+ *    (`developer.service.ts`). A refused one changed nothing, so there is
  *    nothing to be atomic with, and throwing would replace a useful entry with
  *    a confusing 500. An accepted one *does* change the Master's data — it
  *    stamps `last_sign_in`, and may rewrite a bcrypt hash as scrypt — in a
@@ -112,14 +115,27 @@ export async function recordActivity(
  *    the exception, kept because joining it would make signing in fail
  *    whenever the trail cannot be written — for the administrator who has to
  *    fix the trail as much as for anyone;
+ *  - the **end of a session** — a sign-out or an expiry (`auth.service.ts`).
+ *    Sessions live in memory, so there is no row and no transaction; the
+ *    session is already gone when the entry is written, and the expiry sweep
+ *    must not stop because the trail could not be reached. The same holds for
+ *    the other events that change no row: locking developer mode, dropping a
+ *    panel's socket (`panel.service.ts`), starting a Master update
+ *    (`update.service.ts`);
  *  - a **run that spans many transactions** — a connector import
- *    (`connector-run.service.ts`) — whose one entry summarises all of them and
+ *    (`connector-run.service.ts`), seeding the test accounts
+ *    (`developer.service.ts`) — whose one entry summarises all of them and
  *    is written after the last;
  *  - a change that **already happened on another machine** before the Master
- *    writes its half — reissuing a panel's secret, moving a panel's storage
- *    (`panel.service.ts`). Rolling the Master's half back because the entry
- *    failed would leave the two machines disagreeing — a panel holding a secret
- *    the Master no longer accepts — which is worse than the gap.
+ *    writes its half — reissuing a panel's secret, or moving a panel's
+ *    storage (`panel.service.ts`). Rolling the Master's half back because
+ *    the entry failed would leave the two machines disagreeing — a panel
+ *    holding a secret the Master no longer accepts — which is worse than the
+ *    gap;
+ *  - a change that **cannot be taken back** once it committed: a backup
+ *    restore (`backup-restore.service.ts`) or a developer reset
+ *    (`developer.service.ts`), whose entry goes into the trail the change
+ *    just replaced.
  *
  * It swallows its own failure into a warning, which is exactly what makes it
  * wrong for anything else. If you are reaching for this from a service that has
@@ -147,6 +163,16 @@ export async function recordDetachedActivity(
 
 // --- Logs read side (Stage 4, docs/backend-modules/) ------------------------
 
+/**
+ * The acting user's role tier as it is now, so a Server Master's rows can be
+ * highlighted. A correlated subquery rather than a join: it leaves the
+ * unqualified column names of the filters below unambiguous, and it runs
+ * only for the rows the page returns.
+ */
+const ACTOR_TIER_SQL = `(SELECT r.tier FROM users u JOIN roles r ON r.id = u.role_id
+              WHERE activity_log.actor_type = 'user' AND u.id = activity_log.actor_id
+                AND u.tenant_id = activity_log.tenant_id AND r.tenant_id = u.tenant_id) AS actor_tier`;
+
 interface LogRow {
   id: string;
   sequence: string | null;
@@ -160,6 +186,7 @@ interface LogRow {
   details: unknown;
   created_at: Date;
   hash: string | null;
+  actor_tier?: string | null;
 }
 
 function mapLogEntry(row: LogRow): ActivityLogEntry {
@@ -171,7 +198,12 @@ function mapLogEntry(row: LogRow): ActivityLogEntry {
     entityType: row.entity_type,
     entityId: row.entity_id,
     action: row.action,
-    actor: { type: row.actor_type as ActivityActor['type'], id: row.actor_id, name: row.actor_name },
+    actor: {
+      type: row.actor_type as ActivityActor['type'],
+      id: row.actor_id,
+      name: row.actor_name,
+      ...(isRoleTier(row.actor_tier) ? { tier: row.actor_tier } : {}),
+    },
     details: toJsonObject(row.details),
     createdAt: toRequiredIso(row.created_at),
     hash: chained ? row.hash : null,
@@ -261,7 +293,8 @@ export async function listEntries(
   bindings.push(fetch);
 
   const { rows } = await runner.raw<{ rows: LogRow[] }>(
-    `SELECT id, sequence, tenant_id, entity_type, entity_id, action, actor_type, actor_id, actor_name, details, created_at, hash
+    `SELECT id, sequence, tenant_id, entity_type, entity_id, action, actor_type, actor_id, actor_name, details, created_at, hash,
+            ${ACTOR_TIER_SQL}
        FROM activity_log
       WHERE ${where}
       ORDER BY id ${older ? 'DESC' : 'ASC'}
@@ -296,7 +329,8 @@ export async function listPanelActivity(
   runner: Runner = db(),
 ): Promise<ActivityLogEntry[]> {
   const { rows } = await runner.raw<{ rows: LogRow[] }>(
-    `SELECT id, sequence, tenant_id, entity_type, entity_id, action, actor_type, actor_id, actor_name, details, created_at, hash
+    `SELECT id, sequence, tenant_id, entity_type, entity_id, action, actor_type, actor_id, actor_name, details, created_at, hash,
+            ${ACTOR_TIER_SQL}
        FROM activity_log
       WHERE tenant_id = ?
         AND ((actor_type = 'office_panel' AND actor_id = ?) OR (entity_type = 'office_panel' AND entity_id = ?))

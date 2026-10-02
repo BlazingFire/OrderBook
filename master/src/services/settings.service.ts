@@ -150,6 +150,10 @@ export async function readSettings(actor: ActorContext): Promise<SettingView[]> 
   });
 }
 
+function switchToken(value: unknown): 'settingValue.on' | 'settingValue.off' {
+  return value === true ? 'settingValue.on' : 'settingValue.off';
+}
+
 export async function writeSetting<K extends SettingKey>(
   actor: ActorContext,
   key: K,
@@ -206,13 +210,19 @@ export async function writeSetting<K extends SettingKey>(
         // `String(...)` because `renderActivity` copies only strings and
         // numbers out of `details`; a raw boolean would be dropped silently.
         // A secret carries the key name and nothing else — never the value,
-        // sealed or otherwise, and never its length.
+        // sealed or otherwise, and never its length. The `*Token` fields are
+        // message keys `renderActivity` translates, so the sentence names the
+        // setting and a switch's on/off in the reader's own language.
         details: secret
-          ? { name: key }
+          ? { name: key, labelToken: definition.labelToken }
           : {
               name: key,
+              labelToken: definition.labelToken,
               from: String(before),
               to: String(parsed),
+              ...(definition.control.kind === 'boolean'
+                ? { fromToken: switchToken(before), toToken: switchToken(parsed) }
+                : {}),
               ...(purged === null ? {} : { purgedPasswords: purged }),
             },
       },

@@ -140,6 +140,60 @@ describe('every recordActivity call site has a catalogue token', () => {
     expect(activityMessageKey('user', 'sign_in_failed')).not.toBeNull();
   });
 
+  it("covers auth.service.ts's session-end and offline sign-in actions explicitly", () => {
+    // `recordSessionEnd` takes its action as a parameter, and the offline
+    // upload picks one with a ternary, so neither is a literal the extractor
+    // can read. Each fills `{name}` and `{source}` where its token asks.
+    for (const action of ['signed_out', 'session_expired', 'offline_sign_in', 'offline_sign_in_failed']) {
+      const key = activityMessageKey('user', action);
+      expect(key, action).not.toBeNull();
+
+      const template = (EN_MESSAGES as Record<string, string>)[key as string] ?? '';
+      const missing = placeholdersIn(template).filter(
+        (name) => !['actor', 'name', 'source'].includes(name),
+      );
+      expect(missing, action).toEqual([]);
+    }
+  });
+
+  it.each(Object.keys(MERGEABLE_COLUMNS))(
+    "covers conflict.service.ts's conflict_kept / conflict_restored on a %s explicitly",
+    (entity) => {
+      // `entityType: conflict.entity` is the conflicted record's own type, so
+      // the extractor cannot read it. The entry carries `field` and
+      // `conflictId`; the sentence asks for neither.
+      for (const action of ['conflict_kept', 'conflict_restored']) {
+        const key = activityMessageKey(entity, action);
+        expect(key, `${entity}.${action}`).not.toBeNull();
+
+        const template = (EN_MESSAGES as Record<string, string>)[key as string] ?? '';
+        expect(placeholdersIn(template).filter((name) => name !== 'actor'), action).toEqual([]);
+      }
+    },
+  );
+
+  it("covers panel.service.ts's revoked action and developer.service.ts's events explicitly", () => {
+    // `recordPanelActivity` and `recordDeveloperEvent` take the action as a
+    // parameter. The panel entry always carries `{name}`; of the developer
+    // events only the seeding run carries a detail, `{count}`.
+    const cases: Array<[string, string, string[]]> = [
+      ['office_panel', 'revoked', ['name']],
+      ['developer', 'unlocked', []],
+      ['developer', 'unlock_failed', []],
+      ['developer', 'locked', []],
+      ['developer', 'data_erased', []],
+      ['developer', 'dummy_users_seeded', ['count']],
+    ];
+    for (const [entity, action, supplied] of cases) {
+      const key = activityMessageKey(entity, action);
+      expect(key, `${entity}.${action}`).not.toBeNull();
+
+      const template = (EN_MESSAGES as Record<string, string>)[key as string] ?? '';
+      const missing = placeholdersIn(template).filter((name) => name !== 'actor' && !supplied.includes(name));
+      expect(missing, `${entity}.${action}`).toEqual([]);
+    }
+  });
+
   it.each(Object.keys(MERGEABLE_COLUMNS))(
     "covers sync.service.ts's merged update of a %s explicitly, placeholders included",
     (entity) => {
@@ -185,5 +239,30 @@ describe('every recordActivity call site has a catalogue token', () => {
     const missing = needed.filter((name) => !pair.detailKeys.includes(name));
 
     expect(missing, `${key} renders ${missing.join(', ')} with nothing to fill it`).toEqual([]);
+  });
+
+  /*
+   * The same for the richer `activityDetail.*` sentence. The renderer falls
+   * back to `activity.*` when a field is missing, so a gap here is not a raw
+   * placeholder on screen — it is the richer sentence silently never showing.
+   * `{x}` may be filled by `x` or by `xToken`, which the renderer translates.
+   */
+  it.each(
+    [
+      ...new Map(allPairs.map((pair) => [`${pair.entityType}.${pair.action}`, pair])).values(),
+    ].filter(
+      (pair) =>
+        `activityDetail.${pair.entityType}.${pair.action}` in EN_MESSAGES && !pair.detailsIsVariable,
+    ),
+  )('$file: activityDetail for $action supplies every placeholder it renders', (pair) => {
+    const template = (EN_MESSAGES as Record<string, string>)[
+      `activityDetail.${pair.entityType}.${pair.action}`
+    ] as string;
+
+    const missing = placeholdersIn(template)
+      .filter((name) => name !== 'actor')
+      .filter((name) => !pair.detailKeys.includes(name) && !pair.detailKeys.includes(`${name}Token`));
+
+    expect(missing).toEqual([]);
   });
 });

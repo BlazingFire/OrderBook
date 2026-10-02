@@ -26,6 +26,7 @@
 
 import type { OneTimeSecret, VaultStatus } from '@orderbook/shared';
 
+import { assertMayManageUser } from '../domain/access.js';
 import { requirePermission, type ActorContext } from '../domain/actor.js';
 import { db } from '../db/knex.js';
 import {
@@ -144,6 +145,8 @@ export async function revealPassword(
 
   const subject = await userRepo.findById(actor.tenantId, userId);
   if (!subject) throw new NotFoundError('User');
+  // G9: nobody reads the password of somebody who outranks them.
+  assertMayManageUser(actor, subject.roleTier);
 
   await requireRecentReauth(actor, confirmPassword, sessionToken);
 

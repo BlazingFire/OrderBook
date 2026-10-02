@@ -15,6 +15,9 @@
  * has to land on the sign-in screen with a reason rather than falling over on
  * its next request. The 401 path in `api.ts` publishes that reason;
  * `App.tsx` listens.
+ *
+ * A Server Master's own change also needs the master key: it is checked first
+ * (`/api/master-key/verify`), and the token it buys rides on the change.
  */
 
 import { useState } from 'react';
@@ -34,7 +37,17 @@ import {
 /** The server's own floor (`validation.password.tooShort`), checked here too. */
 const MIN_LENGTH = 8;
 
-export function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function ChangePasswordDialog({
+  open,
+  onClose,
+  serverMaster = false,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** The signed-in user is a Server Master, so the master key is asked for too. */
+  serverMaster?: boolean;
+}) {
+  const [masterKey, setMasterKey] = useState('');
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -42,6 +55,7 @@ export function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose
   const [busy, setBusy] = useState(false);
 
   function close(): void {
+    setMasterKey('');
     setCurrent('');
     setNext('');
     setConfirm('');
@@ -62,7 +76,8 @@ export function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose
     setBusy(true);
     setError(null);
     try {
-      await api.changeOwnPassword({ currentPassword: current, newPassword: next });
+      const token = serverMaster ? (await api.verifyMasterKey(masterKey)).token : undefined;
+      await api.changeOwnPassword({ currentPassword: current, newPassword: next }, token);
       // No success toast: this window's own session ended with the change, and
       // a toast that outlives the screen it was raised on reads as a bug. Ending
       // it here, with the reason, lands on sign-in saying what happened instead
@@ -93,7 +108,7 @@ export function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose
           <Button
             variant="primary"
             busy={busy}
-            disabled={!current || !next || !confirm}
+            disabled={!current || !next || !confirm || (serverMaster && !masterKey)}
             onClick={() => void submit()}
           >
             {t('access.changePassword.submit')}
@@ -106,6 +121,20 @@ export function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose
           {t('access.changePassword.signsYouOut')}
         </p>
 
+        {serverMaster && (
+          <FormField label={t('masterKey.label')} hint={t('masterKey.help')}>
+            {(id) => (
+              <Input
+                id={id}
+                type="password"
+                value={masterKey}
+                autoComplete="off"
+                autoFocus
+                onChange={(event) => setMasterKey(event.target.value)}
+              />
+            )}
+          </FormField>
+        )}
         <FormField label={t('access.changePassword.current')}>
           {(id) => (
             <Input
@@ -113,7 +142,7 @@ export function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose
               type="password"
               value={current}
               autoComplete="current-password"
-              autoFocus
+              autoFocus={!serverMaster}
               onChange={(event) => setCurrent(event.target.value)}
             />
           )}

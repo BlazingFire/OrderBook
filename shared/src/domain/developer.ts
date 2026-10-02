@@ -68,6 +68,26 @@ export const DUMMY_USERS: readonly DummyUserSpec[] = [
   { username: 'office', password: 'Office@1234', displayName: 'Office (test)', tier: 'office' },
 ];
 
+/**
+ * The two Server Masters a seed creates when it has to run first-time setup
+ * itself, since setup no longer creates an `admin`. Documented in
+ * `docs/DEVELOPER_MODE.md`; a seed never touches an existing Server Master.
+ */
+export const DUMMY_SERVER_MASTERS: readonly DummyUserSpec[] = [
+  {
+    username: 'master',
+    password: 'Master@1234',
+    displayName: 'Server Master (test)',
+    tier: 'server_master',
+  },
+  {
+    username: 'master-backup',
+    password: 'Backup@1234',
+    displayName: 'Server Master backup (test)',
+    tier: 'server_master',
+  },
+];
+
 export interface DummyUserCredential extends DummyUserSpec {
   /** `created` when the row is new, `reset` when an existing user's password was overwritten. */
   outcome: 'created' | 'reset';

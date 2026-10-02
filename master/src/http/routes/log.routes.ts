@@ -9,6 +9,7 @@
  * permission guard.
  */
 
+import { isLocale } from '@orderbook/shared';
 import { Router } from 'express';
 
 import * as logService from '../../services/log.service.js';
@@ -72,7 +73,10 @@ logRoutes.get(
   '/export',
   needs('logs.export'),
   asyncHandler(async (req, res) => {
-    const { csv } = await logService.exportLogs(parseListQuery(req.query), actorFromRequest(req));
+    const { csv } = await logService.exportLogs(
+      { ...parseListQuery(req.query), locale: isLocale(req.query.locale) ? req.query.locale : undefined },
+      actorFromRequest(req),
+    );
     const from = typeof req.query.from === 'string' ? req.query.from : 'all';
     const to = typeof req.query.to === 'string' ? req.query.to : 'all';
 

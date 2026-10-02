@@ -28,6 +28,7 @@ import {
   RECYCLE_BIN_ENTITIES,
   RESTORE_PERMISSION,
   resolveCompanyFeatures,
+  SERVER_MASTER_TIER,
 } from '@orderbook/shared';
 
 import { ApiError, api, desktopBridge } from './api';
@@ -35,6 +36,7 @@ import {
   adoptDefaultLocale,
   AppShell,
   Avatar,
+  ServerMasterBadge,
   BasicHome,
   BP_NARROW,
   Clock,
@@ -251,6 +253,13 @@ function MasterPanel() {
   const [tab, setTab] = useState<Tab>('basicHome');
   /** The company's name for the footer, from `/api/setup/status`; null until set up. */
   const [companyName, setCompanyName] = useState<string | null>(null);
+  /*
+   * From the same status read: whether this window is on the Master PC, and
+   * whether the installation still owes its owner two Server Masters. Together
+   * they decide whether sign-in shows the master-key setup flow first.
+   */
+  const [onMasterPc, setOnMasterPc] = useState(false);
+  const [serverMasterSetupNeeded, setServerMasterSetupNeeded] = useState(false);
   const toast = useToast();
   /** Bumped each time New pending order is asked for, so the form can take the cursor when blank. */
   const [newLeadNonce, setNewLeadNonce] = useState(0);
@@ -351,6 +360,8 @@ function MasterPanel() {
         const status = await api.setupStatus();
         if (cancelled) return;
         setCompanyName(status.companyName ?? null);
+        setOnMasterPc(status.onMasterPc ?? false);
+        setServerMasterSetupNeeded(status.serverMasterSetupNeeded ?? false);
         setBootStep(1);
 
         if (!status.setupComplete) {
@@ -583,6 +594,7 @@ function MasterPanel() {
   if (phase === 'first-run') {
     return (
       <FirstRunScreen
+        onMasterPc={onMasterPc}
         onComplete={() => {
           setPhase('signed-out');
           // The name was only just typed in, so the boot read had none.
@@ -599,6 +611,9 @@ function MasterPanel() {
     return (
       <SignInScreen
         notice={signInNotice}
+        onMasterPc={onMasterPc}
+        serverMasterSetupNeeded={serverMasterSetupNeeded}
+        onServerMastersSetUp={() => setServerMasterSetupNeeded(false)}
         onSignedIn={(signedInUser, token) => {
           setUser(signedInUser);
           setSessionToken(token);
@@ -1022,8 +1037,14 @@ function MasterPanel() {
       <span style={{ flex: 1 }} />
       {companyName && <span>{`${t('footer.company')} · ${companyName}`}</span>}
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-6)' }}>
-        <Avatar name={user.displayName} avatar={user.avatar} size="xs" />
+        <Avatar
+          name={user.displayName}
+          avatar={user.avatar}
+          size="xs"
+          highlight={user.roleTier === SERVER_MASTER_TIER}
+        />
         {t('footer.signedInAs', { name: user.username, role: user.roleName })}
+        {user.roleTier === SERVER_MASTER_TIER && <ServerMasterBadge />}
       </span>
       <a
         href="#/gallery"
@@ -1309,6 +1330,7 @@ function MasterPanel() {
           permissions={user.permissions}
           settingsRevision={revisionOf(revisions, 'settings')}
           sourcesRevision={revisionOf(revisions, 'leadSources')}
+          canChangePairingPassword={onMasterPc && user.roleTier === SERVER_MASTER_TIER}
         />
       ),
     },
@@ -1348,7 +1370,11 @@ function MasterPanel() {
         }}
       />
       {syncOverlay}
-      <ChangePasswordDialog open={changingPassword} onClose={() => setChangingPassword(false)} />
+      <ChangePasswordDialog
+        open={changingPassword}
+        onClose={() => setChangingPassword(false)}
+        serverMaster={user.roleTier === SERVER_MASTER_TIER}
+      />
     </>
   );
 

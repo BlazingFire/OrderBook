@@ -318,7 +318,11 @@ installer into `userData/pending-update` before running it.
   run on a 60 s tick by `master/src/services/connector-scheduler.ts`), which fetch
   any http(s) `baseUrl` an administrator configures. `assertReachableUrl()` in
   `master/src/services/connector.service.ts` refuses only non-http(s) schemes and
-  the Master's own loopback port, so an internet URL passes. What gates them is the
+  the Master's own loopback port, so an internet URL passes; before each request
+  `assertNotSelf()` resolves the name and refuses any loopback address on the
+  Master's port, redirects are followed by hand (at most 5 hops, each checked the
+  same way, `authorization` and `cookie` dropped on a change of origin), and the
+  `x-master-key-token` header cannot carry a credential. What gates them is the
   DB setting `externalApi.enabled` (fallback `false`; checked per tick by the
   scheduler) and `api.manage` (every Integrations route and both run functions); no
   environment variable controls them.
@@ -805,7 +809,7 @@ Tracked: **71 files** — 47 in `shared/src/` (`domain/` 24, `i18n/` 9, `keys/` 
 - `shared/src/index.ts` is the barrel: 35 `export *` lines (every `domain/*`,
   `i18n/index.js`, every `keys/*`, `protocol/*` and `sync/*`).
 
-### 3.2 `domain/` — records, inputs and business rules (22 files)
+### 3.2 `domain/` — records, inputs and business rules (23 files)
 
 | File | Purpose | Main exports |
 |---|---|---|
@@ -814,7 +818,7 @@ Tracked: **71 files** — 47 in `shared/src/` (`domain/` 24, `i18n/` 9, `keys/` 
 | `shared/src/domain/columns.ts` | **The one wire-field → database-column map** (§3.3). | `JSON_COLUMNS`, `PARTY_COLUMNS`, `PRODUCT_COLUMNS`, `LEAD_COLUMNS`, `ORDER_COLUMNS`, `USER_COLUMNS`, `MERGEABLE_PRODUCT_COLUMNS`, `MERGEABLE_COLUMNS`, `MergeableEntity`, `columnPatch()`, `fieldFor()` |
 | `shared/src/domain/settings.ts` | The company settings catalogue (§3.4). | `SETTING_GROUPS`, `SettingGroup`, `SettingControl`, `SettingDefinition`, `SETTINGS`, `SettingKey`, `SettingValue<K>`, `SETTING_KEYS`, `isSettingKey()`, `isSecretSetting()`, `SettingView` |
 | `shared/src/domain/company-features.ts` | Fills every missing `CompanyFeatures` field from the setting's declared fallback, so no screen writes its own `?? true`. | `ResolvedCompanyFeatures`, `resolveCompanyFeatures()` |
-| `shared/src/domain/permissions.ts` | Permission catalogue, tier ceiling, role templates, the grid catalogue (§3.6). | `ROLE_TIERS`, `RoleTier`, `isRoleTier`, `tierRank`, `MODULES`, `ACTIONS`, `MODULE_ACTIONS`, `CAPABILITY_GROUPS`, `CAPABILITIES`, `PERMISSIONS`, `isPermission`, `minimumTierFor`, `isPermittedForTier`, `keysAboveTier`, `effectivePermissions`, `allPermissions`, `ROLE_TEMPLATES`, `PermissionSet`, `hasPermission`, `PermissionCatalogue`, `moduleActionLabelToken`, `actionLabelToken`, `buildPermissionCatalogue` |
+| `shared/src/domain/permissions.ts` | Permission catalogue, tier ceiling, role templates, the grid catalogue (§3.6). | `ROLE_TIERS`, `RoleTier`, `isRoleTier`, `tierRank`, `MODULES`, `ACTIONS`, `MODULE_ACTIONS`, `CAPABILITY_GROUPS`, `CAPABILITIES`, `PERMISSIONS`, `isPermission`, `minimumTierFor`, `isPermittedForTier`, `keysAboveTier`, `effectivePermissions`, `allPermissions`, `ROLE_TEMPLATES`, `PermissionSet`, `hasPermission`, `PermissionCatalogue`, `moduleActionLabelToken`, `actionLabelToken`, `buildPermissionCatalogue`; since 1.3 Phase 2 `SERVER_MASTER_TIER`, `isServerMasterTier` |
 | `shared/src/domain/fields.ts` | Wire vocabulary for the Fields screen. **5** managed option-list sets: `lead.sourcePlatform`, `stock.colour` (the only one with `hasHex`), `product.brand` (catalogue v2: the brands a category is sold under), `line.packaging`, `line.grade`. | `FIELD_LIST_KEYS`, `FieldListKey`, `isFieldListKey`, `FieldSetDefinition`, `FieldCatalogue`, `buildFieldCatalogue()`, `FieldUsage`, `FieldUsageBreakdown` |
 | `shared/src/domain/order-note.ts` | The Filling and Dispatch notes as pure data (2026-09-30, `docs/ORDER_NOTES_PLAN.md`). `buildOrderNote(order)` merges lines of one variant/colour/grade/packaging, splits named from coded with `isNumericSubProduct` (the only test), sorts, groups the coded side by product; `paginateOrderNote(model, kind)` cuts it into A4 `NotePage`s by arithmetic on `NOTE_LAYOUT`'s fixed heights (no DOM), gives a product of three or more codes one header with its codes below, three to a row (repeated as `continued` when it runs into the next column), and prints the product on each code of a smaller one; the coded half is one column beside the named half, two when it has the page, reserves the signature row on the last page. | `NOTE_LAYOUT`, `buildOrderNote`, `paginateOrderNote`, `clampNoteColumns`, `NoteKind`, `NoteLine`, `NotePage` |
 | `shared/src/domain/inventory-view.ts` | Two pure transforms the Master applies to every stock figure it sends. `withoutReservations` (free-to-sell off): reserved → 0, available → on-hand. `withDefaultReorderLevel`: judges low stock against the company default only for lines with no level of their own, never writing it onto the row. | `withoutReservations()`, `withDefaultReorderLevel()` |
@@ -825,10 +829,11 @@ Tracked: **71 files** — 47 in `shared/src/` (`domain/` 24, `i18n/` 9, `keys/` 
 | `shared/src/domain/colour-rule.ts` | Catalogue v2 (2026-09-29): the owner's colour rule, derived from a model and its variant rather than stored, and the lead PDF's Model/Code split and colour text. Pure; used by the lead screen, inventory and the lead PDF. | `ColourRule` (`fixed`/`dedicated`/`selectable`), `colourRuleOf` (`multiColour` wins, then a non-blank first label is `fixed`, else `dedicated`), `colourRepeatsName`, `shownColour`, `isNumericSubProduct`, `subProductCells` (numeric → `code`, else `model`), `lineColourText` (sums same colours case-insensitively; several print as `White ×10, Ivory ×5`) |
 | `shared/src/domain/recycle-bin.ts` | Recycle Bin vocabulary: 8 entity types; a restore needs the same key as deleting that entity. | `RECYCLE_BIN_ENTITIES` (`lead`, `order`, `party`, `product`, `role`, `user`, `option_list_item`, `custom_field_definition`), `isRecycleBinEntityType`, `RESTORE_PERMISSION` (e.g. `lead→leads.delete`, `user→users.manage`, both field types → `fields.manage`), `BinEntry`, `BinBlocker`, `BinRestoreResult`, `BinCounts` |
 | `shared/src/domain/reports.ts` | Report types — counts of orders, boxes and parties; no amounts. | `ReportPeriod`, `ReportRangeInput`, `ReportRange`, `DispatchesReport`, `LeadOutcome` (`converted`/`lost`/`quiet`/`open`), `LeadOutcomesReport`, `TopPartiesReport`, `REPORT_KINDS` (`dispatches`, `lead-outcomes`, `top-parties`), `isReportKind`, `ReportFormat` (`csv`/`pdf`), `REPORT_COLUMNS` (3/5/5), `ReportExportOptions`, `isReportFormat` |
-| `shared/src/domain/activity.ts` | Read-side types for the Logs screen. Ids and sequences are strings (BIGINT arrives as a string). | `ActivityActorType` (`user`, `office_panel`, `system`, `api_key`, `connector`), `ActivityActor`, `ActivityLogEntry`, `ActivityLogQuery`, `ActivityLogFacets`, `ChainBreakKind`, `ChainBreak`, `ChainVerification`, `ChainVerifyInput` |
+| `shared/src/domain/activity.ts` | Read-side types for the Logs screen. Ids and sequences are strings (BIGINT arrives as a string). Since 1.3 Phase 2 `ActivityActor.tier?` (read at list time, for the Server Master highlight) and `ActivityLogQuery.locale?` (the CSV's sentence column). | `ActivityActorType` (`user`, `office_panel`, `system`, `api_key`, `connector`), `ActivityActor`, `ActivityLogEntry`, `ActivityLogQuery`, `ActivityLogFacets`, `ChainBreakKind`, `ChainBreak`, `ChainVerification`, `ChainVerifyInput` |
 | `shared/src/domain/api-keys.ts` | LAN API key shape; the token and its hash are deliberately not on the type. | `ApiKey`, `ApiKeyInput`, `API_KEY_TOKEN_PREFIX` (`'obk'`), `API_KEY_RATE_LIMIT_DEFAULT`/`MIN`/`MAX` (120/1/6000), `ApiKeyIdentity` |
 | `shared/src/domain/connectors.ts` | Outbound connectors to other systems, described as data. Conflicts resolve by a per-field rule, not by HLC. Entities: `party` and `product`. | `Connector`, `ConnectorInput`, `ConnectorResource(Input)`, `ConnectorFieldMap(Input)`, `ConnectorTransform`, `CONNECTOR_TRANSFORMS`, `ConnectorRun`, `ConnectorRowResult`, `ConnectorTestResult`, `ConnectorProfile`, `ConnectorConflictRule`, `CONNECTOR_MIN_INTERVAL_MIN` (5), `CONNECTOR_FLAGGABLE_FIELDS` |
-| `shared/src/domain/developer.ts` | Developer-mode constants. The password hash is `scrypt$…`; the plaintext is only in `docs/DEVELOPER_MODE.md`. | `DEVELOPER_TOKEN_TTL_MS` (15 min), `DEVELOPER_TOKEN_HEADER` (`x-developer-token`), `DEVELOPER_UNLOCK_MAX_FAILURES` (5), `DEVELOPER_UNLOCK_LOCKOUT_MS`, `DEVELOPER_PASSWORD_HASH`, `DEVELOPER_RESET_CONFIRMATION` (`'RESET'`), `DUMMY_USERS` (admin, management, office), `SeedDummyUsersResult`, `ResetAllResult`, `SeedSampleDataResult`, `LoadCatalogueResult`, `SampleDataCounts` |
+| `shared/src/domain/developer.ts` | Developer-mode constants. The password hash is `scrypt$…`; the plaintext is only in `docs/DEVELOPER_MODE.md`. | `DEVELOPER_TOKEN_TTL_MS` (15 min), `DEVELOPER_TOKEN_HEADER` (`x-developer-token`), `DEVELOPER_UNLOCK_MAX_FAILURES` (5), `DEVELOPER_UNLOCK_LOCKOUT_MS`, `DEVELOPER_PASSWORD_HASH`, `DEVELOPER_RESET_CONFIRMATION` (`'RESET'`), `DUMMY_USERS` (admin, management, office), `DUMMY_SERVER_MASTERS` (1.3 Phase 2: `master`, `master-backup`, used only when seeding runs setup itself), `SeedDummyUsersResult`, `ResetAllResult`, `SeedSampleDataResult`, `LoadCatalogueResult`, `SampleDataCounts` |
+| `shared/src/domain/master-key.ts` | 1.3 Phase 2. The master key (`docs/MASTER_KEY.md`, the only place the plaintext appears): its scrypt hash, the token header and lifetime, and the Server Master account shapes. No `.env` override. | `MASTER_KEY_HASH`, `MASTER_KEY_TOKEN_HEADER` (`x-master-key-token`), `MASTER_KEY_TOKEN_TTL_MS` (5 min), `SERVER_MASTER_MIN_ACTIVE` (2), `SUGGESTED_SERVER_MASTER_USERNAMES` (`master`, `master-backup`), `MasterKeyUnlock`, `ServerMasterAccountInput`, `ServerMasterAccount` |
 | `shared/src/domain/version.ts` | Version comparison and the release manifest. | `parseVersion`, `compareVersions`, `isNewer`, `standing`, `VersionStanding`, `PanelKind`, `ReleasePlatform` (`win32`/`darwin`/`linux`, plus `win7` for the Electron 22 Office line), `releasePlatformFor(platform, electronVersion)` (`win7` for Windows on an Electron major below `LEGACY_ELECTRON_CEILING` = 23), `LEGACY_RELEASE_PLATFORM` (`'win32'`: a manifest with no `platform` is a Windows build), `ReleaseManifest`, `UpdateAvailability` |
 | `shared/src/domain/release-signature.ts` | Exactly which bytes an Ed25519 release signature covers. Browser-safe (no `node:crypto`). | `SIGNED_MANIFEST_FIELDS` (`panel`, `platform`, `version`, `file`, `sizeBytes`, `sha256`, `releasedAt`), `canonicalManifestPayload()` (`field=value` lines joined by newlines, `sha256` lower-cased), `ManifestSignature`, `isManifestSigned` |
 | `shared/src/domain/release-keys.ts` | The public keys a build trusts; rewritten by `tools/make-release-key.mjs`. **`TRUSTED_RELEASE_KEYS` is currently empty.** | `TrustedReleaseKey`, `TRUSTED_RELEASE_KEYS`, `trustedKeyById`, `allowUnsignedReleases(env)` |
@@ -916,7 +921,13 @@ the Office four screens — `office/web/src/screens/AddLeadScreen.tsx`,
 
 ### 3.6 Permissions and tiers (`shared/src/domain/permissions.ts`)
 
-- **Tiers:** `ROLE_TIERS = ['office','management','admin']`, ranked by index.
+- **Tiers:** `ROLE_TIERS = ['office','management','admin','server_master']`, ranked by
+  index; `tierRank` is the one rank source (since 1.3 Phase 2 no screen keeps its
+  own table). `server_master` (`SERVER_MASTER_TIER`, `isServerMasterTier`) is the
+  owner's tier above admin; it belongs to one frozen system role holding every key,
+  and the role editor never offers it (`docs/ROLES_AND_USERS.md` §3.2). On screen
+  tiers are named through `tier.*` (`ui/src/TierPill.tsx`): Office, Management,
+  **Normal Admin**, Server Master.
 - **Module actions:** 8 `MODULES` × 6 `ACTIONS`, filtered by `MODULE_ACTIONS`:
   leads, parties, products — all 6; orders — 5 (no `create`); inventory — view,
   edit, export; reports — view, export; roles — view, create, edit, delete; logs —
@@ -973,7 +984,7 @@ appends every missing key just before the final `};` with its English text and a
 
 | File | Purpose / exports |
 |---|---|
-| `shared/src/keys/commands.ts` | `COMMANDS`, **36** entries: 9 chrome commands (`palette.open` Ctrl+K, `palette.search` `/`, `record.save` Ctrl+S, `record.new` Ctrl+Shift+N (both panels: New pending order; on the Master only for `leads.create`), `view.reset` Ctrl+Shift+R, `view.refresh` F5, `keys.help` Ctrl+/, `view.toggleSidebar` Ctrl+\\, `view.find` Ctrl+F), 17 Master nav and 10 Office nav commands (`nav.<panel>.<tab>`). Since 1.3 Phase 1 each nav row is a `NavEntry` tuple `[id, token, chord?]` and `navCommands(panel, entries)` (exported for `keys.test.ts`) builds them: a row that leaves the chord out takes the next free `Alt+N` (only such rows count, up to 9) with a `platformDefaultChord.darwin` `Meta+N`; a string is an explicit chord with **no** darwin twin (so no command binds `Meta+C`/`V`/`X`/`P`); `null` means no chord. `navOrder` stays the sidebar index. `MASTER_NAV` and `OFFICE_NAV` are declared lists in each sidebar's order, held to the two `App.tsx` `const groups: NavGroup[] = [ … ].map((group)` literals by `shared/tests/keys-nav-order.test.ts`. The digits are the same on both panels: Basic Home Alt+1, Dashboard 2, Pending Orders 3, Final Orders 4, Conflicts 5, Products 6, Parties 7, Party access 8, Settings 9. On the Master, Reports (now in Work), Office panels, Roles & users, Fields, Logs, Recycle Bin, Integrations and Updates have no chord and are reached from the palette; Inventory has no row (1.3 Phase 1). The Office's Updates has no chord either. Earlier history: Parties joined `MASTER_NAV` on 2026-09-25 and Products on 2026-10-01 (P4). Most chrome commands also carry a `Meta+…` Mac default. `CommandScope` (`global`/`screen`), `CommandDef`, `NavEntry`, `COMMANDS_BY_ID`, `commandsFor(panel)`. |
+| `shared/src/keys/commands.ts` | `COMMANDS`, **37** entries: 9 chrome commands (`palette.open` Ctrl+K, `palette.search` `/`, `record.save` Ctrl+S, `record.new` Ctrl+Shift+N (both panels: New pending order; on the Master only for `leads.create`), `view.reset` Ctrl+Shift+R, `view.refresh` F5, `keys.help` Ctrl+/, `view.toggleSidebar` Ctrl+\\, `view.find` Ctrl+F), 17 Master nav and 11 Office nav commands (`nav.<panel>.<tab>`). Since 1.3 Phase 1 each nav row is a `NavEntry` tuple `[id, token, chord?]` and `navCommands(panel, entries)` (exported for `keys.test.ts`) builds them: a row that leaves the chord out takes the next free `Alt+N` (only such rows count, up to 9) with a `platformDefaultChord.darwin` `Meta+N`; a string is an explicit chord with **no** darwin twin (so no command binds `Meta+C`/`V`/`X`/`P`); `null` means no chord. `navOrder` stays the sidebar index. `MASTER_NAV` and `OFFICE_NAV` are declared lists in each sidebar's order, held to the two `App.tsx` `const groups: NavGroup[] = [ … ].map((group)` literals by `shared/tests/keys-nav-order.test.ts`. The digits are the same on both panels: Basic Home Alt+1, Dashboard 2, Pending Orders 3, Final Orders 4, Conflicts 5, Products 6, Parties 7, Party access 8, Settings 9. On the Master, Reports (now in Work), Office panels, Roles & users, Fields, Logs, Recycle Bin, Integrations and Updates have no chord and are reached from the palette; Inventory has no row (1.3 Phase 1). The Office's Updates has no chord either, nor its Logs row (1.3 Phase 2, System group between Settings and App update, with `logs.view`). Earlier history: Parties joined `MASTER_NAV` on 2026-09-25 and Products on 2026-10-01 (P4). Most chrome commands also carry a `Meta+…` Mac default. `CommandScope` (`global`/`screen`), `CommandDef`, `NavEntry`, `COMMANDS_BY_ID`, `commandsFor(panel)`. |
 | `shared/src/keys/chord.ts` | DOM-free chord parsing and matching. Digits, function keys and named keys match on `code`; letters on `key` unless Alt is held; an Alt-only chord requires Ctrl up (so AltGr does not fire it). Escape and Tab are reserved. `KeyEventLike`, `Chord`, `isReservedChord`, `parseChord`, `formatChord`, `formatChordMac` (⌃⌥⇧⌘), `chordFromEvent`, `matchesChord`. |
 | `shared/src/keys/bindings.ts` | Exports `BINDINGS_STORAGE_KEY = 'ob.keys.v1'`; does no I/O itself. `ui/src/KeyboardProvider.tsx` stores remaps in `localStorage` under `ob.keys.v1:<userId>` (both panels pass `userId`), or bare `ob.keys.v1` with nobody signed in. `BindingMap`: absent = default, `null` = unbound. `chordFor()` picks the `darwin` default when `navigator` reports a Mac (false on the server). `findConflicts(panel, overrides)`, `parseBindings(raw)` (drops anything unrecognised). |
 
@@ -1146,7 +1157,7 @@ and the one it added show their `it(` count instead, marked `it(`.
   `master/src/services/github-releases.ts` does so when configured — one of two
   exceptions to `AGENTS.md`'s "no internet access at any point". The other is the
   outbound connectors typed in `shared/src/domain/connectors.ts`:
-  `master/src/services/connector-run.service.ts` (`fetch(url` at line 127) can call
+  `master/src/services/connector-run.service.ts` (`fetch(url` at line 162) can call
   any http(s) host configured as a connector's `baseUrl`, and nothing limits it to
   the LAN (`assertReachableUrl` refuses only non-http(s) schemes and the Master's own
   port on localhost). `TRUSTED_RELEASE_KEYS` is empty, so no signed manifest verifies
@@ -1252,7 +1263,8 @@ never talks to a server** (§4.10). (`ui/tests/panel-harness.ts` is the one plac
 | `ui/src/Logo.tsx` | `Logo`, `LogoLockup` | the 4×3 lattice mark ("The Fill"); wordmark literal `OrderBook` |
 | `ui/src/logoCells.ts` | `CELLS` | the 10 lattice cells shared by `Logo`, `Splash`, `BusyMark` and `tools/make-icons.mjs` |
 | `ui/src/BusyMark.tsx` | `BusyMark` | the only spinner |
-| `ui/src/Avatar.tsx` | `AvatarSize`, `Avatar` | photo from `/uploads/avatars/:id/:variant` or initials in one of 6 tints; sizes `xs` 16 … `xl` 160; tolerates `avatar` `undefined` (older Master) |
+| `ui/src/Avatar.tsx` | `AvatarSize`, `Avatar` | photo from `/uploads/avatars/:id/:variant` or initials in one of 6 tints; sizes `xs` 16 … `xl` 160; tolerates `avatar` `undefined` (older Master); `highlight` (1.3 Phase 2) sets `data-highlight`, an accent ring for a Server Master |
+| `ui/src/TierPill.tsx` | `TierPill`, `ServerMasterBadge`, `tierLabel` | 1.3 Phase 2. A tier as a `StatusPill` (server_master → tone `master`, admin → `conflict`, management → `accent`, office → default), labelled from an explicit `tier.*` map so the i18n call-site check sees every key; an unknown tier shows raw. `ServerMasterBadge` (shield icon + "Server Master", wrapped in `data-server-master`) goes beside a Server Master's name wherever users appear. In the strict-i18n lint list |
 
 ### 4.4 Forms and inputs
 
@@ -1271,15 +1283,15 @@ removed on 2026-09-25.
 
 | File | Exports | Notes |
 |---|---|---|
-| `ui/src/DataTable.tsx` | `DataTableColumn<T>`, `DataTableSort`, `DataTable` | rows open on single click (`onRowOpen`); controlled sort (`sortValue`, missing last); **virtualized above 100 rows** (`OVERSCAN = 8`, measures the `.ob-pane` scroller); columns fitted via `fitColumns`/`gridTemplateFor`; cells can be redacted (`redactedReason`); no pager |
+| `ui/src/DataTable.tsx` | `DataTableColumn<T>`, `DataTableSort`, `DataTable` | rows open on single click (`onRowOpen`); `rowHighlight(row)` (1.3 Phase 2) sets `data-highlight` on a row (a Server Master's), tinted unless selected; controlled sort (`sortValue`, missing last); **virtualized above 100 rows** (`OVERSCAN = 8`, measures the `.ob-pane` scroller); columns fitted via `fitColumns`/`gridTemplateFor`; cells can be redacted (`redactedReason`); no pager |
 | `ui/src/fitColumns.ts` | `FittableColumn`, `columnWidthPx`, `fitColumns`, `gridTemplateFor` | pure: drops `priority: 3`, then `2`, never `1`; flexible tracks count as 120px; filler `minmax(0, 1fr)` when none is flexible |
-| `ui/src/DataDisplay.tsx` | `useColourHex`, `ColourChip`, `ColourName`, `PillTone`, `StatusPill`, `TimelineEntry`, `Timeline`, `KeyValueList`, `IdField` | `useColourHex` resolves `stock.colour` hex values; `IdField`'s Copy goes through `copyText` and says Copied only when the copy happened |
+| `ui/src/DataDisplay.tsx` | `useColourHex`, `ColourChip`, `ColourName`, `PillTone`, `StatusPill`, `TimelineEntry`, `Timeline`, `KeyValueList`, `IdField` | `PillTone` gained `master` (solid accent, 1.3 Phase 2); `useColourHex` resolves `stock.colour` hex values; `IdField`'s Copy goes through `copyText` and says Copied only when the copy happened |
 | `ui/src/States.tsx` | `EmptyState`, `ErrorState`, `ConflictBanner`, `OfflineBanner`, `Skeleton`, `SkeletonRows`, `SkeletonTable` | `SkeletonTable` builds the same grid template as `DataTable` (`gridTemplateFor`: same widths and filler track) but never drops a column, because it calls `fitColumns(columns, 0, 0)` and zero width means "not measured" |
 | `ui/src/KanbanBoard.tsx` | `BoardStage`, `BoardItem`, `KanbanBoard` | native HTML5 drag; every card is a `role="button"` `div` (so it can nest its own menu) that opens (`onOpen`) on **double-click** or Enter — not on a single click, unlike `DataTable` rows. Since 1.3 Phase 1 a column draws at most `COLUMN_CAP = 60` cards, then a ghost "Show {count} more" button (per-column state, `kanban.showMore`); the header count is still the whole column. Office only. |
 | `ui/src/StatTile.tsx` | `StatTile`, `StatTileSkeleton` | 1.3 Phase 1. One dashboard figure: eyebrow label (optional icon), big number, note; `tone` `conflict`/`offline`/`ok` colours the figure; `onClick` makes the whole tile a button. Counts only. Used by both panels' Dashboards, which each kept a private copy before; `StatTileSkeleton` is its static loading shape. |
 | `ui/src/CursorPager.tsx` | `LoadMorePager`, `NewerOlderPager` | keyset paging, no page numbers |
 | `ui/src/ProgressiveImage.tsx` | `ProgressiveImage` | blurhash placeholder (module-wide decode cache) under `<img src="/uploads/images/:imageId/:variant">`; variant chosen from `slotPx` via `variantForSlot`; no fade-in |
-| `ui/src/PermissionGrid.tsx` | `PermissionGrid` | module × action matrix from the server's `PermissionCatalogue`; cells checkbox / dash / blocked-for-tier |
+| `ui/src/PermissionGrid.tsx` | `PermissionGrid` | module × action matrix from the server's `PermissionCatalogue`; cells checkbox / dash / blocked-for-tier (the reason names the tier through `tierLabel`, so admin reads "Normal Admin") |
 | `ui/src/PermissionSummary.tsx` | `PermissionSummary` | read-only view of what a role grants, including what it does not |
 | `ui/src/permissionLabels.ts` | `moduleLabel`, `actionLabel`, `capabilityLabel`, `groupLabel` | reads each key's catalogue token through `t()` — `module.<key>`, `action.<action>`, `permission.<key>`, `capabilityGroup.<key>` — and falls back to a sentence-case name built from the key only for a key the catalogue does not know (a newer Master's permission). Used by `PermissionGrid.tsx`, `PermissionSummary.tsx` and the Master's Integrations key scopes |
 
@@ -1308,6 +1320,7 @@ removed on 2026-09-25.
 | `ui/src/ProductDetail.tsx`, `ui/src/ProductDrawer.tsx`, `ui/src/ProductImages.tsx`, `ui/src/ProductImportModal.tsx` | 2026-10-01 (P4): ports of the Office's `ProductDetail`, `ProductDrawer`, `ProductImages`, `ProductImportModal` — keep in step. Every one reads the `CatalogueTransport` through `transportRef`; `ProductDetail` and `ProductImages` take `canEdit`; the import shows `apiErrorText`. `ProductImages` is in the strict-i18n lint list. Photos load through `ProgressiveImage` → `/uploads/images/:id/:variant`, which the Master now serves. | `SubProductsScreen`, `MainProductsScreen` |
 | `ui/src/LeadRecordView.tsx`, `ui/src/OrderRecordView.tsx` | 2026-10-01: the Master's record bodies, ports of `office/web/src/screens/LeadDetail.tsx` and `OrderDetailBody` (`OrderBoardScreen.tsx`) — keep in step; the Office still has its own copies (HANDOFF owed work). Props plus a transport read through `transportRef` (`LeadRecordTransport { addLeadRemark, setLeadStage, convertLead }`, `OrderRecordTransport { updateOrder, setOrderStage, dispatchOrder }`). Unlike the Office copies, the stage select, Add note, weight override, Convert card and Dispatch card are **absent** without `canEdit` / `canConvert` / `canDispatch`. | `LeadsScreen`, `OrdersScreen` (Master) |
 | `ui/src/OptionListEditor.tsx` | `OptionListEditor`, `OptionListEditorProps`, `OptionListTransport`, `FieldDifference`, `ConflictNotice`, `HexField`, `HEX_PATTERN`, `HEX_EXAMPLE` | Catalogue v2 (2026-09-29): one option list's values — add, relabel, hex, reorder, remove to the Recycle Bin, "used by" counts, the stale-save conflict with Overwrite — lifted out of the Master's Fields screen so a Settings tab can edit the lead sources and the brands. Props `{ listKey, canManage, transport, revision?, compact? }`; it reads its list descriptors from `buildFieldCatalogue()`, as the server does. Transport `{ fieldValues, fieldUsage, createFieldValue, updateFieldValue, deleteFieldValue, reorderFieldValues, conflictOf(error) }`; the Master's is `optionListTransport` in `master/web/src/screens/FieldsScreen.tsx`. Test: `ui/tests/option-list-editor.test.tsx`. |
+| `ui/src/LogsScreen.tsx` | `LogsScreen`, `LogsTransport` | 1.3 Phase 2, moved from `master/web/src/screens/LogsScreen.tsx` so both panels mount it. The activity log: text/actor/entity/action/date filters (entity and action names through `logsEntityLabelKey`/`logsActionLabelKey`, raw for a token this build does not know; the search `Input` carries `data-screen-search`), `NewerOlderPager`, rows rendered with `renderActivity(createTranslator(locale()), …)`, entry detail as an `EditorScreen` sub-screen (sub-nav `logs.entry`), "Verify chain" (`VerificationVerdict`), CSV export with `?locale=`. A Server Master's rows are highlighted (`rowHighlight` on `actor.tier`) and badged. Transport `{ logs, logFacets, verifyLogChain, logsExportUrl }`, read through `transportRef`; each panel's `screens/LogsScreen.tsx` is a thin mount building it from its own `api`. Test: `ui/tests/logs-screen.test.tsx`. | `logs` on both panels |
 | `ui/src/ShortcutSettings.tsx` | `ShortcutSettings` | rebinding by capture (`chordFromEvent`, `isReservedChord`), stored via `keyboard.setBinding(id, formatChord(chord))` |
 | `ui/src/GalleryScreen.tsx` | `GalleryScreen` | token and component gallery, reached only at `#/gallery` (footer link), rendered outside `ScreenHost` |
 | `ui/src/AvatarPicker.tsx` | `AvatarPicker` | upload/replace/clear a profile picture, checks type and `MAX_AVATAR_SOURCE_BYTES`. Master only. |
@@ -1917,7 +1930,7 @@ primaryLanAddress() ?? '127.0.0.1', httpPort: config.http.port, acceptingPairing
 | `master/src/lib/errors.ts` | 157 | `AppError(messageKey, params, statusCode, code, details)` and `ValidationError` 400, `UnauthorizedError` 401, `ForbiddenError` 403, `TenantViolationError` 403, `NotFoundError` 404, `ConflictError` 409, `TooManyRequestsError` 429, `BackupError`; `toErrorMessage()`. The message is generated from the English catalogue. | 66 non-test files |
 | `master/src/lib/logger.ts` | 40 | `createLogger(scope)` — ISO time, level, `[scope]`; warn/error to stderr; `LOG_LEVEL` | 29 |
 | `master/src/lib/memory-monitor.ts` | 66 | `startMemoryMonitor({onWarn,onCritical})` — logs only | 1 |
-| `master/src/lib/network.ts` | 97 | `listLanInterfaces()` ranks real LAN adapters ahead of Docker/VPN/VM; `listLanAddresses()`, `primaryLanAddress()`, `hasNetworkLink()`, broadcast addresses; `isLoopbackAddress(addr)` and `isLoopback(req)`, the one loopback check (`health.ts` uses it) | 4 |
+| `master/src/lib/network.ts` | 97 | `listLanInterfaces()` ranks real LAN adapters ahead of Docker/VPN/VM; `listLanAddresses()`, `primaryLanAddress()`, `hasNetworkLink()`, broadcast addresses; `isLoopbackAddress(addr)`; `isOnMasterPc(addr, headers)` (loopback address **and** a `Host`, and any `Origin`, naming localhost/127.0.0.1/[::1], so a DNS-rebound or cross-site page on the Master PC does not count), with `isLoopback(req)` and `masterPcAddress(addr, headers)` built on it — the one "on the Master PC" check (`health.ts`, `require-loopback.ts`, `require-auth.ts`, `auth.routes.ts`, `hub.ts` use it) | 4 |
 | `master/src/lib/password.ts` | 134 | `hashPassword()` (`scrypt$16384$8$1$salt$hash`); `verifyPassword()` also accepts legacy bcrypt and flags `needsUpgrade`; `generateTemporaryPassword()`; `PASSWORD_MIN_LENGTH` 8; `assertPasswordLongEnough()` | 4 |
 | `master/src/lib/release-signature.ts` | 75 | `verifyManifest()` — Ed25519 against `trustedKeyById`; unsigned passes only with `ORDERBOOK_ALLOW_UNSIGNED_RELEASES=1`. Duplicated in `office/src/lib/release-signature.ts`. | 2 |
 | `master/src/lib/secret-box.ts` | 178 | `loadOrCreateKey()` (`<dataDir>/secrets/vault.key`), `seal(plaintext, aad)`, `open(sealed, aad)`, `isSealedValue`, `resetSecretBox`, `CURRENT_KEY_VERSION`, `SecretBoxError`; AES-256-GCM with AAD; the key is never in a backup | 6 |
@@ -1970,6 +1983,28 @@ exercised only through service integration tests.
   `security.sessionHours`; every resolution re-reads the role `version`, so a revoked
   permission applies on the next call; attempts (including unknown usernames) are
   audited detached — deliberately, an accepted one included (§5.1).
+  Since 1.3 Phase 2: `signIn(…, {onMasterPc})` refuses a Server Master off the
+  Master PC (after the password verifies; logged with reason `masterPcOnly`); a
+  `Session` carries username, display name, tier and source; every
+  `resolveSession*` takes the caller's `remoteAddress` and refuses a Server Master
+  session from anywhere but loopback (without deleting it); `signOut` and expiry
+  are logged detached (`user.signed_out`, `user.session_expired`);
+  `changeOwnPassword` needs a master-key token for a Server Master;
+  `recordOfflineAuthEvents` files an Office's offline sign-ins (≤ 500 per call, one
+  transaction, an event `id` already logged for that panel skipped);
+  `clearSignInFailures`.
+- `master/src/services/master-key.service.ts` (1.3 Phase 2) — `createMasterKeyGate`
+  (a second `createDeveloperGate`: master-key hash, no `.env` override, 5 wrong
+  keys → 60 s, 5-minute tokens), the lazily built `masterKeyGate`, `masterPcActor`,
+  `verifyMasterKey(key, actor|null)` (logs `master_key.verified` / `failed`
+  detached). `docs/MASTER_KEY.md`.
+- `master/src/services/server-master.service.ts` (1.3 Phase 2) —
+  `ensureServerMasterRole`, `prepareServerMasters` (count, distinct usernames,
+  password length, hashing before the transaction), `createServerMasters`,
+  `rememberServerMasters`, `serverMastersNeeded`, `listServerMasters(token)`,
+  `setUpMissingServerMasters` (the upgrade flow, re-counted under the G4 lock),
+  `recoverServerMasterPassword` (password only; ends that user's sessions and lifts
+  the sign-in lockout), `changePairingPassword` (Server Master tier + key).
 - `master/src/services/reauth-cache.ts` (61) — "re-typed their password recently" for
   the password reveal: `noteRecentReauth`, `hasRecentReauth`, `sweepRecentReauth`,
   `clearRecentReauth`.
@@ -2145,8 +2180,9 @@ exercised only through service integration tests.
   `resolvePanelActorAllowingRefusal`, `RefusedActingTokenError`: a panel presents a
   session token, re-validated on every command.
 - `master/src/services/setup.service.ts` (148) — `isSetupComplete`,
-  `runFirstTimeSetup` (mints the `admin` password and the pairing password, shown
-  once), `getIdentity`, `verifyPairingPassword`, `refreshStoredLanIp`,
+  `runFirstTimeSetup(companyName, accounts)` (since 1.3 Phase 2 creates the two
+  Server Masters the owner typed and **no `admin`**; mints the pairing password, shown
+  once; `master_config.set_up` is its last statement), `serverMasterSetupNeeded`, `getIdentity`, `verifyPairingPassword`, `refreshStoredLanIp`,
   `generateReadableSecret`.
 
 **Reports, logs, Bin, search, dashboard, fields**
@@ -2218,8 +2254,10 @@ exercised only through service integration tests.
 - `master/src/services/github-releases.ts` (664) — `syncFromGitHub`, `isConfigured`;
   off unless `ORDERBOOK_RELEASES_GITHUB_REPO` is set. Writes the manifest names
   `release.mjs` writes and sweeps per OS (§10.8).
-- `master/src/services/developer.service.ts` (288) — `createDeveloperGate` /
-  `developerGate` (password, lockout, short-lived tokens); `resetAllData` (drops the
+- `master/src/services/developer-gate.ts` — `createDeveloperGate` (password, lockout,
+  short-lived tokens); kept free of first-run setup so `master-key.service.ts` can
+  build on it without an import cycle.
+- `master/src/services/developer.service.ts` — `developerGate` (the live gate); `resetAllData` (drops the
   schema, re-runs migrations, wipes uploads, `<dataDir>/documents` (the removed PDF
   Designer's folder), secrets and tmp, resets every cache);
   `seedDummyUsers`.
@@ -2381,7 +2419,12 @@ mount runs `requirePanel`, then both routers pass the path on). `notFoundHandler
 - `master/src/http/async-handler.ts`, `master/src/http/query.ts` (`paging()` —
   `search`, `limit`, `offset`, `scope=assigned`; `idList()`),
   `master/src/http/public-api-contract.ts`.
-- Middleware: `master/src/http/middleware/require-auth.ts` (`attachSession`,
+- Middleware: `master/src/http/middleware/require-loopback.ts` (1.3 Phase 2,
+  `requireLoopback`: 403 `error.forbidden.masterPcOnly` for anything but the Master
+  PC, using `isLoopback` from `lib/network.ts` (address and `Host`/`Origin`); placed before `backupUpload.single` so a
+  LAN host never makes the Master buffer an upload);
+  `master/src/http/middleware/require-auth.ts` (`attachSession`, which passes
+  `masterPcAddress(...)` since 1.3 Phase 2,
   `requireAuth`, `requirePermissionMiddleware`, `actorFromRequest`; augments
   `Request`); `master/src/http/middleware/require-panel.ts` (`requirePanel`,
   `panelActorFromRequest` — **the panel-credential boundary**; a route mounted
@@ -2425,15 +2468,23 @@ The 19 files declare **154 endpoints**, plus the 21 table-driven `/api/v1`
 operations and the inline `/api/health`. Guards are `needs(...)`; "svc" means only
 the service checks.
 
-- `master/src/http/routes/setup.routes.ts` (`/api/setup`, 5): `GET /status`
+- `master/src/http/routes/setup.routes.ts` (`/api/setup`, 6): `GET /status`
   (`getSetupStatus()`: `{ setupComplete: false }`, or since 1.3 Phase 1
   `{ setupComplete: true, companyName }` — the name is already public through UDP
-  discovery and the Office sign-in screen); `POST
-  /initialize` (first-run; `ConflictError` once set up); `GET /identity`
-  (`settings.manage`); `POST /restore/preview` (multipart, unauthenticated, answers
-  at any time — it parses the manifest and checks the content hash, with no setup
-  check) and `POST /restore` (multipart, unauthenticated; `restoreBackup(…, false)`
-  throws `populated_data_directory` 409 once setup has run).
+  discovery and the Office sign-in screen; since 1.3 Phase 2 also `onMasterPc` and
+  `serverMasterSetupNeeded`); `POST /initialize` (first-run, **loopback only**,
+  body `{companyName, accounts}` with the two Server Masters; `ConflictError` once
+  set up); `POST /pairing-password` (1.3 Phase 2: loopback, signed-in Server Master,
+  `x-master-key-token`); `GET /identity` (`settings.manage`); `POST /restore/preview`
+  and `POST /restore` (multipart, unauthenticated, **loopback only** with
+  `requireLoopback` ahead of multer, and since 1.3 Phase 2 both refused with 409
+  `error.conflict.alreadySetUp` once setup has run, by `refuseAfterSetup`).
+- `master/src/http/routes/master-key.routes.ts` (`/api/master-key`, 5, 1.3 Phase 2,
+  mounted before the `/api` catch-all, every route `requireLoopback`, no session
+  needed): `POST /verify` (`{key}` → `{token, expiresAt}`), `POST /lock`,
+  `GET /server-masters` and `POST /server-masters` (the upgrade flow),
+  `POST /recover` (`{userId, newPassword}`). All but `/verify` and `/lock` need
+  `x-master-key-token`.
 - `master/src/http/routes/auth.routes.ts` (`/api/auth`, 3): `POST /sign-in` (httpOnly
   `sameSite:lax` cookie + token in body); `POST /sign-out` (204); `GET /me`
   (`requireAuth`; user + session token + `defaultLocale` + features).
@@ -2853,6 +2904,7 @@ structure — no upgrade path was replayed. Its seed data certainly can differ
 | 33 | `master/src/db/migrations/20260327000000_option_lists_repair.ts` | 53 | **Pinned, additive, idempotent** (2026-09-29). Adds any of `option_lists.hex`, `created_by`, `updated_by`, `deleted_at`, `deleted_by`, `version`, `created_at`, `updated_at` a database is missing (the older `20260306` body never added `created_by`/`updated_by`) and replaces the hex check with the either-case one; `master/tests/migration-option-lists-repair.integration.test.ts` |
 | 35 | `master/src/db/migrations/20260401000000_order_vehicle_number.ts` | 24 | **Pinned last, additive** (2026-09-30). `orders.vehicle_number TEXT NULL`, `CHECK (char_length <= 20)`, no backfill; `down()` drops it. Written by `order:update` (`vehicleNumber`, trimmed/upper-cased, `[A-Z0-9 -]`), a mergeable column (`ORDER_COLUMNS`), printed on the Dispatch note |
 | 34 | `master/src/db/migrations/20260328000000_line_packaging_defaults.ts` | 55 | **Pinned, additive** (owner's instruction, 2026-09-30). Inserts Box, Grass and Paper into every tenant's `line.packaging` list, after its highest `sequence`, skipping a value the list already holds in any case or state (live, retired or deleted); `master/tests/migration-line-packaging-defaults.integration.test.ts` |
+| 36 | `master/src/db/migrations/20261001000000_server_master_tier.ts` | — | **Pinned last, additive, idempotent** (1.3 Phase 2, the first migration of the 1.3 batch). Drops and re-adds `roles_tier_check` with `server_master`; for each tenant with no live Server Master role seeds one `is_system` "Server Master" role ("Server Master (system)" on a name clash) holding a frozen inline copy of the 53 keys, id from `id_sequences` `role`. `down()` is empty |
 
 ### 6.3 Conventions across the schema
 
@@ -2931,8 +2983,8 @@ erDiagram
 
 | Table | Key columns | Keys and constraints | Purpose / code |
 |---|---|---|---|
-| `roles` | `id` (RL…), `name`, `tier` (`admin`/`management`/`office`), `is_system`, `permissions` JSONB array, `created_by`/`updated_by`, soft delete, sync columns | `roles_name_unique (tenant_id, lower(name)) WHERE deleted_at IS NULL`; CHECK `tier` | seeds three roles: Admin (56 stored keys), Management (21), Office (11). **Only Admin is `is_system`** (it cannot be deleted); `20260301` marked all three and `20260303` cleared it on Management and Office, which are templates a company may edit or remove. **Which of them gets `RL0000000001`/`02`/`03` is not deterministic:** `20260303` numbers roles `ORDER BY created_at, id`, all three were inserted in one transaction by `20260301` (same `now()`), and their pre-rebuild `id` was a random UUID — four fresh runs on PostgreSQL 16.13 gave Management/Office/Admin twice and Management/Admin/Office twice, and other runs have put Admin first. Look seeded roles up by `name` or `tier`, never by id; `id_sequences` for `role` starts at 4; `role.repository.ts` |
-| `users` | `id` (US…), `username`, `password_hash`, `display_name`, `is_active`, `last_sign_in_at`, `role_id` TEXT (**no FK**), `avatar_*`, soft delete, sync columns | `users_username_unique (tenant_id, lower(username)) WHERE deleted_at IS NULL`; partial `users_by_role`, `users_active` | no seeded user; setup inserts `admin`; `user.repository.ts` |
+| `roles` | `id` (RL…), `name`, `tier` (`admin`/`management`/`office`, and since 1.3 Phase 2 `server_master`), `is_system`, `permissions` JSONB array, `created_by`/`updated_by`, soft delete, sync columns | `roles_name_unique (tenant_id, lower(name)) WHERE deleted_at IS NULL`; CHECK `tier` | seeds three roles: Admin (56 stored keys), Management (21), Office (11); `20261001` adds a fourth, the frozen `is_system` Server Master role with every key. **Only Admin (and since 1.3 the Server Master role) is `is_system`** (it cannot be deleted); `20260301` marked all three and `20260303` cleared it on Management and Office, which are templates a company may edit or remove. **Which of them gets `RL0000000001`/`02`/`03` is not deterministic:** `20260303` numbers roles `ORDER BY created_at, id`, all three were inserted in one transaction by `20260301` (same `now()`), and their pre-rebuild `id` was a random UUID — four fresh runs on PostgreSQL 16.13 gave Management/Office/Admin twice and Management/Admin/Office twice, and other runs have put Admin first. Look seeded roles up by `name` or `tier`, never by id; `id_sequences` for `role` starts at 4; `role.repository.ts` |
+| `users` | `id` (US…), `username`, `password_hash`, `display_name`, `is_active`, `last_sign_in_at`, `role_id` TEXT (**no FK**), `avatar_*`, soft delete, sync columns | `users_username_unique (tenant_id, lower(username)) WHERE deleted_at IS NULL`; partial `users_by_role`, `users_active` | no seeded user; setup inserts the two Server Masters the owner typed (before 1.3 it inserted `admin`); `user.repository.ts` |
 | `user_password_vault` | `user_id`, `key_version`, `sealed` JSONB, `credential_fingerprint`, `updated_at`/`updated_by` | PK `(tenant_id, user_id)` | recoverable encrypted passwords, written only while `security.passwordRevealEnabled` is on; in `EXCLUDED_TABLES`, never backed up; `password-vault.repository.ts` |
 
 ### 6.6 Office panels and credentials
@@ -3097,7 +3149,8 @@ files of its own** — §7.6 lists the tests that read or boot this source.
 | `master/web/src/partyFormTransport.ts` | 20 | hands the shared `PartyFormModal` `api.createParty`/`api.updateParty` |
 | `master/web/src/transports.ts` | 74 | `leadRecordTransport`, `orderRecordTransport`, `leadEntryTransport` and `catalogueTransport`: module-level `api.x` references handed to the shared views (2026-10-01); since 1.3 Phase 1 also `optionListTransport`, moved here from `FieldsScreen.tsx` so Products and Settings do not pull in the lazy Fields screen |
 | `master/web/src/styles.css` | 152 | legacy layer styling bare elements; every element-selector rule (`button`, `input`/`select`/`textarea`, `label`, `table`) is guarded by `:not(:where([class*='ob-']))`; the only class rules left are `.dot` and `.num` (the `:root` alias tokens, `.card`, `.row`, `.muted`, `.chip*` and the rest went on 2026-09-25) |
-| `master/web/src/components/ChangePasswordDialog.tsx` | 137 | change your own password: 8-char minimum and match checked client-side, then `api.changeOwnPassword`; the server invalidates every session for the user, so the 401 path returns to sign-in |
+| `master/web/src/components/ChangePasswordDialog.tsx` | 177 | change your own password: 8-char minimum and match checked client-side, then `api.changeOwnPassword`; the server invalidates every session for the user, so the 401 path returns to sign-in. A Server Master also types the master key, verified first; its token rides on the change |
+| `master/web/src/components/MasterKeyPrompt.tsx` | 114 | 1.3 Phase 2. `MasterKeyForm` (the key field → `api.verifyMasterKey`; a 429 lockout shows its seconds through `apiErrorText`), `MasterKeyPrompt` (it in a `Modal`: a credential prompt, not a record) and `useMasterKeyPrompt()` → `{ ask, prompt }`, an awaitable prompt used by Roles & users and Settings |
 | `master/web/src/components/DataDirCard.tsx` | 74 | first-run-only data-folder chooser; renders only when `desktopBridge()` has `getDataDir`, `setDataDir`, `chooseDirectory` |
 | `master/web/src/components/StorageBackup.tsx` | 236 | `StorageBackupActions`: export (passphrase → `api.exportStorage` → blob download) and restore (`previewRestoreStorage`, passphrase, `restoreStorage`; on `backup_populated_data_directory` asks for a typed wipe confirmation and retries with `confirmWipe`) |
 | `master/web/src/screens/*.tsx` (16) | — | §7.4 |
@@ -3276,7 +3329,7 @@ for its brand button.
 | `access` | `AccessScreen revision permissions currentUserId currentUserTier tab onTabChange` |
 | `partyAccess` | `PartyAccessScreen permissions revision restriction onRestrictionChange` |
 | `fields` | `FieldsScreen permissions revision tab onTabChange` |
-| `logs` | `LogsScreen permissions` |
+| `logs` | `LogsScreen permissions` (thin mount of `ui/src/LogsScreen.tsx`) |
 | `recycleBin` | `RecycleBinScreen permissions revision type onTypeChange` |
 | `conflicts` | `ConflictsScreen revision` |
 | `updates` | `UpdatesScreen panels permissions` |
@@ -3363,17 +3416,19 @@ Settings and Updates.
 | `master/web/src/screens/ProductsScreen.tsx` | Products, 2026-10-01 (P4). Host of the catalogue ports: loads option lists, categories and every sub product (`listProducts({limit: 2000})`), each on its own revision, keeping the previous data on screen while the next loads; renders `SubProductsScreen`, `MainProductsScreen` and `BrandsScreen` (with `optionListTransport` from `transports.ts`) in `<Activity>` blocks. No free stock since 1.3 Phase 1: the stock fetch, `canViewStock` and the `stockRevision` prop are gone, so the view carries no `stock` and the free-stock column is left out. | `optionLists`, `categories`, `listProducts` (+ the transport's catalogue writes) | `permissions` prop |
 | `master/web/src/screens/PartiesScreen.tsx` | paged list (`PAGE_SIZE = 100`, `LoadMorePager`), debounced search, client sort, columns incl. own-record count and the caller's own access; a row opens a **sub-screen** (`useSubNav('parties', …'parties.detail')`, `openId` held by the shell, deep link falls back to `api.party`): contact, own access (`myAccess`; plus assignees and a "Party access" button with `party.assign`/`party.accessAll`), own product records with `catalogueName`, recent pending orders (`leads.view`; a row opens the lead); Edit via `PartyFormModal`; Delete with confirm, 409 lists blockers | `parties`, `party`, `partyRecords`, `partyAccessFor`, `leads`, `deleteParty` (+ transport) | `parties.create`, `parties.edit`, `parties.delete`, `leads.view`, `party.assign`/`party.accessAll` |
 | `master/web/src/screens/ReportsScreen.tsx` (508) | Dispatches / Lead outcomes / Top parties; period `Select` (`thisMonth`, `last3Months`, `last6Months` default, `last12Months`, `custom`); range errors under the named control; CSV export link | `dispatchReport`, `leadOutcomeReport`, `topPartiesReport`, `reportExportUrl` | `reports.view`, `reports.export` |
-| `master/web/src/screens/AccessScreen.tsx` (1999) | Users and Roles; refetches on another administrator's `user`/`role` change (`revision`). Users: filters, add (`UserForm`, password shown once in `OneTimeSecretDialog`), detail as an `EditorScreen` sub-screen (sub-nav `access.person`; role change with `expectedVersion`, avatar, activate/deactivate, set/generate/reveal password, delete), `UserEditForm` as an `EditorScreen` with a sub-nav entry; last active admin protected client-side. Roles: `RoleEditor` (loaded through `api.role(id)` on open; `PermissionGrid`, tier, stale-version banner with Reload/Overwrite), delete. Inline restore of deleted roles and users. | `permissionCatalogue`, `roles`, `role`, `users`, `vaultStatus`, user and role CRUD, `resetPassword`, `revealPassword`, `uploadAvatar`, `removeAvatar`, `deletedRoles`, `deletedUsers`, `restoreRole`, `restoreUser` | `users.manage`, `roles.*`, `roles.assign`, `users.viewPassword` |
+| `master/web/src/screens/AccessScreen.tsx` (2136) | Users and Roles; refetches on another administrator's `user`/`role` change (`revision`). Since 1.3 Phase 2: `TierPill` for every tier, Server Masters highlighted (row, avatar ring, `ServerMasterBadge`); a caller below a person's tier gets **no** controls on them (`mayManage` by `tierRank`); the last two active Server Masters cannot be deactivated or deleted (reason shown); guarded calls go through `withKey`, which repeats a call refused with `error.unauthorized.masterKeyRequired` after `useMasterKeyPrompt`; the role picker offers only roles at or below the caller's tier; the tier `Select` never offers `server_master` and labels tiers via `tierLabel`; the Server Master role has no Edit. Users: filters, add (`UserForm`, password shown once in `OneTimeSecretDialog`), detail as an `EditorScreen` sub-screen (sub-nav `access.person`; role change with `expectedVersion`, avatar, activate/deactivate, set/generate/reveal password, delete), `UserEditForm` as an `EditorScreen` with a sub-nav entry; last active admin protected client-side. Roles: `RoleEditor` (loaded through `api.role(id)` on open; `PermissionGrid`, tier, stale-version banner with Reload/Overwrite), delete. Inline restore of deleted roles and users. | `permissionCatalogue`, `roles`, `role`, `users`, `vaultStatus`, user and role CRUD, `resetPassword`, `revealPassword`, `uploadAvatar`, `removeAvatar`, `deletedRoles`, `deletedUsers`, `restoreRole`, `restoreUser` | `users.manage`, `roles.*`, `roles.assign`, `users.viewPassword` |
 | `master/web/src/screens/PartyAccessScreen.tsx` (509) | who may see/manage each party; `PAGE_SIZE = 200` + a `limit: 1` restricted count; All/Restricted/Open; editor saves with `expectedVersion`; CSV export. **Byte-identical to the Office copy.** | `partyAccess`, `partyAccessPeople`, `savePartyAccess`, `partyAccessExportUrl` | `party.assign`, `parties.export` |
 | `master/web/src/screens/FieldsScreen.tsx` (1078) | **Values** (per set, now `product.brand` among them: the shared `ui/src/OptionListEditor.tsx` since catalogue v2 — add/edit with hex check, reorder, remove to Bin, usage; its transport `optionListTransport` moved to `transports.ts` in 1.3 Phase 1), **Definitions** (per entity, 5 types, reorder, delete, stale-version notice), **Stages** (edit name/colour/terminal, default, reorder, archive/restore; default-stage and occupied-stage refusals reported separately). No create-stage call. | the 17 fields members | `fields.view`, `fields.manage` |
-| `master/web/src/screens/LogsScreen.tsx` (664) | hash-chained log with text/actor/entity/action/date filters, `NewerOlderPager`, rows rendered with `renderActivity(createTranslator('en'), …)`, entry detail as an `EditorScreen` sub-screen (sub-nav `logs.entry`), "Verify chain" (`VerificationVerdict`), CSV export; no live refresh | `logs`, `logFacets`, `verifyLogChain`, `logsExportUrl` | `logs.view`, `logs.verifyChain`, `logs.export` |
+| `master/web/src/screens/LogsScreen.tsx` (20) | since 1.3 Phase 2 a thin mount: builds a module-level `LogsTransport` from `api` and renders the shared `ui/src/LogsScreen.tsx` (§4.7) | `logs`, `logFacets`, `verifyLogChain`, `logsExportUrl` | `logs.view`, `logs.verifyChain`, `logs.export` |
 | `master/web/src/screens/RecycleBinScreen.tsx` (578) | soft-deleted records, `LoadMorePager`, type/search/deleted-by filters, counts, own/everyone scope; restore per row with `RESTORE_PERMISSION[type]`; a 409 opens `RefusalDialog` (suggested rename, or restore parents first and retry with `cascadeParents: true`) | `recycleBin`, `recycleBinCounts`, `recycleBinDeleters`, `restoreFromBin` | `recycleBin.view`, `recycleBin.viewAll`, `RESTORE_PERMISSION` |
 | `master/web/src/screens/ConflictsScreen.tsx` (179) | one card per conflict: kept vs overwritten with device codes (a line or variant set reads one row per line, not JSON); Keep (`keepWinner`) / Restore overwritten (`restoreLoser`). The module is gated `sync.resolveConflicts`, so no control is conditional | `conflicts`, `resolveConflict` | none (module gate `sync.resolveConflicts`) |
 | `master/web/src/screens/IntegrationsScreen.tsx` (1108) | Keys (issue — token shown once in `IssuedTokenDialog`, copied with `copyText` — and revoke) and Connectors (list, `ConnectorDialog`, dry run and import, run history, `MappingEditor` as a sub-nav editor) | `apiKeys`, `connectors`, `issueApiKey`, `revokeApiKey`, `users`, `createConnector`, `updateConnector`, `runConnector`, `connectorRuns`, `setConnectorMapping`, `testConnector` | `canManage` (`api.manage`) |
-| `master/web/src/screens/SettingsScreen.tsx` (526) | `SettingsScreen`; `SETTINGS_TAB_IDS` and `settingsTabIdsFor` moved to `settingsTabs.ts` in 1.3 Phase 1. `MASTER_HIDDEN_SETTINGS` (1.3 Phase 1) leaves `inventory.defaultReorderLevel` and `inventory.adjustmentNoteRequired` off the Company tab; both keys stay valid. Since catalogue v2 a **Leads** tab holds the lead-source list (`OptionListEditor`, the Fields permissions) and the `leads` settings group, which left the Company tab; `NumberSetting` moved to `ui/src/SettingsLayout.tsx`. Takes `permissions` from the shell (since 2026-09-25; it used to read `/me` on mount and start from "yes"), so tabs and reads are right on the first render and keyed on booleans. Appearance; Shortcuts; **Company** (only if `api.settings()` returned — `settings.manage`; one section per `SETTING_GROUPS` entry, row-level save; vault coverage beside `security.passwordRevealEnabled`); Connection (company, LAN address:port, master id, setup date; `settings.manage`, the identity read is not made without it); Storage (usage figures, `StorageBackupActions` with `storage.manage`; `settings.manage`). Appearance and Shortcuts are offered to everyone; there is no Developer tab (the routes remain) | `identity`, `storage`, `settings`, `saveSetting`, `vaultStatus`, `developer.*` | `settings.manage`, `storage.manage`, `users.viewPassword` |
+| `master/web/src/screens/SettingsScreen.tsx` (526) | `SettingsScreen`; `SETTINGS_TAB_IDS` and `settingsTabIdsFor` moved to `settingsTabs.ts` in 1.3 Phase 1. `MASTER_HIDDEN_SETTINGS` (1.3 Phase 1) leaves `inventory.defaultReorderLevel` and `inventory.adjustmentNoteRequired` off the Company tab; both keys stay valid. Since catalogue v2 a **Leads** tab holds the lead-source list (`OptionListEditor`, the Fields permissions) and the `leads` settings group, which left the Company tab; `NumberSetting` moved to `ui/src/SettingsLayout.tsx`. Takes `permissions` from the shell (since 2026-09-25; it used to read `/me` on mount and start from "yes"), so tabs and reads are right on the first render and keyed on booleans. Since 1.3 Phase 2 the Connection tab offers **Change pairing password** to a Server Master on the Master PC (`canChangePairingPassword`): confirm, master key, then the new password shown once. Appearance; Shortcuts; **Company** (only if `api.settings()` returned — `settings.manage`; one section per `SETTING_GROUPS` entry, row-level save; vault coverage beside `security.passwordRevealEnabled`); Connection (company, LAN address:port, master id, setup date; `settings.manage`, the identity read is not made without it); Storage (usage figures, `StorageBackupActions` with `storage.manage`; `settings.manage`). Appearance and Shortcuts are offered to everyone; there is no Developer tab (the routes remain) | `identity`, `storage`, `settings`, `saveSetting`, `vaultStatus`, `developer.*` | `settings.manage`, `storage.manage`, `users.viewPassword` |
 | `master/web/src/screens/UpdatesScreen.tsx` (372) | this Master's version, panels behind (`standing()`), the offer from the local releases folder; **Install** → `prepareMasterUpdate` → `desktopBridge().applyUpdate()` (in a browser shows the path); a build that cannot install over itself shows how to update by hand instead of the button — the standalone `.exe` (`updates.standaloneBody`) or a Linux copy not started from an AppImage (`getShellSettings().systemPackage`, `updates.systemPackageBody`); panel version table | `updateStatus`, `prepareMasterUpdate` | `settings.manage` |
-| `master/web/src/screens/FirstRunScreen.tsx` (411) | "Set up new site" (company name → `initialize` → one-time display of username, password, LAN addresses, master id, pairing password) or "Restore from backup" (preview, passphrase, restore, new pairing password); `DataDirCard` | `initialize`, `previewRestoreSetup`, `restoreSetup` | none |
-| `master/web/src/screens/SignInScreen.tsx` (127) | username (pre-filled `admin`) and password; errors via `apiErrorText`; shows the shell's `notice` | `signIn` | none |
+| `master/web/src/screens/FirstRunScreen.tsx` (445) | "Set up new site" (company name and, since 1.3 Phase 2, two typed Server Master account blocks prefilled `master` / `master-backup`, checked for length, match and distinct usernames → `initialize` → the two usernames, LAN addresses, master id and the pairing password shown once; no `admin` is created) or "Restore from backup" (preview, passphrase, restore, new pairing password); `DataDirCard` | `initialize`, `previewRestoreSetup`, `restoreSetup` | none |
+| `master/web/src/screens/SignInScreen.tsx` (165) | username (empty since 1.3 Phase 2; a fresh setup has no `admin`) and password; errors via `apiErrorText`; shows the shell's `notice`. On the Master PC (`onMasterPc` from `/api/setup/status`): `ServerMasterSetupFlow` instead of the form while `serverMasterSetupNeeded`, and a "Forgot Server Master password?" link to `MasterKeyRecoveryFlow` | `signIn` | none |
+| `master/web/src/screens/ServerMasterSetupFlow.tsx` (277) | 1.3 Phase 2. The Server Master accounts an older installation owes: master key (`MasterKeyForm`), then exactly the missing account blocks, no skip; also exports the account blocks and their checks (`accountDrafts`, `accountDraftsError`, `toAccountInputs`, `ServerMasterAccountFields`) that first run uses | `verifyMasterKey`, `serverMasters`, `setUpServerMasters` | none (Master PC, master key) |
+| `master/web/src/screens/MasterKeyRecoveryFlow.tsx` (184) | 1.3 Phase 2. "Forgot Server Master password?": master key, pick the Server Master, new password twice; the password only | `verifyMasterKey`, `serverMasters`, `recoverServerMaster` | none (Master PC, master key) |
 
 ### 7.5 Where the code and its comments or docs disagree
 
@@ -3740,7 +3795,16 @@ Singleton `masterConnection` (an `EventEmitter`).
 - `office/src/services/credentials.store.ts` — `loadCredentials()` (cached; missing
   or corrupt = unpaired), `saveCredentials()` (0600), `clearCredentials()`,
   `masterBaseUrl()`.
+- `office/src/services/offline-auth-events.store.ts` (1.3 Phase 2) — offline sign-ins
+  and refusals waiting to be uploaded (`auth:offlineEvents`), a JSON file written
+  temp-then-rename, capped at 500 (the oldest failure dropped first, a success only
+  when no failure is left); `append` gives each event an
+  `id` and never throws, `peek`, `drop` by identity, `resetOfflineAuthEvents`.
+  `MasterConnection` tries the upload once per connection, after the first snapshot
+  or delta, and drops only on the ack.
 - `office/src/services/user-session.service.ts` — one in-memory session per panel
+  (since 1.3 Phase 2 a Server Master is never remembered: the panel signs the token
+  out and refuses with `error.unauthorized.serverMasterMasterPcOnly`)
   (lost on restart; offline records kept). `signIn()`, `signOut()`,
   `rejectCurrent(reason)` (`revoked` forgets the record, `expired` keeps it),
   `reconcileKnownUsers()`, `refreshFrom(user)`, `can()`, `sessionPermissions()`,
@@ -3900,6 +3964,7 @@ record; the real record arrives later over the SSE stream.
 | `office/web/src/screens/PartyAccessScreen.tsx` | 509 | App (`partyAccess`, lazy) | live from the Master; byte-identical to the Master's copy |
 | `office/web/src/screens/ConflictsScreen.tsx` | 265 | App (`conflicts`, lazy) | refused writes (anyone can dismiss) + merge conflicts (resolving needs `sync.resolveConflicts`) |
 | `office/web/src/screens/SettingsScreen.tsx` | 254 | App (`settings`, lazy) | tabs appearance, shortcuts, machine, storage and, since catalogue v2, **leads** — the lead sources (`OptionListEditor`, `fields.view`/`fields.manage`) and the follow-up default (`NumberSetting`, saved through `PUT /api/settings/:key` with `settings.manage`). `SETTINGS_TAB_IDS` moved to `settingsTabs.ts` in 1.3 Phase 1 |
+| `office/web/src/screens/LogsScreen.tsx` | 21 | App (`logs`, lazy; 1.3 Phase 2) | thin mount of the shared `ui/src/LogsScreen.tsx` with a transport over `/api/logs*`, which this panel's server forwards to the Master (503 offline). Offered in the System group, no chord, with `logs.view` |
 | `office/web/src/screens/UpdatesScreen.tsx` | 238 | App (`updates`, lazy) | this panel vs the Master's version; download from the Master and hand to the shell; a standalone `.exe` or a Linux copy not started from an AppImage is told how to update by hand |
 | `office/web/src/screens/ConnectionScreen.tsx` | 409 | App (before pairing) | network status and this PC's device code, marked provisional until paired; auto-pair, manual pair, or restore from `.obbackup` |
 | `office/web/src/screens/SignInScreen.tsx` | 300 | App (paired, no session) | company, this PC's device code (mono); pick a remembered face or type a username; offline notice; forget a profile; `StoragePathCard` |
@@ -3939,11 +4004,12 @@ record; the real record arrives later over the SSE stream.
   `snapshot` → replace `view` (the whole `LocalView`) and re-read sync state; `change`
   → `applyChangeToSnapshot` on a shallow copy; `conflict` → re-read sync state.
 - **Tabs** (11): `basicHome`, `dashboard`, `leads`, `orders`, `parties`,
-  `partyAccess`, `products`, `conflicts`, `settings`, `updates`, `addLead`.
+  `partyAccess`, `products`, `conflicts`, `settings`, `logs`, `updates`, `addLead`.
   `alwaysAvailable`: `basicHome` (it reads only the sidebar, so it is there before
-  the first snapshot), `updates`, `settings` (they read `connection`); `needsView`:
+  the first snapshot), `updates`, `settings` (they read `connection`), `logs` (it reads
+  the Master, 1.3 Phase 2); `needsView`:
   the other 8, built only once `view` exists. Conflicts, PartyAccess, Settings and
-  Updates load on first visit through `lazyScreen()` (1.3 Phase 1).
+  Updates load on first visit through `lazyScreen()` (1.3 Phase 1), as does Logs.
 
 The sidebar is one `const groups: NavGroup[] = [ … ].map((group) => …)` literal in
 `OFFICE_NAV` order, which `keys-nav-order.test.ts` reads.
@@ -3959,6 +4025,7 @@ The sidebar is one `const groups: NavGroup[] = [ … ].map((group) => …)` lite
 | `parties` | `CatalogScreen tab="parties"` | Catalogue | `parties.view` | — | Alt+7 |
 | `partyAccess` | `PartyAccessScreen` | Catalogue | `party.assign` or `party.accessAll` | `all`/`restricted`/`open` | Alt+8 |
 | `settings` | `SettingsScreen` | System | always | the five `SETTINGS_TAB_IDS` | Alt+9 |
+| `logs` | `LogsScreen` (shared, `ui/src/LogsScreen.tsx`; 1.3 Phase 2) | System | `logs.view` | — | — |
 | `updates` | `UpdatesScreen` | System | always | — | — |
 | `addLead` | `AddLeadScreen` | none | reached via the topbar "New lead", Basic Home's New pending order tile, `leads.new`, or `record.new` (all gated on `leads.create`) | — | Ctrl+Shift+N |
 
@@ -4963,6 +5030,27 @@ Each flow names the files and functions in the order they run. "Master" means
    checks `MUTATION_PERMISSIONS`; the UI hides what `can()` refuses. The Master
    checks everything again.
 
+**Server Masters and the master key (1.3 Phase 2)**
+
+- A Server Master signs in only on the Master PC: `auth.routes.ts` passes
+  `{onMasterPc: isLoopback(req)}`, `attachSession` passes `masterPcAddress(...)`
+  (null unless address, `Host` and `Origin` all name this PC), and every
+  `resolveSession*` refuses a Server Master session from any other address.
+  The hub passes `masterPcAddress` of the handshake for `master-admin` sockets; panel sockets pass
+  `onMasterPc:false` to `auth:signIn` and refuse a Server Master on `auth:assume`
+  whatever the address. The Office never remembers one (`user-session.service.ts`).
+- Boot reads `/api/setup/status`; on the Master PC with `serverMasterSetupNeeded`
+  `SignInScreen` shows `ServerMasterSetupFlow` (master key → `/api/master-key/*`)
+  first. LAN browsers get the ordinary form meanwhile.
+- A master-key token (`POST /api/master-key/verify`, 5 minutes) rides in
+  `x-master-key-token` on the user routes, `/api/access/me/password` and
+  `/api/setup/pairing-password`. `master/web/src/api.ts` does **not** treat the
+  401s `error.unauthorized.masterKey` / `masterKeyRequired` as the end of the
+  session, so a wrong or missing key never signs the window out.
+- Guards (`domain/access.ts`): `assertMayManageUser` (G9), `assertServerMastersRetained`
+  (two must remain, under the G4 lock), `assertTierAssignable`,
+  `assertServerMasterRoleFrozen`. `docs/ROLES_AND_USERS.md` §3.2, `docs/MASTER_KEY.md`.
+
 **Tiers and scoping**
 
 - A role's tier caps what it may hold (`MINIMUM_TIER`, `effectivePermissions` at save
@@ -5253,9 +5341,10 @@ Each flow names the files and functions in the order they run. "Master" means
   panel, regenerates the pairing password and verifies the audit hash chain (rolling
   back on failure); a populated database needs `confirmWipe`. Before setup, the same
   restore is offered by `FirstRunScreen` through the unauthenticated
-  `/api/setup/restore*` routes: `POST /api/setup/restore` refuses once setup has run
-  (409 `populated_data_directory`), while `/api/setup/restore/preview` still answers
-  afterwards. A restore empties the settings and role caches but not the public
+  `/api/setup/restore*` routes, which since 1.3 Phase 2 answer only on the Master PC
+  (`requireLoopback` ahead of multer) and both refuse once setup has run (409
+  `error.conflict.alreadySetUp`, `refuseAfterSetup`). A backup from before 1.3 has
+  no Server Masters; the Master-PC sign-in screen then asks for them (§11.2). A restore empties the settings and role caches but not the public
   API's cached tenant id, so after a whole restore of another installation `/api/v1`
   reads a tenant that is gone until the Master restarts (§5.11 item 18).
 - **Office export/restore:** `office/src/services/backup-export.service.ts` gzips the
@@ -5390,6 +5479,13 @@ All call `setupDatabase`, `teardownDatabase`, `resetData` and wrap their body in
 | Operator CLIs (1) | `operator-cli` | runs `migrate --status` and the reload/wipe CLI as processes (`node --import tsx`, `DATABASE_URL` pointing at the test cluster): names printed; the wipe keeping config and connectors, loading nothing, wiping connector links, restarting the activity chain intact, and no foreign key letting `TRUNCATE … CASCADE` reach a table outside the wipe list; since catalogue v2 `reload:catalog` refusing while another client is connected and touching nothing, then replacing the catalogue while keeping parties and the whole log, and `seed:demo-parties` adding the 13 dealers once |
 | Performance (1) | `query-budget` | queries per ordinary request |
 
+**1.3 Phase 2 added** `server-master` (the role equals `allPermissions()`; loopback-only
+sign-in and sessions; a panel socket from 127.0.0.1 refused a Server Master; the
+target-tier and two-Server-Master guards; master-key tokens and lockout) and
+`audit-coverage` (every audit gap the sweep closed, the CSV `sentence`/`details`
+columns and `actor.tier`). Most suites now set up through `setUpFirstRun()` and sign
+in as `master` over supertest (loopback).
+
 ### 12.3 Source-reading guard tests (`master/tests`, 23 files)
 
 They read files and assert on the text; they need no database and cannot skip.
@@ -5453,6 +5549,14 @@ They read files and assert on the text; they need no database and cannot skip.
   size keeps `max_connections` at least `POOL_MAX` + 10; the small-PC values; big
   PCs keep the defaults; the flag shape).
 
+**1.3 Phase 2 added** `server-master-domain` (the guard matrix and the master-key gate
+with an injected hash and fake clock) and `require-loopback` (a LAN multipart POST to
+`/api/setup/restore/preview` gets 403 before multer runs; preview after setup gets
+409). Elsewhere: `shared/tests/server-master.test.ts`,
+`office/tests/offline-auth-events.test.ts`, `office/tests/master-connection.test.ts`
+(the protocol gate) and `ui/tests/logs-screen.test.tsx` (a Server Master's row
+highlighted and badged, `data-screen-search`, translated dropdowns, `?locale=`).
+
 `office/tests` (§8.8), `shared/tests` (§3.11), `ui/tests` (§4.11), `electron/tests`
 (§10.1).
 
@@ -5477,6 +5581,10 @@ They read files and assert on the text; they need no database and cannot skip.
   `inventory.freeToSell` on, clear role/pipeline/field/settings caches,
   `resetAuthState()`), `teardownDatabase()`, builders `testTenantId`,
   `stageIdByName`, `ALL_PERMISSIONS`, `testActor`, `actorWith`, `createTestProduct`.
+- `master/tests/helpers/audit-probe.ts` — `refuseAuditEntries(action?)` puts a trigger
+  on `activity_log` that refuses every insert, or only those with the given action;
+  `acceptAuditEntries()` drops it. Used by the suites that prove an audited write
+  rolls back with its entry (`audit-atomicity`, `server-master`).
 
 ### 12.6 Running the integration suites, and the root trap
 

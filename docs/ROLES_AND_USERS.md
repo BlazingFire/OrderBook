@@ -45,16 +45,65 @@ had this form open", `hlc` answers "which of two disconnected edits happened fir
 | Column | Notes |
 |---|---|
 | `name` | Unique per tenant, case-insensitive, **among live rows** |
-| `tier` | `office` / `management` / `admin`, a `CHECK` not a lookup table |
+| `tier` | `office` / `management` / `admin` / `server_master`, a `CHECK` not a lookup table |
 | `permissions` | JSONB array of keys, sorted — see §5 |
-| `is_system` | True on the seeded Administrator only: undeletable, tier-locked |
+| `is_system` | True on the seeded Administrator and the Server Master role: undeletable, tier-locked |
 
 ### 3.1 Why `tier` is a CHECK and not a lookup table
 
-Three values, fixed by the product, never company-configurable. A lookup table would imply they can
+Four values, fixed by the product, never company-configurable. A lookup table would imply they can
 be added to; they cannot, because the ceiling in `shared/src/domain/permissions.ts` enumerates all
-three by name. Contrast with a lead's *stage* and a product's *category*, which **are**
+four by name, and `ROLE_TIERS` lists them in rank order, lowest first. `tierRank` is the one place
+rank is read from; no screen or service keeps a rank table of its own. Contrast with a lead's *stage* and a product's *category*, which **are**
 company-configurable and therefore live in data.
+
+On screen the tiers are named through the `tier.*` catalogue keys, never the raw value: Office,
+Management, **Normal Admin** (`admin`) and **Server Master**. "Normal Admin" says that an admin is
+no longer the top of the ladder.
+
+### 3.2 The Server Master tier (1.3)
+
+The owner's tier, above admin. It exists so that the people who own the installation cannot be
+locked out of it by an administrator, and so that the operations that could lock them out need
+the master key (`docs/MASTER_KEY.md`).
+
+**One role.** Migration `20261001000000_server_master_tier` widens the tier `CHECK` and seeds one
+`is_system` role named "Server Master" per company ("Server Master (system)" if that name is
+taken), holding every permission. The role is **frozen**: it cannot be renamed, edited, re-tiered
+or deleted (`assertServerMasterRoleFrozen`), and no other role can be given the tier
+(`assertTierAssignable`), so the role editor never offers it. Its permissions always equal
+`allPermissions()`; `server-master.integration.test.ts` asserts that after every migration.
+
+**Two accounts, always.** A fresh setup asks the owner to type two Server Master accounts
+(suggested `master` and `master-backup`) and creates **no `admin`**. At least two active Server
+Masters must remain (`SERVER_MASTER_MIN_ACTIVE`, `assertServerMastersRetained`, checked under the
+same `lockTenantAccessGuards` lock as G4): deactivating, deleting or demoting one of the last two is
+refused even with the master key. An installation from before 1.3 has none; on the Master PC the
+sign-in screen asks for the master key and then the missing accounts, with no skip, while LAN
+admins and Office panels keep working. Existing admins stay admins; nothing is backfilled.
+
+**Master PC only.** A Server Master signs in only over loopback (`signIn(…, {onMasterPc})`), and
+their session resolves only from a loopback address: a Server Master cookie carried to a LAN
+browser gets 401 there while the Master-PC session survives. "Loopback" here means the address
+and the `Host` header, and any `Origin`, all name this PC (`isOnMasterPc`), so a web page that
+reached the Master through a hostile name re-pointed at 127.0.0.1 does not count. Office panels refuse Server Masters
+whatever their address (`auth:signIn` passes `onMasterPc:false`, `auth:assume` refuses outright),
+never cache their credentials for offline sign-in, and forget any cached user who becomes one.
+
+**Target-tier guards.** Nobody manages an account above their own tier (`assertMayManageUser`,
+G9): an admin can never edit, deactivate, delete, reset, reveal the password of, change the avatar
+of or demote a Server Master. The Roles & users screen leaves those controls out for them rather
+than disabling them, and highlights Server Masters with a badge and a tinted row.
+
+**The master key.** A Server Master acting on another Server Master's username, active state,
+role, password or deletion needs a master-key token as well (§8, G10); so does creating one,
+changing one's own password, recovering a forgotten one and changing the pairing password. The
+key, its lockout and recovery: `docs/MASTER_KEY.md`.
+
+**Logs.** A Server Master's own entries are highlighted and badged on the Logs screen on both
+panels (the actor's tier is read at list time). Account changes are logged as
+`user.server_masters_set_up` and `user.password_recovered`, master-key use as
+`master_key.verified` / `master_key.failed`.
 
 ---
 
@@ -236,6 +285,12 @@ one of them records inside its transaction (`master/tests/audit-atomicity.integr
 | G6 | The system role cannot be deleted or re-tiered | `domain/access.ts` |
 | G7 | Usernames unique per tenant among live rows | `domain/access.ts` |
 | G8 | Role names unique per tenant among live rows | `domain/access.ts` |
+| G9 | Nobody manages a user above their own tier (an admin never touches a Server Master) | `assertMayManageUser`, `domain/access.ts` |
+| G10 | At least two active Server Masters remain; Server Master account changes need the master key | `assertServerMastersRetained` + `user.service.ts`, *inside the transaction, under the G4 lock* |
+| G11 | The Server Master tier belongs to its one frozen system role; no panel may use it | `assertTierAssignable`, `assertServerMasterRoleFrozen`, `panel.service.ts` |
+
+G1's "admin" means *rank at least admin* since 1.3, so a Server Master passes it, and G4 counts
+admins and Server Masters together (`readAdministrativeCapability`).
 
 ### 8.1 G4, the lockout guard
 
@@ -284,7 +339,10 @@ to its predecessor's hash, and triggers refuse `UPDATE` and `DELETE` outright.
 | User role reassigned | from role id+name, to role id+name |
 | Activated / deactivated / deleted / restored | id, username, actor |
 | Password reset | that a reset occurred, by whom, for whom. **No password material** |
-| Sign-in success / failure | username, timestamp |
+| Sign-in success / failure | username, timestamp; a Server Master refused off the Master PC is a failure with reason `masterPcOnly` |
+| Sign-out, session expiry, offline sign-in (uploaded by the panel) | who, and on which panel for offline ones; written detached |
+| Server Masters set up, Server Master password recovered | the names; **no password material** |
+| Master key entered, wrong master key | the attempt, detached |
 
 Recording the whole before-and-after array rather than a diff is deliberate: the question an auditor
 asks is *"what could this role do on 14 March"*, and a chain of diffs makes that a replay instead of
@@ -324,6 +382,8 @@ The test asserts **absence**, not null: `expect('passwordHash' in user).toBe(fal
 
 ## 12. Sign-in
 
+0. A Server Master signs in only on the Master PC (§3.2). The check runs after the password
+   verifies and does not count as a failed attempt.
 1. Verify with scrypt against the stored `scrypt$…` form.
 2. A wrong password and an unknown username return **the same message**. Anything else is a
    username oracle. Three failures lock the username for 60 seconds.

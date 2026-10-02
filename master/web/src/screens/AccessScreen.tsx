@@ -6,12 +6,20 @@
  * is *hidden* versus *disabled* — a control the caller can never have is absent
  * (a disabled one would be a permanent tease), while a control blocked by a
  * changeable state is disabled with the reason attached.
+ *
+ * Server Masters (1.3) are highlighted wherever they are listed. A caller of a
+ * lower tier gets no controls at all on a Server Master's row, because the
+ * server refuses every one of them (`assertMayManageUser`). A Server Master
+ * acting on another Server Master is asked for the master key when the server
+ * says it is needed, and the call is repeated with the token.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import type { OneTimeSecret, PermissionCatalogue, Role, RoleTier, User } from '@orderbook/shared';
+import { SERVER_MASTER_MIN_ACTIVE, SERVER_MASTER_TIER, tierRank } from '@orderbook/shared';
 
 import { api, ApiError, type FieldDifference } from '../api';
+import { useMasterKeyPrompt } from '../components/MasterKeyPrompt';
 import {
   Avatar,
   AvatarPicker,
@@ -33,17 +41,29 @@ import {
   Segmented,
   Select,
   SkeletonRows,
+  ServerMasterBadge,
   SkeletonTable,
   StatusPill,
+  TierPill,
   copyText,
   formatDateTime,
   rem,
   t,
+  tierLabel,
   useFilterBar,
   useSubNav,
   useTopbarActions,
   type DataTableColumn,
 } from '@orderbook/ui';
+
+/**
+ * Runs a call that may need the master key: first without a token, and, when
+ * the server answers that the key is needed, again with the token the prompt
+ * returns. The server decides which changes need it, so this never guesses.
+ */
+type WithKey = <T>(action: (masterKeyToken?: string) => Promise<T>) => Promise<T>;
+
+const isServerMaster = (user: User): boolean => user.roleTier === SERVER_MASTER_TIER;
 
 interface Props {
   /**
@@ -191,6 +211,23 @@ export function AccessScreen({
    * Withdrawn while an editor has the screen: there is nothing to switch
    * between inside one, and a live switcher there would throw away a draft.
    */
+  const masterKey = useMasterKeyPrompt();
+  const withKey: WithKey = async (action) => {
+    try {
+      return await action();
+    } catch (caught) {
+      if (
+        !(caught instanceof ApiError) ||
+        caught.messageKey !== 'error.unauthorized.masterKeyRequired'
+      ) {
+        throw caught;
+      }
+      const token = await masterKey.ask();
+      if (!token) throw caught;
+      return action(token);
+    }
+  };
+
   useTopbarActions(
     tabItems.length > 1 && !roleEditorOpen && !userEditorOpen && !personOpen ? (
       <Segmented options={tabItems} value={active} onChange={onTabChange} />
@@ -246,17 +283,7 @@ export function AccessScreen({
         meta={
           editing === 'new' ? null : (
             <>
-              <StatusPill
-                tone={
-                  editing.tier === 'admin'
-                    ? 'conflict'
-                    : editing.tier === 'management'
-                      ? 'accent'
-                      : 'default'
-                }
-              >
-                {editing.tier}
-              </StatusPill>
+              <TierPill tier={editing.tier} />
               {editing.isSystem && (
                 <StatusPill tone="default">{t('access.roles.systemBadge')}</StatusPill>
               )}
@@ -331,7 +358,9 @@ export function AccessScreen({
           onCancel={() => setEditingUser(null)}
           onSaved={() => setEditingUser(null)}
           onRun={run}
+          withKey={withKey}
         />
+        {masterKey.prompt}
       </EditorScreen>
     );
   }
@@ -345,6 +374,7 @@ export function AccessScreen({
       )}
 
       {secret && <OneTimeSecretDialog secret={secret} onClose={() => setSecret(null)} />}
+      {masterKey.prompt}
 
       {/* Delete is soft everywhere in this product, but until now nothing in the
           UI could undo one — `api.restoreRole`/`api.restoreUser` were declared,
@@ -372,6 +402,7 @@ export function AccessScreen({
           onEdit={setEditingUser}
           onSecret={setSecret}
           onRun={run}
+          withKey={withKey}
         />
       ) : (
         <RolesTab
@@ -407,6 +438,7 @@ function UsersTab({
   onEdit,
   onSecret,
   onRun,
+  withKey,
 }: {
   users: User[];
   roles: Role[];
@@ -425,6 +457,7 @@ function UsersTab({
   onEdit: (user: User) => void;
   onSecret: (secret: OneTimeSecret) => void;
   onRun: (action: () => Promise<unknown>, failure: string) => Promise<void>;
+  withKey: WithKey;
 }) {
   const [adding, setAdding] = useState(false);
   const [search, setSearch] = useState('');
@@ -471,14 +504,35 @@ function UsersTab({
    * it disables the control with a reason rather than letting someone discover
    * it in a confirm dialog. The service refuses it regardless.
    */
+  const adminRank = tierRank('admin');
+  const isAdministrative = (user: User): boolean => tierRank(user.roleTier) >= adminRank;
+  // Server Masters count too: they hold everything an administrator does.
   const activeAdmins = users.filter(
-    (user) => user.isActive && !user.deletedAt && user.roleTier === 'admin',
+    (user) => user.isActive && !user.deletedAt && isAdministrative(user),
+  );
+  const activeServerMasters = users.filter(
+    (user) => user.isActive && !user.deletedAt && isServerMaster(user),
   );
 
   function lastAdminReason(user: User): string | undefined {
-    if (user.roleTier !== 'admin' || !user.isActive) return undefined;
-    return activeAdmins.length <= 1 ? t('access.users.lastAdminReason') : undefined;
+    if (!isAdministrative(user) || !user.isActive) return undefined;
+    if (activeAdmins.length <= 1) return t('access.users.lastAdminReason');
+    // At least two Server Masters must stay active (`assertServerMastersRetained`).
+    if (isServerMaster(user) && activeServerMasters.length <= SERVER_MASTER_MIN_ACTIVE) {
+      return t('validation.user.serverMastersRequired', { count: SERVER_MASTER_MIN_ACTIVE });
+    }
+    return undefined;
   }
+
+  /**
+   * Nobody manages an account above their own tier, so an administrator gets
+   * no controls on a Server Master at all: absent, not disabled.
+   */
+  const mayManage = (user: User): boolean => tierRank(user.roleTier) <= tierRank(actorTier);
+
+  /** The roles this caller may hand out, plus the one the person already has. */
+  const assignableFor = (user: User): Role[] =>
+    roles.filter((role) => role.id === user.roleId || tierRank(role.tier) <= tierRank(actorTier));
 
   useFilterBar(
     !loading && users.length > 0 ? (
@@ -541,7 +595,14 @@ function UsersTab({
       key: 'avatar',
       header: '',
       width: rem(44),
-      render: (user) => <Avatar name={user.displayName} avatar={user.avatar} size="sm" />,
+      render: (user) => (
+        <Avatar
+          name={user.displayName}
+          avatar={user.avatar}
+          size="sm"
+          highlight={isServerMaster(user)}
+        />
+      ),
     },
     {
       /*
@@ -556,7 +617,12 @@ function UsersTab({
       key: 'name',
       header: t('access.users.colName'),
       width: '1fr',
-      render: (user) => <span>{user.displayName}</span>,
+      render: (user) => (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-6)', minWidth: 0 }}>
+          <span>{user.displayName}</span>
+          {isServerMaster(user) && <ServerMasterBadge />}
+        </span>
+      ),
     },
     {
       key: 'username',
@@ -583,8 +649,13 @@ function UsersTab({
        */
       key: 'role',
       header: t('access.users.colRole'),
-      width: rem(160),
-      render: (user) => <span>{user.roleName}</span>,
+      width: rem(240),
+      render: (user) => (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-6)', minWidth: 0 }}>
+          <span>{user.roleName}</span>
+          <TierPill tier={user.roleTier} />
+        </span>
+      ),
     },
     {
       key: 'status',
@@ -616,12 +687,7 @@ function UsersTab({
         <div
           style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}
         >
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="expand"
-            onClick={() => onOpenUser(user.id)}
-          >
+          <Button variant="secondary" size="sm" icon="expand" onClick={() => onOpenUser(user.id)}>
             {t('access.users.open')}
           </Button>
         </div>
@@ -641,7 +707,7 @@ function UsersTab({
             user={user}
             // Your own face needs no permission; somebody else's is a roster
             // edit. The server checks the same thing again either way.
-            canEdit={canManage || user.id === currentUserId}
+            canEdit={(canManage && mayManage(user)) || user.id === currentUserId}
             onUpload={async (file) => {
               await onRun(() => api.uploadAvatar(user.id, file), t('avatar.error.uploadFailed'));
             }}
@@ -673,27 +739,34 @@ function UsersTab({
 
         <section className="ob-detail-section">
           <div className="ob-eyebrow">{t('access.users.detail.access')}</div>
-          {canAssign ? (
+          {canAssign && mayManage(user) ? (
             <FormField label={t('access.users.colRole')} hint={t('access.users.roleHint')}>
               {(id) => (
                 <Select
                   id={id}
                   value={user.roleId ?? ''}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const roleId = event.target.value;
                     void onRun(
                       () =>
-                        api.updateUser(user.id, {
-                          roleId: event.target.value,
-                          // Without this the save is last-write-wins: two
-                          // administrators reassigning the same person would
-                          // both "succeed" and one would silently lose.
-                          expectedVersion: user.sync.version,
-                        }),
+                        withKey((token) =>
+                          api.updateUser(
+                            user.id,
+                            {
+                              roleId,
+                              // Without this the save is last-write-wins: two
+                              // administrators reassigning the same person would
+                              // both "succeed" and one would silently lose.
+                              expectedVersion: user.sync.version,
+                            },
+                            token,
+                          ),
+                        ),
                       t('access.users.roleChangeFailed'),
-                    )
-                  }
+                    );
+                  }}
                 >
-                  {roles.map((role) => (
+                  {assignableFor(user).map((role) => (
                     <option key={role.id} value={role.id}>
                       {role.name}
                     </option>
@@ -712,7 +785,9 @@ function UsersTab({
           <dl className="ob-detail-grid">
             <div>
               <dt>{t('access.roles.colTier')}</dt>
-              <dd>{user.roleTier}</dd>
+              <dd>
+                <TierPill tier={user.roleTier} />
+              </dd>
             </div>
             <div>
               <dt>{t('access.users.colStatus')}</dt>
@@ -755,7 +830,7 @@ function UsersTab({
     const blocked = lastAdminReason(user);
     return (
       <>
-        {canManage && (
+        {canManage && mayManage(user) && (
           <>
             <Button
               variant="danger"
@@ -804,10 +879,13 @@ function UsersTab({
                 } else {
                   void onRun(
                     () =>
-                      api.updateUser(user.id, {
-                        isActive: true,
-                        expectedVersion: user.sync.version,
-                      }),
+                      withKey((token) =>
+                        api.updateUser(
+                          user.id,
+                          { isActive: true, expectedVersion: user.sync.version },
+                          token,
+                        ),
+                      ),
                     t('access.users.statusChangeFailed'),
                   );
                 }
@@ -910,7 +988,10 @@ function UsersTab({
                 setSettingPassword(null);
                 if (target) {
                   void onRun(
-                    async () => onSecret(await api.resetPassword(target.id)),
+                    async () =>
+                      onSecret(
+                        await withKey((token) => api.resetPassword(target.id, undefined, token)),
+                      ),
                     t('access.users.resetPasswordFailed'),
                   );
                 }
@@ -931,7 +1012,10 @@ function UsersTab({
                 setSettingPassword(null);
                 if (target) {
                   void onRun(
-                    async () => onSecret(await api.resetPassword(target.id, chosen)),
+                    async () =>
+                      onSecret(
+                        await withKey((token) => api.resetPassword(target.id, chosen, token)),
+                      ),
                     t('access.users.resetPasswordFailed'),
                   );
                 }
@@ -975,10 +1059,13 @@ function UsersTab({
                 if (target) {
                   void onRun(
                     () =>
-                      api.updateUser(target.id, {
-                        isActive: false,
-                        expectedVersion: target.sync.version,
-                      }),
+                      withKey((token) =>
+                        api.updateUser(
+                          target.id,
+                          { isActive: false, expectedVersion: target.sync.version },
+                          token,
+                        ),
+                      ),
                     t('access.users.statusChangeFailed'),
                   );
                 }
@@ -1015,7 +1102,10 @@ function UsersTab({
                 const target = confirmDelete;
                 setConfirmDelete(null);
                 if (target)
-                  void onRun(() => api.deleteUser(target.id), t('access.users.deleteFailed'));
+                  void onRun(
+                    () => withKey((token) => api.deleteUser(target.id, token)),
+                    t('access.users.deleteFailed'),
+                  );
               }}
             >
               {t('access.users.delete')}
@@ -1036,6 +1126,7 @@ function UsersTab({
             <>
               <span className="ob-mono ob-small">{openUser.username}</span>
               <span className="ob-small">{openUser.roleName}</span>
+              {isServerMaster(openUser) && <ServerMasterBadge />}
             </>
           }
           actions={renderUserActions(openUser)}
@@ -1086,6 +1177,7 @@ function UsersTab({
             onSecret(secret);
           }}
           onRun={onRun}
+          withKey={withKey}
         />
       )}
 
@@ -1096,6 +1188,7 @@ function UsersTab({
           columns={columns}
           rows={visible}
           rowKey={(user) => user.id}
+          rowHighlight={isServerMaster}
           selectedId={openUserId ?? undefined}
           onRowOpen={(user) => onOpenUser(user.id)}
           empty={
@@ -1117,17 +1210,19 @@ function UserForm({
   onCancel,
   onCreated,
   onRun,
+  withKey,
 }: {
   roles: Role[];
   actorTier: RoleTier;
   onCancel: () => void;
   onCreated: (secret: OneTimeSecret) => void;
   onRun: (action: () => Promise<unknown>, failure: string) => Promise<void>;
+  withKey: WithKey;
 }) {
   // G3 in the picker: you cannot mint somebody above yourself. Offering the
   // Administrator role to a management-tier actor and then answering with a 403
   // teaches the tier ceiling by refusal rather than by design.
-  const assignable = roles.filter((role) => TIER_RANK[role.tier] <= TIER_RANK[actorTier]);
+  const assignable = roles.filter((role) => tierRank(role.tier) <= tierRank(actorTier));
 
   const [displayName, setDisplayName] = useState('');
   const [username, setUsername] = useState('');
@@ -1161,7 +1256,7 @@ function UserForm({
             <Select id={id} value={roleId} onChange={(event) => setRoleId(event.target.value)}>
               {assignable.map((role) => (
                 <option key={role.id} value={role.id}>
-                  {role.name} ({role.tier})
+                  {`${role.name} (${tierLabel(role.tier)})`}
                 </option>
               ))}
             </Select>
@@ -1179,7 +1274,10 @@ function UserForm({
           disabled={!displayName.trim() || !username.trim() || !roleId}
           onClick={() =>
             void onRun(async () => {
-              const { secret } = await api.createUser({ displayName, username, roleId });
+              // A new Server Master needs the master key; anyone else does not.
+              const { secret } = await withKey((token) =>
+                api.createUser({ displayName, username, roleId }, token),
+              );
               onCreated(secret);
             }, t('access.userForm.createFailed'))
           }
@@ -1264,9 +1362,6 @@ function RolesTab({
   /** Which role's detail dialog is open, by id so it re-reads the live row. */
   const [openRoleId, setOpenRoleId] = useState<string | null>(null);
 
-  const tierTone = (tier: RoleTier | Role['tier']): 'conflict' | 'accent' | 'default' =>
-    tier === 'admin' ? 'conflict' : tier === 'management' ? 'accent' : 'default';
-
   const columns: DataTableColumn<Role>[] = [
     {
       key: 'name',
@@ -1287,7 +1382,7 @@ function RolesTab({
       key: 'tier',
       header: t('access.roles.colTier'),
       width: rem(130),
-      render: (role) => <StatusPill tone={tierTone(role.tier)}>{role.tier}</StatusPill>,
+      render: (role) => <TierPill tier={role.tier} />,
     },
     {
       key: 'permissions',
@@ -1343,7 +1438,9 @@ function RolesTab({
             </div>
             <div>
               <dt>{t('access.roles.colTier')}</dt>
-              <dd>{role.tier}</dd>
+              <dd>
+                <TierPill tier={role.tier} />
+              </dd>
             </div>
             <div>
               <dt>{t('access.roles.colUsers')}</dt>
@@ -1401,7 +1498,9 @@ function RolesTab({
           </Button>
         )}
         <span style={{ flex: 1 }} />
-        {canEdit && (
+        {/* The Server Master role is frozen: it always holds every permission,
+            and the server refuses any edit (`assertServerMasterRoleFrozen`). */}
+        {canEdit && role.tier !== SERVER_MASTER_TIER && (
           <Button
             variant="secondary"
             icon="edit"
@@ -1449,6 +1548,7 @@ function RolesTab({
           columns={columns}
           rows={roles}
           rowKey={(role) => role.id}
+          rowHighlight={(role) => role.tier === SERVER_MASTER_TIER}
           selectedId={openRoleId ?? undefined}
           onRowOpen={(role) => setOpenRoleId(role.id)}
           empty={<EmptyState title={t('access.roles.empty')} />}
@@ -1463,7 +1563,7 @@ function RolesTab({
         subtitle={
           openRole && (
             <>
-              {openRole.tier}
+              {tierLabel(openRole.tier)}
               {openRole.isSystem ? ` · ${t('access.roles.systemBadge')}` : ''}
               {' · '}
               {t('access.roles.detail.metaCounts', {
@@ -1719,11 +1819,15 @@ function RoleEditor({
                   else setTier(next);
                 }}
               >
-                {catalogue.tiers.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
+                {/* Server Master is never offered: that tier belongs to the one
+                    frozen system role (`assertTierAssignable`). */}
+                {catalogue.tiers
+                  .filter((value) => value !== SERVER_MASTER_TIER)
+                  .map((value) => (
+                    <option key={value} value={value}>
+                      {tierLabel(value)}
+                    </option>
+                  ))}
               </Select>
             )}
           </FormField>
@@ -1735,7 +1839,7 @@ function RoleEditor({
               action={
                 <div style={{ display: 'flex', gap: 'var(--s-8)' }}>
                   <Button variant="secondary" size="sm" onClick={() => setPendingTier(null)}>
-                    {t('access.roleEditor.keepTier', { tier })}
+                    {t('access.roleEditor.keepTier', { tier: tierLabel(tier) })}
                   </Button>
                   <Button
                     size="sm"
@@ -1749,14 +1853,14 @@ function RoleEditor({
                       setPendingTier(null);
                     }}
                   >
-                    {t('access.roleEditor.changeTier', { tier: pendingTier })}
+                    {t('access.roleEditor.changeTier', { tier: tierLabel(pendingTier) })}
                   </Button>
                 </div>
               }
             >
               <strong>
                 {t('access.roleEditor.pendingWarning', {
-                  tier: pendingTier,
+                  tier: tierLabel(pendingTier),
                   count: wouldDrop.length,
                   plural: wouldDrop.length === 1 ? '' : 's',
                 })}
@@ -1907,7 +2011,7 @@ function RecycleBin({
                 <li key={role.id}>
                   <span className="ob-body-strong">{role.name}</span>{' '}
                   <span className="ob-small">
-                    {t('access.recycleBin.roleMeta', { tier: role.tier })}
+                    {t('access.recycleBin.roleMeta', { tier: tierLabel(role.tier) })}
                   </span>{' '}
                   <Button
                     variant="secondary"
@@ -1951,9 +2055,6 @@ function RecycleBin({
   );
 }
 
-/** Tier ordering, for filtering a picker to what the actor may hand out. */
-const TIER_RANK: Record<RoleTier, number> = { office: 1, management: 2, admin: 3 };
-
 /**
  * Edit a person's display name and username.
  *
@@ -1966,11 +2067,13 @@ function UserEditForm({
   onCancel,
   onSaved,
   onRun,
+  withKey,
 }: {
   user: User;
   onCancel: () => void;
   onSaved: () => void;
   onRun: (action: () => Promise<unknown>, failure: string) => Promise<void>;
+  withKey: WithKey;
 }) {
   const [displayName, setDisplayName] = useState(user.displayName);
   const [username, setUsername] = useState(user.username);
@@ -2006,11 +2109,18 @@ function UserEditForm({
           disabled={!dirty || !displayName.trim() || !username.trim()}
           onClick={() =>
             void onRun(async () => {
-              await api.updateUser(user.id, {
-                displayName: displayName.trim(),
-                username: username.trim(),
-                expectedVersion: user.sync.version,
-              });
+              // Renaming a Server Master's username needs the master key.
+              await withKey((token) =>
+                api.updateUser(
+                  user.id,
+                  {
+                    displayName: displayName.trim(),
+                    username: username.trim(),
+                    expectedVersion: user.sync.version,
+                  },
+                  token,
+                ),
+              );
               onSaved();
             }, t('access.userEdit.saveFailed'))
           }

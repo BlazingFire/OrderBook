@@ -91,6 +91,9 @@ describe('the migration registry matches the directory', () => {
     // Highest timestamp, but the pinned block above already sits at the tail of
     // the array, so a new migration goes behind it and joins the pin.
     '20260401000000_order_vehicle_number',
+    // 1.3 batch, migration #1: the Server Master tier. Every later migration of
+    // the batch goes behind it, so their grants see the role.
+    '20261001000000_server_master_tier',
   ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {

@@ -135,7 +135,6 @@ const PANEL_ONLY: Record<string, string> = {
   reports: 'Master only: reports aggregate across the whole tenant, which only the Master sees.',
   access: 'Master only: roles and users are administered where the credentials are stored.',
   fields: 'Master only: custom-field definitions are schema, and schema is single-writer.',
-  logs: 'Master only: the activity log is a Master table with no panel-local copy.',
   recycleBin: 'Master only: restoring a soft-deleted row is a write against the owning database.',
   integrations: 'Master only: API keys and connectors are configured where they are held.',
 

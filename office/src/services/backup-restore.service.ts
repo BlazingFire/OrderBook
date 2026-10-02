@@ -28,6 +28,7 @@ import { resetOutboxCache } from '../sync/outbox.store.js';
 import { resetLocalStore } from '../sync/local-store.js';
 import { resetUserStore } from './user-store.js';
 import { resetSignInAttempts } from './sign-in-attempts.store.js';
+import { resetOfflineAuthEvents } from './offline-auth-events.store.js';
 
 /** Read through `paths()` on each restore — the data folder can move at runtime. */
 function filePaths(): Record<string, string> {
@@ -135,12 +136,18 @@ export async function restoreBackup(file: Buffer, passphrase: string, confirmWip
   // holding a `panelId` in memory that no longer exists on disk.
   await clearCredentials();
 
+  // Sign-ins waiting for upload belong to the pairing this restore replaces.
+  // The restored panel pairs again, and the next Master would file them under
+  // the restored device, so they go with the rest of the wiped state.
+  await fs.rm(paths().offlineAuthEventsFile, { force: true });
+
   resetDeviceCache();
   resetClockCache();
   resetOutboxCache();
   resetLocalStore();
   resetUserStore();
   resetSignInAttempts();
+  resetOfflineAuthEvents();
 
   return { manifest: parsed.manifest };
 }

@@ -18,12 +18,18 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import type { OfficePanelReportInput } from '@orderbook/shared';
 
 import { canRunIntegrationTests } from './helpers/db.js';
-import { resetData, setupDatabase, teardownDatabase, testActor, testTenantId } from './helpers/fixtures.js';
+import {
+  resetData,
+  setUpFirstRun,
+  setupDatabase,
+  teardownDatabase,
+  testActor,
+  testTenantId,
+} from './helpers/fixtures.js';
 import { db } from '../src/db/knex.js';
 import { setPanelLink, type PanelLink } from '../src/realtime/panel-link.js';
 import * as activityLog from '../src/repositories/activity-log.repository.js';
 import * as panels from '../src/services/panel.service.js';
-import * as setup from '../src/services/setup.service.js';
 
 /**
  * A stand-in for the hub's socket registry.
@@ -78,7 +84,7 @@ describe.skipIf(!canRunIntegrationTests)('office panel administration (integrati
   beforeEach(async () => {
     await resetData();
     panels.closePairingWindow();
-    await setup.runFirstTimeSetup('Shree Ceramics');
+    await setUpFirstRun('Shree Ceramics');
   });
 
   afterEach(() => {

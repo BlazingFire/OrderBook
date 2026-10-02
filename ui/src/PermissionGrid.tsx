@@ -22,6 +22,7 @@ import type { PermissionCatalogue, RoleTier } from '@orderbook/shared';
 
 import { t } from './i18n.js';
 import { actionLabel, capabilityLabel, groupLabel, moduleLabel } from './permissionLabels';
+import { tierLabel } from './TierPill.js';
 
 export function PermissionGrid({
   catalogue,
@@ -137,7 +138,7 @@ export function PermissionGrid({
                       }
                       const allowed = permitted(key);
                       const reason = t('access.permissions.blocked', {
-                        tier: catalogue.minimumTier[key] ?? 'office',
+                        tier: tierLabel(catalogue.minimumTier[key] ?? 'office'),
                       });
                       return (
                         <td key={action} className={allowed ? undefined : 'ob-cell-blocked'}>
@@ -200,7 +201,7 @@ export function PermissionGrid({
               {capabilities.map((capability) => {
                 const allowed = permitted(capability.key);
                 const reason = t('access.permissions.blocked', {
-                  tier: catalogue.minimumTier[capability.key] ?? 'office',
+                  tier: tierLabel(catalogue.minimumTier[capability.key] ?? 'office'),
                 });
                 const hint = allowed ? capabilityHint(capability.key) : reason;
                 return (

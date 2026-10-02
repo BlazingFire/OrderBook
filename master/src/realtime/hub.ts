@@ -23,6 +23,7 @@ import {
   type SocketAuthPayload,
   type SocketData,
   type SyncConflict,
+  isServerMasterTier,
 } from '@orderbook/shared';
 
 import { actorCan, type ActorContext } from '../domain/actor.js';
@@ -38,6 +39,7 @@ import {
 import * as partyAccessRepo from '../repositories/party-access.repository.js';
 import { AppError, ForbiddenError, toErrorMessage, ValidationError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
+import { masterPcAddress } from '../lib/network.js';
 import { setPanelLink, type PanelRequest } from './panel-link.js';
 import { isAllowedSocketOrigin } from './socket-origin.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
@@ -307,11 +309,17 @@ async function authenticate(socket: PanelSocket): Promise<void> {
     socket.data.panelId = panel.id;
     socket.data.tenantId = panel.tenantId;
     socket.data.deviceCode = panel.deviceCode;
+    // Whatever the panel says, kept only if it is a plausible number; an Office
+    // built before the handshake sends none and is taken to speak protocol 1.
+    socket.data.protocol =
+      Number.isInteger(auth.protocol) && (auth.protocol as number) > 0 ? auth.protocol : undefined;
     return;
   }
 
   if (auth?.kind === 'master-admin') {
-    const user = await resolveSession(auth.sessionToken);
+    // A Master browser on the Master PC may hold a Server Master session; one
+    // on another PC may not, so the address goes with every resolution.
+    const user = await resolveSession(auth.sessionToken, sessionAddress(socket));
     if (!user) throw new Error('Session is not valid');
 
     socket.data.kind = 'master-admin';
@@ -349,7 +357,7 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
 
   await socket.join(ROOM_OFFICE_PANELS);
   panelSockets.set(panelId, socket);
-  await panelService.markPanelConnected(panelId, remoteAddress(socket));
+  await panelService.markPanelConnected(panelId, remoteAddress(socket), socket.data.protocol);
   log.info(`Office panel connected: ${panelId}`);
   await broadcastPanels(io);
 
@@ -647,7 +655,7 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   socket.on('log:verifyChain', (input, ack) =>
     run(ack, (actor) => logService.verifyLogChain(input, actor)),
   );
-  socket.on('log:export', (query, ack) => run(ack, (actor) => logService.exportLogs(query, actor)));
+  socket.on('log:export', (query, ack) => run(ack, (actor) => logService.exportLogs(query, actor, logService.SOCKET_EXPORT_LIMITS)));
 
   socket.on('report:dispatches', (query, ack) =>
     run(ack, (actor) => reportService.dispatchReport(query, actor)),
@@ -685,6 +693,11 @@ function registerAuthCommands(socket: PanelSocket, onActorChanged: () => void): 
         // The handshake has always known which machine this is; the audit trail
         // simply never got told. §9 asks for the source device on every entry.
         socket.data.deviceCode ?? socket.data.panelId,
+        // Never on the Master PC, whatever address this socket came from: an
+        // Office running on the Master PC itself, or a port proxied to look
+        // local, is still an Office, and a Server Master signs in only at the
+        // Master's own screen.
+        { onMasterPc: false },
       );
 
       // Deliberately one signed-in person per panel: an Office Panel is one PC
@@ -705,9 +718,13 @@ function registerAuthCommands(socket: PanelSocket, onActorChanged: () => void): 
         return { status: 'released' as const };
       }
 
+      // No address on purpose: a panel socket never carries a Server Master's
+      // session, so one resolves here as `expired` wherever the panel is. The
+      // tier check below says the same thing a second time, so passing an
+      // address here later cannot quietly undo it.
       const resolution = await authService.resolveSessionDetailed(token);
 
-      if (resolution.status === 'active') {
+      if (resolution.status === 'active' && !isServerMasterTier(resolution.user.roleTier)) {
         socket.data.actingUserToken = token;
         onActorChanged();
         return {
@@ -723,7 +740,10 @@ function registerAuthCommands(socket: PanelSocket, onActorChanged: () => void): 
       socket.data.actingUserToken = undefined;
       onActorChanged();
 
-      return { status: 'rejected' as const, reason: resolution.reason };
+      return {
+        status: 'rejected' as const,
+        reason: resolution.status === 'rejected' ? resolution.reason : ('expired' as const),
+      };
     }),
   );
 
@@ -741,9 +761,24 @@ function registerAuthCommands(socket: PanelSocket, onActorChanged: () => void): 
     }),
   );
 
+  // Sign-ins this panel checked while the Master was unreachable, for the
+  // audit trail. Filed under the panel's device code, which the handshake
+  // established; nothing in the payload can name another machine.
+  socket.on('auth:offlineEvents', (events, ack) =>
+    respond(ack, async () => {
+      const tenantId = socket.data.tenantId;
+      if (!tenantId) return { recorded: 0 };
+      return authService.recordOfflineAuthEvents(
+        tenantId,
+        socket.data.deviceCode ?? socket.data.panelId ?? 'panel',
+        events,
+      );
+    }),
+  );
+
   socket.on('auth:signOut', (token, ack) =>
     respond(ack, async () => {
-      authService.signOut(token);
+      await authService.signOut(token);
       if (socket.data.actingUserToken === token) socket.data.actingUserToken = undefined;
       onActorChanged();
       return null;
@@ -863,7 +898,10 @@ async function adminActor(socket: PanelSocket): Promise<ActorContext | null> {
   const tenantId = socket.data.tenantId;
   if (!tenantId) throw new AppError('error.internal.sessionNoTenant', {}, 500, 'internal');
 
-  const resolved = await authService.resolveSessionWithPermissions(socket.data.sessionToken);
+  const resolved = await authService.resolveSessionWithPermissions(
+    socket.data.sessionToken,
+    sessionAddress(socket),
+  );
   if (!resolved || resolved.user.tenantId !== tenantId) return null;
 
   return {
@@ -1017,7 +1055,10 @@ async function resnapshot(socket: PanelSocket): Promise<void> {
  * `session:rejected`, which is right on a command and wrong on a broadcast —
  * a background fan-out should not be able to sign somebody out.
  */
-async function actorForRecipient(socket: { data: SocketData }): Promise<ActorContext | null> {
+async function actorForRecipient(socket: {
+  data: SocketData;
+  handshake: SocketHandshake;
+}): Promise<ActorContext | null> {
   const tenantId = socket.data.tenantId;
   if (!tenantId) return null;
 
@@ -1032,7 +1073,10 @@ async function actorForRecipient(socket: { data: SocketData }): Promise<ActorCon
      * receiving `data:changed` for every restricted party it holds a grant on —
      * a disclosure on the exact path party scoping exists to protect.
      */
-    const resolved = await authService.resolveSessionWithPermissions(socket.data.sessionToken);
+    const resolved = await authService.resolveSessionWithPermissions(
+      socket.data.sessionToken,
+      sessionAddress(socket),
+    );
     if (!resolved || resolved.user.tenantId !== tenantId) return null;
 
     return {
@@ -1131,7 +1175,10 @@ async function broadcastDashboard(io: RealtimeHub['io']): Promise<void> {
     // id: a dashboard is permission-filtered, so pushing one to somebody whose
     // account or role has since changed would show them figures their current
     // role does not entitle them to.
-    const resolved = await authService.resolveSessionWithPermissions(socket.data.sessionToken);
+    const resolved = await authService.resolveSessionWithPermissions(
+      socket.data.sessionToken,
+      sessionAddress(socket),
+    );
     if (!resolved || resolved.user.tenantId !== tenantId) {
       socket.disconnect(true);
       continue;
@@ -1207,6 +1254,13 @@ async function requestFromPanel<T>(
 
   if (!result?.ok) throw new Error(result?.error || 'That office panel refused');
   return result.data;
+}
+
+type SocketHandshake = { address: string; headers: Record<string, string | string[] | undefined> };
+
+/** The address a Master browser's session is resolved against (`masterPcAddress`). */
+function sessionAddress(socket: { handshake: SocketHandshake }): string | null {
+  return masterPcAddress(socket.handshake.address, socket.handshake.headers);
 }
 
 function remoteAddress(socket: PanelSocket): string | null {

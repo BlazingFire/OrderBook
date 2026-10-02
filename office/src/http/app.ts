@@ -23,6 +23,7 @@ import {
   DEVELOPER_RESET_CONFIRMATION,
   DEVELOPER_TOKEN_HEADER,
   IMAGE_VARIANTS,
+  isLocale,
   isPickKind,
   MAX_IMAGE_SOURCE_BYTES,
   MAX_PRODUCT_IMPORT_BYTES,
@@ -1262,7 +1263,9 @@ export function createApp(): Express {
   app.get('/api/logs/export', (req, res) => {
     const from = typeof req.query.from === 'string' ? req.query.from : 'all';
     const to = typeof req.query.to === 'string' ? req.query.to : 'all';
-    return forwardCsv(res, 'log:export', parseLogQuery(req.query), `logs-${from}-${to}.csv`);
+    // The CSV's `sentence` column is rendered on the Master, in this language.
+    const locale = isLocale(req.query.locale) ? req.query.locale : undefined;
+    return forwardCsv(res, 'log:export', { ...parseLogQuery(req.query), locale }, `logs-${from}-${to}.csv`);
   });
 
   // Reports (docs/backend-modules/04-API-CONTRACT.md §3). Forwarded live and
@@ -1783,6 +1786,8 @@ export const SNAPSHOT_POLICY: Record<keyof SyncSnapshot, SnapshotPolicy> = {
   serverHlc: 'passthrough',
   serverTime: 'passthrough',
   serverVersion: 'passthrough',
+  // The Master's protocol number. Not company data, the same for whoever reads it.
+  protocol: 'passthrough',
   // Already computed per-actor by the Master, exactly like `permissions` and
   // `dashboard`. This panel re-gates a cached snapshot for whoever is signed in
   // *now*, but it cannot recompute a Party Access grant it was never told
@@ -1931,7 +1936,9 @@ function failForward(res: Response, error: unknown): void {
   const message = error instanceof Error ? error.message : 'Command failed';
   const code = error instanceof MasterCommandError ? error.code : undefined;
 
-  res.status(code === 'forbidden' ? 403 : 502).json({
+  // 426 for a Master too old for the command (`MasterConnection.command()`'s
+  // protocol gate): the request was fine, the Master needs an update.
+  res.status(code === 'forbidden' ? 403 : code === 'updateNeeded' ? 426 : 502).json({
     error: code ?? 'master_command_failed',
     message,
     ...(error instanceof MasterCommandError && error.messageKey

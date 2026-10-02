@@ -63,6 +63,17 @@ that are meant to be read off this page and typed:
 They are declared once, in `shared/src/domain/developer.ts` (`DUMMY_USERS`), and
 both ways of seeding them read that list.
 
+Since 1.3 a set-up Master also has two **Server Masters** (`docs/ROLES_AND_USERS.md`
+§3.2). When seeding has to run first-time setup itself, it creates two test ones
+(`DUMMY_SERVER_MASTERS`):
+
+| Username        | Password      | Tier            | Display name                |
+| --------------- | ------------- | --------------- | --------------------------- |
+| `master`        | `Master@1234` | `server_master` | Server Master (test)        |
+| `master-backup` | `Backup@1234` | `server_master` | Server Master backup (test) |
+
+They sign in only on the Master PC, like any Server Master.
+
 ### Seeding them
 
 **From the app** — no longer possible (the Developer tab is gone); the route
@@ -84,15 +95,20 @@ machine it seeds whichever database that names, not a fresh one.
 
 - **On a Master nobody has set up yet it runs first-time setup itself**, under the
   company name *OrderBook Test Company* — a user row needs a tenant and a
-  `master_config` to mean anything. The pairing password that setup generates is
+  `master_config` to mean anything. Setup creates the two test Server Masters
+  above and, since 1.3, no `admin` of its own; the test `admin` is then created
+  like the other test accounts. The pairing password that setup generates is
   shown **once**, in the result; it is not recoverable afterwards, exactly as on
   the first-run screen.
-- **An existing `admin` is re-armed, not skipped.** Every set-up Master already
-  has an `admin` — first-time setup creates it — so seeding **overwrites that
+- **An existing `admin` is re-armed, not skipped.** An installation set up before
+  1.3 has an `admin` that first-time setup created, so seeding **overwrites that
   account's password with `Admin@1234`**, sets its display name to *Admin (test)*,
   reactivates it, and ends its sessions. Whoever was signed in as `admin` is
   signed out and their old password no longer works. On a real installation that
   is a deliberate act; the tool says so before you run it.
+- **A Server Master is never touched.** If a test username belongs to a Server
+  Master, that account is skipped rather than demoted or re-armed: Server Master
+  passwords change only with the master key (`docs/MASTER_KEY.md`).
 
 Everything else in the database is untouched — other users, parties, products,
 leads and orders stay exactly as they were.
@@ -337,6 +353,9 @@ installation whose administrator password is lost, on a machine with no internet
 and nobody on site who can help. If a deployment holds real money data and has
 staff who should not have this power, set `ORDERBOOK_DEVELOPER_PASSWORD` in the
 Master's `.env` and do not write it down where those staff can read it.
+
+The developer password is not the master key, and neither opens the other's
+gate. The master key (`docs/MASTER_KEY.md`) has no `.env` override.
 
 Two things the gate deliberately does **not** do:
 

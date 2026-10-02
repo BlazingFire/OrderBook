@@ -11,11 +11,19 @@
  *    ends mid-use (most often: this person just changed their own password,
  *    which invalidates every session they hold) dropped them to a bare sign-in
  *    form with no explanation.
+ *
+ * On the Master PC it is also the door to the master-key flows: an
+ * installation that still owes its owner two Server Master accounts shows
+ * that setup first (no skip), and "Forgot Server Master password?" opens the
+ * recovery flow. Neither is offered to a LAN browser. There is no username
+ * prefill: a fresh setup has no `admin` account to suggest.
  */
 
 import { useState, type FormEvent } from 'react';
 import type { MessageKey, SignedInUser } from '@orderbook/shared';
 import { api } from '../api';
+import { MasterKeyRecoveryFlow } from './MasterKeyRecoveryFlow';
+import { ServerMasterSetupFlow } from './ServerMasterSetupFlow';
 import {
   Button,
   Card,
@@ -32,10 +40,23 @@ interface Props {
   onSignedIn: (user: SignedInUser, sessionToken: string) => void;
   /** Why the window is back here, when it did not get here by signing out. */
   notice?: MessageKey | null;
+  /** This browser is on the Master PC, where the master-key flows are offered. */
+  onMasterPc?: boolean;
+  /** Fewer than two Server Masters exist: on the Master PC, set them up first. */
+  serverMasterSetupNeeded?: boolean;
+  /** The setup flow finished; the caller stops asking for it. */
+  onServerMastersSetUp?: () => void;
 }
 
-export function SignInScreen({ onSignedIn, notice }: Props) {
-  const [username, setUsername] = useState('admin');
+export function SignInScreen({
+  onSignedIn,
+  notice,
+  onMasterPc = false,
+  serverMasterSetupNeeded = false,
+  onServerMastersSetUp,
+}: Props) {
+  const [recovering, setRecovering] = useState(false);
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -53,6 +74,14 @@ export function SignInScreen({ onSignedIn, notice }: Props) {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (onMasterPc && serverMasterSetupNeeded) {
+    return <ServerMasterSetupFlow onDone={() => onServerMastersSetUp?.()} />;
+  }
+
+  if (onMasterPc && recovering) {
+    return <MasterKeyRecoveryFlow onBack={() => setRecovering(false)} />;
   }
 
   return (
@@ -77,7 +106,10 @@ export function SignInScreen({ onSignedIn, notice }: Props) {
         {/* Above the card, not inside it: it explains why this screen is here,
             which is not about the fields below. */}
         {notice && (
-          <p className="ob-small" style={{ textAlign: 'center', margin: 0, color: 'var(--accent)' }}>
+          <p
+            className="ob-small"
+            style={{ textAlign: 'center', margin: 0, color: 'var(--accent)' }}
+          >
             {t(notice)}
           </p>
         )}
@@ -119,6 +151,12 @@ export function SignInScreen({ onSignedIn, notice }: Props) {
             <Button type="submit" variant="primary" busy={busy} disabled={!username || !password}>
               {busy ? t('signIn.action.signingIn') : t('signIn.action.signIn')}
             </Button>
+
+            {onMasterPc && (
+              <Button variant="ghost" size="sm" onClick={() => setRecovering(true)}>
+                {t('masterKey.recover.link')}
+              </Button>
+            )}
           </form>
         </Card>
       </div>

@@ -38,6 +38,8 @@ export interface PanelPaths {
   snapshotFile: string;
   usersFile: string;
   signInAttemptsFile: string;
+  /** Sign-ins checked offline, waiting to be uploaded to the Master's audit trail. */
+  offlineAuthEventsFile: string;
   imagesDir: string;
   /** Cached profile pictures, so the sign-in screen has faces while offline. */
   avatarsDir: string;
@@ -53,6 +55,7 @@ const FILE_NAMES = {
   snapshotFile: 'snapshot.json',
   usersFile: 'users.json',
   signInAttemptsFile: 'sign-in-attempts.json',
+  offlineAuthEventsFile: 'offline-auth-events.json',
 } as const;
 
 /**
@@ -100,6 +103,7 @@ export function paths(): PanelPaths {
     snapshotFile: path.join(dataDir, FILE_NAMES.snapshotFile),
     usersFile: path.join(dataDir, FILE_NAMES.usersFile),
     signInAttemptsFile: path.join(dataDir, FILE_NAMES.signInAttemptsFile),
+    offlineAuthEventsFile: path.join(dataDir, FILE_NAMES.offlineAuthEventsFile),
     imagesDir: path.join(dataDir, 'images'),
     avatarsDir: path.join(dataDir, 'avatars'),
   };

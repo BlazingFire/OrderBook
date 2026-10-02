@@ -55,7 +55,7 @@ import { permissionSetForRole } from '../repositories/role.repository.js';
 import * as syncRepo from '../repositories/sync.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
 import * as catalogService from './catalog.service.js';
-import { assertReachableUrl } from './connector.service.js';
+import { assertAllowedAuthHeader, assertNotSelf, assertReachableUrl } from './connector.service.js';
 
 const log = createLogger('connector');
 
@@ -63,6 +63,8 @@ const REQUEST_TIMEOUT_MS = 10_000;
 /** Enough to see the shape of the failure without turning a log into a bomb. */
 const MAX_REPORTED_ERRORS = 50;
 const MAX_PAGES = 200;
+/** Redirect hops followed before a run gives up; a real server needs one or two. */
+const MAX_REDIRECTS = 5;
 
 /** Retried: a network blip and the four "come back later" statuses. */
 const RETRY_STATUSES = new Set([429, 502, 503, 504]);
@@ -100,6 +102,8 @@ async function callRemote(
 ): Promise<{ status: number; body: unknown }> {
   const url = assertReachableUrl(new URL(path, connector.baseUrl).toString());
   for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
+  await assertNotSelf(url);
+  assertAllowedAuthHeader(connector.authHeader);
 
   const headers: Record<string, string> = { accept: 'application/json' };
   const credential =
@@ -120,6 +124,37 @@ async function callRemote(
     headers.authorization = `Basic ${Buffer.from(pair).toString('base64')}`;
   }
 
+  // Redirects are followed by hand so each hop gets the same checks as the
+  // first request: a redirect must not lead back to this Master over loopback.
+  let target = url;
+  let verb = method;
+  for (let hop = 0; ; hop += 1) {
+    const answer = await requestWithRetry(target, verb, headers);
+    if (!('location' in answer)) return answer;
+    if (hop === MAX_REDIRECTS) throw new Error('The remote system redirected too many times');
+
+    const next = assertReachableUrl(new URL(answer.location, target).toString());
+    await assertNotSelf(next);
+    // What fetch itself does on a redirect: the credential stays with the
+    // origin it was meant for, and a 303 (or a POST answered 301/302) turns
+    // into a GET.
+    if (next.origin !== target.origin) {
+      delete headers.authorization;
+      delete headers.cookie;
+    }
+    if (answer.status === 303 || ((answer.status === 301 || answer.status === 302) && verb === 'POST')) {
+      verb = 'GET';
+    }
+    target = next;
+  }
+}
+
+/** One URL, retried on a network blip or a "come back later" status. */
+async function requestWithRetry(
+  url: URL,
+  method: string,
+  headers: Record<string, string>,
+): Promise<{ status: number; body: unknown } | { status: number; location: string }> {
   let lastError: unknown = null;
 
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
@@ -127,8 +162,15 @@ async function callRemote(
       const response = await fetch(url, {
         method,
         headers,
+        redirect: 'manual',
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
+
+      const location = response.headers.get('location');
+      if (response.status >= 300 && response.status < 400 && location) {
+        await response.body?.cancel();
+        return { status: response.status, location };
+      }
 
       // A 4xx that is not a rate limit is the remote saying no. Retrying it
       // three times just makes the same mistake more slowly.

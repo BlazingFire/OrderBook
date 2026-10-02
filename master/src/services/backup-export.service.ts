@@ -25,9 +25,11 @@ import { BACKUP_FORMAT_VERSION, type BackupExportRequest, type BackupManifest } 
 
 import { appVersion } from '../lib/app-version.js';
 import { db } from '../db/knex.js';
+import type { ActorContext } from '../domain/actor.js';
 import { assertPassphraseStrong } from '../domain/backup.js';
 import { ConflictError, ValidationError } from '../lib/errors.js';
 import { encryptBackup } from '../lib/backup-crypto.js';
+import { recordActivity } from '../repositories/activity-log.repository.js';
 import { dumpTable, listTenantIds, listUserTables, tenantScopedTables } from '../repositories/backup.repository.js';
 import { getIdentity } from './setup.service.js';
 
@@ -36,7 +38,7 @@ export interface ExportResult {
   data: Buffer;
 }
 
-export async function exportBackup(request: BackupExportRequest): Promise<ExportResult> {
+export async function exportBackup(request: BackupExportRequest, actor?: ActorContext): Promise<ExportResult> {
   assertPassphraseStrong(request.passphrase);
 
   const identity = await getIdentity();
@@ -73,6 +75,26 @@ export async function exportBackup(request: BackupExportRequest): Promise<Export
 
   const data = await encryptBackup(manifestWithoutHash, payload, request.passphrase);
   const fileName = `orderbook-master-${request.scope}-${manifestWithoutHash.createdAt.replace(/[:.]/g, '-')}.obbackup`;
+
+  // After the file is built, in a small transaction of its own: building it
+  // wrote nothing. The file itself therefore does not hold this entry.
+  if (actor) {
+    await db().transaction((trx) =>
+      recordActivity(
+        {
+          tenantId: actor.tenantId,
+          entityType: 'backup',
+          entityId: manifestWithoutHash.createdAt,
+          action: 'exported',
+          actorType: actor.actorType,
+          actorId: actor.actorId,
+          details: { scope: request.scope, fileName },
+        },
+        actor,
+        trx,
+      ),
+    );
+  }
 
   return { fileName, data };
 }

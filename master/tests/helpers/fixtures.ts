@@ -10,7 +10,13 @@
  * stage.
  */
 
-import type { PermissionSet, Product, ProductInput, ProductVariant } from '@orderbook/shared';
+import type {
+  PermissionSet,
+  Product,
+  ProductInput,
+  ProductVariant,
+  ServerMasterAccountInput,
+} from '@orderbook/shared';
 import { PERMISSIONS } from '@orderbook/shared';
 
 import { closeDatabase, db, initDatabase, runMigrations } from '../../src/db/knex.js';
@@ -22,6 +28,11 @@ import * as catalogService from '../../src/services/catalog.service.js';
 import { upsertSetting } from '../../src/repositories/settings.repository.js';
 import { invalidateSettingsCache } from '../../src/services/settings.service.js';
 import { resetAuthState } from '../../src/services/auth.service.js';
+import { hashPassword } from '../../src/lib/password.js';
+import { nextHlc } from '../../src/repositories/identity.repository.js';
+import { insertUser } from '../../src/repositories/user.repository.js';
+import { ensureServerMasterRole } from '../../src/services/server-master.service.js';
+import * as setupService from '../../src/services/setup.service.js';
 import { startTestPostgres, stopTestPostgres, testConnectionUrl } from './db.js';
 
 /** Business tables, safe to empty between tests. */
@@ -116,9 +127,15 @@ export async function setupDatabase(): Promise<void> {
   seededTenantId = await testTenantId();
 
   // Self-healing: a previous crashed run can leave test-created roles behind,
-  // and capturing those as "seeded" would make them immortal. The migration
-  // seeds exactly three, named for their tiers, so anything else is debris.
-  await db()('roles').whereNotIn('name', ['Admin', 'Management', 'Office']).delete();
+  // and capturing those as "seeded" would make them immortal. The migrations
+  // seed four: the three named for their tiers, and the `is_system` Server
+  // Master role (`20261001`), whose name may carry a fallback suffix — so a
+  // system role is kept by that flag rather than by name. Anything else is
+  // debris.
+  await db()('roles')
+    .whereNotIn('name', ['Admin', 'Management', 'Office'])
+    .andWhere('is_system', false)
+    .delete();
 
   const rows = await db()('roles').select<Array<{ id: string }>>('id');
   seededRoleIds = rows.map((row) => row.id);
@@ -246,6 +263,62 @@ export async function resetData(): Promise<void> {
   // vault's switch surfaces in an unrelated suite.
   invalidateSettingsCache();
   resetAuthState();
+}
+
+/**
+ * The two Server Master accounts `setUpFirstRun` types, as the owner would at
+ * first run. Test-only passwords.
+ */
+export const FIRST_RUN_ACCOUNTS: readonly ServerMasterAccountInput[] = [
+  { username: 'master', displayName: 'Main Server Master', password: 'master-pass-1' },
+  { username: 'master-backup', displayName: 'Backup Server Master', password: 'backup-pass-2' },
+];
+
+/**
+ * First-run setup the way every suite needs it: two Server Masters, no
+ * `admin`. Returns setup's own credentials plus `username` / `password` for the
+ * main Server Master, so a suite signs in as `master` the way it used to sign
+ * in as `admin` — over supertest, which is loopback, the only place a Server
+ * Master may sign in.
+ */
+export async function setUpFirstRun(companyName: string | null = null): Promise<
+  Omit<setupService.FirstRunCredentials, 'accounts'> & {
+    username: string;
+    password: string;
+    accounts: readonly ServerMasterAccountInput[];
+  }
+> {
+  const credentials = await setupService.runFirstTimeSetup(companyName, FIRST_RUN_ACCOUNTS);
+  const main = FIRST_RUN_ACCOUNTS[0] as ServerMasterAccountInput;
+  return { ...credentials, username: main.username, password: main.password, accounts: FIRST_RUN_ACCOUNTS };
+}
+
+/**
+ * One more user in the Server Master role, written directly — for the suites
+ * that need a third Server Master, or one without running setup.
+ */
+export async function createServerMasterUser(
+  username: string,
+  password = 'server-master-pass',
+  displayName = username,
+): Promise<string> {
+  const tenantId = await testTenantId();
+  const passwordHash = await hashPassword(password);
+  return db().transaction(async (trx) =>
+    insertUser(
+      {
+        tenantId,
+        username,
+        displayName,
+        passwordHash,
+        roleId: await ensureServerMasterRole(tenantId, trx),
+        createdBy: null,
+        hlc: await nextHlc(trx),
+        fieldHlc: {},
+      },
+      trx,
+    ),
+  );
 }
 
 /** The tenant the migrations seeded. Every test acts inside it. */

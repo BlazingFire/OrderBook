@@ -16,7 +16,9 @@ import {
   assertNameAvailable,
   assertPermissionsWithinTier,
   assertRoleUnused,
+  assertServerMasterRoleFrozen,
   assertSystemRoleEditable,
+  assertTierAssignable,
   assertTierWithinActor,
   assertVersionMatches,
 } from '../domain/access.js';
@@ -65,6 +67,8 @@ export async function createRole(input: RoleInput, actor: ActorContext): Promise
   if (!name) throw new ValidationError('validation.role.nameRequired');
 
   const tier = assertTier(input.tier);
+  // The Server Master tier has its one reserved role; nobody makes another.
+  assertTierAssignable(tier);
   assertTierWithinActor(actor, tier);
   assertPermissionsWithinTier(input.permissions ?? [], tier);
   assertNameAvailable(
@@ -122,6 +126,10 @@ export async function updateRole(
   const existing = await roleRepo.findRoleById(actor.tenantId, id);
   if (!existing) throw new NotFoundError('Role');
 
+  // Frozen whole, for everyone including a Server Master: its permissions are
+  // every key there is, and a later migration that adds one keeps it so.
+  assertServerMasterRoleFrozen(existing);
+
   // The diff is computed before the check so a stale save can be told *what*
   // differs, which is the whole point of offering Reload versus Overwrite —
   // "somebody else saved first" with no detail leaves Cancel as the only exit.
@@ -143,6 +151,8 @@ export async function updateRole(
 
   const tier = assertTier(input.tier);
   assertSystemRoleEditable(existing, { tier });
+  // No role is moved onto the Server Master tier either.
+  assertTierAssignable(tier);
   assertTierWithinActor(actor, tier);
 
   // Re-derived here rather than trusted from the client: the UI previews which
@@ -213,6 +223,7 @@ export async function deleteRole(id: string, actor: ActorContext): Promise<Role>
   const existing = await roleRepo.findRoleById(actor.tenantId, id);
   if (!existing) throw new NotFoundError('Role');
 
+  assertServerMasterRoleFrozen(existing);
   assertSystemRoleEditable(existing, { deleting: true });
 
   await db().transaction(async (trx) => {

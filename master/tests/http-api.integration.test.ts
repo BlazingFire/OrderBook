@@ -20,25 +20,35 @@ import * as leads from '../src/services/lead.service.js';
 import * as partyAccess from '../src/services/party-access.service.js';
 import * as roles from '../src/services/role.service.js';
 import * as users from '../src/services/user.service.js';
-import { resetData, setupDatabase, teardownDatabase, stageIdByName, testActor } from './helpers/fixtures.js';
+import {
+  FIRST_RUN_ACCOUNTS,
+  resetData,
+  setupDatabase,
+  teardownDatabase,
+  stageIdByName,
+  testActor,
+} from './helpers/fixtures.js';
 import { createApp } from '../src/http/app.js';
 import { closePairingWindow } from '../src/services/panel.service.js';
 
 let app: Express;
 
+/** The main Server Master first-run creates; supertest is loopback, where a Server Master may sign in. */
+const MAIN = FIRST_RUN_ACCOUNTS[0]!;
+
 /** Signs in and returns an agent that carries the session cookie. */
 async function signedInAgent(password: string) {
   const agent = request.agent(app);
-  await agent.post('/api/auth/sign-in').send({ username: 'admin', password }).expect(200);
+  await agent.post('/api/auth/sign-in').send({ username: MAIN.username, password }).expect(200);
   return agent;
 }
 
 async function initialize(): Promise<{ password: string; pairingPassword: string; masterUniqueId: string }> {
   const response = await request(app)
     .post('/api/setup/initialize')
-    .send({ companyName: 'Shree Ceramics' })
+    .send({ companyName: 'Shree Ceramics', accounts: FIRST_RUN_ACCOUNTS })
     .expect(201);
-  return response.body;
+  return { ...response.body, password: MAIN.password };
 }
 
 describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => {
@@ -155,14 +165,21 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
 
   describe('setup', () => {
     it('reports an uninitialised master', async () => {
-      await request(app).get('/api/setup/status').expect(200, { setupComplete: false });
+      await request(app)
+        .get('/api/setup/status')
+        .expect(200, { setupComplete: false, onMasterPc: true, serverMasterSetupNeeded: false });
     });
 
     it('initialises once and then refuses', async () => {
       await initialize();
       await request(app)
         .get('/api/setup/status')
-        .expect(200, { setupComplete: true, companyName: 'Shree Ceramics' });
+        .expect(200, {
+          setupComplete: true,
+          companyName: 'Shree Ceramics',
+          onMasterPc: true,
+          serverMasterSetupNeeded: false,
+        });
       await request(app).post('/api/setup/initialize').send({}).expect(409);
     });
 
@@ -171,7 +188,7 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       await request(app).get('/api/setup/identity').expect(401);
     });
 
-    it('returns the identity to a signed-in admin', async () => {
+    it('returns the identity to a signed-in Server Master', async () => {
       const { password, masterUniqueId } = await initialize();
       const agent = await signedInAgent(password);
 
@@ -183,12 +200,12 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
   describe('authentication', () => {
     it('rejects a wrong password with 401', async () => {
       await initialize();
-      await request(app).post('/api/auth/sign-in').send({ username: 'admin', password: 'nope' }).expect(401);
+      await request(app).post('/api/auth/sign-in').send({ username: MAIN.username, password: 'nope' }).expect(401);
     });
 
     it('rejects a malformed sign-in body with 400', async () => {
       await initialize();
-      await request(app).post('/api/auth/sign-in').send({ username: 'admin' }).expect(400);
+      await request(app).post('/api/auth/sign-in').send({ username: MAIN.username }).expect(400);
     });
 
     it('sets a session cookie and answers /me', async () => {
@@ -196,7 +213,7 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       const agent = await signedInAgent(password);
 
       const response = await agent.get('/api/auth/me').expect(200);
-      expect(response.body.user.username).toBe('admin');
+      expect(response.body.user.username).toBe(MAIN.username);
     });
 
     it('stops answering /me after signing out', async () => {

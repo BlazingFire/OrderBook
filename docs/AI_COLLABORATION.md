@@ -190,6 +190,121 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-03 - 1.3 Phase 2 review fixes, round 3 (Claude)
+
+- Master: a log export no longer refuses. As in 1.2 it keeps the newest 250,000 rows; past the byte cap (128 MiB
+  download, 45 MiB Office socket) it stops at the last whole batch that fits. `exportLogs` returns `truncated` and
+  the export's own entry records it. The round-2 keys `validation.logs.export.tooLarge`/`tooManyBytes` are gone.
+- Master: connectors follow redirects again, by hand: at most 5 hops, each through `assertReachableUrl` and
+  `assertNotSelf`, with `authorization` and `cookie` dropped on a change of origin. Only a hop to this Master is
+  refused. `cookie` is allowed as a connector's auth header again; only `x-master-key-token` is reserved.
+- Master: "on the Master PC" (`isOnMasterPc` in `lib/network.ts`) now also needs a `Host`, and any `Origin`,
+  naming localhost/127.0.0.1/[::1]. `requireLoopback`, the Server Master sign-in flag, `attachSession`, sign-out
+  and the hub's `master-admin` sessions all use it, so a DNS-rebound or cross-site page on the Master PC is not
+  the owner.
+- Office: the offline sign-in queue drops the oldest failure first past its cap of 500, so a flood of wrong
+  passwords cannot push out a sign-in that has not been uploaded.
+- Not done: `docs/MASTER_KEY.md` still lacks the plaintext key. Only the owner has it.
+- Verified: lint 0, typecheck 0, test 0 (203 files passed, 1 skipped; 2842 tests; integration suites ran against
+  the system PostgreSQL 17), build 0, smoke:legacy 0.
+
+### 2026-10-03 - 1.3 Phase 2 review fixes, round 2 (Claude)
+
+- Master: log exports keep the 1.2 cap of 250,000 rows on both paths, plus a byte cap (128 MiB on the Master's
+  download, 45 MiB over the Office socket). The file is built a batch at a time against a running byte count, and
+  a byte refusal has its own key (`validation.logs.export.tooManyBytes` `{maxMb}`).
+- Master: opening and closing the pairing window write the entry first and change the window only after it
+  commits. An Office's offline sign-ins are written in one transaction, and an event `id` already logged for that
+  panel is skipped, so a resend writes no duplicates. The Office gives each event an id and tries the upload once
+  per connection instead of after every delta.
+- Master: connectors never follow a redirect, resolve the host before each request and refuse loopback on the
+  Master's own port by any spelling (`assertNotSelf`), and cannot put a credential in `cookie` or
+  `x-master-key-token` (`validation.connector.authHeaderReserved`).
+- Tests: `master/tests/helpers/audit-probe.ts` (shared trigger, optionally per action). New rollback cases for
+  first-run setup (its closing entry refused), the pairing window, conflict keep/restore, setting up missing Server
+  Masters and the pairing-password change, plus the offline-upload resend. The server-master suite now waits for
+  each panel disconnect to land before the next TRUNCATE, which deadlocked once.
+- Not changed: the v1 restore stays on `storage.manage` (an approved plan decision). The gap it leaves in the
+  two-Server-Masters guarantee is in HANDOFF **Owed** for the owner. `docs/MASTER_KEY.md` still holds a
+  placeholder: this session does not have the key.
+- Verified: lint 0, typecheck 0, test 0 (203 files passed, 1 skipped as in the baseline, 2835 tests; integration
+  suites ran against the system PostgreSQL 17), build 0, smoke:legacy 0.
+
+### 2026-10-03 - 1.3 Phase 2 review fixes, round 1 (Claude)
+
+- Office: a developer reset and a backup restore now drop the offline sign-ins waiting for upload (file and
+  cache), so a new pairing never receives the old one's; a username over 100 characters is not stored.
+- Master: master-key and developer-mode unlock attempts run one at a time, so parallel guesses cannot get round
+  the five-and-wait lockout; the restore re-creates the Server Master role for a backup without one; Office log
+  exports over the socket refuse past 50,000 rows or 50 MiB (`validation.logs.export.tooLarge`).
+- Master web: first run on a LAN browser shows a "done at the Master PC" notice (`firstRun.choose.masterPcOnly`)
+  instead of setup and restore.
+- Tests added for each; `04-API-CONTRACT.md` §13 documents the Phase 2 wire; HANDOFF gains the grant-migration
+  trap. `docs/MASTER_KEY.md` still holds a placeholder: this session does not have the key.
+- Verified: lint 0, typecheck 0, test 0 (203 files passed, 1 skipped as in the baseline; integration suites ran
+  against the system PostgreSQL 17), build 0, smoke:legacy 0.
+
+### 2026-10-03 - 1.3 Phase 2: Server Master tier, master key, protocol handshake, complete audit, Logs on Office (Claude)
+
+`shared/src` (permissions, master key, developer, socket protocol, i18n), `master/src` (migration
+`20261001000000_server_master_tier`, access guards, auth, hub, setup and master-key routes, the audit sweep),
+`office/src`, `ui/src`, `master/web`, `office/web`, `eslint.config.js`, tests, docs. Built in five slices in one
+working tree: tier, migration and setup; auth, hub and guards; the audit sweep; the Office server; ui, web and docs.
+- **Shared:** `ROLE_TIERS = ['office','management','admin','server_master']` (array order is rank; `tierRank` is the
+  one rank source), `SERVER_MASTER_TIER`, `isServerMasterTier`; `master-key.ts` (`MASTER_KEY_HASH`, the
+  `x-master-key-token` header, 5-minute tokens, `SERVER_MASTER_MIN_ACTIVE = 2`, suggested usernames);
+  `DUMMY_SERVER_MASTERS`; `ActivityActor.tier?`, `OfficePanelRuntime.protocol?`; `PANEL_PROTOCOL_VERSION = 2`,
+  `COMMAND_MIN_PROTOCOL`, `auth:offlineEvents`; `renderActivity` uses `activityDetail.*` and translates `*Token`
+  details; `logsEntityLabelKey`/`logsActionLabelKey`. Office nav gains `logs` (no chord) between Settings and App
+  update.
+- **Master:** the migration (tier check widened, one frozen Server Master role per company); `assertMayManageUser`,
+  `assertTierAssignable`, `assertServerMasterRoleFrozen`, `assertServerMastersRetained`; `master-key.service.ts`,
+  `server-master.service.ts`, `require-loopback.ts`, `master-key.routes.ts`; first run makes two Server Masters and
+  no admin; setup routes loopback-only with `refuseAfterSetup`; `signIn(…, {onMasterPc})`, loopback-only Server
+  Master sessions, sign-out and expiry logged; panel sockets refuse Server Masters; `recordOfflineAuthEvents`; the
+  audit sweep (remarks, `lead.converted`, delete/restore `{number, party}`, conflict choices, panel revoke and
+  disconnect, pairing window, developer mode, master update, exports, backups, `setting.updated` tokens); the CSV's
+  `sentence` and `details` columns with `?locale=`; `actor.tier` on log rows.
+- **Office:** never remembers a Server Master; `offline-auth-events.store.ts` and the upload on connect; handshake
+  `protocol`/`appVersion`; the `COMMAND_MIN_PROTOCOL` gate answering 426 `error.updateNeeded.master`.
+- **ui and web:** `TierPill`, `ServerMasterBadge`, `tierLabel`; PillTone `master`; `Avatar highlight`;
+  `DataTable rowHighlight`; base.css rules on semantic tokens only; `ui/src/LogsScreen.tsx` (moved from the Master,
+  transport in a ref, translated dropdowns, Server Master rows highlighted and badged, `data-screen-search`,
+  `?locale=` on the export), mounted by thin `screens/LogsScreen.tsx` files on both panels; both in the strict-i18n
+  lint list. Master web: `ServerMasterSetupFlow` (mandatory on the Master PC), `MasterKeyRecoveryFlow`,
+  `components/MasterKeyPrompt.tsx`; first run with two account blocks; sign-in with no `admin` prefill; the change
+  password dialog asks a Server Master for the key; Settings → Connection "Change pairing password"; Roles & users
+  with `TierPill`, highlighted Server Masters, no controls on a higher tier, the two-Server-Master reason, a
+  `withKey` retry on `masterKeyRequired`, and a tier picker without `server_master`; `api.ts` does not end the
+  session on the two master-key 401s. `PermissionGrid` names tiers through `tierLabel`. Office web: the Logs row
+  (System, `logs.view`), `Tab`, lazy `ScreenSpec`, `idToTab.logs`.
+- **Tests:** new `server-master-domain`, `shared/tests/server-master`, `server-master.integration`,
+  `audit-coverage.integration`, `require-loopback`, `office/tests/offline-auth-events`,
+  `office/tests/master-connection`, `ui/tests/logs-screen`; extended `master-shell` (two accounts at first run, no
+  admin prefill, the mandatory setup on the Master PC only, recovery link, footer badge), `office-shell` (Logs row
+  gated on `logs.view`), `permission-labels` (tier labels), `keys`, `keys-nav-order`, `screen-reachability`
+  (`PANEL_ONLY.logs` gone), `web-reachability` (four Office log entries gone), and the integration suites switched to
+  `setUpFirstRun()`.
+- **Docs:** new `MASTER_KEY.md` (the plaintext line is a placeholder for the owner to fill in); `ROLES_AND_USERS.md`
+  §3.2, guards G9–G11, audit rows, sign-in; `DEVELOPER_MODE.md` (test Server Masters, a Server Master is never
+  re-armed); `STRUCTURE.md` §3.2, §3.6, §4, §5.6, §5.8, §6.2, §6.5, §7, §8, §11.2, §11.8, §12; HANDOFF release note
+  and session history.
+- **Verified by the ui-web-docs slice:** `npm run typecheck` exits 0; eslint on every changed file exits 0; all of
+  `ui/tests` (29 files, 322 tests) and the guard suites `keys`, `keys-nav-order`, `screen-reachability`,
+  `web-reachability`, `i18n-call-sites`, `i18n-coverage`, `i18n`, `no-duplicate-ui`, `tooling-config` and
+  `no-transport-dep` pass. Not run by the slices: any `*.integration.test.ts` and the full `npm run verify` (left to
+  the verifier with `ORDERBOOK_PG_BIN`), and a browser or Electron walk of the new flows.
+
+- **Verifier (round 1):** the first full run failed 5 tests in 3 files, all new. Fixed: (1) `master-key.service.ts`
+  imported its gate factory from `developer.service.ts`, which reaches first-run setup and back into the master key;
+  that cycle made the test mocks of the gate miss `user.service` and `server-master.service`. The factory moved to
+  `master/src/services/developer-gate.ts` (re-exported from `developer.service.ts`), which removes the cycle.
+  (2) `recycle-bin.repository.ts#findParentStatus` read `leads.name`, which never existed, so restoring a final order
+  that has a source lead always failed; a lead is now labelled by its id. This was an old bug that the new audit test exposed. (3)
+  `sample-data.integration.test.ts` now expects the two dummy Server Masters ahead of the three sign-ins, because the plan
+  changed first-run setup. After the fixes: lint 0, typecheck 0, test 0 (203 files passed, 1 skipped as at baseline;
+  2812 tests; 57 integration files ran against PostgreSQL 17), build 0, smoke:legacy 0.
+
 ### 2026-10-02 - 1.3 Phase 1: shell, Basic Home, Master UI refresh, Inventory UI hidden, loading bars, device code, low RAM (Claude)
 
 `shared/src/keys`, `shared/src/domain/entities.ts`, `shared/src/i18n`, `ui/src`, `master/web`, `master/src` (setup

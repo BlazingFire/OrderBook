@@ -16,8 +16,10 @@ import bcrypt from 'bcryptjs';
 import type { BackupManifest, BackupRestorePreview } from '@orderbook/shared';
 
 import { db } from '../db/knex.js';
+import { systemActor, type ActorContext } from '../domain/actor.js';
 import { assertImportableFormatVersion, summarizeManifest } from '../domain/backup.js';
 import { BackupError } from '../lib/errors.js';
+import { recordDetachedActivity } from '../repositories/activity-log.repository.js';
 import { decryptBackup, readManifest, verifyContentHash, BackupFileError } from '../lib/backup-crypto.js';
 import {
   listUserTables,
@@ -30,6 +32,7 @@ import {
 import { clearVault } from '../repositories/password-vault.repository.js';
 import { invalidateRoleCache } from '../repositories/role.repository.js';
 import { invalidateSettingsCache } from './settings.service.js';
+import { ensureServerMasterRole } from './server-master.service.js';
 import { generateReadableSecret, isSetupComplete } from './setup.service.js';
 
 const BCRYPT_ROUNDS = 10;
@@ -52,7 +55,12 @@ export interface RestoreOutcome {
   newPairingPassword: string;
 }
 
-export async function restoreBackup(file: Buffer, passphrase: string, confirmWipe: boolean): Promise<RestoreOutcome> {
+export async function restoreBackup(
+  file: Buffer,
+  passphrase: string,
+  confirmWipe: boolean,
+  actor?: ActorContext,
+): Promise<RestoreOutcome> {
   const parsed = readManifest(file);
   assertImportableFormatVersion(parsed.manifest);
 
@@ -113,6 +121,10 @@ export async function restoreBackup(file: Buffer, passphrase: string, confirmWip
     if (!chainOk) {
       throw new BackupError('hash_chain_invalid', 'error.internal.backupHashChainInvalid');
     }
+
+    // A backup from before 1.3 has no Server Master role. The migration that
+    // seeds it has already run on this database, so nothing else puts it back.
+    for (const tenantId of chainTenantIds) await ensureServerMasterRole(tenantId, trx);
   });
 
   // In-memory caches survive the transaction that replaced the rows behind
@@ -122,6 +134,33 @@ export async function restoreBackup(file: Buffer, passphrase: string, confirmWip
   // stale role after a restore is a permission set nobody granted.
   invalidateSettingsCache();
   invalidateRoleCache();
+
+  // Written after the commit, into the restored trail, one entry per company
+  // the backup brought back. Detached: the restore has happened and cannot
+  // be taken back because its entry failed. The person who ran it may not
+  // exist in the restored users, so only their name is kept; a restore from
+  // the first-run screen has nobody signed in and is logged as the Master PC.
+  const restoredTenantIds =
+    tenantIds ?? (await db()('tenants').select<{ id: string }[]>('id')).map((row) => row.id);
+  for (const tenantId of restoredTenantIds) {
+    await recordDetachedActivity(
+      {
+        tenantId,
+        entityType: 'backup',
+        entityId: parsed.manifest.createdAt,
+        action: 'restored',
+        actorType: 'system',
+        actorId: null,
+        details: {
+          scope: parsed.manifest.scope,
+          createdAt: parsed.manifest.createdAt,
+          appVersion: parsed.manifest.appVersion,
+        },
+      },
+      { ...systemActor(tenantId), actorName: actor?.actorName ?? 'Master PC' },
+      db(),
+    );
+  }
 
   return { manifest: parsed.manifest, newPairingPassword };
 }

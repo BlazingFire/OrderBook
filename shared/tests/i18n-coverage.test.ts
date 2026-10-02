@@ -23,6 +23,7 @@ import {
   MODULE_ACTIONS,
   PERMISSIONS,
   ROLE_TEMPLATES,
+  ROLE_TIERS,
   actionLabelToken,
   isPermission,
   moduleActionLabelToken,
@@ -216,9 +217,9 @@ describe('every Hindi activity.* sentence can take the unknown actor', () => {
   // fails here until somebody translates it.
   const POSTPOSITION = /^ (ने|को|से|का|की|के|में|पर|द्वारा)(?![\p{L}\p{M}])/u;
 
-  it('puts a postposition after every {actor}', () => {
+  it('puts a postposition after every {actor}, in activity.* and activityDetail.* alike', () => {
     const offenders = Object.entries(HI_MESSAGES as Record<string, string>)
-      .filter(([key]) => key.startsWith('activity.'))
+      .filter(([key]) => key.startsWith('activity.') || key.startsWith('activityDetail.'))
       .filter(([, value]) =>
         value
           .split('{actor}')
@@ -228,6 +229,33 @@ describe('every Hindi activity.* sentence can take the unknown actor', () => {
       .map(([key]) => key);
 
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('the Logs screen can name everything the trail records', () => {
+  const pairs = [...ACTIVITY_TOKENS].map((pair) => pair.split('.') as [string, string]);
+
+  it('has a logs.entity.<type> label for every record type with an activity token', () => {
+    const missing = [...new Set(pairs.map(([entity]) => `logs.entity.${entity}`))].filter((key) => !EN_KEYS.has(key));
+    expect(missing).toEqual([]);
+  });
+
+  it('has a logs.action.<action> label for every action with an activity token', () => {
+    const missing = [...new Set(pairs.map(([, action]) => `logs.action.${action}`))].filter((key) => !EN_KEYS.has(key));
+    expect(missing).toEqual([]);
+  });
+
+  it('has an activityDetail.* sentence only for a pair that also has its plain activity.* sentence', () => {
+    // The richer sentence is a fallback chain, never the only sentence: a row
+    // missing a detail field renders the plain one.
+    const orphaned = [...EN_KEYS]
+      .filter((key) => key.startsWith('activityDetail.'))
+      .filter((key) => !ACTIVITY_TOKENS.has(key.slice('activityDetail.'.length)));
+    expect(orphaned).toEqual([]);
+  });
+
+  it('labels every role tier', () => {
+    for (const tier of ROLE_TIERS) expect(EN_KEYS.has(`tier.${tier}`), tier).toBe(true);
   });
 });
 

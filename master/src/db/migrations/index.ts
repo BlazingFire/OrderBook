@@ -49,6 +49,7 @@ import * as catalogueBrandsAndCodesPort from './20260326000000_catalogue_brands_
 import * as optionListsRepair from './20260327000000_option_lists_repair.js';
 import * as linePackagingDefaults from './20260328000000_line_packaging_defaults.js';
 import * as orderVehicleNumber from './20260401000000_order_vehicle_number.js';
+import * as serverMasterTier from './20261001000000_server_master_tier.js';
 
 export interface Migration {
   name: string;
@@ -206,6 +207,13 @@ export const migrations: Migration[] = [
   {
     name: '20260401000000_order_vehicle_number',
     ...orderVehicleNumber,
+  },
+  // The first migration of the 1.3 batch: the Server Master tier and its one
+  // system role. It must stay ahead of every later grant migration in the
+  // batch, so each of those sees the role and grants to it too.
+  {
+    name: '20261001000000_server_master_tier',
+    ...serverMasterTier,
   },
 ];
 

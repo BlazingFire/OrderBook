@@ -40,6 +40,7 @@ const CODE_TOKENS: Record<string, MessageKey> = {
   locked_out: 'error.generic.lockedOut',
   unknown_here: 'error.generic.unknownHere',
   offline_disabled: 'error.generic.offlineSignInDisabled',
+  updateNeeded: 'error.updateNeeded.master',
 };
 
 /** Total over every stable code the two servers emit, with `error.unknown` as the last resort. */

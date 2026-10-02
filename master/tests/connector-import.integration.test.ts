@@ -16,6 +16,7 @@ import { createServer, type Server } from 'node:http';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { canRunIntegrationTests } from './helpers/db.js';
+import { config } from '../src/config/index.js';
 import { db } from '../src/db/knex.js';
 import * as catalogService from '../src/services/catalog.service.js';
 import * as connectorService from '../src/services/connector.service.js';
@@ -32,6 +33,18 @@ let remoteRows: unknown[] = [];
 
 async function startRemote(): Promise<void> {
   server = createServer((req, res) => {
+    if (req.url?.startsWith('/moved')) {
+      // An ordinary redirect to another path on the same remote.
+      res.writeHead(301, { location: '/items' });
+      res.end();
+      return;
+    }
+    if (req.url?.startsWith('/hop')) {
+      // A remote that bounces the Master back at itself over loopback.
+      res.writeHead(302, { location: `http://127.0.0.1:${config.http.port}/api/auth/me` });
+      res.end();
+      return;
+    }
     res.setHeader('content-type', 'application/json');
     res.end(JSON.stringify({ data: remoteRows }));
   });
@@ -222,6 +235,82 @@ describe.skipIf(!canRunIntegrationTests)('connector import (integration)', () =>
         scheduleKind: 'manual',
       }),
     ).rejects.toThrow();
+  });
+
+  it('refuses this Master by any other spelling of loopback, but not loopback on another port', async () => {
+    const port = config.http.port;
+    await expect(connectorService.assertNotSelf(new URL(`http://127.0.0.2:${port}/`))).rejects.toMatchObject({
+      messageKey: 'validation.connector.urlSelf',
+    });
+    await expect(
+      connectorService.assertNotSelf(new URL(`http://[::ffff:127.0.0.1]:${port}/`)),
+    ).rejects.toMatchObject({ messageKey: 'validation.connector.urlSelf' });
+    await expect(connectorService.assertNotSelf(new URL(`http://127.0.0.1:${port + 1}/`))).resolves.toBeUndefined();
+  });
+
+  it('follows an ordinary redirect, but not one back to this Master', async () => {
+    const actor = await testActor();
+    const connector = await connectorService.createConnector(actor, {
+      slug: 'bouncer',
+      label: 'Bouncer',
+      baseUrl,
+      authKind: 'none',
+      scheduleKind: 'manual',
+    });
+    await connectorService.setMapping(actor, connector.id, [
+      {
+        entity: 'product',
+        path: '/hop',
+        remoteIdPointer: '/id',
+        itemsPointer: '/data',
+        fieldMaps: [{ localField: 'code', remotePointer: '/sku', transform: 'upper', isRequired: true }],
+      },
+    ]);
+
+    const result = await connectorRunService.testConnection(actor, connector.id, 'product');
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('A connection cannot point back at this Master');
+
+    remoteRows = [{ id: 'R-1', sku: 'rst-300' }];
+    await connectorService.setMapping(actor, connector.id, [
+      {
+        entity: 'product',
+        path: '/moved',
+        remoteIdPointer: '/id',
+        itemsPointer: '/data',
+        fieldMaps: [{ localField: 'code', remotePointer: '/sku', transform: 'upper', isRequired: true }],
+      },
+    ]);
+    const moved = await connectorRunService.testConnection(actor, connector.id, 'product');
+    expect(moved).toMatchObject({ ok: true, status: 200, itemCount: 1 });
+  });
+
+  it("refuses a credential header that carries this Master's master-key token, but allows a cookie", async () => {
+    const actor = await testActor();
+    const withCookie = await connectorService.createConnector(actor, {
+      slug: 'cookie-jar',
+      label: 'Cookie jar',
+      baseUrl,
+      authKind: 'header',
+      authHeader: 'Cookie',
+      credential: 'session=abc',
+      scheduleKind: 'manual',
+    });
+    expect(withCookie.authHeader).toBe('Cookie');
+
+    for (const authHeader of ['x-master-key-token', ' X-Master-Key-Token ']) {
+      await expect(
+        connectorService.createConnector(actor, {
+          slug: 'borrower',
+          label: 'Borrower',
+          baseUrl,
+          authKind: 'header',
+          authHeader,
+          credential: 'anything',
+          scheduleKind: 'manual',
+        }),
+      ).rejects.toMatchObject({ messageKey: 'validation.connector.authHeaderReserved' });
+    }
   });
 
   it('never returns the credential it was given', async () => {

@@ -13,7 +13,7 @@
  * holes appear exactly when something is going wrong.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { allPermissions } from '@orderbook/shared';
 
@@ -189,6 +189,50 @@ describe.skipIf(!canRunIntegrationTests)('the audit trail', () => {
 
       const entries = await signInEntries();
       expect(entries[0]?.details).toMatchObject({ source: 'K7M2QX' });
+    });
+  });
+
+  describe('the end of a session', () => {
+    async function signedIn(): Promise<{ token: string; userId: string }> {
+      const role = await roleService.createRole(
+        { name: 'Owner', tier: 'admin', permissions: allPermissions() },
+        actor,
+      );
+      const { user } = await userService.createUser(
+        { username: 'leela', displayName: 'Leela Shah', roleId: role.id, password: 'correct-horse' },
+        actor,
+      );
+      const { token } = await authService.signIn('leela', 'correct-horse', 'K7M2QX');
+      return { token, userId: user.id };
+    }
+
+    it('records a sign-out, naming the machine the session began on', async () => {
+      const { token, userId } = await signedIn();
+
+      await authService.signOut(token);
+
+      const row = await db()('activity_log').where({ action: 'signed_out' }).first();
+      expect(row).toMatchObject({ entity_id: userId, actor_id: userId, actor_name: 'Leela Shah' });
+      expect(row.details).toMatchObject({ name: 'Leela Shah', username: 'leela', source: 'K7M2QX' });
+    });
+
+    it('records an expiry when the sweep finds the session out of time', async () => {
+      const { token, userId } = await signedIn();
+
+      // Only `Date` is faked, so the database driver's own timers run as usual.
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        vi.setSystemTime(Date.now() + 25 * 60 * 60 * 1000);
+        authService.purgeExpiredSessions();
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(await authService.resolveSession(token)).toBeNull();
+      await vi.waitFor(async () => {
+        const row = await db()('activity_log').where({ action: 'session_expired' }).first();
+        expect(row).toMatchObject({ entity_id: userId });
+      });
     });
   });
 

@@ -72,6 +72,7 @@ export function DataTable<T>({
   empty,
   sort,
   onSortChange,
+  rowHighlight,
 }: {
   columns: DataTableColumn<T>[];
   rows: T[];
@@ -87,6 +88,8 @@ export function DataTable<T>({
    */
   sort?: DataTableSort;
   onSortChange?: (sort: DataTableSort) => void;
+  /** Rows this returns true for carry `data-highlight` (a Server Master's rows, today). */
+  rowHighlight?: (row: T) => boolean;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -261,6 +264,7 @@ export function DataTable<T>({
                 // rather than trusting a CSS token it would have to parse.
                 data-row=""
                 data-selected={selectedId === key || undefined}
+                data-highlight={rowHighlight?.(row) || undefined}
                 style={{
                   display: 'grid',
                   gridTemplateColumns: gridTemplate,

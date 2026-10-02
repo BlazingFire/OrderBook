@@ -211,7 +211,7 @@ describe.skipIf(!canRunIntegrationTests)('what the Master pushes to Office panel
     const token = await signIn(panel, 'sunita');
 
     // Ends the session without the C5 push — the way a plain expiry does.
-    authService.signOut(token);
+    await authService.signOut(token);
     const before = count(panel, 'sync:snapshot');
 
     await roleService.updateRole(

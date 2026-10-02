@@ -73,6 +73,7 @@ vi.mock('../src/realtime/master-connection.js', () => ({
 const userSession = await import('../src/services/user-session.service.js');
 const userStore = await import('../src/services/user-store.js');
 const attempts = await import('../src/services/sign-in-attempts.store.js');
+const offlineAuthEvents = await import('../src/services/offline-auth-events.store.js');
 const localStore = await import('../src/sync/local-store.js');
 
 const MASTER_USER = {
@@ -122,6 +123,7 @@ beforeEach(async () => {
   userStore.resetUserStore();
   userSession.resetSession();
   attempts.resetSignInAttempts();
+  offlineAuthEvents.resetOfflineAuthEvents();
   localStore.resetLocalStore();
 });
 
@@ -417,6 +419,32 @@ describe('signing in on an Office Panel', () => {
     link.state = 'disconnected';
     const session = await userSession.signIn('  SUNITA ', 'correct-horse');
     expect(session.userId).toBe('US000000000C');
+  });
+
+  /*
+   * A Server Master signs in on the Master PC only. The Master refuses one over
+   * a panel socket already; if one got through anyway, this panel must keep no
+   * verifier for it, or pulling the network cable would let it in here.
+   */
+  it('never remembers a Server Master, and ends the session the Master issued', async () => {
+    link.signIn.mockResolvedValue({
+      token: 'token-master',
+      user: { ...MASTER_USER, username: 'master', roleTier: 'server_master' },
+      credentialFingerprint: 'fp-master',
+    });
+
+    await expect(userSession.signIn('master', 'correct-horse')).rejects.toMatchObject({
+      messageKey: 'error.unauthorized.serverMasterMasterPcOnly',
+    });
+
+    expect(userSession.currentSession()).toBeNull();
+    expect(link.assumed).toBeNull();
+    expect(link.signedOut).toContain('token-master');
+    expect(await userStore.findByUsername('master')).toBeNull();
+
+    // And so it cannot sign in offline either.
+    link.state = 'disconnected';
+    await expect(userSession.signIn('master', 'correct-horse')).rejects.toThrow(/Sign-in failed/);
   });
 });
 

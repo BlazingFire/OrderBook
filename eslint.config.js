@@ -303,6 +303,8 @@ export default tseslint.config(
       'ui/src/TopProgress.tsx',
       'ui/src/ImageCropModal.tsx',
       'ui/src/ProductImages.tsx',
+      'ui/src/LogsScreen.tsx',
+      'ui/src/TierPill.tsx',
       'office/web/src/components/ProductImages.tsx',
     ],
     plugins: { 'orderbook-i18n': orderbookI18n },

@@ -24,7 +24,7 @@ import type {
   PanelStoragePathResult,
   PermissionSet,
 } from '@orderbook/shared';
-import { deviceCodeFromSeed } from '@orderbook/shared';
+import { deviceCodeFromSeed, isServerMasterTier } from '@orderbook/shared';
 import bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
 
@@ -77,6 +77,51 @@ export function openPairingWindow(): { closesAt: number } {
 export function closePairingWindow(): void {
   pairingWindowClosesAt = 0;
   log.info('Pairing window closed');
+}
+
+/**
+ * `openPairingWindow` / `closePairingWindow` for an administrator's click,
+ * with the entry the trail needs. The window is memory, not a row, so the
+ * entry has a small transaction of its own. The entry is written first and
+ * the window changes only once it commits, so a refused entry leaves the
+ * window as it was. The bare functions stay for the Master's own closes (a
+ * panel pairing in auto mode) and for tests.
+ */
+export async function openPairingWindowBy(actor: ActorContext): Promise<{ closesAt: number }> {
+  await db().transaction((trx) =>
+    activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'pairing_window',
+        entityId: actor.tenantId,
+        action: 'opened',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { minutes: PAIRING_WINDOW_MS / 60_000 },
+      },
+      actor,
+      trx,
+    ),
+  );
+  return openPairingWindow();
+}
+
+export async function closePairingWindowBy(actor: ActorContext): Promise<void> {
+  await db().transaction((trx) =>
+    activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'pairing_window',
+        entityId: actor.tenantId,
+        action: 'closed',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+      },
+      actor,
+      trx,
+    ),
+  );
+  closePairingWindow();
 }
 
 export function isAcceptingPairing(): boolean {
@@ -192,7 +237,7 @@ export async function revokePanel(panelId: string, actor?: ActorContext): Promis
     const row = await panelRepo.updatePanelStatus(panelId, 'revoked', trx);
     if (!row) throw new ValidationError('error.notFound', { what: 'Panel' });
 
-    await recordPanelActivity(row, actor, { status: 'revoked' }, trx);
+    await recordPanelActivity(row, actor, { status: 'revoked' }, trx, 'revoked');
     return row;
   });
 
@@ -275,6 +320,9 @@ export async function updatePanel(
     if (roleId !== null) {
       const set = await permissionSetForRole(existing.tenantId, roleId);
       if (!set) throw new NotFoundError('Role');
+      // A panel is a machine anyone can sit at; the Server Master role is for
+      // two named people on the Master PC.
+      if (isServerMasterTier(set.tier)) throw new ValidationError('validation.panel.serverMasterRole');
     }
 
     writes.push((trx) => panelRepo.assignPanelRole(panelId, roleId, trx));
@@ -354,7 +402,12 @@ export async function permissionsForPanel(
   return permissionSetForRole(tenantId, roleId);
 }
 
-export async function markPanelConnected(panelId: string, lanIp: string | null): Promise<void> {
+export async function markPanelConnected(
+  panelId: string,
+  lanIp: string | null,
+  /** What the panel announced in its handshake; absent from an older Office. */
+  protocol?: number,
+): Promise<void> {
   connectedPanelIds.add(panelId);
   panelRuntime.set(panelId, {
     pendingMutations: null,
@@ -362,6 +415,7 @@ export async function markPanelConnected(panelId: string, lanIp: string | null):
     lastSnapshotAt: null,
     signedInUsername: null,
     connectedSince: new Date().toISOString(),
+    ...(protocol !== undefined ? { protocol } : {}),
   });
   await panelRepo.touchLastSeen(panelId, lanIp);
 }
@@ -401,12 +455,15 @@ export async function recordPanelReport(
   const panel = await panelRepo.updateDeviceReport(panelId, report);
   if (!panel) return null;
 
+  const previous = panelRuntime.get(panelId);
   panelRuntime.set(panelId, {
     pendingMutations: report.pendingMutations,
     cachedImages: report.cachedImages,
     lastSnapshotAt: report.lastSnapshotAt,
     signedInUsername: report.signedInUsername,
-    connectedSince: panelRuntime.get(panelId)?.connectedSince ?? new Date().toISOString(),
+    connectedSince: previous?.connectedSince ?? new Date().toISOString(),
+    // Like `connectedSince`, it belongs to the connection, not the report.
+    ...(previous?.protocol !== undefined ? { protocol: previous.protocol } : {}),
   });
 
   publishChange({ entity: 'office_panel', action: 'updated', id: panelId, payload: panel });
@@ -571,6 +628,35 @@ export function disconnectPanel(panelId: string): boolean {
   return dropped;
 }
 
+/**
+ * `disconnectPanel` for an administrator's click. Nothing in the database
+ * changes, so the entry is written detached, after the socket is dropped.
+ * Only a drop that happened is logged.
+ */
+export async function disconnectPanelByAdmin(panelId: string, actor: ActorContext): Promise<boolean> {
+  const panel = await panelRepo.findPanelById(panelId);
+  // A panel id from another company is a 404, not a silent `false`.
+  if (!panel || panel.tenantId !== actor.tenantId) throw new NotFoundError('Panel');
+
+  const dropped = disconnectPanel(panelId);
+  if (dropped) {
+    await activityLog.recordDetachedActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'office_panel',
+        entityId: panelId,
+        action: 'disconnected',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { name: panel.name },
+      },
+      actor,
+      db(),
+    );
+  }
+  return dropped;
+}
+
 const DEFAULT_PANEL_PREFIX = 'Office Panel';
 
 /**
@@ -686,6 +772,7 @@ async function recordPanelActivity(
   actor: ActorContext | undefined,
   details: Record<string, unknown>,
   trx: TransactionContext,
+  action: 'updated' | 'revoked' = 'updated',
 ): Promise<void> {
   const acting = actor ?? systemActor(panel.tenantId);
 
@@ -694,7 +781,7 @@ async function recordPanelActivity(
       tenantId: panel.tenantId,
       entityType: 'office_panel',
       entityId: panel.id,
-      action: 'updated',
+      action,
       actorType: acting.actorType,
       actorId: acting.actorId,
       details: { name: panel.name, ...details },

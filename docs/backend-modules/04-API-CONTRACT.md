@@ -40,6 +40,7 @@ this batch; the web i18n layer is deferred to the UI phase (`02-FILE-STRUCTURE.m
 | 10 | Office forwarding |
 | 11 | Client wrappers |
 | 12 | Open questions |
+| 13 | Server Master, master key and the panel protocol (1.3 Phase 2) |
 
 ---
 
@@ -73,6 +74,9 @@ app.use('/api/documents', documentRoutes);
 app.use('/api/access', accessRoutes);
 app.use('/api', dataRoutes);
 ```
+
+Since 1.3 Phase 2, `app.use('/api/master-key', masterKeyRoutes)` sits directly after
+`/api/setup` (§13.1). `master/src/http/app.ts` is the live list.
 
 The reason, stated precisely, because the loose version of this claim is wrong and a specification
 that overstates it teaches the wrong lesson:
@@ -444,10 +448,12 @@ CSV of the current filtered range.
 | | |
 |---|---|
 | **Permission** | `logs.export` |
-| **Query** | Same filters as §2.2, **no cursor** |
+| **Query** | Same filters as §2.2, **no cursor**, plus `locale` (`en` or `hi`, default `en`) for the `sentence` column |
 | **Response** | `200 text/csv`, `Content-Disposition: attachment; filename="logs-<from>-<to>.csv"` |
 | **Service** | `logService.exportLogs`, reading through `activityLogRepo.streamForExport` |
-| **Paging** | Internal batching only — 5,000 rows per fetch, hard cap 250,000 rows, streamed. Never loaded whole into memory |
+| **Columns** | `id,sequence,createdAt,actorType,actorName,entityType,entityId,action,hash,sentence,details`. The last two (1.3) are the rendered activity sentence and the entry's details as JSON, appended so a sheet built on the first nine still lines up |
+| **Paging** | Internal batching, 5,000 rows per fetch. Capped at 250,000 rows or 128 MiB (`HTTP_EXPORT_LIMITS`). As in 1.2, past the row cap the file holds the newest 250,000 and stops; past the byte cap it stops at the last whole batch that fits. Neither refuses; the export's log entry records `truncated: true` when either cut in. The CSV is built in memory a batch at a time against a running byte count, not streamed (the deviation is noted on `exportLogs`) |
+| **Office path** | `log:export` over the socket, answered in one ack. Capped at 250,000 rows or 45 MiB (`SOCKET_EXPORT_LIMITS`), the smaller byte cap because the ack is JSON (up to twice the file) and must stay under the ws client's 100 MiB frame limit |
 | **Audit** | `recordActivity(entry, actor, trx)`, `activity_log` / `exported`, details naming the filter and the row count |
 
 A separate route with its own guard rather than a `format=csv` flag on the list route, so the key
@@ -2112,6 +2118,64 @@ which argues for keeping them apart — but "show me everything that happened to
 question a person asks once and gets half an answer to. **Open**; promoted to `README.md` §8. Nothing
 in this batch depends on it: adding a second source later is a new endpoint, not a change to
 `ActivityLogEntry`.
+
+---
+
+## 13. Server Master, master key and the panel protocol (1.3 Phase 2)
+
+The Server Master tier ranks above `admin` and signs in only on the Master PC. The master key
+(`docs/MASTER_KEY.md`) gates the operations that could lock the owner out. "Master PC only" below
+means `requireLoopback`: any other caller gets 403 `error.forbidden.masterPcOnly`.
+
+### 13.1 `/api/master-key/*`, Master PC only, no session needed
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| POST | `/api/master-key/verify` | `{ key }` | 201 `{ token, expiresAt }`. Wrong key 401 `error.unauthorized.masterKey`; five wrong in a row lock the gate for 60 s (429 with `seconds`). Attempts are checked one at a time. Both outcomes are logged, as the signed-in user or as the Master PC |
+| POST | `/api/master-key/lock` | — (token in the header) | 200 `{ ok: true }` |
+| GET | `/api/master-key/server-masters` | — | `{ accounts: [{ id, username, displayName, isActive }], needed }` |
+| POST | `/api/master-key/server-masters` | `{ accounts: [{ username, displayName, password }] }` | 201 `{ accounts }`. Exactly `needed` accounts, else 400 `validation.serverMaster.accountCount`; 409 `error.conflict.serverMastersComplete` once two are active |
+| POST | `/api/master-key/recover` | `{ userId, newPassword }` | 204. Resets a Server Master's password, lifts that username's sign-in lockout and ends its sessions |
+
+Every route but `verify` reads the token from the **`x-master-key-token`** header
+(`MASTER_KEY_TOKEN_HEADER`). A missing or expired token is 401 `error.unauthorized.masterKeyRequired`.
+
+### 13.2 Setup routes
+
+| Method | Path | Change |
+|---|---|---|
+| GET | `/api/setup/status` | Adds `onMasterPc` (the caller is on loopback) and `serverMasterSetupNeeded` (fewer than two active Server Masters) |
+| POST | `/api/setup/initialize` | Master PC only. Body `{ companyName, accounts }`, two Server Master accounts; no `admin` is created |
+| POST | `/api/setup/restore/preview`, `/api/setup/restore` | Master PC only, checked before the upload is read, and 409 `error.conflict.alreadySetUp` once setup has run. A restore re-creates the Server Master role when the backup has none |
+| POST | `/api/setup/pairing-password` | New. Master PC only, a signed-in Server Master, master-key header. Answers `{ pairingPassword }`, shown once. Anyone else 403 `error.forbidden.serverMasterOnly` |
+
+### 13.3 Users and sign-in
+
+- `POST /api/access/users`, `PUT` and `DELETE /api/access/users/:id`,
+  `POST /api/access/users/:id/reset-password` and `POST /api/access/me/password` pass the
+  `x-master-key-token` header through. The service decides whether a change needs it (creating a
+  Server Master, changing one's username, active state, role or password, moving someone onto the
+  role); without a live token it is 401 `error.unauthorized.masterKeyRequired`. A display-name or
+  avatar change does not need it.
+- An admin acting on a Server Master gets 403 `error.forbidden.serverMasterTarget`, for every user
+  action including password reveal.
+- A Server Master signing in anywhere but the Master PC gets 401
+  `error.unauthorized.serverMasterMasterPcOnly`, only after the password checks out, so the code is
+  no oracle. Their sessions resolve only from loopback.
+
+### 13.4 The panel protocol
+
+- `PANEL_PROTOCOL_VERSION` (`shared/src/protocol/socket.ts`, now 2) rises by one in each release
+  that adds a socket command. An absent value on either side means 1.
+- The Office handshake `auth` payload adds `protocol` and `appVersion`. Snapshots and deltas add the
+  Master's `protocol`.
+- `COMMAND_MIN_PROTOCOL` names the lowest Master protocol a command needs. The Office refuses a
+  command its Master is too old for at once, without sending it, and its HTTP layer answers
+  **426** `error.updateNeeded.master`.
+- `auth:offlineEvents` (protocol 2): `OfflineAuthEvent[]` → `{ recorded }`. The sign-ins an Office
+  checked offline, oldest first, at most 500 per call (more is 400
+  `validation.offlineEvents.tooMany`). A malformed entry or a username over 100 characters is
+  skipped. The Master files them under the panel's device code; the Office drops them only on the ack.
 
 ---
 

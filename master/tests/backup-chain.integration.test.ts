@@ -19,9 +19,17 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { allPermissions } from '@orderbook/shared';
 
 import { canRunIntegrationTests } from './helpers/db.js';
-import { resetData, setupDatabase, teardownDatabase, testActor, testTenantId } from './helpers/fixtures.js';
+import {
+  resetData,
+  setUpFirstRun,
+  setupDatabase,
+  teardownDatabase,
+  testActor,
+  testTenantId,
+} from './helpers/fixtures.js';
 import { db } from '../src/db/knex.js';
 import * as activityLog from '../src/repositories/activity-log.repository.js';
 import { gunzipSync } from 'node:zlib';
@@ -30,7 +38,6 @@ import { decryptBackup, readManifest } from '../src/lib/backup-crypto.js';
 import { listUserTables, verifyActivityLogChain } from '../src/repositories/backup.repository.js';
 import { exportBackup } from '../src/services/backup-export.service.js';
 import { restoreBackup } from '../src/services/backup-restore.service.js';
-import { runFirstTimeSetup } from '../src/services/setup.service.js';
 
 describe.skipIf(!canRunIntegrationTests)('activity log chain verification (integration)', () => {
   beforeAll(setupDatabase);
@@ -127,7 +134,7 @@ describe.skipIf(!canRunIntegrationTests)('the password vault and backups (integr
   const PASSPHRASE = 'a-long-enough-backup-passphrase';
 
   it('omits the vault from the export and empties it on restore', async () => {
-    await runFirstTimeSetup('Vault Backup Co');
+    await setUpFirstRun('Vault Backup Co');
     const tenantId = await testTenantId();
 
     // `information_schema` sees the table; `listUserTables` must not.
@@ -160,5 +167,34 @@ describe.skipIf(!canRunIntegrationTests)('the password vault and backups (integr
     expect(await db()('tenants').count<{ count: string }>({ count: '*' }).first()).toMatchObject({
       count: '1',
     });
+  });
+});
+
+/**
+ * A backup from before 1.3 has no Server Master role, and the migration that
+ * seeds it has already run on the database being restored into, so the
+ * restore itself has to put the role back.
+ */
+describe.skipIf(!canRunIntegrationTests)('restoring a backup without a Server Master role (integration)', () => {
+  beforeAll(setupDatabase);
+  afterAll(teardownDatabase);
+  beforeEach(resetData);
+
+  const PASSPHRASE = 'a-long-enough-backup-passphrase';
+
+  it('recreates exactly one system Server Master role holding every permission', async () => {
+    await setUpFirstRun('Old Backup Co');
+    // Stand in for a pre-1.3 database: no role carries the Server Master tier.
+    await db()('roles').where({ tier: 'server_master' }).update({ tier: 'admin' });
+    const { data } = await exportBackup({ scope: 'whole', passphrase: PASSPHRASE });
+
+    await restoreBackup(data, PASSPHRASE, true);
+
+    const roles = await db()('roles')
+      .where({ tier: 'server_master' })
+      .select<Array<{ is_system: boolean; permissions: string[] }>>('is_system', 'permissions');
+    expect(roles).toHaveLength(1);
+    expect(roles[0]!.is_system).toBe(true);
+    expect([...roles[0]!.permissions].sort()).toEqual([...allPermissions()].sort());
   });
 });

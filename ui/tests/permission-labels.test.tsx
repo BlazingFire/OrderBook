@@ -108,4 +108,21 @@ describe('permission labels', () => {
     expect(screen.getByText(hi['permission.lead.convert']!)).toBeTruthy();
     expect(screen.getByText(hi['capabilityGroup.admin']!)).toBeTruthy();
   });
+
+  it('names the tier a blocked key needs by its label, never the raw tier', () => {
+    render(
+      <PermissionGrid
+        catalogue={buildPermissionCatalogue()}
+        tier="office"
+        selected={new Set()}
+        onToggle={() => undefined}
+        onToggleMany={() => undefined}
+      />,
+    );
+
+    // Admin-tier keys read "Normal Admin", the 1.3 label for that tier.
+    const blocked = en['access.permissions.blocked']!.replace('{tier}', en['tier.admin']!);
+    expect(screen.getAllByText(blocked).length).toBeGreaterThan(0);
+    expect(document.body.innerHTML).not.toContain('Needs the admin tier');
+  });
 });

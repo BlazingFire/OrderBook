@@ -94,6 +94,7 @@ export async function findRevokedOfflineCredentials(
         deleted_at: Date | null;
         role_deleted_at: Date | null;
         role_id: string | null;
+        role_tier: string | null;
       }>
     >(
       'u.id',
@@ -102,6 +103,7 @@ export async function findRevokedOfflineCredentials(
       'u.deleted_at',
       'u.role_id',
       'r.deleted_at as role_deleted_at',
+      'r.tier as role_tier',
     );
 
   const live = new Map(rows.map((row) => [row.id, row]));
@@ -116,6 +118,9 @@ export async function findRevokedOfflineCredentials(
 
       if (row.deleted_at !== null || !row.is_active) return true;
       if (!row.role_id || row.role_deleted_at !== null) return true;
+
+      // Now a Server Master, who never signs in on a panel, online or off.
+      if (row.role_tier === 'server_master') return true;
 
       // The password moved on. The panel's verifier is for the old one.
       return credentialFingerprint(row.password_hash) !== claim.credentialFingerprint;

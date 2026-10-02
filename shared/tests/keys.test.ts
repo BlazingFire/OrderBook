@@ -191,7 +191,7 @@ function navChords(panel: 'master' | 'office'): Array<[string, string | undefine
 describe('the command catalogue', () => {
   it('numbers each panel nav from one, in that panel own sidebar order', () => {
     const office = COMMANDS.filter((command) => command.panel === 'office' && command.navOrder);
-    expect(office.map((command) => command.navOrder)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(office.map((command) => command.navOrder)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     expect(office[0]?.tab).toBe('basicHome');
     expect(office[4]?.tab).toBe('conflicts');
     expect(office[8]?.tab).toBe('settings');
@@ -232,7 +232,11 @@ describe('the command catalogue', () => {
       expect(tab in master, tab).toBe(true);
       expect(master[tab], tab).toBeUndefined();
     }
-    expect(Object.fromEntries(navChords('office')).updates).toBeUndefined();
+    const office = Object.fromEntries(navChords('office'));
+    expect(office.updates).toBeUndefined();
+    // The Office's Logs row has no chord either, like the Master's.
+    expect('logs' in office).toBe(true);
+    expect(office.logs).toBeUndefined();
     // Inventory's screen is hidden on the Master; its row went with it.
     expect('inventory' in master).toBe(false);
   });

@@ -351,7 +351,8 @@ export async function findParentStatus(
 
   const row = await runner(table)
     .where({ tenant_id: tenantId, id })
-    .select<{ label: string; deleted_at: Date | null }[]>('name as label', 'deleted_at')
+    // A lead has no name; its number (the id) is what the Bin shows for it.
+    .select<{ label: string; deleted_at: Date | null }[]>(entityType === 'lead' ? 'id as label' : 'name as label', 'deleted_at')
     .first();
 
   if (!row) return null;

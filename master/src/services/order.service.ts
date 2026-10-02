@@ -207,6 +207,18 @@ export async function convertLead(
       details: { leadId: lead.id, reservations: reservationPlan.length },
     }, actor, trx);
 
+    // The lead's own history says where it went. Both entries close the
+    // transaction, one after the other.
+    await activityLog.recordActivity({
+      tenantId: actor.tenantId,
+      entityType: 'lead',
+      entityId: lead.id,
+      action: 'converted',
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      details: { orderId: id, number: lead.id },
+    }, actor, trx);
+
     return id;
   });
 
@@ -584,6 +596,8 @@ export async function deleteOrder(
         action: 'deleted',
         actorType: actor.actorType,
         actorId: actor.actorId,
+        // Read by `activityDetail.order.deleted`, so the log names the order and party.
+        details: { number: existing.id, party: existing.partyName },
       },
       actor,
       trx,
@@ -665,6 +679,8 @@ export async function restoreOrder(id: string, actor: ActorContext): Promise<Bin
         action: 'restored',
         actorType: actor.actorType,
         actorId: actor.actorId,
+        // Read by `activityDetail.order.restored`, so the log names the order and party.
+        details: { number: existing.id, party: existing.partyName },
       },
       actor,
       trx,

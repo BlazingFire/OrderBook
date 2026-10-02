@@ -23,6 +23,9 @@
  *    to have no guard at all.
  */
 
+import type { Knex } from 'knex';
+
+import { db } from '../db/knex.js';
 import type { TransactionContext } from './transaction.js';
 
 /**
@@ -48,8 +51,14 @@ export async function lockTenantAccessGuards(
   await trx.raw('SELECT pg_advisory_xact_lock(?, hashtext(?))', [ACCESS_GUARD_NAMESPACE, tenantId]);
 }
 
+/**
+ * The tiers G4 counts as administrators. A Server Master outranks an admin, so a
+ * company administered only by Server Masters is not locked out.
+ */
+const ADMINISTRATIVE_TIERS = ['admin', 'server_master'] as const;
+
 export interface AdministrativeCapability {
-  /** Active, live users holding a live admin-tier role. */
+  /** Active, live users holding a live admin-tier (or Server Master) role. */
   adminCount: number;
   /** Everything that population can do between them. */
   permissions: string[];
@@ -77,7 +86,7 @@ export async function readAdministrativeCapability(
     .whereNull('u.deleted_at')
     .andWhere('u.is_active', true)
     .whereNull('r.deleted_at')
-    .andWhere('r.tier', 'admin')
+    .whereIn('r.tier', ADMINISTRATIVE_TIERS)
     .select<Array<{ id: string; permissions: unknown }>>('u.id', 'r.permissions');
 
   const permissions = new Set<string>();
@@ -86,6 +95,30 @@ export async function readAdministrativeCapability(
   }
 
   return { adminCount: rows.length, permissions: [...permissions] };
+}
+
+/**
+ * Active, live users holding the live Server Master role — the count G10
+ * (`assertServerMastersRetained`) compares. Inside a guarded change, pass the
+ * transaction and take `lockTenantAccessGuards` first, for the same reason G4
+ * does; outside one (the setup status) it is a plain read.
+ */
+export async function countActiveServerMasters(
+  tenantId: string,
+  runner: Knex = db(),
+): Promise<number> {
+  const rows = await runner('users as u')
+    .join('roles as r', function join() {
+      this.on('r.id', '=', 'u.role_id').andOn('r.tenant_id', '=', 'u.tenant_id');
+    })
+    .where('u.tenant_id', tenantId)
+    .whereNull('u.deleted_at')
+    .andWhere('u.is_active', true)
+    .whereNull('r.deleted_at')
+    .andWhere('r.tier', 'server_master')
+    .count<Array<{ count: string }>>('u.id as count');
+
+  return Number(rows[0]?.count ?? 0);
 }
 
 /**

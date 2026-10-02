@@ -211,6 +211,42 @@ describe('the releases folder', () => {
     expect(file.endsWith('OrderBook-master-9.9.9-Setup.exe')).toBe(true);
   });
 
+  it('UPD-8b: logs the install it is about to hand over, once the checksum has passed', async () => {
+    await publish('master', '9.9.9', { platform: HOST_PLATFORM });
+    // The trail and the database stand in: this suite has no cluster.
+    const recorded: unknown[] = [];
+    vi.doMock('../src/repositories/activity-log.repository.js', () => ({
+      recordDetachedActivity: async (entry: unknown) => {
+        recorded.push(entry);
+      },
+    }));
+    vi.doMock('../src/db/knex.js', () => ({ db: () => ({}) }));
+    try {
+      const service = await loadService();
+      const actor = {
+        tenantId: 'tenant-1',
+        actorType: 'user' as const,
+        actorId: 'US0000000001',
+        userId: 'US0000000001',
+        permissions: null,
+        deviceCode: null,
+        actorName: 'Karan',
+      };
+
+      await service.prepareMasterUpdate(actor);
+      expect(recorded).toEqual([
+        expect.objectContaining({
+          entityType: 'master_update',
+          action: 'install_started',
+          details: { version: '9.9.9' },
+        }),
+      ]);
+    } finally {
+      vi.doUnmock('../src/repositories/activity-log.repository.js');
+      vi.doUnmock('../src/db/knex.js');
+    }
+  });
+
   it('UPD-9: resolves the setup file inside the releases folder, whatever the manifest says', async () => {
     const service = await loadService();
 

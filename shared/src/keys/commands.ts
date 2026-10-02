@@ -106,6 +106,7 @@ const OFFICE_NAV: NavEntry[] = [
   ['parties', 'nav.parties'],
   ['partyAccess', 'nav.partyAccess'],
   ['settings', 'nav.settings'],
+  ['logs', 'nav.logs', null],
   ['updates', 'nav.updates', null],
 ];
 

@@ -12,7 +12,7 @@
  * snapshot contains is business policy, not socket wiring.
  */
 
-import type { SyncSnapshot } from '@orderbook/shared';
+import { PANEL_PROTOCOL_VERSION, type SyncSnapshot } from '@orderbook/shared';
 
 import { actorCan, type ActorContext } from '../domain/actor.js';
 import { ForbiddenError } from '../lib/errors.js';
@@ -139,6 +139,7 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
     serverHlc,
     serverTime: new Date().toISOString(),
     serverVersion: appVersion(),
+    protocol: PANEL_PROTOCOL_VERSION,
     // False whenever `products` was denied by permission or clamped by
     // CATALOGUE_SNAPSHOT_LIMIT — either way it is not the complete catalogue,
     // and the Office image cache sweep must not treat it as one.

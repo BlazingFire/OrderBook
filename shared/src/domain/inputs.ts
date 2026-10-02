@@ -19,6 +19,7 @@ import type {
   Uuid,
 } from './entities.js';
 import type { FieldListKey } from './fields.js';
+import type { RoleTier } from './permissions.js';
 import type { RecycleBinEntityType } from './recycle-bin.js';
 
 export interface PartyInput {
@@ -355,7 +356,7 @@ export interface SearchQuery {
 
 export interface RoleInput {
   name: string;
-  tier: 'office' | 'management' | 'admin';
+  tier: RoleTier;
   /** The whole set. Sorted server-side, so a reorder is not an edit. */
   permissions: string[];
   /** Optimistic concurrency; omit to skip the check (creates only). */
@@ -669,7 +670,7 @@ export interface PartyAccessAssignee extends PartyAccessEntry {
   displayName: string;
   username: string;
   roleName: string;
-  roleTier: 'office' | 'management' | 'admin';
+  roleTier: RoleTier;
   isActive: boolean;
   avatar?: UserAvatar | null;
 }
@@ -718,7 +719,7 @@ export interface AssignablePerson {
   displayName: string;
   username: string;
   roleName: string;
-  roleTier: 'office' | 'management' | 'admin';
+  roleTier: RoleTier;
   /**
    * `null` when the person has no picture, `undefined` from a Master too old
    * to send the field — and the `Avatar` component takes both, deliberately

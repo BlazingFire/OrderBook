@@ -122,6 +122,19 @@ describe('developer gate — lockout', () => {
     await expect(gate.unlock('pw')).resolves.toBeTruthy();
   });
 
+  it('holds against guesses fired all at once: the right one behind ten wrong is still refused', async () => {
+    // The real hash, so every check is a real asynchronous scrypt run.
+    const { gate } = gateWith();
+    const wrong = Array.from({ length: 10 }, () => gate.unlock('wrong'));
+    const right = gate.unlock(BUILT_IN);
+
+    const settled = await Promise.allSettled([...wrong, right]);
+    expect(settled.filter((outcome) => outcome.status === 'fulfilled')).toEqual([]);
+    expect(settled.filter((outcome) => outcome.status === 'rejected' && outcome.reason instanceof UnauthorizedError))
+      .toHaveLength(DEVELOPER_UNLOCK_MAX_FAILURES);
+    await expect(right).rejects.toBeInstanceOf(TooManyRequestsError);
+  });
+
   it('a success clears the failure count', async () => {
     const { gate } = gateWith('pw');
     for (let i = 0; i < DEVELOPER_UNLOCK_MAX_FAILURES - 1; i += 1) {

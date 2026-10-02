@@ -135,8 +135,24 @@ describe.skipIf(!canRunIntegrationTests)('settings (integration)', () => {
       'inventory.freeToSell:updated',
     ]);
 
-    expect(rows[0]?.details).toEqual({ name: 'externalApi.enabled', from: 'false', to: 'true' });
+    // `labelToken` and a switch's `fromToken` / `toToken` are message keys the
+    // Logs sentence translates; `from` / `to` stay the raw values.
+    expect(rows[0]?.details).toEqual({
+      name: 'externalApi.enabled',
+      labelToken: 'setting.externalApi.enabled.label',
+      from: 'false',
+      to: 'true',
+      fromToken: 'settingValue.off',
+      toToken: 'settingValue.on',
+    });
     // The fixture seeds free-to-sell on, so this write is the flip back off.
-    expect(rows[1]?.details).toEqual({ name: 'inventory.freeToSell', from: 'true', to: 'false' });
+    expect(rows[1]?.details).toEqual({
+      name: 'inventory.freeToSell',
+      labelToken: 'setting.inventory.freeToSell.label',
+      from: 'true',
+      to: 'false',
+      fromToken: 'settingValue.on',
+      toToken: 'settingValue.off',
+    });
   });
 });

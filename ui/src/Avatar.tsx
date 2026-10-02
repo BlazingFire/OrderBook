@@ -35,6 +35,7 @@ export function Avatar({
   avatar,
   size = 'sm',
   src,
+  highlight,
 }: {
   name: string;
   /**
@@ -60,6 +61,8 @@ export function Avatar({
    * uses for product photos), so one URL works unmodified on both.
    */
   src?: string;
+  /** A ring marking a Server Master, wherever their face appears. */
+  highlight?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
   const { px, variant } = SIZES[size];
@@ -71,6 +74,7 @@ export function Avatar({
     <span
       className="ob-avatar"
       data-tint={showImage ? undefined : tintOf(name)}
+      data-highlight={highlight || undefined}
       style={{ width: px, height: px, fontSize: Math.round(px * 0.4) }}
       title={name}
     >

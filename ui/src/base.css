@@ -295,6 +295,12 @@
   box-shadow: none;
 }
 
+/* A Server Master's face: an accent ring outside the disc. */
+.ob-avatar[data-highlight='true'],
+.ob-footer .ob-avatar[data-highlight='true'] {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
 /* ===========================================================================
  * Crash screen — what a render error shows instead of an empty window.
  * ======================================================================== */
@@ -797,6 +803,14 @@ table.ob-table {
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
+/* A Server Master's row, everywhere users are listed. Selection still wins. */
+.ob-table tbody tr[data-highlight='true']:not([data-selected='true']) td {
+  background: var(--accent-tint);
+}
+.ob-table tbody tr[data-highlight='true'] td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
 .ob-table .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -914,6 +928,17 @@ table.ob-table--flat {
 .ob-pill--accent {
   background: var(--accent-tint);
   color: var(--accent);
+}
+/* The Server Master tier: solid, so it reads as a rank rather than a state. */
+.ob-pill--master {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: var(--accent);
+  color: var(--fg-on-accent);
+}
+.ob-pill--master > svg {
+  flex: none;
 }
 
 /* ===========================================================================

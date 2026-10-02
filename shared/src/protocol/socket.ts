@@ -132,6 +132,49 @@ export interface PanelAuthPayload {
    * every first connection and every panel built before this field.
    */
   syncCursor?: SyncDeltaCursor;
+  /**
+   * The panel protocol this Office speaks (`PANEL_PROTOCOL_VERSION` at its
+   * build). Absent from an Office built before the handshake, which the Master
+   * reads as protocol 1.
+   */
+  protocol?: number;
+  /** The Office's own version, for the Master's Panels screen. */
+  appVersion?: string;
+}
+
+/**
+ * The protocol this build speaks. It rises by one in each release that adds a
+ * socket command, so either side can tell the other is too old for one before
+ * sending it, instead of waiting out a timeout.
+ */
+export const PANEL_PROTOCOL_VERSION = 2;
+
+/**
+ * The lowest Master protocol each command needs. A command not listed has
+ * existed since protocol 1, which is what a Master that sends no protocol is
+ * taken to speak.
+ */
+export const COMMAND_MIN_PROTOCOL: Partial<Record<keyof ClientToServerEvents, number>> = {
+  'auth:offlineEvents': 2,
+};
+
+/**
+ * One sign-in an Office checked against its own offline verifier while the
+ * Master was unreachable, uploaded on reconnect so the audit trail has it.
+ * `at` is when it happened on the Office, not when the Master heard of it.
+ */
+export interface OfflineAuthEvent {
+  username: string;
+  /** Known when the Office holds a verifier for this person. */
+  userId?: string;
+  success: boolean;
+  at: IsoTimestamp;
+  /**
+   * Made by the Office when it records the event (1.3), so the Master can skip
+   * one it already logged when an upload is sent again. Optional: an older
+   * Office sends none, and its events are logged as they come.
+   */
+  id?: string;
 }
 
 /** Handshake `auth` payload sent by a Master Panel browser. */
@@ -329,6 +372,8 @@ export interface SyncDelta {
   serverHlc: string;
   serverTime: string;
   serverVersion?: string;
+  /** The Master's `PANEL_PROTOCOL_VERSION`. Absent from an older Master, which means 1. */
+  protocol?: number;
 }
 
 /**
@@ -474,6 +519,8 @@ export interface SyncSnapshot {
    * an older Master; absent means "as before", every figure shown.
    */
   features?: CompanyFeatures;
+  /** The Master's `PANEL_PROTOCOL_VERSION`. Absent from an older Master, which means 1. */
+  protocol?: number;
 }
 
 /** Office Panel → Master. Each carries an ack callback. */
@@ -500,6 +547,15 @@ export interface ClientToServerEvents {
    * verifier the Master had already invalidated, forever.
    */
   'auth:reconcile': (users: KnownPanelUser[], ack: CommandAck<{ forget: string[] }>) => void;
+  /**
+   * Hand over the sign-ins this panel checked offline, oldest first. At most
+   * 500 per call; the Master logs each one and answers how many it accepted, and
+   * the panel drops them only on that answer.
+   */
+  'auth:offlineEvents': (
+    events: OfflineAuthEvent[],
+    ack: CommandAck<{ recorded: number }>,
+  ) => void;
 
   'party:list': (query: ListQuery, ack: CommandAck<Paginated<Party>>) => void;
   'party:create': (input: PartyInput, ack: CommandAck<Party>) => void;
@@ -827,4 +883,6 @@ export interface SocketData {
    * deactivated administrator's open socket keeps streaming.
    */
   sessionToken?: string;
+  /** The protocol an Office Panel announced in its handshake; absent means 1. */
+  protocol?: number;
 }

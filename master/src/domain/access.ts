@@ -12,14 +12,65 @@
  */
 
 import type { Permission, RoleTier } from '@orderbook/shared';
-import { isPermission, keysAboveTier, tierRank } from '@orderbook/shared';
+import {
+  SERVER_MASTER_MIN_ACTIVE,
+  isPermission,
+  isServerMasterTier,
+  keysAboveTier,
+  tierRank,
+} from '@orderbook/shared';
 
 import { ConflictError, ForbiddenError, ValidationError } from '../lib/errors.js';
 import type { ActorContext } from './actor.js';
 
-/** G1 — only an administrator may create or restructure roles. */
+/** G1 — only an administrator (or a Server Master above one) may create or restructure roles. */
 export function assertAdminTier(actor: ActorContext, permission: Permission): void {
-  if (actor.permissions?.tier !== 'admin') throw new ForbiddenError(permission);
+  const tier = actor.permissions?.tier;
+  if (!tier || tierRank(tier) < tierRank('admin')) throw new ForbiddenError(permission);
+}
+
+/**
+ * G9 — nobody manages a user who outranks them.
+ *
+ * An admin sees Server Master rows but may not edit, deactivate, delete,
+ * restore, reset, reveal or re-picture one. Equal tiers are allowed: admins
+ * still manage other admins, and a Server Master manages the other.
+ */
+export function assertMayManageUser(actor: ActorContext, targetTier: RoleTier): void {
+  const actorTier = actor.permissions?.tier;
+  if (!actorTier || tierRank(targetTier) > tierRank(actorTier)) {
+    throw new ForbiddenError('users.manage', 'error.forbidden.serverMasterTarget');
+  }
+}
+
+/**
+ * The Server Master tier belongs to one reserved system role. No other role may
+ * be created at it or moved onto it, so there is never a second "super" role to
+ * audit.
+ */
+export function assertTierAssignable(tier: RoleTier): void {
+  if (isServerMasterTier(tier)) throw new ValidationError('validation.role.serverMasterReserved');
+}
+
+/** The Server Master role is frozen whole: no rename, no permission edit, no tier move, no delete. */
+export function assertServerMasterRoleFrozen(role: { tier: RoleTier }): void {
+  if (isServerMasterTier(role.tier)) throw new ValidationError('validation.role.serverMasterLocked');
+}
+
+/**
+ * G10 — at least two active Server Masters must remain.
+ *
+ * A preservation rule like G4: counts read before and after the change, under
+ * `lockTenantAccessGuards`. Comparing against `min(before, 2)` means an
+ * installation that has fewer than two yet (an upgrade, a restore from an older
+ * backup) is never blocked from changes that do not make it worse.
+ */
+export function assertServerMastersRetained(before: number, after: number): void {
+  if (after < Math.min(before, SERVER_MASTER_MIN_ACTIVE)) {
+    throw new ValidationError('validation.user.serverMastersRequired', {
+      count: SERVER_MASTER_MIN_ACTIVE,
+    });
+  }
 }
 
 /**

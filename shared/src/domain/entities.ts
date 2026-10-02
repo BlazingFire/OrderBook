@@ -11,6 +11,8 @@
  *              shared/src/sync/ids.ts and docs/LEAD_GENERATION_FLOW.md §7.
  */
 
+import type { RoleTier } from './permissions.js';
+
 export type Uuid = string;
 
 /** A syncable record's id: 15-char temporary, or 12-char permanent. */
@@ -18,6 +20,7 @@ export type RecordId = string;
 
 /** ISO 8601 timestamp string, e.g. "2026-08-20T10:15:00.000Z". */
 export type IsoTimestamp = string;
+
 /** ISO 8601 calendar date, e.g. "2026-08-20". No time component, no zone. */
 export type IsoDate = string;
 
@@ -47,7 +50,7 @@ export interface Tenant {
 }
 
 /** Kept as an alias so older call sites keep compiling; `RoleTier` is canonical. */
-export type RoleTierName = 'admin' | 'management' | 'office';
+export type RoleTierName = RoleTier;
 
 export interface Role {
   id: RecordId;
@@ -253,6 +256,11 @@ export interface OfficePanelRuntime {
   signedInUsername: string | null;
   /** When the current connection was established. */
   connectedSince: IsoTimestamp | null;
+  /**
+   * The panel protocol the Office announced in its socket handshake. Absent
+   * from a Master too old to record it, and from an Office too old to send it.
+   */
+  protocol?: number;
 }
 
 /** Live connection state, derived at runtime — not a database column. */

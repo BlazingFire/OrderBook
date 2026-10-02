@@ -37,6 +37,7 @@ import type {
   LeadInput,
   LeadUpdateInput,
   MasterIdentity,
+  MasterKeyUnlock,
   MessageKey,
   MessageParams,
   OfficePanelDetail,
@@ -83,6 +84,8 @@ import type {
   SettingView,
   RoleInput,
   SearchHit,
+  ServerMasterAccount,
+  ServerMasterAccountInput,
   StageReorderInput,
   StorageUsage,
   SignedInUser,
@@ -93,6 +96,7 @@ import type {
   UserInput,
   UserUpdateInput,
 } from '@orderbook/shared';
+import { MASTER_KEY_TOKEN_HEADER } from '@orderbook/shared';
 
 /** A field a stale save disagrees with the server about. */
 export interface FieldDifference {
@@ -228,7 +232,7 @@ async function send<T>(
      * signed in. Still thrown afterwards, so the caller's own error path runs
      * exactly as before.
      */
-    if (response.status === 401) {
+    if (response.status === 401 && !MASTER_KEY_REFUSALS.has(detail?.messageKey ?? '')) {
       publishSessionEnded(detail?.messageKey ?? 'signIn.notice.sessionEnded');
     }
 
@@ -241,6 +245,21 @@ async function send<T>(
     );
   }
   return body as T;
+}
+
+/**
+ * 401s about the master key, not the session: a wrong key, or a token that is
+ * missing or has run out. The person is still signed in and the dialog asks
+ * again, so these must not sign the window out.
+ */
+const MASTER_KEY_REFUSALS: ReadonlySet<string> = new Set([
+  'error.unauthorized.masterKey',
+  'error.unauthorized.masterKeyRequired',
+]);
+
+/** The master-key token as a request header, when there is one. */
+function masterKeyHeader(token: string | undefined): Record<string, string> | undefined {
+  return token ? { [MASTER_KEY_TOKEN_HEADER]: token } : undefined;
 }
 
 /** Every JSON call: counted by the loading strip along the top (`trackLoad`) until it settles. */
@@ -390,13 +409,23 @@ async function requestForm<T>(path: string, form: FormData): Promise<T> {
   return (await response.json()) as T;
 }
 
+/** What first-run setup answers: the two Server Masters it made, and how panels pair. */
 export interface FirstRunCredentials {
   masterUniqueId: string;
-  username: string;
-  password: string;
+  accounts: Array<{ username: string; displayName: string }>;
   pairingPassword: string;
   lanIps: string[];
   port: number;
+}
+
+/** `/api/setup/status`. The last two fields are absent on a Master older than 1.3. */
+export interface SetupStatus {
+  setupComplete: boolean;
+  companyName?: string | null;
+  /** This browser is on the Master PC itself (loopback). */
+  onMasterPc?: boolean;
+  /** Fewer than two active Server Masters exist; the master-key setup flow comes first. */
+  serverMasterSetupNeeded?: boolean;
 }
 
 /**
@@ -420,10 +449,43 @@ function reportRangeQuery(input: ReportRangeInput = {}) {
 
 export const api = {
   /** `companyName` once set up: the footer shows it (already public through discovery). */
-  setupStatus: () =>
-    request<{ setupComplete: boolean; companyName?: string | null }>('/api/setup/status'),
-  initialize: (companyName: string) =>
-    post<FirstRunCredentials>('/api/setup/initialize', { companyName }),
+  setupStatus: () => request<SetupStatus>('/api/setup/status'),
+  /** Master PC only. Creates the two Server Masters the owner typed, and no admin. */
+  initialize: (companyName: string, accounts: ServerMasterAccountInput[]) =>
+    post<FirstRunCredentials>('/api/setup/initialize', { companyName, accounts }),
+  /** A Server Master on the Master PC, with the master key. The new password is shown once. */
+  changePairingPassword: (masterKeyToken: string) =>
+    request<{ pairingPassword: string }>('/api/setup/pairing-password', {
+      method: 'POST',
+      headers: masterKeyHeader(masterKeyToken),
+    }),
+
+  // --- Master key (Master PC only; docs/MASTER_KEY.md) ----------------------
+
+  /** A correct key buys a five-minute token; five wrong ones lock the gate for a minute. */
+  verifyMasterKey: (key: string) => post<MasterKeyUnlock>('/api/master-key/verify', { key }),
+  serverMasters: (masterKeyToken: string) =>
+    request<{ accounts: ServerMasterAccount[]; needed: number }>(
+      '/api/master-key/server-masters',
+      { headers: masterKeyHeader(masterKeyToken) },
+    ),
+  /** The upgrade flow: exactly the missing Server Masters, before anyone signs in. */
+  setUpServerMasters: (accounts: ServerMasterAccountInput[], masterKeyToken: string) =>
+    request<{ accounts: Array<{ id: string; username: string; displayName: string }> }>(
+      '/api/master-key/server-masters',
+      {
+        method: 'POST',
+        body: JSON.stringify({ accounts }),
+        headers: masterKeyHeader(masterKeyToken),
+      },
+    ),
+  /** "Forgot Server Master password?": the password only, never the username. */
+  recoverServerMaster: (userId: string, newPassword: string, masterKeyToken: string) =>
+    request<void>('/api/master-key/recover', {
+      method: 'POST',
+      body: JSON.stringify({ userId, newPassword }),
+      headers: masterKeyHeader(masterKeyToken),
+    }),
   identity: () => request<MasterIdentity>('/api/setup/identity'),
 
   previewRestoreSetup: (file: File) => {
@@ -757,25 +819,50 @@ export const api = {
   users: () => request<User[]>('/api/access/users'),
   deletedUsers: () => request<User[]>('/api/access/users/deleted'),
   /** The one response in the product that carries a plaintext password, once. */
-  createUser: (input: UserInput) =>
-    post<{ user: User; secret: OneTimeSecret }>('/api/access/users', input),
-  updateUser: (id: string, input: UserUpdateInput) =>
-    request<User>(`/api/access/users/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
-  deleteUser: (id: string) => request<User>(`/api/access/users/${id}`, { method: 'DELETE' }),
+  /*
+   * `masterKeyToken` is needed only where a Server Master account is created,
+   * renamed, moved, deactivated, deleted or reset; the server says which.
+   */
+  createUser: (input: UserInput, masterKeyToken?: string) =>
+    request<{ user: User; secret: OneTimeSecret }>('/api/access/users', {
+      method: 'POST',
+      body: JSON.stringify(input),
+      headers: masterKeyHeader(masterKeyToken),
+    }),
+  updateUser: (id: string, input: UserUpdateInput, masterKeyToken?: string) =>
+    request<User>(`/api/access/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+      headers: masterKeyHeader(masterKeyToken),
+    }),
+  deleteUser: (id: string, masterKeyToken?: string) =>
+    request<User>(`/api/access/users/${id}`, {
+      method: 'DELETE',
+      headers: masterKeyHeader(masterKeyToken),
+    }),
   restoreUser: (id: string) => post<User>(`/api/access/users/${id}/restore`),
   /** Omit `password` to have the Master generate one. On an installation that
    *  has not switched the password vault on, this is still the only way an
    *  administrator can tell somebody what their password is: what is stored is
    *  a scrypt hash and nothing reads it back. */
-  resetPassword: (id: string, password?: string) =>
-    post<OneTimeSecret>(`/api/access/users/${id}/reset-password`, password ? { password } : {}),
+  resetPassword: (id: string, password?: string, masterKeyToken?: string) =>
+    request<OneTimeSecret>(`/api/access/users/${id}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify(password ? { password } : {}),
+      headers: masterKeyHeader(masterKeyToken),
+    }),
   /** Refused unless `security.passwordRevealEnabled` is on, the caller holds
    *  `users.viewPassword`, and they re-type their own password. POST so it
    *  never lands in a URL or a proxy log. */
   revealPassword: (id: string, confirmPassword: string) =>
     post<OneTimeSecret>(`/api/access/users/${id}/reveal-password`, { confirmPassword }),
-  changeOwnPassword: (input: ChangeOwnPasswordInput) =>
-    post<void>('/api/access/me/password', input),
+  /** A Server Master's own change needs the master-key token as well. */
+  changeOwnPassword: (input: ChangeOwnPasswordInput, masterKeyToken?: string) =>
+    request<void>('/api/access/me/password', {
+      method: 'POST',
+      body: JSON.stringify(input),
+      headers: masterKeyHeader(masterKeyToken),
+    }),
 
   /** Sent as-is; the Master squares and resizes it. Your own always; somebody
    *  else's needs `users.manage`. */
@@ -892,6 +979,8 @@ export const api = {
     if (query.from) params.set('from', query.from);
     if (query.to) params.set('to', query.to);
     if (query.q) params.set('q', query.q);
+    // The CSV's sentence column is rendered in this language.
+    if (query.locale) params.set('locale', query.locale);
     const qs = params.toString();
     return `/api/logs/export${qs ? `?${qs}` : ''}`;
   },

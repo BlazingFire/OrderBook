@@ -154,6 +154,34 @@ export async function exportProducts(
   // Reading the catalogue needs no more than seeing it; only the import writes.
   requirePermission(actor, 'products.view');
 
+  const { count, ...file } = await buildProductExport(format, actor, level);
+
+  // After the file is built, in a small transaction of its own, like the log
+  // export: building it wrote nothing.
+  await db().transaction((trx) =>
+    activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'catalog',
+        entityId: actor.tenantId,
+        action: 'exported',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { count, level, format, fileName: file.fileName },
+      },
+      actor,
+      trx,
+    ),
+  );
+
+  return file;
+}
+
+async function buildProductExport(
+  format: 'csv' | 'xlsx',
+  actor: ActorContext,
+  level: 'sub' | 'main',
+): Promise<{ bytes: Buffer; contentType: string; fileName: string; count: number }> {
   if (level === 'main') {
     const categories = await productRepo.listCategories(actor.tenantId);
     const headers = ['Brand', 'Main product code', 'Main product', 'Sub products'];
@@ -168,6 +196,7 @@ export async function exportProducts(
         bytes: Buffer.from('﻿' + toCsv(headers, mainRows), 'utf8'),
         contentType: 'text/csv; charset=utf-8',
         fileName: `main-products-${today()}.csv`,
+        count: mainRows.length,
       };
     }
     const bytes = await buildXlsxTable({
@@ -175,7 +204,12 @@ export async function exportProducts(
       columns: headers.map((header) => ({ header, width: 24, text: header === 'Main product code' })),
       rows: mainRows,
     });
-    return { bytes, contentType: XLSX_CONTENT_TYPE, fileName: `main-products-${today()}.xlsx` };
+    return {
+      bytes,
+      contentType: XLSX_CONTENT_TYPE,
+      fileName: `main-products-${today()}.xlsx`,
+      count: mainRows.length,
+    };
   }
 
   // ponytail: one page of everything; paginate the read if a catalogue ever outgrows memory.
@@ -207,6 +241,7 @@ export async function exportProducts(
       bytes: Buffer.from('﻿' + toCsv(columns.map((column) => column.label), rows), 'utf8'),
       contentType: 'text/csv; charset=utf-8',
       fileName: `products-${today()}.csv`,
+      count: rows.length,
     };
   }
 
@@ -219,7 +254,7 @@ export async function exportProducts(
     })),
     rows,
   });
-  return { bytes, contentType: XLSX_CONTENT_TYPE, fileName: `products-${today()}.xlsx` };
+  return { bytes, contentType: XLSX_CONTENT_TYPE, fileName: `products-${today()}.xlsx`, count: rows.length };
 }
 
 interface ImportFile {
@@ -740,7 +775,8 @@ function isUnchanged(group: UpdateGroup, categoryId: string | undefined): boolea
  * than replacing it: a sheet naming three of DAMRU's forty codes must
  * not delete the other thirty-seven. A row matches an existing variant by
  * code, else by label, else it is a new variant.
- */async function applyUpdate(
+ */
+async function applyUpdate(
   group: UpdateGroup,
   hlc: string,
   tenantId: string,

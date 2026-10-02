@@ -1,10 +1,16 @@
+import type { NextFunction, Request, Response } from 'express';
 import { Router } from 'express';
 import multer from 'multer';
 
-import { ValidationError } from '../../lib/errors.js';
+import { MASTER_KEY_TOKEN_HEADER } from '@orderbook/shared';
+
+import { ConflictError, ValidationError } from '../../lib/errors.js';
+import { isLoopback } from '../../lib/network.js';
 import * as backupRestoreService from '../../services/backup-restore.service.js';
+import { changePairingPassword } from '../../services/server-master.service.js';
 import { asyncHandler } from '../async-handler.js';
-import { requireAuth, requirePermissionMiddleware } from '../middleware/require-auth.js';
+import { actorFromRequest, requireAuth, requirePermissionMiddleware } from '../middleware/require-auth.js';
+import { requireLoopback } from '../middleware/require-loopback.js';
 import * as setupService from '../../services/setup.service.js';
 
 export const setupRoutes: Router = Router();
@@ -15,27 +21,63 @@ const needs = requirePermissionMiddleware;
 const backupUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024 * 1024 } });
 
 /**
+ * A restore replaces a set-up installation's data wholesale, so once setup has
+ * run these routes refuse before reading the upload. `restoreBackup` refuses
+ * again on its own; this stops the preview too, which would otherwise parse
+ * any backup a caller sends.
+ */
+function refuseAfterSetup(_req: Request, _res: Response, next: NextFunction): void {
+  void setupService.isSetupComplete().then(
+    (complete) => next(complete ? new ConflictError('error.conflict.alreadySetUp') : undefined),
+    next,
+  );
+}
+
+/**
  * Drives the very first screen: has this Master been configured yet? Once it
  * has, also the company name for the panel's footer. That name is already
  * public: UDP discovery broadcasts it and the Office sign-in screen shows it.
+ *
+ * `onMasterPc` tells the screen whether the Master-PC-only flows (setup,
+ * restore, the Server Master setup and recovery) are offered at all, and
+ * `serverMasterSetupNeeded` whether the master-key setup flow comes first.
  */
 setupRoutes.get(
   '/status',
-  asyncHandler(async (_req, res) => {
-    res.json(await setupService.getSetupStatus());
+  asyncHandler(async (req, res) => {
+    res.json({
+      ...(await setupService.getSetupStatus()),
+      onMasterPc: isLoopback(req),
+      serverMasterSetupNeeded: await setupService.serverMasterSetupNeeded(),
+    });
   }),
 );
 
 /**
- * Runs once. The response is the only time the generated sign-in password and
- * pairing password are ever visible.
+ * Runs once, on the Master PC only. The owner types both Server Master
+ * accounts; the response is the only time the generated pairing password is
+ * ever visible.
  */
 setupRoutes.post(
   '/initialize',
+  requireLoopback,
   asyncHandler(async (req, res) => {
     const companyName = typeof req.body?.companyName === 'string' ? req.body.companyName.trim() : null;
-    const credentials = await setupService.runFirstTimeSetup(companyName || null);
+    const credentials = await setupService.runFirstTimeSetup(companyName || null, req.body?.accounts);
     res.status(201).json(credentials);
+  }),
+);
+
+/**
+ * A new pairing password, shown once: a Server Master, on the Master PC, with
+ * the master key. Panels already paired keep working on their own secrets.
+ */
+setupRoutes.post(
+  '/pairing-password',
+  requireLoopback,
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    res.json(await changePairingPassword(actorFromRequest(req), req.header(MASTER_KEY_TOKEN_HEADER)));
   }),
 );
 
@@ -52,11 +94,17 @@ setupRoutes.get(
 /**
  * The first-run screen's other fork (`docs/7-STORAGE-BACKUP-RESTORE.md` §5.1,
  * §5.2): "Restore from backup" instead of "Set up new site". Unauthenticated,
- * like every other route here — there is nobody to authenticate as yet — and
- * refused by `restoreBackup` itself if setup has already run.
+ * like every other route here — there is nobody to authenticate as yet — so
+ * kept to the Master PC, and refused once setup has run.
+ *
+ * `requireLoopback` comes before `backupUpload.single`, always: multer buffers
+ * up to a gigabyte in memory, and a LAN caller must be turned away before it
+ * can make the Master read that much.
  */
 setupRoutes.post(
   '/restore/preview',
+  requireLoopback,
+  refuseAfterSetup,
   backupUpload.single('file'),
   asyncHandler(async (req, res) => {
     if (!req.file) throw new ValidationError('validation.backup.fileRequired');
@@ -66,6 +114,8 @@ setupRoutes.post(
 
 setupRoutes.post(
   '/restore',
+  requireLoopback,
+  refuseAfterSetup,
   backupUpload.single('file'),
   asyncHandler(async (req, res) => {
     if (!req.file) throw new ValidationError('validation.backup.fileRequired');

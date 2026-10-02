@@ -32,6 +32,7 @@ import { verifyAgainst } from '../lib/password.js';
 import { masterConnection } from '../realtime/master-connection.js';
 import { clearCredentials } from './credentials.store.js';
 import { resetSignInAttempts } from './sign-in-attempts.store.js';
+import { resetOfflineAuthEvents } from './offline-auth-events.store.js';
 import * as userSession from './user-session.service.js';
 import { resetUserStore } from './user-store.js';
 import { resetClockCache } from '../sync/clock.js';
@@ -181,6 +182,7 @@ export async function resetPanel(): Promise<ResetAllResult> {
   resetLocalStore();
   resetUserStore();
   resetSignInAttempts();
+  resetOfflineAuthEvents();
 
   log.warn('Developer reset: this panel is unpaired and every local file is gone');
 

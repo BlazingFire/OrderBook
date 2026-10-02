@@ -289,6 +289,9 @@ describe('the password minimum', () => {
       'services/auth.service.ts',
       'services/developer.service.ts',
       'services/setup.service.ts',
+      // The owner's typed Server Master accounts, at first run and on upgrade,
+      // and the master-key password recovery.
+      'services/server-master.service.ts',
     ]) {
       for (const { name, body } of blocksThatHash(relative)) {
         if (HASHES_NOTHING_A_CALLER_CHOSE[name] === relative) continue;

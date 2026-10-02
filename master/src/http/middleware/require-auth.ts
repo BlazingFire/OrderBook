@@ -4,6 +4,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { config } from '../../config/index.js';
 import type { ActorContext } from '../../domain/actor.js';
 import { ForbiddenError, UnauthorizedError } from '../../lib/errors.js';
+import { masterPcAddress } from '../../lib/network.js';
 import { resolveSessionWithPermissions } from '../../services/auth.service.js';
 
 declare module 'express-serve-static-core' {
@@ -31,7 +32,12 @@ export function attachSession(req: Request, _res: Response, next: NextFunction):
     try {
       // One query, not three: the user, their role's permissions and that
       // role's version all come out of the same join.
-      const resolved = await resolveSessionWithPermissions(token);
+      // The address decides whether a Server Master's session counts here: it
+      // does only on the Master PC.
+      const resolved = await resolveSessionWithPermissions(
+        token,
+        masterPcAddress(req.socket.remoteAddress, req.headers),
+      );
 
       if (!resolved) {
         next();

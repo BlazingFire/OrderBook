@@ -37,6 +37,11 @@ export interface ActivityRenderInput {
   details: Record<string, unknown> | null;
 }
 
+/** Own keys only, so a detail value such as `toString` is not mistaken for a message. */
+function isMessageKey(value: string): value is MessageKey {
+  return Object.prototype.hasOwnProperty.call(EN_MESSAGES, value);
+}
+
 /** Renders, or falls back to the raw pair — honestly, never blank. */
 export function renderActivity(t: Translator, input: ActivityRenderInput): string {
   const key = activityMessageKey(input.entityType, input.action);
@@ -51,6 +56,36 @@ export function renderActivity(t: Translator, input: ActivityRenderInput): strin
   for (const [field, value] of Object.entries(input.details ?? {})) {
     if (typeof value === 'string' || typeof value === 'number') params[field] = value;
   }
+  // A detail named `<x>Token` holds a message key (`labelToken`, `toToken`),
+  // translated here into `{x}` so the sentence reads in the reader's language.
+  for (const [field, value] of Object.entries(input.details ?? {})) {
+    if (field.endsWith('Token') && typeof value === 'string' && isMessageKey(value)) {
+      params[field.slice(0, -'Token'.length)] = t.t(value, {} as never);
+    }
+  }
+
+  // The richer sentence, when the row carries everything it names. Rows
+  // written before its fields existed keep the plain `activity.*` sentence.
+  const detailKey = `activityDetail.${input.entityType}.${input.action}`;
+  if (isMessageKey(detailKey)) {
+    const detailTemplate: string = EN_MESSAGES[detailKey];
+    const names = [...detailTemplate.matchAll(/\{(\w+)\}/g)].map((match) => match[1] as string);
+    if (names.every((name) => name in params)) return t.t(detailKey, params as never);
+  }
 
   return t.t(key, params as never);
+}
+
+/**
+ * The Logs filter labels: `logs.entity.<type>` and `logs.action.<action>`,
+ * or `null` when the catalogue has none and the raw value should show.
+ */
+export function logsEntityLabelKey(entityType: string): MessageKey | null {
+  const key = `logs.entity.${entityType}`;
+  return isMessageKey(key) ? key : null;
+}
+
+export function logsActionLabelKey(action: string): MessageKey | null {
+  const key = `logs.action.${action}`;
+  return isMessageKey(key) ? key : null;
 }

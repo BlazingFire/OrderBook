@@ -27,6 +27,7 @@ import { reportRoutes } from './routes/report.routes.js';
 import { settingsRoutes } from './routes/settings.routes.js';
 import { setupRoutes } from './routes/setup.routes.js';
 import { developerRoutes } from './routes/developer.routes.js';
+import { masterKeyRoutes } from './routes/master-key.routes.js';
 import { publicUpdateRoutes, updateRoutes } from './routes/update.routes.js';
 
 export function createApp(): Express {
@@ -57,6 +58,8 @@ export function createApp(): Express {
   app.use('/api/v1', publicApiRoutes);
 
   app.use('/api/setup', setupRoutes);
+  // Master-PC only, and before the `/api` catch-all: recovery runs before sign-in.
+  app.use('/api/master-key', masterKeyRoutes);
   app.use('/api/auth', authRoutes);
   app.use('/api/pairing', pairingRoutes);
   app.use('/api/panels', panelRoutes);

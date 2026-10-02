@@ -799,6 +799,8 @@ export const api = {
     if (query.from) params.set('from', query.from);
     if (query.to) params.set('to', query.to);
     if (query.q) params.set('q', query.q);
+    // The CSV's sentence column is rendered in this language.
+    if (query.locale) params.set('locale', query.locale);
     const qs = params.toString();
     return `/api/logs/export${qs ? `?${qs}` : ''}`;
   },

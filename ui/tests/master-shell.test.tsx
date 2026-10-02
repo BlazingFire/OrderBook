@@ -1241,3 +1241,151 @@ describe('Office panels, Roles & users and the Activity log', () => {
     );
   });
 });
+
+describe('Server Masters at first run and sign-in (1.3)', () => {
+  /** Boots to whatever the setup status leads to, without waiting for a signed-in shell. */
+  async function bootTo(route: (call: Call) => Response | undefined): Promise<Call[]> {
+    const calls = routeFetch(route);
+    const App = await loadApp('master');
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+    return calls;
+  }
+
+  const signedOut =
+    (status: Record<string, unknown>) =>
+    ({ url }: Call): Response | undefined => {
+      const path = url.split('?')[0];
+      if (path === '/api/setup/status') return json({ setupComplete: true, ...status });
+      if (path === '/api/auth/me') return json({ error: 'unauthorized' }, 401);
+      return undefined;
+    };
+
+  it('first run asks for two Server Master accounts and creates no admin', async () => {
+    const calls = await bootTo(({ url, method }) => {
+      if (url === '/api/setup/status') {
+        return json({ setupComplete: false, onMasterPc: true, serverMasterSetupNeeded: false });
+      }
+      if (url === '/api/setup/initialize' && method === 'POST') {
+        return json(
+          {
+            masterUniqueId: 'MASTER-1',
+            accounts: [
+              { username: 'master', displayName: 'Owner' },
+              { username: 'master-backup', displayName: 'Partner' },
+            ],
+            pairingPassword: 'pair-word',
+            lanIps: [],
+            port: 4000,
+          },
+          201,
+        );
+      }
+      return undefined;
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: t('firstRun.choose.newSite') }));
+
+    const usernames = screen.getAllByLabelText<HTMLInputElement>(t('firstRun.serverMaster.username'));
+    expect(usernames.map((input) => input.value)).toEqual(['master', 'master-backup']);
+
+    const names = screen.getAllByLabelText(t('firstRun.serverMaster.displayName'));
+    const passwords = screen.getAllByLabelText(t('firstRun.serverMaster.password'));
+    const confirms = screen.getAllByLabelText(t('firstRun.serverMaster.confirmPassword'));
+    fireEvent.change(names[0]!, { target: { value: 'Owner' } });
+    fireEvent.change(names[1]!, { target: { value: 'Partner' } });
+    fireEvent.change(passwords[0]!, { target: { value: 'Owner@1234' } });
+    fireEvent.change(passwords[1]!, { target: { value: 'Partner@1234' } });
+    fireEvent.change(confirms[0]!, { target: { value: 'Owner@1234' } });
+    // A mismatch is caught here, before anything is sent.
+    fireEvent.change(confirms[1]!, { target: { value: 'Partner@9999' } });
+
+    const generate = screen.getByRole('button', { name: t('firstRun.setup.generate') });
+    await act(async () => {
+      fireEvent.click(generate);
+      await wait(0);
+    });
+    expect(screen.getByText(t('firstRun.serverMaster.passwordMismatch'))).toBeTruthy();
+    expect(calls.some((call) => call.url === '/api/setup/initialize')).toBe(false);
+
+    fireEvent.change(confirms[1]!, { target: { value: 'Partner@1234' } });
+    await act(async () => {
+      fireEvent.click(generate);
+      await wait(0);
+    });
+
+    const sent = calls.find((call) => call.url === '/api/setup/initialize');
+    expect(sent?.body).toEqual({
+      companyName: '',
+      accounts: [
+        { username: 'master', displayName: 'Owner', password: 'Owner@1234' },
+        { username: 'master-backup', displayName: 'Partner', password: 'Partner@1234' },
+      ],
+    });
+    expect(JSON.stringify(sent?.body)).not.toContain('admin');
+
+    expect(await screen.findByText(t('firstRun.ready.title'))).toBeTruthy();
+    expect(screen.getByText('master-backup')).toBeTruthy();
+    expect(screen.getByText('pair-word')).toBeTruthy();
+  });
+
+  it('first run on a LAN browser says it is done at the Master PC, with no setup or restore', async () => {
+    await bootTo(({ url }) =>
+      url === '/api/setup/status'
+        ? json({ setupComplete: false, onMasterPc: false, serverMasterSetupNeeded: false })
+        : undefined,
+    );
+
+    expect(await screen.findByText(t('firstRun.choose.masterPcOnly'))).toBeTruthy();
+    expect(screen.queryByRole('button', { name: t('firstRun.choose.newSite') })).toBeNull();
+    expect(screen.queryByRole('button', { name: t('firstRun.choose.restore') })).toBeNull();
+  });
+
+  it('signs in with an empty username, never a suggested admin', async () => {
+    await bootTo(signedOut({ onMasterPc: false, serverMasterSetupNeeded: false }));
+
+    const username = await screen.findByLabelText<HTMLInputElement>(t('signIn.field.username'));
+    expect(username.value).toBe('');
+    // A LAN browser is not offered the Master-PC recovery flow.
+    expect(screen.queryByRole('button', { name: t('masterKey.recover.link') })).toBeNull();
+  });
+
+  it('on the Master PC, shows the Server Master setup first when it is owed, with no skip', async () => {
+    await bootTo(signedOut({ onMasterPc: true, serverMasterSetupNeeded: true }));
+
+    expect(await screen.findByText(t('masterKey.setup.title'))).toBeTruthy();
+    expect(screen.getByLabelText(t('masterKey.label'))).toBeTruthy();
+    expect(screen.queryByLabelText(t('signIn.field.username'))).toBeNull();
+  });
+
+  it('keeps a LAN browser on the ordinary sign-in while the setup is owed', async () => {
+    await bootTo(signedOut({ onMasterPc: false, serverMasterSetupNeeded: true }));
+
+    expect(await screen.findByLabelText(t('signIn.field.username'))).toBeTruthy();
+    expect(screen.queryByText(t('masterKey.setup.title'))).toBeNull();
+  });
+
+  it('offers the master-key recovery on the Master PC', async () => {
+    await bootTo(signedOut({ onMasterPc: true, serverMasterSetupNeeded: false }));
+
+    fireEvent.click(await screen.findByRole('button', { name: t('masterKey.recover.link') }));
+
+    expect(await screen.findByText(t('masterKey.recover.title'))).toBeTruthy();
+    expect(screen.getByLabelText(t('masterKey.label'))).toBeTruthy();
+  });
+
+  it('badges a signed-in Server Master in the footer', async () => {
+    await boot(ADMIN, ({ url }) =>
+      url === '/api/auth/me'
+        ? json({ user: user(ADMIN, 'server_master'), sessionToken: 'session-1', defaultLocale: 'en' })
+        : undefined,
+    );
+
+    const footer = document.querySelector('.ob-footer')!;
+    expect(footer.querySelector('[data-server-master]')).not.toBeNull();
+    expect(footer.querySelector('.ob-avatar[data-highlight="true"]')).not.toBeNull();
+  });
+});

@@ -13,16 +13,23 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
 
-import { DEVELOPER_TOKEN_HEADER, DUMMY_USERS } from '@orderbook/shared';
+import { DEVELOPER_TOKEN_HEADER, DUMMY_SERVER_MASTERS, DUMMY_USERS } from '@orderbook/shared';
 
 import { canRunIntegrationTests } from './helpers/db.js';
-import { resetData, setupDatabase, teardownDatabase, testTenantId } from './helpers/fixtures.js';
+import {
+  FIRST_RUN_ACCOUNTS,
+  resetData,
+  setUpFirstRun,
+  setupDatabase,
+  teardownDatabase,
+  testTenantId,
+} from './helpers/fixtures.js';
 import { db } from '../src/db/knex.js';
 import { createApp } from '../src/http/app.js';
 import { hashPassword } from '../src/lib/password.js';
 import * as auth from '../src/services/auth.service.js';
 import { seedDummyUsers } from '../src/services/developer.service.js';
-import { isSetupComplete, runFirstTimeSetup } from '../src/services/setup.service.js';
+import { isSetupComplete } from '../src/services/setup.service.js';
 
 const BUILT_IN_PASSWORD = 'Dev@OrderBook2026';
 
@@ -37,25 +44,44 @@ describe.skipIf(!canRunIntegrationTests)('developer mode (integration)', () => {
   beforeEach(resetData);
 
   describe('seedDummyUsers', () => {
-    it('runs first-time setup on a blank Master and creates three users who can sign in', async () => {
+    it('runs first-time setup on a blank Master and creates the dummy Server Masters and three users who can sign in', async () => {
       const result = await seedDummyUsers();
 
       expect(result.pairingPassword).toMatch(/^[A-Z2-9]{10}$/);
       expect(result.companyName).toBe('OrderBook Test Company');
-      // Setup itself creates `admin`, so the dummy `admin` re-arms that row
-      // rather than adding a second one — the documented password replaces
-      // the generated one setup would have shown on screen.
-      expect(result.users.map((u) => u.outcome)).toEqual(['reset', 'created', 'created']);
+      // Setup creates the two documented dummy Server Masters and no `admin`,
+      // so every dummy account after them is new.
+      expect(result.users.map((u) => [u.username, u.outcome])).toEqual([
+        ['master', 'created'],
+        ['master-backup', 'created'],
+        ['admin', 'created'],
+        ['management', 'created'],
+        ['office', 'created'],
+      ]);
       expect(await isSetupComplete()).toBe(true);
 
-      for (const spec of DUMMY_USERS) {
-        const signedIn = await auth.signIn(spec.username, spec.password);
+      for (const spec of [...DUMMY_SERVER_MASTERS, ...DUMMY_USERS]) {
+        const signedIn = await auth.signIn(spec.username, spec.password, undefined, { onMasterPc: true });
         expect(signedIn.user.roleTier).toBe(spec.tier);
       }
     });
 
+    it('never touches a Server Master, even one whose username a dummy account uses', async () => {
+      await setUpFirstRun('Shree Ceramics');
+      await db()('users')
+        .where({ tenant_id: await testTenantId(), username: 'master-backup' })
+        .update({ username: 'admin' });
+
+      const result = await seedDummyUsers();
+      expect(result.users.map((u) => u.username)).toEqual(['management', 'office']);
+
+      const backup = FIRST_RUN_ACCOUNTS[1]!;
+      const signedIn = await auth.signIn('admin', backup.password, undefined, { onMasterPc: true });
+      expect(signedIn.user.roleTier).toBe('server_master');
+    });
+
     it('re-arms an existing user whose password was changed, and drops their session', async () => {
-      await runFirstTimeSetup('Shree Ceramics');
+      await setUpFirstRun('Shree Ceramics');
       const first = await seedDummyUsers();
       expect(first.pairingPassword).toBeNull();
       expect(first.companyName).toBe('Shree Ceramics');
@@ -74,12 +100,13 @@ describe.skipIf(!canRunIntegrationTests)('developer mode (integration)', () => {
 
   describe('routes', () => {
     async function signedInAgent() {
-      const setup = await request(app)
+      await request(app)
         .post('/api/setup/initialize')
-        .send({ companyName: 'Shree Ceramics' })
+        .send({ companyName: 'Shree Ceramics', accounts: FIRST_RUN_ACCOUNTS })
         .expect(201);
+      const main = FIRST_RUN_ACCOUNTS[0]!;
       const agent = request.agent(app);
-      await agent.post('/api/auth/sign-in').send({ username: 'admin', password: setup.body.password }).expect(200);
+      await agent.post('/api/auth/sign-in').send({ username: main.username, password: main.password }).expect(200);
       return agent;
     }
 
@@ -103,11 +130,11 @@ describe.skipIf(!canRunIntegrationTests)('developer mode (integration)', () => {
       const seeded = await agent.post('/api/developer/seed-dummy-users').set(DEVELOPER_TOKEN_HEADER, token).expect(201);
       expect(seeded.body.users).toHaveLength(3);
 
-      // Seeding re-armed the very `admin` this agent signed in as, and a
-      // session must not outlive its password — so the cookie is dead and the
-      // documented password is what works now. The developer token is not a
-      // session and survives.
-      await agent.get('/api/developer/status').expect(401);
+      // Seeding never touches a Server Master, so the session this agent
+      // signed in with survives; the dummy `admin` signs in with its
+      // documented password. The developer token is not a session and works
+      // from either.
+      await agent.get('/api/developer/status').expect(200);
       const reArmed = request.agent(app);
       await reArmed.post('/api/auth/sign-in').send({ username: 'admin', password: 'Admin@1234' }).expect(200);
       const still = await reArmed.get('/api/developer/status').set(DEVELOPER_TOKEN_HEADER, token).expect(200);
@@ -143,7 +170,7 @@ describe.skipIf(!canRunIntegrationTests)('developer mode (integration)', () => {
       expect(await isSetupComplete()).toBe(false);
       expect(await db()('users').count<{ count: string }[]>('id as count')).toEqual([{ count: '0' }]);
       const roles = await db()('roles').orderBy('name').pluck<string[]>('name');
-      expect(roles).toEqual(['Admin', 'Management', 'Office']);
+      expect(roles).toEqual(['Admin', 'Management', 'Office', 'Server Master']);
       // The session that asked for the reset is gone with everything else.
       await agent.get('/api/developer/status').expect(401);
     });

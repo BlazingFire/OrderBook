@@ -2,6 +2,7 @@ import { Router } from 'express';
 
 import { config } from '../../config/index.js';
 import { ValidationError } from '../../lib/errors.js';
+import { isLoopback, masterPcAddress } from '../../lib/network.js';
 import * as authService from '../../services/auth.service.js';
 import { asyncHandler } from '../async-handler.js';
 import { requireAuth } from '../middleware/require-auth.js';
@@ -16,7 +17,10 @@ authRoutes.post(
       throw new ValidationError('validation.signIn.credentialsRequired');
     }
 
-    const { token, user, sessionTtlMs } = await authService.signIn(username, password);
+    // A Server Master signs in only from the Master PC itself (`isLoopback`).
+    const { token, user, sessionTtlMs } = await authService.signIn(username, password, undefined, {
+      onMasterPc: isLoopback(req),
+    });
 
     res.cookie(config.session.cookieName, token, {
       httpOnly: true,
@@ -33,11 +37,17 @@ authRoutes.post(
   }),
 );
 
-authRoutes.post('/sign-out', (req, res) => {
-  authService.signOut(req.cookies?.[config.session.cookieName]);
-  res.clearCookie(config.session.cookieName);
-  res.status(204).end();
-});
+authRoutes.post(
+  '/sign-out',
+  asyncHandler(async (req, res) => {
+    await authService.signOut(
+      req.cookies?.[config.session.cookieName],
+      masterPcAddress(req.socket.remoteAddress, req.headers),
+    );
+    res.clearCookie(config.session.cookieName);
+    res.status(204).end();
+  }),
+);
 
 authRoutes.get(
   '/me',

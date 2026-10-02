@@ -94,6 +94,7 @@ const PartyAccessScreen = lazyScreen(
   'PartyAccessScreen',
 );
 const SettingsScreen = lazyScreen(() => import('./screens/SettingsScreen'), 'SettingsScreen');
+const LogsScreen = lazyScreen(() => import('./screens/LogsScreen'), 'LogsScreen');
 const UpdatesScreen = lazyScreen(() => import('./screens/UpdatesScreen'), 'UpdatesScreen');
 
 type Tab =
@@ -106,6 +107,7 @@ type Tab =
   | 'products'
   | 'conflicts'
   | 'settings'
+  | 'logs'
   | 'updates'
   /* A screen, not a mode: as a boolean it was cleared by `goToTab`, so
      switching tab silently discarded a half-filled lead. */
@@ -781,12 +783,14 @@ function OfficePanel() {
       ).filter((item): item is NonNullable<typeof item> => item !== null),
     },
     {
-      // Per-machine appearance, device info and this machine's version — nothing
-      // here is gated by a permission, so both items are always present.
+      // Per-machine appearance, device info and this machine's version are
+      // always present. The activity log needs `logs.view`, and is read from
+      // the Master, so it fails like any other forward while offline.
       label: t('nav.system'),
       items: (
         [
           { id: 'settings', label: t('nav.settings'), icon: 'settings' as const },
+          can('logs.view') ? { id: 'logs', label: t('nav.logs'), icon: 'eye' as const } : null,
           { id: 'updates', label: t('nav.updates'), icon: 'sync' as const },
         ] satisfies Array<NavItem | null>
       ).filter((item): item is NonNullable<typeof item> => item !== null),
@@ -804,6 +808,7 @@ function OfficePanel() {
     products: 'products',
     conflicts: 'conflicts',
     settings: 'settings',
+    logs: 'logs',
     updates: 'updates',
   };
 
@@ -1112,6 +1117,7 @@ function OfficePanel() {
       id: 'updates',
       render: () => <UpdatesScreen connection={connection} permissions={permissions} />,
     },
+    { id: 'logs', render: () => <LogsScreen permissions={permissions} /> },
     {
       id: 'settings',
       render: () => (

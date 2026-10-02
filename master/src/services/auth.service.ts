@@ -15,13 +15,22 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import type { ChangeOwnPasswordInput, PermissionSet, SignedInUser, User } from '@orderbook/shared';
-import { effectivePermissions } from '@orderbook/shared';
+import type {
+  ChangeOwnPasswordInput,
+  OfflineAuthEvent,
+  PermissionSet,
+  RoleTier,
+  SignedInUser,
+  User,
+} from '@orderbook/shared';
+import { effectivePermissions, isServerMasterTier } from '@orderbook/shared';
 
+import type { ActorContext } from '../domain/actor.js';
 import { db } from '../db/knex.js';
 import { assertPasswordLongEnough, hashPassword, verifyPassword } from '../lib/password.js';
-import { UnauthorizedError } from '../lib/errors.js';
+import { UnauthorizedError, ValidationError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
+import { isLoopbackAddress } from '../lib/network.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
 import { resolveDefaultTenantId } from '../repositories/tenant.repository.js';
@@ -29,6 +38,7 @@ import * as panelCredentialRepo from '../repositories/panel-credential.repositor
 import * as roleRepo from '../repositories/role.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
 import { companyFeatures } from './company-features.js';
+import { masterKeyGate } from './master-key.service.js';
 import { rememberPassword } from './password-vault.service.js';
 import { clearRecentReauth, sweepRecentReauth } from './reauth-cache.js';
 import { getSetting } from './settings.service.js';
@@ -39,6 +49,12 @@ const log = createLogger('auth');
 interface Session {
   userId: string;
   tenantId: string;
+  /** Who this is, kept so the end of the session can be logged without a lookup. */
+  username: string;
+  displayName: string;
+  tier: RoleTier;
+  /** The panel's device code when signed in through one; null for a browser. */
+  source: string | null;
   roleId: string | null;
   /** The role version this session's permissions were derived from. */
   roleVersion: number;
@@ -136,6 +152,12 @@ export async function signIn(
   password: string,
   /** Which machine the attempt came from, for the audit trail. */
   source?: string,
+  /**
+   * `onMasterPc` is true only when the HTTP sign-in came from loopback. A
+   * Server Master may sign in nowhere else: not a LAN browser, and not an
+   * Office panel, even one running on the Master PC itself.
+   */
+  options: { onMasterPc?: boolean } = {},
 ): Promise<{
   token: string;
   user: SignedInUser;
@@ -153,13 +175,16 @@ export async function signIn(
   sessionTtlMs: number;
 }> {
   const key = username?.trim().toLowerCase() ?? '';
-  return withSignInLock(key, () => attemptSignIn(key, password, source));
+  return withSignInLock(key, () =>
+    attemptSignIn(key, password, source, options.onMasterPc === true),
+  );
 }
 
 async function attemptSignIn(
   key: string,
   password: string,
-  source?: string,
+  source: string | undefined,
+  onMasterPc: boolean,
 ): Promise<{
   token: string;
   user: SignedInUser;
@@ -231,6 +256,13 @@ async function attemptSignIn(
     throw new UnauthorizedError('error.unauthorized.noRole');
   }
 
+  // After the password verified, so the answer is no username oracle, and
+  // without `recordFailure`: the password was right, so this is not a guess.
+  if (isServerMasterTier(permissionSet.tier) && !onMasterPc) {
+    await recordSignInAttempt(credential.tenantId, key, false, credential.id, source, 'masterPcOnly');
+    throw new UnauthorizedError('error.unauthorized.serverMasterMasterPcOnly');
+  }
+
   await db().transaction(async (trx) => {
     await userRepo.touchLastSignIn(credential.id, trx);
 
@@ -263,9 +295,16 @@ async function attemptSignIn(
   const sessionTtlMs =
     (await getSetting(credential.tenantId, 'security.sessionHours')) * 60 * 60 * 1000;
 
+  const user = await userRepo.findById(credential.tenantId, credential.id);
+  if (!user) throw new UnauthorizedError('error.unauthorized.signInFailed');
+
   sessions.set(token, {
     userId: credential.id,
     tenantId: credential.tenantId,
+    username: user.username,
+    displayName: user.displayName,
+    tier: permissionSet.tier,
+    source: source ?? null,
     roleId: credential.roleId,
     roleVersion,
     // Intersected with the tier ceiling here as well as on save: a role row
@@ -274,9 +313,6 @@ async function attemptSignIn(
     permissions: effectivePermissions(permissionSet.permissions, permissionSet.tier),
     expiresAt: Date.now() + sessionTtlMs,
   });
-
-  const user = await userRepo.findById(credential.tenantId, credential.id);
-  if (!user) throw new UnauthorizedError('error.unauthorized.signInFailed');
 
   // Read after any bcrypt→scrypt rewrite above, so the panel stores a marker
   // for the hash that is now on disk rather than the one it replaced.
@@ -310,8 +346,11 @@ async function attemptSignIn(
  * deactivated. Falling back to "no permissions" instead would leave someone
  * staring at an app where every button silently fails.
  */
-export async function resolveSession(token: string | undefined): Promise<User | null> {
-  return (await resolveSessionWithPermissions(token))?.user ?? null;
+export async function resolveSession(
+  token: string | undefined,
+  remoteAddress?: string | null,
+): Promise<User | null> {
+  return (await resolveSessionWithPermissions(token, remoteAddress))?.user ?? null;
 }
 
 /**
@@ -329,6 +368,30 @@ export async function resolveSession(token: string | undefined): Promise<User | 
  * a smaller blast radius.
  */
 export async function resolveSessionWithPermissions(
+  token: string | undefined,
+  /**
+   * Where the request or socket came from. A Server Master's session resolves
+   * only from loopback, so a token carried to another PC is worth nothing
+   * there. Left out, a Server Master is refused: every caller has to say.
+   */
+  remoteAddress?: string | null,
+): Promise<{ user: User; permissions: PermissionSet } | null> {
+  const resolved = await resolveLiveSession(token);
+  if (!resolved || refusedHere(resolved.permissions, remoteAddress)) return null;
+  return resolved;
+}
+
+/** A Server Master session presented from anywhere but the Master PC. */
+function refusedHere(permissions: PermissionSet, remoteAddress: string | null | undefined): boolean {
+  return isServerMasterTier(permissions.tier) && !isLoopbackAddress(remoteAddress);
+}
+
+/**
+ * The session's user and permissions, wherever it was presented from. Refusing
+ * a Server Master away from the Master PC leaves the session alone: somebody
+ * replaying a copied token must not be able to sign the owner out with it.
+ */
+async function resolveLiveSession(
   token: string | undefined,
 ): Promise<{ user: User; permissions: PermissionSet } | null> {
   const session = tokenSession(token);
@@ -354,6 +417,7 @@ export async function resolveSessionWithPermissions(
   if (currentVersion !== session.roleVersion || found.user.roleId !== session.roleId) {
     session.roleId = found.user.roleId;
     session.roleVersion = currentVersion;
+    session.tier = permissionSet.tier;
     session.permissions = effectivePermissions(permissionSet.permissions, permissionSet.tier);
   }
 
@@ -373,16 +437,18 @@ export async function resolveSessionWithPermissions(
  */
 export async function resolveSessionDetailed(
   token: string | undefined,
+  remoteAddress?: string | null,
 ): Promise<
   { status: 'active'; user: User } | { status: 'rejected'; reason: 'revoked' | 'expired' }
 > {
-  const resolution = await resolveSessionDetailedWithPermissions(token);
+  const resolution = await resolveSessionDetailedWithPermissions(token, remoteAddress);
   return resolution.status === 'active' ? { status: 'active', user: resolution.user } : resolution;
 }
 
 /** `resolveSessionDetailed`, carrying the permission set the same query found. */
 export async function resolveSessionDetailedWithPermissions(
   token: string | undefined,
+  remoteAddress?: string | null,
 ): Promise<
   | { status: 'active'; user: User; permissions: PermissionSet }
   | { status: 'rejected'; reason: 'revoked' | 'expired' }
@@ -397,12 +463,20 @@ export async function resolveSessionDetailedWithPermissions(
     return { status: 'rejected', reason: wasRevoked(token) ? 'revoked' : 'expired' };
   }
 
-  const resolved = await resolveSessionWithPermissions(token);
-  if (resolved) return { status: 'active', ...resolved };
+  const resolved = await resolveLiveSession(token);
 
   // The session existed and no longer resolves, which is a fact about the
   // account: deleted, deactivated, or its role removed.
-  return { status: 'rejected', reason: 'revoked' };
+  if (!resolved) return { status: 'rejected', reason: 'revoked' };
+
+  // A Server Master's session is fine, just not from here. `expired`, not
+  // `revoked`: nothing about the account changed, and a panel never holds an
+  // offline verifier for a Server Master to destroy.
+  if (refusedHere(resolved.permissions, remoteAddress)) {
+    return { status: 'rejected', reason: 'expired' };
+  }
+
+  return { status: 'active', ...resolved };
 }
 
 /** The resolved permission set for a live session. */
@@ -414,9 +488,13 @@ export async function changeOwnPassword(
   input: ChangeOwnPasswordInput,
   userId: string,
   tenantId: string,
+  options: { masterKeyToken?: string } = {},
 ): Promise<void> {
   const user = await userRepo.findById(tenantId, userId);
   if (!user) throw new UnauthorizedError();
+
+  // A Server Master's password changes only with the master key as well.
+  if (isServerMasterTier(user.roleTier)) masterKeyGate.assertUnlocked(options.masterKeyToken);
 
   // By id, not by username — this caller already knows who they are, and going
   // back through the username lookup was the second `readCredentialForVerification`
@@ -475,8 +553,23 @@ export function sessionCount(): number {
   return sessions.size;
 }
 
-export function signOut(token: string | undefined): void {
-  if (token) sessions.delete(token);
+/**
+ * End a session and log it. The session is gone before the first await;
+ * awaiting the result only waits for the entry.
+ *
+ * A Server Master's session is no more usable off the Master PC to end than
+ * to act with, so a copied cookie cannot sign the owner out from the LAN.
+ */
+export async function signOut(
+  token: string | undefined,
+  remoteAddress?: string | null,
+): Promise<void> {
+  const session = token ? sessions.get(token) : undefined;
+  if (!token || !session) return;
+  if (isServerMasterTier(session.tier) && !isLoopbackAddress(remoteAddress)) return;
+
+  sessions.delete(token);
+  await recordSessionEnd(session, 'signed_out');
 }
 
 /**
@@ -536,10 +629,15 @@ export function resetAuthState(): void {
   clearRecentReauth();
 }
 
+/** Lift a username's sign-in lockout — after a master-key password recovery, say. */
+export function clearSignInFailures(username: string): void {
+  failures.delete(username.trim().toLowerCase());
+}
+
 export function purgeExpiredSessions(): void {
   const now = Date.now();
   for (const [token, session] of sessions) {
-    if (session.expiresAt <= now) sessions.delete(token);
+    if (session.expiresAt <= now) expireSession(token, session);
   }
 
   // The reveal's re-authentication window rides the same sweep.
@@ -572,11 +670,166 @@ function tokenSession(token: string | undefined): Session | null {
   if (!session) return null;
 
   if (session.expiresAt <= Date.now()) {
-    sessions.delete(token);
+    expireSession(token, session);
     return null;
   }
 
   return session;
+}
+
+/** The one way a session ends by running out of time: removed, then logged. */
+function expireSession(token: string, session: Session): void {
+  sessions.delete(token);
+  void recordSessionEnd(session, 'session_expired');
+}
+
+/**
+ * Log the end of a session, detached: the session is gone whether or not the
+ * entry lands. Never rejects, so a caller that does not wait cannot leak one.
+ */
+async function recordSessionEnd(
+  session: Session,
+  action: 'signed_out' | 'session_expired',
+): Promise<void> {
+  try {
+    await activityLog.recordDetachedActivity(
+      {
+        tenantId: session.tenantId,
+        entityType: 'user',
+        entityId: session.userId,
+        action,
+        actorType: 'user',
+        actorId: session.userId,
+        details: {
+          name: session.displayName,
+          username: session.username,
+          ...(session.source ? { source: session.source } : {}),
+        },
+      },
+      {
+        tenantId: session.tenantId,
+        actorType: 'user',
+        actorId: session.userId,
+        userId: session.userId,
+        permissions: null,
+        deviceCode: null,
+        actorName: session.displayName,
+      },
+      db(),
+    );
+  } catch (error) {
+    log.warn(`Could not record ${action}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/** Longest username an uploaded offline event may carry. */
+const MAX_OFFLINE_USERNAME = 100;
+/** Most events one `auth:offlineEvents` call may hand over. */
+export const MAX_OFFLINE_EVENTS = 500;
+/** Longest event id an Office may attach; its own are UUIDs. */
+const MAX_OFFLINE_EVENT_ID = 64;
+const OFFLINE_ACTIONS = ['offline_sign_in', 'offline_sign_in_failed'] as const;
+
+/**
+ * Log the sign-ins an Office checked offline (`auth:offlineEvents`).
+ *
+ * One entry per event, all in one transaction: the panel keeps its queue
+ * until this answers and sends it again otherwise, so a failure part way must
+ * write nothing rather than leave half the batch to be written twice. An
+ * event's `id` goes into the entry's details, and an id this panel already
+ * logged is skipped, so a retry after a timeout (the Master finished, the ack
+ * was lost) writes no duplicates. The real time is in `details.at`; the row's
+ * own time is when it was uploaded.
+ *
+ * More than `MAX_OFFLINE_EVENTS` is refused whole rather than cut short: the
+ * panel drops what it sent once this answers, so a silent cut would lose the
+ * rest. A malformed event is skipped instead, so one bad entry cannot keep the
+ * rest of a panel's queue from ever being accepted. A `userId` is trusted only
+ * when it names a user with the same username.
+ */
+export async function recordOfflineAuthEvents(
+  tenantId: string,
+  source: string,
+  events: unknown,
+): Promise<{ recorded: number }> {
+  if (!Array.isArray(events)) return { recorded: 0 };
+  if (events.length > MAX_OFFLINE_EVENTS) {
+    throw new ValidationError('validation.offlineEvents.tooMany', { max: MAX_OFFLINE_EVENTS });
+  }
+
+  const entries: Array<{ entry: activityLog.ActivityEntry; actor: ActorContext; eventId: string | null }> = [];
+  for (const event of events as Array<Partial<OfflineAuthEvent> | null>) {
+    const username = typeof event?.username === 'string' ? event.username.trim().toLowerCase() : '';
+    const at = typeof event?.at === 'string' ? Date.parse(event.at) : Number.NaN;
+    if (!event || !username || username.length > MAX_OFFLINE_USERNAME) continue;
+    if (typeof event.success !== 'boolean' || Number.isNaN(at)) continue;
+    const eventId =
+      typeof event.id === 'string' && event.id && event.id.length <= MAX_OFFLINE_EVENT_ID ? event.id : null;
+
+    const user =
+      typeof event.userId === 'string' ? await userRepo.findById(tenantId, event.userId) : null;
+    const known = user && user.username === username ? user : null;
+
+    entries.push({
+      eventId,
+      entry: {
+        tenantId,
+        entityType: 'user',
+        entityId: known?.id ?? username,
+        action: event.success ? 'offline_sign_in' : 'offline_sign_in_failed',
+        actorType: 'user',
+        actorId: known?.id ?? null,
+        details: {
+          name: known?.displayName ?? username,
+          username,
+          source,
+          at: new Date(at).toISOString(),
+          ...(eventId ? { eventId } : {}),
+        },
+      },
+      actor: {
+        tenantId,
+        actorType: 'user',
+        actorId: known?.id ?? null,
+        userId: known?.id ?? null,
+        permissions: null,
+        deviceCode: source,
+        actorName: known?.displayName ?? username,
+      },
+    });
+  }
+  if (entries.length === 0) return { recorded: 0 };
+
+  return db().transaction(async (trx) => {
+    // The lock every audit insert takes anyway, taken before the duplicate
+    // check, so a retry that overtakes a slow first attempt waits for it and
+    // then sees its rows.
+    await trx.raw('SELECT pg_advisory_xact_lock(hashtext(?))', [tenantId]);
+
+    const ids = entries.flatMap(({ eventId }) => (eventId ? [eventId] : []));
+    const seen = new Set<string>();
+    if (ids.length > 0) {
+      const rows = await trx('activity_log')
+        .where({ tenant_id: tenantId, entity_type: 'user' })
+        .whereIn('entity_id', [...new Set(entries.map(({ entry }) => entry.entityId))])
+        .whereIn('action', OFFLINE_ACTIONS)
+        .whereRaw("details->>'source' = ?", [source])
+        .whereRaw("details->>'eventId' = ANY(?)", [ids])
+        .select<Array<{ event_id: string }>>(trx.raw("details->>'eventId' as event_id"));
+      for (const row of rows) seen.add(row.event_id);
+    }
+
+    let recorded = 0;
+    for (const { entry, actor, eventId } of entries) {
+      if (eventId) {
+        if (seen.has(eventId)) continue;
+        seen.add(eventId);
+      }
+      await activityLog.recordActivity(entry, actor, trx);
+      recorded += 1;
+    }
+    return { recorded };
+  });
 }
 
 function assertNotLockedOut(username: string): void {
@@ -638,6 +891,8 @@ async function recordSignInAttempt(
   success: boolean,
   userId?: string,
   source?: string,
+  /** Why a right password was still refused (`masterPcOnly`). */
+  reason?: string,
 ): Promise<void> {
   const tenant = tenantId ?? (await resolveDefaultTenantId().catch(() => null));
   if (!tenant) return;
@@ -657,6 +912,7 @@ async function recordSignInAttempt(
         // must not learn it, the auditor must.
         ...(userId ? {} : { unknownUsername: true }),
         ...(source ? { source } : {}),
+        ...(reason ? { reason } : {}),
       },
     },
     {
