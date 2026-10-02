@@ -32,6 +32,8 @@ const DEFAULT_FEATURES = {
   adjustmentNoteRequired: false,
   followUpDefaultDays: 3,
   packagingRequiredOnConvert: false,
+  reportsVisibleToOffice: true,
+  reportsVisibleToManagement: true,
 };
 
 async function levelFor(variantId: string) {

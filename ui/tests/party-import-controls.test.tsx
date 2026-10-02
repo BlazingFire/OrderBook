@@ -114,7 +114,7 @@ describe('Export is a menu of CSV and Excel', () => {
   it('does not start a second export while the first is on its way', async () => {
     let finish: (value: { blob: Blob; fileName: string }) => void = () => undefined;
     const transport = makeTransport({
-      exportParties: vi.fn(() => new Promise((resolve) => { finish = resolve; })),
+      exportParties: vi.fn(() => new Promise<{ blob: Blob; fileName: string }>((resolve) => { finish = resolve; })),
     });
     mount({ canImport: false, canExport: true }, transport);
 

@@ -58,7 +58,7 @@ describe('the capped exports yield to the event loop', () => {
       (index % 50) * 2.5,
     ]);
 
-    let bytes = Buffer.alloc(0);
+    let bytes: Buffer = Buffer.alloc(0);
     const stall = await longestStall(async () => {
       bytes = await streamXlsxTable({
         sheetName: 'By party',
@@ -94,7 +94,7 @@ describe('the capped exports yield to the event loop', () => {
       String((index % 50) * 10),
     ]);
 
-    let bytes = Buffer.alloc(0);
+    let bytes: Buffer = Buffer.alloc(0);
     const stall = await longestStall(async () => {
       bytes = await renderReportPdf({
         title: 'By party',
