@@ -113,7 +113,12 @@ export function saveBlob(blob: Blob, fileName: string): void {
 
 /** The row-numbered problems as a CSV (BOM so Excel reads Hindi), for fixing the file. */
 function issuesCsv<Sample>(issues: Array<Issue<Sample>>): Blob {
-  const cell = (value: string | number): string => `"${String(value).replace(/"/g, '""')}"`;
+  // A cell that begins with `=` `+` `-` `@` (or a TAB or CR in front of one) is a formula to
+  // Excel. The text of a problem can echo a header the person typed, so it is guarded.
+  const cell = (value: string | number): string => {
+    const text = String(value);
+    return `"${(/^[=+\-@\t\r]/.test(text) ? `'${text}` : text).replace(/"/g, '""')}"`;
+  };
   const line = (cells: Array<string | number>): string => cells.map(cell).join(',');
   const rows = issues.map((issue) =>
     line([

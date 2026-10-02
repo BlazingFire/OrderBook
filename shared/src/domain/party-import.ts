@@ -85,6 +85,18 @@ export interface PartyImportIssue {
   params?: MessageParams;
 }
 
+/**
+ * One row of the preview as it would read once imported: for an update, the
+ * party's own values with the sheet's changes laid over them, so the person
+ * sees the party they are changing and not just the cells they touched. `row`
+ * is the sheet row and the key.
+ */
+export interface PartyImportSampleRow extends PartyInput {
+  row: number;
+  /** The party's code on an update; null on a row that adds one. */
+  partyCode: string | null;
+}
+
 export interface PartyImportResult {
   dryRun: boolean;
   mode: PartyImportMode;
@@ -104,5 +116,5 @@ export interface PartyImportResult {
   /** Header cells that matched no known column, as written. */
   ignoredColumns: string[];
   /** The first few rows as they were understood, for the preview. */
-  sample: PartyInput[];
+  sample: PartyImportSampleRow[];
 }

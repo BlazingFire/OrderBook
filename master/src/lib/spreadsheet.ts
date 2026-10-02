@@ -92,7 +92,7 @@ export function parseCsv(text: string): string[][] {
   let touched = false;
 
   const endCell = (): void => {
-    row.push(cell.trim().replace(/^'(?=[=+\-@])/, ''));
+    row.push(cell.trim().replace(/^'(?=[=+\-@\t\r])/, ''));
     cell = '';
   };
   const endRow = (): void => {

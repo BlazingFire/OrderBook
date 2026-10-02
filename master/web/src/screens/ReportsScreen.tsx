@@ -80,6 +80,9 @@ const PERIOD_KEY: Record<ReportPeriod, string> = {
   last6Months: 'reports.period.last6Months',
   last12Months: 'reports.period.last12Months',
   custom: 'reports.period.custom',
+  // The table screen (1.3 H2) is the one that offers these two; this screen is on its way out.
+  thisFinancialYear: 'reports.period.thisFinancialYear',
+  customDates: 'reports.period.customDates',
 };
 
 export function ReportsScreen({ revision, permissions, kind, onKindChange }: Props) {
@@ -117,7 +120,7 @@ export function ReportsScreen({ revision, permissions, kind, onKindChange }: Pro
             ? { kind, data: await api.dispatchReport(input) }
             : kind === 'lead-outcomes'
               ? { kind, data: await api.leadOutcomeReport(input) }
-              : { kind, data: await api.topPartiesReport(input) };
+              : { kind: 'top-parties', data: await api.topPartiesReport(input) };
         if (cancelled) return;
         setLoaded(next);
         setFailure(null);

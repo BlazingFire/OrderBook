@@ -43,7 +43,7 @@ function run(
 
 const HEAD = ['Party Code', 'Name', 'Phone', 'City', 'Pincode', 'GST Number'];
 
-const DESK_KEYS = ['parties.view', 'parties.create', 'parties.edit', 'parties.bulk'] as const;
+const DESK_KEYS = ['parties.view', 'parties.create', 'parties.edit', 'parties.bulk', 'parties.export'] as const;
 
 async function makePerson(username: string): Promise<string> {
   const role = await roleService.createRole({ name: `Desk ${username}`, tier: 'management', permissions: [...DESK_KEYS] }, admin);
@@ -153,7 +153,7 @@ describe.skipIf(!canRunIntegrationTests)('bulk party import (integration)', () =
       const result = await run(
         csv([
           ['Party Code', 'Name', 'Phone', 'City'],
-          [shah.partyCode, '', '999', ''], // phone changes; name and city untouched
+          [shah.partyCode, '', '999999', ''], // phone changes; name and city untouched
           [patel.partyCode, 'Patel Traders', '222', ''], // says what is already there
           ['P-9999', 'Nobody', '', ''], // no such party
         ]),
@@ -166,7 +166,7 @@ describe.skipIf(!canRunIntegrationTests)('bulk party import (integration)', () =
       ]);
 
       const after = await catalog.getParty(shah.id, admin);
-      expect(after).toMatchObject({ name: 'Shah Ceramics', phone: '999', city: 'Morbi', email: 'shah@example.in' });
+      expect(after).toMatchObject({ name: 'Shah Ceramics', phone: '999999', city: 'Morbi', email: 'shah@example.in' });
       expect(after.sync.version).toBe(shah.sync.version + 1);
       expect((await catalog.getParty(patel.id, admin)).sync.version).toBe(patel.sync.version);
       expect(await db()('activity_log').where({ entity_type: 'party_list', action: 'imported' })).toHaveLength(1);
@@ -247,7 +247,7 @@ describe.skipIf(!canRunIntegrationTests)('bulk party import (integration)', () =
   });
 
   describe('permissions', () => {
-    it('needs parties.bulk plus create (to add) or edit (to update); export needs only parties.view', async () => {
+    it('needs parties.bulk plus create (to add) or edit (to update); export needs parties.view and parties.export', async () => {
       const file = csv([HEAD, ['', 'Nobody', '', '', '', '']]);
 
       await expect(run(file, 'create', false, await actorWith(['parties.create']))).rejects.toBeInstanceOf(ForbiddenError);
@@ -256,8 +256,16 @@ describe.skipIf(!canRunIntegrationTests)('bulk party import (integration)', () =
       await expect(partyImportTemplate('csv', await actorWith(['parties.view']))).rejects.toBeInstanceOf(ForbiddenError);
       await expect(exportParties('csv', await actorWith(['parties.bulk']))).rejects.toBeInstanceOf(ForbiddenError);
 
-      const viewer = await actorWith(['parties.view']);
-      await expect(exportParties('csv', viewer)).resolves.toMatchObject({ contentType: 'text/csv; charset=utf-8' });
+      // Seeing the book is not being handed all of it in a file.
+      await expect(exportParties('csv', await actorWith(['parties.view']))).rejects.toMatchObject({
+        details: { permission: 'parties.export' },
+      });
+      await expect(exportParties('xlsx', await actorWith(['parties.export']))).rejects.toMatchObject({
+        details: { permission: 'parties.view' },
+      });
+
+      const exporter = await actorWith(['parties.view', 'parties.export']);
+      await expect(exportParties('csv', exporter)).resolves.toMatchObject({ contentType: 'text/csv; charset=utf-8' });
     });
   });
 
@@ -279,9 +287,9 @@ describe.skipIf(!canRunIntegrationTests)('bulk party import (integration)', () =
       const result = await run(
         csv([
           ['Party Code', 'Phone'],
-          [open.partyCode, '1'], // open: allowed
-          [closedForMe.partyCode, '2'], // not visible to me: reported as unknown
-          [readOnly.partyCode, '3'], // visible, not manageable: refused by name
+          [open.partyCode, '111111'], // open: allowed
+          [closedForMe.partyCode, '222222'], // not visible to me: reported as unknown
+          [readOnly.partyCode, '333333'], // visible, not manageable: refused by name
         ]),
         'updateByCode',
         false,
@@ -295,7 +303,7 @@ describe.skipIf(!canRunIntegrationTests)('bulk party import (integration)', () =
       ]);
       expect((await catalog.getParty(closedForMe.id, admin)).phone).toBeNull();
       expect((await catalog.getParty(readOnly.id, admin)).phone).toBeNull();
-      expect((await catalog.getParty(open.id, admin)).phone).toBe('1');
+      expect((await catalog.getParty(open.id, admin)).phone).toBe('111111');
     });
 
     it('does not add a second copy of a party the caller cannot see', async () => {

@@ -14,6 +14,7 @@ import {
   isBlankRow,
   matchPartyHeaders,
   normalizeHeader,
+  PARTY_CODE_PATTERN,
   parsePartyRow,
   partyKey,
   templateGuideRows,
@@ -24,6 +25,14 @@ const label = (field: string): string => PARTY_IMPORT_COLUMNS.find((column) => c
 
 function parse(headers: string[], cells: string[], mode: 'create' | 'updateByCode' = 'create', row = 2) {
   return parsePartyRow(cells, matchPartyHeaders(headers, mode), headers, row, mode);
+}
+
+/** A parsed row built the way `parsePartyRow` would, from what was typed. */
+function typed(rowNumber: number, raw: Record<string, string>, code: string | null = null): ParsedPartyRow {
+  const input = Object.fromEntries(
+    Object.entries(raw).map(([key, value]) => [key, key === 'notes' ? value : value.replace(/\s+/g, ' ')]),
+  );
+  return { row: rowNumber, code, raw: raw as never, input: input as never };
 }
 
 describe('the template', () => {
@@ -82,10 +91,15 @@ describe('header matching', () => {
 describe('one row, creating', () => {
   const HEAD = ['Party Code', 'Name', 'City', 'Phone', 'Notes'];
 
-  it('keeps only the cells that were filled and collapses inner whitespace', () => {
+  it('keeps only the cells that were filled, and both what was typed and the whitespace-collapsed value', () => {
     const { parsed, issues } = parse(HEAD, ['', '  Shah   Ceramics ', 'Morbi', '', 'two\nlines'], 'create', 7);
     expect(issues).toEqual([]);
-    expect(parsed).toEqual({ row: 7, code: null, input: { name: 'Shah Ceramics', city: 'Morbi', notes: 'two\nlines' } });
+    expect(parsed).toEqual({
+      row: 7,
+      code: null,
+      raw: { name: 'Shah   Ceramics', city: 'Morbi', notes: 'two\nlines' },
+      input: { name: 'Shah Ceramics', city: 'Morbi', notes: 'two\nlines' },
+    });
     expect(parsed?.input).not.toHaveProperty('phone');
   });
 
@@ -112,7 +126,7 @@ describe('one row, updating by code', () => {
   it('needs a code, but not a name — a blank cell leaves the field alone', () => {
     const { parsed, issues } = parse(HEAD, ['P-0007', '', '98250 00000'], 'updateByCode');
     expect(issues).toEqual([]);
-    expect(parsed).toEqual({ row: 2, code: 'P-0007', input: { phone: '98250 00000' } });
+    expect(parsed).toMatchObject({ row: 2, code: 'P-0007', input: { phone: '98250 00000' } });
   });
 
   it('refuses a row with no code', () => {
@@ -120,48 +134,109 @@ describe('one row, updating by code', () => {
     expect(parsed).toBeNull();
     expect(issues[0]?.messageKey).toBe('validation.import.partyCodeRequired');
   });
+
+  it('reads a code shaped like the Master gives them as ours, and anything else as not', () => {
+    expect(PARTY_CODE_PATTERN.test('P-0001')).toBe(true);
+    expect(PARTY_CODE_PATTERN.test('p-12345')).toBe(true);
+    expect(PARTY_CODE_PATTERN.test('P-1')).toBe(false);
+    expect(PARTY_CODE_PATTERN.test('Shah')).toBe(false);
+  });
 });
 
-describe('format checks', () => {
+describe('format checks on a row that adds a party', () => {
   const headerFor = label;
-  const row = (input: Record<string, string>): ParsedPartyRow => ({ row: 5, code: null, input: input as never });
 
-  it('accepts a good pincode, GSTIN and email, tidying the first two', () => {
+  it('accepts a good pincode, GSTIN, email and phone, tidying the first two', () => {
     const { input, issues } = checkPartyFields(
-      row({ name: 'A', pincode: '363 641', gstNumber: '24abcde1234f1z5', email: 'a@b.in' }),
+      typed(5, { name: 'A', pincode: '363 641', gstNumber: '24abcde1234f1z5', email: 'a@b.in', phone: '+91 (281) 222-3333' }),
       null,
       headerFor,
     );
     expect(issues).toEqual([]);
-    expect(input).toMatchObject({ pincode: '363641', gstNumber: '24ABCDE1234F1Z5', email: 'a@b.in' });
+    expect(input).toMatchObject({ pincode: '363641', gstNumber: '24ABCDE1234F1Z5', email: 'a@b.in', phone: '+91 (281) 222-3333' });
   });
 
   it('refuses each bad value on its own cell, with the column named', () => {
     const { issues } = checkPartyFields(
-      row({ name: 'A', pincode: '3636', gstNumber: 'NOTAGSTIN', email: 'nope' }),
+      typed(5, { name: 'A', pincode: '3636', gstNumber: 'NOTAGSTIN', email: 'nope', phone: '12ab', altPhone: '12345' }),
       null,
       headerFor,
     );
-    expect(issues.map((issue) => [issue.column, issue.messageKey])).toEqual([
-      ['Pincode', 'validation.party.pincodeInvalid'],
-      ['GST Number', 'validation.party.gstInvalid'],
-      ['Email', 'validation.party.emailInvalid'],
+    expect(issues.map((issue) => [issue.column, issue.messageKey]).sort()).toEqual(
+      [
+        ['Phone', 'validation.party.phoneInvalid'],
+        ['Alt Phone', 'validation.party.phoneInvalid'],
+        ['Email', 'validation.party.emailInvalid'],
+        ['Pincode', 'validation.party.pincodeInvalid'],
+        ['GST Number', 'validation.party.gstInvalid'],
+      ].sort(),
+    );
+  });
+
+  it('accepts a phone with six digits and refuses one with five, whatever else is in it', () => {
+    const run = (phone: string) => checkPartyFields(typed(2, { name: 'A', phone }), null, headerFor).issues.length;
+    expect(run('98250 11')).toBe(0);
+    expect(run('0281-22')).toBe(0);
+    expect(run('98250')).toBe(1);
+    expect(run('98250 11 ext')).toBe(1);
+  });
+});
+
+describe('what an update changes', () => {
+  const headerFor = label;
+  const held = {
+    name: 'Shah  Ceramics',
+    city: 'Morbi',
+    pincode: '3636',
+    phone: '98250 11111',
+    addressLine1: 'x'.repeat(250),
+  };
+
+  it('is only the cells that differ from what the party holds', () => {
+    const { input, issues } = checkPartyFields(typed(2, { name: 'Shah  Ceramics', city: 'Rajkot', phone: '98250 11111' }, 'P-0001'), held, headerFor);
+    expect(issues).toEqual([]);
+    expect(input).toEqual({ city: 'Rajkot' });
+  });
+
+  it('reads a value equal to the stored one — typed or tidied — as no change, even past the cap or in a loose shape', () => {
+    // The stored name has a double space and the export writes it as it is, so it comes back as it is.
+    expect(checkPartyFields(typed(2, { name: 'Shah  Ceramics' }, 'P-0001'), held, headerFor).input).toEqual({});
+    // The stored address is longer than any column allows; handing it back is not a change and not an error.
+    expect(checkPartyFields(typed(2, { addressLine1: 'x'.repeat(250) }, 'P-0001'), held, headerFor)).toEqual({ input: {}, issues: [] });
+    // A pincode typed loosely years ago.
+    expect(checkPartyFields(typed(2, { pincode: '3636' }, 'P-0001'), held, headerFor)).toEqual({ input: {}, issues: [] });
+  });
+
+  it('checks a value that does differ, however loose the stored one was', () => {
+    const { issues } = checkPartyFields(typed(2, { pincode: '3637' }, 'P-0001'), held, headerFor);
+    expect(issues.map((issue) => issue.messageKey)).toEqual(['validation.party.pincodeInvalid']);
+  });
+
+  it('treats a stored empty value and a missing one alike, so filling a blank is a change', () => {
+    expect(checkPartyFields(typed(2, { email: 'a@b.in' }, 'P-0001'), { name: 'A', email: null }, headerFor).input).toEqual({ email: 'a@b.in' });
+  });
+});
+
+describe('column lengths', () => {
+  it('refuses a changed cell longer than its column allows, once, naming the header', () => {
+    const { input, issues } = checkPartyFields(typed(6, { name: 'x'.repeat(121) }), null, (field) => (field === 'name' ? 'Customer' : label(field)));
+    expect(input).toEqual({});
+    expect(issues).toEqual([
+      { row: 6, kind: 'error', column: 'Customer', messageKey: 'validation.party.tooLong', params: { column: 'Customer', max: 120 } },
     ]);
   });
 
-  it('does not re-judge a value that is exactly what the party already holds', () => {
-    const { issues } = checkPartyFields(row({ pincode: '3636' }), { pincode: '3636' }, headerFor);
-    expect(issues).toEqual([]);
+  it('accepts a cell exactly at the limit, and reads Phone 1 as the main phone', () => {
+    const { parsed } = parse(['Name', 'Phone 1'], ['x'.repeat(120), '9'.repeat(20)]);
+    expect(parsed?.input).toEqual({ name: 'x'.repeat(120), phone: '9'.repeat(20) });
+    expect(checkPartyFields(parsed as ParsedPartyRow, null, label).issues).toEqual([]);
   });
 });
 
 describe('duplicates in the file', () => {
   const headerFor = label;
-  const entry = (rowNumber: number, code: string | null, name: string, city?: string): ParsedPartyRow => ({
-    row: rowNumber,
-    code,
-    input: { name, ...(city ? { city } : {}) } as never,
-  });
+  const entry = (rowNumber: number, code: string | null, name: string, city?: string): ParsedPartyRow =>
+    typed(rowNumber, { name, ...(city ? { city } : {}) }, code);
 
   it('flags a repeated name and city, case and spacing aside, against the first row', () => {
     const issues = findDuplicatesInFile(
@@ -189,28 +264,5 @@ describe('blank rows', () => {
   it('are rows of empty cells only', () => {
     expect(isBlankRow(['', '  ', ''])).toBe(true);
     expect(isBlankRow(['', 'x'])).toBe(false);
-  });
-});
-
-describe('column lengths', () => {
-  const HEAD = ['Party Code', 'Name', 'Pincode'];
-
-  it('refuses a cell longer than its column allows, once, naming the header as written', () => {
-    const { parsed, issues } = parse(['Party Code', 'Customer'], ['', 'x'.repeat(121)], 'create', 6);
-    expect(parsed).toBeNull();
-    // Too long is the whole answer: the name is not also reported as missing.
-    expect(issues).toEqual([
-      { row: 6, kind: 'error', column: 'Customer', messageKey: 'validation.party.tooLong', params: { column: 'Customer', max: 120 } },
-    ]);
-  });
-
-  it('accepts a cell exactly at the limit, and reads Phone 1 as the main phone', () => {
-    const { parsed } = parse(['Name', 'Phone 1'], ['x'.repeat(120), '9'.repeat(20)]);
-    expect(parsed?.input).toEqual({ name: 'x'.repeat(120), phone: '9'.repeat(20) });
-  });
-
-  it('refuses a Party Code that is too long when updating, without also calling it missing', () => {
-    const { issues } = parse(HEAD, ['P'.repeat(21), '', ''], 'updateByCode');
-    expect(issues.map((issue) => issue.messageKey)).toEqual(['validation.party.tooLong']);
   });
 });

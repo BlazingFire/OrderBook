@@ -482,7 +482,7 @@ export function CatalogScreen({
             nothing to refetch here. */}
         <PartyImportControls
           transport={partyImportTransport}
-          canExport={view.permissions.includes('parties.view')}
+          canExport={view.permissions.includes('parties.view') && view.permissions.includes('parties.export')}
           canImport={view.permissions.includes('parties.bulk')}
           onImported={() => undefined}
         />

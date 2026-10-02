@@ -21,6 +21,7 @@ import { createRealtimeHub, type RealtimeHub } from '../src/realtime/hub.js';
 import * as panelRepo from '../src/repositories/office-panel.repository.js';
 import * as authService from '../src/services/auth.service.js';
 import * as catalog from '../src/services/catalog.service.js';
+import { publishChange } from '../src/services/change-bus.js';
 import * as panelService from '../src/services/panel.service.js';
 import * as partyAccessService from '../src/services/party-access.service.js';
 import * as roleService from '../src/services/role.service.js';
@@ -223,6 +224,44 @@ describe.skipIf(!canRunIntegrationTests)('what the Master pushes to Office panel
 
     expect(count(panel, 'sync:snapshot')).toBe(before);
     expect(count(panel, 'session:rejected')).toBe(0);
+  });
+
+  it('sends a panel that does not report a protocol a snapshot for a bulk party import, not the event it cannot read (party_bulk)', async () => {
+    const role = await roleService.createRole(
+      { name: 'Sales', tier: 'management', permissions: ['leads.view', 'parties.view'] },
+      admin,
+    );
+    await createStaff('sunita', role.id);
+    const panel = await connectPanel('PUSH08');
+    await signIn(panel, 'sunita');
+    const before = count(panel, 'sync:snapshot');
+    const changedBefore = count(panel, 'data:changed');
+
+    publishChange({ entity: 'party_bulk', action: 'updated', id: tenantId, payload: { created: 3, updated: 0, skipped: 0, failed: 0 } });
+
+    // Until the panel's handshake says it understands `party_bulk`, the only
+    // honest answer is the whole party book again.
+    await waitFor(panel, 'sync:snapshot', before + 1);
+    await settle();
+    expect(count(panel, 'data:changed')).toBe(changedBefore);
+    expect(count(panel, 'sync:snapshot')).toBe(before + 1);
+  });
+
+  it('does not tell a panel whose person may not see parties anything about a bulk party import', async () => {
+    const role = await roleService.createRole(
+      { name: 'Dispatcher', tier: 'office', permissions: ['orders.view'] },
+      admin,
+    );
+    await createStaff('deepa', role.id);
+    const panel = await connectPanel('PUSH09');
+    await signIn(panel, 'deepa');
+    const before = count(panel, 'sync:snapshot');
+
+    publishChange({ entity: 'party_bulk', action: 'updated', id: tenantId, payload: { created: 1, updated: 0, skipped: 0, failed: 0 } });
+    await settle();
+
+    expect(count(panel, 'sync:snapshot')).toBe(before);
+    expect(count(panel, 'data:changed')).toBe(0);
   });
 
   it('tells a revoked panel before closing its socket', async () => {

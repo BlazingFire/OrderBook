@@ -14,10 +14,11 @@
  */
 
 import { useRef, useState } from 'react';
-import type { PartyImportFormat, PartyImportMode, PartyImportResult, PartyInput } from '@orderbook/shared';
+import type { PartyImportFormat, PartyImportMode, PartyImportResult, PartyImportSampleRow } from '@orderbook/shared';
 import { MAX_PARTY_IMPORT_BYTES, MAX_PARTY_IMPORT_ISSUES } from '@orderbook/shared';
 
 import { Button } from './Button.js';
+import { Popover } from './Popover.js';
 import type { DataTableColumn } from './DataTable.js';
 import { apiErrorText } from './errorText.js';
 import { ImportDialog, saveBlob } from './ImportDialog.js';
@@ -50,7 +51,13 @@ const modes = (): ReadonlyArray<{ value: PartyImportMode; label: string }> => [
   { value: 'updateByCode', label: t('partyImport.mode.updateByCode') },
 ];
 
-const sampleColumns = (): DataTableColumn<PartyInput>[] => [
+const sampleColumns = (): DataTableColumn<PartyImportSampleRow>[] => [
+  {
+    key: 'code',
+    header: t('catalog.parties.column.code'),
+    width: rem(100),
+    render: (row) => <span className="ob-mono">{row.partyCode ?? '—'}</span>,
+  },
   { key: 'name', header: t('party.field.name'), render: (row) => row.name ?? '—' },
   { key: 'city', header: t('party.field.city'), width: rem(140), render: (row) => row.city ?? '—' },
   {
@@ -67,13 +74,13 @@ const sampleColumns = (): DataTableColumn<PartyInput>[] => [
   },
 ];
 
-// An update row may carry any subset of the fields, so every filled one is the key.
-const sampleKey = (row: PartyInput): string =>
-  [row.name, row.city, row.phone, row.pincode, row.gstNumber, row.email].map((cell) => cell ?? '').join(':');
+// The sheet row is the key: two rows of a file can say the same name, and an
+// update's sample row is an existing party with changes laid over it.
+const sampleKey = (row: PartyImportSampleRow): string => String(row.row);
 
 export function PartyImportModal({ open, transport, onClose, onImported, onError }: PartyImportModalProps) {
   return (
-    <ImportDialog<PartyImportMode, PartyInput, PartyImportResult>
+    <ImportDialog<PartyImportMode, PartyImportSampleRow, PartyImportResult>
       open={open}
       onClose={onClose}
       onImported={onImported}
@@ -110,8 +117,14 @@ export function PartyImportModal({ open, transport, onClose, onImported, onError
 }
 
 /**
- * The Export CSV and Import buttons for a party list, and the dialog behind
- * Import. Renders nothing for a person with neither permission.
+ * The Export menu (CSV or Excel) and the Import button for a party list, with
+ * the dialog behind Import. Renders nothing for a person with neither
+ * permission, and each control only with its own flag.
+ *
+ * Export is a menu because the Excel file is the one to edit and upload back;
+ * it was reachable only from inside the Import dialog, which a person who may
+ * export but not import never sees. A second click while a file is being
+ * fetched does nothing, so a double-click cannot start two exports.
  */
 export function PartyImportControls({
   transport,
@@ -127,27 +140,62 @@ export function PartyImportControls({
 }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [exporting, setExporting] = useState<PartyImportFormat | null>(null);
   const transportRef = useRef(transport);
   transportRef.current = transport;
+  // A ref as well as state: two clicks in one frame both see the same render.
+  const busyRef = useRef(false);
 
   if (!canImport && !canExport) return null;
+
+  async function download(format: PartyImportFormat): Promise<void> {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setMenuOpen(false);
+    setExporting(format);
+    try {
+      const { blob, fileName } = await transportRef.current.exportParties(format);
+      saveBlob(blob, fileName);
+    } catch (caught) {
+      toast.push(apiErrorText(caught, 'partyImport.exportFailed'), { tone: 'error' });
+    } finally {
+      busyRef.current = false;
+      setExporting(null);
+    }
+  }
 
   return (
     <>
       {canExport && (
-        <Button
-          variant="secondary"
-          size="sm"
-          icon="download"
-          onClick={() =>
-            void transportRef.current
-              .exportParties('csv')
-              .then(({ blob, fileName }) => saveBlob(blob, fileName))
-              .catch((caught) => toast.push(apiErrorText(caught, 'partyImport.exportFailed'), { tone: 'error' }))
-          }
-        >
-          {t('catalog.export')}
-        </Button>
+        <span style={{ position: 'relative', display: 'inline-flex' }}>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="download"
+            busy={exporting !== null}
+            disabled={exporting !== null}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((current) => !current)}
+          >
+            {t('partyImport.export')}
+          </Button>
+          <Popover
+            open={menuOpen}
+            onClose={() => setMenuOpen(false)}
+            anchorStyle={{ right: 0, top: 'calc(100% + var(--s-4))' }}
+          >
+            <div className="ob-menu" role="menu">
+              <button type="button" role="menuitem" className="ob-menu-item ob-body" onClick={() => void download('csv')}>
+                {t('import.export.csv')}
+              </button>
+              <button type="button" role="menuitem" className="ob-menu-item ob-body" onClick={() => void download('xlsx')}>
+                {t('import.export.xlsx')}
+              </button>
+            </div>
+          </Popover>
+        </span>
       )}
       {canImport && (
         <>

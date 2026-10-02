@@ -15,7 +15,14 @@
  * import never clears).
  */
 
-import type { MessageParams, PartyImportColumn, PartyImportIssue, PartyImportMode, PartyInput } from '@orderbook/shared';
+import type {
+  MessageParams,
+  PartyImportColumn,
+  PartyImportField,
+  PartyImportIssue,
+  PartyImportMode,
+  PartyInput,
+} from '@orderbook/shared';
 import { PARTY_IMPORT_COLUMNS } from '@orderbook/shared';
 
 type Field = PartyImportColumn['field'];
@@ -95,6 +102,14 @@ export interface ParsedPartyRow {
   row: number;
   /** The Party Code cell, or null when it was blank. */
   code: string | null;
+  /**
+   * The cells as typed, trimmed and nothing more, by field. Kept so an update
+   * can tell "the sheet says what the party already holds" from "the sheet
+   * changed it" *before* any tidying: an export of a party whose name has a
+   * double space must read back as no change.
+   */
+  raw: Partial<Record<PartyImportField, string>>;
+  /** The same cells with inner whitespace collapsed (notes keep theirs) — what a save would write. */
   input: PartyInput;
 }
 
@@ -104,10 +119,11 @@ export function isBlankRow(cells: readonly string[]): boolean {
 }
 
 /**
- * One row → one `ParsedPartyRow`, or the issues that stop it. Checks the
- * mode's rules on the code and the name; the format of a pincode, GSTIN or
- * email is `partyFieldIssues`, which the service runs once it knows the party
- * a row would change.
+ * One row → one `ParsedPartyRow`, or the issues that stop it. Checks only the
+ * mode's rules on the code and the name. Lengths and formats are
+ * `checkPartyFields`, which runs once the service knows which party a row would
+ * change — a value the party already holds must not be refused for being long
+ * or loosely typed when the person did not touch it.
  */
 export function parsePartyRow(
   cells: readonly string[],
@@ -118,13 +134,11 @@ export function parsePartyRow(
 ): { parsed: ParsedPartyRow | null; issues: PartyImportIssue[] } {
   const issues: PartyImportIssue[] = [];
   const input: Record<string, string> = {};
+  const raws: Record<string, string> = {};
   let code: string | null = null;
-  /** Cells already reported as too long, so a missing name or code is not reported on top of them. */
-  const tooLong = new Set<Field>();
 
-  const indexOf = (field: Field): number => match.byIndex.findIndex((column) => column?.field === field);
   const headerOf = (field: Field): string | undefined => {
-    const at = indexOf(field);
+    const at = match.byIndex.findIndex((column) => column?.field === field);
     const text = at >= 0 ? (headerRow[at] ?? '').trim() : '';
     return text || COLUMN_BY_FIELD.get(field)?.label;
   };
@@ -137,68 +151,110 @@ export function parsePartyRow(
     const raw = (cells[index] ?? '').trim();
     if (raw === '') return;
 
-    if (raw.length > column.max) {
-      tooLong.add(column.field);
-      issue(column.field, 'validation.party.tooLong', { column: headerOf(column.field) ?? column.label, max: column.max });
-    } else if (column.field === 'partyCode') code = raw;
+    if (column.field === 'partyCode') {
+      code = raw;
+      return;
+    }
+    raws[column.field] = raw;
     // Inner runs of whitespace (a pasted line break, a double space, a
     // non-breaking space) would make "Shah  Ceramics" a second party beside
     // "Shah Ceramics"; notes are free text and keep theirs.
-    else input[column.field] = column.field === 'notes' ? raw : raw.replace(/\s+/g, ' ');
+    input[column.field] = column.field === 'notes' ? raw : raw.replace(/\s+/g, ' ');
   });
 
   if (mode === 'create') {
     if (code !== null) issue('partyCode', 'validation.import.partyCodeNotAllowed');
-    if (!input.name && !tooLong.has('name')) issue('name', 'validation.party.nameRequired');
-  } else if (code === null && !tooLong.has('partyCode')) {
+    if (!input.name) issue('name', 'validation.party.nameRequired');
+  } else if (code === null) {
     issue('partyCode', 'validation.import.partyCodeRequired');
   }
 
-  return issues.length > 0 ? { parsed: null, issues } : { parsed: { row, code, input: input as unknown as PartyInput }, issues };
+  if (issues.length > 0) return { parsed: null, issues };
+  return {
+    parsed: { row, code, raw: raws as ParsedPartyRow['raw'], input: input as unknown as PartyInput },
+    issues,
+  };
 }
 
 const PINCODE = /^\d{6}$/;
 const GSTIN = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** Digits and the punctuation people put in a number; not a validator of a country's numbering plan. */
+const PHONE_CHARS = /^[0-9+\-() ]+$/;
+const PHONE_MIN_DIGITS = 6;
+
+/** What Party Codes look like when the Master gives them (`P-0001`); a code in another shape cannot be one of ours. */
+export const PARTY_CODE_PATTERN = /^P-\d{4,}$/i;
+
+/** The fields whose value is a phone number. */
+const PHONE_FIELDS = new Set<PartyImportField>(['phone', 'altPhone']);
+
+/** What a stored party holds in a field, as the sheet would show it. */
+function heldValue(existing: Record<string, unknown>, field: string): string {
+  const value = existing[field];
+  return value === null || value === undefined ? '' : String(value);
+}
 
 /**
- * Format problems in what a row asserts, and the same row with the values
- * tidied (a GSTIN in upper case, a pincode without a space inside it).
+ * What a row would change, and what is wrong with it.
  *
- * A value equal to what the party already holds is not looked at: an export
- * uploaded back must not fail on an old party whose pincode was typed loosely
- * years ago, when the person changed nothing in that cell.
+ * `existing` is the party an `updateByCode` row names, or `null` when a row
+ * adds one. For an update the result holds **only the fields that differ**: a
+ * cell equal to what the party already holds — as typed, or once tidied the way
+ * a save would tidy it — is not a change, is not length-checked and is not
+ * format-checked. An export uploaded back must read "no change", and must not
+ * fail on a legacy party whose address is longer than the cap or whose pincode
+ * was typed loosely years ago, when nobody touched that cell.
+ *
+ * A changed value is checked (its length, then its format where it has one)
+ * and tidied: a GSTIN in upper case, a pincode with no space inside it.
  */
 export function checkPartyFields(
   parsed: ParsedPartyRow,
-  existing: Partial<Record<'pincode' | 'gstNumber' | 'email', string | null>> | null,
+  existing: Record<string, unknown> | null,
   headerFor: (field: Field) => string,
 ): { input: PartyInput; issues: PartyImportIssue[] } {
   const issues: PartyImportIssue[] = [];
-  const input: PartyInput = { ...parsed.input };
+  const input: Record<string, string> = {};
 
-  const check = (
-    key: 'pincode' | 'gstNumber' | 'email',
-    tidy: (value: string) => string,
-    valid: (value: string) => boolean,
-    messageKey: PartyImportIssue['messageKey'],
-  ): void => {
-    const value = input[key];
-    if (typeof value !== 'string') return;
-    if (value === (existing?.[key] ?? null)) return;
-    const tidied = tidy(value);
-    if (!valid(tidied)) {
-      issues.push({ row: parsed.row, kind: 'error', column: headerFor(key), messageKey });
-      return;
+  for (const [key, value] of Object.entries(parsed.input) as Array<[PartyImportField, string]>) {
+    const column = COLUMN_BY_FIELD.get(key);
+    if (!column) continue;
+
+    if (existing) {
+      const held = heldValue(existing, key);
+      if (parsed.raw[key] === held || value === held) continue;
     }
-    input[key] = tidied;
-  };
 
-  check('pincode', (value) => value.replace(/\s/g, ''), (value) => PINCODE.test(value), 'validation.party.pincodeInvalid');
-  check('gstNumber', (value) => value.replace(/\s/g, '').toUpperCase(), (value) => GSTIN.test(value), 'validation.party.gstInvalid');
-  check('email', (value) => value, (value) => EMAIL.test(value), 'validation.party.emailInvalid');
+    const problem = (messageKey: PartyImportIssue['messageKey'], params?: MessageParams): void => {
+      issues.push({ row: parsed.row, kind: 'error', column: headerFor(key), messageKey, params });
+    };
 
-  return { input, issues };
+    if (value.length > column.max) {
+      problem('validation.party.tooLong', { column: headerFor(key), max: column.max });
+      continue;
+    }
+
+    if (key === 'pincode') {
+      const tidied = value.replace(/\s/g, '');
+      if (!PINCODE.test(tidied)) problem('validation.party.pincodeInvalid');
+      else input[key] = tidied;
+    } else if (key === 'gstNumber') {
+      const tidied = value.replace(/\s/g, '').toUpperCase();
+      if (!GSTIN.test(tidied)) problem('validation.party.gstInvalid');
+      else input[key] = tidied;
+    } else if (key === 'email') {
+      if (!EMAIL.test(value)) problem('validation.party.emailInvalid');
+      else input[key] = value;
+    } else if (PHONE_FIELDS.has(key)) {
+      if (!PHONE_CHARS.test(value) || value.replace(/\D/g, '').length < PHONE_MIN_DIGITS) problem('validation.party.phoneInvalid');
+      else input[key] = value;
+    } else {
+      input[key] = value;
+    }
+  }
+
+  return { input: input as unknown as PartyInput, issues };
 }
 
 /** The same party, as far as a sheet can tell: name and city, ignoring case and spacing. */

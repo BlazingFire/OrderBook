@@ -47,7 +47,10 @@ export async function listParties(
   const countRows = await base.clone().clearOrder().count<Array<{ count: string }>>('id as count');
   const rows = await base
     .clone()
+    // `id` last: two parties may share a name, and an unordered tie lets a row
+    // repeat or vanish between two pages — which an export pages through.
     .orderBy('name', 'asc')
+    .orderBy('id', 'asc')
     .limit(options.limit)
     .offset(options.offset);
 
@@ -275,6 +278,27 @@ export async function findLivePartiesByCodes(
   }
 
   return found;
+}
+
+/**
+ * A live party's per-field clocks, read under its row lock inside the caller's
+ * transaction. A bulk update merges its own stamps into **this**, not into the
+ * copy it read when the file was previewed: an offline edit that landed since
+ * would otherwise lose its clock and be overwritten without a trace.
+ */
+export async function lockPartyFieldHlc(
+  tenantId: string,
+  id: string,
+  trx: TransactionContext,
+): Promise<Record<string, string> | null> {
+  const row = await trx(TABLE)
+    .where({ tenant_id: tenantId, id })
+    .whereNull('deleted_at')
+    .forUpdate()
+    .first('field_hlc');
+  if (!row) return null;
+  const stored = row.field_hlc;
+  return (typeof stored === 'string' ? JSON.parse(stored) : stored ?? {}) as Record<string, string>;
 }
 
 /**

@@ -306,7 +306,7 @@ export function PartiesScreen({
             to be greyed, it is one not to render. */}
         <PartyImportControls
           transport={partyImportTransport}
-          canExport={permissions.includes('parties.view')}
+          canExport={permissions.includes('parties.view') && permissions.includes('parties.export')}
           canImport={permissions.includes('parties.bulk')}
           onImported={refresh}
         />
