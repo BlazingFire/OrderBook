@@ -662,6 +662,10 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   socket.on('report:export', (payload, ack) =>
     run(ack, (actor) => reportService.exportReport(payload.report, payload.query, actor)),
   );
+  socket.on('report:table', (payload, ack) =>
+    run(ack, (actor) => reportService.reportTable(payload.report, payload.query, actor)),
+  );
+  socket.on('report:options', (ack) => run(ack, (actor) => reportService.reportOptions(actor)));
 
   // The one live pull; everything else rides on `SyncSnapshot.dashboard` and
   // the `dashboard:changed` push both extended below.

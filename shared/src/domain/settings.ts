@@ -36,7 +36,7 @@ import type { MessageKey } from '../i18n/keys.js';
  * shopkeeper would use over the phone, not the module names the keys are built
  * from.
  */
-export const SETTING_GROUPS = ['access', 'stock', 'leads', 'integrations'] as const;
+export const SETTING_GROUPS = ['access', 'stock', 'leads', 'reports', 'integrations'] as const;
 export type SettingGroup = (typeof SETTING_GROUPS)[number];
 
 /**
@@ -165,6 +165,32 @@ export const SETTINGS = {
     group: 'stock',
     control: { kind: 'boolean' },
     fallback: false,
+    parse: (raw: unknown): boolean => asBoolean(raw),
+  },
+
+  /**
+   * Whether Office users see the Reports module at all. On unless switched
+   * off, so an upgraded company changes nothing the minute it updates. The
+   * Master enforces it on every report route and socket command
+   * (`report.service.ts#assertReportsVisible`); hiding the nav row is only the
+   * courtesy. An administrator or Server Master always sees Reports.
+   */
+  'reports.visibleToOffice': {
+    labelToken: 'setting.reports.visibleToOffice.label',
+    descriptionToken: 'setting.reports.visibleToOffice.help',
+    group: 'reports',
+    control: { kind: 'boolean' },
+    fallback: true,
+    parse: (raw: unknown): boolean => asBoolean(raw),
+  },
+
+  /** The same switch for the Management tier. */
+  'reports.visibleToManagement': {
+    labelToken: 'setting.reports.visibleToManagement.label',
+    descriptionToken: 'setting.reports.visibleToManagement.help',
+    group: 'reports',
+    control: { kind: 'boolean' },
+    fallback: true,
     parse: (raw: unknown): boolean => asBoolean(raw),
   },
 

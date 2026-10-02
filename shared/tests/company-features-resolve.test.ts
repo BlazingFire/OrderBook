@@ -22,6 +22,8 @@ describe('resolveCompanyFeatures', () => {
       adjustmentNoteRequired: SETTINGS['inventory.adjustmentNoteRequired'].fallback,
       followUpDefaultDays: SETTINGS['leads.followUpDefaultDays'].fallback,
       packagingRequiredOnConvert: SETTINGS['leads.packagingRequiredOnConvert'].fallback,
+      reportsVisibleToOffice: SETTINGS['reports.visibleToOffice'].fallback,
+      reportsVisibleToManagement: SETTINGS['reports.visibleToManagement'].fallback,
     });
   });
 

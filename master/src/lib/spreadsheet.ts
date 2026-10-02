@@ -15,7 +15,7 @@
  * means.
  */
 
-import { Readable } from 'node:stream';
+import { PassThrough, Readable } from 'node:stream';
 import ExcelJS from 'exceljs';
 
 import { toCsv } from './csv.js';
@@ -24,6 +24,9 @@ export type SheetKind = 'csv' | 'xlsx';
 
 export const XLSX_CONTENT_TYPE =
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/** Rows written between two turns of the event loop when a workbook is streamed. */
+const YIELD_EVERY_ROWS = 2000;
 
 /** How many rows the template's dropdowns cover. Past this Excel simply offers free text. */
 const VALIDATION_ROWS = 5000;
@@ -253,6 +256,49 @@ export async function buildXlsxTable(spec: {
 
   const out = await workbook.xlsx.writeBuffer();
   return Buffer.isBuffer(out) ? out : Buffer.from(out as ArrayBuffer);
+}
+
+/**
+ * A report as a workbook, written row by row so a hundred thousand rows never
+ * sit in ExcelJS's in-memory model, and yielding to the event loop every few
+ * thousand so the Master keeps answering while it works.
+ *
+ * Header first (bold, frozen), then the rows, each committed as it goes; the
+ * finished file is collected into one buffer. A cell that is a number stays a
+ * number (a pivot table can sum it), anything else is text.
+ */
+export async function streamXlsxTable(spec: {
+  sheetName: string;
+  columns: ReadonlyArray<{ header: string; width: number }>;
+  rows: ReadonlyArray<ReadonlyArray<string | number | null>>;
+}): Promise<Buffer> {
+  const sink = new PassThrough();
+  const chunks: Buffer[] = [];
+  sink.on('data', (chunk: Buffer) => chunks.push(chunk));
+  const closed = new Promise<void>((resolve, reject) => {
+    sink.on('end', () => resolve());
+    sink.on('error', reject);
+  });
+
+  const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: sink, useStyles: true });
+  workbook.creator = 'OrderBook';
+
+  const sheet = workbook.addWorksheet(spec.sheetName, { views: [{ state: 'frozen', ySplit: 1 }] });
+  sheet.columns = spec.columns.map((column) => ({ width: column.width }));
+
+  const header = sheet.addRow(spec.columns.map((column) => column.header));
+  header.font = { bold: true };
+  header.commit();
+
+  for (const [index, row] of spec.rows.entries()) {
+    sheet.addRow([...row]).commit();
+    if (index % YIELD_EVERY_ROWS === YIELD_EVERY_ROWS - 1) await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+
+  sheet.commit();
+  await workbook.commit();
+  await closed;
+  return Buffer.concat(chunks);
 }
 
 export function buildCsvTemplate(headers: readonly string[]): string {

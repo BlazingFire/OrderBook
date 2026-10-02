@@ -51,7 +51,10 @@ import type {
   LeadOutcomesReport,
   ReportKind,
   ReportExportOptions,
+  ReportOptions,
+  ReportQuery,
   ReportRangeInput,
+  ReportTable,
   TopPartiesReport,
 } from '../domain/reports.js';
 import type {
@@ -738,12 +741,12 @@ export interface ClientToServerEvents {
   'report:export': (
     payload: {
       report: ReportKind;
-      query: ReportRangeInput & { limit?: number } & ReportExportOptions;
+      query: ReportQuery & ReportExportOptions;
     },
     ack: CommandAck<
       | { format: 'csv'; csv: string; rowCount: number }
       | {
-          format: 'pdf';
+          format: 'pdf' | 'xlsx';
           fileName: string;
           contentType: string;
           bytes: Uint8Array;
@@ -751,6 +754,14 @@ export interface ClientToServerEvents {
         }
     >,
   ) => void;
+  /**
+   * Any of the fifteen reports as one table — the shape both panels' Reports
+   * screen draws and an export writes. The legacy `report:dispatches` /
+   * `leadOutcomes` / `topParties` events stay for Offices that predate it.
+   */
+  'report:table': (payload: { report: ReportKind; query: ReportQuery }, ack: CommandAck<ReportTable>) => void;
+  /** The kinds on offer to this person, who they may pick as a subject (null: only themselves), and whether to offer an export. */
+  'report:options': (ack: CommandAck<ReportOptions>) => void;
 
 
   // --- Dashboard (docs/backend-modules/04-API-CONTRACT.md §7) ---------------

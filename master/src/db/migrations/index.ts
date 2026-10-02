@@ -49,6 +49,7 @@ import * as catalogueBrandsAndCodesPort from './20260326000000_catalogue_brands_
 import * as optionListsRepair from './20260327000000_option_lists_repair.js';
 import * as linePackagingDefaults from './20260328000000_line_packaging_defaults.js';
 import * as orderVehicleNumber from './20260401000000_order_vehicle_number.js';
+import * as reportIndexesAndGrants from './20261004000000_report_indexes_and_grants.js';
 
 export interface Migration {
   name: string;
@@ -206,6 +207,13 @@ export const migrations: Migration[] = [
   {
     name: '20260401000000_order_vehicle_number',
     ...orderVehicleNumber,
+  },
+  // Reports for the Office and Management tiers (1.3 H2): the owner-by-date
+  // indexes the reports read through, and `reports.view` / `reports.export` for
+  // the two tiers. Additive and idempotent; joins the pin at the tail.
+  {
+    name: '20261004000000_report_indexes_and_grants',
+    ...reportIndexesAndGrants,
   },
 ];
 

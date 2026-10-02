@@ -1,11 +1,18 @@
 /**
  * `/api/reports` (`docs/backend-modules/04-API-CONTRACT.md` §3). Same shape
  * as `log.routes.ts`: `requireAuth` then a per-handler permission guard.
+ *
+ * The three legacy routes (`/dispatches`, `/lead-outcomes`, `/top-parties`)
+ * stay for Offices that predate the table API. `/options` and `/table/:report`
+ * are what both panels' Reports screen reads, and `/:report/export` writes any
+ * kind as CSV, Excel or PDF. The service decides who may see whose figures
+ * (`report.service.ts`); the guards here only say a report permission is
+ * needed at all.
  */
 
 import { Router } from 'express';
 
-import { isReportFormat, isReportKind } from '@orderbook/shared';
+import { isReportFormat, isReportKind, parseReportQuery, type ReportKind } from '@orderbook/shared';
 
 import * as reportService from '../../services/report.service.js';
 import { ValidationError } from '../../lib/errors.js';
@@ -28,6 +35,13 @@ function parseRangeQuery(query: Record<string, unknown>): {
     fromMonth: typeof query.fromMonth === 'string' ? query.fromMonth : undefined,
     toMonth: typeof query.toMonth === 'string' ? query.toMonth : undefined,
   };
+}
+
+function kindOf(value: unknown): ReportKind {
+  if (!isReportKind(value)) {
+    throw new ValidationError('validation.reports.kind.unknown', {}, { field: 'report' });
+  }
+  return value;
 }
 
 reportRoutes.get(
@@ -60,13 +74,26 @@ reportRoutes.get(
 );
 
 reportRoutes.get(
+  '/options',
+  needs('reports.view'),
+  asyncHandler(async (req, res) => {
+    res.json(await reportService.reportOptions(actorFromRequest(req)));
+  }),
+);
+
+reportRoutes.get(
+  '/table/:report',
+  needs('reports.view'),
+  asyncHandler(async (req, res) => {
+    res.json(await reportService.reportTable(kindOf(req.params.report), parseReportQuery(req.query), actorFromRequest(req)));
+  }),
+);
+
+reportRoutes.get(
   '/:report/export',
   needs('reports.export'),
   asyncHandler(async (req, res) => {
-    const kind = req.params.report;
-    if (!isReportKind(kind)) {
-      throw new ValidationError('validation.reports.kind.unknown', {}, { field: 'report' });
-    }
+    const kind = kindOf(req.params.report);
 
     const columns = String(req.query.columns ?? '')
       .split(',')
@@ -76,8 +103,10 @@ reportRoutes.get(
     const exported = await reportService.exportReport(
       kind,
       {
-        ...parseRangeQuery(req.query),
-        limit: req.query.limit ? Number(req.query.limit) : undefined,
+        // The query string reads the same everywhere (`parseReportQuery`); the
+        // legacy three kinds never sent the new fields, so for them it is the
+        // same range it always was.
+        ...parseReportQuery(req.query),
         // Every option is absent by default, and the defaults reproduce
         // today's output byte for byte — somebody's spreadsheet is pointing at
         // this URL.
@@ -86,6 +115,7 @@ reportRoutes.get(
         totals: req.query.totals === 'true',
         paperSize: req.query.paperSize === 'letter' ? 'letter' : undefined,
         orientation: req.query.orientation === 'portrait' ? 'portrait' : undefined,
+        lang: req.query.lang === 'hi' ? 'hi' : undefined,
       },
       actorFromRequest(req),
     );

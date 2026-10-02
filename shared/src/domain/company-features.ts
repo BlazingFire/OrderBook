@@ -31,6 +31,8 @@ export interface ResolvedCompanyFeatures {
   adjustmentNoteRequired: boolean;
   followUpDefaultDays: number;
   packagingRequiredOnConvert: boolean;
+  reportsVisibleToOffice: boolean;
+  reportsVisibleToManagement: boolean;
 }
 
 export function resolveCompanyFeatures(
@@ -47,5 +49,9 @@ export function resolveCompanyFeatures(
     packagingRequiredOnConvert:
       features?.packagingRequiredOnConvert ??
       SETTINGS['leads.packagingRequiredOnConvert'].fallback,
+    reportsVisibleToOffice:
+      features?.reportsVisibleToOffice ?? SETTINGS['reports.visibleToOffice'].fallback,
+    reportsVisibleToManagement:
+      features?.reportsVisibleToManagement ?? SETTINGS['reports.visibleToManagement'].fallback,
   };
 }

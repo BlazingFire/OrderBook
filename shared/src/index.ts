@@ -17,6 +17,7 @@ export * from './domain/company-features.js';
 export * from './domain/product-validation.js';
 export * from './domain/recycle-bin.js';
 export * from './domain/record-search.js';
+export * from './domain/report-access.js';
 export * from './domain/reports.js';
 export * from './domain/inventory-view.js';
 export * from './domain/order-note.js';
