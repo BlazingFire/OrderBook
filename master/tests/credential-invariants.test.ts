@@ -148,7 +148,6 @@ describe('the two-layer permission check', () => {
       "fieldsRoutes.delete(\n  '/values/:id',", // deleteValue: same
       "fieldsRoutes.post(\n  '/values/reorder',", // reorderValues: same
     ];
-    const text = routes.replace(/\r\n/g, '\n');
     for (const exempt of SERVICE_GATED) expect(routes, exempt).toContain(exempt);
     expect(guards.length).toBe(handlers.length - SERVICE_GATED.length);
   });
