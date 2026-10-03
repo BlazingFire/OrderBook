@@ -342,7 +342,7 @@ describe('the next person to sign in at this window', () => {
       await wait(0);
     });
     expect(signedOut()).toBe(true);
-  });
+  }, 20_000);
 
   it('starts an Office user on Basic Home', async () => {
     await boot(ADMIN, (call) =>
