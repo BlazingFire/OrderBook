@@ -27,11 +27,11 @@ import {
   Button,
   FieldError,
   FormField,
-  Input,
   Modal,
   apiErrorText,
   publishSessionEnded,
   t,
+  PasswordInput,
 } from '@orderbook/ui';
 
 /** The server's own floor (`validation.password.tooShort`), checked here too. */
@@ -124,9 +124,8 @@ export function ChangePasswordDialog({
         {serverMaster && (
           <FormField label={t('masterKey.label')} hint={t('masterKey.help')}>
             {(id) => (
-              <Input
+              <PasswordInput
                 id={id}
-                type="password"
                 value={masterKey}
                 autoComplete="off"
                 autoFocus
@@ -137,9 +136,8 @@ export function ChangePasswordDialog({
         )}
         <FormField label={t('access.changePassword.current')}>
           {(id) => (
-            <Input
+            <PasswordInput
               id={id}
-              type="password"
               value={current}
               autoComplete="current-password"
               autoFocus={!serverMaster}
@@ -149,9 +147,8 @@ export function ChangePasswordDialog({
         </FormField>
         <FormField label={t('access.changePassword.new')}>
           {(id) => (
-            <Input
+            <PasswordInput
               id={id}
-              type="password"
               value={next}
               autoComplete="new-password"
               onChange={(event) => setNext(event.target.value)}
@@ -160,9 +157,8 @@ export function ChangePasswordDialog({
         </FormField>
         <FormField label={t('access.changePassword.confirm')}>
           {(id) => (
-            <Input
+            <PasswordInput
               id={id}
-              type="password"
               value={confirm}
               autoComplete="new-password"
               onChange={(event) => setConfirm(event.target.value)}

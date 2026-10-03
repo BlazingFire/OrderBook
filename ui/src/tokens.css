@@ -88,6 +88,7 @@
   --state-offline-tint: var(--kiln-amber-05);
   --state-conflict: var(--kiln-red);
   --state-conflict-tint: var(--kiln-red-05);
+  --signout-fg: #9c4a46; /* 1.4 R12: sign-out, a muted red rather than the danger red */
   --state-ok: var(--kiln-green);
   --state-ok-tint: var(--kiln-green-05);
 
@@ -266,6 +267,7 @@
   --kiln-amber-05: #2e2313;
   --kiln-red: #e8706b;
   --kiln-red-05: #331716;
+  --signout-fg: #e0908b;
   --kiln-green: #4fb483;
   --kiln-green-05: #10281d;
 

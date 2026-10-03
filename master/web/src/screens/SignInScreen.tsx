@@ -34,6 +34,7 @@ import {
   apiErrorText,
   rem,
   t,
+  PasswordInput,
 } from '@orderbook/ui';
 
 interface Props {
@@ -134,9 +135,8 @@ export function SignInScreen({
             </FormField>
             <FormField label={t('signIn.field.password')}>
               {(id) => (
-                <Input
+                <PasswordInput
                   id={id}
-                  type="password"
                   value={password}
                   autoComplete="current-password"
                   onChange={(event) => setPassword(event.target.value)}

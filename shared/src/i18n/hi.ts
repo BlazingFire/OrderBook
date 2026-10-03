@@ -4310,4 +4310,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'printroom.dialog.sent': 'प्रिंटरूम में भेज दिया गया',
   'printroom.dialog.offline': 'मास्टर तक नहीं पहुँचा जा सका। इसके बजाय इसी PC पर प्रिंट करें।',
   'printroom.autoPrintFailed': '{party} का ऑटो-प्रिंट विफल रहा: {error}',
+  // 1.4 D4: password eye
+  'password.show': 'पासवर्ड दिखाएँ',
+  'password.hide': 'पासवर्ड छिपाएँ',
 };

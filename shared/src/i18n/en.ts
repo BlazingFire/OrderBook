@@ -3267,4 +3267,7 @@ export const EN_MESSAGES = {
   'printroom.dialog.sent': 'Sent to the Printroom',
   'printroom.dialog.offline': 'The Master is not reachable. Print on this PC instead.',
   'printroom.autoPrintFailed': 'Auto-print failed for {party}: {error}',
+  // 1.4 D4: password eye
+  'password.show': 'Show password',
+  'password.hide': 'Hide password',
 } as const;

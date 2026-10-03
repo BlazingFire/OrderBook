@@ -19,7 +19,7 @@ import type { DeveloperStatus, DeveloperUnlock, SettingControl } from '@orderboo
 
 import { Button, IconButton } from './Button.js';
 import { Card } from './Card.js';
-import { Input, Slider, Switch } from './Form.js';
+import { Input, Slider, Switch, PasswordInput } from './Form.js';
 import { Modal } from './Modal.js';
 import { rem } from './rem.js';
 import { Segmented, Tabs } from './Tabs.js';
@@ -592,9 +592,8 @@ function LockedSection({
           hint={t('developer.locked.hint')}
         >
           <div style={{ display: 'flex', gap: 'var(--s-8)', alignItems: 'center' }}>
-            <Input
+            <PasswordInput
               id="developer-password"
-              type="password"
               autoComplete="off"
               value={password}
               invalid={error !== null}

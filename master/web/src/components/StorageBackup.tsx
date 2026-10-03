@@ -11,7 +11,7 @@ import { useState } from 'react';
 import type { BackupRestorePreview } from '@orderbook/shared';
 
 import { api, ApiError } from '../api';
-import { Button, FormField, Input, Modal, t, useToast } from '@orderbook/ui';
+import { Button, FormField, Input, Modal, t, useToast, PasswordInput } from '@orderbook/ui';
 
 export function StorageBackupActions() {
   const [exportOpen, setExportOpen] = useState(false);
@@ -84,9 +84,8 @@ function ExportModal({ onClose }: { onClose: () => void }) {
         error={error ?? undefined}
       >
         {(id) => (
-          <Input
+          <PasswordInput
             id={id}
-            type="password"
             value={passphrase}
             onChange={(e) => setPassphrase(e.target.value)}
             autoComplete="new-password"
@@ -170,9 +169,8 @@ function RestoreModal({ onClose }: { onClose: () => void }) {
           </ul>
           <FormField label={t('backup.restore.passphraseLabel')} error={error ?? undefined}>
             {(id) => (
-              <Input
+              <PasswordInput
                 id={id}
-                type="password"
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
                 autoComplete="current-password"

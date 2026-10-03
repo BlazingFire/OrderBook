@@ -45,7 +45,6 @@ import {
   Button,
   FieldError,
   IdField,
-  Input,
   KeyValueList,
   NumberSetting,
   OptionListEditor,
@@ -61,6 +60,7 @@ import {
   t,
   useConfirm,
   type SettingsTab,
+  PasswordInput,
 } from '@orderbook/ui';
 
 /**
@@ -525,8 +525,7 @@ function CompanySetting({
               ? t('settings.company.secretSet')
               : t('settings.company.secretNotSet')}
           </span>
-          <Input
-            type="password"
+          <PasswordInput
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             aria-label={label}

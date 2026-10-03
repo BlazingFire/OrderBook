@@ -105,6 +105,7 @@ import {
   type ScreenSpec,
   type SidebarMode,
   type SubPage,
+  NAV_ICONS,
 } from '@orderbook/ui';
 import { ChangePasswordDialog } from './components/ChangePasswordDialog';
 import { DashboardScreen } from './screens/DashboardScreen';
@@ -1028,15 +1029,15 @@ function MasterPanel() {
       label: t('nav.work'),
       items: [
         // Basic Home and the Dashboard need nothing beyond being signed in.
-        { id: 'basicHome', label: t('nav.basicHome'), icon: 'home' },
-        { id: 'dashboard', label: t('nav.master.dashboard'), icon: 'dashboard' },
-        canViewLeads ? { id: 'leads', label: t('nav.leads'), icon: 'leads' } : null,
-        canViewOrders ? { id: 'orders', label: t('nav.orders'), icon: 'orders' } : null,
+        { id: 'basicHome', label: t('nav.basicHome'), icon: NAV_ICONS.basicHome },
+        { id: 'dashboard', label: t('nav.master.dashboard'), icon: NAV_ICONS.dashboard },
+        canViewLeads ? { id: 'leads', label: t('nav.leads'), icon: NAV_ICONS.leads } : null,
+        canViewOrders ? { id: 'orders', label: t('nav.orders'), icon: NAV_ICONS.orders } : null,
         canResolveConflicts
           ? {
               id: 'conflicts',
               label: t('nav.master.conflicts'),
-              icon: 'conflicts',
+              icon: NAV_ICONS.conflicts,
               count: openConflicts > 0 ? openConflicts : undefined,
             }
           : null,
@@ -1044,7 +1045,7 @@ function MasterPanel() {
           ? {
               id: 'chatroom',
               label: t('nav.chatroom'),
-              icon: 'chat',
+              icon: NAV_ICONS.chatroom,
               count: chatUnread.total > 0 ? chatUnread.total : undefined,
             }
           : null,
@@ -1052,37 +1053,37 @@ function MasterPanel() {
           ? {
               id: 'printroom',
               label: t('nav.printroom'),
-              icon: 'print',
+              icon: NAV_ICONS.printroom,
               count: printWaiting > 0 ? printWaiting : undefined,
             }
           : null,
         // Under Work rather than Admin: a report is something a manager
         // produces during the day, not a setting anyone administers.
-        canViewReports ? { id: 'reports', label: t('nav.reports'), icon: 'report' } : null,
+        canViewReports ? { id: 'reports', label: t('nav.reports'), icon: NAV_ICONS.reports } : null,
       ] satisfies Array<NavItem | null>,
     },
     {
       label: t('nav.catalogue'),
       items: [
-        canViewProducts ? { id: 'products', label: t('nav.products'), icon: 'products' } : null,
-        canViewParties ? { id: 'parties', label: t('nav.master.parties'), icon: 'parties' } : null,
+        canViewProducts ? { id: 'products', label: t('nav.products'), icon: NAV_ICONS.products } : null,
+        canViewParties ? { id: 'parties', label: t('nav.master.parties'), icon: NAV_ICONS.parties } : null,
         canViewPartyAccess
-          ? { id: 'partyAccess', label: t('nav.master.partyAccess'), icon: 'shield' }
+          ? { id: 'partyAccess', label: t('nav.master.partyAccess'), icon: NAV_ICONS.partyAccess }
           : null,
       ] satisfies Array<NavItem | null>,
     },
     {
       label: t('nav.master.admin'),
       items: [
-        canManagePanels ? { id: 'panels', label: t('nav.master.panels'), icon: 'server' } : null,
-        canManageRoles ? { id: 'access', label: t('nav.master.access'), icon: 'shield' } : null,
-        canViewFields ? { id: 'fields', label: t('nav.master.fields'), icon: 'filter' } : null,
-        canViewLogs ? { id: 'logs', label: t('nav.master.logs'), icon: 'eye' } : null,
+        canManagePanels ? { id: 'panels', label: t('nav.master.panels'), icon: NAV_ICONS.panels } : null,
+        canManageRoles ? { id: 'access', label: t('nav.master.access'), icon: NAV_ICONS.access } : null,
+        canViewFields ? { id: 'fields', label: t('nav.master.fields'), icon: NAV_ICONS.fields } : null,
+        canViewLogs ? { id: 'logs', label: t('nav.master.logs'), icon: NAV_ICONS.logs } : null,
         canViewRecycleBin
-          ? { id: 'recycleBin', label: t('nav.master.recycleBin'), icon: 'trash' }
+          ? { id: 'recycleBin', label: t('nav.master.recycleBin'), icon: NAV_ICONS.recycleBin }
           : null,
         canManageApi
-          ? { id: 'integrations', label: t('nav.master.integrations'), icon: 'server' }
+          ? { id: 'integrations', label: t('nav.master.integrations'), icon: NAV_ICONS.integrations }
           : null,
       ] satisfies Array<NavItem | null>,
     },
@@ -1091,10 +1092,10 @@ function MasterPanel() {
       items: [
         // Everyone: Appearance and Shortcuts are per-desk. The company's own tabs
         // are `settings.manage`, gated in the sub-pages above and in the screen.
-        { id: 'settings', label: t('nav.master.settings'), icon: 'settings' },
+        { id: 'settings', label: t('nav.master.settings'), icon: NAV_ICONS.settings },
         // Visible to everyone: which version a machine runs is not privileged
         // information, and the person asked to read it out is rarely an admin.
-        { id: 'updates', label: t('nav.updates'), icon: 'sync' },
+        { id: 'updates', label: t('nav.updates'), icon: NAV_ICONS.updates },
       ] satisfies Array<NavItem | null>,
     },
   ].map((group) => ({ ...group, items: nest(group.items) }));
@@ -1262,7 +1263,8 @@ function MasterPanel() {
       <button className="ob-btn ob-btn--ghost" onClick={() => setChangingPassword(true)}>
         {t('action.changePassword')}
       </button>
-      <button className="ob-btn ob-btn--ghost" onClick={() => void signOut()}>
+      <button className="ob-btn ob-btn--ghost ob-btn--signout" onClick={() => void signOut()}>
+        <Icon name="sign-out" size={16} />
         {t('action.signOut')}
       </button>
     </>
