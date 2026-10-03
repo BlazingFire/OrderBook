@@ -13,6 +13,14 @@
 
 import type { IsoDate, RecordId } from './entities.js';
 import type { MessageKey } from '../i18n/keys.js';
+import type { ChangedEntity } from '../protocol/socket.js';
+
+/**
+ * The change entities that move a report's numbers. Both panels refresh an open
+ * Reports screen on exactly these (the Master's `SCREEN_ENTITIES.reports`, the
+ * Office's `change` listener), so the two cannot drift apart.
+ */
+export const REPORT_ENTITIES: readonly ChangedEntity[] = ['lead', 'order', 'party', 'party_bulk', 'stock'];
 
 export type ReportPeriod =
   | 'thisMonth'
@@ -417,6 +425,19 @@ export function reportQueryParams(query: ReportQuery): URLSearchParams {
   }
   if (query.limit !== undefined) params.set('limit', String(query.limit));
   return params;
+}
+
+/**
+ * Where a report's PDF is shown inline — the Preview PDF link. The Master answers
+ * `application/pdf` at this path whatever the query says, and the Office proxies
+ * it; the desktop shell opens exactly this shape in a window of its own
+ * (`electron/lib/lead-pdf.ts` allows these keys and no others).
+ */
+export function reportPdfPath(kind: ReportKind, query: ReportQuery, lang?: ReportLocale): string {
+  const params = reportQueryParams(query);
+  if (lang === 'hi') params.set('lang', 'hi');
+  const qs = params.toString();
+  return `/api/reports/${kind}/pdf${qs ? `?${qs}` : ''}`;
 }
 
 // --- Export ----------------------------------------------------------------

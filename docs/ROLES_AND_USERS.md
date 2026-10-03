@@ -192,6 +192,50 @@ rather than described as though it already shipped.
   being silently ignored
 - **within the tier ceiling** — a key above the role's tier fails the whole save
 
+
+### 5.1 The Chatroom keys (1.3 Phase 6)
+
+Six keys in a `chat` capability group, rendered in the role editor from `CAPABILITY_GROUPS`:
+`chat.use` (the switch), `chat.directMessages`, `chat.shareRecords`, `chat.tasks` (all office tier),
+`chat.createGroups` (management and above) and `chat.manage` (admin and above). What each gates is in
+`docs/backend-modules/04-API-CONTRACT.md` section 14.1.
+
+**Default grants.** Migration `20261005000000_chatroom` unions all six into every `admin` and
+`server_master` role, and `chat.use` + `chat.shareRecords` into every `office` and `management` role,
+so the Chatroom works the day it ships for the people it was asked for. It is a one-time grant, not a
+rule: a role created afterwards holds none until an administrator ticks them (or picks the Sales or
+Dispatch template, which carry them). Taking `chat.use` away stops delivery at once, whatever rooms the
+person is still a member of.
+
+**The request flow.** A person who lacks `chat.directMessages`, `chat.shareRecords`, `chat.tasks` or
+(for a management role) `chat.createGroups` sees a *Request access* button in the Chatroom. It posts to
+`/api/chat/access-requests` (`chat:requestAccess` from an Office), which tells everyone holding
+`roles.edit` with an `access.requested` notice linking to the requester's role. One unread request per
+person and right is kept. The notice only informs; granting is the ordinary role edit.
+
+### 5.2 The Printroom keys (1.3 Phase 7)
+
+Two keys in the `workflow` capability group: `print.send` and `print.station`, both office tier.
+`print.send` lets a person queue a pending or final order's Filling or Dispatch note for the PC with the
+printer and see, and cancel while still queued, their **own** jobs. `print.station` runs a printroom:
+it sees and prints **every** job, marks them printed or not printed, cancels any queued one, and turns a
+PC into an auto-print station.
+
+**`print.station` is a deliberate cross-party grant.** A sender addresses "the printroom", not a person,
+so whoever is at the printer must be able to print any party's sheet; it works whatever Party Access the
+holder has (the sheet is frozen from the *sender's* view when it is sent). Its label in the role editor
+says so. Tick it only for the people (or the PC's signed-in user) who stand at a printer.
+
+**Default grants.** Migration `20261006000000_printroom` unions both keys into every `admin` and
+`server_master` role. Office and management roles hold neither until an administrator ticks them (or picks
+the Sales template, which carries `print.send`, or Dispatch, which carries both). Sending a note also
+needs the note's own export right: `leads.export` for a pending order, `orders.export` for a final one.
+
+**An unattended printer PC.** Auto-print runs in the signed-in OrderBook window of a user who holds
+`print.station` (the Master addresses its pushes to a person, and the runner is part of the signed-in UI).
+Leave that user signed in on the printer PC (Windows auto-login plus the app at start-up keeps it that way)
+and turn on *Auto-print new jobs on this PC* in the Printroom.
+
 ---
 
 ## 6. Indexes

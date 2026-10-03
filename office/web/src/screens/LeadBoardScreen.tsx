@@ -13,11 +13,11 @@
  * are all still there on the way back.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { matchesRecordSearch, resolveCompanyFeatures, shownColour } from '@orderbook/shared';
-import type { Lead, PartyScopeFilter, SyncSnapshot } from '@orderbook/shared';
+import type { ChatRecordChip, Lead, NoteKind, PartyScopeFilter, SyncSnapshot } from '@orderbook/shared';
 
-import { api, type LocalView } from '../api';
+import { api, desktopBridge, type LocalView } from '../api';
 import { presenceChannel } from '../presence';
 import {
   AvatarStack,
@@ -32,6 +32,7 @@ import {
   Input,
   IconButton,
   KanbanBoard,
+  OrderNoteScreen,
   Popover,
   RecordNumber,
   Segmented,
@@ -46,6 +47,7 @@ import {
   useSubNav,
   useToast,
   type DataTableColumn,
+  type PrintroomTransport,
 } from '@orderbook/ui';
 import { AddLeadScreen } from './AddLeadScreen';
 import { LeadDetail } from './LeadDetail';
@@ -56,12 +58,16 @@ interface Props {
   openId: string | null;
   onOpenId: (id: string | null) => void;
   canConvert: boolean;
-  /** `leads.export` — the open lead's header offers Preview PDF. */
+  /** `leads.export` — the open lead's header offers Preview PDF and the Filling and Dispatch notes. */
   canPreviewPdf: boolean;
   /** `leads.edit` — the open lead's header offers Edit lead. */
   canEdit: boolean;
   onError: (message: string) => void;
   onAddLead?: () => void;
+  /** Present only for somebody who may share records in chat (`chat.use` and `chat.shareRecords`). */
+  onShareInChat?: (chip: ChatRecordChip) => void;
+  /** Present only for somebody who may send to the Printroom (`print.send`): the note screen offers it. */
+  printroom?: PrintroomTransport;
   /** The signed-in person, left out of who else is on the open lead. */
   userId?: string | null;
   /** Temporary id → permanent id, for provisional leads the Master has numbered. */
@@ -122,11 +128,15 @@ export function LeadBoardScreen({
   canEdit,
   onError,
   onAddLead,
+  onShareInChat,
+  printroom,
   userId,
   numberedIds,
 }: Props) {
   /** The open lead whose lines are in the entry form, or null. */
   const [editingId, setEditingId] = useState<string | null>(null);
+  /** The Filling or Dispatch note open over a pending order, when there is one. */
+  const [note, setNote] = useState<{ id: string; kind: NoteKind } | null>(null);
   const [tab, setTab] = useState<BoardTab>('list');
   const [stageFilter, setStageFilter] = useState<string | null>(null);
   const [scope, setScope] = useState<PartyScopeFilter>('all');
@@ -150,10 +160,42 @@ export function LeadBoardScreen({
   // A provisional lead opened before the Master numbered it stays open once
   // its permanent record replaces it here.
   const renamedTo = openId ? numberedIds?.[openId] : undefined;
-  const openLead =
+  const inView =
     view.leads.find((lead) => lead.id === openId) ??
     (renamedTo ? view.leads.find((lead) => lead.id === renamedTo) : undefined) ??
     null;
+  /*
+   * A lead this panel's 500-row view does not hold (a chat chip, a bell entry):
+   * asked of the Master through this panel's server, which applies the person's
+   * party scope. Gone or not theirs to see: back to the list, with a word.
+   */
+  const [fetched, setFetched] = useState<Lead | null>(null);
+  const onOpenIdRef = useRef(onOpenId);
+  onOpenIdRef.current = onOpenId;
+  const inViewNow = inView !== null;
+  useEffect(() => {
+    if (!openId || inViewNow) {
+      setFetched(null);
+      return;
+    }
+    let cancelled = false;
+    void api.lead(openId).then(
+      (lead) => {
+        if (!cancelled) setFetched(lead);
+      },
+      () => {
+        if (cancelled) return;
+        toast.push(t('nav.recordNotAvailable'), { tone: 'info' });
+        onOpenIdRef.current(null);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+    // `toast` is a stable context value; the open id and whether the view holds it decide this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId, inViewNow]);
+  const openLead = inView ?? (fetched && fetched.id === openId ? fetched : null);
 
   useFilterBar(
     pipeline && !openLead ? (
@@ -207,13 +249,21 @@ export function LeadBoardScreen({
     ) : null,
   );
 
+  const noteKind = note && note.id === openLead?.id ? note.kind : null;
+
   useSubNav(
     'leads',
     openLead
       ? {
           parentId: 'leads',
-          items: [{ id: 'leads.detail', label: openLead.partyName, icon: 'leads' }],
-          activeId: 'leads.detail',
+          items: [
+            {
+              id: noteKind ? 'leads.note' : 'leads.detail',
+              label: openLead.partyName,
+              icon: 'leads',
+            },
+          ],
+          activeId: noteKind ? 'leads.note' : 'leads.detail',
         }
       : null,
   );
@@ -226,6 +276,26 @@ export function LeadBoardScreen({
     openLead !== null && editingId === openLead.id,
   );
   const others = <AvatarStack entries={presence.entries} selfUserId={userId} />;
+
+  // The note of a pending order, drawn from the lead and party this panel
+  // already holds, so it previews and prints with the Master unreachable. Its
+  // vehicle number is for the sheet only (`OrderNoteScreen`).
+  if (openLead && noteKind) {
+    return (
+      <OrderNoteScreen
+        key={openLead.id}
+        record={openLead}
+        source="lead"
+        party={view.parties.find((candidate) => candidate.id === openLead.partyId) ?? null}
+        initialKind={noteKind}
+        canEditVehicle
+        onSaveVehicle={async () => undefined}
+        onBack={() => setNote(null)}
+        desktop={desktopBridge() ?? undefined}
+        printroom={printroom}
+      />
+    );
+  }
 
   if (openLead && editingId === openLead.id) {
     return (
@@ -272,11 +342,41 @@ export function LeadBoardScreen({
         }
         actions={
           <>
+            {onShareInChat && (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="chat"
+                onClick={() => onShareInChat({ kind: 'lead', id: openLead.id })}
+              >
+                {t('chat.share.button')}
+              </Button>
+            )}
             {others}
             {editable && (
               <Button variant="secondary" size="sm" onClick={() => setEditingId(openLead.id)}>
                 {t('lead.edit.action')}
               </Button>
+            )}
+            {/* Notes come from the local snapshot, so they need no Master and no
+                sync; once converted, the final order carries them. */}
+            {canPreviewPdf && !openLead.convertedOrderId && (
+              <>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setNote({ id: openLead.id, kind: 'filling' })}
+                >
+                  {t('orderNote.filling')}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setNote({ id: openLead.id, kind: 'dispatch' })}
+                >
+                  {t('orderNote.dispatch')}
+                </Button>
+              </>
             )}
             {/* The Master renders the PDF, so a lead it has not received yet
                 has none to show. Opens beside the app (CATALOGUE_MODEL §8). */}

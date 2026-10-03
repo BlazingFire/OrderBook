@@ -72,7 +72,7 @@ function makeTransport(overrides: Partial<ReportsTransport> = {}): ReportsTransp
   };
 }
 
-function mount(transport: ReportsTransport, props: Partial<{ kind: ReportKind; onKindChange: (kind: ReportKind) => void; revision: number | string }> = {}) {
+function mount(transport: ReportsTransport, props: Partial<{ kind: ReportKind; onKindChange: (kind: ReportKind) => void; revision: number | string; online: boolean }> = {}) {
   return render(
     <ToastProvider>
       <ReportsScreen transport={transport} kind="by-city" onKindChange={() => undefined} revision={0} {...props} />
@@ -115,6 +115,26 @@ describe('the table', () => {
     expect(screen.getByText('4,000.5')).toBeTruthy();
     expect(screen.getByText('1,600')).toBeTruthy();
     expect(screen.getByText(t('reports.range.caption', { from: '2026-05', to: '2026-10', zone: 'Asia/Kolkata' }))).toBeTruthy();
+  });
+
+  it('captions an exact-dates range with the exact first and last day, not with month labels', async () => {
+    const february = tableFor('by-city', {
+      range: { period: 'customDates', fromDate: '2026-02-01', toDateExclusive: '2026-03-01', months: ['2026-02'], timeZone: 'Asia/Kolkata' },
+      rows: [{ city: 'Morbi', parties: 1, orders: 1, pieces: 1, kg: 1 }],
+      rowCount: 1,
+    });
+    mount(makeTransport({ table: vi.fn(async () => february) }));
+    expect(await screen.findByText(t('reports.range.caption', { from: '2026-02-01', to: '2026-02-28', zone: 'Asia/Kolkata' }))).toBeTruthy();
+    cleanup();
+
+    // Across a year boundary the inclusive end is the day before the stored exclusive one.
+    const newYear = tableFor('by-city', {
+      range: { period: 'customDates', fromDate: '2025-12-15', toDateExclusive: '2026-01-01', months: ['2025-12'], timeZone: 'Asia/Kolkata' },
+      rows: [{ city: 'Morbi', parties: 1, orders: 1, pieces: 1, kg: 1 }],
+      rowCount: 1,
+    });
+    mount(makeTransport({ table: vi.fn(async () => newYear) }));
+    expect(await screen.findByText(t('reports.range.caption', { from: '2025-12-15', to: '2025-12-31', zone: 'Asia/Kolkata' }))).toBeTruthy();
   });
 
   it('shows a dash for an empty cell and says when nothing happened', async () => {
@@ -317,6 +337,21 @@ describe('a refusal', () => {
     expect(screen.getByText(t('reports.hidden.description'))).toBeTruthy();
   });
 
+  it('says Reports need the Master when the Office cannot reach it, for the table and for a file', async () => {
+    const unreachable = Object.assign(new Error('The Master Panel is not reachable'), {
+      code: 'unavailable',
+      messageKey: 'error.unavailable',
+    });
+    mount(makeTransport({ table: vi.fn(async () => { throw unreachable; }) }));
+    expect(await screen.findByText(t('reports.offline'))).toBeTruthy();
+    cleanup();
+
+    mount(makeTransport({ exportFile: vi.fn(async () => { throw unreachable; }) }));
+    await screen.findByText('Morbi');
+    fireEvent.click(screen.getByRole('button', { name: t('reports.export.csv') }));
+    expect(await screen.findByText(t('reports.offline'))).toBeTruthy();
+  });
+
   it('offers a retry for a failure that is not about a field', async () => {
     const table = vi.fn<ReportsTransport['table']>().mockRejectedValueOnce(new Error('The Master Panel is not reachable')).mockResolvedValue(CITY_TABLE);
     mount(makeTransport({ table }));
@@ -338,6 +373,34 @@ describe('files', () => {
     mount(makeTransport({ options: vi.fn(async () => OFFICE_OPTIONS) }));
     await screen.findByText('Morbi');
     expect(screen.queryByRole('button', { name: t('reports.export.xlsx') })).toBeNull();
+  });
+
+  it('previews the PDF in a window of its own, for the range the controls describe, and only to somebody who may export', async () => {
+    mount(makeTransport());
+    await screen.findByText('Morbi');
+    const link = screen.getByRole('link', { name: t('reports.previewPdf') });
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toBe('noopener');
+    expect(link.getAttribute('href')).toBe(`/api/reports/by-city/pdf?period=last6Months`);
+
+    pick(combo(t('reports.range.period')), t('reports.period.thisMonth'));
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: t('reports.previewPdf') }).getAttribute('href')).toBe(
+        '/api/reports/by-city/pdf?period=thisMonth',
+      ),
+    );
+    cleanup();
+
+    mount(makeTransport({ options: vi.fn(async () => OFFICE_OPTIONS) }));
+    await screen.findByText('Morbi');
+    expect(screen.queryByRole('link', { name: t('reports.previewPdf') })).toBeNull();
+  });
+
+  it('withdraws the PDF preview link while the Master is out of reach, and keeps the file buttons', async () => {
+    mount(makeTransport(), { online: false });
+    await screen.findByText('Morbi');
+    expect(screen.queryByRole('link', { name: t('reports.previewPdf') })).toBeNull();
+    expect(screen.getByRole('button', { name: t('reports.export.pdf') })).toBeTruthy();
   });
 
   it('writes the file the controls describe, in the language on screen, and stays busy until it arrives', async () => {

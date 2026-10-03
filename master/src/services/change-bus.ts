@@ -8,7 +8,13 @@
  */
 
 import { EventEmitter } from 'node:events';
-import type { DataChangedEvent, SyncConflict, UserNotification } from '@orderbook/shared';
+import type {
+  ChatPush,
+  DataChangedEvent,
+  PrintJobSummary,
+  SyncConflict,
+  UserNotification,
+} from '@orderbook/shared';
 
 import { actorUserId, type ActorContext } from '../domain/actor.js';
 import * as changeRing from '../realtime/change-ring.js';
@@ -17,6 +23,8 @@ const emitter = new EventEmitter();
 const CHANGE_EVENT = 'change';
 const CONFLICT_EVENT = 'conflict';
 const NOTIFICATION_EVENT = 'notification';
+const CHAT_EVENT = 'chat';
+const PRINT_EVENT = 'print';
 
 emitter.setMaxListeners(50);
 
@@ -80,4 +88,48 @@ export function onNotification(
 ): () => void {
   emitter.on(NOTIFICATION_EVENT, listener);
   return () => emitter.off(NOTIFICATION_EVENT, listener);
+}
+
+/** A chat push and the people it is for. */
+export interface AddressedChatPush {
+  tenantId: string;
+  /** The room's members (and anybody just removed from it). */
+  userIds: string[];
+  push: ChatPush;
+}
+
+/**
+ * Something happened in a chat room. Like a notification it is addressed, and
+ * it has its own channel for a reason that matters more here: chat must never
+ * touch the change ring (a panel's cursor would then replay every message) or
+ * the activity chain.
+ */
+export function publishChat(event: AddressedChatPush): void {
+  emitter.emit(CHAT_EVENT, event);
+}
+
+export function onChat(listener: (event: AddressedChatPush) => void): () => void {
+  emitter.on(CHAT_EVENT, listener);
+  return () => emitter.off(CHAT_EVENT, listener);
+}
+
+/** A Printroom job was sent or changed, and which company it belongs to. */
+export interface PrintJobEvent {
+  tenantId: string;
+  job: PrintJobSummary;
+}
+
+/**
+ * A job entered or moved through the queue. Live only, like chat: it never
+ * touches the change ring or the activity chain (the audit entries for a job are
+ * written by the service, inside the change). The hub addresses it per
+ * recipient: the sender, and every holder of `print.station`.
+ */
+export function publishPrintJob(event: PrintJobEvent): void {
+  emitter.emit(PRINT_EVENT, event);
+}
+
+export function onPrintJob(listener: (event: PrintJobEvent) => void): () => void {
+  emitter.on(PRINT_EVENT, listener);
+  return () => emitter.off(PRINT_EVENT, listener);
 }

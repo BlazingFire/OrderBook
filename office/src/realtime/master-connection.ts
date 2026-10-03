@@ -515,6 +515,17 @@ class MasterConnection extends EventEmitter {
       this.emit('notification', notification);
     });
 
+    // Addressed to one person like a notification; the HTTP layer checks that
+    // person is still the one signed in before it reaches the browser.
+    socket.on('chat:event', (push) => {
+      this.emit('chat', push);
+    });
+
+    // A Printroom job, addressed the same way.
+    socket.on('print:changed', (job) => {
+      this.emit('print', job);
+    });
+
     // Who else has a record open. Addressed the same way (`forUserId`) and
     // filtered by the HTTP layer in the same place.
     socket.on('presence:changed', (presence) => {

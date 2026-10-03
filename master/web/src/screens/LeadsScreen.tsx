@@ -18,15 +18,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { shownColour } from '@orderbook/shared';
 import type {
+  ChatRecordChip,
   Lead,
   LineItem,
+  NoteKind,
   OptionListItem,
   Party,
   PartyScopeFilter,
   PipelineStage,
 } from '@orderbook/shared';
 
-import { ApiError, api } from '../api';
+import { ApiError, api, desktopBridge } from '../api';
 import { presenceChannel } from '../presence';
 import { leadRecordTransport } from '../transports';
 import { LeadEntry } from './LeadEntry';
@@ -45,6 +47,7 @@ import {
   Input,
   LeadRecordView,
   LoadMorePager,
+  OrderNoteScreen,
   RecordNumber,
   Segmented,
   SkeletonTable,
@@ -60,6 +63,7 @@ import {
   useSubNav,
   useToast,
   type DataTableColumn,
+  type PrintroomTransport,
 } from '@orderbook/ui';
 
 const PAGE_SIZE = 500;
@@ -80,6 +84,10 @@ interface Props {
   onOpenId: (id: string | null) => void;
   /** Takes the person to the final order a lead became. */
   onOpenOrder: (orderId: string) => void;
+  /** Present only for somebody who may share records in chat (`chat.use` and `chat.shareRecords`). */
+  onShareInChat?: (chip: ChatRecordChip) => void;
+  /** Present only for somebody who may send to the Printroom (`print.send`): the note screen offers it. */
+  printroom?: PrintroomTransport;
   /** `leads.create`: the empty state offers New pending order. */
   canCreate: boolean;
   onNewLead: () => void;
@@ -136,6 +144,8 @@ export function LeadsScreen({
   openId,
   onOpenId,
   onOpenOrder,
+  onShareInChat,
+  printroom,
   canCreate,
   onNewLead,
   canCreateParty,
@@ -146,6 +156,8 @@ export function LeadsScreen({
   // The shell hands a fresh callback every render; the fetch below must not.
   const onOpenIdRef = useRef(onOpenId);
   onOpenIdRef.current = onOpenId;
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
   const [scope, setScope] = useState<PartyScopeFilter>('all');
   const [search, setSearch] = useState('');
   const term = useDebounced(search.trim());
@@ -160,6 +172,8 @@ export function LeadsScreen({
   /** The open lead when it is not in `rows` — a search hit, or one past the loaded page. */
   const [fetched, setFetched] = useState<Lead | null>(null);
   const [party, setParty] = useState<Party | null>(null);
+  /** The Filling or Dispatch note open over a pending order, when there is one. */
+  const [note, setNote] = useState<{ id: string; kind: NoteKind } | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   /** The lead being edited in the form, when it is not the record view. */
@@ -245,8 +259,11 @@ export function LeadsScreen({
         if (!cancelled) setFetched(lead);
       })
       .catch((caught) => {
-        // Gone, or not this person's to see: back to the list, not a blank screen.
-        if (!cancelled && caught instanceof ApiError && caught.code === 'not_found') onOpenIdRef.current(null);
+        // Gone, or not this person's to see: back to the list, and say so.
+        if (!cancelled && caught instanceof ApiError && (caught.code === 'not_found' || caught.code === 'forbidden')) {
+          toastRef.current.push(t('nav.recordNotAvailable'), { tone: 'info' });
+          onOpenIdRef.current(null);
+        }
       });
     return () => {
       cancelled = true;
@@ -276,7 +293,10 @@ export function LeadsScreen({
   useEffect(() => {
     setError(null);
     setEditingId(null);
+    setNote(null);
   }, [openId]);
+
+  const noteKind = note && note.id === openLead?.id ? note.kind : null;
 
   const open = view === 'list';
   const shown = stageFilter ? rows.filter((lead) => lead.stageId === stageFilter) : rows;
@@ -333,8 +353,14 @@ export function LeadsScreen({
     openLead
       ? {
           parentId: 'leads',
-          items: [{ id: 'leads.detail', label: openLead.partyName, icon: 'leads' }],
-          activeId: 'leads.detail',
+          items: [
+            {
+              id: noteKind ? 'leads.note' : 'leads.detail',
+              label: openLead.partyName,
+              icon: 'leads',
+            },
+          ],
+          activeId: noteKind ? 'leads.note' : 'leads.detail',
         }
       : null,
   );
@@ -481,6 +507,25 @@ export function LeadsScreen({
     },
   ];
 
+  // The note of a pending order. Its vehicle number is for the sheet only: a
+  // lead has no vehicle column, so nothing is saved (`OrderNoteScreen`).
+  if (openLead && noteKind) {
+    return (
+      <OrderNoteScreen
+        key={openLead.id}
+        record={openLead}
+        source="lead"
+        party={party}
+        initialKind={noteKind}
+        canEditVehicle
+        onSaveVehicle={async () => undefined}
+        onBack={() => setNote(null)}
+        desktop={desktopBridge() ?? undefined}
+        printroom={printroom}
+      />
+    );
+  }
+
   if (openLead && editingId === openLead.id) {
     return (
       <EditorScreen
@@ -531,10 +576,40 @@ export function LeadsScreen({
           actions={
             <>
               {others}
+              {onShareInChat && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon="chat"
+                  onClick={() => onShareInChat({ kind: 'lead', id: openLead.id })}
+                >
+                  {t('chat.share.button')}
+                </Button>
+              )}
               {canEdit && !openLead.convertedOrderId && (
                 <Button variant="secondary" size="sm" onClick={() => setEditingId(openLead.id)}>
                   {t('lead.edit.action')}
                 </Button>
+              )}
+              {/* The same `leads.export` gate as the PDF, and only for a pending
+                  order: once converted, the final order carries the notes. */}
+              {canPreviewPdf && !openLead.convertedOrderId && (
+                <>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setNote({ id: openLead.id, kind: 'filling' })}
+                  >
+                    {t('orderNote.filling')}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setNote({ id: openLead.id, kind: 'dispatch' })}
+                  >
+                    {t('orderNote.dispatch')}
+                  </Button>
+                </>
               )}
               {/* Opens beside the app: the Electron shell allows this one URL a
                   window of its own (CATALOGUE_MODEL §8). */}

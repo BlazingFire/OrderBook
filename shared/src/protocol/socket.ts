@@ -113,6 +113,30 @@ import type {
 } from '../domain/pick.js';
 import type { BinCounts, BinEntry, BinRestoreResult } from '../domain/recycle-bin.js';
 import type { SettingKey, SettingView } from '../domain/settings.js';
+import { CHAT_MIN_PROTOCOL } from '../domain/chat.js';
+import { PRINTROOM_MIN_PROTOCOL } from '../domain/printroom.js';
+import type {
+  PrintJob,
+  PrintJobInput,
+  PrintJobPage,
+  PrintJobQuery,
+  PrintJobSummary,
+  PrintStation,
+  PrintStationInput,
+} from '../domain/printroom.js';
+import type {
+  ChatAccessRequest,
+  ChatMemberRole,
+  ChatMessage,
+  ChatPush,
+  ChatRoomDetail,
+  ChatRoomInput,
+  ChatRoomPatch,
+  ChatRoomSummary,
+  ChatPerson,
+  ChatSearchHit,
+  ChatTaskRow,
+} from '../domain/chat.js';
 import type { UserNotification } from '../domain/notifications.js';
 import type { SyncPushRequest, SyncPushResponse } from '../sync/mutations.js';
 import type { PresenceBeat, RecordPresence } from './presence.js';
@@ -158,7 +182,7 @@ export interface PanelAuthPayload {
  * socket command, so either side can tell the other is too old for one before
  * sending it, instead of waiting out a timeout.
  */
-export const PANEL_PROTOCOL_VERSION = 4;
+export const PANEL_PROTOCOL_VERSION = 6;
 
 /**
  * The lowest Master protocol each command needs. A command not listed has
@@ -171,6 +195,33 @@ export const COMMAND_MIN_PROTOCOL: Partial<Record<keyof ClientToServerEvents, nu
   'report:options': 2,
   'notification:list': 3,
   'notification:markRead': 3,
+  // The Chatroom (1.3 Phase 6). Phase 4 takes the protocol to 4; chat is 5.
+  'chat:people': CHAT_MIN_PROTOCOL,
+  'chat:rooms': CHAT_MIN_PROTOCOL,
+  'chat:room': CHAT_MIN_PROTOCOL,
+  'chat:messages': CHAT_MIN_PROTOCOL,
+  'chat:search': CHAT_MIN_PROTOCOL,
+  'chat:tasks': CHAT_MIN_PROTOCOL,
+  'chat:roomCreate': CHAT_MIN_PROTOCOL,
+  'chat:roomUpdate': CHAT_MIN_PROTOCOL,
+  'chat:memberSet': CHAT_MIN_PROTOCOL,
+  'chat:direct': CHAT_MIN_PROTOCOL,
+  'chat:edit': CHAT_MIN_PROTOCOL,
+  'chat:delete': CHAT_MIN_PROTOCOL,
+  'chat:pin': CHAT_MIN_PROTOCOL,
+  'chat:taskDone': CHAT_MIN_PROTOCOL,
+  'chat:read': CHAT_MIN_PROTOCOL,
+  'chat:mute': CHAT_MIN_PROTOCOL,
+  'chat:requestAccess': CHAT_MIN_PROTOCOL,
+  // The Printroom (1.3 Phase 7): chat took 5, so this is 6.
+  'print:list': PRINTROOM_MIN_PROTOCOL,
+  'print:get': PRINTROOM_MIN_PROTOCOL,
+  'print:send': PRINTROOM_MIN_PROTOCOL,
+  'print:mark': PRINTROOM_MIN_PROTOCOL,
+  'print:cancel': PRINTROOM_MIN_PROTOCOL,
+  'print:claim': PRINTROOM_MIN_PROTOCOL,
+  'print:stations': PRINTROOM_MIN_PROTOCOL,
+  'print:station': PRINTROOM_MIN_PROTOCOL,
   'presence:beat': 4,
 };
 
@@ -857,6 +908,55 @@ export interface ClientToServerEvents {
     ack: CommandAck<{ unreadCount: number }>,
   ) => void;
 
+  // --- Chatroom (1.3 Phase 6) ----------------------------------------------
+  /*
+   * Twinned with the Master's `/api/chat` REST routes: the Master's own browser
+   * uses those, an Office Panel uses these. There is deliberately no
+   * `chat:post`: an Office posts through `sync:push` as a `chat.post` mutation,
+   * which gives it the outbox, idempotency and a resend on reconnect.
+   */
+  /** Everyone the acting person may chat with. */
+  'chat:people': (ack: CommandAck<ChatPerson[]>) => void;
+  /** The acting person's rooms (all groups, for `chat.manage`, with `all`). */
+  'chat:rooms': (
+    input: { all?: boolean; includeArchived?: boolean },
+    ack: CommandAck<ChatRoomSummary[]>,
+  ) => void;
+  'chat:room': (roomId: Uuid, ack: CommandAck<ChatRoomDetail>) => void;
+  'chat:messages': (
+    input: { roomId: Uuid; beforeSeq?: number; limit?: number },
+    ack: CommandAck<ChatMessage[]>,
+  ) => void;
+  'chat:search': (input: { q: string; roomId?: Uuid }, ack: CommandAck<ChatSearchHit[]>) => void;
+  'chat:tasks': (
+    input: { scope: 'mine' | 'created'; includeDone?: boolean },
+    ack: CommandAck<ChatTaskRow[]>,
+  ) => void;
+  'chat:roomCreate': (input: ChatRoomInput, ack: CommandAck<ChatRoomSummary>) => void;
+  'chat:roomUpdate': (
+    input: { roomId: Uuid; input: ChatRoomPatch },
+    ack: CommandAck<ChatRoomSummary>,
+  ) => void;
+  /** Add, re-role or remove (`role: null`) one member. */
+  'chat:memberSet': (
+    input: { roomId: Uuid; userId: string; role: ChatMemberRole | null },
+    ack: CommandAck<ChatRoomDetail | null>,
+  ) => void;
+  'chat:direct': (input: { userId: string }, ack: CommandAck<ChatRoomSummary>) => void;
+  'chat:edit': (
+    input: { messageId: string; body: string; mentions?: string[] },
+    ack: CommandAck<ChatMessage>,
+  ) => void;
+  'chat:delete': (messageId: string, ack: CommandAck<ChatMessage>) => void;
+  'chat:pin': (input: { messageId: string; pinned: boolean }, ack: CommandAck<ChatMessage>) => void;
+  'chat:taskDone': (
+    input: { messageId: string; done: boolean },
+    ack: CommandAck<ChatMessage>,
+  ) => void;
+  'chat:read': (input: { roomId: Uuid; seq: number }, ack: CommandAck<{ lastReadSeq: number }>) => void;
+  'chat:mute': (input: { roomId: Uuid; muted: boolean }, ack: CommandAck<null>) => void;
+  /** Ask the people who edit roles for a chat capability the acting person lacks. */
+  'chat:requestAccess': (input: ChatAccessRequest, ack: CommandAck<{ notified: number }>) => void;
   // --- Presence -------------------------------------------------------------
   /**
    * The acting person has a record open in one tab (or left it, with no
@@ -864,6 +964,29 @@ export interface ClientToServerEvents {
    * logged. Refused with nobody signed in, or for a record they may not see.
    */
   'presence:beat': (beat: PresenceBeat, ack: CommandAck<RecordPresence | null>) => void;
+
+  // --- Printroom (1.3 Phase 7) ----------------------------------------------
+  /*
+   * Twinned with the Master's `/api/print-jobs` and `/api/print-stations` REST
+   * routes: the Master's own browser uses those (and, for its claim, this
+   * command over its own socket), an Office Panel uses these. The station a
+   * `print:claim` or `print:station` speaks for comes from the connection
+   * (`socket.data.panelId`), never from the payload.
+   */
+  'print:list': (input: PrintJobQuery, ack: CommandAck<PrintJobPage>) => void;
+  'print:get': (id: Uuid, ack: CommandAck<PrintJob>) => void;
+  'print:send': (input: PrintJobInput, ack: CommandAck<PrintJob>) => void;
+  /** Mark a job printed, or (`printed: false`) put a printed one back in the queue. */
+  'print:mark': (
+    input: { id: Uuid; printed: boolean; printerName?: string | null },
+    ack: CommandAck<PrintJobSummary>,
+  ) => void;
+  'print:cancel': (id: Uuid, ack: CommandAck<PrintJobSummary>) => void;
+  /** Take a job for this connection's station; `null` when somebody else holds it or it is gone. */
+  'print:claim': (id: Uuid, ack: CommandAck<PrintJob | null>) => void;
+  'print:stations': (ack: CommandAck<PrintStation[]>) => void;
+  /** Register this PC as a station, or say it is still alive. */
+  'print:station': (input: PrintStationInput, ack: CommandAck<PrintStation>) => void;
 
   // --- Dashboard (docs/backend-modules/04-API-CONTRACT.md §7) ---------------
   /** The one live pull — everything else rides on `SyncSnapshot.dashboard` and the `dashboard:changed` push. */
@@ -930,6 +1053,18 @@ export interface ServerToClientEvents {
    * unless that person is still the one signed in there.
    */
   'notification:new': (notification: UserNotification & { forUserId: Uuid }) => void;
+  /**
+   * Something changed in a chat room the acting person is in. Addressed like a
+   * notification, and like one it never enters the change ring: a panel that
+   * missed it reads the room again.
+   */
+  'chat:event': (push: ChatPush & { forUserId: Uuid }) => void;
+  /**
+   * A print job was sent or changed. Addressed to the sender and to every
+   * holder of `print.station`; live only (no change ring), so a panel that
+   * missed one reads the list again.
+   */
+  'print:changed': (job: PrintJobSummary & { forUserId: Uuid }) => void;
   /**
    * Who is on a record changed. Sent only to people on that record who may
    * still see it, each addressed by `forUserId` like a notification.

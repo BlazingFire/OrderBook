@@ -30,7 +30,10 @@ import {
   MAX_PARTY_IMPORT_BYTES,
   MAX_PRODUCT_IMPORT_BYTES,
   MUTATION_PERMISSIONS,
+  cleanChatPost,
   parseReportQuery,
+  t,
+  type ChatMessage,
   type DataChangedEvent,
   type PresenceBeat,
   type ReportKind,
@@ -521,6 +524,171 @@ export function createApp(): Express {
     });
   });
 
+  // --- The Chatroom -----------------------------------------------------------
+  //
+  // Reads, edits and room administration are the Master's, forwarded one to
+  // one with the same paths the Master's own browser uses. Posting is the one
+  // exception: it queues a `chat.post` mutation like any other write, so a post
+  // survives a lost link and is sent again safely. The queue holds it until its
+  // author is the person signed in (`sync.service.ts`), and only that person is
+  // ever shown it as "Sending…" (`pendingChatPosts`).
+  app.get('/api/chat/people', (_req, res) => forward(res, 'chat:people'));
+  app.get('/api/chat/rooms', (req, res) =>
+    forward(res, 'chat:rooms', {
+      all: req.query.all === '1',
+      includeArchived: req.query.archived === '1',
+    }),
+  );
+  app.post('/api/chat/rooms', (req, res) => forward(res, 'chat:roomCreate', req.body ?? {}));
+  app.get('/api/chat/rooms/:id', (req, res) => forward(res, 'chat:room', req.params.id));
+  app.put('/api/chat/rooms/:id', (req, res) =>
+    forward(res, 'chat:roomUpdate', { roomId: req.params.id, input: req.body ?? {} }),
+  );
+  app.post('/api/chat/rooms/:id/members', (req, res) =>
+    forward(res, 'chat:memberSet', {
+      roomId: req.params.id,
+      userId: req.body?.userId,
+      role: req.body?.role ?? null,
+    }),
+  );
+  app.get('/api/chat/rooms/:id/messages', async (req, res) => {
+    const beforeSeq = Number(req.query.before);
+    const limit = Number(req.query.limit);
+    // The latest page carries this person's still-queued posts after it; an older page does not.
+    const pending = Number.isFinite(beforeSeq) ? [] : await pendingChatPosts(req.params.id);
+    try {
+      const messages = await masterConnection.command<'chat:messages', ChatMessage[]>('chat:messages', {
+        roomId: req.params.id,
+        ...(Number.isFinite(beforeSeq) ? { beforeSeq } : {}),
+        ...(Number.isFinite(limit) ? { limit } : {}),
+      });
+      // A post the Master already has but the outbox has not yet settled is shown once.
+      const known = new Set(messages.map((message) => message.clientId));
+      res.json([...messages, ...pending.filter((message) => !known.has(message.clientId))]);
+    } catch (error) {
+      // Unreachable: the screen keeps what it holds and shows the pending posts beside it.
+      if (error instanceof MasterCommandError && error.unreachable) {
+        res.status(503).json({
+          error: 'unavailable',
+          message: error.message,
+          messageKey: 'error.unavailable',
+          // Under `details`, where the panel's api client keeps what a refusal carries.
+          details: { pending },
+        });
+        return;
+      }
+      failForward(res, error);
+    }
+  });
+  app.post('/api/chat/rooms/:id/messages', (req, res) => {
+    const cleaned = cleanChatPost(req.body);
+    return queue(res, {
+      kind: 'chat.post',
+      entity: 'chat_message',
+      payload: { roomId: req.params.id, ...('value' in cleaned ? cleaned.value : {}) },
+      validate: () => ('errorKey' in cleaned ? t('en', cleaned.errorKey) : null),
+    });
+  });
+  app.post('/api/chat/rooms/:id/read', (req, res) =>
+    forward(res, 'chat:read', { roomId: req.params.id, seq: Number(req.body?.seq) }),
+  );
+  app.post('/api/chat/rooms/:id/mute', (req, res) =>
+    forward(res, 'chat:mute', { roomId: req.params.id, muted: req.body?.muted === true }),
+  );
+  app.post('/api/chat/direct', (req, res) => forward(res, 'chat:direct', { userId: req.body?.userId }));
+  app.put('/api/chat/messages/:id', (req, res) =>
+    forward(res, 'chat:edit', {
+      messageId: req.params.id,
+      body: req.body?.body,
+      ...(Array.isArray(req.body?.mentions) ? { mentions: req.body.mentions } : {}),
+    }),
+  );
+  app.delete('/api/chat/messages/:id', (req, res) => forward(res, 'chat:delete', req.params.id));
+  app.post('/api/chat/messages/:id/pin', (req, res) =>
+    forward(res, 'chat:pin', { messageId: req.params.id, pinned: req.body?.pinned === true }),
+  );
+  app.post('/api/chat/messages/:id/done', (req, res) =>
+    forward(res, 'chat:taskDone', { messageId: req.params.id, done: req.body?.done === true }),
+  );
+  app.get('/api/chat/search', (req, res) =>
+    forward(res, 'chat:search', {
+      q: typeof req.query.q === 'string' ? req.query.q : '',
+      ...(typeof req.query.roomId === 'string' ? { roomId: req.query.roomId } : {}),
+    }),
+  );
+  app.get('/api/chat/tasks', (req, res) =>
+    forward(res, 'chat:tasks', {
+      scope: req.query.scope === 'created' ? 'created' : 'mine',
+      includeDone: req.query.includeDone === '1',
+    }),
+  );
+  app.post('/api/chat/access-requests', (req, res) =>
+    forward(res, 'chat:requestAccess', {
+      capability: req.body?.capability,
+      ...(typeof req.body?.note === 'string' ? { note: req.body.note } : {}),
+    }),
+  );
+
+  // --- The Printroom ----------------------------------------------------------
+  //
+  // Online-only, forwarded one to one with the same paths the Master's own
+  // browser uses: a note printed an hour late on an unattended printer PC wastes
+  // paper, so a send is never queued. With the Master out of reach every one of
+  // these answers 503 and the local Print button on a note still works. A send
+  // first lets the outbox hand over a just-edited order, so the Master builds
+  // the sheet from what was on this screen. The claim, like the heartbeat, is
+  // held by this panel's connection to the Master.
+  app.get('/api/print-jobs', (req, res) =>
+    forward(res, 'print:list', {
+      ...(typeof req.query.status === 'string' ? { status: req.query.status } : {}),
+      mine: req.query.mine === '1',
+      ...(typeof req.query.cursor === 'string' ? { cursor: req.query.cursor } : {}),
+      ...(Number.isFinite(Number(req.query.limit)) && req.query.limit !== undefined
+        ? { limit: Number(req.query.limit) }
+        : {}),
+    }),
+  );
+  app.post('/api/print-jobs', async (req, res) => {
+    await flushBriefly();
+    await forward(res, 'print:send', req.body ?? {});
+  });
+  app.get('/api/print-jobs/:id', (req, res) => forward(res, 'print:get', req.params.id));
+  app.post('/api/print-jobs/:id/printed', (req, res) =>
+    forward(res, 'print:mark', {
+      id: req.params.id,
+      printed: req.body?.printed === true,
+      ...(typeof req.body?.printerName === 'string' ? { printerName: req.body.printerName } : {}),
+    }),
+  );
+  app.post('/api/print-jobs/:id/cancel', (req, res) => forward(res, 'print:cancel', req.params.id));
+  app.post('/api/print-jobs/:id/claim', (req, res) => forward(res, 'print:claim', req.params.id));
+  app.get('/api/print-stations', (_req, res) => forward(res, 'print:stations'));
+  app.put('/api/print-stations/self', (req, res) => forward(res, 'print:station', req.body ?? {}));
+
+  /*
+   * One record by id, for a chat chip or a bell entry that points past the 500
+   * rows this panel keeps. The local view first (it also holds work queued here
+   * and not yet sent), then the Master, whose party scoping decides whether the
+   * caller may see it at all.
+   */
+  app.get('/api/leads/:id', async (req, res) => {
+    const view = await localStore.getView();
+    const local = view ? forCurrentUser(view).leads.find((lead) => lead.id === req.params.id) : undefined;
+    if (local) {
+      res.json(local);
+      return;
+    }
+    await forward(res, 'lead:get', req.params.id);
+  });
+  app.get('/api/orders/:id', async (req, res) => {
+    const view = await localStore.getView();
+    const local = view ? forCurrentUser(view).orders.find((order) => order.id === req.params.id) : undefined;
+    if (local) {
+      res.json(local);
+      return;
+    }
+    await forward(res, 'order:get', req.params.id);
+  });
   // --- Presence: who else has this record open. Held on the Master, so online
   // only; offline this answers 503 and the screen simply shows nobody. ---
 
@@ -1345,6 +1513,54 @@ export function createApp(): Express {
   app.get('/api/reports/table/:report', (req, res) =>
     forward(res, 'report:table', { report: req.params.report, query: parseReportQuery(req.query) }),
   );
+  /** The export options a query string carries, for the file route and the inline PDF route alike. */
+  const reportExportQuery = (query: Record<string, unknown>) => {
+    const columns = String(query.columns ?? '')
+      .split(',')
+      .map((key) => key.trim())
+      .filter(Boolean);
+    return {
+      ...parseReportQuery(query),
+      format: isReportFormat(query.format) ? query.format : undefined,
+      columns: columns.length > 0 ? columns : undefined,
+      totals: query.totals === 'true',
+      paperSize: query.paperSize === 'letter' ? ('letter' as const) : undefined,
+      orientation: query.orientation === 'portrait' ? ('portrait' as const) : undefined,
+      lang: query.lang === 'hi' ? ('hi' as const) : undefined,
+    };
+  };
+
+  /**
+   * Preview PDF: the Master's PDF for a report, handed to the browser `inline`
+   * so a window or a tab shows it. The same `report:export` command the file
+   * route sends, with the format forced to `pdf`, so who may see what is the
+   * Master's decision and nothing here widens it. Online only — the Master holds
+   * the renderer and the fonts — so an unreachable Master is a 503.
+   */
+  app.get('/api/reports/:report/pdf', (req, res) => {
+    void (async () => {
+      try {
+        const exported = await masterConnection.command<
+          'report:export',
+          | { format: 'csv'; csv: string; rowCount: number }
+          | { format: 'pdf' | 'xlsx'; fileName: string; contentType: string; bytes: Uint8Array; rowCount: number }
+        >('report:export', {
+          report: req.params.report as ReportKind,
+          query: { ...reportExportQuery(req.query), format: 'pdf' },
+        });
+        if (exported.format !== 'pdf') {
+          res.status(502).json({ error: 'unavailable', message: 'The Master did not answer with a PDF' });
+          return;
+        }
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${exported.fileName}"`);
+        res.send(Buffer.from(exported.bytes));
+      } catch (error) {
+        failForward(res, error);
+      }
+    })();
+  });
+
   /**
    * A report export, in whichever format the Master answered with.
    *
@@ -1356,11 +1572,6 @@ export function createApp(): Express {
    */
   app.get('/api/reports/:report/export', (req, res) => {
     const report = req.params.report;
-
-    const columns = String(req.query.columns ?? '')
-      .split(',')
-      .map((key) => key.trim())
-      .filter(Boolean);
 
     void (async () => {
       try {
@@ -1376,15 +1587,7 @@ export function createApp(): Express {
             }
         >('report:export', {
           report: report as ReportKind,
-          query: {
-            ...parseReportQuery(req.query),
-            format: isReportFormat(req.query.format) ? req.query.format : undefined,
-            columns: columns.length > 0 ? columns : undefined,
-            totals: req.query.totals === 'true',
-            paperSize: req.query.paperSize === 'letter' ? 'letter' : undefined,
-            orientation: req.query.orientation === 'portrait' ? 'portrait' : undefined,
-            lang: req.query.lang === 'hi' ? 'hi' : undefined,
-          },
+          query: reportExportQuery(req.query),
         });
 
         if (exported.format === 'csv') {
@@ -2064,6 +2267,27 @@ function failForward(res: Response, error: unknown): void {
   });
 }
 
+/**
+ * Lets the outbox hand over whatever is queued, for at most a few seconds: a
+ * Printroom send waits for it so the Master reads the order as this screen
+ * showed it, but a slow or dead link must not hold the send for a minute.
+ * Never rejects.
+ */
+async function flushBriefly(): Promise<void> {
+  const FLUSH_WAIT_MS = 4000;
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      sync.flush().catch(() => undefined),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, FLUSH_WAIT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function forward(res: Response, event: string, ...payload: unknown[]): Promise<void> {
   try {
     const data = await masterConnection.command(event as never, ...payload);
@@ -2096,6 +2320,61 @@ async function forwardCsv(
   } catch (error) {
     failForward(res, error);
   }
+}
+
+/**
+ * This person's chat posts still waiting in the outbox for one room, shaped as
+ * messages with `pending: true`. Only the author's own: a post queued by
+ * somebody who signed out earlier is held for them and never shown to whoever
+ * is here now.
+ */
+async function pendingChatPosts(roomId: string): Promise<ChatMessage[]> {
+  const session = userSession.currentSession();
+  if (!session) return [];
+
+  const queued = await outbox.pending();
+  return queued
+    .filter(
+      (mutation) =>
+        mutation.kind === 'chat.post' &&
+        mutation.actorUserId === session.userId &&
+        mutation.payload.roomId === roomId,
+    )
+    .map((mutation): ChatMessage => {
+      const payload = mutation.payload as {
+        body?: string;
+        refs?: Array<{ kind: 'lead' | 'order'; id: string }>;
+        mentions?: string[];
+        task?: { assignees: string[]; dueOn: string | null } | null;
+      };
+      const person = (id: string) => ({ id, displayName: id, avatar: null, tier: 'office' });
+      return {
+        id: mutation.entityId,
+        roomId,
+        seq: 0,
+        kind: payload.task ? 'task' : 'text',
+        author: {
+          id: session.userId,
+          displayName: session.displayName,
+          avatar: null,
+          tier: session.roleTier,
+        },
+        body: payload.body ?? '',
+        refs: (payload.refs ?? []).map((chip) => ({ ...chip, label: chip.id, partyName: null, restricted: false })),
+        mentions: payload.mentions ?? [],
+        system: null,
+        createdAt: mutation.createdAt,
+        editedAt: null,
+        deletedAt: null,
+        pinnedAt: null,
+        pinnedBy: null,
+        task: payload.task
+          ? { assignees: payload.task.assignees.map(person), dueOn: payload.task.dueOn, doneAt: null, doneBy: null }
+          : null,
+        clientId: mutation.mutationId,
+        pending: true,
+      };
+    });
 }
 
 function respondToPairingError(res: Response, error: unknown): void {
@@ -2289,6 +2568,10 @@ masterConnection.on('conflict', (value: unknown) => broadcast('conflict', value)
 masterConnection.on('notification', (notification: { forUserId?: unknown }) =>
   broadcastForUser('notification', notification),
 );
+// Chat is addressed to one person too, and only reaches them while they are the one signed in.
+masterConnection.on('chat', (push: { forUserId?: unknown }) => broadcastForUser('chat', push));
+// A Printroom job is addressed to its sender and to the station holders, per person likewise.
+masterConnection.on('print', (job: { forUserId?: unknown }) => broadcastForUser('print', job));
 masterConnection.on('presence', (presence: { forUserId?: unknown }) =>
   broadcastForUser('presence', presence),
 );

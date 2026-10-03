@@ -518,7 +518,7 @@ describe('reports', () => {
   it('is online-only: an unreachable Master is a 503 on every report route', async () => {
     vi.spyOn(masterConnection, 'command').mockRejectedValue(UNREACHABLE);
 
-    for (const url of ['/api/reports/options', '/api/reports/table/by-user', '/api/reports/dispatches', '/api/reports/by-user/export']) {
+    for (const url of ['/api/reports/options', '/api/reports/table/by-user', '/api/reports/dispatches', '/api/reports/by-user/export', '/api/reports/by-user/pdf']) {
       const response = await request(createApp()).get(url);
       expect(response.status, url).toBe(503);
     }
@@ -572,6 +572,46 @@ describe('reports', () => {
     expect(commandSpy.mock.calls.at(-1)?.[1]).toMatchObject({
       query: { format: 'pdf', paperSize: 'letter', orientation: 'portrait', totals: true },
     });
+  });
+
+  it('previews a report as a PDF inline, whatever format the query names', async () => {
+    const commandSpy = vi.spyOn(masterConnection, 'command').mockResolvedValue({
+      format: 'pdf',
+      fileName: 'by-city.pdf',
+      contentType: 'application/pdf',
+      bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+      rowCount: 1,
+    } as never);
+
+    const response = await request(createApp()).get(
+      '/api/reports/by-city/pdf?period=customDates&fromDate=2026-04-01&toDate=2026-04-30&format=csv&lang=hi&columns=city,orders&totals=true',
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toBe('application/pdf');
+    expect(response.headers['content-disposition']).toBe('inline; filename="by-city.pdf"');
+    expect(commandSpy.mock.calls.at(-1)).toEqual([
+      'report:export',
+      expect.objectContaining({
+        report: 'by-city',
+        query: expect.objectContaining({
+          format: 'pdf',
+          period: 'customDates',
+          fromDate: '2026-04-01',
+          toDate: '2026-04-30',
+          lang: 'hi',
+          columns: ['city', 'orders'],
+          totals: true,
+        }),
+      }),
+    ]);
+  });
+
+  it('does not answer a preview with a file the Master did not make as a PDF', async () => {
+    vi.spyOn(masterConnection, 'command').mockResolvedValue({ format: 'csv', csv: 'a,b', rowCount: 1 } as never);
+    const response = await request(createApp()).get('/api/reports/by-city/pdf');
+    expect(response.status).toBe(502);
+    expect(response.headers['content-type']).not.toBe('application/pdf');
   });
 
   it('does not forward a format it does not know', async () => {

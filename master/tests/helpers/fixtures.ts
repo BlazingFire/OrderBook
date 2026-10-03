@@ -39,6 +39,13 @@ import { startTestPostgres, stopTestPostgres, testConnectionUrl } from './db.js'
 /** Business tables, safe to empty between tests. */
 const DATA_TABLES = [
   'activity_log',
+  // Chat, children first. Its columns reference users, so it goes before them.
+  'chat_messages',
+  'chat_members',
+  'chat_rooms',
+  // Print jobs name users and stations, so they go before both.
+  'print_jobs',
+  'print_stations',
   'sync_conflicts',
   'applied_mutations',
   'id_map',

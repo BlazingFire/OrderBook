@@ -63,6 +63,23 @@ function nextDay(year: number, month: number, day: number): { year: number; mont
   return { year: next.year, month: next.month, day: 1 };
 }
 
+/** The day before, by arithmetic: no `Date`, so no time zone can move it. */
+function previousDay(year: number, month: number, day: number): string {
+  if (day > 1) return isoDate(year, month, day - 1);
+  const before = addMonths(year, month, -1);
+  return isoDate(before.year, before.month, daysInMonth(before.year, before.month));
+}
+
+/**
+ * The line a printed report carries under its title: the first day and the
+ * inclusive last day. The range stores its end as the day after, so printing
+ * it as-is would claim a day the report does not cover.
+ */
+export function rangeSubtitle(fromDate: string, toDateExclusive: string): string {
+  const [year, month, day] = toDateExclusive.split('-').map(Number) as [number, number, number];
+  return `${fromDate} — ${previousDay(year, month, day)}`;
+}
+
 /** Days since a fixed epoch (the civil-calendar day number), so two dates subtract. */
 function dayNumber(year: number, month: number, day: number): number {
   const y = month <= 2 ? year - 1 : year;

@@ -246,6 +246,30 @@ Company header, party block, then:
 - **Preview PDF** on the Master leads list and the Office lead detail; the
   Electron shell allows that one same-origin URL to open a PDF window.
 
+### PDF window allowlist
+
+The desktop shell opens no window of its own except a PDF one, and that window
+gets the PDF viewer (`plugins: true`), so the rule is exact paths, tested in
+`electron/tests/lead-pdf.test.ts` (`isPdfWindowUrl` in `electron/lib/lead-pdf.ts`):
+
+- **A lead's PDF:** `<origin>/api/leads/<id>/pdf`, matching
+  `^/api/leads/[^/?#]+/pdf$`, **no query**.
+- **A report's PDF** (1.3, Preview PDF on Reports): `<origin>/api/reports/<kind>/pdf`,
+  `<kind>` one of the 15 report ids, matching `^/api/reports/(<the 15>)/pdf$`.
+  The query is parsed with `URLSearchParams` and may hold only `period`,
+  `fromMonth`, `toMonth`, `fromDate`, `toDate`, `subjectId`, `limit`, `columns`,
+  `totals`, `paperSize`, `orientation`, `lang`, each at most once, each value
+  `[A-Za-z0-9._,:+-]` after decoding. `format` is not allowed: the route is a PDF
+  whatever it is asked.
+- **No fragment, ever.** Another origin, a look-alike host (`localhost:4100.evil`),
+  a longer or nested path, the `/export` route and an unknown report id are refused.
+
+Both routes answer `application/pdf` with `Content-Disposition: inline`, so a
+query cannot turn the window into anything else. A LAN browser opens the same
+links in a new tab. The report route needs `reports.view` and `reports.export`
+and applies the export's subject rule and Party Access
+(`GET /api/reports/:report/pdf`, proxied by the Office, online-only).
+
 ## 9. Change log
 
 Activity rows for: brand values (existing `option_list_item.*`), products

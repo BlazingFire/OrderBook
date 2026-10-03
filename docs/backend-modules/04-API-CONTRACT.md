@@ -632,7 +632,7 @@ sense of, so the response states which ordering it used.
 
 | | |
 |---|---|
-| **Permission** | `reports.export` — and Reports must not be switched off for the caller's tier (§3.9) |
+| **Permission** | `reports.view` **and** `reports.export` (a file is a report written down; `reports.view` is checked first) — and Reports must not be switched off for the caller's tier (§3.9). New kinds' CSV carries a UTF-8 BOM; the three legacy kinds' CSV bytes are unchanged. The audit row records `subjectId` (null: everyone) |
 | **Path param** | `:report` — any of the fifteen `ReportKind`s (§3.8), validated against `REPORT_KINDS` |
 | **Query** | The `ReportQuery` of §3.8 (`period`, `fromMonth`, `toMonth`, `fromDate`, `toDate`, `subjectId`, `limit`) plus `format` = `csv` (default) \| `xlsx` \| `pdf`, `lang` = `en` (default) \| `hi`, `columns`, `totals`, `paperSize`, `orientation` |
 | **Response** | `200` — `text/csv; charset=utf-8` for a CSV, the workbook's or the PDF's own type otherwise; `Content-Disposition: attachment`. Over the Office's socket the ack is a union: `{ format: 'csv', csv }` or `{ format: 'pdf' \| 'xlsx', fileName, contentType, bytes }` (it was CSV-only until 1.3; an Office older than that reads only the CSV arm) |
@@ -652,6 +652,18 @@ pins the exact strings, and they pass against the pre-1.3 code too).
 | `ValidationError` | 400 | `{ field: 'fromDate' \| 'toDate' \| 'subjectId' }` | A refused exact-dates range, or a subject that is not a live user |
 | `ForbiddenError` | 403 | `{ permission: 'reports.view' }` | `error.forbidden.reportsHidden`, or `validation.reports.subject.forbidden` (§3.9) |
 | *range errors* | 400 | as §3.2 | |
+
+### 3.6a `GET /api/reports/:report/pdf` (1.3 H3, Preview PDF)
+
+The same call as §3.6 with the format forced to `pdf` and the answer shown instead of saved.
+
+| | |
+|---|---|
+| **Permission** | As §3.6: `reports.view` and `reports.export`, Reports not switched off for the tier, the same subject rule and Party Access, the same 10,000-row PDF cap and the same `report` / `exported` audit row |
+| **Query** | As §3.6; `format` is ignored — whatever is asked, the answer is a PDF |
+| **Response** | `200` `application/pdf`, `Content-Disposition: inline` (so a window or a tab displays it). The desktop shell opens only this exact shape in a window of its own (`docs/catalogue/CATALOGUE_MODEL.md` §8). Errors are §3.6's; an Office with the Master unreachable answers 503 |
+
+The Office proxies it through the same `report:export` command, forced to `pdf`.
 
 ### 3.7 `GET /api/reports/options`
 
@@ -698,7 +710,7 @@ that have a weight wherever the grain is a product (a line with no weight is lef
 Decided in `report.service.ts` and nowhere else (`shared/src/domain/report-access.ts` states the rule for the
 screens):
 
-- `reports.view` (and `reports.export` for a file), then the company switch for the caller's tier —
+- `reports.view` (and `reports.export` as well, for a file), then the company switch for the caller's tier —
   `reports.visibleToOffice` / `reports.visibleToManagement`, both on unless switched off. An administrator is never
   switched off. A hidden report answers `403` `error.forbidden.reportsHidden`.
 - **The Office and Management tiers see only their own figures.** Every query carries `owner_id = the caller`
@@ -2232,7 +2244,7 @@ Every route but `verify` reads the token from the **`x-master-key-token`** heade
 
 ### 13.4 The panel protocol
 
-- `PANEL_PROTOCOL_VERSION` (`shared/src/protocol/socket.ts`, now 4) rises by one in each release
+- `PANEL_PROTOCOL_VERSION` (`shared/src/protocol/socket.ts`, now 5 with the Chatroom, section 15) rises by one in each release
   that adds a socket command. An absent value on either side means 1.
 - The Office handshake `auth` payload adds `protocol` and `appVersion`. Snapshots and deltas add the
   Master's `protocol`.
@@ -2377,6 +2389,249 @@ Held in the Master's memory only: never stored, logged or put in the change ring
 The SSE stream gains a `numbered` event `{ entity: 'lead', temporaryId, permanentId, poNumber?,
 announced }` for every lead whose temporary id was replaced; `announced` is true when a waiting
 save already named the number. The `lead:create` socket command is not used for saves.
+## 15. The Chatroom (1.3 Phase 6)
+
+Text-only chat. It is **outside the change ring and the activity chain**: nothing here publishes
+a `data:changed`, and only governance is audited (§15.5). The shapes are in
+`shared/src/domain/chat.ts`; the code in `master/src/services/chat.service.ts`.
+
+### 15.1 Permissions
+
+Six keys in the `chat` capability group. `chat.use` is the switch: without it the Chatroom is
+absent from both panels and every route below answers 403 naming it. The finer keys are checked by
+the service, because each depends on the body or the room.
+
+| Key | Tier ceiling | Gates |
+|---|---|---|
+| `chat.use` | office | the room list, reading and posting in rooms you are in, editing or deleting your own message within five minutes, ticking tasks given to you, mute, leave, search |
+| `chat.directMessages` | office | starting a direct chat (`POST /direct`) |
+| `chat.shareRecords` | office | a post carrying record chips |
+| `chat.tasks` | office | a post that is a task |
+| `chat.createGroups` | management | creating a group (the creator becomes its admin) |
+| `chat.manage` | admin | listing and administering every group (members, announcement mode, archive, pins, removing someone else's message) without being its admin. Reading a group's messages still needs membership; adding oneself is audited |
+
+Migration `20261005000000_chatroom` gives all six to every `admin` and `server_master` role and
+`chat.use` + `chat.shareRecords` to every `office` and `management` role (union, idempotent, no tenant
+or `deleted_at` filter). A role created later holds none until an administrator ticks them.
+The Sales role template offers `chat.use`, `.directMessages`, `.shareRecords` and `.tasks`; Dispatch
+offers `chat.use`.
+
+### 15.2 Master REST, `/api/chat` (every route `requireAuth` + `needs('chat.use')`)
+
+Mounted before `dataRoutes`. A non-member is told the room or message does not exist (404), never
+that it exists and is closed to them.
+
+| Route | Body / query | Answer |
+|---|---|---|
+| `GET /people` | | `ChatPerson[]`: active people holding `chat.use` |
+| `GET /rooms?all=&archived=` | `all=1` needs `chat.manage` and lists every group | `ChatRoomSummary[]`, newest activity first, with `unread` and `mentionUnread` |
+| `POST /rooms` | `ChatRoomInput {name, description?, announceOnly?, memberIds?}` | 201 `ChatRoomSummary`. 409 `error.conflict.chatRoomName` for a live group of that name |
+| `GET /rooms/:id` | | `ChatRoomDetail` (members with `lastReadSeq`, pinned messages) |
+| `PUT /rooms/:id` | `ChatRoomPatch {name?, description?, announceOnly?, archived?}` | `ChatRoomSummary`; room admins and `chat.manage` |
+| `POST /rooms/:id/members` | `{userId, role: 'admin' \| 'member' \| null}` | `ChatRoomDetail`, or `null` when the caller just left; `null` removes, anyone may remove themselves |
+| `GET /rooms/:id/messages?before=&limit=` | `before` is a `seq`; `limit` 1-100, default 50 | `ChatMessage[]`, oldest first |
+| `POST /rooms/:id/messages` | `ChatPostInput {body, refs?, mentions?, task?, clientId?}` | 201 `ChatMessage` |
+| `POST /rooms/:id/read` | `{seq}` | `{lastReadSeq}`; never past the room's last message, never backwards |
+| `POST /rooms/:id/mute` | `{muted}` | `null` |
+| `POST /direct` | `{userId}` | `ChatRoomSummary`; find-or-create, either side finds the same room |
+| `PUT /messages/:id` | `{body, mentions?}` | `ChatMessage`; own message within five minutes (database clock) |
+| `DELETE /messages/:id` | | `ChatMessage` (a tombstone); own within five minutes, or a room admin / `chat.manage` at any time |
+| `POST /messages/:id/pin` | `{pinned}` | `ChatMessage`; room admins and `chat.manage` |
+| `POST /messages/:id/done` | `{done}` | `ChatMessage`; an assignee, the author, a room admin or `chat.manage` |
+| `GET /search?q=&roomId=` | `q` at least two characters | `ChatSearchHit[]`, newest 50, only rooms the caller is in, never a deleted message |
+| `GET /tasks?scope=mine\|created&includeDone=` | | `ChatTaskRow[]` |
+| `POST /access-requests` | `{capability, note?}` | `{notified}`. `capability` is one of `chat.directMessages`, `chat.shareRecords`, `chat.tasks`, `chat.createGroups`; tells everyone holding `roles.edit`, one unread request per person and right |
+
+Limits (`CHAT_LIMITS`): body 4,000 characters, 5 record chips, 20 mentions, group name 60,
+description 280. Refusals are `validation.chat.*` keys (`bodyRequired`, `bodyTooLong`, `tooManyRefs`,
+`refNotFound`, `assigneeRequired`, `dueInvalid`, `roomArchived`, `announceOnly`, `assigneeNotMember`,
+`editWindow`, `notTask`, `notPinnable`, `nameRequired`, `nameTooLong`, `descriptionTooLong`,
+`notMember`, `directSelf`, `capabilityUnknown`, `wrongAuthor`).
+
+**Record chips store only `{kind: 'lead' | 'order', id}`.** The sender must be able to open each
+record (`getLead` / `getOrder` with the sender's party scope; a temporary id is resolved through
+`id_map`) or the post is refused `validation.chat.refNotFound`. On every read the chip is resolved
+for the person looking: `{label, partyName, restricted: false}` when they may open it, otherwise
+`{label: null, partyName: null, restricted: true}`, so a room never learns which party a restricted
+record belongs to. The label is `recordNumber(record)`: the PO number, or the record id when there is none.
+
+### 15.3 Socket commands (Office to Master), protocol 5
+
+Seventeen, twinned with the routes above and forwarded by the Office at the same paths:
+`chat:people`, `chat:rooms`, `chat:room`, `chat:messages`, `chat:search`, `chat:tasks`,
+`chat:roomCreate`, `chat:roomUpdate`, `chat:memberSet`, `chat:direct`, `chat:edit`, `chat:delete`,
+`chat:pin`, `chat:taskDone`, `chat:read`, `chat:mute`, `chat:requestAccess`. All sit in
+`COMMAND_MIN_PROTOCOL` at `CHAT_MIN_PROTOCOL` (5); an Office on an older Master answers 426
+`error.updateNeeded.master`. **There is no `chat:post`.** An Office posts through `sync:push`.
+
+### 15.4 The `chat.post` mutation and the held-post rule
+
+`MUTATION_KINDS += 'chat.post'` (entity `chat_message`, id prefix `CM`, permission `chat.use`),
+payload `{roomId, body, refs?, mentions?, task?}`. The Master's `route()` calls `postMessage` with
+`clientId` set to the mutation id, so a resend returns the message it already made, and maps the
+temporary id to the `CM` id.
+
+A post speaks for one person:
+
+- **Office.** `office/src/sync/sync.service.ts` holds a `chat.post` back unless its `actorUserId`
+  is the person signed in now (`setActingUser`, set by the sign-in module). A held post waits in the
+  outbox for its author, never goes up under the panel's own role or another person's session, and
+  never stands in front of lead and order work. Only held posts left: no push and no retry timer.
+  Signing in flushes. `GET /api/chat/rooms/:id/messages` appends this person's own still-queued
+  posts for that room as `{pending: true, clientId: mutationId}` (never anyone else's), and on a lost
+  link answers 503 with them in `details.pending`.
+- **Master.** `applyOne` rejects, and records, a `chat.post` whose `actorUserId` is not the pushing
+  actor's `userId` (`validation.chat.wrongAuthor`), and leaves it out of the batch-wide 503 that a
+  person's work under a panel role otherwise earns.
+
+### 15.5 Live updates and audit
+
+`chat.service` publishes `{tenantId, userIds, push}` on the change bus's own `chat` channel
+(`publishChat` / `onChat`, never the ring). `hub.ts` sends `chat:event` through `emitToActors`
+to sockets whose current actor is one of `userIds` and holds `chat.use`, skipping an Office older
+than protocol 5. A `message` push is resolved again for each recipient (`personalisePush`), so two
+members of one room can see the same chip differently. `ChatPush` is one of:
+
+- `{kind: 'message', roomId, message}`: new, edited, deleted, pinned or ticked;
+- `{kind: 'room', roomId}`: the viewer reads the room again;
+- `{kind: 'read', roomId, userId, seq}`: a member's read position (task receipts).
+
+The Office relays it as SSE event `chat` through `broadcastForUser`; a person who is not the one
+`forUserId` names gets nothing. SSE has no replay, so both web apps read again on every reconnect.
+
+Audited through `recordActivity`, in the write's own transaction: `chat_room` `created`,
+`updated`, `archived`, `restored`, `member_added`, `member_removed`, `role_changed`, and
+`chat_message` `removed` (someone else's), `pinned`, `unpinned`. Posts, own edits and deletes, reads,
+mutes and task ticks are not.
+
+Notifications (after commit, `notify()`): `chat.mention` (also into a muted room), `task.assigned`
+(not into a muted room), `task.done` (to the task's author), and `access.requested` (to every holder of
+`roles.edit`). Their links are `{kind: 'chat', id, messageId?}` and `{kind: 'role', id}`.
+
+---
+
+## 16. The Printroom (1.3 Phase 7)
+
+A shared print queue and an auto-print station. Anybody holding `print.send` can queue a pending or a
+final order's Filling note or Dispatch note; the PC with the printer (a holder of `print.station`) prints
+it. Like the Chatroom it is **outside the change ring and the activity chain** (§16.6 says what is
+audited). The shapes are in `shared/src/domain/printroom.ts`; the code in
+`master/src/services/print.service.ts` and `master/src/repositories/print.repository.ts`; the design in
+`docs/ORDER_NOTES_PLAN.md` section 11.
+
+### 16.1 Permissions
+
+| Key | Tier ceiling | Gates |
+|---|---|---|
+| `print.send` | office | sending a note (`POST /print-jobs`), listing, reading and cancelling **your own** jobs, listing the printrooms to aim at |
+| `print.station` | office | **every** job whatever its party (see below), claiming, marking printed and not printed, cancelling any queued job, registering this PC as a station (`PUT /print-stations/self`) |
+
+Sending also needs the note's own export right, checked by the service: `leads.export` for a pending
+order, `orders.export` for a final order. The sender's own view decides whether they may print the record
+at all: the service reads it through `getLead` / `getOrder`, so Party Access applies and a record they
+cannot see is a 404.
+
+**`print.station` is a deliberate cross-party grant.** The sender addressed the printroom, not a person,
+so the PC that prints sees and prints every job whatever party it is for and whether or not that PC's
+user holds `party.accessAll`. The permission label says so, and `docs/ROLES_AND_USERS.md` tells
+administrators to grant it knowingly. An unattended printer PC needs a person signed in on it (the
+station runner lives in the signed-in UI and the Master addresses pushes to a person); grant
+`print.station` to the role of the user who stays signed in there.
+
+Migration `20261006000000_printroom` unions both keys into every `admin` and `server_master` role (frozen
+list, idempotent, no tenant or `deleted_at` filter). Office and management roles get them when an
+administrator ticks them. The Sales template offers `print.send`; Dispatch offers both.
+
+### 16.2 Master REST (`requireAuth`; mounted before `dataRoutes`)
+
+| Route | Guard | Body / query | Answer |
+|---|---|---|---|
+| `GET /api/print-jobs?status=&mine=&cursor=&limit=` | service: `print.send` (own) or `print.station` (all) | `status` is `waiting` (queued and printing, oldest first), `printed`, `cancelled` or `all` (newest first); `mine=1` limits a station holder to their own | `PrintJobPage {jobs, nextCursor, waitingCount}`; no sheet in a list |
+| `POST /api/print-jobs` | `needs('print.send')` | `PrintJobInput {requestId, kind, source, sourceId, copies, targetStationId?, vehicleNumber?, note?}` | 201 `PrintJob` (with its `document`). A retried `requestId` returns the job already made |
+| `GET /api/print-jobs/:id` | service: own job, or `print.station` | | `PrintJob`; 404 for a job that is not yours to see |
+| `POST /api/print-jobs/:id/printed` | `needs('print.station')` | `{printed, printerName?}` | `PrintJobSummary`. `printed: false` puts a printed job back in the queue (and gives a failed claim back) |
+| `POST /api/print-jobs/:id/cancel` | service: own queued job, or any for `print.station` | | `PrintJobSummary`; 400 `validation.print.notQueued` once a station holds it |
+| `GET /api/print-stations` | service: either key | | `PrintStation[]` with `online` (heard from within 90 s) and `isSelf` |
+| `PUT /api/print-stations/self` | `needs('print.station')` | `PrintStationInput {displayName?, printerName, autoPrint}` | `PrintStation`. 403 `validation.print.stationNeedsDesktop` unless the request comes from the Master PC itself |
+
+There is **no REST claim**: a claim belongs to a connection (§16.4). The Master PC's own window claims
+with the `print:claim` event on its own socket.
+
+**The station key is never read from a body.** On the Master PC it is `master` (`isOnMasterPc`: loopback
+address and a `Host` / `Origin` that name this PC); for an Office it is `panel:<panel id>` from the
+panel's socket. A browser on any other PC has none and cannot be a station.
+
+`kind` is `filling` or `dispatch`; `source` is `lead` or `order`; `sourceId` may be a temporary id (the
+Master resolves it through `id_map`). `copies` is a whole number 1 to 50 (never rounded, a refusal is
+`validation.print.copies`); the vehicle number is cleaned as everywhere (`cleanVehicleNumber`), kept
+only for a Dispatch note, and a final order falls back to its own saved one; `note` is at most 200
+characters. `requestId` is 32 hex characters made by the sender with `crypto.getRandomValues`
+(`randomUUID` is absent on a plain-http LAN origin) and is unique per sender.
+
+**The Master builds the sheet.** `sendJob` reads the lead or order, its party and its PO number itself and
+freezes `noteDocument(...)` in `print_jobs.payload`, so the printer PC never depends on its own snapshot
+cap or party scope, and a later edit of the record leaves the job's sheet as sent. Rows are kept for
+good; the sheet of a printed or cancelled job is dropped 30 days after it by one `UPDATE` on each send
+(`hasDocument: false`, and the screen says so). Refusals are `validation.print.*` keys (`requestId`,
+`kind`, `source`, `copies`, `note`, `vehicle`, `station`, `printer`, `notQueued`, `notPrintable`,
+`stationNeedsDesktop`, `stationUnknown`).
+
+### 16.3 Socket commands (Office to Master), protocol 6
+
+Eight, twinned with the routes above and forwarded by the Office at the same paths:
+`print:list`, `print:get`, `print:send`, `print:mark`, `print:cancel`, `print:claim`, `print:stations`,
+`print:station`. All sit in `COMMAND_MIN_PROTOCOL` at `PRINTROOM_MIN_PROTOCOL` (6, a named constant in
+`shared/src/domain/printroom.ts`); an Office on an older Master answers 426. `PANEL_PROTOCOL_VERSION`
+is 6 with this phase. Everything is online-only: with the Master out of reach the Office answers 503
+`error.unavailable`, a send is **never** queued in the outbox (a note printed an hour late on an
+unattended PC wastes paper), and the note's own Print button keeps working. A send first lets the outbox
+hand over a just-edited order (`flushBriefly`, at most four seconds, failures ignored).
+
+`print:claim` and `print:station` take their station from the connection (`socket.data.panelId`), never
+from the payload; a forged `stationKey` is ignored. The Master PC's window can also send `print:claim` on
+its own admin socket.
+
+### 16.4 Claims belong to a connection
+
+`print:claim` flips a `queued` job to `printing` with one atomic `UPDATE`. It names the claiming station,
+person and **socket id**, and wins only if the job is queued (or its claim is older than ten minutes), has
+its sheet, and is not aimed at a different station. The loser gets `null`, an ordinary outcome. Then:
+
+- a socket that **disconnects** releases every job it held (`releaseClaimsOf`), whether or not a newer
+  connection from the same panel has replaced it;
+- a claim **older than ten minutes** may be taken by another station (`PRINT_LIMITS.claimStaleMs`);
+- every claim is **cleared at Master boot** (`releaseAllClaimsAtBoot`);
+- a station whose print failed gives its own claim back with `print:mark {printed: false}` (only the
+  claimant can), and the runner does not try that job again this session.
+
+So two stations never print one sheet, and a station that crashes or loses its link never strands a job.
+
+### 16.5 Live updates
+
+`print.service` publishes `{tenantId, job}` on the change bus's own `print` channel (`publishPrintJob` /
+`onPrintJob`, never the ring). `hub.ts` sends `print:changed` through `emitToActors` to sockets whose
+current actor holds `print.station`, or holds `print.send` and **is** the job's sender, skipping an Office
+older than protocol 6. The payload is a `PrintJobSummary` (never the sheet) stamped `forUserId`. The
+Office relays it as SSE `print` through `broadcastForUser`. SSE has no replay, so both web apps read the
+list again on a reconnect (`dispatchPrint({kind: 'resync'})`), and the auto-print runner lists the queue
+again on every beat.
+
+When someone **else** prints a job, the sender gets a `print.printed` notification (`{name, party}`,
+link `{kind: 'print', id}`), after the commit.
+
+### 16.6 Audit
+
+Written with `recordActivity` in the change's own transaction, entity `print_job`, details
+`{number, kind}`: `sent`, `printed`, `unprinted`, `cancelled`. Claims, giving a claim back and station
+heartbeats are not audited. The sentences are `activity.print_job.*`.
+
+### 16.7 Station mode in the desktop shell
+
+`DesktopBridge.setStationMode(on)` (IPC `orderbook:setStationMode`, panel window only, only the boolean
+`true` turns it on) switches off background throttling while a PC is an auto-print station, so a minimised
+printer PC keeps printing. Silent printing is unchanged: `printPage` prints without a dialog only to a
+printer Windows lists, and the station runner treats an unlisted printer as a failure rather than letting
+a dialog open on an unattended PC.
 
 ---
 

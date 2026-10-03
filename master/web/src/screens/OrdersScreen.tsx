@@ -17,6 +17,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type {
+  ChatRecordChip,
   NoteKind,
   OptionListItem,
   Order,
@@ -56,6 +57,8 @@ import {
   useSubNav,
   type DataTableColumn,
   type PillTone,
+  type PrintroomTransport,
+  useToast,
 } from '@orderbook/ui';
 
 const PAGE_SIZE = 500;
@@ -77,6 +80,10 @@ interface Props {
   onOpenId: (id: string | null) => void;
   /** Takes the person to the pending order a final order came from. */
   onOpenLead: (leadId: string) => void;
+  /** Present only for somebody who may share records in chat (`chat.use` and `chat.shareRecords`). */
+  onShareInChat?: (chip: ChatRecordChip) => void;
+  /** Present only for somebody who may send to the Printroom (`print.send`): the note screen offers it. */
+  printroom?: PrintroomTransport;
   /** The signed-in person, left out of who else is on the open record. */
   userId: string;
 }
@@ -109,11 +116,16 @@ export function OrdersScreen({
   openId,
   onOpenId,
   onOpenLead,
+  onShareInChat,
+  printroom,
   userId,
 }: Props) {
+  const toast = useToast();
   // The shell hands a fresh callback every render; the fetch below must not.
   const onOpenIdRef = useRef(onOpenId);
   onOpenIdRef.current = onOpenId;
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
   const [scope, setScope] = useState<PartyScopeFilter>('all');
   const [search, setSearch] = useState('');
   const term = useDebounced(search.trim());
@@ -205,9 +217,11 @@ export function OrdersScreen({
         if (!cancelled) setFetched(order);
       })
       .catch((caught) => {
-        // Gone, or not this person's to see: back to the list, not a blank screen.
-        if (!cancelled && caught instanceof ApiError && caught.code === 'not_found')
+        // Gone, or not this person's to see: back to the list, and say so.
+        if (!cancelled && caught instanceof ApiError && (caught.code === 'not_found' || caught.code === 'forbidden')) {
+          toastRef.current.push(t('nav.recordNotAvailable'), { tone: 'info' });
           onOpenIdRef.current(null);
+        }
       });
     return () => {
       cancelled = true;
@@ -417,7 +431,8 @@ export function OrdersScreen({
       <OrderNoteScreen
         // A new mount per note, so the vehicle field starts from that order's.
         key={openOrder.id}
-        order={openOrder}
+        record={openOrder}
+        source="order"
         party={party}
         initialKind={noteKind}
         canEditVehicle={canEdit && !openOrder.dispatchedAt}
@@ -426,6 +441,7 @@ export function OrdersScreen({
         }}
         onBack={() => setNote(null)}
         desktop={desktopBridge() ?? undefined}
+        printroom={printroom}
       />
     );
   }
@@ -461,6 +477,11 @@ export function OrdersScreen({
                   onClick={() => onOpenLead(openOrder.leadId as string)}
                 >
                   {t('orders.column.fromLead')}
+                </Button>
+              )}
+              {onShareInChat && (
+                <Button icon="chat" onClick={() => onShareInChat({ kind: 'order', id: openOrder.id })}>
+                  {t('chat.share.button')}
                 </Button>
               )}
               {canExport && (

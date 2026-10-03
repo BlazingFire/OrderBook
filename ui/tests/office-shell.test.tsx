@@ -645,6 +645,74 @@ describe('Reports', () => {
     expect(document.querySelector('.ob-topbar')?.textContent).toContain(t('reports.kind.dispatches'));
   });
 
+  it('asks again after every change the Master sends, even one that leaves the record counts as they were', async () => {
+    const calls = await boot({ permissions: ['reports.view'], route: reportRoutes });
+    const work = within(screen.getByRole('region', { name: t('nav.work') }));
+    await act(async () => {
+      fireEvent.click(work.getByRole('button', { name: new RegExp(`^${t('nav.reports')}`) }));
+    });
+    await screen.findByText('2026-10');
+
+    const tableCalls = (): number => calls.filter((call) => call.url.startsWith('/api/reports/table/')).length;
+    const change = { entity: 'party', action: 'updated', id: 'PT0000000001', payload: { id: 'PT0000000001', name: 'Shah', city: 'Morbi' } };
+
+    // The first change adds a record; the second edits it in place and moves no count.
+    for (let round = 0; round < 2; round += 1) {
+      const before = tableCalls();
+      await act(async () => {
+        FakeEventSource.instances.at(-1)!.emit('change', change);
+      });
+      await waitFor(() => expect(tableCalls()).toBe(before + 1), { timeout: 2000 });
+    }
+  });
+
+  it('offers the PDF preview only while the Master is reachable', async () => {
+    const calls = await boot({
+      permissions: ['reports.view', 'reports.export'],
+      route: (call) =>
+        call.url.split('?')[0] === '/api/reports/options' ? json({ ...OPTIONS, canExport: true }) : reportRoutes(call),
+    });
+    expect(calls.length).toBeGreaterThan(0);
+    const work = within(screen.getByRole('region', { name: t('nav.work') }));
+    await act(async () => {
+      fireEvent.click(work.getByRole('button', { name: new RegExp(`^${t('nav.reports')}`) }));
+    });
+    await screen.findByText('2026-10');
+    expect(screen.getByRole('link', { name: t('reports.previewPdf') })).toBeTruthy();
+
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('status', { state: 'disconnected', disconnectedSince: new Date().toISOString() });
+      await wait(0);
+    });
+    expect(screen.queryByRole('link', { name: t('reports.previewPdf') })).toBeNull();
+
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('status', { state: 'connected', disconnectedSince: null });
+      await wait(0);
+    });
+    expect(await screen.findByRole('link', { name: t('reports.previewPdf') })).toBeTruthy();
+  });
+
+  it('does not ask again for a change to something no report reads', async () => {
+    const calls = await boot({ permissions: ['reports.view'], route: reportRoutes });
+    const work = within(screen.getByRole('region', { name: t('nav.work') }));
+    await act(async () => {
+      fireEvent.click(work.getByRole('button', { name: new RegExp(`^${t('nav.reports')}`) }));
+    });
+    await screen.findByText('2026-10');
+
+    const tableCalls = (): number => calls.filter((call) => call.url.startsWith('/api/reports/table/')).length;
+    const before = tableCalls();
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('change', { entity: 'option_list', action: 'updated', id: 'OL0000000001', payload: {} });
+    });
+    // Let any wrongly scheduled fetch land before counting.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+    expect(tableCalls()).toBe(before);
+  });
+
   it('is not offered without reports.view, nor when the company has switched it off for the Office tier', async () => {
     await boot({ permissions: ['orders.view'], route: reportRoutes });
     expect(within(screen.getByRole('region', { name: t('nav.work') })).queryByRole('button', { name: new RegExp(`^${t('nav.reports')}`) })).toBeNull();
@@ -1206,6 +1274,151 @@ describe('Edit lead', () => {
     expect(calls.some((call) => call.url === '/api/leads' && call.method === 'POST')).toBe(false);
   });
 
+  describe('the Filling and Dispatch notes on a pending order', () => {
+    async function openLead(permissions: string[]): Promise<Call[]> {
+      const calls = await boot({ permissions, view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] } });
+      await act(async () => {
+        fireEvent.click(screen.getByTitle(t('nav.leads')));
+      });
+      await act(async () => {
+        fireEvent.click((await screen.findAllByText(PARTY.name))[0]!);
+      });
+      await screen.findByText(t('lead.detail.lineItems'));
+      return calls;
+    }
+
+    afterEach(() => {
+      delete (window as Window & { orderbook?: unknown }).orderbook;
+    });
+
+    it('is absent without leads.export and offered with it', async () => {
+      await openLead(['leads.view']);
+      expect(screen.queryByRole('button', { name: t('orderNote.filling') })).toBeNull();
+      expect(screen.queryByRole('button', { name: t('orderNote.dispatch') })).toBeNull();
+
+      cleanup();
+      await openLead(['leads.view', 'leads.export']);
+      expect(screen.getByRole('button', { name: t('orderNote.filling') })).toBeTruthy();
+      expect(screen.getByRole('button', { name: t('orderNote.dispatch') })).toBeTruthy();
+    });
+
+    describe('Send to Printroom', () => {
+      async function openNote(permissions: string[]): Promise<Call[]> {
+        const calls = await boot({
+          permissions,
+          view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] },
+          route: (call) => {
+            const path = call.url.split('?')[0];
+            if (path === '/api/print-jobs' && call.method === 'POST') return json({ id: 'sent' }, 201);
+            if (path === '/api/print-jobs') return json({ jobs: [], nextCursor: null, waitingCount: 0 });
+            if (path === '/api/print-stations') return json([]);
+            return undefined;
+          },
+        });
+        await act(async () => {
+          fireEvent.click(screen.getByTitle(t('nav.leads')));
+        });
+        await act(async () => {
+          fireEvent.click((await screen.findAllByText(PARTY.name))[0]!);
+        });
+        await screen.findByText(t('lead.detail.lineItems'));
+        fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+        await screen.findByLabelText(t('orderNote.copies'));
+        return calls;
+      }
+
+      it('is offered only with print.send', async () => {
+        await openNote(['leads.view', 'leads.export']);
+        expect(screen.queryByRole('button', { name: t('orderNote.sendToPrintroom') })).toBeNull();
+        cleanup();
+
+        await openNote(['leads.view', 'leads.export', 'print.send']);
+        expect(screen.getByRole('button', { name: t('orderNote.sendToPrintroom') })).toBeTruthy();
+      });
+
+      it('posts the pending order to this panel\'s server, which forwards it to the Master', async () => {
+        const calls = await openNote(['leads.view', 'leads.export', 'print.send']);
+        fireEvent.change(screen.getByLabelText(t('orderNote.copies')), { target: { value: '2' } });
+        fireEvent.click(screen.getByRole('button', { name: t('orderNote.sendToPrintroom') }));
+
+        const dialog = await screen.findByRole('dialog');
+        fireEvent.click(within(dialog).getByRole('button', { name: t('printroom.dialog.send') }));
+
+        await waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url === '/api/print-jobs')).toBe(true));
+        const post = calls.find((call) => call.method === 'POST' && call.url === '/api/print-jobs')!;
+        expect(post.body).toMatchObject({ kind: 'filling', source: 'lead', sourceId: LEAD.id, copies: 2 });
+      });
+
+      it('says the Master is not reachable when the panel\'s server answers 503, and the local Print still works', async () => {
+        const printPage = vi.fn().mockResolvedValue({ ok: true });
+        (window as Window & { orderbook?: unknown }).orderbook = { shellVersion: 't', applyUpdate: vi.fn(), printPage };
+        const calls = await boot({
+          permissions: ['leads.view', 'leads.export', 'print.send'],
+          view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] },
+          route: (call) => {
+            const path = call.url.split('?')[0];
+            if (path === '/api/print-jobs' && call.method === 'POST') {
+              return json({ error: 'unavailable', message: 'Not connected', messageKey: 'error.unavailable' }, 503);
+            }
+            if (path === '/api/print-jobs') return json({ jobs: [], nextCursor: null, waitingCount: 0 });
+            if (path === '/api/print-stations') return json([]);
+            return undefined;
+          },
+        });
+        await act(async () => {
+          fireEvent.click(screen.getByTitle(t('nav.leads')));
+        });
+        await act(async () => {
+          fireEvent.click((await screen.findAllByText(PARTY.name))[0]!);
+        });
+        await screen.findByText(t('lead.detail.lineItems'));
+        fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+        fireEvent.click(await screen.findByRole('button', { name: t('orderNote.sendToPrintroom') }));
+        const dialog = await screen.findByRole('dialog');
+        fireEvent.click(within(dialog).getByRole('button', { name: t('printroom.dialog.send') }));
+
+        expect(await screen.findByText(t('printroom.dialog.offline'))).toBeTruthy();
+        expect(calls.filter((call) => call.method === 'POST' && call.url === '/api/print-jobs')).toHaveLength(1);
+
+        fireEvent.click(within(dialog).getByRole('button', { name: t('common.cancel') }));
+        fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
+        await waitFor(() => expect(printPage).toHaveBeenCalled());
+      });
+    });
+
+    it('opens the note from the local snapshot, headed "Pending Order No.", and back returns to the lead', async () => {
+      await openLead(['leads.view', 'leads.export']);
+      fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+
+      expect((await screen.findAllByText(t('orderNote.pendingOrderNo'))).length).toBeGreaterThan(0);
+      expect(screen.queryByText(t('orderNote.orderId'))).toBeNull();
+      expect(screen.getAllByText(LEAD.id).length).toBeGreaterThan(0);
+
+      fireEvent.click(screen.getByRole('button', { name: t('action.backToList') }));
+      expect(await screen.findByText(t('lead.detail.lineItems'))).toBeTruthy();
+    });
+
+    it('prints the copies asked for, and sends no write for the vehicle number', async () => {
+      const printPage = vi.fn().mockResolvedValue({ ok: true });
+      (window as Window & { orderbook?: unknown }).orderbook = { shellVersion: 'test', applyUpdate: vi.fn(), printPage };
+      const calls = await openLead(['leads.view', 'leads.export']);
+      fireEvent.click(screen.getByRole('button', { name: t('orderNote.dispatch') }));
+
+      const field = await screen.findByLabelText(t('orderNote.vehicleNo'));
+      expect((field as HTMLInputElement).disabled).toBe(false);
+      await act(async () => {
+        fireEvent.change(field, { target: { value: 'gj 03 ab 4471' } });
+        fireEvent.blur(field);
+        await wait(0);
+      });
+
+      fireEvent.change(screen.getByLabelText(t('orderNote.copies')), { target: { value: '4' } });
+      fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
+      await waitFor(() => expect(printPage).toHaveBeenLastCalledWith({ deviceName: undefined, copies: 4 }));
+      expect(calls.filter((call) => call.method !== 'GET' && call.url.startsWith('/api/leads'))).toEqual([]);
+    });
+  });
+
   it('shows who else has the lead open, from the presence frame, and leaves the reader out', async () => {
     await boot({
       permissions: ['leads.view'],
@@ -1362,11 +1575,12 @@ describe('the Filling and Dispatch notes on an order', () => {
     await screen.findByRole('option', { name: 'HP Laser' });
 
     fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
-    await waitFor(() => expect(printPage).toHaveBeenLastCalledWith({ deviceName: undefined }));
+    // `copies` is always sent now (deliberate): one unless the person set more.
+    await waitFor(() => expect(printPage).toHaveBeenLastCalledWith({ deviceName: undefined, copies: 1 }));
 
     fireEvent.change(printer, { target: { value: 'HP Laser' } });
     fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
-    await waitFor(() => expect(printPage).toHaveBeenLastCalledWith({ deviceName: 'HP Laser' }));
+    await waitFor(() => expect(printPage).toHaveBeenLastCalledWith({ deviceName: 'HP Laser', copies: 1 }));
   });
 
   it('falls back to the browser print when there is no shell', async () => {
@@ -1453,5 +1667,247 @@ describe('the activity log (1.3)', () => {
     await boot({ permissions: ['orders.view'] });
 
     expect(screen.queryByTitle(t('nav.logs'))).toBeNull();
+  });
+});
+
+describe('the Chatroom (1.3 Phase 6)', () => {
+  const ROOM = {
+    id: 'room-1', kind: 'group', name: 'Dispatch desk', description: null, announceOnly: false,
+    archivedAt: null, myRole: 'member', muted: false, lastSeq: 4, lastReadSeq: 1, unread: 3,
+    mentionUnread: 0, memberCount: 2, lastMessageAt: '2026-10-03T09:00:00.000Z', lastMessage: null,
+    direct: null,
+  };
+
+  const chatRoutes = (call: Call): Response | undefined => {
+    const path = call.url.split('?')[0];
+    if (path === '/api/chat/rooms') return json([ROOM]);
+    if (path === '/api/chat/rooms/room-1') return json({ ...ROOM, members: [], pinned: [] });
+    if (path === '/api/chat/rooms/room-1/messages') return json([]);
+    if (path === '/api/chat/tasks') return json([]);
+    return undefined;
+  };
+
+  const bootChat = (permissions: string[], extra?: Boot['route'], view: Record<string, unknown> = {}) =>
+    boot({
+      permissions,
+      view,
+      route: (call) => extra?.(call) ?? chatRoutes(call),
+    });
+
+  const row = () => screen.queryByTitle(t('nav.chatroom'));
+  const gets = (calls: Call[], path: string) =>
+    calls.filter((call) => call.method === 'GET' && call.url.split('?')[0] === path).length;
+
+  it('is a Work row only with chat.use, carrying the unread total', async () => {
+    await bootChat(['chat.use']);
+    await waitFor(() => expect(row()?.textContent).toContain('3'));
+    cleanup();
+
+    await boot({ permissions: ['leads.view'] });
+    expect(row()).toBeNull();
+  });
+
+  it('opens on Alt+C and lists the rooms, with no snapshot needed', async () => {
+    await bootChat(['chat.use']);
+    await waitFor(() => expect(row()).not.toBeNull());
+
+    await waitFor(() => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'c', code: 'KeyC', altKey: true, bubbles: true, cancelable: true }),
+      );
+      expect(topbarTitle()).toBe(t('chat.sub.rooms'));
+    });
+    expect(await screen.findByText('Dispatch desk')).toBeTruthy();
+  });
+
+  it('reads the rooms again when a chat frame arrives and when the stream comes back, without opening a second stream', async () => {
+    const calls = await bootChat(['chat.use']);
+    await waitFor(() => expect(gets(calls, '/api/chat/rooms')).toBeGreaterThan(0));
+    const before = gets(calls, '/api/chat/rooms');
+
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('chat', { kind: 'room', roomId: 'room-1', forUserId: 'user-1' });
+      await wait(700);
+    });
+    expect(gets(calls, '/api/chat/rooms')).toBeGreaterThan(before);
+
+    const afterPush = gets(calls, '/api/chat/rooms');
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('error', {});
+      FakeEventSource.instances.at(-1)!.emit('open', {});
+      await wait(700);
+    });
+    expect(gets(calls, '/api/chat/rooms')).toBeGreaterThan(afterPush);
+    expect(FakeEventSource.instances).toHaveLength(1);
+  });
+
+  it('offers Groups only with chat.createGroups or chat.manage', async () => {
+    await bootChat(['chat.use']);
+    await act(async () => {
+      fireEvent.click(await screen.findByTitle(t('nav.chatroom')));
+      await wait(0);
+    });
+    expect(await screen.findByTitle(t('chat.sub.tasks'))).toBeTruthy();
+    expect(screen.queryByTitle(t('chat.sub.groups'))).toBeNull();
+    cleanup();
+
+    await bootChat(['chat.use', 'chat.createGroups']);
+    await act(async () => {
+      fireEvent.click(await screen.findByTitle(t('nav.chatroom')));
+      await wait(0);
+    });
+    expect(await screen.findByTitle(t('chat.sub.groups'))).toBeTruthy();
+  });
+
+  it('shares a final order from its detail, only with chat.use and chat.shareRecords', async () => {
+    const orders = { orders: [ORDER], pipelines: [ORDER_PIPELINE] };
+    const openOrder = async (permissions: string[]) => {
+      await bootChat(permissions, undefined, orders);
+      await act(async () => {
+        fireEvent.click(screen.getByTitle(t('nav.orders')));
+        await wait(0);
+      });
+      fireEvent.click(await screen.findByText(ORDER.id));
+      await screen.findByRole('button', { name: t('action.backToList') });
+    };
+
+    await openOrder(['orders.view', 'chat.use']);
+    expect(screen.queryByRole('button', { name: t('chat.share.button') })).toBeNull();
+    cleanup();
+
+    await openOrder(['orders.view', 'chat.use', 'chat.shareRecords']);
+    fireEvent.click(screen.getByRole('button', { name: t('chat.share.button') }));
+    expect((await screen.findAllByRole('heading', { name: t('chat.share.title') })).length).toBeGreaterThan(0);
+    expect(await screen.findByText('Dispatch desk')).toBeTruthy();
+  });
+
+  describe('a record chip', () => {
+    const chipMessage = (id: string) => ({
+      id: 'CM1', roomId: 'room-1', seq: 1, kind: 'text', author: { id: 'user-2', displayName: 'Bina', avatar: null, tier: 'office' },
+      body: 'please look', refs: [{ kind: 'order', id, label: id, partyName: 'Sharma Traders', restricted: false }],
+      mentions: [], system: null, createdAt: new Date().toISOString(), editedAt: null, deletedAt: null,
+      pinnedAt: null, pinnedBy: null, task: null, clientId: null,
+    });
+
+    async function openChip(orderId: string, answer: Response): Promise<Call[]> {
+      const calls = await bootChat(
+        ['orders.view', 'chat.use'],
+        (call) => {
+          const path = call.url.split('?')[0];
+          if (path === '/api/chat/rooms/room-1/messages') return json([chipMessage(orderId)]);
+          if (call.url === `/api/orders/${orderId}`) return answer;
+          return undefined;
+        },
+        { orders: [ORDER], pipelines: [ORDER_PIPELINE] },
+      );
+      await act(async () => {
+        fireEvent.click(screen.getByTitle(t('nav.chatroom')));
+        await wait(0);
+      });
+      fireEvent.click((await screen.findByText('Dispatch desk')).closest('button')!);
+      fireEvent.click((await screen.findByText(new RegExp(`${orderId} . Sharma Traders`))).closest('button')!);
+      return calls;
+    }
+
+    it("opens an order this panel's view does not hold by fetching it from the Master", async () => {
+      const calls = await openChip('ORD-9', json({ ...ORDER, id: 'ORD-9', partyName: 'Patel Tiles' }));
+
+      expect(await screen.findByText(/Patel Tiles/, {}, { timeout: 5000 })).toBeTruthy();
+      expect(calls.some((call) => call.url === '/api/orders/ORD-9')).toBe(true);
+      expect(await screen.findByRole('button', { name: t('action.backToList') })).toBeTruthy();
+    });
+
+    it('says the record is not available, and leaves the list, when the Master will not give it', async () => {
+      await openChip('ORD-404', json({ error: 'not_found', message: 'Order not found' }, 404));
+
+      expect(await screen.findByText(t('nav.recordNotAvailable'))).toBeTruthy();
+      expect(screen.queryByRole('button', { name: t('action.backToList') })).toBeNull();
+    });
+  });
+});
+
+describe('the Printroom (1.3 Phase 7)', () => {
+  const JOB = {
+    id: 'job-1', kind: 'filling', source: 'lead', sourceId: 'LD0000000001', sourceNumber: 'PO/2026-27/00001',
+    partyName: 'Shree Ceramics', copies: 2, note: null, targetStation: null, status: 'queued',
+    sender: { id: 'user-2', displayName: 'Bina', avatar: null, tier: 'office' }, requestedFrom: 'lan',
+    requestedAt: '2026-10-03T09:00:00.000Z', claimedAt: null, claimedStationName: null, printedBy: null,
+    printedAt: null, printerName: null, printedStationName: null, cancelledBy: null, cancelledAt: null,
+    hasDocument: true,
+  };
+
+  const printRoutes = (call: Call): Response | undefined => {
+    const path = call.url.split('?')[0];
+    if (path === '/api/print-jobs') return json({ jobs: [JOB], nextCursor: null, waitingCount: 3 });
+    if (path === '/api/print-stations') return json([]);
+    return undefined;
+  };
+
+  const bootPrint = (permissions: string[], extra?: Boot['route'], view: Record<string, unknown> = {}) =>
+    boot({ permissions, view, route: (call) => extra?.(call) ?? printRoutes(call) });
+
+  const row = () => screen.queryByTitle(t('nav.printroom'));
+  const gets = (calls: Call[], path: string) =>
+    calls.filter((call) => call.method === 'GET' && call.url.split('?')[0] === path).length;
+
+  it('is a Work row only with print.send or print.station, carrying the waiting count', async () => {
+    await bootPrint(['print.send']);
+    await waitFor(() => expect(row()?.textContent).toContain('3'));
+    cleanup();
+
+    await bootPrint(['print.station']);
+    await waitFor(() => expect(row()?.textContent).toContain('3'));
+    cleanup();
+
+    const calls = await boot({ permissions: ['leads.view'] });
+    expect(row()).toBeNull();
+    expect(gets(calls, '/api/print-jobs')).toBe(0);
+  });
+
+  it('opens on Alt+P and lists the jobs, with no snapshot needed', async () => {
+    await bootPrint(['print.station']);
+    await waitFor(() => expect(row()).not.toBeNull());
+
+    await waitFor(() => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'p', code: 'KeyP', altKey: true, bubbles: true, cancelable: true }),
+      );
+      expect(topbarTitle()).toBe(t('printroom.filter.waiting'));
+    });
+    expect(await screen.findByText('Shree Ceramics')).toBeTruthy();
+  });
+
+  it('counts again when a print frame arrives and when the stream comes back, without opening a second stream', async () => {
+    const calls = await bootPrint(['print.station']);
+    await waitFor(() => expect(gets(calls, '/api/print-jobs')).toBeGreaterThan(0));
+    const before = gets(calls, '/api/print-jobs');
+
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('print', { ...JOB, forUserId: 'user-1' });
+      await wait(700);
+    });
+    expect(gets(calls, '/api/print-jobs')).toBeGreaterThan(before);
+
+    const afterPush = gets(calls, '/api/print-jobs');
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('error', {});
+      FakeEventSource.instances.at(-1)!.emit('open', {});
+      await wait(700);
+    });
+    expect(gets(calls, '/api/print-jobs')).toBeGreaterThan(afterPush);
+    expect(FakeEventSource.instances).toHaveLength(1);
+  });
+
+  it('says the Master is not reachable when the panel\'s server answers 503', async () => {
+    await bootPrint(['print.station'], (call) =>
+      call.url.split('?')[0] === '/api/print-jobs'
+        ? json({ error: 'unavailable', message: 'Not connected', messageKey: 'error.unavailable' }, 503)
+        : undefined,
+    );
+    await act(async () => {
+      fireEvent.click(await screen.findByTitle(t('nav.printroom')));
+      await wait(0);
+    });
+    expect(await screen.findByText(t('printroom.error.offline'))).toBeTruthy();
   });
 });

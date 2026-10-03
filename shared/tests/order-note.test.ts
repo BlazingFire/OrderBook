@@ -8,8 +8,10 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { buildOrderNote, paginateOrderNote } from '../src/index.js';
-import type { LineItem, NoteKind, NotePage, Order } from '../src/index.js';
+import {
+  buildOrderNote, cleanVehicleNumber, clampNoteCopies, noteDocument, noteHeader, noteNumber, NOTE_MAX_COPIES, paginateOrderNote,
+} from '../src/index.js';
+import type { Lead, LineItem, NoteKind, NotePage, Order, Party } from '../src/index.js';
 
 let seq = 0;
 
@@ -177,5 +179,84 @@ describe.each(['filling', 'dispatch'] as NoteKind[])('paginateOrderNote (%s)', (
     const pages = paginateOrderNote(buildOrderNote(orderOf([])), kind);
     expect(pages).toHaveLength(1);
     expect(pages[0]?.isLast).toBe(true);
+  });
+});
+
+describe('a lead as the source of a note', () => {
+  const items = [line({ productName: 'Oak' }), line({ productName: '102' })];
+  const lead = {
+    id: 'LD0000000007', partyName: 'Shree Tiles', createdAt: '2026-10-01T05:00:00.000Z',
+    items, totalWeightKg: 12, convertedOrderId: null,
+  } as unknown as Lead;
+  const party = {
+    partyCode: 'P0042', city: 'Morbi', phone: '9876543210', gstNumber: '24ABCDE1234F1Z5',
+    name: 'Never copied', email: 'x@y.z',
+  } as unknown as Party;
+
+  it('builds the same model as the equivalent order: no weight source means the computed weight', () => {
+    const asOrder = orderOf(items, { totalWeightKg: 12, weightSource: 'computed', totalWeightKgOverride: null });
+    expect(buildOrderNote(lead)).toEqual(buildOrderNote(asOrder));
+    expect(buildOrderNote(lead).totalWeightKg).toBe(12);
+  });
+
+  it('carries no number before the PO number exists (the sheet prints the id), the lead source and when the lead was created', () => {
+    const doc = noteDocument(lead, 'lead', party, null);
+    expect(doc.header).toEqual({
+      source: 'lead', id: 'LD0000000007', number: null, createdAt: '2026-10-01T05:00:00.000Z',
+    });
+    expect(doc.partyName).toBe('Shree Tiles');
+  });
+
+  it('keeps only the four party fields the header prints', () => {
+    const doc = noteDocument(lead, 'lead', party, null);
+    expect(doc.party).toEqual({ partyCode: 'P0042', city: 'Morbi', phone: '9876543210', gstNumber: '24ABCDE1234F1Z5' });
+    expect(noteDocument(lead, 'lead', null, null).party).toBeNull();
+  });
+
+  it('reads an order\'s created-at from leadCreatedAt, and null when it has none', () => {
+    const order = orderOf(items, { partyName: 'Shree Tiles', leadCreatedAt: '2026-09-30T05:00:00.000Z' });
+    expect(noteDocument(order, 'order', null, 'GJ 03 AB 1234').header).toMatchObject({
+      source: 'order', createdAt: '2026-09-30T05:00:00.000Z',
+    });
+    expect(noteDocument(orderOf(items), 'order', null, null).header.createdAt).toBeNull();
+    expect(noteDocument(order, 'order', null, 'GJ 03 AB 1234').vehicleNumber).toBe('GJ 03 AB 1234');
+  });
+});
+
+describe('clampNoteCopies', () => {
+  it('rounds to a whole number and pulls it into 1..50; anything that is not a number is one copy', () => {
+    expect(NOTE_MAX_COPIES).toBe(50);
+    expect([1, 3, 50].map(clampNoteCopies)).toEqual([1, 3, 50]);
+    expect([0, -4, 0.4].map(clampNoteCopies)).toEqual([1, 1, 1]);
+    expect([51, 500, Infinity].map(clampNoteCopies)).toEqual([50, 50, 1]);
+    expect([2.6, 2.4].map(clampNoteCopies)).toEqual([3, 2]);
+    for (const bad of [NaN, '3', null, undefined, {}]) expect(clampNoteCopies(bad)).toBe(1);
+  });
+});
+
+describe('noteHeader', () => {
+  it('is what noteDocument carries, and its number is the one place the printed number is chosen', () => {
+    const lead = { id: 'LD0000000009', partyName: 'A', createdAt: '2026-10-02T00:00:00.000Z', items: [], totalWeightKg: 0 } as unknown as Lead;
+    expect(noteHeader(lead, 'lead')).toEqual(noteDocument(lead, 'lead', null, null).header);
+    // No PO number yet (or a pre-1.3 Master): null, and the sheet prints the id.
+    expect(noteHeader(lead, 'lead').number).toBeNull();
+    expect(noteNumber(lead)).toBeNull();
+    expect(noteNumber({ id: 'LD1', poNumber: null })).toBeNull();
+    expect(noteNumber({ id: 'LD1', poNumber: '' })).toBeNull();
+  });
+
+  it('carries the PO number of a pending order and of the final order made from it', () => {
+    const lead = { id: 'LD0000000009', poNumber: 'PO/2026-27/00009', partyName: 'A', createdAt: '2026-10-02T00:00:00.000Z', items: [], totalWeightKg: 0 } as unknown as Lead;
+    const order = { id: 'OD0000000003', poNumber: 'PO/2026-27/00009', partyName: 'A', leadCreatedAt: '2026-10-02T00:00:00.000Z', items: [], totalWeightKg: 0 } as unknown as Order;
+    expect(noteHeader(lead, 'lead').number).toBe('PO/2026-27/00009');
+    expect(noteHeader(order, 'order')).toMatchObject({ number: 'PO/2026-27/00009', id: 'OD0000000003' });
+  });
+});
+
+describe('cleanVehicleNumber', () => {
+  it('upper-cases, drops punctuation and collapses runs of spaces', () => {
+    expect(cleanVehicleNumber('gj 03  ab.1234')).toBe('GJ 03 AB1234');
+    expect(cleanVehicleNumber('gj-03 ab/1234')).toBe('GJ-03 AB1234');
+    expect(cleanVehicleNumber('')).toBe('');
   });
 });

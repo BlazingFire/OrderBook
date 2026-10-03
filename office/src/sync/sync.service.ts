@@ -60,6 +60,7 @@ const events = new EventEmitter();
 
 let transport: PushTransport | null = null;
 let flushing = false;
+let actingUser: () => string | null = () => null;
 /** Set when a flush was asked for while one was running, so it runs straight after. */
 let rerun = false;
 let retryTimer: NodeJS.Timeout | null = null;
@@ -77,6 +78,28 @@ const RECENTLY_SETTLED_LIMIT = 200;
 
 export function setTransport(next: PushTransport | null): void {
   transport = next;
+}
+
+/**
+ * Who is signed in on this PC right now. Injected by the sign-in module, so
+ * this one stays free of it (and of the import cycle through the connection).
+ */
+export function setActingUser(provider: () => string | null): void {
+  actingUser = provider;
+}
+
+/**
+ * Whether a queued mutation may go up now.
+ *
+ * A chat post speaks for the person who wrote it, so it waits until that
+ * person is the one signed in here. It is never sent under the panel's own
+ * role or another person's session, which the Master would refuse and which
+ * would put the whole batch, lead and order work included, behind it.
+ */
+function mayGoUp(mutation: Mutation): boolean {
+  if (mutation.kind !== 'chat.post') return true;
+  const user = actingUser();
+  return user !== null && mutation.actorUserId === user;
 }
 
 export function onSyncEvent(listener: () => void): () => void {
@@ -159,7 +182,10 @@ export async function flush(): Promise<FlushOutcome> {
   flushing = true;
 
   try {
-    const queued = await outbox.pending();
+    const queued = (await outbox.pending()).filter(mayGoUp);
+    // Only held posts are left: nothing to send, and no retry timer to spin
+    // for them. They go when their author signs in (`user-session.service.ts`).
+    if (queued.length === 0) return idle;
     const batch = queued.slice(0, config.sync.batchSize);
 
     const response = await transport(batch);
@@ -254,8 +280,8 @@ export async function flush(): Promise<FlushOutcome> {
     events.emit('changed');
 
     // More than one batch was waiting — keep going rather than waiting for the
-    // next trigger.
-    if (outcome.remaining > 0) scheduleRetry();
+    // next trigger. Held chat posts do not count: they wait for a person.
+    if ((await outbox.pending()).some(mayGoUp)) scheduleRetry();
 
     return outcome;
   } catch (error) {

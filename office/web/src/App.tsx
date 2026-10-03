@@ -18,12 +18,17 @@ import {
   applyChangeToSnapshot,
   isRoleTier,
   LONG_OFFLINE_MS,
+  matchesRecordSearch,
+  recordNumber,
   offeredReportKinds,
+  REPORT_ENTITIES,
   REPORT_META,
   reportsOffered,
   resolveCompanyFeatures,
 } from '@orderbook/shared';
 import type {
+  ChatRecordChip,
+  ChatRecordRef,
   DataChangedEvent,
   MessageKey,
   MutationResult,
@@ -46,6 +51,9 @@ import {
   BasicHome,
   BP_NARROW,
   BusyMark,
+  ChatroomScreen,
+  PrintroomScreen,
+  PrintStationRunner,
   ReportsScreen,
   Clock,
   FilterBarOutlet,
@@ -78,6 +86,8 @@ import {
   rem,
   storeSidebarMode,
   t,
+  useChatUnread,
+  usePrintWaiting,
   useClearSubNav,
   useMediaQuery,
   useResetGate,
@@ -86,6 +96,9 @@ import {
   useToast,
   splitSubPage,
   withSubPages,
+  type ChatPage,
+  type PrintPage,
+  type ChatRecordOption,
   type LocalNotice,
   type NavGroup,
   type NavItem,
@@ -94,6 +107,8 @@ import {
   type SidebarMode,
   type SubPage,
 } from '@orderbook/ui';
+import { dispatchChat, officeChatTransport } from './chatTransport';
+import { dispatchPrint, officePrintroomTransport } from './printroomTransport';
 import { searchLocalView } from './localSearch';
 import { presenceChannel } from './presence';
 import { reportsTransport } from './reportsTransport';
@@ -130,6 +145,8 @@ type Tab =
   | 'partyAccess'
   | 'products'
   | 'conflicts'
+  | 'chatroom'
+  | 'printroom'
   | 'reports'
   | 'settings'
   | 'logs'
@@ -221,6 +238,9 @@ function OfficePanel() {
   // `option_list` revision.
   const [optionListsRevision, setOptionListsRevision] = useState(0);
   useEffect(() => setOptionListsRevision((count) => count + 1), [view?.optionLists]);
+  // Bumped on every snapshot and every applied change. The Reports screen re-reads on it: a
+  // count fingerprint misses a lead that changed stage, an order that was dispatched, an edit.
+  const [viewRevision, setViewRevision] = useState(0);
 
   // Set to the person's landing screen at sign-in and on the boot restore.
   const [tab, setTab] = useState<Tab>('basicHome');
@@ -302,6 +322,14 @@ function OfficePanel() {
   /** Temporary id → permanent id, for each provisional lead the Master numbered this session. */
   const [numberedIds, setNumberedIds] = useState<Record<string, string>>({});
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
+  /** The chat room open as a sub-screen, and the record being shared; both are the signed-in person's, so cleared with the session. */
+  const [chatOpen, setChatOpen] = useState<{ id: string; seq?: number } | null>(null);
+  const [chatShare, setChatShare] = useState<ChatRecordChip | null>(null);
+  /** Bumped when the sidebar picks a Chatroom page, so a settings sub-screen left open closes. */
+  const [chatResetNonce, setChatResetNonce] = useState(0);
+  /** The Printroom job open as a sub-screen (the bell can open one), and the nonce the sidebar bumps to close it. */
+  const [printOpen, setPrintOpen] = useState<string | null>(null);
+  const [printResetNonce, setPrintResetNonce] = useState(0);
   /*
    * Bumped each time somebody *asks* for the New lead form — the sidebar
    * entry, the topbar button, Ctrl+Shift+N. The form reads it to put the
@@ -424,6 +452,9 @@ function OfficePanel() {
         // Signing in sets the next person's own landing screen.
         setView(null);
         setTab('basicHome');
+        setChatOpen(null);
+        setChatShare(null);
+        setPrintOpen(null);
         setSignInNotice(reason);
       }),
     [],
@@ -514,6 +545,18 @@ function OfficePanel() {
   // second against the panel's own server and the Master behind it.
   const signedIn = session !== null;
 
+  // The Chatroom's unread figure for the sidebar row; asks for nothing without `chat.use`.
+  const chatUnread = useChatUnread(
+    officeChatTransport,
+    signedIn && (session?.permissions.includes('chat.use') ?? false),
+  );
+
+  // The Printroom exists for somebody holding either of its two rights; its waiting count asks for nothing without one.
+  const canSendPrint = signedIn && (session?.permissions.includes('print.send') ?? false);
+  const canRunStation = signedIn && (session?.permissions.includes('print.station') ?? false);
+  const canPrintroom = canSendPrint || canRunStation;
+  const printWaiting = usePrintWaiting(officePrintroomTransport, canPrintroom);
+
   useEffect(() => {
     if (!signedIn) return;
     void refreshSyncState();
@@ -528,6 +571,9 @@ function OfficePanel() {
     /** Everything a fresh link or a reopened stream may have missed. */
     const catchUp = (): void => {
       setStreamEpoch((epoch) => epoch + 1);
+      // Chat has no replay: whatever was said while the stream was away is read again.
+      dispatchChat({ kind: 'resync' });
+      dispatchPrint({ kind: 'resync' });
       void refreshConnection();
       void refreshSyncState();
       // The link coming back is when the Master gets to re-check who this
@@ -571,6 +617,17 @@ function OfficePanel() {
         .catch(() => undefined);
     });
 
+    // Chat for the person signed in here (the server drops anyone else's).
+    source.addEventListener('chat', (event) => {
+      dispatchChat(JSON.parse((event as MessageEvent).data));
+    });
+
+    // A Printroom job for the person signed in here (the server drops anyone else's).
+    source.addEventListener('print', (event) => {
+      dispatchPrint({ kind: 'changed', job: JSON.parse((event as MessageEvent).data) });
+    });
+
+
     // Who else is on the record open here (the server drops anyone else's frames).
     source.addEventListener('presence', (event) => {
       presenceChannel.push(JSON.parse((event as MessageEvent).data) as RecordPresence);
@@ -597,6 +654,7 @@ function OfficePanel() {
 
     source.addEventListener('snapshot', (event) => {
       setView(JSON.parse((event as MessageEvent).data) as LocalView);
+      setViewRevision((count) => count + 1);
       void refreshSyncState();
     });
 
@@ -611,6 +669,7 @@ function OfficePanel() {
      */
     source.addEventListener('change', (event) => {
       const change = JSON.parse((event as MessageEvent).data) as DataChangedEvent;
+      if (REPORT_ENTITIES.includes(change.entity)) setViewRevision((count) => count + 1);
       setView((current) => {
         if (!current) return current;
 
@@ -711,6 +770,9 @@ function OfficePanel() {
     setSession(null);
     setView(null);
     setTab('basicHome');
+    setChatOpen(null);
+    setChatShare(null);
+    setPrintOpen(null);
   }
 
   /*
@@ -846,6 +908,18 @@ function OfficePanel() {
         icon: 'chevron-right' as const,
       })),
     ],
+    printroom: [
+      { key: 'waiting', label: t('printroom.filter.waiting'), icon: 'print' },
+      { key: 'printed', label: t('printroom.filter.printed'), icon: 'task' },
+      { key: 'sentByMe', label: t('printroom.filter.mine'), icon: 'upload' },
+    ],
+    chatroom: [
+      { key: 'rooms', label: t('chat.sub.rooms'), icon: 'chat' },
+      { key: 'tasks', label: t('chat.sub.tasks'), icon: 'task' },
+      ...(can('chat.createGroups') || can('chat.manage')
+        ? [{ key: 'groups', label: t('chat.sub.groups'), icon: 'parties' as const }]
+        : []),
+    ],
     // One page per kind on offer, in tab order.
     reports: offeredReportKinds(tier, view?.features, permissions).map((kind) => ({
       key: kind,
@@ -892,6 +966,17 @@ function OfficePanel() {
     else if (module === 'leads') {
       if (key === 'new') openNewLead();
       else setTab('leads');
+    } else if (module === 'printroom') {
+      // A page picked in the sidebar leaves any open job.
+      setPrintOpen(null);
+      setPrintResetNonce((current) => current + 1);
+      setSubKeys((current) => ({ ...current, printroom: key }));
+    } else if (module === 'chatroom') {
+      // A page picked in the sidebar leaves any open room or share sheet.
+      setChatOpen(null);
+      setChatShare(null);
+      setChatResetNonce((current) => current + 1);
+      setSubKeys((current) => ({ ...current, chatroom: key }));
     } else setSubKeys((current) => ({ ...current, [module]: key }));
   }
 
@@ -940,6 +1025,22 @@ function OfficePanel() {
                   count: rejections.length > 0 ? rejections.length : undefined,
                 }
               : null,
+          can('chat.use')
+            ? {
+                id: 'chatroom',
+                label: t('nav.chatroom'),
+                icon: 'chat' as const,
+                count: chatUnread.total > 0 ? chatUnread.total : undefined,
+              }
+            : null,
+          canPrintroom
+            ? {
+                id: 'printroom',
+                label: t('nav.printroom'),
+                icon: 'print' as const,
+                count: printWaiting > 0 ? printWaiting : undefined,
+              }
+            : null,
           // The permission and the company's switch for this person's tier. The
           // Master enforces both on every request; this only decides whether to
           // draw the row, so it is offered before the first snapshot too.
@@ -994,6 +1095,8 @@ function OfficePanel() {
     partyAccess: 'partyAccess',
     products: 'products',
     conflicts: 'conflicts',
+    chatroom: 'chatroom',
+    printroom: 'printroom',
     reports: 'reports',
     settings: 'settings',
     logs: 'logs',
@@ -1051,6 +1154,51 @@ function OfficePanel() {
       return;
     }
     if (idToTab[id]) setTab(idToTab[id]);
+  }
+
+  /** Opens a chat room (from the bell, or from the Chatroom itself). */
+  function openChatRoom(room: { id: string; seq?: number } | null): void {
+    setChatShare(null);
+    setChatOpen(room);
+    if (room) goToTab('chatroom');
+  }
+
+  /** "Share in chat" on a record: the Chatroom's share sheet, with that record ready. */
+  const shareInChat = can('chat.use') && can('chat.shareRecords')
+    ? (chip: ChatRecordChip): void => {
+        setChatOpen(null);
+        setChatShare(chip);
+        goToTab('chatroom');
+      }
+    : undefined;
+
+  /** A chip or bell entry opens the record in its own board; a record this panel's view lacks is fetched there. */
+  function openChatRecord(record: ChatRecordRef): void {
+    if (record.kind === 'lead') {
+      if (!offered('leads')) return void toast.push(t('nav.recordNotAvailable'), { tone: 'info' });
+      setOpenLeadId(record.id);
+      goToTab('leads');
+    } else {
+      if (!offered('orders')) return void toast.push(t('nav.recordNotAvailable'), { tone: 'info' });
+      setOpenOrderId(record.id);
+      goToTab('orders');
+    }
+  }
+
+  /** The composer's record picker: this panel's own pending and final orders, so it works with no link. */
+  async function findChatRecords(term: string): Promise<ChatRecordOption[]> {
+    const found: ChatRecordOption[] = [];
+    for (const lead of view?.leads ?? []) {
+      if (matchesRecordSearch(lead, term)) {
+        found.push({ kind: 'lead', id: lead.id, label: recordNumber(lead), partyName: lead.partyName });
+      }
+    }
+    for (const order of view?.orders ?? []) {
+      if (matchesRecordSearch(order, term)) {
+        found.push({ kind: 'order', id: order.id, label: recordNumber(order), partyName: order.partyName });
+      }
+    }
+    return found.slice(0, 20);
   }
 
   const activeId = subNav
@@ -1180,9 +1328,14 @@ function OfficePanel() {
         local={localNotices}
         // A pending order numbered after an offline save opens on the board.
         onOpen={(link) => {
-          if (link.kind !== 'lead') return;
-          setOpenLeadId(link.id);
-          setTab('leads');
+          if (link.kind === 'chat') openChatRoom({ id: link.id });
+          else if (link.kind === 'print') {
+            setPrintOpen(link.id);
+            goToTab('printroom');
+          } else if (link.kind === 'lead') {
+            setOpenLeadId(link.id);
+            setTab('leads');
+          }
         }}
       />
 
@@ -1250,6 +1403,13 @@ function OfficePanel() {
           else if (hit.kind === 'lead_line') goToTab('leads');
           else goToTab('orders');
         }}
+      />
+      {/* The auto-print station: invisible, and at the top so it keeps working whichever screen is showing. */}
+      <PrintStationRunner
+        transport={officePrintroomTransport}
+        enabled={canRunStation}
+        desktop={desktopBridge() ?? undefined}
+        onNotify={(message) => toast.push(message, { tone: 'error' })}
       />
       {syncPopover && (
         <>
@@ -1403,6 +1563,47 @@ function OfficePanel() {
     },
     { id: 'logs', render: () => <LogsScreen permissions={permissions} /> },
     {
+      // Online-only through the Master, so it needs no snapshot: with no link
+      // the screen says so (the proxy answers 503) and the local Print button on
+      // a note keeps working.
+      id: 'printroom',
+      render: () => (
+        <PrintroomScreen
+          transport={officePrintroomTransport}
+          permissions={{ send: canSendPrint, station: canRunStation }}
+          viewerId={session.userId}
+          desktop={desktopBridge() ?? undefined}
+          page={subKeyOf('printroom') as PrintPage}
+          openJobId={printOpen}
+          onOpenJob={setPrintOpen}
+          resetNonce={printResetNonce}
+        />
+      ),
+    },
+    {
+      // Reads live through the Master and posts through the outbox, so it needs
+      // no snapshot: with no link it keeps what it holds, says so, and a post
+      // waits in the queue.
+      id: 'chatroom',
+      render: () => (
+        <ChatroomScreen
+          transport={officeChatTransport}
+          page={subKeyOf('chatroom') as ChatPage}
+          viewer={{ id: session.userId, permissions, tier: session.roleTier }}
+          openRoom={chatOpen}
+          onOpenRoom={setChatOpen}
+          share={chatShare}
+          onShareDone={(roomId) => {
+            setChatShare(null);
+            if (roomId) setChatOpen({ id: roomId });
+          }}
+          resetNonce={chatResetNonce}
+          onOpenRecord={openChatRecord}
+          findRecords={findChatRecords}
+        />
+      ),
+    },
+    {
       // Online-only through the Master, so it needs no snapshot: with the Master
       // out of reach the screen says so (the proxy answers 503) and a fresh
       // snapshot re-reads whatever is on screen.
@@ -1410,7 +1611,8 @@ function OfficePanel() {
       render: () => (
         <ReportsScreen
           transport={reportsTransport}
-          revision={view ? `${view.leads.length}:${view.orders.length}:${view.parties.length}` : 0}
+          revision={viewRevision}
+          online={connection.state === 'connected'}
           kind={subKeyOf('reports') as ReportKind}
           onKindChange={(kind) => selectSubPage('reports', kind)}
         />
@@ -1448,6 +1650,8 @@ function OfficePanel() {
                 setOpenLeadId(id);
                 setTab('leads');
               }}
+              printPending={canPrintroom ? printWaiting : undefined}
+              chatUnread={can('chat.use') ? chatUnread.total : undefined}
             />
           ),
         },
@@ -1463,6 +1667,8 @@ function OfficePanel() {
               canEdit={can('leads.edit')}
               onError={setError}
               onAddLead={can('leads.create') ? openNewLead : undefined}
+              onShareInChat={shareInChat}
+              printroom={canSendPrint ? officePrintroomTransport : undefined}
               userId={session?.userId ?? null}
               numberedIds={numberedIds}
             />
@@ -1488,6 +1694,8 @@ function OfficePanel() {
               onStageChange={(stageId) =>
                 selectSubPage('orders', stageId === null ? 'all' : `stage:${stageId}`)
               }
+              onShareInChat={shareInChat}
+              printroom={canSendPrint ? officePrintroomTransport : undefined}
             />
           ),
         },

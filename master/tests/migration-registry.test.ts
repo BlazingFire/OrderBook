@@ -102,6 +102,10 @@ describe('the migration registry matches the directory', () => {
     // Reports indexes and the office / management grant (1.3 H2). Pinned in the
     // order the 1.3 batch lands its migrations.
     '20261004000000_report_indexes_and_grants',
+    // The Chatroom tables and the chat grants (1.3 Phase 6, migration #5).
+    '20261005000000_chatroom',
+    // The Printroom tables and the print grants (1.3 Phase 7, migration #6).
+    '20261006000000_printroom',
     // 1.3 Phase 8: `storage.backupAll` for the Server Master tier (#7).
     '20261007000000_backup_all_permission_grant',
   ];

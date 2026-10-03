@@ -42,6 +42,7 @@ import { cacheAvatar } from './avatar-cache.js';
 import { masterFetch } from '../lib/master-fetch.js';
 import * as userStore from './user-store.js';
 import * as localStore from '../sync/local-store.js';
+import { flush, setActingUser } from '../sync/sync.service.js';
 
 const log = createLogger('user-session');
 
@@ -114,6 +115,9 @@ export interface PanelSession {
  * worse default than asking for a password.
  */
 let current: PanelSession | null = null;
+
+// The sync queue holds a chat post back until its author is the one signed in.
+setActingUser(() => current?.userId ?? null);
 
 export function currentSession(): PanelSession | null {
   return current;
@@ -293,6 +297,8 @@ async function signInAgainstMaster(username: string, password: string): Promise<
   };
 
   log.info(`${user.username} signed in`);
+  // Whatever this person queued earlier, chat posts included, can go up now.
+  void flush().catch(() => undefined);
   return current;
 }
 

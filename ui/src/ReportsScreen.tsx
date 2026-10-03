@@ -33,9 +33,9 @@ import type {
   ReportRow,
   ReportTable,
 } from '@orderbook/shared';
-import { REPORT_KINDS, REPORT_META, SUMMABLE_UNITS } from '@orderbook/shared';
+import { REPORT_KINDS, REPORT_META, reportPdfPath, SUMMABLE_UNITS } from '@orderbook/shared';
 
-import { Button } from './Button.js';
+import { Button, ButtonLink } from './Button.js';
 import { Card, Section } from './Card.js';
 import { DataTable, type DataTableColumn } from './DataTable.js';
 import { apiErrorText } from './errorText.js';
@@ -64,8 +64,14 @@ interface ReportsScreenProps {
   /** Which report is showing — chosen in the sidebar's sub-pages or from the picker here. */
   kind: ReportKind;
   onKindChange: (kind: ReportKind) => void;
-  /** Changes whenever lead, order or party data does — a counter on the Master, a fingerprint of the snapshot on an Office. */
+  /** Changes whenever the data a report reads does: bumped on a change to one of `REPORT_ENTITIES` (on the Office also on a snapshot). */
   revision: number | string;
+  /**
+   * False while the Master cannot be reached (an Office panel only). The PDF
+   * preview is the Master's own page, so the link is withdrawn rather than
+   * opening a browser window onto an error. Default true.
+   */
+  online?: boolean;
 }
 
 /** A refusal carrying `field` belongs on that control; anything else is a fetch failure. */
@@ -128,7 +134,20 @@ function fieldOf(caught: unknown): string | undefined {
   return typeof details?.field === 'string' ? details.field : undefined;
 }
 
-export function ReportsScreen({ transport, kind, onKindChange, revision }: ReportsScreenProps) {
+/** The Office answers `unavailable` when the Master is out of reach; say which panel Reports needs. */
+function reportErrorText(caught: unknown, fallback: 'reports.error.load' | 'reports.exportFailed'): string {
+  if ((caught as { code?: unknown } | null)?.code === 'unavailable') return t('reports.offline');
+  return apiErrorText(caught, fallback);
+}
+
+/** The last day the range covers, as the exact date: the range stores the day after it. */
+function inclusiveEnd(toDateExclusive: string): string {
+  const [year, month, day] = toDateExclusive.split('-').map(Number);
+  const last = new Date(Date.UTC(year as number, (month as number) - 1, (day as number) - 1));
+  return last.toISOString().slice(0, 10);
+}
+
+export function ReportsScreen({ transport, kind, onKindChange, revision, online = true }: ReportsScreenProps) {
   const toast = useToast();
   // Held in a ref so a panel that rebuilds its transport each render does not refetch.
   const transportRef = useRef(transport);
@@ -191,7 +210,7 @@ export function ReportsScreen({ transport, kind, onKindChange, revision }: Repor
         // A rejected range leaves the previous report standing — it names the
         // range it covers, so it is not a stale answer to the new question.
         if (!field) setLoaded(null);
-        setFailure({ message: apiErrorText(caught, 'reports.error.load'), field, hidden });
+        setFailure({ message: reportErrorText(caught, 'reports.error.load'), field, hidden });
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -221,7 +240,7 @@ export function ReportsScreen({ transport, kind, onKindChange, revision }: Repor
       );
       saveBlob(blob, fileName);
     } catch (caught) {
-      toast.push(apiErrorText(caught, 'reports.exportFailed'), { tone: 'error' });
+      toast.push(reportErrorText(caught, 'reports.exportFailed'), { tone: 'error' });
     } finally {
       setExporting(null);
     }
@@ -350,6 +369,21 @@ export function ReportsScreen({ transport, kind, onKindChange, revision }: Repor
               offered as a file even though the last report is still on screen. */}
           {options?.canExport && active && !failure && (
             <div style={{ display: 'flex', gap: 'var(--s-8)', alignSelf: 'flex-end' }}>
+              {/* Opens beside the app: the desktop shell allows exactly this path
+                  a window of its own, a LAN browser gets a new tab. The Master
+                  draws it, so on the Office it needs the link up — a refusal or an
+                  offline Master shows as the error state above, and takes this
+                  with it. */}
+              {online && (
+                <ButtonLink
+                  href={reportPdfPath(kind, query, locale() === 'hi' ? 'hi' : 'en')}
+                  target="_blank"
+                  variant="secondary"
+                  size="sm"
+                >
+                  {t('reports.previewPdf')}
+                </ButtonLink>
+              )}
               {(['csv', 'xlsx', 'pdf'] as const).map((format) => (
                 <Button
                   key={format}
@@ -370,8 +404,12 @@ export function ReportsScreen({ transport, kind, onKindChange, revision }: Repor
         {active && (
           <p className="ob-small" style={{ margin: 'var(--s-8) 0 0' }}>
             {t('reports.range.caption', {
-              from: active.range.months[0] ?? active.range.fromDate,
-              to: active.range.months[active.range.months.length - 1] ?? '',
+              // Exact dates are captioned as the days they are; every other period by its months.
+              from: active.range.period === 'customDates' ? active.range.fromDate : (active.range.months[0] ?? active.range.fromDate),
+              to:
+                active.range.period === 'customDates'
+                  ? inclusiveEnd(active.range.toDateExclusive)
+                  : (active.range.months[active.range.months.length - 1] ?? ''),
               zone: active.range.timeZone,
             })}
             {active.subject.name ? ` · ${t('reports.generatedFor', { name: active.subject.name })}` : ''}

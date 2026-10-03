@@ -13,6 +13,26 @@ import { anySignal, publishSessionEnded, t, trackLoad } from '@orderbook/ui';
 import type {
   Locale,
   PickKind,
+  ChatAccessCapability,
+  PrintJob,
+  PrintJobInput,
+  PrintJobPage,
+  PrintJobQuery,
+  PrintJobSummary,
+  PrintStation,
+  PrintStationInput,
+  ChatMemberRole,
+  ChatMessage,
+  ChatPerson,
+  ChatPostInput,
+  ChatRoomDetail,
+  ChatRoomInput,
+  ChatRoomPatch,
+  ChatRoomSummary,
+  ChatSearchHit,
+  ChatTaskRow,
+  Lead,
+  Order,
   ActivityLogEntry,
   DesktopBridge,
   ActivityLogFacets,
@@ -834,6 +854,111 @@ export const api = {
     }),
   markNotificationsRead: (which: { ids: string[] } | { all: true }) =>
     post<{ unreadCount: number }>('/api/notifications/read', which),
+
+  /** One record by id: this panel's own copy first, else the Master's. For a chat chip or a bell entry. */
+  lead: (id: string) => requestUntracked<Lead>(`/api/leads/${encodeURIComponent(id)}`),
+  order: (id: string) => requestUntracked<Order>(`/api/orders/${encodeURIComponent(id)}`),
+
+  // --- The Chatroom, through this panel's own server. Background reads, so the loading strip stays still. ---
+  chatPeople: () => requestUntracked<ChatPerson[]>('/api/chat/people'),
+  chatRooms: (options: { all?: boolean; includeArchived?: boolean } = {}) =>
+    requestUntracked<ChatRoomSummary[]>(
+      `/api/chat/rooms?all=${options.all ? '1' : '0'}&archived=${options.includeArchived ? '1' : '0'}`,
+    ),
+  chatRoom: (roomId: string) => requestUntracked<ChatRoomDetail>(`/api/chat/rooms/${encodeURIComponent(roomId)}`),
+  chatMessages: (roomId: string, options: { beforeSeq?: number; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (options.beforeSeq) params.set('before', String(options.beforeSeq));
+    if (options.limit) params.set('limit', String(options.limit));
+    const qs = params.toString();
+    return requestUntracked<ChatMessage[]>(
+      `/api/chat/rooms/${encodeURIComponent(roomId)}/messages${qs ? `?${qs}` : ''}`,
+    );
+  },
+  /** A 202 means queued here (`mutationId`, `id`); the Master's copy arrives as a push. */
+  chatPost: (roomId: string, input: ChatPostInput) =>
+    requestUntracked<{ queued: true; id: string; mutationId: string }>(
+      `/api/chat/rooms/${encodeURIComponent(roomId)}/messages`,
+      { method: 'POST', body: JSON.stringify(input) },
+    ),
+  chatEdit: (messageId: string, body: string, mentions?: string[]) =>
+    requestUntracked<ChatMessage>(`/api/chat/messages/${encodeURIComponent(messageId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ body, ...(mentions ? { mentions } : {}) }),
+    }),
+  chatDelete: (messageId: string) =>
+    requestUntracked<ChatMessage>(`/api/chat/messages/${encodeURIComponent(messageId)}`, { method: 'DELETE' }),
+  chatPin: (messageId: string, pinned: boolean) =>
+    requestUntracked<ChatMessage>(`/api/chat/messages/${encodeURIComponent(messageId)}/pin`, {
+      method: 'POST',
+      body: JSON.stringify({ pinned }),
+    }),
+  chatTaskDone: (messageId: string, done: boolean) =>
+    requestUntracked<ChatMessage>(`/api/chat/messages/${encodeURIComponent(messageId)}/done`, {
+      method: 'POST',
+      body: JSON.stringify({ done }),
+    }),
+  chatRead: (roomId: string, seq: number) =>
+    requestUntracked<{ lastReadSeq: number }>(`/api/chat/rooms/${encodeURIComponent(roomId)}/read`, {
+      method: 'POST',
+      body: JSON.stringify({ seq }),
+    }),
+  chatMute: (roomId: string, muted: boolean) =>
+    requestUntracked<null>(`/api/chat/rooms/${encodeURIComponent(roomId)}/mute`, {
+      method: 'POST',
+      body: JSON.stringify({ muted }),
+    }),
+  chatDirect: (userId: string) =>
+    requestUntracked<ChatRoomSummary>('/api/chat/direct', { method: 'POST', body: JSON.stringify({ userId }) }),
+  chatCreateRoom: (input: ChatRoomInput) =>
+    requestUntracked<ChatRoomSummary>('/api/chat/rooms', { method: 'POST', body: JSON.stringify(input) }),
+  chatUpdateRoom: (roomId: string, patch: ChatRoomPatch) =>
+    requestUntracked<ChatRoomSummary>(`/api/chat/rooms/${encodeURIComponent(roomId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(patch),
+    }),
+  chatSetMember: (roomId: string, userId: string, role: ChatMemberRole | null) =>
+    requestUntracked<ChatRoomDetail | null>(`/api/chat/rooms/${encodeURIComponent(roomId)}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ userId, role }),
+    }),
+  chatSearch: (q: string, roomId?: string) =>
+    requestUntracked<ChatSearchHit[]>(
+      `/api/chat/search?q=${encodeURIComponent(q)}${roomId ? `&roomId=${encodeURIComponent(roomId)}` : ''}`,
+    ),
+  chatTasks: (scope: 'mine' | 'created', includeDone: boolean) =>
+    requestUntracked<ChatTaskRow[]>(`/api/chat/tasks?scope=${scope}&includeDone=${includeDone ? '1' : '0'}`),
+  chatRequestAccess: (capability: ChatAccessCapability, note?: string) =>
+    requestUntracked<{ notified: number }>('/api/chat/access-requests', {
+      method: 'POST',
+      body: JSON.stringify({ capability, ...(note ? { note } : {}) }),
+    }),
+
+  // --- The Printroom (`/api/print-jobs`, `/api/print-stations`). Background reads, so the loading strip stays still. ---
+  printJobs: (query: PrintJobQuery) => {
+    const params = new URLSearchParams();
+    if (query.status) params.set('status', query.status);
+    if (query.mine) params.set('mine', '1');
+    if (query.cursor) params.set('cursor', query.cursor);
+    if (query.limit) params.set('limit', String(query.limit));
+    const qs = params.toString();
+    return requestUntracked<PrintJobPage>(`/api/print-jobs${qs ? `?${qs}` : ''}`);
+  },
+  printJob: (id: string) => requestUntracked<PrintJob>(`/api/print-jobs/${encodeURIComponent(id)}`),
+  sendPrintJob: (input: PrintJobInput) =>
+    requestUntracked<PrintJob>('/api/print-jobs', { method: 'POST', body: JSON.stringify(input) }),
+  markPrintJob: (id: string, printed: boolean, printerName?: string | null) =>
+    requestUntracked<PrintJobSummary>(`/api/print-jobs/${encodeURIComponent(id)}/printed`, {
+      method: 'POST',
+      body: JSON.stringify({ printed, ...(printerName ? { printerName } : {}) }),
+    }),
+  cancelPrintJob: (id: string) =>
+    requestUntracked<PrintJobSummary>(`/api/print-jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+  claimPrintJob: (id: string) =>
+    requestUntracked<PrintJob | null>(`/api/print-jobs/${encodeURIComponent(id)}/claim`, { method: 'POST' }),
+  printStations: () => requestUntracked<PrintStation[]>('/api/print-stations'),
+  savePrintStation: (input: PrintStationInput) =>
+    requestUntracked<PrintStation>('/api/print-stations/self', { method: 'PUT', body: JSON.stringify(input) }),
   logs: (query: ActivityLogQuery = {}) => {
     const params = new URLSearchParams();
     if (query.cursor) params.set('cursor', query.cursor);

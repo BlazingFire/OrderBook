@@ -30,6 +30,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { existsSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -54,10 +55,11 @@ import { attentionText } from './lib/attention.js';
 import { dialogExtensions, dialogTitle } from './lib/dialog-options.js';
 import { getJson, interpretHealth, type HealthOutcome } from './lib/health.js';
 import { approveInstaller, updateMethod } from './lib/installer.js';
-import { isLeadPdfUrl } from './lib/lead-pdf.js';
+import { isPdfWindowUrl } from './lib/lead-pdf.js';
 import { openLogFile, type LogFile } from './lib/log-file.js';
 import { rendererHeapFlag, serverHeapMb } from './lib/memory.js';
-import { printOptions } from './lib/print-options.js';
+import { pdfFileName, printOptions } from './lib/print-options.js';
+import { backgroundThrottlingFor, parseStationMode } from './lib/station-mode.js';
 import {
   readDataDirOverride,
   readShellSettings,
@@ -393,8 +395,8 @@ export function runPanelShell(config: PanelShellConfig): void {
   /** Same-origin, and not `startsWith` — that accepts `localhost:4100.evil`. */
   const sameOrigin = (url: string): boolean => url === ORIGIN || url.startsWith(`${ORIGIN}/`);
 
-  /** A lead's PDF on this panel — the one URL it may open a window of its own for. */
-  const isLeadPdf = (url: string): boolean => isLeadPdfUrl(ORIGIN, url);
+  /** A lead's or a report's PDF on this panel — the only URLs it may open a window of its own for. */
+  const isLeadPdf = (url: string): boolean => isPdfWindowUrl(ORIGIN, url);
 
   async function waitForServerThenShow(): Promise<void> {
     const outcome = await waitForServer((step) => void showSplash(step));
@@ -899,6 +901,54 @@ export function runPanelShell(config: PanelShellConfig): void {
         resolve(success || reason === 'cancelled' ? { ok: true } : { ok: false, error: reason });
       });
     });
+  });
+
+  /*
+   * Save PDF for the order notes: the page as printed (A4, its print
+   * stylesheet), written where the person chooses. The path comes from the
+   * dialog in this process, never from the page; the page offers only a name,
+   * cleaned by `pdfFileName`. `printToPDF` takes an options object from
+   * Electron 21, so this is the same call on 22 (the Windows 7 build) and 33.
+   */
+  ipcMain.handle('orderbook:savePdf', async (event, value: unknown) => {
+    if (event.sender !== mainWindow?.webContents || !mainWindow) {
+      return { ok: false, error: 'Not allowed' };
+    }
+    try {
+      const bytes = await event.sender.printToPDF({
+        printBackground: true,
+        preferCSSPageSize: true,
+        // Explicit, to match the print: A4 and no margin of Chromium's own.
+        pageSize: 'A4',
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
+      });
+      const chosen = await dialog.showSaveDialog(mainWindow, {
+        defaultPath: path.join(
+          app.getPath('documents'),
+          pdfFileName((value as { fileName?: unknown } | null)?.fileName),
+        ),
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      });
+      if (chosen.canceled || !chosen.filePath) return { ok: false, cancelled: true };
+      await writeFile(chosen.filePath, bytes);
+      return { ok: true, path: chosen.filePath };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  /*
+   * Auto-print station mode (the Printroom). While it is on, the panel's window
+   * keeps rendering and running timers when it is minimised or hidden, so a
+   * printer PC left minimised keeps printing. Only the panel's own window may
+   * ask, only the literal `true` turns it on (`lib/station-mode.ts`), and it
+   * changes nothing about what may be printed silently: that stays the printers
+   * Windows lists (`orderbook:printPage`).
+   */
+  ipcMain.handle('orderbook:setStationMode', (event, value: unknown): boolean => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return false;
+    mainWindow.webContents.setBackgroundThrottling(backgroundThrottlingFor(parseStationMode(value)));
+    return true;
   });
 
   /*

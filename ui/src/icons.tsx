@@ -43,7 +43,11 @@ export type IconName =
   | 'external'
   | 'upload'
   | 'download'
-  | 'bell';
+  | 'bell'
+  | 'chat'
+  | 'pin'
+  | 'task'
+  | 'print';
 
 const PATHS: Record<IconName, string> = {
   // The Basic Home launcher, as drawn in the owner's mockup.
@@ -92,6 +96,14 @@ const PATHS: Record<IconName, string> = {
   download: 'M8 3v7.5M4.8 7.3L8 10.5l3.2-3.2M3 10.5v2.5h10v-2.5',
   // The notification bell in the topbar.
   bell: 'M4 11.5V7a4 4 0 0 1 8 0v4.5l1 1.5H3zM6.5 13.5a1.5 1.5 0 0 0 3 0',
+  // The Chatroom: a speech bubble with its tail at the lower left.
+  chat: 'M2.5 3.5h11v7.5H7l-3 2.5V11H2.5z',
+  // A pinned message.
+  pin: 'M9.8 2.5l3.7 3.7-2 1-2 2 .4 2.6-1.1 1.1-6-6 1.1-1.1 2.6.4 2-2zM5.2 10.8L2.5 13.5',
+  // A task: a box with a tick in it.
+  task: 'M3 3.5h10v9H3zM5.5 8l1.8 1.8L10.5 6.5',
+  // The Printroom: a printer, paper in at the top and out at the foot.
+  print: 'M4.5 6V2.5h7V6M4.5 11.5H2.5V6h11v5.5h-2M4.5 9h7v4.5h-7z',
 };
 
 export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {

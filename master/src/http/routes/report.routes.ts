@@ -89,36 +89,63 @@ reportRoutes.get(
   }),
 );
 
+/** The export options a query string carries, read the same by the file route and the inline PDF route. */
+function exportOptionsOf(query: Record<string, unknown>) {
+  const columns = String(query.columns ?? '')
+    .split(',')
+    .map((key) => key.trim())
+    .filter(Boolean);
+
+  return {
+    // The query string reads the same everywhere (`parseReportQuery`); the
+    // legacy three kinds never sent the new fields, so for them it is the
+    // same range it always was.
+    ...parseReportQuery(query),
+    // Every option is absent by default, and the defaults reproduce
+    // today's output byte for byte — somebody's spreadsheet is pointing at
+    // this URL.
+    format: isReportFormat(query.format) ? query.format : undefined,
+    columns: columns.length > 0 ? columns : undefined,
+    totals: query.totals === 'true',
+    paperSize: query.paperSize === 'letter' ? ('letter' as const) : undefined,
+    orientation: query.orientation === 'portrait' ? ('portrait' as const) : undefined,
+    lang: query.lang === 'hi' ? ('hi' as const) : undefined,
+  };
+}
+
+/**
+ * The report as a PDF, answered inline so a window or a browser tab shows it
+ * (Preview PDF) instead of saving it. It is `exportReport` with the format
+ * forced to `pdf`, so the permission pair, the subject rule, Party Access, the
+ * visibility switches, the caps and the audit row are exactly the file's.
+ * `format` in the query is ignored: whatever is asked, this route answers a PDF.
+ */
+reportRoutes.get(
+  '/:report/pdf',
+  [needs('reports.view'), needs('reports.export')],
+  asyncHandler(async (req, res) => {
+    const exported = await reportService.exportReport(
+      kindOf(req.params.report),
+      { ...exportOptionsOf(req.query), format: 'pdf' },
+      actorFromRequest(req),
+    );
+    if (exported.format !== 'pdf') {
+      throw new ValidationError('validation.reports.format.unknown', {}, { field: 'format' });
+    }
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${exported.fileName}"`);
+    res.send(exported.bytes);
+  }),
+);
+
 reportRoutes.get(
   '/:report/export',
-  needs('reports.export'),
+  // A file is a report written down: both keys, as in 1.2 (the service checks them too).
+  [needs('reports.view'), needs('reports.export')],
   asyncHandler(async (req, res) => {
     const kind = kindOf(req.params.report);
 
-    const columns = String(req.query.columns ?? '')
-      .split(',')
-      .map((key) => key.trim())
-      .filter(Boolean);
-
-    const exported = await reportService.exportReport(
-      kind,
-      {
-        // The query string reads the same everywhere (`parseReportQuery`); the
-        // legacy three kinds never sent the new fields, so for them it is the
-        // same range it always was.
-        ...parseReportQuery(req.query),
-        // Every option is absent by default, and the defaults reproduce
-        // today's output byte for byte — somebody's spreadsheet is pointing at
-        // this URL.
-        format: isReportFormat(req.query.format) ? req.query.format : undefined,
-        columns: columns.length > 0 ? columns : undefined,
-        totals: req.query.totals === 'true',
-        paperSize: req.query.paperSize === 'letter' ? 'letter' : undefined,
-        orientation: req.query.orientation === 'portrait' ? 'portrait' : undefined,
-        lang: req.query.lang === 'hi' ? 'hi' : undefined,
-      },
-      actorFromRequest(req),
-    );
+    const exported = await reportService.exportReport(kind, exportOptionsOf(req.query), actorFromRequest(req));
 
     if (exported.format === 'csv') {
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');

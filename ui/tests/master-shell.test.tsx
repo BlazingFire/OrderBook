@@ -605,6 +605,13 @@ const ORDER = {
 };
 
 /** Boots with one lead, one order and their party answering, then opens `label`. */
+/** Extra fields for the lead and order `openList` serves, so a test can number them. Reset after each test. */
+const fixtureExtras: { lead: Record<string, unknown>; order: Record<string, unknown> } = { lead: {}, order: {} };
+afterEach(() => {
+  fixtureExtras.lead = {};
+  fixtureExtras.order = {};
+});
+
 async function openList(
   permissions: string[],
   label: string,
@@ -617,8 +624,8 @@ async function openList(
     if (path === '/api/leads' && call.url.includes('followUpDueOnly')) {
       return json({ items: [], total: 0, limit: 8, offset: 0 });
     }
-    if (path === '/api/leads') return json({ items: [LEAD], total: 1, limit: 500, offset: 0 });
-    if (path === '/api/orders') return json({ items: [ORDER], total: 1, limit: 500, offset: 0 });
+    if (path === '/api/leads') return json({ items: [{ ...LEAD, ...fixtureExtras.lead }], total: 1, limit: 500, offset: 0 });
+    if (path === '/api/orders') return json({ items: [{ ...ORDER, ...fixtureExtras.order }], total: 1, limit: 500, offset: 0 });
     if (path === '/api/parties/party-1') {
       return json({ id: 'party-1', name: 'Shree Ceramics', partyCode: 'P-0001', city: 'Rajkot' });
     }
@@ -780,12 +787,140 @@ describe('the Filling and Dispatch notes on an order', () => {
     expect(calls.some((call) => call.url === '/api/parties/party-1')).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
-    await waitFor(() => expect(printPage).toHaveBeenCalledWith({ deviceName: undefined }));
+    // `copies` is always sent now (deliberate): one unless the person set more.
+    await waitFor(() => expect(printPage).toHaveBeenCalledWith({ deviceName: undefined, copies: 1 }));
 
     // Back from the note lands on the order, and back from that on the list.
     fireEvent.click(screen.getByRole('button', { name: t('action.backToList') }));
     fireEvent.click(await screen.findByRole('button', { name: t('action.backToList') }));
     expect(await screen.findByText(ORDER.id)).toBeTruthy();
+  });
+});
+
+describe('the Filling and Dispatch notes on a pending order', () => {
+  async function openLeads(permissions: string[]) {
+    const calls = await openList(permissions, t('nav.leads'));
+    fireEvent.click(await screen.findByText(LEAD.id));
+    await screen.findByRole('button', { name: t('action.backToList') });
+    return calls;
+  }
+
+  afterEach(() => {
+    delete (window as { orderbook?: unknown }).orderbook;
+  });
+
+  it('is offered only with leads.export, and absent otherwise', async () => {
+    await openLeads(['leads.view', 'parties.view']);
+    expect(screen.queryByRole('button', { name: t('orderNote.filling') })).toBeNull();
+    expect(screen.queryByRole('button', { name: t('orderNote.dispatch') })).toBeNull();
+
+    cleanup();
+    await openLeads(['leads.view', 'leads.export', 'parties.view']);
+    expect(screen.getByRole('button', { name: t('orderNote.filling') })).toBeTruthy();
+    expect(screen.getByRole('button', { name: t('orderNote.dispatch') })).toBeTruthy();
+  });
+
+  it('opens the Filling note headed "Pending Order No." with the lead id, party fetched', async () => {
+    const calls = await openLeads(['leads.view', 'leads.export', 'parties.view']);
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+
+    expect((await screen.findAllByText(t('orderNote.pendingOrderNo'))).length).toBeGreaterThan(0);
+    expect(screen.queryByText(t('orderNote.orderId'))).toBeNull();
+    expect(screen.getAllByText(LEAD.id).length).toBeGreaterThan(0);
+    expect(calls.some((call) => call.url === '/api/parties/party-1')).toBe(true);
+
+    // Back from the note lands on the lead.
+    fireEvent.click(screen.getByRole('button', { name: t('action.backToList') }));
+    expect(await screen.findByRole('button', { name: t('orderNote.filling') })).toBeTruthy();
+  });
+
+  it('prints the copies asked for through the shell, and keeps the vehicle number off the server', async () => {
+    const printPage = vi.fn().mockResolvedValue({ ok: true });
+    (window as { orderbook?: unknown }).orderbook = { shellVersion: 't', applyUpdate: vi.fn(), printPage };
+    const calls = await openLeads(['leads.view', 'leads.export', 'parties.view']);
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.dispatch') }));
+
+    // A pending order has no vehicle column: the field takes input without leads.edit and saves nothing.
+    const field = await screen.findByLabelText(t('orderNote.vehicleNo'));
+    expect((field as HTMLInputElement).disabled).toBe(false);
+    await act(async () => {
+      fireEvent.change(field, { target: { value: 'gj 03  ab 4471' } });
+      fireEvent.blur(field);
+      await wait(0);
+    });
+    expect((field as HTMLInputElement).value).toBe('GJ 03 AB 4471');
+
+    fireEvent.change(screen.getByLabelText(t('orderNote.copies')), { target: { value: '3' } });
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
+    await waitFor(() => expect(printPage).toHaveBeenCalledWith({ deviceName: undefined, copies: 3 }));
+
+    expect(calls.filter((call) => call.method !== 'GET' && call.url.startsWith('/api/leads'))).toEqual([]);
+  });
+
+  it('keeps the copies between 1 and 50', async () => {
+    const printPage = vi.fn().mockResolvedValue({ ok: true });
+    (window as { orderbook?: unknown }).orderbook = { shellVersion: 't', applyUpdate: vi.fn(), printPage };
+    await openLeads(['leads.view', 'leads.export']);
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.dispatch') }));
+    const copies = await screen.findByLabelText(t('orderNote.copies'));
+
+    fireEvent.change(copies, { target: { value: '500' } });
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
+    await waitFor(() => expect(printPage).toHaveBeenLastCalledWith({ deviceName: undefined, copies: 50 }));
+
+    fireEvent.change(copies, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
+    await waitFor(() => expect(printPage).toHaveBeenLastCalledWith({ deviceName: undefined, copies: 1 }));
+  });
+
+  it('offers Save PDF only when the shell can, named for the lead and the note', async () => {
+    const savePdf = vi.fn().mockResolvedValue({ ok: true, path: 'C:\\x.pdf' });
+    (window as { orderbook?: unknown }).orderbook = { shellVersion: 't', applyUpdate: vi.fn(), printPage: vi.fn(), savePdf };
+    await openLeads(['leads.view', 'leads.export']);
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+    fireEvent.click(await screen.findByRole('button', { name: t('orderNote.savePdf') }));
+    await waitFor(() => expect(savePdf).toHaveBeenCalledWith({ fileName: `${LEAD.id}-filling.pdf` }));
+    cleanup();
+
+    delete (window as { orderbook?: unknown }).orderbook;
+    await openLeads(['leads.view', 'leads.export']);
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+    await screen.findAllByText(t('orderNote.pendingOrderNo'));
+    expect(screen.queryByRole('button', { name: t('orderNote.savePdf') })).toBeNull();
+  });
+
+  it('prints the PO number of a pending order and names the saved file for it', async () => {
+    const savePdf = vi.fn().mockResolvedValue({ ok: true, path: 'C:/out.pdf' });
+    (window as { orderbook?: unknown }).orderbook = { shellVersion: 'test', applyUpdate: vi.fn(), printPage: vi.fn(), savePdf };
+    fixtureExtras.lead = { poNumber: 'PO/2026-27/00042' };
+    await openList(['leads.view', 'leads.export'], t('nav.leads'));
+    fireEvent.click(await screen.findByText('PO/2026-27/00042'));
+    await screen.findByRole('button', { name: t('action.backToList') });
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+    expect((await screen.findAllByText(t('orderNote.pendingOrderNo'))).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('PO/2026-27/00042').length).toBeGreaterThan(0);
+    expect(screen.queryByText(LEAD.id)).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: t('orderNote.savePdf') }));
+    await waitFor(() => expect(savePdf).toHaveBeenCalledWith({ fileName: 'PO/2026-27/00042-filling.pdf' }));
+  });
+
+  it('prints the pending order number on a final order made from one', async () => {
+    fixtureExtras.order = { poNumber: 'PO/2026-27/00042' };
+    await openList(['orders.view', 'orders.export'], t('nav.orders'));
+    fireEvent.click(await screen.findByText(ORDER.id));
+    await screen.findByRole('button', { name: t('action.backToList') });
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+    expect((await screen.findAllByText(t('orderNote.orderId'))).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('PO/2026-27/00042').length).toBeGreaterThan(0);
+  });
+
+  it('heads a final order "Final Order No."', async () => {
+    await openList(['orders.view', 'orders.export'], t('nav.orders'));
+    fireEvent.click(await screen.findByText(ORDER.id));
+    await screen.findByRole('button', { name: t('action.backToList') });
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+    expect((await screen.findAllByText(t('orderNote.orderId'))).length).toBeGreaterThan(0);
+    expect(screen.queryByText(t('orderNote.pendingOrderNo'))).toBeNull();
   });
 });
 
@@ -1747,5 +1882,320 @@ describe('the link to the Master server, and the bell (1.3)', () => {
     expect(
       await screen.findByText(t('panels.offlineFor', { duration: formatElapsed(2 * 3_600_000) })),
     ).toBeTruthy();
+  });
+});
+
+describe('the Chatroom (1.3 Phase 6)', () => {
+  const live = () => sockets.all.filter((socket) => !socket.closed).at(-1);
+  const ROOM = {
+    id: 'room-1', kind: 'group', name: 'Dispatch desk', description: null, announceOnly: false,
+    archivedAt: null, myRole: 'member', muted: false, lastSeq: 4, lastReadSeq: 1, unread: 3,
+    mentionUnread: 0, memberCount: 2, lastMessageAt: '2026-10-03T09:00:00.000Z', lastMessage: null,
+    direct: null,
+  };
+
+  /** Boots as somebody with `permissions`, answering the chat routes with one room. */
+  function bootChat(permissions: string[], extra?: (call: Call) => Response | undefined): Promise<Call[]> {
+    return boot(permissions, (call) => {
+      const path = call.url.split('?')[0];
+      if (path === '/api/chat/rooms') return json([ROOM]);
+      if (path === '/api/chat/rooms/room-1') {
+        return json({ ...ROOM, members: [], pinned: [] });
+      }
+      if (path === '/api/chat/rooms/room-1/messages') return json([]);
+      if (path === '/api/chat/tasks') return json([]);
+      return extra?.(call);
+    });
+  }
+
+  const row = () => screen.queryByTitle(t('nav.chatroom'));
+
+  it('is a Work row only with chat.use, carrying the unread total', async () => {
+    await bootChat(['chat.use']);
+    await waitFor(() => expect(row()?.textContent).toContain('3'));
+    cleanup();
+
+    await bootChat(['leads.view']);
+    expect(row()).toBeNull();
+  });
+
+  it('opens on Alt+C, on its first page, Rooms', async () => {
+    await bootChat(['chat.use']);
+    await waitFor(() => expect(row()).not.toBeNull());
+
+    await waitFor(() => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'c', code: 'KeyC', altKey: true, bubbles: true, cancelable: true }),
+      );
+      expect(topbarTitle()).toBe(t('chat.sub.rooms'));
+    });
+    expect(await screen.findByText('Dispatch desk')).toBeTruthy();
+  });
+
+  it('does not open on Alt+C without chat.use', async () => {
+    await pressAltDigitUntil(1, t('nav.basicHome')).catch(() => undefined);
+    await boot(['leads.view']);
+    await pressAltDigitUntil(3, t('lead.board.tab.list'));
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'c', code: 'KeyC', altKey: true, bubbles: true, cancelable: true }),
+      );
+      await wait(0);
+    });
+    expect(topbarTitle()).toBe(t('lead.board.tab.list'));
+  });
+
+  it('offers Groups as a page only with chat.createGroups or chat.manage', async () => {
+    await bootChat(['chat.use']);
+    await waitFor(() => expect(row()).not.toBeNull());
+    await open(t('nav.chatroom'));
+    expect(await screen.findByTitle(t('chat.sub.tasks'))).toBeTruthy();
+    expect(screen.queryByTitle(t('chat.sub.groups'))).toBeNull();
+    cleanup();
+
+    await bootChat(['chat.use', 'chat.createGroups']);
+    await waitFor(() => expect(row()).not.toBeNull());
+    await open(t('nav.chatroom'));
+    expect(await screen.findByTitle(t('chat.sub.groups'))).toBeTruthy();
+  });
+
+  it('reads the rooms again when the Master pushes a chat event', async () => {
+    const calls = await bootChat(['chat.use']);
+    await waitFor(() => expect(gets(calls, '/api/chat/rooms')).toBeGreaterThan(0));
+    const before = gets(calls, '/api/chat/rooms');
+
+    await waitFor(() => expect(live()).toBeDefined());
+    await act(async () => {
+      live()!.emit('chat:event', { kind: 'room', roomId: 'room-1', forUserId: 'user-1' });
+      await wait(700);
+    });
+
+    expect(gets(calls, '/api/chat/rooms')).toBeGreaterThan(before);
+  });
+
+  it('opens the room a bell entry points at', async () => {
+    const calls = await bootChat(['chat.use'], (call) =>
+      call.url.split('?')[0] === '/api/notifications'
+        ? json({
+            items: [
+              {
+                id: 'n-9', kind: 'chat.mention', params: { name: 'Bina', room: 'Dispatch desk' },
+                link: { kind: 'chat', id: 'room-1' }, createdAt: '2026-10-03T09:00:00.000Z', readAt: null,
+              },
+            ],
+            unreadCount: 1,
+          })
+        : call.url === '/api/notifications/read'
+          ? json({ unreadCount: 0 })
+          : undefined,
+    );
+
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: t('notification.unreadLabel', { count: 1 }) }));
+      await wait(0);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText(t('notification.chat.mention', { name: 'Bina', room: 'Dispatch desk' })));
+      await wait(0);
+    });
+
+    await waitFor(() => expect(calls.some((call) => call.url === '/api/chat/rooms/room-1')).toBe(true));
+    expect(await screen.findByRole('button', { name: t('chat.room.back') })).toBeTruthy();
+  });
+
+  describe('Share in chat', () => {
+    async function openOrderAs(permissions: string[]) {
+      const calls = await openList(permissions, t('nav.orders'), (call) => {
+        const path = call.url.split('?')[0];
+        if (path === '/api/chat/rooms') return json([ROOM]);
+        return undefined;
+      });
+      fireEvent.click(await screen.findByText(ORDER.id));
+      await screen.findByRole('button', { name: t('action.backToList') });
+      return calls;
+    }
+
+    it('is on a final order only with chat.use and chat.shareRecords, and opens the share sheet', async () => {
+      await openOrderAs(['orders.view', 'chat.use']);
+      expect(screen.queryByRole('button', { name: t('chat.share.button') })).toBeNull();
+      cleanup();
+
+      await openOrderAs(['orders.view', 'chat.use', 'chat.shareRecords']);
+      fireEvent.click(screen.getByRole('button', { name: t('chat.share.button') }));
+
+      expect((await screen.findAllByRole('heading', { name: t('chat.share.title') })).length).toBeGreaterThan(0);
+      expect(await screen.findByText('Dispatch desk')).toBeTruthy();
+      expect(screen.getAllByText(new RegExp(ORDER.id)).length).toBeGreaterThan(0);
+    });
+  });
+});
+
+describe('the Printroom (1.3 Phase 7)', () => {
+  const live = () => sockets.all.filter((socket) => !socket.closed).at(-1);
+  const JOB = {
+    id: 'job-1', kind: 'filling', source: 'lead', sourceId: 'LD0000000001', sourceNumber: 'PO/2026-27/00001',
+    partyName: 'Shree Ceramics', copies: 2, note: null, targetStation: null, status: 'queued',
+    sender: { id: 'user-2', displayName: 'Bina', avatar: null, tier: 'office' }, requestedFrom: 'lan',
+    requestedAt: '2026-10-03T09:00:00.000Z', claimedAt: null, claimedStationName: null, printedBy: null,
+    printedAt: null, printerName: null, printedStationName: null, cancelledBy: null, cancelledAt: null,
+    hasDocument: true,
+  };
+  const row = () => screen.queryByTitle(t('nav.printroom'));
+
+  /** Boots as somebody with `permissions`, answering the Printroom routes with one waiting job. */
+  function bootPrint(permissions: string[], extra?: (call: Call) => Response | undefined): Promise<Call[]> {
+    return boot(permissions, (call) => {
+      const path = call.url.split('?')[0];
+      const answered = extra?.(call);
+      if (answered) return answered;
+      if (path === '/api/print-jobs') return json({ jobs: [JOB], nextCursor: null, waitingCount: 3 });
+      if (path === '/api/print-stations') return json([]);
+      return undefined;
+    });
+  }
+
+  it('is a Work row only with print.send or print.station, carrying the waiting count', async () => {
+    await bootPrint(['print.send']);
+    await waitFor(() => expect(row()?.textContent).toContain('3'));
+    cleanup();
+
+    await bootPrint(['print.station']);
+    await waitFor(() => expect(row()?.textContent).toContain('3'));
+    cleanup();
+
+    const calls = await bootPrint(['leads.view']);
+    expect(row()).toBeNull();
+    // Without either right the shell does not even ask.
+    expect(gets(calls, '/api/print-jobs')).toBe(0);
+  });
+
+  it('opens on Alt+P, on its first page, Waiting', async () => {
+    await bootPrint(['print.station']);
+    await waitFor(() => expect(row()).not.toBeNull());
+
+    await waitFor(() => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'p', code: 'KeyP', altKey: true, bubbles: true, cancelable: true }),
+      );
+      expect(topbarTitle()).toBe(t('printroom.filter.waiting'));
+    });
+    expect(await screen.findByText('Shree Ceramics')).toBeTruthy();
+  });
+
+  it('does not open on Alt+P without either right', async () => {
+    await boot(['leads.view']);
+    await pressAltDigitUntil(3, t('lead.board.tab.list'));
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'p', code: 'KeyP', altKey: true, bubbles: true, cancelable: true }),
+      );
+      await wait(0);
+    });
+    expect(topbarTitle()).toBe(t('lead.board.tab.list'));
+  });
+
+  it('offers Waiting, Printed and Sent by me as pages', async () => {
+    await bootPrint(['print.send']);
+    await waitFor(() => expect(row()).not.toBeNull());
+    await open(t('nav.printroom'));
+    expect(await screen.findByTitle(t('printroom.filter.printed'))).toBeTruthy();
+    expect(screen.getByTitle(t('printroom.filter.mine'))).toBeTruthy();
+  });
+
+  it('counts the waiting jobs again when the Master pushes print:changed', async () => {
+    const calls = await bootPrint(['print.station']);
+    await waitFor(() => expect(gets(calls, '/api/print-jobs')).toBeGreaterThan(0));
+    const before = gets(calls, '/api/print-jobs');
+
+    await waitFor(() => expect(live()).toBeDefined());
+    await act(async () => {
+      live()!.emit('print:changed', { ...JOB, forUserId: 'user-1' });
+      await wait(700);
+    });
+
+    expect(gets(calls, '/api/print-jobs')).toBeGreaterThan(before);
+  });
+
+  it('draws the Dashboard\'s waiting-jobs figure only for somebody with a Printroom right', async () => {
+    await bootPrint(['orders.view', 'print.station']);
+    await summaryArrives({ openOrderCount: 1 });
+    expect(await screen.findByText(t('dashboard.stat.printPending'))).toBeTruthy();
+    cleanup();
+
+    await boot(['orders.view']);
+    await summaryArrives({ openOrderCount: 1 });
+    await screen.findByText(t('dashboard.orders.title'));
+    expect(screen.queryByText(t('dashboard.stat.printPending'))).toBeNull();
+  });
+
+  it('opens the job a bell entry points at', async () => {
+    const calls = await bootPrint(['print.station'], (call) => {
+      const path = call.url.split('?')[0];
+      if (path === '/api/notifications') {
+        return json({
+          items: [
+            {
+              id: 'n-7', kind: 'print.printed', params: { name: 'Desk', party: 'Shree Ceramics' },
+              link: { kind: 'print', id: 'job-1' }, createdAt: '2026-10-03T09:00:00.000Z', readAt: null,
+            },
+          ],
+          unreadCount: 1,
+        });
+      }
+      if (call.url === '/api/notifications/read') return json({ unreadCount: 0 });
+      if (path === '/api/print-jobs/job-1') return json({ ...JOB, document: null, hasDocument: false });
+      return undefined;
+    });
+
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: t('notification.unreadLabel', { count: 1 }) }));
+      await wait(0);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText(t('notification.print.printed', { name: 'Desk', party: 'Shree Ceramics' })));
+      await wait(0);
+    });
+
+    await waitFor(() => expect(calls.some((call) => call.url === '/api/print-jobs/job-1')).toBe(true));
+    expect(await screen.findByRole('button', { name: t('action.backToList') })).toBeTruthy();
+  });
+
+  describe('Send to Printroom from a pending order\'s note', () => {
+    async function openNote(permissions: string[]) {
+      const calls = await openList(permissions, t('nav.leads'), (call) => {
+        const path = call.url.split('?')[0];
+        if (path === '/api/print-jobs' && call.method === 'POST') return json({ id: 'sent' }, 201);
+        if (path === '/api/print-jobs') return json({ jobs: [], nextCursor: null, waitingCount: 0 });
+        if (path === '/api/print-stations') return json([]);
+        return undefined;
+      });
+      fireEvent.click(await screen.findByText(LEAD.id));
+      fireEvent.click(await screen.findByRole('button', { name: t('orderNote.filling') }));
+      await screen.findByLabelText(t('orderNote.copies'));
+      return calls;
+    }
+
+    it('is offered only with print.send', async () => {
+      await openNote(['leads.view', 'leads.export', 'parties.view']);
+      expect(screen.queryByRole('button', { name: t('orderNote.sendToPrintroom') })).toBeNull();
+      cleanup();
+
+      await openNote(['leads.view', 'leads.export', 'parties.view', 'print.send']);
+      expect(screen.getByRole('button', { name: t('orderNote.sendToPrintroom') })).toBeTruthy();
+    });
+
+    it('posts the pending order to /api/print-jobs with its copies and a request id', async () => {
+      const calls = await openNote(['leads.view', 'leads.export', 'parties.view', 'print.send']);
+      fireEvent.change(screen.getByLabelText(t('orderNote.copies')), { target: { value: '3' } });
+      fireEvent.click(screen.getByRole('button', { name: t('orderNote.sendToPrintroom') }));
+
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: t('printroom.dialog.send') }));
+
+      await waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url === '/api/print-jobs')).toBe(true));
+      const post = calls.find((call) => call.method === 'POST' && call.url === '/api/print-jobs')!;
+      expect(post.body).toMatchObject({ kind: 'filling', source: 'lead', sourceId: LEAD.id, copies: 3 });
+      expect((post.body as { requestId: string }).requestId).toMatch(/^[0-9a-f]{32}$/);
+    });
   });
 });

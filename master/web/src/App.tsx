@@ -15,6 +15,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import type {
+  ChatRecordChip,
+  ChatRecordRef,
   DashboardSummary,
   MessageKey,
   OfficePanelWithPresence,
@@ -26,8 +28,10 @@ import type {
 } from '@orderbook/shared';
 import {
   isLongOffline,
+  recordNumber,
   offeredReportKinds,
   RECYCLE_BIN_ENTITIES,
+  REPORT_ENTITIES,
   REPORT_META,
   reportsOffered,
   RESTORE_PERMISSION,
@@ -36,6 +40,8 @@ import {
 } from '@orderbook/shared';
 
 import { ApiError, api, desktopBridge } from './api';
+import { dispatchChat, masterChatTransport } from './chatTransport';
+import { attachPrintSocket, dispatchPrint, masterPrintroomTransport } from './printroomTransport';
 import { presenceChannel } from './presence';
 import { reportsTransport } from './transports';
 import {
@@ -45,6 +51,9 @@ import {
   ServerMasterBadge,
   BasicHome,
   BP_NARROW,
+  ChatroomScreen,
+  PrintroomScreen,
+  PrintStationRunner,
   Clock,
   FilterBarOutlet,
   FilterBarProvider,
@@ -77,6 +86,8 @@ import {
   rem,
   storeSidebarMode,
   t,
+  useChatUnread,
+  usePrintWaiting,
   useClearSubNav,
   useMediaQuery,
   useToast,
@@ -85,6 +96,9 @@ import {
   useSubNavState,
   splitSubPage,
   withSubPages,
+  type ChatPage,
+  type PrintPage,
+  type ChatRecordOption,
   type NavGroup,
   type NavItem,
   type NotificationTransport,
@@ -144,6 +158,8 @@ type Tab =
   | 'logs'
   | 'recycleBin'
   | 'conflicts'
+  | 'chatroom'
+  | 'printroom'
   | 'settings'
   | 'updates';
 type Route = '' | 'gallery';
@@ -175,7 +191,7 @@ type RecycleBinType = RecycleBinEntityType | '';
  */
 /** Screens whose open record publishes a sidebar label; signing out must not leave them for the next user. */
 const SUB_NAV_SCREENS = [
-  'leads', 'orders', 'parties', 'panels', 'logs', 'access', 'products', 'addLead',
+  'leads', 'orders', 'parties', 'panels', 'logs', 'access', 'products', 'addLead', 'chatroom', 'printroom',
 ] as const;
 
 const SCREEN_ENTITIES: Record<string, readonly string[]> = {
@@ -192,7 +208,7 @@ const SCREEN_ENTITIES: Record<string, readonly string[]> = {
    */
   catalogue: ['product', 'catalog', 'product_category'],
   catalogueLists: ['option_list'],
-  reports: ['lead', 'order', 'party', 'party_bulk', 'stock'],
+  reports: REPORT_ENTITIES,
   fields: ['option_list', 'custom_field', 'pipeline'],
   access: ['user', 'role'],
   partyAccess: ['party', 'party_bulk'],
@@ -302,6 +318,14 @@ function MasterPanel() {
    * hooks above the early returns, like every hook in this component.
    */
   const [openIds, setOpenIds] = useState<OpenIds>(NO_OPEN_IDS);
+  /** The chat room open as a sub-screen (a notification or a search hit can open one), and the record being shared. */
+  const [chatOpen, setChatOpen] = useState<{ id: string; seq?: number } | null>(null);
+  const [chatShare, setChatShare] = useState<ChatRecordChip | null>(null);
+  /** Bumped when the sidebar picks a Chatroom page, so a settings sub-screen left open closes. */
+  const [chatResetNonce, setChatResetNonce] = useState(0);
+  /** The Printroom job open as a sub-screen (the bell can open one), and the nonce the sidebar bumps to close it. */
+  const [printOpen, setPrintOpen] = useState<string | null>(null);
+  const [printResetNonce, setPrintResetNonce] = useState(0);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [settingsTab, setSettingsTab] = useSettingsTab(
     'ob.settings.tab.master',
@@ -521,6 +545,11 @@ function MasterPanel() {
     // synthetic key rather than riding on some other entity's counter.
     socket.on('sync:conflict', () => bump('sync_conflict'));
 
+    // Chat is addressed to this person's rooms; the Chatroom and the unread badge follow it.
+    socket.on('chat:event', (push) => dispatchChat(push));
+    // A Printroom job moved (live only). The claim of a station on this PC rides this same socket.
+    attachPrintSocket(socket as unknown as Socket);
+    socket.on('print:changed', (job) => dispatchPrint({ kind: 'changed', job }));
     // Who else is on the record open here; never stored, never a revision.
     socket.on('presence:changed', (presence) => presenceChannel.push(presence));
 
@@ -554,6 +583,9 @@ function MasterPanel() {
       if (!down) return;
       down = false;
       bump('*');
+      // Chat has no replay: whatever was said while this window was away is read again.
+      dispatchChat({ kind: 'resync' });
+      dispatchPrint({ kind: 'resync' });
       refreshUser();
       void api
         .panels()
@@ -579,6 +611,7 @@ function MasterPanel() {
 
     return () => {
       if (retry) clearTimeout(retry);
+      attachPrintSocket(null);
       socket.close();
     };
   }, [phase, sessionToken, refreshUser]);
@@ -614,6 +647,24 @@ function MasterPanel() {
    * missing, and no screen writes its own `?? true` to drift from `settings.ts`.
    */
   const companyFeatures = resolveCompanyFeatures(user?.features);
+
+  /*
+   * The Chatroom exists for somebody holding `chat.use` and for nobody else.
+   * Its unread figure sits above the early returns like every hook here, and
+   * asks for nothing while this window is not signed in.
+   */
+  const canChat = phase === 'ready' && (user?.permissions.includes('chat.use') ?? false);
+  const chatUnread = useChatUnread(masterChatTransport, canChat);
+
+  /*
+   * The Printroom exists for somebody holding either of its two rights and for
+   * nobody else. Its waiting count sits above the early returns like every hook
+   * here, and asks for nothing while this window is not signed in.
+   */
+  const canSendPrint = phase === 'ready' && (user?.permissions.includes('print.send') ?? false);
+  const canRunStation = phase === 'ready' && (user?.permissions.includes('print.station') ?? false);
+  const canPrintroom = canSendPrint || canRunStation;
+  const printWaiting = usePrintWaiting(masterPrintroomTransport, canPrintroom);
 
   const refreshPanels = useCallback(() => {
     void api.panels().then((result) => setPanels(result.panels));
@@ -853,6 +904,18 @@ function MasterPanel() {
       label: t(REPORT_META[kind].titleToken),
       icon: REPORT_META[kind].icon,
     })),
+    printroom: [
+      { key: 'waiting', label: t('printroom.filter.waiting'), icon: 'print' },
+      { key: 'printed', label: t('printroom.filter.printed'), icon: 'task' },
+      { key: 'sentByMe', label: t('printroom.filter.mine'), icon: 'upload' },
+    ],
+    chatroom: [
+      { key: 'rooms', label: t('chat.sub.rooms'), icon: 'chat' },
+      { key: 'tasks', label: t('chat.sub.tasks'), icon: 'task' },
+      ...(user.permissions.includes('chat.createGroups') || user.permissions.includes('chat.manage')
+        ? [{ key: 'groups', label: t('chat.sub.groups'), icon: 'parties' as const }]
+        : []),
+    ],
     access: [
       ...(user.permissions.includes('users.manage')
         ? [{ key: 'users', label: t('access.tab.users'), icon: 'parties' as const }]
@@ -928,6 +991,17 @@ function MasterPanel() {
     else if (module === 'leads') {
       setSubKeys((current) => ({ ...current, leads: key }));
       setTab('leads');
+    } else if (module === 'printroom') {
+      // A page picked in the sidebar leaves any open job.
+      setPrintOpen(null);
+      setPrintResetNonce((current) => current + 1);
+      setSubKeys((current) => ({ ...current, printroom: key }));
+    } else if (module === 'chatroom') {
+      // A page picked in the sidebar leaves any open room or share sheet.
+      setChatOpen(null);
+      setChatShare(null);
+      setChatResetNonce((current) => current + 1);
+      setSubKeys((current) => ({ ...current, chatroom: key }));
     } else setSubKeys((current) => ({ ...current, [module]: key }));
   }
 
@@ -964,6 +1038,22 @@ function MasterPanel() {
               label: t('nav.master.conflicts'),
               icon: 'conflicts',
               count: openConflicts > 0 ? openConflicts : undefined,
+            }
+          : null,
+        canChat
+          ? {
+              id: 'chatroom',
+              label: t('nav.chatroom'),
+              icon: 'chat',
+              count: chatUnread.total > 0 ? chatUnread.total : undefined,
+            }
+          : null,
+        canPrintroom
+          ? {
+              id: 'printroom',
+              label: t('nav.printroom'),
+              icon: 'print',
+              count: printWaiting > 0 ? printWaiting : undefined,
             }
           : null,
         // Under Work rather than Admin: a report is something a manager
@@ -1092,6 +1182,51 @@ function MasterPanel() {
     setOpenIds((current) => ({ ...current, [target]: id }));
   }
 
+  /** Opens a chat room (from the bell, or from the Chatroom itself). */
+  function openChatRoom(room: { id: string; seq?: number } | null): void {
+    setChatShare(null);
+    setChatOpen(room);
+    if (room) navigate('chatroom');
+  }
+
+  /** Opens a Printroom job (from the bell). */
+  function openPrintJob(id: string): void {
+    setPrintOpen(id);
+    navigate('printroom');
+  }
+
+  /** "Share in chat" on a record: the Chatroom's share sheet, with that record ready. */
+  const shareInChat =
+    canChat && user.permissions.includes('chat.shareRecords')
+      ? (chip: ChatRecordChip): void => {
+          setChatOpen(null);
+          setChatShare(chip);
+          navigate('chatroom');
+        }
+      : undefined;
+
+  /** The composer's record picker: pending and final orders by number or party, newest first. */
+  async function findChatRecords(term: string): Promise<ChatRecordOption[]> {
+    const [leads, orders] = await Promise.all([
+      api.leads({ search: term || undefined, limit: 8, includeConverted: true }),
+      api.orders({ search: term || undefined, limit: 8 }),
+    ]);
+    return [
+      ...leads.items.map((lead) => ({
+        kind: 'lead' as const,
+        id: lead.id,
+        label: recordNumber(lead),
+        partyName: lead.partyName,
+      })),
+      ...orders.items.map((order) => ({
+        kind: 'order' as const,
+        id: order.id,
+        label: recordNumber(order),
+        partyName: order.partyName,
+      })),
+    ];
+  }
+
   const topbar = (
     <>
       <TopbarTitle groups={groups} activeId={activeId} fallback={activeLabel} />
@@ -1116,7 +1251,10 @@ function MasterPanel() {
         revision={(revisions['*'] ?? 0) + noticeRevision}
         onOpen={(link) => {
           if (link.kind === 'panel') navigate('panels');
-          if (link.kind === 'lead') openRecord('leads', link.id);
+          else if (link.kind === 'chat') openChatRoom({ id: link.id });
+          else if (link.kind === 'print') openPrintJob(link.id);
+          else if (link.kind === 'role') navigate('access');
+          else if (link.kind === 'lead') openRecord('leads', link.id);
         }}
       />
       {/* Beside Sign out, because the two are the same kind of thing — what you
@@ -1267,6 +1405,8 @@ function MasterPanel() {
           revision={revisionOf(revisions, 'records')}
           onNavigate={navigate}
           onOpenLead={(id) => openRecord('leads', id)}
+          printPending={canPrintroom ? printWaiting : undefined}
+          chatUnread={canChat ? chatUnread.total : undefined}
         />
       ),
     },
@@ -1301,6 +1441,8 @@ function MasterPanel() {
           openId={openIds.leads}
           onOpenId={(id) => setOpenIds((current) => ({ ...current, leads: id }))}
           onOpenOrder={(orderId) => openRecord('orders', orderId)}
+          onShareInChat={shareInChat}
+          printroom={canSendPrint ? masterPrintroomTransport : undefined}
           userId={user.id}
         />
       ),
@@ -1342,10 +1484,57 @@ function MasterPanel() {
           openId={openIds.orders}
           onOpenId={(id) => setOpenIds((current) => ({ ...current, orders: id }))}
           onOpenLead={(leadId) => openRecord('leads', leadId)}
+          onShareInChat={shareInChat}
+          printroom={canSendPrint ? masterPrintroomTransport : undefined}
           userId={user.id}
         />
       ),
     },
+    ...(canPrintroom
+      ? [
+          {
+            id: 'printroom',
+            render: () => (
+              <PrintroomScreen
+                transport={masterPrintroomTransport}
+                permissions={{ send: canSendPrint, station: canRunStation }}
+                viewerId={user.id}
+                desktop={desktopBridge() ?? undefined}
+                page={subKeyOf('printroom') as PrintPage}
+                openJobId={printOpen}
+                onOpenJob={setPrintOpen}
+                resetNonce={printResetNonce}
+              />
+            ),
+          } satisfies ScreenSpec,
+        ]
+      : []),
+    ...(canChat
+      ? [
+          {
+            id: 'chatroom',
+            render: () => (
+              <ChatroomScreen
+                transport={masterChatTransport}
+                page={subKeyOf('chatroom') as ChatPage}
+                viewer={{ id: user.id, permissions: user.permissions, tier: user.roleTier }}
+                openRoom={chatOpen}
+                onOpenRoom={setChatOpen}
+                share={chatShare}
+                onShareDone={(roomId) => {
+                  setChatShare(null);
+                  if (roomId) setChatOpen({ id: roomId });
+                }}
+                resetNonce={chatResetNonce}
+                onOpenRecord={(record: ChatRecordRef) =>
+                  openRecord(record.kind === 'lead' ? 'leads' : 'orders', record.id)
+                }
+                findRecords={findChatRecords}
+              />
+            ),
+          } satisfies ScreenSpec,
+        ]
+      : []),
     {
       id: 'products',
       render: () => (
@@ -1486,6 +1675,13 @@ function MasterPanel() {
         }}
       />
       {syncOverlay}
+      {/* The auto-print station: invisible, and at the top so it keeps working whichever screen is showing. */}
+      <PrintStationRunner
+        transport={masterPrintroomTransport}
+        enabled={canRunStation}
+        desktop={desktopBridge() ?? undefined}
+        onNotify={(message) => toast.push(message, { tone: 'error' })}
+      />
       <ChangePasswordDialog
         open={changingPassword}
         onClose={() => setChangingPassword(false)}

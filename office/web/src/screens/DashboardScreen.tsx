@@ -47,6 +47,10 @@ interface Props {
   syncLabel: string;
   onNavigate: (tab: DashboardTab) => void;
   onOpenLead: (id: string) => void;
+  /** Print jobs waiting, from the Printroom; no tile when absent (neither Printroom right). */
+  printPending?: number;
+  /** Unread chat messages, from the Chatroom; no tile when absent (no `chat.use`). */
+  chatUnread?: number;
 }
 
 /** Local calendar date as `YYYY-MM-DD`, matching `Lead.followUpDate`'s format. */
@@ -182,6 +186,8 @@ export function DashboardScreen({
   syncLabel,
   onNavigate,
   onOpenLead,
+  printPending,
+  chatUnread,
 }: Props) {
   const canViewLeads = view.permissions.includes('leads.view');
   const canViewOrders = view.permissions.includes('orders.view');
@@ -332,6 +338,14 @@ export function DashboardScreen({
                   })
             }
           />
+        )}
+
+        {printPending !== undefined && (
+          <StatTile label={t('dashboard.stat.printPending')} value={printPending.toLocaleString('en-IN')} />
+        )}
+
+        {chatUnread !== undefined && (
+          <StatTile label={t('dashboard.stat.chatUnread')} value={chatUnread.toLocaleString('en-IN')} />
         )}
 
         <StatTile

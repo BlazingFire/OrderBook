@@ -34,6 +34,7 @@ export const MUTATION_KINDS = [
   'stock.inbound',
   'stock.adjust',
   'stock.setReorderLevel',
+  'chat.post',
 ] as const;
 
 export type MutationKind = (typeof MUTATION_KINDS)[number];
@@ -64,6 +65,7 @@ export const MUTATION_PERMISSIONS: Record<MutationKind, string> = {
   'stock.inbound': 'inventory.edit',
   'stock.adjust': 'stock.adjust',
   'stock.setReorderLevel': 'inventory.edit',
+  'chat.post': 'chat.use',
 };
 
 export interface Mutation {

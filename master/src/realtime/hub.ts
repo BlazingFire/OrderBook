@@ -13,7 +13,12 @@ import { Server, type ExtendedError, type Socket } from 'socket.io';
 import {
   ROOM_MASTER_ADMINS,
   PARTY_BULK_MIN_PROTOCOL,
+  CHAT_MIN_PROTOCOL,
+  MASTER_STATION_KEY,
+  PRINTROOM_MIN_PROTOCOL,
+  panelStationKey,
   ROOM_OFFICE_PANELS,
+  type ChatPush,
   type ClientToServerEvents,
   type CommandAck,
   type CommandResult,
@@ -27,6 +32,9 @@ import {
   type SocketData,
   type SyncConflict,
   isServerMasterTier,
+  parseReportQuery,
+  type ReportExportOptions,
+  type ReportQuery,
   t,
 } from '@orderbook/shared';
 
@@ -49,7 +57,7 @@ import {
   ValidationError,
 } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
-import { masterPcAddress } from '../lib/network.js';
+import { isOnMasterPc, masterPcAddress } from '../lib/network.js';
 import { setPanelLink, type PanelRequest } from './panel-link.js';
 import { isAllowedSocketOrigin } from './socket-origin.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
@@ -57,7 +65,8 @@ import * as authService from '../services/auth.service.js';
 import { isMaintenance, maintenanceError } from '../services/backup-job.js';
 import { resolveSession } from '../services/auth.service.js';
 import * as catalogService from '../services/catalog.service.js';
-import { onChange, onConflict, onNotification } from '../services/change-bus.js';
+import { onChange, onChat, onConflict, onNotification, onPrintJob } from '../services/change-bus.js';
+import * as chatService from '../services/chat.service.js';
 import * as conflictService from '../services/conflict.service.js';
 import * as dashboardService from '../services/dashboard.service.js';
 import * as fieldsService from '../services/fields.service.js';
@@ -78,6 +87,8 @@ import * as imageService from '../services/image.service.js';
 import * as panelService from '../services/panel.service.js';
 import * as partyAccessService from '../services/party-access.service.js';
 import * as presenceService from '../services/presence.service.js';
+import * as printService from '../services/print.service.js';
+import type { PrintOrigin } from '../services/print.service.js';
 import type { PresenceChange } from './presence-store.js';
 import * as recycleBinService from '../services/recycle-bin.service.js';
 import * as searchService from '../services/search.service.js';
@@ -344,6 +355,24 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
     );
   });
 
+  // Chat: addressed to a room's members who hold `chat.use`. A message's
+  // record chips are worked out again for each recipient, because two members
+  // of one room can differ in what they may open. A panel older than protocol 5
+  // does not know the event and is not sent it.
+  const unsubscribeChat = onChat(({ tenantId, userIds, push }) => {
+    void emitToActors(
+      io,
+      tenantId,
+      'chat:event',
+      push,
+      (actor, socket) =>
+        actorCan(actor, 'chat.use') &&
+        (socket.data.kind !== 'office-panel' || (socket.data.protocol ?? 1) >= CHAT_MIN_PROTOCOL),
+      userIds,
+      (actor, body) => chatService.personalisePush(body as ChatPush, actor),
+    ).catch((error: unknown) => log.warn(`Could not deliver a chat event: ${toErrorMessage(error)}`));
+  });
+
   // Presence goes only to the people on the record, each re-checked as a
   // reader of it. Never through `publishChange`: it is not a change to log or
   // replay.
@@ -352,6 +381,24 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
       log.warn(`Could not deliver presence: ${toErrorMessage(error)}`),
     );
   });
+
+  // Printroom: a job is for its sender and for every holder of `print.station`,
+  // each judged now, because a role can change while a socket stays up. A panel
+  // older than protocol 6 does not know the event and is not sent it.
+  const unsubscribePrint = onPrintJob(({ tenantId, job }) => {
+    void emitToActors(
+      io,
+      tenantId,
+      'print:changed',
+      job,
+      (actor, socket) =>
+        (socket.data.kind !== 'office-panel' || (socket.data.protocol ?? 1) >= PRINTROOM_MIN_PROTOCOL) &&
+        (actorCan(actor, 'print.station') ||
+          (actorCan(actor, 'print.send') && actor.userId !== null && actor.userId === job.sender?.id)),
+    ).catch((error: unknown) => log.warn(`Could not deliver a print job: ${toErrorMessage(error)}`));
+  });
+  // No connection survives a restart, so no claim may.
+  void printService.releaseAllClaimsAtBoot();
 
   // Panels that were away when this Master stopped still get their notice.
   void panelService
@@ -367,6 +414,8 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
       unsubscribeChanges();
       unsubscribeConflicts();
       unsubscribeNotifications();
+      unsubscribeChat();
+      unsubscribePrint();
       unsubscribePresence();
       presenceService.resetPresence();
       adminPresenceSockets.clear();
@@ -462,7 +511,24 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
     const presenceKey = socket.data.tabId ? `admin:${actor.userId}:${socket.data.tabId}` : null;
     if (presenceKey) adminPresenceSockets.set(presenceKey, socket);
 
+    // The Master PC's own window can be a print station. Its claim is held by
+    // this socket, so closing the window puts the job back in the queue. Only a
+    // window on the Master PC has a station; a Master browser elsewhere has none.
+    const masterOrigin: PrintOrigin = {
+      from: 'master',
+      stationKey: isOnMasterPc(socket.handshake.address, socket.handshake.headers) ? MASTER_STATION_KEY : null,
+      holder: socket.id,
+    };
+    socket.on('print:claim', (id, ack) =>
+      respond(ack, async () => {
+        const claimant = await adminActor(socket);
+        if (!claimant) throw new UnauthorizedError();
+        return printService.claimJob(id, claimant, masterOrigin);
+      }),
+    );
+
     socket.on('disconnect', () => {
+      void printService.releaseClaimsOf(socket.id);
       adminSocketCount = Math.max(0, adminSocketCount - 1);
       if (presenceKey && adminPresenceSockets.get(presenceKey) === socket) {
         adminPresenceSockets.delete(presenceKey);
@@ -503,6 +569,11 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
     }
     previous.disconnect(true);
   }
+
+  // Whether or not a newer connection has replaced this one: what it held is free.
+  socket.on('disconnect', () => {
+    void printService.releaseClaimsOf(socket.id);
+  });
 
   socket.on('disconnect', () => {
     if (panelSockets.get(panelId) !== socket) return;
@@ -860,11 +931,27 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   socket.on('report:topParties', (query, ack) =>
     run(ack, (actor) => reportService.topPartiesReport(query, actor)),
   );
+  // A socket payload is whatever the client sent: the range is read the way the
+  // REST query string is (`parseReportQuery`), and the export options are
+  // normalised by the service.
   socket.on('report:export', (payload, ack) =>
-    run(ack, (actor) => reportService.exportReport(payload.report, payload.query, actor)),
+    run(ack, (actor) => {
+      const raw = (payload?.query ?? {}) as Record<string, unknown>;
+      return reportService.exportReport(
+        payload?.report,
+        { ...raw, ...parseReportQuery(raw) } as ReportQuery & ReportExportOptions,
+        actor,
+      );
+    }),
   );
   socket.on('report:table', (payload, ack) =>
-    run(ack, (actor) => reportService.reportTable(payload.report, payload.query, actor)),
+    run(ack, (actor) =>
+      reportService.reportTable(
+        payload?.report,
+        parseReportQuery((payload?.query ?? {}) as Record<string, unknown>),
+        actor,
+      ),
+    ),
   );
   socket.on('report:options', (ack) => run(ack, (actor) => reportService.reportOptions(actor)));
 
@@ -876,12 +963,68 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
     run(ack, (actor) => notificationService.markRead(input, actor)),
   );
 
+  // The Chatroom. There is no `chat:post`: an Office posts through `sync:push`
+  // as a `chat.post` mutation, which gives it the outbox and a safe resend.
+  socket.on('chat:people', (ack) => run(ack, (actor) => chatService.listPeople(actor)));
+  socket.on('chat:rooms', (input, ack) => run(ack, (actor) => chatService.listRooms(input, actor)));
+  socket.on('chat:room', (roomId, ack) => run(ack, (actor) => chatService.getRoom(roomId, actor)));
+  socket.on('chat:messages', (input, ack) =>
+    run(ack, (actor) => chatService.listMessages(input, actor)),
+  );
+  socket.on('chat:search', (input, ack) => run(ack, (actor) => chatService.search(input, actor)));
+  socket.on('chat:tasks', (input, ack) => run(ack, (actor) => chatService.listTasks(input, actor)));
+  socket.on('chat:roomCreate', (input, ack) =>
+    run(ack, (actor) => chatService.createRoom(input, actor)),
+  );
+  socket.on('chat:roomUpdate', (input, ack) =>
+    run(ack, (actor) => chatService.updateRoom(input, actor)),
+  );
+  socket.on('chat:memberSet', (input, ack) =>
+    run(ack, (actor) => chatService.setMember(input, actor)),
+  );
+  socket.on('chat:direct', (input, ack) => run(ack, (actor) => chatService.openDirect(input, actor)));
+  socket.on('chat:edit', (input, ack) => run(ack, (actor) => chatService.editMessage(input, actor)));
+  socket.on('chat:delete', (messageId, ack) =>
+    run(ack, (actor) => chatService.deleteMessage(messageId, actor)),
+  );
+  socket.on('chat:pin', (input, ack) => run(ack, (actor) => chatService.pinMessage(input, actor)));
+  socket.on('chat:taskDone', (input, ack) => run(ack, (actor) => chatService.setTaskDone(input, actor)));
+  socket.on('chat:read', (input, ack) => run(ack, (actor) => chatService.markRead(input, actor)));
+  socket.on('chat:mute', (input, ack) => run(ack, (actor) => chatService.setMuted(input, actor)));
+  socket.on('chat:requestAccess', (input, ack) =>
+    run(ack, (actor) => chatService.requestAccess(input, actor)),
+  );
+
   // Who is acting comes from this socket, and the tab lives under this panel;
   // the beat itself names only the tab and the record.
   socket.on('presence:beat', (beat, ack) =>
     run(ack, (actor) =>
       presenceService.beat(actor, `panel:${socket.data.panelId ?? ''}:`, beat),
     ),
+  );
+
+  // The Printroom. The station a claim or a heartbeat speaks for is this panel's
+  // own connection, never a field of the payload.
+  const printOrigin = (): PrintOrigin => ({
+    from: socket.data.deviceCode ?? 'panel',
+    stationKey: socket.data.panelId ? panelStationKey(socket.data.panelId) : null,
+    holder: socket.id,
+  });
+  socket.on('print:list', (input, ack) => run(ack, (actor) => printService.listJobs(input, actor)));
+  socket.on('print:get', (id, ack) => run(ack, (actor) => printService.getJob(id, actor)));
+  socket.on('print:send', (input, ack) =>
+    run(ack, (actor) => printService.sendJob(input, actor, printOrigin())),
+  );
+  socket.on('print:mark', (input, ack) =>
+    run(ack, (actor) => printService.markJob(input, actor, printOrigin())),
+  );
+  socket.on('print:cancel', (id, ack) => run(ack, (actor) => printService.cancelJob(id, actor)));
+  socket.on('print:claim', (id, ack) =>
+    run(ack, (actor) => printService.claimJob(id, actor, printOrigin())),
+  );
+  socket.on('print:stations', (ack) => run(ack, (actor) => printService.listStations(actor, printOrigin())));
+  socket.on('print:station', (input, ack) =>
+    run(ack, (actor) => printService.saveStation(input, actor, printOrigin())),
   );
 
   // The one live pull; everything else rides on `SyncSnapshot.dashboard` and
@@ -1274,6 +1417,11 @@ async function emitToActors<E extends PerUserEvent>(
   payload: Omit<Parameters<ServerToClientEvents[E]>[0], 'forUserId'>,
   accept: (actor: ActorContext, socket: RecipientSocket) => boolean,
   userIds?: readonly string[],
+  /** Reshape the payload for this recipient (chat re-resolves its record chips). */
+  personalise?: (
+    actor: ActorContext,
+    body: Omit<Parameters<ServerToClientEvents[E]>[0], 'forUserId'>,
+  ) => Promise<Omit<Parameters<ServerToClientEvents[E]>[0], 'forUserId'>>,
 ): Promise<void> {
   const wanted = userIds ? new Set(userIds) : null;
   const personOf = (socket: RecipientSocket): string | undefined =>
@@ -1294,8 +1442,9 @@ async function emitToActors<E extends PerUserEvent>(
         if (!actor?.userId || (wanted && !wanted.has(actor.userId))) return;
         if (!accept(actor, socket)) return;
 
+        const body = personalise ? await personalise(actor, payload) : payload;
         (socket.emit as (name: string, body: unknown) => void)(event, {
-          ...payload,
+          ...body,
           forUserId: actor.userId,
         });
       } catch (error: unknown) {

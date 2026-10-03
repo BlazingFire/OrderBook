@@ -667,7 +667,10 @@
     display: none !important;
   }
 
-  .ob-note-print-portal {
+  /* One note on the paper: only the portal `printOnly` marked for this job is
+     shown, so a hidden kept-alive note screen (or a print from the browser menu)
+     never puts a note on the paper. */
+  .ob-note-print-portal--active {
     display: block;
     zoom: 1;
   }
@@ -713,4 +716,8 @@
 .ob-note-vehicle-input {
   width: 180px;
   font-family: var(--font-mono);
+}
+
+.ob-note-copies-input {
+  width: 72px;
 }

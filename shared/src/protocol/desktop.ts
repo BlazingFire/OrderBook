@@ -140,8 +140,28 @@ export interface DesktopBridge {
    * system's print dialog opens. A name the shell cannot find among the
    * installed printers also opens the dialog rather than failing, so a
    * remembered printer that has been unplugged never blocks a print.
+   *
+   * `copies` is a whole number 1..50 (anything else prints one), collated.
    */
-  printPage?(options: { deviceName?: string }): Promise<{ ok: boolean; error?: string }>;
+  printPage?(options: { deviceName?: string; copies?: number }): Promise<{ ok: boolean; error?: string }>;
+
+  /**
+   * Save the page as a PDF (A4, its print stylesheet). The shell shows its own
+   * Save dialog and writes the file; the page offers only a file name, which
+   * the shell cleans. A closed dialog is `{ ok: false, cancelled: true }`.
+   */
+  savePdf?(options: {
+    fileName: string;
+  }): Promise<{ ok: boolean; path?: string; cancelled?: boolean; error?: string }>;
+
+  /**
+   * Turn this PC's auto-print station mode on or off. While it is on the shell
+   * keeps the window rendering when it is minimised or hidden (no background
+   * throttling), so a printer PC left minimised keeps printing. Anything but
+   * the boolean `true` turns it off. Silent printing itself is unchanged: it
+   * still goes only to a printer Windows lists (`printPage`).
+   */
+  setStationMode?(on: boolean): Promise<boolean>;
 
   /**
    * Show a system notification and flash the taskbar button, for something the
