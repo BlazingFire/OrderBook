@@ -397,6 +397,8 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
     if (boardTimers.has(key)) return;
     const timer = setTimeout(() => {
       boardTimers.delete(key);
+      // One read of the board and one fetch of each party's grants, shared by every reader.
+      const snapshot = presenceService.boardSnapshot(tenantId, kind);
       void emitToActors(
         io,
         tenantId,
@@ -406,7 +408,7 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
           presenceService.mayReadBoard(actor, kind) &&
           (socket.data.kind !== 'office-panel' || (socket.data.protocol ?? 1) >= BOARD_PRESENCE_MIN_PROTOCOL),
         undefined,
-        (actor) => presenceService.boardFor(actor, kind),
+        (actor) => presenceService.boardFor(actor, kind, snapshot),
       ).catch((error: unknown) =>
         log.warn(`Could not deliver a board's presence: ${toErrorMessage(error)}`),
       );

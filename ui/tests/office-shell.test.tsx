@@ -1516,12 +1516,15 @@ describe('Edit lead', () => {
       fireEvent.click(screen.getByTitle(t('nav.leads')));
     });
 
-    // The list row, from the first read.
+    // The list row (the table: the board has none), from the first read.
+    const listed = () => within(screen.getByRole('table'));
     expect(await screen.findByTitle(t('presence.editing', { name: 'Ravi Kumar' }))).toBeTruthy();
+    expect(listed().getByTitle(t('presence.editing', { name: 'Ravi Kumar' }))).toBeTruthy();
 
     // The Master's push replaces it.
     await push('lead', LEAD.id, [face('user-8', 'Meera', false)]);
     expect(await screen.findByTitle(t('presence.viewing', { name: 'Meera' }))).toBeTruthy();
+    expect(listed().getByTitle(t('presence.viewing', { name: 'Meera' }))).toBeTruthy();
     expect(screen.queryByTitle(t('presence.editing', { name: 'Ravi Kumar' }))).toBeNull();
 
     // The card on the board tab carries the same face.
@@ -2021,5 +2024,22 @@ describe('the faces on the Final orders board (R22)', () => {
     expect(await screen.findByTitle(t('presence.viewing', { name: 'Ravi Kumar' }))).toBeTruthy();
     await push('order', ORDER.id, []);
     expect(screen.queryByTitle(t('presence.viewing', { name: 'Ravi Kumar' }))).toBeNull();
+  });
+
+  it('shows three faces and a +N on a crowded row, not four', async () => {
+    const crowd = Array.from({ length: 5 }, (_, at) => face('user-' + (10 + at), 'Viewer ' + at, false));
+    await boot({
+      permissions: ['orders.view'],
+      view: { orders: [ORDER], pipelines: [ORDER_PIPELINE] },
+      route: ({ url }) =>
+        url === '/api/presence/board?kind=order' ? json(board('order', ORDER.id, crowd)) : undefined,
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTitle(t('nav.orders')));
+    });
+    const row = within(await screen.findByRole('table'));
+    expect(await row.findByTitle(t('presence.viewing', { name: 'Viewer 2' }))).toBeTruthy();
+    expect(row.queryByTitle(t('presence.viewing', { name: 'Viewer 3' }))).toBeNull();
+    expect(row.getByLabelText(t('presence.more', { count: 2 }))).toBeTruthy();
   });
 });

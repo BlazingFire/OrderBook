@@ -14,7 +14,7 @@ import bcrypt from 'bcryptjs';
 import type { Express } from 'express';
 import { io as connect, type Socket } from 'socket.io-client';
 import request from 'supertest';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { BoardPresence, CommandResult, Permission, RecordPresence } from '@orderbook/shared';
 
@@ -28,6 +28,8 @@ import * as authService from '../src/services/auth.service.js';
 import * as catalog from '../src/services/catalog.service.js';
 import * as leads from '../src/services/lead.service.js';
 import * as partyAccess from '../src/services/party-access.service.js';
+import * as partyAccessRepo from '../src/repositories/party-access.repository.js';
+import * as presenceService from '../src/services/presence.service.js';
 import * as roleService from '../src/services/role.service.js';
 import * as userService from '../src/services/user.service.js';
 
@@ -127,7 +129,18 @@ async function seedLead() {
     },
     admin,
   );
-  return { party, lead };
+  return { party, lead, product };
+}
+
+/** Another lead on the same party and product. */
+async function anotherLead(party: { id: string }, product: Awaited<ReturnType<typeof catalog.createProduct>>) {
+  return leads.createLead(
+    {
+      partyId: party.id,
+      items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 2, packaging: 'carton' }],
+    },
+    admin,
+  );
 }
 
 async function restrictTo(party: { id: string }, ...userIds: string[]): Promise<void> {
@@ -326,6 +339,81 @@ describe.skipIf(!canRunIntegrationTests)('live presence (integration)', () => {
 
       expect(boards(carlPanel)).toEqual([]);
       expect(boards(belaPanel).every((board) => board.recordKind === 'lead')).toBe(true);
+    });
+
+    it('gathers a burst of joins on different cards into one push per reader (500 ms throttle)', async () => {
+      const { party, lead, product } = await seedLead();
+      const second = await anotherLead(party, product);
+      const third = await anotherLead(party, product);
+      const asha = await person('asha');
+      const bela = await person('bela');
+      const ashaPanel = await panelSocket('BRD10', asha, 7);
+      const belaPanel = await panelSocket('BRD11', bela, 7);
+
+      // Three cards opened 150 ms apart: past each record's own 100 ms debounce, inside the board's window.
+      for (const [index, target] of [lead, second, third].entries()) {
+        await beat(ashaPanel, { tabId: `tab-${index}`, recordKind: 'lead', recordId: target.id });
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+      await until(() => boards(belaPanel).length > 0, 'the board push');
+      await new Promise((resolve) => setTimeout(resolve, 900));
+
+      expect(boards(belaPanel)).toHaveLength(1);
+      expect(Object.keys(boards(belaPanel)[0]!.records).sort()).toEqual([lead.id, second.id, third.id].sort());
+    });
+
+    it('fetches each party’s grants once for a push, however many readers it goes to', async () => {
+      const { party, lead } = await seedLead();
+      const asha = await person('asha');
+      const bela = await person('bela');
+      const ashaActor = await testActor({ actorType: 'user', userId: asha.id, actorId: asha.id });
+      const belaActor = await testActor({ actorType: 'user', userId: bela.id, actorId: bela.id });
+      await presenceService.beat(ashaActor, `admin:${asha.id}:`, { tabId: 'tab-1', recordKind: 'lead', recordId: lead.id });
+      void party;
+      expect(await catalog.getParty(party.id, admin)).toBeDefined();
+
+      const grantsOf = vi.spyOn(partyAccessRepo, 'grantsForParty');
+      try {
+        const shared = presenceService.boardSnapshot(tenantId, 'lead');
+        await presenceService.boardFor(ashaActor, 'lead', shared);
+        await presenceService.boardFor(belaActor, 'lead', shared);
+        expect(grantsOf).toHaveBeenCalledTimes(1);
+
+        grantsOf.mockClear();
+        await presenceService.boardFor(ashaActor, 'lead');
+        await presenceService.boardFor(belaActor, 'lead');
+        expect(grantsOf).toHaveBeenCalledTimes(2);
+      } finally {
+        grantsOf.mockRestore();
+      }
+    });
+
+    it('hands every reader of one push the same snapshot, so the grants are fetched once', async () => {
+      const { lead } = await seedLead();
+      const asha = await person('asha');
+      const bela = await person('bela');
+      const carl = await person('carl');
+      const ashaPanel = await panelSocket('BRD12', asha, 7);
+      const belaPanel = await panelSocket('BRD13', bela, 7);
+      const carlPanel = await panelSocket('BRD14', carl, 7);
+
+      const boardFor = vi.spyOn(presenceService, 'boardFor');
+      try {
+        await beat(ashaPanel, { tabId: 'tab-1', recordKind: 'lead', recordId: lead.id });
+        await until(
+          () => [ashaPanel, belaPanel, carlPanel].every((panel) => boards(panel).length > 0),
+          'the board push to all three',
+        );
+        await settle();
+
+        const snapshots = boardFor.mock.calls.map((call) => call[2]);
+        expect(snapshots.length).toBeGreaterThanOrEqual(3);
+        // Every reader was given a snapshot (not left to take its own), and readers of one push share it.
+        expect(snapshots.every((snapshot) => snapshot !== undefined)).toBe(true);
+        expect(new Set(snapshots).size).toBeLessThan(snapshots.length);
+      } finally {
+        boardFor.mockRestore();
+      }
     });
 
     it('answers the board on request, and never names a card of a party the reader cannot open', async () => {

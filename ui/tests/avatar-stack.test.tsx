@@ -8,7 +8,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { PresenceEntry } from '@orderbook/shared';
 
-import { AvatarStack } from '../src/AvatarStack.js';
+import { AvatarStack, BOARD_SHOWN } from '../src/AvatarStack.js';
 import { t } from '../src/i18n.js';
 
 afterEach(cleanup);
@@ -64,5 +64,20 @@ describe('AvatarStack', () => {
     expect(container.querySelectorAll('.ob-avatarstack-item')).toHaveLength(4);
     const more = screen.getByLabelText(t('presence.more', { count: 2 }));
     expect(more.textContent).toBe('+2');
+  });
+
+  it('shows three small faces and a +N on a board, with the editing ring kept (R22)', () => {
+    const people = Array.from({ length: 6 }, (_, at) =>
+      person('u' + at, 'Person ' + at, { editing: at === 1 }),
+    );
+    const { container } = render(
+      <AvatarStack entries={people} selfUserId="u0" max={BOARD_SHOWN} size="xs" />,
+    );
+
+    expect(BOARD_SHOWN).toBe(3);
+    // Five others: three faces, then +2.
+    expect(container.querySelectorAll('.ob-avatarstack-item')).toHaveLength(3);
+    expect(screen.getByLabelText(t('presence.more', { count: 2 }))).toBeTruthy();
+    expect(container.querySelector('.ob-avatarstack-item[data-editing="true"]')).not.toBeNull();
   });
 });

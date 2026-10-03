@@ -21,7 +21,7 @@ import type {
 import { actorCan, actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { UnauthorizedError, ValidationError } from '../lib/errors.js';
 import { mayReceive } from '../realtime/fan-out.js';
-import { createPresenceStore, type PresenceChange } from '../realtime/presence-store.js';
+import { createPresenceStore, type BoardRecord, type PresenceChange } from '../realtime/presence-store.js';
 import * as partyAccessRepo from '../repositories/party-access.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
 import * as leadService from './lead.service.js';
@@ -126,29 +126,53 @@ export function mayReadBoard(actor: ActorContext, kind: PresenceRecordKind): boo
 }
 
 /**
+ * One read of a board, shared by every reader of one push: the rows are taken once and
+ * each party's grants are fetched once (not once per reader), which matters on a 4 GB
+ * PC with a dozen Offices open. A caller with one reader passes none and gets its own.
+ */
+export interface BoardSnapshot {
+  tenantId: string;
+  kind: PresenceRecordKind;
+  rows: BoardRecord[];
+  /** Each party's grants, fetched on first use and shared by every reader of this snapshot. */
+  grants: Map<string, Promise<PartyGrants>>;
+}
+
+type PartyGrants = Awaited<ReturnType<typeof partyAccessRepo.grantsForParty>>;
+
+export function boardSnapshot(tenantId: string, kind: PresenceRecordKind): BoardSnapshot {
+  return { tenantId, kind, rows: store.board(tenantId, kind), grants: new Map() };
+}
+
+/**
  * Who is on each card of one board, for the avatars on its cards and rows (R22).
  * Only records this person may read are included, by the same gate a change to
  * the record would pass (`mayReceive`: the module permission and Party Access), so
  * a card on a party they cannot open never tells them who is looking at it.
  */
-export async function boardFor(actor: ActorContext, kind: PresenceRecordKind): Promise<BoardPresence> {
+export async function boardFor(
+  actor: ActorContext,
+  kind: PresenceRecordKind,
+  snapshot: BoardSnapshot = boardSnapshot(actor.tenantId, kind),
+): Promise<BoardPresence> {
   requirePermission(actor, kind === 'lead' ? 'leads.view' : 'orders.view');
 
-  const rows = store.board(actor.tenantId, kind);
-  const grants = new Map<string, Awaited<ReturnType<typeof partyAccessRepo.grantsForParty>>>();
   const records: BoardPresence['records'] = {};
 
-  for (const row of rows) {
-    if (!grants.has(row.partyId)) {
-      grants.set(row.partyId, await partyAccessRepo.grantsForParty(actor.tenantId, row.partyId));
+  for (const row of snapshot.rows) {
+    let pending = snapshot.grants.get(row.partyId);
+    if (!pending) {
+      pending = partyAccessRepo.grantsForParty(actor.tenantId, row.partyId);
+      snapshot.grants.set(row.partyId, pending);
     }
+    const grants = await pending;
     const probe: DataChangedEvent = {
       entity: kind,
       action: 'updated',
       id: row.recordId,
       payload: { tenantId: actor.tenantId, partyId: row.partyId },
     };
-    if (mayReceive(actor, probe, grants.get(row.partyId) ?? [])) records[row.recordId] = row.entries;
+    if (mayReceive(actor, probe, grants)) records[row.recordId] = row.entries;
   }
 
   return { recordKind: kind, records };
