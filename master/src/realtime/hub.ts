@@ -12,7 +12,9 @@ import type { Server as HttpServer } from 'node:http';
 import { Server, type ExtendedError, type Socket } from 'socket.io';
 import {
   ROOM_MASTER_ADMINS,
+  BOARD_PRESENCE_MIN_PROTOCOL,
   PARTY_BULK_MIN_PROTOCOL,
+  PRESENCE_BEAT_MS,
   CHAT_MIN_PROTOCOL,
   MASTER_STATION_KEY,
   PRINTROOM_MIN_PROTOCOL,
@@ -157,6 +159,9 @@ export function disconnectEverySocket(): void {
 
 /** How long the Master waits for a panel to answer an administrative request. */
 const PANEL_REQUEST_TIMEOUT_MS = 20_000;
+
+/** How long a burst of joins and leaves on one board is gathered into one push (R22). */
+const BOARD_PRESENCE_THROTTLE_MS = 500;
 
 export interface RealtimeHub {
   io: Server<ClientToServerEvents, ServerToClientEvents, never, SocketData>;
@@ -388,6 +393,39 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
     );
   });
 
+  // The avatars on a board's cards (R22). Many joins and leaves in a second make one
+  // push per board: the whole board, personalised to each reader's Party Access, sent
+  // to everyone who may see that board. An Office older than protocol 7 does not know
+  // the event and is not sent it. A tab that stopped beating is swept on a timer, so a
+  // crashed browser's face leaves the board without waiting for somebody else's beat.
+  const boardTimers = new Map<string, NodeJS.Timeout>();
+  const unsubscribeBoards = presenceService.onBoardChange((tenantId, kind) => {
+    const key = `${tenantId}:${kind}`;
+    if (boardTimers.has(key)) return;
+    const timer = setTimeout(() => {
+      boardTimers.delete(key);
+      // One read of the board and one fetch of each party's grants, shared by every reader.
+      const snapshot = presenceService.boardSnapshot(tenantId, kind);
+      void emitToActors(
+        io,
+        tenantId,
+        'presence:board',
+        { recordKind: kind, records: {} },
+        (actor, socket) =>
+          presenceService.mayReadBoard(actor, kind) &&
+          (socket.data.kind !== 'office-panel' || (socket.data.protocol ?? 1) >= BOARD_PRESENCE_MIN_PROTOCOL),
+        undefined,
+        (actor) => presenceService.boardFor(actor, kind, snapshot),
+      ).catch((error: unknown) =>
+        log.warn(`Could not deliver a board's presence: ${toErrorMessage(error)}`),
+      );
+    }, BOARD_PRESENCE_THROTTLE_MS);
+    timer.unref?.();
+    boardTimers.set(key, timer);
+  });
+  const presenceSweep = setInterval(() => presenceService.sweepPresence(), PRESENCE_BEAT_MS);
+  presenceSweep.unref?.();
+
   // Printroom: a job is for its sender and for every holder of `print.station`,
   // each judged now, because a role can change while a socket stays up. A panel
   // older than protocol 6 does not know the event and is not sent it.
@@ -423,6 +461,10 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
       unsubscribeChat();
       unsubscribePrint();
       unsubscribePresence();
+      unsubscribeBoards();
+      clearInterval(presenceSweep);
+      for (const timer of boardTimers.values()) clearTimeout(timer);
+      boardTimers.clear();
       presenceService.resetPresence();
       adminPresenceSockets.clear();
       setPanelLink(null);
@@ -1004,6 +1046,14 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
     run(ack, (actor) =>
       presenceService.beat(actor, `panel:${socket.data.panelId ?? ''}:`, beat),
     ),
+  );
+
+  // The board's current faces, for a screen that has just opened or reconnected.
+  socket.on('presence:board', (kind, ack) =>
+    run(ack, async (actor) => {
+      if (kind !== 'lead' && kind !== 'order') throw new ValidationError('validation.presence.invalid');
+      return presenceService.boardFor(actor, kind);
+    }),
   );
 
   // The Printroom. The station a claim or a heartbeat speaks for is this panel's

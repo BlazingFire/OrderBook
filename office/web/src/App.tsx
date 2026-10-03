@@ -32,6 +32,7 @@ import type {
   DataChangedEvent,
   MessageKey,
   MutationResult,
+  BoardPresence,
   RecordPresence,
   ReportKind,
   UserNotification,
@@ -638,6 +639,10 @@ function OfficePanel() {
     // Who else is on the record open here (the server drops anyone else's frames).
     source.addEventListener('presence', (event) => {
       presenceChannel.push(JSON.parse((event as MessageEvent).data) as RecordPresence);
+    });
+    // The faces on the Pending and Final boards' cards (the server drops anyone else's frames).
+    source.addEventListener('presenceBoard', (event) => {
+      presenceChannel.pushBoard(JSON.parse((event as MessageEvent).data) as BoardPresence);
     });
 
     /*

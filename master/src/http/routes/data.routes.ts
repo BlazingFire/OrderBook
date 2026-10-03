@@ -720,6 +720,21 @@ dataRoutes.post(
   }),
 );
 
+/**
+ * Who is on each card of the Pending (`lead`) or Final (`order`) board, for the
+ * avatars on its cards and rows. The same answer the socket pushes as
+ * `presence:board`; this is how a Master browser tab, which only listens, asks
+ * for the first one. `leads.view` / `orders.view` and Party Access apply.
+ */
+dataRoutes.get(
+  '/presence/board',
+  asyncHandler(async (req, res) => {
+    const kind = req.query.kind;
+    if (kind !== 'lead' && kind !== 'order') throw new ValidationError('validation.presence.invalid');
+    res.json(await presenceService.boardFor(actorFromRequest(req), kind));
+  }),
+);
+
 // --- Sync conflicts --------------------------------------------------------
 
 dataRoutes.get(

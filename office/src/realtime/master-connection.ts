@@ -536,6 +536,11 @@ class MasterConnection extends EventEmitter {
       this.emit('presence', presence);
     });
 
+    // Who is on each card of a board (protocol 7), addressed the same way.
+    socket.on('presence:board', (board) => {
+      this.emit('presenceBoard', board);
+    });
+
     // --- Administered from the Master (docs/UI_REDESIGN.md — Office Panels) ---
 
     // A pull, for when somebody opens this panel's screen on the Master and

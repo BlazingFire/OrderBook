@@ -50,6 +50,21 @@ export interface PresenceLastWrite {
   action: ChangeAction;
 }
 
+/**
+ * Who is on every record of one board (Pending or Final orders), for the avatars on
+ * its cards and rows (1.4 R22). `records` holds only records somebody has open and
+ * the recipient may read; a record absent from it has nobody on it. The whole board
+ * is sent each time, so a push replaces the last one and a missed push heals itself.
+ * Same rules as the rest of presence: in memory on the Master, never stored or logged.
+ */
+export interface BoardPresence {
+  recordKind: PresenceRecordKind;
+  records: Record<RecordId, PresenceEntry[]>;
+}
+
+/** The protocol a Master and an Office need to speak for the board feed. */
+export const BOARD_PRESENCE_MIN_PROTOCOL = 7;
+
 /** Everyone on one record. */
 export interface RecordPresence {
   recordKind: PresenceRecordKind;

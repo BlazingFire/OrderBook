@@ -11,4 +11,5 @@ import { api } from './api';
 
 export const presenceChannel = createPresenceChannel({
   beat: (beat, keepalive) => api.presenceBeat(beat, keepalive),
+  board: (kind) => api.presenceBoard(kind),
 });

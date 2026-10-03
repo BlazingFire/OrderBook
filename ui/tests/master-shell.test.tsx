@@ -151,6 +151,10 @@ async function boot(
     // Answered for every test: `api.ts` shares one in-flight GET per path across
     // the file, so a bell read left hanging by one test would swallow the next's.
     if (path === '/api/notifications') return json({ items: [], unreadCount: 0 });
+    // The faces on a board's rows (R22), nobody by default, for the same reason.
+    if (path === '/api/presence/board') {
+      return json({ recordKind: url.includes('kind=order') ? 'order' : 'lead', records: {} });
+    }
     // The Products module: its categories, and the catalogue page it lists from.
     if (path === '/api/categories') return json([]);
     if (path === '/api/products') return json({ items: [], total: 0, limit: 100, offset: 0 });
@@ -2266,4 +2270,58 @@ describe('the Printroom (1.3 Phase 7)', () => {
       expect((post.body as { requestId: string }).requestId).toMatch(/^[0-9a-f]{32}$/);
     });
   });
+});
+
+describe('the faces on the Pending and Final lists (R22)', () => {
+  const face = (userId: string, displayName: string, editing: boolean) => ({
+    userId,
+    displayName,
+    avatar: null,
+    tier: 'office',
+    editing,
+    since: '2026-10-03T09:00:00.000Z',
+  });
+  const board = (kind: string, id: string, entries: unknown[]) => ({
+    recordKind: kind,
+    records: entries.length > 0 ? { [id]: entries } : {},
+  });
+  const live = () => sockets.all.filter((socket) => !socket.closed).at(-1);
+
+  for (const [kind, label, rowId] of [
+    ['lead', t('nav.leads'), LEAD.id],
+    ['order', t('nav.orders'), ORDER.id],
+  ] as const) {
+    it(`shows who has a ${kind} open on its row: the first read, then the Master's pushes`, async () => {
+      const calls = await openList(ADMIN, label, ({ url }) =>
+        url === `/api/presence/board?kind=${kind}`
+          ? json(board(kind, rowId, [face('user-9', 'Ravi Kumar', true)]))
+          : undefined,
+      );
+      expect(await screen.findByTitle(t('presence.editing', { name: 'Ravi Kumar' }))).toBeTruthy();
+      expect(calls.some((call) => call.url === `/api/presence/board?kind=${kind}`)).toBe(true);
+
+      // A push is the whole board: the new face replaces the old.
+      await waitFor(() => expect(live()).toBeDefined());
+      await act(async () => {
+        live()!.emit('presence:board', { ...board(kind, rowId, [face('user-8', 'Meera', false)]), forUserId: 'user-1' });
+        await wait(0);
+      });
+      expect(await screen.findByTitle(t('presence.viewing', { name: 'Meera' }))).toBeTruthy();
+      expect(screen.queryByTitle(t('presence.editing', { name: 'Ravi Kumar' }))).toBeNull();
+
+      // The other board's push is not this one's.
+      const other = kind === 'lead' ? 'order' : 'lead';
+      await act(async () => {
+        live()!.emit('presence:board', { ...board(other, rowId, []), forUserId: 'user-1' });
+        await wait(0);
+      });
+      expect(screen.getByTitle(t('presence.viewing', { name: 'Meera' }))).toBeTruthy();
+
+      await act(async () => {
+        live()!.emit('presence:board', { ...board(kind, rowId, []), forUserId: 'user-1' });
+        await wait(0);
+      });
+      expect(screen.queryByTitle(t('presence.viewing', { name: 'Meera' }))).toBeNull();
+    });
+  }
 });

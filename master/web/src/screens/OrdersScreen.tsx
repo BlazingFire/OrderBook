@@ -31,6 +31,7 @@ import { presenceChannel } from '../presence';
 import { orderRecordTransport } from '../transports';
 import {
   AvatarStack,
+  BOARD_SHOWN,
   Button,
   ConfirmDialog,
   ConflictBanner,
@@ -53,6 +54,7 @@ import {
   t,
   useDebounced,
   useFilterBar,
+  useBoardPresence,
   useRecordPresence,
   useSubNav,
   type DataTableColumn,
@@ -329,6 +331,9 @@ export function OrdersScreen({
     openOrder ? { recordKind: 'order', recordId: openOrder.id } : null,
   );
 
+  // Who has each card or row open (R22), for the faces on it.
+  const faces = useBoardPresence(presenceChannel, 'order');
+
   /**
    * A refused delete is usually not a failure to report as one. The server
    * answers 409 with `blockedBy` naming what still points at the record —
@@ -370,6 +375,19 @@ export function OrdersScreen({
       width: rem(190),
       // The pending order's PO number: a final order has none of its own.
       render: (order) => <RecordNumber record={order} />,
+    },
+    {
+      key: 'viewing',
+      header: t('presence.board.column'),
+      width: rem(76),
+      render: (order) => (
+        <AvatarStack
+          entries={faces.get(order.id) ?? []}
+          selfUserId={userId}
+          max={BOARD_SHOWN}
+          size="xs"
+        />
+      ),
     },
     {
       key: 'party',

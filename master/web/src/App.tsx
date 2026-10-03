@@ -557,6 +557,8 @@ function MasterPanel() {
     socket.on('print:changed', (job) => dispatchPrint({ kind: 'changed', job }));
     // Who else is on the record open here; never stored, never a revision.
     socket.on('presence:changed', (presence) => presenceChannel.push(presence));
+    // The faces on the Pending and Final boards' cards (protocol 7).
+    socket.on('presence:board', (board) => presenceChannel.pushBoard(board));
 
     // A notice for this person: the bell re-reads, and the desktop shell (when
     // there is one) puts it in front of somebody whose window is behind another.

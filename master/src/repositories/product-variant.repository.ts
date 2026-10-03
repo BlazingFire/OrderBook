@@ -62,21 +62,6 @@ export async function loadVariantsFor(
   return byProduct;
 }
 
-/** A live variant (its product not in the Recycle Bin), with the product it belongs to. */
-export async function findVariantById(
-  tenantId: string,
-  id: string,
-  runner: Runner = db(),
-): Promise<ProductVariant | null> {
-  const row = await runner(`${TABLE} as v`)
-    .join('products as p', 'p.id', 'v.product_id')
-    .where('v.tenant_id', tenantId)
-    .andWhere('v.id', id)
-    .whereNull('p.deleted_at')
-    .first('v.*');
-  return row ? mapProductVariant(row) : null;
-}
-
 /**
  * The live variant behind a code, case-insensitively.
  *

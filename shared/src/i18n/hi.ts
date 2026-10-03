@@ -3604,7 +3604,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'settingGroup.integrations': 'अन्य सॉफ़्टवेयर',
   'setting.unit.hours': 'घंटे',
   'setting.unit.days': 'दिन',
-  'setting.unit.boxes': 'बॉक्स',
   'setting.number.none': 'कोई नहीं',
   'setting.panels.autoPairingEnabled.label': 'नए ऑफ़िस पैनल को बिना पासवर्ड जुड़ने दें',
   'setting.panels.autoPairingEnabled.help': 'जब तक ऑफ़िस पैनल जोड़ें खुला है, इस WiFi का कोई भी PC एक क्लिक में जुड़ सकता है। पैनल सेट हो जाने पर इसे बंद कर दें — फिर जुड़ने के लिए पेयरिंग पासवर्ड हमेशा ज़रूरी होगा।',
@@ -4177,4 +4176,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.stock.retired': 'OrderBook में अब स्टॉक नहीं है',
   'dashboard.orders.boxesOpen': '{count} बॉक्स भेजने बाकी',
   'dashboard.orders.noneOpen': 'भेजने के लिए कुछ बाकी नहीं',
+  // 1.4 D2 (R22): बोर्ड की पंक्तियों पर दिखने वाले चेहरों का स्तंभ।
+  'presence.board.column': 'अभी खुला',
 };

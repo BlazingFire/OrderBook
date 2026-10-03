@@ -9,25 +9,33 @@
 
 import type { PresenceEntry } from '@orderbook/shared';
 
-import { Avatar } from './Avatar.js';
+import { Avatar, type AvatarSize } from './Avatar.js';
 import { Icon } from './icons.js';
 import { t } from './i18n.js';
 
 const SHOWN = 4;
 
+/** On a board card or row (R22): three small faces, so the card keeps its room. */
+export const BOARD_SHOWN = 3;
+
 export function AvatarStack({
   entries,
   selfUserId,
+  max = SHOWN,
+  size = 'sm',
 }: {
   entries: readonly PresenceEntry[];
   /** The signed-in person, never shown to themselves. */
   selfUserId?: string | null;
+  /** Faces before the `+N` chip. */
+  max?: number;
+  size?: AvatarSize;
 }) {
   const others = entries.filter((entry) => entry.userId !== selfUserId);
   if (others.length === 0) return null;
 
-  const shown = others.slice(0, SHOWN);
-  const hidden = others.slice(SHOWN);
+  const shown = others.slice(0, max);
+  const hidden = others.slice(max);
 
   return (
     <span className="ob-avatarstack" role="group" aria-label={t('presence.label')}>
@@ -43,7 +51,7 @@ export function AvatarStack({
             title={label}
             aria-label={label}
           >
-            <Avatar name={entry.displayName} avatar={entry.avatar} size="sm" />
+            <Avatar name={entry.displayName} avatar={entry.avatar} size={size} />
             {entry.tier === 'server_master' && (
               <span
                 className="ob-avatarstack-badge"

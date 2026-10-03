@@ -34,6 +34,7 @@ import { leadRecordTransport } from '../transports';
 import { LeadEntry } from './LeadEntry';
 import {
   AvatarStack,
+  BOARD_SHOWN,
   Button,
   ButtonLink,
   ConfirmDialog,
@@ -59,6 +60,7 @@ import {
   t,
   useDebounced,
   useFilterBar,
+  useBoardPresence,
   useRecordPresence,
   useSubNav,
   useToast,
@@ -373,6 +375,9 @@ export function LeadsScreen({
     openLead ? { recordKind: 'lead', recordId: openLead.id } : null,
     openLead !== null && editingId === openLead.id,
   );
+
+  // Who has each card or row open (R22), for the faces on it.
+  const faces = useBoardPresence(presenceChannel, 'lead');
   const others = <AvatarStack entries={presence.entries} selfUserId={userId} />;
 
   /**
@@ -420,6 +425,19 @@ export function LeadsScreen({
             <StatusPill tone="conflict">{t('leadsOrders.leads.incomplete')}</StatusPill>
           )}
         </span>
+      ),
+    },
+    {
+      key: 'viewing',
+      header: t('presence.board.column'),
+      width: rem(76),
+      render: (lead) => (
+        <AvatarStack
+          entries={faces.get(lead.id) ?? []}
+          selfUserId={userId}
+          max={BOARD_SHOWN}
+          size="xs"
+        />
       ),
     },
     { key: 'party', header: t('lead.list.col.party'), render: (lead) => lead.partyName },

@@ -28,6 +28,7 @@ import { api, desktopBridge, type LocalView } from '../api';
 import { presenceChannel } from '../presence';
 import {
   AvatarStack,
+  BOARD_SHOWN,
   Button,
   Card,
   ColourName,
@@ -52,6 +53,7 @@ import {
   t,
   useColourHex,
   useFilterBar,
+  useBoardPresence,
   useRecordPresence,
   useSubNav,
   useToast,
@@ -253,6 +255,9 @@ export function OrderBoardScreen({
     openOrder ? { recordKind: 'order', recordId: openOrder.id } : null,
   );
 
+  // Who has each card or row open (R22), for the faces on it.
+  const faces = useBoardPresence(presenceChannel, 'order');
+
   if (openOrder && noteOrder && noteKind) {
     return (
       <OrderNoteScreen
@@ -343,6 +348,19 @@ export function OrderBoardScreen({
       width: rem(190),
       // The pending order's PO number: a final order has none of its own.
       render: (order) => <RecordNumber record={order} />,
+    },
+    {
+      key: 'viewing',
+      header: t('presence.board.column'),
+      width: rem(76),
+      render: (order) => (
+        <AvatarStack
+          entries={faces.get(order.id) ?? []}
+          selfUserId={userId}
+          max={BOARD_SHOWN}
+          size="xs"
+        />
+      ),
     },
     {
       key: 'party',

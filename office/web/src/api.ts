@@ -59,7 +59,9 @@ import type {
   MessageKey,
   MessageParams,
   UserNotification,
+  BoardPresence,
   PresenceBeat,
+  PresenceRecordKind,
   RecordPresence,
   MutationResult,
   OptionListItem,
@@ -868,6 +870,9 @@ export const api = {
       body: JSON.stringify(beat),
       keepalive,
     }),
+  /** Who is on each card of the Pending or Final board; the Master then pushes changes. */
+  presenceBoard: (kind: PresenceRecordKind) =>
+    requestUntracked<BoardPresence>(`/api/presence/board?kind=${kind}`),
   markNotificationsRead: (which: { ids: string[] } | { all: true }) =>
     post<{ unreadCount: number }>('/api/notifications/read', which),
 
