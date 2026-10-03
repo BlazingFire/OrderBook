@@ -9,7 +9,7 @@
 
 import PDFDocument from 'pdfkit';
 
-import { SHARE_PER_PAGE, chunkPages, type ShareCard } from '../domain/product-share.js';
+import { SHARE_PER_PAGE, chunkPages, shareText, type ShareCard, type ShareText } from '../domain/product-share.js';
 import { registerFonts } from './fonts.js';
 import { measureRuns, mm, runText, truncateToWidth, wrapLines, type TextStyle } from './primitives.js';
 
@@ -35,14 +35,17 @@ export interface ShareSheet {
   /** Printed under the company name, e.g. the date. */
   caption: string;
   entries: ShareEntry[];
+  /** The sheet's fixed words; English when omitted. */
+  text?: ShareText;
 }
 
 export async function renderProductShare(sheet: ShareSheet): Promise<Buffer> {
+  const text = sheet.text ?? shareText('en');
   const doc = new PDFDocument({
     size: PAGE,
     margins: { top: MARGIN, right: MARGIN, bottom: MARGIN, left: MARGIN },
     autoFirstPage: false,
-    info: { Title: `${sheet.company} - product share`, Author: 'OrderBook' },
+    info: { Title: text.title(sheet.company), Author: 'OrderBook' },
   });
   registerFonts(doc);
 
@@ -67,7 +70,7 @@ export async function renderProductShare(sheet: ShareSheet): Promise<Buffer> {
       bold: true,
       colour: '#1C2530',
     });
-    const pageLabel = `${sheet.caption}  |  Page ${pageIndex + 1} of ${pages.length}`;
+    const pageLabel = `${sheet.caption}  |  ${text.page(pageIndex + 1, pages.length)}`;
     runText(
       doc,
       pageLabel,

@@ -15,11 +15,13 @@
 import sharp from 'sharp';
 import type { Product } from '@orderbook/shared';
 
+import { config } from '../config/index.js';
 import { requirePermission, type ActorContext } from '../domain/actor.js';
 import {
   SHARE_MAX_PRODUCTS,
   shareCard,
   shareFileName,
+  shareText,
 } from '../domain/product-share.js';
 import { ValidationError } from '../lib/errors.js';
 import { renderProductShare, type ShareEntry } from '../pdf/product-share-renderer.js';
@@ -93,13 +95,15 @@ export async function productSharePdf(
   const company = (await findMasterConfig())?.company_name?.trim() || 'OrderBook';
 
   const labelOf = await customFieldLabeler(actor.tenantId);
+  // The sheet goes to the company's customers: its fixed words are in the deployment's language.
+  const text = shareText(config.locale.defaultLocale);
 
   const entries: ShareEntry[] = [];
   for (const product of products) {
-    entries.push({ card: shareCard(product, labelOf), photo: await photoOf(product, actor) });
+    entries.push({ card: shareCard(product, labelOf, text), photo: await photoOf(product, actor) });
   }
 
   const date = localIsoDate(new Date());
-  const bytes = await renderProductShare({ company, caption: date, entries });
+  const bytes = await renderProductShare({ company, caption: date, entries, text });
   return { fileName: shareFileName(date), bytes };
 }
