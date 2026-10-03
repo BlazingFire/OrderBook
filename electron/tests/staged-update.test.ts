@@ -559,7 +559,7 @@ describe('the installer scripts are verified, and PowerShell cannot be steered b
       'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules',
     );
     // Nothing but comments, blank lines and the param block runs before the pin.
-    const header = ps1.slice(0, pin).split('\n').filter((line) => line.trim() !== '' && !line.trim().startsWith('#'));
+    const header = ps1.slice(0, pin).split(/\r?\n/).filter((line) => line.trim() !== '' && !line.trim().startsWith('#'));
     expect(header.join(' ')).toMatch(/^\[CmdletBinding\(\)\] param\([\s\S]*\)$/);
     expect(header.join(' ')).not.toMatch(/\b(Join-Path|Get-\w+|Set-\w+|Test-\w+)\b/);
     expect(apply).toContain('PSModulePath: systemModulePath(powershell)');
