@@ -52,9 +52,111 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
-## 1.3 batch — status and how to continue (updated 2026-10-03)
+## 1.4 batch (2026-10-03) — what landed, what was decided, what is owed
 
-The owner's 1.3 batch is planned in `docs/plans/1.3-BATCH.md` (approved), detailed in
+**State: all of it is on `main` @ `4caa3a4` (fast-forward, not pushed).** Final gate on
+that commit, each step separate: lint 0, build 0, typecheck 0, test 0 (282 files passed
++ 1 skipped, 3,950 tests passed + 17 skipped; the skips are `release-workflow` and the
+POSIX half of `appimage`), `smoke:legacy` 0. **The version is still 1.2.5 everywhere**
+(see "Owed by the owner"). The batch also closed the 1.3 batch: see the next section.
+
+The owner's sentence-by-sentence requirements are numbered **R0–R22** in
+`CLAUDE_HELPER_D.md` §3 (a coordination file in the main checkout, untracked, in
+`.git/info/exclude`; its §6 holds every review verdict, and the five logs
+`CLAUDE_HELPER_D1.md` … `D5.md` hold each session's evidence, screenshots and "not
+verified" lists). Protocol is now **7** (`PANEL_PROTOCOL_VERSION`).
+
+### What landed, per requirement
+
+| R | What | Where it came from | On `main` as |
+|---|---|---|---|
+| R0 | `main` holds the whole 1.3 batch: the helper's H1–H5 (party import, reports, notes/Save PDF, **Chatroom**, **Printroom**) and Phases 0–8 | `helper/1.3` @ `a1f687a`, then @ `0e41407` | `68055a8`, `6350134` |
+| R1 | A password eye on every password field (`PasswordInput`, guard scan for raw inputs) | D4 `2335a15` | `498d118` |
+| R2 | No menubar on Windows and Linux (a minimal one on macOS); every old item has a new home (`electron/lib/app-menu.ts`, `docs/UPDATES.md` "1.4") | D1 `d1e71c8` | `f675760` |
+| R3 R4 R5 | **Lists** module (Alt+G, both panels): grades, packaging, brands, on the shared option-list editor. One key `catalog.lists.manage` (management-tier ceiling) writes the three lists; **everyone signed in reads them**. Migration `20261012000000_catalog_lists_grant` | D3 `e8a8e48`, `670dff5`, `2d3b5df`, `d6f16b4` | `de630c4` |
+| R6 | "Check now" on both App update screens; poll every 2 minutes; an `update.available` notification to every active account, once per version | D1 | `f675760` |
+| R7 | Download progress (bytes, speed, time left); **Save all** on every form before the update; sign out, install, relaunch; the **same-version gate in both directions** (an Office behind its Master offers the update, one ahead waits and re-checks every 10 s; Standalone is left alone) | D1 | `f675760` |
+| R8 | Nightly update of the Master (default 23:00, a window that wraps past midnight), installed by a **highest-privilege scheduled task** ("option B", below), the server back without anybody signing in | D1 `48b681e`, `86881c3`, `04efd50` and hardening commits | `f675760` |
+| R9 | Chatroom and Printroom visible for Office and Management: migration `20261013000000_printroom_office_management_grant` (`print.send`); a role change reaches a connected Office (`session:refresh`); Basic Home tiles | D4 `455a614`, `6702ba7` | `498d118` |
+| R10 R11 | Filling and Dispatch note buttons in the list rows and board cards of Pending and Final orders on both panels, gated on **view** (not export); a Preview modal (xl) with Print and Save PDF | D4 | `498d118` |
+| R12 R13 R18 | Sign-out icon with a muted red from a palette token; F1 and Ctrl+/ for help, letter chords for the Admin screens, `party.new`, `product.new`, `session.signOut`; sidebar icons are the Basic Home drawings (`NAV_ICONS`, `navGlyphs.tsx`) | D4 | `498d118`; the chord fix for text fields `9814dde` in `ae24de1` |
+| R14 | A product name never carries the main-product code (`OPT`): `productLabel(name, brand)` is the one composer; the share PDF's subtitle was fixed after D5 found it (`e7902c3`); `master/tests/no-category-code-in-display.test.ts` reads every source folder | D2 `67cabcf`, D3 `e7902c3` | `2e2ab26`, `3cadb63` |
+| R15 | **Stock and inventory removed everywhere** (nav, screens, columns, reports, settings, permissions, PDFs; conversion and dispatch write nothing). The tables stay (migrations only add); an old Office's stock commands are refused cleanly | D2 `082a101`, `1f7068a`, `c9adfa4` | `767df5b`, `2e2ab26`, `32c1793` |
+| R16 | **Create product share**: tick products on either panel, an A4 PDF, four to a page (2x2) with photographs, no money, labels in the company language (en, hi). Socket `product:sharePdf` (protocol 7), `POST /api/products/share.pdf`; 400 products with photos took about 5 s and 16 MB | D3 `25550bc` | `de630c4` |
+| R17 | Sort (server-side, kept per machine) and filters on Parties (city, state, GST) and Products (size, photo, plus the existing brand and product). **Products have no grade or packaging column, so there is no such filter** (owner-accepted) | D3 `1011fa7` | `de630c4` |
+| R19 | The 2026-10-01 carry-over audit (CH1): Phase 9 acceptance not done, the Printroom owner questions, the Hindi review, the board avatars (now R22) | CH1 | this section |
+| R20 | Product import and export work across versions: the 1.2.5 columns are unchanged, the xlsx carries a format version, fixtures of a 1.2.5 export import with no loss (stock columns in an old file are ignored with a notice) | D2 `3e80fdf` | `2e2ab26` |
+| R21 | Plan with Opus, build with five Sonnet sessions, audit every row: each D's work was independently re-audited, then D5 merged in order and ran the gate | CH1, D5 | `4caa3a4` |
+| R22 | **Faces on the board cards and rows** of Pending and Final orders on both panels (up to 3 plus "+N", an "editing" ring), a per-board `presence:board` push (protocol 7, in memory only, throttled 500 ms, Party Access per reader, never sent to an Office below 7), swept every 10 s | D2 `f806967`, `085878d` | `32c1793` |
+
+Migrations added by the batch, in order after `20261007…`: `20261012000000_catalog_lists_grant`,
+`20261013000000_printroom_office_management_grant` (both add-only unions into role
+permissions; nothing else touched). New permission key: `catalog.lists.manage`.
+
+### Owner decisions taken in this batch (do not re-decide without a reason)
+
+- **Stock removal (R15) is code and UI only.** The tables and their data stay because migrations only add. The owner confirmed: "no need to keep inventory in check, just order management."
+- **Printing a note needs the right to view the record, not an export right** (R10); the Printroom's `sendJob` follows the same rule.
+- **"Without logging in" (R8) means the Master server comes back and serves the Offices.** The screen is not auto-signed-in: an unattended signed-in administrator is a security hole.
+- **UAC: option B.** The installer registers a scheduled task that runs the staged setup at the highest privilege. The task verifies the signed manifest and the SHA-256 itself, trusts nothing in its environment or in a user-writable folder, and the uninstaller removes it. Independent security re-audits found no blocking hole before D1 was accepted; the real install has never been run (below).
+- **The releases repository is the public `BlazingFire/OrderBook-Releases`** (installers and manifests only, no source); it is the built-in default of `ORDERBOOK_RELEASES_GITHUB_REPO` (`.env` can override; empty turns the poll off; tests turn it off) and `npm run release` publishes there.
+- **"Save all" covers every form**, not just New lead: ready forms are saved, invalid ones are named in the dialog (`useUnsavedWork`, `useFormBaseline`).
+- **The same-version gate works both ways** (an Office ahead of its Master also waits).
+- **"Instantly" is a 2-minute poll plus Check now** (GitHub cannot push to a LAN).
+- **R5 is one key**, `catalog.lists.manage`, not three; **R17 has no grade/packaging filter**; the Parties "owner/access" filter is the existing Party Access scope.
+- **R22 is built in full** (the dropped board avatars of Phase 4), because the owner consistently asks for full scope.
+- **The batch ships as 1.3.0** (1.3 was never released); the version is bumped before any build (the standing owner rule).
+
+### Traps found in this batch
+
+- **A stale `shared/dist` before typecheck.** After a merge that changes `shared/`, `npm run typecheck` reports missing members (`reservations`, `freeToSell`, `lowStockCount`) until `npm run build` has run. Gate order: lint, build, typecheck, test, smoke.
+- **CRLF checkouts break source-reading tests.** A Windows checkout (`core.autocrlf`) has CRLF; a test that reads a source file and splits or matches on `\n` fails on an untouched file. `master/tests/credential-invariants.test.ts` `read()` and `electron/tests/staged-update.test.ts` now normalise; **new source-reading tests must too.**
+- **Two panels on one host share a cookie jar** (cookies are not port-scoped). In a browser pass open the Master at `localhost:PORT` and the Office at `127.0.0.1:PORT`, or the sessions overwrite each other.
+- **Stop only your own PIDs.** Never kill by process name or command-line pattern: one such kill took down peers' servers and test clusters. Note the PID of each server you start.
+- **`pg_ctl` for the integration tests:** each session needs its own `TEMP`/`TMP`, `ORDERBOOK_TEST_PG_PORT` and the system `ORDERBOOK_PG_BIN` (`C:\Program Files\PostgreSQL\17\bin`); otherwise `pg_ctl start` exits 1 or collides with a peer's cluster. A skipped integration suite prints like a green one.
+- **Load-sensitive tests** (they pass alone, and in the next full run): `master/tests/update-check.test.ts` "answers within the wait while a slow download carries on in the background", `ui/tests/chatroom.test.tsx` "shows the picker only with chat.shareRecords…", and the sign-out chord test (given a 20 s budget). Re-run the file alone before suspecting the code.
+- **A screen kept alive in a hidden `<Activity>` runs its effect cleanups when hidden and its setups when shown.** A "mounted" flag that only ever goes to false swallows every later answer (the share dialog never opened); set it in the setup too (`ui/src/ProductShare.tsx`).
+- **A fresh install gives Office and Management no `fields.view`.** The three catalogue lists are therefore readable by everyone on purpose, and `fields.routes.ts`'s value routes carry no middleware gate: the service decides (`requireListRead` / `requireListWrite`); `credential-invariants` names the four routes. `catalog.lists.manage` cannot be given to an office-tier role (management ceiling).
+- **The Recycle Bin offers a person only what they can restore.** `fields.manage` alone sees every list except brands, packaging and grades; `catalog.lists.manage` alone sees only those three (`optionScopeFor` in `recycle-bin.service.ts`).
+- **The share PDF speaks the deployment's language** (`ORDERBOOK_DEFAULT_LOCALE`), not the signed-in person's.
+- **`ORDERBOOK_TEST_PG_*` and the preview servers:** a preview needs a scratch database and ports of its own; the owner's `order_book` is never used.
+
+### Owed by the owner (an agent cannot do these)
+
+Nothing from this batch has run on a real PC, a real printer or Windows 7.
+
+1. **The real-PC checklist.** Run on a clean Windows 10/11 PC as a standard user with an administrator for UAC (copied from `CLAUDE_HELPER_D1.md`):
+   1. **makensis compile and the `!system` bake.** Build the Master and Office installers. `installer/script-hashes.nsh` must be written (UNINSTALL_SCRIPT_SHA256 always, UPDATE_DIRS_SHA256 for the Master). Edit `uninstall-orderbook.ps1` by one byte, recompile with `electron-builder --prepackaged`, and confirm the new hash is baked. A failed bake must stop the compile. This also proves the `System::Call` calls, the backtick string and the `$$` escapes in `verified-powershell.nsh` under real NSIS.
+   2. **`-Mode Install` (elevated).** Install the Master per-machine. `%ProgramData%\OrderBook\staged-update` (anybody writes) and `elevated` (Administrators and SYSTEM write, Users read) must exist with those ACLs and owners (`icacls`, `Get-Acl`); `resources\apply-update\paths.json` must be written; exit 9 means a hash mismatch. Pre-create a squatter folder or junction first: the install must clear or refuse it.
+   3. **`schtasks /Query /TN "OrderBook Master Update" /XML`:** RunLevel HIGHEST, one-time trigger, action `"C:\Windows\System32\cmd.exe" /d /c ""...\resources\apply-update\apply-update.cmd""`, and a standard user cannot edit or delete the task.
+   4. **A nightly run.** Set the auto-update time a minute ahead with a newer signed release published: the Master saves unsaved work, signs out, the task runs, `result.json` goes `checking` then `installing`, the setup runs `/S --force-run`, the app relaunches on the new version, and Offices behind show the blocking update screen. A refused task (tampered manifest or hash, older version) leaves the server running and writes `refused`; 90 s of silence also recovers the server; the 23:00 window runs once per night.
+   5. **The UAC flow (manual update).** Install now: one UAC prompt, progress bar and speed, Save all first (8 s cap), sign-out, quit, install, relaunch. Decline the prompt: the server recovers and the app keeps working.
+   6. **Uninstall.** With and without delete-data (without: data and profile stay; during an update nothing is swept); a junction inside the install folder and inside the data folder pointing at a folder with a file (the junction goes, the target survives); a data folder moved to a non-OrderBook name (`E:\CompanyData`), a drive root and a link are left alone and logged; `ORDERBOOK_RELEASES_DIR` set to a decoy is not deleted; afterwards `%ProgramData%\OrderBook\{elevated,staged-update}` and the task are gone.
+   7. **Environment hardening, elevated.** With `COR_ENABLE_PROFILING=1`, `COR_PROFILER` and `COR_PROFILER_PATH` pointing at a harmless logging DLL in the user's environment, run the install, the uninstall and a nightly update: the DLL must not load (Process Explorer or Procmon). The same with a planted `Microsoft.PowerShell.Archive` in `Documents\WindowsPowerShell\Modules`, and an HKCU `Command Processor\AutoRun` that writes a file (it must not run from the task).
+   8. **Fuses on the Win7 legacy binary (Electron 22).** After a real electron-builder run: `npx @electron/fuses read --app "OrderBook Master Panel.exe"`. `EnableNodeOptionsEnvironmentVariable` and `EnableNodeCliInspectArguments` off, `RunAsNode` on; the app and its server still start; `NODE_OPTIONS=--inspect` is ignored. Repeat on the Electron 33 build and the Office build; the sentinel must be found.
+   9. **Version gate and Office.** An Office one version behind and one ahead of its Master are blocked (behind: the update screen with install; ahead: waits and polls every 10 s, no install offered) and unblock when the versions match.
+   10. **R2 and R6 on the real shell.** No menubar in either Electron window (Alt does not bring it back), Check now works from the Master Updates screen, and the update notification appears and links to the Updates screen.
+2. **Also on real hardware:** the **Printroom station claim** (the Electron print-station runner actually printing), **a real printer** (copies, silent printing while the window is minimised, Save PDF, the PDF window, **Print from the Create product share dialog**), the **Win7 VMs** (x64 and x86 SP1 with KB2999226: install, pair, work online and offline, print, update over the LAN, Standalone, uninstall), a **Hindi native review** (the whole interface and the share PDF; nobody has reviewed it), and a **Master UI visual pass** with the owner's own eyes (the Chatroom, the Printroom and the notes were never seen by the owner before this batch; also the Lists module, filters, product share and the board faces).
+3. **Bump the version to 1.3.0 before any build** (the standing rule): root, `cleaner`, `master`, `office`, `shared`, `ui`, `master/web` and `office/web` `package.json` all say 1.2.5, as do the panels' footers and update screens. Update the Master first (`npm run release`, then `npm run release -- --os win7`).
+4. **Open branch and push decisions.** `main` is **not pushed**. Local branches still exist: `d1/1.4` … `d5/1.4` (and `d3/1.4-fix`, `d4/1.4-fix`, the `*-docs` branches), `helper/1.3`, `dev`; the remote still has the thirteen old `claude/*` branches and `dev`. Pushing `main` and deleting the merged branches is the owner's call (the standing rule is "delete merged branches with the owner's OK"). The git worktrees `OrderBook-d1`…`d5`, `OrderBook-helper` and `OrderBook-d4-audit` can go once their branches do.
+5. **The master key is not in the repository** (`docs/MASTER_KEY.md` says so on purpose: the repo goes to GitHub). Keep it with the site's other secrets.
+6. **Smaller open questions:** the Office New-lead product search placeholder still reads "Type a product name or code, e.g. OPT, one piece toilet" (an example of a code to search by, not a product name; D5 asks whether the owner wants the token gone); the four open Printroom questions from H5 (printing with nobody signed in, 30-day retention of sheets, reprint by the sender, a printer per PC; the fifth, the protocol number, is settled at 7); whether the share sheet should have a bold Devanagari face; whether the board faces (16 px) should be 20 px.
+
+### Next session, in this order
+
+See `docs/NEXT_PHASE.md` "First: the 1.4 batch is done". In short: the real-PC pass above,
+then release 1.3.0 (Master first), then the backlog.
+
+## 1.3 batch — status (SUPERSEDED 2026-10-03 by the 1.4 batch above)
+
+**Everything in the 1.3 batch is merged into `main`**: the helper's H3 (notes, Save PDF,
+print copies), H4 (the **Chatroom**, which was missing for a while and is present) and
+H5 (the Printroom) went in with `68055a8` and `6350134`, and the 1.4 batch then built on
+them. What was "owed" and "next" here is now in the 1.4 section: the real-PC pass, the
+1.3.0 version bump and release, and the branch decisions. The table and the notes below
+are kept as history.
+
+The owner's 1.3 batch was planned in `docs/plans/1.3-BATCH.md` (approved), detailed in
 `docs/plans/1.3-BATCH-DETAIL.md`, with per-domain designs in `docs/plans/1.3-designs/`.
 The Basic Home mockup is `docs/design/basic-home-mockup.html`.
 
@@ -66,20 +168,20 @@ The Basic Home mockup is `docs/design/basic-home-mockup.html`.
 | 1 | Basic Home, Master UI refresh, Inventory UI hidden, loading bars, device code, low RAM | **done** | `14c3dca` |
 | 2 | Server Master tier, master key, protocol handshake, full audit, Logs on Office | **done** | `b3b0260` |
 | 5a | Party import/export (helper H1) | **merged** | `455f686` |
-| 5b | Reports: 15 kinds, xlsx/pdf, both panels, visibility, owner scope (helper H2) | merged; its rework (`3d14b3d`) and follow-ups (`cb0ec8f`) sit on `helper/1.3`, accepted, **not yet merged** | `455f686` |
+| 5b | Reports: 15 kinds, xlsx/pdf, both panels, visibility, owner scope (helper H2) | **merged**, with its rework and follow-ups | `455f686`, `68055a8` |
 | 3 | Realtime rules 1/5/6, push gate, stage HLC, notification centre | **done** | `92c4b94` |
-| 4 | PO numbers, presence, stale-edit, Master authority | **done**. The compact avatar stack on board cards was dropped because it needs a board-level presence feed; owner to decide. | `4fc9564` |
-| 6 | Chatroom (helper H4) | unblocked for the helper; not on its branch yet at hand-off | — |
-| 7a | Notes from pending orders, copies, Save PDF, report PDF window (helper H3) | **built on `helper/1.3`**: reviewed, rework done (`17709e0`), **not yet merged into `main`** | `d90d126`, `17709e0` |
-| 7b | Printroom + auto-print station (helper H5) | **built on `helper/1.3`** (`a1f687a`); **not yet reviewed or merged** | `a1f687a` |
+| 4 | PO numbers, presence, stale-edit, Master authority | **done**. The board-card avatar stack was dropped here and built in the 1.4 batch (R22). | `4fc9564` |
+| 6 | Chatroom (helper H4) | **merged**; present on `main` | `68055a8` |
+| 7a | Notes from pending orders, copies, Save PDF, report PDF window (helper H3) | **merged** | `68055a8` |
+| 7b | Printroom + auto-print station (helper H5) | **merged** | `68055a8` |
 | 8 | Backup all to external drive, Magic restore, auto-backup | **done** | `4ec0a96` |
-| 9 | Acceptance on real PCs (Win10 Master, Win10 Offices, Win7 x64/x86 VMs), release 1.3.0 | not started | — |
+| 9 | Acceptance on real PCs (Win10 Master, Win10 Offices, Win7 x64/x86 VMs), release 1.3.0 | not started; the checklist is in the 1.4 section above | n/a |
 
 Nothing in the batch has been pushed to GitHub or released. Every phase was
 committed to local `main` after its gate passed: lint 0, typecheck 0, build 0,
 `smoke:legacy` 0, and the full test suite with integration suites run.
 
-### How the work is run
+### How the 1.3 work was run
 
 - **Lead session (Opus)** runs each phase as an ultracode workflow, using
   `~/.claude/projects/C--Users-Z-Desktop-OrderBook/<session>/workflows/scripts/orderbook-phase.js`.
@@ -99,18 +201,7 @@ committed to local `main` after its gate passed: lint 0, typecheck 0, build 0,
   the file's format on its first turn, and the lead's board replaced it
   afterwards.
 
-### Owed by the owner (cannot be done by an agent)
-
-- **The master key is not in the repository.** `docs/MASTER_KEY.md` says
-  so on purpose: the repo is pushed to GitHub. `MASTER_KEY_HASH` was
-  verified against the owner's key on 2026-10-03. Keep the key with the
-  site's other secrets.
-- **Windows 7 acceptance** on a real 64-bit and 32-bit Win7 SP1 PC (+ KB2999226):
-  install, pair, work online and offline, print, update over the LAN,
-  Standalone, uninstall. Listed under "Owed work".
-- **Bump the version before any build:** 1.3.0 for the batch.
-
-### Traps found in this batch
+### Traps found in the 1.3 batch
 
 - **Integration tests on this PC need the system PostgreSQL.**
   `$env:ORDERBOOK_PG_BIN='C:\Program Files\PostgreSQL\17\bin'`. The bundled
@@ -123,41 +214,6 @@ committed to local `main` after its gate passed: lint 0, typecheck 0, build 0,
   (Start-Process): a Bash `pg_ctl start` hangs on the inherited pipes.
 - **The workflow notifications are large.** A lead session spends roughly
   60–80k context per phase. Plan on about four phases per session.
-
-### Next session, in this order
-
-1. **Read `CLAUDE_HELPER.md`** for the helper's newest Done entries.
-   At hand-off, `helper/1.3` @ `a1f687a` holds:
-   - the H2 rework and follow-ups (accepted);
-   - H3 and its rework (the rework is not yet reviewed);
-   - H5 Printroom (not yet reviewed);
-   - merges of `main` up to Phase 4.
-2. **Review `17709e0` (H3 rework) and `a1f687a` (H5)** with the read-only
-   review workflow (`review-helper-commit` script, args
-   `{commit, task, planRef, design, focus}`). Post REWORK or ACCEPTED in
-   `CLAUDE_HELPER.md`.
-3. **Merge `helper/1.3` into `main`** with the `merge-helper-branch`
-   workflow; give it the commit to merge, not the branch name. Migrations
-   must stay in ascending timestamp order in `index.ts` and
-   `DELIBERATELY_LAST`. Run the full gate.
-4. **H4 Chatroom (helper).** Its chat commands go in at **protocol 5**, and
-   the Printroom's at whatever the helper used; check that
-   `COMMAND_MIN_PROTOCOL` and `PANEL_PROTOCOL_VERSION` agree after the merge.
-5. **Phase 9: acceptance and release.**
-   - Browser and Electron passes still owed:
-     - Phase 4: PO number and avatars with two live users;
-     - Phase 8: folder and file pickers, a real USB/FAT32 drive, Magic
-       restore on a second PC;
-     - Phase 7: real printer copies, silent printing while minimised, Save PDF,
-       the PDF window.
-   - Then the Win7 VM pass.
-   - Then bump the version to **1.3.0** and run `npm run release` and
-     `npm run release -- --os win7`. Update the Master first.
-6. **Owner decisions still open:**
-   - Printroom stations see every party's jobs (a deliberate cross-party
-     grant; the plan default);
-   - the dropped board-card avatars;
-   - the Hindi wording, which has had no native review.
 
 ## Current state (2026-09-30, order notes built; catalogue v2 on the 1.2 product master)
 

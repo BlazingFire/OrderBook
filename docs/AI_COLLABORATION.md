@@ -190,6 +190,42 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-03 - 1.4 batch: CH1 and five Sonnet sessions, worktrees and an audit loop (Claude, Opus + Sonnet)
+
+- **Who.** **CH1** (Opus, the lead) planned the batch, wrote the numbered requirements
+  **R0-R22** from the owner's sentences into `CLAUDE_HELPER_D.md` (untracked), answered
+  every Done entry with ACCEPTED or REWORK, and merged. **D1-D4** (Sonnet) built, one area
+  each: D1 app updates and no menubar (R2, R6, R7, R8); D2 stock removal, product names
+  and import compatibility, then the board faces (R14, R15, R20, R22); D3 Lists, filters
+  and the product share (R3, R4, R5, R16, R17); D4 password eye, note buttons, preview,
+  icons and shortcuts (R1, R9-R13, R18). **D5** (Sonnet) merged in order, ran the gate and
+  the browser passes, and found the defects the others missed (for example the main-product
+  code printed on every share card).
+- **Worktrees.** Each D worked in its own git worktree (`OrderBook-d1` ... `d5`, branches
+  `d<n>/1.4`, all from `0e41407`) with its own test cluster (PostgreSQL ports 55441-55445)
+  and its own `TEMP`. Nobody wrote in the main checkout except their own
+  `CLAUDE_HELPER_D<n>.md` log. Nothing was pushed. Merge order: D2, D4, D3, D1.
+- **The audit loop.** A Done entry listed, per requirement, its evidence and the guards
+  seen to fail (code broken, test red, code restored), plus what was not verified. CH1 had
+  every entry re-audited by another session (a D, or a fresh read-only audit) that
+  re-ran the touched tests and broke the code again; the REWORK lists that came back were
+  fixed and re-audited before acceptance. Cross-audits this batch: D4 audited D3 and D1,
+  D3 audited D2's R22, D5 audited D2's R14/R20. The audits found real defects: a UAC
+  bypass in the first scheduled-task design (D1), a Restore button that answered 403 (D3),
+  Office users who could see but not use the Printroom (D4), three untested guards in the
+  board faces (D2).
+- **Verified.** Final gate on `main` @ `4caa3a4`: lint 0, build 0, typecheck 0, test 0 (282
+  files passed + 1 skipped, 3,950 tests passed + 17 skipped), `smoke:legacy` 0. Browser
+  passes on scratch databases only. **Not verified anywhere:** the installer and the
+  scheduled task on a real Windows PC, a real printer and the print-station claim, Windows
+  7, a Hindi native review. The list is in HANDOFF "1.4 batch", "Owed by the owner".
+- **Process lessons** (also in HANDOFF "Traps found in this batch"): build `shared` before
+  typecheck; source-reading tests must tolerate CRLF checkouts; stop only your own PIDs;
+  give every session its own `TEMP` and PostgreSQL port.
+- **Docs.** HANDOFF got the "1.4 batch" section and its 1.3 section was marked superseded;
+  `docs/NEXT_PHASE.md` points to it; `docs/STRUCTURE.md` section 17 lists the files D1, D2
+  and D3 added.
+
 ### 2026-10-03 - 1.3 batch: lead session hand-off (Claude, Opus)
 
 - **Lead session** committed Phases 0, 1, 2, 3, 4 and 8 to local `main`

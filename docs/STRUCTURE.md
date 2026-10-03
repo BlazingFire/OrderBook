@@ -79,6 +79,8 @@ entries state were re-taken; the workspace-wide file, line and test counts in §
 13. [Documentation map](#13-documentation-map)
 14. [Dependency hubs (graphify)](#14-dependency-hubs-graphify)
 15. [Where a change goes](#15-where-a-change-goes)
+16. [1.4 D4 additions](#16-14-d4-additions-password-eye-note-buttons-preview-icons-shortcuts)
+17. [1.4 additions from D1, D2 and D3](#17-14-additions-from-d1-d2-and-d3-updates-stock-removal-lists-filters-product-share)
 
 ---
 
@@ -6585,3 +6587,67 @@ Added on `d4/1.4`; the owner's R-numbers are in `CLAUDE_HELPER_D.md`.
 | **R12** Sign-out: `sign-out` icon, `.ob-btn--signout` with the `--signout-fg` token (light and dark). | `ui/src/icons.tsx`, `ui/src/tokens.css`, `ui/src/base.css`, both `App.tsx` | `ui/tests/nav-icons.test.tsx` |
 | **R18** `NAV_ICONS`: one icon per module, shared by the sidebar and Basic Home (its tiles without a drawing show the same icon). Both `App.tsx` nav rows read it. | `ui/src/navIcons.ts` | `ui/tests/nav-icons.test.tsx` |
 | **R13** F1 is `keys.help` (Cmd+/ on a Mac); letter chords for Reports Alt+R, Office panels Alt+O, Access Alt+A, Fields Alt+E, Logs Alt+L, Recycle bin Alt+B, Integrations Alt+I, App update Alt+U; new `party.new` Ctrl+Shift+A, `product.new` Ctrl+Shift+M (registered by the Parties / Products screens through `useCommand`), `session.signOut` Ctrl+Shift+L (asks first). A function key fires from inside a field. Alt+F / Alt+D stay the note screen's, Alt+C / Alt+P the Chatroom / Printroom, Alt+G is D3's. | `shared/src/keys/commands.ts`, `ui/src/KeyboardProvider.tsx` | `shared/tests/keys.test.ts`, `ui/tests/keyboard-provider.test.tsx`, `master-shell.test.tsx` |
+
+
+---
+
+## 17. 1.4 additions from D1, D2 and D3 (updates, stock removal, lists, filters, product share)
+
+Files the 1.4 batch added that the sections above do not list; D4's are in section 16.
+The owner's R-numbers are in `CLAUDE_HELPER_D.md` (untracked). Removed in the batch: the
+stock and inventory code (R15; the tables stay), see the notes in sections 3-9.
+
+### D1 (R2, R6, R7, R8: menubar, Check now, progress, Save all, the version gate, the nightly update)
+
+| File | What it is |
+|---|---|
+| `shared/src/domain/update-progress.ts` | R7a. `UpdateDownloadProgress`, the moving-average tracker (speed over the last seconds, not a flattering mean), `formatBytes` / `formatSpeed` / `formatEta`, `IDLE_PROGRESS`. Pure and clock-injected. Test `shared/tests/update-progress.test.ts` |
+| `shared/tests/releases-repo.test.ts` | R6. `releasesRepo(env)`: the built-in default `BlazingFire/OrderBook-Releases`, `.env` overrides, empty turns the poll off, tests turn it off |
+| `ui/src/UpdateProgress.tsx` | R7a. The download bar on both App update screens (bytes done, total, speed, time left). Test `ui/tests/update-progress.test.tsx` |
+| `ui/src/unsavedWork.tsx` | R7b. `useUnsavedWork` / `useFormBaseline`, `saveAllUnsavedWork`: before an update every open form that holds input is saved if complete and named in a dialog if not. Tests `ui/tests/unsaved-work.test.tsx`, `ui/tests/save-all-forms.test.tsx` (also a guard that every editor still registers) |
+| `office/web/src/screens/UpdateRequiredScreen.tsx` | R7e. "Update needed" (Office behind the Master: the update is offered) and "Waiting for the Master to update" (Office ahead: polls every 10 s, clears by itself). Standalone is left alone |
+| `electron/tests/app-menu.test.ts` | R2. `appMenuTemplate` is `null` on Windows and Linux, minimal on macOS; the shell wiring |
+| `electron/tests/update-launch.test.ts` | R7. `planInstallerLaunch`, `unattendedInstallDue`, the installer arguments, the shell's order of steps |
+| `ui/tests/updates-screens.test.tsx` | R6-R8. Both App update screens over a stubbed `fetch` and a fake desktop bridge: Check now, the bar, the order of Install now (save all, sign out, then the shell), the nightly switch |
+
+(`shared/src/protocol/auto-update.ts`, `master/installer/apply-update/*`, `electron/lib/app-menu.ts`, `staged-update.ts` and
+`update-launch.ts` are already described in sections 3.10 and 10.1 and in `docs/UPDATES.md` "1.4".)
+
+### D2 (R14, R15, R20, R22: names without codes, stock removed, import compatibility, board faces)
+
+| File | What it is |
+|---|---|
+| `master/tests/stock-retired.integration.test.ts` | R15. Each way an older Office or a stored row still reaches the removed feature: a `stock:*` command is refused cleanly, a queued stock mutation is rejected per mutation, an old snapshot is tolerated |
+| `master/tests/presence-sweep.integration.test.ts` | R22. The hub sweeps expired presence tabs on a timer every `PRESENCE_BEAT_MS` and stops with the hub |
+| `master/tests/fixtures/products-export-1.2.5.csv`, `.xlsx`, `products-export-1.2.5-with-stock.csv` | R20. Hand-built to the 1.2.5 export layout (not exported by a real 1.2.5 Master): they must import into 1.4 with no loss, the stock columns ignored with a notice |
+| `ui/tests/product-label.test.ts` | R14. `productLabel(name, brand)` is the one composer; no screen passes it a code or joins a code into a label |
+
+### D4 (one file section 16 does not list)
+
+| File | What it is |
+|---|---|
+| `ui/src/navGlyphs.tsx` | R18. The Basic Home drawings, one per module, on a 120-unit box (`Glyph`, `GLYPHS`); the tiles draw them in colour, the sidebar draws the same art in one colour at 16 px (`NavGlyph`), so a module has one icon on both. Test `ui/tests/nav-icons.test.tsx` |
+
+### D3 (R3-R5, R16, R17: Lists, filters, product share)
+
+| File | What it is |
+|---|---|
+| `master/src/db/migrations/20261012000000_catalog_lists_grant.ts` | R5. Add-only: `catalog.lists.manage` to the admin and Server Master tiers and to every role that held `fields.manage`; pinned after `20261007...` in `index.ts` and `migration-registry.test.ts` |
+| `ui/src/CatalogListsScreen.tsx` | R3-R5. The Lists module (nav id `lists`, Alt+G): Grades, Packaging and Brands pages on the shared `OptionListEditor`; everyone reads, `catalog.lists.manage` writes |
+| `ui/src/ListFilters.tsx` | R17. `useStoredSort` (kept per machine in localStorage under `ob.listSort.<table>`), `ProductFilterRow` (size, photo), `PartyFilterRow` (city, state, GST); both take `extraActive` and `onClearAll` so Clear filters clears the search and chips too |
+| `ui/src/ProductShare.tsx` | R16. The "N selected - Create product share" bar and the Save PDF / Print dialog; `printPdfBlob`. The tick boxes are `selectedIds` / `onSelectionChange` on `DataTable` |
+| `master/src/domain/product-share.ts` | R16. Pure: `chunkPages` (4 per page), `shareCard` (every product field but money; never the main-product code), `shareText(locale)` (the fixed words from `productShare.pdf.*`), `SHARE_MAX_PRODUCTS` = 400 |
+| `master/src/pdf/product-share-renderer.ts` | R16. A4 portrait, header with date and "Page n of m", 2x2 cards of photo over fields (a grey box without a photo); Devanagari through `master/src/pdf/fonts.ts` |
+| `master/src/services/product-share.service.ts` | R16. `productSharePdf(ids, actor)` (`products.view` only; photos converted to JPEG with `sharp`; custom fields by the company's label via `customFieldLabeler`; the deployment's language). Reached by `POST /api/products/share.pdf` (Master), the `product:sharePdf` command (protocol 7) and the Office proxy, which waits 120 s |
+| `master/tests/catalog-lists.integration.test.ts` | R5. The three lists under `catalog.lists.manage`, every other list under `fields.manage`; everyone reads the three; the Recycle Bin offers each key only what it can restore; the grant migration |
+| `master/tests/list-sort-filter.integration.test.ts` | R17. Server-side sort and filters on parties and products; an unknown sort key keeps the old order |
+| `master/tests/product-share.test.ts`, `product-share.integration.test.ts` | R16. 9 products make 3 pages; photos, a Hindi sheet, no money, custom field labels, permission, the 400 cap |
+| `master/tests/no-category-code-in-display.test.ts` | R14. Reads every source folder and refuses six shapes of joining a category code into display text |
+| `ui/tests/catalog-lists-screen.test.tsx`, `list-filters.test.tsx`, `product-share-bar.test.tsx` | R3-R5, R17, R16. The Lists screen's read-only and write states; sorting, tick boxes and Clear filters; the share bar, including the hidden-`<Activity>` case |
+
+Also changed by D3: `shared/src/domain/fields.ts` (`CATALOG_LIST_KEYS`), `permissions.ts`
+(`catalog.lists.manage`, management ceiling), `inputs.ts` (`sort`, `dir`, `PartyListQuery`,
+`ProductListQuery.size|hasPhoto`), `master/src/services/fields.service.ts`
+(`requireListRead` / `requireListWrite`), `recycle-bin.service.ts` (`optionScopeFor`),
+`master/src/http/routes/fields.routes.ts` (the value routes carry no middleware gate on
+purpose; `credential-invariants` names them).

@@ -10,7 +10,33 @@ This file assumes both.
 
 ---
 
-## First: finish the 1.3 batch (2026-10-03)
+## First: the 1.4 batch is done; what comes next (2026-10-03)
+
+The 1.3 batch and the owner's 1.4 requests (R0-R22) are all on `main` @ `4caa3a4`
+(not pushed), gated green. What landed, the owner's decisions, the traps and the long
+real-PC checklist are in `HANDOFF.md` under **"1.4 batch (2026-10-03)"**. Read that
+section first; the "1.3 batch" section under it is history.
+
+In order:
+
+1. **The real-PC pass.** Nothing in 1.4 has run on a real PC. `HANDOFF.md` "Owed by the
+   owner" has the checklist: the installer and the scheduled task (items 1-10 from D1),
+   the Printroom station claim, a real printer, the Win7 VMs, the Hindi native review and
+   the owner's own pass over the Master panel.
+2. **Release 1.3.0, Master first.** Bump the version everywhere (it is still 1.2.5), then
+   `npm run release` and `npm run release -- --os win7` (the releases repository is
+   `BlazingFire/OrderBook-Releases`). The owner decides when `main` is pushed and which
+   merged branches and worktrees go.
+3. **The backlog**, below: the five decisions only the owner can take, the audit
+   leftovers, and the older items. Several were touched by 1.3 and 1.4 (stock is gone,
+   the Chatroom and Printroom exist), so check each against the code before acting on it.
+
+The older text that follows this block, "First: finish the 1.3 batch", is superseded; it
+is kept because the rest of this file still refers to it.
+
+---
+
+## (Superseded) First: finish the 1.3 batch (2026-10-03)
 
 Phases 0–4 and 8 of the owner's 1.3 batch are on `main`, and the helper's
 party import/export and reports are merged. The helper session's branch
