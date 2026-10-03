@@ -52,6 +52,7 @@ import * as orderVehicleNumber from './20260401000000_order_vehicle_number.js';
 import * as serverMasterTier from './20261001000000_server_master_tier.js';
 import * as userNotifications from './20261002000000_user_notifications.js';
 import * as officePanelMasterProof from './20261002000001_office_panel_master_proof.js';
+import * as pendingOrderNumbers from './20261003000000_pending_order_numbers.js';
 import * as reportIndexesAndGrants from './20261004000000_report_indexes_and_grants.js';
 import * as chatroom from './20261005000000_chatroom.js';
 
@@ -228,6 +229,11 @@ export const migrations: Migration[] = [
   {
     name: '20261002000001_office_panel_master_proof',
     ...officePanelMasterProof,
+  },
+  // Pending order numbers, `PO/2026-27/00001` (1.3 Phase 4, migration #3).
+  {
+    name: '20261003000000_pending_order_numbers',
+    ...pendingOrderNumbers,
   },
   // Reports for the Office and Management tiers (1.3 H2): the owner-by-date
   // indexes the reports read through, and `reports.view` / `reports.export` for

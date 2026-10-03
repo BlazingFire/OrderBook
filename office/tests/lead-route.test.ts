@@ -22,6 +22,7 @@ vi.mock('../src/lib/master-fetch.js', () => ({
 }));
 
 import { createApp } from '../src/http/app.js';
+import { masterConnection } from '../src/realtime/master-connection.js';
 import * as userSession from '../src/services/user-session.service.js';
 import * as sync from '../src/sync/sync.service.js';
 import * as outbox from '../src/sync/outbox.store.js';
@@ -79,6 +80,63 @@ describe('POST /api/leads', () => {
     expect(typeof response.body.id).toBe('string');
     expect(response.body.id.length).toBeGreaterThan(0);
     expect(submitted).toMatchObject({ kind: 'lead.create', entity: 'lead' });
+  });
+
+  it('answers Provisional at once while the Master is not connected', async () => {
+    const awaitSettled = vi.spyOn(sync, 'awaitSettled');
+
+    const response = await request(createApp()).post('/api/leads').send(soundLead());
+
+    expect(response.status).toBe(202);
+    expect(response.body).toMatchObject({ queued: true, status: 'provisional' });
+    expect(response.body.poNumber).toBeUndefined();
+    expect(awaitSettled).not.toHaveBeenCalled();
+  });
+
+  it("waits for the Master's number while connected and answers with it", async () => {
+    vi.spyOn(masterConnection, 'getStatus').mockReturnValue({ state: 'connected' } as never);
+    const awaitSettled = vi.spyOn(sync, 'awaitSettled').mockResolvedValue({
+      result: { mutationId: 'MU1', status: 'applied', entityId: 'LD0000000042', conflicts: [] },
+      permanentId: 'LD0000000042',
+      poNumber: 'PO/2026-27/00042',
+    });
+
+    const response = await request(createApp()).post('/api/leads').send(soundLead());
+
+    expect(awaitSettled).toHaveBeenCalledWith('MU1', 5000);
+    expect(response.status).toBe(202);
+    expect(response.body).toMatchObject({
+      queued: true,
+      mutationId: 'MU1',
+      status: 'numbered',
+      permanentId: 'LD0000000042',
+      poNumber: 'PO/2026-27/00042',
+    });
+    // The temporary id is still the one the browser addressed the record by.
+    expect(response.body.id).not.toBe('LD0000000042');
+  });
+
+  it('falls back to Provisional when the number does not come in time', async () => {
+    vi.spyOn(masterConnection, 'getStatus').mockReturnValue({ state: 'connected' } as never);
+    vi.spyOn(sync, 'awaitSettled').mockResolvedValue(null);
+
+    const response = await request(createApp()).post('/api/leads').send(soundLead());
+
+    expect(response.status).toBe(202);
+    expect(response.body).toMatchObject({ queued: true, status: 'provisional' });
+    expect(response.body.permanentId).toBeUndefined();
+  });
+
+  it('says so when the Master refused the lead while the save waited', async () => {
+    vi.spyOn(masterConnection, 'getStatus').mockReturnValue({ state: 'connected' } as never);
+    vi.spyOn(sync, 'awaitSettled').mockResolvedValue({
+      result: { mutationId: 'MU1', status: 'rejected', entityId: 'X', conflicts: [], error: 'No access to this party' },
+      permanentId: 'X',
+    });
+
+    const response = await request(createApp()).post('/api/leads').send(soundLead());
+
+    expect(response.body).toMatchObject({ status: 'rejected', error: 'No access to this party' });
   });
 
   it('carries the variant, the quantity and the chosen colour through to the outbox verbatim', async () => {
@@ -197,6 +255,46 @@ describe('PUT /api/leads/:id', () => {
 
     expect(response.status).toBe(202);
     expect(submitted).toMatchObject({ kind: 'lead.update', entityId: 'LD0000000001' });
+  });
+
+  it('moves baseFieldHlc out of the payload and onto the mutation', async () => {
+    const hlc = '0000001700000000000-00000-A3F9K2';
+    const response = await request(createApp())
+      .put('/api/leads/LD0000000001')
+      .send({ notes: 'Call back after Diwali', baseFieldHlc: { notes: hlc, junk: 7 } });
+
+    expect(response.status).toBe(202);
+    expect(submitted).toMatchObject({
+      payload: { notes: 'Call back after Diwali' },
+      fields: ['notes'],
+      baseFieldHlc: { notes: hlc },
+    });
+    expect((submitted as { payload: object }).payload).not.toHaveProperty('baseFieldHlc');
+  });
+
+  it('does the same for an order edit', async () => {
+    const hlc = '0000001700000000000-00000-A3F9K2';
+    await request(createApp())
+      .put('/api/orders/OR0000000001')
+      .send({ notes: 'Fragile', baseFieldHlc: { notes: hlc } });
+
+    expect(submitted).toMatchObject({
+      kind: 'order.update',
+      payload: { notes: 'Fragile' },
+      fields: ['notes'],
+      baseFieldHlc: { notes: hlc },
+    });
+  });
+
+  it('never waits for a number on an edit', async () => {
+    vi.spyOn(masterConnection, 'getStatus').mockReturnValue({ state: 'connected' } as never);
+    const awaitSettled = vi.spyOn(sync, 'awaitSettled');
+
+    const response = await request(createApp()).put('/api/leads/LD0000000001').send({ notes: 'x' });
+
+    expect(response.status).toBe(202);
+    expect(response.body.status).toBeUndefined();
+    expect(awaitSettled).not.toHaveBeenCalled();
   });
 
   it('refuses an edit whose lines are malformed', async () => {

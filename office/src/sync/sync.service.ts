@@ -17,6 +17,7 @@ import { EventEmitter } from 'node:events';
 import { config } from '../config/index.js';
 import { createLogger } from '../lib/logger.js';
 import { observe } from './clock.js';
+import { holdNumbered } from './local-store.js';
 import * as outbox from './outbox.store.js';
 
 const log = createLogger('sync');
@@ -34,12 +35,46 @@ export interface FlushOutcome {
 /** Injected by the master connection, so this module owns no transport. */
 export type PushTransport = (mutations: Mutation[]) => Promise<SyncPushResponse>;
 
+/** What the Master said about one mutation, for a save that waited to hear it. */
+export interface SettledMutation {
+  result: MutationResult;
+  /** The record's id now: the permanent one once the Master has assigned it. */
+  permanentId: string;
+  /** The pending-order number, for an accepted `lead.create` on a Master that mints one. */
+  poNumber?: string;
+}
+
+/** A pending order this panel queued now has its permanent id (and number). */
+export interface NumberedEvent {
+  entity: 'lead';
+  temporaryId: string;
+  permanentId: string;
+  poNumber?: string;
+  /** True when the save was still waiting, so its own answer already carried the number. */
+  announced: boolean;
+  /** Who saved it, so only that person is told the number. */
+  forUserId: string | null;
+}
+
 const events = new EventEmitter();
 
 let transport: PushTransport | null = null;
 let flushing = false;
 let actingUser: () => string | null = () => null;
+/** Set when a flush was asked for while one was running, so it runs straight after. */
+let rerun = false;
 let retryTimer: NodeJS.Timeout | null = null;
+
+/** One save waiting for its mutation's answer, by mutation id. */
+const waiters = new Map<string, (settled: SettledMutation) => void>();
+
+/**
+ * The last few answers, by mutation id, for a waiter that registers after the
+ * answer already came back. A push can beat the caller to `awaitSettled`
+ * because `submit` starts the flush before it returns.
+ */
+const recentlySettled = new Map<string, SettledMutation>();
+const RECENTLY_SETTLED_LIMIT = 200;
 
 export function setTransport(next: PushTransport | null): void {
   transport = next;
@@ -82,6 +117,36 @@ export async function recentRejections(): Promise<MutationResult[]> {
   return (await outbox.refusals()).map((entry) => entry.result);
 }
 
+/**
+ * Wait for the Master's answer to one queued mutation.
+ *
+ * Resolves with the answer once a push carrying it comes back, or with null
+ * after `timeoutMs` (offline, a slow Master, a full gate). Never rejects: a
+ * caller that hears nothing in time treats the save as Provisional, and the
+ * mutation stays in the outbox either way.
+ */
+export function awaitSettled(mutationId: string, timeoutMs: number): Promise<SettledMutation | null> {
+  const done = recentlySettled.get(mutationId);
+  if (done) return Promise.resolve(done);
+
+  return new Promise((resolve) => {
+    const finish = (settled: SettledMutation | null): void => {
+      clearTimeout(timer);
+      if (waiters.get(mutationId) === finish) waiters.delete(mutationId);
+      resolve(settled);
+    };
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    timer.unref?.();
+    waiters.set(mutationId, finish);
+  });
+}
+
+/** Told whenever a pending order queued here receives its permanent id. */
+export function onNumbered(listener: (event: NumberedEvent) => void): () => void {
+  events.on('numbered', listener);
+  return () => events.off('numbered', listener);
+}
+
 /** Called once the panel's UI has actually shown them to somebody. */
 export async function acknowledgeRejections(mutationIds?: string[]): Promise<void> {
   await outbox.clearRefusals(mutationIds);
@@ -104,7 +169,14 @@ export async function flush(): Promise<FlushOutcome> {
     remaining: await outbox.pendingCount(),
   };
 
-  if (flushing || !transport) return idle;
+  if (flushing) {
+    // Something was queued after the running flush took its batch. Without
+    // this it would wait for the retry timer, which is as long as a save waits
+    // for its number, so that save would always time out to Provisional.
+    rerun = true;
+    return idle;
+  }
+  if (!transport) return idle;
   if (idle.remaining === 0) return idle;
 
   flushing = true;
@@ -126,10 +198,44 @@ export async function flush(): Promise<FlushOutcome> {
       response.idMappings.map((entry) => [entry.temporaryId, entry.permanentId]),
     );
 
+    const byId = new Map(batch.map((mutation) => [mutation.mutationId, mutation]));
+    const answers = response.results.map((result) => {
+      const mutation = byId.get(result.mutationId);
+      const settled: SettledMutation = {
+        result,
+        permanentId: (mutation && mapping.get(mutation.entityId)) ?? result.entityId,
+        ...(result.number ? { poNumber: result.number } : {}),
+      };
+      return { mutation, settled };
+    });
+
+    // Before the queue entry goes: the local view draws a queued lead from it,
+    // and the permanent record may not have reached this panel yet.
+    for (const { mutation, settled } of answers) {
+      if (isNumbering(mutation, settled)) holdNumbered(mutation, settled.permanentId, settled.poNumber);
+    }
+
     // Remap before settling: a queued follow-up ("move lead X to Quoted") has to
     // learn X's permanent id, and it is still in the queue at this point.
     await outbox.remapIds(mapping);
     await outbox.settle(response.results.map((result) => result.mutationId));
+
+    for (const { mutation, settled } of answers) {
+      const waiter = waiters.get(settled.result.mutationId);
+      remember(settled);
+      waiter?.(settled);
+      if (isNumbering(mutation, settled)) {
+        const event: NumberedEvent = {
+          entity: 'lead',
+          temporaryId: mutation.entityId,
+          permanentId: settled.permanentId,
+          ...(settled.poNumber ? { poNumber: settled.poNumber } : {}),
+          announced: waiter !== undefined,
+          forUserId: mutation.actorUserId ?? null,
+        };
+        events.emit('numbered', event);
+      }
+    }
 
     const rejections = response.results.filter((result) => result.status === 'rejected');
 
@@ -145,7 +251,6 @@ export async function flush(): Promise<FlushOutcome> {
      * disappeared with nothing anywhere to say it had.
      */
     if (rejections.length > 0) {
-      const byId = new Map(batch.map((mutation) => [mutation.mutationId, mutation]));
       const refusedAt = new Date().toISOString();
       await outbox.recordRefusals(
         rejections.flatMap((result) => {
@@ -185,6 +290,31 @@ export async function flush(): Promise<FlushOutcome> {
     return { ...idle, remaining: await outbox.pendingCount() };
   } finally {
     flushing = false;
+    if (rerun) {
+      rerun = false;
+      void flush();
+    }
+  }
+}
+
+/** An accepted `lead.create` whose temporary id the Master has just replaced. */
+function isNumbering(
+  mutation: Mutation | undefined,
+  settled: SettledMutation,
+): mutation is Mutation {
+  return (
+    mutation?.kind === 'lead.create' &&
+    settled.result.status !== 'rejected' &&
+    settled.permanentId !== mutation.entityId
+  );
+}
+
+function remember(settled: SettledMutation): void {
+  recentlySettled.set(settled.result.mutationId, settled);
+  if (recentlySettled.size > RECENTLY_SETTLED_LIMIT) {
+    // A Map iterates in insertion order, so the first key is the oldest.
+    const oldest = recentlySettled.keys().next().value;
+    if (oldest !== undefined) recentlySettled.delete(oldest);
   }
 }
 
@@ -218,4 +348,5 @@ export function stopSync(): void {
     retryTimer = null;
   }
   transport = null;
+  rerun = false;
 }

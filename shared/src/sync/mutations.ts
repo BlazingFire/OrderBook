@@ -124,6 +124,8 @@ export interface MutationResult {
   error?: string;
   /** Present on `rejected` when a permission was missing, so the UI can name it. */
   missingPermission?: string;
+  /** The PO number an applied `lead.create` was given; replayed with a duplicate. */
+  number?: string;
 }
 
 export interface SyncPushRequest {

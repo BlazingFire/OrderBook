@@ -35,6 +35,7 @@ import {
   Timeline,
   formatDateTime,
   formatKg,
+  recordNumberText,
   t,
   useColourHex,
 } from '@orderbook/ui';
@@ -291,7 +292,10 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
               <StatusPill tone="ok">{t('lead.badge.converted')}</StatusPill>
               <span className="ob-small" style={{ color: 'var(--fg-primary)' }}>
-                {t('lead.detail.convertedMessage', { orderId: lead.convertedOrderId })}
+                {t('lead.detail.convertedMessage', {
+                  // A final order shows its pending order's number.
+                  orderId: recordNumberText({ id: lead.convertedOrderId, poNumber: lead.poNumber }),
+                })}
               </span>
             </div>
           </Card>

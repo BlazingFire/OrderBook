@@ -682,8 +682,9 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
 
         const view = await agent.get('/api/lead-entry').expect(200);
 
+        // `owners` because a Server Master may raise an order for anybody.
         expect(Object.keys(view.body).sort()).toEqual(
-          ['features', 'optionLists', 'partyGrants', 'partyVariants', 'products', 'stock'].sort(),
+          ['features', 'optionLists', 'owners', 'partyGrants', 'partyVariants', 'products', 'stock'].sort(),
         );
         // The catalogue rides along so editing a multicolour line keeps its colour rule.
         expect(view.body.products.map((product: { id: string }) => product.id)).toContain(seeded.productId);
@@ -714,6 +715,21 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
         const view = await desk.get('/api/lead-entry').expect(200);
 
         expect(view.body).not.toHaveProperty('products');
+      });
+
+      it('offers the Owner picker only to a caller who may name an owner', async () => {
+        const { password } = await initialize();
+        const admin = await signedInAgent(password);
+        const desk = await agentWith(['leads.create']);
+
+        expect((await desk.get('/api/lead-entry').expect(200)).body).not.toHaveProperty('owners');
+
+        const owners = (await admin.get('/api/lead-entry').expect(200)).body.owners as Array<{
+          username: string;
+        }>;
+        expect(owners.map((owner) => owner.username)).toEqual(
+          expect.arrayContaining([MAIN.username, 'meena']),
+        );
       });
 
       it('refuses GET /api/lead-entry without leads.create or leads.edit (403)', async () => {

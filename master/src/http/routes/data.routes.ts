@@ -18,6 +18,7 @@ import * as fieldsService from '../../services/fields.service.js';
 import * as inventoryService from '../../services/inventory.service.js';
 import * as leadService from '../../services/lead.service.js';
 import * as orderService from '../../services/order.service.js';
+import * as presenceService from '../../services/presence.service.js';
 import * as searchService from '../../services/search.service.js';
 import * as snapshotService from '../../services/snapshot.service.js';
 import * as storageService from '../../services/storage.service.js';
@@ -654,6 +655,22 @@ dataRoutes.delete(
   needs('orders.delete'),
   asyncHandler(async (req, res) => {
     res.json(await orderService.deleteOrder(String(req.params.id), actorFromRequest(req)));
+  }),
+);
+
+// --- Presence --------------------------------------------------------------
+
+/**
+ * A Master browser tab has a lead or order open (or left it). Over HTTP
+ * because Master browser sockets only listen. The person comes from the
+ * session, the tab under them; `leads.view` / `orders.view` and party scope
+ * are checked by the service reading the record, as on opening it.
+ */
+dataRoutes.post(
+  '/presence',
+  asyncHandler(async (req, res) => {
+    const actor = actorFromRequest(req);
+    res.json(await presenceService.beat(actor, `admin:${actor.userId ?? ''}:`, req.body));
   }),
 );
 

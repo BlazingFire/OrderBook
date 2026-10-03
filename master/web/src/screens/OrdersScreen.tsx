@@ -27,8 +27,10 @@ import type {
 } from '@orderbook/shared';
 
 import { ApiError, api, desktopBridge } from '../api';
+import { presenceChannel } from '../presence';
 import { orderRecordTransport } from '../transports';
 import {
+  AvatarStack,
   Button,
   ConfirmDialog,
   ConflictBanner,
@@ -42,13 +44,16 @@ import {
   LoadMorePager,
   OrderNoteScreen,
   OrderRecordView,
+  RecordNumber,
   Segmented,
   SkeletonTable,
   StatusPill,
+  recordNumberText,
   rem,
   t,
   useDebounced,
   useFilterBar,
+  useRecordPresence,
   useSubNav,
   type DataTableColumn,
   type PillTone,
@@ -76,6 +81,8 @@ interface Props {
   onOpenLead: (leadId: string) => void;
   /** Present only for somebody who may share records in chat (`chat.use` and `chat.shareRecords`). */
   onShareInChat?: (chip: ChatRecordChip) => void;
+  /** The signed-in person, left out of who else is on the open record. */
+  userId: string;
 }
 
 function stageTone(order: Order, stages: PipelineStage[]): PillTone {
@@ -107,6 +114,7 @@ export function OrdersScreen({
   onOpenId,
   onOpenLead,
   onShareInChat,
+  userId,
 }: Props) {
   const toast = useToast();
   // The shell hands a fresh callback every render; the fetch below must not.
@@ -312,6 +320,13 @@ export function OrdersScreen({
       : null,
   );
 
+  // Who else has the open order up. The order's own form edits only its weight
+  // and vehicle in place, so this screen beats as viewing.
+  const presence = useRecordPresence(
+    presenceChannel,
+    openOrder ? { recordKind: 'order', recordId: openOrder.id } : null,
+  );
+
   /**
    * A refused delete is usually not a failure to report as one. The server
    * answers 409 with `blockedBy` naming what still points at the record —
@@ -350,12 +365,9 @@ export function OrdersScreen({
     {
       key: 'id',
       header: t('orders.column.order'),
-      width: rem(120),
-      render: (order) => (
-        <span className="ob-mono" style={{ color: 'var(--fg-secondary)' }}>
-          {order.id}
-        </span>
-      ),
+      width: rem(190),
+      // The pending order's PO number: a final order has none of its own.
+      render: (order) => <RecordNumber record={order} />,
     },
     {
       key: 'party',
@@ -363,24 +375,14 @@ export function OrdersScreen({
       render: (order) => order.partyName,
     },
     {
-      key: 'lead',
-      header: t('orders.column.fromLead'),
+      key: 'ref',
+      header: t('order.list.col.ref'),
       priority: 3,
-      width: rem(150),
+      width: rem(130),
+      // Only beside a PO number; without one the id is already the first column.
       render: (order) =>
-        order.leadId ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="ob-mono"
-            onClick={(event) => {
-              // The row opens the order; this opens the pending order it came from.
-              event.stopPropagation();
-              onOpenLead(order.leadId as string);
-            }}
-          >
-            {order.leadId}
-          </Button>
+        order.poNumber ? (
+          <span className="ob-mono ob-small">{order.id}</span>
         ) : (
           <span style={{ color: 'var(--fg-tertiary)' }}>—</span>
         ),
@@ -454,7 +456,7 @@ export function OrdersScreen({
                 {openOrder.leadId
                   ? t('orders.detail.subtitleWithLead', {
                       id: openOrder.id,
-                      leadId: openOrder.leadId,
+                      leadId: openOrder.poNumber ?? openOrder.leadId,
                     })
                   : t('orders.detail.subtitleNoLead', { id: openOrder.id })}
               </span>
@@ -462,6 +464,16 @@ export function OrdersScreen({
           }
           actions={
             <>
+              <AvatarStack entries={presence.entries} selfUserId={userId} />
+              {openOrder.leadId && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onOpenLead(openOrder.leadId as string)}
+                >
+                  {t('orders.column.fromLead')}
+                </Button>
+              )}
               {onShareInChat && (
                 <Button icon="chat" onClick={() => onShareInChat({ kind: 'order', id: openOrder.id })}>
                   {t('chat.share.button')}
@@ -513,7 +525,7 @@ export function OrdersScreen({
           open={confirmingDelete}
           tone="danger"
           busy={deleting}
-          title={t('leadsOrders.delete.order.title', { id: openOrder.id })}
+          title={t('leadsOrders.delete.order.title', { id: recordNumberText(openOrder) })}
           body={t('leadsOrders.delete.body')}
           confirmLabel={t('common.delete')}
           onCancel={() => setConfirmingDelete(false)}

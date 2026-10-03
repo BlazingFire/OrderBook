@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import type { Lead } from '@orderbook/shared';
+import type { Lead, PresenceLastWrite } from '@orderbook/shared';
 import {
   BusyMark,
   ConflictBanner,
@@ -32,11 +32,21 @@ interface Props {
   canCreateParty: boolean;
   /** A saved lead to edit instead of starting a new one. */
   lead?: Lead;
+  /** The last save somebody else made to `lead` while it is open. */
+  remoteChange?: PresenceLastWrite | null;
   onSaved: (id: string, saved?: Lead) => void;
   onCancel: () => void;
 }
 
-export function LeadEntry({ revision, focusNonce, canCreateParty, lead, onSaved, onCancel }: Props) {
+export function LeadEntry({
+  revision,
+  focusNonce,
+  canCreateParty,
+  lead,
+  remoteChange,
+  onSaved,
+  onCancel,
+}: Props) {
   const [view, setView] = useState<LeadEntryView | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,6 +78,7 @@ export function LeadEntry({ revision, focusNonce, canCreateParty, lead, onSaved,
         canCreateParty={canCreateParty}
         focusNonce={focusNonce}
         lead={lead}
+        remoteChange={remoteChange}
         onSaved={onSaved}
         onCancel={onCancel}
       />

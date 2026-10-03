@@ -176,6 +176,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'error.conflict.nameTaken.username': 'उपयोगकर्ता नाम "{value}" पहले से लिया जा चुका है',
   'error.conflict.staleVersion':
     'किसी और ने इसे पहले ही सहेज लिया। बदलाव देखने के लिए फिर लोड करें।',
+  'error.conflict.staleEdit': 'आपके खोलने के बाद किसी ने यह रिकॉर्ड बदल दिया',
   'error.internal.panelNoTenant': 'पैनल का कोई टेनेंट नहीं है',
   'error.internal.sessionNoTenant': 'सत्र का कोई टेनेंट नहीं है',
   'error.internal.backupHashChainInvalid':
@@ -2167,6 +2168,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'orders.badge.dispatched': 'dispatched',
   // TODO(i18n-hi)
   'orders.column.fromLead': 'From pending order',
+  'order.list.col.ref': 'ऑर्डर संदर्भ',
   // TODO(i18n-hi)
   'orders.column.order': 'Final Order',
   // TODO(i18n-hi)
@@ -3425,6 +3427,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.add.saved': 'Pending Order saved — {id} syncs when the Master is reachable',
   'lead.add.savedOnline': 'पेंडिंग ऑर्डर {id} सेव हुई',
+  'lead.number.label': 'पीओ नंबर',
+  'lead.number.provisional': 'अस्थायी',
+  'lead.number.provisionalHint': 'मास्टर से जुड़ने पर इसका नंबर मिलेगा',
   // TODO(i18n-hi)
   'lead.add.source.label': 'Source',
   // TODO(i18n-hi)
@@ -3921,6 +3926,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'logs.action.variant_saved': 'पार्टी-वार रिकॉर्ड सहेजा गया',
   'logs.action.verified': 'सत्यापित',
   'notification.panel.offlineLong': '{panel} एक घंटे से ज़्यादा समय से ऑफ़लाइन है',
+  'notification.lead.numbered': 'ऑफ़लाइन सहेजे गए {party} के पेंडिंग ऑर्डर को अब नंबर {number} मिला है',
   'notification.title': 'सूचनाएँ',
   'notification.unreadLabel': 'सूचनाएँ, {count} बिना पढ़ी',
   'notification.markAllRead': 'सभी को पढ़ा हुआ मानें',
@@ -4114,4 +4120,16 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'chat.share.sent': 'चैट में साझा किया गया',
   'chat.share.noRooms': 'आप अभी ऐसे किसी कमरे में नहीं हैं जिसमें संदेश भेज सकें',
   'chat.share.button': 'चैट में साझा करें',
+  'presence.label': 'इस रिकॉर्ड पर लोग',
+  'presence.viewing': '{name} देख रहे हैं',
+  'presence.editing': '{name} बदलाव कर रहे हैं',
+  'presence.more': '+{count} और',
+  'presence.serverMaster': 'सर्वर मास्टर',
+  'validation.presence.invalid': 'रिकॉर्ड देखने की यह जानकारी सही नहीं है',
+  'lead.add.savedProvisional': 'पेंडिंग ऑर्डर अस्थायी रूप से सेव हुई — मास्टर से जुड़ने पर इसे नंबर मिलेगा',
+  'lead.numbered.toast': 'अस्थायी पेंडिंग ऑर्डर अब {number} है',
+  'lead.add.owner': 'मालिक',
+  'lead.add.owner.me': 'मैं',
+  'lead.conflict.savedBy': '{name} ने इसे {time} पर सेव किया',
+  'lead.conflict.keepMine': 'मेरा रखें',
 };

@@ -28,4 +28,13 @@ describe('matchesRecordSearch', () => {
     expect(matchesRecordSearch(record, 'grass damru')).toBe(true);
     expect(matchesRecordSearch(record, 'damru box')).toBe(false);
   });
+
+  it('finds a record by its PO number, whole or in part, and by id when it has none', () => {
+    const numbered = { ...record, poNumber: 'PO/2026-27/00042' };
+    for (const term of ['PO/2026-27/00042', 'po/2026-27', '00042']) {
+      expect(matchesRecordSearch(numbered, term)).toBe(true);
+    }
+    expect(matchesRecordSearch(numbered, '00043')).toBe(false);
+    expect(matchesRecordSearch({ ...record, poNumber: null }, 'ld0000000003')).toBe(true);
+  });
 });

@@ -180,3 +180,32 @@ function safeDeviceCode(hlc: string): string {
     return 'unknown';
   }
 }
+
+/**
+ * Everything a person can edit on a line, for "did the lines change". The
+ * snapshot fields (name, code, weight) are left out: they come from the
+ * catalogue, not the person.
+ */
+export function lineKey(line: unknown): string {
+  const l = (line ?? {}) as Record<string, unknown>;
+  const text = (value: unknown) => (typeof value === 'string' && value !== '' ? value : null);
+  return JSON.stringify([
+    l.productId,
+    l.variantId,
+    Number(l.quantity),
+    text(l.colour),
+    text(l.grade),
+    text(l.packaging),
+    text(l.notes),
+  ]);
+}
+
+/**
+ * Whether two line sets say the same thing, in the same order. An edit whose
+ * lines are unchanged is not an edit of `items`, so the Master drops them from
+ * an offline merge and a client leaves them out of what it sends.
+ */
+export function sameLines(stored: unknown, incoming: unknown): boolean {
+  if (!Array.isArray(stored) || !Array.isArray(incoming) || stored.length !== incoming.length) return false;
+  return stored.every((line, index) => lineKey(line) === lineKey(incoming[index]));
+}

@@ -64,6 +64,10 @@ const panelCredentialRepo = await import('../src/repositories/panel-credential.r
 const panelRepo = await import('../src/repositories/office-panel.repository.js');
 const authService = await import('../src/services/auth.service.js');
 const avatarService = await import('../src/services/avatar.service.js');
+const catalogService = await import('../src/services/catalog.service.js');
+const leadService = await import('../src/services/lead.service.js');
+const partyAccessService = await import('../src/services/party-access.service.js');
+const { buildLeadEntryView } = await import('../src/services/snapshot.service.js');
 const { createMasterKeyGate, masterKeyGate } = await import('../src/services/master-key.service.js');
 const panelService = await import('../src/services/panel.service.js');
 const roleService = await import('../src/services/role.service.js');
@@ -421,6 +425,78 @@ describe.skipIf(!canRunIntegrationTests)('the Server Master tier (integration)',
       await expect(
         panelService.updatePanel(panelId, { roleId: role.id }, await serverMasterActor()),
       ).rejects.toMatchObject({ messageKey: 'validation.panel.serverMasterRole' });
+    });
+  });
+
+  describe('authority over every user’s pending orders', () => {
+    /** An office user, and a party restricted to them alone. */
+    async function officeUserOnRestrictedParty() {
+      const admin = await testActor();
+      const role = await roleService.createRole(
+        {
+          name: 'Desk',
+          tier: 'office',
+          permissions: ['leads.view', 'leads.create', 'leads.edit', 'parties.view'],
+        },
+        admin,
+      );
+      const { user } = await userService.createUser(
+        { username: 'ravi', displayName: 'Ravi', roleId: role.id, password: 'desk-pass-1' },
+        admin,
+      );
+      const party = await catalogService.createParty({ name: 'Closed Traders' }, admin);
+      await partyAccessService.replaceAssignments(
+        party.id,
+        { entries: [{ userId: user.id, level: 'manage' }], expectedVersion: party.sync.version },
+        admin,
+      );
+      const product = await catalogService.createProduct(
+        { categoryName: 'Tiles', variants: [{ code: 'SM-01' }], name: 'Glazed Tile' },
+        admin,
+      );
+      const items = [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 2, packaging: 'carton' }];
+      const desk = await testActor({
+        actorId: user.id,
+        userId: user.id,
+        actorName: 'Ravi',
+        permissions: { roleId: role.id, roleName: 'Desk', tier: 'office', permissions: role.permissions },
+      });
+      return { officeUserId: user.id, partyId: party.id, items, desk };
+    }
+
+    const logged = (entityId: string, action: string) =>
+      db()('activity_log')
+        .where({ entity_type: 'lead', entity_id: entityId, action })
+        .select<Array<{ actor_id: string | null }>>('actor_id');
+
+    it('raises a pending order on behalf of an office user, offered as a choice, and logs it', async () => {
+      await setUpFirstRun();
+      const smId = await userIdOf(MAIN.username);
+      const sm = await serverMasterActor(smId);
+      const { officeUserId, partyId, items } = await officeUserOnRestrictedParty();
+
+      const view = await buildLeadEntryView(sm);
+      expect(view.owners?.map((owner) => owner.id)).toContain(officeUserId);
+
+      const lead = await leadService.createLead({ partyId, items, ownerId: officeUserId }, sm);
+
+      expect(lead.ownerId).toBe(officeUserId);
+      expect(await logged(lead.id, 'created')).toEqual([{ actor_id: smId }]);
+    });
+
+    it('deletes another user’s pending order on a party restricted to them, and logs it', async () => {
+      await setUpFirstRun();
+      const smId = await userIdOf(MAIN.username);
+      const sm = await serverMasterActor(smId);
+      const { partyId, items, desk } = await officeUserOnRestrictedParty();
+      const lead = await leadService.createLead({ partyId, items }, desk);
+      // The office user cannot name an owner, so their form offers none.
+      expect((await buildLeadEntryView(desk)).owners).toBeUndefined();
+
+      await leadService.deleteLead(lead.id, sm);
+
+      await expect(leadService.getLead(lead.id, sm)).rejects.toMatchObject({ statusCode: 404 });
+      expect(await logged(lead.id, 'deleted')).toEqual([{ actor_id: smId }]);
     });
   });
 

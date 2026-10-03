@@ -35,6 +35,7 @@ import {
   t,
   type ChatMessage,
   type DataChangedEvent,
+  type PresenceBeat,
   type ReportKind,
   type PanelHealth,
   type SyncSnapshot,
@@ -652,6 +653,10 @@ export function createApp(): Express {
     }
     await forward(res, 'order:get', req.params.id);
   });
+  // --- Presence: who else has this record open. Held on the Master, so online
+  // only; offline this answers 503 and the screen simply shows nobody. ---
+
+  app.post('/api/presence', (req, res) => forward(res, 'presence:beat', presenceBeat(req.body)));
 
   /**
    * Every write below queues a mutation and answers immediately.
@@ -1077,6 +1082,7 @@ export function createApp(): Express {
       entity: 'lead',
       payload: req.body,
       validate: () => leadPayloadProblem(req.body, { itemsRequired: true }),
+      awaitNumber: true,
     }),
   );
   app.put('/api/leads/:id', (req, res) =>
@@ -1850,6 +1856,8 @@ async function queue(
     baseFieldHlc?: Record<string, string>;
     /** A shape check on the payload — a sentence when it fails, null when sound. */
     validate?: () => string | null;
+    /** Wait (connected only) for the Master's permanent id and pending-order number. */
+    awaitNumber?: boolean;
   },
 ): Promise<void> {
   const session = userSession.currentSession();
@@ -1877,7 +1885,9 @@ async function queue(
   }
 
   try {
-    const payload = (request.payload ?? {}) as Record<string, unknown>;
+    // The edit's field clocks travel on the mutation, never inside its payload:
+    // left there, `baseFieldHlc` became one of the fields the edit claimed to set.
+    const { baseFieldHlc: _clocks, ...payload } = (request.payload ?? {}) as Record<string, unknown>;
     const entityId = request.entityId ?? (await nextTemporaryId());
 
     const mutation = await sync.submit({
@@ -1886,7 +1896,7 @@ async function queue(
       entityId,
       payload,
       fields: Object.keys(payload),
-      baseFieldHlc: request.baseFieldHlc,
+      baseFieldHlc: fieldClocks(request.baseFieldHlc),
       // Stamped so work done offline is attributed to the person who did it
       // once it reaches the Master. It grants nothing: the Master takes the
       // authority for a push from the session token this panel presented, never
@@ -1894,11 +1904,15 @@ async function queue(
       actorUserId: session?.userId ?? null,
     });
 
+    // Waited for before the count, which the answer usually shrinks.
+    const numbering = request.awaitNumber ? await numberingOf(mutation.mutationId) : {};
+
     res.status(202).json({
       queued: true,
       id: entityId,
       mutationId: mutation.mutationId,
       pendingCount: await outbox.pendingCount(),
+      ...numbering,
     });
   } catch (error) {
     log.error('Could not queue the change', error);
@@ -1907,6 +1921,54 @@ async function queue(
       message: 'Could not save locally — check disk space and permissions',
     });
   }
+}
+
+/**
+ * What a new pending order's save can say about its number.
+ *
+ * While the link is up the save waits (up to `saveNumberWaitMs`) for the push
+ * that carries it, so the toast can name the number. Offline, or when the
+ * Master is slow, it answers Provisional at once: the lead is already safe in
+ * the outbox, and the number follows over the `numbered` event.
+ */
+async function numberingOf(mutationId: string): Promise<Record<string, unknown>> {
+  if (masterConnection.getStatus().state !== 'connected') return { status: 'provisional' };
+
+  const settled = await sync.awaitSettled(mutationId, config.sync.saveNumberWaitMs);
+  if (!settled) return { status: 'provisional' };
+  if (settled.result.status === 'rejected') {
+    return { status: 'rejected', error: settled.result.error ?? null };
+  }
+  return {
+    status: 'numbered',
+    permanentId: settled.permanentId,
+    // Absent from a Master too old to mint one; the screen shows the id instead.
+    ...(settled.poNumber ? { poNumber: settled.poNumber } : {}),
+  };
+}
+
+/** Field clocks as the browser sent them, keeping only field-to-clock strings. */
+function fieldClocks(value: unknown): Record<string, string> | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const clocks: Record<string, string> = {};
+  for (const [field, hlc] of Object.entries(value)) {
+    if (typeof hlc === 'string') clocks[field] = hlc;
+  }
+  return clocks;
+}
+
+/**
+ * A presence beat with nothing but the fields the protocol defines. The Master
+ * checks the values and takes who is beating from this panel's session.
+ */
+function presenceBeat(body: unknown): PresenceBeat {
+  const raw = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
+  return {
+    tabId: typeof raw.tabId === 'string' ? raw.tabId : '',
+    ...(raw.recordKind === 'lead' || raw.recordKind === 'order' ? { recordKind: raw.recordKind } : {}),
+    ...(typeof raw.recordId === 'string' ? { recordId: raw.recordId } : {}),
+    ...(typeof raw.editing === 'boolean' ? { editing: raw.editing } : {}),
+  };
 }
 
 /**
@@ -2451,7 +2513,19 @@ masterConnection.on('notification', (notification: { forUserId?: unknown }) =>
 );
 // Chat is addressed to one person too, and only reaches them while they are the one signed in.
 masterConnection.on('chat', (push: { forUserId?: unknown }) => broadcastForUser('chat', push));
+masterConnection.on('presence', (presence: { forUserId?: unknown }) =>
+  broadcastForUser('presence', presence),
+);
 sync.onSyncEvent(schedulePushView);
+// Only moves an open Provisional record to its permanent id and updates the
+// save toast. The bell entry comes from the Master's own `lead.numbered`
+// notification, so nothing is announced twice. Every tab gets the id remap, but
+// the number (and so the toast) only reaches the person who saved the lead: on a
+// shared PC a queued save can land after its author has signed out.
+sync.onNumbered(({ poNumber, ...event }) => {
+  const isAuthor = event.forUserId !== null && event.forUserId === userSession.currentSession()?.userId;
+  broadcast('numbered', isAuthor && poNumber ? { ...event, poNumber } : event);
+});
 
 /**
  * Server-sent events rather than another Socket.IO hop: the browser only ever

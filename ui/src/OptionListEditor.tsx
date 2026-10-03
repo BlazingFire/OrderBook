@@ -600,12 +600,15 @@ export function ConflictNotice({
   onReload,
   onOverwrite,
   busy,
+  overwriteLabel,
 }: {
   message: string;
   diff: Record<string, FieldDifference>;
   onReload: () => void;
   onOverwrite: () => void;
   busy: boolean;
+  /** The pending order form says "Keep mine": its overwrite only re-bases, it does not save. */
+  overwriteLabel?: string;
 }) {
   const describe = (value: unknown): string => {
     if (value === null || value === undefined || value === '') return t('fields.conflict.notSet');
@@ -620,7 +623,7 @@ export function ConflictNotice({
             {t('fields.conflict.reload')}
           </Button>
           <Button size="sm" disabled={busy} onClick={onOverwrite}>
-            {t('fields.conflict.overwrite')}
+            {overwriteLabel ?? t('fields.conflict.overwrite')}
           </Button>
         </div>
       }

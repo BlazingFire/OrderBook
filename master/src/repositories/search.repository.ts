@@ -140,11 +140,18 @@ async function runQuery(
       // line-item search would name every lead and order in the company.
       const parentTable = kind === 'lead_line' ? 'leads' : 'orders';
       const partyScope = partyScopeSql('parent.party_id', tenantId, scope);
+      // The subtitle names the record by its PO number; a final order reads
+      // its lead's. Either falls back to the id when there is none.
+      const number =
+        kind === 'lead_line'
+          ? 'COALESCE(parent.po_number, li.parent_id)'
+          : 'COALESCE((SELECT ld.po_number FROM leads ld WHERE ld.id = parent.lead_id), li.parent_id)';
+      const numberGroup = kind === 'lead_line' ? 'parent.po_number' : 'parent.lead_id';
 
       const { rows } = await runner.raw<{ rows: RankedRow[] }>(
         `SELECT li.parent_id AS id,
                 li.product_name AS title,
-                li.parent_id || COALESCE(' · ' || li.code, '') || COALESCE(' · ' || li.variant_label, '') AS subtitle,
+                ${number} || COALESCE(' · ' || li.code, '') || COALESCE(' · ' || li.variant_label, '') AS subtitle,
                 MAX(ts_rank(li.search_vector, ${TSQUERY})) AS rank
            FROM line_items li
            JOIN ${parentTable} parent
@@ -153,7 +160,7 @@ async function runQuery(
             AND li.parent_type = ?
             AND parent.deleted_at IS NULL
             AND li.search_vector @@ ${TSQUERY}${partyScope.sql}
-          GROUP BY li.parent_id, li.product_name, li.code, li.variant_label
+          GROUP BY li.parent_id, ${numberGroup}, li.product_name, li.code, li.variant_label
           ORDER BY rank DESC
           LIMIT ?`,
         [term, tenantId, parentType, term, ...partyScope.bindings, limit],

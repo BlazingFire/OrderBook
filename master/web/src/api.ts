@@ -50,6 +50,8 @@ import type {
   MessageKey,
   MessageParams,
   UserNotification,
+  PresenceBeat,
+  RecordPresence,
   OfficePanelDetail,
   OfficePanelWithPresence,
   OptionListItem,
@@ -973,6 +975,17 @@ export const api = {
    */
   notifications: () =>
     requestUntracked<{ items: UserNotification[]; unreadCount: number }>('/api/notifications'),
+  /**
+   * "This tab has this record open" (or, with no record, "left it"). Untracked:
+   * it runs every few seconds in the background. The same tab id rides on the
+   * socket handshake, so closing the tab takes it off at once.
+   */
+  presenceBeat: (beat: PresenceBeat, keepalive = false) =>
+    requestUntracked<RecordPresence | null>('/api/presence', {
+      method: 'POST',
+      body: JSON.stringify(beat),
+      keepalive,
+    }),
   markNotificationsRead: (which: { ids: string[] } | { all: true }) =>
     post<{ unreadCount: number }>('/api/notifications/read', which),
 

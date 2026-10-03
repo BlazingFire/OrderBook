@@ -128,6 +128,19 @@ function entityLabel(entityType: string): string {
   return key ? t(key) : entityType;
 }
 
+/**
+ * The record as people know it: a pending or final order's PO number, which
+ * the trail keeps in its details (`poNumber` on a create, `number` on a delete
+ * or restore), or the id.
+ */
+function recordShown(entry: ActivityLogEntry): string {
+  if (entry.entityType !== 'lead' && entry.entityType !== 'order') return entry.entityId;
+  const { poNumber, number } = entry.details ?? {};
+  if (typeof poNumber === 'string' && poNumber) return poNumber;
+  if (typeof number === 'string' && number) return number;
+  return entry.entityId;
+}
+
 function actionLabel(action: string): string {
   const key = logsActionLabelKey(action);
   return key ? t(key) : action;
@@ -394,7 +407,7 @@ export function LogsScreen({ permissions, transport }: Props) {
             },
             {
               label: t('logs.drawer.record'),
-              value: <span className="ob-mono">{entry.entityId}</span>,
+              value: <span className="ob-mono">{recordShown(entry)}</span>,
             },
             { label: t('logs.drawer.who'), value: <ActorCell entry={entry} /> },
             { label: t('logs.drawer.when'), value: formatDateTime(entry.createdAt) },
@@ -495,7 +508,7 @@ export function LogsScreen({ permissions, transport }: Props) {
       render: (entry) => (
         <span
           className="ob-mono"
-          title={`${entityLabel(entry.entityType)} ${entry.entityId}`}
+          title={`${entityLabel(entry.entityType)} ${recordShown(entry)}`}
           style={{
             flex: 1,
             minWidth: 0,
@@ -505,7 +518,7 @@ export function LogsScreen({ permissions, transport }: Props) {
             color: 'var(--fg-secondary)',
           }}
         >
-          {entityLabel(entry.entityType)} {entry.entityId}
+          {entityLabel(entry.entityType)} {recordShown(entry)}
         </span>
       ),
     },

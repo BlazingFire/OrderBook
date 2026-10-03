@@ -521,6 +521,12 @@ class MasterConnection extends EventEmitter {
       this.emit('chat', push);
     });
 
+    // Who else has a record open. Addressed the same way (`forUserId`) and
+    // filtered by the HTTP layer in the same place.
+    socket.on('presence:changed', (presence) => {
+      this.emit('presence', presence);
+    });
+
     // --- Administered from the Master (docs/UI_REDESIGN.md — Office Panels) ---
 
     // A pull, for when somebody opens this panel's screen on the Master and

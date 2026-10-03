@@ -14,7 +14,7 @@
  * dealer, not to whoever clicked Preview in their own locale.
  */
 
-import { lineColourText, subProductCells } from '@orderbook/shared';
+import { lineColourText, recordNumber, subProductCells } from '@orderbook/shared';
 import type { Lead, LineItem, Party } from '@orderbook/shared';
 
 import type { ReportTablePdf } from '../pdf/table-renderer.js';
@@ -52,7 +52,7 @@ export function leadPdfTable(
 
   return {
     title: companyName,
-    subtitle: `Lead ${lead.id} · ${date}`,
+    subtitle: `Pending order ${recordNumber(lead)} · ${date}`,
     preamble: partyLines(lead, party),
     columns: [
       // Room for `999`: a figure never wraps, so row 100 would print as `1…`.

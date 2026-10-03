@@ -82,6 +82,8 @@ import * as reportService from '../services/report.service.js';
 import * as imageService from '../services/image.service.js';
 import * as panelService from '../services/panel.service.js';
 import * as partyAccessService from '../services/party-access.service.js';
+import * as presenceService from '../services/presence.service.js';
+import type { PresenceChange } from './presence-store.js';
 import * as recycleBinService from '../services/recycle-bin.service.js';
 import * as searchService from '../services/search.service.js';
 import * as settingsService from '../services/settings.service.js';
@@ -118,6 +120,13 @@ const panelSockets = new Map<string, PanelSocket>();
  * worth an await.
  */
 let adminSocketCount = 0;
+
+/**
+ * The admin socket on file for each Master browser tab's presence key. A tab
+ * that reconnects replaces its entry, and only the socket still on file may
+ * take the tab off its record when it disconnects, as with `panelSockets`.
+ */
+const adminPresenceSockets = new Map<string, PanelSocket>();
 
 /** For the health route. Zero before the hub starts, which is honest. */
 export function socketCounts(): { panelSockets: number; adminSockets: number } {
@@ -260,6 +269,9 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
   });
 
   const unsubscribeChanges = onChange((event) => {
+    // Whoever else has this record open is told who saved it.
+    presenceService.noteWrite(event);
+
     // A lead, order, party or party-variant row belongs to exactly one party,
     // and a broadcast is a read like any other. Without this, every panel and
     // every Master browser was handed the full record of a party its signed-in
@@ -349,6 +361,15 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
     ).catch((error: unknown) => log.warn(`Could not deliver a chat event: ${toErrorMessage(error)}`));
   });
 
+  // Presence goes only to the people on the record, each re-checked as a
+  // reader of it. Never through `publishChange`: it is not a change to log or
+  // replay.
+  const unsubscribePresence = presenceService.onPresenceChange((change) => {
+    void emitPresence(io, change).catch((error: unknown) =>
+      log.warn(`Could not deliver presence: ${toErrorMessage(error)}`),
+    );
+  });
+
   // Panels that were away when this Master stopped still get their notice.
   void panelService
     .scheduleLongOfflineNoticesAtBoot()
@@ -364,6 +385,9 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
       unsubscribeConflicts();
       unsubscribeNotifications();
       unsubscribeChat();
+      unsubscribePresence();
+      presenceService.resetPresence();
+      adminPresenceSockets.clear();
       setPanelLink(null);
       // Cleared before the close, so the closing sockets' own handlers leave
       // presence alone; the last-seen time is written here instead, awaited
@@ -411,6 +435,7 @@ async function authenticate(socket: PanelSocket): Promise<void> {
     socket.data.tenantId = user.tenantId;
     socket.data.userId = user.id;
     socket.data.sessionToken = auth.sessionToken;
+    if (presenceService.isPresenceTabId(auth.tabId)) socket.data.tabId = auth.tabId;
     return;
   }
 
@@ -450,8 +475,17 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
     await socket.join(ROOM_MASTER_ADMINS);
     adminSocketCount += 1;
 
+    // The Master browser beats over HTTP under the same key, so closing the
+    // tab takes it off its record now rather than after the TTL.
+    const presenceKey = socket.data.tabId ? `admin:${actor.userId}:${socket.data.tabId}` : null;
+    if (presenceKey) adminPresenceSockets.set(presenceKey, socket);
+
     socket.on('disconnect', () => {
       adminSocketCount = Math.max(0, adminSocketCount - 1);
+      if (presenceKey && adminPresenceSockets.get(presenceKey) === socket) {
+        adminPresenceSockets.delete(presenceKey);
+        presenceService.leaveConnection(presenceKey);
+      }
     });
 
     socket.emit('panels:changed', await panelService.listPanelsWithPresence(actor.tenantId));
@@ -491,6 +525,7 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
   socket.on('disconnect', () => {
     if (panelSockets.get(panelId) !== socket) return;
     panelSockets.delete(panelId);
+    presenceService.dropConnections(`panel:${panelId}:`);
     void (async () => {
       await panelService.markPanelDisconnected(panelId);
       log.info(`Office panel disconnected: ${panelId}`);
@@ -526,7 +561,15 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
   };
 
   registerCommands(socket, actorFor);
-  registerAuthCommands(socket, sendSnapshot, ready);
+  // A different person on the panel is not on the records the last one had open.
+  registerAuthCommands(
+    socket,
+    () => {
+      presenceService.dropConnections(`panel:${panelId}:`);
+      sendSnapshot();
+    },
+    ready,
+  );
 
   await socket.join(ROOM_OFFICE_PANELS);
   await connected;
@@ -897,6 +940,14 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   socket.on('chat:mute', (input, ack) => run(ack, (actor) => chatService.setMuted(input, actor)));
   socket.on('chat:requestAccess', (input, ack) =>
     run(ack, (actor) => chatService.requestAccess(input, actor)),
+  );
+
+  // Who is acting comes from this socket, and the tab lives under this panel;
+  // the beat itself names only the tab and the record.
+  socket.on('presence:beat', (beat, ack) =>
+    run(ack, (actor) =>
+      presenceService.beat(actor, `panel:${socket.data.panelId ?? ''}:`, beat),
+    ),
   );
 
   // The one live pull; everything else rides on `SyncSnapshot.dashboard` and
@@ -1321,6 +1372,30 @@ async function emitToActors<E extends PerUserEvent>(
         log.warn(`Could not deliver ${event} to a socket: ${toErrorMessage(error)}`);
       }
     }),
+  );
+}
+
+/**
+ * Who is on a record, sent to the people on it. Each recipient is checked as
+ * a reader of the record by `mayReceive`, the gate a `data:changed` for it
+ * would pass, so a person whose party access was taken away since they opened
+ * it learns nothing more about who is there.
+ */
+async function emitPresence(io: RealtimeHub['io'], change: PresenceChange): Promise<void> {
+  const grants = await partyAccessRepo.grantsForParty(change.tenantId, change.partyId);
+  const probe: DataChangedEvent = {
+    entity: change.recordKind,
+    action: 'updated',
+    id: change.recordId,
+    payload: { tenantId: change.tenantId, partyId: change.partyId },
+  };
+  await emitToActors(
+    io,
+    change.tenantId,
+    'presence:changed',
+    change.presence,
+    (actor) => mayReceive(actor, probe, grants),
+    change.userIds,
   );
 }
 

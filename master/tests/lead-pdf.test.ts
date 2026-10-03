@@ -204,11 +204,18 @@ describe('lead PDF — the table', () => {
     expect(twoBrands.table.rows.every((row) => row.length === 8)).toBe(true);
   });
 
+  it('heads the page with the PO number when the lead has one, its id otherwise', () => {
+    const numbered = leadPdfTable({ ...lead([line({})]), poNumber: 'PO/2026-27/00042' }, PARTY, 'Swisware Ceramics', '2026-09-29');
+    expect(numbered.subtitle).toBe('Pending order PO/2026-27/00042 · 2026-09-29');
+    // An old Master's lead, or one restored before numbering ran, has no number.
+    expect(build([line({})]).table.subtitle).toBe('Pending order LD0000000042 · 2026-09-29');
+  });
+
   it('heads the page with the company, the lead and the party, and names no money', () => {
     const { table } = build([line({})]);
 
     expect(table.title).toBe('Swisware Ceramics');
-    expect(table.subtitle).toBe('Lead LD0000000042 · 2026-09-29');
+    expect(table.subtitle).toBe('Pending order LD0000000042 · 2026-09-29');
     expect(table.preamble).toEqual([
       'शर्मा टाइल्स (Sharma Tiles)',
       '12 Station Road',

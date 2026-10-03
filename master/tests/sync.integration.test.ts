@@ -29,6 +29,7 @@ import * as catalog from '../src/services/catalog.service.js';
 import * as chat from '../src/services/chat.service.js';
 import * as conflicts from '../src/services/conflict.service.js';
 import * as leads from '../src/services/lead.service.js';
+import * as notifications from '../src/services/notification.service.js';
 import * as partyAccess from '../src/services/party-access.service.js';
 import * as roleService from '../src/services/role.service.js';
 import * as userService from '../src/services/user.service.js';
@@ -564,6 +565,84 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
       const { results } = await sync.applyPush({ mutations: [edit(lead.id, 'some-user-id')] }, user);
 
       expect(results[0]?.status).toBe('applied');
+    });
+  });
+
+  describe('the bell notice for a pending order numbered after an offline save (rule 2)', () => {
+    async function desk(username: string) {
+      const role = await roleService.createRole(
+        { name: `Desk ${username}`, tier: 'office', permissions: ['leads.view'] },
+        actor,
+      );
+      const { user } = await userService.createUser({ username, displayName: username, roleId: role.id }, actor);
+      return user;
+    }
+
+    async function noticesFor(userId: string) {
+      return notifications.listNotifications({}, { ...actor, actorType: 'user', actorId: userId, userId });
+    }
+
+    function create(partyId: string, variant: { productId: string; variantId: string }, hlc: string, actorUserId: string) {
+      return mutation({
+        kind: 'lead.create',
+        entity: 'lead',
+        entityId: formatTemporaryId(PANEL_A, 40),
+        hlc,
+        actorUserId,
+        payload: { partyId, items: [{ ...variant, quantity: 2, packaging: 'carton' }] },
+      });
+    }
+
+    async function line() {
+      const { party, product } = await seed();
+      return { party, variant: { productId: product.id, variantId: product.variants[0]!.id } };
+    }
+
+    it('tells the author once, when the save predates the panel connecting', async () => {
+      const { party, variant } = await line();
+      const ravi = await desk('ravi');
+      const m = create(party.id, variant, hlcFor(PANEL_A, -120_000), ravi.id);
+      const connectedAt = Date.now() - 1_000;
+
+      const first = await sync.applyPush({ mutations: [m] }, actor, connectedAt);
+      await sync.applyPush({ mutations: [m] }, actor, connectedAt);
+
+      const lead = await leads.getLead(first.results[0]!.entityId, actor);
+      const { items } = await noticesFor(ravi.id);
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({
+        kind: 'lead.numbered',
+        params: { number: lead.poNumber, party: 'Offline Traders' },
+        link: { kind: 'lead', id: lead.id },
+      });
+    });
+
+    it('stays quiet for a save made while connected, however slow the Office clock', async () => {
+      const { party, variant } = await line();
+      const ravi = await desk('ravi');
+      // Two minutes behind the Master, but the panel connected five minutes ago.
+      const m = create(party.id, variant, hlcFor(PANEL_A, -120_000), ravi.id);
+
+      await sync.applyPush({ mutations: [m] }, actor, Date.now() - 300_000);
+
+      expect((await noticesFor(ravi.id)).items).toEqual([]);
+    });
+
+    it('never tells an author named by the panel who may not see the party', async () => {
+      const { party, variant } = await line();
+      const ravi = await desk('ravi');
+      const owner = await desk('owner');
+      await partyAccess.replaceAssignments(
+        party.id,
+        { entries: [{ userId: owner.id, level: 'manage' }], expectedVersion: party.sync.version },
+        actor,
+      );
+      const m = create(party.id, variant, hlcFor(PANEL_A, -120_000), ravi.id);
+
+      const { results } = await sync.applyPush({ mutations: [m] }, actor, Date.now() - 1_000);
+
+      expect(results[0]?.status).toBe('applied');
+      expect((await noticesFor(ravi.id)).items).toEqual([]);
     });
   });
 

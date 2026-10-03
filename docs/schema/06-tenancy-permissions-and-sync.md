@@ -505,7 +505,11 @@ CREATE TABLE master_clock (
 
 `applied_mutations` is never pruned; `idx_applied_mutations_at` serves the dashboard's "mutations
 from panels in the last hour" figure. `id_sequences` has one row per syncable entity per tenant — 12
-on a fresh database, every one at 1 except `role` at 4. `master_clock` is seeded with its single
+on a fresh database, every one at 1 except `role` at 4. Since 1.3 it also holds one row per
+financial year for the pending order numbers, `po:2026-27` and so on: seeded by
+`20261003000000_pending_order_numbers` past the numbers it back-filled, created by the first save
+of a new year, never reset by the business-data wipe, and restarted only by a developer factory
+reset. `master_clock` is seeded with its single
 row by the migration and is in `backup.repository.ts`'s `EXCLUDED_TABLES`: it is this
 installation's clock, and a restored copy would be wrong for it.
 

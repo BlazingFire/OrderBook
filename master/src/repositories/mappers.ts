@@ -496,6 +496,7 @@ export function mapLead(
   return {
     id: String(row.id),
     tenantId: String(row.tenant_id),
+    poNumber: (row.po_number as string | null) ?? null,
     partyId: String(row.party_id),
     partyName: String(row.party_name ?? ''),
     ownerId: String(row.owner_id ?? ''),
@@ -536,6 +537,8 @@ export function mapOrder(
     id: String(row.id),
     tenantId: String(row.tenant_id),
     leadId: (row.lead_id as string | null) ?? null,
+    // The lead's, through the order query's join: one number, never a copy.
+    poNumber: (row.po_number as string | null) ?? null,
     partyId: String(row.party_id),
     partyName: String(row.party_name ?? ''),
     ownerId: String(row.owner_id ?? ''),

@@ -416,8 +416,9 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
 
       const open = await reportService.reportTable('open-pending-orders', { period: 'thisMonth' }, admin);
       expect(open.rows.map((row) => [row.number, row.party, row.owner, row.daysOpen, row.pieces])).toEqual([
-        [first.lead.id, 'Old Lead', 'alice', 9, 3],
-        [second.lead.id, 'New Lead', 'alice', 3, 5],
+        // Named by the PO number, as every screen names a pending order.
+        [first.lead.poNumber, 'Old Lead', 'alice', 9, 3],
+        [second.lead.poNumber, 'New Lead', 'alice', 3, 5],
       ]);
       expect(open.totals).toEqual({ pieces: 8 });
 

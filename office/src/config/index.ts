@@ -120,6 +120,12 @@ export const config = {
     retryMs: intFromEnv('OFFICE_SYNC_RETRY_MS', 5000),
     /** Mutations pushed per batch, so one long outage does not send a huge frame. */
     batchSize: intFromEnv('OFFICE_SYNC_BATCH_SIZE', 100),
+    /**
+     * How long a new pending order's save waits for the Master's number while
+     * the link is up. Past it the save answers Provisional and the number
+     * follows over the event stream.
+     */
+    saveNumberWaitMs: intFromEnv('OFFICE_SAVE_NUMBER_WAIT_MS', 5000),
   },
 
   locale: {

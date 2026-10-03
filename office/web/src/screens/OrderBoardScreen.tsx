@@ -27,7 +27,9 @@ import type {
 } from '@orderbook/shared';
 
 import { api, desktopBridge, type LocalView } from '../api';
+import { presenceChannel } from '../presence';
 import {
+  AvatarStack,
   Button,
   Card,
   ColourName,
@@ -40,6 +42,7 @@ import {
   Input,
   NumberInput,
   OrderNoteScreen,
+  RecordNumber,
   Section,
   Segmented,
   Select,
@@ -51,6 +54,7 @@ import {
   t,
   useColourHex,
   useFilterBar,
+  useRecordPresence,
   useSubNav,
   useToast,
   type PillTone,
@@ -68,6 +72,8 @@ interface Props {
   /** `orders.edit`: may set the vehicle number on the Dispatch note. */
   canEdit: boolean;
   onError: (message: string) => void;
+  /** The signed-in person, left out of who else is on the open order. */
+  userId?: string | null;
   /** The stage showing, or null for all — chosen here or from the sidebar's sub-pages. */
   stageId: string | null;
   onStageChange: (stageId: string | null) => void;
@@ -134,6 +140,7 @@ export function OrderBoardScreen({
   stageId: stageFilter,
   onStageChange: setStageFilter,
   onShareInChat,
+  userId,
 }: Props) {
   const toast = useToast();
   const [scope, setScope] = useState<PartyScopeFilter>('all');
@@ -251,6 +258,12 @@ export function OrderBoardScreen({
       : null,
   );
 
+  // Who else has the open order up (a provisional one is never announced).
+  const presence = useRecordPresence(
+    presenceChannel,
+    openOrder ? { recordKind: 'order', recordId: openOrder.id } : null,
+  );
+
   if (openOrder && noteOrder && noteKind) {
     return (
       <OrderNoteScreen
@@ -284,7 +297,7 @@ export function OrderBoardScreen({
               {openOrder.leadId
                 ? t('orders.detail.subtitleWithLead', {
                     id: openOrder.id,
-                    leadId: openOrder.leadId,
+                    leadId: openOrder.poNumber ?? openOrder.leadId,
                   })
                 : t('orders.detail.subtitleNoLead', { id: openOrder.id })}
             </span>
@@ -292,6 +305,7 @@ export function OrderBoardScreen({
         }
         actions={
           <>
+            <AvatarStack entries={presence.entries} selfUserId={userId} />
             {onShareInChat && (
               <Button icon="chat" onClick={() => onShareInChat({ kind: 'order', id: openOrder.id })}>
                 {t('chat.share.button')}
@@ -340,12 +354,9 @@ export function OrderBoardScreen({
     {
       key: 'id',
       header: t('orders.column.order'),
-      width: rem(120),
-      render: (order) => (
-        <span className="ob-mono" style={{ color: 'var(--fg-secondary)' }}>
-          {order.id}
-        </span>
-      ),
+      width: rem(190),
+      // The pending order's PO number: a final order has none of its own.
+      render: (order) => <RecordNumber record={order} />,
     },
     {
       key: 'party',
@@ -353,14 +364,15 @@ export function OrderBoardScreen({
       render: (order) => order.partyName,
     },
     {
-      key: 'lead',
-      header: t('orders.column.fromLead'),
+      key: 'ref',
+      header: t('order.list.col.ref'),
       priority: 3,
-      width: rem(150),
+      width: rem(130),
+      // Only beside a PO number; without one the id is already the first column.
       render: (order) =>
-        order.leadId ? (
-          <span className="ob-mono" style={{ color: 'var(--fg-tertiary)' }}>
-            {order.leadId}
+        order.poNumber ? (
+          <span className="ob-mono ob-small" style={{ color: 'var(--fg-tertiary)' }}>
+            {order.id}
           </span>
         ) : (
           <span style={{ color: 'var(--fg-tertiary)' }}>—</span>

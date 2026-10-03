@@ -1031,6 +1031,61 @@ describe('New pending order', () => {
     expect(await screen.findByText(LEAD.id)).toBeTruthy();
   });
 
+  it('offers no Owner picker when the Master sends no owners (no record.reassignOwner)', async () => {
+    await boot(CREATE);
+    await openFormByKey();
+    expect(screen.queryByLabelText(t('lead.add.owner'))).toBeNull();
+  });
+
+  it('raises a pending order for another user through the Owner picker when the Master sends owners', async () => {
+    let body: Record<string, unknown> | null = null;
+    const OWNERS = [
+      { id: 'user-sm', displayName: 'Owner', username: 'master', roleName: 'Server Master', roleTier: 'server_master', avatar: null },
+      { id: 'user-ravi', displayName: 'Ravi Kumar', username: 'ravi', roleName: 'Sales', roleTier: 'office', avatar: null },
+    ];
+    await boot([...CREATE, 'record.reassignOwner'], (call) => {
+      const path = call.url.split('?')[0];
+      if (path === '/api/lead-entry') {
+        return json({
+          optionLists: [],
+          partyVariants: [],
+          stock: [],
+          partyGrants: [],
+          features: {},
+          owners: OWNERS,
+        });
+      }
+      if (path === '/api/leads' && call.method === 'POST') {
+        body = call.body as Record<string, unknown>;
+        return json({ ...LEAD, id: 'LD0000000003', poNumber: 'PO/2026-27/00003' }, 201);
+      }
+      return undefined;
+    });
+    await openFormByKey();
+    await fillOneLine();
+    const picker = (await screen.findByLabelText(t('lead.add.owner'))) as HTMLInputElement;
+    // The caller by default; the Master assumes them when nobody else is chosen.
+    expect(picker.value).toBe(t('lead.add.owner.me'));
+    picker.focus();
+    // A Server Master is marked as one in the list.
+    fireEvent.change(picker, { target: { value: 'Server' } });
+    expect(await screen.findByText(`Owner · ${t('presence.serverMaster')}`)).toBeTruthy();
+    fireEvent.change(picker, { target: { value: 'Ravi' } });
+    fireEvent.keyDown(picker, { key: 'Enter' });
+    expect(picker.value).toBe('Ravi Kumar');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
+      await wait(0);
+    });
+
+    expect(body).toMatchObject({ ownerId: 'user-ravi' });
+    // The toast names the lead by the number the Master gave it.
+    expect(
+      await screen.findByText(t('lead.add.savedOnline', { id: 'PO/2026-27/00003' })),
+    ).toBeTruthy();
+  });
+
   it('has one New pending order entry in the sidebar while the form is open', async () => {
     await boot(CREATE);
     await openFormByKey();

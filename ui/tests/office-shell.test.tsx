@@ -25,7 +25,7 @@ import { StrictMode } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { LONG_OFFLINE_MS } from '@orderbook/shared';
+import { LONG_OFFLINE_MS, deviceCodeFromSeed, formatTemporaryId } from '@orderbook/shared';
 
 import { formatElapsed } from '../src/format.js';
 import { t } from '../src/i18n.js';
@@ -851,6 +851,43 @@ describe('the New lead form', () => {
     );
   });
 
+  /** Saves one line through the form, the Master's answer to the POST being `answer`. */
+  async function saveOneLead(answer?: Record<string, unknown>): Promise<void> {
+    await boot({
+      permissions: ['leads.view', 'leads.create'],
+      route: ({ method, url }) =>
+        answer && method === 'POST' && url === '/api/leads' ? json(answer) : undefined,
+    });
+    fireEvent.click(newLeadButton());
+    await draftOneProduct();
+    fireEvent.click(screen.getAllByRole('button', { name: t('lead.add.draft.saveProduct') })[0]!);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
+      await wait(0);
+    });
+  }
+
+  it('names the saved lead by its PO number when the Master numbered it in time', async () => {
+    await saveOneLead({
+      queued: true,
+      id: 'L-TMP-1',
+      mutationId: 'mut-1',
+      pendingCount: 0,
+      status: 'numbered',
+      permanentId: 'LD0000000009',
+      poNumber: 'PO/2026-27/00009',
+    });
+    expect(
+      await screen.findByText(t('lead.add.savedOnline', { id: 'PO/2026-27/00009' })),
+    ).toBeTruthy();
+  });
+
+  it('says the saved lead is Provisional when the Master is out of reach', async () => {
+    // The default answer: queued, with no number (`status` absent or `provisional`).
+    await saveOneLead();
+    expect(await screen.findByText(t('lead.add.savedProvisional'))).toBeTruthy();
+  });
+
   it('offers packaging beside the quantity, not required, while the company does not require it', async () => {
     await boot({
       permissions: ['leads.view', 'leads.create'],
@@ -1162,10 +1199,10 @@ describe('Edit lead', () => {
     totalWeightKg: 150,
     linesWithoutWeight: 0,
     createdAt: '2026-09-24T00:00:00.000Z',
-    sync: { hlc: 'h1' },
+    sync: { hlc: 'h1', fieldHlc: { notes: 'h1', items: 'h1' } },
   };
 
-  it('opens the saved lead in the entry form and sends its lines back on save', async () => {
+  it('opens the saved lead in the entry form and sends what changed back on save', async () => {
     const calls = await boot({
       permissions: ['leads.view', 'leads.edit'],
       view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] },
@@ -1187,6 +1224,9 @@ describe('Edit lead', () => {
     expect(
       await screen.findByRole('heading', { name: t('lead.edit.title') }, { timeout: 10_000 }),
     ).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(t('lead.add.details.notes')), {
+      target: { value: 'Call after lunch' },
+    });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
       await wait(0);
@@ -1196,18 +1236,12 @@ describe('Edit lead', () => {
       (call) => call.method === 'PUT' && call.url === `/api/leads/${LEAD.id}`,
     );
     expect(writes).toHaveLength(1);
-    const body = writes[0]!.body as {
-      partyId: string;
-      notes: string;
-      followUpDate: string;
-      items: Array<{ variantId: string; quantity: number }>;
-    };
-    expect(body).toMatchObject({
-      partyId: PARTY.id,
-      notes: 'Call before noon',
-      followUpDate: '2026-10-02',
-      items: [{ variantId: 'var-1', quantity: 5 }],
-    });
+    const body = writes[0]!.body as Record<string, unknown>;
+    // Only the changed field, with the clock it was opened at: the Master's
+    // merge then cannot take the untouched lines or party as an edit.
+    expect(body).toMatchObject({ notes: 'Call after lunch', baseFieldHlc: { notes: 'h1' } });
+    expect(body).not.toHaveProperty('items');
+    expect(body).not.toHaveProperty('partyId');
     // Back on the lead, not left on the form.
     expect(screen.queryByRole('heading', { name: t('lead.edit.title') })).toBeNull();
     expect(calls.some((call) => call.url === '/api/leads' && call.method === 'POST')).toBe(false);
@@ -1272,6 +1306,81 @@ describe('Edit lead', () => {
       await waitFor(() => expect(printPage).toHaveBeenLastCalledWith({ deviceName: undefined, copies: 4 }));
       expect(calls.filter((call) => call.method !== 'GET' && call.url.startsWith('/api/leads'))).toEqual([]);
     });
+  });
+
+  it('shows who else has the lead open, from the presence frame, and leaves the reader out', async () => {
+    await boot({
+      permissions: ['leads.view'],
+      view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] },
+      route: ({ url }) => (url === '/api/presence' ? json(null) : undefined),
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTitle(t('nav.leads')));
+    });
+    await act(async () => {
+      fireEvent.click((await screen.findAllByText(PARTY.name))[0]!);
+    });
+    await screen.findByText(t('lead.detail.lineItems'));
+
+    const person = (userId: string, displayName: string, editing: boolean) => ({
+      userId,
+      displayName,
+      avatar: null,
+      tier: 'office',
+      editing,
+      since: '2026-10-03T09:00:00.000Z',
+    });
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('presence', {
+        recordKind: 'lead',
+        recordId: LEAD.id,
+        entries: [person('user-1', 'Asha', false), person('user-2', 'Ravi Kumar', true)],
+        forUserId: 'user-1',
+      });
+    });
+
+    expect(await screen.findByTitle(t('presence.editing', { name: 'Ravi Kumar' }))).toBeTruthy();
+    expect(screen.queryByTitle(t('presence.viewing', { name: 'Asha' }))).toBeNull();
+  });
+
+  it('keeps a provisional lead open when the Master numbers it, and names the number', async () => {
+    const temporaryId = formatTemporaryId(deviceCodeFromSeed('counter'), 3);
+    const provisional = { ...LEAD, id: temporaryId, sync: { hlc: '', fieldHlc: {} } };
+    await boot({
+      permissions: ['leads.view'],
+      view: { leads: [provisional], pipelines: [LEAD_PIPELINE] },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTitle(t('nav.leads')));
+    });
+    await act(async () => {
+      fireEvent.click((await screen.findAllByText(PARTY.name))[0]!);
+    });
+    await screen.findByText(t('lead.detail.lineItems'));
+    // Not numbered yet: Provisional, with the temporary id beside it.
+    expect(screen.getAllByText(t('lead.number.provisional')).length).toBeGreaterThan(0);
+
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('numbered', {
+        entity: 'lead',
+        temporaryId,
+        permanentId: 'LD0000000012',
+        poNumber: 'PO/2026-27/00012',
+        announced: false,
+      });
+    });
+    expect(await screen.findByText(t('lead.numbered.toast', { number: 'PO/2026-27/00012' }))).toBeTruthy();
+
+    // The permanent record replaces the provisional one: still open, now by its number.
+    await sendSnapshot(
+      snapshot({
+        leads: [{ ...LEAD, id: 'LD0000000012', poNumber: 'PO/2026-27/00012' }],
+        pipelines: [LEAD_PIPELINE],
+      }),
+    );
+    expect(screen.getByText(t('lead.detail.lineItems'))).toBeTruthy();
+    expect(screen.getAllByText('PO/2026-27/00012').length).toBeGreaterThan(0);
+    expect(screen.queryByText(t('lead.number.provisional'))).toBeNull();
   });
 
   it('is not offered without leads.edit', async () => {

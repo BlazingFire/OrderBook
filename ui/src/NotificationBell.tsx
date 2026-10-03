@@ -43,6 +43,7 @@ export interface LocalNotice {
 /** Spelled out per kind, so every key is greppable and a missing one fails the type check. */
 const KIND_TEXT: Record<NotificationKind, MessageKey> = {
   'panel.offlineLong': 'notification.panel.offlineLong',
+  'lead.numbered': 'notification.lead.numbered',
   'chat.mention': 'notification.chat.mention',
   'task.assigned': 'notification.task.assigned',
   'task.done': 'notification.task.done',

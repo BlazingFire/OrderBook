@@ -249,6 +249,29 @@ export function assertVersionMatches(
   }
 }
 
+/**
+ * Refuse an edit to a field someone else has saved since the editor opened the
+ * record (1.3 stale-edit protection).
+ *
+ * `base` is the `sync.fieldHlc` the editor opened the record at; each field
+ * the edit writes must still carry that clock. A missing or malformed `base`
+ * skips the check, so a client that sends none edits exactly as before. The
+ * 409 names the stale fields and the clocks as they are now, so "Keep mine"
+ * can send the edit again on top of them.
+ */
+export function assertFieldsFresh(
+  fields: readonly string[],
+  stored: Record<string, string>,
+  base: unknown,
+): void {
+  if (!base || typeof base !== 'object' || Array.isArray(base)) return;
+  const opened = base as Record<string, unknown>;
+  const stale = fields.filter((field) => (stored[field] ?? '') !== (opened[field] ?? ''));
+  if (stale.length > 0) {
+    throw new ConflictError('error.conflict.staleEdit', {}, { stale, fieldHlc: stored });
+  }
+}
+
 /** The fields where a stale save and the stored row actually disagree. */
 export function fieldDiff(
   stored: Record<string, unknown>,

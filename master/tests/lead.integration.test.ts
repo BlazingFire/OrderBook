@@ -15,6 +15,7 @@
  * (`docs/catalogue/CATALOGUE_MODEL.md` §2).
  */
 
+import { financialYearLabel, PO_NUMBER_PATTERN } from '@orderbook/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { canRunIntegrationTests } from './helpers/db.js';
@@ -147,6 +148,32 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
 
       expect(first.id).toBe('LD0000000001');
       expect(second.id).toBe('LD0000000002');
+    });
+
+    it('numbers each lead PO/<fy>/00001 onwards, and the final order shows the number of its lead', async () => {
+      const { party, plain, plainVariant } = await seed();
+      const year = financialYearLabel(new Date());
+
+      const first = await leads.createLead({ partyId: party.id, items: [line(plain.id, plainVariant.id, 1)] }, actor);
+      const second = await leads.createLead({ partyId: party.id, items: [line(plain.id, plainVariant.id, 1)] }, actor);
+
+      expect(first.poNumber).toBe(`PO/${year}/00001`);
+      expect(second.poNumber).toBe(`PO/${year}/00002`);
+      expect(first.poNumber).toMatch(PO_NUMBER_PATTERN);
+      expect((await leads.getLead(first.id, actor)).poNumber).toBe(first.poNumber);
+
+      const order = await orders.convertLead({ leadId: second.id }, actor);
+      expect(order.poNumber).toBe(second.poNumber);
+      expect((await orders.listOrders({ search: '00002' }, actor)).items.map((o) => o.id)).toEqual([order.id]);
+      expect((await leads.listLeads({ search: first.poNumber! }, actor)).items.map((l) => l.id)).toEqual([first.id]);
+    });
+
+    it('takes no number for a create that is refused', async () => {
+      const { party, plain, plainVariant } = await seed();
+      await expect(leads.createLead({ partyId: party.id, items: [] }, actor)).rejects.toThrow();
+
+      const lead = await leads.createLead({ partyId: party.id, items: [line(plain.id, plainVariant.id, 1)] }, actor);
+      expect(lead.poNumber).toBe(`PO/${financialYearLabel(new Date())}/00001`);
     });
 
     it('resolves the code and the weight from the variant and weighs the line', async () => {
@@ -471,6 +498,63 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
       expect(edited.sync.fieldHlc.items).not.toBe(lead.sync.fieldHlc.items);
       expect(edited.sync.hlc).not.toBe(lead.sync.hlc);
       expect(edited.sync.version).toBe(lead.sync.version + 1);
+    });
+
+    it('refuses a field someone saved after the editor opened the lead, with 409 staleEdit', async () => {
+      const { party, plain, plainVariant } = await seed();
+      const opened = await leads.createLead(
+        { partyId: party.id, notes: 'first', items: [line(plain.id, plainVariant.id, 1)] },
+        actor,
+      );
+      // Somebody else saves the notes while this editor has the lead open.
+      const theirs = await leads.updateLead(opened.id, { notes: 'theirs' }, actor);
+
+      const stale = leads.updateLead(
+        opened.id,
+        { notes: 'mine', baseFieldHlc: opened.sync.fieldHlc },
+        actor,
+      );
+      await expect(stale).rejects.toBeInstanceOf(ConflictError);
+      await expect(stale).rejects.toMatchObject({
+        statusCode: 409,
+        messageKey: 'error.conflict.staleEdit',
+        details: { stale: ['notes'], fieldHlc: theirs.sync.fieldHlc },
+      });
+      expect((await leads.getLead(opened.id, actor)).notes).toBe('theirs');
+
+      // A field nobody else touched still saves on the old clocks.
+      const followUp = await leads.updateLead(
+        opened.id,
+        { followUpDate: '2026-12-01', baseFieldHlc: opened.sync.fieldHlc },
+        actor,
+      );
+      expect(followUp.followUpDate).toBe('2026-12-01');
+
+      // "Keep mine": the same edit on the clocks as they are now.
+      const kept = await leads.updateLead(
+        opened.id,
+        { notes: 'mine', baseFieldHlc: followUp.sync.fieldHlc },
+        actor,
+      );
+      expect(kept.notes).toBe('mine');
+
+      // Without a base the edit applies as it always has.
+      expect((await leads.updateLead(opened.id, { notes: 'plain' }, actor)).notes).toBe('plain');
+    });
+
+    it('refuses a stale edit to a final order the same way', async () => {
+      const { party, plain, plainVariant } = await seed();
+      const lead = await leads.createLead({ partyId: party.id, items: [line(plain.id, plainVariant.id, 1)] }, actor);
+      const opened = await orders.convertLead({ leadId: lead.id }, actor);
+      await orders.updateOrder(opened.id, { vehicleNumber: 'GJ 01 AB 1234' }, actor);
+
+      await expect(
+        orders.updateOrder(opened.id, { vehicleNumber: 'GJ 03 CD 5678', baseFieldHlc: opened.sync.fieldHlc }, actor),
+      ).rejects.toMatchObject({ messageKey: 'error.conflict.staleEdit', details: { stale: ['vehicleNumber'] } });
+      expect((await orders.getOrder(opened.id, actor)).vehicleNumber).toBe('GJ 01 AB 1234');
+
+      const notes = await orders.updateOrder(opened.id, { notes: 'call first', baseFieldHlc: opened.sync.fieldHlc }, actor);
+      expect(notes.notes).toBe('call first');
     });
 
     it('refuses lines with no product or variant id, and a party id that is not text', async () => {

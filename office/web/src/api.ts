@@ -52,6 +52,8 @@ import type {
   MessageKey,
   MessageParams,
   UserNotification,
+  PresenceBeat,
+  RecordPresence,
   MutationResult,
   OptionListItem,
   OptionListItemInput,
@@ -225,6 +227,16 @@ export interface QueuedResult {
   id: string;
   mutationId: string;
   pendingCount: number;
+  /**
+   * A new pending order only: `numbered` when the Master answered within the
+   * save's short wait (with `permanentId` and, from a 1.3 Master, `poNumber`),
+   * `provisional` when it did not or was out of reach (the number follows on
+   * the `numbered` event), `rejected` when it refused the lead.
+   */
+  status?: 'numbered' | 'provisional' | 'rejected';
+  permanentId?: string;
+  poNumber?: string;
+  error?: string | null;
 }
 
 export interface SyncState extends ConnectionInfo {
@@ -823,6 +835,16 @@ export const api = {
    */
   notifications: () =>
     requestUntracked<{ items: UserNotification[]; unreadCount: number }>('/api/notifications'),
+  /**
+   * "This tab has this record open" (or, with no record, "left it"), forwarded
+   * to the Master. Untracked: it runs every few seconds in the background.
+   */
+  presenceBeat: (beat: PresenceBeat, keepalive = false) =>
+    requestUntracked<RecordPresence | null>('/api/presence', {
+      method: 'POST',
+      body: JSON.stringify(beat),
+      keepalive,
+    }),
   markNotificationsRead: (which: { ids: string[] } | { all: true }) =>
     post<{ unreadCount: number }>('/api/notifications/read', which),
 

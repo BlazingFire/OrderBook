@@ -44,6 +44,8 @@ CREATE TABLE leads (
   party_id           TEXT NOT NULL REFERENCES parties(id),
   owner_id           TEXT REFERENCES users(id),
   stage_id           UUID NOT NULL REFERENCES pipeline_stages(id),
+  po_number          TEXT CONSTRAINT leads_po_number_format
+                       CHECK (po_number ~ '^PO/[0-9]{4}-[0-9]{2}/[0-9]{5,}$'),
   source_platform    TEXT,
   follow_up_date     DATE,
   party_wise_mode    BOOLEAN NOT NULL DEFAULT false,
@@ -70,10 +72,18 @@ CREATE INDEX idx_leads_open     ON leads (tenant_id) WHERE converted_order_id IS
 CREATE INDEX idx_leads_followup ON leads (tenant_id, follow_up_date)
     WHERE follow_up_date IS NOT NULL AND deleted_at IS NULL;
 CREATE INDEX idx_leads_deleted  ON leads (tenant_id, deleted_at DESC, id DESC) WHERE deleted_at IS NOT NULL;
+CREATE UNIQUE INDEX leads_po_number_uq ON leads (tenant_id, po_number) WHERE po_number IS NOT NULL;
 ```
 
-There is no status, `lead_number` or amount column: the permanent id is the docket number and the
-stage is the status. `stage_id` replaced the old `status` enum: stages are rows a company renames,
+There is no status or amount column: the stage is the status. The docket number people read is
+`po_number`, `PO/2026-27/00042` (1.3, `20261003000000_pending_order_numbers`): one gap-free series
+per Indian financial year in the company's time zone, minted by the Master inside `createLead`'s
+transaction from the `id_sequences` row `po:<fy>`. It is NULL only on a pre-1.3 row the migration
+has not reached, never on a lead the Master created since. The unique index covers deleted leads
+too, so a number is never reused. Final orders have no copy: the order query reads it through the
+lead (`ld.po_number`). The migration back-numbered every existing lead per financial year in
+`(created_at, id)` order, deleted ones included, with UPDATE only, and seeded the counters past it
+(`docs/LEAD_GENERATION_FLOW.md` §7). `stage_id` replaced the old `status` enum: stages are rows a company renames,
 recolours, reorders and archives, so the Kanban columns are data rather than a code change
 (`pipelines`, `pipeline_stages` in chapter 06).
 

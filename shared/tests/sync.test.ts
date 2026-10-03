@@ -23,6 +23,7 @@ import {
   observeHlc,
   parseHlc,
   PERMANENT_ID_LENGTH,
+  sameLines,
   TEMP_ID_LENGTH,
   tickHlc,
 } from '../src/index.js';
@@ -312,5 +313,22 @@ describe('field-level merge', () => {
     expect(outcome.accepted).toEqual({ updatedAt: 'now' });
     expect(outcome.conflicts).toEqual([]);
     expect(outcome.status).toBe('applied');
+  });
+});
+
+describe('sameLines', () => {
+  const line = { productId: 'P1', variantId: 'V1', quantity: 4, packaging: 'Box', colour: null };
+
+  it('treats lines that say the same thing as unchanged, whatever the snapshot fields hold', () => {
+    expect(sameLines([line], [{ ...line, productName: 'Damru', quantity: '4', colour: '' }])).toBe(true);
+  });
+
+  it('sees a changed quantity, packaging, colour or order, and a different count', () => {
+    expect(sameLines([line], [{ ...line, quantity: 5 }])).toBe(false);
+    expect(sameLines([line], [{ ...line, packaging: 'Grass' }])).toBe(false);
+    expect(sameLines([line], [{ ...line, colour: 'Ivory' }])).toBe(false);
+    expect(sameLines([line, { ...line, variantId: 'V2' }], [{ ...line, variantId: 'V2' }, line])).toBe(false);
+    expect(sameLines([line], [line, line])).toBe(false);
+    expect(sameLines(undefined, [line])).toBe(false);
   });
 });

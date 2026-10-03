@@ -129,6 +129,7 @@ import type {
 } from '../domain/chat.js';
 import type { UserNotification } from '../domain/notifications.js';
 import type { SyncPushRequest, SyncPushResponse } from '../sync/mutations.js';
+import type { PresenceBeat, RecordPresence } from './presence.js';
 
 /** Socket.IO rooms the Master uses to target broadcasts. */
 export const ROOM_OFFICE_PANELS = 'office-panels';
@@ -202,6 +203,7 @@ export const COMMAND_MIN_PROTOCOL: Partial<Record<keyof ClientToServerEvents, nu
   'chat:read': CHAT_MIN_PROTOCOL,
   'chat:mute': CHAT_MIN_PROTOCOL,
   'chat:requestAccess': CHAT_MIN_PROTOCOL,
+  'presence:beat': 4,
 };
 
 /**
@@ -227,6 +229,11 @@ export interface OfflineAuthEvent {
 export interface AdminAuthPayload {
   kind: 'master-admin';
   sessionToken: string;
+  /**
+   * The browser tab's presence id (at most 64 characters), so closing the tab
+   * takes it off the records it had open at once rather than after the TTL.
+   */
+  tabId?: string;
 }
 
 export type SocketAuthPayload = PanelAuthPayload | AdminAuthPayload;
@@ -394,6 +401,13 @@ export interface DataChangedEvent {
    * correct rather than unfortunate.
    */
   seq?: number;
+  /**
+   * Who made the change, for "Ravi saved this at 10:42" on a record somebody
+   * else has open. Set on lead and order changes; optional, because a Master
+   * before 1.3 sends neither, and null when no person made it.
+   */
+  actorUserId?: string | null;
+  actorName?: string | null;
 }
 
 /**
@@ -924,6 +938,13 @@ export interface ClientToServerEvents {
   'chat:mute': (input: { roomId: Uuid; muted: boolean }, ack: CommandAck<null>) => void;
   /** Ask the people who edit roles for a chat capability the acting person lacks. */
   'chat:requestAccess': (input: ChatAccessRequest, ack: CommandAck<{ notified: number }>) => void;
+  // --- Presence -------------------------------------------------------------
+  /**
+   * The acting person has a record open in one tab (or left it, with no
+   * record named). Answers with everyone on that record; never stored or
+   * logged. Refused with nobody signed in, or for a record they may not see.
+   */
+  'presence:beat': (beat: PresenceBeat, ack: CommandAck<RecordPresence | null>) => void;
 
   // --- Dashboard (docs/backend-modules/04-API-CONTRACT.md §7) ---------------
   /** The one live pull — everything else rides on `SyncSnapshot.dashboard` and the `dashboard:changed` push. */
@@ -996,6 +1017,11 @@ export interface ServerToClientEvents {
    * missed it reads the room again.
    */
   'chat:event': (push: ChatPush & { forUserId: Uuid }) => void;
+  /**
+   * Who is on a record changed. Sent only to people on that record who may
+   * still see it, each addressed by `forUserId` like a notification.
+   */
+  'presence:changed': (presence: RecordPresence & { forUserId: Uuid }) => void;
 }
 
 /** Per-connection state the Master attaches after authenticating a socket. */
@@ -1023,4 +1049,6 @@ export interface SocketData {
   sessionToken?: string;
   /** The protocol an Office Panel announced in its handshake; absent means 1. */
   protocol?: number;
+  /** A Master Panel browser tab's presence id, from its handshake. */
+  tabId?: string;
 }

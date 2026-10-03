@@ -49,6 +49,24 @@ let loaded = false;
 let revision = 0;
 
 /**
+ * Pending orders the Master has numbered whose permanent record has not reached
+ * this snapshot yet, by temporary id.
+ *
+ * The push answer settles the queue entry the view drew the lead from, and the
+ * Master's `data:changed` for the new record can land after it. Until it does,
+ * the lead stays on screen under its temporary id (now carrying its number)
+ * rather than vanishing for a moment from an open screen.
+ */
+const numbered = new Map<string, { mutation: Mutation; permanentId: string; poNumber?: string }>();
+
+/** Called by the sync service just before it settles an accepted `lead.create`. */
+export function holdNumbered(mutation: Mutation, permanentId: string, poNumber?: string): void {
+  if (snapshot?.leads.some((lead) => lead.id === permanentId)) return;
+  numbered.set(mutation.entityId, { mutation, permanentId, ...(poNumber ? { poNumber } : {}) });
+  revision += 1;
+}
+
+/**
  * Store the snapshot, and — in the **same disk write** — the cursor that
  * describes it.
  *
@@ -65,6 +83,9 @@ export async function setSnapshot(
   cursor = nextCursor;
   loaded = true;
   revision += 1;
+  // A whole snapshot already holds every record the Master has numbered, or
+  // the record is not one this person may see.
+  numbered.clear();
   await persist();
 }
 
@@ -219,7 +240,10 @@ export async function getView(): Promise<(SyncSnapshot & { pendingCount: number 
   const key = `${revision}:${outboxRevision()}`;
   if (memo && memo.key === key) return memo.view;
 
-  const view = queued.length === 0 ? { ...base, pendingCount: 0 } : buildView(base, queued);
+  const view =
+    queued.length === 0 && numbered.size === 0
+      ? { ...base, pendingCount: 0 }
+      : buildView(base, queued);
   memo = { key, view };
   return view;
 }
@@ -236,6 +260,17 @@ function buildView(
     parties: [...base.parties],
     products: [...base.products],
   };
+
+  for (const [temporaryId, held] of numbered) {
+    if (base.leads.some((lead) => lead.id === held.permanentId)) {
+      numbered.delete(temporaryId);
+      continue;
+    }
+    // Still queued (the settle after the hold failed): the overlay below draws it.
+    if (queued.some((mutation) => mutation.entityId === temporaryId)) continue;
+    const lead = provisionalLead(view, held.mutation);
+    view.leads = [held.poNumber ? { ...lead, poNumber: held.poNumber } : lead, ...view.leads];
+  }
 
   for (const mutation of queued) applyOverlay(view, mutation);
 
@@ -258,7 +293,16 @@ function applyOverlay(view: SyncSnapshot, mutation: Mutation): void {
 
     case 'lead.update':
       view.leads = view.leads.map((lead) =>
-        lead.id === mutation.entityId ? { ...lead, ...pickLeadFields(mutation) } : lead,
+        lead.id === mutation.entityId
+          ? {
+              ...lead,
+              ...pickLeadFields(mutation),
+              // The clocks the Master's merge will write for these fields, so a
+              // second edit queued before this one is acknowledged sends this
+              // one as its base instead of clashing with it.
+              sync: { ...lead.sync, fieldHlc: { ...lead.sync.fieldHlc, ...stampedFields(mutation) } },
+            }
+          : lead,
       );
       return;
 
@@ -490,6 +534,12 @@ function pickLeadFields(mutation: Mutation): Partial<Lead> {
   return patch;
 }
 
+function stampedFields(mutation: Mutation): Record<string, string> {
+  const stamped: Record<string, string> = {};
+  for (const field of mutation.fields) stamped[field] = mutation.hlc;
+  return stamped;
+}
+
 function findStage(view: SyncSnapshot, stageId: string) {
   for (const pipeline of view.pipelines) {
     const stage = pipeline.stages.find((candidate) => candidate.id === stageId);
@@ -513,4 +563,5 @@ export function resetLocalStore(): void {
   loaded = false;
   revision += 1;
   memo = null;
+  numbered.clear();
 }

@@ -710,6 +710,12 @@ export interface TimelineEntry {
 export interface Lead {
   id: RecordId;
   tenantId: Uuid;
+  /**
+   * `PO/2026-27/00042`, minted by the Master when the lead is created
+   * (`pending-order-number.ts`). Optional: a Master older than 1.3 sends none,
+   * and a lead still waiting in an Office's outbox has none yet.
+   */
+  poNumber?: string | null;
   partyId: RecordId;
   partyName: string;
   ownerId: Uuid;
@@ -753,6 +759,8 @@ export interface Order {
   tenantId: Uuid;
   /** Back-reference to the lead this came from. */
   leadId: RecordId | null;
+  /** The PO number of the lead this came from; null for an order with no lead. Optional, as on `Lead`. */
+  poNumber?: string | null;
   partyId: RecordId;
   partyName: string;
   ownerId: Uuid;

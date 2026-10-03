@@ -41,6 +41,7 @@ import {
 
 import { ApiError, api, desktopBridge } from './api';
 import { dispatchChat, masterChatTransport } from './chatTransport';
+import { presenceChannel } from './presence';
 import { reportsTransport } from './transports';
 import {
   adoptDefaultLocale,
@@ -61,6 +62,8 @@ import {
   lazyScreen,
   KeyboardProvider,
   NotificationBell,
+  PRESENCE_TAB_ID,
+  recordNumberText,
   notificationText,
   PaletteButton,
   ConfirmProvider,
@@ -503,7 +506,8 @@ function MasterPanel() {
     if (phase !== 'ready' || !sessionToken) return;
 
     const socket: Socket<ServerToClientEvents> = io({
-      auth: { kind: 'master-admin', sessionToken },
+      // The tab id lets the Master take this tab off any record the moment it closes.
+      auth: { kind: 'master-admin', sessionToken, tabId: PRESENCE_TAB_ID },
       transports: ['websocket'],
     });
 
@@ -534,6 +538,8 @@ function MasterPanel() {
 
     // Chat is addressed to this person's rooms; the Chatroom and the unread badge follow it.
     socket.on('chat:event', (push) => dispatchChat(push));
+    // Who else is on the record open here; never stored, never a revision.
+    socket.on('presence:changed', (presence) => presenceChannel.push(presence));
 
     // A notice for this person: the bell re-reads, and the desktop shell (when
     // there is one) puts it in front of somebody whose window is behind another.
@@ -576,6 +582,7 @@ function MasterPanel() {
     socket.on('disconnect', (reason) => {
       down = true;
       setLinkUp(false);
+      presenceChannel.reset();
       if (reason === 'io server disconnect') retryIn(1_000);
     });
     socket.on('connect_error', () => {
@@ -1197,6 +1204,7 @@ function MasterPanel() {
           if (link.kind === 'panel') navigate('panels');
           else if (link.kind === 'chat') openChatRoom({ id: link.id });
           else if (link.kind === 'role') navigate('access');
+          else if (link.kind === 'lead') openRecord('leads', link.id);
         }}
       />
       {/* Beside Sign out, because the two are the same kind of thing — what you
@@ -1383,6 +1391,7 @@ function MasterPanel() {
           onOpenId={(id) => setOpenIds((current) => ({ ...current, leads: id }))}
           onOpenOrder={(orderId) => openRecord('orders', orderId)}
           onShareInChat={shareInChat}
+          userId={user.id}
         />
       ),
     },
@@ -1395,12 +1404,12 @@ function MasterPanel() {
                 revision={revisionOf(revisions, 'leadEntry')}
                 focusNonce={newLeadNonce}
                 canCreateParty={user.permissions.includes('parties.create')}
-                onSaved={(id) => {
+                onSaved={(id, saved) => {
                   closeNewLead();
                   // A saved lead is done with: the form starts over, as Reset does, minus the question.
                   clearSubNav('addLead');
                   setResetNonce((current) => ({ ...current, addLead: (current.addLead ?? 0) + 1 }));
-                  toast.push(t('lead.add.savedOnline', { id }));
+                  toast.push(t('lead.add.savedOnline', { id: recordNumberText(saved ?? { id }) }));
                 }}
                 onCancel={closeNewLead}
               />
@@ -1424,6 +1433,7 @@ function MasterPanel() {
           onOpenId={(id) => setOpenIds((current) => ({ ...current, orders: id }))}
           onOpenLead={(leadId) => openRecord('leads', leadId)}
           onShareInChat={shareInChat}
+          userId={user.id}
         />
       ),
     },

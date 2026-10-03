@@ -734,15 +734,14 @@ export async function conversionTime(range: DateRange, limit: number, runner: Ru
 
 /**
  * Every open pending order, oldest first — a list, not a roll-up. A snapshot of
- * now, so the date range does not apply. `number` is the pending order's id
- * until the Master-assigned PO number lands (`leads.po_number`), when this one
- * expression becomes `COALESCE(l.po_number, l.id)`.
+ * now, so the date range does not apply. `number` is the PO number, or the id
+ * of a lead that has none.
  */
 export async function openPendingOrders(range: DateRange, limit: number, runner: Runner = db()): Promise<TableRow[]> {
   const tz = config.locale.timeZone;
   const scope = scoped(range, 'l');
   const { rows } = await runner.raw<{ rows: Array<Record<string, unknown>> }>(
-    `SELECT l.id AS number, p.name AS party, u.display_name AS owner, s.name AS stage,
+    `SELECT COALESCE(l.po_number, l.id) AS number, p.name AS party, u.display_name AS owner, s.name AS stage,
             ((now() AT TIME ZONE ?)::date - (l.created_at AT TIME ZONE ?)::date) AS days_open,
             COALESCE(li.pieces, 0) AS pieces
        FROM leads l

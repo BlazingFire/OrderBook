@@ -74,6 +74,7 @@ import type {
   OptionListItem,
   Party,
   PartyProductVariant,
+  PresenceLastWrite,
   Product,
   ProductCategory,
   ProductVariant,
@@ -86,7 +87,7 @@ import {
   shownColour,
 } from '@orderbook/shared';
 
-import { api, type LocalView } from '../api';
+import { api, type LocalView, type QueuedResult } from '../api';
 import { partyFormTransport } from '../partyFormTransport';
 import {
   Button,
@@ -100,9 +101,12 @@ import {
   Modal,
   PartyFormModal,
   Select,
+  StaleEditNotice,
   StatusPill,
   Textarea,
+  changedLeadFields,
   type CreatedParty,
+  type LeadFormValues,
   formatKg,
   rem,
   t,
@@ -113,6 +117,7 @@ import {
   useResetGuard,
   useCommand,
   useConfirm,
+  useLeadEditBase,
   useSubNav,
 } from '@orderbook/ui';
 
@@ -120,15 +125,21 @@ interface Props {
   view: LocalView;
   /** Bumped by the shell each time the form is asked for; see the focus effect. */
   focusNonce?: number;
-  /** Carries the queued lead's temporary id, so the shell can name it. */
-  onSaved: (id: string) => void;
+  /**
+   * Carries the queued lead's temporary id, so the shell can name it, and on a
+   * new lead what the save said about its number (`queued.status`).
+   */
+  onSaved: (id: string, queued?: QueuedResult) => void;
   onCancel: () => void;
   /**
    * A saved lead to edit instead of starting a new one. The form opens on its
-   * party, source, follow-up, notes and lines, and Save replaces them (the
-   * Master's `updateLead` swaps the whole line set).
+   * party, source, follow-up, notes and lines, and Save sends only what changed
+   * since it opened, with the clocks it opened at (`LeadStaleEdit.tsx`); the
+   * lines go, whole, only when they changed.
    */
   lead?: Lead;
+  /** The last save somebody else made to `lead` while it is open (a presence push). */
+  remoteChange?: PresenceLastWrite | null;
 }
 
 /** What every line and every draft row knows about its variant. */
@@ -343,7 +354,24 @@ function linesOf(lead: Lead, view: LocalView): DraftLine[] {
   });
 }
 
-export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel, lead }: Props) {
+/**
+ * The form, opened again from scratch by Reload theirs: a new mount reads the
+ * lead as it is now, which no amount of resetting state in place does reliably.
+ */
+export function AddLeadScreen(props: Props) {
+  const [opening, setOpening] = useState(0);
+  return <AddLeadForm key={opening} {...props} onReload={() => setOpening((n) => n + 1)} />;
+}
+
+function AddLeadForm({
+  view,
+  focusNonce = 0,
+  onSaved,
+  onCancel,
+  lead,
+  remoteChange,
+  onReload,
+}: Props & { onReload: () => void }) {
   const colourHex = useColourHex(view.optionLists);
   // The company's switches, each absence resolved to the setting's own
   // declared fallback at this panel's edge.
@@ -383,6 +411,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel, lead }:
     setFollowUpDate((current) => (current === seeded ? isoDate(followUpDays) : current));
   }, [followUpDays]);
   const [notes, setNotes] = useState(lead?.notes ?? '');
+  const editBase = useLeadEditBase(lead);
 
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -1068,7 +1097,7 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel, lead }:
         notes: line.notes.trim() || null,
       }));
 
-      const input = {
+      const input: LeadFormValues = {
         partyId,
         sourcePlatform: sourcePlatform || null,
         followUpDate: followUpDate || null,
@@ -1077,12 +1106,16 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel, lead }:
         items,
       };
 
-      if (lead) {
-        await api.updateLead(lead.id, input);
+      if (lead && editBase.opened) {
+        // Only what changed, with the clocks it was opened at: the Master's
+        // merge then records a conflict rather than overwrite a newer save.
+        const changes = changedLeadFields(editBase.opened, input, editBase.base);
+        if (changes) await api.updateLead(lead.id, changes);
         onSaved(lead.id);
       } else {
+        // Waits (briefly, and only while the Master is reachable) for the number.
         const queued = await api.createLead(input);
-        onSaved(queued.id);
+        onSaved(queued.id, queued);
       }
     } catch (caught) {
       saving.current = false;
@@ -1237,6 +1270,14 @@ export function AddLeadScreen({ view, focusNonce = 0, onSaved, onCancel, lead }:
       </div>
 
       {error && <ConflictBanner>{error}</ConflictBanner>}
+      {editBase.conflicted && !busy && (
+        <StaleEditNotice
+          lastWrite={remoteChange}
+          busy={busy}
+          onReload={onReload}
+          onKeepMine={editBase.keepMine}
+        />
+      )}
 
       {/*
        * Two columns that become one when there is no room for two: the form on

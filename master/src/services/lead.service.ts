@@ -7,7 +7,7 @@
  * the repositories, and the rules that decide anything live in `domain/`.
  */
 
-import { fieldFor, LEAD_COLUMNS } from '@orderbook/shared';
+import { fieldFor, LEAD_COLUMNS, recordNumber } from '@orderbook/shared';
 import type {
   BinBlocker,
   BinRestoreResult,
@@ -18,6 +18,7 @@ import type {
   Paginated,
 } from '@orderbook/shared';
 
+import { assertFieldsFresh } from '../domain/access.js';
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { normalizeCustomFields } from '../domain/custom-fields.js';
 import { assertOptionValueChange } from '../domain/field-values.js';
@@ -48,7 +49,7 @@ import * as pipelineRepo from '../repositories/pipeline.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
 import * as recycleBinRepo from '../repositories/recycle-bin.repository.js';
 import * as timelineRepo from '../repositories/timeline.repository.js';
-import { publishChange } from './change-bus.js';
+import { actorStamp, publishChange } from './change-bus.js';
 import { requirePartyAccess } from './party-access.service.js';
 
 const PAGING = { defaultLimit: 100, maxLimit: 500 };
@@ -102,7 +103,8 @@ export async function leadPdf(
   const company = (await findMasterConfig())?.company_name?.trim() || 'OrderBook';
 
   const bytes = await renderReportPdf(leadPdfTable(lead, party, company, localIsoDate(new Date())));
-  return { fileName: `lead-${lead.id}.pdf`, bytes };
+  // `PO/2026-27/00042` → `pending-order-PO-2026-27-00042.pdf`: a slash cannot be in a file name.
+  return { fileName: `pending-order-${recordNumber(lead).replace(/\//g, '-')}.pdf`, bytes };
 }
 
 /** The Master PC's own calendar date — the day it was printed, where it was printed. */
@@ -205,13 +207,13 @@ export async function createLead(input: LeadInput, actor: ActorContext, madeAt?:
       action: 'created',
       actorType: actor.actorType,
       actorId: actor.actorId,
-      details: { itemCount: created.items.length, incomplete: created.incomplete },
+      details: { itemCount: created.items.length, incomplete: created.incomplete, poNumber: created.poNumber ?? null },
     }, actor, trx);
 
     return created;
   });
 
-  publishChange({ entity: 'lead', action: 'created', id: lead.id, payload: lead });
+  publishChange({ entity: 'lead', action: 'created', id: lead.id, payload: lead, ...actorStamp(actor) });
 
   return lead;
 }
@@ -283,6 +285,12 @@ export async function updateLead(
     const locked = await leadRepo.findLeadById(actor.tenantId, id, UNSCOPED_PARTY_ACCESS, trx);
     if (!locked) throw new NotFoundError('Lead');
     if (locked.convertedOrderId) throw new ValidationError('validation.lead.convertedLocked');
+    // Against the row as locked, so a save that landed while this one waited counts.
+    assertFieldsFresh(
+      [...Object.keys(patch).map(columnToField), ...(lines ? ['items'] : [])],
+      locked.sync.fieldHlc,
+      input.baseFieldHlc,
+    );
 
     const hlc = await nextHlc(trx);
     const fieldHlc = { ...locked.sync.fieldHlc };
@@ -310,7 +318,7 @@ export async function updateLead(
   const lead = await leadRepo.findLeadById(actor.tenantId, id, UNSCOPED_PARTY_ACCESS);
   if (!lead) throw new NotFoundError('Lead');
 
-  publishChange({ entity: 'lead', action: 'updated', id, payload: lead });
+  publishChange({ entity: 'lead', action: 'updated', id, payload: lead, ...actorStamp(actor) });
 
   return lead;
 }
@@ -422,7 +430,7 @@ export async function setStage(
   const lead = await leadRepo.findLeadById(actor.tenantId, input.id, UNSCOPED_PARTY_ACCESS);
   if (!lead) throw new NotFoundError('Lead');
 
-  publishChange({ entity: 'lead', action: 'updated', id: input.id, payload: lead });
+  publishChange({ entity: 'lead', action: 'updated', id: input.id, payload: lead, ...actorStamp(actor) });
 
   return lead;
 }
@@ -474,7 +482,7 @@ export async function addRemark(
   const lead = await leadRepo.findLeadById(actor.tenantId, input.id, UNSCOPED_PARTY_ACCESS);
   if (!lead) throw new NotFoundError('Lead');
 
-  publishChange({ entity: 'lead', action: 'updated', id: input.id, payload: lead });
+  publishChange({ entity: 'lead', action: 'updated', id: input.id, payload: lead, ...actorStamp(actor) });
   return lead;
 }
 
@@ -704,8 +712,9 @@ export async function deleteLead(
         action: 'deleted',
         actorType: actor.actorType,
         actorId: actor.actorId,
-        // Read by `activityDetail.lead.deleted`, so the log names the order and party.
-        details: { number: existing.id, party: existing.partyName },
+        // Read by `activityDetail.lead.deleted`, so the log names the order (by its
+        // PO number) and the party.
+        details: { number: recordNumber(existing), party: existing.partyName },
       },
       actor,
       trx,
@@ -716,7 +725,7 @@ export async function deleteLead(
 
   if (!lead) throw new NotFoundError('Lead');
 
-  publishChange({ entity: 'lead', action: 'deleted', id, payload: lead });
+  publishChange({ entity: 'lead', action: 'deleted', id, payload: lead, ...actorStamp(actor) });
   return { id: lead.id, deletedAt: lead.updatedAt };
 }
 
@@ -754,8 +763,9 @@ export async function restoreLead(id: string, actor: ActorContext): Promise<BinR
         action: 'restored',
         actorType: actor.actorType,
         actorId: actor.actorId,
-        // Read by `activityDetail.lead.restored`, so the log names the order and party.
-        details: { number: existing.id, party: existing.partyName },
+        // Read by `activityDetail.lead.restored`, so the log names the order (by its
+        // PO number) and the party.
+        details: { number: recordNumber(existing), party: existing.partyName },
       },
       actor,
       trx,
@@ -766,7 +776,7 @@ export async function restoreLead(id: string, actor: ActorContext): Promise<BinR
 
   if (!lead) throw new NotFoundError('Lead');
 
-  publishChange({ entity: 'lead', action: 'restored', id, payload: lead });
+  publishChange({ entity: 'lead', action: 'restored', id, payload: lead, ...actorStamp(actor) });
   return { entityType: 'lead', id, alsoRestored: [] };
 }
 

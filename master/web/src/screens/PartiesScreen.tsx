@@ -66,6 +66,7 @@ import {
   SkeletonTable,
   StatusPill,
   formatDateTime,
+  recordNumberText,
   rem,
   t,
   useDebounced,
@@ -567,7 +568,7 @@ export function PartiesScreen({
                         className="ob-mono"
                         style={{ fontSize: rem(11.5), color: 'var(--fg-secondary)' }}
                       >
-                        {lead.id}
+                        {recordNumberText(lead)}
                       </span>
                       <span className="ob-small">{lead.stageName}</span>
                     </button>

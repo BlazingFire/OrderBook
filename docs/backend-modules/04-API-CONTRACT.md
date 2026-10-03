@@ -41,6 +41,7 @@ this batch; the web i18n layer is deferred to the UI phase (`02-FILE-STRUCTURE.m
 | 11 | Client wrappers |
 | 12 | Open questions |
 | 13 | Server Master, master key and the panel protocol (1.3 Phase 2) |
+| 14 | Pending order numbers, presence and stale edits (1.3 Phase 4) |
 
 ---
 
@@ -1004,8 +1005,8 @@ Both in `master/src/http/routes/data.routes.ts`, for the Master's own web client
 
 | Route | Guard | Does |
 |---|---|---|
-| `PUT /api/leads/:id` | `needs('leads.edit')` | `leadService.updateLead`. A body carrying `items` **replaces the whole line set** (absent leaves the lines alone); malformed `items` (not a non-empty list, a line with no `productId` or `variantId`) is a 400 `validation.lead.*`, never a 500; a converted lead is a 400 `validation.lead.convertedLocked`; party access at `manage` is required on the old and the new party. Answers the saved `Lead`. |
-| `GET /api/lead-entry` | session; `leads.create` or `leads.edit` (else 403 naming `leads.create`) | `buildLeadEntryView` (`snapshot.service.ts`, beside `buildSnapshot`, which is untouched): `{ partyVariants, optionLists, stock, partyGrants, features }`. `partyVariants` are party-scoped (a restricted party's records are absent); `stock` is `[]` without `inventory.view`; `partyGrants` is every grant the caller holds (the snapshot's list stops at its 500 parties); `products` is deliberately omitted. Its own path so `GET /leads/:id` cannot capture it. |
+| `PUT /api/leads/:id` | `needs('leads.edit')` | `leadService.updateLead`. A body carrying `items` **replaces the whole line set** (absent leaves the lines alone); malformed `items` (not a non-empty list, a line with no `productId` or `variantId`) is a 400 `validation.lead.*`, never a 500; a converted lead is a 400 `validation.lead.convertedLocked`; party access at `manage` is required on the old and the new party. With `baseFieldHlc`, a field saved by somebody else since is a 409 `error.conflict.staleEdit` (§14.2). Answers the saved `Lead`. |
+| `GET /api/lead-entry` | session; `leads.create` or `leads.edit` (else 403 naming `leads.create`) | `buildLeadEntryView` (`snapshot.service.ts`, beside `buildSnapshot`, which is untouched): `{ partyVariants, optionLists, stock, partyGrants, features }`. `partyVariants` are party-scoped (a restricted party's records are absent); `stock` is `[]` without `inventory.view`; `partyGrants` is every grant the caller holds (the snapshot's list stops at its 500 parties); `products` is deliberately omitted. `owners` is added only for a caller holding `record.reassignOwner` (§14.3). Its own path so `GET /leads/:id` cannot capture it. |
 
 ### 4.7 The party screen's reads (2026-10-01, parity plan P5)
 
@@ -2243,7 +2244,7 @@ Every route but `verify` reads the token from the **`x-master-key-token`** heade
 
 ### 13.4 The panel protocol
 
-- `PANEL_PROTOCOL_VERSION` (`shared/src/protocol/socket.ts`, now 5 with the Chatroom, section 14) rises by one in each release
+- `PANEL_PROTOCOL_VERSION` (`shared/src/protocol/socket.ts`, now 5 with the Chatroom, section 15) rises by one in each release
   that adds a socket command. An absent value on either side means 1.
 - The Office handshake `auth` payload adds `protocol` and `appVersion`. Snapshots and deltas add the
   Master's `protocol`.
@@ -2296,13 +2297,105 @@ Every route but `verify` reads the token from the **`x-master-key-token`** heade
   asked to prove itself at `/api/panel/prove` before the panel secret is sent there, and the new
   address is saved only after a connection there authenticates.
 
-## 14. The Chatroom (1.3 Phase 6)
+## 14. Pending order numbers, presence and stale edits (1.3 Phase 4)
+
+Protocol 4. The design is `docs/LEAD_GENERATION_FLOW.md` §4 and §7.
+
+### 14.1 Pending order numbers on the wire
+
+- `Lead.poNumber?` and `Order.poNumber?` (`string | null`): `PO/<fy>/<seq>`, matching
+  `PO_NUMBER_PATTERN`. An order's is its lead's, read through the join; an order with no lead has
+  none. Optional, so a pre-1.3 Master's payloads still parse; a client shows the id instead
+  (`recordNumber`).
+- `POST /api/leads` on the Master answers the `Lead` with its `poNumber` (no shape change).
+- `MutationResult.number?`: the PO number an applied `lead.create` was given. Stored with the
+  applied mutation, so a duplicate replay answers the same number.
+- `GET /api/leads/:id/pdf` names its file `pending-order-PO-2026-27-00042.pdf` (slashes replaced);
+  the URL is unchanged. Search hits for lead and order lines carry the number as their subtitle.
+- Activity details: a lead or order `created` carries `poNumber`; `deleted`, `restored` and the
+  lead's `converted` carry `number` (the PO number, or the id when there is none). The Logs screen
+  shows that number in place of the id.
+- Notification kind `lead.numbered` (to the lead's author, when the save reached the Master more
+  than 60 s after it was made): params `{ number, party }`, link `{ kind: 'lead', id }`, dedupe
+  `lead.numbered:<id>`. `NotificationLink.kind` is now `'panel' | 'lead'`; opening one opens the
+  lead on either panel.
+
+### 14.2 Stale-edit protection
+
+- `PUT /api/leads/:id` and `PUT /api/orders/:id` accept `baseFieldHlc` (`Record<field, hlc>`): the
+  field clocks the editor opened the record at. A field in the body whose stored clock differs from
+  its base answers **409** `error.conflict.staleEdit` with `details: { stale: string[], fieldHlc }`
+  (the clocks the Master holds now), and nothing is written. The check runs under the row lock.
+  Without `baseFieldHlc`, or with a malformed one, the edit applies as before.
+- Clients send only the fields that changed since the record was opened, and `items` only when the
+  lines really changed (`sameLines`, now in `shared/src/sync/merge.ts`). "Keep mine" sends again
+  with `details.fieldHlc` as the base.
+- Office: the queued `PUT`s take `baseFieldHlc` out of the payload (only string clocks are kept)
+  and send it as the mutation's `baseFieldHlc`, so the Master's merge records a conflict instead of
+  overwriting. This applies to every queued `PUT` (leads, orders, parties, products).
+- `DataChangedEvent.actorUserId?` / `actorName?` name who made a lead or order change, for the
+  "Ravi saved this at 10:42" notice.
+
+### 14.3 Owner picker
+
+`GET /api/lead-entry` adds `owners?: AssignablePerson[]` (active, undeleted users, by display
+name) only when the caller holds `record.reassignOwner`. The Master's form shows an Owner picker
+only when it is there and sends `ownerId` on create (or on edit when it changed). A Server Master
+holds every permission, so it may raise a pending order for any user and delete any user's; both
+are logged under the Server Master.
+
+### 14.4 Presence
+
+Held in the Master's memory only: never stored, logged or put in the change ring. Types are in
+`shared/src/protocol/presence.ts`.
+
+- `PresenceBeat { tabId, recordKind?, recordId?, editing? }`. `tabId` matches
+  `[A-Za-z0-9_-]{1,64}`, `recordKind` is `lead` or `order`, `recordId` is at most 40 characters.
+  Leaving out `recordKind` and `recordId` means the tab left. Who is beating is never in the body.
+- `RecordPresence { recordKind, recordId, entries: PresenceEntry[], lastWrite? }`, where
+  `PresenceEntry { userId, displayName, avatar, tier, editing, since }` merges every tab of one
+  person (editing if any tab is), and `lastWrite { userId, displayName, at, action }` rides only on
+  the push that follows a save or delete.
+- Every beat (every `PRESENCE_BEAT_MS` = 10 s while a record screen is showing) re-reads the record
+  as the caller, so `leads.view` / `orders.view` and party scope apply; a record they may not see
+  answers 404 or 403 and takes the tab off. A tab that stops beating drops off after
+  `PRESENCE_TTL_MS` = 30 s. A provisional record (a temporary id) is never beaten.
+- **Master REST** `POST /api/presence` (session): body `PresenceBeat`, answers `RecordPresence`
+  (or `null` for a leave). 400 `validation.presence.invalid` for a bad shape. The key is
+  `admin:<userId>:<tabId>`.
+- **`AdminAuthPayload.tabId?`**: a Master browser tab sends the same tab id in its socket
+  handshake, so closing the tab takes it off at once.
+- **C→S `presence:beat`** (protocol 4): `(beat, ack: CommandAck<RecordPresence | null>)`. Keyed
+  `panel:<panelId>:<tabId>`; refused with nobody signed in. A panel's entries go when its socket
+  disconnects or its acting person changes.
+- **S→C `presence:changed`**: `RecordPresence & { forUserId }`, debounced 100 ms per record, sent
+  only to the people on that record who may still see it (`mayReceive` and party grants). The
+  Office drops it unless `forUserId` is the person signed in there.
+- **Office REST** `POST /api/presence` (`requireUser`): forwards `presence:beat` with the body cut
+  down to the fields above; 503 offline, 426 for a Master older than protocol 4. The SSE stream
+  gains a `presence` event (only for the person signed in).
+
+### 14.5 The Office's new pending order save
+
+`POST /api/leads` still queues the lead and answers **202**
+`{ queued, id, mutationId, pendingCount }`, now with:
+
+- `status: 'numbered'`, `permanentId` and `poNumber` (absent from a pre-1.3 Master) when the link
+  was up and the push carrying it answered within `OFFICE_SAVE_NUMBER_WAIT_MS` (5 s);
+- `status: 'provisional'` when the Master was out of reach or slower than that; the lead is safe in
+  the outbox and is shown as Provisional;
+- `status: 'rejected'` and `error` when the Master refused the lead.
+
+The SSE stream gains a `numbered` event `{ entity: 'lead', temporaryId, permanentId, poNumber?,
+announced }` for every lead whose temporary id was replaced; `announced` is true when a waiting
+save already named the number. The `lead:create` socket command is not used for saves.
+## 15. The Chatroom (1.3 Phase 6)
 
 Text-only chat. It is **outside the change ring and the activity chain**: nothing here publishes
-a `data:changed`, and only governance is audited (§14.5). The shapes are in
+a `data:changed`, and only governance is audited (§15.5). The shapes are in
 `shared/src/domain/chat.ts`; the code in `master/src/services/chat.service.ts`.
 
-### 14.1 Permissions
+### 15.1 Permissions
 
 Six keys in the `chat` capability group. `chat.use` is the switch: without it the Chatroom is
 absent from both panels and every route below answers 403 naming it. The finer keys are checked by
@@ -2323,7 +2416,7 @@ or `deleted_at` filter). A role created later holds none until an administrator 
 The Sales role template offers `chat.use`, `.directMessages`, `.shareRecords` and `.tasks`; Dispatch
 offers `chat.use`.
 
-### 14.2 Master REST, `/api/chat` (every route `requireAuth` + `needs('chat.use')`)
+### 15.2 Master REST, `/api/chat` (every route `requireAuth` + `needs('chat.use')`)
 
 Mounted before `dataRoutes`. A non-member is told the room or message does not exist (404), never
 that it exists and is closed to them.
@@ -2362,7 +2455,7 @@ for the person looking: `{label, partyName, restricted: false}` when they may op
 `{label: null, partyName: null, restricted: true}`, so a room never learns which party a restricted
 record belongs to. The label is `noteNumber(record)` (the record id until Phase 4's PO number).
 
-### 14.3 Socket commands (Office to Master), protocol 5
+### 15.3 Socket commands (Office to Master), protocol 5
 
 Seventeen, twinned with the routes above and forwarded by the Office at the same paths:
 `chat:people`, `chat:rooms`, `chat:room`, `chat:messages`, `chat:search`, `chat:tasks`,
@@ -2371,7 +2464,7 @@ Seventeen, twinned with the routes above and forwarded by the Office at the same
 `COMMAND_MIN_PROTOCOL` at `CHAT_MIN_PROTOCOL` (5); an Office on an older Master answers 426
 `error.updateNeeded.master`. **There is no `chat:post`.** An Office posts through `sync:push`.
 
-### 14.4 The `chat.post` mutation and the held-post rule
+### 15.4 The `chat.post` mutation and the held-post rule
 
 `MUTATION_KINDS += 'chat.post'` (entity `chat_message`, id prefix `CM`, permission `chat.use`),
 payload `{roomId, body, refs?, mentions?, task?}`. The Master's `route()` calls `postMessage` with
@@ -2391,7 +2484,7 @@ A post speaks for one person:
   actor's `userId` (`validation.chat.wrongAuthor`), and leaves it out of the batch-wide 503 that a
   person's work under a panel role otherwise earns.
 
-### 14.5 Live updates and audit
+### 15.5 Live updates and audit
 
 `chat.service` publishes `{tenantId, userIds, push}` on the change bus's own `chat` channel
 (`publishChat` / `onChat`, never the ring). `hub.ts` sends `chat:event` through `emitToActors`

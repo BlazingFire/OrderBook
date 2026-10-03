@@ -17,6 +17,7 @@
  * there is nothing.
  */
 
+import { recordNumber } from '@orderbook/shared';
 import type { SearchHit } from '@orderbook/shared';
 
 import type { LocalView } from './api';
@@ -77,23 +78,24 @@ export function searchLocalView(view: LocalView, term: string): SearchHit[] {
   }
 
   for (const lead of view.leads) {
-    if (!matches(needle, lead.partyName, lead.notes)) continue;
+    // The PO number is what a person reads off a printout or a toast.
+    if (!matches(needle, lead.partyName, lead.notes, lead.poNumber, lead.id)) continue;
     hits.push({
       kind: 'lead_line',
       id: lead.id,
       title: lead.partyName,
-      subtitle: lead.stageName,
+      subtitle: `${recordNumber(lead)} · ${lead.stageName}`,
       rank: 0,
     });
   }
 
   for (const order of view.orders) {
-    if (!matches(needle, order.partyName, order.notes)) continue;
+    if (!matches(needle, order.partyName, order.notes, order.poNumber, order.id)) continue;
     hits.push({
       kind: 'order_line',
       id: order.id,
       title: order.partyName,
-      subtitle: order.stageName,
+      subtitle: `${recordNumber(order)} · ${order.stageName}`,
       rank: 0,
     });
   }

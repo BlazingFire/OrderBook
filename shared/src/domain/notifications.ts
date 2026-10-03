@@ -11,6 +11,8 @@ import type { IsoTimestamp, OfficePanelWithPresence, Uuid } from './entities.js'
 
 export const NOTIFICATION_KINDS = [
   'panel.offlineLong',
+  // A pending order saved offline got its number (Phase 4).
+  'lead.numbered',
   // The Chatroom (Phase 6): somebody @mentioned you, handed you a task, ticked
   // one you set, or asked for a chat right.
   'chat.mention',
@@ -28,6 +30,8 @@ export function isNotificationKind(value: unknown): value is NotificationKind {
 /** Where opening a notification takes the reader. */
 export type NotificationLink =
   | { kind: 'panel'; id: string }
+  /** A pending order, by its permanent id. */
+  | { kind: 'lead'; id: string }
   /** A chat room, and the message in it when there is one. */
   | { kind: 'chat'; id: string; messageId?: string }
   /** A role in the roles editor. */

@@ -312,6 +312,10 @@ async function main(): Promise<void> {
     await db().transaction(async (trx) => {
       await trx.raw(`TRUNCATE TABLE ${BUSINESS_TABLES.join(', ')} RESTART IDENTITY CASCADE`);
       await trx.raw('ALTER SEQUENCE party_code_seq RESTART WITH 1');
+      // Named one by one so the pending order series (`po:<fy>`) is never
+      // among them: a PO number once printed is never handed out again, even
+      // after the business data is erased. Only a developer factory reset
+      // starts those series over.
       for (const entity of [
         'lead',
         'line_item',

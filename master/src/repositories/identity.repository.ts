@@ -1,9 +1,9 @@
 /**
- * Permanent id allocation, the temporary→permanent map, and the Master's own
- * HLC (docs/LEAD_GENERATION_FLOW.md §7).
+ * Permanent id allocation, pending order numbers, the temporary→permanent map,
+ * and the Master's own HLC (docs/LEAD_GENERATION_FLOW.md §7).
  *
- * Only the Master mints permanent ids. Both counters here — the per-entity id
- * sequence and the clock — are single rows taken with `FOR UPDATE`, not
+ * Only the Master mints permanent ids. Both counters here — the `id_sequences`
+ * series and the clock — are single rows held under a row lock, not
  * Postgres SEQUENCEs. That looks like a needless serialisation point until you
  * notice what a SEQUENCE gives up to be fast: it hands out numbers with gaps
  * and in whatever order sessions arrive. Permanent ids must be gap-free (they
@@ -12,9 +12,17 @@
  */
 
 import type { SyncableEntity } from '@orderbook/shared';
-import { formatPermanentId, initialHlcState, observeHlc, tickHlc } from '@orderbook/shared';
+import {
+  financialYearLabel,
+  formatPendingOrderNumber,
+  formatPermanentId,
+  initialHlcState,
+  observeHlc,
+  tickHlc,
+} from '@orderbook/shared';
 import type { Knex } from 'knex';
 
+import { config } from '../config/index.js';
 import { db } from '../db/knex.js';
 import type { TransactionContext } from './transaction.js';
 
@@ -34,23 +42,94 @@ export async function allocatePermanentId(
   entity: SyncableEntity,
   trx: TransactionContext,
 ): Promise<string> {
-  const [row] = await trx('id_sequences')
-    .where({ tenant_id: tenantId, entity })
-    .forUpdate()
-    .select<Array<{ next_value: string }>>('next_value');
+  return formatPermanentId(entity, await nextInSeries(tenantId, entity, trx));
+}
 
-  // A tenant created after the migration has no counter row yet.
-  if (!row) {
-    await trx('id_sequences').insert({ tenant_id: tenantId, entity, next_value: 2 });
-    return formatPermanentId(entity, 1);
-  }
+/**
+ * The next number of one `id_sequences` series: an entity's ids, or a
+ * `po:<fy>` pending order series. Gap-free: the UPDATE holds the row's lock to
+ * the end of the caller's transaction, so a second caller waits, and a
+ * rollback takes the number back. A series with no row yet starts at 1.
+ */
+export async function nextInSeries(tenantId: string, key: string, trx: TransactionContext): Promise<number> {
+  await trx.raw(
+    `INSERT INTO id_sequences (tenant_id, entity, next_value) VALUES (?, ?, 1)
+     ON CONFLICT (tenant_id, entity) DO NOTHING`,
+    [tenantId, key],
+  );
+  const { rows } = await trx.raw<{ rows: Array<{ value: string }> }>(
+    `UPDATE id_sequences SET next_value = next_value + 1
+      WHERE tenant_id = ? AND entity = ?
+      RETURNING next_value - 1 AS value`,
+    [tenantId, key],
+  );
+  return Number(rows[0]!.value);
+}
 
-  const sequence = Number(row.next_value);
-  await trx('id_sequences')
-    .where({ tenant_id: tenantId, entity })
-    .update({ next_value: sequence + 1 });
+/**
+ * The PO number for a lead created at `createdAt` (`PO/2026-27/00042`), from
+ * the series of the financial year that instant falls in, in the company's
+ * time zone. Called inside the transaction that inserts the lead, so a create
+ * that fails takes its number back with it.
+ */
+export async function allocatePendingOrderNumber(
+  tenantId: string,
+  createdAt: Date,
+  trx: TransactionContext,
+): Promise<string> {
+  const year = financialYearLabel(createdAt, config.locale.timeZone);
+  return formatPendingOrderNumber(year, await nextInSeries(tenantId, `po:${year}`, trx));
+}
 
-  return formatPermanentId(entity, sequence);
+/**
+ * Give every lead without a PO number one, and set the `po:<fy>` counters past
+ * them. A frozen copy of steps 2 and 4 of
+ * `20261003000000_pending_order_numbers.ts`, for a restore that brings back
+ * leads from before that migration: it has already run on this database, so
+ * nothing else would number them. Copied rather than imported, because a
+ * migration must not change when this does. Safe to run on any database: it
+ * touches only leads with no number.
+ */
+export async function backfillPendingOrderNumbers(trx: TransactionContext): Promise<void> {
+  await trx.raw(`
+    WITH src AS (
+      SELECT id, tenant_id, created_at,
+             (CASE WHEN EXTRACT(MONTH FROM created_at AT TIME ZONE 'Asia/Kolkata') >= 4
+                   THEN EXTRACT(YEAR FROM created_at AT TIME ZONE 'Asia/Kolkata')
+                   ELSE EXTRACT(YEAR FROM created_at AT TIME ZONE 'Asia/Kolkata') - 1 END)::int AS fy0
+        FROM leads
+       WHERE po_number IS NULL
+    ), labelled AS (
+      SELECT id, tenant_id, created_at, fy0 || '-' || lpad(((fy0 + 1) % 100)::text, 2, '0') AS fy
+        FROM src
+    ), base AS (
+      SELECT tenant_id, fy, max(top) AS top
+        FROM (SELECT tenant_id, split_part(po_number, '/', 2) AS fy, split_part(po_number, '/', 3)::bigint AS top
+                FROM leads
+               WHERE po_number IS NOT NULL
+              UNION ALL
+              SELECT tenant_id, substring(entity from 4) AS fy, next_value - 1 AS top
+                FROM id_sequences
+               WHERE entity LIKE 'po:%') taken
+       GROUP BY tenant_id, fy
+    ), numbered AS (
+      SELECT l.id, l.tenant_id, l.fy,
+             coalesce(b.top, 0) + row_number() OVER (PARTITION BY l.tenant_id, l.fy ORDER BY l.created_at, l.id) AS n
+        FROM labelled l
+        LEFT JOIN base b ON b.tenant_id = l.tenant_id AND b.fy = l.fy
+    )
+    UPDATE leads
+       SET po_number = 'PO/' || numbered.fy || '/' || lpad(numbered.n::text, greatest(5, length(numbered.n::text)), '0')
+      FROM numbered
+     WHERE leads.id = numbered.id AND leads.tenant_id = numbered.tenant_id`);
+  await trx.raw(`
+    INSERT INTO id_sequences (tenant_id, entity, next_value)
+    SELECT tenant_id, 'po:' || split_part(po_number, '/', 2), max(split_part(po_number, '/', 3)::bigint) + 1
+      FROM leads
+     WHERE po_number IS NOT NULL
+     GROUP BY tenant_id, split_part(po_number, '/', 2)
+    ON CONFLICT (tenant_id, entity) DO UPDATE
+      SET next_value = greatest(id_sequences.next_value, EXCLUDED.next_value)`);
 }
 
 /** Allocate a contiguous block — one query per batch instead of per record. */
