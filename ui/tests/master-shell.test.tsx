@@ -466,6 +466,22 @@ describe('Basic Home and the landing screen', () => {
     ]);
   });
 
+  it('1.4 R9: shows Chatroom and Printroom tiles for Management holding chat.use and print.send', async () => {
+    await bootAs('management', [...MANAGER, 'chat.use', 'print.send']);
+
+    const tiles = [...launcher().querySelectorAll('.ob-tile-label')].map((tile) => tile.textContent);
+    expect(tiles).toContain(t('nav.chatroom'));
+    expect(tiles).toContain(t('nav.printroom'));
+  });
+
+  it('1.4 R9: shows neither tile without the keys', async () => {
+    await bootAs('management', MANAGER);
+
+    const tiles = [...launcher().querySelectorAll('.ob-tile-label')].map((tile) => tile.textContent);
+    expect(tiles).not.toContain(t('nav.chatroom'));
+    expect(tiles).not.toContain(t('nav.printroom'));
+  });
+
   it('opens a module from its tile, and the brand mark comes back to Basic Home', async () => {
     await bootAs('management', MANAGER);
 

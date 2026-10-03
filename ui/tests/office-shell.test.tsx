@@ -464,6 +464,28 @@ describe('where a person lands', () => {
     expect(work.getByRole('button', { name: new RegExp(`^${t('nav.leads')}`) })).toBeTruthy();
   });
 
+  it('1.4 R9: offers Chatroom and Printroom tiles to an office-tier person holding chat.use and print.send', async () => {
+    const permissions = ['leads.view', 'chat.use', 'print.send'];
+    routeFetch(({ url }) => {
+      const path = url.split('?')[0] ?? url;
+      if (path === '/api/connection') return json(CONNECTION);
+      if (path === '/api/session') return json({ session: panelSession(permissions), defaultLocale: 'en' });
+      if (path === '/api/sync') return json({ ...CONNECTION, pendingCount: 0, rejections: [] });
+      return undefined;
+    });
+    const App = await loadApp('office');
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+    await screen.findByRole('link', { name: t('footer.designSystem') });
+
+    const tiles = [...document.querySelectorAll('.ob-launcher .ob-tile-label')].map((tile) => tile.textContent);
+    expect(tiles).toContain(t('nav.chatroom'));
+    expect(tiles).toContain(t('nav.printroom'));
+  });
+
   it('starts an admin-tier person on the Dashboard', async () => {
     await boot({
       permissions: ['leads.view'],
