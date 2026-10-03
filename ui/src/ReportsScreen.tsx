@@ -64,7 +64,7 @@ interface ReportsScreenProps {
   /** Which report is showing — chosen in the sidebar's sub-pages or from the picker here. */
   kind: ReportKind;
   onKindChange: (kind: ReportKind) => void;
-  /** Changes whenever lead, order or party data does — a counter bumped on every applied change or snapshot, on both panels. */
+  /** Changes whenever the data a report reads does: bumped on a change to one of `REPORT_ENTITIES` (on the Office also on a snapshot). */
   revision: number | string;
 }
 

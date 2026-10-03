@@ -292,6 +292,13 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
       expect(await stored(management.id)).toEqual(['leads.view', 'reports.export', 'reports.view']);
       expect(await stored(owner.id)).toEqual(['leads.view']);
     });
+
+    it('indexes leads by owner and creation date for live rows only', async () => {
+      const row = await db()('pg_indexes')
+        .where({ tablename: 'leads', indexname: 'idx_leads_owner_created' })
+        .first<{ indexdef: string }>('indexdef');
+      expect(row?.indexdef).toContain('WHERE (deleted_at IS NULL)');
+    });
   });
 
   describe('what each kind counts', () => {

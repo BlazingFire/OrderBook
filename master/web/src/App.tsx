@@ -28,6 +28,7 @@ import {
   isLongOffline,
   offeredReportKinds,
   RECYCLE_BIN_ENTITIES,
+  REPORT_ENTITIES,
   REPORT_META,
   reportsOffered,
   RESTORE_PERMISSION,
@@ -189,7 +190,7 @@ const SCREEN_ENTITIES: Record<string, readonly string[]> = {
    */
   catalogue: ['product', 'catalog', 'product_category'],
   catalogueLists: ['option_list'],
-  reports: ['lead', 'order', 'party', 'party_bulk', 'stock'],
+  reports: REPORT_ENTITIES,
   fields: ['option_list', 'custom_field', 'pipeline'],
   access: ['user', 'role'],
   partyAccess: ['party', 'party_bulk'],

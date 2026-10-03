@@ -1992,7 +1992,7 @@ exercised only through service integration tests.
 | `master/src/domain/log-cursor.ts` (36) | Logs keyset cursor | `clampLogPage`, `encodeLogCursor`, `decodeLogCursor` | none |
 | `master/src/domain/paging.ts` (23) | page-size clamp | `clampPaging`, `clampLimit` | none |
 | `master/src/domain/search-terms.ts` (63) | safe prefix `tsquery` and LIKE patterns | `prefixTsQuery`, `likePrefix`, `likeContains` | none |
-| `master/src/domain/report-range.ts` (134) | report ranges from `{year, month, day}` without `Date` (the day-early fix) | `resolveReportRange`, `monthLabels`, `MAX_RANGE_MONTHS` (12) | `master/tests/report-range.test.ts` |
+| `master/src/domain/report-range.ts` (134) | report ranges from `{year, month, day}` without `Date` (the day-early fix) | `resolveReportRange`, `monthLabels`, `rangeSubtitle` (the PDF line: first day to the inclusive last day), `MAX_RANGE_MONTHS` (12) | `master/tests/report-range.test.ts` |
 | `master/src/domain/recycle-bin.ts` (128) | upward-only restore graph, rename-on-collision, Bin cursor | `PARENT_LINKS`, `assertParentsLive`, `suggestRestoredName`, `visibleBinScopes`, `encodeBinCursor`, `decodeBinCursor` | `master/tests/recycle-bin-domain.test.ts` |
 | `master/src/domain/json-pointer.ts` (72) | RFC 6901 pointers, so a field map is never an expression | `readPointer`, `flattenPointers` | `master/tests/connector-mapping.test.ts` |
 | `master/src/domain/connector-mapping.ts` (110) | one remote row → one local input via closed transforms | `mapRow`, `applyTransform`, `hashInput`, `changedFields` | `master/tests/connector-mapping.test.ts` |

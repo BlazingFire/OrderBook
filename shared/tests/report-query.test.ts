@@ -133,7 +133,8 @@ describe('what a reader sees', () => {
     }
     // Lead sources has a count of converted leads and a rate; the rate says so.
     expect(EN_MESSAGES['reports.column.conversion']).toBe('Conversion %');
-    expect(HI_MESSAGES['reports.column.conversion']).toBe('बदलाव दर (%)');
+    expect(HI_MESSAGES['reports.column.conversion']).toBe('फ़ाइनल ऑर्डर बनने की दर (%)');
+    expect(HI_MESSAGES['reports.column.converted']).toBe('फ़ाइनल ऑर्डर बने');
   });
 
   it('has real Hindi for every report string, with no untranslated marker left on one', () => {

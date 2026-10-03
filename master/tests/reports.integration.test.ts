@@ -5,7 +5,7 @@
  * owns the gate list this suite answers (`RPT-6`…`RPT-17`).
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ActorContext } from '../src/domain/actor.js';
 import { config } from '../src/config/index.js';
@@ -14,6 +14,7 @@ import * as catalogService from '../src/services/catalog.service.js';
 import * as inventoryService from '../src/services/inventory.service.js';
 import * as leadService from '../src/services/lead.service.js';
 import * as orderService from '../src/services/order.service.js';
+import * as tableRenderer from '../src/pdf/table-renderer.js';
 import * as reportService from '../src/services/report.service.js';
 import * as settingsService from '../src/services/settings.service.js';
 import { classifyLeadOutcome } from '../src/domain/lead-outcome.js';
@@ -413,6 +414,22 @@ describe.skipIf(!canRunIntegrationTests)('Reports (integration)', () => {
       expect(pdf.fileName).toBe('dispatches.pdf');
       // A real PDF, not an empty buffer with the right name on it.
       expect(pdf.bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    });
+
+    it('prints the inclusive last day under the title, not the stored exclusive end', async () => {
+      const actor = await testActor();
+      const render = vi.spyOn(tableRenderer, 'renderReportPdf');
+      try {
+        await reportService.exportReport(
+          'dispatches',
+          { period: 'customDates', fromDate: '2026-04-01', toDate: '2026-04-30', format: 'pdf' },
+          actor,
+        );
+        expect(render).toHaveBeenCalledTimes(1);
+        expect(render.mock.calls[0]?.[0].subtitle).toBe('2026-04-01 — 2026-04-30');
+      } finally {
+        render.mockRestore();
+      }
     });
   });
 });

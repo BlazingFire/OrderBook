@@ -666,6 +666,26 @@ describe('Reports', () => {
     }
   });
 
+  it('does not ask again for a change to something no report reads', async () => {
+    const calls = await boot({ permissions: ['reports.view'], route: reportRoutes });
+    const work = within(screen.getByRole('region', { name: t('nav.work') }));
+    await act(async () => {
+      fireEvent.click(work.getByRole('button', { name: new RegExp(`^${t('nav.reports')}`) }));
+    });
+    await screen.findByText('2026-10');
+
+    const tableCalls = (): number => calls.filter((call) => call.url.startsWith('/api/reports/table/')).length;
+    const before = tableCalls();
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('change', { entity: 'option_list', action: 'updated', id: 'OL0000000001', payload: {} });
+    });
+    // Let any wrongly scheduled fetch land before counting.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+    expect(tableCalls()).toBe(before);
+  });
+
   it('is not offered without reports.view, nor when the company has switched it off for the Office tier', async () => {
     await boot({ permissions: ['orders.view'], route: reportRoutes });
     expect(within(screen.getByRole('region', { name: t('nav.work') })).queryByRole('button', { name: new RegExp(`^${t('nav.reports')}`) })).toBeNull();

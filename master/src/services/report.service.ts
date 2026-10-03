@@ -59,7 +59,7 @@ import { resolvePartyScope } from '../domain/party-scope.js';
 import { renderReportPdf } from '../pdf/table-renderer.js';
 import { getSetting } from './settings.service.js';
 import { companyFeatures } from './company-features.js';
-import { resolveReportRange, type DateComponents } from '../domain/report-range.js';
+import { rangeSubtitle, resolveReportRange, type DateComponents } from '../domain/report-range.js';
 import { config } from '../config/index.js';
 import { db } from '../db/knex.js';
 import { toCsv } from '../lib/csv.js';
@@ -659,7 +659,7 @@ export async function exportReport(
 
   const bytes = await renderReportPdf({
     title,
-    subtitle: `${ctx.range.fromDate} — ${ctx.range.toDateExclusive}`,
+    subtitle: rangeSubtitle(ctx.range.fromDate, ctx.range.toDateExclusive),
     preamble: ctx.subject.name ? [label('reports.generatedFor', lang, { name: ctx.subject.name })] : undefined,
     columns: columns.map((column) => ({
       label: label(column.labelToken, lang),

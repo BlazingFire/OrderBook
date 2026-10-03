@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { MAX_RANGE_DAYS, resolveReportRange } from '../src/domain/report-range.js';
+import { MAX_RANGE_DAYS, rangeSubtitle, resolveReportRange } from '../src/domain/report-range.js';
 import { ValidationError } from '../src/lib/errors.js';
 
 function refusal(fn: () => unknown): ValidationError {
@@ -96,5 +96,19 @@ describe('customDates', () => {
       messageKey: 'validation.reports.range.toBeforeFrom',
       details: { field: 'toDate' },
     });
+  });
+});
+
+describe('rangeSubtitle', () => {
+  it('prints the inclusive last day, not the stored exclusive end, across month, year and leap boundaries', () => {
+    expect(rangeSubtitle('2026-04-01', '2026-05-01')).toBe('2026-04-01 — 2026-04-30');
+    expect(rangeSubtitle('2026-12-01', '2027-01-01')).toBe('2026-12-01 — 2026-12-31');
+    expect(rangeSubtitle('2028-02-01', '2028-03-01')).toBe('2028-02-01 — 2028-02-29');
+    expect(rangeSubtitle('2026-10-03', '2026-10-04')).toBe('2026-10-03 — 2026-10-03');
+  });
+
+  it('is what a resolved range prints', () => {
+    const range = resolveReportRange({ period: 'customDates', fromDate: '2026-04-01', toDate: '2026-04-30' }, { year: 2026, month: 10, day: 3 });
+    expect(rangeSubtitle(range.fromDate, range.toDateExclusive)).toBe('2026-04-01 — 2026-04-30');
   });
 });

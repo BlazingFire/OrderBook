@@ -19,6 +19,7 @@ import {
   isRoleTier,
   LONG_OFFLINE_MS,
   offeredReportKinds,
+  REPORT_ENTITIES,
   REPORT_META,
   reportsOffered,
   resolveCompanyFeatures,
@@ -582,7 +583,7 @@ function OfficePanel() {
      */
     source.addEventListener('change', (event) => {
       const change = JSON.parse((event as MessageEvent).data) as DataChangedEvent;
-      setViewRevision((count) => count + 1);
+      if (REPORT_ENTITIES.includes(change.entity)) setViewRevision((count) => count + 1);
       setView((current) => {
         if (!current) return current;
 

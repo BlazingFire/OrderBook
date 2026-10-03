@@ -13,6 +13,14 @@
 
 import type { IsoDate, RecordId } from './entities.js';
 import type { MessageKey } from '../i18n/keys.js';
+import type { ChangedEntity } from '../protocol/socket.js';
+
+/**
+ * The change entities that move a report's numbers. Both panels refresh an open
+ * Reports screen on exactly these (the Master's `SCREEN_ENTITIES.reports`, the
+ * Office's `change` listener), so the two cannot drift apart.
+ */
+export const REPORT_ENTITIES: readonly ChangedEntity[] = ['lead', 'order', 'party', 'party_bulk', 'stock'];
 
 export type ReportPeriod =
   | 'thisMonth'
