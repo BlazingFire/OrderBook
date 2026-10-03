@@ -133,7 +133,8 @@ import type {
 } from '../domain/chat.js';
 import type { UserNotification } from '../domain/notifications.js';
 import type { SyncPushRequest, SyncPushResponse } from '../sync/mutations.js';
-import type { PresenceBeat, RecordPresence } from './presence.js';
+import type { BoardPresence, PresenceBeat, PresenceRecordKind, RecordPresence } from './presence.js';
+import { BOARD_PRESENCE_MIN_PROTOCOL } from './presence.js';
 
 /** Socket.IO rooms the Master uses to target broadcasts. */
 export const ROOM_OFFICE_PANELS = 'office-panels';
@@ -176,7 +177,7 @@ export interface PanelAuthPayload {
  * socket command, so either side can tell the other is too old for one before
  * sending it, instead of waiting out a timeout.
  */
-export const PANEL_PROTOCOL_VERSION = 6;
+export const PANEL_PROTOCOL_VERSION = 7;
 
 /**
  * The lowest Master protocol each command needs. A command not listed has
@@ -217,6 +218,8 @@ export const COMMAND_MIN_PROTOCOL: Partial<Record<keyof ClientToServerEvents, nu
   'print:stations': PRINTROOM_MIN_PROTOCOL,
   'print:station': PRINTROOM_MIN_PROTOCOL,
   'presence:beat': 4,
+  // Who is on each card of a board (1.4 R22).
+  'presence:board': BOARD_PRESENCE_MIN_PROTOCOL,
 };
 
 /**
@@ -950,6 +953,12 @@ export interface ClientToServerEvents {
    * logged. Refused with nobody signed in, or for a record they may not see.
    */
   'presence:beat': (beat: PresenceBeat, ack: CommandAck<RecordPresence | null>) => void;
+  /**
+   * Everyone on every record of one board, for the avatars on its cards and rows;
+   * limited to records the acting person may read. The same answer is pushed as
+   * `presence:board` whenever it changes (1.4 R22, protocol 7).
+   */
+  'presence:board': (kind: PresenceRecordKind, ack: CommandAck<BoardPresence>) => void;
 
   // --- Printroom (1.3 Phase 7) ----------------------------------------------
   /*
@@ -1056,6 +1065,11 @@ export interface ServerToClientEvents {
    * still see it, each addressed by `forUserId` like a notification.
    */
   'presence:changed': (presence: RecordPresence & { forUserId: Uuid }) => void;
+  /**
+   * Who is on each card of a board changed (protocol 7). The whole board for this
+   * person, throttled by the Master; an Office older than 7 is not sent it.
+   */
+  'presence:board': (board: BoardPresence & { forUserId: Uuid }) => void;
 }
 
 /** Per-connection state the Master attaches after authenticating a socket. */

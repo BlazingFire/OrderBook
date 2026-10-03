@@ -18,6 +18,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { PRESENCE_BEAT_MS, isTemporaryId } from '@orderbook/shared';
 import type {
+  BoardPresence,
   PresenceBeat,
   PresenceEntry,
   PresenceLastWrite,
@@ -28,6 +29,8 @@ import type {
 export interface PresenceTransport {
   /** One beat. `keepalive` is for the one sent while the page unloads. */
   beat(beat: PresenceBeat, keepalive?: boolean): Promise<RecordPresence | null>;
+  /** Everyone on every record of one board (R22). Absent: the panel shows no board faces. */
+  board?(kind: PresenceRecordKind): Promise<BoardPresence>;
 }
 
 export interface PresenceChannel {
@@ -37,14 +40,29 @@ export interface PresenceChannel {
   /** The link dropped: who was on what is no longer known. */
   reset(): void;
   subscribe(listener: (presence: RecordPresence | null) => void): () => void;
+  /** A board push from the Master. */
+  pushBoard(board: BoardPresence): void;
+  /** Hears each board push; `null` is the same "link dropped" as `reset`. */
+  subscribeBoard(listener: (board: BoardPresence | null) => void): () => void;
 }
 
 export function createPresenceChannel(transport: PresenceTransport): PresenceChannel {
   const listeners = new Set<(presence: RecordPresence | null) => void>();
+  const boardListeners = new Set<(board: BoardPresence | null) => void>();
   return {
     transport,
     push: (presence) => listeners.forEach((listener) => listener(presence)),
-    reset: () => listeners.forEach((listener) => listener(null)),
+    reset: () => {
+      listeners.forEach((listener) => listener(null));
+      boardListeners.forEach((listener) => listener(null));
+    },
+    pushBoard: (board) => boardListeners.forEach((listener) => listener(board)),
+    subscribeBoard(listener) {
+      boardListeners.add(listener);
+      return () => {
+        boardListeners.delete(listener);
+      };
+    },
     subscribe(listener) {
       listeners.add(listener);
       return () => {

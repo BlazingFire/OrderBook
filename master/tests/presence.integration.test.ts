@@ -16,7 +16,7 @@ import { io as connect, type Socket } from 'socket.io-client';
 import request from 'supertest';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import type { CommandResult, Permission, RecordPresence } from '@orderbook/shared';
+import type { BoardPresence, CommandResult, Permission, RecordPresence } from '@orderbook/shared';
 
 import { canRunIntegrationTests } from './helpers/db.js';
 import { resetData, setupDatabase, teardownDatabase, testActor, testTenantId } from './helpers/fixtures.js';
@@ -87,7 +87,7 @@ const pushes = (client: Client) =>
     .map((entry) => entry.args[0] as RecordPresence & { forUserId: string });
 
 /** A panel socket acting as `who` from its handshake, or as itself. */
-async function panelSocket(deviceCode: string, who?: Person): Promise<Client> {
+async function panelSocket(deviceCode: string, who?: Person, protocol = 4): Promise<Client> {
   const panelId = randomUUID();
   await panelRepo.insertPanel({
     id: panelId,
@@ -103,7 +103,7 @@ async function panelSocket(deviceCode: string, who?: Person): Promise<Client> {
     kind: 'office-panel',
     panelId,
     panelSecret: 'panel-secret',
-    protocol: 4,
+    protocol,
     ...(who ? { actingUserToken: who.token } : {}),
   });
   await until(() => client.seen.some((entry) => entry.event === 'sync:snapshot'), 'the panel snapshot');
@@ -292,5 +292,94 @@ describe.skipIf(!canRunIntegrationTests)('live presence (integration)', () => {
       () => pushes(ashaPanel).at(-1)?.entries.map((entry) => entry.userId).join() === asha.id,
       'the push after the tab closed',
     );
+  });
+
+  describe('the board feed (R22)', () => {
+    const boards = (client: Client) =>
+      client.seen
+        .filter((entry) => entry.event === 'presence:board')
+        .map((entry) => entry.args[0] as BoardPresence & { forUserId: string });
+
+    const askBoard = (client: Client, kind: unknown): Promise<CommandResult<BoardPresence>> =>
+      new Promise((resolve) => client.socket.emit('presence:board', kind, resolve));
+
+    it('pushes the whole board to everyone who may read it, and a card loses the face that leaves', async () => {
+      const { lead } = await seedLead();
+      const asha = await person('asha');
+      const bela = await person('bela');
+      const carl = await person('carl');
+      const ashaPanel = await panelSocket('BRD01', asha, 7);
+      const belaPanel = await panelSocket('BRD02', bela, 7);
+      // An Office from before protocol 7 does not know the event and is not sent it.
+      const carlPanel = await panelSocket('BRD03', carl, 6);
+
+      await beat(ashaPanel, { tabId: 'tab-1', recordKind: 'lead', recordId: lead.id, editing: true });
+
+      await until(() => boards(belaPanel).length > 0, 'the board push');
+      const pushed = boards(belaPanel).at(-1)!;
+      expect(pushed).toMatchObject({ recordKind: 'lead', forUserId: bela.id });
+      expect(Object.keys(pushed.records)).toEqual([lead.id]);
+      expect(pushed.records[lead.id]!.map((entry) => [entry.userId, entry.editing])).toEqual([[asha.id, true]]);
+
+      await beat(ashaPanel, { tabId: 'tab-1' });
+      await until(() => Object.keys(boards(belaPanel).at(-1)?.records ?? {}).length === 0, 'the empty board');
+
+      expect(boards(carlPanel)).toEqual([]);
+      expect(boards(belaPanel).every((board) => board.recordKind === 'lead')).toBe(true);
+    });
+
+    it('answers the board on request, and never names a card of a party the reader cannot open', async () => {
+      const { party, lead } = await seedLead();
+      const asha = await person('asha');
+      const bela = await person('bela');
+      const ashaPanel = await panelSocket('BRD04', asha, 7);
+      const belaPanel = await panelSocket('BRD05', bela, 7);
+      await restrictTo(party, asha.id);
+
+      await beat(ashaPanel, { tabId: 'tab-1', recordKind: 'lead', recordId: lead.id });
+
+      const mine = await askBoard(ashaPanel, 'lead');
+      expect(mine.ok && Object.keys(mine.data.records)).toEqual([lead.id]);
+      const theirs = await askBoard(belaPanel, 'lead');
+      expect(theirs.ok).toBe(true);
+      expect(theirs.ok && theirs.data).toEqual({ recordKind: 'lead', records: {} });
+
+      await settle();
+      expect(boards(belaPanel).every((board) => Object.keys(board.records).length === 0)).toBe(true);
+    });
+
+    it('refuses a kind that is not a board and a person without the module', async () => {
+      const asha = await person('asha');
+      const ashaPanel = await panelSocket('BRD06', asha, 7);
+      const noLeads = await roleService.createRole(
+        { name: 'Orders only', tier: 'management', permissions: ['orders.view'] },
+        admin,
+      );
+      const { user } = await userService.createUser(
+        { username: 'olga', displayName: 'Name olga', roleId: noLeads.id, password: PASSWORD },
+        admin,
+      );
+      const { token } = await authService.signIn('olga', PASSWORD);
+      const olgaPanel = await panelSocket('BRD07', { id: user.id, username: 'olga', token }, 7);
+
+      expect(await askBoard(ashaPanel, 'party')).toMatchObject({ ok: false });
+      expect(await askBoard(olgaPanel, 'lead')).toMatchObject({ ok: false });
+      expect(await askBoard(olgaPanel, 'order')).toMatchObject({ ok: true });
+    });
+
+    it('answers a Master browser over HTTP with the same board', async () => {
+      const { lead } = await seedLead();
+      const asha = await person('asha');
+      const ashaPanel = await panelSocket('BRD08', asha, 7);
+      await person('dev');
+      await beat(ashaPanel, { tabId: 'tab-1', recordKind: 'lead', recordId: lead.id });
+
+      const agent = request.agent(app);
+      await agent.post('/api/auth/sign-in').send({ username: 'dev', password: PASSWORD }).expect(200);
+      const board = (await agent.get('/api/presence/board?kind=lead').expect(200)).body as BoardPresence;
+      expect(Object.keys(board.records)).toEqual([lead.id]);
+      await agent.get('/api/presence/board?kind=party').expect(400);
+      await agent.get('/api/presence/board').expect(400);
+    });
   });
 });

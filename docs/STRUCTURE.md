@@ -1125,6 +1125,10 @@ editing?}` (no record = the tab left), `PresenceEntry {userId, displayName, avat
 tier, editing, since}` (one per person, tabs merged), `PresenceLastWrite`,
 `RecordPresence {recordKind, recordId, entries, lastWrite?}`, `PRESENCE_BEAT_MS`
 (10 000) and `PRESENCE_TTL_MS` (30 000). Held in the Master's memory only.
+**1.4 R22 adds the board feed:** `BoardPresence {recordKind, records: Record<recordId, PresenceEntry[]>}`
+(only records somebody has open and the reader may read) and `BOARD_PRESENCE_MIN_PROTOCOL` (7);
+`PANEL_PROTOCOL_VERSION` is 7, with one command `presence:board` (`kind` → `BoardPresence`) and
+one push `presence:board` (`BoardPresence & {forUserId}`), the whole board each time.
 
 **`shared/src/protocol/discovery.ts` — custom UDP discovery (not mDNS).**
 `DISCOVERY_PORT = 45789`, `DISCOVERY_MAGIC = 'ORDERBOOK'`,
@@ -1356,7 +1360,7 @@ removed on 2026-09-25.
 | `ui/src/KanbanBoard.tsx` | `BoardStage`, `BoardItem`, `KanbanBoard` | native HTML5 drag; every card is a `role="button"` `div` (so it can nest its own menu) that opens (`onOpen`) on **double-click** or Enter — not on a single click, unlike `DataTable` rows. Since 1.3 Phase 1 a column draws at most `COLUMN_CAP = 60` cards, then a ghost "Show {count} more" button (per-column state, `kanban.showMore`); the header count is still the whole column. Office only. |
 | `ui/src/StatTile.tsx` | `StatTile`, `StatTileSkeleton` | 1.3 Phase 1. One dashboard figure: eyebrow label (optional icon), big number, note; `tone` `conflict`/`offline`/`ok` colours the figure; `onClick` makes the whole tile a button. Counts only. Used by both panels' Dashboards, which each kept a private copy before; `StatTileSkeleton` is its static loading shape. |
 | `ui/src/RecordNumber.tsx` | `RecordNumber`, `recordNumberText` | 1.3 Phase 4. A pending or final order's number the way every screen shows it: the PO number in mono, a **Provisional** pill (`tone="offline"`, title `lead.number.provisionalHint`) beside the temporary id while an Office save waits for the Master, else the id. `recordNumberText` is the same as text for toasts and dialog titles. In the strict-i18n lint list. Test: `ui/tests/record-number.test.tsx` |
-| `ui/src/AvatarStack.tsx` | `AvatarStack` | 1.3 Phase 4. Who else has a record open, top right of its header: up to four overlapping `Avatar`s then a `+N` chip, an accent ring (`data-editing`) for anyone editing, a small shield (`data-server-master`) for a Server Master, titles `presence.viewing` / `presence.editing`; `selfUserId` is left out and nothing renders when nobody else is there. There is no board-card variant: the Master pushes presence only to people on the record, so a board has nothing to show. In the strict-i18n lint list. Test: `ui/tests/avatar-stack.test.tsx` |
+| `ui/src/AvatarStack.tsx` | `AvatarStack` | 1.3 Phase 4. Who else has a record open, top right of its header: up to four overlapping `Avatar`s then a `+N` chip, an accent ring (`data-editing`) for anyone editing, a small shield (`data-server-master`) for a Server Master, titles `presence.viewing` / `presence.editing`; `selfUserId` is left out and nothing renders when nobody else is there. 1.4 R22: `max` (faces before the `+N` chip; `BOARD_SHOWN` = 3 on a board) and `size` (`xs` on cards and rows); the board feed (`useBoardPresence`) supplies the entries. In the strict-i18n lint list. Test: `ui/tests/avatar-stack.test.tsx` |
 | `ui/src/CursorPager.tsx` | `LoadMorePager`, `NewerOlderPager` | keyset paging, no page numbers |
 | `ui/src/ProgressiveImage.tsx` | `ProgressiveImage` | blurhash placeholder (module-wide decode cache) under `<img src="/uploads/images/:imageId/:variant">`; variant chosen from `slotPx` via `variantForSlot`; no fade-in |
 | `ui/src/PermissionGrid.tsx` | `PermissionGrid` | module × action matrix from the server's `PermissionCatalogue`; cells checkbox / dash / blocked-for-tier (the reason names the tier through `tierLabel`, so admin reads "Normal Admin") |
@@ -1403,6 +1407,7 @@ removed on 2026-09-25.
 |---|---|---|
 | `ui/src/useDebounced.ts` | `DEBOUNCE_MS` (150), `useDebounced` | |
 | `ui/src/useMediaQuery.ts` | `useMediaQuery` | `useSyncExternalStore`, correct on first render |
+| `ui/src/useBoardPresence.ts` | `useBoardPresence(channel, kind, active)`, `BOARD_RETRY_MS`, `BOARD_RETRY_MAX_MS` | 1.4 R22. Who is on each card or row of the Pending (`lead`) or Final (`order`) board: one read through `PresenceTransport.board` when the board opens, then the Master's `presence:board` pushes (`channel.pushBoard`), each the whole board. A dropped link (`channel.reset`) clears the faces and reads again after 3 s, doubling per failure up to 30 s (quiet: the faces are a courtesy). `active` false (screen hidden) holds no listener. Test: `ui/tests/use-board-presence.test.tsx`. |
 | `ui/src/useRecordPresence.ts` | `PresenceTransport`, `PresenceChannel`, `createPresenceChannel(transport)`, `PRESENCE_TAB_ID`, `RecordPresenceState`, `useRecordPresence(channel, target, editing)` | 1.3 Phase 4. Each panel makes one channel (`master/web/src/presence.ts`, `office/web/src/presence.ts`) and pushes the Master's presence frames into it (`push`, `reset` on a lost link). The hook beats every `PRESENCE_BEAT_MS` while the record's screen is showing (a screen `ScreenHost` hides runs its cleanup) and the browser tab is visible, never for a temporary id; it leaves with a beat naming no record, deferred one tick so a screen taking over the same tab cancels it, and with a `keepalive` beat on `pagehide`. Returns `{entries, lastWrite}`. `PRESENCE_TAB_ID` is 24 hex digits from `crypto.getRandomValues` (`randomUUID` is undefined over plain LAN http). The channel is held in a ref |
 | `ui/src/useEnterToAdvance.ts` | `useEnterToAdvance`, `useEscapeToPrevious` | Enter walks fields (`input`, `select`, `textarea`, `[data-field]`) in a container ref, skipping `[data-keys-grid]`, leaving textareas alone; on the last field calls `onSubmit`. On a native `<select>` the first Enter opens its picker (`showPicker()`) and only the next Enter advances (Chromium 121+; on the Win7 build's Chromium 108 the call throws, is caught, and Enter just advances); Enter on a `button` or an element with `role="button"` is left alone (it is a click). Escape walks back. |
 | `ui/src/breakpoints.ts` | `BP_NARROW` (`max-width: 1180px`) | physical px; `base.css` repeats it and also steps at 1080px wide and 800px tall (the unused `BP_TIGHT`/`BP_SHORT` constants were removed 2026-09-25) |
@@ -2250,7 +2255,10 @@ exercised only through service integration tests.
   rethrown. The user row (name, avatar, tier) is read once per join. Also
   `dropConnections`, `leaveConnection`, `noteWrite(DataChangedEvent)`,
   `onPresenceChange`, `resetPresence`, `isPresenceTabId`. Never logs and never goes
-  through `publishChange`.
+  through `publishChange`. 1.4 R22: `boardFor(actor, kind)` (the board for one reader:
+  `leads.view` / `orders.view`, then each record through `mayReceive` with its party's
+  grants, so a card of a party the reader cannot open is never named), `mayReadBoard`,
+  `onBoardChange`, `sweepPresence`.
 - `master/src/services/snapshot.service.ts` (147) — `buildSnapshot(actor)`: parties,
   products, categories, leads, orders (500 each, except products
   at `PRODUCT_PAGING.maxLimit`, 2000, since catalogue v2 — 549 sub products
@@ -2810,8 +2818,13 @@ the service checks.
 - **`master/src/realtime/presence-store.ts`** — 1.3 Phase 4. Pure, in memory: one
   entry per connection key, a person's tabs merged in `view()` (editing if any is,
   earliest `since`), a 30 s TTL swept on each beat (no timer), a 100 ms trailing
-  debounce per record for pushes, `lastWrite` sent once on the next push. Test:
-  `master/tests/presence-store.test.ts`.
+  debounce per record for pushes, `lastWrite` sent once on the next push. 1.4 R22: `board(tenant,
+  kind)` lists the records of that kind somebody has open, `sweep()` drops expired tabs, and
+  `onBoardChange` fires on every settled change, including a record's last person leaving (which
+  `onChange` has nobody to tell). The hub throttles it to one `presence:board` push per board per
+  500 ms, personalised per reader and only to an Office speaking protocol 7, and sweeps every
+  `PRESENCE_BEAT_MS`. `GET /api/presence/board?kind=` is the Master browser's first read. Test:
+  `master/tests/presence-store.test.ts`, `master/tests/presence.integration.test.ts`.
 - **`master/src/realtime/fan-out.ts`** — delivery rules shared by the live push and
   the reconnect replay: `DIRECTORY_ENTITIES` (`role`, `user`),
   `PARTY_SCOPED_ENTITIES` (`lead`, `order`, `party`, `party_variant`),
@@ -3379,7 +3392,7 @@ files of its own** — §7.6 lists the tests that read or boot this source.
 | `master/web/src/settingsTabs.ts` | 30 | 1.3 Phase 1: `SETTINGS_TAB_IDS` and `settingsTabIdsFor(permissions)`, moved out of `SettingsScreen.tsx` so the shell can build the Settings fold without loading that lazy screen |
 | `master/web/src/partyFormTransport.ts` | 20 | hands the shared `PartyFormModal` `api.createParty`/`api.updateParty` |
 | `master/web/src/transports.ts` | 74 | `leadRecordTransport`, `orderRecordTransport`, `leadEntryTransport` and `catalogueTransport`: module-level `api.x` references handed to the shared views (2026-10-01); since 1.3 Phase 1 also `optionListTransport`, moved here from `FieldsScreen.tsx` so Products and Settings do not pull in the lazy Fields screen |
-| `master/web/src/presence.ts` | 14 | 1.3 Phase 4: `presenceChannel`, the shared `createPresenceChannel` over `api.presenceBeat` (`POST /api/presence`); `App.tsx` sends `PRESENCE_TAB_ID` in the socket handshake, pushes `presence:changed` into the channel and resets it on disconnect. `LeadsScreen` and `OrdersScreen` mount `useRecordPresence` and an `AvatarStack` in the record header |
+| `master/web/src/presence.ts` | 14 | 1.3 Phase 4: `presenceChannel`, the shared `createPresenceChannel` over `api.presenceBeat` (`POST /api/presence`); `App.tsx` sends `PRESENCE_TAB_ID` in the socket handshake, pushes `presence:changed` into the channel and resets it on disconnect. `LeadsScreen` and `OrdersScreen` mount `useRecordPresence` and an `AvatarStack` in the record header 1.4 R22: the channel also reads the board (`api.presenceBoard`, `GET /api/presence/board`) and `App.tsx` feeds `presence:board` pushes to `pushBoard`; `LeadsScreen` / `OrdersScreen` show the faces in an "Open now" column. |
 | `master/web/src/styles.css` | 152 | legacy layer styling bare elements; every element-selector rule (`button`, `input`/`select`/`textarea`, `label`, `table`) is guarded by `:not(:where([class*='ob-']))`; the only class rules left are `.dot` and `.num` (the `:root` alias tokens, `.card`, `.row`, `.muted`, `.chip*` and the rest went on 2026-09-25) |
 | `master/web/src/components/ChangePasswordDialog.tsx` | 177 | change your own password: 8-char minimum and match checked client-side, then `api.changeOwnPassword`; the server invalidates every session for the user, so the 401 path returns to sign-in. A Server Master also types the master key, verified first; its token rides on the change |
 | `master/web/src/components/MasterKeyPrompt.tsx` | 114 | 1.3 Phase 2. `MasterKeyForm` (the key field → `api.verifyMasterKey`; a 429 lockout shows its seconds through `apiErrorText`), `MasterKeyPrompt` (it in a `Modal`: a credential prompt, not a record) and `useMasterKeyPrompt()` → `{ ask, prompt }`, an awaitable prompt used by Roles & users and Settings |
@@ -3965,7 +3978,8 @@ number while connected and adds `status` (`numbered`/`provisional`/`rejected`),
 `baseFieldHlc` out of the payload and sends it as the mutation's own (`fieldClocks`
 keeps only string clocks). `POST /api/presence` (`requireUser`) forwards
 `presence:beat` with the body cut down to the protocol's fields (`presenceBeat`). The
-SSE stream gains `presence` (through `broadcastForUser`, from
+`GET /api/presence/board?kind=lead|order` forwards `presence:board` (400 on any other kind). The
+SSE stream gains `presenceBoard` (R22; from the Master's `presence:board`) and `presence` (through `broadcastForUser`, from
 `masterConnection.on('presence')`, which `master-connection.ts` re-emits from
 `presence:changed`) and `numbered` (from `sync.onNumbered`, to everyone: it only
 updates the save toast and keeps an open provisional lead open; the bell entry comes
@@ -4206,7 +4220,7 @@ does.
 | `office/tests/credentials.test.ts` | 8 | round trip, 0600, corrupt = unpaired |
 | `office/tests/lead-route.test.ts` | 12 | `POST /api/leads` and `PUT /api/leads/:id` shape checks (the trust boundary); a malformed payload without `leads.create` / `leads.edit` gets 403, not 400 |
 | `office/tests/sync-settle.test.ts` | 6 | 1.3 Phase 4: `awaitSettled` resolves with the permanent id and PO number, and null on timeout; a save during a flush reruns at once; `numbered` says `announced` only when a save was waiting |
-| `office/tests/presence-route.test.ts` | 4 | 1.3 Phase 4: `POST /api/presence` forwards `presence:beat` with the body cut down to the protocol's fields; 503 offline |
+| `office/tests/presence-route.test.ts` | 4 | 1.3 Phase 4: `POST /api/presence` forwards `presence:beat` with the body cut down to the protocol's fields; 503 offline 1.4 R22: `GET /api/presence/board` forwards the kind, 400 on any other, 503 offline, behind the sign-in gate. |
 | `office/tests/snapshot-for-user.test.ts` | 5 | `GET /api/snapshot` key set (DSH-1), permissions replaced, other people's restricted parties withheld |
 | `office/tests/stock-retired.test.ts` | 2 `it(` | 1.4 (R15): a snapshot cached before stock was removed (old `stock` rows, `reservations` on orders, `lowStockCount`) and one with no `stock` key both restore and build a view |
 | `office/tests/local-store-restore.test.ts` | 4 | concurrent `restore()`, never-synced, torn file |
@@ -4269,7 +4283,7 @@ record; the real record arrives later over the SSE stream.
 | `office/web/src/settingsTabs.ts` | 12 | 1.3 Phase 1: `SETTINGS_TAB_IDS`, moved out of `SettingsScreen.tsx` so the shell can build the Settings fold without loading that lazy screen |
 | `office/web/src/localSearch.ts` | 89 | `searchLocalView(view, term)` — the palette's offline fallback: case-insensitive substring over products, parties, leads, orders (leads and orders also on their PO number and id, with the number in the subtitle since 1.3 Phase 4); ≥ 2 chars, ≤ 20 hits (`LIMIT`), `rank: 0` |
 | `office/web/src/partyFormTransport.ts` | 20 | `PartyFormModal` → `api.createParty`/`api.updateParty` (return `QueuedResult`) |
-| `office/web/src/presence.ts` | 14 | 1.3 Phase 4: `presenceChannel` over `api.presenceBeat` (the panel server forwards it to the Master); `App.tsx` feeds it the SSE `presence` frame and resets it when the link is not connected. `LeadBoardScreen` and `OrderBoardScreen` mount `useRecordPresence` and an `AvatarStack` in the record header |
+| `office/web/src/presence.ts` | 14 | 1.3 Phase 4: `presenceChannel` over `api.presenceBeat` (the panel server forwards it to the Master); `App.tsx` feeds it the SSE `presence` frame and resets it when the link is not connected. `LeadBoardScreen` and `OrderBoardScreen` mount `useRecordPresence` and an `AvatarStack` in the record header 1.4 R22: the same board read (`api.presenceBoard`) and the `presenceBoard` SSE frame into `pushBoard`; `LeadBoardScreen` shows faces on its board cards and list rows, `OrderBoardScreen` on its rows. |
 | `office/web/src/optionListTransport.ts` | 32 | catalogue v2: the `OptionListEditor` transport over the forwarded Fields endpoints; `conflictOf` reads `details.storedVersion`/`details.diff` off this panel's `ApiError`. Used by Products → Brands (`SettingsScreen.tsx` keeps an identical private copy for the Leads tab — see §9.7) |
 | `office/web/src/productSummary.ts` | 59 | `codesOf(product)`, `weightLabel(product)` (single weight, low–high range, or `null` = "weight missing"); active variants only. `missingWeight` is file-internal (used by `weightLabel`; unexported 2026-09-25), and `CatalogScreen` never sends the `missingWeight` list filter that `api.listProducts` supports |
 | `office/web/src/styles.css` | 159 | legacy layer: bare-element rules guarded by `:not(:where([class*='ob-'], …))`, plus `.dot` and `.num` (the old token aliases, `.muted`, `.error`, `.chip*` went on 2026-09-25) |
@@ -6517,6 +6531,7 @@ also imports `masterConnection`.
 | Change a report | `shared/src/domain/reports.ts` (columns, meta), `master/src/repositories/report.repository.ts` (the SQL), `master/src/services/report.service.ts` (access, table, export), `ui/src/ReportsScreen.tsx`, `shared/src/domain/report-access.ts` | `master/tests/reports.integration.test.ts` (legacy), `master/tests/report-tables.integration.test.ts`, `master/tests/report-hub.integration.test.ts`, `master/tests/report-range.test.ts`, `master/tests/report-range-periods.test.ts`, `master/tests/report-export-streaming.test.ts`, `shared/tests/report-query.test.ts`, `shared/tests/report-access.test.ts`, `ui/tests/reports-screen.test.tsx`, `master/tests/report-pdf-route.integration.test.ts` (the inline PDF route), `office/tests/module-forwarding.test.ts` |
 | Change the product import format | `master/src/domain/product-import.ts` (`IMPORT_COLUMNS`), `master/src/services/product-import.service.ts`, `master/src/lib/spreadsheet.ts`, `shared/src/domain/product-import.ts`, `docs/PRODUCT_IMPORT_FORMAT.md` | `master/tests/product-import-compat.integration.test.ts` (1.2.5 fixtures in `master/tests/fixtures/`, ignored stock columns, the format marker), `master/tests/product-import-domain.test.ts`, `master/tests/product-import.integration.test.ts`, `master/tests/spreadsheet.test.ts`, `master/tests/import-category-gate.test.ts` |
 | Change the party import format | `shared/src/domain/party-import.ts` (`PARTY_IMPORT_COLUMNS`), `master/src/domain/party-import.ts`, `master/src/services/party-import.service.ts`, `docs/PARTY_IMPORT_FORMAT.md` | `master/tests/party-import-domain.test.ts`, `master/tests/party-import.integration.test.ts`, `office/tests/module-forwarding.test.ts` |
+| Change the faces on the Pending / Final boards | `shared/src/protocol/presence.ts` (`BoardPresence`), `master/src/realtime/presence-store.ts` (`board`, `sweep`, `onBoardChange`), `master/src/services/presence.service.ts` (`boardFor`), the throttled push and `presence:board` command in `master/src/realtime/hub.ts`, `GET /api/presence/board` in `data.routes.ts` and the Office's `app.ts` / `master-connection.ts`; `ui/src/useBoardPresence.ts`, `AvatarStack`, and the four list/board screens | `master/tests/presence-store.test.ts`, `master/tests/presence.integration.test.ts`, `office/tests/presence-route.test.ts`, `ui/tests/use-board-presence.test.tsx`, `ui/tests/master-shell.test.tsx`, `ui/tests/office-shell.test.tsx` |
 | Change image variants or processing | `IMAGE_VARIANTS`/`IMAGE_VARIANT_LONG_EDGES` in `shared/src/domain/entities.ts`, `master/src/domain/images.ts`, `master/src/services/image.service.ts` | `master/tests/image-domain.test.ts`, `master/tests/images.integration.test.ts` |
 | Add a picker kind | `shared/src/domain/pick.ts`, `master/src/services/search.service.ts#pick`, `master/src/repositories/search.repository.ts`, `office/src/services/offline-pick.ts` | `master/tests/pick.integration.test.ts`, `office/tests/offline-pick.test.ts`, `shared/tests/pick-score.test.ts` |
 | Change pipeline stages | stages are updated, reordered, archived and restored through `master/src/services/fields.service.ts`; a new stage or pipeline needs a migration | `master/tests/fields.integration.test.ts` |

@@ -693,6 +693,16 @@ export function createApp(): Express {
   // only; offline this answers 503 and the screen simply shows nobody. ---
 
   app.post('/api/presence', (req, res) => forward(res, 'presence:beat', presenceBeat(req.body)));
+  // The faces on a board's cards, first read when a board opens or the link returns;
+  // after that the Master pushes them (`presenceBoard` SSE frame).
+  app.get('/api/presence/board', (req, res) => {
+    const kind = req.query.kind;
+    if (kind !== 'lead' && kind !== 'order') {
+      res.status(400).json({ error: 'validation_error', message: 'Choose lead or order' });
+      return;
+    }
+    void forward(res, 'presence:board', kind);
+  });
 
   /**
    * Every write below queues a mutation and answers immediately.
@@ -2562,6 +2572,9 @@ masterConnection.on('chat', (push: { forUserId?: unknown }) => broadcastForUser(
 masterConnection.on('print', (job: { forUserId?: unknown }) => broadcastForUser('print', job));
 masterConnection.on('presence', (presence: { forUserId?: unknown }) =>
   broadcastForUser('presence', presence),
+);
+masterConnection.on('presenceBoard', (board: { forUserId?: unknown }) =>
+  broadcastForUser('presenceBoard', board),
 );
 sync.onSyncEvent(schedulePushView);
 // Only moves an open Provisional record to its permanent id and updates the

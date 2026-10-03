@@ -3157,4 +3157,6 @@ export const EN_MESSAGES = {
   'validation.stock.retired': 'Stock is no longer part of OrderBook',
   'dashboard.orders.boxesOpen': '{count} boxes still to dispatch',
   'dashboard.orders.noneOpen': 'Nothing waiting to go out',
+  // 1.4 D2 (R22): the column and tooltip of the faces on a board's rows.
+  'presence.board.column': 'Open now',
 } as const;

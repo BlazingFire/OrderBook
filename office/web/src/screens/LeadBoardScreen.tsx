@@ -21,6 +21,7 @@ import { api, desktopBridge, type LocalView } from '../api';
 import { presenceChannel } from '../presence';
 import {
   AvatarStack,
+  BOARD_SHOWN,
   Button,
   ButtonLink,
   ColourChip,
@@ -43,6 +44,7 @@ import {
   t,
   useColourHex,
   useFilterBar,
+  useBoardPresence,
   useRecordPresence,
   useSubNav,
   useToast,
@@ -275,6 +277,9 @@ export function LeadBoardScreen({
     openLead ? { recordKind: 'lead', recordId: openLead.id } : null,
     openLead !== null && editingId === openLead.id,
   );
+
+  // Who has each card or row open (R22), for the faces on it.
+  const faces = useBoardPresence(presenceChannel, 'lead');
   const others = <AvatarStack entries={presence.entries} selfUserId={userId} />;
 
   // The note of a pending order, drawn from the lead and party this panel
@@ -452,6 +457,19 @@ export function LeadBoardScreen({
       width: rem(190),
       render: (lead) => <RecordNumber record={lead} small />,
     },
+    {
+      key: 'viewing',
+      header: t('presence.board.column'),
+      width: rem(76),
+      render: (lead) => (
+        <AvatarStack
+          entries={faces.get(lead.id) ?? []}
+          selfUserId={userId}
+          max={BOARD_SHOWN}
+          size="xs"
+        />
+      ),
+    },
     { key: 'party', header: t('lead.list.col.party'), render: (lead) => lead.partyName },
     {
       key: 'products',
@@ -555,6 +573,12 @@ export function LeadBoardScreen({
                     {lead.partyName}
                   </span>
                   <span style={{ flex: 1 }} />
+                  <AvatarStack
+                    entries={faces.get(lead.id) ?? []}
+                    selfUserId={userId}
+                    max={BOARD_SHOWN}
+                    size="xs"
+                  />
                   {lead.incomplete && (
                     <StatusPill tone="conflict">{t('lead.badge.incomplete')}</StatusPill>
                   )}

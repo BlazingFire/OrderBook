@@ -4135,4 +4135,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.stock.retired': 'OrderBook में अब स्टॉक नहीं है',
   'dashboard.orders.boxesOpen': '{count} बॉक्स भेजने बाकी',
   'dashboard.orders.noneOpen': 'भेजने के लिए कुछ बाकी नहीं',
+  // 1.4 D2 (R22): बोर्ड की पंक्तियों पर दिखने वाले चेहरों का स्तंभ।
+  'presence.board.column': 'अभी खुला',
 };

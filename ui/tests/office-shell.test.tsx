@@ -163,6 +163,10 @@ async function boot({ permissions, view = {}, refusals = [], route }: Boot): Pro
     // Answered for every test: `api.ts` shares one in-flight GET per path across
     // the file, so a bell read left hanging by one test would swallow the next's.
     if (path === '/api/notifications') return json({ items: [], unreadCount: 0 });
+    // The faces on a board's cards (R22), nobody by default, for the same reason.
+    if (path === '/api/presence/board') {
+      return json({ recordKind: url.includes('kind=order') ? 'order' : 'lead', records: {} });
+    }
     if (path === '/api/sync/flush' && method === 'POST') {
       held = refusals;
       return json({
@@ -1198,6 +1202,28 @@ describe('the order weight override', () => {
   });
 });
 
+/** Faces on the Pending and Final boards (R22): the Master's board answer and push. */
+const face = (userId: string, displayName: string, editing: boolean) => ({
+  userId,
+  displayName,
+  avatar: null,
+  tier: 'office',
+  editing,
+  since: '2026-10-03T09:00:00.000Z',
+});
+const board = (kind: string, id: string, entries: unknown[]) => ({
+  recordKind: kind,
+  records: entries.length > 0 ? { [id]: entries } : {},
+});
+const push = (kind: string, id: string, entries: unknown[]) =>
+  act(async () => {
+    FakeEventSource.instances.at(-1)!.emit('presenceBoard', {
+      ...board(kind, id, entries),
+      forUserId: 'user-1',
+    });
+    await wait(0);
+  });
+
 describe('Edit lead', () => {
   const LEAD_PIPELINE = {
     id: 'pipe-leads',
@@ -1475,6 +1501,50 @@ describe('Edit lead', () => {
 
     expect(await screen.findByTitle(t('presence.editing', { name: 'Ravi Kumar' }))).toBeTruthy();
     expect(screen.queryByTitle(t('presence.viewing', { name: 'Asha' }))).toBeNull();
+  });
+
+  it('puts a face on a pending order, in its row and on its card, and takes it off again', async () => {
+    await boot({
+      permissions: ['leads.view'],
+      view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] },
+      route: ({ url }) =>
+        url === '/api/presence/board?kind=lead'
+          ? json(board('lead', LEAD.id, [face('user-9', 'Ravi Kumar', true)]))
+          : undefined,
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTitle(t('nav.leads')));
+    });
+
+    // The list row, from the first read.
+    expect(await screen.findByTitle(t('presence.editing', { name: 'Ravi Kumar' }))).toBeTruthy();
+
+    // The Master's push replaces it.
+    await push('lead', LEAD.id, [face('user-8', 'Meera', false)]);
+    expect(await screen.findByTitle(t('presence.viewing', { name: 'Meera' }))).toBeTruthy();
+    expect(screen.queryByTitle(t('presence.editing', { name: 'Ravi Kumar' }))).toBeNull();
+
+    // The card on the board tab carries the same face.
+    await act(async () => {
+      fireEvent.click(screen.getByText(t('lead.board.tab.board')));
+    });
+    expect(await screen.findByTitle(t('presence.viewing', { name: 'Meera' }))).toBeTruthy();
+
+    await push('lead', LEAD.id, []);
+    expect(screen.queryByTitle(t('presence.viewing', { name: 'Meera' }))).toBeNull();
+  });
+
+  it('shows nobody while the Master cannot be asked, and does not call it an error', async () => {
+    await boot({
+      permissions: ['leads.view'],
+      view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] },
+      route: ({ url }) => (url === '/api/presence/board?kind=lead' ? json({ error: 'offline' }, 503) : undefined),
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTitle(t('nav.leads')));
+    });
+    expect((await screen.findAllByText(PARTY.name)).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('keeps a provisional lead open when the Master numbers it, and names the number', async () => {
@@ -1932,5 +2002,24 @@ describe('the Printroom (1.3 Phase 7)', () => {
       await wait(0);
     });
     expect(await screen.findByText(t('printroom.error.offline'))).toBeTruthy();
+  });
+});
+
+describe('the faces on the Final orders board (R22)', () => {
+  it('puts a face on a final order row', async () => {
+    await boot({
+      permissions: ['orders.view'],
+      view: { orders: [ORDER], pipelines: [ORDER_PIPELINE] },
+      route: ({ url }) =>
+        url === '/api/presence/board?kind=order'
+          ? json(board('order', ORDER.id, [face('user-9', 'Ravi Kumar', false)]))
+          : undefined,
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTitle(t('nav.orders')));
+    });
+    expect(await screen.findByTitle(t('presence.viewing', { name: 'Ravi Kumar' }))).toBeTruthy();
+    await push('order', ORDER.id, []);
+    expect(screen.queryByTitle(t('presence.viewing', { name: 'Ravi Kumar' }))).toBeNull();
   });
 });

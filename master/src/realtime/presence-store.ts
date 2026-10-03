@@ -36,6 +36,13 @@ export interface PresenceTarget {
 
 export type PresenceViewer = Omit<PresenceEntry, 'editing' | 'since'>;
 
+/** One record on a board: who is on it, and the party that decides who may be told. */
+export interface BoardRecord {
+  recordId: string;
+  partyId: string;
+  entries: PresenceEntry[];
+}
+
 /** One debounced change, for the hub to fan out. */
 export interface PresenceChange extends PresenceTarget {
   presence: RecordPresence;
@@ -67,9 +74,20 @@ export interface PresenceStore {
   ticket(): number;
   /** True when the tab left, or its connection dropped, after `ticket` was taken. */
   leftSince(connKey: string, ticket: number): boolean;
+  /** Every record of one kind somebody has open right now, expired tabs dropped first. */
+  board(tenantId: string, recordKind: PresenceRecordKind): BoardRecord[];
+  /** Drop every tab that has stopped beating, telling the listeners about the records it empties. */
+  sweep(): void;
   /** Mark a save for the people on the record; ignored when nobody is on it. */
   noteWrite(target: Omit<PresenceTarget, 'partyId'>, write: PresenceLastWrite): void;
   onChange(listener: (change: PresenceChange) => void): () => void;
+  /**
+   * A board changed: somebody joined, left, started or stopped editing, or timed
+   * out. Unlike `onChange` this also fires when the last person leaves a record,
+   * because a card has to lose its avatar then. Not debounced beyond the record's
+   * own 100 ms; the hub throttles it per board.
+   */
+  onBoardChange(listener: (tenantId: string, recordKind: PresenceRecordKind) => void): () => void;
   /** Drop every pending push; for tests and shutdown. */
   clear(): void;
 }
@@ -88,6 +106,7 @@ export function createPresenceStore(options: {
   const byConn = new Map<string, string>();
   const timers = new Map<string, NodeJS.Timeout>();
   const listeners = new Set<(change: PresenceChange) => void>();
+  const boardListeners = new Set<(tenantId: string, recordKind: PresenceRecordKind) => void>();
   /*
    * Recent leaves and drops, by connection key or by prefix (ending in `:`).
    * A beat reads the record and the person before it lands, so without these
@@ -141,8 +160,9 @@ export function createPresenceStore(options: {
       record.lastWrite = undefined;
       if (record.tabs.size === 0) records.delete(key);
       const userIds = presence.entries.map((entry) => entry.userId);
-      if (userIds.length === 0) return;
       const { tenantId, recordKind, recordId, partyId } = record;
+      for (const listener of boardListeners) listener(tenantId, recordKind);
+      if (userIds.length === 0) return;
       for (const listener of listeners) {
         listener({ tenantId, recordKind, recordId, partyId, presence, userIds });
       }
@@ -237,6 +257,21 @@ export function createPresenceStore(options: {
       return false;
     },
 
+    board(tenantId, recordKind) {
+      sweep(now());
+      const out: BoardRecord[] = [];
+      for (const record of records.values()) {
+        if (record.tenantId !== tenantId || record.recordKind !== recordKind) continue;
+        const entries = view(record).entries;
+        if (entries.length > 0) out.push({ recordId: record.recordId, partyId: record.partyId, entries });
+      }
+      return out;
+    },
+
+    sweep() {
+      sweep(now());
+    },
+
     noteWrite(target, write) {
       const key = keyOf(target);
       const record = records.get(key);
@@ -248,6 +283,11 @@ export function createPresenceStore(options: {
     onChange(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
+    },
+
+    onBoardChange(listener) {
+      boardListeners.add(listener);
+      return () => boardListeners.delete(listener);
     },
 
     clear() {

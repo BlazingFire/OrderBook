@@ -90,3 +90,47 @@ describe('POST /api/presence', () => {
     expect(command).not.toHaveBeenCalled();
   });
 });
+
+describe('GET /api/presence/board (1.4 R22)', () => {
+  beforeEach(() => {
+    vi.spyOn(userSession, 'currentSession').mockReturnValue(FAKE_SESSION as never);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("forwards the kind as `presence:board` and answers with the Master's board", async () => {
+    const board = { recordKind: 'order', records: { OD0000000001: [] } };
+    const command = vi.spyOn(masterConnection, 'command').mockResolvedValue(board as never);
+
+    const response = await request(createApp()).get('/api/presence/board?kind=order');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(board);
+    expect(command).toHaveBeenCalledWith('presence:board', 'order');
+  });
+
+  it('refuses a kind that is not a board without troubling the Master', async () => {
+    const command = vi.spyOn(masterConnection, 'command');
+
+    for (const query of ['', '?kind=party', '?kind=lead,order']) {
+      const response = await request(createApp()).get('/api/presence/board' + query);
+      expect(response.status).toBe(400);
+    }
+    expect(command).not.toHaveBeenCalled();
+  });
+
+  it('answers 503 while the Master cannot be reached, and sits behind the sign-in gate', async () => {
+    vi.spyOn(masterConnection, 'command').mockRejectedValue(
+      new MasterCommandError('Not connected to the Master Panel', undefined, undefined, true),
+    );
+    expect((await request(createApp()).get('/api/presence/board?kind=lead')).status).toBe(503);
+
+    vi.spyOn(userSession, 'currentSession').mockReturnValue(null);
+    const command = vi.spyOn(masterConnection, 'command');
+    command.mockClear();
+    expect((await request(createApp()).get('/api/presence/board?kind=lead')).status).toBe(401);
+    expect(command).not.toHaveBeenCalled();
+  });
+});

@@ -11,11 +11,18 @@
  * activity log.
  */
 
-import type { DataChangedEvent, PresenceRecordKind, RecordPresence } from '@orderbook/shared';
+import type {
+  BoardPresence,
+  DataChangedEvent,
+  PresenceRecordKind,
+  RecordPresence,
+} from '@orderbook/shared';
 
-import { actorUserId, type ActorContext } from '../domain/actor.js';
+import { actorCan, actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { UnauthorizedError, ValidationError } from '../lib/errors.js';
+import { mayReceive } from '../realtime/fan-out.js';
 import { createPresenceStore, type PresenceChange } from '../realtime/presence-store.js';
+import * as partyAccessRepo from '../repositories/party-access.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
 import * as leadService from './lead.service.js';
 import * as orderService from './order.service.js';
@@ -111,6 +118,52 @@ export function noteWrite(event: DataChangedEvent): void {
       action: event.action,
     },
   );
+}
+
+/** The module permission that lets a person see a board at all. */
+export function mayReadBoard(actor: ActorContext, kind: PresenceRecordKind): boolean {
+  return actorCan(actor, kind === 'lead' ? 'leads.view' : 'orders.view');
+}
+
+/**
+ * Who is on each card of one board, for the avatars on its cards and rows (R22).
+ * Only records this person may read are included, by the same gate a change to
+ * the record would pass (`mayReceive`: the module permission and Party Access), so
+ * a card on a party they cannot open never tells them who is looking at it.
+ */
+export async function boardFor(actor: ActorContext, kind: PresenceRecordKind): Promise<BoardPresence> {
+  requirePermission(actor, kind === 'lead' ? 'leads.view' : 'orders.view');
+
+  const rows = store.board(actor.tenantId, kind);
+  const grants = new Map<string, Awaited<ReturnType<typeof partyAccessRepo.grantsForParty>>>();
+  const records: BoardPresence['records'] = {};
+
+  for (const row of rows) {
+    if (!grants.has(row.partyId)) {
+      grants.set(row.partyId, await partyAccessRepo.grantsForParty(actor.tenantId, row.partyId));
+    }
+    const probe: DataChangedEvent = {
+      entity: kind,
+      action: 'updated',
+      id: row.recordId,
+      payload: { tenantId: actor.tenantId, partyId: row.partyId },
+    };
+    if (mayReceive(actor, probe, grants.get(row.partyId) ?? [])) records[row.recordId] = row.entries;
+  }
+
+  return { recordKind: kind, records };
+}
+
+/** Drop tabs that stopped beating, so a crashed browser's face leaves the board. */
+export function sweepPresence(): void {
+  store.sweep();
+}
+
+/** A board changed: somebody joined, left, started or stopped editing, or timed out. */
+export function onBoardChange(
+  listener: (tenantId: string, recordKind: PresenceRecordKind) => void,
+): () => void {
+  return store.onBoardChange(listener);
 }
 
 export function onPresenceChange(listener: (change: PresenceChange) => void): () => void {

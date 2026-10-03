@@ -185,4 +185,52 @@ describe('the presence store', () => {
     expect(view.entries.map((entry) => entry.userId)).toEqual(['U4']);
     expect(view.entries[0]!.since).toBe(new Date(clock).toISOString());
   });
+
+  describe('the board feed (R22)', () => {
+    it('lists every record of the kind somebody has open, one merged entry per person', () => {
+      store.beat('panel:P1:a', LEAD, viewer('U1'), false);
+      store.beat('admin:U1:b', LEAD, viewer('U1'), true);
+      store.beat('admin:U2:c', OTHER, viewer('U2'), false);
+      store.beat('admin:U3:d', { ...LEAD, recordKind: 'order', recordId: 'OR0000000001' }, viewer('U3'), false);
+      store.beat('admin:U4:e', { ...LEAD, tenantId: 'T2', recordId: 'LD0000000009' }, viewer('U4'), false);
+
+      const board = store.board('T1', 'lead');
+
+      expect(board.map((row) => [row.recordId, row.partyId, row.entries.map((e) => [e.userId, e.editing])])).toEqual([
+        [LEAD.recordId, 'PT1', [['U1', true]]],
+        [OTHER.recordId, 'PT1', [['U2', false]]],
+      ]);
+      expect(store.board('T1', 'order').map((row) => row.recordId)).toEqual(['OR0000000001']);
+    });
+
+    it('tells the board when somebody joins, leaves, or the last one leaves a record', () => {
+      const seen: string[] = [];
+      store.onBoardChange((tenantId, kind) => seen.push(tenantId + ':' + kind));
+
+      store.beat('admin:U1:a', LEAD, viewer('U1'), false);
+      flush();
+      expect(seen).toEqual(['T1:lead']);
+
+      store.leave('admin:U1:a');
+      flush();
+      // The record is empty now: `onChange` has nobody to tell, but the card has to lose its face.
+      expect(seen).toEqual(['T1:lead', 'T1:lead']);
+      expect(store.board('T1', 'lead')).toEqual([]);
+    });
+
+    it('drops a tab that stopped beating on a sweep, with nobody else beating to notice', () => {
+      const seen: string[] = [];
+      store.onBoardChange((tenantId, kind) => seen.push(tenantId + ':' + kind));
+      store.beat('admin:U1:a', LEAD, viewer('U1'), false);
+      flush();
+      seen.length = 0;
+
+      clock += 31_000;
+      store.sweep();
+      flush();
+
+      expect(seen).toEqual(['T1:lead']);
+      expect(store.board('T1', 'lead')).toEqual([]);
+    });
+  });
 });

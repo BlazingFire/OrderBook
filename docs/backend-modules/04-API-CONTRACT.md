@@ -2359,6 +2359,15 @@ Held in the Master's memory only: never stored, logged or put in the change ring
 - **S→C `presence:changed`**: `RecordPresence & { forUserId }`, debounced 100 ms per record, sent
   only to the people on that record who may still see it (`mayReceive` and party grants). The
   Office drops it unless `forUserId` is the person signed in there.
+- **Board feed (1.4 R22, protocol 7).** `BoardPresence { recordKind, records: Record<recordId, PresenceEntry[]> }`
+  is who is on every card of the Pending (`lead`) or Final (`order`) board, limited to records the
+  reader may read (the module permission and Party Access, by `mayReceive`). **C→S `presence:board`**
+  `(kind, ack: CommandAck<BoardPresence>)`; **S→C `presence:board`** `BoardPresence & { forUserId }`,
+  the whole board, at most one per board per 500 ms, only to an Office at protocol 7 or more.
+  **Master REST** `GET /api/presence/board?kind=` (400 `validation.presence.invalid` for any other
+  kind); **Office REST** `GET /api/presence/board?kind=` forwards it; the Office SSE frame is
+  `presenceBoard`. Tabs that stop beating are swept every `PRESENCE_BEAT_MS`, so a crashed browser's
+  face leaves the board. An older Office is simply never sent the event.
 - **Office REST** `POST /api/presence` (`requireUser`): forwards `presence:beat` with the body cut
   down to the fields above; 503 offline, 426 for a Master older than protocol 4. The SSE stream
   gains a `presence` event (only for the person signed in).
