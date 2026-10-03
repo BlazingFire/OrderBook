@@ -1,5 +1,5 @@
 /**
- * One final order (order) in full: its lines, reservations, weight, stage,
+ * One final order (order) in full: its lines, weight, stage,
  * history and the Dispatch action.
  *
  * Port of `OrderDetailBody` in `office/web/src/screens/OrderBoardScreen.tsx`;
@@ -17,22 +17,16 @@
 
 import { useRef, useState } from 'react';
 import { shownColour } from '@orderbook/shared';
-import type { MessageKey, OptionListItem, Order, PipelineStage, ReservationStatus } from '@orderbook/shared';
+import type { MessageKey, OptionListItem, Order, PipelineStage } from '@orderbook/shared';
 
 import { Button } from './Button.js';
 import { Card, Section } from './Card.js';
-import { ColourName, StatusPill, Timeline, useColourHex, type PillTone } from './DataDisplay.js';
+import { ColourName, StatusPill, Timeline, useColourHex } from './DataDisplay.js';
 import { FormField, Input, NumberInput } from './Form.js';
 import { formatDateTime, formatKg } from './format.js';
 import { apiErrorText } from './errorText.js';
 import { t } from './i18n.js';
 import { Select } from './SuggestInput.js';
-
-const RESERVATION_TONE: Record<ReservationStatus, PillTone> = {
-  active: 'accent',
-  consumed: 'ok',
-  released: 'default',
-};
 
 /** What this view may reach. Held in a ref: callers build the object inline. */
 export interface OrderRecordTransport {
@@ -46,8 +40,6 @@ export interface OrderRecordViewProps {
   /** The order pipeline's stages, in order. */
   stages: PipelineStage[];
   optionLists: OptionListItem[];
-  /** Off, the reservations that hold this order's stock are not a thing on screen. */
-  freeToSell: boolean;
   /** `orders.edit`: the stage select and the weight override. */
   canEdit: boolean;
   /** `orders.dispatch`: the Dispatch card. */
@@ -61,7 +53,6 @@ export function OrderRecordView({
   order,
   stages,
   optionLists,
-  freeToSell,
   canEdit,
   canDispatch,
   transport,
@@ -87,8 +78,6 @@ export function OrderRecordView({
   const overrideValue = override === '' ? null : Number(override);
   const overrideInvalid = overrideValue !== null && Number.isNaN(overrideValue);
   const [busy, setBusy] = useState(false);
-
-  const active = order.reservations.filter((reservation) => reservation.status === 'active');
 
   async function run(action: () => Promise<unknown>, failure: MessageKey): Promise<void> {
     setBusy(true);
@@ -181,55 +170,6 @@ export function OrderRecordView({
           </div>
         </Section>
       </Card>
-
-      {freeToSell && (
-        <Card>
-          <Section title={t('orders.detail.reservations')}>
-            {order.reservations.length === 0 ? (
-              <p className="ob-small">{t('orders.detail.noReservations')}</p>
-            ) : (
-              <div className="ob-tablewrap">
-                <table className="ob-table ob-table--flat">
-                  <thead>
-                    <tr>
-                      <th>{t('orders.column.code')}</th>
-                      <th>{t('orders.column.product')}</th>
-                      <th>{t('orders.column.variant')}</th>
-                      <th className="num">{t('orders.column.qty')}</th>
-                      <th>{t('orders.column.status')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {order.reservations.map((reservation) => (
-                      <tr key={reservation.id}>
-                        <td className="ob-mono">{reservation.variantCode}</td>
-                        <td>{reservation.productName}</td>
-                        <td>
-                          {reservation.variantLabel &&
-                          shownColour(reservation.variantLabel, reservation.productName) ? (
-                            <ColourName
-                              name={reservation.variantLabel}
-                              hex={colourHex(reservation.variantLabel)}
-                            />
-                          ) : (
-                            '—'
-                          )}
-                        </td>
-                        <td className="num">{reservation.quantity.toLocaleString('en-IN')}</td>
-                        <td>
-                          <StatusPill tone={RESERVATION_TONE[reservation.status]}>
-                            {t(`orders.reservation.status.${reservation.status}`)}
-                          </StatusPill>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Section>
-        </Card>
-      )}
 
       <Card>
         <Section title={t('orders.detail.weight')}>
@@ -326,7 +266,7 @@ export function OrderRecordView({
           <Card>
             <Section title={t('orders.detail.dispatch')}>
               <p className="ob-small" style={{ marginTop: 0 }}>
-                {t('orders.detail.dispatchNote', { count: active.length })}
+                {t('orders.detail.dispatchNote')}
               </p>
 
               <FormField label={t('orders.detail.dispatchNoteLabel')}>

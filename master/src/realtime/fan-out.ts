@@ -44,7 +44,6 @@ export const DASHBOARD_ENTITIES = new Set<ChangedEntity>([
   'product',
   'catalog',
   'party_bulk',
-  'stock',
   'sync_conflict',
 ]);
 
@@ -65,12 +64,11 @@ export function partyIdOfChange(event: DataChangedEvent): string | null {
  * Without this, a role built from the shipped office-tier templates
  * (`shared/src/domain/permissions.ts`'s `roleTemplate.dispatch`, for
  * instance, which deliberately omits `leads.view`/`parties.view`) still
- * received every live `lead`/`product`/`stock` change over the socket: party
+ * received every live `lead`/`product` change over the socket: party
  * scoping alone says nothing about whether the *module* is visible at all,
  * and an unrestricted party (the common case — no grants recorded) used to
  * skip every check and broadcast unconditionally. Entities absent from this
- * map (`pipeline`, `option_list`, `custom_field`, `office_panel`,
- * `reservation`) carry no such module gate — they are shared reference data
+ * map (`pipeline`, `option_list`, `custom_field`, `office_panel`) carry no such module gate — they are shared reference data
  * every signed-in actor may see.
  */
 export const REQUIRED_PERMISSION: Partial<Record<ChangedEntity, Permission>> = {
@@ -85,7 +83,6 @@ export const REQUIRED_PERMISSION: Partial<Record<ChangedEntity, Permission>> = {
   catalog: 'products.view',
   // A bulk party import's single "the party book moved" event.
   party_bulk: 'parties.view',
-  stock: 'inventory.view',
   sync_conflict: 'sync.resolveConflicts',
 };
 

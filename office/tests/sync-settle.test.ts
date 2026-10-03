@@ -54,7 +54,6 @@ const SNAPSHOT = {
   partyVariants: [],
   leads: [],
   orders: [],
-  stock: [],
   pipelines: [],
   optionLists: [],
   customFields: [],

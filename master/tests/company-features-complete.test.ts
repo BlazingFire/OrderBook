@@ -2,7 +2,7 @@
  * Every switch the interface promises is actually populated.
  *
  * `CompanyFeatures` is the one channel by which a company switch reaches a
- * screen or an offline panel. Every field on it beyond `freeToSell` is optional
+ * screen or an offline panel. Every field on it is optional
  * — it has to be, because a shop mid-update runs a Master and a panel on
  * different versions and a field the sender does not know about arrives as
  * `undefined` (`shared/tests/wire-optionality.test.ts` enforces that).

@@ -1,6 +1,6 @@
-# OrderBook — Offline LAN Order & Inventory Management System
+# OrderBook — Offline LAN Order Management System
 
-Project spec for a ceramic company's internal order/inventory tool. This document is
+Project spec for a ceramic company's internal order tool (stock and inventory were removed in 1.4). This document is
 the source of truth for architecture, data model, and phased build plan. Read this
 before writing code in any future session.
 
@@ -218,8 +218,6 @@ rationale live in [`schema/`](./schema/00-overview.md) — start at
 | `product_images` | id, product_id, file_path, is_primary |
 | `leads` | id, lead_number, party_id, status (`new`/`verified`/`order`/`cancelled`), source_panel_id, total_amount |
 | `lead_items` | id, lead_id, product_id, quantity, unit_price, line_total |
-| `inventory_stock` | id, product_id, quantity_boxes, quantity_sqft, reorder_level |
-| `stock_movements` | id, product_id, movement_type, quantity_boxes, reference |
 | `activity_log` | id, entity_type, entity_id, action, actor, details (JSON) — audit/live-feed source |
 
 `leads` doubles as `orders`: a status field (`new` → `verified` → `order`) avoids
@@ -317,11 +315,9 @@ Transport layers never issue queries directly.
 **Phase 2 (in progress):**
 
 Done:
-- **Inventory stock tracking** — append-only movement ledger plus a derived
-  snapshot, stock-in, physical-count adjustments, reorder levels and low-stock
-  flagging, with automatic deduction when a lead becomes an order and
-  restoration when an order is cancelled. Stock is visible on both panels and
-  updates live. See `schema/03-leads-orders-inventory.md` for the rules.
+- **Inventory stock tracking** — built in Phase 2, **removed entirely in 1.4**. No stock
+  screens, settings, permissions, commands or routes remain; the three tables stay in the
+  database, retired, for data safety. See `schema/03-leads-orders-inventory.md`.
 - **Automated test suite** — unit and integration tests, plus CI.
 
 Still to do:

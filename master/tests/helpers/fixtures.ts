@@ -26,7 +26,6 @@ import { invalidatePipelineCache } from '../../src/repositories/pipeline.reposit
 import { invalidateRoleCache } from '../../src/repositories/role.repository.js';
 import * as catalogService from '../../src/services/catalog.service.js';
 import { configurePushGate } from '../../src/services/push-gate.js';
-import { upsertSetting } from '../../src/repositories/settings.repository.js';
 import { invalidateSettingsCache } from '../../src/services/settings.service.js';
 import { resetAuthState } from '../../src/services/auth.service.js';
 import { hashPassword } from '../../src/lib/password.js';
@@ -127,9 +126,6 @@ interface StageSnapshot {
 }
 let seededStages: StageSnapshot[] = [];
 
-/** The migrations' tenant, captured once so `resetData()` can write under it. */
-let seededTenantId = '';
-
 export async function setupDatabase(): Promise<void> {
   // No gather windows: a push applies on the next tick, so suites that push
   // do not each wait out the 5 s boot window. `push-gate.integration` sets
@@ -138,7 +134,6 @@ export async function setupDatabase(): Promise<void> {
   await startTestPostgres();
   initDatabase(testConnectionUrl());
   await runMigrations();
-  seededTenantId = await testTenantId();
 
   // Self-healing: a previous crashed run can leave test-created roles behind,
   // and capturing those as "seeded" would make them immortal. The migrations
@@ -258,14 +253,6 @@ export async function resetData(): Promise<void> {
      WHERE s.entity = 'role';
   `);
   await db()('master_clock').update({ physical: 0, counter: 0 });
-
-  // Free-to-sell on for every suite. The switch ships off — off reports every
-  // stock figure as the floor count — so every reservation test that expects
-  // a reserved figure would fail for a reason it is not about.
-  // `free-to-sell.integration.test.ts` is the one that turns it off.
-  await db().transaction(async (trx) => {
-    await upsertSetting(seededTenantId, 'inventory.freeToSell', true, false, 1, null, trx);
-  });
 
   // These caches outlive a truncate; a stale role would let a later test pass
   // with permissions the database no longer grants.
@@ -387,7 +374,7 @@ export async function actorWith(
 /**
  * A product the way every suite needs one: in a category, with at least one
  * variant carrying a code. Returns the product and its first variant, because
- * a line, a stock movement or a reservation is keyed by the variant id.
+ * a line is keyed by the variant id.
  */
 export async function createTestProduct(
   actor: ActorContext,

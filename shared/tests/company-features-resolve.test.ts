@@ -17,9 +17,7 @@ describe('resolveCompanyFeatures', () => {
     // Read from SETTINGS rather than written out, so this cannot become a
     // second copy of the defaults that agrees with itself.
     expect(resolveCompanyFeatures(undefined)).toEqual({
-      freeToSell: SETTINGS['inventory.freeToSell'].fallback,
       offlineSignInEnabled: SETTINGS['security.offlineSignInEnabled'].fallback,
-      adjustmentNoteRequired: SETTINGS['inventory.adjustmentNoteRequired'].fallback,
       followUpDefaultDays: SETTINGS['leads.followUpDefaultDays'].fallback,
       packagingRequiredOnConvert: SETTINGS['leads.packagingRequiredOnConvert'].fallback,
       reportsVisibleToOffice: SETTINGS['reports.visibleToOffice'].fallback,
@@ -32,16 +30,16 @@ describe('resolveCompanyFeatures', () => {
   });
 
   it('fills only what is missing from a partial answer', () => {
-    // An older Master sends `freeToSell` and nothing else. Every other switch
+    // An older Master sends one switch and nothing else. Every other switch
     // has to read as "as before", not as false.
-    const resolved = resolveCompanyFeatures({ freeToSell: false });
+    const resolved = resolveCompanyFeatures({ reportsVisibleToOffice: false });
 
-    expect(resolved.freeToSell).toBe(false);
+    expect(resolved.reportsVisibleToOffice).toBe(false);
+    expect(resolved.reportsVisibleToManagement).toBe(true);
     // Catalogue v2's defaults (2026-09-28): packaging is not asked for, and a
     // new lead follows up three days out.
     expect(resolved.packagingRequiredOnConvert).toBe(false);
     expect(resolved.offlineSignInEnabled).toBe(true);
-    expect(resolved.adjustmentNoteRequired).toBe(false);
     expect(resolved.followUpDefaultDays).toBe(3);
   });
 
@@ -50,7 +48,6 @@ describe('resolveCompanyFeatures', () => {
     // whose fallback is `true`, so `||` would silently re-enable every switch
     // a company had turned off.
     const resolved = resolveCompanyFeatures({
-      freeToSell: false,
       offlineSignInEnabled: false,
       packagingRequiredOnConvert: false,
     });
@@ -61,7 +58,7 @@ describe('resolveCompanyFeatures', () => {
 
   it('keeps a packagingRequiredOnConvert of true that a company switched on', () => {
     expect(
-      resolveCompanyFeatures({ freeToSell: true, packagingRequiredOnConvert: true })
+      resolveCompanyFeatures({ packagingRequiredOnConvert: true })
         .packagingRequiredOnConvert,
     ).toBe(true);
   });
@@ -69,9 +66,9 @@ describe('resolveCompanyFeatures', () => {
   it('keeps a followUpDefaultDays of 0, which is a real answer meaning today', () => {
     // The same trap on a number: 0 is a legal setting and the fallback is 3,
     // so `||` would quietly move a company that chose "today" three days out.
-    expect(resolveCompanyFeatures({ freeToSell: true, followUpDefaultDays: 0 }).followUpDefaultDays)
+    expect(resolveCompanyFeatures({ followUpDefaultDays: 0 }).followUpDefaultDays)
       .toBe(0);
-    expect(resolveCompanyFeatures({ freeToSell: true, followUpDefaultDays: 7 }).followUpDefaultDays)
+    expect(resolveCompanyFeatures({ followUpDefaultDays: 7 }).followUpDefaultDays)
       .toBe(7);
   });
 });

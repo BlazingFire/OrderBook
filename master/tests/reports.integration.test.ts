@@ -11,7 +11,6 @@ import type { ActorContext } from '../src/domain/actor.js';
 import { config } from '../src/config/index.js';
 import { db } from '../src/db/knex.js';
 import * as catalogService from '../src/services/catalog.service.js';
-import * as inventoryService from '../src/services/inventory.service.js';
 import * as leadService from '../src/services/lead.service.js';
 import * as orderService from '../src/services/order.service.js';
 import * as tableRenderer from '../src/pdf/table-renderer.js';
@@ -39,7 +38,6 @@ async function createDispatchedOrder(
     actor,
   );
   const variantId = product.variants[0]!.id;
-  await inventoryService.recordInbound({ variantId, quantityBoxes: 100 }, actor);
 
   const lead = await leadService.createLead(
     {
@@ -162,18 +160,13 @@ describe.skipIf(!canRunIntegrationTests)('Reports (integration)', () => {
       expect(report.months.every((m) => m.orderCount === 0)).toBe(true);
     });
 
-    it('RPT-8: dispatched boxes report positive even though the stock ledger delta is negative', async () => {
+    it('RPT-8: dispatched boxes are the quantities on the lines of the dispatched order', async () => {
       const { orderId } = await createDispatchedOrder('Rajkot');
       await setDispatchedAt(orderId, new Date().toISOString());
 
-      const movement = await db()('stock_movements')
-        .where({ reference_type: 'order', reference_id: orderId, movement_type: 'outbound' })
-        .first('quantity_boxes');
-      expect(Number(movement.quantity_boxes)).toBeLessThan(0);
-
       const report = await reportService.dispatchReport({ period: 'thisMonth' }, actor);
       const thisMonth = report.months.find((m) => m.orderCount > 0);
-      expect(thisMonth?.boxCount).toBeGreaterThan(0);
+      expect(thisMonth?.boxCount).toBe(10);
     });
 
     it('RPT-18: the colour buckets are the variant labels the pieces were dispatched in, and a no-variant product is one blank bucket', async () => {
@@ -196,10 +189,6 @@ describe.skipIf(!canRunIntegrationTests)('Reports (integration)', () => {
       );
       const [white, magenta] = model.variants;
       const [pan] = plain.variants;
-      for (const variant of [white!, magenta!, pan!]) {
-        await inventoryService.recordInbound({ variantId: variant.id, quantityBoxes: 100 }, actor);
-      }
-
       const lead = await leadService.createLead(
         {
           partyId: party.id,

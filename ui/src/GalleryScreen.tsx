@@ -83,8 +83,7 @@ interface SampleRow {
   code: string;
   product: string;
   colourIndex: number;
-  onHand: number;
-  reserved: number;
+  weightKg: number;
 }
 
 const TABLE_ROWS: SampleRow[] = [
@@ -93,17 +92,15 @@ const TABLE_ROWS: SampleRow[] = [
     code: 'PR-0101',
     product: 'Product A',
     colourIndex: 0,
-    onHand: 840,
-    reserved: 120,
+    weightKg: 18.5,
   },
-  { id: 'r2', code: 'PR-0101', product: 'Product A', colourIndex: 3, onHand: 0, reserved: 0 },
+  { id: 'r2', code: 'PR-0101', product: 'Product A', colourIndex: 3, weightKg: 0 },
   {
     id: 'r3',
     code: 'PR-0102',
     product: 'Product B',
     colourIndex: 2,
-    onHand: 204,
-    reserved: 0,
+    weightKg: 9.2,
   },
 ];
 
@@ -473,8 +470,7 @@ export function GalleryScreen() {
                 <th>Code</th>
                 <th>Product</th>
                 <th>Colour</th>
-                <th className="num">On hand</th>
-                <th className="num">Reserved</th>
+                <th className="num">Weight (kg)</th>
               </tr>
             </thead>
             <tbody>
@@ -500,10 +496,7 @@ export function GalleryScreen() {
                         {colour.name}
                       </span>
                     </td>
-                    <td className="num">{row.onHand.toLocaleString('en-IN')}</td>
-                    <td className="num" style={{ color: 'var(--fg-secondary)' }}>
-                      {row.reserved.toLocaleString('en-IN')}
-                    </td>
+                    <td className="num">{row.weightKg.toLocaleString('en-IN')}</td>
                   </tr>
                 );
               })}

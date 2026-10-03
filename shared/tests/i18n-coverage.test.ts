@@ -118,7 +118,7 @@ describe('no EN string carries a pre-formatted number, separator or currency sym
 describe('neither catalogue talks about prices', () => {
   // The software carries no money at all — pricing was removed on 2026-09-21 —
   // so a word for a price on screen points at a feature that does not exist.
-  // `settingGroup.stock` went on reading "Stock and prices" (`स्टॉक और दाम`)
+  // The Products settings group went on reading "Stock and prices" (`स्टॉक और दाम`)
   // after the last price had gone.
   //
   // Both patterns run over both catalogues, because an untranslated Hindi

@@ -28,7 +28,9 @@ const SHARED = path.resolve(
 );
 
 function read(relative: string): string {
-  return readFileSync(path.join(SRC, relative), 'utf8');
+  // LF whatever the checkout's line endings: a CRLF working tree would break the
+  // newline in the patterns below.
+  return readFileSync(path.join(SRC, relative), 'utf8').replace(/\r\n/g, '\n');
 }
 
 /** Call sites, not mentions — a comment naming the function is not a caller. */

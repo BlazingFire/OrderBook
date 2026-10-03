@@ -41,7 +41,7 @@ async function main(): Promise<void> {
     const { counts } = result;
     log.info(
       `Seeded ${result.from} → ${result.to}: ${counts.parties} parties, ${counts.products} products ` +
-        `(${counts.images} photos), ${counts.stockMovements} stock movements, ${counts.leads} leads, ` +
+        `(${counts.images} photos), ${counts.leads} leads, ` +
         `${counts.orders} orders (${counts.dispatched} dispatched), ${counts.remarks} remarks, ` +
         `${counts.optionValues} option values, ${counts.customFields} custom fields, ` +
         `${counts.partyVariants} party-wise records, ${counts.partyAssignments} party assignments, ` +

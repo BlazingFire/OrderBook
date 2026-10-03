@@ -76,12 +76,12 @@ const GUARDED: Guarded[] = [
      * the browser casts it.
      *
      * Guarded from the day it held one field, so the next switch cannot be
-     * declared required by hand and argued about afterwards. `freeToSell` is
-     * genuine history: it is what a 1.0.2 Master already sends.
+     * declared required by hand and argued about afterwards. `freeToSell`, the
+     * one field a 1.0.2 Master sent, is retired (1.4), so nothing is pinned.
      */
     file: 'src/domain/entities.ts',
     type: 'CompanyFeatures',
-    sinceAlways: ['freeToSell'],
+    sinceAlways: [],
   },
 ];
 

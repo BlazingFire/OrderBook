@@ -189,18 +189,8 @@ describe.skipIf(!canRunIntegrationTests)('sample data seed (integration)', () =>
     expect(verification.checkedCount).toBeGreaterThan(100);
   });
 
-  it('leaves a ledger the dashboard can read: real stock figures, low-stock rows and due follow-ups', async () => {
+  it('leaves a ledger the dashboard can read: orders, open orders and due follow-ups', async () => {
     const tenantId = await testTenantId();
-
-    // Toilet 102: opening 90, one dispatch of 20, a truck of 60, counted down
-    // to 128, then three more dispatches of 60, 40 and 24 — the ledger replays
-    // to 4, and stock is keyed by the variant the code belongs to — `OPT-0001`,
-    // the first sub product of One Piece Toilet in the catalogue file.
-    const toilet = await db()('inventory_stock')
-      .join('product_variants', 'product_variants.id', 'inventory_stock.variant_id')
-      .where({ 'inventory_stock.tenant_id': tenantId, 'product_variants.code': 'OPT-0001' })
-      .first<{ quantity_boxes: string }>('inventory_stock.quantity_boxes');
-    expect(Number(toilet?.quantity_boxes)).toBe(4);
 
     const adminRole = await db()('roles')
       .where({ tenant_id: tenantId, tier: 'admin' })
@@ -217,7 +207,6 @@ describe.skipIf(!canRunIntegrationTests)('sample data seed (integration)', () =>
     const summary = await getDashboardSummary(admin);
     expect(summary.leadCount).toBeGreaterThan(0);
     expect(summary.orderCount).toBe(wonLeads.length);
-    expect(summary.lowStockCount).toBeGreaterThanOrEqual(6);
     expect(summary.followUpsDueCount).toBeGreaterThanOrEqual(3);
     expect(summary.openOrderCount).toBeGreaterThan(0);
     expect(summary.pipelineBreakdown?.some((stage) => stage.leadCount > 0)).toBe(true);

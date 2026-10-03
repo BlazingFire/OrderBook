@@ -1023,7 +1023,7 @@ export const api = {
   refreshDashboard: () => post<DashboardSummary>('/api/dashboard/refresh'),
 
   // --- Product images (7-IMAGE-PIPELINE.md) --------------------------------
-  // Online-only like Stock and Recycle Bin, and — unlike every write above —
+  // Online-only like the Recycle Bin, and — unlike every write above —
   // answered with the full `Product` rather than a `QueuedResult`: nothing
   // here goes through the offline outbox, so there is no temporary id to
   // hand back, only the real record the Master just produced.

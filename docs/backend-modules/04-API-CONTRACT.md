@@ -565,9 +565,8 @@ Dispatches by month and by colour.
 | **Paging** | None. Bounded by the range and by the new partial index on `(tenant_id, dispatched_at)` |
 
 Months come from `orders.dispatched_at` — one order in one bucket. Boxes and colours come from
-`stock_movements` joined on `(reference_type = 'order' AND reference_id = o.id AND movement_type =
-'outbound')`. **Boxes are `SUM(-m.quantity_boxes)`**: `quantity_boxes` is a signed negative delta for
-a dispatch, so printing `SUM()` raw shows "-420 boxes dispatched".
+the dispatched order's `line_items` (`SUM(quantity)`, with the line's colour). *(Changed in 1.4:
+they used to come from `stock_movements`, which is retired.)*
 
 `totalValue` is `SUM(o.total_amount)`, absent when the caller lacks `field.saleRate.view`;
 `ratesIncluded` then reads `false`.
@@ -783,15 +782,14 @@ export interface BinEntry {
  * DELETE (§4.5's policy table).
  */
 export interface BinBlocker {
-  /** Not every blocker is a Bin entity: a line item and a stock row block a delete
-   *  without ever being restorable themselves. */
-  entityType: RecycleBinEntityType | 'line_item' | 'inventory_stock';
+  /** Not every blocker is a Bin entity: a line item blocks a delete
+   *  without ever being restorable itself. */
+  entityType: RecycleBinEntityType | 'line_item';
   id: RecordId;
   label: string;
   reason:
     | 'parent_deleted'      // restore: the ancestor is still in the Bin
     | 'live_reference'      // delete: a live lead / order / line item points at it
-    | 'stock_on_hand'       // delete: inventory_stock has non-zero on-hand or reserved
     | 'converted'           // delete: the lead has a converted_order_id
     | 'dispatched';         // delete: the order has left
 }
@@ -936,7 +934,7 @@ entity's routes across two files is how a future path collision gets missed. Thi
 | Route | Route guard | Service check | Extra behaviour |
 |---|---|---|---|
 | `DELETE /api/leads/:id` | `needs('leads.delete')` | `requirePermission(actor, 'leads.delete')` as the first statement | Cascades the soft delete to the lead's line items |
-| `DELETE /api/orders/:id` | `needs('orders.delete')` | same | Releases the order's active stock reservations in the same transaction via `releaseForOrder` (`reservation.repository.ts:111`, currently dead code with no caller), then publishes the affected stock levels **after** commit |
+| `DELETE /api/orders/:id` | `needs('orders.delete')` | same | Soft-deletes the order; no stock side since 1.4 |
 | `DELETE /api/parties/:id` | `needs('parties.delete')` | same | — |
 | `DELETE /api/products/:id` | `needs('products.delete')` | same | — |
 
@@ -948,17 +946,16 @@ transaction, before anything is written:
 | Entity | Refuses when | Otherwise |
 |---|---|---|
 | `party` | any **live** (not soft-deleted) lead or order references it | soft-deletes |
-| `product` | any live `line_items` row references it, **or** any `inventory_stock` row for it has non-zero on-hand or reserved | soft-deletes |
+| `product` | any live `line_items` row references it | soft-deletes |
 | `lead` | it has a `converted_order_id` — it is an order's history, not a record of its own any more | soft-deletes, cascading to its line items |
-| `order` | it has been dispatched | soft-deletes, releasing active reservations in the same transaction |
+| `order` | it has been dispatched | soft-deletes |
 
 Refusal is `ConflictError` 409 carrying `{ blockedBy: BinBlocker[] }`, naming the actual blocking
 records rather than stating a count — "3 open orders" is a message a person cannot act on, and the
 names are what let them go and deal with them.
 
 Each rule earns its place separately. A party is refused because deleting one would leave live
-records pointing at a tombstone. A product is refused on stock as well as on lines because on-hand
-boxes are physical goods; a catalogue entry can be wrong, but the pallet in the warehouse is not.
+records pointing at a tombstone. A product is refused on its lines (it used to be refused on stock too; stock was removed in 1.4).
 A converted lead is refused because the order that came out of it keeps a link back — deleting the
 lead would make the order's own history unreadable, and "delete the order instead" is the honest
 answer. A dispatched order is refused because goods left the building and the ledger says so; the
@@ -1006,7 +1003,7 @@ Both in `master/src/http/routes/data.routes.ts`, for the Master's own web client
 | Route | Guard | Does |
 |---|---|---|
 | `PUT /api/leads/:id` | `needs('leads.edit')` | `leadService.updateLead`. A body carrying `items` **replaces the whole line set** (absent leaves the lines alone); malformed `items` (not a non-empty list, a line with no `productId` or `variantId`) is a 400 `validation.lead.*`, never a 500; a converted lead is a 400 `validation.lead.convertedLocked`; party access at `manage` is required on the old and the new party. With `baseFieldHlc`, a field saved by somebody else since is a 409 `error.conflict.staleEdit` (§14.2). Answers the saved `Lead`. |
-| `GET /api/lead-entry` | session; `leads.create` or `leads.edit` (else 403 naming `leads.create`) | `buildLeadEntryView` (`snapshot.service.ts`, beside `buildSnapshot`, which is untouched): `{ partyVariants, optionLists, stock, partyGrants, features }`. `partyVariants` are party-scoped (a restricted party's records are absent); `stock` is `[]` without `inventory.view`; `partyGrants` is every grant the caller holds (the snapshot's list stops at its 500 parties); `products` is deliberately omitted. `owners` is added only for a caller holding `record.reassignOwner` (§14.3). Its own path so `GET /leads/:id` cannot capture it. |
+| `GET /api/lead-entry` | session; `leads.create` or `leads.edit` (else 403 naming `leads.create`) | `buildLeadEntryView` (`snapshot.service.ts`, beside `buildSnapshot`, which is untouched): `{ partyVariants, optionLists, partyGrants, features }`. `partyVariants` are party-scoped (a restricted party's records are absent); `partyGrants` is every grant the caller holds (the snapshot's list stops at its 500 parties); `products` is deliberately omitted. `owners` is added only for a caller holding `record.reassignOwner` (§14.3). Its own path so `GET /leads/:id` cannot capture it. |
 
 ### 4.7 The party screen's reads (2026-10-01, parity plan P5)
 
@@ -1112,12 +1109,9 @@ write.
 a set is opened, not folded into the list, so the cheap read the screens and panels do constantly is
 not dragged down by grouped scans.
 
-**The usage count deliberately excludes `stock_movements`.** Since the 2026-09 variant
+**The usage count groups over two sources.** Since the 2026-09 variant
 restructure the colour lives on `product_variants.label` and is frozen onto `line_items.variant_label`;
-the count groups over those two (stock, reservations and movements no longer carry a colour of
-their own — they point at the variant). `stock_movements` is the append-only ledger, projected into
-the millions by `docs/schema/05` — including it would seq-scan the ledger every time somebody opened
-Fields → Colours. Two sources answer "is this colour in use" adequately.
+the count groups over those two. (It excluded the stock ledger; stock was removed in 1.4.)
 
 | Error | Status | `details` | Trigger |
 |---|---|---|---|
@@ -1154,8 +1148,7 @@ value never touches the records that used it" true rather than aspirational.
 
 DELETE sets `deleted_at` / `deleted_by`. The value stays on every record that holds it; the row simply
 stops being offered and appears in the Recycle Bin. A colour with no `option_lists` row renders
-through the two-letter ring fallback the design spec already defines — the five colour columns and
-`stockKey()` are not touched by this module at all.
+through the two-letter ring fallback the design spec already defines — the five colour columns are not touched by this module at all.
 
 `reorder` takes the **complete ordered list, not a delta**. A delta cannot express "these two swapped"
 without a read-modify-write race.
@@ -1568,7 +1561,6 @@ export interface DashboardSummary {
   orderCount?: number;
   partyCount?: number;
   productCount?: number;
-  lowStockCount?: number;
   followUpsDueCount?: number;
   openConflictCount?: number;
   pendingSyncCount?: number;
@@ -1594,7 +1586,6 @@ export interface DashboardSummary {
 | `orderCount`, `openOrderCount`, `dispatchedThisWeekCount` | `orders.view` |
 | `partyCount` | `parties.view` |
 | `productCount` | `products.view` |
-| `lowStockCount` | `inventory.view` |
 | `openConflictCount`, `pendingSyncCount` | `sync.resolveConflicts` |
 | `asOf` | **ungated** — it describes the response, not the company |
 
@@ -1896,7 +1887,7 @@ export type ChangeAction = 'created' | 'updated' | 'deleted' | 'restored';
 // shared/src/protocol/socket.ts:163-178 — two members appended
 export type ChangedEntity =
   | 'lead' | 'order' | 'party' | 'product' | 'product_category' | 'party_variant'
-  | 'office_panel' | 'stock' | 'reservation' | 'pipeline' | 'option_list'
+  | 'office_panel' | 'pipeline' | 'option_list'
   | 'custom_field' | 'sync_conflict' | 'role' | 'user'
   | 'document_template'      // new
   | 'document_export';       // new
@@ -1970,8 +1961,8 @@ app.get('/api/logs', (req, res) => forward(res, 'log:list', parseQuery(req.query
 `forward()` (`office/src/http/app.ts:438-462`) already maps `MasterCommandError.unreachable` to
 `503 { error: 'unavailable' }`; §9.1 gives it `details` and the status map.
 
-Each forward-only route carries a comment in the same voice as the existing stock comment at
-`office/src/http/app.ts:270-271`, saying *why* it is online-only rather than leaving it to be
+Each forward-only route carries a comment in the same voice as the existing forward-only comments in
+`office/src/http/app.ts`, saying *why* it is online-only rather than leaving it to be
 discovered.
 
 ### 10.2 The table
@@ -2043,15 +2034,13 @@ now assumes (the design is `docs/schema/02-parties-and-products.md` §*Product v
 | `GET /api/categories?search=` | — | |
 | `POST /api/products` · `PUT /api/products/:id` | queued | `ProductInput` carries `categoryId` or `categoryName` (one required on create), `hasVariants` and `variants: ProductVariantInput[]`; the set is validated by `validateProductVariants` on both the online and the offline-merge path, and replaced whole (`fieldHlc.variants` carries one stamp) |
 | `GET /api/products/by-code/:code` | — | Resolves through the variant that holds the code |
-| `POST /api/stock/inbound` · `POST /api/stock/adjust` · `POST /api/stock/reorder-level` | same | Bodies name a `variantId`; `/api/stock/colours/:productId` no longer exists |
-| `GET /api/stock/movements?productId=&variantId=` | — | Either scope |
+| `/api/stock/*` | — | Removed in 1.4 (stock and inventory) |
 | `POST /api/developer/load-catalogue` | — | Developer-unlocked; returns `LoadCatalogueResult { categories, products, variants, skipped }` |
 
 Lead and order line bodies (`LineItemInput`) name a `productId`, a `variantId` and one `quantity`;
 `quantities[]` is gone. `Lead` and `Order` carry `totalWeightKg` and `linesWithoutWeight`; every
-line carries `variantId`, `variantLabel`, `quantity`, `lineWeightKg`. Stock levels, reservations and
-movements are keyed by `variantId` and carry `variantCode` / `variantLabel`; the `stock` change event's
-`id` is the variant id.
+line carries `variantId`, `variantLabel`, `quantity`, `lineWeightKg`. (Stock levels, reservations and
+movements, and the `stock` change event, were removed in 1.4.)
 
 Restoring a product from the Recycle Bin is refused with `validation.product.restoreCodesTaken`
 (409, `details: { field: 'code', codes }`) while another live product holds one of its codes —
@@ -2084,14 +2073,13 @@ Changed in place:
   search vector, a variant code prefix or a name prefix. Picked products carry `categoryCode` and
   `brand`.
 - **Products.** `GET /api/products` takes `brand=` and its search also matches the category's code
-  and brand; its page ceiling is 2000 (`PRODUCT_PAGING`), and the snapshot asks for products and
-  stock rows at that ceiling (every other collection stays at 500). `ProductInput` gains
+  and brand; its page ceiling is 2000 (`PRODUCT_PAGING`), and the snapshot asks for products
+  at that ceiling (every other collection stays at 500). `ProductInput` gains
   `categoryCode` (resolves a live category, never creates one —
   `validation.product.categoryCodeUnknown`), `categoryBrand` and `sortOrder`; a blank variant code
   on a product named by category id or code becomes the next `CODE-####`; a second live sub
   product of the same name in one category is 409 `validation.product.nameTaken`.
-- **Stock.** `GET /api/stock?brand=&categoryId=`; every live variant is a row, at zero when never
-  stocked; rows carry `categoryId`, `categoryCode`, `brand`, `multiColour`.
+- **Stock.** Removed in 1.4 (stock and inventory); `GET /api/stock` no longer exists.
 - **Lines.** `LineItem` and `LineItemInput` carry `categoryCode` and `brandName`. A `colour` on a
   line whose product is not multi-colour is **dropped**, no longer refused with
   `validation.lead.colourUnexpected`.

@@ -44,13 +44,11 @@ describe('every parser rejects a wrong shape', () => {
   // parsers would reject for the uninteresting reason that it is not an object.
   const WRONG: Record<string, unknown> = {
     'security.passwordRevealEnabled': 'yes',
-    'inventory.freeToSell': 'yes',
     'externalApi.enabled': 1,
     'panels.autoPairingEnabled': 'yes',
     'security.developerModeEnabled': 'yes',
     'catalog.importCreatesCategories': 'yes',
     'security.offlineSignInEnabled': 'yes',
-    'inventory.adjustmentNoteRequired': 'yes',
     'leads.packagingRequiredOnConvert': 'yes',
     'reports.visibleToOffice': 'yes',
     'reports.visibleToManagement': 'yes',
@@ -60,7 +58,6 @@ describe('every parser rejects a wrong shape', () => {
     // days calls every lead quiet on the day it is raised.
     'security.sessionHours': 0,
     'leads.quietAfterDays': 0,
-    'inventory.defaultReorderLevel': -1,
     // 0 is LEGAL here and means today, so the refusal has to come from below
     // the floor. That asymmetry with the two above is the whole point of this
     // key's floor being 0: an upgraded installation must keep opening the New

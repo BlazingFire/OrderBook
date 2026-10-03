@@ -29,7 +29,7 @@ declared, how the grid draws it, and what the i18n layer must translate.
 | Kind | Example | Declared in | How the grid draws it |
 |---|---|---|---|
 | **Module action** | `leads.edit` | `MODULES` + `MODULE_ACTIONS` (`permissions.ts:41-74`) | A cell in the module × action matrix; an undeclared pair renders `—`, "not applicable" |
-| **Capability** | `lead.convert`, `fields.manage` | `CAPABILITIES` (`permissions.ts:89-113`) | A checkbox tile inside its group (`workflow` / `pricing` / `stock` / `admin`) |
+| **Capability** | `lead.convert`, `fields.manage` | `CAPABILITIES` (`permissions.ts:89-113`) | A checkbox tile inside its group (`workflow` / `pricing` / `admin`; the `stock` group was removed in 1.4) |
 | **Field action** | `field.saleRate.view` | `CAPABILITIES`, and additionally `FIELD_PERMISSIONS` (`permissions.ts:144`) | A tile, with the absent-versus-null explanation attached (`PermissionGrid.tsx:204-209`) |
 
 Module-action keys are **derived**, not listed: `moduleKeys()` (`permissions.ts:117-121`) flattens
@@ -73,7 +73,7 @@ absent from the map is available to every tier. Two things follow, and both are 
 the `role_permissions` join table that this repository actually had until that migration dropped it
 (`:78`). `docs/ROLES_AND_USERS.md` §5 carries the argument; the short form is that the join table's
 per-key merge only became wrong once offline sync existed. Two administrators editing one role while
-disconnected — one removing `stock.adjust`, the other adding `products.delete` — merge per key into a
+disconnected — one removing `orders.delete`, the other adding `products.delete` — merge per key into a
 **union granting a combination neither of them approved**. Permission sets are approved as a whole,
 so they merge as a whole.
 
@@ -196,7 +196,7 @@ Eleven keys. Five module actions across two new modules, six capabilities. Every
 // shared/src/domain/permissions.ts
 
 export const MODULES = [
-  'leads', 'orders', 'parties', 'products', 'inventory', 'reports', 'roles',
+  'leads', 'orders', 'parties', 'products', 'reports', 'roles',
   'logs',       // NEW
   'documents',  // NEW
 ] as const;
@@ -286,7 +286,7 @@ side effect — the same defect was found and fixed for `field.saleRate.edit` in
 | `reports.view` | office | **No** — grep finds it only in the catalogue and the templates | `GET /api/reports/dispatches`, `/lead-outcomes`, `/top-parties` and their socket commands |
 | `reports.export` | office | **No** | `GET /api/reports/:report/export`. Deliberately **not** reused for PDF rendering — overloading it would make unticking one silently disable the other |
 | `leads.delete` | management | **No** — there is no delete path for a lead | `DELETE /api/leads/:id` |
-| `orders.delete` | management | **No** | `DELETE /api/orders/:id` (which also releases the order's live stock reservations in the same transaction) |
+| `orders.delete` | management | **No** | `DELETE /api/orders/:id` |
 | `parties.delete` | management | **No** | `DELETE /api/parties/:id` |
 | `products.delete` | management | **No** | `DELETE /api/products/:id` |
 | `field.saleRate.view` | office | **Yes** — `canSeeRates` (`visibility.ts:26-28`), across every read path including search | Extended, not introduced: money columns in Reports, and rate columns in a rendered PDF |
@@ -626,7 +626,7 @@ be a way to read a lead you may not open, formatted as a PDF.
 | `GET /api/recycle-bin/counts` | `needs('recycleBin.view')` | Same three stages | `recycleBin:counts` | Counted only over branches the caller may see, so the chips and the list agree |
 | `POST /api/recycle-bin/restore` | `needs('recycleBin.view')` | `requirePermission(actor, RESTORE_PERMISSION[entityType])` — the entity's own delete key | `recycleBin:restore` | The route guard is the weaker of the two here **by design**: the entity type is in the body, so only the service can know which key applies |
 | `DELETE /api/leads/:id` | `needs('leads.delete')` | `requirePermission(actor,'leads.delete')` | `lead:delete` | First enforcement site for the key |
-| `DELETE /api/orders/:id` | `needs('orders.delete')` | `requirePermission(actor,'orders.delete')` | `order:delete` | Also releases live reservations in the same transaction |
+| `DELETE /api/orders/:id` | `needs('orders.delete')` | `requirePermission(actor,'orders.delete')` | `order:delete` | — |
 | `DELETE /api/parties/:id` | `needs('parties.delete')` | `requirePermission(actor,'parties.delete')` | `party:delete` | — |
 | `DELETE /api/products/:id` | `needs('products.delete')` | `requirePermission(actor,'products.delete')` | `product:delete` | — |
 
