@@ -3242,9 +3242,9 @@ socket command or screen. They are left out of the ER diagram above and are desc
 here only as the historical record (full DDL in `docs/schema/03-leads-orders-inventory.md`).
 Three FK-driven exceptions remain in code: `catalog-reload-cli.ts` (`BUSINESS_TABLES`) and
 `catalogue-seed.service.ts#clearCatalogueData` still `DELETE` from them so a wipe/reload can
-remove variants, and `product-variant.repository.ts#referencedVariantIds` still counts a row
-there as a reference, so a variant with legacy rows is deactivated, not deleted (the tables
-are FK-ed to `product_variants`). Do not write new code against them.
+remove variants, and `product-variant.repository.ts#deleteLegacyStock` clears a deleted
+variant's rows from them (they are FK-ed to `product_variants`); `referencedVariantIds` counts
+line items only, so old stock never keeps a variant "in use". Do not write new code against them.
 
 | Table | Key columns | Keys and constraints | Purpose / code |
 |---|---|---|---|

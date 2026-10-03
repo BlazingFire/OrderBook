@@ -3402,8 +3402,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.developer.sampleDataPresent': "Sample data is already on this Master. Erase everything first to seed it again.",
   // TODO(i18n-hi)
   'developer.tool.sample.title': "Sample data",
-  // TODO(i18n-hi)
-  'developer.tool.sample.description': 'इस Master को छह महीने के एक छोटे सैनिटरीवेयर व्यापार से भरता है — Swisware कैटलॉग, बेचे जाने वाले मॉडलों पर वज़न, पार्टियाँ, प्रति वेरिएंट स्टॉक, हर चरण पर पेंडिंग ऑर्डर, चालू और भेजे गए फ़ाइनल ऑर्डर, टिप्पणियाँ, पार्टी-वार रिकॉर्ड, पार्टी एक्सेस, कस्टम फ़ील्ड और Recycle Bin में कुछ रिकॉर्ड — ताकि हर स्क्रीन पर कुछ दिखे। पहले तीन टेस्ट उपयोगकर्ता बनाता है, ठीक "Seed test users" की तरह। प्रति इंस्टॉलेशन एक बार चलता है; फिर से शुरू करने के लिए सब मिटाएँ।',
+  'developer.tool.sample.description': 'इस Master को छह महीने के एक छोटे सैनिटरीवेयर व्यापार से भरता है — Swisware कैटलॉग, बेचे जाने वाले मॉडलों पर वज़न, पार्टियाँ, हर चरण पर पेंडिंग ऑर्डर, चालू और भेजे गए फ़ाइनल ऑर्डर, टिप्पणियाँ, पार्टी-वार रिकॉर्ड, पार्टी एक्सेस, कस्टम फ़ील्ड और Recycle Bin में कुछ रिकॉर्ड — ताकि हर स्क्रीन पर कुछ दिखे। पहले तीन टेस्ट उपयोगकर्ता बनाता है, ठीक "Seed test users" की तरह। प्रति इंस्टॉलेशन एक बार चलता है; फिर से शुरू करने के लिए सब मिटाएँ।',
   // TODO(i18n-hi)
   'developer.tool.sample.action': "Seed sample data",
   // TODO(i18n-hi)

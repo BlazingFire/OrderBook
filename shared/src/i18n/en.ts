@@ -2482,7 +2482,7 @@ export const EN_MESSAGES = {
     'This seed had to run first-time setup itself. The pairing password it generated is shown once, here, and cannot be shown again:',
 
   'developer.tool.sample.title': 'Sample data',
-  'developer.tool.sample.description': 'Fills this Master with six months of a small sanitaryware trade — the Swisware catalogue with weights on the models it sells, parties, stock per variant, pending orders at every stage, final orders in progress and dispatched, remarks, party-wise records, party access, custom fields and a few records in the Recycle Bin — so every screen has something to show. Seeds the three test users first, exactly as "Seed test users" does. Runs once per installation; erase everything to start over.',
+  'developer.tool.sample.description': 'Fills this Master with six months of a small sanitaryware trade — the Swisware catalogue with weights on the models it sells, parties, pending orders at every stage, final orders in progress and dispatched, remarks, party-wise records, party access, custom fields and a few records in the Recycle Bin — so every screen has something to show. Seeds the three test users first, exactly as "Seed test users" does. Runs once per installation; erase everything to start over.',
   'developer.tool.sample.action': 'Seed sample data',
   'developer.tool.sample.done': 'Sample data is ready — open the dashboard',
   'developer.tool.sample.span': 'History runs from {from} to {to}.',

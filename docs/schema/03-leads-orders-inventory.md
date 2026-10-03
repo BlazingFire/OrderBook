@@ -388,9 +388,9 @@ rows are never dropped by an update. **Nothing reads or writes them**: no servic
 route, socket command or screen touches them. The column definitions are left in place as the
 historical record. Three narrow exceptions, all about foreign keys: the catalogue wipe/reload
 (`catalog-reload-cli.ts` `BUSINESS_TABLES`, `catalogue-seed.service.ts#clearCatalogueData`) still
-deletes from them so a variant can be deleted, and `product-variant.repository.ts#referencedVariantIds`
-still counts a row there as a reference, so a variant with legacy rows is deactivated rather than
-deleted (the tables are FK-ed to `product_variants`).
+deletes from them so a variant can be deleted, and `product-variant.repository.ts#deleteLegacyStock`
+clears a deleted variant's rows (the tables are FK-ed to `product_variants`); old stock never makes a
+variant "in use", only a line item does.
 
 What the flow looks like now: **converting a lead reserves nothing** and **dispatching an order
 writes no movement** — dispatch stamps `dispatched_at`, moves the order to the Dispatched stage,

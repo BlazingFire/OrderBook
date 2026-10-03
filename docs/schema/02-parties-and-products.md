@@ -305,8 +305,8 @@ quotes, so they are never renamed on the way out of the bin the way party
 names are.
 
 `is_active = false` is a variant taken off the form that history still quotes
-(a line, or a row left in the retired stock tables): `replaceVariants`
-deactivates such a row rather than deleting it (`referencedVariantIds` still counts the retired tables, which are FK-ed to variants), keeps its
+(a line): `replaceVariants`
+deactivates such a row rather than deleting it (`referencedVariantIds` counts lines only; rows left in the retired stock tables are cleared with a deleted variant), keeps its
 id and its code, and refuses it on new leads (`validation.lead.variantMissing`).
 An unreferenced row is simply deleted.
 

@@ -125,10 +125,10 @@ export async function findLiveVariantsByCodes(
 
 /**
  * Variants of this product that something still points at: a line on any
- * lead or order, or a row left in the retired stock tables (kept for data
- * safety since 1.4, and still foreign-keyed to the variant, so a delete would
- * fail). Such a row is deactivated rather than deleted when the administrator
- * takes it off the form — the history that quotes it stays readable.
+ * lead or order. Such a row is deactivated rather than deleted when the
+ * administrator takes it off the form — the history that quotes it stays
+ * readable. Rows left in the retired stock tables do not count: OrderBook keeps
+ * no stock (1.4), so they are cleared with the variant (`deleteLegacyStock`).
  */
 async function referencedVariantIds(
   tenantId: string,
@@ -141,13 +141,21 @@ async function referencedVariantIds(
       WHERE v.tenant_id = ? AND v.product_id = ?
         AND (
           EXISTS (SELECT 1 FROM line_items li WHERE li.variant_id = v.id)
-          OR EXISTS (SELECT 1 FROM inventory_stock s WHERE s.variant_id = v.id)
-          OR EXISTS (SELECT 1 FROM stock_movements m WHERE m.variant_id = v.id)
-          OR EXISTS (SELECT 1 FROM stock_reservations r WHERE r.variant_id = v.id)
         )`,
     [tenantId, productId],
   );
   return new Set(rows.map((row) => String(row.id)));
+}
+
+/**
+ * The retired stock tables still hold foreign keys to a variant that carried
+ * stock before 1.4. They are dead data (nothing reads them), so the rows go with
+ * the variant rather than blocking its delete.
+ */
+async function deleteLegacyStock(tenantId: string, variantId: string, trx: TransactionContext): Promise<void> {
+  for (const table of ['stock_reservations', 'stock_movements', 'inventory_stock']) {
+    await trx(table).where({ tenant_id: tenantId, variant_id: variantId }).delete();
+  }
 }
 
 /**
@@ -212,6 +220,7 @@ export async function replaceVariants(
           .where({ tenant_id: tenantId, id })
           .update({ is_active: false, updated_at: trx.fn.now() });
       } else {
+        await deleteLegacyStock(tenantId, id, trx);
         await trx(TABLE).where({ tenant_id: tenantId, id }).delete();
       }
     }
