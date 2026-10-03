@@ -705,7 +705,8 @@ redirect an installed app.
 
 **Read by runtime code but missing from `.env.example`:** `HOST` (Master bind,
 default `0.0.0.0`); `OFFICE_HOST` (default `127.0.0.1` — a default, not an enforced rule: any value moves the Office bind off loopback); `OFFICE_DISCOVERY_TIMEOUT_MS`
-(8000), `OFFICE_SYNC_RETRY_MS` (5000), `OFFICE_SYNC_BATCH_SIZE` (100);
+(8000), `OFFICE_SYNC_RETRY_MS` (5000), `OFFICE_SYNC_BATCH_SIZE` (100),
+`OFFICE_SAVE_NUMBER_WAIT_MS` (5000, 1.3 Phase 4: how long a new pending order's save waits for its PO number while connected);
 `ORDERBOOK_OFFICE_DATA_DIR` (default `office/data`; after a storage move
 `office/src/config/paths.ts` records the new folder in the shell's pointer, or with
 `writeEnvValue()` in the settings file when run from source — §1.5);
@@ -809,7 +810,7 @@ Tracked: **79 files** — 51 in `shared/src/` (`domain/` 28, `i18n/` 9, `keys/` 
 - `shared/src/index.ts` is the barrel: 35 `export *` lines (every `domain/*`,
   `i18n/index.js`, every `keys/*`, `protocol/*` and `sync/*`).
 
-### 3.2 `domain/` — records, inputs and business rules (23 files)
+### 3.2 `domain/` — records, inputs and business rules (24 files)
 
 | File | Purpose | Main exports |
 |---|---|---|
@@ -836,7 +837,8 @@ Tracked: **79 files** — 51 in `shared/src/` (`domain/` 28, `i18n/` 9, `keys/` 
 | `shared/src/domain/connectors.ts` | Outbound connectors to other systems, described as data. Conflicts resolve by a per-field rule, not by HLC. Entities: `party` and `product`. | `Connector`, `ConnectorInput`, `ConnectorResource(Input)`, `ConnectorFieldMap(Input)`, `ConnectorTransform`, `CONNECTOR_TRANSFORMS`, `ConnectorRun`, `ConnectorRowResult`, `ConnectorTestResult`, `ConnectorProfile`, `ConnectorConflictRule`, `CONNECTOR_MIN_INTERVAL_MIN` (5), `CONNECTOR_FLAGGABLE_FIELDS` |
 | `shared/src/domain/developer.ts` | Developer-mode constants. The password hash is `scrypt$…`; the plaintext is only in `docs/DEVELOPER_MODE.md`. | `DEVELOPER_TOKEN_TTL_MS` (15 min), `DEVELOPER_TOKEN_HEADER` (`x-developer-token`), `DEVELOPER_UNLOCK_MAX_FAILURES` (5), `DEVELOPER_UNLOCK_LOCKOUT_MS`, `DEVELOPER_PASSWORD_HASH`, `DEVELOPER_RESET_CONFIRMATION` (`'RESET'`), `DUMMY_USERS` (admin, management, office), `DUMMY_SERVER_MASTERS` (1.3 Phase 2: `master`, `master-backup`, used only when seeding runs setup itself), `SeedDummyUsersResult`, `ResetAllResult`, `SeedSampleDataResult`, `LoadCatalogueResult`, `SampleDataCounts` |
 | `shared/src/domain/master-key.ts` | 1.3 Phase 2. The master key (`docs/MASTER_KEY.md`, the only place the plaintext appears): its scrypt hash, the token header and lifetime, and the Server Master account shapes. No `.env` override. | `MASTER_KEY_HASH`, `MASTER_KEY_TOKEN_HEADER` (`x-master-key-token`), `MASTER_KEY_TOKEN_TTL_MS` (5 min), `SERVER_MASTER_MIN_ACTIVE` (2), `SUGGESTED_SERVER_MASTER_USERNAMES` (`master`, `master-backup`), `MasterKeyUnlock`, `ServerMasterAccountInput`, `ServerMasterAccount` |
-| `shared/src/domain/notifications.ts` | 1.3 Phase 3. The notification bell's vocabulary and the one-hour offline rule both panels and the Master share. Kinds grow phase by phase; each has one `notification.<kind>` message key. | `NOTIFICATION_KINDS` (`panel.offlineLong`), `NotificationKind`, `isNotificationKind`, `NotificationLink` (`{kind:'panel', id}`), `UserNotification`, `LONG_OFFLINE_MS` (3 600 000), `isLongOffline(panel, nowMs)` (an active, unconnected panel last seen an hour or more ago; never-seen and revoked panels do not count) |
+| `shared/src/domain/notifications.ts` | 1.3 Phase 3. The notification bell's vocabulary and the one-hour offline rule both panels and the Master share. Kinds grow phase by phase; each has one `notification.<kind>` message key. | `NOTIFICATION_KINDS` (`panel.offlineLong`, and `lead.numbered` since Phase 4), `NotificationKind`, `isNotificationKind`, `NotificationLink` (`{kind:'panel' | 'lead', id}`), `UserNotification`, `LONG_OFFLINE_MS` (3 600 000), `isLongOffline(panel, nowMs)` (an active, unconnected panel last seen an hour or more ago; never-seen and revoked panels do not count) |
+| `shared/src/domain/pending-order-number.ts` | 1.3 Phase 4. Pending order numbers, `PO/2026-27/00042`: one series per Indian financial year in the company's time zone, minted only by the Master. | `PO_NUMBER_PATTERN` (`^PO/[0-9]{4}-[0-9]{2}/[0-9]{5,}$`), `financialYearLabel(at, timeZone = 'Asia/Kolkata')` (through `Intl` `formatToParts`, so it runs on Node 16), `formatPendingOrderNumber(fy, seq)` (padded to five, never truncated), `recordNumber({id, poNumber?})` (the number, else the id). Test: `shared/tests/pending-order-number.test.ts` |
 | `shared/src/domain/version.ts` | Version comparison and the release manifest. | `parseVersion`, `compareVersions`, `isNewer`, `standing`, `VersionStanding`, `PanelKind`, `ReleasePlatform` (`win32`/`darwin`/`linux`, plus `win7` for the Electron 22 Office line), `releasePlatformFor(platform, electronVersion)` (`win7` for Windows on an Electron major below `LEGACY_ELECTRON_CEILING` = 23), `LEGACY_RELEASE_PLATFORM` (`'win32'`: a manifest with no `platform` is a Windows build), `ReleaseManifest`, `UpdateAvailability` |
 | `shared/src/domain/release-signature.ts` | Exactly which bytes an Ed25519 release signature covers. Browser-safe (no `node:crypto`). | `SIGNED_MANIFEST_FIELDS` (`panel`, `platform`, `version`, `file`, `sizeBytes`, `sha256`, `releasedAt`), `canonicalManifestPayload()` (`field=value` lines joined by newlines, `sha256` lower-cased), `ManifestSignature`, `isManifestSigned` |
 | `shared/src/domain/release-keys.ts` | The public keys a build trusts; rewritten by `tools/make-release-key.mjs`. **`TRUSTED_RELEASE_KEYS` is currently empty.** | `TrustedReleaseKey`, `TRUSTED_RELEASE_KEYS`, `trustedKeyById`, `allowUnsignedReleases(env)` |
@@ -998,7 +1000,7 @@ appends every missing key just before the final `};` with its English text and a
 | `shared/src/sync/hlc.ts` | Hybrid logical clock, fixed-width so string order is causal order: `PPPPPPPPPPPPPPPP-CCCCC-DDDDDD` (16-digit ms, 5-digit counter, 6-char device code). Never runs backwards; the counter throws above 99 999. `HlcParts`, `Hlc`, `formatHlc`, `parseHlc`, `compareHlc`, `HlcState`, `initialHlcState(deviceCode)`, `tickHlc(state, nowMs)`, `observeHlc(state, remote, nowMs)`. The caller passes the time in. |
 | `shared/src/sync/ids.ts` | Record identity across the offline boundary. **Temporary id:** 15 chars (`TEMP_ID_LENGTH`) = 6-char device code + 9-digit counter, minted by `office/src/sync/device.ts`. **Permanent id:** 12 chars (`PERMANENT_ID_LENGTH`) = 2-letter prefix + 10 digits, minted only by the Master (formatted by `master/src/repositories/identity.repository.ts`), in `compareForIdAssignment` order (HLC, then device code) — the sort is applied in `master/src/services/sync.service.ts#applyPush` (`[...request.mutations].sort(compareForIdAssignment)`, line 92), not in the repository. Device alphabet `23456789ABCDEFGHJKMNPQRSTVWXYZ` (no 0/O/1/I/L/U). `SYNCABLE_ENTITIES` (12) and `ENTITY_PREFIX`: lead LD, order OD, line_item LI, party PT, product PR, product_category PC, product_variant VR, party_variant PV, timeline_entry TL, reservation RS, role RL, user US. Also `isSyncableEntity`, `isValidDeviceCode`, `deviceCodeFromSeed` (FNV-1a), `formatTemporaryId`, `formatPermanentId`, `isTemporaryId`, `isPermanentId`, `DEVICE_CODE_LENGTH`. |
 | `shared/src/sync/mutations.ts` | The outbox record. `Mutation`: `mutationId` (client-generated; replay is a no-op), `kind`, `entity`, `entityId`, `hlc`, `deviceCode`, `payload`, `fields` (exactly the fields this edit asserts), `baseFieldHlc` (per-field HLC the editor saw), `actorUserId`, `createdAt`. **`MUTATION_KINDS` (16):** `lead.create`, `lead.update`, `lead.setStage`, `lead.addRemark`, `lead.convert`, `order.update`, `order.setStage`, `order.dispatch`, `party.create`, `party.update`, `product.create`, `product.update`, `partyVariant.upsert`, `stock.inbound`, `stock.adjust`, `stock.setReorderLevel`. `MUTATION_PERMISSIONS` maps each kind to its key (e.g. `lead.convert→lead.convert`, `order.dispatch→orders.dispatch`, `partyVariant.upsert→parties.edit`, `stock.inbound`/`setReorderLevel→inventory.edit`); the panel checks it locally and the Master again. `MutationStatus` (`applied`/`merged`/`duplicate`/`rejected`), `MutationFieldConflict`, `MutationResult`, `SyncPushRequest`, `SyncPushResponse` (`results`, `idMappings`, `serverHlc`). **Deletes and restores are never mutations**; they need the Master online. |
-| `shared/src/sync/merge.ts` | `mergeFields(target, incoming)` per asserted field (below). Fields in the private `NON_CONFLICTING_FIELDS` set (`updatedAt`, `version`, `hlc`, `searchVector`; not exported — exposed only through `isConflictWorthy`) are never reported. Values are compared with `===`, or with `JSON.stringify` only when both are objects. Outcome: `accepted`, `fieldHlc`, `conflicts`, `status` (`merged`/`applied`). Also `isConflictWorthy`, `MergeCandidate`, `MergeTarget`, `MergeOutcome`. **Used only by `master/src/services/sync.service.ts`** (`mergeFields(` at line 503); `order.service.ts` and `catalog.service.ts` only stamp the per-field HLCs the merge later reads (they name `mergeFields` in comments). Nothing in `office/src` uses it. |
+| `shared/src/sync/merge.ts` | `mergeFields(target, incoming)` per asserted field (below). Fields in the private `NON_CONFLICTING_FIELDS` set (`updatedAt`, `version`, `hlc`, `searchVector`; not exported — exposed only through `isConflictWorthy`) are never reported. Values are compared with `===`, or with `JSON.stringify` only when both are objects. Outcome: `accepted`, `fieldHlc`, `conflicts`, `status` (`merged`/`applied`). Also `isConflictWorthy`, `MergeCandidate`, `MergeTarget`, `MergeOutcome`. **Used only by `master/src/services/sync.service.ts`** (`mergeFields(` at line 503); `order.service.ts` and `catalog.service.ts` only stamp the per-field HLCs the merge later reads (they name `mergeFields` in comments). Nothing in `office/src` uses it. Since 1.3 Phase 4 it also holds `lineKey` and `sameLines(stored, incoming)`, moved here from `master/src/services/sync.service.ts`: whether two line sets say the same thing in the same order, used by the Master's merge and by both lead forms to leave unchanged lines out of an edit. |
 | `shared/src/sync/apply-change.ts` | `applyChangeToSnapshot(snapshot, event)` → `ApplyOutcome` `applied` / `refresh` / `ignored`. Any entity in `SNAPSHOT_FORCING_ENTITIES` gives `refresh`. `deleted` removes the row (lead, party, product, order). Otherwise upsert (new rows first) for lead, party, product, product_category, order, and stock keyed by `variantId`. Unknown entities → `ignored`. One implementation shared by `office/src/realtime/master-connection.ts` and `office/web/src/App.tsx`. |
 
 **How a merge decides**, for each field the incoming edit asserts:
@@ -1011,7 +1013,7 @@ appends every missing key just before the final `};` with its English text and a
 3. Otherwise the stored value wins; the incoming value is not written and is
    recorded as the loser if it differs.
 
-### 3.10 `protocol/` — wire contracts (5 files)
+### 3.10 `protocol/` — wire contracts (6 files)
 
 **`shared/src/protocol/socket.ts` — the Socket.IO contract.**
 
@@ -1084,6 +1086,23 @@ Master's `masterUniqueId`), `panelCredentialsInvalid`, `unauthorized`, or
 `maintenance` for anything that is not an `AppError`. The hub pings every 4 s and
 drops a socket silent for 6 s more.
 
+**1.3 Phase 4 on the socket contract.** `PANEL_PROTOCOL_VERSION` is 4. One new
+command, `presence:beat` (`COMMAND_MIN_PROTOCOL` 4; `PresenceBeat` →
+`RecordPresence | null`), and one new push, `presence:changed`
+(`RecordPresence & {forUserId}`); `socket.ts` now declares 89 commands and 13
+pushes (the counts in the list above predate the 1.3 additions).
+`AdminAuthPayload` gains `tabId?` and `SocketData` `tabId?` (a Master browser tab's
+presence id, so closing the tab drops it at once). `DataChangedEvent` gains
+`actorUserId?` / `actorName?` (who saved, for "Ravi saved this at 10:42").
+`MutationResult.number?` carries the PO number an applied `lead.create` got.
+
+**`shared/src/protocol/presence.ts` — live presence (1.3 Phase 4).**
+`PresenceRecordKind` (`lead`/`order`), `PresenceBeat {tabId, recordKind?, recordId?,
+editing?}` (no record = the tab left), `PresenceEntry {userId, displayName, avatar,
+tier, editing, since}` (one per person, tabs merged), `PresenceLastWrite`,
+`RecordPresence {recordKind, recordId, entries, lastWrite?}`, `PRESENCE_BEAT_MS`
+(10 000) and `PRESENCE_TTL_MS` (30 000). Held in the Master's memory only.
+
 **`shared/src/protocol/discovery.ts` — custom UDP discovery (not mDNS).**
 `DISCOVERY_PORT = 45789`, `DISCOVERY_MAGIC = 'ORDERBOOK'`,
 `DISCOVERY_PROTOCOL_VERSION = 1`, `DISCOVERY_BROADCAST_INTERVAL_MS = 1500`. The
@@ -1152,7 +1171,7 @@ and the one it added show their `it(` count instead, marked `it(`.
 | `shared/tests/colour-rule.test.ts` | 12 `it(` | catalogue v2: `colourRuleOf` precedence (`multiColour` wins even with a label), blank labels, `shownColour`/`colourRepeatsName`, the numeric Model/Code split, `lineColourText` summing and grouping |
 | `shared/tests/fields.test.ts` | 3 `it(` | catalogue v2: `product.brand` is a managed set with no hex, in `FIELD_LIST_KEYS` and the catalogue |
 | `shared/tests/apply-category-change.test.ts` | 1 `it(` | a `deleted` category change takes the category out of a connected panel's snapshot, and a restore puts it back |
-| `shared/tests/record-search.test.ts` | 3 `it(` | `matchesRecordSearch`: an empty term matches everything; finds by id, party, owner, notes, product, code and packaging, ignoring case; needs every word, in any order |
+| `shared/tests/record-search.test.ts` | 4 `it(` | `matchesRecordSearch`: an empty term matches everything; finds by id, party, owner, notes, product, code and packaging, ignoring case; needs every word, in any order; finds by PO number, whole or in part, and by id when there is none |
 | `shared/tests/release-platform.test.ts` | 4 `it(` | `releasePlatformFor`: Windows on Electron 22 gets `win7`; Windows on Electron 23 or 33 gets `win32`; Windows with no Electron version, or an empty one, gets `win32`; Linux and macOS on Electron 22 keep their own platform |
 | `shared/tests/activity-tokens.lock.json` | — | 59 committed `activity.*` tokens that must never disappear from `en.ts` (the catalogue has 79) |
 
@@ -1312,6 +1331,8 @@ removed on 2026-09-25.
 | `ui/src/States.tsx` | `EmptyState`, `ErrorState`, `ConflictBanner`, `OfflineBanner`, `Skeleton`, `SkeletonRows`, `SkeletonTable` | `SkeletonTable` builds the same grid template as `DataTable` (`gridTemplateFor`: same widths and filler track) but never drops a column, because it calls `fitColumns(columns, 0, 0)` and zero width means "not measured" |
 | `ui/src/KanbanBoard.tsx` | `BoardStage`, `BoardItem`, `KanbanBoard` | native HTML5 drag; every card is a `role="button"` `div` (so it can nest its own menu) that opens (`onOpen`) on **double-click** or Enter — not on a single click, unlike `DataTable` rows. Since 1.3 Phase 1 a column draws at most `COLUMN_CAP = 60` cards, then a ghost "Show {count} more" button (per-column state, `kanban.showMore`); the header count is still the whole column. Office only. |
 | `ui/src/StatTile.tsx` | `StatTile`, `StatTileSkeleton` | 1.3 Phase 1. One dashboard figure: eyebrow label (optional icon), big number, note; `tone` `conflict`/`offline`/`ok` colours the figure; `onClick` makes the whole tile a button. Counts only. Used by both panels' Dashboards, which each kept a private copy before; `StatTileSkeleton` is its static loading shape. |
+| `ui/src/RecordNumber.tsx` | `RecordNumber`, `recordNumberText` | 1.3 Phase 4. A pending or final order's number the way every screen shows it: the PO number in mono, a **Provisional** pill (`tone="offline"`, title `lead.number.provisionalHint`) beside the temporary id while an Office save waits for the Master, else the id. `recordNumberText` is the same as text for toasts and dialog titles. In the strict-i18n lint list. Test: `ui/tests/record-number.test.tsx` |
+| `ui/src/AvatarStack.tsx` | `AvatarStack` | 1.3 Phase 4. Who else has a record open, top right of its header: up to four overlapping `Avatar`s then a `+N` chip, an accent ring (`data-editing`) for anyone editing, a small shield (`data-server-master`) for a Server Master, titles `presence.viewing` / `presence.editing`; `selfUserId` is left out and nothing renders when nobody else is there. There is no board-card variant: the Master pushes presence only to people on the record, so a board has nothing to show. In the strict-i18n lint list. Test: `ui/tests/avatar-stack.test.tsx` |
 | `ui/src/CursorPager.tsx` | `LoadMorePager`, `NewerOlderPager` | keyset paging, no page numbers |
 | `ui/src/ProgressiveImage.tsx` | `ProgressiveImage` | blurhash placeholder (module-wide decode cache) under `<img src="/uploads/images/:imageId/:variant">`; variant chosen from `slotPx` via `variantForSlot`; no fade-in |
 | `ui/src/PermissionGrid.tsx` | `PermissionGrid` | module × action matrix from the server's `PermissionCatalogue`; cells checkbox / dash / blocked-for-tier (the reason names the tier through `tierLabel`, so admin reads "Normal Admin") |
@@ -1336,7 +1357,8 @@ removed on 2026-09-25.
 | `ui/src/PartyFormModal.tsx` | `CreatedParty`, `PartyFormTransport`, `PartyFormModal` | Full party create/edit form (11 text fields); registers `useEnterToAdvance` and `useCommand('record.save')`. Transport `{ createParty(input) → {id}, updateParty(id, input & { baseFieldHlc? }) }` implemented by `master/web/src/partyFormTransport.ts` and `office/web/src/partyFormTransport.ts`. Mounted by `master/web/src/screens/PartiesScreen.tsx`, `office/web/src/screens/AddLeadScreen.tsx`, `office/web/src/screens/CatalogScreen.tsx`. |
 | `ui/src/SettingsLayout.tsx` | `SettingsTab`, `SettingsPage`, `requestSettingsTab`, `useSettingsTab`, `SettingsSection`, `SettingRow`, `NumberSetting` (moved here from the Master's Settings screen for catalogue v2, so the Office Leads tab can use it: `{ control, value, label, saving, onSave(value) }`), `AppearanceSettings`, `DeveloperTransport`, `useDeveloperSession`, `DeveloperTool`, `DeveloperPanel`, `useUninstallTool`, `UninstallBridge` | Both panels' `screens/SettingsScreen.tsx`. `useSettingsTab` stores the tab under `ob.settings.tab.master`/`.office`. `AppearanceSettings`: language (`setLocale` then `window.location.reload()`), theme, scale slider, density, motion. Developer tab: password unlock, token only in React state; `confirmWord` gates destructive tools; `useUninstallTool(bridge)` shows "unavailable" in a plain browser. |
 | `ui/src/OrderNoteScreen.tsx`, `ui/src/OrderNote.tsx`, `ui/src/order-note.css` | 2026-09-30: the order's Filling / Dispatch note. `OrderNoteScreen` is the preview sub-screen (`EditorScreen`): note switch (also Alt+F / Alt+D), Dispatch-only Vehicle no. field saved on blur/Enter via `onSaveVehicle`, printer picker (desktop only, remembered in `localStorage['ob.note.printer']`), Print (also Ctrl+P) → `desktop.printPage` else `window.print()`. `OrderNote` draws the sheets (794 × 1123 px, heights from `NOTE_LAYOUT` as CSS custom properties); a second copy is portalled to `<body>` and is all `@media print` shows. Paper colours are the sheet's own, not theme tokens. | `OrderBoardScreen` (Office), `LeadsOrdersScreen` (Master) |
-| `ui/src/LeadEntryScreen.tsx` | 2026-10-01 (P3): the New / Edit pending order form, a port of `office/web/src/screens/AddLeadScreen.tsx` — keep in step; the Office still has its own copy (HANDOFF owed work). `LeadEntryView` (`optionLists`, `partyVariants`, `stock`, `partyGrants`, `features`, optional `products`), `LeadEntryTransport extends PartyFormTransport { pick, createLead, updateLead }` read through `transportRef`. Differences: Master wording keys (`lead.add.savingHintOnline`, `…draft.packagingEmptyFields`/`gradeEmptyFields`), `canCreateParty` hides Create party, `onSaved(id, saved?)`, errors through `apiErrorText`, edit seeds the picker with the lead's own party. | `LeadEntry` (Master) |
+| `ui/src/LeadEntryScreen.tsx` | 2026-10-01 (P3): the New / Edit pending order form, a port of `office/web/src/screens/AddLeadScreen.tsx` — keep in step; the Office still has its own copy (HANDOFF owed work). `LeadEntryView` (`optionLists`, `partyVariants`, `stock`, `partyGrants`, `features`, optional `products`), `LeadEntryTransport extends PartyFormTransport { pick, createLead, updateLead }` read through `transportRef`. Differences: Master wording keys (`lead.add.savingHintOnline`, `…draft.packagingEmptyFields`/`gradeEmptyFields`), `canCreateParty` hides Create party, `onSaved(id, saved?)`, errors through `apiErrorText`, edit seeds the picker with the lead's own party. Since 1.3 Phase 4 (both copies): an edit sends only what changed plus `baseFieldHlc` and shows `StaleEditNotice` (`remoteChange` prop); Reload theirs remounts the form from the newest lead (the exported component is a thin wrapper keyed on it). This copy only: an **Owner** picker when `view.owners` is present (`record.reassignOwner`; a Server Master is marked in the list), `ownerId` sent on create, or on edit when changed; `createLead` answers `{id, poNumber?}`, and `onSaved(id, created)` hands the created lead on when it has a number. | `LeadEntry` (Master) |
+| `ui/src/LeadStaleEdit.tsx` | 1.3 Phase 4: stale-edit protection shared by both lead forms. `changedLeadFields(opened, values, base)` (only what changed since the form opened, `items` only when `sameLines` says they differ, plus `baseFieldHlc`; null when nothing changed), `useLeadEditBase(lead)` (the opened lead, the clocks the next save is checked against, `conflicted` when somebody else's save reached the open form or a save came back 409 `error.conflict.staleEdit`, `refused(error)`, `keepMine()`), and `StaleEditNotice` ("Ravi saved this at 10:42" from the presence push's `lastWrite`, else `error.conflict.staleEdit`, with Reload theirs / Keep mine through `ConflictNotice`'s new `overwriteLabel`). In the strict-i18n lint list. Tests: `ui/tests/lead-entry-screen.test.tsx`, `ui/tests/office-shell.test.tsx` | `LeadEntryScreen`, `office/web/src/screens/AddLeadScreen.tsx` |
 | `ui/src/catalogueSummary.ts` | 2026-10-01 (P4): `productLabel`, `byCatalogueOrder`, `shownColours`, `codesOf`, `weightLabel` (verbatim from `office/web/src/productSummary.ts` — keep in step) and the two types the catalogue ports share: `CatalogueView` (`permissions`, `optionLists`, `categories`, `products`, and `stock`, optional since 1.3 Phase 1 because the Master no longer passes it) and `CatalogueTransport` (list/paging, category and product writes, photos, import) | the six catalogue ports below |
 | `ui/src/SubProductsScreen.tsx` | 2026-10-01 (P4): Products → Sub products, the products half of `office/web/src/screens/CatalogScreen.tsx` — keep in step. Brand chips, the Product picker above the table, search, `LoadMorePager`; refetch on the host's `revision` and after its own writes. Dropped from the Office copy: parties, not-synced rows, snapshot overlay, "cached page". New / Import / Edit / photo controls absent without `products.create` / `products.bulk` / `products.edit`. The free-stock column is left out when `view.stock` is undefined, which on the Master it always is since 1.3 Phase 1. | `ProductsScreen` (Master) |
 | `ui/src/MainProductsScreen.tsx` | 2026-10-01 (P4): `MainProductsScreen` (Products page: list, detail with sub products from `view.products` in catalogue order, `MainProductForm`; a brand retired since it was set is not re-sent) and `BrandsScreen({ permissions, transport, revision })` (the shared `OptionListEditor` on `product.brand`; no-access message without `fields.view`). Port of `office/web/src/screens/MainProductsScreen.tsx`. | `ProductsScreen` (Master) |
@@ -1356,6 +1378,7 @@ removed on 2026-09-25.
 |---|---|---|
 | `ui/src/useDebounced.ts` | `DEBOUNCE_MS` (150), `useDebounced` | |
 | `ui/src/useMediaQuery.ts` | `useMediaQuery` | `useSyncExternalStore`, correct on first render |
+| `ui/src/useRecordPresence.ts` | `PresenceTransport`, `PresenceChannel`, `createPresenceChannel(transport)`, `PRESENCE_TAB_ID`, `RecordPresenceState`, `useRecordPresence(channel, target, editing)` | 1.3 Phase 4. Each panel makes one channel (`master/web/src/presence.ts`, `office/web/src/presence.ts`) and pushes the Master's presence frames into it (`push`, `reset` on a lost link). The hook beats every `PRESENCE_BEAT_MS` while the record's screen is showing (a screen `ScreenHost` hides runs its cleanup) and the browser tab is visible, never for a temporary id; it leaves with a beat naming no record, deferred one tick so a screen taking over the same tab cancels it, and with a `keepalive` beat on `pagehide`. Returns `{entries, lastWrite}`. `PRESENCE_TAB_ID` is 24 hex digits from `crypto.getRandomValues` (`randomUUID` is undefined over plain LAN http). The channel is held in a ref |
 | `ui/src/useEnterToAdvance.ts` | `useEnterToAdvance`, `useEscapeToPrevious` | Enter walks fields (`input`, `select`, `textarea`, `[data-field]`) in a container ref, skipping `[data-keys-grid]`, leaving textareas alone; on the last field calls `onSubmit`. On a native `<select>` the first Enter opens its picker (`showPicker()`) and only the next Enter advances (Chromium 121+; on the Win7 build's Chromium 108 the call throws, is caught, and Enter just advances); Enter on a `button` or an element with `role="button"` is left alone (it is a click). Escape walks back. |
 | `ui/src/breakpoints.ts` | `BP_NARROW` (`max-width: 1180px`) | physical px; `base.css` repeats it and also steps at 1080px wide and 800px tall (the unused `BP_TIGHT`/`BP_SHORT` constants were removed 2026-09-25) |
 | `ui/src/rem.ts` | `rem` | `rem(px)` = `px/14` rem for inline styles |
@@ -1452,7 +1475,11 @@ is therefore kept as two byte-identical copies** (`master/web/src/screens/PartyA
 
 `ui/tests/` (jsdom; the counts in brackets are tests passed at `43fd5b0`; 1.3 Phase 3
 added `ui/tests/notification-bell.test.tsx` and the link and bell cases in both shell
-tests, below):
+tests, below; 1.3 Phase 4 added `ui/tests/avatar-stack.test.tsx` (4) and
+`ui/tests/record-number.test.tsx` (5), the stale-edit cases in
+`ui/tests/lead-entry-screen.test.tsx`, the save toast (number or Provisional), presence
+and numbered cases in `ui/tests/office-shell.test.tsx` and the Owner picker cases in
+`ui/tests/master-shell.test.tsx`):
 `ui/tests/activity-spike.test.tsx` (3, `<Activity>` semantics),
 `ui/tests/screen-host.test.tsx` (5), `ui/tests/app-shell-nav.test.tsx` (4),
 `ui/tests/settings-layout.test.tsx` (9), `ui/tests/developer-panel.test.tsx` (6),
@@ -2190,6 +2217,15 @@ exercised only through service integration tests.
   ids, returns `unreadCount`), `startNotificationPruner()` (at start, then every 6 h:
   read notices over 60 days old and anything past a person's newest 500). Both reads
   return nothing when the actor has no `userId`.
+- `master/src/services/presence.service.ts` — 1.3 Phase 4. `beat(actor, connPrefix,
+  body)`: checks the shape (`validation.presence.invalid`), takes who is beating from
+  the actor only (401 with nobody signed in), and re-reads the record through
+  `leadService.getLead` / `orderService.getOrder` on every beat, so the view
+  permission and party scope apply; a refusal takes the tab off before it is
+  rethrown. The user row (name, avatar, tier) is read once per join. Also
+  `dropConnections`, `leaveConnection`, `noteWrite(DataChangedEvent)`,
+  `onPresenceChange`, `resetPresence`, `isPresenceTabId`. Never logs and never goes
+  through `publishChange`.
 - `master/src/services/snapshot.service.ts` (147) — `buildSnapshot(actor)`: parties,
   products, categories, leads, orders, stock (500 each, except products and stock
   rows at `PRODUCT_PAGING.maxLimit`, 2000, since catalogue v2 — 549 sub products
@@ -2665,7 +2701,7 @@ the service checks.
   (`orders.delete`); `GET /conflicts`, `POST /conflicts/:id/resolve`.
 - `master/src/http/routes/public-api.routes.ts` (`/api/v1`) — table-driven (§5.8.2).
 
-### 5.9 `realtime/` (5 files)
+### 5.9 `realtime/` (6 files)
 
 - **`master/src/realtime/hub.ts`** — `createRealtimeHub(httpServer)` → `{io, stop}`;
   also `socketCounts()` (for health) and `disconnectEverySocket()` (developer reset).
@@ -2715,7 +2751,17 @@ the service checks.
     sockets acting as them. `onNotification` → `notification:new` through it.
     `notification:list` / `notification:markRead` are registered through `run()`,
     so they act as the acting person. The long-offline notices are scheduled at
-    start and cancelled in `stop()`.
+    start and cancelled in `stop()`. Since 1.3 Phase 4: `presence:beat` (keyed
+    `panel:<panelId>:<tabId>`), dropped on disconnect and on an actor change; a
+    Master browser's handshake `tabId` keys `admin:<userId>:<tabId>`, left when that
+    socket closes; `onChange` feeds `presenceService.noteWrite`, and
+    `presence:changed` goes through `emitToActors` gated by `mayReceive` and the
+    party's grants.
+- **`master/src/realtime/presence-store.ts`** — 1.3 Phase 4. Pure, in memory: one
+  entry per connection key, a person's tabs merged in `view()` (editing if any is,
+  earliest `since`), a 30 s TTL swept on each beat (no timer), a 100 ms trailing
+  debounce per record for pushes, `lastWrite` sent once on the next push. Test:
+  `master/tests/presence-store.test.ts`.
 - **`master/src/realtime/fan-out.ts`** — delivery rules shared by the live push and
   the reconnect replay: `DIRECTORY_ENTITIES` (`role`, `user`),
   `PARTY_SCOPED_ENTITIES` (`lead`, `order`, `party`, `party_variant`),
@@ -2975,7 +3021,7 @@ are recounted in the 1.3 Phase 9 reconciliation.
   Admin role's stored permissions, so Admin's seeded key set tracks whatever the
   catalogue is when that migration first runs on a database.
 
-### 6.2 All 39 migrations, in the order they are applied
+### 6.2 All 40 migrations, in the order they are applied
 
 | # | Migration | Lines | What it does / leaves behind |
 |---|---|---|---|
@@ -3017,7 +3063,8 @@ are recounted in the 1.3 Phase 9 reconciliation.
 | 36 | `master/src/db/migrations/20261001000000_server_master_tier.ts` | — | **Pinned last, additive, idempotent** (1.3 Phase 2, the first migration of the 1.3 batch). Drops and re-adds `roles_tier_check` with `server_master`; for each tenant with no live Server Master role seeds one `is_system` "Server Master" role ("Server Master (system)" on a name clash) holding a frozen inline copy of the 53 keys, id from `id_sequences` `role`. `down()` is empty |
 | 37 | `master/src/db/migrations/20261002000000_user_notifications.ts` | 51 | **Pinned, additive, idempotent** (1.3 Phase 3). `user_notifications` (uuid id, `user_id TEXT REFERENCES users(id)`, kind CHECK `^[a-z]+[.][a-zA-Z]+$`, params, link, dedupe_key, created_at, read_at), the `(tenant_id, user_id, created_at DESC)` index, the partial unread index and the partial UNIQUE dedupe index (`WHERE dedupe_key IS NOT NULL AND read_at IS NULL`) |
 | 38 | `master/src/db/migrations/20261002000001_office_panel_master_proof.ts` | 23 | **Pinned, additive** (1.3 Phase 3). `ADD COLUMN IF NOT EXISTS office_panels.master_proof_key TEXT NULL`, filled at the panel's next `authenticatePanel` |
-| 39 | `master/src/db/migrations/20261004000000_report_indexes_and_grants.ts` | — | **Pinned last, additive, idempotent** (1.3 H2). The owner-by-date indexes the reports read through, and a union grant of `reports.view` + `reports.export` to the office and management tiers |
+| 39 | `master/src/db/migrations/20261003000000_pending_order_numbers.ts` | 91 | **Pinned, additive, idempotent** (1.3 Phase 4). `leads.po_number TEXT` with the guarded CHECK `leads_po_number_format`; an UPDATE-only backfill per tenant and financial year in `(created_at, id)` order, deleted leads included, the time zone frozen inline as Asia/Kolkata, continuing after the higher of the existing numbers and the counter; the partial UNIQUE `leads_po_number_uq (tenant_id, po_number) WHERE po_number IS NOT NULL`; seeds `id_sequences` `po:<fy>` with ON CONFLICT greatest. `identity.repository.ts#backfillPendingOrderNumbers` is a frozen copy for a pre-1.3 `.obbackup` restore. `master/tests/migration-pending-order-numbers.integration.test.ts` |
+| 40 | `master/src/db/migrations/20261004000000_report_indexes_and_grants.ts` | — | **Pinned last, additive, idempotent** (1.3 H2). The owner-by-date indexes the reports read through, and a union grant of `reports.view` + `reports.export` to the office and management tiers |
 
 ### 6.3 Conventions across the schema
 
@@ -3266,6 +3313,7 @@ files of its own** — §7.6 lists the tests that read or boot this source.
 | `master/web/src/settingsTabs.ts` | 30 | 1.3 Phase 1: `SETTINGS_TAB_IDS` and `settingsTabIdsFor(permissions)`, moved out of `SettingsScreen.tsx` so the shell can build the Settings fold without loading that lazy screen |
 | `master/web/src/partyFormTransport.ts` | 20 | hands the shared `PartyFormModal` `api.createParty`/`api.updateParty` |
 | `master/web/src/transports.ts` | 74 | `leadRecordTransport`, `orderRecordTransport`, `leadEntryTransport` and `catalogueTransport`: module-level `api.x` references handed to the shared views (2026-10-01); since 1.3 Phase 1 also `optionListTransport`, moved here from `FieldsScreen.tsx` so Products and Settings do not pull in the lazy Fields screen |
+| `master/web/src/presence.ts` | 14 | 1.3 Phase 4: `presenceChannel`, the shared `createPresenceChannel` over `api.presenceBeat` (`POST /api/presence`); `App.tsx` sends `PRESENCE_TAB_ID` in the socket handshake, pushes `presence:changed` into the channel and resets it on disconnect. `LeadsScreen` and `OrdersScreen` mount `useRecordPresence` and an `AvatarStack` in the record header |
 | `master/web/src/styles.css` | 152 | legacy layer styling bare elements; every element-selector rule (`button`, `input`/`select`/`textarea`, `label`, `table`) is guarded by `:not(:where([class*='ob-']))`; the only class rules left are `.dot` and `.num` (the `:root` alias tokens, `.card`, `.row`, `.muted`, `.chip*` and the rest went on 2026-09-25) |
 | `master/web/src/components/ChangePasswordDialog.tsx` | 177 | change your own password: 8-char minimum and match checked client-side, then `api.changeOwnPassword`; the server invalidates every session for the user, so the 401 path returns to sign-in. A Server Master also types the master key, verified first; its token rides on the change |
 | `master/web/src/components/MasterKeyPrompt.tsx` | 114 | 1.3 Phase 2. `MasterKeyForm` (the key field → `api.verifyMasterKey`; a 429 lockout shows its seconds through `apiErrorText`), `MasterKeyPrompt` (it in a `Modal`: a credential prompt, not a record) and `useMasterKeyPrompt()` → `{ ask, prompt }`, an awaitable prompt used by Roles & users and Settings |
@@ -3843,6 +3891,18 @@ one with none; `masterConnection.on('notification')` goes through it. `POST
 /api/sync/flush` calls `masterConnection.retryNow()` first. The SSE `status` frame and
 `/api/sync` carry the new status fields (below) through `getStatus()`.
 
+**1.3 Phase 4 in the Office HTTP API.** `POST /api/leads` waits for the Master's PO
+number while connected and adds `status` (`numbered`/`provisional`/`rejected`),
+`permanentId` and `poNumber` to its 202 (`numberingOf`). Every queued `PUT` takes
+`baseFieldHlc` out of the payload and sends it as the mutation's own (`fieldClocks`
+keeps only string clocks). `POST /api/presence` (`requireUser`) forwards
+`presence:beat` with the body cut down to the protocol's fields (`presenceBeat`). The
+SSE stream gains `presence` (through `broadcastForUser`, from
+`masterConnection.on('presence')`, which `master-connection.ts` re-emits from
+`presence:changed`) and `numbered` (from `sync.onNumbered`, to everyone: it only
+updates the save toast and keeps an open provisional lead open; the bell entry comes
+from the Master's `lead.numbered` notification).
+
 ### 8.5 Sync layer — `office/src/sync/`
 
 - `office/src/sync/outbox.store.ts` — the durable queue. `enqueue()` stamps
@@ -3874,7 +3934,16 @@ one with none; `masterConnection.on('notification')` goes through it. `POST
   Since 1.3 Phase 3 the transport is `commandWithin(60_000)` for `sync:push`, since a
   push may wait its turn in the Master's push gate, and the link flushes right after
   `setTransport` on every connect, so work queued while the link was idle without a
-  transport is sent.
+  transport is sent. Since 1.3 Phase 4: `awaitSettled(mutationId, timeoutMs)` (the
+  push answer or null; never rejects; a bounded `recentlySettled` map answers a
+  late waiter), `onNumbered(listener)` (`NumberedEvent {entity:'lead', temporaryId,
+  permanentId, poNumber?, announced}` for every accepted `lead.create` whose
+  temporary id was replaced), and a rerun flag so a save that lands during a flush
+  is sent straight after it. `POST /api/leads` waits up to `config.sync.saveNumberWaitMs`
+  (`OFFICE_SAVE_NUMBER_WAIT_MS`, 5000) while connected and answers `status`
+  `numbered` / `provisional` / `rejected`; `local-store.ts#holdNumbered` keeps a
+  numbered lead in the view under its temporary id, with its number, until the
+  permanent record arrives.
 - `office/src/sync/local-store.ts` — snapshot + derived overlay.
   `setSnapshot(snapshot, cursor)` writes `{version:2,…}` (plain `writeFile`; a torn
   file reads back null). `restore()` shares one in-flight read. `noteApplied(seq,
@@ -4049,7 +4118,7 @@ Singleton `masterConnection` (an `EventEmitter`).
 - `office/src/domain/backup.ts` — `BackupValidationError`,
   `assertImportableFormatVersion`, `assertPassphraseStrong`, `summarizeManifest`.
 
-### 8.8 `office/tests` (14 files, 165 `it(` cases, no PostgreSQL)
+### 8.8 `office/tests` (16 files, 175 `it(` cases, no PostgreSQL)
 
 They mock `../src/config/index.js` or use `mkdtemp`, load modules with dynamic
 `await import()`, and several use `supertest` against `createApp()` with a stubbed
@@ -4068,8 +4137,11 @@ does.
 | `office/tests/module-forwarding.test.ts` | 11 | 503 vs refusal pass-through, 403 with permission, 401 without session; `/api/products` online/offline; bulk import online-only |
 | `office/tests/credentials.test.ts` | 8 | round trip, 0600, corrupt = unpaired |
 | `office/tests/lead-route.test.ts` | 12 | `POST /api/leads` and `PUT /api/leads/:id` shape checks (the trust boundary); a malformed payload without `leads.create` / `leads.edit` gets 403, not 400 |
+| `office/tests/sync-settle.test.ts` | 6 | 1.3 Phase 4: `awaitSettled` resolves with the permanent id and PO number, and null on timeout; a save during a flush reruns at once; `numbered` says `announced` only when a save was waiting |
+| `office/tests/presence-route.test.ts` | 4 | 1.3 Phase 4: `POST /api/presence` forwards `presence:beat` with the body cut down to the protocol's fields; 503 offline |
 | `office/tests/snapshot-for-user.test.ts` | 5 | `GET /api/snapshot` key set (DSH-1), permissions replaced, other people's restricted parties withheld |
 | `office/tests/local-store-restore.test.ts` | 4 | concurrent `restore()`, never-synced, torn file |
+| `office/tests/local-store-overlay.test.ts` | 1 | 1.3 Phase 4: a queued lead edit stamps its fields' clocks on the view, so the next edit's base is that edit and the Master's merge sees no clash |
 | `office/tests/health-route.test.ts` | 3 | `/api/health` without a session; the gate holds; JSON 404 |
 | `office/tests/dashboard-staleness.test.ts` | 2 | `forCurrentUser` strips figures (DSH-3) |
 | `office/tests/legacy-compat.test.ts` | 8 (+1 `it.each` over 9 patterns) | the Node 16.17 floor: no named `statfs` import, `fromWeb`, `closeAllConnections`, `AbortSignal.any`/`timeout`, `structuredClone` or ES2023 builtins in `office/src` or `shared/src`; `legacy-globals.js` is the entry point's first import; undici stays on 5.x; `installLegacyGlobals` fills only what is missing; `parseWmicDisk`; the `wmic` fallback when `fs.statfs` is missing |
@@ -4126,8 +4198,9 @@ record; the real record arrives later over the SSE stream.
 | `office/web/src/App.tsx` | 1329 | the shell (§9.2) |
 | `office/web/src/api.ts` | 869 | the only HTTP client (§9.3) |
 | `office/web/src/settingsTabs.ts` | 12 | 1.3 Phase 1: `SETTINGS_TAB_IDS`, moved out of `SettingsScreen.tsx` so the shell can build the Settings fold without loading that lazy screen |
-| `office/web/src/localSearch.ts` | 89 | `searchLocalView(view, term)` — the palette's offline fallback: case-insensitive substring over products, parties, leads, orders; ≥ 2 chars, ≤ 20 hits (`LIMIT`), `rank: 0` |
+| `office/web/src/localSearch.ts` | 89 | `searchLocalView(view, term)` — the palette's offline fallback: case-insensitive substring over products, parties, leads, orders (leads and orders also on their PO number and id, with the number in the subtitle since 1.3 Phase 4); ≥ 2 chars, ≤ 20 hits (`LIMIT`), `rank: 0` |
 | `office/web/src/partyFormTransport.ts` | 20 | `PartyFormModal` → `api.createParty`/`api.updateParty` (return `QueuedResult`) |
+| `office/web/src/presence.ts` | 14 | 1.3 Phase 4: `presenceChannel` over `api.presenceBeat` (the panel server forwards it to the Master); `App.tsx` feeds it the SSE `presence` frame and resets it when the link is not connected. `LeadBoardScreen` and `OrderBoardScreen` mount `useRecordPresence` and an `AvatarStack` in the record header |
 | `office/web/src/optionListTransport.ts` | 32 | catalogue v2: the `OptionListEditor` transport over the forwarded Fields endpoints; `conflictOf` reads `details.storedVersion`/`details.diff` off this panel's `ApiError`. Used by Products → Brands (`SettingsScreen.tsx` keeps an identical private copy for the Leads tab — see §9.7) |
 | `office/web/src/productSummary.ts` | 59 | `codesOf(product)`, `weightLabel(product)` (single weight, low–high range, or `null` = "weight missing"); active variants only. `missingWeight` is file-internal (used by `weightLabel`; unexported 2026-09-25), and `CatalogScreen` never sends the `missingWeight` list filter that `api.listProducts` supports |
 | `office/web/src/styles.css` | 159 | legacy layer: bare-element rules guarded by `:not(:where([class*='ob-'], …))`, plus `.dot` and `.num` (the old token aliases, `.muted`, `.error`, `.chip*` went on 2026-09-25) |
@@ -5727,6 +5800,21 @@ target-tier and two-Server-Master guards; master-key tokens and lockout) and
 `audit-coverage` (every audit gap the sweep closed, the CSV `sentence`/`details`
 columns and `actor.tier`). Most suites now set up through `setUpFirstRun()` and sign
 in as `master` over supertest (loopback).
+
+**1.3 Phase 4 added** `sync-concurrency` (ten parallel creates numbered
+`PO/<fy>/00001..00010`, contiguous and in HLC order; a refused create takes no number;
+a duplicate replay keeps its number), `migration-pending-order-numbers` (the
+backfill per financial year in `(created_at, id)` order, deleted leads included,
+counters past it, a second run changing nothing) and `presence` (identity from the
+socket, not the body; refusals for nobody signed in, a malformed beat and an
+outsider on a restricted party; no pushes after access is lost; a Master browser's
+REST beat leaving when its socket closes). `lead` (409 stale edit, the PO number on
+create and convert), `backup-chain` (a v1 restore numbers the leads), `http-api`
+(`owners` on the lead-entry view only with `record.reassignOwner`) and
+`server-master` (a Server Master raises a pending order for an office user and deletes
+another user's on a restricted party, both logged) were extended. The unit suite
+`presence-store` (10, pure) pins the TTL, the debounce, tab merging, the prefix drop
+on disconnect and `lastWrite` sent once.
 
 ### 12.3 Source-reading guard tests (`master/tests`, 23 files)
 

@@ -18,7 +18,9 @@ import { matchesRecordSearch, resolveCompanyFeatures, shownColour } from '@order
 import type { Lead, PartyScopeFilter, SyncSnapshot } from '@orderbook/shared';
 
 import { api, type LocalView } from '../api';
+import { presenceChannel } from '../presence';
 import {
+  AvatarStack,
   Button,
   ButtonLink,
   ColourChip,
@@ -31,13 +33,16 @@ import {
   IconButton,
   KanbanBoard,
   Popover,
+  RecordNumber,
   Segmented,
   StatusPill,
   formatKg,
+  recordNumberText,
   rem,
   t,
   useColourHex,
   useFilterBar,
+  useRecordPresence,
   useSubNav,
   useToast,
   type DataTableColumn,
@@ -57,6 +62,10 @@ interface Props {
   canEdit: boolean;
   onError: (message: string) => void;
   onAddLead?: () => void;
+  /** The signed-in person, left out of who else is on the open lead. */
+  userId?: string | null;
+  /** Temporary id → permanent id, for provisional leads the Master has numbered. */
+  numberedIds?: Record<string, string>;
 }
 
 type BoardTab = 'board' | 'list';
@@ -113,6 +122,8 @@ export function LeadBoardScreen({
   canEdit,
   onError,
   onAddLead,
+  userId,
+  numberedIds,
 }: Props) {
   /** The open lead whose lines are in the entry form, or null. */
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -136,7 +147,13 @@ export function LeadBoardScreen({
   const filtered = (stageFilter ? open.filter((lead) => lead.stageId === stageFilter) : open).filter(
     (lead) => matchesRecordSearch(lead, search),
   );
-  const openLead = view.leads.find((lead) => lead.id === openId) ?? null;
+  // A provisional lead opened before the Master numbered it stays open once
+  // its permanent record replaces it here.
+  const renamedTo = openId ? numberedIds?.[openId] : undefined;
+  const openLead =
+    view.leads.find((lead) => lead.id === openId) ??
+    (renamedTo ? view.leads.find((lead) => lead.id === renamedTo) : undefined) ??
+    null;
 
   useFilterBar(
     pipeline && !openLead ? (
@@ -201,11 +218,21 @@ export function LeadBoardScreen({
       : null,
   );
 
+  // Who else has the open lead up, and whether they are editing it. A
+  // provisional one is never announced: the Master has not heard of it.
+  const presence = useRecordPresence(
+    presenceChannel,
+    openLead ? { recordKind: 'lead', recordId: openLead.id } : null,
+    openLead !== null && editingId === openLead.id,
+  );
+  const others = <AvatarStack entries={presence.entries} selfUserId={userId} />;
+
   if (openLead && editingId === openLead.id) {
     return (
       <EditorScreen
         title={openLead.partyName}
-        meta={<span className="ob-mono ob-small">{openLead.id}</span>}
+        meta={<RecordNumber record={openLead} small />}
+        actions={others}
         onBack={() => {
           setEditingId(null);
           return true;
@@ -216,9 +243,10 @@ export function LeadBoardScreen({
           key={openLead.id}
           view={view}
           lead={openLead}
-          onSaved={(id) => {
+          remoteChange={presence.lastWrite}
+          onSaved={() => {
             setEditingId(null);
-            toast.push(t('lead.edit.saved', { id }));
+            toast.push(t('lead.edit.saved', { id: recordNumberText(openLead) }));
           }}
           onCancel={() => setEditingId(null)}
         />
@@ -235,17 +263,16 @@ export function LeadBoardScreen({
         title={openLead.partyName}
         meta={
           <>
-            {!openLead.sync.hlc && (
-              <StatusPill tone="offline">{t('lead.badge.notSynced')}</StatusPill>
-            )}
             {openLead.convertedOrderId && (
               <StatusPill tone="ok">{t('lead.badge.converted')}</StatusPill>
             )}
-            <span className="ob-mono ob-small">{openLead.id}</span>
+            {/* Provisional, with its temporary id, until the Master numbers it. */}
+            <RecordNumber record={openLead} small />
           </>
         }
         actions={
           <>
+            {others}
             {editable && (
               <Button variant="secondary" size="sm" onClick={() => setEditingId(openLead.id)}>
                 {t('lead.edit.action')}
@@ -307,7 +334,12 @@ export function LeadBoardScreen({
   async function convertFromBoard(lead: Lead): Promise<void> {
     try {
       const result = await api.convertLead(lead.id);
-      toast.push(t('lead.board.convertedToast', { qty: leadPieces(lead), orderId: result.id }));
+      toast.push(
+        t('lead.board.convertedToast', {
+          qty: leadPieces(lead),
+          orderId: recordNumberText({ id: result.id, poNumber: lead.poNumber }),
+        }),
+      );
     } catch (caught) {
       onError(caught instanceof Error ? caught.message : t('lead.error.convert'));
     }
@@ -317,12 +349,8 @@ export function LeadBoardScreen({
     {
       key: 'id',
       header: t('lead.list.col.lead'),
-      width: rem(130),
-      render: (lead) => (
-        <span className="ob-mono" style={{ fontSize: rem(12) }}>
-          {lead.id}
-        </span>
-      ),
+      width: rem(190),
+      render: (lead) => <RecordNumber record={lead} small />,
     },
     { key: 'party', header: t('lead.list.col.party'), render: (lead) => lead.partyName },
     {
@@ -427,10 +455,6 @@ export function LeadBoardScreen({
                     {lead.partyName}
                   </span>
                   <span style={{ flex: 1 }} />
-                  {/* An empty hlc means the Master has not acknowledged it yet. */}
-                  {!lead.sync.hlc && (
-                    <StatusPill tone="offline">{t('lead.badge.notSynced')}</StatusPill>
-                  )}
                   {lead.incomplete && (
                     <StatusPill tone="conflict">{t('lead.badge.incomplete')}</StatusPill>
                   )}
@@ -506,12 +530,8 @@ export function LeadBoardScreen({
                     marginTop: 'var(--s-4)',
                   }}
                 >
-                  <span
-                    className="ob-mono"
-                    style={{ fontSize: rem(11.5), color: 'var(--fg-tertiary)' }}
-                  >
-                    {lead.id}
-                  </span>
+                  {/* Provisional until the Master has acknowledged and numbered it. */}
+                  <RecordNumber record={lead} small />
                   <span className="ob-small">
                     · {lead.items.length}{' '}
                     {lead.items.length === 1 ? t('unit.line') : t('unit.lines')} · {pieces}{' '}

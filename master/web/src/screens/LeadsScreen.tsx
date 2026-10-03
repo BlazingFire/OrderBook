@@ -27,9 +27,11 @@ import type {
 } from '@orderbook/shared';
 
 import { ApiError, api } from '../api';
+import { presenceChannel } from '../presence';
 import { leadRecordTransport } from '../transports';
 import { LeadEntry } from './LeadEntry';
 import {
+  AvatarStack,
   Button,
   ButtonLink,
   ConfirmDialog,
@@ -43,15 +45,18 @@ import {
   Input,
   LeadRecordView,
   LoadMorePager,
+  RecordNumber,
   Segmented,
   SkeletonTable,
   StatusPill,
   formatDateTime,
   formatKg,
+  recordNumberText,
   rem,
   t,
   useDebounced,
   useFilterBar,
+  useRecordPresence,
   useSubNav,
   useToast,
   type DataTableColumn,
@@ -82,6 +87,8 @@ interface Props {
   canCreateParty: boolean;
   /** Moves when what the edit form's view is built from changes. */
   leadEntryRevision: number;
+  /** The signed-in person, left out of who else is on the open record. */
+  userId: string;
 }
 
 /**
@@ -133,6 +140,7 @@ export function LeadsScreen({
   onNewLead,
   canCreateParty,
   leadEntryRevision,
+  userId,
 }: Props) {
   const toast = useToast();
   // The shell hands a fresh callback every render; the fetch below must not.
@@ -331,6 +339,14 @@ export function LeadsScreen({
       : null,
   );
 
+  // Who else has the open lead up, and whether they are editing it.
+  const presence = useRecordPresence(
+    presenceChannel,
+    openLead ? { recordKind: 'lead', recordId: openLead.id } : null,
+    openLead !== null && editingId === openLead.id,
+  );
+  const others = <AvatarStack entries={presence.entries} selfUserId={userId} />;
+
   /**
    * A refused delete is usually not a failure to report as one. The server
    * answers 409 with `blockedBy` naming what still points at the record, and
@@ -371,9 +387,7 @@ export function LeadsScreen({
       width: rem(190),
       render: (lead) => (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-6)' }}>
-          <span className="ob-mono" style={{ color: 'var(--fg-secondary)' }}>
-            {lead.id}
-          </span>
+          <RecordNumber record={lead} />
           {lead.incomplete && (
             <StatusPill tone="conflict">{t('leadsOrders.leads.incomplete')}</StatusPill>
           )}
@@ -471,7 +485,8 @@ export function LeadsScreen({
     return (
       <EditorScreen
         title={openLead.partyName}
-        meta={<span className="ob-mono ob-small">{openLead.id}</span>}
+        meta={<RecordNumber record={openLead} small />}
+        actions={others}
         onBack={() => {
           setEditingId(null);
           return true;
@@ -483,13 +498,14 @@ export function LeadsScreen({
           revision={leadEntryRevision}
           canCreateParty={canCreateParty}
           lead={openLead}
-          onSaved={(id, saved) => {
+          remoteChange={presence.lastWrite}
+          onSaved={(_id, saved) => {
             if (saved) {
               setRows((current) => current.map((lead) => (lead.id === saved.id ? saved : lead)));
               setFetched((current) => (current && current.id === saved.id ? saved : current));
             }
             setEditingId(null);
-            toast.push(t('lead.edit.saved', { id }));
+            toast.push(t('lead.edit.saved', { id: recordNumberText(saved ?? openLead) }));
           }}
           onCancel={() => setEditingId(null)}
         />
@@ -509,11 +525,12 @@ export function LeadsScreen({
               ) : (
                 <StatusPill>{openLead.stageName}</StatusPill>
               )}
-              <span className="ob-mono ob-small">{openLead.id}</span>
+              <RecordNumber record={openLead} small />
             </>
           }
           actions={
             <>
+              {others}
               {canEdit && !openLead.convertedOrderId && (
                 <Button variant="secondary" size="sm" onClick={() => setEditingId(openLead.id)}>
                   {t('lead.edit.action')}
@@ -561,7 +578,12 @@ export function LeadsScreen({
             canConvert={canConvert}
             transport={leadRecordTransport}
             onConverted={(order) => {
-              toast.push(t('lead.board.convertedToast', { qty: leadPieces(openLead), orderId: order.id }));
+              toast.push(
+                t('lead.board.convertedToast', {
+                  qty: leadPieces(openLead),
+                  orderId: recordNumberText(order),
+                }),
+              );
               onOpenOrder(order.id);
             }}
             onOpenOrder={onOpenOrder}
@@ -572,7 +594,7 @@ export function LeadsScreen({
           open={confirmingDelete}
           tone="danger"
           busy={deleting}
-          title={t('leadsOrders.delete.lead.title', { id: openLead.id })}
+          title={t('leadsOrders.delete.lead.title', { id: recordNumberText(openLead) })}
           body={t('leadsOrders.delete.body')}
           confirmLabel={t('common.delete')}
           onCancel={() => setConfirmingDelete(false)}

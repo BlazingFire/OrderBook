@@ -24,7 +24,17 @@
 import type { Lead } from '@orderbook/shared';
 
 import type { LocalView } from '../api';
-import { Card, EmptyState, StatTile, Timeline, formatDateTime, rem, t } from '@orderbook/ui';
+import {
+  Card,
+  EmptyState,
+  RecordNumber,
+  StatTile,
+  Timeline,
+  formatDateTime,
+  recordNumberText,
+  rem,
+  t,
+} from '@orderbook/ui';
 
 type DashboardTab = 'leads' | 'orders' | 'conflicts' | 'parties' | 'products';
 
@@ -95,7 +105,10 @@ function describeActivity(
         // the way the board's own history shows it.
         const match = /^Converted to order (\S+)\s*$/.exec(entry.message);
         const base = match?.[1]
-          ? t('dashboard.activity.convertedOrder', { orderId: match[1], leadId: lead.id })
+          ? t('dashboard.activity.convertedOrder', {
+              orderId: match[1],
+              leadId: recordNumberText(lead),
+            })
           : entry.message;
         items.push({
           id: `lead-${lead.id}-${entry.id}`,
@@ -146,7 +159,7 @@ function describeActivity(
           : moved?.[1];
         const line =
           stage !== undefined
-            ? t('dashboard.activity.orderReady', { orderId: order.id, stage })
+            ? t('dashboard.activity.orderReady', { orderId: recordNumberText(order), stage })
             : entry.message;
         items.push({
           id: `order-${order.id}-${entry.id}`,
@@ -500,7 +513,7 @@ function FollowUpRow({ lead, onOpen }: { lead: Lead; onOpen: () => void }) {
     >
       <span className="ob-line-body">
         <span className="ob-line-head">
-          <span className="ob-mono ob-small">{lead.id}</span>
+          <RecordNumber record={lead} small />
           <span className="ob-body-strong">{lead.partyName}</span>
         </span>
       </span>

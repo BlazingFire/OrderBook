@@ -50,6 +50,7 @@ function baseQuery(
       'st.sequence as stage_sequence',
       'ow.display_name as owner_name',
       'ld.created_at as lead_created_at',
+      'ld.po_number as po_number',
     );
 
   applyPartyScope(query, tenantId, 'o.party_id', scope, { level: 'view', filter: options.filter });
@@ -70,7 +71,7 @@ export async function listOrders(
   applyRecordSearch(base, options.search, {
     alias: 'o',
     parentType: 'order',
-    columns: ['o.id', 'pa.name', 'ow.display_name', 'st.name', 'o.notes', 'o.lead_id'],
+    columns: ['o.id', 'ld.po_number', 'pa.name', 'ow.display_name', 'st.name', 'o.notes', 'o.lead_id'],
   });
 
   const countRows = await base

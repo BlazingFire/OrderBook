@@ -9,7 +9,7 @@
 import type { MessageParams } from '../i18n/keys.js';
 import type { IsoTimestamp, OfficePanelWithPresence, Uuid } from './entities.js';
 
-export const NOTIFICATION_KINDS = ['panel.offlineLong'] as const;
+export const NOTIFICATION_KINDS = ['panel.offlineLong', 'lead.numbered'] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -19,7 +19,8 @@ export function isNotificationKind(value: unknown): value is NotificationKind {
 
 /** Where opening a notification takes the reader. */
 export interface NotificationLink {
-  kind: 'panel';
+  /** `panel`: an Office panel. `lead`: a pending order, by its permanent id. */
+  kind: 'panel' | 'lead';
   id: string;
 }
 

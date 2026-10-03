@@ -30,6 +30,7 @@ import {
   Skeleton,
   StatTile,
   StatTileSkeleton,
+  recordNumberText,
   rem,
   t,
 } from '@orderbook/ui';
@@ -420,7 +421,7 @@ function FollowUpRow({ lead, onOpen }: { lead: Lead; onOpen: () => void }) {
     >
       <span className="ob-line-body">
         <span className="ob-line-head">
-          <span className="ob-mono ob-small">{lead.id}</span>
+          <span className="ob-mono ob-small">{recordNumberText(lead)}</span>
           <span className="ob-body-strong">{lead.partyName}</span>
         </span>
       </span>

@@ -14,7 +14,7 @@ import { StrictMode } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PICK_MAX_LIMIT } from '@orderbook/shared';
-import type { Lead } from '@orderbook/shared';
+import type { Lead, PresenceLastWrite } from '@orderbook/shared';
 
 import { ConfirmProvider } from '../src/ConfirmDialog.js';
 import { t } from '../src/i18n.js';
@@ -180,10 +180,11 @@ interface Mounted {
   transport: LeadEntryTransport;
   canCreateParty?: boolean;
   lead?: Lead;
+  remoteChange?: PresenceLastWrite | null;
   onSaved: (id: string, saved?: Lead) => void;
 }
 
-function Harness({ view, transport, canCreateParty, lead, onSaved }: Mounted) {
+function Harness({ view, transport, canCreateParty, lead, remoteChange, onSaved }: Mounted) {
   return (
     <StrictMode>
       <KeyboardProvider panel="master" userId={null}>
@@ -193,6 +194,7 @@ function Harness({ view, transport, canCreateParty, lead, onSaved }: Mounted) {
             transport={transport}
             canCreateParty={canCreateParty}
             lead={lead}
+            remoteChange={remoteChange}
             onSaved={onSaved}
             onCancel={() => undefined}
           />
@@ -861,7 +863,7 @@ describe('what the shared copy adds', () => {
     }
   });
 
-  it('opens an edit on the saved lead and sends its whole line set', async () => {
+  it('opens an edit on the saved lead and sends only what changed, with the clocks it opened at', async () => {
     const lead = {
       id: 'L-9',
       partyId: PARTY.id,
@@ -871,6 +873,7 @@ describe('what the shared copy adds', () => {
       partyWiseMode: false,
       notes: 'ring back',
       convertedOrderId: null,
+      sync: { version: 2, hlc: 'h2', fieldHlc: { notes: 'h1', items: 'h2' }, temporaryId: null },
       items: [
         {
           productId: FIXED.id,
@@ -914,11 +917,115 @@ describe('what the shared copy adds', () => {
     expect(fake.updateLead).toHaveBeenCalledTimes(1);
     const [id, input] = fake.updateLead.mock.calls[0] as [string, Record<string, unknown>];
     expect(id).toBe('L-9');
-    expect(input).toMatchObject({ partyId: PARTY.id, notes: 'ring back at five' });
-    expect(input.items).toEqual([
-      expect.objectContaining({ variantId: 'var-1', quantity: 5, packaging: 'Box' }),
-    ]);
+    // The untouched party and lines stay out, so they cannot overwrite somebody
+    // else's newer save of them.
+    expect(input).toEqual({
+      notes: 'ring back at five',
+      baseFieldHlc: { notes: 'h1', items: 'h2' },
+    });
     expect(fake.onSaved).toHaveBeenCalledWith('L-9', undefined);
+  });
+
+  describe('someone else saving the lead while it is open', () => {
+    const opened = {
+      id: 'L-11',
+      partyId: PARTY.id,
+      partyName: PARTY.name,
+      ownerId: 'user-1',
+      sourcePlatform: 'phone',
+      followUpDate: isoDate(2),
+      partyWiseMode: false,
+      notes: 'ring back',
+      convertedOrderId: null,
+      sync: { version: 1, hlc: 'h1', fieldHlc: { notes: 'h1' }, temporaryId: null },
+      items: [
+        {
+          productId: FIXED.id,
+          variantId: 'var-1',
+          productName: FIXED.name,
+          categoryName: CATEGORY.name,
+          categoryCode: CATEGORY.code,
+          brandName: CATEGORY.brand,
+          alias: null,
+          code: 'OPT-0001',
+          variantLabel: 'White',
+          colour: null,
+          size: 'L-27',
+          weightKg: 30,
+          packaging: 'Box',
+          grade: null,
+          sequence: 1,
+          fromPartyVariant: false,
+          notes: null,
+          quantity: 5,
+        },
+      ],
+    } as unknown as Lead;
+    const notesBox = () => screen.getByLabelText(t('lead.add.details.notes')) as HTMLTextAreaElement;
+    const save = async () => {
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
+        await wait(0);
+      });
+    };
+
+    it('turns a 409 stale edit into the notice, and Keep mine saves over their version', async () => {
+      const fake = await openForm({ optionLists: [...COLOURS, ...SOURCES] }, { lead: opened });
+      const stale = Object.assign(new Error('stale'), {
+        code: 'conflict',
+        messageKey: 'error.conflict.staleEdit',
+        details: { stale: ['notes'], fieldHlc: { notes: 'h5' } },
+      });
+      fake.updateLead.mockRejectedValueOnce(stale);
+      fireEvent.change(notesBox(), { target: { value: 'mine' } });
+      await save();
+
+      expect(await screen.findByText(t('error.conflict.staleEdit'))).toBeTruthy();
+      expect(fake.onSaved).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: t('lead.conflict.keepMine') }));
+      expect(screen.queryByText(t('error.conflict.staleEdit'))).toBeNull();
+      await save();
+
+      expect(fake.updateLead).toHaveBeenCalledTimes(2);
+      const [, again] = fake.updateLead.mock.calls[1] as [string, Record<string, unknown>];
+      expect(again).toEqual({ notes: 'mine', baseFieldHlc: { notes: 'h5' } });
+    });
+
+    it('names who saved, and Reload theirs opens the form again on their version', async () => {
+      const fake = makeTransport();
+      const view = viewOf({ optionLists: [...COLOURS, ...SOURCES] });
+      const props = { view, transport: fake.transport, onSaved: vi.fn() };
+      const { rerender } = render(<Harness {...props} lead={opened} />);
+      await screen.findByText(t('lead.edit.title'));
+      fireEvent.change(notesBox(), { target: { value: 'half typed' } });
+
+      const theirs = {
+        ...opened,
+        notes: 'their note',
+        sync: { version: 2, hlc: 'h7', fieldHlc: { notes: 'h7' }, temporaryId: null },
+      } as unknown as Lead;
+      const at = '2026-10-03T10:42:00.000Z';
+      const time = new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      rerender(
+        <Harness
+          {...props}
+          lead={theirs}
+          remoteChange={{ userId: 'user-2', displayName: 'Ravi', at, action: 'updated' }}
+        />,
+      );
+
+      expect(await screen.findByText(t('lead.conflict.savedBy', { name: 'Ravi', time }))).toBeTruthy();
+      // Nothing is taken over by itself: the half-typed note is still there.
+      expect(notesBox().value).toBe('half typed');
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: t('fields.conflict.reload') }));
+        await wait(0);
+      });
+      expect(notesBox().value).toBe('their note');
+      expect(screen.queryByText(t('lead.conflict.savedBy', { name: 'Ravi', time }))).toBeNull();
+    });
   });
 
   describe('editing a multicolour line saved without a colour', () => {
@@ -931,6 +1038,7 @@ describe('what the shared copy adds', () => {
       partyWiseMode: false,
       notes: null,
       convertedOrderId: null,
+      sync: { version: 1, hlc: 'h1', fieldHlc: {}, temporaryId: null },
       items: [
         {
           productId: MULTI.id,

@@ -29,6 +29,7 @@ import {
   tenantScopedTables,
   verifyActivityLogChain,
 } from '../repositories/backup.repository.js';
+import { backfillPendingOrderNumbers } from '../repositories/identity.repository.js';
 import { clearNotifications } from '../repositories/notification.repository.js';
 import { clearVault } from '../repositories/password-vault.repository.js';
 import { invalidateRoleCache } from '../repositories/role.repository.js';
@@ -128,6 +129,9 @@ export async function restoreBackup(
     // A backup from before 1.3 has no Server Master role. The migration that
     // seeds it has already run on this database, so nothing else puts it back.
     for (const tenantId of chainTenantIds) await ensureServerMasterRole(tenantId, trx);
+    // Its leads have no PO numbers either, for the same reason: number them and
+    // set the `po:<fy>` counters past them. A no-op for a 1.3 backup.
+    await backfillPendingOrderNumbers(trx);
   });
 
   // In-memory caches survive the transaction that replaced the rows behind

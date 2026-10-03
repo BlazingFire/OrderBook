@@ -10,6 +10,7 @@
 import { EventEmitter } from 'node:events';
 import type { DataChangedEvent, SyncConflict, UserNotification } from '@orderbook/shared';
 
+import { actorUserId, type ActorContext } from '../domain/actor.js';
 import * as changeRing from '../realtime/change-ring.js';
 
 const emitter = new EventEmitter();
@@ -34,6 +35,11 @@ export function publishChange(event: DataChangedEvent): void {
    */
   changeRing.record(event);
   emitter.emit(CHANGE_EVENT, event);
+}
+
+/** Who made a change, spread into `publishChange` by the lead and order writes. */
+export function actorStamp(actor: ActorContext): Pick<DataChangedEvent, 'actorUserId' | 'actorName'> {
+  return { actorUserId: actorUserId(actor), actorName: actor.actorName };
 }
 
 export function onChange(listener: (event: DataChangedEvent) => void): () => void {

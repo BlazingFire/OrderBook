@@ -27,6 +27,7 @@ import type {
   DataChangedEvent,
   MessageKey,
   MutationResult,
+  RecordPresence,
   ReportKind,
   UserNotification,
 } from '@orderbook/shared';
@@ -94,6 +95,7 @@ import {
   type SubPage,
 } from '@orderbook/ui';
 import { searchLocalView } from './localSearch';
+import { presenceChannel } from './presence';
 import { reportsTransport } from './reportsTransport';
 import { AddLeadScreen } from './screens/AddLeadScreen';
 import { CatalogScreen } from './screens/CatalogScreen';
@@ -202,6 +204,9 @@ export function App() {
 
 function OfficePanel() {
   const toast = useToast();
+  // For the event stream below, which must not reopen whenever this changes.
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
 
   const [connection, setConnection] = useState<ConnectionInfo | null>(null);
   const [session, setSession] = useState<PanelSession | null>(null);
@@ -294,6 +299,8 @@ function OfficePanel() {
    * anywhere but their own list, so their ids stay local to `CatalogScreen`.
    */
   const [openLeadId, setOpenLeadId] = useState<string | null>(null);
+  /** Temporary id → permanent id, for each provisional lead the Master numbered this session. */
+  const [numberedIds, setNumberedIds] = useState<Record<string, string>>({});
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
   /*
    * Bumped each time somebody *asks* for the New lead form — the sidebar
@@ -538,6 +545,8 @@ function OfficePanel() {
       const status = JSON.parse((event as MessageEvent).data) as Partial<ConnectionInfo>;
       setConnection((current) => (current ? { ...current, ...status } : current));
       if (status.state === 'connected' && lastState !== 'connected') catchUp();
+      // Off the Master, who is on a record is no longer known.
+      if (status.state && status.state !== 'connected') presenceChannel.reset();
       if (status.state) lastState = status.state;
     });
 
@@ -560,6 +569,30 @@ function OfficePanel() {
       void desktopBridge()
         ?.notify?.({ title: t('notification.title'), body: notificationText(notice) })
         .catch(() => undefined);
+    });
+
+    // Who else is on the record open here (the server drops anyone else's frames).
+    source.addEventListener('presence', (event) => {
+      presenceChannel.push(JSON.parse((event as MessageEvent).data) as RecordPresence);
+    });
+
+    /*
+     * A provisional pending order got its number. One open on the board stays
+     * open under its permanent id (`numberedIds`). The toast is only for a
+     * number no waiting save already named; the bell's entry, for one saved
+     * long ago, comes from the Master.
+     */
+    source.addEventListener('numbered', (event) => {
+      const numbered = JSON.parse((event as MessageEvent).data) as {
+        temporaryId: string;
+        permanentId: string;
+        poNumber?: string;
+        announced: boolean;
+      };
+      setNumberedIds((current) => ({ ...current, [numbered.temporaryId]: numbered.permanentId }));
+      if (!numbered.announced && numbered.poNumber) {
+        toastRef.current.push(t('lead.numbered.toast', { number: numbered.poNumber }));
+      }
     });
 
     source.addEventListener('snapshot', (event) => {
@@ -1145,6 +1178,12 @@ function OfficePanel() {
         transport={notificationTransport}
         revision={streamEpoch + noticeRevision}
         local={localNotices}
+        // A pending order numbered after an offline save opens on the board.
+        onOpen={(link) => {
+          if (link.kind !== 'lead') return;
+          setOpenLeadId(link.id);
+          setTab('leads');
+        }}
       />
 
       <button className="ob-btn ob-btn--ghost" onClick={() => void signOut()}>
@@ -1424,6 +1463,8 @@ function OfficePanel() {
               canEdit={can('leads.edit')}
               onError={setError}
               onAddLead={can('leads.create') ? openNewLead : undefined}
+              userId={session?.userId ?? null}
+              numberedIds={numberedIds}
             />
           ),
         },
@@ -1438,6 +1479,7 @@ function OfficePanel() {
               canExport={can('orders.export')}
               canEdit={can('orders.edit')}
               onError={setError}
+              userId={session?.userId ?? null}
               stageId={
                 subKeyOf('orders').startsWith('stage:')
                   ? subKeyOf('orders').slice('stage:'.length)
@@ -1500,7 +1542,7 @@ function OfficePanel() {
             <AddLeadScreen
               view={view}
               focusNonce={newLeadNonce}
-              onSaved={(id) => {
+              onSaved={(id, queued) => {
                 setTab('leads');
                 /*
                  * A saved lead is done with, so the form starts over — the
@@ -1512,7 +1554,21 @@ function OfficePanel() {
                  */
                 clearSubNav('addLead');
                 setResetNonce((current) => ({ ...current, addLead: (current.addLead ?? 0) + 1 }));
-                toast.push(t('lead.add.saved', { id }));
+                // Named by its number when the Master answered in time;
+                // Provisional otherwise, until the `numbered` frame arrives.
+                if (queued?.status === 'rejected') {
+                  void refreshSyncState();
+                  toast.push(translator().tCount('sync.changesRefused', 1), {
+                    tone: 'error',
+                    action: { label: t('action.reviewRefusals'), onClick: showConflicts },
+                  });
+                } else if (queued?.status === 'numbered') {
+                  toast.push(
+                    t('lead.add.savedOnline', { id: queued.poNumber ?? queued.permanentId ?? id }),
+                  );
+                } else {
+                  toast.push(t('lead.add.savedProvisional'));
+                }
               }}
               onCancel={() => setTab('leads')}
             />

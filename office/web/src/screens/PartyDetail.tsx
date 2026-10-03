@@ -33,6 +33,7 @@ import {
   Card,
   DataTable,
   KeyValueList,
+  RecordNumber,
   StatusPill,
   formatDateTime,
   rem,
@@ -195,12 +196,7 @@ export function PartyDetail({
                   padding: 'var(--s-6) var(--s-8)',
                 }}
               >
-                <span
-                  className="ob-mono"
-                  style={{ fontSize: rem(11.5), color: 'var(--fg-secondary)' }}
-                >
-                  {lead.id}
-                </span>
+                <RecordNumber record={lead} small />
                 <span className="ob-small">{lead.stageName}</span>
               </div>
             ))}

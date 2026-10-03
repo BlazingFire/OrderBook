@@ -204,10 +204,13 @@ describe.skipIf(!canRunIntegrationTests)('every audited operation leaves an entr
 
       const deleted = await onlyEntry({ entity_type: 'lead', entity_id: lead.id, action: 'deleted' });
       const restored = await onlyEntry({ entity_type: 'lead', entity_id: lead.id, action: 'restored' });
-      expect(deleted.details).toEqual({ number: lead.id, party: 'Coverage Traders' });
-      expect(rendered(deleted)).toBe(`Test Actor deleted the pending order ${lead.id} for Coverage Traders`);
-      expect(rendered(restored)).toBe(`Test Actor restored the pending order ${lead.id} for Coverage Traders`);
-      expect(rendered(deleted, hi)).toBe(`Test Actor ने Coverage Traders की पेंडिंग ऑर्डर ${lead.id} हटाई`);
+      // Named by its PO number, as every screen names it.
+      const number = lead.poNumber;
+      expect(number).toMatch(/^PO\//);
+      expect(deleted.details).toEqual({ number, party: 'Coverage Traders' });
+      expect(rendered(deleted)).toBe(`Test Actor deleted the pending order ${number} for Coverage Traders`);
+      expect(rendered(restored)).toBe(`Test Actor restored the pending order ${number} for Coverage Traders`);
+      expect(rendered(deleted, hi)).toBe(`Test Actor ने Coverage Traders की पेंडिंग ऑर्डर ${number} हटाई`);
     });
 
     it('converting records lead.converted on the lead, beside order.created', async () => {
@@ -228,9 +231,12 @@ describe.skipIf(!canRunIntegrationTests)('every audited operation leaves an entr
 
       const deleted = await onlyEntry({ entity_type: 'order', entity_id: order.id, action: 'deleted' });
       const restored = await onlyEntry({ entity_type: 'order', entity_id: order.id, action: 'restored' });
-      expect(deleted.details).toEqual({ number: order.id, party: 'Coverage Traders' });
-      expect(rendered(deleted)).toBe(`Test Actor deleted the final order ${order.id} for Coverage Traders`);
-      expect(rendered(restored)).toBe(`Test Actor restored the final order ${order.id} for Coverage Traders`);
+      // A final order shows its pending order's PO number.
+      const number = order.poNumber;
+      expect(number).toBe(lead.poNumber);
+      expect(deleted.details).toEqual({ number, party: 'Coverage Traders' });
+      expect(rendered(deleted)).toBe(`Test Actor deleted the final order ${number} for Coverage Traders`);
+      expect(rendered(restored)).toBe(`Test Actor restored the final order ${number} for Coverage Traders`);
     });
   });
 

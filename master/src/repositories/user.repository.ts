@@ -13,7 +13,7 @@
  *    Referential integrity lives in the service guards instead (§4.1).
  */
 
-import type { Permission, RoleTier, User } from '@orderbook/shared';
+import type { AssignablePerson, Permission, RoleTier, User } from '@orderbook/shared';
 import type { Knex } from 'knex';
 
 import { db } from '../db/knex.js';
@@ -79,6 +79,30 @@ export async function listUsers(
   // Creation order, from the monotonic id — see the role repository.
   const rows = await query.orderBy('u.id');
   return rows.map(mapUser);
+}
+
+/**
+ * The people a pending order can be raised for or handed to (the Owner
+ * picker): active and not deleted, by name. A deactivated account is left out,
+ * because an order owned by somebody who cannot sign in is nobody's.
+ */
+export async function listOwnerChoices(
+  tenantId: string,
+  runner: Runner = db(),
+): Promise<AssignablePerson[]> {
+  const rows = await baseQuery(runner)
+    .where({ 'u.tenant_id': tenantId, 'u.is_active': true })
+    .whereNull('u.deleted_at')
+    .orderBy([{ column: 'u.display_name' }, { column: 'u.id' }]);
+
+  return rows.map(mapUser).map((user) => ({
+    id: user.id,
+    displayName: user.displayName,
+    username: user.username,
+    roleName: user.roleName,
+    roleTier: user.roleTier,
+    avatar: user.avatar,
+  }));
 }
 
 export async function listDeletedUsers(

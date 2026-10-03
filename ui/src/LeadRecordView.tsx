@@ -27,6 +27,7 @@ import { DateField, FormField, Input } from './Form.js';
 import { formatDateTime, formatKg } from './format.js';
 import { apiErrorText } from './errorText.js';
 import { t } from './i18n.js';
+import { recordNumberText } from './RecordNumber.js';
 import { Select } from './SuggestInput.js';
 import { ConflictBanner } from './States.js';
 
@@ -303,7 +304,10 @@ export function LeadRecordView({
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
               <StatusPill tone="ok">{t('lead.badge.converted')}</StatusPill>
               <span className="ob-small" style={{ color: 'var(--fg-primary)' }}>
-                {t('lead.detail.convertedMessage', { orderId: lead.convertedOrderId })}
+                {t('lead.detail.convertedMessage', {
+                  // A final order shows its pending order's number.
+                  orderId: recordNumberText({ id: lead.convertedOrderId, poNumber: lead.poNumber }),
+                })}
               </span>
             </div>
             <div style={{ marginTop: 'var(--s-8)' }}>

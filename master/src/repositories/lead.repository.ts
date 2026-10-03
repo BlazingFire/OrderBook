@@ -12,7 +12,7 @@ import type { LineSnapshot } from '../domain/line-items.js';
 import { UNSCOPED_PARTY_ACCESS, type PartyScope } from '../domain/party-scope.js';
 import { db } from '../db/knex.js';
 import * as customFields from './custom-field.repository.js';
-import { allocatePermanentId } from './identity.repository.js';
+import { allocatePendingOrderNumber, allocatePermanentId } from './identity.repository.js';
 import * as lineItems from './line-item.repository.js';
 import { firstCount, mapLead } from './mappers.js';
 import { applyRecordSearch } from './record-search.js';
@@ -81,7 +81,7 @@ export async function listLeads(
   applyRecordSearch(base, options.search, {
     alias: 'l',
     parentType: 'lead',
-    columns: ['l.id', 'pa.name', 'ow.display_name', 'st.name', 'l.notes', 'l.converted_order_id'],
+    columns: ['l.id', 'l.po_number', 'pa.name', 'ow.display_name', 'st.name', 'l.notes', 'l.converted_order_id'],
   });
 
   const countRows = await base
@@ -174,15 +174,26 @@ export interface NewLead {
   id?: string;
 }
 
+/**
+ * Inserts the lead and mints its PO number, both inside the caller's
+ * transaction: a create that fails afterwards takes its number back, so the
+ * series has no gaps. The number's year and `created_at` come from the same
+ * instant, so a lead saved a moment before midnight on 31 March can never be
+ * numbered in one year and dated in the next.
+ */
 export async function insertLead(
   lead: NewLead,
   lines: LineSnapshot[],
   trx: TransactionContext,
 ): Promise<string> {
   const id = lead.id ?? (await allocatePermanentId(lead.tenantId, 'lead', trx));
+  const createdAt = new Date();
 
   await trx(TABLE).insert({
     id,
+    po_number: await allocatePendingOrderNumber(lead.tenantId, createdAt, trx),
+    created_at: createdAt,
+    updated_at: createdAt,
     tenant_id: lead.tenantId,
     party_id: lead.partyId,
     owner_id: lead.ownerId,

@@ -12,7 +12,7 @@
  * snapshot contains is business policy, not socket wiring.
  */
 
-import { PANEL_PROTOCOL_VERSION, type SyncSnapshot } from '@orderbook/shared';
+import { PANEL_PROTOCOL_VERSION, type AssignablePerson, type SyncSnapshot } from '@orderbook/shared';
 
 import { actorCan, type ActorContext } from '../domain/actor.js';
 import { ForbiddenError } from '../lib/errors.js';
@@ -22,6 +22,7 @@ import * as partyAccessRepo from '../repositories/party-access.repository.js';
 import * as variantRepo from '../repositories/party-variant.repository.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
 import * as syncRepo from '../repositories/sync.repository.js';
+import * as userRepo from '../repositories/user.repository.js';
 import { resolvePartyScope } from '../domain/party-scope.js';
 import * as catalogService from './catalog.service.js';
 import { companyFeatures } from './company-features.js';
@@ -163,13 +164,15 @@ export async function buildLeadEntryView(
 ): Promise<
   Pick<SyncSnapshot, 'optionLists' | 'partyVariants' | 'stock' | 'partyGrants' | 'features'> & {
     products?: SyncSnapshot['products'];
+    /** Who the form's Owner picker offers; only for a caller who may name an owner. */
+    owners?: AssignablePerson[];
   }
 > {
   if (!actorCan(actor, 'leads.create') && !actorCan(actor, 'leads.edit')) {
     throw new ForbiddenError('leads.create');
   }
   const partyScope = resolvePartyScope(actor);
-  const [partyVariants, optionLists, stock, partyGrants, features, products] = await Promise.all([
+  const [partyVariants, optionLists, stock, partyGrants, features, products, owners] = await Promise.all([
     variantRepo.listAll(actor.tenantId, partyScope),
     customFieldRepo.listOptions(actor.tenantId),
     actorCan(actor, 'inventory.view')
@@ -182,6 +185,10 @@ export async function buildLeadEntryView(
           .listProducts({ limit: CATALOGUE_SNAPSHOT_LIMIT }, actor)
           .then((page) => page.items)
       : Promise.resolve(undefined),
+    // `resolveOwner` refuses any other owner without this, so nobody else is offered a choice.
+    actorCan(actor, 'record.reassignOwner')
+      ? userRepo.listOwnerChoices(actor.tenantId)
+      : Promise.resolve(undefined),
   ]);
   return {
     optionLists,
@@ -190,5 +197,6 @@ export async function buildLeadEntryView(
     partyGrants,
     features,
     ...(products ? { products } : {}),
+    ...(owners ? { owners } : {}),
   };
 }

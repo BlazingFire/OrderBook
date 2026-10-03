@@ -301,6 +301,52 @@
   box-shadow: 0 0 0 2px var(--accent);
 }
 
+/* Who else has a record open (`AvatarStack`): overlapping faces, top right. */
+.ob-avatarstack {
+  display: inline-flex;
+  align-items: center;
+  padding-left: var(--s-4);
+}
+.ob-avatarstack-item {
+  position: relative;
+  display: inline-flex;
+  margin-left: calc(-1 * var(--s-6));
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg-surface);
+}
+/* Editing: an accent ring outside the face. */
+.ob-avatarstack-item[data-editing='true'] {
+  box-shadow:
+    0 0 0 1px var(--bg-surface),
+    0 0 0 3px var(--accent);
+}
+/* A Server Master: a small shield on the face's lower right. */
+.ob-avatarstack-badge {
+  position: absolute;
+  right: calc(-1 * var(--s-2));
+  bottom: calc(-1 * var(--s-2));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--fg-on-accent);
+}
+.ob-avatarstack-more {
+  margin-left: var(--s-4);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--fg-secondary);
+}
+
+/* A record still waiting for its number: the Provisional pill and its temporary id. */
+.ob-recordnumber {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-6);
+}
+
 /* ===========================================================================
  * Crash screen — what a render error shows instead of an empty window.
  * ======================================================================== */

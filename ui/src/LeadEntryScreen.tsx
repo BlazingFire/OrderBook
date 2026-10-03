@@ -11,7 +11,9 @@
  *  - `canCreateParty` hides Create party without `parties.create`;
  *  - `onSaved(id, saved?)` also hands back the saved lead;
  *  - a failed save shows the server's translated message (`apiErrorText`);
- *  - there is no `view.parties`: editing seeds the picker with the lead's party.
+ *  - there is no `view.parties`: editing seeds the picker with the lead's party;
+ *  - `view.owners` (sent only with `record.reassignOwner`) adds an Owner picker,
+ *    so a Server Master can raise a pending order for anybody.
  *
  * Original header follows.
  *
@@ -84,6 +86,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import type {
+  AssignablePerson,
   ColourRule,
   Lead,
   LeadInput,
@@ -93,6 +96,7 @@ import type {
   Party,
   PartyProductVariant,
   PickKind,
+  PresenceLastWrite,
   Product,
   ProductCategory,
   ProductVariant,
@@ -111,6 +115,12 @@ import { Card } from './Card.js';
 import { ColourChip, ColourName, StatusPill, useColourHex } from './DataDisplay.js';
 import { useConfirm } from './ConfirmDialog.js';
 import { apiErrorText } from './errorText.js';
+import {
+  changedLeadFields,
+  StaleEditNotice,
+  useLeadEditBase,
+  type LeadFormValues,
+} from './LeadStaleEdit.js';
 import { DateField, Input, Textarea } from './Form.js';
 import { formatKg } from './format.js';
 import { t } from './i18n.js';
@@ -133,6 +143,12 @@ export type LeadEntryView = Pick<
 > & {
   /** Edit only: the colour rule per line. Absent, it is worked out from the line. */
   products?: Product[];
+  /**
+   * Who a pending order may be raised for, sent only to somebody holding
+   * `record.reassignOwner` (a Server Master, usually). Absent, the form has no
+   * Owner picker and the lead is the caller's own.
+   */
+  owners?: AssignablePerson[];
 };
 
 /** What the form may reach. Held in a ref: callers may build the object inline. */
@@ -141,7 +157,8 @@ export interface LeadEntryTransport extends PartyFormTransport {
     kind: PickKind,
     q: { term: string; categoryId?: string; limit?: number },
   ): Promise<{ items: T[] }>;
-  createLead(input: LeadInput): Promise<{ id: string }>;
+  /** The Master answers with the lead, PO number and all. */
+  createLead(input: LeadInput): Promise<{ id: string; poNumber?: string | null }>;
   updateLead(id: string, input: LeadUpdateInput): Promise<unknown>;
 }
 
@@ -157,10 +174,13 @@ interface Props {
   onCancel: () => void;
   /**
    * A saved lead to edit instead of starting a new one. The form opens on its
-   * party, source, follow-up, notes and lines, and Save replaces them (the
-   * Master's `updateLead` swaps the whole line set).
+   * party, source, follow-up, notes and lines, and Save sends only what changed
+   * since it opened, with the clocks it opened at (`LeadStaleEdit.tsx`); the
+   * lines go, whole, only when they changed.
    */
   lead?: Lead;
+  /** The last save somebody else made to `lead` while it is open (a presence push). */
+  remoteChange?: PresenceLastWrite | null;
 }
 
 /** What every line and every draft row knows about its variant. */
@@ -375,7 +395,16 @@ function linesOf(lead: Lead, view: LeadEntryView): DraftLine[] {
   });
 }
 
-export function LeadEntryScreen({
+/**
+ * The form, opened again from scratch by Reload theirs: a new mount reads the
+ * lead as it is now, which no amount of resetting state in place does reliably.
+ */
+export function LeadEntryScreen(props: Props) {
+  const [opening, setOpening] = useState(0);
+  return <LeadEntryForm key={opening} {...props} onReload={() => setOpening((n) => n + 1)} />;
+}
+
+function LeadEntryForm({
   view,
   transport,
   canCreateParty = true,
@@ -383,7 +412,9 @@ export function LeadEntryScreen({
   onSaved,
   onCancel,
   lead,
-}: Props) {
+  remoteChange,
+  onReload,
+}: Props & { onReload: () => void }) {
   // Read inside effects and callbacks, never listed as a dependency.
   const transportRef = useRef(transport);
   transportRef.current = transport;
@@ -426,6 +457,9 @@ export function LeadEntryScreen({
     setFollowUpDate((current) => (current === seeded ? isoDate(followUpDays) : current));
   }, [followUpDays]);
   const [notes, setNotes] = useState(lead?.notes ?? '');
+  /** Only with `view.owners`; empty means the caller, which the Master assumes. */
+  const [ownerId, setOwnerId] = useState(lead?.ownerId ?? '');
+  const editBase = useLeadEditBase(lead);
 
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -1117,25 +1151,33 @@ export function LeadEntryScreen({
         notes: line.notes.trim() || null,
       }));
 
-      const input = {
+      const input: LeadFormValues = {
         partyId,
         sourcePlatform: sourcePlatform || null,
         followUpDate: followUpDate || null,
         partyWiseMode,
         notes: notes.trim() || null,
         items,
+        ownerId: view.owners ? ownerId : undefined,
       };
 
-      if (lead) {
-        const saved = (await transportRef.current.updateLead(lead.id, input)) as Lead | undefined;
+      if (lead && editBase.opened) {
+        // Only what changed, checked against the clocks it was opened at.
+        const changes = changedLeadFields(editBase.opened, input, editBase.base);
+        const saved = changes
+          ? ((await transportRef.current.updateLead(lead.id, changes)) as Lead | undefined)
+          : undefined;
         onSaved(lead.id, saved);
       } else {
-        const created = await transportRef.current.createLead(input);
-        onSaved(created.id);
+        const { ownerId: chosen, ...rest } = input;
+        const created = await transportRef.current.createLead(chosen ? { ...rest, ownerId: chosen } : rest);
+        // The whole lead, from the Master; its number names it in the toast.
+        if (created.poNumber) onSaved(created.id, created as Lead);
+        else onSaved(created.id);
       }
     } catch (caught) {
       saving.current = false;
-      setError(apiErrorText(caught, 'lead.add.errors.generic'));
+      if (!editBase.refused(caught)) setError(apiErrorText(caught, 'lead.add.errors.generic'));
     } finally {
       setBusy(false);
     }
@@ -1286,6 +1328,14 @@ export function LeadEntryScreen({
       </div>
 
       {error && <ConflictBanner>{error}</ConflictBanner>}
+      {editBase.conflicted && !busy && (
+        <StaleEditNotice
+          lastWrite={remoteChange}
+          busy={busy}
+          onReload={onReload}
+          onKeepMine={editBase.keepMine}
+        />
+      )}
 
       {/*
        * Two columns that become one when there is no room for two: the form on
@@ -1532,6 +1582,29 @@ export function LeadEntryScreen({
                     })}
                   </span>
                 </div>
+
+                {/* Raising a pending order for somebody else: only for whoever the
+                    Master sent the list to (`record.reassignOwner`). */}
+                {view.owners && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: rem(5), minWidth: 0 }}>
+                    <Eyebrow>{t('lead.add.owner')}</Eyebrow>
+                    <Select
+                      value={ownerId}
+                      aria-label={t('lead.add.owner')}
+                      style={{ width: '100%', maxWidth: rem(280) }}
+                      onChange={(event) => setOwnerId(event.target.value)}
+                    >
+                      {!lead && <option value="">{t('lead.add.owner.me')}</option>}
+                      {view.owners.map((owner) => (
+                        <option key={owner.id} value={owner.id}>
+                          {owner.roleTier === 'server_master'
+                            ? `${owner.displayName} · ${t('presence.serverMaster')}`
+                            : owner.displayName}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                )}
               </div>
             </div>
           </Card>

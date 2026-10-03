@@ -226,6 +226,13 @@ export interface LeadUpdateInput {
   customFields?: Record<string, unknown>;
   /** When present, replaces the whole line set — lines have no stable client id. */
   items?: LineItemInput[];
+  /**
+   * The field clocks (`sync.fieldHlc`) the editor opened the record at, for the
+   * fields it sends. When given, a field someone else has saved since is
+   * refused with 409 `error.conflict.staleEdit` instead of overwritten.
+   * Absent, the edit applies as before.
+   */
+  baseFieldHlc?: Record<string, string>;
 }
 
 export interface StageChangeInput {
@@ -255,6 +262,8 @@ export interface OrderUpdateInput {
   vehicleNumber?: string | null;
   notes?: string | null;
   customFields?: Record<string, unknown>;
+  /** As on `LeadUpdateInput`. */
+  baseFieldHlc?: Record<string, string>;
 }
 
 export interface OrderDispatchInput {

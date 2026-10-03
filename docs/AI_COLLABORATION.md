@@ -190,6 +190,86 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-03 - 1.3 Phase 4 review fixes, round 2 (Claude)
+
+`office/src/sync/sync.service.ts`, `office/src/http/app.ts`, `master/src/realtime/presence-store.ts`,
+`master/src/services/presence.service.ts`, tests.
+- The Office's `numbered` event names who saved the lead (`forUserId`); every tab still gets the id remap, but the
+  PO number, and so the toast, only reaches that person while they are the one signed in.
+- A presence beat still reading when its tab left, or its socket closed, no longer puts the tab back on the record
+  (`ticket` / `leftSince` in the store).
+- The board-card `AvatarStack` stays unbuilt, waiting on the owner as HANDOFF says.
+- Tests: extended `office/tests/sync-settle` and `master/tests/presence-store`.
+
+### 2026-10-03 - 1.3 Phase 4 review fixes, round 1 (Claude)
+
+`office/src/sync/local-store.ts`, `master/src/services/sync.service.ts`, `ui/src/AvatarStack.tsx`, `ui/src/base.css`,
+`office/web/src/screens/LeadBoardScreen.tsx`, tests, `HANDOFF.md`, `docs/plans/1.3-BATCH.md`, `docs/STRUCTURE.md`.
+- A queued Office lead edit now stamps its fields' clocks on the Office view, so a second edit of the same field
+  before the first is acknowledged sends the first as its base and the Master records no conflict between them.
+- `lead.numbered` goes out when the save's HLC predates the pushing socket's connect (was: older than 60 s by the
+  Master's clock, which a slow Office clock tripped on live saves), and only to an author who is active and could
+  open the lead (`leads.view` plus party access); the panel-named `actorUserId` proves nothing.
+- The Office board's quick-convert toast names the PO number (`recordNumberText`).
+- `AvatarStack`'s unused `compact` prop and its CSS removed; the board-card variant is recorded as not built.
+- Tests: new `office/tests/local-store-overlay`; extended `master/tests/sync.integration` (notice once to the author
+  of an offline save, none for a live save on a slow clock, none to an author outside the party) and
+  `shared/tests/record-search` (PO number search).
+
+### 2026-10-03 - 1.3 Phase 4: PO numbers, presence, stale-edit protection, Master authority (Claude)
+
+`shared/src` (pending-order-number, presence protocol, entities, inputs, mutations, merge, record-search,
+notifications, socket, i18n), `master/src` (one migration, identity/lead/order/search/report/user repositories,
+lead/order/sync/snapshot/backup-restore services, change bus, presence store and service, hub, data routes),
+`office/src` (sync settle and numbered, local store, HTTP, master connection, config), `ui/src`, `master/web`,
+`office/web`, `eslint.config.js`, tests, docs. Built in four slices in one working tree: PO numbers on the server;
+presence and Master authority on the server; the Office server; ui, web and docs.
+- **Shared:** `pending-order-number.ts` (`PO_NUMBER_PATTERN`, `financialYearLabel` through `formatToParts`,
+  `formatPendingOrderNumber`, `recordNumber`); `protocol/presence.ts`; `Lead`/`Order.poNumber?`; `baseFieldHlc?` on
+  lead and order updates; `MutationResult.number?`; `SearchableRecord.poNumber?`; `sameLines`/`lineKey` moved into
+  `merge.ts`; `lead.numbered` with link kind `lead`; `DataChangedEvent.actorUserId?/actorName?`;
+  `PANEL_PROTOCOL_VERSION = 4`, `presence:beat`, `presence:changed`, `AdminAuthPayload.tabId?`,
+  `SocketData.tabId?`.
+- **Master:** migration `20261003000000_pending_order_numbers` (column, guarded CHECK, UPDATE-only backfill per
+  financial year, partial unique index, `po:<fy>` counters; registered and pinned between `20261002000001` and
+  `20261004000000`); `nextInSeries`, `allocatePendingOrderNumber`, `backfillPendingOrderNumbers` (run by the v1
+  restore); the number minted in `createLead`'s transaction; orders read it through the lead; PDF subtitle and file
+  name, search subtitles, report numbers, activity details; `assertFieldsFresh` → 409 `error.conflict.staleEdit` on
+  `updateLead`/`updateOrder`; `actorStamp` on every lead and order change; `lead.create` answers `number` and a late
+  one notifies `lead.numbered`; `owners[]` on the lead-entry view with `record.reassignOwner`;
+  `presence-store.ts`, `presence.service.ts`, the hub's `presence:beat` and `presence:changed`, `POST /api/presence`.
+- **Office:** `awaitSettled`, `onNumbered`, a flush rerun flag; `holdNumbered`; `POST /api/leads` waits up to 5 s
+  for the number while connected (`OFFICE_SAVE_NUMBER_WAIT_MS`); queued `PUT`s carry `baseFieldHlc` as the
+  mutation's; `POST /api/presence`; SSE `presence` and `numbered`.
+- **ui and web:** `RecordNumber`/`recordNumberText`, `AvatarStack`, `useRecordPresence`/`createPresenceChannel`/
+  `PRESENCE_TAB_ID` (from `getRandomValues`), `LeadStaleEdit` (`changedLeadFields`, `useLeadEditBase`,
+  `StaleEditNotice`), `ConflictNotice` `overwriteLabel`; both lead forms send only what changed plus
+  `baseFieldHlc` and show the notice with Reload theirs / Keep mine; the Master form's Owner picker; numbers in
+  every list, header, toast, note, search hit, Dashboard line, Logs row and party detail; an Order ref column (the
+  Master's From pending order link moved to the order header); avatars in the lead and order headers on both
+  panels; the Office save toast names the number or says Provisional, a refused save raises the refusal toast,
+  `numbered` keeps an open provisional lead open; the bell opens a numbered lead on both panels; `presence.ts` on
+  each panel; the new files in the strict-i18n lint list.
+- **Tests:** new `shared/tests/pending-order-number`, `master/tests/sync-concurrency.integration`,
+  `migration-pending-order-numbers.integration`, `presence-store`, `presence.integration`,
+  `office/tests/sync-settle`, `presence-route`, `ui/tests/avatar-stack`, `record-number`; extended
+  `lead.integration`, `backup-chain.integration`, `server-master.integration`, `http-api.integration`, `lead-pdf`,
+  `shared/tests/sync`, `office/tests/lead-route`, `ui/tests/lead-entry-screen` (only what changed; 409 and Keep
+  mine; someone else's save and Reload theirs), `ui/tests/office-shell` (the save toast with the number and
+  Provisional, the presence frame, `numbered` keeping the lead open; the edit test now changes a field and expects
+  only it) and `ui/tests/master-shell` (the Owner picker only with `owners`).
+- **Docs:** `LEAD_GENERATION_FLOW.md` §4 (items 7–9) and §7 (PO series, FY rule, Provisional, the ordering ceiling,
+  counters and the reload CLI); `04-API-CONTRACT.md` §4.6 and new §14; `docs/schema/03` (`leads.po_number`) and
+  `06` (`po:` counters); `STRUCTURE.md` §2.10, §3.2, §3.9, §3.10, §4.5, §4.7, §4.8, §4.11, §5.6, §5.9, §6.2, §7.1,
+  §8.4, §8.5, §8.8, §9 inventory, §12.2; HANDOFF release note, traps and session history.
+- **Verified by the ui-web-docs slice:** typecheck of `ui`, `master/web`, `office/web` and `ui/tests` exits 0;
+  eslint on `ui`, `master/web/src`, `office/web/src` and `eslint.config.js` exits 0; all of `ui/tests` (34 files),
+  `office/tests` (unit), `shared/tests/pending-order-number`, `sync`, `record-search`, and the guard suites
+  `i18n-call-sites`, `i18n-coverage`, `i18n`, `no-transport-dep`, `packaging-switch-reach`, `web-reachability`,
+  `no-duplicate-ui`, `screen-reachability`, `tooling-config`, `ui-conventions`, `legacy-floor`, `wire-optionality`,
+  `socket-contract`, `keys-*` and `dashboard-staleness` pass. Not run by the slice: any `*.integration.test.ts` and
+  the full `npm run verify` (left to the verifier with `ORDERBOOK_PG_BIN`), and a browser or Electron walk.
+
 ### 2026-10-03 - 1.3 Phase 3 review fixes, round 3 (Claude)
 
 - **Panel sign-in:** `authenticatePanel` fills the proof key only when the row has none; the existing

@@ -9,7 +9,7 @@
  * reveal which half was wrong.
  */
 
-import { fieldFor, ORDER_COLUMNS } from '@orderbook/shared';
+import { fieldFor, ORDER_COLUMNS, recordNumber } from '@orderbook/shared';
 import type {
   BinBlocker,
   BinRestoreResult,
@@ -21,6 +21,7 @@ import type {
   Paginated,
 } from '@orderbook/shared';
 
+import { assertFieldsFresh } from '../domain/access.js';
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import {
   assertConvertible,
@@ -54,7 +55,7 @@ import * as recycleBinRepo from '../repositories/recycle-bin.repository.js';
 import * as reservationRepo from '../repositories/reservation.repository.js';
 import * as timelineRepo from '../repositories/timeline.repository.js';
 import { publishStockFor } from './inventory.service.js';
-import { publishChange } from './change-bus.js';
+import { actorStamp, publishChange } from './change-bus.js';
 import { requirePartyAccess } from './party-access.service.js';
 import * as inventoryService from './inventory.service.js';
 import { getSetting } from './settings.service.js';
@@ -211,7 +212,7 @@ export async function convertLead(
       action: 'created',
       actorType: actor.actorType,
       actorId: actor.actorId,
-      details: { leadId: lead.id, reservations: reservationPlan.length },
+      details: { leadId: lead.id, reservations: reservationPlan.length, poNumber: lead.poNumber ?? null },
     }, actor, trx);
 
     // The lead's own history says where it went. Both entries close the
@@ -223,7 +224,7 @@ export async function convertLead(
       action: 'converted',
       actorType: actor.actorType,
       actorId: actor.actorId,
-      details: { orderId: id, number: lead.id },
+      details: { orderId: id, number: recordNumber(lead), poNumber: lead.poNumber ?? null },
     }, actor, trx);
 
     return id;
@@ -233,9 +234,9 @@ export async function convertLead(
   const updatedLead = await leadRepo.findLeadById(actor.tenantId, lead.id, UNSCOPED_PARTY_ACCESS);
   if (!order) throw new Error('Order disappeared immediately after conversion');
 
-  publishChange({ entity: 'order', action: 'created', id: order.id, payload: order });
+  publishChange({ entity: 'order', action: 'created', id: order.id, payload: order, ...actorStamp(actor) });
   if (updatedLead) {
-    publishChange({ entity: 'lead', action: 'updated', id: lead.id, payload: updatedLead });
+    publishChange({ entity: 'lead', action: 'updated', id: lead.id, payload: updatedLead, ...actorStamp(actor) });
   }
   // Reserving changes what the next order can draw on, so every panel's stock
   // view has to move even though no boxes left the building.
@@ -301,14 +302,24 @@ export async function updateOrder(
     patch.vehicle_number = normaliseVehicleNumber(input.vehicleNumber);
   }
 
+  const fields = Object.keys(patch).map((column) => fieldFor(ORDER_COLUMNS, column));
+
   await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
+    // Clock, then row, as every write takes them. The clocks are read under
+    // the lock: a save that landed since the read above must be neither
+    // overwritten unseen (the stale-edit check) nor stamped over.
+    const locked = await orderRepo.lockOrder(actor.tenantId, id, trx);
+    if (!locked) throw new NotFoundError('Order');
+    if (locked.dispatchedAt) throw new ValidationError('validation.order.dispatchedLocked');
+    assertFieldsFresh(fields, locked.fieldHlc, input.baseFieldHlc);
+
     // Keyed by wire field, not column. `mergeFields` looks these up by wire
     // field, so stamping `total_weight_kg_override` wrote the clock somewhere
     // nothing reads and left the real key unset — every offline edit to those
     // fields then merged as if the Master had never touched them.
-    const fieldHlc = { ...existing.sync.fieldHlc };
-    for (const column of Object.keys(patch)) fieldHlc[fieldFor(ORDER_COLUMNS, column)] = hlc;
+    const fieldHlc = { ...locked.fieldHlc };
+    for (const field of fields) fieldHlc[field] = hlc;
 
     await orderRepo.updateOrderColumns(actor.tenantId, id, patch, { hlc, fieldHlc }, trx);
 
@@ -327,7 +338,7 @@ export async function updateOrder(
   const order = await orderRepo.findOrderById(actor.tenantId, id, UNSCOPED_PARTY_ACCESS);
   if (!order) throw new NotFoundError('Order');
 
-  publishChange({ entity: 'order', action: 'updated', id, payload: order });
+  publishChange({ entity: 'order', action: 'updated', id, payload: order, ...actorStamp(actor) });
   return order;
 }
 
@@ -428,7 +439,7 @@ export async function setStage(
   const order = await orderRepo.findOrderById(actor.tenantId, input.id, UNSCOPED_PARTY_ACCESS);
   if (!order) throw new NotFoundError('Order');
 
-  publishChange({ entity: 'order', action: 'updated', id: input.id, payload: order });
+  publishChange({ entity: 'order', action: 'updated', id: input.id, payload: order, ...actorStamp(actor) });
   return order;
 }
 
@@ -552,7 +563,7 @@ export async function dispatchOrder(
   const order = await orderRepo.findOrderById(actor.tenantId, input.orderId, UNSCOPED_PARTY_ACCESS);
   if (!order) throw new NotFoundError('Order');
 
-  publishChange({ entity: 'order', action: 'updated', id: order.id, payload: order });
+  publishChange({ entity: 'order', action: 'updated', id: order.id, payload: order, ...actorStamp(actor) });
   // Published after the transaction commits, so panels never see stock figures
   // from a transaction that could still roll back.
   await inventoryService.publishStockFor(
@@ -629,7 +640,7 @@ export async function deleteOrder(
         actorType: actor.actorType,
         actorId: actor.actorId,
         // Read by `activityDetail.order.deleted`, so the log names the order and party.
-        details: { number: existing.id, party: existing.partyName },
+        details: { number: recordNumber(existing), party: existing.partyName },
       },
       actor,
       trx,
@@ -640,7 +651,7 @@ export async function deleteOrder(
 
   if (!order) throw new NotFoundError('Order');
 
-  publishChange({ entity: 'order', action: 'deleted', id, payload: order });
+  publishChange({ entity: 'order', action: 'deleted', id, payload: order, ...actorStamp(actor) });
   await publishStockFor(
     actor.tenantId,
     releasedTargets.map((target) => target.variantId),
@@ -712,7 +723,7 @@ export async function restoreOrder(id: string, actor: ActorContext): Promise<Bin
         actorType: actor.actorType,
         actorId: actor.actorId,
         // Read by `activityDetail.order.restored`, so the log names the order and party.
-        details: { number: existing.id, party: existing.partyName },
+        details: { number: recordNumber(existing), party: existing.partyName },
       },
       actor,
       trx,
@@ -723,7 +734,7 @@ export async function restoreOrder(id: string, actor: ActorContext): Promise<Bin
 
   if (!order) throw new NotFoundError('Order');
 
-  publishChange({ entity: 'order', action: 'restored', id, payload: order });
+  publishChange({ entity: 'order', action: 'restored', id, payload: order, ...actorStamp(actor) });
   // Reactivating changes what the next order can draw on, same as a fresh
   // reservation does — every panel's stock view has to move.
   await publishStockFor(actor.tenantId, reactivatedTargets);

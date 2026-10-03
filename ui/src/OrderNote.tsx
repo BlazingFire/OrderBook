@@ -39,7 +39,8 @@ const LAYOUT_VARS = {
 export interface OrderNoteProps {
   pages: NotePage[];
   kind: NoteKind;
-  order: Pick<Order, 'id' | 'leadCreatedAt'>;
+  /** `poNumber` is the pending order's: printed in place of the id when there is one. */
+  order: Pick<Order, 'id' | 'leadCreatedAt' | 'poNumber'>;
   party: Party | null;
   partyName: string;
   vehicleNumber: string;
@@ -168,7 +169,7 @@ function Strip({
       </div>
       <span className="ob-note-strip-rule" />
       <div className="ob-note-strip-page">
-        <div className="ob-note-strip-page-id ob-note-clip">{order.id}</div>
+        <div className="ob-note-strip-page-id ob-note-clip">{order.poNumber ?? order.id}</div>
         <div className="ob-note-strip-page-no">
           {t('orderNote.page', { n: page.pageNo, total: page.pageCount })}
         </div>
@@ -197,7 +198,7 @@ function Header({ props, page }: { props: OrderNoteProps; page: NotePage }) {
           </span>
         </div>
         <div className="ob-note-head-cont-page ob-note-mono">
-          {order.id} · {pageLabel}
+          {order.poNumber ?? order.id} · {pageLabel}
         </div>
       </div>
     );
@@ -230,9 +231,11 @@ function Header({ props, page }: { props: OrderNoteProps; page: NotePage }) {
         )}
       </div>
       <div className="ob-note-meta">
-        <span className="ob-note-eyebrow">{t('orderNote.orderId')}</span>
+        <span className="ob-note-eyebrow">
+          {order.poNumber ? t('lead.number.label') : t('orderNote.orderId')}
+        </span>
         <span className="ob-note-meta-value ob-note-meta-id">
-          {order.id}
+          {order.poNumber ?? order.id}
           {isTemporaryId(order.id) && <span className="ob-note-unsynced">{t('orderNote.unsynced')}</span>}
         </span>
         <span className="ob-note-eyebrow">{t('orderNote.leadGenerated')}</span>

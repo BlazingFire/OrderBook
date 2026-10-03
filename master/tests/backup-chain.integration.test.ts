@@ -38,6 +38,8 @@ import { decryptBackup, readManifest } from '../src/lib/backup-crypto.js';
 import { listUserTables, verifyActivityLogChain } from '../src/repositories/backup.repository.js';
 import { exportBackup } from '../src/services/backup-export.service.js';
 import { restoreBackup } from '../src/services/backup-restore.service.js';
+import * as catalogService from '../src/services/catalog.service.js';
+import * as leadService from '../src/services/lead.service.js';
 
 describe.skipIf(!canRunIntegrationTests)('activity log chain verification (integration)', () => {
   beforeAll(setupDatabase);
@@ -226,5 +228,49 @@ describe.skipIf(!canRunIntegrationTests)('restoring a backup without a Server Ma
     expect(roles).toHaveLength(1);
     expect(roles[0]!.is_system).toBe(true);
     expect([...roles[0]!.permissions].sort()).toEqual([...allPermissions()].sort());
+  });
+});
+
+/**
+ * A backup from before 1.3 has no PO numbers and no `po:<fy>` counters, and
+ * the migration that numbers leads has already run on the database being
+ * restored into, so the restore numbers them itself.
+ */
+describe.skipIf(!canRunIntegrationTests)('restoring a backup without PO numbers (integration)', () => {
+  beforeAll(setupDatabase);
+  afterAll(teardownDatabase);
+  beforeEach(resetData);
+
+  const PASSPHRASE = 'a-long-enough-backup-passphrase';
+
+  it('numbers the restored leads in creation order and sets the counters past them', async () => {
+    await setUpFirstRun('Old Numbers Co');
+    const actor = await testActor();
+    const party = await catalogService.createParty({ name: 'Old Numbers Traders' }, actor);
+    const product = await catalogService.createProduct(
+      { categoryName: 'Tiles', variants: [{ code: 'OLD-01' }], name: 'Old Tile' },
+      actor,
+    );
+    const draft = {
+      partyId: party.id,
+      items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 1, packaging: 'Box' }],
+    };
+    const first = await leadService.createLead(draft, actor);
+    const second = await leadService.createLead(draft, actor);
+    await db()('leads').whereIn('id', [first.id, second.id]).update({ po_number: null });
+    await db()('leads').where({ id: first.id }).update({ created_at: '2026-06-01T06:00:00Z' });
+    await db()('leads').where({ id: second.id }).update({ created_at: '2026-06-02T06:00:00Z' });
+    // Stand in for a pre-1.3 database: no lead numbered, no PO counter.
+    await db()('id_sequences').where('entity', 'like', 'po:%').delete();
+    const { data } = await exportBackup({ scope: 'whole', passphrase: PASSPHRASE });
+
+    await restoreBackup(data, PASSPHRASE, true);
+
+    const numbers = await db()('leads').orderBy('created_at').pluck('po_number');
+    expect(numbers).toEqual(['PO/2026-27/00001', 'PO/2026-27/00002']);
+    const counter = await db()('id_sequences')
+      .where({ tenant_id: actor.tenantId, entity: 'po:2026-27' })
+      .first<{ next_value: string }>('next_value');
+    expect(Number(counter?.next_value)).toBe(3);
   });
 });

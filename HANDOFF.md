@@ -271,6 +271,22 @@ on it.
     conflict to review rather than overwriting it.
   - *A PC whose clock is more than 2 minutes off the Master's* shows a banner;
     set the right time there.
+- **Release note for 1.3 (Phase 4, 2026-10-03) — PO numbers, who else is here,
+  no silent overwrite.** Put these lines in the release notes:
+  - *Every pending order has a PO number*, `PO/2026-27/00042`, one series per
+    financial year from 1 April, shown everywhere the order appears: lists,
+    headers, toasts, the PDF, the Filling and Dispatch notes, search, the
+    Dashboard and the activity log. A final order shows its pending order's.
+    Existing pending orders were numbered in the order they were created.
+  - *A pending order saved on an Office while the Master is out of reach shows
+    "Provisional"* until it syncs; online, the save names its number. One saved
+    offline for a while gets a bell notice when it is numbered.
+  - *A record shows who else has it open*, with a ring around anyone editing it.
+  - *Nobody's save is silently overwritten*: if someone else saves a pending
+    order you are editing, the form says who and when and offers "Reload theirs"
+    or "Keep mine".
+  - *A Server Master can raise a pending order for any user* (an Owner picker on
+    the Master's form) and delete any user's; both are logged under their name.
 - **Hindi is 1,245 strings behind** (`grep -c 'TODO(i18n-hi)'
   shared/src/i18n/hi.ts`). The parity test only checks keys exist, so nothing
   fails on it — except an `activity.*` template, where
@@ -823,6 +839,27 @@ terms, multiple contacts); concurrent edits of one lead from two panels
 
 ## Traps worth knowing
 
+- **Presence is never logged and never goes through `publishChange`.** It lives
+  in the Master's memory (`master/src/realtime/presence-store.ts`) and is pushed
+  only as `presence:changed` through `emitToActors`. Routing it through the change
+  bus would put heartbeats in the change ring, the activity chain and every
+  panel's delta. A Master restart forgets it; the next beat rebuilds it.
+- **`po:%` counters survive the reload CLI.** `wipe:business` (and
+  `seed:parties`) reset the per-entity `id_sequences` rows by name and never the
+  `po:<fy>` rows, so a PO number once printed is never handed out again;
+  `reload:catalog` touches no counter. Only a developer factory reset, which
+  drops the schema, starts the series again. A new per-entity counter added to
+  that list must not be a `LIKE` over `id_sequences`.
+- **The lead form exists twice and both copies send only what changed.**
+  `ui/src/LeadEntryScreen.tsx` (Master) and `office/web/src/screens/AddLeadScreen.tsx`
+  (Office) both go through `ui/src/LeadStaleEdit.tsx`. Sending the whole record
+  again would make every edit a stale-edit 409 on the Master, or a conflict on the
+  Office, the moment anyone else touched any field.
+- **A final order has no PO number of its own.** The order query reads
+  `ld.po_number` through the lead; there is no `orders.po_number` to keep in step.
+- **`PRESENCE_TAB_ID` comes from `crypto.getRandomValues`.** `crypto.randomUUID`
+  is undefined over plain LAN http, which is how both panels are usually opened.
+
 - **Rediscovery needs one connect after the 1.3 update.** An Office whose
   Master moved to another address finds it only if that panel has connected to
   the Master at least once since the update: `authenticatePanel` fills
@@ -1062,6 +1099,38 @@ terms, multiple contacts); concurrent edits of one lead from two panels
 
 Condensed. The full entries are in `git show 5b8ebe2:HANDOFF.md` and in
 `docs/AI_COLLABORATION.md`.
+
+- **2026-10-03 — 1.3 Phase 4: PO numbers (rule 2), presence (rule 3), stale-edit
+  protection, Master authority (Claude).** Migration
+  `20261003000000_pending_order_numbers` (additive: `leads.po_number`, UPDATE-only
+  backfill per financial year, partial unique index, `po:<fy>` counters). Shared:
+  `pending-order-number.ts`, `protocol/presence.ts`, `Lead`/`Order.poNumber?`,
+  `baseFieldHlc?` on lead and order updates, `MutationResult.number?`,
+  `DataChangedEvent.actorUserId?/actorName?`, `sameLines` moved into `merge.ts`,
+  `lead.numbered`, `PANEL_PROTOCOL_VERSION = 4`. Master: the number minted in
+  `createLead`'s transaction (`nextInSeries`), 409 `error.conflict.staleEdit` on
+  `updateLead`/`updateOrder`, `actorStamp`, the `lead.numbered` notice, the v1
+  restore back-numbering, `owners[]` on the lead-entry view,
+  `presence-store.ts`/`presence.service.ts`, `presence:beat`/`presence:changed`,
+  `POST /api/presence`. Office: `awaitSettled`/`onNumbered`, the 5 s number wait on
+  `POST /api/leads`, `baseFieldHlc` out of queued `PUT`s, `POST /api/presence`, SSE
+  `presence` and `numbered`. ui and web: `RecordNumber`, `AvatarStack`,
+  `useRecordPresence`, `LeadStaleEdit` (changed fields, `StaleEditNotice`), the
+  Owner picker, numbers on every list, header, toast, note, search hit, Dashboard
+  and log row, an Order ref column, avatars in the lead and order headers, the bell
+  opening a numbered lead. Docs: `LEAD_GENERATION_FLOW.md` §4 and §7, the API
+  contract §14, `docs/schema/03` and `06`, `STRUCTURE.md`.
+  The `lead.numbered` notice goes out when the save's HLC predates the pushing
+  socket's connect (not "older than 60 s by the Master's clock", which a slow
+  Office clock tripped on live saves), and only to an author who could open the
+  lead now (`leads.view` and party access); the panel-named author proves
+  nothing. A queued Office lead edit stamps its fields' clocks on the Office
+  view, so a second edit before the first is acknowledged is not a conflict.
+  **Not done:** the compact `AvatarStack` on board cards. The Master pushes
+  presence only to people on a record, so a board has nothing to show; the
+  unused `compact` prop was removed, and a board needs a per-record presence
+  feed first (owner to confirm dropping it). Also not done: a browser and
+  Electron walk of the avatars, the Provisional pill and the stale-edit notice.
 
 - **2026-10-03 — 1.3 Phase 3: realtime rules 1, 5 and 6, push gate, stage HLC,
   notification centre (Claude).** Migrations `20261002000000_user_notifications`

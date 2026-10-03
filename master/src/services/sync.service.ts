@@ -55,10 +55,12 @@ import {
   type MergeableEntity,
   mergeFields,
   MUTATION_PERMISSIONS,
+  parseHlc,
+  sameLines,
   type Permission,
 } from '@orderbook/shared';
 
-import { actorCan, type ActorContext } from '../domain/actor.js';
+import { actorCan, actorUserId, type ActorContext } from '../domain/actor.js';
 import type { LineDraft } from '../domain/line-items.js';
 import { MASTER_MERGE_COLUMNS } from '../domain/merge-columns.js';
 import { UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
@@ -78,6 +80,7 @@ import * as activityLog from '../repositories/activity-log.repository.js';
 import * as identityRepo from '../repositories/identity.repository.js';
 import * as leadRepo from '../repositories/lead.repository.js';
 import * as orderRepo from '../repositories/order.repository.js';
+import * as partyAccessRepo from '../repositories/party-access.repository.js';
 import * as partyRepo from '../repositories/party.repository.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
@@ -85,7 +88,8 @@ import * as productRepo from '../repositories/product.repository.js';
 import * as productVariantRepo from '../repositories/product-variant.repository.js';
 import * as syncRepo from '../repositories/sync.repository.js';
 import type { TransactionContext } from '../repositories/transaction.js';
-import { publishChange, publishConflict } from './change-bus.js';
+import { actorStamp, publishChange, publishConflict } from './change-bus.js';
+import { notify } from './notification.service.js';
 import * as catalogService from './catalog.service.js';
 import * as inventoryService from './inventory.service.js';
 import * as leadService from './lead.service.js';
@@ -148,7 +152,7 @@ export async function applyPush(
   // live drags into conflicts; its moves keep the old last-arrival rule.
   const stageClock = panelProtocol === undefined || panelProtocol >= STAGE_CLOCK_MIN_PROTOCOL;
   const apply = (mutation: Mutation, pushActor: ActorContext, afterCommit: PostCommit[]) =>
-    applyOne(mutation, pushActor, afterCommit, stageClock);
+    applyOne(mutation, pushActor, afterCommit, stageClock, connectedAt);
   const outcomes = fresh.length > 0 ? await runPush(actor, fresh, apply, connectedAt) : new Map<string, MutationResult>();
 
   const results: MutationResult[] = [];
@@ -217,6 +221,7 @@ async function applyOne(
   actor: ActorContext,
   afterCommit: PostCommit[],
   stageClock = true,
+  connectedAt?: number,
 ): Promise<MutationResult> {
   const permission = REQUIRED_PERMISSION[mutation.kind];
 
@@ -281,7 +286,7 @@ async function applyOne(
 
     let result: MutationResult;
     try {
-      result = await route(mutation, actor, afterCommit, stageClock);
+      result = await route(mutation, actor, afterCommit, stageClock, connectedAt);
     } catch (error) {
       // A transient failure — a serialization/deadlock abort from crossing
       // another transaction's lock order, or a pool-acquire timeout under a
@@ -407,6 +412,7 @@ async function route(
   actor: ActorContext,
   afterCommit: PostCommit[],
   stageClock: boolean,
+  connectedAt: number | undefined,
 ): Promise<MutationResult> {
   const mutation = await resolvePayloadIds(incoming, actor);
 
@@ -414,7 +420,24 @@ async function route(
     case 'lead.create': {
       const lead = await leadService.createLead(payloadAs<LeadInput>(mutation), actor, mutation.hlc);
       await mapTemporaryId(mutation, lead.id, actor);
-      return applied(mutation, lead.id);
+      // A save that waited offline was shown as Provisional; its author hears
+      // the number it got. A live save shows the number on its own screen.
+      const author = mutation.actorUserId ?? actorUserId(actor);
+      if (lead.poNumber && author && savedBeforeConnect(mutation.hlc, connectedAt)) {
+        const number = lead.poNumber;
+        afterCommit.push(async () => {
+          // The author is named by the panel and proves nothing, and the notice
+          // names the party: only someone who could open the lead hears of it.
+          if (!(await mayOpenLead(actor.tenantId, author, lead.partyId))) return;
+          await notify(actor.tenantId, [author], {
+            kind: 'lead.numbered',
+            params: { number, party: lead.partyName },
+            link: { kind: 'lead', id: lead.id },
+            dedupeKey: `lead.numbered:${lead.id}`,
+          });
+        });
+      }
+      return { ...applied(mutation, lead.id), ...(lead.poNumber ? { number: lead.poNumber } : {}) };
     }
 
     case 'party.create': {
@@ -638,9 +661,10 @@ async function mergeUpdate(
       }
     }
 
-    // Lead and order edits from the Office carry no base (see
-    // `baseForUnversionedEdit`). Parties and products send real bases and are
-    // untouched.
+    // An Office lead edit sends the clocks its form opened at (the Office view
+    // stamps its own queued edits, so a second one builds on the first). Order
+    // edits, and lead edits from an older Office, carry no base; those take
+    // `baseForUnversionedEdit`. Parties and products send real bases.
     let base: Record<string, string> = { ...(mutation.baseFieldHlc ?? {}) };
     if ((entity === 'lead' || entity === 'order') && Object.keys(base).length === 0) {
       base = baseForUnversionedEdit(fields, current.fieldHlc, mutation.hlc);
@@ -822,7 +846,7 @@ async function mergeUpdate(
   // learns about a conflict or a row change that could still have rolled back.
   // The conflicts wait for the gate, after this mutation's outcome is recorded.
   afterCommit.push(() => storedConflicts.forEach((conflict) => publishConflict(conflict)));
-  await republish(entity, actor.tenantId, id);
+  await republish(entity, actor, id);
 
   return {
     mutationId: mutation.mutationId,
@@ -847,26 +871,6 @@ export function normaliseVariants(variants: unknown[]): Array<{
     weightKg: typeof variant.weightKg === 'number' ? variant.weightKg : null,
     ...(typeof variant.sequence === 'number' ? { sequence: variant.sequence } : {}),
   }));
-}
-
-/** Everything a person can edit on a line, for "did the lines change". */
-function lineKey(line: unknown): string {
-  const l = (line ?? {}) as Record<string, unknown>;
-  const text = (value: unknown) => (typeof value === 'string' && value !== '' ? value : null);
-  return JSON.stringify([
-    l.productId,
-    l.variantId,
-    Number(l.quantity),
-    text(l.colour),
-    text(l.grade),
-    text(l.packaging),
-    text(l.notes),
-  ]);
-}
-
-function sameLines(stored: unknown, incoming: unknown): boolean {
-  if (!Array.isArray(stored) || !Array.isArray(incoming) || stored.length !== incoming.length) return false;
-  return stored.every((line, index) => lineKey(line) === lineKey(incoming[index]));
 }
 
 /**
@@ -1053,9 +1057,10 @@ async function writeMergedColumns(
 
 async function republish(
   entity: MergeableEntity,
-  tenantId: string,
+  actor: ActorContext,
   id: string,
 ): Promise<void> {
+  const { tenantId } = actor;
   const payload =
     entity === 'lead'
       ? await leadRepo.findLeadById(tenantId, id, UNSCOPED_PARTY_ACCESS)
@@ -1065,7 +1070,7 @@ async function republish(
           ? await partyRepo.findPartyById(tenantId, id)
           : await productRepo.findProductById(tenantId, id);
 
-  if (payload) publishChange({ entity, action: 'updated', id, payload });
+  if (payload) publishChange({ entity, action: 'updated', id, payload, ...actorStamp(actor) });
 }
 
 async function mapTemporaryId(
@@ -1087,6 +1092,32 @@ async function mapTemporaryId(
       trx,
     );
   });
+}
+
+/**
+ * Whether a save was made before the pushing panel's socket connected, so it
+ * waited in that panel's outbox. Judged against the connect time rather than
+ * the Master's clock now: an Office clock running behind keeps its HLC at the
+ * last Master clock it saw, which made a live save look minutes old. Once
+ * connected, the Office folds the Master's clock in, so a live save is stamped
+ * after the connect. Without a socket (a test) nothing is called offline.
+ */
+function savedBeforeConnect(hlc: string, connectedAt: number | undefined): boolean {
+  if (connectedAt === undefined) return false;
+  try {
+    return parseHlc(hlc).physical < connectedAt;
+  } catch {
+    return false;
+  }
+}
+
+/** Whether `userId` is an active person who could open a lead on this party now. */
+async function mayOpenLead(tenantId: string, userId: string, partyId: string): Promise<boolean> {
+  const viewers = await userRepo.findActiveUserIdsWithPermission(tenantId, 'leads.view');
+  if (!viewers.includes(userId)) return false;
+  const grants = await partyAccessRepo.grantsForParty(tenantId, partyId);
+  if (grants.length === 0 || grants.some((grant) => grant.userId === userId)) return true;
+  return (await userRepo.findActiveUserIdsWithPermission(tenantId, 'party.accessAll')).includes(userId);
 }
 
 function applied(mutation: Mutation, entityId: string): MutationResult {

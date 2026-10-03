@@ -167,6 +167,24 @@ footer, which also counts such lines beside the total weight it could compute.
    the stage the record is already in is a no-op. The check applies only to moves from an Office on
    protocol 3 or later (`STAGE_CLOCK_MIN_PROTOCOL` in `master/src/services/sync.service.ts`); a move
    from an older Office keeps the last-arrival rule and applies when it arrives.
+7. **Somebody else's save while the form is open** (1.3) — an edit sends only the fields the
+   person changed since opening the record, plus the field clocks it opened at (`baseFieldHlc`;
+   `changedLeadFields` in `ui/src/LeadStaleEdit.tsx`, used by both copies of the form). Lines go
+   only when they really changed (`sameLines`). On the Master, `updateLead` / `updateOrder` refuse
+   a field saved by somebody else since with 409 `error.conflict.staleEdit`; on an Office the edit
+   is queued and the Master's merge records a conflict instead. The form then says who saved and
+   when ("Ravi saved this at 10:42", from the presence push) and offers **Reload theirs** (open the
+   form again on their version) or **Keep mine** (carry on; the next save is checked against their
+   version). Nothing is overwritten silently.
+8. **Who else has it open** (1.3, rule 3) — a record's header shows the other people on it, an
+   accent ring for anyone editing and a shield for a Server Master (`AvatarStack`). Held in the
+   Master's memory only: each open record screen beats every 10 s and drops off 30 s after it stops.
+   Presence is never stored, logged or put in the change ring. A provisional lead is never
+   announced.
+9. **Raising one for somebody else** (1.3) — a person holding `record.reassignOwner` (a Server
+   Master, usually) gets an **Owner** picker on the Master's New pending order form, and may delete
+   any user's pending order with `leads.delete` and `party.accessAll`. Both are logged under their
+   own name.
 
 ---
 
@@ -291,6 +309,51 @@ The order holds within one gather window only. A panel whose push arrives after 
 closed is numbered after everything already applied, however old its work, because a permanent ID
 once minted is never moved. So the slowest a push waits is about 6 s. Two pushes from the same
 panel (a 1.2 Office's ack retry) are merged in the gate rather than queued twice.
+
+**Pending order numbers (1.3, rule 2).** Besides its `LD…` id, every pending order has a PO
+number the owner reads everywhere — list rows, record headers, toasts, the lead PDF, the Filling and
+Dispatch notes, search and the Dashboard: `PO/2026-27/00042`.
+
+- **One series per Indian financial year**, 1 April 00:00 to 31 March, in the company's time zone
+  (`config.locale.timeZone`, Asia/Kolkata by default; `financialYearLabel` in
+  `shared/src/domain/pending-order-number.ts`). The year is read from the Master's clock at the
+  moment the lead is created, the same instant as its `created_at`, so the number's year always
+  matches the created date shown. An offline lead saved on 31 March and synced on 2 April is
+  numbered in the new year, which matches its stored `created_at`.
+- **Master-only, gap-free, never reused.** `insertLead` mints it inside `createLead`'s
+  transaction from the `id_sequences` row `po:<fy>` (`nextInSeries` in
+  `identity.repository.ts`). The row lock holds until commit, so two saves can never take one
+  number, and a rolled-back or refused create gives its number back. A deleted pending order keeps
+  its number (the unique index covers deleted rows), so a number is never handed out twice.
+- **At least five digits**, growing past them rather than wrapping.
+- **A final order has no number of its own**: it shows its pending order's, read through the lead
+  it came from. An order with no lead shows its `OD…` id, and the order lists keep the `OD…` id in
+  a small **Order ref** column beside the number.
+- **Existing leads were back-numbered** by migration `20261003000000_pending_order_numbers`, per
+  financial year in `(created_at, id)` order, deleted ones included, using UPDATE only; the
+  counters were seeded past what the backfill used. A pre-1.3 `.obbackup` restore numbers its
+  leads the same way (`backfillPendingOrderNumbers`).
+
+**Provisional.** An Office save is still queued in its outbox first, online or not. While the
+link is up, `POST /api/leads` then waits up to 5 s (`OFFICE_SAVE_NUMBER_WAIT_MS`) for the push
+that carries it and answers with the number, so the toast reads "Pending Order
+PO/2026-27/00042 saved". Offline, or when the Master is slower than that, it answers at once and
+the lead shows a **Provisional** pill beside its temporary id (`RecordNumber`) — never a guessed
+number. When the push lands, the panel's `numbered` event names the number; an open provisional
+lead stays open under its permanent id. A lead whose save reached the Master more than a minute
+after it was made also gets a `lead.numbered` entry in its author's notification bell.
+
+**The ordering ceiling.** Numbers follow the gate's order above: within one gather window, by when
+the work was done; outside it, by when it reached the Master. A panel that reconnects late gets
+later numbers than work applied before it arrived, however old its own work, because a number once
+minted is never moved. Numbers stay unique and gap-free either way; only their relative order is
+affected. Hard-deleting leads (sample data removal) leaves holes, since numbers are never reused.
+
+**The counters survive the reload CLI.** Erasing the business data (`wipe:business` in
+`master/src/services/catalog-reload-cli.ts`) resets the per-entity id counters by name and never
+the `po:%` rows, so a PO number once printed is never handed out again; `reload:catalog` touches
+no counter at all. Only a developer factory reset, which drops the schema, starts the series
+again.
 
 **`id_map` keeps a temporary ID resolvable for writes.** A mutation addressed by it, and a
 `partyId`, `ownerId` or `productId` inside a payload, or a line's `productId`, that names one — a
