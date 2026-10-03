@@ -1077,7 +1077,8 @@ function MasterPanel() {
         canViewPartyAccess
           ? { id: 'partyAccess', label: t('nav.master.partyAccess'), icon: 'shield' }
           : null,
-        canViewFields ? { id: 'lists', label: t('nav.lists'), icon: 'task' } : null,
+        // Everyone reads the three lists; editing is gated inside the page.
+        { id: 'lists', label: t('nav.lists'), icon: 'task' },
       ] satisfies Array<NavItem | null>,
     },
     {

@@ -83,12 +83,21 @@ function assertListKey(raw: unknown): FieldListKey {
   return raw;
 }
 
+/**
+ * 1.4 D3 (R5): the brands, packaging types and grades are read by everyone, as the
+ * pickers already read them out of the snapshot; every other list stays behind
+ * `fields.view`.
+ */
+function requireListRead(actor: ActorContext, listKey: string): void {
+  if (!isCatalogListKey(listKey)) requirePermission(actor, 'fields.view');
+}
+
 export async function listValues(
   query: { listKey: unknown; includeDeleted?: boolean; includeUnlisted?: boolean },
   actor: ActorContext,
 ): Promise<{ items: OptionListItem[]; unlisted?: string[] }> {
-  requirePermission(actor, 'fields.view');
   const listKey = assertListKey(query.listKey);
+  requireListRead(actor, listKey);
 
   const items = await customFieldRepo.listOptionsForKey(actor.tenantId, listKey, {
     includeDeleted: query.includeDeleted,
@@ -107,8 +116,8 @@ export async function fieldUsage(
   query: { listKey: unknown },
   actor: ActorContext,
 ): Promise<FieldUsageBreakdown> {
-  requirePermission(actor, 'fields.view');
   const listKey = assertListKey(query.listKey);
+  requireListRead(actor, listKey);
 
   const rows = await fieldUsageRepo.usageForListKey(actor.tenantId, listKey);
   const known = new Set(

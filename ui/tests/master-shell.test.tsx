@@ -461,6 +461,8 @@ describe('Basic Home and the landing screen', () => {
       t('nav.master.dashboard'),
       t('nav.leads'),
       t('nav.products'),
+      // 1.4 D3: everyone reads the brand, packaging and grade lists.
+      t('nav.lists'),
       t('nav.master.settings'),
       t('nav.updates'),
     ]);

@@ -3272,8 +3272,6 @@ export const EN_MESSAGES = {
   'lists.nav.grades': 'Grades',
   'lists.nav.packaging': 'Packaging',
   'lists.nav.brands': 'Brands',
-  'lists.noAccess.title': 'The lists are not part of your role',
-  'lists.noAccess.description': 'Ask an administrator for {permission}.',
   'table.selectAll': 'Select all',
   'table.selectRow': 'Select row',
   'productShare.bar': 'Product share',

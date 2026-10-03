@@ -61,13 +61,16 @@ export function ProductShareBar({
   buildRef.current = build;
   const [busy, setBusy] = useState(false);
   const [built, setBuilt] = useState<(BuiltShare & { count: number }) | null>(null);
+  // Set on every setup, not only cleared on cleanup: a screen kept alive in a hidden
+  // `<Activity>` runs its effects' cleanup when it is hidden and its setup again when
+  // it is shown, and a flag that only ever went to false would swallow the answer.
   const mounted = useRef(true);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
       mounted.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
 
   if (count === 0 && !built) return null;
 

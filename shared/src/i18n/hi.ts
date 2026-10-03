@@ -4315,8 +4315,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lists.nav.grades': 'ग्रेड',
   'lists.nav.packaging': 'पैकेजिंग',
   'lists.nav.brands': 'ब्रांड',
-  'lists.noAccess.title': 'सूचियाँ आपकी भूमिका में शामिल नहीं हैं',
-  'lists.noAccess.description': '{permission} के लिए किसी एडमिन से कहें।',
   'table.selectAll': 'सभी चुनें',
   'table.selectRow': 'पंक्ति चुनें',
   'productShare.bar': 'प्रोडक्ट शेयर',

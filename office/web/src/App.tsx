@@ -1076,9 +1076,8 @@ function OfficePanel() {
           can('party.assign') || can('party.accessAll')
             ? { id: 'partyAccess', label: t('nav.partyAccess'), icon: 'shield' as const }
             : null,
-          can('fields.view')
-            ? { id: 'lists', label: t('nav.lists'), icon: 'task' as const }
-            : null,
+          // Everyone reads the three lists; editing is gated inside the page.
+          { id: 'lists', label: t('nav.lists'), icon: 'task' as const },
         ] satisfies Array<NavItem | null>
       ).filter((item): item is NonNullable<typeof item> => item !== null),
     },

@@ -84,10 +84,10 @@ describe('CatalogListsScreen', () => {
     expect(screen.queryByRole('button', { name: t('fields.values.add') })).toBeNull();
   });
 
-  it('says so, and reads nothing, without fields.view', () => {
+  it('shows the values, read-only, to a person who holds no list permission at all', async () => {
     const transport = transportFor();
-    render(<CatalogListsScreen page="brands" permissions={['catalog.lists.manage']} transport={transport} />);
-    expect(screen.getByText(t('lists.noAccess.title'))).toBeTruthy();
-    expect(transport.fieldValues).not.toHaveBeenCalled();
+    render(<CatalogListsScreen page="brands" permissions={[]} transport={transport} />);
+    expect((await screen.findAllByText('Premium')).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: t('fields.values.add') })).toBeNull();
   });
 });

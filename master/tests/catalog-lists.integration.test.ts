@@ -88,6 +88,20 @@ describe.skipIf(!canRunIntegrationTests)('catalog lists (integration)', () => {
     expect(created.value).toBe('Radio');
   });
 
+  it('anyone signed in reads the three lists; every other list still needs fields.view', async () => {
+    const nobody = await actorWith([]);
+    for (const listKey of LISTS) {
+      await expect(fieldsService.listValues({ listKey }, nobody)).resolves.toBeTruthy();
+      await expect(fieldsService.fieldUsage({ listKey }, nobody)).resolves.toBeTruthy();
+    }
+    await expect(fieldsService.listValues({ listKey: 'lead.sourcePlatform' }, nobody)).rejects.toThrow(
+      ForbiddenError,
+    );
+    await expect(fieldsService.fieldUsage({ listKey: 'lead.sourcePlatform' }, nobody)).rejects.toThrow(
+      ForbiddenError,
+    );
+  });
+
   it('a caller with neither key learns nothing about an id', async () => {
     const nobody = await actorWith(['fields.view']);
     await expect(fieldsService.deleteValue('00000000-0000-0000-0000-000000000000', nobody)).rejects.toThrow(

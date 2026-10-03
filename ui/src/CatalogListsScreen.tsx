@@ -4,15 +4,14 @@
  * One sidebar module with a page for each list, on both panels. Each page is
  * the shared `OptionListEditor` on one managed option list, so adding,
  * renaming, reordering and retiring (to the Recycle Bin, with the "used by"
- * counts) behave as on Fields. Editing needs `catalog.lists.manage`; anyone
- * who can read the lists (`fields.view`) sees them read-only.
+ * counts) behave as on Fields. Editing needs `catalog.lists.manage`; everyone
+ * else sees the same lists read-only (the server lets any signed-in person read
+ * these three).
  */
 
 import type { CatalogListKey } from '@orderbook/shared';
 
-import { t } from './i18n.js';
 import { OptionListEditor, type OptionListTransport } from './OptionListEditor.js';
-import { EmptyState } from './States.js';
 import { useSubNav } from './SubNavSlot.js';
 
 export type CatalogListsPage = 'grades' | 'packaging' | 'brands';
@@ -44,17 +43,6 @@ export function CatalogListsScreen({
   // No record opens here; say so, or a detail open on a sibling page would
   // stay highlighted in the sidebar while this one shows.
   useSubNav('lists', null);
-
-  // Every read the editor makes needs `fields.view`; without it the editor
-  // would sit on a load error whose Retry can never succeed.
-  if (!permissions.includes('fields.view')) {
-    return (
-      <EmptyState
-        title={t('lists.noAccess.title')}
-        description={t('lists.noAccess.description', { permission: 'fields.view' })}
-      />
-    );
-  }
 
   return (
     <OptionListEditor

@@ -3,6 +3,7 @@
  */
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { ProductShareBar } from '../src/ProductShare.js';
@@ -49,6 +50,19 @@ describe('ProductShareBar', () => {
     expect(await screen.findByText(/Master is off|productShare/)).toBeTruthy();
     expect(onClear).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: t('productShare.create') })).toBeTruthy();
+  });
+
+  it('still shows the PDF after the effects were torn down and set up again (a hidden then shown Activity, StrictMode)', async () => {
+    const build = vi.fn(async () => ({ blob: new Blob(['%PDF-']), fileName: 'x.pdf' }));
+    render(
+      <StrictMode>
+        <ToastProvider>
+          <ProductShareBar count={2} onClear={() => undefined} build={build} />
+        </ToastProvider>
+      </StrictMode>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: t('productShare.create') }));
+    expect(await screen.findByText(t('productShare.ready.title'))).toBeTruthy();
   });
 
   it('Clear selection reports up', () => {
