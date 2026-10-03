@@ -33,7 +33,6 @@ const BASE_SNAPSHOT: Omit<SyncSnapshot, 'dashboard' | 'permissions'> = {
   partyVariants: [],
   leads: [],
   orders: [],
-  stock: [],
   pipelines: [],
   optionLists: [],
   customFields: [],
@@ -49,7 +48,6 @@ const DASHBOARD_FOR_MANAGER = {
   orderCount: 4,
   partyCount: 30,
   productCount: 120,
-  lowStockCount: 2,
   followUpsDueCount: 5,
   openConflictCount: 1,
   pendingSyncCount: 0,
@@ -80,7 +78,7 @@ describe('dashboard staleness — permission stripping (DSH-3)', () => {
     vi.spyOn(localStore, 'getView').mockResolvedValue({
       ...BASE_SNAPSHOT,
       dashboard: DASHBOARD_FOR_MANAGER,
-      permissions: ['leads.view', 'orders.view', 'parties.view', 'products.view', 'inventory.view', 'sync.resolveConflicts'],
+      permissions: ['leads.view', 'orders.view', 'parties.view', 'products.view', 'sync.resolveConflicts'],
       pendingCount: 0,
     });
   });
@@ -100,7 +98,7 @@ describe('dashboard staleness — permission stripping (DSH-3)', () => {
     expect(dashboard.pipelineBreakdown).toEqual(DASHBOARD_FOR_MANAGER.pipelineBreakdown);
     expect(dashboard.asOf).toBe(NOW);
 
-    for (const key of ['orderCount', 'partyCount', 'productCount', 'lowStockCount', 'openConflictCount', 'pendingSyncCount', 'openOrderCount', 'dispatchedThisWeekCount', 'convertedTodayCount', 'dispatchedTodayCount']) {
+    for (const key of ['orderCount', 'partyCount', 'productCount', 'openConflictCount', 'pendingSyncCount', 'openOrderCount', 'dispatchedThisWeekCount', 'convertedTodayCount', 'dispatchedTodayCount']) {
       expect(key in dashboard).toBe(false);
     }
   });

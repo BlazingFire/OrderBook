@@ -125,10 +125,10 @@ export async function findLiveVariantsByCodes(
 
 /**
  * Variants of this product that something still points at: a line on any
- * lead or order, a stock row with boxes on it, a ledger entry, or an active
- * reservation. Such a row is deactivated rather than deleted when the
- * administrator takes it off the form — the history that quotes it stays
- * readable.
+ * lead or order, or a row left in the retired stock tables (kept for data
+ * safety since 1.4, and still foreign-keyed to the variant, so a delete would
+ * fail). Such a row is deactivated rather than deleted when the administrator
+ * takes it off the form — the history that quotes it stays readable.
  */
 async function referencedVariantIds(
   tenantId: string,
@@ -141,9 +141,9 @@ async function referencedVariantIds(
       WHERE v.tenant_id = ? AND v.product_id = ?
         AND (
           EXISTS (SELECT 1 FROM line_items li WHERE li.variant_id = v.id)
-          OR EXISTS (SELECT 1 FROM inventory_stock s WHERE s.variant_id = v.id AND s.quantity_boxes <> 0)
+          OR EXISTS (SELECT 1 FROM inventory_stock s WHERE s.variant_id = v.id)
           OR EXISTS (SELECT 1 FROM stock_movements m WHERE m.variant_id = v.id)
-          OR EXISTS (SELECT 1 FROM stock_reservations r WHERE r.variant_id = v.id AND r.status = 'active')
+          OR EXISTS (SELECT 1 FROM stock_reservations r WHERE r.variant_id = v.id)
         )`,
     [tenantId, productId],
   );

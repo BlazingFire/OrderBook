@@ -63,16 +63,6 @@ import {
   PasswordInput,
 } from '@orderbook/ui';
 
-/**
- * Company settings this panel does not show. Both fed the Inventory screen,
- * which the Master no longer has (1.3); the keys stay valid and keep their
- * stored values, so nothing is lost if the screen comes back.
- */
-const MASTER_HIDDEN_SETTINGS: ReadonlySet<SettingKey> = new Set<SettingKey>([
-  'inventory.defaultReorderLevel',
-  'inventory.adjustmentNoteRequired',
-]);
-
 export function SettingsScreen({
   tab,
   onTabChange,
@@ -224,10 +214,7 @@ export function SettingsScreen({
 
   /** One declared group's rows as a section; null when none of them was read. */
   function groupSection(rows: SettingView[], group: SettingGroup) {
-    const inGroup = rows.filter(
-      (setting) =>
-        SETTINGS[setting.key].group === group && !MASTER_HIDDEN_SETTINGS.has(setting.key),
-    );
+    const inGroup = rows.filter((setting) => SETTINGS[setting.key].group === group);
     if (inGroup.length === 0) return null;
 
     return (

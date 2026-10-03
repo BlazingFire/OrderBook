@@ -22,7 +22,6 @@
  */
 
 import type {
-  InventoryStockLevel,
   Lead,
   Order,
   Party,
@@ -72,9 +71,6 @@ export function applyChangeToSnapshot(
     case 'order':
       snapshot.orders = upsert(snapshot.orders, event.payload as Order);
       return 'applied';
-    case 'stock':
-      snapshot.stock = upsertStock(snapshot.stock, event.payload as InventoryStockLevel);
-      return 'applied';
     default:
       // A Master running a newer version may broadcast entities this panel does
       // not track. Ignoring one is right; invalidating everything is not.
@@ -114,16 +110,6 @@ function upsert<T extends { id: string }>(list: T[], item: T): T[] {
 
 function upsertBy<T, K extends keyof T>(list: T[], item: T, key: K): T[] {
   const index = list.findIndex((entry) => entry[key] === item[key]);
-  if (index === -1) return [item, ...list];
-
-  const next = [...list];
-  next[index] = item;
-  return next;
-}
-
-/** Stock rows have no id of their own — a row is one variant. */
-function upsertStock(list: InventoryStockLevel[], item: InventoryStockLevel): InventoryStockLevel[] {
-  const index = list.findIndex((entry) => entry.variantId === item.variantId);
   if (index === -1) return [item, ...list];
 
   const next = [...list];

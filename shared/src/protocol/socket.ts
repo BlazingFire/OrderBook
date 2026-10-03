@@ -18,7 +18,6 @@ import type {
   CompanyFeatures,
   CustomFieldDefinition,
   DashboardSummary,
-  InventoryStockLevel,
   IsoTimestamp,
   Lead,
   OfficePanelWithPresence,
@@ -34,7 +33,6 @@ import type {
   RecordId,
   SearchHit,
   SignedInUser,
-  StockMovement,
   SyncConflict,
   Uuid,
 } from '../domain/entities.js';
@@ -95,14 +93,10 @@ import type {
   ProductListQuery,
   RecycleBinQuery,
   RemarkInput,
-  ReorderLevelInput,
   RestoreInput,
   SearchQuery,
   StageChangeInput,
   StageReorderInput,
-  StockAdjustmentInput,
-  StockInboundInput,
-  StockListQuery,
 } from '../domain/inputs.js';
 import type {
   CategoryPickPage,
@@ -359,8 +353,6 @@ export type ChangedEntity =
   | 'product_category'
   | 'party_variant'
   | 'office_panel'
-  | 'stock'
-  | 'reservation'
   | 'pipeline'
   | 'option_list'
   | 'custom_field'
@@ -476,7 +468,6 @@ export const REPLAYABLE_ENTITIES: readonly ChangedEntity[] = [
   'party',
   'product',
   'product_category',
-  'stock',
 ];
 
 /**
@@ -492,7 +483,6 @@ export const REPLAYABLE_ENTITIES: readonly ChangedEntity[] = [
 export const SNAPSHOT_FORCING_ENTITIES: readonly ChangedEntity[] = [
   'party_variant',
   'sync_conflict',
-  'reservation',
   'pipeline',
   'option_list',
   'custom_field',
@@ -541,7 +531,12 @@ export interface SyncSnapshot {
   partyVariants: PartyProductVariant[];
   leads: Lead[];
   orders: Order[];
-  stock: InventoryStockLevel[];
+  /**
+   * Always empty. Stock was removed in 1.4; the Master still sends the key so an
+   * Office built before then, which reads `snapshot.stock` without a guard, keeps
+   * working until it is updated. Nothing in 1.4 reads it.
+   */
+  stock?: never[];
   pipelines: Pipeline[];
   optionLists: OptionListItem[];
   customFields: CustomFieldDefinition[];
@@ -747,15 +742,6 @@ export interface ClientToServerEvents {
   ) => void;
   'order:setStage': (input: StageChangeInput, ack: CommandAck<Order>) => void;
   'order:dispatch': (input: OrderDispatchInput, ack: CommandAck<Order>) => void;
-
-  'stock:list': (query: StockListQuery, ack: CommandAck<InventoryStockLevel[]>) => void;
-  'stock:movements': (
-    query: { productId?: RecordId; limit?: number },
-    ack: CommandAck<StockMovement[]>,
-  ) => void;
-  'stock:inbound': (input: StockInboundInput, ack: CommandAck<InventoryStockLevel>) => void;
-  'stock:adjust': (input: StockAdjustmentInput, ack: CommandAck<InventoryStockLevel>) => void;
-  'stock:setReorderLevel': (input: ReorderLevelInput, ack: CommandAck<InventoryStockLevel>) => void;
 
   'search:query': (query: SearchQuery, ack: CommandAck<SearchHit[]>) => void;
 

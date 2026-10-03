@@ -171,7 +171,7 @@ prevented.
 | Merge on conflict | whole array, highest HLC wins | per-key union |
 
 The join table's per-key merge looks like an advantage and is not. A union of two concurrent edits
-**grants a combination neither administrator approved** — one removes `stock.adjust` offline while
+**grants a combination neither administrator approved** — one removes `orders.delete` offline while
 the other adds `products.delete` offline, and the union keeps both as though they had been reviewed
 together. Permission sets are approved as a whole, so they merge as a whole.
 
@@ -297,9 +297,9 @@ locks, so a transaction holding the chain lock never waits on anything but its o
 audited writes cannot deadlock over it. `master/tests/audit-atomicity.integration.test.ts` holds a row
 each write has to lock and checks the chain lock is still free while the write waits for it.
 
-Creating and editing parties, products and leads, a lead's stage move, conversion, dispatch, stock in,
-count corrections, and panel pairing, revocation and editing used to record *after* their transaction
-closed, through `recordDetachedActivity`. A party-wise record, stock levels, an order edit, an order's
+Creating and editing parties, products and leads, a lead's stage move, conversion, dispatch,
+and panel pairing, revocation and editing used to record *after* their transaction
+closed, through `recordDetachedActivity`. A party-wise record, an order edit, an order's
 stage move and an offline edit applied by the merge recorded nothing at all. Since 2026-09-24 every
 one of them records inside its transaction (`master/tests/audit-atomicity.integration.test.ts`).
 

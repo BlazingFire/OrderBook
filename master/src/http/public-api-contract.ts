@@ -115,28 +115,6 @@ export const PUBLIC_API_ROUTES = [
   },
 
   {
-    operationId: 'listStock',
-    method: 'get',
-    path: '/stock',
-    permission: 'inventory.view',
-    summary: 'Stock levels by product variant',
-  },
-  {
-    operationId: 'stockInbound',
-    method: 'post',
-    path: '/stock/inbound',
-    permission: 'inventory.edit',
-    summary: 'Record goods received',
-  },
-  {
-    operationId: 'stockAdjust',
-    method: 'post',
-    path: '/stock/adjust',
-    permission: 'stock.adjust',
-    summary: 'Correct a stock figure',
-  },
-
-  {
     operationId: 'listLeads',
     method: 'get',
     path: '/leads',

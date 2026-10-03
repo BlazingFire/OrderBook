@@ -29,7 +29,6 @@ import {
   seedCatalogue,
 } from '../src/services/catalogue-seed.service.js';
 import * as fields from '../src/services/fields.service.js';
-import * as inventory from '../src/services/inventory.service.js';
 import * as leads from '../src/services/lead.service.js';
 import * as orders from '../src/services/order.service.js';
 import * as roleService from '../src/services/role.service.js';
@@ -193,11 +192,10 @@ describe.skipIf(!canRunIntegrationTests)('loading the SWISWARE catalogue (integr
         expect(byValue.get(colour.name), colour.name).toBe(colour.hex);
     });
 
-    it('reaches a panel whole: the snapshot carries every sub product and its stock line', async () => {
+    it('reaches a panel whole: the snapshot carries every sub product', async () => {
       // At the old page of 500 the tail of the catalogue went missing offline.
       const snapshot = await buildSnapshot(await testActor());
       expect(snapshot.products).toHaveLength(549);
-      expect(snapshot.stock).toHaveLength(549);
       expect(snapshot.categories).toHaveLength(41);
       expect(snapshot.productsComplete).toBe(true);
     });
@@ -294,11 +292,9 @@ describe.skipIf(!canRunIntegrationTests)('loading the SWISWARE catalogue (integr
       );
       const oldLine = { productId: old.id, variantId: old.variants[0]!.id, quantity: 1 };
       await leads.createLead({ partyId: party.id, items: [oldLine] }, actor);
-      // And everything else that quotes the old model: an order with its
-      // hold, stock with its ledger, the party's own name for it.
+      // And everything else that quotes the old model: an order, the party's own name for it.
       const converted = await leads.createLead({ partyId: party.id, items: [oldLine] }, actor);
       await orders.convertLead({ leadId: converted.id }, actor);
-      await inventory.recordInbound({ variantId: old.variants[0]!.id, quantityBoxes: 5 }, actor);
       await catalog.upsertVariant(
         { partyId: party.id, productId: old.id, alias: 'OLD-OWN' },
         actor,

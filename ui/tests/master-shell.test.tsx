@@ -157,7 +157,7 @@ async function boot(
     if (path === '/api/option-lists') return json([]);
     // The New / Edit pending order form: its view, and its three pickers.
     if (path === '/api/lead-entry') {
-      return json({ optionLists: [], partyVariants: [], stock: [], partyGrants: [], features: {} });
+      return json({ optionLists: [], partyVariants: [], partyGrants: [], features: {} });
     }
     if (path === '/api/pick/party') return json({ items: [PICK_PARTY], truncated: false });
     if (path === '/api/pick/category') return json({ items: [PICK_CATEGORY], truncated: false });
@@ -651,7 +651,7 @@ const ORDER = {
   id: 'OD0000000001', partyId: 'party-1', partyName: 'Shree Ceramics', leadId: null,
   stageId: 'stage-1', stageName: 'Confirmed', dispatchedAt: null, totalWeightKg: 24,
   totalWeightKgOverride: null, weightSource: 'computed', vehicleNumber: null,
-  linesWithoutWeight: 0, reservations: [], timeline: [],
+  linesWithoutWeight: 0, timeline: [],
   items: [{
     id: 'l1', variantId: 'v1', productName: 'Rustic Wood', categoryName: 'Duragres',
     size: '600x600', brandName: null, variantLabel: 'Ivory', colour: null, grade: null,
@@ -1148,7 +1148,6 @@ describe('New pending order', () => {
         return json({
           optionLists: [],
           partyVariants: [],
-          stock: [],
           partyGrants: [],
           features: {},
           owners: OWNERS,

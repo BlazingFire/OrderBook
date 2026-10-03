@@ -1,7 +1,9 @@
-# Schema — Leads, Orders & Inventory
+# Schema — Leads, Orders & Inventory (inventory retired in 1.4)
 
 Covers the business workflow described in `docs/LEAD_GENERATION_FLOW.md`: raise a lead → move it
-through a configurable pipeline → **convert it to an order** → dispatch. PostgreSQL DDL describing
+through a configurable pipeline → **convert it to an order** → dispatch. (The file name keeps
+"inventory" because it is linked from many places; the three inventory tables are retired since
+1.4 — see the "Inventory — RETIRED" section.) PostgreSQL DDL describing
 the current shape — see `00-overview.md` for the type/convention rationale and how this was
 checked, and `06-tenancy-permissions-and-sync.md` for the tenancy, permission and offline-sync
 columns the tables here carry.
@@ -9,17 +11,17 @@ columns the tables here carry.
 > **This chapter was rewritten by the lead-generation rebuild**
 > (`20260302000000_lead_order_rebuild`). The previous model had a single `leads` table where a
 > `status` column carried the transition to "order", stock deducted at that moment, and inventory
-> was per product. All three changed; §7 at the end records why, and the later restructures
+> was per product. All three changed (and in 1.4 stock itself was removed); §7 at the end records why, and the later restructures
 > (variants, the trim, the line's grade) after it.
 
 ## Identifiers
 
-The records here that sync — leads, orders, line items, timeline entries, party-wise records and
-reservations — use **text ids**, not UUIDs, because the design lets an offline Office Panel mint an
+The records here that sync — leads, orders, line items, timeline entries and party-wise records
+— use **text ids**, not UUIDs, because the design lets an offline Office Panel mint an
 id before the Master has ever seen the record (`LEAD_GENERATION_FLOW.md` §7). Today a panel mints
 one only for the record a mutation itself creates — here, a lead or a party-wise record. Orders (an
-offline conversion included, since the Master applies it), line items, timeline entries and
-reservations are named by the Master, straight to a permanent id, when it applies the write that
+offline conversion included, since the Master applies it), line items and timeline entries
+are named by the Master, straight to a permanent id, when it applies the write that
 makes them. Both shapes:
 
 - temporary — 15 chars, `<6-char device><9-digit counter>`, e.g. `A3F9K2000000123`
@@ -30,10 +32,10 @@ makes them. Both shapes:
 The prefixes are the `ENTITY_PREFIX` table in `shared/src/sync/ids.ts`: `PT` party, `PR`
 product, `VR` product variant, `PV` party variant (a party's own record of a product — the older
 of the two, which is why the product variant could not take `PV`), `LD` lead, `OD` order, `LI`
-line item, `TL` timeline entry, `RS` reservation, and so on.
+line item, `TL` timeline entry, and so on. (`RS`, the reservation prefix, is retired with the reservations.)
 
-The two inventory tables only the Master writes keep other keys: `inventory_stock` a UUID,
-`stock_movements` a `BIGSERIAL`.
+The retired inventory tables keep their own keys: `inventory_stock` a UUID, `stock_movements`
+a `BIGSERIAL`.
 
 ## `leads`
 
@@ -223,7 +225,7 @@ sets it today.
 **A line is one variant** (2026-09). White ×5 and Blue ×10 of the same model are two lines,
 each with its own code and its own weight. The `line_item_quantities` child table of the
 tile-era model (one line, many colour rows) is gone: the colour is now the variant, and the
-variant is what stock is keyed by, so a line and a reservation are the same grain. `code`,
+variant is the grain a line is kept at. `code`,
 `variant_label` and `weight_kg` are copied off the variant when the line is added and never
 re-read — a weight entered on the product later does not move an order's line.
 `Lead.totalWeightKg` and `Order.totalWeightKg` sum `weight_kg × quantity` over the lines that
@@ -236,7 +238,7 @@ in every colour of the company's colour list — the catalogue prints "ALL COLOU
 ALL ITEMS" over its water closets, pedestal sets, urinals and pans — and nobody wants sixteen
 variants per model to say so. Such a model carries `products.multi_colour = true`, and a line on
 it may name a colour from the `stock.colour` option list; the line still points at the variant it
-quotes, stock stays per variant, and the colour is frozen and copied onto the order like the rest
+quotes, and the colour is frozen and copied onto the order like the rest
 of the snapshot. **Several colours of one sub product are several lines** on the same variant, one
 per colour, each with its own quantity — no schema change; the screens and the lead PDF group them
 (`White ×10, Ivory ×5`).
@@ -316,9 +318,12 @@ One row per (party, **product**) — not per product variant, despite the name, 
 copies it automatically, because `LEAD_GENERATION_FLOW.md` §3.2 says packaging is chosen by hand
 every time.
 
-## Inventory — reserve, then dispatch
+## Inventory — RETIRED in 1.4 (tables kept, nothing reads or writes them)
 
-Three tables, and the split between them is the point.
+Stock and inventory were removed in 1.4. The three tables below are **retired, kept for data
+safety**: customers' data is never dropped by an update, so the tables and their rows stay, but
+the application neither reads nor writes them. The DDL is the historical record of the shape they
+had up to 1.3.
 
 ```sql
 CREATE TABLE inventory_stock (
@@ -377,66 +382,29 @@ CREATE INDEX idx_stock_movements_tenant     ON stock_movements (tenant_id);
 CREATE INDEX idx_stock_movements_created    ON stock_movements (created_at);
 ```
 
-**Everything is keyed per variant.** A white basin in stock does not satisfy a reservation for a
-blue one, so aggregating to a product total would be wrong rather than merely imprecise. Until
-2026-09 the key was `(product_id, colour)` with the colour as free text that a stock movement
-happened to create; now it is the `product_variants` row the code belongs to, which is also what
-the lead line points at — so a reservation, a movement and a line are the same grain and there is
-nothing to match up by name. `product_id` stays on all three, denormalised, for the product-level
-listings and the delete guard. `idx_stock_movements_variant` serves the per-variant ledger the
-inventory screen opens; `idx_stock_movements_tenant_ref` serves "has this order already moved
-stock", which dispatch asks before writing.
+**Retired in 1.4 — what this means.** Stock and inventory were removed from the software. The three
+tables above are kept, with their data, because migrations after 1.2.0 only add and a customer's
+rows are never dropped by an update. **Nothing reads or writes them**: no service, repository,
+route, socket command or screen touches them. The column definitions are left in place as the
+historical record. Three narrow exceptions, all about foreign keys: the catalogue wipe/reload
+(`catalog-reload-cli.ts` `BUSINESS_TABLES`, `catalogue-seed.service.ts#clearCatalogueData`) still
+deletes from them so a variant can be deleted, and `product-variant.repository.ts#referencedVariantIds`
+still counts a row there as a reference, so a variant with legacy rows is deactivated rather than
+deleted (the tables are FK-ed to `product_variants`).
 
-`stock_movements` is the append-only ledger of signed deltas (append-only by convention: no
-trigger enforces it); `inventory_stock` is the derived snapshot, moved by the same amount in the
-same transaction (`applyMovement` in `inventory.repository.ts`); `stock_reservations` is what is
-committed but not yet gone. Together they let the system say "40 on the floor, 30 spoken for, 10
-free to sell" — which a single running total cannot.
+What the flow looks like now: **converting a lead reserves nothing** and **dispatching an order
+writes no movement** — dispatch stamps `dispatched_at`, moves the order to the Dispatched stage,
+adds the timeline message `Dispatched` and logs `order.dispatched` with empty details. Deleting or
+restoring an order has no stock side. A product is blocked from deletion only by a live line item.
+Box counts on the Dispatches report come from the dispatched order's `line_items.quantity`.
 
-| Event | What is written | Effect |
-|---|---|---|
-| Stock arrives | `inbound` movement, `reference_type = 'purchase'` | Adds pieces |
-| Physical count | `adjustment` movement, `reference_type = 'manual'`, signed difference | Corrects the figure |
-| Lead **converted** | one `stock_reservations` row per line (= per variant) | Reduces *free to sell*; the ledger is untouched |
-| Order **dispatched** | `outbound` movement per variant (lines of one variant summed), `reference_type = 'order'`; reservations → `consumed` | Pieces actually leave |
-| Order cancelled | reservations → `released` | Hold disappears, ledger never involved |
-
-Three rules the implementation depends on:
-
-- **Reservations and the order commit together**, and so do the dispatch movements and the
-  reservation consumption. Either half alone leaves stock disagreeing with itself.
-- **The ledger is the idempotency check.** Dispatch asks whether a movement already exists for the
-  order before writing one, so a repeated dispatch cannot double-count.
-- **"Low" is judged on free-to-sell, not on what is on the floor.** Stock already promised to an
-  order cannot answer the next one.
-
-**Stock is allowed to go negative, and an order is never blocked by insufficient stock.** A ceramic
-dealer routinely sells against a factory order that has not arrived; the shortfall is surfaced
-instead. Since catalogue v2 (2026-09-29) the inventory list is driven from `product_variants` with
-`inventory_stock` left-joined, so **every live variant of a live, active model is a row**, at zero
-when it has never been stocked — which also shows a variant that is reserved but was never stocked,
-the case worth seeing. A variant taken off the form stays listed while pieces of it are on the floor
-or held for an order. Nothing is written to `inventory_stock` for a zero row: nothing has moved.
-
-**The stock levels and the lot fields** came with `20260315000000_product_trade_and_ceramic_attributes`
-and outlived the rest of it:
-
-- `min_stock_level` and `max_stock_level` are advisory. The reorder point was **not** renamed —
-  `reorder_level` already carried `countLowStock`, `mapStockLevel`, a route and a mutation kind —
-  and `isLow` is still driven by it alone, because a second low-stock rule would make the
-  dashboard's figure ambiguous.
-- **Batch or lot is deliberately not a product column**, and that was a refusal of the
-  requirement as literally written: one product receives many lots, so the column is false the
-  second time stock arrives. `stock_movements` gained `batch_no`, `shade` and `calibre` instead, so
-  "which lot is this" is answered from the ledger — the data a true lot-level on-hand model would
-  be built from. That model means keying `inventory_stock` (one row per variant today) by lot as
-  well and following it through reservations and dispatch settlement: a workstream, not a column.
-  No write path fills the three columns yet — `applyMovement` inserts none of them — so they read
-  back as null.
+Do not write new code against these tables. A future stock feature should start from a fresh
+design, not from this DDL.
 
 ## 7. What changed from the previous model, and why
 
-History: what `20260302000000_lead_order_rebuild` changed. Several of its results were changed again
+History: what `20260302000000_lead_order_rebuild` changed. The stock rows below describe the
+design of the time; stock was removed whole in 1.4. Several of its results were changed again
 later — the sections after this one say how.
 
 | Before | After the rebuild | Why |

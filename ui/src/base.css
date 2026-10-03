@@ -3809,15 +3809,6 @@ button.ob-bell-item:hover {
   cursor: pointer;
 }
 
-/* Over free stock, at panel density: a dot with a title, not a pill. */
-.ob-lead-short {
-  width: 0.5rem;
-  height: 0.5rem;
-  flex: none;
-  border-radius: 50%;
-  background: var(--state-offline);
-}
-
 /*
  * The chevron on a type-or-pick field.
  *

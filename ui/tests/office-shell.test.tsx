@@ -94,7 +94,6 @@ const ORDER = {
   stageId: 'stage-new',
   stageName: 'Confirmed',
   items: [],
-  reservations: [],
   timeline: [],
   totalWeightKg: 120,
   totalWeightKgOverride: 150,
@@ -112,7 +111,6 @@ function snapshot(overrides: Record<string, unknown> = {}) {
     partyVariants: [],
     leads: [],
     orders: [],
-    stock: [],
     pipelines: [],
     optionLists: [],
     customFields: [],
@@ -453,6 +451,31 @@ describe('the link to the Master (1.3)', () => {
   });
 });
 
+describe('the Dashboard orders tile (stock removed, 1.4)', () => {
+  async function ordersTile(orders: unknown[]): Promise<HTMLElement> {
+    await boot({ permissions: ['leads.view', 'orders.view'], view: { orders, permissions: ['leads.view', 'orders.view'] } });
+    await pressAltDigitUntil(2, t('nav.dashboard'));
+    return screen.getByText(t('dashboard.orders.title')).closest('.ob-stattile') as HTMLElement;
+  }
+
+  it('counts the pieces on open orders as boxes still to dispatch', async () => {
+    const tile = await ordersTile([
+      { ...ORDER, items: [{ quantity: 3 }, { quantity: 4 }] },
+      { ...ORDER, id: 'ORD-2', items: [{ quantity: 99 }], dispatchedAt: '2026-09-23T00:00:00.000Z' },
+    ]);
+
+    expect(within(tile).getByText('7 boxes still to dispatch')).toBeTruthy();
+  });
+
+  it('says nothing is waiting when no order is open', async () => {
+    const tile = await ordersTile([
+      { ...ORDER, items: [{ quantity: 5 }], dispatchedAt: '2026-09-23T00:00:00.000Z' },
+    ]);
+
+    expect(within(tile).getByText(t('dashboard.orders.noneOpen'))).toBeTruthy();
+  });
+});
+
 describe('where a person lands', () => {
   it('starts an office-tier person on Basic Home, before any snapshot', async () => {
     routeFetch(({ url }) => {
@@ -760,7 +783,7 @@ describe('Reports', () => {
     await boot({
       permissions: ['reports.view'],
       route: reportRoutes,
-      view: { features: { freeToSell: false, reportsVisibleToOffice: false } },
+      view: { features: { reportsVisibleToOffice: false } },
     });
     await waitFor(() =>
       expect(
@@ -773,7 +796,7 @@ describe('Reports', () => {
     await boot({
       permissions: ['reports.view'],
       route: reportRoutes,
-      view: { features: { freeToSell: false, reportsVisibleToOffice: true } },
+      view: { features: { reportsVisibleToOffice: true } },
     });
     expect(
       within(screen.getByRole('region', { name: t('nav.work') })).getByRole('button', { name: new RegExp(`^${t('nav.reports')}`) }),

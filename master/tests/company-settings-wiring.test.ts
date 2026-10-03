@@ -28,38 +28,6 @@ function functionBody(source: string, declaration: string): string {
   return source.slice(start);
 }
 
-describe('inventory.adjustmentNoteRequired', () => {
-  const body = functionBody(code('services/inventory.service.ts'), 'export async function recordAdjustment');
-
-  it('is checked BELOW the no-op return, not above it', () => {
-    // Confirming a count that already matches writes no movement and no
-    // activity row, so a reason collected there is discarded — a form that
-    // takes something and throws it away. Above the return is the tempting
-    // placement and it is the wrong one.
-    const noop = body.indexOf('if (delta === 0)');
-    const gate = body.indexOf("'inventory.adjustmentNoteRequired'");
-    const written = body.indexOf('applyMovement');
-
-    expect(noop).toBeGreaterThan(-1);
-    expect(written).toBeGreaterThan(-1);
-    // Strictly between the two: after the path that writes nothing has already
-    // returned, and before anything is written.
-    expect(gate).toBeGreaterThan(noop);
-    expect(gate).toBeLessThan(written);
-  });
-
-  it('is checked before the movement is written', () => {
-    const gate = body.indexOf("'inventory.adjustmentNoteRequired'");
-    expect(body.indexOf('applyMovement')).toBeGreaterThan(gate);
-  });
-
-  it('decides blankness with the shared predicate, not a local truthiness test', () => {
-    // Three hand-written `!note` tests — here and in each panel's form — is how
-    // the server comes to refuse something a form let through.
-    expect(body).toContain('isBlankNote(input.note)');
-  });
-});
-
 describe('leads.packagingRequiredOnConvert', () => {
   const body = functionBody(code('services/order.service.ts'), 'export async function convertLead');
 

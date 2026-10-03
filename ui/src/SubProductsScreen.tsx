@@ -24,8 +24,8 @@
  *
  * **Catalogue v2 (2026-09-28) made the Products tab the sub-product list**
  * (`docs/catalogue/CATALOGUE_MODEL.md` §1): Brand, Product (`OPT - One Piece
- * Toilet`), Sub product, Size, the colour its rule shows (§2), Codes, Weight
- * and the free stock of its one variant - one figure per row. Its filters are
+ * Toilet`), Sub product, Size, the colour its rule shows (§2), Codes and Weight
+ * - one figure per row. Its filters are
  * the catalogue's own and run on the server: brand chips from the
  * `product.brand` list, and a product picker. That picker sits above the
  * table, not in the strip, because `.ob-filterbar` clips anything that drops
@@ -97,7 +97,7 @@ export function SubProductsScreen({
 }: {
   view: CatalogueView;
   transport: CatalogueTransport;
-  /** A bulk import wrote something; the host refetches what else it shows (brands, stock). */
+  /** A bulk import wrote something; the host refetches what else it shows (brands). */
   onImported?: () => void;
   /** Moves when the catalogue changed anywhere; the list is read again. */
   revision: number;
@@ -177,15 +177,6 @@ export function SubProductsScreen({
       ? { code: category.code, name: category.name, brand: category.brand }
       : { code: product.categoryCode, name: product.categoryName, brand: product.brand };
   };
-
-  // Free stock per sub product, summed over its variants' stock rows.
-  const freeByProduct = useMemo(() => {
-    const free = new Map<string, number>();
-    for (const level of view.stock ?? []) {
-      free.set(level.productId, (free.get(level.productId) ?? 0) + level.availableBoxes);
-    }
-    return free;
-  }, [view.stock]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -336,34 +327,6 @@ export function SubProductsScreen({
     ),
   );
 
-  // Free to sell - the Master hands out on-hand as free while the company
-  // does not split stock, so this one figure is right either way. A dash,
-  // not a zero, for a sub product that has never had a stock row (and for
-  // everyone without `inventory.view`, whose view carries no stock). No
-  // column at all when the view has no `stock`: the Master's list.
-  const stockColumn: DataTableColumn<Product> = {
-    key: 'stock',
-    header: t('catalog.products.column.stock'),
-    priority: 2,
-    width: 'minmax(0, 0.6fr)',
-    align: 'right',
-    render: (product) => {
-      const free = freeByProduct.get(product.id);
-      if (free === undefined) return '—';
-      return (
-        <span
-          className="ob-data"
-          style={{
-            color:
-              free < 0 ? 'var(--state-conflict)' : free === 0 ? 'var(--fg-tertiary)' : undefined,
-          }}
-        >
-          {free}
-        </span>
-      );
-    },
-  };
-
   /*
    * The catalogue's own reading order (CATALOGUE_MODEL.md §1): brand, then
    * product, then the sub product as printed - the product and sub product
@@ -449,7 +412,6 @@ export function SubProductsScreen({
         );
       },
     },
-    ...(view.stock === undefined ? [] : [stockColumn]),
   ];
 
   const drawers = (

@@ -2,9 +2,8 @@
  * The order pipeline — a separate workflow from the lead's
  * (docs/LEAD_GENERATION_FLOW.md §5.1, §6).
  *
- * The one action here that moves real stock is Dispatch: it consumes the
- * order's reservations and writes the signed ledger entries. Everything before
- * that only holds stock aside.
+ * Dispatch is the one action that closes an order out: it stamps the order and
+ * moves it to Dispatched. No stock is touched, because OrderBook keeps none.
  *
  * Rendered as a table, not a board (6-UI-DESIGN.md, Orders.dc.html): dispatch
  * and stage tracking reads better as a sortable list than a kanban column for
@@ -15,14 +14,13 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { matchesRecordSearch, resolveCompanyFeatures, shownColour } from '@orderbook/shared';
+import { matchesRecordSearch, shownColour } from '@orderbook/shared';
 import type {
   ChatRecordChip,
   NoteKind,
   Order,
   PartyScopeFilter,
   PipelineStage,
-  ReservationStatus,
   SyncSnapshot,
 } from '@orderbook/shared';
 
@@ -107,12 +105,6 @@ function displayWeightKg(order: Order): number {
     : order.totalWeightKg;
 }
 
-const RESERVATION_TONE: Record<ReservationStatus, PillTone> = {
-  active: 'accent',
-  consumed: 'ok',
-  released: 'default',
-};
-
 /**
  * "My parties" — the leads or orders on parties explicitly assigned to the
  * signed-in person.
@@ -148,11 +140,6 @@ export function OrderBoardScreen({
   const [scope, setScope] = useState<PartyScopeFilter>('all');
   const [search, setSearch] = useState('');
   const colourHex = useColourHex(view.optionLists);
-  // Absent means an older Master, which sends every figure — read as "on".
-  // Through the shared resolver rather than a literal written here, so this
-  // screen cannot drift from the fallback `settings.ts` declares.
-  const freeToSell = resolveCompanyFeatures(view.features).freeToSell;
-
   const pipeline = view.pipelines.find((candidate) => candidate.kind === 'order');
   const stages = sortedStages(pipeline);
   const orders = onMyParties(view.orders, scope === 'assigned' ? view.partyGrants : undefined);
@@ -329,7 +316,6 @@ export function OrderBoardScreen({
           order={openOrder}
           stages={stages}
           canDispatch={canDispatch}
-          freeToSell={freeToSell}
           onClose={() => onOpenId(null)}
           onError={onError}
           colourHex={colourHex}
@@ -464,7 +450,6 @@ function OrderDetailBody({
   order,
   stages,
   canDispatch,
-  freeToSell,
   onClose,
   onError,
   colourHex,
@@ -472,8 +457,6 @@ function OrderDetailBody({
   order: Order;
   stages: PipelineStage[];
   canDispatch: boolean;
-  /** Off, the reservations that hold this order's stock are not a thing on screen. */
-  freeToSell: boolean;
   onClose: () => void;
   onError: (message: string) => void;
   colourHex: (colour: string) => string | undefined;
@@ -504,7 +487,6 @@ function OrderDetailBody({
   const overrideInvalid = overrideValue !== null && Number.isNaN(overrideValue);
   const [busy, setBusy] = useState(false);
 
-  const active = order.reservations.filter((reservation) => reservation.status === 'active');
 
   async function run(action: () => Promise<unknown>, failure: string): Promise<void> {
     setBusy(true);
@@ -596,56 +578,6 @@ function OrderDetailBody({
           </div>
         </Section>
       </Card>
-
-      {freeToSell && (
-      <Card>
-        <Section title={t('orders.detail.reservations')}>
-          {order.reservations.length === 0 ? (
-            <p className="ob-small">{t('orders.detail.noReservations')}</p>
-          ) : (
-            <div className="ob-tablewrap">
-              <table className="ob-table ob-table--flat">
-                <thead>
-                  <tr>
-                    <th>{t('orders.column.code')}</th>
-                    <th>{t('orders.column.product')}</th>
-                    <th>{t('orders.column.variant')}</th>
-                    <th className="num">{t('orders.column.qty')}</th>
-                    <th>{t('orders.column.status')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {order.reservations.map((reservation) => (
-                    <tr key={reservation.id}>
-                      <td className="ob-mono">{reservation.variantCode}</td>
-                      <td>{reservation.productName}</td>
-                      <td>
-                        {/* Not when it only repeats the name, as on the lines above. */}
-                        {reservation.variantLabel &&
-                        shownColour(reservation.variantLabel, reservation.productName) ? (
-                          <ColourName
-                            name={reservation.variantLabel}
-                            hex={colourHex(reservation.variantLabel)}
-                          />
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                      <td className="num">{reservation.quantity.toLocaleString('en-IN')}</td>
-                      <td>
-                        <StatusPill tone={RESERVATION_TONE[reservation.status]}>
-                          {t(`orders.reservation.status.${reservation.status}`)}
-                        </StatusPill>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Section>
-      </Card>
-      )}
 
       <Card>
         <Section title={t('orders.detail.weight')}>
@@ -739,7 +671,7 @@ function OrderDetailBody({
         <Card>
           <Section title={t('orders.detail.dispatch')}>
             <p className="ob-small" style={{ marginTop: 0 }}>
-              {t('orders.detail.dispatchNote', { count: active.length })}
+              {t('orders.detail.dispatchNote')}
             </p>
 
             <FormField label={t('orders.detail.dispatchNoteLabel')}>

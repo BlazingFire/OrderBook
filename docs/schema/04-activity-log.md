@@ -3,8 +3,8 @@
 The audit trail: an audited write the Master makes appends one row here, in the same transaction
 as the change it describes (`recordActivity` in `activity-log.repository.ts`), and the Master's
 Logs screen reads it. Paths with no open transaction to join — a failed operation worth recording,
-such as a refused sign-in, and some writes that commit on their own, such as a stock arrival or
-adjustment — append through `recordDetachedActivity` instead, in a transaction of their own.
+such as a refused sign-in, and some writes that commit on their own, such as a party edit
+or a catalogue change — append through `recordDetachedActivity` instead, in a transaction of their own.
 
 It is **not** the source of the "live updating" feel (`PROJECT_PLAN.md` §1/§8): services publish
 `data:changed` Socket.IO events with the full current record through `change-bus.ts`,

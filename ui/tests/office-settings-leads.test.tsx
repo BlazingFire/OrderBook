@@ -63,7 +63,6 @@ function snapshot(overrides: Record<string, unknown> = {}) {
     partyVariants: [],
     leads: [],
     orders: [],
-    stock: [],
     pipelines: [],
     optionLists: [],
     customFields: [],
@@ -139,7 +138,7 @@ describe('Settings → Leads on the Office Panel', () => {
   it('shows the company follow-up default and saves a new one through the panel', async () => {
     const calls = await openLeadsTab(
       ['settings.manage', 'fields.view'],
-      snapshot({ features: { freeToSell: false, followUpDefaultDays: 5 } }),
+      snapshot({ features: { followUpDefaultDays: 5 } }),
     );
 
     const box = await screen.findByRole<HTMLInputElement>('spinbutton', { name: FOLLOW_UP });
@@ -158,7 +157,7 @@ describe('Settings → Leads on the Office Panel', () => {
 
     // Not echoed locally: the value the Master stored comes back with the
     // snapshot the setting change forces.
-    await sendSnapshot(snapshot({ features: { freeToSell: false, followUpDefaultDays: 7 } }));
+    await sendSnapshot(snapshot({ features: { followUpDefaultDays: 7 } }));
     await waitFor(() => expect(box.value).toBe('7'));
   });
 

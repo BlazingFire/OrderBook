@@ -148,7 +148,9 @@ describe.skipIf(!canRunIntegrationTests)('the Server Master tier (integration)',
       // Server Master fails here.
       expect(roles).toHaveLength(1);
       expect(roles[0]!.is_system).toBe(true);
-      expect([...roles[0]!.permissions].sort()).toEqual([...allPermissions()].sort());
+      // Keys retired since (inventory.*, stock.adjust) may linger on the stored row;
+      // the loader drops them, so only a key the code defines and the row lacks matters.
+      expect(allPermissions().filter((key) => !roles[0]!.permissions.includes(key))).toEqual([]);
     });
 
     it('is frozen, and no other role may take its tier', async () => {

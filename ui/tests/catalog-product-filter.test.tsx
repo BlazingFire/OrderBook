@@ -5,8 +5,8 @@
  * - its Product filter opens a list below itself, so it must not sit in the
  *   shell's filter strip: `.ob-filterbar` scrolls sideways and clips
  *   vertically at its band, and a list opened inside it can never be seen
- *   (the Master's Inventory moved its product Picker out for the same
- *   reason). This pins where it renders, and that choosing from it filters;
+ *   (the Master's Products screen moved its product Picker out for the
+ *   same reason). This pins where it renders, and that choosing from it filters;
  * - a brand chip asks the Master for that brand and clears a product of
  *   another brand;
  * - each row reads as the catalogue does — `OPT · One Piece Toilet`, the
@@ -89,7 +89,6 @@ function viewOf(overrides: Partial<LocalView> = {}): LocalView {
     partyVariants: [],
     products: [],
     categories: [OPT, WB],
-    stock: [],
     ...overrides,
   } as unknown as LocalView;
 }

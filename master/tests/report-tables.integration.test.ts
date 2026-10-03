@@ -19,7 +19,6 @@ import { up as grantReports } from '../src/db/migrations/20261004000000_report_i
 import { ForbiddenError, ValidationError } from '../src/lib/errors.js';
 import { readSheetRows } from '../src/lib/spreadsheet.js';
 import * as catalogService from '../src/services/catalog.service.js';
-import * as inventoryService from '../src/services/inventory.service.js';
 import * as leadService from '../src/services/lead.service.js';
 import * as orderService from '../src/services/order.service.js';
 import * as reportRepo from '../src/repositories/report.repository.js';
@@ -73,7 +72,6 @@ async function makeShop(): Promise<Shop> {
     admin,
   );
   const variantId = product.variants[0]!.id;
-  await inventoryService.recordInbound({ variantId, quantityBoxes: 10_000 }, admin);
   return { productId: product.id, variantId, code };
 }
 
@@ -344,7 +342,6 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
         { name: 'Bare Basin', categoryName: 'Basins', hasVariants: true, variants: [{ code: 'BARE-1', label: 'White' }] },
         admin,
       );
-      await inventoryService.recordInbound({ variantId: bare.variants[0]!.id, quantityBoxes: 100 }, admin);
       const a = await author(alice);
       const party = await catalogService.createParty({ name: 'Bare Party', city: 'Morbi' }, admin);
       const lead = await leadService.createLead(
@@ -634,7 +631,6 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
         { name: 'Light Cup', categoryName: 'Cups', hasVariants: true, variants: [{ code: 'LIGHT-1', label: 'White', weightKg: 0.1 }] },
         admin,
       );
-      await inventoryService.recordInbound({ variantId: light.variants[0]!.id, quantityBoxes: 100 }, admin);
       for (const quantity of [1, 2]) {
         const party = await catalogService.createParty({ name: `Light ${quantity}`, city: 'Surat' }, admin);
         const lead = await leadService.createLead(

@@ -58,7 +58,6 @@ const DESK_KEYS = [
   'parties.create',
   'parties.edit',
   'products.view',
-  'inventory.view',
   'reports.view',
   'logs.view',
 ];

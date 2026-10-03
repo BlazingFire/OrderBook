@@ -50,7 +50,6 @@ function snapshot() {
     partyVariants: [],
     leads: [lead],
     orders: [],
-    stock: [],
     pipelines: [],
     optionLists: [],
     customFields: [],
@@ -59,7 +58,7 @@ function snapshot() {
     permissions: [],
     serverHlc: H0,
     serverTime: '2026-10-03T00:00:00.000Z',
-    features: { freeToSell: true, offlineSignInEnabled: false },
+    features: { offlineSignInEnabled: false },
   };
 }
 

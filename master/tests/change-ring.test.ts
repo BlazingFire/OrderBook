@@ -116,8 +116,6 @@ describe('every changed entity is in exactly one bucket', () => {
     'product_category',
     'party_variant',
     'office_panel',
-    'stock',
-    'reservation',
     'pipeline',
     'option_list',
     'custom_field',

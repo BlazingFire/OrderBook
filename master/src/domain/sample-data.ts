@@ -330,70 +330,6 @@ export const SAMPLE_PARTY_ASSIGNMENTS: readonly SamplePartyAssignment[] = [
   { party: 'mehta', entries: [{ user: 'management', level: 'manage' }] },
 ];
 
-// --- Stock -----------------------------------------------------------------
-
-/**
- * Opening stock per sample key, as pieces received from the factory in the
- * first days of the window. Every weighed variant above gets stock; codes not
- * listed here get `DEFAULT_OPENING_PIECES`, and a few are deliberately thin
- * so the low-stock count on the dashboard is not zero.
- */
-export const DEFAULT_OPENING_PIECES = 40;
-export const DEFAULT_REORDER_LEVEL = 10;
-export const DEFAULT_MIN_STOCK_LEVEL = 5;
-export const DEFAULT_MAX_STOCK_LEVEL = 120;
-
-export const SAMPLE_OPENING_STOCK: Readonly<Record<string, number>> = {
-  '102': 90,
-  '107': 60,
-  '1181': 8,
-  '1184': 3,
-  'DAMRU-WHITE': 75,
-  '41': 6,
-  '42': 24,
-  'NOVA-WHITE': 50,
-  'WB-18X12': 160,
-  'WB-18X12-RUSTIC-COFFEE-BROWN': 4,
-  'WB-20X16': 70,
-  'SOFIYA-SET-WHITE': 55,
-  'BIG-STERLING-SET-WHITE': 30,
-  'EWC-S-TRAP': 120,
-  '20-OP': 200,
-  'HEXA-URINAL': 45,
-  'DUAL-FLUSH-TANK-CISTERN': 80,
-};
-
-/** A physical count that disagreed with the ledger, at a point in the window. */
-export interface SampleStockCount {
-  day: number;
-  code: string;
-  countedPieces: number;
-  note: string;
-}
-
-export const SAMPLE_STOCK_COUNTS: readonly SampleStockCount[] = [
-  { day: 58, code: '102', countedPieces: 128, note: 'Monthly count — 2 pieces chipped in godown' },
-  { day: 101, code: 'WB-18X12', countedPieces: 118, note: 'Found 4 extra pieces behind rack 3' },
-  { day: 147, code: '20-OP', countedPieces: 146, note: 'Quarterly count' },
-];
-
-/** Stock that arrived later in the window, so the ledger is not one opening entry per row. */
-export interface SampleStockArrival {
-  day: number;
-  code: string;
-  pieces: number;
-  note: string;
-}
-
-export const SAMPLE_STOCK_ARRIVALS: readonly SampleStockArrival[] = [
-  { day: 44, code: '102', pieces: 60, note: 'Truck GJ-03-AX-4521 from Thangadh' },
-  { day: 71, code: 'DAMRU-WHITE', pieces: 40, note: 'Fresh kiln lot' },
-  { day: 96, code: 'SOFIYA-SET-WHITE', pieces: 40, note: 'Restock for wedding season' },
-  { day: 118, code: '41', pieces: 30, note: 'Truck GJ-03-BT-9910' },
-  { day: 139, code: '1184', pieces: 12, note: 'Designer lot — handle with care' },
-  { day: 160, code: 'EWC-S-TRAP', pieces: 80, note: 'Restock' },
-];
-
 // --- Leads, orders and their histories -------------------------------------
 
 /** One sub product on a lead, by its sample key (`SAMPLE_SUB_PRODUCTS`). */
@@ -805,9 +741,9 @@ export const SAMPLE_LEADS: readonly SampleLead[] = [
 
 /**
  * What goes to the Recycle Bin at the end, so that screen is not empty: a
- * party that closed down, one catalogue product the demo never stocks or
+ * party that closed down, one catalogue product the demo never
  * quotes, and one of the lost leads. Chosen so nothing above depends on them
- * still being live — the party has no leads, the product has no stock and no
+ * still being live — the party has no leads, the product has no
  * line, and a lost lead has no order.
  */
 export const SAMPLE_DELETIONS = {

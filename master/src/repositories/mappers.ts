@@ -9,7 +9,6 @@
 
 import type {
   CustomFieldDefinition,
-  InventoryStockLevel,
   IsoTimestamp,
   Lead,
   LineItem,
@@ -26,8 +25,6 @@ import type {
   ProductImage,
   ProductVariant,
   Role,
-  StockMovement,
-  StockReservation,
   SyncConflict,
   SyncMeta,
   TimelineEntry,
@@ -528,7 +525,6 @@ export function mapOrder(
   row: Row,
   items: LineItem[],
   timeline: TimelineEntry[],
-  reservations: StockReservation[],
   completeness: { incomplete: boolean; missingFields: string[] },
 ): Order {
   const override = toNumber(row.total_weight_kg_override);
@@ -568,82 +564,6 @@ export function mapOrder(
     sync: mapSyncMeta(row),
     items,
     timeline,
-    reservations,
-  };
-}
-
-// --- Inventory -------------------------------------------------------------
-
-export function mapStockReservation(row: Row): StockReservation {
-  return {
-    id: String(row.id),
-    tenantId: String(row.tenant_id),
-    orderId: String(row.order_id),
-    lineItemId: String(row.line_item_id),
-    productId: String(row.product_id),
-    productName: String(row.product_name ?? ''),
-    variantId: String(row.variant_id),
-    variantCode: String(row.variant_code ?? ''),
-    variantLabel: (row.variant_label as string | null) ?? null,
-    quantity: toRequiredNumber(row.quantity),
-    status: row.status as StockReservation['status'],
-    createdAt: toRequiredIso(row.created_at),
-    settledAt: toIso(row.settled_at),
-  };
-}
-
-export function mapStockLevel(row: Row): InventoryStockLevel {
-  const quantityBoxes = toRequiredNumber(row.quantity_boxes);
-  const reservedBoxes = toRequiredNumber(row.reserved_boxes);
-  const available = quantityBoxes - reservedBoxes;
-  const reorderLevel = toNumber(row.reorder_level);
-
-  return {
-    productId: String(row.product_id),
-    productName: String(row.product_name ?? ''),
-    categoryId: String(row.category_id ?? ''),
-    categoryName: (row.category_name as string | null) ?? null,
-    categoryCode: (row.category_code as string | null) ?? null,
-    brand: (row.brand as string | null) ?? null,
-    multiColour: Boolean(row.multi_colour),
-    size: (row.size as string | null) ?? null,
-    variantId: String(row.variant_id),
-    variantCode: String(row.variant_code ?? ''),
-    variantLabel: (row.variant_label as string | null) ?? null,
-    weightKg: toNumber(row.weight_kg),
-    quantityBoxes,
-    reservedBoxes,
-    availableBoxes: available,
-    reorderLevel,
-    minStockLevel: toNumber(row.min_stock_level),
-    maxStockLevel: toNumber(row.max_stock_level),
-    // Judged on what is actually free to sell, not on what is on the floor —
-    // stock already committed to an order cannot answer the next one. And on
-    // the reorder level *alone*: a second low-stock rule would make the
-    // dashboard's figure ambiguous.
-    isLow: reorderLevel !== null && available <= reorderLevel,
-    updatedAt: toIso(row.updated_at),
-  };
-}
-
-export function mapStockMovement(row: Row): StockMovement {
-  return {
-    id: Number(row.id),
-    tenantId: String(row.tenant_id),
-    productId: String(row.product_id),
-    productName: String(row.product_name ?? ''),
-    variantId: String(row.variant_id),
-    variantCode: String(row.variant_code ?? ''),
-    variantLabel: (row.variant_label as string | null) ?? null,
-    movementType: row.movement_type as StockMovement['movementType'],
-    quantityBoxes: toRequiredNumber(row.quantity_boxes),
-    referenceType: (row.reference_type as string | null) ?? null,
-    referenceId: (row.reference_id as string | null) ?? null,
-    note: (row.note as string | null) ?? null,
-    batchNo: (row.batch_no as string | null) ?? null,
-    shade: (row.shade as string | null) ?? null,
-    calibre: (row.calibre as string | null) ?? null,
-    createdAt: toRequiredIso(row.created_at),
   };
 }
 
