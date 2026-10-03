@@ -44,6 +44,7 @@
   --kiln-amber-05: #fbf0dc;
   --kiln-red: #a8231f;
   --kiln-red-05: #fae9e8;
+  --kiln-red-60: #9a4b47; /* a muted red for text that should only lean red */
   --kiln-green: #1f6f4a;
   --kiln-green-05: #e4f1ea;
 
@@ -88,7 +89,7 @@
   --state-offline-tint: var(--kiln-amber-05);
   --state-conflict: var(--kiln-red);
   --state-conflict-tint: var(--kiln-red-05);
-  --signout-fg: var(--kiln-red); /* 1.4 R12: sign-out text; the palette's red, so dark mode follows */
+  --signout-fg: var(--kiln-red-60); /* 1.4 R12: sign-out text, a muted red; dark mode follows the palette */
   --state-ok: var(--kiln-green);
   --state-ok-tint: var(--kiln-green-05);
 
@@ -267,6 +268,7 @@
   --kiln-amber-05: #2e2313;
   --kiln-red: #e8706b;
   --kiln-red-05: #331716;
+  --kiln-red-60: #d98b87;
   --kiln-green: #4fb483;
   --kiln-green-05: #10281d;
 

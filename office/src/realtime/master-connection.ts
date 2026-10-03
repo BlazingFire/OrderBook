@@ -500,12 +500,13 @@ class MasterConnection extends EventEmitter {
       this.emit('change', event);
     });
 
-    // Pushed by the Master when it stops honouring this panel's session, so an
-    // idle panel does not keep somebody on screen as signed in until it happens
-    // to issue another command.
     // A role or user changed on the Master: ask again who this panel's person is
     // and what they may do. `reassume` emits `user`, which refreshes the session.
     socket.on('session:refresh', () => void this.reassume());
+
+    // Pushed by the Master when it stops honouring this panel's session, so an
+    // idle panel does not keep somebody on screen as signed in until it happens
+    // to issue another command.
     socket.on('session:rejected', (reason) => {
       log.warn(`The Master rejected this panel’s signed-in user: ${reason}`);
       this.actingToken = null;

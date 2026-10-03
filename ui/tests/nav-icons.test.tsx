@@ -46,9 +46,10 @@ describe('sign-out control (R12)', () => {
 
   it('colours it from a palette token', () => {
     const tokens = readFileSync(join(process.cwd(), 'ui', 'src', 'tokens.css'), 'utf8');
-    // One definition, from the palette's red: dark mode follows `--kiln-red`'s dark value.
+    // One definition, from a palette shade (Chromium 108 has no color-mix) that has a light and a dark value.
     expect(tokens.match(/--signout-fg:/g)).toHaveLength(1);
-    expect(tokens).toMatch(/--signout-fg: var\(--kiln-red\)/);
+    expect(tokens).toMatch(/--signout-fg: var\(--kiln-red-60\)/);
+    expect(tokens.match(/--kiln-red-60:/g)).toHaveLength(2);
     const css = readFileSync(join(process.cwd(), 'ui', 'src', 'base.css'), 'utf8');
     expect(css).toMatch(/\.ob-btn--signout[^{]*\{\s*color: var\(--signout-fg\)/);
   });
