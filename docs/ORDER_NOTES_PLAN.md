@@ -381,8 +381,8 @@ Built on top of everything above; sections 1 to 9 describe the original build.
 - **The number on the sheet.** The header eyebrow reads **Pending Order No.**
   for a lead and **Final Order No.** for an order (it was "Final Order ID").
   The value is `noteNumber(record)` in `shared/src/domain/order-note.ts`, the
-  one place it is chosen: the record's id today, so switching to the pending-order
-  number once it exists is a one-line change there. The "not yet synced" tag
+  one place it is chosen: the record's PO number, or null so the sheet prints
+  the id. The "not yet synced" tag
   still shows for a temporary id.
 - **Vehicle number on a lead is print-only.** A lead has no vehicle column, so
   the field takes input (any user with `leads.export`) and the sheet prints it,

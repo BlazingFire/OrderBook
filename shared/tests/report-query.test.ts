@@ -135,6 +135,8 @@ describe('what a reader sees', () => {
     expect(EN_MESSAGES['reports.column.conversion']).toBe('Conversion %');
     expect(HI_MESSAGES['reports.column.conversion']).toBe('फ़ाइनल ऑर्डर बनने की दर (%)');
     expect(HI_MESSAGES['reports.column.converted']).toBe('फ़ाइनल ऑर्डर बने');
+    expect(HI_MESSAGES['reports.kind.conversionTime']).toBe('फ़ाइनल ऑर्डर बनने में लगा समय');
+    expect(HI_MESSAGES['reports.column.avgDaysToConvert']).toBe('फ़ाइनल ऑर्डर बनने में औसत दिन');
   });
 
   it('has real Hindi for every report string, with no untranslated marker left on one', () => {

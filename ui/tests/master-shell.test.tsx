@@ -605,6 +605,13 @@ const ORDER = {
 };
 
 /** Boots with one lead, one order and their party answering, then opens `label`. */
+/** Extra fields for the lead and order `openList` serves, so a test can number them. Reset after each test. */
+const fixtureExtras: { lead: Record<string, unknown>; order: Record<string, unknown> } = { lead: {}, order: {} };
+afterEach(() => {
+  fixtureExtras.lead = {};
+  fixtureExtras.order = {};
+});
+
 async function openList(
   permissions: string[],
   label: string,
@@ -617,8 +624,8 @@ async function openList(
     if (path === '/api/leads' && call.url.includes('followUpDueOnly')) {
       return json({ items: [], total: 0, limit: 8, offset: 0 });
     }
-    if (path === '/api/leads') return json({ items: [LEAD], total: 1, limit: 500, offset: 0 });
-    if (path === '/api/orders') return json({ items: [ORDER], total: 1, limit: 500, offset: 0 });
+    if (path === '/api/leads') return json({ items: [{ ...LEAD, ...fixtureExtras.lead }], total: 1, limit: 500, offset: 0 });
+    if (path === '/api/orders') return json({ items: [{ ...ORDER, ...fixtureExtras.order }], total: 1, limit: 500, offset: 0 });
     if (path === '/api/parties/party-1') {
       return json({ id: 'party-1', name: 'Shree Ceramics', partyCode: 'P-0001', city: 'Rajkot' });
     }
@@ -880,6 +887,31 @@ describe('the Filling and Dispatch notes on a pending order', () => {
     fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
     await screen.findAllByText(t('orderNote.pendingOrderNo'));
     expect(screen.queryByRole('button', { name: t('orderNote.savePdf') })).toBeNull();
+  });
+
+  it('prints the PO number of a pending order and names the saved file for it', async () => {
+    const savePdf = vi.fn().mockResolvedValue({ ok: true, path: 'C:/out.pdf' });
+    (window as { orderbook?: unknown }).orderbook = { shellVersion: 'test', applyUpdate: vi.fn(), printPage: vi.fn(), savePdf };
+    fixtureExtras.lead = { poNumber: 'PO/2026-27/00042' };
+    await openList(['leads.view', 'leads.export'], t('nav.leads'));
+    fireEvent.click(await screen.findByText('PO/2026-27/00042'));
+    await screen.findByRole('button', { name: t('action.backToList') });
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+    expect((await screen.findAllByText(t('orderNote.pendingOrderNo'))).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('PO/2026-27/00042').length).toBeGreaterThan(0);
+    expect(screen.queryByText(LEAD.id)).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: t('orderNote.savePdf') }));
+    await waitFor(() => expect(savePdf).toHaveBeenCalledWith({ fileName: 'PO/2026-27/00042-filling.pdf' }));
+  });
+
+  it('prints the pending order number on a final order made from one', async () => {
+    fixtureExtras.order = { poNumber: 'PO/2026-27/00042' };
+    await openList(['orders.view', 'orders.export'], t('nav.orders'));
+    fireEvent.click(await screen.findByText(ORDER.id));
+    await screen.findByRole('button', { name: t('action.backToList') });
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+    expect((await screen.findAllByText(t('orderNote.orderId'))).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('PO/2026-27/00042').length).toBeGreaterThan(0);
   });
 
   it('heads a final order "Final Order No."', async () => {

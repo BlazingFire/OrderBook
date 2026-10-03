@@ -103,6 +103,8 @@ export function OrderNoteScreen({
   const [printers, setPrinters] = useState<{ name: string; displayName: string }[]>([]);
   const [printer, setPrinter] = useState(() => stored(KEY_PRINTER) ?? '');
   const [printing, setPrinting] = useState(false);
+  /** One print or Save PDF at a time: `printOnly` marks the page and is not re-entrant. */
+  const busyRef = useRef(false);
   const [printedAt] = useState(() => new Date());
 
   const model = useMemo(() => buildOrderNote(record), [record]);
@@ -142,10 +144,16 @@ export function OrderNoteScreen({
   };
 
   async function print(): Promise<void> {
+    if (busyRef.current) return;
+    busyRef.current = true;
     if (!desktop?.printPage) {
       // A browser prints one copy at a time: say where the rest is asked for.
-      if (copies > 1) toast.push(t('orderNote.copiesHint', { n: copies }), { tone: 'info' });
-      await printOnly(portalRef.current, () => window.print());
+      try {
+        if (copies > 1) toast.push(t('orderNote.copiesHint', { n: copies }), { tone: 'info' });
+        await printOnly(portalRef.current, () => window.print());
+      } finally {
+        busyRef.current = false;
+      }
       return;
     }
     const printPage = desktop.printPage;
@@ -163,13 +171,15 @@ export function OrderNoteScreen({
         { tone: 'error' },
       );
     } finally {
+      busyRef.current = false;
       setPrinting(false);
     }
   }
 
   async function savePdf(): Promise<void> {
     const save = desktop?.savePdf;
-    if (!save) return;
+    if (!save || busyRef.current) return;
+    busyRef.current = true;
     setSaving(true);
     try {
       const result = await printOnly(portalRef.current, () =>
@@ -185,6 +195,7 @@ export function OrderNoteScreen({
         { tone: 'error' },
       );
     } finally {
+      busyRef.current = false;
       setSaving(false);
     }
   }
@@ -195,7 +206,8 @@ export function OrderNoteScreen({
     function onKey(event: KeyboardEvent): void {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'p') {
         event.preventDefault();
-        void printRef.current();
+        // Key auto-repeat must not queue silent jobs of N copies.
+        if (!event.repeat) void printRef.current();
       } else if (event.altKey && event.key.toLowerCase() === 'f') {
         event.preventDefault();
         setKind('filling');
@@ -246,11 +258,11 @@ export function OrderNoteScreen({
             ]}
           />
           {desktop?.savePdf && (
-            <Button variant="secondary" busy={saving} onClick={() => void savePdf()}>
+            <Button variant="secondary" busy={saving} disabled={printing || saving} onClick={() => void savePdf()}>
               {t('orderNote.savePdf')}
             </Button>
           )}
-          <Button variant="primary" busy={printing} onClick={() => void print()}>
+          <Button variant="primary" busy={printing} disabled={printing || saving} onClick={() => void print()}>
             {t('orderNote.print')}
           </Button>
         </>

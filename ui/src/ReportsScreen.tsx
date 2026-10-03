@@ -66,6 +66,12 @@ interface ReportsScreenProps {
   onKindChange: (kind: ReportKind) => void;
   /** Changes whenever the data a report reads does: bumped on a change to one of `REPORT_ENTITIES` (on the Office also on a snapshot). */
   revision: number | string;
+  /**
+   * False while the Master cannot be reached (an Office panel only). The PDF
+   * preview is the Master's own page, so the link is withdrawn rather than
+   * opening a browser window onto an error. Default true.
+   */
+  online?: boolean;
 }
 
 /** A refusal carrying `field` belongs on that control; anything else is a fetch failure. */
@@ -141,7 +147,7 @@ function inclusiveEnd(toDateExclusive: string): string {
   return last.toISOString().slice(0, 10);
 }
 
-export function ReportsScreen({ transport, kind, onKindChange, revision }: ReportsScreenProps) {
+export function ReportsScreen({ transport, kind, onKindChange, revision, online = true }: ReportsScreenProps) {
   const toast = useToast();
   // Held in a ref so a panel that rebuilds its transport each render does not refetch.
   const transportRef = useRef(transport);
@@ -368,14 +374,16 @@ export function ReportsScreen({ transport, kind, onKindChange, revision }: Repor
                   draws it, so on the Office it needs the link up — a refusal or an
                   offline Master shows as the error state above, and takes this
                   with it. */}
-              <ButtonLink
-                href={reportPdfPath(kind, query, locale() === 'hi' ? 'hi' : 'en')}
-                target="_blank"
-                variant="secondary"
-                size="sm"
-              >
-                {t('reports.previewPdf')}
-              </ButtonLink>
+              {online && (
+                <ButtonLink
+                  href={reportPdfPath(kind, query, locale() === 'hi' ? 'hi' : 'en')}
+                  target="_blank"
+                  variant="secondary"
+                  size="sm"
+                >
+                  {t('reports.previewPdf')}
+                </ButtonLink>
+              )}
               {(['csv', 'xlsx', 'pdf'] as const).map((format) => (
                 <Button
                   key={format}

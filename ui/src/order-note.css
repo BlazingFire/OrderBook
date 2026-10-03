@@ -667,16 +667,12 @@
     display: none !important;
   }
 
-  .ob-note-print-portal {
+  /* One note on the paper: only the portal `printOnly` marked for this job is
+     shown, so a hidden kept-alive note screen (or a print from the browser menu)
+     never puts a note on the paper. */
+  .ob-note-print-portal--active {
     display: block;
     zoom: 1;
-  }
-
-  /* One note on the paper: while a print or Save PDF runs, `printOnly` marks the
-     one portal meant for it, and a hidden kept-alive note screen's portal stays
-     out of the job. */
-  body.ob-printing .ob-note-print-portal:not(.ob-note-print-portal--active) {
-    display: none !important;
   }
 
   .ob-note-print-portal .ob-note-scope {

@@ -28,7 +28,7 @@ import type {
 } from '@orderbook/shared';
 import {
   isLongOffline,
-  noteNumber,
+  recordNumber,
   offeredReportKinds,
   RECYCLE_BIN_ENTITIES,
   REPORT_ENTITIES,
@@ -1166,13 +1166,13 @@ function MasterPanel() {
       ...leads.items.map((lead) => ({
         kind: 'lead' as const,
         id: lead.id,
-        label: noteNumber(lead),
+        label: recordNumber(lead),
         partyName: lead.partyName,
       })),
       ...orders.items.map((order) => ({
         kind: 'order' as const,
         id: order.id,
-        label: noteNumber(order),
+        label: recordNumber(order),
         partyName: order.partyName,
       })),
     ];

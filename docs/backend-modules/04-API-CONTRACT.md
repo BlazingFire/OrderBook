@@ -2453,7 +2453,7 @@ record (`getLead` / `getOrder` with the sender's party scope; a temporary id is 
 `id_map`) or the post is refused `validation.chat.refNotFound`. On every read the chip is resolved
 for the person looking: `{label, partyName, restricted: false}` when they may open it, otherwise
 `{label: null, partyName: null, restricted: true}`, so a room never learns which party a restricted
-record belongs to. The label is `noteNumber(record)` (the record id until Phase 4's PO number).
+record belongs to. The label is `recordNumber(record)`: the PO number, or the record id when there is none.
 
 ### 15.3 Socket commands (Office to Master), protocol 5
 

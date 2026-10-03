@@ -435,6 +435,9 @@ describe.skipIf(!canRunIntegrationTests)('chatroom (integration)', () => {
       const posted = await chat.postMessage(roomId, { body: 'Look at this', refs: [{ kind: 'lead', id: lead.id }] }, insider.actor);
 
       expect(posted.refs[0]).toMatchObject({ kind: 'lead', id: lead.id, restricted: false, partyName: 'Closed Traders' });
+      // The chip is labelled as everywhere else (`recordNumber`): the PO number once the lead has one.
+      expect(lead.poNumber).toMatch(/^PO\//);
+      expect(posted.refs[0]).toMatchObject({ label: lead.poNumber });
 
       const seenByInsider = await chat.listMessages({ roomId }, insider.actor);
       const seenByOutsider = await chat.listMessages({ roomId }, outsider.actor);

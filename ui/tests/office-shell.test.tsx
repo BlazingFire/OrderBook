@@ -666,6 +666,33 @@ describe('Reports', () => {
     }
   });
 
+  it('offers the PDF preview only while the Master is reachable', async () => {
+    const calls = await boot({
+      permissions: ['reports.view', 'reports.export'],
+      route: (call) =>
+        call.url.split('?')[0] === '/api/reports/options' ? json({ ...OPTIONS, canExport: true }) : reportRoutes(call),
+    });
+    expect(calls.length).toBeGreaterThan(0);
+    const work = within(screen.getByRole('region', { name: t('nav.work') }));
+    await act(async () => {
+      fireEvent.click(work.getByRole('button', { name: new RegExp(`^${t('nav.reports')}`) }));
+    });
+    await screen.findByText('2026-10');
+    expect(screen.getByRole('link', { name: t('reports.previewPdf') })).toBeTruthy();
+
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('status', { state: 'disconnected', disconnectedSince: new Date().toISOString() });
+      await wait(0);
+    });
+    expect(screen.queryByRole('link', { name: t('reports.previewPdf') })).toBeNull();
+
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('status', { state: 'connected', disconnectedSince: null });
+      await wait(0);
+    });
+    expect(await screen.findByRole('link', { name: t('reports.previewPdf') })).toBeTruthy();
+  });
+
   it('does not ask again for a change to something no report reads', async () => {
     const calls = await boot({ permissions: ['reports.view'], route: reportRoutes });
     const work = within(screen.getByRole('region', { name: t('nav.work') }));

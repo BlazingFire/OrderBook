@@ -894,6 +894,9 @@ export function runPanelShell(config: PanelShellConfig): void {
       const bytes = await event.sender.printToPDF({
         printBackground: true,
         preferCSSPageSize: true,
+        // Explicit, to match the print: A4 and no margin of Chromium's own.
+        pageSize: 'A4',
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
       });
       const chosen = await dialog.showSaveDialog(mainWindow, {
         defaultPath: path.join(

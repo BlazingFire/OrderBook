@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import { clampCopies, pdfFileName, printOptions } from '../lib/print-options.js';
@@ -81,5 +84,14 @@ describe('pdfFileName', () => {
     expect(pdfFileName(42)).toBe('note.pdf');
     expect(pdfFileName(undefined)).toBe('note.pdf');
     expect(pdfFileName({ toString: () => 'x' })).toBe('note.pdf');
+  });
+});
+
+describe('the Save PDF call in shell.ts', () => {
+  it('asks printToPDF for A4 and no margins, to match the print', () => {
+    const shell = readFileSync(path.resolve(import.meta.dirname, '..', 'shell.ts'), 'utf8');
+    const call = shell.slice(shell.indexOf('printToPDF({'), shell.indexOf('});', shell.indexOf('printToPDF({')));
+    expect(call).toContain("pageSize: 'A4'");
+    expect(call).toMatch(/margins:\s*\{\s*top: 0,\s*bottom: 0,\s*left: 0,\s*right: 0\s*\}/);
   });
 });

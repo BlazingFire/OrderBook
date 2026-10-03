@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  buildOrderNote, cleanVehicleNumber, clampNoteCopies, noteDocument, noteHeader, NOTE_MAX_COPIES, paginateOrderNote,
+  buildOrderNote, cleanVehicleNumber, clampNoteCopies, noteDocument, noteHeader, noteNumber, NOTE_MAX_COPIES, paginateOrderNote,
 } from '../src/index.js';
 import type { Lead, LineItem, NoteKind, NotePage, Order, Party } from '../src/index.js';
 
@@ -199,10 +199,10 @@ describe('a lead as the source of a note', () => {
     expect(buildOrderNote(lead).totalWeightKg).toBe(12);
   });
 
-  it('carries the lead id as the number, the lead source and when the lead was created', () => {
+  it('carries no number before the PO number exists (the sheet prints the id), the lead source and when the lead was created', () => {
     const doc = noteDocument(lead, 'lead', party, null);
     expect(doc.header).toEqual({
-      source: 'lead', id: 'LD0000000007', number: 'LD0000000007', createdAt: '2026-10-01T05:00:00.000Z',
+      source: 'lead', id: 'LD0000000007', number: null, createdAt: '2026-10-01T05:00:00.000Z',
     });
     expect(doc.partyName).toBe('Shree Tiles');
   });
@@ -238,7 +238,18 @@ describe('noteHeader', () => {
   it('is what noteDocument carries, and its number is the one place the printed number is chosen', () => {
     const lead = { id: 'LD0000000009', partyName: 'A', createdAt: '2026-10-02T00:00:00.000Z', items: [], totalWeightKg: 0 } as unknown as Lead;
     expect(noteHeader(lead, 'lead')).toEqual(noteDocument(lead, 'lead', null, null).header);
-    expect(noteHeader(lead, 'lead').number).toBe(lead.id);
+    // No PO number yet (or a pre-1.3 Master): null, and the sheet prints the id.
+    expect(noteHeader(lead, 'lead').number).toBeNull();
+    expect(noteNumber(lead)).toBeNull();
+    expect(noteNumber({ id: 'LD1', poNumber: null })).toBeNull();
+    expect(noteNumber({ id: 'LD1', poNumber: '' })).toBeNull();
+  });
+
+  it('carries the PO number of a pending order and of the final order made from it', () => {
+    const lead = { id: 'LD0000000009', poNumber: 'PO/2026-27/00009', partyName: 'A', createdAt: '2026-10-02T00:00:00.000Z', items: [], totalWeightKg: 0 } as unknown as Lead;
+    const order = { id: 'OD0000000003', poNumber: 'PO/2026-27/00009', partyName: 'A', leadCreatedAt: '2026-10-02T00:00:00.000Z', items: [], totalWeightKg: 0 } as unknown as Order;
+    expect(noteHeader(lead, 'lead').number).toBe('PO/2026-27/00009');
+    expect(noteHeader(order, 'order')).toMatchObject({ number: 'PO/2026-27/00009', id: 'OD0000000003' });
   });
 });
 

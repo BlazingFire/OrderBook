@@ -72,7 +72,7 @@ function makeTransport(overrides: Partial<ReportsTransport> = {}): ReportsTransp
   };
 }
 
-function mount(transport: ReportsTransport, props: Partial<{ kind: ReportKind; onKindChange: (kind: ReportKind) => void; revision: number | string }> = {}) {
+function mount(transport: ReportsTransport, props: Partial<{ kind: ReportKind; onKindChange: (kind: ReportKind) => void; revision: number | string; online: boolean }> = {}) {
   return render(
     <ToastProvider>
       <ReportsScreen transport={transport} kind="by-city" onKindChange={() => undefined} revision={0} {...props} />
@@ -394,6 +394,13 @@ describe('files', () => {
     mount(makeTransport({ options: vi.fn(async () => OFFICE_OPTIONS) }));
     await screen.findByText('Morbi');
     expect(screen.queryByRole('link', { name: t('reports.previewPdf') })).toBeNull();
+  });
+
+  it('withdraws the PDF preview link while the Master is out of reach, and keeps the file buttons', async () => {
+    mount(makeTransport(), { online: false });
+    await screen.findByText('Morbi');
+    expect(screen.queryByRole('link', { name: t('reports.previewPdf') })).toBeNull();
+    expect(screen.getByRole('button', { name: t('reports.export.pdf') })).toBeTruthy();
   });
 
   it('writes the file the controls describe, in the language on screen, and stays busy until it arrives', async () => {

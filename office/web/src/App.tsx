@@ -19,7 +19,7 @@ import {
   isRoleTier,
   LONG_OFFLINE_MS,
   matchesRecordSearch,
-  noteNumber,
+  recordNumber,
   offeredReportKinds,
   REPORT_ENTITIES,
   REPORT_META,
@@ -1148,12 +1148,12 @@ function OfficePanel() {
     const found: ChatRecordOption[] = [];
     for (const lead of view?.leads ?? []) {
       if (matchesRecordSearch(lead, term)) {
-        found.push({ kind: 'lead', id: lead.id, label: noteNumber(lead), partyName: lead.partyName });
+        found.push({ kind: 'lead', id: lead.id, label: recordNumber(lead), partyName: lead.partyName });
       }
     }
     for (const order of view?.orders ?? []) {
       if (matchesRecordSearch(order, term)) {
-        found.push({ kind: 'order', id: order.id, label: noteNumber(order), partyName: order.partyName });
+        found.push({ kind: 'order', id: order.id, label: recordNumber(order), partyName: order.partyName });
       }
     }
     return found.slice(0, 20);
@@ -1542,6 +1542,7 @@ function OfficePanel() {
         <ReportsScreen
           transport={reportsTransport}
           revision={viewRevision}
+          online={connection.state === 'connected'}
           kind={subKeyOf('reports') as ReportKind}
           onKindChange={(kind) => selectSubPage('reports', kind)}
         />

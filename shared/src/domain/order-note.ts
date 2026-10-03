@@ -52,11 +52,11 @@ export interface NoteDocument {
 }
 
 /**
- * The number a note prints for a record. The one place it is decided: until the
- * pending-order numbering lands it is the record's id.
+ * The number a note prints for a record: its PO number, or null when it has none (the
+ * sheet then prints the id). The one place it is decided.
  */
-export function noteNumber(record: { id: RecordId }): string {
-  return record.id;
+export function noteNumber(record: { id: RecordId; poNumber?: string | null }): string | null {
+  return record.poNumber || null;
 }
 
 /** Copies of a note one print job may ask for. */

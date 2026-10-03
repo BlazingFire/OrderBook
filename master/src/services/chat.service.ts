@@ -40,7 +40,7 @@ import {
   CHAT_LIMITS,
   cleanChatPost,
   isChatAccessCapability,
-  noteNumber,
+  recordNumber,
   unreadOf,
   directKeyOf,
   withinEditWindow,
@@ -126,7 +126,7 @@ async function resolveChip(
         chip.kind === 'lead'
           ? await leadService.getLead(chip.id, actor)
           : await orderService.getOrder(chip.id, actor);
-      return { ...chip, label: noteNumber(record), partyName: record.partyName, restricted: false };
+      return { ...chip, label: recordNumber(record), partyName: record.partyName, restricted: false };
     } catch {
       return restricted;
     }
