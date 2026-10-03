@@ -4317,5 +4317,4 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'orderNote.column.notes': 'नोट',
   'orderNote.previewButton': 'प्रीव्यू',
   'orderNote.preview.title': 'प्रीव्यू: {title}',
-  'orderNote.preview.close': 'प्रीव्यू बंद करें',
 };

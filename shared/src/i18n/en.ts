@@ -3274,5 +3274,4 @@ export const EN_MESSAGES = {
   'orderNote.column.notes': 'Notes',
   'orderNote.previewButton': 'Preview',
   'orderNote.preview.title': 'Preview: {title}',
-  'orderNote.preview.close': 'Close preview',
 } as const;
