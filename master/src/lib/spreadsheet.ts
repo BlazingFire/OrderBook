@@ -175,6 +175,18 @@ export async function readSheetRows(buffer: Buffer): Promise<string[][]> {
   return Array.from(rows, (row) => row ?? []);
 }
 
+/**
+ * The workbook's Subject, or null: a CSV has none, and neither has a workbook
+ * another program wrote. Read apart from the rows so a file that only declares
+ * its format costs nothing extra to ignore.
+ */
+export async function readSheetSubject(buffer: Buffer): Promise<string | null> {
+  if (sheetKindOf(buffer) === 'csv') return null;
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.read(Readable.from([buffer]));
+  return workbook.subject || null;
+}
+
 export interface TemplateColumn {
   header: string;
   width: number;
@@ -190,9 +202,12 @@ export async function buildXlsxTemplate(spec: {
   guide: readonly (readonly string[])[];
   /** The data sheet's name; the products template is the default. */
   sheetName?: string;
+  /** The workbook's Subject property: where a file declares its format version. */
+  subject?: string;
 }): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'OrderBook';
+  if (spec.subject) workbook.subject = spec.subject;
 
   const sheet = workbook.addWorksheet(spec.sheetName ?? 'Products', {
     views: [{ state: 'frozen', ySplit: 1 }],
@@ -238,9 +253,12 @@ export async function buildXlsxTable(spec: {
   columns: readonly TemplateColumn[];
   rows: ReadonlyArray<ReadonlyArray<string | number | null>>;
   sheetName: string;
+  /** The workbook's Subject property: where a file declares its format version. */
+  subject?: string;
 }): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'OrderBook';
+  if (spec.subject) workbook.subject = spec.subject;
 
   const sheet = workbook.addWorksheet(spec.sheetName, { views: [{ state: 'frozen', ySplit: 1 }] });
   sheet.columns = spec.columns.map((column) => ({
