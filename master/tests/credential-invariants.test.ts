@@ -28,7 +28,8 @@ const SHARED = path.resolve(
 );
 
 function read(relative: string): string {
-  return readFileSync(path.join(SRC, relative), 'utf8');
+  // A Windows checkout (core.autocrlf) has CRLF; the needles below use LF.
+  return readFileSync(path.join(SRC, relative), 'utf8').replace(/\r\n/g, '\n');
 }
 
 /** Call sites, not mentions — a comment naming the function is not a caller. */
