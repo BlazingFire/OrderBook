@@ -186,6 +186,21 @@ describe('the paged catalogue', () => {
     });
   });
 
+  it('forwards the sort and the size and photo filters (1.4 R17)', async () => {
+    const commandSpy = vi
+      .spyOn(masterConnection, 'command')
+      .mockResolvedValue({ items: [], total: 0, limit: 100, offset: 0, categories: [] } as never);
+
+    await request(createApp()).get('/api/products?sort=weight&dir=desc&size=600x600&hasPhoto=false');
+
+    expect(commandSpy).toHaveBeenCalledWith('product:list', {
+      sort: 'weight',
+      dir: 'desc',
+      size: '600x600',
+      hasPhoto: false,
+    });
+  });
+
   it('pages the cached snapshot, and says so, when the Master cannot be reached', async () => {
     vi.spyOn(masterConnection, 'command').mockRejectedValue(UNREACHABLE);
     vi.spyOn(localStore, 'getView').mockResolvedValue({

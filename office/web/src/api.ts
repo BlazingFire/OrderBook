@@ -585,6 +585,10 @@ export const api = {
     if (query.categoryId) params.set('categoryId', query.categoryId);
     if (query.brand) params.set('brand', query.brand);
     if (query.missingWeight) params.set('missingWeight', 'true');
+    if (query.sort) params.set('sort', query.sort);
+    if (query.dir) params.set('dir', query.dir);
+    if (query.size) params.set('size', query.size);
+    if (query.hasPhoto !== undefined) params.set('hasPhoto', String(query.hasPhoto));
     if (query.limit) params.set('limit', String(query.limit));
     if (query.offset) params.set('offset', String(query.offset));
     const qs = params.toString();

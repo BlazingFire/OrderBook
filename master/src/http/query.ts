@@ -17,6 +17,8 @@ export function paging(query: Record<string, unknown>): ListQuery {
     // `assigned` means "all", so a stray value widens to the caller's normal
     // view rather than silently narrowing it to nothing.
     scope: query.scope === 'assigned' ? 'assigned' : undefined,
+    sort: typeof query.sort === 'string' && query.sort ? query.sort : undefined,
+    dir: query.dir === 'desc' ? 'desc' : query.dir === 'asc' ? 'asc' : undefined,
   };
 }
 

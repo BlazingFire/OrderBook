@@ -41,7 +41,7 @@ describe.skipIf(!canRunIntegrationTests)('catalog lists (integration)', () => {
   it.each(LISTS)('%s: the catalog key adds, renames, reorders, retires and restores a value', async (listKey) => {
     const actor = await actorWith(['catalog.lists.manage']);
 
-    const created = await fieldsService.createValue({ listKey, value: 'Zeta One' }, actor);
+    const created = await fieldsService.createValue({ listKey, value: 'Zeta One', label: 'Zeta One' }, actor);
     const renamed = await fieldsService.updateValue(
       created.id,
       { label: 'Zeta Uno', expectedVersion: created.version },
@@ -59,11 +59,11 @@ describe.skipIf(!canRunIntegrationTests)('catalog lists (integration)', () => {
 
   it.each(LISTS)('%s: fields.manage alone is refused, naming catalog.lists.manage', async (listKey) => {
     const manager = await actorWith(['catalog.lists.manage']);
-    const created = await fieldsService.createValue({ listKey, value: 'Held' }, manager);
+    const created = await fieldsService.createValue({ listKey, value: 'Held', label: 'Held' }, manager);
     const fieldsOnly = await actorWith(['fields.manage', 'fields.view']);
 
     const attempts: Array<() => Promise<unknown>> = [
-      () => fieldsService.createValue({ listKey, value: 'Nope' }, fieldsOnly),
+      () => fieldsService.createValue({ listKey, value: 'Nope', label: 'Nope' }, fieldsOnly),
       () => fieldsService.updateValue(created.id, { label: 'X', expectedVersion: created.version }, fieldsOnly),
       () => fieldsService.deleteValue(created.id, fieldsOnly),
       () => fieldsService.restoreValue(created.id, fieldsOnly),
@@ -78,13 +78,13 @@ describe.skipIf(!canRunIntegrationTests)('catalog lists (integration)', () => {
   it('the catalog key does not open the other lists', async () => {
     const actor = await actorWith(['catalog.lists.manage']);
     await expect(
-      fieldsService.createValue({ listKey: 'lead.sourcePlatform', value: 'Radio' }, actor),
+      fieldsService.createValue({ listKey: 'lead.sourcePlatform', value: 'Radio', label: 'Radio' }, actor),
     ).rejects.toThrow(ForbiddenError);
   });
 
   it('fields.manage still writes the other lists', async () => {
     const actor = await actorWith(['fields.manage']);
-    const created = await fieldsService.createValue({ listKey: 'lead.sourcePlatform', value: 'Radio' }, actor);
+    const created = await fieldsService.createValue({ listKey: 'lead.sourcePlatform', value: 'Radio', label: 'Radio' }, actor);
     expect(created.value).toBe('Radio');
   });
 

@@ -17,10 +17,28 @@ const TABLE = 'parties';
 
 type Runner = Knex | Knex.Transaction;
 
+/** 1.4 D3 (R17): the sortable columns. Looked up, never spliced; an unknown key keeps name order. */
+const PARTY_SORT_SQL: Record<string, string> = {
+  code: 'lower(party_code)',
+  name: 'lower(name)',
+  phone: 'phone',
+  city: 'lower(city)',
+  state: 'lower(state)',
+  gst: 'lower(gst_number)',
+  since: 'created_at',
+  variants:
+    '(SELECT count(*) FROM party_product_variants pv WHERE pv.party_id = parties.id AND pv.tenant_id = parties.tenant_id)',
+};
+
 export async function listParties(
   tenantId: string,
   options: {
     search?: string;
+    sort?: string;
+    dir?: string;
+    city?: string;
+    state?: string;
+    hasGst?: boolean;
     limit: number;
     offset: number;
     scope: PartyScope;
@@ -44,9 +62,22 @@ export async function listParties(
     );
   }
 
+  if (options.city?.trim()) base.andWhereILike('city', `%${options.city.trim()}%`);
+  if (options.state?.trim()) base.andWhereILike('state', `%${options.state.trim()}%`);
+  if (options.hasGst !== undefined) {
+    base.andWhereRaw(
+      options.hasGst ? "coalesce(trim(gst_number), '') <> ''" : "coalesce(trim(gst_number), '') = ''",
+    );
+  }
+
   const countRows = await base.clone().clearOrder().count<Array<{ count: string }>>('id as count');
-  const rows = await base
-    .clone()
+  const sortSql =
+    options.sort && Object.prototype.hasOwnProperty.call(PARTY_SORT_SQL, options.sort)
+      ? PARTY_SORT_SQL[options.sort]
+      : null;
+  const ordered = base.clone();
+  if (sortSql) ordered.orderByRaw(`${sortSql} ${options.dir === 'desc' ? 'DESC' : 'ASC'} NULLS LAST`);
+  const rows = await ordered
     // `id` last: two parties may share a name, and an unordered tie lets a row
     // repeat or vanish between two pages — which an export pages through.
     .orderBy('name', 'asc')

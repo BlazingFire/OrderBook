@@ -328,7 +328,18 @@ dataRoutes.use(partyImportRoutes(actorFromRequest));
 dataRoutes.get(
   '/parties',
   asyncHandler(async (req, res) => {
-    res.json(await catalogService.listPartiesWithMeta(paging(req.query), actorFromRequest(req)));
+    res.json(
+      await catalogService.listPartiesWithMeta(
+        {
+          ...paging(req.query),
+          city: typeof req.query.city === 'string' && req.query.city ? req.query.city : undefined,
+          state: typeof req.query.state === 'string' && req.query.state ? req.query.state : undefined,
+          hasGst:
+            req.query.hasGst === 'true' ? true : req.query.hasGst === 'false' ? false : undefined,
+        },
+        actorFromRequest(req),
+      ),
+    );
   }),
 );
 
@@ -392,6 +403,9 @@ dataRoutes.get(
           brand:
             typeof req.query.brand === 'string' && req.query.brand ? req.query.brand : undefined,
           missingWeight: req.query.missingWeight === 'true',
+          size: typeof req.query.size === 'string' && req.query.size ? req.query.size : undefined,
+          hasPhoto:
+            req.query.hasPhoto === 'true' ? true : req.query.hasPhoto === 'false' ? false : undefined,
         },
         actorFromRequest(req),
       ),

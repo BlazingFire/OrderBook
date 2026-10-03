@@ -246,6 +246,40 @@ describe('the catalogue page offline', () => {
     expect(page).toMatchObject({ total: 4, limit: 2, offset: 1 });
   });
 
+  it('sorts by a column in both directions, with a missing value last, and ignores an unknown key (1.4 R17)', () => {
+    const sized = {
+      ...typed,
+      products: typed.products.map((entry, index) => ({
+        ...entry,
+        size: ['600x600', '300x300', null, '800x800'][index] ?? null,
+      })),
+    } as unknown as SyncSnapshot;
+    const ids = (query: Parameters<typeof listProductsFromView>[0]) =>
+      listProductsFromView(query, sized, ALL).items.map((item) => item.id);
+
+    expect(ids({ sort: 'size', dir: 'asc' })).toEqual(['PR2', 'PR1', 'PR4', 'PR3']);
+    expect(ids({ sort: 'size', dir: 'desc' })).toEqual(['PR4', 'PR1', 'PR2', 'PR3']);
+    expect(ids({ sort: 'code', dir: 'asc' })).toEqual(['PR2', 'PR1', 'PR3', 'PR4']);
+    expect(ids({ sort: 'nope', dir: 'desc' })).toEqual(ids({}));
+  });
+
+  it('filters by size and by whether there is a photo (1.4 R17)', () => {
+    const sized = {
+      ...typed,
+      products: typed.products.map((entry, index) => ({
+        ...entry,
+        size: index === 0 ? '600x600' : null,
+        images: index === 1 ? [{ id: 'I1' }] : [],
+      })),
+    } as unknown as SyncSnapshot;
+    const ids = (query: Parameters<typeof listProductsFromView>[0]) =>
+      listProductsFromView(query, sized, ALL).items.map((item) => item.id);
+
+    expect(ids({ size: '600X600' })).toEqual(['PR1']);
+    expect(ids({ hasPhoto: true })).toEqual(['PR2']);
+    expect(ids({ hasPhoto: false })).toEqual(['PR1', 'PR4', 'PR3'].sort((a, b) => ids({}).indexOf(a) - ids({}).indexOf(b)));
+  });
+
   it('searches the same fields the Master does, case-insensitively', () => {
     expect(listProductsFromView({ search: 'kajaria' }, typed, ALL).items.map((item) => item.id)).toEqual(['PR3']);
     expect(listProductsFromView({ search: 'gls-2' }, typed, ALL).items.map((item) => item.id)).toEqual(['PR2']);

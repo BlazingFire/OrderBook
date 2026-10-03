@@ -734,6 +734,12 @@ export function createApp(): Express {
           : undefined,
       brand: typeof req.query.brand === 'string' && req.query.brand ? req.query.brand : undefined,
       missingWeight: req.query.missingWeight === 'true' ? true : undefined,
+      sort: typeof req.query.sort === 'string' && req.query.sort ? req.query.sort : undefined,
+      dir:
+        req.query.dir === 'desc' ? ('desc' as const) : req.query.dir === 'asc' ? ('asc' as const) : undefined,
+      size: typeof req.query.size === 'string' && req.query.size ? req.query.size : undefined,
+      hasPhoto:
+        req.query.hasPhoto === 'true' ? true : req.query.hasPhoto === 'false' ? false : undefined,
       limit: req.query.limit ? Number(req.query.limit) : undefined,
       offset: req.query.offset ? Number(req.query.offset) : undefined,
     };

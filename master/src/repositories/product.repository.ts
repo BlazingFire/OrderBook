@@ -61,10 +61,43 @@ const MISSING_WEIGHT = `EXISTS (
    WHERE v.product_id = p.id AND v.is_active AND v.weight_kg IS NULL
 )`;
 
+/**
+ * 1.4 D3 (R17): the sortable columns, as SQL. The key comes from the caller, so
+ * it is looked up here and never spliced into a query: an unknown key falls
+ * back to catalogue order. Text is compared case-insensitively; a value that is
+ * missing sorts last whichever way the column runs.
+ */
+const PRODUCT_SORT_SQL: Record<string, string> = {
+  brand: 'lower(c.brand)',
+  category: 'lower(c.name)',
+  name: 'lower(p.name)',
+  size: 'lower(p.size)',
+  colours:
+    '(SELECT min(lower(v.label)) FROM product_variants v WHERE v.product_id = p.id AND v.is_active)',
+  code: '(SELECT min(lower(v.code)) FROM product_variants v WHERE v.product_id = p.id AND v.is_active)',
+  weight:
+    '(SELECT min(v.weight_kg) FROM product_variants v WHERE v.product_id = p.id AND v.is_active)',
+};
+
+const CATALOGUE_ORDER =
+  'c.sort_order ASC NULLS LAST, lower(c.name) ASC, p.sort_order ASC NULLS LAST, lower(p.name) ASC, p.id ASC';
+
+/** The ORDER BY for a requested sort; the catalogue's own order is the tie-break and the default. */
+export function productOrderBy(sort: string | undefined, dir: string | undefined): string {
+  const column = sort && Object.prototype.hasOwnProperty.call(PRODUCT_SORT_SQL, sort) ? PRODUCT_SORT_SQL[sort] : null;
+  if (!column) return CATALOGUE_ORDER;
+  return `${column} ${dir === 'desc' ? 'DESC' : 'ASC'} NULLS LAST, ${CATALOGUE_ORDER}`;
+}
+
 export async function listProducts(
   tenantId: string,
   options: {
     search?: string;
+    /** 1.4 D3 (R17). */
+    sort?: string;
+    dir?: string;
+    size?: string;
+    hasPhoto?: boolean;
     categoryId?: string;
     /** A `product.brand` value, matched case-insensitively against the category's brand. */
     brand?: string;
@@ -98,6 +131,12 @@ export async function listProducts(
   }
 
   if (options.missingWeight) base.whereRaw(MISSING_WEIGHT);
+  if (options.size?.trim()) base.whereRaw('lower(p.size) = lower(?)', [options.size.trim()]);
+  if (options.hasPhoto !== undefined) {
+    base.whereRaw(
+      `${options.hasPhoto ? '' : 'NOT '}EXISTS (SELECT 1 FROM product_images i WHERE i.product_id = p.id AND i.tenant_id = p.tenant_id)`,
+    );
+  }
   // Before the facet, unlike the category filter: a brand narrows which
   // category chips are worth offering at all.
   if (options.brand?.trim()) base.whereRaw('lower(c.brand) = lower(?)', [options.brand.trim()]);
@@ -127,9 +166,7 @@ export async function listProducts(
   // the first three rows.
   const rows = await base
     .clone()
-    .orderByRaw(
-      'c.sort_order ASC NULLS LAST, lower(c.name) ASC, p.sort_order ASC NULLS LAST, lower(p.name) ASC, p.id ASC',
-    )
+    .orderByRaw(productOrderBy(options.sort, options.dir))
     .limit(options.limit)
     .offset(options.offset);
 

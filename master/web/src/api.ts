@@ -694,8 +694,27 @@ export const api = {
 
   panel: (id: string) => request<OfficePanelDetail>(`/api/panels/${id}`),
 
-  parties: (search?: string, limit?: number, offset?: number) =>
-    request<Paginated<PartyListRow>>(`/api/parties${pagedQuery(search, limit, offset)}`),
+  parties: (
+    search?: string,
+    limit?: number,
+    offset?: number,
+    options: {
+      sort?: string;
+      dir?: 'asc' | 'desc';
+      city?: string;
+      state?: string;
+      hasGst?: boolean;
+    } = {},
+  ) => {
+    const params = new URLSearchParams(pagedQuery(search, limit, offset).replace(/^\?/, ''));
+    if (options.sort) params.set('sort', options.sort);
+    if (options.dir) params.set('dir', options.dir);
+    if (options.city) params.set('city', options.city);
+    if (options.state) params.set('state', options.state);
+    if (options.hasGst !== undefined) params.set('hasGst', String(options.hasGst));
+    const query = params.toString();
+    return request<Paginated<PartyListRow>>(`/api/parties${query ? `?${query}` : ''}`);
+  },
   party: (id: string) => request<PartyDetailRecord>(`/api/parties/${id}`),
   /** One party's own product records, each with the catalogue model it stands for named. */
   partyRecords: (id: string) => request<PartyRecord[]>(`/api/parties/${id}/variants`),
@@ -718,6 +737,10 @@ export const api = {
     if (query.categoryId) params.set('categoryId', query.categoryId);
     if (query.brand) params.set('brand', query.brand);
     if (query.missingWeight) params.set('missingWeight', 'true');
+    if (query.sort) params.set('sort', query.sort);
+    if (query.dir) params.set('dir', query.dir);
+    if (query.size) params.set('size', query.size);
+    if (query.hasPhoto !== undefined) params.set('hasPhoto', String(query.hasPhoto));
     if (query.limit) params.set('limit', String(query.limit));
     if (query.offset) params.set('offset', String(query.offset));
     const qs = params.toString();

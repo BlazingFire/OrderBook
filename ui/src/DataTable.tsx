@@ -37,6 +37,12 @@ export interface DataTableColumn<T> {
    * value never displaces one that has it.
    */
   sortValue?: (row: T) => string | number | null | undefined;
+  /**
+   * 1.4 D3: a column the server sorts. Makes the header a sort control without a
+   * `sortValue`; pair it with `sortLocally={false}` so the rows are shown as the
+   * server ordered them.
+   */
+  sortable?: boolean;
 }
 
 export interface DataTableSort {
@@ -72,6 +78,7 @@ export function DataTable<T>({
   empty,
   sort,
   onSortChange,
+  sortLocally = true,
   rowHighlight,
 }: {
   columns: DataTableColumn<T>[];
@@ -88,6 +95,12 @@ export function DataTable<T>({
    */
   sort?: DataTableSort;
   onSortChange?: (sort: DataTableSort) => void;
+  /**
+   * False when the server already returned the rows in `sort` order (a paged
+   * list): the header still shows the state and still sorts on click, but the
+   * rows are shown as given, so a later page does not reshuffle an earlier one.
+   */
+  sortLocally?: boolean;
   /** Rows this returns true for carry `data-highlight` (a Server Master's rows, today). */
   rowHighlight?: (row: T) => boolean;
 }) {
@@ -154,14 +167,14 @@ export function DataTable<T>({
    * `rows` belongs to the caller and `sort` in place would reorder their state.
    */
   const sorted = useMemo(() => {
-    if (!sort) return rows;
+    if (!sort || !sortLocally) return rows;
     const column = columns.find((c) => c.key === sort.key);
     if (!column?.sortValue) return rows;
 
     const direction = sort.dir === 'asc' ? 1 : -1;
     const value = column.sortValue;
     return [...rows].sort((a, b) => compareValues(value(a), value(b)) * direction);
-  }, [rows, columns, sort]);
+  }, [rows, columns, sort, sortLocally]);
 
   const virtualize = sorted.length > VIRTUALIZE_ABOVE;
   let visibleRows = sorted;
@@ -201,7 +214,7 @@ export function DataTable<T>({
         <thead>
           <tr style={{ display: 'grid', gridTemplateColumns: gridTemplate }}>
             {visible.map((c) => {
-              const sortable = Boolean(c.sortValue && onSortChange);
+              const sortable = Boolean((c.sortValue || c.sortable) && onSortChange);
               const active = sort?.key === c.key ? sort.dir : undefined;
 
               return (
