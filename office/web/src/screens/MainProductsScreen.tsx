@@ -587,27 +587,16 @@ function MainProductForm({
   );
 }
 
-/** Products → Brands: the `product.brand` list, editable with `fields.manage`. */
+/** Products → Brands: the `product.brand` list, read by everyone, editable with `catalog.lists.manage`. */
 export function BrandsScreen({ view, revision }: { view: LocalView; revision?: number }) {
   // No record opens here; say so, or a detail open on a sibling page would
   // stay highlighted in the sidebar while this one shows.
   useSubNav('products', null);
 
-  // Every read the editor makes needs `fields.view`; without it the editor
-  // would sit on a load error whose Retry can never succeed.
-  if (!view.permissions.includes('fields.view')) {
-    return (
-      <EmptyState
-        title={t('catalog.brands.noAccess.title')}
-        description={t('catalog.brands.noAccess.description', { permission: 'fields.view' })}
-      />
-    );
-  }
-
   return (
     <OptionListEditor
       listKey="product.brand"
-      canManage={view.permissions.includes('fields.manage')}
+      canManage={view.permissions.includes('catalog.lists.manage')}
       transport={optionListTransport}
       revision={revision}
     />

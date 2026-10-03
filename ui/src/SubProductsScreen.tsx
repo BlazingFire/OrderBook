@@ -557,7 +557,16 @@ export function SubProductsScreen({
           ))}
         </Select>
       </div>
-      <ProductFilterRow value={listFilters} onChange={setListFilters} />
+      <ProductFilterRow
+        value={listFilters}
+        onChange={setListFilters}
+        extraActive={search.trim() !== '' || filters.brand !== null || filters.categoryId !== null}
+        onClearAll={() => {
+          setSearch('');
+          setFilters(NO_FILTERS);
+          setListFilters(NO_PRODUCT_LIST_FILTERS);
+        }}
+      />
       <ProductShareBar
         count={ticked.size}
         onClear={() => setTicked(new Set())}

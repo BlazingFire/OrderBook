@@ -10,6 +10,7 @@ import { db } from '../src/db/knex.js';
 import { up as grantCatalogLists } from '../src/db/migrations/20261012000000_catalog_lists_grant.js';
 import { ForbiddenError } from '../src/lib/errors.js';
 import * as fieldsService from '../src/services/fields.service.js';
+import * as recycleBinService from '../src/services/recycle-bin.service.js';
 import { canRunIntegrationTests } from './helpers/db.js';
 import { actorWith, resetData, setupDatabase, teardownDatabase, testTenantId } from './helpers/fixtures.js';
 
@@ -107,6 +108,49 @@ describe.skipIf(!canRunIntegrationTests)('catalog lists (integration)', () => {
     await expect(fieldsService.deleteValue('00000000-0000-0000-0000-000000000000', nobody)).rejects.toThrow(
       ForbiddenError,
     );
+  });
+
+  describe('Recycle Bin (1.4 rework)', () => {
+    const bin = ['recycleBin.view', 'recycleBin.viewAll'];
+
+    async function deleteOne(listKey: 'line.grade' | 'lead.sourcePlatform', value: string): Promise<string> {
+      const full = await actorWith(['catalog.lists.manage', 'fields.manage']);
+      const created = await fieldsService.createValue({ listKey, value, label: value }, full);
+      await fieldsService.deleteValue(created.id, full);
+      return created.id;
+    }
+
+    it('shows a lists-key holder only the deleted values of the three lists, and restores them', async () => {
+      const gradeId = await deleteOne('line.grade', 'Old grade');
+      const sourceId = await deleteOne('lead.sourcePlatform', 'Old source');
+      const clerk = await actorWith(['catalog.lists.manage', ...bin]);
+
+      const page = await recycleBinService.listBin({}, clerk);
+      expect(page.items.map((entry) => entry.id)).toEqual([gradeId]);
+      expect(await recycleBinService.binCounts(clerk)).toEqual({ option_list_item: 1 });
+
+      await expect(
+        recycleBinService.restoreEntity({ entityType: 'option_list_item', id: sourceId }, clerk),
+      ).rejects.toThrow(ForbiddenError);
+      const restored = await recycleBinService.restoreEntity({ entityType: 'option_list_item', id: gradeId }, clerk);
+      expect(restored.id).toBe(gradeId);
+      expect((await recycleBinService.listBin({}, clerk)).items).toEqual([]);
+    });
+
+    it('shows a fields.manage holder the deleted values of every list, as before', async () => {
+      const gradeId = await deleteOne('line.grade', 'Old grade');
+      const sourceId = await deleteOne('lead.sourcePlatform', 'Old source');
+      const fieldsOnly = await actorWith(['fields.manage', ...bin]);
+
+      const ids = (await recycleBinService.listBin({}, fieldsOnly)).items.map((entry) => entry.id).sort();
+      expect(ids).toEqual([gradeId, sourceId].sort());
+    });
+
+    it('shows nothing to a holder of neither key', async () => {
+      await deleteOne('line.grade', 'Old grade');
+      const nobody = await actorWith(bin);
+      expect((await recycleBinService.listBin({}, nobody)).items).toEqual([]);
+    });
   });
 
   describe('grant migration', () => {

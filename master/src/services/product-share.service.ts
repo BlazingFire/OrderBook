@@ -24,6 +24,7 @@ import {
 import { ValidationError } from '../lib/errors.js';
 import { renderProductShare, type ShareEntry } from '../pdf/product-share-renderer.js';
 import { findMasterConfig } from '../repositories/master-config.repository.js';
+import * as customFieldRepo from '../repositories/custom-field.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
 import { resolveImageFile } from './image.service.js';
 
@@ -49,6 +50,20 @@ async function photoOf(product: Product, actor: ActorContext): Promise<Buffer | 
     // A missing or unreadable file is a grey box on the sheet, not a failed share.
     return null;
   }
+}
+
+/**
+ * A product's custom field is stored under its key; the sheet prints the company's
+ * label for it (the Fields screen). A key with no live definition prints as it is.
+ */
+export async function customFieldLabeler(tenantId: string): Promise<(key: string) => string> {
+  const labels = new Map(
+    (await customFieldRepo.definitionsFor(tenantId, 'product')).map((definition) => [
+      definition.key,
+      definition.label,
+    ]),
+  );
+  return (key) => labels.get(key) ?? key;
 }
 
 export async function productSharePdf(
@@ -77,9 +92,11 @@ export async function productSharePdf(
 
   const company = (await findMasterConfig())?.company_name?.trim() || 'OrderBook';
 
+  const labelOf = await customFieldLabeler(actor.tenantId);
+
   const entries: ShareEntry[] = [];
   for (const product of products) {
-    entries.push({ card: shareCard(product), photo: await photoOf(product, actor) });
+    entries.push({ card: shareCard(product, labelOf), photo: await photoOf(product, actor) });
   }
 
   const date = localIsoDate(new Date());

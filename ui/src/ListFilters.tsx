@@ -110,9 +110,15 @@ export function productFiltersActive(value: ProductListFilters): boolean {
 export function ProductFilterRow({
   value,
   onChange,
+  extraActive = false,
+  onClearAll,
 }: {
   value: ProductListFilters;
   onChange: (next: ProductListFilters) => void;
+  /** The screen's own search, brand chip or product select is on: Clear filters shows for them too. */
+  extraActive?: boolean;
+  /** Clears everything the screen filters by, this row's included; without it only this row resets. */
+  onClearAll?: () => void;
 }) {
   return (
     <div style={ROW_STYLE} data-testid="product-filter-row">
@@ -130,8 +136,12 @@ export function ProductFilterRow({
         yes={t('listFilter.photo.yes')}
         no={t('listFilter.photo.no')}
       />
-      {productFiltersActive(value) && (
-        <Button variant="secondary" size="sm" onClick={() => onChange(NO_PRODUCT_LIST_FILTERS)}>
+      {(productFiltersActive(value) || extraActive) && (
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => (onClearAll ? onClearAll() : onChange(NO_PRODUCT_LIST_FILTERS))}
+        >
           {t('listFilter.clear')}
         </Button>
       )}
@@ -154,9 +164,15 @@ export function partyFiltersActive(value: PartyListFilters): boolean {
 export function PartyFilterRow({
   value,
   onChange,
+  extraActive = false,
+  onClearAll,
 }: {
   value: PartyListFilters;
   onChange: (next: PartyListFilters) => void;
+  /** The screen's own search or city chip is on: Clear filters shows for it too. */
+  extraActive?: boolean;
+  /** Clears everything the screen filters by, this row's included; without it only this row resets. */
+  onClearAll?: () => void;
 }) {
   return (
     <div style={ROW_STYLE} data-testid="party-filter-row">
@@ -181,8 +197,12 @@ export function PartyFilterRow({
         yes={t('listFilter.gst.yes')}
         no={t('listFilter.gst.no')}
       />
-      {partyFiltersActive(value) && (
-        <Button variant="secondary" size="sm" onClick={() => onChange(NO_PARTY_LIST_FILTERS)}>
+      {(partyFiltersActive(value) || extraActive) && (
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => (onClearAll ? onClearAll() : onChange(NO_PARTY_LIST_FILTERS))}
+        >
           {t('listFilter.clear')}
         </Button>
       )}

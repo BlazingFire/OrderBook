@@ -700,7 +700,16 @@ export function CatalogScreen({
 
     return (
       <>
-        <PartyFilterRow value={partyListFilters} onChange={setPartyListFilters} />
+        <PartyFilterRow
+          value={partyListFilters}
+          onChange={setPartyListFilters}
+          extraActive={partySearch.trim() !== '' || cityFilter !== null}
+          onClearAll={() => {
+            setPartySearch('');
+            setCityFilter(null);
+            setPartyListFilters(NO_PARTY_LIST_FILTERS);
+          }}
+        />
         <DataTable
           columns={columns}
           rows={parties}
@@ -926,7 +935,16 @@ export function CatalogScreen({
           ))}
         </Select>
       </div>
-      <ProductFilterRow value={productListFilters} onChange={setProductListFilters} />
+      <ProductFilterRow
+        value={productListFilters}
+        onChange={setProductListFilters}
+        extraActive={productSearch.trim() !== '' || filters.brand !== null || filters.categoryId !== null}
+        onClearAll={() => {
+          setProductSearch('');
+          setFilters(NO_FILTERS);
+          setProductListFilters(NO_PRODUCT_LIST_FILTERS);
+        }}
+      />
       <ProductShareBar
         count={ticked.size}
         onClear={() => setTicked(new Set())}

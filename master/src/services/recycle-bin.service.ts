@@ -13,10 +13,16 @@ import type {
   BinEntry,
   BinRestoreResult,
   CursorPage,
+  RecycleBinEntityType,
   RecycleBinQuery,
   RestoreInput,
 } from '@orderbook/shared';
-import { hasPermission, RECYCLE_BIN_ENTITIES, RESTORE_PERMISSION } from '@orderbook/shared';
+import {
+  CATALOG_LIST_KEYS,
+  hasPermission,
+  RECYCLE_BIN_ENTITIES,
+  RESTORE_PERMISSION,
+} from '@orderbook/shared';
 
 import { actorCan, requirePermission, type ActorContext } from '../domain/actor.js';
 import { resolvePartyScope } from '../domain/party-scope.js';
@@ -53,16 +59,12 @@ export async function binDeleters(
   if (!actorCan(actor, 'recycleBin.viewAll')) return [];
 
   const held = new Set(actor.permissions?.permissions ?? []);
-  const visible = visibleBinScopes(
-    undefined,
-    (type) => RESTORE_PERMISSION[type],
-    held,
-    RECYCLE_BIN_ENTITIES,
-  );
+  const visible = visibleTypes(undefined, held);
 
   const ids = await recycleBinRepo.distinctDeleters(actor.tenantId, {
     types: visible,
     scope: resolvePartyScope(actor),
+    optionListKeys: optionKeysFor(held),
   });
 
   const names = await recycleBinRepo.deletedByNames(actor.tenantId, ids);
@@ -72,6 +74,25 @@ export async function binDeleters(
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/**
+ * The entity types this caller may see in the Bin: the ones whose restore key they
+ * hold, plus (1.4 D3) the option-list values when they hold `catalog.lists.manage`.
+ */
+function visibleTypes(
+  requested: readonly RecycleBinEntityType[] | undefined,
+  held: ReadonlySet<string>,
+): RecycleBinEntityType[] {
+  const base = visibleBinScopes(requested, (type) => RESTORE_PERMISSION[type], held, RECYCLE_BIN_ENTITIES);
+  if (base.includes('option_list_item') || !held.has('catalog.lists.manage')) return base;
+  const asked = !requested || requested.length === 0 || requested.includes('option_list_item');
+  return asked ? [...base, 'option_list_item'] : base;
+}
+
+/** Only the three catalogue lists' values, for a caller who cannot restore any other list. */
+function optionKeysFor(held: ReadonlySet<string>): readonly string[] | undefined {
+  return held.has('fields.manage') ? undefined : CATALOG_LIST_KEYS;
+}
+
 export async function listBin(
   query: RecycleBinQuery,
   actor: ActorContext,
@@ -79,12 +100,7 @@ export async function listBin(
   requirePermission(actor, 'recycleBin.view');
 
   const held = new Set(actor.permissions?.permissions ?? []);
-  const visible = visibleBinScopes(
-    query.types,
-    (type) => RESTORE_PERMISSION[type],
-    held,
-    RECYCLE_BIN_ENTITIES,
-  );
+  const visible = visibleTypes(query.types, held);
 
   const scopedTo = scopeToOwnDeletions(actor, query.deletedBy);
   if (scopedTo === 'nobody' || visible.length === 0) {
@@ -105,6 +121,7 @@ export async function listBin(
     // party, so a `viewAll` holder still cannot read back somebody else's book
     // through the one screen that lists deleted records from every table.
     scope: resolvePartyScope(actor),
+    optionListKeys: optionKeysFor(held),
   });
 
   const names = await recycleBinRepo.deletedByNames(
@@ -141,7 +158,7 @@ export async function binCounts(actor: ActorContext): Promise<BinCounts> {
   requirePermission(actor, 'recycleBin.view');
 
   const held = new Set(actor.permissions?.permissions ?? []);
-  const visible = visibleBinScopes(undefined, (type) => RESTORE_PERMISSION[type], held, RECYCLE_BIN_ENTITIES);
+  const visible = visibleTypes(undefined, held);
 
   const scopedTo = scopeToOwnDeletions(actor, undefined);
   if (scopedTo === 'nobody' || visible.length === 0) return {};
@@ -151,6 +168,8 @@ export async function binCounts(actor: ActorContext): Promise<BinCounts> {
     visible,
     scopedTo === 'anyone' ? undefined : scopedTo,
     resolvePartyScope(actor),
+    undefined,
+    optionKeysFor(held),
   );
 }
 

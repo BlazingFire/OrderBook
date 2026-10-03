@@ -80,6 +80,9 @@ import * as sync from '../sync/sync.service.js';
 
 const log = createLogger('http');
 
+/** A product share of up to 400 products with photographs: far longer than the usual 15 s acknowledgement. */
+const PRODUCT_SHARE_ACK_MS = 120_000;
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const imageUpload = multer({
@@ -1191,7 +1194,8 @@ export function createApp(): Express {
   app.post('/api/products/share.pdf', (req, res) => {
     void (async () => {
       try {
-        const pdf = await masterConnection.command<
+        // Up to 400 products with photographs: well past the usual 15 s acknowledgement.
+        const pdf = await masterConnection.commandWithin(PRODUCT_SHARE_ACK_MS)<
           'product:sharePdf',
           { fileName: string; bytes: Uint8Array }
         >('product:sharePdf', Array.isArray(req.body?.ids) ? req.body.ids : []);

@@ -1072,8 +1072,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'catalog.mainProducts.empty.description':
     'एक उत्पाद उप-उत्पादों को एक कोड और ब्रांड के अंतर्गत रखता है — जैसे OPT, वन पीस टॉयलेट।',
   'catalog.mainProducts.empty.filtered': 'इन फ़िल्टरों से कोई उत्पाद मेल नहीं खाता।',
-  'catalog.brands.noAccess.title': 'ब्रांड आपकी भूमिका में शामिल नहीं हैं',
-  'catalog.brands.noAccess.description': 'किसी प्रशासक से {permission} माँगें।',
   'product.field.brand': 'ब्रांड',
   'product.field.brandHint': 'यह उत्पाद से आता है। इसे उत्पाद पृष्ठ पर बदलें।',
   'product.detail.colour': 'रंग',

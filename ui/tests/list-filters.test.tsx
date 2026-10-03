@@ -173,6 +173,36 @@ describe('the filter rows', () => {
   });
 });
 
+describe('Clear filters clears everything the screen filters by (1.4 rework)', () => {
+  it('Products: shows for the screen own search or chip alone, and calls onClearAll, not just the row reset', () => {
+    const onChange = vi.fn();
+    const onClearAll = vi.fn();
+    render(
+      <ProductFilterRow
+        value={NO_PRODUCT_LIST_FILTERS}
+        onChange={onChange}
+        extraActive
+        onClearAll={onClearAll}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: t('listFilter.clear') }));
+    expect(onClearAll).toHaveBeenCalledTimes(1);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('Products: no button while nothing at all is on', () => {
+    render(<ProductFilterRow value={NO_PRODUCT_LIST_FILTERS} onChange={vi.fn()} onClearAll={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: t('listFilter.clear') })).toBeNull();
+  });
+
+  it('Parties: shows for the search or city chip alone and calls onClearAll', () => {
+    const onClearAll = vi.fn();
+    render(<PartyFilterRow value={NO_PARTY_LIST_FILTERS} onChange={vi.fn()} extraActive onClearAll={onClearAll} />);
+    fireEvent.click(screen.getByRole('button', { name: t('listFilter.clear') }));
+    expect(onClearAll).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('DataTable tick boxes (1.4 D3, R16)', () => {
   const columns: DataTableColumn<Row>[] = [{ key: 'name', header: 'Name', render: (row) => row.name }];
   const rows: Row[] = [

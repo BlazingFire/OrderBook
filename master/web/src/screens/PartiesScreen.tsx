@@ -604,7 +604,15 @@ export function PartiesScreen({
 
   return (
     <>
-      <PartyFilterRow value={listFilters} onChange={setListFilters} />
+      <PartyFilterRow
+        value={listFilters}
+        onChange={setListFilters}
+        extraActive={search.trim() !== ''}
+        onClearAll={() => {
+          setSearch('');
+          setListFilters(NO_PARTY_LIST_FILTERS);
+        }}
+      />
       <DataTable
         columns={columns}
         rows={rows}

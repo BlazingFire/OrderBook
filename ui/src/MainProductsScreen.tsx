@@ -606,21 +606,12 @@ export function BrandsScreen({
   // stay highlighted in the sidebar while this one shows.
   useSubNav('products', null);
 
-  // Every read the editor makes needs `fields.view`; without it the editor
-  // would sit on a load error whose Retry can never succeed.
-  if (!permissions.includes('fields.view')) {
-    return (
-      <EmptyState
-        title={t('catalog.brands.noAccess.title')}
-        description={t('catalog.brands.noAccess.description', { permission: 'fields.view' })}
-      />
-    );
-  }
-
+  // 1.4 D3: the brands are read by everyone and written with `catalog.lists.manage`,
+  // the same rule as the Lists module; no edit button that answers 403.
   return (
     <OptionListEditor
       listKey="product.brand"
-      canManage={permissions.includes('fields.manage')}
+      canManage={permissions.includes('catalog.lists.manage')}
       transport={transport}
       revision={revision}
     />

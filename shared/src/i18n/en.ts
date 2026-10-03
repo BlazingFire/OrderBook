@@ -1005,8 +1005,6 @@ export const EN_MESSAGES = {
   'catalog.mainProducts.empty.description':
     'A product groups sub products under one code and brand — e.g. OPT, One Piece Toilet.',
   'catalog.mainProducts.empty.filtered': 'No products match these filters.',
-  'catalog.brands.noAccess.title': 'Brands are not part of your role',
-  'catalog.brands.noAccess.description': 'Ask an administrator for {permission}.',
   'product.field.brand': 'Brand',
   'product.field.brandHint': 'Comes from the product. Change it on the Products page.',
   'product.detail.colour': 'Colour',

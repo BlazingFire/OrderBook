@@ -34,7 +34,7 @@ import {
   REPORT_ENTITIES,
   REPORT_META,
   reportsOffered,
-  RESTORE_PERMISSION,
+  canRestoreBinType,
   resolveCompanyFeatures,
   SERVER_MASTER_TIER,
 } from '@orderbook/shared';
@@ -945,7 +945,7 @@ function MasterPanel() {
     recycleBin: [
       { key: 'all', label: t('recycleBin.filter.allTypes'), icon: 'trash' },
       ...RECYCLE_BIN_ENTITIES.filter((branch) =>
-        user.permissions.includes(RESTORE_PERMISSION[branch]),
+        canRestoreBinType(branch, (permission) => user.permissions.includes(permission)),
       ).map((branch) => ({
         key: branch,
         label: t(`recycleBin.entity.${branch}`),

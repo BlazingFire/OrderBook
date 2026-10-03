@@ -71,6 +71,17 @@ describe('shareCard', () => {
     ]);
   });
 
+  it('prints a custom field by the company label, and by its key when it has none (1.4 rework)', () => {
+    const labels: Record<string, string> = { Finish: 'Surface finish' };
+    const card = shareCard(
+      product({ customFields: { Finish: 'Glossy', other_key: 'x' } } as Partial<Product>),
+      (key) => labels[key] ?? key,
+    );
+    expect(card.fields).toContainEqual({ label: 'Surface finish', value: 'Glossy' });
+    expect(card.fields).toContainEqual({ label: 'other_key', value: 'x' });
+    expect(card.fields.map((field) => field.label)).not.toContain('Finish');
+  });
+
   it('leaves a weight out while any live variant has none, never printing zero', () => {
     const missing = product({
       variants: [{ id: 'V1', productId: 'PR1', code: 'D-1', label: null, weightKg: null, sequence: 1, isActive: true }],

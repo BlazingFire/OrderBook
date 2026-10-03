@@ -26,6 +26,7 @@ import type {
   Pipeline,
   PipelineStage,
 } from '@orderbook/shared';
+import { isCatalogListKey } from '@orderbook/shared';
 
 import { api, ApiError, type FieldDifference } from '../api';
 import { optionListTransport } from '../transports';
@@ -162,7 +163,12 @@ export function FieldsScreen({ permissions, revision, tab, onTabChange }: Props)
       ) : !catalogue ? (
         <SkeletonRows rows={5} columns={5} />
       ) : tab === 'values' ? (
-        <ValuesTab sets={catalogue.sets} canManage={canManage} revision={revision} />
+        <ValuesTab
+          sets={catalogue.sets}
+          canManage={canManage}
+          canManageCatalogLists={permissions.includes('catalog.lists.manage')}
+          revision={revision}
+        />
       ) : tab === 'definitions' ? (
         <DefinitionsTab
           entities={catalogue.customFieldEntities}
@@ -182,10 +188,13 @@ export function FieldsScreen({ permissions, revision, tab, onTabChange }: Props)
 function ValuesTab({
   sets,
   canManage,
+  canManageCatalogLists,
   revision,
 }: {
   sets: FieldSetDefinition[];
   canManage: boolean;
+  /** 1.4 D3: brands, packaging and grades are written with `catalog.lists.manage`, not `fields.manage`. */
+  canManageCatalogLists: boolean;
   revision: number;
 }) {
   const [listKey, setListKey] = useState<FieldListKey | ''>(sets[0]?.listKey ?? '');
@@ -207,7 +216,7 @@ function ValuesTab({
 
       <OptionListEditor
         listKey={listKey}
-        canManage={canManage}
+        canManage={isCatalogListKey(listKey) ? canManageCatalogLists : canManage}
         revision={revision}
         transport={optionListTransport}
       />

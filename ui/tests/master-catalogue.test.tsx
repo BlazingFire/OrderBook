@@ -347,6 +347,43 @@ describe('the sub-product list', () => {
   });
 });
 
+describe('Clear filters on the sub-product list (1.4 rework)', () => {
+  it('clears the search, the brand chip, the product and the size together', async () => {
+    const transport = makeTransport();
+    renderList(viewOf(), transport);
+    await waitFor(() => expect(transport.listProducts).toHaveBeenCalled());
+
+    fireEvent.change(screen.getByRole('textbox', { name: t('catalog.products.searchLabel') }), {
+      target: { value: 'damru' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Other/ }));
+    fireEvent.change(screen.getByLabelText(t('listFilter.size')), { target: { value: '600x600' } });
+    await waitFor(() =>
+      expect(transport.listProducts).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'damru', brand: 'Other', size: '600x600' }),
+        expect.anything(),
+      ),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: t('listFilter.clear') }));
+    await waitFor(() =>
+      expect(transport.listProducts).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          search: undefined,
+          brand: undefined,
+          categoryId: undefined,
+          size: undefined,
+        }),
+        expect.anything(),
+      ),
+    );
+    expect(
+      (screen.getByRole('textbox', { name: t('catalog.products.searchLabel') }) as HTMLInputElement).value,
+    ).toBe('');
+    expect((screen.getByLabelText(t('listFilter.size')) as HTMLInputElement).value).toBe('');
+  });
+});
+
 describe('the Products page', () => {
   it('saves an edit without re-asserting a brand retired since it was set', async () => {
     // WB is still under OldBrand, which the Brands page has since retired.
@@ -445,13 +482,27 @@ describe('the Brands page', () => {
     } as unknown as OptionListTransport & { fieldValues: ReturnType<typeof vi.fn> };
   }
 
-  it('says the list is not open to a role without fields.view, inside the page', async () => {
+  it('lists the brands for a role with no list permission, read-only: no Add button that would answer 403', async () => {
     const transport = optionTransport();
     render(<BrandsScreen permissions={['products.view']} transport={transport} />);
 
-    expect(await screen.findByText(t('catalog.brands.noAccess.title'))).toBeTruthy();
-    expect(transport.fieldValues).not.toHaveBeenCalled();
-    expect(screen.queryByText(t('action.retryNow'))).toBeNull();
+    await waitFor(() => expect(transport.fieldValues).toHaveBeenCalledWith('product.brand'));
+    expect(screen.queryByRole('button', { name: t('fields.values.add') })).toBeNull();
+  });
+
+  it('offers Add with catalog.lists.manage, and not with fields.manage alone', async () => {
+    const manager = optionTransport();
+    const { unmount } = render(
+      <BrandsScreen permissions={['catalog.lists.manage']} transport={manager} />,
+    );
+    expect(await screen.findByRole('button', { name: t('fields.values.add') })).toBeTruthy();
+    unmount();
+
+    const fieldsOnly = optionTransport();
+    render(<BrandsScreen permissions={['fields.view', 'fields.manage']} transport={fieldsOnly} />);
+    await waitFor(() => expect(fieldsOnly.fieldValues).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByRole('button', { name: t('fields.values.add') })).toBeNull();
   });
 
   it('shows the editor to a role that holds fields.view, and reloads when the lists moved', async () => {

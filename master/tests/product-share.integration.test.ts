@@ -10,7 +10,8 @@ import { actorWith, resetData, setupDatabase, teardownDatabase, testActor } from
 import type { ActorContext } from '../src/domain/actor.js';
 import { ForbiddenError, ValidationError } from '../src/lib/errors.js';
 import * as catalogService from '../src/services/catalog.service.js';
-import { productSharePdf } from '../src/services/product-share.service.js';
+import * as fieldsService from '../src/services/fields.service.js';
+import { customFieldLabeler, productSharePdf } from '../src/services/product-share.service.js';
 
 let actor: ActorContext;
 
@@ -61,6 +62,16 @@ describe.skipIf(!canRunIntegrationTests)('product share (integration)', () => {
     await expect(productSharePdf([], actor)).rejects.toThrow(ValidationError);
     await expect(productSharePdf(['PR-GONE'], actor)).rejects.toThrow(ValidationError);
     await expect(productSharePdf('PR1' as never, actor)).rejects.toThrow(ValidationError);
+  });
+
+  it('names a custom field by its label, not its key', async () => {
+    await fieldsService.createDefinition(
+      { entity: 'product', key: 'finish_type', label: 'Surface finish', fieldType: 'text' } as never,
+      actor,
+    );
+    const labelOf = await customFieldLabeler(actor.tenantId);
+    expect(labelOf('finish_type')).toBe('Surface finish');
+    expect(labelOf('never_defined')).toBe('never_defined');
   });
 
   it('refuses a selection past the cap', async () => {

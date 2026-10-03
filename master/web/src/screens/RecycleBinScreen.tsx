@@ -21,7 +21,7 @@ import type { BinBlocker, BinCounts, BinEntry, RecycleBinEntityType } from '@ord
 import {
   isRecycleBinEntityType,
   RECYCLE_BIN_ENTITIES,
-  RESTORE_PERMISSION,
+  canRestoreBinType,
 } from '@orderbook/shared';
 
 import { api, ApiError } from '../api';
@@ -115,7 +115,7 @@ export function RecycleBinScreen({ permissions, revision, type, onTypeChange }: 
   const canView = permissions.includes('recycleBin.view');
   const canViewAll = permissions.includes('recycleBin.viewAll');
   const canRestore = (type: RecycleBinEntityType): boolean =>
-    permissions.includes(RESTORE_PERMISSION[type]);
+    canRestoreBinType(type, (permission) => permissions.includes(permission));
 
   const [search, setSearch] = useState('');
   // The input keeps the raw value so typing feels instant; only the fetch

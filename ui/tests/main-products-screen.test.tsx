@@ -219,12 +219,18 @@ describe('MainProductsScreen', () => {
 });
 
 describe('BrandsScreen', () => {
-  it('says the list is not open to a role without fields.view, rather than failing to load it', async () => {
+  it('lists the brands for a role with no list permission, read-only (1.4 D3)', async () => {
+    api.fieldValues.mockResolvedValueOnce({ items: [brandOption('NewBrand')] } as never);
     render(<BrandsScreen view={viewOf({ permissions: ['products.view'] })} />);
 
-    expect(await screen.findByText(t('catalog.brands.noAccess.title'))).toBeTruthy();
-    expect(api.fieldValues).not.toHaveBeenCalled();
-    expect(screen.queryByText(t('action.retryNow'))).toBeNull();
+    await waitFor(() => expect(api.fieldValues).toHaveBeenCalledWith('product.brand'));
+    expect(screen.queryByRole('button', { name: t('fields.values.add') })).toBeNull();
+  });
+
+  it('offers Add with catalog.lists.manage (1.4 D3)', async () => {
+    api.fieldValues.mockResolvedValueOnce({ items: [brandOption('NewBrand')] } as never);
+    render(<BrandsScreen view={viewOf({ permissions: ['catalog.lists.manage'] })} />);
+    expect(await screen.findByRole('button', { name: t('fields.values.add') })).toBeTruthy();
   });
 
   it('shows the editor to a role that holds fields.view', async () => {

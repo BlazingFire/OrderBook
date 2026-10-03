@@ -67,7 +67,11 @@ function customFieldText(value: unknown): string {
 }
 
 /** One product as the lines its card prints. A field with no value is left out, never printed empty. */
-export function shareCard(product: Product): ShareCard {
+export function shareCard(
+  product: Product,
+  /** The company's label for a custom field's key (the Fields screen); a key with none prints as it is. */
+  labelOf: (key: string) => string = (key) => key,
+): ShareCard {
   const variants = liveVariants(product);
   const subtitle = [
     [product.categoryCode, product.categoryName].filter(Boolean).join(' - '),
@@ -94,7 +98,7 @@ export function shareCard(product: Product): ShareCard {
   }
   for (const [key, raw] of Object.entries(product.customFields ?? {})) {
     const text = customFieldText(raw);
-    if (text) fields.push({ label: key, value: text });
+    if (text) fields.push({ label: labelOf(key).trim() || key, value: text });
   }
 
   return { id: product.id, title: product.name, subtitle, fields };
