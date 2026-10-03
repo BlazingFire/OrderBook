@@ -246,30 +246,35 @@ describe('the command catalogue', () => {
     }
   });
 
-  it('leaves Reports, App update and the Master Admin screens without a chord', () => {
+  it('gives the Reports, Admin and System rows a letter chord (1.4 R13)', () => {
     const master = Object.fromEntries(navChords('master'));
-    for (const tab of [
-      'reports',
-      'panels',
-      'access',
-      'fields',
-      'logs',
-      'recycleBin',
-      'integrations',
-      'updates',
-    ]) {
-      expect(tab in master, tab).toBe(true);
-      expect(master[tab], tab).toBeUndefined();
-    }
+    expect(master).toMatchObject({
+      reports: 'Alt+R',
+      panels: 'Alt+O',
+      access: 'Alt+A',
+      fields: 'Alt+E',
+      logs: 'Alt+L',
+      recycleBin: 'Alt+B',
+      integrations: 'Alt+I',
+      updates: 'Alt+U',
+    });
     const office = Object.fromEntries(navChords('office'));
-    expect(office.updates).toBeUndefined();
-    expect('reports' in office).toBe(true);
-    expect(office.reports).toBeUndefined();
-    // The Office's Logs row has no chord either, like the Master's.
-    expect('logs' in office).toBe(true);
-    expect(office.logs).toBeUndefined();
+    expect(office).toMatchObject({ reports: 'Alt+R', logs: 'Alt+L', updates: 'Alt+U' });
+    // Alt+F and Alt+D belong to the note screen's Filling and Dispatch.
+    for (const chord of Object.values({ ...master, ...office })) {
+      expect(['Alt+F', 'Alt+D']).not.toContain(chord);
+    }
     // Inventory's screen is hidden on the Master; its row went with it.
     expect('inventory' in master).toBe(false);
+  });
+
+  it('opens help on F1, keeps Cmd+/ on a Mac, and binds the new action chords (1.4 R13)', () => {
+    const byId = (id: string) => COMMANDS.find((command) => command.id === id);
+    expect(byId('keys.help')?.defaultChord).toBe('F1');
+    expect(byId('keys.help')?.platformDefaultChord?.darwin).toBe('Meta+/');
+    expect(byId('party.new')?.defaultChord).toBe('Ctrl+Shift+A');
+    expect(byId('product.new')?.defaultChord).toBe('Ctrl+Shift+M');
+    expect(byId('session.signOut')?.defaultChord).toBe('Ctrl+Shift+L');
   });
 
   it('does not use up an Alt digit on a row with an explicit chord or none', () => {

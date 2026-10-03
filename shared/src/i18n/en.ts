@@ -3274,4 +3274,10 @@ export const EN_MESSAGES = {
   'orderNote.column.notes': 'Notes',
   'orderNote.previewButton': 'Preview',
   'orderNote.preview.title': 'Preview: {title}',
+  // 1.4 D4: shortcuts
+  'keys.command.newParty': 'New party',
+  'keys.command.newProduct': 'New product',
+  'keys.command.signOut': 'Sign out',
+  'signOut.confirm.title': 'Sign out?',
+  'signOut.confirm.body': 'Anything you have open and have not saved will be lost.',
 } as const;

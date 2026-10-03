@@ -316,6 +316,34 @@ describe('the next person to sign in at this window', () => {
     expect(topbarTitle()).toBe(t('nav.master.dashboard'));
   });
 
+  it('1.4 R13: the sign-out chord asks first, and signs out only on confirm', async () => {
+    const calls = await boot(ADMIN, answers);
+    const chord = () =>
+      act(async () => {
+        document.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'L', code: 'KeyL', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }),
+        );
+        await wait(0);
+      });
+    const signedOut = () => calls.some((call) => call.url === '/api/auth/sign-out' && call.method === 'POST');
+
+    await chord();
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.textContent).toContain(t('signOut.confirm.title'));
+    expect(signedOut()).toBe(false);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: t('common.cancel') }));
+    await act(async () => wait(0));
+    expect(signedOut()).toBe(false);
+
+    await chord();
+    await act(async () => {
+      fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: t('action.signOut') }));
+      await wait(0);
+    });
+    expect(signedOut()).toBe(true);
+  });
+
   it('starts an Office user on Basic Home', async () => {
     await boot(ADMIN, (call) =>
       call.url === '/api/auth/sign-in' && call.method === 'POST'

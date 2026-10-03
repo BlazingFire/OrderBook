@@ -69,8 +69,9 @@ export type NavEntry = [id: string, token: MessageKey, chord?: string | null];
  * System (`keys-nav-order.test.ts` holds this list to the sidebar).
  *
  * The digits match the Office's, so Alt+3 is Pending Orders on both panels.
- * Reports and the Admin screens have no chord; nobody reads Alt+0 as "the
- * tenth", and the palette reaches every one of them by name.
+ * Reports and the Admin screens take a letter chord instead (1.4 R13): nobody
+ * reads Alt+0 as "the tenth", and a letter is a mnemonic. Alt+F and Alt+D are
+ * left free: the note screen uses them for Filling and Dispatch.
  */
 const MASTER_NAV: NavEntry[] = [
   ['basicHome', 'nav.basicHome'],
@@ -82,18 +83,18 @@ const MASTER_NAV: NavEntry[] = [
   ['chatroom', 'nav.chatroom', 'Alt+C'],
   // Alt+P: Option+P is a plain letter chord on a Mac, so Cmd+P (print) is left alone.
   ['printroom', 'nav.printroom', 'Alt+P'],
-  ['reports', 'nav.reports', null],
+  ['reports', 'nav.reports', 'Alt+R'],
   ['products', 'nav.products'],
   ['parties', 'nav.master.parties'],
   ['partyAccess', 'nav.master.partyAccess'],
-  ['panels', 'nav.master.panels', null],
-  ['access', 'nav.master.access', null],
-  ['fields', 'nav.master.fields', null],
-  ['logs', 'nav.master.logs', null],
-  ['recycleBin', 'nav.master.recycleBin', null],
-  ['integrations', 'nav.master.integrations', null],
+  ['panels', 'nav.master.panels', 'Alt+O'],
+  ['access', 'nav.master.access', 'Alt+A'],
+  ['fields', 'nav.master.fields', 'Alt+E'],
+  ['logs', 'nav.master.logs', 'Alt+L'],
+  ['recycleBin', 'nav.master.recycleBin', 'Alt+B'],
+  ['integrations', 'nav.master.integrations', 'Alt+I'],
   ['settings', 'nav.master.settings'],
-  ['updates', 'nav.updates', null],
+  ['updates', 'nav.updates', 'Alt+U'],
 ];
 
 /**
@@ -108,13 +109,13 @@ const OFFICE_NAV: NavEntry[] = [
   ['conflicts', 'nav.conflicts'],
   ['chatroom', 'nav.chatroom', 'Alt+C'],
   ['printroom', 'nav.printroom', 'Alt+P'],
-  ['reports', 'nav.reports', null],
+  ['reports', 'nav.reports', 'Alt+R'],
   ['products', 'nav.products'],
   ['parties', 'nav.parties'],
   ['partyAccess', 'nav.partyAccess'],
   ['settings', 'nav.settings'],
-  ['logs', 'nav.logs', null],
-  ['updates', 'nav.updates', null],
+  ['logs', 'nav.logs', 'Alt+L'],
+  ['updates', 'nav.updates', 'Alt+U'],
 ];
 
 /** Builds one panel's nav commands. Exported for `keys.test.ts`. */
@@ -194,7 +195,10 @@ export const COMMANDS: readonly CommandDef[] = [
     titleToken: 'keys.command.help',
     scope: 'global',
     panel: 'both',
-    defaultChord: 'Ctrl+/',
+    // F1 is the key everyone reaches for. It used to be the desktop menu's
+    // accelerator; with the menu gone (1.4 R2) it is a chord here, and a Mac,
+    // where F1 is brightness, keeps Cmd+/.
+    defaultChord: 'F1',
     platformDefaultChord: { darwin: 'Meta+/' },
   },
   /*
@@ -213,6 +217,33 @@ export const COMMANDS: readonly CommandDef[] = [
    *
    * `shared/tests/keys-implemented.test.ts` is what keeps this list honest.
    */
+  // 1.4 R13: frequent actions that had no chord. Each is registered by the
+  // screen that can do it, so the palette offers it only where it works.
+  {
+    id: 'party.new',
+    titleToken: 'keys.command.newParty',
+    scope: 'screen',
+    panel: 'both',
+    defaultChord: 'Ctrl+Shift+A',
+    platformDefaultChord: { darwin: 'Meta+Shift+A' },
+  },
+  {
+    id: 'product.new',
+    titleToken: 'keys.command.newProduct',
+    scope: 'screen',
+    panel: 'both',
+    defaultChord: 'Ctrl+Shift+M',
+    platformDefaultChord: { darwin: 'Meta+Shift+M' },
+  },
+  {
+    id: 'session.signOut',
+    titleToken: 'keys.command.signOut',
+    scope: 'screen',
+    panel: 'both',
+    // Asks first, so a stray press never throws away an open form.
+    defaultChord: 'Ctrl+Shift+L',
+    platformDefaultChord: { darwin: 'Meta+Shift+L' },
+  },
   {
     id: 'view.toggleSidebar',
     titleToken: 'keys.command.toggleSidebar',

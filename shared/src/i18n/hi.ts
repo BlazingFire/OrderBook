@@ -4317,4 +4317,10 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'orderNote.column.notes': 'नोट',
   'orderNote.previewButton': 'प्रीव्यू',
   'orderNote.preview.title': 'प्रीव्यू: {title}',
+  // 1.4 D4: shortcuts
+  'keys.command.newParty': 'नई पार्टी',
+  'keys.command.newProduct': 'नया प्रोडक्ट',
+  'keys.command.signOut': 'साइन आउट',
+  'signOut.confirm.title': 'साइन आउट करें?',
+  'signOut.confirm.body': 'जो कुछ खुला है और सेव नहीं किया गया, वह खो जाएगा।',
 };

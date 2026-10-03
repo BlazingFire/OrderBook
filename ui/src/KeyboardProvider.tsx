@@ -258,7 +258,8 @@ export function KeyboardProvider({
         // A bare chord inside a field is text. `/` opens the palette from a
         // screen and types a slash in a search box, which is the only way both
         // can be true at once.
-        if (typing && !chord.ctrl && !chord.alt && !chord.meta) continue;
+        // A function key is never text, so F1 still opens help from a field.
+        if (typing && !chord.ctrl && !chord.alt && !chord.meta && !/^F\d{1,2}$/.test(chord.key)) continue;
 
         // `Ctrl+F` is the exception the modifier test above cannot see. It
         // carries a modifier, so it survives that check — and then swallows the

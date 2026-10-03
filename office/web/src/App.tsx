@@ -107,6 +107,7 @@ import {
   type SidebarMode,
   type SubPage,
   NAV_ICONS,
+  useConfirm,
 } from '@orderbook/ui';
 import { dispatchChat, officeChatTransport } from './chatTransport';
 import { dispatchPrint, officePrintroomTransport } from './printroomTransport';
@@ -222,6 +223,7 @@ export function App() {
 
 function OfficePanel() {
   const toast = useToast();
+  const confirm = useConfirm();
   // For the event stream below, which must not reopen whenever this changes.
   const toastRef = useRef(toast);
   toastRef.current = toast;
@@ -1821,6 +1823,17 @@ function OfficePanel() {
       </div>
     );
 
+  /** The sign-out chord asks first: a stray press must not drop an open form. */
+  async function askSignOut(): Promise<void> {
+    const ok = await confirm({
+      title: t('signOut.confirm.title'),
+      body: t('signOut.confirm.body'),
+      confirmLabel: t('action.signOut'),
+      tone: 'danger',
+    });
+    if (ok) await signOut();
+  }
+
   return (
     <KeyboardProvider
       panel="office"
@@ -1828,6 +1841,7 @@ function OfficePanel() {
       onNavigate={goToTab}
       canNavigate={offered}
       shellCommands={{
+        'session.signOut': () => void askSignOut(),
         'view.reset': () => void resetActiveScreen(),
         // As on the Master: the shell swallows F5, so this is what hands the key
         // back rather than a second, different meaning for it.

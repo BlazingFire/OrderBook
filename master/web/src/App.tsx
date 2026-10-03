@@ -106,6 +106,7 @@ import {
   type SidebarMode,
   type SubPage,
   NAV_ICONS,
+  useConfirm,
 } from '@orderbook/ui';
 import { ChangePasswordDialog } from './components/ChangePasswordDialog';
 import { DashboardScreen } from './screens/DashboardScreen';
@@ -302,6 +303,7 @@ function MasterPanel() {
   const [onMasterPc, setOnMasterPc] = useState(false);
   const [serverMasterSetupNeeded, setServerMasterSetupNeeded] = useState(false);
   const toast = useToast();
+  const confirm = useConfirm();
   /** Bumped each time New pending order is asked for, so the form can take the cursor when blank. */
   const [newLeadNonce, setNewLeadNonce] = useState(0);
   // Above the early returns: the topbar button, the sub-page and Ctrl+Shift+N all read it.
@@ -1692,6 +1694,17 @@ function MasterPanel() {
     </>
   );
 
+  /** The sign-out chord asks first: a stray press must not drop an open form. */
+  async function askSignOut(): Promise<void> {
+    const ok = await confirm({
+      title: t('signOut.confirm.title'),
+      body: t('signOut.confirm.body'),
+      confirmLabel: t('action.signOut'),
+      tone: 'danger',
+    });
+    if (ok) await signOut();
+  }
+
   return (
     <KeyboardProvider
       panel="master"
@@ -1700,6 +1713,7 @@ function MasterPanel() {
       canNavigate={offered}
       shellCommands={{
         'record.new': canCreateLead ? openNewLead : null,
+        'session.signOut': () => void askSignOut(),
         'view.reset': () => void resetActiveScreen(),
         // F5 is swallowed by the desktop shell so it cannot bypass the panel;
         // binding it here gives the key back its ordinary meaning, and in a
