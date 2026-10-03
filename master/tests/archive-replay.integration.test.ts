@@ -35,6 +35,8 @@ import { resetData, setUpFirstRun, setupDatabase, teardownDatabase, testActor } 
 const PO_MIGRATION = '20261003000000_pending_order_numbers';
 
 interface Rewrite {
+  /** Table entries to leave out, for tables that do not exist at the older schema level. */
+  dropTables?: string[];
   /** Entry name to a function of its text. */
   entries?: Record<string, (text: string) => string>;
   manifest?: (manifest: ArchiveManifest) => void;
@@ -50,6 +52,7 @@ async function rewriteArchive(source: string, target: string, rewrite: Rewrite):
   try {
     for (const { name } of reader.entries) {
       if (name === MANIFEST_ENTRY) continue;
+      if (rewrite.dropTables?.some((table) => tableEntryName(table) === name)) continue;
       const chunks: Buffer[] = [];
       for await (const chunk of await reader.openStream(name)) chunks.push(chunk as Buffer);
       let data = Buffer.concat(chunks);
@@ -66,6 +69,7 @@ async function rewriteArchive(source: string, target: string, rewrite: Rewrite):
       const upload = manifest.uploads.find((entry) => entry.path === name);
       if (upload) Object.assign(upload, digest);
     }
+    manifest.tables = manifest.tables.filter((entry) => !rewrite.dropTables?.includes(entry.name));
     rewrite.manifest?.(manifest);
     await writer.appendEntry(MANIFEST_ENTRY, [JSON.stringify(manifest)]);
     await writer.finalize();
@@ -113,6 +117,8 @@ describe.skipIf(!canRunIntegrationTests)('archive restore across schema levels (
     const level = migrations.map((migration) => migration.name);
     const keep = new Set(level.slice(0, level.indexOf(PO_MIGRATION)));
     await rewriteArchive(exported.path, older, {
+      // Tables from the Chatroom and Printroom migrations, which come after this level.
+      dropTables: ['chat_rooms', 'chat_members', 'chat_messages', 'print_stations', 'print_jobs'],
       entries: {
         // The column the migration adds, and the counters it seeds.
         [tableEntryName('leads')]: (text) => text.replace(/,"po_number":(null|"[^"]*")/g, ''),
