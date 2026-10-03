@@ -48,6 +48,13 @@ export interface CommandDef {
   defaultChord?: string;
   /** Platform-specific override. When present and the platform matches, takes precedence over defaultChord. */
   platformDefaultChord?: { darwin: string };
+  /**
+   * Further chords that also run the command while nobody has rebound it, and
+   * that the help sheet does not list: a habit kept alive (Ctrl+/ for help, which
+   * F1 now fronts). Never conflict-checked against the primary rows beyond
+   * `shared/tests/keys.test.ts`, and gone once the person sets their own chord.
+   */
+  alsoChords?: string[];
 }
 
 /**
@@ -197,9 +204,10 @@ export const COMMANDS: readonly CommandDef[] = [
     panel: 'both',
     // F1 is the key everyone reaches for. It used to be the desktop menu's
     // accelerator; with the menu gone (1.4 R2) it is a chord here, and a Mac,
-    // where F1 is brightness, keeps Cmd+/.
+    // where F1 is brightness, keeps Cmd+/. Ctrl+/ keeps working beside it.
     defaultChord: 'F1',
     platformDefaultChord: { darwin: 'Meta+/' },
+    alsoChords: ['Ctrl+/'],
   },
   /*
    * `edit.undo` (Ctrl+Z) and `edit.duplicate` (Ctrl+D) were here and are gone.

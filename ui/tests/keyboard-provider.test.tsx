@@ -137,6 +137,18 @@ describe('useCommand priority', () => {
     expect(log.at(-1)).toBe('dialog');
   });
 
+  it('still opens help on Ctrl+/ beside F1, until the person rebinds it (1.4 R13)', () => {
+    render(
+      <KeyboardProvider panel="office">
+        <Probe />
+      </KeyboardProvider>,
+    );
+    act(() => {
+      fireEvent.keyDown(document.body, { key: '/', code: 'Slash', ctrlKey: true });
+    });
+    expect(screen.getByTestId('help').textContent).toBe('true');
+  });
+
   it('opens help on F1 even while typing in a field (1.4 R13)', () => {
     render(
       <KeyboardProvider panel="office">

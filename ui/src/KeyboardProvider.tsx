@@ -39,7 +39,7 @@ import type { ReactNode } from 'react';
 import {
   BINDINGS_STORAGE_KEY,
   COMMANDS_BY_ID,
-  chordFor,
+  chordsFor,
   commandsFor,
   matchesChord,
   parseBindings,
@@ -252,8 +252,10 @@ export function KeyboardProvider({
       const modal = dialogIsOpen();
 
       for (const command of commandsFor(latest.current.panel)) {
-        const chord = chordFor(command.id, latest.current.bindings);
-        if (!chord || !matchesChord(event, chord)) continue;
+        const chord = chordsFor(command.id, latest.current.bindings).find((candidate) =>
+          matchesChord(event, candidate),
+        );
+        if (!chord) continue;
 
         // A bare chord inside a field is text. `/` opens the palette from a
         // screen and types a slash in a search box, which is the only way both

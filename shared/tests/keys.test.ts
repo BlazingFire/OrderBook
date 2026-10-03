@@ -13,6 +13,7 @@ import {
   COMMANDS_BY_ID,
   chordFor,
   chordFromEvent,
+  chordsFor,
   findConflicts,
   formatChord,
   isReservedChord,
@@ -272,6 +273,10 @@ describe('the command catalogue', () => {
     const byId = (id: string) => COMMANDS.find((command) => command.id === id);
     expect(byId('keys.help')?.defaultChord).toBe('F1');
     expect(byId('keys.help')?.platformDefaultChord?.darwin).toBe('Meta+/');
+    // Ctrl+/ keeps working beside F1, until the person sets a chord of their own.
+    expect(chordsFor('keys.help', {}).map((chord) => formatChord(chord))).toEqual(['F1', 'Ctrl+/']);
+    expect(chordsFor('keys.help', { 'keys.help': 'Ctrl+J' }).map((chord) => formatChord(chord))).toEqual(['Ctrl+J']);
+    expect(chordsFor('keys.help', { 'keys.help': null })).toEqual([]);
     expect(byId('party.new')?.defaultChord).toBe('Ctrl+Shift+A');
     expect(byId('product.new')?.defaultChord).toBe('Ctrl+Shift+M');
     expect(byId('session.signOut')?.defaultChord).toBe('Ctrl+Shift+L');

@@ -1,8 +1,11 @@
 /**
- * One icon per module, for the sidebar and Basic Home alike (1.4 R18). Each is
- * the 16 px line version of the module's Basic Home drawing, and no two modules
- * share one. Both panels build their nav from this map; `nav-icons.test.ts`
- * holds the line.
+ * One icon per module, for the sidebar and Basic Home alike (1.4 R18).
+ *
+ * A module with a Basic Home drawing (`GLYPHS` in `navGlyphs.tsx`) shows that
+ * same drawing in the sidebar, in one colour (`NavGlyph`), so the entry here is
+ * only its fallback. A module without one shows this line icon on both, the
+ * sidebar at 16 px and the tile at 40 px. No two modules share an icon. Both
+ * panels build their nav from this map; `nav-icons.test.tsx` holds the line.
  */
 
 import type { IconName } from './icons';
@@ -26,7 +29,7 @@ export const NAV_ICONS = {
   recycleBin: 'trash',
   integrations: 'plug',
   settings: 'settings',
-  updates: 'updates',
+  updates: 'sync',
 } as const satisfies Record<string, IconName>;
 
 export type NavIconId = keyof typeof NAV_ICONS;

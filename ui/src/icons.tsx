@@ -51,22 +51,21 @@ export type IconName =
   | 'sign-out'
   | 'key'
   | 'plug'
-  | 'log'
-  | 'updates';
+  | 'log';
 
 const PATHS: Record<IconName, string> = {
   // The Basic Home launcher, as drawn in the owner's mockup.
   home: 'M2.5 7.3L8 2.8l5.5 4.5M4 6.2v7.3h8V6.2M6.6 13.5V9.8h2.8v3.7',
-  dashboard: 'M2.5 11.5a5.5 5.5 0 1 1 11 0M8 11.5l3-4M3.2 8h1M8 3.2v1M12.8 8h-1',
+  dashboard: 'M2.5 2.5h4.5v4.5h-4.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5h-4.5zM9 9h4.5v4.5H9z',
   report: 'M2.5 13.5h11M4.5 11V8M8 11V4.5M11.5 11V6.5',
-  leads: 'M5 2.5h7.5v9H5zM3 4.5v9h7.5M8.5 6.2v2.4l1.6 1',
-  orders: 'M3.5 3.5h9v10h-9zM6 2.5h4v2H6zM5.8 8.5l1.6 1.6 3-3.2',
+  leads: 'M2.5 3h11L9.5 8.5V13l-3-1.8V8.5z',
+  orders: 'M3 4h10M3 8h10M3 12h7',
   inventory: 'M3 5.5h10v7H3zM3 5.5L5 3h6l2 2.5M8 5.5V12.5',
-  products: 'M3 8h10c0 3-2.2 4.5-5 4.5S3 11 3 8zM8 8V5.5M6 3.5h3a1.5 1.5 0 0 1 1.5 1.5v.5M6.5 14h3',
-  parties: 'M2.5 4h11v8h-11zM5.6 7.4a1.2 1.2 0 1 0 0-.01M4 10.6c.3-1 1-1.6 1.6-1.6s1.3.6 1.6 1.6M8.7 7h3M8.7 9.5h2',
-  conflicts: 'M3.2 6.5A5 5 0 0 1 11.6 4.2M12.8 9.5A5 5 0 0 1 4.4 11.8M12 2v2.5H9.5M4 14v-2.5h2.5M8 6.2l1.8 3.3H6.2z',
-  settings: 'M8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM8 1.8l.9 1.6 1.8-.5.5 1.8 1.7.9-.9 1.6.9 1.6-1.7.9-.5 1.8-1.8-.5-.9 1.6-.9-1.6-1.8.5-.5-1.8-1.7-.9.9-1.6-.9-1.6 1.7-.9.5-1.8 1.8.5z',
-  shield: 'M8 2.2l4.8 1.9v3.6c0 2.9-1.9 4.8-4.8 6-2.9-1.2-4.8-3.1-4.8-6V4.1zM8 6.2a1.2 1.2 0 1 0 0-.01M5.9 10.2c.3-1.1 1.2-1.7 2.1-1.7s1.8.6 2.1 1.7',
+  products: 'M8 2.5L13.5 8L8 13.5L2.5 8z',
+  parties: 'M5.5 6.5a2.5 2.5 0 1 0 0-.01M10.5 6.5a2.5 2.5 0 1 0 0-.01M2.5 13c.6-2.2 2-3.2 3.5-3.2M13.5 13c-.6-2.2-2-3.2-3.5-3.2',
+  conflicts: 'M8 2.8L13.5 12.5H2.5zM8 6.8v2.6M8 11.6v.01',
+  settings: 'M3 5.5h10M3 10.5h10M5.5 4v3M10.5 9v3',
+  shield: 'M8 2.2l4.8 1.9v3.6c0 2.9-1.9 4.8-4.8 6-2.9-1.2-4.8-3.1-4.8-6V4.1zM8 6v4M8 10h.01',
   server: 'M2.5 3h11v4h-11zM2.5 9h11v4h-11zM4.5 5h.01M4.5 11h.01',
   collapse: 'M10 3L5 8l5 5',
   expand: 'M6 3l5 5-5 5',
@@ -113,7 +112,6 @@ const PATHS: Record<IconName, string> = {
   key: 'M5.2 11a3 3 0 1 0 0-.01M7.4 9.2L13.5 3.3M11.5 5.3l1.5 1.5M9.6 7.1l1.2 1.2',
   plug: 'M6 2.5v3M10 2.5v3M4.5 5.5h7v2.5a3.5 3.5 0 0 1-7 0zM8 11.5V14',
   log: 'M3.5 2.5h9v11h-9zM5.5 5.5h5M5.5 8h5M5.5 10.5h3',
-  updates: 'M2.5 9.5h11v4h-11zM8 2.5v5M5.8 5.5L8 7.7l2.2-2.2M11.5 11.5h.01',
 };
 
 export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {

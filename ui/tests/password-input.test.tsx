@@ -4,7 +4,7 @@
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import path, { join } from 'node:path';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -42,6 +42,9 @@ describe('PasswordInput', () => {
   });
 });
 
+/** `type="password"`, `type='password'` and `type={'password'}` (or a template literal). */
+const RAW_PASSWORD = /type=(?:["']password["']|\{\s*["'`]password["'`]\s*\})/;
+
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
@@ -55,8 +58,17 @@ describe('raw password inputs', () => {
     const roots = ['../src', '../../master/web/src', '../../office/web/src'];
     const offenders = roots
       .flatMap((root) => sources(new URL(root, import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')))
-      .filter((file) => !file.endsWith('Form.tsx'))
-      .filter((file) => /type=["']password["']/.test(readFileSync(file, 'utf8')));
+      .filter((file) => !file.split(path.sep).join('/').endsWith('/ui/src/Form.tsx'))
+      .filter((file) => RAW_PASSWORD.test(readFileSync(file, 'utf8')));
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('the raw-password guard itself', () => {
+  it('matches every way of writing a password input', () => {
+    for (const text of ['type="password"', "type='password'", "type={'password'}", 'type={"password"}', 'type={`password`}']) {
+      expect(RAW_PASSWORD.test(`<input ${text} />`), text).toBe(true);
+    }
+    expect(RAW_PASSWORD.test('<input type="text" />')).toBe(false);
   });
 });

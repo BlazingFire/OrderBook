@@ -1328,6 +1328,32 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   flex: none;
   opacity: 0.85;
 }
+/* 1.4 R18: a module's Basic Home drawing as its sidebar icon, in the text colour. */
+.ob-navglyph {
+  --tile-paper: currentColor;
+  --tile-ink: var(--bg-surface);
+  --tile-spark: currentColor;
+  --tile-tick: currentColor;
+  --tile-led: currentColor;
+  --tile-water: currentColor;
+  --tile-tint-green: currentColor;
+  --tile-tint-orange: currentColor;
+  --tile-tint-purple: currentColor;
+  --tile-tint-pink: currentColor;
+  opacity: 1;
+}
+.ob-navglyph [fill*='tint'],
+.ob-navglyph [fill*='spark'],
+.ob-navglyph [fill*='water'] {
+  fill-opacity: 0.5;
+}
+.ob-navitem-main svg.ob-navglyph {
+  opacity: 0.9;
+}
+.ob-navitem-main[aria-current='page'] svg.ob-navglyph {
+  --tile-ink: var(--accent-tint);
+}
+
 .ob-navitem-main[aria-current='page'] {
   background: var(--accent-tint);
   color: var(--accent);

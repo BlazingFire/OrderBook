@@ -15,7 +15,7 @@ import type {
   ReactNode,
   TextareaHTMLAttributes,
 } from 'react';
-import { Icon } from './icons';
+import { Icon } from './icons.js';
 import { t } from './i18n.js';
 
 export function Label({ htmlFor, children }: { htmlFor?: string; children: ReactNode }) {
