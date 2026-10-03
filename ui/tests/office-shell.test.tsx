@@ -2125,3 +2125,93 @@ describe('the faces on the Final orders board (R22)', () => {
     expect(row.getByLabelText(t('presence.more', { count: 2 }))).toBeTruthy();
   });
 });
+
+describe('an Office on another version than its Master (1.4 R7e)', () => {
+  function bootWith(masterVersion: string | null, permissions: string[] = ['leads.view']) {
+    routeFetch(({ url }) => {
+      const path = url.split('?')[0] ?? url;
+      if (path === '/api/connection') return json({ ...CONNECTION, masterVersion });
+      if (path === '/api/session') {
+        return json({ session: panelSession(permissions), defaultLocale: 'en' });
+      }
+      if (path === '/api/sync') return json({ ...CONNECTION, masterVersion, pendingCount: 0, rejections: [] });
+      if (path === '/api/notifications') return json({ items: [], unreadCount: 0 });
+      if (path === '/api/updates/available') {
+        return json({
+          current: '1.2.0',
+          available: {
+            version: '1.3.0',
+            file: 'OrderBook-Office-1.3.0-Setup.exe',
+            sha256: 'a'.repeat(64),
+            sizeBytes: 1000,
+            releasedAt: '2026-10-03T00:00:00.000Z',
+            panel: 'office',
+          },
+        });
+      }
+      if (path === '/api/updates/progress') return json({ phase: 'idle' });
+      return undefined;
+    });
+    return loadApp('office');
+  }
+
+  it('blocks the app with "Update needed" once it knows the Master is newer, and offers the update to anyone', async () => {
+    vi.stubGlobal('__APP_VERSION__', '1.2.0');
+    const App = await bootWith('1.3.0');
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+
+    expect(await screen.findByRole('heading', { name: t('updates.required.title') })).toBeTruthy();
+    expect(screen.getByText(t('updates.required.body', { mine: '1.2.0', master: '1.3.0' }))).toBeTruthy();
+    // No sidebar, no footer: nothing of the app is open behind it.
+    expect(screen.queryByRole('link', { name: t('footer.designSystem') })).toBeNull();
+    expect(screen.queryByRole('region', { name: t('nav.work') })).toBeNull();
+    // A person with no settings right can still start the update: it is mandatory.
+    expect(await screen.findByRole('button', { name: t('updates.installNow') })).toBeTruthy();
+    expect(screen.getByRole('button', { name: t('action.signOut') })).toBeTruthy();
+  });
+
+  it('opens the app when the versions match', async () => {
+    vi.stubGlobal('__APP_VERSION__', '1.3.0');
+    const App = await bootWith('1.3.0');
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+    await screen.findByRole('link', { name: t('footer.designSystem') });
+    expect(screen.queryByRole('heading', { name: t('updates.required.title') })).toBeNull();
+  });
+
+  it('does not block when the Master version is not known yet: offline work goes on', async () => {
+    vi.stubGlobal('__APP_VERSION__', '1.2.0');
+    const App = await bootWith(null);
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+    await screen.findByRole('link', { name: t('footer.designSystem') });
+    expect(screen.queryByRole('heading', { name: t('updates.required.title') })).toBeNull();
+  });
+
+  it('also holds an Office that is ahead of its Master, waiting, with no install to offer', async () => {
+    vi.stubGlobal('__APP_VERSION__', '1.4.0');
+    const App = await bootWith('1.3.0');
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+
+    expect(await screen.findByRole('heading', { name: t('updates.waiting.title') })).toBeTruthy();
+    expect(screen.getByText(t('updates.waiting.body', { mine: '1.4.0', master: '1.3.0' }))).toBeTruthy();
+    // Nothing of the app, and nothing to install: only the Master can be updated for this.
+    expect(screen.queryByRole('link', { name: t('footer.designSystem') })).toBeNull();
+    expect(screen.queryByRole('button', { name: t('updates.installNow') })).toBeNull();
+    expect(screen.getByRole('button', { name: t('action.signOut') })).toBeTruthy();
+  });
+});

@@ -32,7 +32,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
 import type { PanelKind, ReleaseManifest, ReleasePlatform } from '@orderbook/shared';
-import { LEGACY_RELEASE_PLATFORM } from '@orderbook/shared';
+import { LEGACY_RELEASE_PLATFORM, UpdateProgressTracker } from '@orderbook/shared';
 
 import { config } from '../config/index.js';
 import { createLogger } from '../lib/logger.js';
@@ -185,20 +185,79 @@ async function guardedFetch(
   throw new Error('Update download redirected too many times');
 }
 
+/**
+ * What the last answer from GitHub said, so that every sync in a poll (the
+ * Master's build, the office build, one per OS) and every Office panel asking
+ * the Master reads one answer instead of spending one API call each.
+ *
+ * Unauthenticated, GitHub allows 60 calls an hour. With the poll at five
+ * minutes that is 12 an hour for the poll alone, so the rest is kept for people:
+ * a repeat inside `RELEASE_CACHE_MS` is answered from here, and an older one is
+ * a *conditional* request (`If-None-Match`), which GitHub answers 304 and does
+ * not count against the limit when nothing was published.
+ */
+const RELEASE_CACHE_MS = 20_000;
+let releaseCache: { at: number; etag: string | null; release: GitHubRelease | null } | null = null;
+
+/**
+ * Make the cached answer stale, so the next ask goes to GitHub (Check now). Its
+ * etag is kept: the request is then conditional and an unchanged release costs
+ * no API call.
+ */
+export function forgetLatestRelease(): void {
+  if (releaseCache) releaseCache = { ...releaseCache, at: 0 };
+}
+
 /** The newest published release, ignoring drafts and pre-releases. */
 async function latestRelease(): Promise<GitHubRelease | null> {
   const repo = config.releases.githubRepo;
   if (!repo) return null;
 
+  const now = Date.now();
+  if (releaseCache && now - releaseCache.at < RELEASE_CACHE_MS) return releaseCache.release;
+
   const response = await guardedFetch(`https://api.github.com/repos/${repo}/releases/latest`, {
-    headers: headers(),
+    headers: {
+      ...headers(),
+      ...(releaseCache?.etag ? { 'if-none-match': releaseCache.etag } : {}),
+    },
   });
 
-  if (response.status === 404) return null;
+  if (response.status === 304 && releaseCache) {
+    releaseCache = { ...releaseCache, at: now };
+    return releaseCache.release;
+  }
+  if (response.status === 404) {
+    releaseCache = { at: now, etag: null, release: null };
+    return null;
+  }
   if (!response.ok) throw new Error(`GitHub answered ${response.status}`);
 
-  const release = (await response.json()) as GitHubRelease;
-  return release.draft || release.prerelease ? null : release;
+  const published = (await response.json()) as GitHubRelease;
+  const release = published.draft || published.prerelease ? null : published;
+  releaseCache = { at: now, etag: response.headers.get('etag'), release };
+  return release;
+}
+
+/**
+ * Download progress, one tracker per panel and OS, read by the Updates screen
+ * (`/api/updates/status`). Kept here because the download is.
+ */
+const trackers = new Map<string, UpdateProgressTracker>();
+
+function trackerFor(panel: PanelKind, platform: ReleasePlatform): UpdateProgressTracker {
+  const key = `${panel}:${platform}`;
+  let tracker = trackers.get(key);
+  if (!tracker) {
+    tracker = new UpdateProgressTracker();
+    trackers.set(key, tracker);
+  }
+  return tracker;
+}
+
+/** Where the GitHub download of one panel's build for one OS stands. */
+export function downloadProgress(panel: PanelKind, platform: ReleasePlatform) {
+  return trackerFor(panel, platform).snapshot(Date.now());
 }
 
 /**
@@ -356,7 +415,7 @@ async function runSync(
   }
 
   try {
-    await download(asset, target, manifest.sizeBytes);
+    await download(asset, target, manifest.sizeBytes, trackerFor(panel, platform), manifest.version);
   } catch (error) {
     // Deliberately no `rm(target)` here. `download` deletes its own partial
     // file, so the only thing this could remove is a complete setup file from
@@ -384,8 +443,15 @@ async function runSync(
  * final name is one the folder — and every Office panel asking the Master for
  * it — will treat as the release.
  */
-async function download(asset: GitHubAsset, target: string, expectedBytes: number): Promise<void> {
+async function download(
+  asset: GitHubAsset,
+  target: string,
+  expectedBytes: number,
+  progress: UpdateProgressTracker,
+  version: string,
+): Promise<void> {
   const partial = `${target}.part`;
+  progress.start(version, expectedBytes, Date.now());
   await rm(partial, { force: true }).catch(() => undefined);
 
   // The body's own limits (`DOWNLOAD_STALL_MS`, `DOWNLOAD_LIMIT_MS`), on one
@@ -427,6 +493,7 @@ async function download(asset: GitHubAsset, target: string, expectedBytes: numbe
     source.on('data', (chunk: Buffer) => {
       silence?.refresh();
       received += chunk.length;
+      progress.add(chunk.length, Date.now());
       if (received > expectedBytes) source.destroy(new Error('asset is larger than its manifest'));
     });
 
@@ -439,13 +506,16 @@ async function download(asset: GitHubAsset, target: string, expectedBytes: numbe
     await rm(partial, { force: true }).catch(() => undefined);
     // The reason rather than whatever `fetch` or `pipeline` wrapped it in, so
     // the log says which limit it was.
-    throw gaveUp.signal.aborted ? gaveUp.signal.reason : error;
+    const reason = gaveUp.signal.aborted ? gaveUp.signal.reason : error;
+    progress.fail(reason instanceof Error ? reason.message : String(reason));
+    throw reason;
   } finally {
     clearTimeout(limit);
     clearTimeout(silence);
   }
 
   await rename(partial, target);
+  progress.done();
 }
 
 /**

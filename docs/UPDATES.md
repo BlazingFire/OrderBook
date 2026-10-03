@@ -17,9 +17,10 @@ you push to main
 ```
 
 Office panels never reach the internet for an update: they ask their Master
-over the LAN. The Master reaches GitHub only when `ORDERBOOK_RELEASES_GITHUB_REPO`
-is set, and it is unset by default — so out of the box nothing in the update
-path leaves the LAN. (It is one of two internet-capable paths in the product;
+over the LAN. Since 1.4 the Master reaches GitHub by default, to the public
+`BlazingFire/OrderBook-Releases` (`ORDERBOOK_RELEASES_GITHUB_REPO` overrides it, and
+setting it to nothing turns it off). Only the Master ever does; no Office Panel
+leaves the LAN. (It is one of two internet-capable paths in the product;
 the other is the Master's outbound connectors, which call whatever URL an
 administrator configures under Integrations.) A shop floor with no route to the
 outside world still updates every till from one PC, and a site with no
@@ -65,8 +66,8 @@ signs, then drop the old one.
 
 ### 3. Make the releases repository
 
-Create a **public** repository holding nothing but release assets, e.g.
-`you/orderbook-releases`.
+The releases repository is **public** and holds nothing but release assets:
+`BlazingFire/OrderBook-Releases` (created 2026-10-03).
 
 It is public on purpose. Release assets on a private repository need an
 `Authorization` header, so fetching them means shipping a token to every
@@ -84,13 +85,16 @@ On this repository, in Settings → Secrets and variables → Actions:
 | Secret   | `RELEASE_KEY`     | contents of the private `.pem` from step 1    |
 | Secret   | `RELEASES_TOKEN`  | a token with `contents: write` on the releases repo |
 | Variable | `RELEASE_KEY_ID`  | the key id the keygen script printed          |
-| Variable | `RELEASES_REPO`   | `you/orderbook-releases`                       |
+| Variable | `RELEASES_REPO`   | optional: only to publish somewhere other than `BlazingFire/OrderBook-Releases` |
 
-On each Master PC, in its `.env`:
+On each Master PC nothing is needed: it fetches from `BlazingFire/OrderBook-Releases`.
+To use another repository, or none, put this in its `.env`:
 
 ```
-ORDERBOOK_RELEASES_GITHUB_REPO=you/orderbook-releases
+ORDERBOOK_RELEASES_GITHUB_REPO=you/other-releases
+ORDERBOOK_RELEASES_GITHUB_REPO=
 ```
+(the first points elsewhere; the second, empty, turns fetching off).
 
 Without `RELEASE_KEY` the workflow still builds, but publishes a **draft** — and
 drafts are ignored by every panel. No key, no fleet update. That is deliberate:
@@ -125,8 +129,8 @@ has always used.
 ## When a new build shows up
 
 A Master with `ORDERBOOK_RELEASES_GITHUB_REPO` set looks for a new release two
-minutes after it starts and then every `ORDERBOOK_RELEASES_POLL_MINUTES` (180
-by default), and downloads it into its releases folder. Opening an Updates
+minutes after it starts and then every `ORDERBOOK_RELEASES_POLL_MINUTES` (**2**
+by default since 1.4; it was 180), and downloads it into its releases folder. Opening an Updates
 screen asks GitHub too, but waits no more than five seconds for the answer — a
 setup file takes minutes to arrive — and then says what the folder holds. So
 between a release being published and the next poll, an Updates screen can say
@@ -141,6 +145,220 @@ asks, its build only starts downloading then, so that panel's Updates screen
 shows nothing to install yet: check again a few minutes later. To stop fetching
 for an operating system the shop no longer runs, delete its
 `latest-<platform>.json` and its setup file from `office-panel`.
+
+## 1.4: Check now, the progress bar, Save all and the nightly update
+
+**What has to be true on a real install for any of this to run.** Three things,
+all in `.env` or in the build, none of them a code change:
+
+1. Nothing, for the repository: every Master fetches from the public
+   `BlazingFire/OrderBook-Releases` by default (`DEFAULT_RELEASES_REPO`).
+   `ORDERBOOK_RELEASES_GITHUB_REPO=owner/repo` in `.env` points it elsewhere, and
+   setting it to nothing (`ORDERBOOK_RELEASES_GITHUB_REPO=`) turns fetching off
+   for an air-gapped site. Under tests (`NODE_ENV=test`) the default is off.
+2. The build carries the release key. `TRUSTED_RELEASE_KEYS` holds
+   `release-2026-10-01`, so a release signed with the matching private key is
+   trusted and `ORDERBOOK_ALLOW_UNSIGNED_RELEASES` is **not** needed. An
+   unsigned release is still refused.
+3. The Master PC can reach `api.github.com` and the asset hosts. Offices never
+   do: they ask the Master.
+
+**Rate limit.** Unauthenticated, GitHub allows 60 API calls an hour. The poll is
+every two minutes, so the release listing is read once per sweep and shared by
+every build and every Office that asks (a 20 s cache), and a repeat after that
+is a *conditional* request (`If-None-Match`), which GitHub answers `304` without
+counting it. Check now forgets the cache but keeps the etag, and presses closer
+together than ten seconds share one answer.
+
+**Check now** is a button on both panels' App update screen. The Master's asks
+GitHub at once; the Office's asks the Master (`/api/updates/office/latest?check=1`),
+which asks GitHub. The answer comes within five seconds; a build still
+downloading is shown by its progress bar and, when it lands, everybody is told.
+
+**Who is told.** The first time a poll or a check finds a build newer than the one
+running, every active account gets one `update.available` bell notice for that
+version (`master/src/services/auto-update.ts`). The version is remembered in
+`<dataDir>/auto-update.json`, so reading the notice and the next poll finding the
+same build does not send it again. An open Updates screen re-reads every 30 s.
+
+**The progress bar** shows bytes done of the total, speed (a five-second moving
+average, so a stall shows as a stall) and time left, for the Master fetching
+from GitHub (`/api/updates/status` → `download`) and for an Office fetching from
+the Master (`/api/updates/progress` on the Office).
+
+**Install now** on either panel: prepare/download and verify, then *Save all*
+(below), sign out, then the shell stops the server and runs the setup silently
+(`/S --force-run`: no wizard, and the new version opens itself when the install
+ends). Windows asks for administrator approval once; declining it puts the server
+back and shows "Sign in again".
+
+**Save all.** No form in this product keeps a draft on disk, so there is no draft
+store to keep things in. What registers (`useUnsavedWork`) is the **New lead**
+form on both panels: a lead that is ready is saved exactly as Ctrl+Enter would,
+and one that is not (no party yet, a product card half-filled) is named in a
+dialog with "Update anyway" or Cancel. The shell also asks the page to save before
+it closes the window (`onBeforeUpdate`, waited on for at most eight seconds), so
+the nightly update does the same. Everything else open (a party form, a product
+drawer) is not saved: the install button's confirmation is the only protection
+there.
+
+**An Office on another version than its Master** shows a blocking "Update needed"
+screen after sign-in, in place of the app, and anybody signed in may install
+(it is mandatory; the Windows prompt still needs an administrator). It applies
+only once the Office *knows* the Master's version, which it learns from the
+Master's own snapshot, so an Office that starts with no connection works offline
+as ever; the first snapshot from a newer Master brings the screen. An Office that
+is *ahead* of its Master is held too, on a "Waiting for the Master to update"
+screen that has no install to offer: the owner's rule is that the app starts only
+when both are on the same version. That screen asks for the Master's version again
+every ten seconds and opens by itself the moment the Master matches.
+
+**The nightly update** (Master only, default **on at 23:00**, set on the App update
+screen by anybody with `settings.manage`): from the chosen time until **05:00 the
+next morning** (so a 23:30 setting, or a Master that was busy or restarting at
+23:00, still gets its run after midnight; a daytime choice keeps a three-hour
+window), once a *night*, the Master (1) fetches, (2) writes a copy of its data to
+`<dataDir>/pre-update-backups` (the newest three kept; no photos), (3) verifies
+and holds the installer, and (4) puts one request on its loopback health route.
+Its desktop shell polls that route every 30 s and runs the same checked install as
+the button, with nobody there. The new version starts itself, the server serves
+the Offices as soon as it is up, and the window shows the sign-in screen: nobody
+has to sign in for the shop to work. The PC has to be switched on and signed in to
+Windows overnight (it is a desktop app).
+
+**How the unattended install gets administrator rights (and why that is safe).**
+The Windows installer is per-machine and needs administrator approval, and at
+23:00 nobody can give it. So the installer, which *is* approved once when the
+Master is installed, registers a scheduled task, **OrderBook Master Update**, with
+the highest privileges of the account that installed it, and makes two folders
+under `%ProgramData%\OrderBook`:
+
+| Folder | Who can write it | What it is for |
+|---|---|---|
+| `staged-update` | anybody | the Master app (not elevated) leaves the setup file and its signed `manifest.json` here |
+| `elevated` | administrators and SYSTEM only (inheritance removed, owner Administrators); Users may read | the task copies the setup file here, hashes the copy, runs it with `TEMP` here, and writes `result.json` and `apply.log` |
+
+**Making those folders is not a plain `icacls`.** A folder that already exists, or
+a custom install location, is the classic way to turn "install once as
+administrator" into "any program becomes administrator". So `update-dirs.ps1
+-Mode Install` (run by the installer, elevated; `master/installer/apply-update`):
+
+- **takes over the program folder** (a custom install such as `C:\OrderBook` inherits
+  Users:Modify, which would make the task's script and the release keys editable by
+  any program): owner Administrators, a protected ACL, Users read-and-run, and a
+  scan for links or foreign entries inside it;
+- **checks every folder above it**, up to the drive root: not a link, owned by
+  Administrators, SYSTEM or TrustedInstaller, and nobody else allowed to delete or
+  rewrite it (creating a new sibling, as `C:\` lets any user, is harmless);
+- **never reuses `%ProgramData%\OrderBook` as found**: a junction or symbolic link
+  there is removed (never followed), a folder owned by anybody else is moved aside,
+  and the new one is created Administrators-owned with a protected ACL, then
+  re-read and verified. `icacls` is only ever run with `/L`, so it cannot follow a
+  link and leave the attacker as owner;
+- **finds the folders by the Windows known-folder API** and records them, with the
+  system's own `powershell.exe`, in `resources\apply-update\paths.json` in the
+  hardened program folder. The task reads that file; it trusts **no environment
+  variable** (`%ProgramData%`, `%TEMP%`, `NODE_OPTIONS`… are all things the
+  account's other programs can change).
+
+**The installers' own PowerShell is verified too.** The installer extracts
+`update-dirs.ps1` (and, for the uninstall sweep, `uninstall-orderbook.ps1`, in both
+the Master's and the Office's installer) to a temp folder that another program
+running as the same account can write, and runs them elevated. So none of them is
+run from the file. The command line the installer builds
+(`tools/nsis/verified-powershell.nsh`):
+
+1. is the system's own `powershell.exe` by absolute `$SYSDIR` path, and **pins
+   `PSModulePath` to `$PSHOME\Modules` as its first statement**. `-NoProfile` does
+   not stop PowerShell auto-loading a module such as `Microsoft.PowerShell.Archive`
+   from the user's own writable `Documents\WindowsPowerShell\Modules` (a planted
+   one runs on first use; a test does exactly that). The task's own PowerShell is
+   started with an environment **built from nothing** (`taskChildEnv`: system folders
+   derived from `paths.json`, a fixed `PATH`; no `COR_*`/`COMPlus_*`/`DOTNET_*`
+   .NET-profiler variable, which would load a DLL into the elevated process, no
+   `NODE_*`, no user `PATH`). `apply-update.cmd` and this macro clear those variables
+   too, and `update-dirs.ps1` pins the module path again before its first cmdlet.
+   The elevated uninstall sweep takes **no delete target from the environment** (known-folder
+   API only; `ORDERBOOK_RELEASES_DIR` is not read), refuses any folder that is not
+   plainly OrderBook's, a drive root, or a link, and removes links inside a folder as links;
+2. reads the file **once**, checks its SHA-256 against the value baked in when the
+   installer is **compiled** (`!system` runs `tools/bake-script-hashes.cjs`, so even
+   `electron-builder --prepackaged`, which skips `afterPack`, cannot leave a stale
+   hash, and a failed bake stops the compile), and runs *those bytes from memory*;
+   a swapped file is exit 9 and nothing runs;
+3. wraps the call in `try/catch` and ends in an explicit exit code, so a binding
+   error cannot fall through to success and register the task;
+4. receives every path as an **environment variable** (`OB_SCRIPT`, `OB_INSTDIR`),
+   never pasted into the command, so a `$`, a backtick or a quote in an install
+   path is data and not code.
+
+Every other program an administrator runs there is an absolute `$SYSDIR` path too,
+`netsh.exe`, `schtasks.exe` and `cmd.exe` included.
+
+If any of that fails the task is **not registered** (and an older one is removed):
+the nightly update then falls back to asking for approval, as it does without a
+task. The task re-runs the same folder check (`-Mode Check`) before it touches
+anything, and does nothing, not even write a log, if its folder fails it.
+
+The launcher (`apply-update.cmd`) clears every `NODE_*` and `ELECTRON_*` variable
+before it starts the program as plain Node, and the shipped `.exe` has the Electron
+fuses `EnableNodeOptionsEnvironmentVariable` and `EnableNodeCliInspectArguments`
+switched off (`tools/flip-fuses.cjs`, an `afterPack` hook on every Windows build,
+the Windows 7 one included), so `NODE_OPTIONS=--require evil.js` or `--inspect`
+cannot run code in the elevated process. The `RunAsNode` fuse stays on: the
+product starts its own server that way.
+
+At 23:00 the shell does not install anything itself: it stages the files and asks
+Windows to run the task (`schtasks /Run /TN "OrderBook Master Update"`). The task
+runs a fixed script from the program folder (`resources\apply-update`, writable
+only by an administrator) that **believes nothing it is given**:
+
+1. it verifies the manifest's **Ed25519 signature itself**, against the release
+   keys compiled into the *installed* program, and refuses an unsigned one
+   whatever `ORDERBOOK_ALLOW_UNSIGNED_RELEASES` says;
+2. it checks the manifest is for the Master on Windows and is **newer** than the
+   installed version, so an old signed release cannot be replayed;
+3. it copies the setup file into `elevated`, checks the copy's **size and SHA-256**
+   against the signed values, and only then runs the copy, silently
+   (`/S --force-run`), with `TEMP` and `TMP` pointing into `elevated\tmp` (the
+   account's own temp folder is one its other programs can write), waiting for it
+   to finish.
+
+**If the task refuses, the server comes back.** By the time the shell asks Windows
+to run the task it has stopped the server. The task writes its answer
+(`checking`, `installing` or `refused`) to `elevated\result.json`, which the shell
+may read; the shell quits only on `installing`, and restarts the server on
+`refused`, or when nothing has been said for 90 seconds (the account was not
+logged on, the task could not start, its folder failed the check). A forged
+answer can only make the shell quit early or restart its own server.
+
+Anyone who can write `staged-update` can therefore make the task install only a
+build the owner signed, and only a newer one. The shell makes the same checks
+first, so a refusal happens with the server still running; the task's own checks
+and `elevated\apply.log` are what stand if the shell is lied to.
+
+If the task is not there (a Master installed before 1.4, or run from source), a
+shell that is already elevated installs directly; anything else **declines and
+leaves the server running**, and the screen says the update was prepared and not
+installed. The first interactive "Install now" after upgrading registers the
+task for the nights after. The task belongs to the account that ran the
+installer, so that account must be the one signed in to Windows on the Master PC
+overnight. Uninstalling removes the task and both folders (not during an update,
+which the task may have started).
+
+**Where the old menu went.** The menu bar is gone on Windows and Linux; macOS
+keeps only Quit, Edit (Copy/Paste) and Window.
+
+| Old menu item | Now |
+|---|---|
+| Edit roles (Cut, Copy, Paste, Select All) | macOS only: the Edit menu; Windows and Linux handle the keys natively |
+| View → Reload (Ctrl+R) | F5, `view.refresh` (already a command) |
+| View → Full screen | F11, in the shell (`shellKeyAction`) |
+| View → Developer tools | Ctrl+Shift+I, in a build that is not packaged |
+| Help → Check for updates | the App update item in the sidebar, and its Check now button |
+| Help → Keyboard shortcuts (F1) | D4 adds F1 as a real chord (`keys.help`) |
+| Help → Open log folder | a button on the App update screen (`openLogFolder`) |
+| Help → Version | the App update screen |
 
 ## What data survives
 

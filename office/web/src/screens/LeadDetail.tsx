@@ -38,6 +38,7 @@ import {
   recordNumberText,
   t,
   useColourHex,
+  useUnsavedWork,
 } from '@orderbook/ui';
 
 interface Props {
@@ -54,6 +55,20 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
   const [expectedDate, setExpectedDate] = useState('');
   const [busy, setBusy] = useState(false);
   const colourHex = useColourHex(view.optionLists);
+
+  // "Save all and update": a remark, a dispatch label or a date typed on the
+  // pending order and not yet used is named, never applied (they belong to a stage
+  // move or a conversion that somebody chooses).
+  useUnsavedWork(
+    `lead-remark:${lead.id}`,
+    remark.trim() || dispatchLabel.trim() || expectedDate.trim()
+      ? {
+          label: t('updates.saveAll.recordNote', {
+            text: (remark.trim() || dispatchLabel.trim() || expectedDate.trim()).slice(0, 40),
+          }),
+        }
+      : null,
+  );
   // `leads.packagingRequiredOnConvert`. Resolved at this panel's edge.
   const packagingRequired = resolveCompanyFeatures(view.features).packagingRequiredOnConvert;
 

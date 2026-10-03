@@ -109,6 +109,7 @@
   "activity.developer.data_erased",
   "activity.developer.dummy_users_seeded",
   "activity.master_update.install_started",
+  "activity.master_update.schedule_updated",
   "activity.catalog.exported",
   "activity.party_access.exported",
   "activity.backup.exported",

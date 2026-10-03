@@ -27,6 +27,7 @@ import {
   rem,
   t,
   useSubNav,
+  useUnsavedWork,
   type DataTableColumn,
 } from '@orderbook/ui';
 
@@ -132,18 +133,29 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
     }
   }
 
-  async function submitRename() {
+  /** True when the panel was renamed; false when there was nothing to rename or it failed. */
+  async function submitRename(): Promise<boolean> {
     const target = renaming;
     const name = renameValue.trim();
     setRenaming(null);
-    if (!target || !name) return;
+    if (!target || !name) return false;
     try {
       await api.renamePanel(target.id, name);
       onRefresh();
+      return true;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : t('panels.rename.failed'));
+      return false;
     }
   }
+
+  // "Save all and update": a new name typed for a panel and not yet confirmed is saved.
+  useUnsavedWork(
+    'panel-rename',
+    renaming && renameValue.trim() && renameValue.trim() !== renaming.name
+      ? { label: t('updates.saveAll.panelName', { name: renaming.name }), save: submitRename }
+      : null,
+  );
 
   async function confirmRevokePanel() {
     const target = confirmRevoke;

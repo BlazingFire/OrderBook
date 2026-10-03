@@ -40,6 +40,7 @@ import { Modal } from './Modal.js';
 import { ConflictBanner, EmptyState, ErrorState, SkeletonRows } from './States.js';
 import { rem } from './rem.js';
 import { t } from './i18n.js';
+import { useFormBaseline, useUnsavedWork } from './unsavedWork.js';
 
 /**
  * A field a stale save disagrees with the server about — the shape both
@@ -455,12 +456,19 @@ function ValueDialog({
   } | null>(null);
   // Re-based only by an explicit Overwrite — see `ConflictNotice`.
   const [baseVersion, setBaseVersion] = useState(item?.version ?? 0);
+  const baseline = useFormBaseline({
+    value: initialValue,
+    label: item?.label ?? '',
+    hex: item?.hex ?? '',
+    isActive: item?.isActive ?? true,
+  });
 
   const trimmedHex = hex.trim();
   const hexInvalid = trimmedHex !== '' && !HEX_PATTERN.test(trimmedHex);
   const ready = !busy && !hexInvalid && (item ? label.trim() !== '' : value.trim() !== '');
 
-  async function save(overwrite = false): Promise<void> {
+  /** True when the value was saved; a clash or a failure is shown in the dialog and answers false. */
+  async function save(overwrite = false): Promise<boolean> {
     setBusy(true);
     setFailure(null);
     setConflict(null);
@@ -481,6 +489,7 @@ function ValueDialog({
         });
       }
       onSaved();
+      return true;
     } catch (caught) {
       const clash = transport.conflictOf(caught);
       if (clash) {
@@ -489,10 +498,23 @@ function ValueDialog({
       } else {
         setFailure(caught instanceof Error ? caught.message : t('fields.error.save'));
       }
+      return false;
     } finally {
       setBusy(false);
     }
   }
+
+  // "Save all and update": a list value being added or changed is saved if it is
+  // complete, and named if it is not.
+  useUnsavedWork(
+    'list-value',
+    baseline.dirty({ value, label, hex, isActive })
+      ? {
+          label: t('updates.saveAll.listValue', { name: label.trim() || value.trim() || '…' }),
+          save: async () => (ready ? save() : false),
+        }
+      : null,
+  );
 
   return (
     <Modal

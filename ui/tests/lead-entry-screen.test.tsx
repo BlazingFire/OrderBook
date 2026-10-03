@@ -24,6 +24,7 @@ import {
   type LeadEntryTransport,
   type LeadEntryView,
 } from '../src/LeadEntryScreen.js';
+import { listUnsavedWork, saveAllUnsavedWork } from '../src/unsavedWork.js';
 import { installBrowserStubs, wait } from './panel-harness.js';
 
 const PARTY = {
@@ -1144,5 +1145,64 @@ describe('what the shared copy adds', () => {
     fireEvent.change(box, { target: { value: 'Shah' } });
     await waitFor(() => expect(second.pick).toHaveBeenCalledWith('party', { term: 'Shah' }));
     expect(first.pick.mock.calls.length).toBe(before);
+  });
+});
+
+describe('Save all before an update (1.4 R7b)', () => {
+  it('has nothing to save on an untouched form', async () => {
+    await openForm();
+    expect(listUnsavedWork()).toEqual([]);
+  });
+
+  it('saves a ready lead, naming the party, exactly as Ctrl+Enter would', async () => {
+    const fake = await openForm();
+    await enterOneLine();
+
+    const items = listUnsavedWork();
+    expect(items.map((item) => item.label)).toEqual([
+      t('updates.saveAll.leadFor', { party: PARTY.name }),
+    ]);
+
+    let result: Awaited<ReturnType<typeof saveAllUnsavedWork>> | undefined;
+    await act(async () => {
+      result = await saveAllUnsavedWork();
+    });
+    expect(fake.createLead).toHaveBeenCalledTimes(1);
+    expect(result?.saved).toHaveLength(1);
+    expect(result?.unsaved).toHaveLength(0);
+  });
+
+  it('names a lead that is not ready, saves nothing, and does not post a half-lead', async () => {
+    const fake = await openForm();
+    fireEvent.change(screen.getByLabelText(t('lead.add.party.search')), { target: { value: 'Sha' } });
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(PARTY.name) }));
+
+    let result: Awaited<ReturnType<typeof saveAllUnsavedWork>> | undefined;
+    await act(async () => {
+      result = await saveAllUnsavedWork();
+    });
+    expect(fake.createLead).not.toHaveBeenCalled();
+    expect(result?.saved).toHaveLength(0);
+    expect(result?.unsaved.map((item) => item.label)).toEqual([
+      t('updates.saveAll.leadFor', { party: PARTY.name }),
+    ]);
+  });
+
+  it('is not listed while editing a saved lead', async () => {
+    const saved = {
+      id: 'L-12',
+      partyId: PARTY.id,
+      partyName: PARTY.name,
+      ownerId: 'user-1',
+      sourcePlatform: 'phone',
+      followUpDate: isoDate(2),
+      partyWiseMode: false,
+      notes: 'ring back',
+      convertedOrderId: null,
+      sync: { version: 1, hlc: 'h1', fieldHlc: { notes: 'h1' }, temporaryId: null },
+      items: [],
+    } as unknown as Lead;
+    await openForm({}, { lead: saved });
+    expect(listUnsavedWork()).toEqual([]);
   });
 });

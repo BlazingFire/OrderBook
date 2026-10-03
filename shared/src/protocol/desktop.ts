@@ -22,6 +22,8 @@
  * not drift.
  */
 
+import type { AutoUpdateRequest } from './auto-update.js';
+
 export interface DesktopBridge {
   /**
    * Install the update the panel has already prepared and verified, and quit
@@ -128,6 +130,12 @@ export interface DesktopBridge {
    * hash route the panel does not have.
    */
   onMenuCommand?(handler: (id: string) => void): void;
+
+  /**
+   * Register what the page saves before an update closes it (1.4 R7b). The
+   * shell waits up to eight seconds for the handler to settle, then goes on.
+   */
+  onBeforeUpdate?(handler: () => Promise<void> | void): void;
 
   /** The printers Windows knows on this PC, for the order-note preview's picker. */
   listPrinters?(): Promise<PrinterInfo[]>;
@@ -238,6 +246,12 @@ export interface PanelHealth {
    * The shell now hashes the bytes itself, immediately before it spawns them.
    */
   installer?: PreparedInstaller | null;
+  /**
+   * The Master's nightly update has come due and wants the shell to install the
+   * prepared build with nobody at the keyboard (1.4 R8). Loopback only, and
+   * only the Master sets it. The shell still hashes `installer` itself.
+   */
+  autoUpdate?: AutoUpdateRequest | null;
   /**
    * What the process is holding right now. Loopback only, like the paths above.
    *

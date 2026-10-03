@@ -1268,6 +1268,7 @@ function MasterPanel() {
           else if (link.kind === 'chat') openChatRoom({ id: link.id });
           else if (link.kind === 'print') openPrintJob(link.id);
           else if (link.kind === 'role') navigate('access');
+          else if (link.kind === 'update') navigate('updates');
           else if (link.kind === 'lead') openRecord('leads', link.id);
         }}
       />

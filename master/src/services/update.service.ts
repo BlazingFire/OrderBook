@@ -34,6 +34,7 @@ import type {
   ReleaseManifest,
   ReleasePlatform,
   UpdateAvailability,
+  UpdateDownloadProgress,
 } from '@orderbook/shared';
 import { isNewer, LEGACY_RELEASE_PLATFORM } from '@orderbook/shared';
 
@@ -44,7 +45,7 @@ import { appVersion } from '../lib/app-version.js';
 import { createLogger } from '../lib/logger.js';
 import { verifyManifest } from '../lib/release-signature.js';
 import { recordDetachedActivity } from '../repositories/activity-log.repository.js';
-import { syncFromGitHub } from './github-releases.js';
+import { downloadProgress, forgetLatestRelease, syncFromGitHub } from './github-releases.js';
 import { ValidationError } from '../lib/errors.js';
 
 const log = createLogger('updates');
@@ -410,6 +411,83 @@ export async function prepareMasterUpdate(
   return { path: file, manifest: available };
 }
 
+/**
+ * Every build the poll fetches, one after the other: the Master's own, then the
+ * office build for each OS a panel has asked for. Shared by the timer and by
+ * Check now.
+ */
+export async function syncAll(): Promise<void> {
+  for (const panel of ['master', 'office'] as const) {
+    const platforms = panel === 'office' ? await officePlatforms() : [ownPlatform()];
+    for (const platform of platforms) {
+      await syncFromGitHub(panel, releaseDirFor(panel), pinnedInstaller, platform).catch(
+        (error: unknown) => {
+          log.warn(`Could not sync the ${panel} release for ${platform}: ${String(error)}`);
+          return null;
+        },
+      );
+    }
+  }
+}
+
+/** When the releases were last asked about, by the timer or by hand. */
+let lastCheckedAt: string | null = null;
+let lastForced = 0;
+/** What runs after every sync that finishes: telling everybody (`auto-update.ts`). */
+let afterSync: (() => Promise<void>) | undefined;
+
+async function finishSync(): Promise<void> {
+  lastCheckedAt = new Date().toISOString();
+  await afterSync?.().catch((error: unknown) => {
+    log.warn(`Could not announce the release: ${String(error)}`);
+  });
+}
+/** A second press inside this is answered from what the first one found. */
+const CHECK_COOLDOWN_MS = 10_000;
+
+export function lastChecked(): string | null {
+  return lastCheckedAt;
+}
+
+/**
+ * "Check now" (1.4 R6): ask GitHub straight away instead of waiting for the
+ * poll, then answer for both builds. Presses closer together than
+ * `CHECK_COOLDOWN_MS` share the earlier answer, so a held key or a roomful of
+ * Offices cannot spend the hourly API allowance.
+ *
+ * The answer comes within `GITHUB_WAIT_MS`, not when a download ends: a new
+ * build is 150 MB, and the screen shows that download's progress bar while it
+ * lands. The sync carries on in the background and tells everybody when it is
+ * done.
+ */
+export async function checkNow(): Promise<{ master: UpdateAvailability; office: UpdateAvailability }> {
+  const now = Date.now();
+  if (now - lastForced >= CHECK_COOLDOWN_MS) {
+    lastForced = now;
+    forgetLatestRelease();
+    const sync = syncAll().then(finishSync);
+    let waited: NodeJS.Timeout | undefined;
+    await Promise.race([
+      sync.catch(() => null),
+      new Promise<void>((resolve) => {
+        waited = setTimeout(resolve, GITHUB_WAIT_MS);
+        waited.unref?.();
+      }),
+    ]);
+    clearTimeout(waited);
+  }
+  const [master, office] = await Promise.all([masterAvailability(), availability('office', '0.0.0')]);
+  return { master, office };
+}
+
+/** Where the GitHub downloads stand, for the Updates screen's progress bar. */
+export function downloadStatus(): { master: UpdateDownloadProgress; office: UpdateDownloadProgress } {
+  return {
+    master: downloadProgress('master', ownPlatform()),
+    office: downloadProgress('office', ownPlatform()),
+  };
+}
+
 /** First poll two minutes after boot, so a shop PC starts up before it downloads. */
 const FIRST_POLL_MS = 2 * 60_000;
 
@@ -489,7 +567,8 @@ async function officePlatforms(): Promise<ReleasePlatform[]> {
  * Configuring no repository, or `ORDERBOOK_RELEASES_POLL_MINUTES=0`, makes it a
  * no-op — the folder alone still works, which is the air-gapped case.
  */
-export function startReleasePolling(): () => void {
+export function startReleasePolling(afterPoll?: () => Promise<void>): () => void {
+  afterSync = afterPoll;
   const minutes = config.releases.pollMinutes;
   if (!config.releases.githubRepo || !Number.isFinite(minutes) || minutes <= 0) {
     return () => undefined;
@@ -505,17 +584,8 @@ export function startReleasePolling(): () => void {
     if (running) return;
     running = true;
     try {
-      for (const panel of ['master', 'office'] as const) {
-        const platforms = panel === 'office' ? await officePlatforms() : [ownPlatform()];
-        for (const platform of platforms) {
-          await syncFromGitHub(panel, releaseDirFor(panel), pinnedInstaller, platform).catch(
-            (error: unknown) => {
-              log.warn(`Could not sync the ${panel} release for ${platform}: ${String(error)}`);
-              return null;
-            },
-          );
-        }
-      }
+      await syncAll();
+      await finishSync();
     } finally {
       running = false;
     }

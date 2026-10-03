@@ -55,3 +55,7 @@ vitest-out.txt
 
 # The report `npm run test:coverage` writes.
 coverage/
+
+# Written when an installer is compiled by tools/bake-script-hashes.cjs (the SHA-256 of the scripts it runs elevated).
+master/installer/script-hashes.nsh
+office/installer/script-hashes.nsh

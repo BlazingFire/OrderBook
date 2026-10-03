@@ -23,6 +23,7 @@ import {
   formatDateTime,
   t,
   useToast,
+  useUnsavedWork,
 } from '@orderbook/ui';
 
 export function AutoBackupSection({ onMasterPc }: { onMasterPc: boolean }) {
@@ -64,7 +65,7 @@ export function AutoBackupSection({ onMasterPc }: { onMasterPc: boolean }) {
     if (chosen) setFolder(chosen);
   }
 
-  async function save(): Promise<void> {
+  async function save(): Promise<boolean> {
     setSaving(true);
     setError(null);
     try {
@@ -77,12 +78,28 @@ export function AutoBackupSection({ onMasterPc }: { onMasterPc: boolean }) {
         }),
       );
       toast.push(t('autoBackup.saved'), { tone: 'ok' });
+      return true;
     } catch (caught) {
       setError(apiErrorText(caught, 'error.requestFailed'));
+      return false;
     } finally {
       setSaving(false);
     }
   }
+
+  // "Save all and update": a changed schedule is saved if the Master accepts it,
+  // and named if it does not. Only on the Master PC, where it can be changed.
+  useUnsavedWork(
+    'auto-backup',
+    onMasterPc &&
+      status &&
+      (enabled !== status.enabled ||
+        folder.trim() !== status.folder ||
+        time !== status.time ||
+        Number(keepLast) !== status.keepLast)
+      ? { label: t('updates.saveAll.setting', { name: t('autoBackup.title') }), save }
+      : null,
+  );
 
   const lastRun = status?.lastRun ?? null;
   const lastRunText = !lastRun

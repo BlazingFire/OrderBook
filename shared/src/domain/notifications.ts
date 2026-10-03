@@ -24,6 +24,10 @@ export const NOTIFICATION_KINDS = [
   // The daily automatic backup, to the Server Masters: the drive was missing, or the backup failed.
   'backup.autoSkipped',
   'backup.autoFailed',
+  // A newer OrderBook build is published (1.4): to everyone, once per version.
+  'update.available',
+  // The Master is about to restart for its nightly update (1.4): Offices will drop and reconnect.
+  'update.installing',
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
@@ -42,7 +46,9 @@ export type NotificationLink =
   /** A role in the roles editor. */
   | { kind: 'role'; id: string }
   /** A Printroom job. */
-  | { kind: 'print'; id: string };
+  | { kind: 'print'; id: string }
+  /** The App update screen; `id` is the version on offer. */
+  | { kind: 'update'; id: string };
 
 export interface UserNotification {
   id: Uuid;

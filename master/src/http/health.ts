@@ -25,6 +25,7 @@ import { hasNetworkLink, isLoopback, listLanInterfaces } from '../lib/network.js
 import { currentSeq } from '../realtime/change-ring.js';
 import { socketCounts } from '../realtime/hub.js';
 import { sessionCount } from '../services/auth.service.js';
+import { pendingAutoUpdate } from '../services/auto-update.js';
 import { preparedInstaller, releaseDirFor } from '../services/update.service.js';
 
 /**
@@ -37,7 +38,7 @@ import { preparedInstaller, releaseDirFor } from '../services/update.service.js'
  */
 function localOnly(
   req: Request,
-): Pick<PanelHealth, 'dataDir' | 'logFile' | 'installerDir' | 'installer' | 'runtime'> {
+): Pick<PanelHealth, 'dataDir' | 'logFile' | 'installerDir' | 'installer' | 'autoUpdate' | 'runtime'> {
   if (!isLoopback(req)) return {};
 
   const memory = process.memoryUsage();
@@ -49,6 +50,8 @@ function localOnly(
     // What the shell is allowed to run, and what it must hash to. Loopback
     // only, like the paths above.
     installer: preparedInstaller(),
+    // The nightly update asking the shell to install it unattended (1.4 R8).
+    autoUpdate: pendingAutoUpdate(),
     // The figures somebody wants *while* a panel feels slow. Loopback only,
     // like the paths above: how much memory the shop's Master is holding is
     // not something the LAN needs told.

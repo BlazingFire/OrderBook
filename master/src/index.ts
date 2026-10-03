@@ -41,6 +41,7 @@ import { purgeExpiredSessions } from './services/auth.service.js';
 import { startBackupScheduler } from './services/backup-scheduler.js';
 import { startConnectorScheduler } from './services/connector-scheduler.js';
 import { startNotificationPruner } from './services/notification.service.js';
+import { announceNewVersion, startAutoUpdateScheduler } from './services/auto-update.js';
 import { startReleasePolling } from './services/update.service.js';
 import { isSetupComplete, refreshStoredLanIp } from './services/setup.service.js';
 import { startMemoryMonitor } from './lib/memory-monitor.js';
@@ -284,7 +285,11 @@ async function main(): Promise<void> {
 
     // Same shape: the poller owns its timers and hands back the way to stop
     // them. A no-op unless a releases repository is configured.
-    disposables.push(startReleasePolling());
+    // After each poll it tells everybody about a build that has just landed.
+    disposables.push(startReleasePolling(async () => void (await announceNewVersion())));
+
+    // The nightly update (23:00 by default): prepares the build and asks the shell to install it.
+    disposables.push(startAutoUpdateScheduler());
 
     // Same shape again: old read notices and anything past 500 a person go.
     disposables.push(startNotificationPruner());

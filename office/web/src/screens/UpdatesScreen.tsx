@@ -27,22 +27,41 @@ import type { MessageKey, UpdateAvailability } from '@orderbook/shared';
 import { standing } from '@orderbook/shared';
 
 import { api, ApiError, desktopBridge, type ConnectionInfo } from '../api';
-import { Button, Card, Section, StatusPill, formatDateTime, t } from '@orderbook/ui';
+import {
+  Button,
+  Card,
+  Section,
+  StatusPill,
+  UpdateProgress,
+  apiErrorText,
+  formatDateTime,
+  t,
+  useDownloadProgress,
+  useSaveAllBeforeUpdate,
+  useToast,
+} from '@orderbook/ui';
 
 type Phase = 'idle' | 'downloading' | 'launching' | 'failed';
 
 export function UpdatesScreen({
   connection,
   permissions,
+  mandatory = false,
 }: {
   connection: ConnectionInfo;
   permissions: string[];
+  /** The "Update needed" screen: anyone signed in may install, since nothing else is open to them. */
+  mandatory?: boolean;
 }) {
   const mine = __APP_VERSION__;
   const master = connection.masterVersion;
   const against = standing(mine, master);
 
   const [availability, setAvailability] = useState<UpdateAvailability | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [signedOut, setSignedOut] = useState(false);
+  const saveAll = useSaveAllBeforeUpdate();
+  const toast = useToast();
   const [phase, setPhase] = useState<Phase>('idle');
   const [failure, setFailure] = useState<string | null>(null);
   const [readyPath, setReadyPath] = useState<string | null>(null);
@@ -82,9 +101,30 @@ export function UpdatesScreen({
     }
   }, []);
 
+  // Re-read without a reload (1.4 R6): the Master learns of a release within
+  // minutes and this screen asks again every 30 s.
   useEffect(() => {
     void load();
+    const timer = setInterval(() => void load(), 30_000);
+    return () => clearInterval(timer);
   }, [load]);
+
+  // The bar (1.4 R7a): bytes, size, speed and time left while the Master sends the build.
+  const progress = useDownloadProgress(api.updateProgress, phase === 'downloading');
+
+  /** Check now: the Master asks GitHub straight away, then answers. */
+  const checkNow = async (): Promise<void> => {
+    setChecking(true);
+    try {
+      const next = await api.checkForUpdates();
+      setAvailability(next);
+      if (!next.available) toast.push(t('updates.checkedNone'), { tone: 'ok' });
+    } catch (caught) {
+      toast.push(apiErrorText(caught, 'error.requestFailed'), { tone: 'error' });
+    } finally {
+      setChecking(false);
+    }
+  };
 
   const install = async (): Promise<void> => {
     setPhase('downloading');
@@ -99,7 +139,17 @@ export function UpdatesScreen({
         return;
       }
 
+      // Save all (1.4 R7b): what can be saved is, what cannot is named, and
+      // declining the question leaves everything as it was.
+      if (!(await saveAll())) {
+        setPhase('idle');
+        return;
+      }
+
       setPhase('launching');
+      // Signed out before the window closes (R7c).
+      await api.signOut().catch(() => undefined);
+      setSignedOut(true);
       if (!(await shell.applyUpdate())) {
         setPhase('failed');
         setFailure(t('updates.launchRefused'));
@@ -115,7 +165,7 @@ export function UpdatesScreen({
   };
 
   const offer = availability?.available ?? null;
-  const canInstall = permissions.includes('settings.manage');
+  const canInstall = mandatory || permissions.includes('settings.manage');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-24)' }}>
@@ -149,6 +199,31 @@ export function UpdatesScreen({
               <dd>{formatDateTime(connection.lastSyncedAt)}</dd>
             </div>
           </dl>
+
+          <div
+            style={{
+              marginTop: 'var(--s-12)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--s-12)',
+              flexWrap: 'wrap',
+            }}
+          >
+            <Button variant="secondary" busy={checking} onClick={() => void checkNow()}>
+              {checking ? t('updates.checking') : t('updates.checkNow')}
+            </Button>
+            {desktopBridge()?.openLogFolder ? (
+              <Button variant="ghost" onClick={() => void desktopBridge()?.openLogFolder?.()}>
+                {t('updates.openLogFolder')}
+              </Button>
+            ) : null}
+          </div>
+
+          {progress.phase !== 'idle' ? (
+            <div style={{ marginTop: 'var(--s-12)' }}>
+              <UpdateProgress progress={progress} />
+            </div>
+          ) : null}
 
           {offer ? (
             <div
@@ -212,6 +287,14 @@ export function UpdatesScreen({
                   {t('updates.needsPermission')}
                 </p>
               )}
+
+              {signedOut && phase === 'failed' ? (
+                <div>
+                  <Button variant="secondary" onClick={() => window.location.reload()}>
+                    {t('updates.signInAgain')}
+                  </Button>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </Card>

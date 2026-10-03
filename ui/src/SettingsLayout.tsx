@@ -23,6 +23,7 @@ import { Input, Slider, Switch, PasswordInput } from './Form.js';
 import { Modal } from './Modal.js';
 import { rem } from './rem.js';
 import { Segmented, Tabs } from './Tabs.js';
+import { useUnsavedWork } from './unsavedWork.js';
 import { useToast } from './Toast.js';
 import { t } from './i18n.js';
 import {
@@ -259,6 +260,22 @@ export function NumberSetting({
       ? control.nullable === true
       : Number.isFinite(parsed) && parsed >= control.min && parsed <= control.max;
   const changed = parsed !== value;
+
+  // "Save all and update": a figure typed and not yet saved is saved if it is in
+  // range, and named if it is not.
+  useUnsavedWork(
+    `setting:${label}`,
+    changed
+      ? {
+          label: t('updates.saveAll.setting', { name: label }),
+          save: async () => {
+            if (!valid) return false;
+            await onSave(parsed);
+            return true;
+          },
+        }
+      : null,
+  );
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>

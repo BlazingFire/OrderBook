@@ -36,6 +36,27 @@ export const TRUSTED_RELEASE_KEYS: readonly TrustedReleaseKey[] = [
   },
 ];
 
+/**
+ * The public repository releases are published to and fetched from by default
+ * (1.4): installers and manifests only, no source, so it downloads anonymously.
+ * `ORDERBOOK_RELEASES_GITHUB_REPO` overrides it, and an empty value switches
+ * fetching off.
+ */
+export const DEFAULT_RELEASES_REPO = 'BlazingFire/OrderBook-Releases';
+
+/**
+ * Which repository this machine fetches releases from, or `null` for none.
+ *
+ * Unset: the default. Set to a name: that one. Set to nothing: none, which is how
+ * an air-gapped site keeps the folder as its only source. Under tests
+ * (`NODE_ENV=test`) the default is off, so no suite reaches for the network.
+ */
+export function releasesRepo(env: Record<string, string | undefined>): string | null {
+  const raw = env.ORDERBOOK_RELEASES_GITHUB_REPO;
+  if (raw !== undefined) return raw.trim() || null;
+  return env.NODE_ENV === 'test' ? null : DEFAULT_RELEASES_REPO;
+}
+
 export const trustedKeyById = (keyId: string): TrustedReleaseKey | undefined =>
   TRUSTED_RELEASE_KEYS.find((key) => key.keyId === keyId);
 

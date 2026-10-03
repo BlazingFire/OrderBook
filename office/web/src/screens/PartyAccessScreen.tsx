@@ -55,6 +55,8 @@ import {
   StatusPill,
   rem,
   t,
+  useFormBaseline,
+  useUnsavedWork,
   type DataTableColumn,
 } from '@orderbook/ui';
 
@@ -338,6 +340,9 @@ function AccessEditor({
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
+  const baseline = useFormBaseline(
+    party.assignees.map((person) => ({ userId: person.userId, level: person.level })),
+  );
 
   const nameFor = useCallback(
     (userId: string): string =>
@@ -372,20 +377,31 @@ function AccessEditor({
     [people, entries],
   );
 
-  const save = async (): Promise<void> => {
+  const save = async (): Promise<boolean> => {
     setSaving(true);
     setFailure(null);
     try {
       onSaved(
         await api.savePartyAccess(party.partyId, { entries, expectedVersion: party.version }),
       );
+      return true;
     } catch (caught) {
       if (caught instanceof ApiError && caught.isConflict) setStale(true);
       setFailure(caught instanceof Error ? caught.message : t('partyAccess.error.save'));
+      return false;
     } finally {
       setSaving(false);
     }
   };
+
+  // "Save all and update": who may see a party, changed and not yet saved, is
+  // saved if the Master accepts it. Only for somebody who may assign.
+  useUnsavedWork(
+    'party-access',
+    canAssign && baseline.dirty(entries)
+      ? { label: t('updates.saveAll.partyAccess', { name: party.partyName }), save }
+      : null,
+  );
 
   return (
     <Modal

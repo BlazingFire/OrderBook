@@ -17,6 +17,19 @@
 
 import { contextBridge, ipcRenderer } from 'electron';
 
+/**
+ * What the page does when an update is about to close it (1.4 R7b): save every
+ * draft it can. The shell sends `orderbook:beforeUpdate` and waits for the
+ * answer, so this always answers, even when the page registered nothing.
+ */
+let beforeUpdate: (() => Promise<void> | void) | null = null;
+ipcRenderer.on('orderbook:beforeUpdate', () => {
+  void Promise.resolve()
+    .then(() => beforeUpdate?.())
+    .catch(() => undefined)
+    .finally(() => ipcRenderer.send('orderbook:beforeUpdateDone'));
+});
+
 contextBridge.exposeInMainWorld('orderbook', {
   shellVersion: process.versions.electron,
 
@@ -98,6 +111,11 @@ contextBridge.exposeInMainWorld('orderbook', {
   /** A system notification plus a taskbar flash, for a notice the operator should not miss. */
   notify: (notice: { title: string; body: string }): Promise<boolean> =>
     ipcRenderer.invoke('orderbook:notify', notice) as Promise<boolean>,
+
+  /** Register what the page saves before an update closes it. One handler; a second replaces the first. */
+  onBeforeUpdate: (handler: () => Promise<void> | void): void => {
+    beforeUpdate = handler;
+  },
 
   /**
    * The application menu asking the page to go somewhere. One-way and

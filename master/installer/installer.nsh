@@ -11,9 +11,75 @@
 ; the registry entries NSIS does not know about, which is what the sweep below
 ; hands to tools/uninstall/uninstall-orderbook.ps1.
 
+; The SHA-256 of every PowerShell script this installer runs elevated, baked when
+; the installer is compiled (not before: `electron-builder --prepackaged` skips
+; `afterPack`, and a stale hash would silently make the installer refuse its own
+; script). `!system` makes the compile fail if this does not run. See
+; tools/nsis/verified-powershell.nsh for what the hashes are for.
+!system 'node "${__FILEDIR__}\..\..\tools\bake-script-hashes.cjs" "${__FILEDIR__}"' = 0
+!include "${__FILEDIR__}\script-hashes.nsh"
+!ifndef UPDATE_DIRS_SHA256
+  !error "script-hashes.nsh did not define UPDATE_DIRS_SHA256"
+!endif
+!ifndef UNINSTALL_SCRIPT_SHA256
+  !error "script-hashes.nsh did not define UNINSTALL_SCRIPT_SHA256"
+!endif
+!include "${__FILEDIR__}\..\..\tools\nsis\verified-powershell.nsh"
+
 !macro customInstall
-  nsExec::Exec 'netsh advfirewall firewall add rule name="OrderBook Master (TCP 4100)" dir=in action=allow protocol=TCP localport=4100'
-  nsExec::Exec 'netsh advfirewall firewall add rule name="OrderBook Discovery (UDP 45789)" dir=in action=allow protocol=UDP localport=45789'
+  ; Every program an administrator runs here is named by its absolute System32
+  ; path ($SYSDIR): Windows looks in the launching program's own folder first.
+  nsExec::Exec '"$SYSDIR\netsh.exe" advfirewall firewall add rule name="OrderBook Master (TCP 4100)" dir=in action=allow protocol=TCP localport=4100'
+  nsExec::Exec '"$SYSDIR\netsh.exe" advfirewall firewall add rule name="OrderBook Discovery (UDP 45789)" dir=in action=allow protocol=UDP localport=45789'
+
+  ; The nightly update (1.4). This installer is running elevated, once, with the
+  ; administrator's approval; it uses that to register a task that can install
+  ; the next version with nobody present. The task runs a fixed script from the
+  ; program folder, and that script trusts nothing it is handed: it verifies the
+  ; signed manifest and the setup file's hash itself (electron/lib/staged-update.ts).
+  ;
+  ;  - `staged-update` is where the (unelevated) Master app leaves what it wants
+  ;    installed. Anyone may write it, so nothing in it is believed.
+  ;  - `elevated` is administrators-and-SYSTEM only: the task copies the setup file
+  ;    there and hashes the copy, so it cannot be swapped between the check and
+  ;    the run. (Well-known SIDs, so the names work on any Windows language.)
+  ;
+  ; Everything below is done by `update-dirs.ps1 -Mode Install`, and the task is
+  ; registered only if it succeeds. It does what a plain `icacls` could not:
+  ;  - a program folder that was made by a standard user, or inherits Users:Modify
+  ;    from a custom install location, is taken over (owner Administrators, a
+  ;    protected ACL, Users read-and-run) and checked for links inside it;
+  ;  - `%ProgramData%\OrderBook` is never reused as found: a link is removed, a
+  ;    folder owned by anybody else is moved aside, and the new one is created
+  ;    Administrators-owned with a protected ACL, then re-read and verified;
+  ;  - the folders are found by the known-folder API, not an environment variable.
+  ; The script is extracted to $PLUGINSDIR (this installer's private temp folder),
+  ; which another program running as the same account can write, so it is never run
+  ; from there: it is hash-checked and run from memory (verified-powershell.nsh).
+  ; The install folder reaches it as data (OB_INSTDIR), never inside the command.
+  Push $R0
+  Push $R1
+  InitPluginsDir
+  File "/oname=$PLUGINSDIR\update-dirs.ps1" "${__FILEDIR__}\apply-update\update-dirs.ps1"
+  System::Call 'Kernel32::SetEnvironmentVariable(t "OB_INSTDIR", t "$INSTDIR")'
+  !insertmacro orderbookRunVerified "$PLUGINSDIR\update-dirs.ps1" "${UPDATE_DIRS_SHA256}" "-Mode Install -InstallDir $$env:OB_INSTDIR" "1"
+  Pop $R1
+  ${If} $R1 == "0"
+    ; Highest privileges, as the account running this installer; never started by a
+    ; schedule (the start time is a placeholder), only by `schtasks /Run` from the app.
+    ; The action is `cmd.exe /c ""<script>""` with cmd.exe by absolute path, so the
+    ; account's COMSPEC does not choose the program that runs elevated.
+    nsExec::Exec '"$SYSDIR\schtasks.exe" /Create /F /TN "OrderBook Master Update" /SC ONCE /ST 00:00 /RL HIGHEST /TR "\"$SYSDIR\cmd.exe\" /d /c \"\"$INSTDIR\resources\apply-update\apply-update.cmd\"\""'
+    Pop $R1
+  ${Else}
+    ; Not registered, and any task left by an earlier version is removed: without
+    ; trustworthy folders the nightly update falls back to asking for approval.
+    nsExec::Exec '"$SYSDIR\schtasks.exe" /Delete /F /TN "OrderBook Master Update"'
+    Pop $R1
+    DetailPrint "The nightly update task was not registered: its folders could not be made trustworthy."
+  ${EndIf}
+  Pop $R1
+  Pop $R0
 !macroend
 
 ; The sweep script has to be taken out of the program folder while there still
@@ -30,13 +96,25 @@
 !macroend
 
 !macro customUnInstall
-  nsExec::Exec 'netsh advfirewall firewall delete rule name="OrderBook Master (TCP 4100)"'
-  nsExec::Exec 'netsh advfirewall firewall delete rule name="OrderBook Discovery (UDP 45789)"'
+  nsExec::Exec '"$SYSDIR\netsh.exe" advfirewall firewall delete rule name="OrderBook Master (TCP 4100)"'
+  nsExec::Exec '"$SYSDIR\netsh.exe" advfirewall firewall delete rule name="OrderBook Discovery (UDP 45789)"'
 
   ; Never during an update. `isUpdated` means a new version is being installed
   ; over this one, and the sweep would delete the data directory and the profile
   ; that the version now being staged is about to open.
   ${IfNot} ${isUpdated}
+    ; The nightly update's task and folders go with the program. Not during an
+    ; update: the task may be what started it, and customInstall re-registers it.
+    nsExec::Exec '"$SYSDIR\schtasks.exe" /Delete /F /TN "OrderBook Master Update"'
+    ; ProgramData from the shell-folder API (all-users context: $APPDATA is then
+    ; the common application-data folder), never from the environment, which
+    ; the account's own programs can set and this removal runs elevated. The
+    ; build is perMachine, so "all" is the context the uninstaller is in anyway.
+    SetShellVarContext all
+    RMDir /r "$APPDATA\OrderBook\elevated"
+    RMDir /r "$APPDATA\OrderBook\staged-update"
+    RMDir "$APPDATA\OrderBook"
+
     ; $R7 is the script's data flag either way, so both branches below answer
     ; the same parameter and an unanswered question keeps the data.
     StrCpy $R7 "-KeepData"
@@ -57,7 +135,12 @@
     orderbookDataAnswered:
 
     IfFileExists "$TEMP\OrderBook-uninstall-master\uninstall-orderbook.ps1" 0 orderbookSweepSkipped
-    nsExec::Exec 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$TEMP\OrderBook-uninstall-master\uninstall-orderbook.ps1" -Panel master -LeftoversOnly -Yes $R7'
+    ; The copy in $TEMP can be rewritten by any program running as this account,
+    ; so the sweep is hash-checked and run from memory, not run from the file.
+    Push $R1
+    !insertmacro orderbookRunVerified "$TEMP\OrderBook-uninstall-master\uninstall-orderbook.ps1" "${UNINSTALL_SCRIPT_SHA256}" "-Panel master -LeftoversOnly -Yes $R7" "0"
+    Pop $R1
+    Pop $R1
     orderbookSweepSkipped:
   ${EndIf}
 

@@ -26,6 +26,7 @@ import { FormField, Input, NumberInput } from './Form.js';
 import { formatDateTime, formatKg } from './format.js';
 import { apiErrorText } from './errorText.js';
 import { t } from './i18n.js';
+import { useUnsavedWork } from './unsavedWork.js';
 import { Select } from './SuggestInput.js';
 
 /** What this view may reach. Held in a ref: callers build the object inline. */
@@ -78,6 +79,13 @@ export function OrderRecordView({
   const overrideValue = override === '' ? null : Number(override);
   const overrideInvalid = overrideValue !== null && Number.isNaN(overrideValue);
   const [busy, setBusy] = useState(false);
+
+  // "Save all and update": a note typed on the order and not yet added is named.
+  useUnsavedWork(
+    `order-note:${order.id}`,
+    note.trim() ? { label: t('updates.saveAll.recordNote', { text: note.trim().slice(0, 40) }) } : null,
+  );
+
 
   async function run(action: () => Promise<unknown>, failure: MessageKey): Promise<void> {
     setBusy(true);

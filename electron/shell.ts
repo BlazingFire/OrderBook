@@ -27,12 +27,13 @@
  * of taking the whole application down.
  */
 
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { existsSync } from 'node:fs';
-import { writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import {
   app,
@@ -51,6 +52,7 @@ import {
   replaceAppImage,
   startDetached,
 } from './lib/appimage.js';
+import { appMenuTemplate, shellKeyAction } from './lib/app-menu.js';
 import { attentionText } from './lib/attention.js';
 import { dialogExtensions, dialogTitle } from './lib/dialog-options.js';
 import { getJson, interpretHealth, type HealthOutcome } from './lib/health.js';
@@ -69,6 +71,18 @@ import {
 import { detectStandaloneBuild, loginItemOptions } from './lib/standalone.js';
 import { canRestart, isExpectedExit, pruneRestarts, RESTART_LIMIT } from './lib/supervisor.js';
 import { uninstallCommand, uninstallScriptsDir } from './lib/uninstall.js';
+import {
+  decideAfterTaskStart,
+  judgeStagedManifest,
+  parseUpdatePaths,
+  STAGED_MANIFEST,
+  TASK_NAME,
+  TASK_RESULT,
+  UPDATE_PATHS_FILE,
+  type ReleaseTrust,
+  type UpdatePaths,
+} from './lib/staged-update.js';
+import { isHighIntegrity, planInstallerLaunch, unattendedInstallDue } from './lib/update-launch.js';
 
 export interface PanelShellConfig {
   readonly panel: 'master' | 'office';
@@ -102,6 +116,10 @@ export interface PanelShellConfig {
 
 const POLL_INTERVAL_MS = 400;
 const STOP_GRACE_MS = 10_000;
+/** How long the page has to save its work before an update closes it. */
+const FLUSH_TIMEOUT_MS = 8_000;
+/** How often the Master's shell asks its server whether the nightly update is due. */
+const AUTO_UPDATE_POLL_MS = 30_000;
 const RENDERER_RELOAD_WINDOW_MS = 5 * 60_000;
 
 export function runPanelShell(config: PanelShellConfig): void {
@@ -145,6 +163,9 @@ export function runPanelShell(config: PanelShellConfig): void {
   let relocating = false;
   let draining = false;
   let updatingSince: number | null = null;
+  /** One update at a time, and the version the nightly watcher has already started. */
+  let applyingUpdate = false;
+  let autoStartedVersion: string | null = null;
   let restarts: number[] = [];
   /** Learned from the panel's own loopback health route, never from the page. */
   let installerDir: string | null = null;
@@ -446,6 +467,23 @@ export function runPanelShell(config: PanelShellConfig): void {
      */
     const window = mainWindow;
 
+    // No menu bar (1.4 R2). `setApplicationMenu(null)` already removes it; this
+    // keeps Alt from summoning one on a platform that would.
+    window.setMenuBarVisibility(false);
+
+    // F11 (full screen) and, in a dev build, Ctrl+Shift+I: the two accelerators
+    // the removed View menu owned that no renderer command replaced.
+    window.webContents.on('before-input-event', (event, input) => {
+      const action = shellKeyAction(input, app.isPackaged);
+      if (action === 'toggleFullScreen') {
+        event.preventDefault();
+        window.setFullScreen(!window.isFullScreen());
+      } else if (action === 'toggleDevTools') {
+        event.preventDefault();
+        window.webContents.toggleDevTools();
+      }
+    });
+
     window.webContents.setWindowOpenHandler(({ url }) => {
       // A lead's Preview PDF opens beside the panel, in Chromium's own viewer:
       // loaded over the app window it would leave the panel with no way back.
@@ -522,85 +560,197 @@ export function runPanelShell(config: PanelShellConfig): void {
     await waitForServerThenShow();
   }
 
+  /**
+   * No menu bar on Windows and Linux (1.4 R2); on macOS only the minimal menu
+   * its Copy and Paste keys need. See `lib/app-menu.ts` for what became of each
+   * old item.
+   */
   function buildMenu(): void {
-    const viewSubmenu: Electron.MenuItemConstructorOptions[] = [
-      { role: 'reload', accelerator: 'CmdOrCtrl+R' },
-      { role: 'togglefullscreen' },
-    ];
-    if (!app.isPackaged) viewSubmenu.push({ role: 'toggleDevTools' });
-
-    const isMac = process.platform === 'darwin';
+    const template = appMenuTemplate(process.platform);
+    Menu.setApplicationMenu(
+      template ? Menu.buildFromTemplate(template as Electron.MenuItemConstructorOptions[]) : null,
+    );
 
     /*
-     * Without this, every text field in the app is missing Copy, Paste, Cut
-     * and Select All on macOS specifically. `Cmd+C`/`Cmd+V`/`Cmd+X`/`Cmd+A`
-     * are not handled by Chromium's default input behaviour the way they are
-     * on Windows — they route through the application menu's `role: 'copy'`
-     * etc., which only exist if an Edit menu defines them. An app with no
-     * Edit menu is an app where an operator cannot paste a party's GST number
-     * into a field on a Mac, and there is no error: the keys just do nothing.
+     * The native About panel (Apple menu -> About OrderBook...). macOS reserves
+     * the slot in the application menu's `appMenu` role; left on Electron's
+     * default it shows "Electron" and no version.
      */
-    const editSubmenu: Electron.MenuItemConstructorOptions[] = [
-      { role: 'undo' },
-      { role: 'redo' },
-      { type: 'separator' },
-      { role: 'cut' },
-      { role: 'copy' },
-      { role: 'paste' },
-      ...(isMac
-        ? ([{ role: 'pasteAndMatchStyle' }, { role: 'delete' }, { role: 'selectAll' }] as const)
-        : ([{ role: 'delete' }, { type: 'separator' }, { role: 'selectAll' }] as const)),
-    ];
-
-    const template: Electron.MenuItemConstructorOptions[] = [
-      // The macOS application menu — named after the app, holds About/Hide/Quit.
-      // Its absence is why `Cmd+Q` and `Cmd+H` feel "missing" on a Mac even
-      // though the rest of the app works: those live here, not in File.
-      ...(isMac ? ([{ role: 'appMenu' as const }] as Electron.MenuItemConstructorOptions[]) : []),
-      { label: '&File', submenu: [isMac ? { role: 'close' as const } : { role: 'quit' as const }] },
-      { label: '&Edit', submenu: editSubmenu },
-      { label: '&View', submenu: viewSubmenu },
-      // Standard on every native Mac app: lets `Cmd+M` minimise and groups
-      // multiple windows under one menu. Windows/Linux have no equivalent.
-      ...(isMac ? ([{ role: 'windowMenu' as const }] as Electron.MenuItemConstructorOptions[]) : []),
-      {
-        label: '&Help',
-        submenu: [
-          {
-            label: 'Check for updates',
-            // Sends a command rather than navigating: the previous version
-            // did `loadURL('#/updates')`, and the panel's hash router only
-            // recognises `gallery`, so it silently reloaded the dashboard.
-            click: () => mainWindow?.webContents.send('orderbook:menuCommand', 'nav.updates'),
-          },
-          {
-            label: 'Keyboard shortcuts',
-            accelerator: 'F1',
-            click: () => mainWindow?.webContents.send('orderbook:menuCommand', 'help.shortcuts'),
-          },
-          { type: 'separator' },
-          { label: 'Open log folder', click: () => electronShell.showItemInFolder(openLogPath()) },
-          ...(isMac ? [] : [{ label: `Version ${app.getVersion()}`, enabled: false }]),
-        ],
-      },
-    ];
-
-    Menu.setApplicationMenu(Menu.buildFromTemplate(template));
-
-    /*
-     * The native About panel (Apple menu → About OrderBook…), rather than the
-     * disabled "Version x.y.z" menu item Windows uses. macOS already reserves
-     * this slot in the application menu `role: 'appMenu'` builds — leaving it
-     * on Electron's default means it shows "Electron" and no version, which is
-     * the kind of detail that makes an app feel unfinished on a Mac.
-     */
-    if (isMac) {
+    if (process.platform === 'darwin') {
       app.setAboutPanelOptions({
         applicationName: config.productName,
         applicationVersion: app.getVersion(),
         copyright: 'OrderBook',
       });
     }
+  }
+
+  /**
+   * The folders the update task works in, from the file the installer wrote into
+   * the (administrator-only) program folder. Never from the environment, which
+   * this account's other programs can change.
+   */
+  async function readUpdatePaths(): Promise<UpdatePaths | null> {
+    try {
+      return parseUpdatePaths(
+        await readFile(path.join(process.resourcesPath, 'apply-update', UPDATE_PATHS_FILE), 'utf8'),
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  /** The installer's update task is registered, and the folders it works in exist. */
+  async function updateTaskIsReady(): Promise<boolean> {
+    const paths = await readUpdatePaths();
+    if (!paths || !existsSync(paths.stage) || !existsSync(paths.work)) return false;
+    return new Promise((resolve) => {
+      execFile('schtasks.exe', ['/Query', '/TN', TASK_NAME], { windowsHide: true, timeout: 10_000 }, (error) =>
+        resolve(!error),
+      );
+    });
+  }
+
+  /** The release keys and signed-payload rules of the installed program, the ones the task will use. */
+  async function loadReleaseTrust(): Promise<ReleaseTrust | null> {
+    try {
+      const shared = path.join(process.resourcesPath, 'panel', 'node_modules', '@orderbook', 'shared', 'dist', 'index.js');
+      return (await import(pathToFileURL(shared).href)) as ReleaseTrust;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Put the verified setup file and its signed manifest where the update task
+   * reads them, after making the decision the task will make. Resolves to the
+   * reason when it must not go ahead, or `null` when it may.
+   */
+  async function stageForUpdateTask(
+    setupPath: string,
+    prepared: { sha256: string; version: string },
+  ): Promise<string | null> {
+    if (!installerDir) return 'the releases folder is not known';
+    let manifestText: string | null = null;
+    for (const name of ['latest-win32.json', 'latest.json']) {
+      try {
+        const text = await readFile(path.join(installerDir, name), 'utf8');
+        const parsed = JSON.parse(text) as { sha256?: string; version?: string };
+        if (parsed.sha256?.toLowerCase() === prepared.sha256.toLowerCase() && parsed.version === prepared.version) {
+          manifestText = text;
+          break;
+        }
+      } catch {
+        // Not there, or not this build's: the next name gets a turn.
+      }
+    }
+    if (manifestText === null) return 'the signed manifest for this build is not in the releases folder';
+
+    const trust = await loadReleaseTrust();
+    if (!trust) return 'the installed release keys could not be loaded';
+    const verdict = judgeStagedManifest(JSON.parse(manifestText), app.getVersion(), trust);
+    if (!verdict.ok) return verdict.reason;
+    if (verdict.manifest.file !== path.basename(setupPath)) return 'the manifest names another file';
+
+    const paths = await readUpdatePaths();
+    if (!paths) return 'the installer did not record where the update folders are';
+    const { stage } = paths;
+    try {
+      await mkdir(stage, { recursive: true });
+      for (const entry of await readdir(stage)) await rm(path.join(stage, entry), { force: true, recursive: true });
+      await copyFile(setupPath, path.join(stage, verdict.manifest.file));
+      await writeFile(path.join(stage, STAGED_MANIFEST), manifestText);
+    } catch (error) {
+      return `the files could not be staged (${String(error)})`;
+    }
+    return null;
+  }
+
+  /**
+   * After asking Windows to run the update task, wait for what it says (the task
+   * writes `result.json` into its own folder, which this account may read). The
+   * server is stopped by now, so a task that refuses, or never starts (its account
+   * is not logged on, it crashed), must bring it back: `recover` says so. Only
+   * `installing` lets this app quit.
+   */
+  async function waitForUpdateTask(startedAt: number): Promise<'quit' | 'recover'> {
+    const paths = await readUpdatePaths();
+    const resultFile = paths ? path.join(paths.work, TASK_RESULT) : null;
+    for (;;) {
+      let status: unknown;
+      if (resultFile) {
+        try {
+          // Only an answer written after this run was asked for: an old one is not about this run.
+          if ((await stat(resultFile)).mtimeMs >= startedAt - 1_000) {
+            status = (JSON.parse(await readFile(resultFile, 'utf8')) as { status?: unknown }).status;
+          }
+        } catch {
+          // Not written yet, or half-written: the next look decides.
+        }
+      }
+      const next = decideAfterTaskStart(status, Date.now() - startedAt);
+      if (next !== 'wait') return next;
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
+  }
+
+  /** Whether this process holds an elevated token. Windows only; anything else is "no". */
+  function isElevated(): Promise<boolean> {
+    return new Promise((resolve) => {
+      execFile('whoami', ['/groups'], { windowsHide: true, timeout: 10_000 }, (error, stdout) => {
+        resolve(!error && isHighIntegrity(stdout));
+      });
+    });
+  }
+
+  /**
+   * Ask the page to save everything it can before it is closed, and wait for it
+   * (1.4 R7b). The page answers `orderbook:beforeUpdateDone` when its draft
+   * stores have been written, and a page that does not answer (an older web
+   * bundle, a hung renderer) is not waited on for longer than `FLUSH_TIMEOUT_MS`.
+   */
+  async function flushRenderer(): Promise<void> {
+    const window = mainWindow;
+    if (!window || window.isDestroyed()) return;
+    await new Promise<void>((resolve) => {
+      let finished = false;
+      const finish = (): void => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        ipcMain.removeListener('orderbook:beforeUpdateDone', onDone);
+        resolve();
+      };
+      const onDone = (event: Electron.IpcMainEvent): void => {
+        if (event.sender === window.webContents) finish();
+      };
+      const timer = setTimeout(finish, FLUSH_TIMEOUT_MS);
+      ipcMain.on('orderbook:beforeUpdateDone', onDone);
+      window.webContents.send('orderbook:beforeUpdate');
+    });
+  }
+
+  /**
+   * The Master's nightly update (1.4 R8): its server says, on the loopback
+   * health route, that an unattended install is due, and this carries it out
+   * through the same checks and the same launch as the Install button. Only the
+   * Master has one; an Office Panel is updated by hand or by its own button.
+   */
+  function startAutoUpdateWatcher(): void {
+    if (config.panel !== 'master') return;
+    const timer = setInterval(() => {
+      void (async () => {
+        if (applyingUpdate || quitting) return;
+        const outcome = await pollHealth();
+        if (outcome.kind !== 'ready') return;
+        const version = unattendedInstallDue(outcome.health, autoStartedVersion);
+        if (!version) return;
+        autoStartedVersion = version;
+        say(`The nightly update is due: installing ${version} with nobody signed in`);
+        await applyPreparedUpdate(true);
+      })().catch((error: unknown) => say(`Nightly update check failed: ${String(error)}`));
+    }, AUTO_UPDATE_POLL_MS);
+    timer.unref();
   }
 
   /**
@@ -619,7 +769,17 @@ export function runPanelShell(config: PanelShellConfig): void {
    * immediately before spawning them. A window that has been taken over can
    * still ask for an update; it cannot choose what gets installed.
    */
-  ipcMain.handle('orderbook:applyUpdate', async (): Promise<boolean> => {
+  async function applyPreparedUpdate(unattended: boolean): Promise<boolean> {
+    if (applyingUpdate) return false;
+    applyingUpdate = true;
+    try {
+      return await applyPreparedUpdateOnce(unattended);
+    } finally {
+      applyingUpdate = false;
+    }
+  }
+
+  async function applyPreparedUpdateOnce(unattended: boolean): Promise<boolean> {
     /*
      * The standalone build has no installer to hand the setup file to. Running
      * it would install a second, per-machine copy beside this one and leave
@@ -680,6 +840,7 @@ export function runPanelShell(config: PanelShellConfig): void {
     }
 
     if (updateBy === 'appimage' && appImage) {
+      await flushRenderer();
       return updateAppImage(verdict.path, appImage, prepared.version);
     }
 
@@ -698,27 +859,83 @@ export function runPanelShell(config: PanelShellConfig): void {
      * which is what closes the PostgreSQL cluster properly rather than leaving
      * an orphan holding the binary. Only then is there nothing left to lock.
      */
+    /*
+     * Work out how the setup will be started *before* anything is stopped. A
+     * nightly update with nobody to approve a UAC prompt declines here, with
+     * the server still running, rather than after it has been shut down.
+     */
+    const elevated = process.platform === 'win32' ? await isElevated() : false;
+    const plan = planInstallerLaunch({
+      platform: process.platform,
+      file: verdict.path,
+      unattended,
+      elevated,
+      taskReady:
+        process.platform === 'win32' && unattended && !elevated ? await updateTaskIsReady() : false,
+    });
+    if (plan.how === 'needs-approval') {
+      say(
+        `Did not install ${prepared.version} unattended: it needs administrator approval and nobody is here to give it. The server is still running.`,
+      );
+      return false;
+    }
+    if (plan.how === 'task') {
+      // The task checks everything again, in its own elevated process. Checking
+      // the same things here first is what makes a refusal happen with the
+      // server still running, not after it has been stopped.
+      const refusal = await stageForUpdateTask(verdict.path, prepared);
+      if (refusal) {
+        say(`Did not install ${prepared.version} through the update task: ${refusal}. The server is still running.`);
+        return false;
+      }
+    }
+
+    // Everything the page holds that can still be saved, before the window goes.
+    await flushRenderer();
+
     updatingSince = Date.now();
     say(`Stopping the server before installing ${prepared.version}`);
     await stopServer();
 
     try {
       /*
-       * Through the OS shell on Windows and macOS, never `spawn`.
-       *
-       * The Windows setup file is a per-machine NSIS installer and carries a
-       * `requireAdministrator` manifest. `spawn` is `CreateProcess`, which
-       * cannot elevate: it fails with ERROR_ELEVATION_REQUIRED, which Node
-       * reports as an *asynchronous* `EACCES` that no try/catch here could
-       * see — so the server had been stopped, the app quit, and nothing was
-       * installed. `ShellExecute` is what a double-click does, and it is the
-       * call that raises the UAC prompt. `openPath` resolves to an empty
-       * string on success and to the reason otherwise, a declined prompt
-       * included, so it is awaited before quitting rather than fired and
-       * forgotten.
+       * `open` is the macOS `.dmg`, through the OS shell as ever. On Windows
+       * the setup is started silent with `--force-run`, so the new version
+       * opens by itself when the install ends (`lib/update-launch.ts` says why
+       * each way of starting it is used). A declined UAC prompt makes
+       * PowerShell exit non-zero, which lands in the catch below and puts the
+       * server back.
        */
-      const failure = await electronShell.openPath(verdict.path);
-      if (failure) throw new Error(failure);
+      if (plan.how === 'open') {
+        const failure = await electronShell.openPath(verdict.path);
+        if (failure) throw new Error(failure);
+      } else if (plan.how === 'task') {
+        const startedAt = Date.now();
+        const child = spawn(plan.command, plan.args, { stdio: 'ignore', windowsHide: true });
+        const [code] = (await once(child, 'exit')) as [number | null];
+        if (code !== 0) throw new Error(`Windows did not start the update task (exit ${String(code)})`);
+        // The task may still refuse after Windows started it: wait for it to say so.
+        if ((await waitForUpdateTask(startedAt)) === 'recover') {
+          throw new Error('the update task did not go on to install; bringing the server back');
+        }
+      } else {
+        const child = spawn(plan.command, plan.args, {
+          detached: plan.how === 'spawn',
+          stdio: 'ignore',
+          windowsHide: true,
+        });
+        if (plan.how === 'spawn') {
+          // The installer outlives this process; it only has to have started.
+          await new Promise<void>((resolve, reject) => {
+            child.once('error', reject);
+            child.once('spawn', () => resolve());
+          });
+          child.unref();
+        } else {
+          const [code] = (await once(child, 'exit')) as [number | null];
+          if (code !== 0) throw new Error(`Windows did not start the installer (exit ${String(code)})`);
+        }
+      }
 
       say(`Installing ${prepared.version} from ${verdict.path}`);
       app.quit();
@@ -732,6 +949,13 @@ export function runPanelShell(config: PanelShellConfig): void {
       say(`Could not launch the installer: ${String(error)}`);
       return false;
     }
+  }
+
+  ipcMain.handle('orderbook:applyUpdate', (event): Promise<boolean> | boolean => {
+    // Only the panel's own window may ask (the PDF window has no preload, but
+    // this is the shell's most dangerous call, so the sender is checked anyway).
+    if (!mainWindow || event.sender !== mainWindow.webContents) return false;
+    return applyPreparedUpdate(false);
   });
 
   /**
@@ -1154,6 +1378,7 @@ export function runPanelShell(config: PanelShellConfig): void {
 
     serverProcess = startServer();
     buildMenu();
+    startAutoUpdateWatcher();
     await createWindow();
   });
 

@@ -31,7 +31,13 @@ import type {
   ReleasePlatform,
   UpdateAvailability,
 } from '@orderbook/shared';
-import { isNewer, LEGACY_RELEASE_PLATFORM, releasePlatformFor } from '@orderbook/shared';
+import {
+  isNewer,
+  LEGACY_RELEASE_PLATFORM,
+  releasePlatformFor,
+  UpdateProgressTracker,
+  type UpdateDownloadProgress,
+} from '@orderbook/shared';
 
 import { paths } from '../config/paths.js';
 import { appVersion } from '../lib/app-version.js';
@@ -80,7 +86,14 @@ async function assertPaired(): Promise<void> {
  * the panel's next five-minute report — and an update screen should not have
  * to wait for one.
  */
-export async function availableUpdate(): Promise<UpdateAvailability> {
+/** The download of the office build from the Master, for the Updates screen's progress bar. */
+const progress = new UpdateProgressTracker();
+
+export function downloadStatus(): UpdateDownloadProgress {
+  return progress.snapshot(Date.now());
+}
+
+export async function availableUpdate(options: { check?: boolean } = {}): Promise<UpdateAvailability> {
   const running = appVersion();
 
   await assertPaired();
@@ -90,9 +103,12 @@ export async function availableUpdate(): Promise<UpdateAvailability> {
     // `masterFetch`, so the request carries this panel's pairing credentials.
     // The route refuses a stranger now, which is half of why the answer below
     // is worth anything.
-    const response = await masterFetch(`/api/updates/office/latest?platform=${ownPlatform()}`, {
-      signal: timeoutSignal(METADATA_TIMEOUT_MS),
-    });
+    // `check` is Check now: the Master asks GitHub first (1.4 R6), which can take
+    // its own few seconds, so the wait is longer than for a plain read.
+    const response = await masterFetch(
+      `/api/updates/office/latest?platform=${ownPlatform()}${options.check ? '&check=1' : ''}`,
+      { signal: timeoutSignal(options.check ? METADATA_TIMEOUT_MS * 2 : METADATA_TIMEOUT_MS) },
+    );
     if (!response.ok) throw new Error(`Master answered ${response.status}`);
     payload = (await response.json()) as UpdateAvailability;
   } catch (error) {
@@ -201,6 +217,8 @@ export async function downloadUpdate(): Promise<{ path: string; manifest: Releas
       (await digestOf(target)) === available.sha256.toLowerCase()
     ) {
       log.info(`Reusing already-downloaded ${available.file}`);
+      progress.start(available.version, available.sizeBytes, Date.now());
+      progress.done();
       await pruneOldDownloads(path.basename(target));
       remember(target, available);
       return { path: target, manifest: available };
@@ -212,8 +230,10 @@ export async function downloadUpdate(): Promise<{ path: string; manifest: Releas
   // The same OS the manifest was chosen for. Asking for one platform's
   // manifest and then downloading whatever the other route feels like would
   // hand this panel bytes whose digest cannot match.
+  progress.start(available.version, available.sizeBytes, Date.now());
   const response = await masterFetch(`/api/updates/office/download?platform=${ownPlatform()}`);
   if (!response.ok || !response.body) {
+    progress.fail('The Master would not send the update file');
     throw new UpdateError('The Master would not send the update file', 'unreachable');
   }
 
@@ -239,20 +259,26 @@ export async function downloadUpdate(): Promise<{ path: string; manifest: Releas
   // `Readable.from`, not `Readable.fromWeb`: a web stream is async-iterable
   // from Node 16.5, and `fromWeb` needs Node 17, newer than the Windows 7 build.
   const source = Readable.from(response.body as unknown as AsyncIterable<Uint8Array>);
-  source.on('data', (chunk: Buffer) => hash.update(chunk));
+  source.on('data', (chunk: Buffer) => {
+    hash.update(chunk);
+    progress.add(chunk.length, Date.now());
+  });
 
   try {
     await pipeline(source, createWriteStream(partial));
   } catch (error) {
     await rm(partial, { force: true }).catch(() => undefined);
     log.error(`Could not download ${available.file}: ${String(error)}`);
+    progress.fail('The update file did not download completely');
     throw new UpdateError('The update file did not download completely', 'unreachable');
   }
 
+  progress.verifying();
   const digest = hash.digest('hex');
   if (digest !== available.sha256.toLowerCase()) {
     await rm(partial, { force: true });
     log.error(`Discarded ${available.file}: expected ${available.sha256}, got ${digest}`);
+    progress.fail('The downloaded file did not match its checksum');
     throw new UpdateError(
       'The downloaded file did not match its checksum, so it was discarded',
       'checksum',
@@ -260,6 +286,7 @@ export async function downloadUpdate(): Promise<{ path: string; manifest: Releas
   }
 
   await rename(partial, target);
+  progress.done();
 
   log.info(`Downloaded ${available.file} (${available.version})`);
   await pruneOldDownloads(path.basename(target));

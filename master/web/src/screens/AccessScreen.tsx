@@ -53,6 +53,7 @@ import {
   useFilterBar,
   useSubNav,
   useTopbarActions,
+  useUnsavedWork,
   type DataTableColumn,
   PasswordInput,
 } from '@orderbook/ui';
@@ -1228,6 +1229,16 @@ function UserForm({
   const [username, setUsername] = useState('');
   const [roleId, setRoleId] = useState(assignable[0]?.id ?? '');
 
+  // "Save all and update": named, never saved. Creating a person ends in a
+  // one-time password that is shown once, to somebody watching; making one
+  // behind an update's back would lose it.
+  useUnsavedWork(
+    'new-user',
+    displayName.trim() || username.trim()
+      ? { label: t('updates.saveAll.newUser', { name: displayName.trim() || username.trim() }) }
+      : null,
+  );
+
   return (
     <Card className="ob-measure-form" style={{ marginBottom: 'var(--s-16)' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--s-12)' }}>
@@ -1718,7 +1729,7 @@ function RoleEditor({
     });
   }
 
-  async function save(overwrite = false): Promise<void> {
+  async function save(overwrite = false): Promise<boolean> {
     setBusy(true);
     setFailure(null);
     setConflict(null);
@@ -1738,6 +1749,7 @@ function RoleEditor({
       else await api.createRole(input);
 
       onSaved();
+      return true;
     } catch (caught) {
       // Reported *here*, in the editor. This used to call `onError`, which set
       // state that only the list branch renders — so with the editor open every
@@ -1752,10 +1764,23 @@ function RoleEditor({
         setFailure(message);
         onError(message);
       }
+      return false;
     } finally {
       setBusy(false);
     }
   }
+
+  // "Save all and update": a role being edited is saved if it has a name, and
+  // named if it has not. A new role nobody has typed into is not work.
+  useUnsavedWork(
+    'role-editor',
+    dirty && (role || name.trim())
+      ? {
+          label: t('updates.saveAll.role', { name: name.trim() || role?.name || '…' }),
+          save: async () => (name.trim() ? save() : false),
+        }
+      : null,
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
@@ -2080,6 +2105,39 @@ function UserEditForm({
 
   const dirty = displayName.trim() !== user.displayName || username.trim() !== user.username;
 
+  /** The Save button's work. Resolves true only when the update went through. */
+  async function submit(): Promise<boolean> {
+    let saved = false;
+    await onRun(async () => {
+      // Renaming a Server Master's username needs the master key.
+      await withKey((token) =>
+        api.updateUser(
+          user.id,
+          {
+            displayName: displayName.trim(),
+            username: username.trim(),
+            expectedVersion: user.sync.version,
+          },
+          token,
+        ),
+      );
+      saved = true;
+      onSaved();
+    }, t('access.userEdit.saveFailed'));
+    return saved;
+  }
+
+  // "Save all and update": a changed name is saved if both fields are filled in.
+  useUnsavedWork(
+    'user-edit',
+    dirty
+      ? {
+          label: t('updates.saveAll.user', { name: user.displayName }),
+          save: async () => (displayName.trim() && username.trim() ? submit() : false),
+        }
+      : null,
+  );
+
   return (
     <Card className="ob-measure-form" style={{ marginBottom: 'var(--s-16)' }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-12)' }}>
@@ -2107,23 +2165,7 @@ function UserEditForm({
         <Button
           variant="primary"
           disabled={!dirty || !displayName.trim() || !username.trim()}
-          onClick={() =>
-            void onRun(async () => {
-              // Renaming a Server Master's username needs the master key.
-              await withKey((token) =>
-                api.updateUser(
-                  user.id,
-                  {
-                    displayName: displayName.trim(),
-                    username: username.trim(),
-                    expectedVersion: user.sync.version,
-                  },
-                  token,
-                ),
-              );
-              onSaved();
-            }, t('access.userEdit.saveFailed'))
-          }
+          onClick={() => void submit()}
         >
           {t('access.userEdit.save')}
         </Button>

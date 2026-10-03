@@ -25,6 +25,9 @@ directories:
 # As in electron-builder.yml: nothing to rebuild, and an `npm install
 # --omit=dev` against this workspace would strip the repo's dev dependencies.
 npmRebuild: false
+# Switches off the fuses that let NODE_OPTIONS or --inspect steer the program (1.4 R8;
+# `tools/flip-fuses.cjs` says why). The `RunAsNode` fuse stays on: the server is started with it.
+afterPack: ../tools/flip-fuses.cjs
 buildDependenciesFromSource: false
 
 files:
@@ -60,6 +63,11 @@ portable:
 nsis:
   oneClick: false
   perMachine: true
+  # The new version opens by itself when an install ends (1.4 R7d): in the
+  # wizard this is the "Run" box on the finish page, ticked; in a silent install
+  # (the update button, the Master's nightly update) it is `--force-run`, which
+  # the shell passes (`electron/lib/update-launch.ts`).
+  runAfterFinish: true
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true

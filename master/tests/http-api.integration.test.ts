@@ -1017,6 +1017,55 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       await request(app).get('/api/updates/status').expect(401);
     });
 
+    it('reports the download, when GitHub was last asked, and the nightly update (1.4 R6, R7, R8)', async () => {
+      const { password } = await initialize();
+      const agent = await signedInAgent(password);
+
+      const { body } = await agent.get('/api/updates/status').expect(200);
+      expect(body.download.master.phase).toBe('idle');
+      expect(body.download.office.phase).toBe('idle');
+      expect(body).toHaveProperty('lastCheckedAt');
+      // On, at 23:00, until somebody changes it.
+      expect(body.auto).toEqual({ enabled: true, time: '23:00', lastRun: null });
+    });
+
+    it('Check now answers the same shape for any signed-in person, and refuses a stranger', async () => {
+      const { password } = await initialize();
+      const agent = await signedInAgent(password);
+
+      const { body } = await agent.post('/api/updates/check').send({}).expect(200);
+      expect(body).toHaveProperty('master');
+      expect(body).toHaveProperty('download');
+      expect(typeof body.lastCheckedAt === 'string' || body.lastCheckedAt === null).toBe(true);
+
+      await request(app).post('/api/updates/check').send({}).expect(401);
+    });
+
+    it('lets an administrator set the nightly update and refuses a time that is not a time', async () => {
+      const { password } = await initialize();
+      const agent = await signedInAgent(password);
+
+      const saved = await agent.put('/api/updates/auto').send({ enabled: false, time: '22:15' }).expect(200);
+      expect(saved.body).toMatchObject({ enabled: false, time: '22:15' });
+      expect((await agent.get('/api/updates/status').expect(200)).body.auto).toMatchObject({
+        enabled: false,
+        time: '22:15',
+      });
+
+      await agent.put('/api/updates/auto').send({ time: '25:61' }).expect(400);
+      await request(app).put('/api/updates/auto').send({ enabled: true }).expect(401);
+
+      // Back to the default, so a later test in this file sees what a fresh Master has.
+      await agent.put('/api/updates/auto').send({ enabled: true, time: '23:00' }).expect(200);
+    });
+
+    it('tells its own shell, and only its own shell, whether a nightly install is due', async () => {
+      await initialize();
+      const local = await request(app).get('/api/health').expect(200);
+      // Loopback (supertest connects locally): the key is there, and nothing is due.
+      expect(local.body).toHaveProperty('autoUpdate', null);
+    });
+
     it("still keeps the panels' routes on panel credentials", async () => {
       const { password } = await initialize();
       const agent = await signedInAgent(password);
