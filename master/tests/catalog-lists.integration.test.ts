@@ -137,12 +137,27 @@ describe.skipIf(!canRunIntegrationTests)('catalog lists (integration)', () => {
       expect((await recycleBinService.listBin({}, clerk)).items).toEqual([]);
     });
 
-    it('shows a fields.manage holder the deleted values of every list, as before', async () => {
+    it('shows fields.manage alone only the other lists, never a value it would get a 403 restoring', async () => {
       const gradeId = await deleteOne('line.grade', 'Old grade');
       const sourceId = await deleteOne('lead.sourcePlatform', 'Old source');
       const fieldsOnly = await actorWith(['fields.manage', ...bin]);
 
-      const ids = (await recycleBinService.listBin({}, fieldsOnly)).items.map((entry) => entry.id).sort();
+      expect((await recycleBinService.listBin({}, fieldsOnly)).items.map((entry) => entry.id)).toEqual([sourceId]);
+      expect(await recycleBinService.binCounts(fieldsOnly)).toEqual({ option_list_item: 1 });
+      // The grade it cannot see is the grade it cannot restore.
+      await expect(
+        recycleBinService.restoreEntity({ entityType: 'option_list_item', id: gradeId }, fieldsOnly),
+      ).rejects.toThrow(ForbiddenError);
+      const restored = await recycleBinService.restoreEntity({ entityType: 'option_list_item', id: sourceId }, fieldsOnly);
+      expect(restored.id).toBe(sourceId);
+    });
+
+    it('shows a holder of both keys every list, as before', async () => {
+      const gradeId = await deleteOne('line.grade', 'Old grade');
+      const sourceId = await deleteOne('lead.sourcePlatform', 'Old source');
+      const both = await actorWith(['fields.manage', 'catalog.lists.manage', ...bin]);
+
+      const ids = (await recycleBinService.listBin({}, both)).items.map((entry) => entry.id).sort();
       expect(ids).toEqual([gradeId, sourceId].sort());
     });
 

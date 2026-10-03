@@ -30,6 +30,7 @@ import { clampCursorLimit } from '../domain/cursor.js';
 import { decodeBinCursor, encodeBinCursor, visibleBinScopes } from '../domain/recycle-bin.js';
 import { ValidationError } from '../lib/errors.js';
 import * as recycleBinRepo from '../repositories/recycle-bin.repository.js';
+import type { OptionListScope } from '../repositories/recycle-bin.repository.js';
 import * as catalogService from './catalog.service.js';
 import * as fieldsService from './fields.service.js';
 import * as leadService from './lead.service.js';
@@ -64,7 +65,7 @@ export async function binDeleters(
   const ids = await recycleBinRepo.distinctDeleters(actor.tenantId, {
     types: visible,
     scope: resolvePartyScope(actor),
-    optionListKeys: optionKeysFor(held),
+    optionListScope: optionScopeFor(held),
   });
 
   const names = await recycleBinRepo.deletedByNames(actor.tenantId, ids);
@@ -88,9 +89,18 @@ function visibleTypes(
   return asked ? [...base, 'option_list_item'] : base;
 }
 
-/** Only the three catalogue lists' values, for a caller who cannot restore any other list. */
-function optionKeysFor(held: ReadonlySet<string>): readonly string[] | undefined {
-  return held.has('fields.manage') ? undefined : CATALOG_LIST_KEYS;
+/**
+ * Which option lists' values this caller is offered. A value is restored with the key that
+ * writes its list (`requireListWrite`): `catalog.lists.manage` for brands, packaging and grades,
+ * `fields.manage` for every other list. Showing a value the caller cannot restore would be a
+ * Restore button that answers 403.
+ */
+function optionScopeFor(held: ReadonlySet<string>): OptionListScope {
+  const fields = held.has('fields.manage');
+  const lists = held.has('catalog.lists.manage');
+  if (fields && lists) return {};
+  if (lists) return { include: CATALOG_LIST_KEYS };
+  return { exclude: CATALOG_LIST_KEYS };
 }
 
 export async function listBin(
@@ -121,7 +131,7 @@ export async function listBin(
     // party, so a `viewAll` holder still cannot read back somebody else's book
     // through the one screen that lists deleted records from every table.
     scope: resolvePartyScope(actor),
-    optionListKeys: optionKeysFor(held),
+    optionListScope: optionScopeFor(held),
   });
 
   const names = await recycleBinRepo.deletedByNames(
@@ -169,7 +179,7 @@ export async function binCounts(actor: ActorContext): Promise<BinCounts> {
     scopedTo === 'anyone' ? undefined : scopedTo,
     resolvePartyScope(actor),
     undefined,
-    optionKeysFor(held),
+    optionScopeFor(held),
   );
 }
 
