@@ -190,6 +190,29 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-03 - 1.3 batch: lead session hand-off (Claude, Opus)
+
+- **Lead session** committed Phases 0, 1, 2, 3, 4 and 8 to local `main`
+  (`8ab7d20`, `14c3dca`, `b3b0260`, `92c4b94`, `4fc9564`, `4ec0a96`), plus
+  the merge of the helper's H1 (party import/export) and H2 (reports) in
+  `455f686`. Each phase ran as an implement, verify, review and fix
+  workflow. Every gate passed: lint, typecheck, build, smoke:legacy and the
+  full test suite with integration suites, last run 239 files / 3,296 tests.
+  Nothing is pushed.
+- **A second Claude session (Sonnet)** worked as a helper in the git
+  worktree `C:/Users/Z/Desktop/OrderBook-helper`, branch `helper/1.3`, with
+  its own test cluster on port 55434. The two sessions coordinated through
+  `CLAUDE_HELPER.md`, which is untracked. The lead reviewed every helper
+  commit with an independent read-only workflow and posted REWORK lists.
+- **Still open:**
+  - H3 rework (`17709e0`) and H5 Printroom (`a1f687a`) are on the helper
+    branch, not yet reviewed or merged;
+  - H4 Chatroom is not built;
+  - Phase 9 acceptance and the 1.3.0 release have not been done.
+  - See HANDOFF "1.3 batch — status and how to continue".
+- **Master key:** its plaintext is deliberately not stored in the repo
+  (`docs/MASTER_KEY.md`). The hash was verified against the owner's key.
+
 ### 2026-10-03 - 1.3 Phase 8 review fixes, round 2 (Claude)
 
 `master/src/services/archive-restore.service.ts`, `archive-export.service.ts`, `master/src/lib/archive-zip.ts`,

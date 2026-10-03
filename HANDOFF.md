@@ -52,6 +52,113 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
+## 1.3 batch — status and how to continue (updated 2026-10-03)
+
+The owner's 1.3 batch is planned in `docs/plans/1.3-BATCH.md` (approved), detailed in
+`docs/plans/1.3-BATCH-DETAIL.md`, with per-domain designs in `docs/plans/1.3-designs/`.
+The Basic Home mockup is `docs/design/basic-home-mockup.html`.
+
+### Where each phase stands
+
+| Phase | What | State | Commit |
+|---|---|---|---|
+| 0 | Windows 7 floors + legacy Office build (Electron 22) | **done** | `8ab7d20` |
+| 1 | Basic Home, Master UI refresh, Inventory UI hidden, loading bars, device code, low RAM | **done** | `14c3dca` |
+| 2 | Server Master tier, master key, protocol handshake, full audit, Logs on Office | **done** | `b3b0260` |
+| 5a | Party import/export (helper H1) | **merged** | `455f686` |
+| 5b | Reports: 15 kinds, xlsx/pdf, both panels, visibility, owner scope (helper H2) | merged; its rework (`3d14b3d`) and follow-ups (`cb0ec8f`) sit on `helper/1.3`, accepted, **not yet merged** | `455f686` |
+| 3 | Realtime rules 1/5/6, push gate, stage HLC, notification centre | **done** | `92c4b94` |
+| 4 | PO numbers, presence, stale-edit, Master authority | **done**. The compact avatar stack on board cards was dropped because it needs a board-level presence feed; owner to decide. | `4fc9564` |
+| 6 | Chatroom (helper H4) | unblocked for the helper; not on its branch yet at hand-off | — |
+| 7a | Notes from pending orders, copies, Save PDF, report PDF window (helper H3) | **built on `helper/1.3`**: reviewed, rework done (`17709e0`), **not yet merged into `main`** | `d90d126`, `17709e0` |
+| 7b | Printroom + auto-print station (helper H5) | **built on `helper/1.3`** (`a1f687a`); **not yet reviewed or merged** | `a1f687a` |
+| 8 | Backup all to external drive, Magic restore, auto-backup | **done** | `4ec0a96` |
+| 9 | Acceptance on real PCs (Win10 Master, Win10 Offices, Win7 x64/x86 VMs), release 1.3.0 | not started | — |
+
+Nothing in the batch has been pushed to GitHub or released. Every phase was
+committed to local `main` after its gate passed: lint 0, typecheck 0, build 0,
+`smoke:legacy` 0, and the full test suite with integration suites run.
+
+### How the work is run
+
+- **Lead session (Opus)** runs each phase as an ultracode workflow, using
+  `~/.claude/projects/C--Users-Z-Desktop-OrderBook/<session>/workflows/scripts/orderbook-phase.js`.
+  The script takes args `{phase, title, designs[], extraGates[], slices[{key, scope}]}`.
+  For each phase it runs the slices in sequence on `main`'s tree, then the gate,
+  then three adversarial reviewers, then up to three fix rounds. A browser pass
+  and the commit follow. The plan's phase sections in
+  `docs/plans/1.3-BATCH-DETAIL.md` are the slice source.
+- **Helper session (Sonnet)** works only in the git worktree
+  `C:\Users\Z\Desktop\OrderBook-helper`, on branch `helper/1.3`, with its own
+  test cluster (port 55434, its own TEMP). The lead reviews each helper
+  commit with an independent read-only workflow and merges the branch into
+  `main` at phase boundaries.
+- **Coordination file:** `C:\Users\Z\Desktop\OrderBook\CLAUDE_HELPER.md`
+  (untracked, in `.git/info/exclude`). It holds the task board (H1–H5),
+  Done log and Messages. Read it first when resuming. The helper rewrote
+  the file's format on its first turn, and the lead's board replaced it
+  afterwards.
+
+### Owed by the owner (cannot be done by an agent)
+
+- **The master key is not in the repository.** `docs/MASTER_KEY.md` says
+  so on purpose: the repo is pushed to GitHub. `MASTER_KEY_HASH` was
+  verified against the owner's key on 2026-10-03. Keep the key with the
+  site's other secrets.
+- **Windows 7 acceptance** on a real 64-bit and 32-bit Win7 SP1 PC (+ KB2999226):
+  install, pair, work online and offline, print, update over the LAN,
+  Standalone, uninstall. Listed under "Owed work".
+- **Bump the version before any build:** 1.3.0 for the batch.
+
+### Traps found in this batch
+
+- **Integration tests on this PC need the system PostgreSQL.**
+  `$env:ORDERBOOK_PG_BIN='C:\Program Files\PostgreSQL\17\bin'`. The bundled
+  `pg_ctl.exe` gets "Access is denied" here.
+- **A browser pass needs a scratch database**, never the owner's `order_book`.
+  `.claude/launch.json` (gitignored) has `master-preview` / `office-preview`,
+  pointing at `postgres://ob@127.0.0.1:55440/ob13_preview` and
+  `.tmp/preview-*` data folders. Start the scratch cluster with
+  `pg_ctl -D .tmp/preview-pg -o "-p 55440 -h 127.0.0.1" start`, detached
+  (Start-Process): a Bash `pg_ctl start` hangs on the inherited pipes.
+- **The workflow notifications are large.** A lead session spends roughly
+  60–80k context per phase. Plan on about four phases per session.
+
+### Next session, in this order
+
+1. **Read `CLAUDE_HELPER.md`** for the helper's newest Done entries.
+   At hand-off, `helper/1.3` @ `a1f687a` holds:
+   - the H2 rework and follow-ups (accepted);
+   - H3 and its rework (the rework is not yet reviewed);
+   - H5 Printroom (not yet reviewed);
+   - merges of `main` up to Phase 4.
+2. **Review `17709e0` (H3 rework) and `a1f687a` (H5)** with the read-only
+   review workflow (`review-helper-commit` script, args
+   `{commit, task, planRef, design, focus}`). Post REWORK or ACCEPTED in
+   `CLAUDE_HELPER.md`.
+3. **Merge `helper/1.3` into `main`** with the `merge-helper-branch`
+   workflow; give it the commit to merge, not the branch name. Migrations
+   must stay in ascending timestamp order in `index.ts` and
+   `DELIBERATELY_LAST`. Run the full gate.
+4. **H4 Chatroom (helper).** Its chat commands go in at **protocol 5**, and
+   the Printroom's at whatever the helper used; check that
+   `COMMAND_MIN_PROTOCOL` and `PANEL_PROTOCOL_VERSION` agree after the merge.
+5. **Phase 9: acceptance and release.**
+   - Browser and Electron passes still owed:
+     - Phase 4: PO number and avatars with two live users;
+     - Phase 8: folder and file pickers, a real USB/FAT32 drive, Magic
+       restore on a second PC;
+     - Phase 7: real printer copies, silent printing while minimised, Save PDF,
+       the PDF window.
+   - Then the Win7 VM pass.
+   - Then bump the version to **1.3.0** and run `npm run release` and
+     `npm run release -- --os win7`. Update the Master first.
+6. **Owner decisions still open:**
+   - Printroom stations see every party's jobs (a deliberate cross-party
+     grant; the plan default);
+   - the dropped board-card avatars;
+   - the Hindi wording, which has had no native review.
+
 ## Current state (2026-09-30, order notes built; catalogue v2 on the 1.2 product master)
 
 - **Order notes (2026-09-30):** Filling note and Dispatch note per
