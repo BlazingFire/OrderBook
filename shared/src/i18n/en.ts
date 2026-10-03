@@ -128,7 +128,6 @@ export const EN_MESSAGES = {
   // --- Units rendered beside a number setting's field.
   'setting.unit.hours': 'hours',
   'setting.unit.days': 'days',
-  'setting.unit.boxes': 'boxes',
   /** The placeholder in a number setting that may be left empty. */
   'setting.number.none': 'None',
 

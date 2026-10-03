@@ -3606,7 +3606,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'settingGroup.integrations': 'अन्य सॉफ़्टवेयर',
   'setting.unit.hours': 'घंटे',
   'setting.unit.days': 'दिन',
-  'setting.unit.boxes': 'बॉक्स',
   'setting.number.none': 'कोई नहीं',
   'setting.panels.autoPairingEnabled.label': 'नए ऑफ़िस पैनल को बिना पासवर्ड जुड़ने दें',
   'setting.panels.autoPairingEnabled.help': 'जब तक ऑफ़िस पैनल जोड़ें खुला है, इस WiFi का कोई भी PC एक क्लिक में जुड़ सकता है। पैनल सेट हो जाने पर इसे बंद कर दें — फिर जुड़ने के लिए पेयरिंग पासवर्ड हमेशा ज़रूरी होगा।',
