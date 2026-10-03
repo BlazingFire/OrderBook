@@ -69,7 +69,7 @@
     ; schedule (the start time is a placeholder), only by `schtasks /Run` from the app.
     ; The action is `cmd.exe /c ""<script>""` with cmd.exe by absolute path, so the
     ; account's COMSPEC does not choose the program that runs elevated.
-    nsExec::Exec '"$SYSDIR\schtasks.exe" /Create /F /TN "OrderBook Master Update" /SC ONCE /ST 00:00 /RL HIGHEST /TR "\"$SYSDIR\cmd.exe\" /c \"\"$INSTDIR\resources\apply-update\apply-update.cmd\"\""'
+    nsExec::Exec '"$SYSDIR\schtasks.exe" /Create /F /TN "OrderBook Master Update" /SC ONCE /ST 00:00 /RL HIGHEST /TR "\"$SYSDIR\cmd.exe\" /d /c \"\"$INSTDIR\resources\apply-update\apply-update.cmd\"\""'
     Pop $R1
   ${Else}
     ; Not registered, and any task left by an earlier version is removed: without
@@ -106,15 +106,14 @@
     ; The nightly update's task and folders go with the program. Not during an
     ; update: the task may be what started it, and customInstall re-registers it.
     nsExec::Exec '"$SYSDIR\schtasks.exe" /Delete /F /TN "OrderBook Master Update"'
-    Push $R0
-    ReadEnvStr $R0 ProgramData
-    ${If} $R0 == ""
-      StrCpy $R0 "C:\ProgramData"
-    ${EndIf}
-    RMDir /r "$R0\OrderBook\elevated"
-    RMDir /r "$R0\OrderBook\staged-update"
-    RMDir "$R0\OrderBook"
-    Pop $R0
+    ; ProgramData from the shell-folder API (all-users context: $APPDATA is then
+    ; the common application-data folder), never from the environment, which
+    ; the account's own programs can set and this removal runs elevated. The
+    ; build is perMachine, so "all" is the context the uninstaller is in anyway.
+    SetShellVarContext all
+    RMDir /r "$APPDATA\OrderBook\elevated"
+    RMDir /r "$APPDATA\OrderBook\staged-update"
+    RMDir "$APPDATA\OrderBook"
 
     ; $R7 is the script's data flag either way, so both branches below answer
     ; the same parameter and an unanswered question keeps the data.

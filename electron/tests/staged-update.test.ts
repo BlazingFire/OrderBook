@@ -521,8 +521,17 @@ describe('the installer scripts are verified, and PowerShell cannot be steered b
     expect(masterNsis).toContain('"$SYSDIR\\netsh.exe" advfirewall firewall delete rule');
   });
 
-  it("the task's command is cmd.exe by absolute path, with the script quoted for cmd /c", () => {
-    expect(masterNsis).toContain('/TR "\\"$SYSDIR\\cmd.exe\\" /c \\"\\"$INSTDIR\\resources\\apply-update\\apply-update.cmd\\"\\""');
+  it("the task's command is cmd.exe by absolute path, /d (no AutoRun), with the script quoted for cmd /c", () => {
+    // /d: no HKCU Command Processor AutoRun, which would run elevated and unattended.
+    expect(masterNsis).toContain('/TR "\\"$SYSDIR\\cmd.exe\\" /d /c \\"\\"$INSTDIR\\resources\\apply-update\\apply-update.cmd\\"\\""');
+    // Every cmd.exe the installers start carries it.
+    for (const nsis of [masterNsis, read('office/installer/installer.nsh'), macro]) {
+      for (const line of nsis.split(/\r?\n/).filter((l) => /cmd\.exe/i.test(l) && !/^\s*;/.test(l))) expect(line).toMatch(/cmd\.exe\\?"? \/d /);
+    }
+    // No removal path comes from the environment.
+    expect(masterNsis).not.toContain('ReadEnvStr');
+    expect(masterNsis).toContain('SetShellVarContext all');
+    expect(masterNsis).toContain('RMDir /r "$APPDATA\\OrderBook\\elevated"');
   });
 
   it('update-dirs.ps1 runs the system icacls by absolute path, always with /L', () => {
