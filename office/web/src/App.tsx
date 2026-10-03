@@ -18,6 +18,8 @@ import {
   applyChangeToSnapshot,
   isRoleTier,
   LONG_OFFLINE_MS,
+  matchesRecordSearch,
+  noteNumber,
   offeredReportKinds,
   REPORT_ENTITIES,
   REPORT_META,
@@ -25,6 +27,8 @@ import {
   resolveCompanyFeatures,
 } from '@orderbook/shared';
 import type {
+  ChatRecordChip,
+  ChatRecordRef,
   DataChangedEvent,
   MessageKey,
   MutationResult,
@@ -46,6 +50,7 @@ import {
   BasicHome,
   BP_NARROW,
   BusyMark,
+  ChatroomScreen,
   ReportsScreen,
   Clock,
   FilterBarOutlet,
@@ -78,6 +83,7 @@ import {
   rem,
   storeSidebarMode,
   t,
+  useChatUnread,
   useClearSubNav,
   useMediaQuery,
   useResetGate,
@@ -86,6 +92,8 @@ import {
   useToast,
   splitSubPage,
   withSubPages,
+  type ChatPage,
+  type ChatRecordOption,
   type LocalNotice,
   type NavGroup,
   type NavItem,
@@ -94,6 +102,7 @@ import {
   type SidebarMode,
   type SubPage,
 } from '@orderbook/ui';
+import { dispatchChat, officeChatTransport } from './chatTransport';
 import { searchLocalView } from './localSearch';
 import { reportsTransport } from './reportsTransport';
 import { AddLeadScreen } from './screens/AddLeadScreen';
@@ -129,6 +138,7 @@ type Tab =
   | 'partyAccess'
   | 'products'
   | 'conflicts'
+  | 'chatroom'
   | 'reports'
   | 'settings'
   | 'logs'
@@ -299,6 +309,11 @@ function OfficePanel() {
    */
   const [openLeadId, setOpenLeadId] = useState<string | null>(null);
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
+  /** The chat room open as a sub-screen, and the record being shared; both are the signed-in person's, so cleared with the session. */
+  const [chatOpen, setChatOpen] = useState<{ id: string; seq?: number } | null>(null);
+  const [chatShare, setChatShare] = useState<ChatRecordChip | null>(null);
+  /** Bumped when the sidebar picks a Chatroom page, so a settings sub-screen left open closes. */
+  const [chatResetNonce, setChatResetNonce] = useState(0);
   /*
    * Bumped each time somebody *asks* for the New lead form — the sidebar
    * entry, the topbar button, Ctrl+Shift+N. The form reads it to put the
@@ -421,6 +436,8 @@ function OfficePanel() {
         // Signing in sets the next person's own landing screen.
         setView(null);
         setTab('basicHome');
+        setChatOpen(null);
+        setChatShare(null);
         setSignInNotice(reason);
       }),
     [],
@@ -511,6 +528,12 @@ function OfficePanel() {
   // second against the panel's own server and the Master behind it.
   const signedIn = session !== null;
 
+  // The Chatroom's unread figure for the sidebar row; asks for nothing without `chat.use`.
+  const chatUnread = useChatUnread(
+    officeChatTransport,
+    signedIn && (session?.permissions.includes('chat.use') ?? false),
+  );
+
   useEffect(() => {
     if (!signedIn) return;
     void refreshSyncState();
@@ -525,6 +548,8 @@ function OfficePanel() {
     /** Everything a fresh link or a reopened stream may have missed. */
     const catchUp = (): void => {
       setStreamEpoch((epoch) => epoch + 1);
+      // Chat has no replay: whatever was said while the stream was away is read again.
+      dispatchChat({ kind: 'resync' });
       void refreshConnection();
       void refreshSyncState();
       // The link coming back is when the Master gets to re-check who this
@@ -564,6 +589,11 @@ function OfficePanel() {
       void desktopBridge()
         ?.notify?.({ title: t('notification.title'), body: notificationText(notice) })
         .catch(() => undefined);
+    });
+
+    // Chat for the person signed in here (the server drops anyone else's).
+    source.addEventListener('chat', (event) => {
+      dispatchChat(JSON.parse((event as MessageEvent).data));
     });
 
     source.addEventListener('snapshot', (event) => {
@@ -684,6 +714,8 @@ function OfficePanel() {
     setSession(null);
     setView(null);
     setTab('basicHome');
+    setChatOpen(null);
+    setChatShare(null);
   }
 
   /*
@@ -819,6 +851,13 @@ function OfficePanel() {
         icon: 'chevron-right' as const,
       })),
     ],
+    chatroom: [
+      { key: 'rooms', label: t('chat.sub.rooms'), icon: 'chat' },
+      { key: 'tasks', label: t('chat.sub.tasks'), icon: 'task' },
+      ...(can('chat.createGroups') || can('chat.manage')
+        ? [{ key: 'groups', label: t('chat.sub.groups'), icon: 'parties' as const }]
+        : []),
+    ],
     // One page per kind on offer, in tab order.
     reports: offeredReportKinds(tier, view?.features, permissions).map((kind) => ({
       key: kind,
@@ -865,6 +904,12 @@ function OfficePanel() {
     else if (module === 'leads') {
       if (key === 'new') openNewLead();
       else setTab('leads');
+    } else if (module === 'chatroom') {
+      // A page picked in the sidebar leaves any open room or share sheet.
+      setChatOpen(null);
+      setChatShare(null);
+      setChatResetNonce((current) => current + 1);
+      setSubKeys((current) => ({ ...current, chatroom: key }));
     } else setSubKeys((current) => ({ ...current, [module]: key }));
   }
 
@@ -913,6 +958,14 @@ function OfficePanel() {
                   count: rejections.length > 0 ? rejections.length : undefined,
                 }
               : null,
+          can('chat.use')
+            ? {
+                id: 'chatroom',
+                label: t('nav.chatroom'),
+                icon: 'chat' as const,
+                count: chatUnread.total > 0 ? chatUnread.total : undefined,
+              }
+            : null,
           // The permission and the company's switch for this person's tier. The
           // Master enforces both on every request; this only decides whether to
           // draw the row, so it is offered before the first snapshot too.
@@ -967,6 +1020,7 @@ function OfficePanel() {
     partyAccess: 'partyAccess',
     products: 'products',
     conflicts: 'conflicts',
+    chatroom: 'chatroom',
     reports: 'reports',
     settings: 'settings',
     logs: 'logs',
@@ -1024,6 +1078,51 @@ function OfficePanel() {
       return;
     }
     if (idToTab[id]) setTab(idToTab[id]);
+  }
+
+  /** Opens a chat room (from the bell, or from the Chatroom itself). */
+  function openChatRoom(room: { id: string; seq?: number } | null): void {
+    setChatShare(null);
+    setChatOpen(room);
+    if (room) goToTab('chatroom');
+  }
+
+  /** "Share in chat" on a record: the Chatroom's share sheet, with that record ready. */
+  const shareInChat = can('chat.use') && can('chat.shareRecords')
+    ? (chip: ChatRecordChip): void => {
+        setChatOpen(null);
+        setChatShare(chip);
+        goToTab('chatroom');
+      }
+    : undefined;
+
+  /** A chip or bell entry opens the record in its own board; a record this panel's view lacks is fetched there. */
+  function openChatRecord(record: ChatRecordRef): void {
+    if (record.kind === 'lead') {
+      if (!offered('leads')) return void toast.push(t('nav.recordNotAvailable'), { tone: 'info' });
+      setOpenLeadId(record.id);
+      goToTab('leads');
+    } else {
+      if (!offered('orders')) return void toast.push(t('nav.recordNotAvailable'), { tone: 'info' });
+      setOpenOrderId(record.id);
+      goToTab('orders');
+    }
+  }
+
+  /** The composer's record picker: this panel's own pending and final orders, so it works with no link. */
+  async function findChatRecords(term: string): Promise<ChatRecordOption[]> {
+    const found: ChatRecordOption[] = [];
+    for (const lead of view?.leads ?? []) {
+      if (matchesRecordSearch(lead, term)) {
+        found.push({ kind: 'lead', id: lead.id, label: noteNumber(lead), partyName: lead.partyName });
+      }
+    }
+    for (const order of view?.orders ?? []) {
+      if (matchesRecordSearch(order, term)) {
+        found.push({ kind: 'order', id: order.id, label: noteNumber(order), partyName: order.partyName });
+      }
+    }
+    return found.slice(0, 20);
   }
 
   const activeId = subNav
@@ -1151,6 +1250,9 @@ function OfficePanel() {
         transport={notificationTransport}
         revision={streamEpoch + noticeRevision}
         local={localNotices}
+        onOpen={(link) => {
+          if (link.kind === 'chat') openChatRoom({ id: link.id });
+        }}
       />
 
       <button className="ob-btn ob-btn--ghost" onClick={() => void signOut()}>
@@ -1370,6 +1472,29 @@ function OfficePanel() {
     },
     { id: 'logs', render: () => <LogsScreen permissions={permissions} /> },
     {
+      // Reads live through the Master and posts through the outbox, so it needs
+      // no snapshot: with no link it keeps what it holds, says so, and a post
+      // waits in the queue.
+      id: 'chatroom',
+      render: () => (
+        <ChatroomScreen
+          transport={officeChatTransport}
+          page={subKeyOf('chatroom') as ChatPage}
+          viewer={{ id: session.userId, permissions, tier: session.roleTier }}
+          openRoom={chatOpen}
+          onOpenRoom={setChatOpen}
+          share={chatShare}
+          onShareDone={(roomId) => {
+            setChatShare(null);
+            if (roomId) setChatOpen({ id: roomId });
+          }}
+          resetNonce={chatResetNonce}
+          onOpenRecord={openChatRecord}
+          findRecords={findChatRecords}
+        />
+      ),
+    },
+    {
       // Online-only through the Master, so it needs no snapshot: with the Master
       // out of reach the screen says so (the proxy answers 503) and a fresh
       // snapshot re-reads whatever is on screen.
@@ -1415,6 +1540,7 @@ function OfficePanel() {
                 setOpenLeadId(id);
                 setTab('leads');
               }}
+              chatUnread={can('chat.use') ? chatUnread.total : undefined}
             />
           ),
         },
@@ -1430,6 +1556,7 @@ function OfficePanel() {
               canEdit={can('leads.edit')}
               onError={setError}
               onAddLead={can('leads.create') ? openNewLead : undefined}
+              onShareInChat={shareInChat}
             />
           ),
         },
@@ -1452,6 +1579,7 @@ function OfficePanel() {
               onStageChange={(stageId) =>
                 selectSubPage('orders', stageId === null ? 'all' : `stage:${stageId}`)
               }
+              onShareInChat={shareInChat}
             />
           ),
         },

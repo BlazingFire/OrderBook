@@ -30,7 +30,10 @@ import {
   MAX_PARTY_IMPORT_BYTES,
   MAX_PRODUCT_IMPORT_BYTES,
   MUTATION_PERMISSIONS,
+  cleanChatPost,
   parseReportQuery,
+  t,
+  type ChatMessage,
   type DataChangedEvent,
   type ReportKind,
   type PanelHealth,
@@ -518,6 +521,136 @@ export function createApp(): Express {
         ? { ids: body.ids.filter((id): id is string => typeof id === 'string') }
         : {}),
     });
+  });
+
+  // --- The Chatroom -----------------------------------------------------------
+  //
+  // Reads, edits and room administration are the Master's, forwarded one to
+  // one with the same paths the Master's own browser uses. Posting is the one
+  // exception: it queues a `chat.post` mutation like any other write, so a post
+  // survives a lost link and is sent again safely. The queue holds it until its
+  // author is the person signed in (`sync.service.ts`), and only that person is
+  // ever shown it as "Sending…" (`pendingChatPosts`).
+  app.get('/api/chat/people', (_req, res) => forward(res, 'chat:people'));
+  app.get('/api/chat/rooms', (req, res) =>
+    forward(res, 'chat:rooms', {
+      all: req.query.all === '1',
+      includeArchived: req.query.archived === '1',
+    }),
+  );
+  app.post('/api/chat/rooms', (req, res) => forward(res, 'chat:roomCreate', req.body ?? {}));
+  app.get('/api/chat/rooms/:id', (req, res) => forward(res, 'chat:room', req.params.id));
+  app.put('/api/chat/rooms/:id', (req, res) =>
+    forward(res, 'chat:roomUpdate', { roomId: req.params.id, input: req.body ?? {} }),
+  );
+  app.post('/api/chat/rooms/:id/members', (req, res) =>
+    forward(res, 'chat:memberSet', {
+      roomId: req.params.id,
+      userId: req.body?.userId,
+      role: req.body?.role ?? null,
+    }),
+  );
+  app.get('/api/chat/rooms/:id/messages', async (req, res) => {
+    const beforeSeq = Number(req.query.before);
+    const limit = Number(req.query.limit);
+    // The latest page carries this person's still-queued posts after it; an older page does not.
+    const pending = Number.isFinite(beforeSeq) ? [] : await pendingChatPosts(req.params.id);
+    try {
+      const messages = await masterConnection.command<'chat:messages', ChatMessage[]>('chat:messages', {
+        roomId: req.params.id,
+        ...(Number.isFinite(beforeSeq) ? { beforeSeq } : {}),
+        ...(Number.isFinite(limit) ? { limit } : {}),
+      });
+      // A post the Master already has but the outbox has not yet settled is shown once.
+      const known = new Set(messages.map((message) => message.clientId));
+      res.json([...messages, ...pending.filter((message) => !known.has(message.clientId))]);
+    } catch (error) {
+      // Unreachable: the screen keeps what it holds and shows the pending posts beside it.
+      if (error instanceof MasterCommandError && error.unreachable) {
+        res.status(503).json({
+          error: 'unavailable',
+          message: error.message,
+          messageKey: 'error.unavailable',
+          // Under `details`, where the panel's api client keeps what a refusal carries.
+          details: { pending },
+        });
+        return;
+      }
+      failForward(res, error);
+    }
+  });
+  app.post('/api/chat/rooms/:id/messages', (req, res) => {
+    const cleaned = cleanChatPost(req.body);
+    return queue(res, {
+      kind: 'chat.post',
+      entity: 'chat_message',
+      payload: { roomId: req.params.id, ...('value' in cleaned ? cleaned.value : {}) },
+      validate: () => ('errorKey' in cleaned ? t('en', cleaned.errorKey) : null),
+    });
+  });
+  app.post('/api/chat/rooms/:id/read', (req, res) =>
+    forward(res, 'chat:read', { roomId: req.params.id, seq: Number(req.body?.seq) }),
+  );
+  app.post('/api/chat/rooms/:id/mute', (req, res) =>
+    forward(res, 'chat:mute', { roomId: req.params.id, muted: req.body?.muted === true }),
+  );
+  app.post('/api/chat/direct', (req, res) => forward(res, 'chat:direct', { userId: req.body?.userId }));
+  app.put('/api/chat/messages/:id', (req, res) =>
+    forward(res, 'chat:edit', {
+      messageId: req.params.id,
+      body: req.body?.body,
+      ...(Array.isArray(req.body?.mentions) ? { mentions: req.body.mentions } : {}),
+    }),
+  );
+  app.delete('/api/chat/messages/:id', (req, res) => forward(res, 'chat:delete', req.params.id));
+  app.post('/api/chat/messages/:id/pin', (req, res) =>
+    forward(res, 'chat:pin', { messageId: req.params.id, pinned: req.body?.pinned === true }),
+  );
+  app.post('/api/chat/messages/:id/done', (req, res) =>
+    forward(res, 'chat:taskDone', { messageId: req.params.id, done: req.body?.done === true }),
+  );
+  app.get('/api/chat/search', (req, res) =>
+    forward(res, 'chat:search', {
+      q: typeof req.query.q === 'string' ? req.query.q : '',
+      ...(typeof req.query.roomId === 'string' ? { roomId: req.query.roomId } : {}),
+    }),
+  );
+  app.get('/api/chat/tasks', (req, res) =>
+    forward(res, 'chat:tasks', {
+      scope: req.query.scope === 'created' ? 'created' : 'mine',
+      includeDone: req.query.includeDone === '1',
+    }),
+  );
+  app.post('/api/chat/access-requests', (req, res) =>
+    forward(res, 'chat:requestAccess', {
+      capability: req.body?.capability,
+      ...(typeof req.body?.note === 'string' ? { note: req.body.note } : {}),
+    }),
+  );
+
+  /*
+   * One record by id, for a chat chip or a bell entry that points past the 500
+   * rows this panel keeps. The local view first (it also holds work queued here
+   * and not yet sent), then the Master, whose party scoping decides whether the
+   * caller may see it at all.
+   */
+  app.get('/api/leads/:id', async (req, res) => {
+    const view = await localStore.getView();
+    const local = view ? forCurrentUser(view).leads.find((lead) => lead.id === req.params.id) : undefined;
+    if (local) {
+      res.json(local);
+      return;
+    }
+    await forward(res, 'lead:get', req.params.id);
+  });
+  app.get('/api/orders/:id', async (req, res) => {
+    const view = await localStore.getView();
+    const local = view ? forCurrentUser(view).orders.find((order) => order.id === req.params.id) : undefined;
+    if (local) {
+      res.json(local);
+      return;
+    }
+    await forward(res, 'order:get', req.params.id);
   });
 
   /**
@@ -2070,6 +2203,61 @@ async function forwardCsv(
   }
 }
 
+/**
+ * This person's chat posts still waiting in the outbox for one room, shaped as
+ * messages with `pending: true`. Only the author's own: a post queued by
+ * somebody who signed out earlier is held for them and never shown to whoever
+ * is here now.
+ */
+async function pendingChatPosts(roomId: string): Promise<ChatMessage[]> {
+  const session = userSession.currentSession();
+  if (!session) return [];
+
+  const queued = await outbox.pending();
+  return queued
+    .filter(
+      (mutation) =>
+        mutation.kind === 'chat.post' &&
+        mutation.actorUserId === session.userId &&
+        mutation.payload.roomId === roomId,
+    )
+    .map((mutation): ChatMessage => {
+      const payload = mutation.payload as {
+        body?: string;
+        refs?: Array<{ kind: 'lead' | 'order'; id: string }>;
+        mentions?: string[];
+        task?: { assignees: string[]; dueOn: string | null } | null;
+      };
+      const person = (id: string) => ({ id, displayName: id, avatar: null, tier: 'office' });
+      return {
+        id: mutation.entityId,
+        roomId,
+        seq: 0,
+        kind: payload.task ? 'task' : 'text',
+        author: {
+          id: session.userId,
+          displayName: session.displayName,
+          avatar: null,
+          tier: session.roleTier,
+        },
+        body: payload.body ?? '',
+        refs: (payload.refs ?? []).map((chip) => ({ ...chip, label: chip.id, partyName: null, restricted: false })),
+        mentions: payload.mentions ?? [],
+        system: null,
+        createdAt: mutation.createdAt,
+        editedAt: null,
+        deletedAt: null,
+        pinnedAt: null,
+        pinnedBy: null,
+        task: payload.task
+          ? { assignees: payload.task.assignees.map(person), dueOn: payload.task.dueOn, doneAt: null, doneBy: null }
+          : null,
+        clientId: mutation.mutationId,
+        pending: true,
+      };
+    });
+}
+
 function respondToPairingError(res: Response, error: unknown): void {
   if (error instanceof PairingError) {
     res.status(400).json({ error: error.code, message: error.message });
@@ -2261,6 +2449,8 @@ masterConnection.on('conflict', (value: unknown) => broadcast('conflict', value)
 masterConnection.on('notification', (notification: { forUserId?: unknown }) =>
   broadcastForUser('notification', notification),
 );
+// Chat is addressed to one person too, and only reaches them while they are the one signed in.
+masterConnection.on('chat', (push: { forUserId?: unknown }) => broadcastForUser('chat', push));
 sync.onSyncEvent(schedulePushView);
 
 /**

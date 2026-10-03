@@ -78,6 +78,8 @@ const MASTER_NAV: NavEntry[] = [
   ['leads', 'nav.leads'],
   ['orders', 'nav.orders'],
   ['conflicts', 'nav.master.conflicts'],
+  // An explicit letter chord: Chatroom sits past the tenth row, and Alt+C has no darwin Meta twin.
+  ['chatroom', 'nav.chatroom', 'Alt+C'],
   ['reports', 'nav.reports', null],
   ['products', 'nav.products'],
   ['parties', 'nav.master.parties'],
@@ -102,6 +104,7 @@ const OFFICE_NAV: NavEntry[] = [
   ['leads', 'nav.leads'],
   ['orders', 'nav.orders'],
   ['conflicts', 'nav.conflicts'],
+  ['chatroom', 'nav.chatroom', 'Alt+C'],
   ['reports', 'nav.reports', null],
   ['products', 'nav.products'],
   ['parties', 'nav.parties'],

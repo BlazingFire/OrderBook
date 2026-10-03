@@ -55,6 +55,8 @@ export const SYNCABLE_ENTITIES = [
   // created only through the Master's own API (docs/ROLES_AND_USERS.md §15.5).
   'role',
   'user',
+  // A chat message, posted through the outbox so it survives a lost link.
+  'chat_message',
 ] as const;
 
 export type SyncableEntity = (typeof SYNCABLE_ENTITIES)[number];
@@ -81,6 +83,8 @@ export const ENTITY_PREFIX: Record<SyncableEntity, string> = {
   reservation: 'RS',
   role: 'RL',
   user: 'US',
+  // Posted offline through the outbox like any other write, hence the id scheme.
+  chat_message: 'CM',
 };
 
 const PREFIX_TO_ENTITY: Record<string, SyncableEntity> = Object.fromEntries(

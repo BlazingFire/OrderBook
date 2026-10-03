@@ -53,6 +53,7 @@ import * as serverMasterTier from './20261001000000_server_master_tier.js';
 import * as userNotifications from './20261002000000_user_notifications.js';
 import * as officePanelMasterProof from './20261002000001_office_panel_master_proof.js';
 import * as reportIndexesAndGrants from './20261004000000_report_indexes_and_grants.js';
+import * as chatroom from './20261005000000_chatroom.js';
 
 export interface Migration {
   name: string;
@@ -234,6 +235,11 @@ export const migrations: Migration[] = [
   {
     name: '20261004000000_report_indexes_and_grants',
     ...reportIndexesAndGrants,
+  },
+  // The Chatroom (1.3 Phase 6, migration #5): three tables and the chat grants.
+  {
+    name: '20261005000000_chatroom',
+    ...chatroom,
   },
 ];
 

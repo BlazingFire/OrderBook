@@ -17,6 +17,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type {
+  ChatRecordChip,
   NoteKind,
   OptionListItem,
   Order,
@@ -51,6 +52,7 @@ import {
   useSubNav,
   type DataTableColumn,
   type PillTone,
+  useToast,
 } from '@orderbook/ui';
 
 const PAGE_SIZE = 500;
@@ -72,6 +74,8 @@ interface Props {
   onOpenId: (id: string | null) => void;
   /** Takes the person to the pending order a final order came from. */
   onOpenLead: (leadId: string) => void;
+  /** Present only for somebody who may share records in chat (`chat.use` and `chat.shareRecords`). */
+  onShareInChat?: (chip: ChatRecordChip) => void;
 }
 
 function stageTone(order: Order, stages: PipelineStage[]): PillTone {
@@ -102,10 +106,14 @@ export function OrdersScreen({
   openId,
   onOpenId,
   onOpenLead,
+  onShareInChat,
 }: Props) {
+  const toast = useToast();
   // The shell hands a fresh callback every render; the fetch below must not.
   const onOpenIdRef = useRef(onOpenId);
   onOpenIdRef.current = onOpenId;
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
   const [scope, setScope] = useState<PartyScopeFilter>('all');
   const [search, setSearch] = useState('');
   const term = useDebounced(search.trim());
@@ -197,9 +205,11 @@ export function OrdersScreen({
         if (!cancelled) setFetched(order);
       })
       .catch((caught) => {
-        // Gone, or not this person's to see: back to the list, not a blank screen.
-        if (!cancelled && caught instanceof ApiError && caught.code === 'not_found')
+        // Gone, or not this person's to see: back to the list, and say so.
+        if (!cancelled && caught instanceof ApiError && (caught.code === 'not_found' || caught.code === 'forbidden')) {
+          toastRef.current.push(t('nav.recordNotAvailable'), { tone: 'info' });
           onOpenIdRef.current(null);
+        }
       });
     return () => {
       cancelled = true;
@@ -452,6 +462,11 @@ export function OrdersScreen({
           }
           actions={
             <>
+              {onShareInChat && (
+                <Button icon="chat" onClick={() => onShareInChat({ kind: 'order', id: openOrder.id })}>
+                  {t('chat.share.button')}
+                </Button>
+              )}
               {canExport && (
                 <>
                   <Button onClick={() => setNote({ id: openOrder.id, kind: 'filling' })}>

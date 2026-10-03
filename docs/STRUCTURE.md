@@ -3021,6 +3021,7 @@ are recounted in the 1.3 Phase 9 reconciliation.
 | 37 | `master/src/db/migrations/20261002000000_user_notifications.ts` | 51 | **Pinned, additive, idempotent** (1.3 Phase 3). `user_notifications` (uuid id, `user_id TEXT REFERENCES users(id)`, kind CHECK `^[a-z]+[.][a-zA-Z]+$`, params, link, dedupe_key, created_at, read_at), the `(tenant_id, user_id, created_at DESC)` index, the partial unread index and the partial UNIQUE dedupe index (`WHERE dedupe_key IS NOT NULL AND read_at IS NULL`) |
 | 38 | `master/src/db/migrations/20261002000001_office_panel_master_proof.ts` | 23 | **Pinned, additive** (1.3 Phase 3). `ADD COLUMN IF NOT EXISTS office_panels.master_proof_key TEXT NULL`, filled at the panel's next `authenticatePanel` |
 | 39 | `master/src/db/migrations/20261004000000_report_indexes_and_grants.ts` | — | **Pinned last, additive, idempotent** (1.3 H2). The owner-by-date indexes the reports read through, and a union grant of `reports.view` + `reports.export` to the office and management tiers |
+| 40 | `master/src/db/migrations/20261005000000_chatroom.ts` | — | **Pinned last, additive, idempotent** (1.3 Phase 6, migration #5). `chat_rooms`, `chat_members`, `chat_messages` (every user column `TEXT REFERENCES users(id)`), their partial unique and lookup indexes, and a union grant of the six `chat.*` keys to `admin` / `server_master` roles and `chat.use` + `chat.shareRecords` to `office` / `management` roles. `down()` drops the tables only |
 
 ### 6.3 Conventions across the schema
 
@@ -3164,6 +3165,10 @@ Not a sync table, but new beside them in 1.3 Phase 3: `user_notifications` (the 
 one row per notice per person; pruned by the service; excluded from backups) and
 `office_panels.master_proof_key` (left out of the `.obbackup` export, nulled when its
 restore revokes the panels; the Phase 8 archive, which keeps pairing, must carry it). Both in `docs/schema/01-identity-and-network.md`.
+
+Also new in 1.3 Phase 6, and also not sync tables: `chat_rooms`, `chat_members` and `chat_messages`
+(the Chatroom; a post from an Office travels as a `chat.post` mutation but is stored here, never in the
+change ring). Backups take them through `tenant_id`. Same file, and flow 11.8b.
 
 ### 6.12 Settings, option lists, custom fields, activity log, integrations
 
@@ -5625,6 +5630,69 @@ manages panels.
    stylesheet, which shows only the portalled copy of the sheets. A browser tab
    falls back to `window.print()`.
 
+### 11.8b The Chatroom — rooms, posting, live push (1.3 Phase 6)
+
+Text-only chat for the people of one company; the contract is
+`docs/backend-modules/04-API-CONTRACT.md` section 14, the tables `docs/schema/01-identity-and-network.md`.
+It lives **outside the change ring and the activity chain** (only governance is audited), and it is
+off for anybody without `chat.use`.
+
+1. **Rooms.** `group`, `direct` (two people, find-or-create on `direct_key`) and `announcement` (a
+   group only room admins and `chat.manage` holders may post in). A member is `admin` or `member`;
+   `chat.manage` holders may administer any group but must add themselves to read it.
+2. **Posting, Master browser.** `POST /api/chat/rooms/:id/messages` → `chat.service#postMessage`:
+   `cleanChatPost` (shared, 4,000 characters, 5 chips), the sender's rights, each record chip opened
+   as the sender (`getLead` / `getOrder`, party scope) outside the transaction, then one transaction:
+   lock the room row, member / archived / announcement checks, `client_id` replay, bump `last_seq`,
+   allocate the `CM` id, insert, move the author's read position. After the commit: `publishChat`, then
+   `notify()` for mentions and task assignments.
+3. **Posting, Office.** `POST /api/chat/rooms/:id/messages` is `queue('chat.post')`; the outbox
+   holds the post until its author is the person signed in (`office/src/sync/sync.service.ts`,
+   `mayGoUp`); the Master's `route()` calls `postMessage` with the mutation id as `clientId`. The
+   Office shows the post as "Sending..." (`pending: true`, matched by `clientId`) until the Master's
+   `chat:event` arrives.
+4. **Live push.** `publishChat` → `hub.ts#onChat` → `emitToActors('chat:event')` to members' sockets
+   holding `chat.use` and speaking protocol 5 or later; a message's chips are resolved again for each
+   recipient (`chat.service#personalisePush`). The Office relays it as SSE `chat` through
+   `broadcastForUser`. SSE has no replay, so both web apps read again on a reconnect
+   (`dispatchChat({kind: 'resync'})`).
+5. **Unread.** `unread = last_seq - last_read_seq`, no COUNT; `mentionUnread` counts messages that
+   mention the viewer. The sidebar badge, the Dashboard tile and the Basic Home tile come from
+   `useChatUnread` (`ui/src/ChatroomScreen.tsx`): unread in rooms that are not muted or archived. The
+   open room reports its read position a second after it settles at the bottom of a focused window.
+6. **Record chips.** Stored as `{kind, id}`; resolved per viewer on every read (a viewer who may not
+   open the record sees "Restricted record"). A chip or a bell entry opens the record through each
+   shell's `openRecord`; the Office board fetches a record its 500-row view lacks with
+   `GET /api/leads/:id` / `/api/orders/:id` (local view first, then `lead:get` / `order:get`) and toasts
+   `nav.recordNotAvailable` when the Master will not give it. **Share in chat** (`chat.use` +
+   `chat.shareRecords`) sits in the record header on the Master's Pending and Final Orders and the
+   Office's two boards and opens the share sheet (`ChatShareScreen`).
+7. **Search, tasks, pins.** Search is `ILIKE` over the caller's own rooms (two characters or more,
+   newest 50, no deleted messages). A task is columns on the message; any assignee, the author, a room
+   admin or `chat.manage` may tick it, and "seen by n of m" comes from members' read positions. Pins are
+   for room admins and `chat.manage` and are audited.
+
+**Files.** Shared: `shared/src/domain/chat.ts` (types, `CHAT_LIMITS`, `cleanChatPost`,
+`withinEditWindow`), the `chat` group in `permissions.ts`, `chat_message` / `CM` in `sync/ids.ts`,
+`chat.post` in `sync/mutations.ts`, seventeen `chat:*` commands and `chat:event` in `protocol/socket.ts`,
+four notification kinds, nav id `chatroom` (Alt+C) in `keys/commands.ts`. Master: migration
+`20261005000000_chatroom.ts`, `repositories/chat.repository.ts`, `services/chat.service.ts`,
+`http/routes/chat.routes.ts`, `publishChat` / `onChat` in `services/change-bus.ts`, the `chat.post` case
+in `services/sync.service.ts`, `chat:*` commands and `emitToActors` personalising in `realtime/hub.ts`,
+`catalog-reload-cli.ts` (the wipe). Office server: the `/api/chat/*` block, `pendingChatPosts` and the
+SSE `chat` frame in `http/app.ts`, `master-connection.ts` (`chat:event`), the hold in
+`sync/sync.service.ts`, `setActingUser` in `services/user-session.service.ts`. ui: `chatModel.ts`,
+`ChatroomScreen.tsx` (+ `useChatUnread`), `ChatConversation.tsx`, `ChatGroupSettings.tsx`,
+`ChatShareScreen.tsx`, icons `chat` / `pin` / `task`, `.ob-chat-*` in `base.css`, the four notification
+kinds in `NotificationBell.tsx`. Panels: `master/web/src/chatTransport.ts`, `office/web/src/chatTransport.ts`,
+the Chatroom row, tab, sub-pages, bell links and Share in chat in both `App.tsx` files.
+
+**Tests.** `master/tests/chat.integration.test.ts`, `chat-fanout.integration.test.ts`, the chat block in
+`sync.integration.test.ts`, the chat guard in `credential-invariants.test.ts`;
+`office/tests/chat-forwarding.test.ts`, `sync-hold.test.ts`; `shared/tests/chat.test.ts`;
+`ui/tests/chatroom.test.tsx` and the Chatroom blocks of `master-shell.test.tsx`,
+`office-shell.test.tsx` and `notification-bell.test.tsx`.
+
 ### 11.9 Internationalisation (i18n)
 
 1. **Catalogue:** add English to `EN_MESSAGES` (`shared/src/i18n/en.ts`); `npm run
@@ -6196,6 +6264,7 @@ also imports `masterConnection`.
 | Change a colour or size | `ui/src/tokens.css` — never a literal in a component | `master/tests/ui-conventions.test.ts` |
 | Add a keyboard command | `shared/src/keys/commands.ts`, a handler (`useCommand`, a `command.id ===` switch, or `shellCommands`), a label token; the palette lists it only while `KeyboardProvider#offers()` says it would do something, so a chord-only command needs no palette row | `shared/tests/keys-implemented.test.ts`, `shared/tests/keys.test.ts`, `ui/tests/keyboard-provider.test.tsx` |
 | Change a note's layout, copies, Save PDF or the PDF window | `shared/src/domain/order-note.ts` (model, header, pagination), `ui/src/OrderNote.tsx`, `ui/src/OrderNoteScreen.tsx`, `ui/src/printPortal.ts`, `ui/src/order-note.css`; the shell half in `electron/lib/print-options.ts`, `electron/lib/lead-pdf.ts`, `electron/shell.ts`, `electron/preload.cts`, `shared/src/protocol/desktop.ts`; plan `docs/ORDER_NOTES_PLAN.md`, window allowlist `docs/catalogue/CATALOGUE_MODEL.md` §8 | `shared/tests/order-note.test.ts`, `ui/tests/order-note-screen.test.tsx`, `ui/tests/master-shell.test.tsx`, `ui/tests/office-shell.test.tsx`, `electron/tests/print-options.test.ts`, `electron/tests/lead-pdf.test.ts` |
+| Change the Chatroom | `shared/src/domain/chat.ts` (types, limits, `cleanChatPost`), `master/src/services/chat.service.ts` (every rule: membership, announcement, the five-minute window, chips resolved per viewer, audit), `master/src/repositories/chat.repository.ts`, `master/src/http/routes/chat.routes.ts` and the twinned `chat:*` commands in `master/src/realtime/hub.ts`; the Office forwards in `office/src/http/app.ts` and the held-post rule in `office/src/sync/sync.service.ts`; `ui/src/Chat*.tsx` and `ui/src/chatModel.ts`; both `chatTransport.ts` and `App.tsx`; a new right needs the permission steps above plus the grant in a new migration | `master/tests/chat.integration.test.ts`, `master/tests/chat-fanout.integration.test.ts`, `master/tests/sync.integration.test.ts`, `master/tests/credential-invariants.test.ts`, `office/tests/chat-forwarding.test.ts`, `office/tests/sync-hold.test.ts`, `shared/tests/chat.test.ts`, `ui/tests/chatroom.test.tsx` |
 | Change a report | `shared/src/domain/reports.ts` (columns, meta), `master/src/repositories/report.repository.ts` (the SQL), `master/src/services/report.service.ts` (access, table, export), `ui/src/ReportsScreen.tsx`, `shared/src/domain/report-access.ts` | `master/tests/reports.integration.test.ts` (legacy), `master/tests/report-tables.integration.test.ts`, `master/tests/report-range.test.ts`, `master/tests/report-range-periods.test.ts`, `master/tests/report-export-streaming.test.ts`, `shared/tests/report-query.test.ts`, `shared/tests/report-access.test.ts`, `ui/tests/reports-screen.test.tsx`, `master/tests/report-pdf-route.integration.test.ts` (the inline PDF route), `office/tests/module-forwarding.test.ts` |
 | Change the product import format | `master/src/domain/product-import.ts` (`IMPORT_COLUMNS`), `master/src/services/product-import.service.ts`, `master/src/lib/spreadsheet.ts`, `shared/src/domain/product-import.ts` | `master/tests/product-import-domain.test.ts`, `master/tests/product-import.integration.test.ts`, `master/tests/spreadsheet.test.ts`, `master/tests/import-category-gate.test.ts` |
 | Change the party import format | `shared/src/domain/party-import.ts` (`PARTY_IMPORT_COLUMNS`), `master/src/domain/party-import.ts`, `master/src/services/party-import.service.ts`, `docs/PARTY_IMPORT_FORMAT.md` | `master/tests/party-import-domain.test.ts`, `master/tests/party-import.integration.test.ts`, `office/tests/module-forwarding.test.ts` |

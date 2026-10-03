@@ -9,7 +9,15 @@
 import type { MessageParams } from '../i18n/keys.js';
 import type { IsoTimestamp, OfficePanelWithPresence, Uuid } from './entities.js';
 
-export const NOTIFICATION_KINDS = ['panel.offlineLong'] as const;
+export const NOTIFICATION_KINDS = [
+  'panel.offlineLong',
+  // The Chatroom (Phase 6): somebody @mentioned you, handed you a task, ticked
+  // one you set, or asked for a chat right.
+  'chat.mention',
+  'task.assigned',
+  'task.done',
+  'access.requested',
+] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -18,10 +26,12 @@ export function isNotificationKind(value: unknown): value is NotificationKind {
 }
 
 /** Where opening a notification takes the reader. */
-export interface NotificationLink {
-  kind: 'panel';
-  id: string;
-}
+export type NotificationLink =
+  | { kind: 'panel'; id: string }
+  /** A chat room, and the message in it when there is one. */
+  | { kind: 'chat'; id: string; messageId?: string }
+  /** A role in the roles editor. */
+  | { kind: 'role'; id: string };
 
 export interface UserNotification {
   id: Uuid;

@@ -1678,3 +1678,148 @@ describe('the link to the Master server, and the bell (1.3)', () => {
     ).toBeTruthy();
   });
 });
+
+describe('the Chatroom (1.3 Phase 6)', () => {
+  const live = () => sockets.all.filter((socket) => !socket.closed).at(-1);
+  const ROOM = {
+    id: 'room-1', kind: 'group', name: 'Dispatch desk', description: null, announceOnly: false,
+    archivedAt: null, myRole: 'member', muted: false, lastSeq: 4, lastReadSeq: 1, unread: 3,
+    mentionUnread: 0, memberCount: 2, lastMessageAt: '2026-10-03T09:00:00.000Z', lastMessage: null,
+    direct: null,
+  };
+
+  /** Boots as somebody with `permissions`, answering the chat routes with one room. */
+  function bootChat(permissions: string[], extra?: (call: Call) => Response | undefined): Promise<Call[]> {
+    return boot(permissions, (call) => {
+      const path = call.url.split('?')[0];
+      if (path === '/api/chat/rooms') return json([ROOM]);
+      if (path === '/api/chat/rooms/room-1') {
+        return json({ ...ROOM, members: [], pinned: [] });
+      }
+      if (path === '/api/chat/rooms/room-1/messages') return json([]);
+      if (path === '/api/chat/tasks') return json([]);
+      return extra?.(call);
+    });
+  }
+
+  const row = () => screen.queryByTitle(t('nav.chatroom'));
+
+  it('is a Work row only with chat.use, carrying the unread total', async () => {
+    await bootChat(['chat.use']);
+    await waitFor(() => expect(row()?.textContent).toContain('3'));
+    cleanup();
+
+    await bootChat(['leads.view']);
+    expect(row()).toBeNull();
+  });
+
+  it('opens on Alt+C, on its first page, Rooms', async () => {
+    await bootChat(['chat.use']);
+    await waitFor(() => expect(row()).not.toBeNull());
+
+    await waitFor(() => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'c', code: 'KeyC', altKey: true, bubbles: true, cancelable: true }),
+      );
+      expect(topbarTitle()).toBe(t('chat.sub.rooms'));
+    });
+    expect(await screen.findByText('Dispatch desk')).toBeTruthy();
+  });
+
+  it('does not open on Alt+C without chat.use', async () => {
+    await pressAltDigitUntil(1, t('nav.basicHome')).catch(() => undefined);
+    await boot(['leads.view']);
+    await pressAltDigitUntil(3, t('lead.board.tab.list'));
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'c', code: 'KeyC', altKey: true, bubbles: true, cancelable: true }),
+      );
+      await wait(0);
+    });
+    expect(topbarTitle()).toBe(t('lead.board.tab.list'));
+  });
+
+  it('offers Groups as a page only with chat.createGroups or chat.manage', async () => {
+    await bootChat(['chat.use']);
+    await waitFor(() => expect(row()).not.toBeNull());
+    await open(t('nav.chatroom'));
+    expect(await screen.findByTitle(t('chat.sub.tasks'))).toBeTruthy();
+    expect(screen.queryByTitle(t('chat.sub.groups'))).toBeNull();
+    cleanup();
+
+    await bootChat(['chat.use', 'chat.createGroups']);
+    await waitFor(() => expect(row()).not.toBeNull());
+    await open(t('nav.chatroom'));
+    expect(await screen.findByTitle(t('chat.sub.groups'))).toBeTruthy();
+  });
+
+  it('reads the rooms again when the Master pushes a chat event', async () => {
+    const calls = await bootChat(['chat.use']);
+    await waitFor(() => expect(gets(calls, '/api/chat/rooms')).toBeGreaterThan(0));
+    const before = gets(calls, '/api/chat/rooms');
+
+    await waitFor(() => expect(live()).toBeDefined());
+    await act(async () => {
+      live()!.emit('chat:event', { kind: 'room', roomId: 'room-1', forUserId: 'user-1' });
+      await wait(700);
+    });
+
+    expect(gets(calls, '/api/chat/rooms')).toBeGreaterThan(before);
+  });
+
+  it('opens the room a bell entry points at', async () => {
+    const calls = await bootChat(['chat.use'], (call) =>
+      call.url.split('?')[0] === '/api/notifications'
+        ? json({
+            items: [
+              {
+                id: 'n-9', kind: 'chat.mention', params: { name: 'Bina', room: 'Dispatch desk' },
+                link: { kind: 'chat', id: 'room-1' }, createdAt: '2026-10-03T09:00:00.000Z', readAt: null,
+              },
+            ],
+            unreadCount: 1,
+          })
+        : call.url === '/api/notifications/read'
+          ? json({ unreadCount: 0 })
+          : undefined,
+    );
+
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: t('notification.unreadLabel', { count: 1 }) }));
+      await wait(0);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText(t('notification.chat.mention', { name: 'Bina', room: 'Dispatch desk' })));
+      await wait(0);
+    });
+
+    await waitFor(() => expect(calls.some((call) => call.url === '/api/chat/rooms/room-1')).toBe(true));
+    expect(await screen.findByRole('button', { name: t('chat.room.back') })).toBeTruthy();
+  });
+
+  describe('Share in chat', () => {
+    async function openOrderAs(permissions: string[]) {
+      const calls = await openList(permissions, t('nav.orders'), (call) => {
+        const path = call.url.split('?')[0];
+        if (path === '/api/chat/rooms') return json([ROOM]);
+        return undefined;
+      });
+      fireEvent.click(await screen.findByText(ORDER.id));
+      await screen.findByRole('button', { name: t('action.backToList') });
+      return calls;
+    }
+
+    it('is on a final order only with chat.use and chat.shareRecords, and opens the share sheet', async () => {
+      await openOrderAs(['orders.view', 'chat.use']);
+      expect(screen.queryByRole('button', { name: t('chat.share.button') })).toBeNull();
+      cleanup();
+
+      await openOrderAs(['orders.view', 'chat.use', 'chat.shareRecords']);
+      fireEvent.click(screen.getByRole('button', { name: t('chat.share.button') }));
+
+      expect((await screen.findAllByRole('heading', { name: t('chat.share.title') })).length).toBeGreaterThan(0);
+      expect(await screen.findByText('Dispatch desk')).toBeTruthy();
+      expect(screen.getAllByText(new RegExp(ORDER.id)).length).toBeGreaterThan(0);
+    });
+  });
+});

@@ -14,9 +14,10 @@
  * while that shows, so its filters and scroll position survive the round trip.
  */
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { matchesRecordSearch, resolveCompanyFeatures, shownColour } from '@orderbook/shared';
 import type {
+  ChatRecordChip,
   NoteKind,
   Order,
   PartyScopeFilter,
@@ -51,6 +52,7 @@ import {
   useColourHex,
   useFilterBar,
   useSubNav,
+  useToast,
   type PillTone,
 } from '@orderbook/ui';
 import type { DataTableColumn } from '@orderbook/ui';
@@ -69,6 +71,8 @@ interface Props {
   /** The stage showing, or null for all — chosen here or from the sidebar's sub-pages. */
   stageId: string | null;
   onStageChange: (stageId: string | null) => void;
+  /** Present only for somebody who may share records in chat (`chat.use` and `chat.shareRecords`). */
+  onShareInChat?: (chip: ChatRecordChip) => void;
 }
 
 const DISPATCH_PERMISSION = 'orders.dispatch';
@@ -129,7 +133,9 @@ export function OrderBoardScreen({
   onError,
   stageId: stageFilter,
   onStageChange: setStageFilter,
+  onShareInChat,
 }: Props) {
+  const toast = useToast();
   const [scope, setScope] = useState<PartyScopeFilter>('all');
   const [search, setSearch] = useState('');
   const colourHex = useColourHex(view.optionLists);
@@ -141,7 +147,35 @@ export function OrderBoardScreen({
   const pipeline = view.pipelines.find((candidate) => candidate.kind === 'order');
   const stages = sortedStages(pipeline);
   const orders = onMyParties(view.orders, scope === 'assigned' ? view.partyGrants : undefined);
-  const openOrder = orders.find((order) => order.id === openId) ?? null;
+  const inView = view.orders.find((order) => order.id === openId) ?? null;
+  // An order this panel's view does not hold (a chat chip, a bell entry) is asked of the Master.
+  const [fetched, setFetched] = useState<Order | null>(null);
+  const onOpenIdRef = useRef(onOpenId);
+  onOpenIdRef.current = onOpenId;
+  const inViewNow = inView !== null;
+  useEffect(() => {
+    if (!openId || inViewNow) {
+      setFetched(null);
+      return;
+    }
+    let cancelled = false;
+    void api.order(openId).then(
+      (order) => {
+        if (!cancelled) setFetched(order);
+      },
+      () => {
+        if (cancelled) return;
+        toast.push(t('nav.recordNotAvailable'), { tone: 'info' });
+        onOpenIdRef.current(null);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+    // `toast` is a stable context value; the open id and whether the view holds it decide this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId, inViewNow]);
+  const openOrder = inView ?? (fetched && fetched.id === openId ? fetched : null);
   /** The note showing over the open order — for that order only, so opening another starts at its detail. */
   const [note, setNote] = useState<{ id: string; kind: NoteKind } | null>(null);
   const noteKind = note && note.id === openOrder?.id ? note.kind : null;
@@ -257,12 +291,19 @@ export function OrderBoardScreen({
           </>
         }
         actions={
-          canExport ? (
-            <>
-              <Button onClick={() => setNote({ id: openOrder.id, kind: 'filling' })}>{t('orderNote.filling')}</Button>
-              <Button onClick={() => setNote({ id: openOrder.id, kind: 'dispatch' })}>{t('orderNote.dispatch')}</Button>
-            </>
-          ) : undefined
+          <>
+            {onShareInChat && (
+              <Button icon="chat" onClick={() => onShareInChat({ kind: 'order', id: openOrder.id })}>
+                {t('chat.share.button')}
+              </Button>
+            )}
+            {canExport && (
+              <>
+                <Button onClick={() => setNote({ id: openOrder.id, kind: 'filling' })}>{t('orderNote.filling')}</Button>
+                <Button onClick={() => setNote({ id: openOrder.id, kind: 'dispatch' })}>{t('orderNote.dispatch')}</Button>
+              </>
+            )}
+          </>
         }
         onBack={() => {
           onOpenId(null);

@@ -15,6 +15,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import type {
+  ChatRecordChip,
+  ChatRecordRef,
   DashboardSummary,
   MessageKey,
   OfficePanelWithPresence,
@@ -26,6 +28,7 @@ import type {
 } from '@orderbook/shared';
 import {
   isLongOffline,
+  noteNumber,
   offeredReportKinds,
   RECYCLE_BIN_ENTITIES,
   REPORT_ENTITIES,
@@ -37,6 +40,7 @@ import {
 } from '@orderbook/shared';
 
 import { ApiError, api, desktopBridge } from './api';
+import { dispatchChat, masterChatTransport } from './chatTransport';
 import { reportsTransport } from './transports';
 import {
   adoptDefaultLocale,
@@ -45,6 +49,7 @@ import {
   ServerMasterBadge,
   BasicHome,
   BP_NARROW,
+  ChatroomScreen,
   Clock,
   FilterBarOutlet,
   FilterBarProvider,
@@ -75,6 +80,7 @@ import {
   rem,
   storeSidebarMode,
   t,
+  useChatUnread,
   useClearSubNav,
   useMediaQuery,
   useToast,
@@ -83,6 +89,8 @@ import {
   useSubNavState,
   splitSubPage,
   withSubPages,
+  type ChatPage,
+  type ChatRecordOption,
   type NavGroup,
   type NavItem,
   type NotificationTransport,
@@ -142,6 +150,7 @@ type Tab =
   | 'logs'
   | 'recycleBin'
   | 'conflicts'
+  | 'chatroom'
   | 'settings'
   | 'updates';
 type Route = '' | 'gallery';
@@ -173,7 +182,7 @@ type RecycleBinType = RecycleBinEntityType | '';
  */
 /** Screens whose open record publishes a sidebar label; signing out must not leave them for the next user. */
 const SUB_NAV_SCREENS = [
-  'leads', 'orders', 'parties', 'panels', 'logs', 'access', 'products', 'addLead',
+  'leads', 'orders', 'parties', 'panels', 'logs', 'access', 'products', 'addLead', 'chatroom',
 ] as const;
 
 const SCREEN_ENTITIES: Record<string, readonly string[]> = {
@@ -300,6 +309,11 @@ function MasterPanel() {
    * hooks above the early returns, like every hook in this component.
    */
   const [openIds, setOpenIds] = useState<OpenIds>(NO_OPEN_IDS);
+  /** The chat room open as a sub-screen (a notification or a search hit can open one), and the record being shared. */
+  const [chatOpen, setChatOpen] = useState<{ id: string; seq?: number } | null>(null);
+  const [chatShare, setChatShare] = useState<ChatRecordChip | null>(null);
+  /** Bumped when the sidebar picks a Chatroom page, so a settings sub-screen left open closes. */
+  const [chatResetNonce, setChatResetNonce] = useState(0);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [settingsTab, setSettingsTab] = useSettingsTab(
     'ob.settings.tab.master',
@@ -518,6 +532,9 @@ function MasterPanel() {
     // synthetic key rather than riding on some other entity's counter.
     socket.on('sync:conflict', () => bump('sync_conflict'));
 
+    // Chat is addressed to this person's rooms; the Chatroom and the unread badge follow it.
+    socket.on('chat:event', (push) => dispatchChat(push));
+
     // A notice for this person: the bell re-reads, and the desktop shell (when
     // there is one) puts it in front of somebody whose window is behind another.
     socket.on('notification:new', (notice) => {
@@ -548,6 +565,8 @@ function MasterPanel() {
       if (!down) return;
       down = false;
       bump('*');
+      // Chat has no replay: whatever was said while this window was away is read again.
+      dispatchChat({ kind: 'resync' });
       refreshUser();
       void api
         .panels()
@@ -607,6 +626,14 @@ function MasterPanel() {
    * missing, and no screen writes its own `?? true` to drift from `settings.ts`.
    */
   const companyFeatures = resolveCompanyFeatures(user?.features);
+
+  /*
+   * The Chatroom exists for somebody holding `chat.use` and for nobody else.
+   * Its unread figure sits above the early returns like every hook here, and
+   * asks for nothing while this window is not signed in.
+   */
+  const canChat = phase === 'ready' && (user?.permissions.includes('chat.use') ?? false);
+  const chatUnread = useChatUnread(masterChatTransport, canChat);
 
   const refreshPanels = useCallback(() => {
     void api.panels().then((result) => setPanels(result.panels));
@@ -846,6 +873,13 @@ function MasterPanel() {
       label: t(REPORT_META[kind].titleToken),
       icon: REPORT_META[kind].icon,
     })),
+    chatroom: [
+      { key: 'rooms', label: t('chat.sub.rooms'), icon: 'chat' },
+      { key: 'tasks', label: t('chat.sub.tasks'), icon: 'task' },
+      ...(user.permissions.includes('chat.createGroups') || user.permissions.includes('chat.manage')
+        ? [{ key: 'groups', label: t('chat.sub.groups'), icon: 'parties' as const }]
+        : []),
+    ],
     access: [
       ...(user.permissions.includes('users.manage')
         ? [{ key: 'users', label: t('access.tab.users'), icon: 'parties' as const }]
@@ -920,6 +954,12 @@ function MasterPanel() {
     else if (module === 'leads') {
       setSubKeys((current) => ({ ...current, leads: key }));
       setTab('leads');
+    } else if (module === 'chatroom') {
+      // A page picked in the sidebar leaves any open room or share sheet.
+      setChatOpen(null);
+      setChatShare(null);
+      setChatResetNonce((current) => current + 1);
+      setSubKeys((current) => ({ ...current, chatroom: key }));
     } else setSubKeys((current) => ({ ...current, [module]: key }));
   }
 
@@ -956,6 +996,14 @@ function MasterPanel() {
               label: t('nav.master.conflicts'),
               icon: 'conflicts',
               count: openConflicts > 0 ? openConflicts : undefined,
+            }
+          : null,
+        canChat
+          ? {
+              id: 'chatroom',
+              label: t('nav.chatroom'),
+              icon: 'chat',
+              count: chatUnread.total > 0 ? chatUnread.total : undefined,
             }
           : null,
         // Under Work rather than Admin: a report is something a manager
@@ -1084,6 +1132,45 @@ function MasterPanel() {
     setOpenIds((current) => ({ ...current, [target]: id }));
   }
 
+  /** Opens a chat room (from the bell, or from the Chatroom itself). */
+  function openChatRoom(room: { id: string; seq?: number } | null): void {
+    setChatShare(null);
+    setChatOpen(room);
+    if (room) navigate('chatroom');
+  }
+
+  /** "Share in chat" on a record: the Chatroom's share sheet, with that record ready. */
+  const shareInChat =
+    canChat && user.permissions.includes('chat.shareRecords')
+      ? (chip: ChatRecordChip): void => {
+          setChatOpen(null);
+          setChatShare(chip);
+          navigate('chatroom');
+        }
+      : undefined;
+
+  /** The composer's record picker: pending and final orders by number or party, newest first. */
+  async function findChatRecords(term: string): Promise<ChatRecordOption[]> {
+    const [leads, orders] = await Promise.all([
+      api.leads({ search: term || undefined, limit: 8, includeConverted: true }),
+      api.orders({ search: term || undefined, limit: 8 }),
+    ]);
+    return [
+      ...leads.items.map((lead) => ({
+        kind: 'lead' as const,
+        id: lead.id,
+        label: noteNumber(lead),
+        partyName: lead.partyName,
+      })),
+      ...orders.items.map((order) => ({
+        kind: 'order' as const,
+        id: order.id,
+        label: noteNumber(order),
+        partyName: order.partyName,
+      })),
+    ];
+  }
+
   const topbar = (
     <>
       <TopbarTitle groups={groups} activeId={activeId} fallback={activeLabel} />
@@ -1108,6 +1195,8 @@ function MasterPanel() {
         revision={(revisions['*'] ?? 0) + noticeRevision}
         onOpen={(link) => {
           if (link.kind === 'panel') navigate('panels');
+          else if (link.kind === 'chat') openChatRoom({ id: link.id });
+          else if (link.kind === 'role') navigate('access');
         }}
       />
       {/* Beside Sign out, because the two are the same kind of thing — what you
@@ -1258,6 +1347,7 @@ function MasterPanel() {
           revision={revisionOf(revisions, 'records')}
           onNavigate={navigate}
           onOpenLead={(id) => openRecord('leads', id)}
+          chatUnread={canChat ? chatUnread.total : undefined}
         />
       ),
     },
@@ -1292,6 +1382,7 @@ function MasterPanel() {
           openId={openIds.leads}
           onOpenId={(id) => setOpenIds((current) => ({ ...current, leads: id }))}
           onOpenOrder={(orderId) => openRecord('orders', orderId)}
+          onShareInChat={shareInChat}
         />
       ),
     },
@@ -1332,9 +1423,36 @@ function MasterPanel() {
           openId={openIds.orders}
           onOpenId={(id) => setOpenIds((current) => ({ ...current, orders: id }))}
           onOpenLead={(leadId) => openRecord('leads', leadId)}
+          onShareInChat={shareInChat}
         />
       ),
     },
+    ...(canChat
+      ? [
+          {
+            id: 'chatroom',
+            render: () => (
+              <ChatroomScreen
+                transport={masterChatTransport}
+                page={subKeyOf('chatroom') as ChatPage}
+                viewer={{ id: user.id, permissions: user.permissions, tier: user.roleTier }}
+                openRoom={chatOpen}
+                onOpenRoom={setChatOpen}
+                share={chatShare}
+                onShareDone={(roomId) => {
+                  setChatShare(null);
+                  if (roomId) setChatOpen({ id: roomId });
+                }}
+                resetNonce={chatResetNonce}
+                onOpenRecord={(record: ChatRecordRef) =>
+                  openRecord(record.kind === 'lead' ? 'leads' : 'orders', record.id)
+                }
+                findRecords={findChatRecords}
+              />
+            ),
+          } satisfies ScreenSpec,
+        ]
+      : []),
     {
       id: 'products',
       render: () => (

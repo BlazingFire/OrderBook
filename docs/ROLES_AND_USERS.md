@@ -192,6 +192,27 @@ rather than described as though it already shipped.
   being silently ignored
 - **within the tier ceiling** — a key above the role's tier fails the whole save
 
+
+### 5.1 The Chatroom keys (1.3 Phase 6)
+
+Six keys in a `chat` capability group, rendered in the role editor from `CAPABILITY_GROUPS`:
+`chat.use` (the switch), `chat.directMessages`, `chat.shareRecords`, `chat.tasks` (all office tier),
+`chat.createGroups` (management and above) and `chat.manage` (admin and above). What each gates is in
+`docs/backend-modules/04-API-CONTRACT.md` section 14.1.
+
+**Default grants.** Migration `20261005000000_chatroom` unions all six into every `admin` and
+`server_master` role, and `chat.use` + `chat.shareRecords` into every `office` and `management` role,
+so the Chatroom works the day it ships for the people it was asked for. It is a one-time grant, not a
+rule: a role created afterwards holds none until an administrator ticks them (or picks the Sales or
+Dispatch template, which carry them). Taking `chat.use` away stops delivery at once, whatever rooms the
+person is still a member of.
+
+**The request flow.** A person who lacks `chat.directMessages`, `chat.shareRecords`, `chat.tasks` or
+(for a management role) `chat.createGroups` sees a *Request access* button in the Chatroom. It posts to
+`/api/chat/access-requests` (`chat:requestAccess` from an Office), which tells everyone holding
+`roles.edit` with an `access.requested` notice linking to the requester's role. One unread request per
+person and right is kept. The notice only informs; granting is the ordinary role edit.
+
 ---
 
 ## 6. Indexes

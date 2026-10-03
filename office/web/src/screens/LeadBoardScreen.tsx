@@ -13,9 +13,9 @@
  * are all still there on the way back.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { matchesRecordSearch, resolveCompanyFeatures, shownColour } from '@orderbook/shared';
-import type { Lead, NoteKind, PartyScopeFilter, SyncSnapshot } from '@orderbook/shared';
+import type { ChatRecordChip, Lead, NoteKind, PartyScopeFilter, SyncSnapshot } from '@orderbook/shared';
 
 import { api, desktopBridge, type LocalView } from '../api';
 import {
@@ -58,6 +58,8 @@ interface Props {
   canEdit: boolean;
   onError: (message: string) => void;
   onAddLead?: () => void;
+  /** Present only for somebody who may share records in chat (`chat.use` and `chat.shareRecords`). */
+  onShareInChat?: (chip: ChatRecordChip) => void;
 }
 
 type BoardTab = 'board' | 'list';
@@ -114,6 +116,7 @@ export function LeadBoardScreen({
   canEdit,
   onError,
   onAddLead,
+  onShareInChat,
 }: Props) {
   /** The open lead whose lines are in the entry form, or null. */
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -139,7 +142,39 @@ export function LeadBoardScreen({
   const filtered = (stageFilter ? open.filter((lead) => lead.stageId === stageFilter) : open).filter(
     (lead) => matchesRecordSearch(lead, search),
   );
-  const openLead = view.leads.find((lead) => lead.id === openId) ?? null;
+  const inView = view.leads.find((lead) => lead.id === openId) ?? null;
+  /*
+   * A lead this panel's 500-row view does not hold (a chat chip, a bell entry):
+   * asked of the Master through this panel's server, which applies the person's
+   * party scope. Gone or not theirs to see: back to the list, with a word.
+   */
+  const [fetched, setFetched] = useState<Lead | null>(null);
+  const onOpenIdRef = useRef(onOpenId);
+  onOpenIdRef.current = onOpenId;
+  const inViewNow = inView !== null;
+  useEffect(() => {
+    if (!openId || inViewNow) {
+      setFetched(null);
+      return;
+    }
+    let cancelled = false;
+    void api.lead(openId).then(
+      (lead) => {
+        if (!cancelled) setFetched(lead);
+      },
+      () => {
+        if (cancelled) return;
+        toast.push(t('nav.recordNotAvailable'), { tone: 'info' });
+        onOpenIdRef.current(null);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+    // `toast` is a stable context value; the open id and whether the view holds it decide this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId, inViewNow]);
+  const openLead = inView ?? (fetched && fetched.id === openId ? fetched : null);
 
   useFilterBar(
     pipeline && !openLead ? (
@@ -276,6 +311,16 @@ export function LeadBoardScreen({
         }
         actions={
           <>
+            {onShareInChat && (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="chat"
+                onClick={() => onShareInChat({ kind: 'lead', id: openLead.id })}
+              >
+                {t('chat.share.button')}
+              </Button>
+            )}
             {editable && (
               <Button variant="secondary" size="sm" onClick={() => setEditingId(openLead.id)}>
                 {t('lead.edit.action')}

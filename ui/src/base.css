@@ -3739,3 +3739,517 @@ button.ob-bell-item:hover {
   background: var(--bg-hover);
   color: var(--fg-primary);
 }
+
+/*
+ * The Chatroom (`ChatConversation.tsx`, `ChatroomScreen.tsx`,
+ * `ChatGroupSettings.tsx`, `ChatShareScreen.tsx`). Semantic tokens only.
+ * Long rooms stay cheap to draw through `content-visibility` on each row
+ * (Chromium 85+, so the Windows 7 build has it).
+ */
+.ob-chat-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+}
+.ob-chat-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-8);
+}
+.ob-chat-search {
+  flex: 1 1 14rem;
+  min-width: 12rem;
+  max-width: 28rem;
+}
+.ob-chat-directwrap {
+  position: relative;
+  display: inline-flex;
+}
+.ob-chat-picker-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+  width: 20rem;
+  padding: var(--s-8);
+}
+.ob-chat-picker-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+.ob-chat-roomlist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+}
+.ob-chat-roomlist > li + li {
+  border-top: 1px solid var(--line);
+}
+.ob-chat-roomrow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-12);
+  width: 100%;
+  padding: var(--s-8) var(--s-12);
+  border: 0;
+  background: transparent;
+  color: var(--fg-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ob-chat-roomrow:hover,
+.ob-chat-roomrow[data-selected='true'] {
+  background: var(--bg-hover);
+}
+.ob-chat-roomrow[data-selected='true'] {
+  background: var(--bg-selected);
+}
+.ob-chat-roomrow[data-unread='true'] .ob-body-strong {
+  color: var(--fg-primary);
+}
+.ob-chat-roomicon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2857rem;
+  height: 2.2857rem;
+  border-radius: 50%;
+  background: var(--accent-tint);
+  color: var(--accent);
+  flex: none;
+}
+.ob-chat-roomtext {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+  flex: 1;
+}
+.ob-chat-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-tertiary);
+}
+.ob-chat-roommeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--s-4);
+  flex: none;
+}
+.ob-chat-roomflags {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-4);
+}
+.ob-chat-unread,
+.ob-chat-mention {
+  min-width: var(--s-16);
+  padding: 0 var(--s-4);
+  border-radius: var(--r-lg);
+  background: var(--accent);
+  color: var(--fg-on-accent);
+  font-size: var(--t-micro-size);
+  line-height: var(--s-16);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.ob-chat-mention {
+  background: var(--state-offline);
+}
+.ob-chat-badge {
+  margin-left: var(--s-6);
+  padding: 0 var(--s-6);
+  border-radius: var(--r-sm);
+  background: var(--bg-sunken);
+  color: var(--fg-secondary);
+  font-size: var(--t-micro-size);
+  font-weight: 400;
+}
+.ob-chat-access {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+  padding: var(--s-12);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+}
+.ob-chat-access-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-8);
+}
+.ob-chat-taskrow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  padding-left: var(--s-12);
+}
+.ob-chat-taskrow[data-done='true'] .ob-body-strong {
+  text-decoration: line-through;
+  color: var(--fg-tertiary);
+}
+
+/* One room. */
+.ob-chat-room {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  gap: var(--s-8);
+}
+.ob-chat-roomhead {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  flex: none;
+}
+.ob-chat-roomtitle {
+  margin: 0;
+}
+.ob-chat-pinbar {
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+}
+.ob-chat-pinbar-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--s-6);
+  width: 100%;
+  padding: var(--s-6) var(--s-12);
+  border: 0;
+  background: transparent;
+  color: var(--fg-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+.ob-chat-pinlist {
+  margin: 0;
+  padding: 0 var(--s-8) var(--s-8);
+  list-style: none;
+}
+.ob-chat-list {
+  flex: 1 1 auto;
+  min-height: 12rem;
+  overflow-y: auto;
+  padding: var(--s-8) var(--s-12);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+}
+.ob-chat-older {
+  display: flex;
+  justify-content: center;
+  padding-bottom: var(--s-8);
+}
+.ob-chat-note {
+  padding: var(--s-12);
+  color: var(--fg-secondary);
+}
+.ob-chat-day {
+  display: flex;
+  justify-content: center;
+  padding: var(--s-8) 0;
+}
+.ob-chat-day > span {
+  padding: var(--s-2) var(--s-12);
+  border-radius: var(--r-lg);
+  background: var(--bg-sunken);
+  color: var(--fg-secondary);
+  font-size: var(--t-micro-size);
+}
+.ob-chat-system {
+  padding: var(--s-4) 0;
+  color: var(--fg-tertiary);
+  font-size: var(--t-micro-size);
+  text-align: center;
+}
+.ob-chat-row {
+  position: relative;
+  display: flex;
+  gap: var(--s-8);
+  padding: var(--s-2) var(--s-4);
+  border-radius: var(--r-sm);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 3rem;
+}
+.ob-chat-row:hover {
+  background: var(--bg-hover);
+}
+.ob-chat-row[data-highlight='true'] {
+  background: var(--bg-selected);
+}
+.ob-chat-row[data-mention='true'] {
+  box-shadow: inset 3px 0 0 var(--state-offline);
+}
+.ob-chat-avatar {
+  flex: none;
+  width: var(--s-24);
+}
+.ob-chat-bubble {
+  flex: 1;
+  min-width: 0;
+}
+.ob-chat-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-8);
+}
+.ob-chat-author {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-4);
+  font-weight: 600;
+}
+.ob-chat-time {
+  color: var(--fg-tertiary);
+}
+.ob-chat-body {
+  margin: 0;
+  /* Plain text: line breaks kept, never turned into links. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ob-chat-deleted {
+  margin: 0;
+  color: var(--fg-tertiary);
+  font-style: italic;
+}
+.ob-chat-sending {
+  color: var(--state-offline);
+}
+.ob-chat-refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-6);
+  margin-top: var(--s-4);
+}
+.ob-chat-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--bg-surface);
+}
+.ob-chat-chip[data-restricted='true'] {
+  color: var(--fg-tertiary);
+  border-style: dashed;
+}
+.ob-chat-chip-open,
+.ob-chat-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-2) var(--s-8);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--t-micro-size);
+}
+button.ob-chat-chip-open:not(:disabled),
+.ob-chat-chip-remove {
+  cursor: pointer;
+}
+button.ob-chat-chip-open:not(:disabled):hover {
+  color: var(--accent);
+}
+.ob-chat-chip-remove {
+  padding-left: var(--s-2);
+}
+.ob-chat-actions {
+  position: relative;
+  flex: none;
+  opacity: 0;
+}
+.ob-chat-row:hover .ob-chat-actions,
+.ob-chat-row:focus-within .ob-chat-actions {
+  opacity: 1;
+}
+.ob-chat-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 9rem;
+  padding: var(--s-4);
+}
+.ob-chat-menu-item {
+  display: block;
+  width: 100%;
+  padding: var(--s-6) var(--s-8);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ob-chat-menu-item:hover {
+  background: var(--bg-hover);
+}
+.ob-chat-edit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+}
+.ob-chat-edit-actions {
+  display: flex;
+  gap: var(--s-6);
+}
+.ob-chat-task {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  margin-top: var(--s-6);
+  padding: var(--s-8);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--bg-canvas);
+}
+.ob-chat-task[data-done='true'] {
+  border-left-color: var(--state-ok);
+}
+.ob-chat-task-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-8);
+}
+.ob-chat-seen {
+  position: relative;
+  display: inline-flex;
+}
+.ob-chat-seen-list {
+  margin: 0;
+  padding: var(--s-8) var(--s-12);
+  list-style: none;
+  color: var(--fg-tertiary);
+}
+.ob-chat-seen-list > li[data-seen='true'] {
+  color: var(--state-ok);
+}
+
+/* The composer. */
+.ob-chat-composer {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+  padding: var(--s-8);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+}
+.ob-chat-taskform {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+}
+.ob-chat-assignees {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-12);
+}
+.ob-chat-due {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-8);
+}
+.ob-chat-inputrow {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-8);
+}
+.ob-chat-inputwrap {
+  position: relative;
+  flex: 1;
+}
+.ob-chat-inputwrap .ob-textarea {
+  width: 100%;
+  resize: vertical;
+}
+.ob-chat-send {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--s-6);
+  flex: none;
+}
+.ob-chat-picker {
+  position: relative;
+  display: inline-flex;
+}
+.ob-chat-counter {
+  color: var(--state-offline);
+}
+.ob-chat-mentions {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  z-index: var(--z-popover);
+  min-width: 12rem;
+  margin: 0 0 var(--s-4);
+  padding: var(--s-4);
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  box-shadow: var(--sh-2);
+}
+.ob-chat-mentions > li {
+  padding: var(--s-6) var(--s-8);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.ob-chat-mentions > li[data-active='true'] {
+  background: var(--bg-selected);
+}
+
+/* Group settings and Share in chat. */
+.ob-chat-settings,
+.ob-chat-share {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-16);
+  max-width: 40rem;
+}
+.ob-chat-settings-form,
+.ob-chat-settings-members {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+}
+.ob-chat-memberlist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ob-chat-member {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  padding: var(--s-4) 0;
+}
+.ob-chat-membername {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-4);
+  flex: 1;
+}
+.ob-chat-settings-danger {
+  display: flex;
+  gap: var(--s-8);
+}

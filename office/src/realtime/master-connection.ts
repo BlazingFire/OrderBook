@@ -515,6 +515,12 @@ class MasterConnection extends EventEmitter {
       this.emit('notification', notification);
     });
 
+    // Addressed to one person like a notification; the HTTP layer checks that
+    // person is still the one signed in before it reaches the browser.
+    socket.on('chat:event', (push) => {
+      this.emit('chat', push);
+    });
+
     // --- Administered from the Master (docs/UI_REDESIGN.md — Office Panels) ---
 
     // A pull, for when somebody opens this panel's screen on the Master and

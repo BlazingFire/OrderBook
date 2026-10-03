@@ -43,12 +43,27 @@ export interface LocalNotice {
 /** Spelled out per kind, so every key is greppable and a missing one fails the type check. */
 const KIND_TEXT: Record<NotificationKind, MessageKey> = {
   'panel.offlineLong': 'notification.panel.offlineLong',
+  'chat.mention': 'notification.chat.mention',
+  'task.assigned': 'notification.task.assigned',
+  'task.done': 'notification.task.done',
+  'access.requested': 'notification.access.requested',
+};
+
+/** A chat right named in a notice, as the reader's language words it. */
+const RIGHT_TEXT: Record<string, MessageKey> = {
+  'chat.directMessages': 'permission.chat.directMessages',
+  'chat.shareRecords': 'permission.chat.shareRecords',
+  'chat.tasks': 'permission.chat.tasks',
+  'chat.createGroups': 'permission.chat.createGroups',
 };
 
 /** One notice as a sentence. A kind newer than this build reads as a plain "Notifications". */
 export function notificationText(item: Pick<UserNotification, 'kind' | 'params'>): string {
   const key = (KIND_TEXT as Partial<Record<string, MessageKey>>)[item.kind];
-  return key ? t(key, item.params) : t('notification.title');
+  if (!key) return t('notification.title');
+  // The right is stored as its key and worded here, so the sentence is whole in either language.
+  const right = typeof item.params.capability === 'string' ? RIGHT_TEXT[item.params.capability] : undefined;
+  return t(key, right ? { ...item.params, capability: t(right) } : item.params);
 }
 
 export function NotificationBell({

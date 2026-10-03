@@ -101,6 +101,10 @@ const BUSINESS_TABLES = [
   'activity_log',
   // Notices point at records this wipes, so they go with them.
   'user_notifications',
+  // So do chat record chips, which name leads and orders by id (ids restart below).
+  'chat_messages',
+  'chat_members',
+  'chat_rooms',
 ];
 
 const SAMPLE_PARTIES: PartyInput[] = [
@@ -319,6 +323,7 @@ async function main(): Promise<void> {
         'product_variant',
         'reservation',
         'timeline_entry',
+        'chat_message',
       ]) {
         await trx('id_sequences').where({ tenant_id: tenantId, entity }).update({ next_value: 1 });
       }

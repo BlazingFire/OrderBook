@@ -1449,3 +1449,159 @@ describe('the activity log (1.3)', () => {
     expect(screen.queryByTitle(t('nav.logs'))).toBeNull();
   });
 });
+
+describe('the Chatroom (1.3 Phase 6)', () => {
+  const ROOM = {
+    id: 'room-1', kind: 'group', name: 'Dispatch desk', description: null, announceOnly: false,
+    archivedAt: null, myRole: 'member', muted: false, lastSeq: 4, lastReadSeq: 1, unread: 3,
+    mentionUnread: 0, memberCount: 2, lastMessageAt: '2026-10-03T09:00:00.000Z', lastMessage: null,
+    direct: null,
+  };
+
+  const chatRoutes = (call: Call): Response | undefined => {
+    const path = call.url.split('?')[0];
+    if (path === '/api/chat/rooms') return json([ROOM]);
+    if (path === '/api/chat/rooms/room-1') return json({ ...ROOM, members: [], pinned: [] });
+    if (path === '/api/chat/rooms/room-1/messages') return json([]);
+    if (path === '/api/chat/tasks') return json([]);
+    return undefined;
+  };
+
+  const bootChat = (permissions: string[], extra?: Boot['route'], view: Record<string, unknown> = {}) =>
+    boot({
+      permissions,
+      view,
+      route: (call) => extra?.(call) ?? chatRoutes(call),
+    });
+
+  const row = () => screen.queryByTitle(t('nav.chatroom'));
+  const gets = (calls: Call[], path: string) =>
+    calls.filter((call) => call.method === 'GET' && call.url.split('?')[0] === path).length;
+
+  it('is a Work row only with chat.use, carrying the unread total', async () => {
+    await bootChat(['chat.use']);
+    await waitFor(() => expect(row()?.textContent).toContain('3'));
+    cleanup();
+
+    await boot({ permissions: ['leads.view'] });
+    expect(row()).toBeNull();
+  });
+
+  it('opens on Alt+C and lists the rooms, with no snapshot needed', async () => {
+    await bootChat(['chat.use']);
+    await waitFor(() => expect(row()).not.toBeNull());
+
+    await waitFor(() => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'c', code: 'KeyC', altKey: true, bubbles: true, cancelable: true }),
+      );
+      expect(topbarTitle()).toBe(t('chat.sub.rooms'));
+    });
+    expect(await screen.findByText('Dispatch desk')).toBeTruthy();
+  });
+
+  it('reads the rooms again when a chat frame arrives and when the stream comes back, without opening a second stream', async () => {
+    const calls = await bootChat(['chat.use']);
+    await waitFor(() => expect(gets(calls, '/api/chat/rooms')).toBeGreaterThan(0));
+    const before = gets(calls, '/api/chat/rooms');
+
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('chat', { kind: 'room', roomId: 'room-1', forUserId: 'user-1' });
+      await wait(700);
+    });
+    expect(gets(calls, '/api/chat/rooms')).toBeGreaterThan(before);
+
+    const afterPush = gets(calls, '/api/chat/rooms');
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('error', {});
+      FakeEventSource.instances.at(-1)!.emit('open', {});
+      await wait(700);
+    });
+    expect(gets(calls, '/api/chat/rooms')).toBeGreaterThan(afterPush);
+    expect(FakeEventSource.instances).toHaveLength(1);
+  });
+
+  it('offers Groups only with chat.createGroups or chat.manage', async () => {
+    await bootChat(['chat.use']);
+    await act(async () => {
+      fireEvent.click(await screen.findByTitle(t('nav.chatroom')));
+      await wait(0);
+    });
+    expect(await screen.findByTitle(t('chat.sub.tasks'))).toBeTruthy();
+    expect(screen.queryByTitle(t('chat.sub.groups'))).toBeNull();
+    cleanup();
+
+    await bootChat(['chat.use', 'chat.createGroups']);
+    await act(async () => {
+      fireEvent.click(await screen.findByTitle(t('nav.chatroom')));
+      await wait(0);
+    });
+    expect(await screen.findByTitle(t('chat.sub.groups'))).toBeTruthy();
+  });
+
+  it('shares a final order from its detail, only with chat.use and chat.shareRecords', async () => {
+    const orders = { orders: [ORDER], pipelines: [ORDER_PIPELINE] };
+    const openOrder = async (permissions: string[]) => {
+      await bootChat(permissions, undefined, orders);
+      await act(async () => {
+        fireEvent.click(screen.getByTitle(t('nav.orders')));
+        await wait(0);
+      });
+      fireEvent.click(await screen.findByText(ORDER.id));
+      await screen.findByRole('button', { name: t('action.backToList') });
+    };
+
+    await openOrder(['orders.view', 'chat.use']);
+    expect(screen.queryByRole('button', { name: t('chat.share.button') })).toBeNull();
+    cleanup();
+
+    await openOrder(['orders.view', 'chat.use', 'chat.shareRecords']);
+    fireEvent.click(screen.getByRole('button', { name: t('chat.share.button') }));
+    expect((await screen.findAllByRole('heading', { name: t('chat.share.title') })).length).toBeGreaterThan(0);
+    expect(await screen.findByText('Dispatch desk')).toBeTruthy();
+  });
+
+  describe('a record chip', () => {
+    const chipMessage = (id: string) => ({
+      id: 'CM1', roomId: 'room-1', seq: 1, kind: 'text', author: { id: 'user-2', displayName: 'Bina', avatar: null, tier: 'office' },
+      body: 'please look', refs: [{ kind: 'order', id, label: id, partyName: 'Sharma Traders', restricted: false }],
+      mentions: [], system: null, createdAt: new Date().toISOString(), editedAt: null, deletedAt: null,
+      pinnedAt: null, pinnedBy: null, task: null, clientId: null,
+    });
+
+    async function openChip(orderId: string, answer: Response): Promise<Call[]> {
+      const calls = await bootChat(
+        ['orders.view', 'chat.use'],
+        (call) => {
+          const path = call.url.split('?')[0];
+          if (path === '/api/chat/rooms/room-1/messages') return json([chipMessage(orderId)]);
+          if (call.url === `/api/orders/${orderId}`) return answer;
+          return undefined;
+        },
+        { orders: [ORDER], pipelines: [ORDER_PIPELINE] },
+      );
+      await act(async () => {
+        fireEvent.click(screen.getByTitle(t('nav.chatroom')));
+        await wait(0);
+      });
+      fireEvent.click((await screen.findByText('Dispatch desk')).closest('button')!);
+      fireEvent.click((await screen.findByText(new RegExp(`${orderId} . Sharma Traders`))).closest('button')!);
+      return calls;
+    }
+
+    it("opens an order this panel's view does not hold by fetching it from the Master", async () => {
+      const calls = await openChip('ORD-9', json({ ...ORDER, id: 'ORD-9', partyName: 'Patel Tiles' }));
+
+      expect(await screen.findByText(/Patel Tiles/, {}, { timeout: 5000 })).toBeTruthy();
+      expect(calls.some((call) => call.url === '/api/orders/ORD-9')).toBe(true);
+      expect(await screen.findByRole('button', { name: t('action.backToList') })).toBeTruthy();
+    });
+
+    it('says the record is not available, and leaves the list, when the Master will not give it', async () => {
+      await openChip('ORD-404', json({ error: 'not_found', message: 'Order not found' }, 404));
+
+      expect(await screen.findByText(t('nav.recordNotAvailable'))).toBeTruthy();
+      expect(screen.queryByRole('button', { name: t('action.backToList') })).toBeNull();
+    });
+  });
+});

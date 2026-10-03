@@ -27,6 +27,7 @@
  */
 
 import type {
+  ChatPostInput,
   LeadConvertInput,
   LeadInput,
   Mutation,
@@ -56,6 +57,7 @@ import {
   mergeFields,
   MUTATION_PERMISSIONS,
   type Permission,
+  t,
 } from '@orderbook/shared';
 
 import { actorCan, type ActorContext } from '../domain/actor.js';
@@ -87,6 +89,7 @@ import * as syncRepo from '../repositories/sync.repository.js';
 import type { TransactionContext } from '../repositories/transaction.js';
 import { publishChange, publishConflict } from './change-bus.js';
 import * as catalogService from './catalog.service.js';
+import * as chatService from './chat.service.js';
 import * as inventoryService from './inventory.service.js';
 import * as leadService from './lead.service.js';
 import * as orderService from './order.service.js';
@@ -130,7 +133,12 @@ export async function applyPush(
   if (
     actor.actorType === 'office_panel' &&
     mutations.some(
-      (m) => m.actorUserId && !actorCan(actor, REQUIRED_PERMISSION[m.kind] as Permission),
+      // A chat post is left out: it is refused on its own below (`wrongAuthor`)
+      // and recorded, never allowed to stall the lead and order work around it.
+      (m) =>
+        m.kind !== 'chat.post' &&
+        m.actorUserId &&
+        !actorCan(actor, REQUIRED_PERMISSION[m.kind] as Permission),
     )
   ) {
     throw new AppError('error.unavailable.signInToSync', {}, 503, 'unavailable');
@@ -222,6 +230,13 @@ async function applyOne(
 
   if (!permission || !isSyncableEntity(mutation.entity)) {
     return reject(mutation, `Unknown mutation "${mutation.kind}"`);
+  }
+
+  // A chat post speaks for one person. The Office holds a post back until its
+  // author is the person signed in, so this only ever fires for a modified or
+  // old panel; a post is never applied as somebody else.
+  if (mutation.kind === 'chat.post' && (!actor.userId || mutation.actorUserId !== actor.userId)) {
+    return record(mutation, actor, reject(mutation, t('en', 'validation.chat.wrongAuthor')));
   }
 
   // Checked here as well as in the panel's own process: the panel's check is a
@@ -489,6 +504,18 @@ async function route(
     case 'stock.setReorderLevel': {
       await inventoryService.setReorderLevel(payloadAs<ReorderLevelInput>(mutation), actor);
       return applied(mutation, mutation.entityId);
+    }
+
+    case 'chat.post': {
+      // `clientId` is the mutation's own id, so a resend finds the message it already made.
+      const { roomId, ...post } = payloadAs<ChatPostInput & { roomId: string }>(mutation);
+      const message = await chatService.postMessage(
+        roomId,
+        { ...post, clientId: mutation.mutationId },
+        actor,
+      );
+      await mapTemporaryId(mutation, message.id, actor);
+      return applied(mutation, message.id);
     }
 
     default:

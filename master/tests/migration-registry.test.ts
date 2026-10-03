@@ -100,6 +100,8 @@ describe('the migration registry matches the directory', () => {
     // Reports indexes and the office / management grant (1.3 H2). Pinned in the
     // order the 1.3 batch lands its migrations.
     '20261004000000_report_indexes_and_grants',
+    // The Chatroom tables and the chat grants (1.3 Phase 6, migration #5).
+    '20261005000000_chatroom',
   ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {

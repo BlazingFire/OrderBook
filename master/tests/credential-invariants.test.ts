@@ -154,6 +154,24 @@ describe('the two-layer permission check', () => {
     expect(guards.length).toBe(handlers.length);
   });
 
+  it('guards every chat route with chat.use — no exemptions (1.3 Phase 6)', () => {
+    const routes = read('http/routes/chat.routes.ts');
+
+    const handlers = routes
+      .split('\n')
+      .filter((line) => /chatRoutes\.(get|post|put|delete)\(/.test(line));
+    const guards = routes
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('*') && line.includes('needs('));
+
+    // The finer keys (`chat.directMessages`, `chat.shareRecords`, `chat.tasks`,
+    // `chat.createGroups`, `chat.manage`) are the service's to enforce, because
+    // each depends on the body or the room; this is the one door in front of it.
+    expect(handlers.length).toBeGreaterThan(10);
+    expect(guards.length).toBe(handlers.length);
+    expect(guards.every((line) => line.includes("needs('chat.use')"))).toBe(true);
+  });
+
   it('guards every Reports route (Stage 5 extends the pattern to its own router)', () => {
     const routes = read('http/routes/report.routes.ts');
 

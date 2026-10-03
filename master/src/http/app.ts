@@ -12,6 +12,7 @@ import { requirePanel } from './middleware/require-panel.js';
 import { accessRoutes } from './routes/access.routes.js';
 import { avatarFilesRoutes, avatarRoutes } from './routes/avatar.routes.js';
 import { authRoutes, notificationRoutes } from './routes/auth.routes.js';
+import { chatRoutes } from './routes/chat.routes.js';
 import { dataRoutes } from './routes/data.routes.js';
 import { fieldsRoutes } from './routes/fields.routes.js';
 import { imageFilesRoutes, imagesRoutes } from './routes/images.routes.js';
@@ -62,6 +63,8 @@ export function createApp(): Express {
   app.use('/api/master-key', masterKeyRoutes);
   app.use('/api/auth', authRoutes);
   app.use('/api/notifications', notificationRoutes);
+  // The Chatroom, before the `/api` catch-all of `dataRoutes` below.
+  app.use('/api/chat', chatRoutes);
   app.use('/api/pairing', pairingRoutes);
   app.use('/api/panels', panelRoutes);
   app.use('/api/access', accessRoutes);

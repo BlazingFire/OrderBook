@@ -113,6 +113,20 @@ import type {
 } from '../domain/pick.js';
 import type { BinCounts, BinEntry, BinRestoreResult } from '../domain/recycle-bin.js';
 import type { SettingKey, SettingView } from '../domain/settings.js';
+import { CHAT_MIN_PROTOCOL } from '../domain/chat.js';
+import type {
+  ChatAccessRequest,
+  ChatMemberRole,
+  ChatMessage,
+  ChatPush,
+  ChatRoomDetail,
+  ChatRoomInput,
+  ChatRoomPatch,
+  ChatRoomSummary,
+  ChatPerson,
+  ChatSearchHit,
+  ChatTaskRow,
+} from '../domain/chat.js';
 import type { UserNotification } from '../domain/notifications.js';
 import type { SyncPushRequest, SyncPushResponse } from '../sync/mutations.js';
 
@@ -157,7 +171,7 @@ export interface PanelAuthPayload {
  * socket command, so either side can tell the other is too old for one before
  * sending it, instead of waiting out a timeout.
  */
-export const PANEL_PROTOCOL_VERSION = 3;
+export const PANEL_PROTOCOL_VERSION = 5;
 
 /**
  * The lowest Master protocol each command needs. A command not listed has
@@ -170,6 +184,24 @@ export const COMMAND_MIN_PROTOCOL: Partial<Record<keyof ClientToServerEvents, nu
   'report:options': 2,
   'notification:list': 3,
   'notification:markRead': 3,
+  // The Chatroom (1.3 Phase 6). Phase 4 takes the protocol to 4; chat is 5.
+  'chat:people': CHAT_MIN_PROTOCOL,
+  'chat:rooms': CHAT_MIN_PROTOCOL,
+  'chat:room': CHAT_MIN_PROTOCOL,
+  'chat:messages': CHAT_MIN_PROTOCOL,
+  'chat:search': CHAT_MIN_PROTOCOL,
+  'chat:tasks': CHAT_MIN_PROTOCOL,
+  'chat:roomCreate': CHAT_MIN_PROTOCOL,
+  'chat:roomUpdate': CHAT_MIN_PROTOCOL,
+  'chat:memberSet': CHAT_MIN_PROTOCOL,
+  'chat:direct': CHAT_MIN_PROTOCOL,
+  'chat:edit': CHAT_MIN_PROTOCOL,
+  'chat:delete': CHAT_MIN_PROTOCOL,
+  'chat:pin': CHAT_MIN_PROTOCOL,
+  'chat:taskDone': CHAT_MIN_PROTOCOL,
+  'chat:read': CHAT_MIN_PROTOCOL,
+  'chat:mute': CHAT_MIN_PROTOCOL,
+  'chat:requestAccess': CHAT_MIN_PROTOCOL,
 };
 
 /**
@@ -843,6 +875,56 @@ export interface ClientToServerEvents {
     ack: CommandAck<{ unreadCount: number }>,
   ) => void;
 
+  // --- Chatroom (1.3 Phase 6) ----------------------------------------------
+  /*
+   * Twinned with the Master's `/api/chat` REST routes: the Master's own browser
+   * uses those, an Office Panel uses these. There is deliberately no
+   * `chat:post`: an Office posts through `sync:push` as a `chat.post` mutation,
+   * which gives it the outbox, idempotency and a resend on reconnect.
+   */
+  /** Everyone the acting person may chat with. */
+  'chat:people': (ack: CommandAck<ChatPerson[]>) => void;
+  /** The acting person's rooms (all groups, for `chat.manage`, with `all`). */
+  'chat:rooms': (
+    input: { all?: boolean; includeArchived?: boolean },
+    ack: CommandAck<ChatRoomSummary[]>,
+  ) => void;
+  'chat:room': (roomId: Uuid, ack: CommandAck<ChatRoomDetail>) => void;
+  'chat:messages': (
+    input: { roomId: Uuid; beforeSeq?: number; limit?: number },
+    ack: CommandAck<ChatMessage[]>,
+  ) => void;
+  'chat:search': (input: { q: string; roomId?: Uuid }, ack: CommandAck<ChatSearchHit[]>) => void;
+  'chat:tasks': (
+    input: { scope: 'mine' | 'created'; includeDone?: boolean },
+    ack: CommandAck<ChatTaskRow[]>,
+  ) => void;
+  'chat:roomCreate': (input: ChatRoomInput, ack: CommandAck<ChatRoomSummary>) => void;
+  'chat:roomUpdate': (
+    input: { roomId: Uuid; input: ChatRoomPatch },
+    ack: CommandAck<ChatRoomSummary>,
+  ) => void;
+  /** Add, re-role or remove (`role: null`) one member. */
+  'chat:memberSet': (
+    input: { roomId: Uuid; userId: string; role: ChatMemberRole | null },
+    ack: CommandAck<ChatRoomDetail | null>,
+  ) => void;
+  'chat:direct': (input: { userId: string }, ack: CommandAck<ChatRoomSummary>) => void;
+  'chat:edit': (
+    input: { messageId: string; body: string; mentions?: string[] },
+    ack: CommandAck<ChatMessage>,
+  ) => void;
+  'chat:delete': (messageId: string, ack: CommandAck<ChatMessage>) => void;
+  'chat:pin': (input: { messageId: string; pinned: boolean }, ack: CommandAck<ChatMessage>) => void;
+  'chat:taskDone': (
+    input: { messageId: string; done: boolean },
+    ack: CommandAck<ChatMessage>,
+  ) => void;
+  'chat:read': (input: { roomId: Uuid; seq: number }, ack: CommandAck<{ lastReadSeq: number }>) => void;
+  'chat:mute': (input: { roomId: Uuid; muted: boolean }, ack: CommandAck<null>) => void;
+  /** Ask the people who edit roles for a chat capability the acting person lacks. */
+  'chat:requestAccess': (input: ChatAccessRequest, ack: CommandAck<{ notified: number }>) => void;
+
   // --- Dashboard (docs/backend-modules/04-API-CONTRACT.md §7) ---------------
   /** The one live pull — everything else rides on `SyncSnapshot.dashboard` and the `dashboard:changed` push. */
   'dashboard:get': (ack: CommandAck<DashboardSummary>) => void;
@@ -908,6 +990,12 @@ export interface ServerToClientEvents {
    * unless that person is still the one signed in there.
    */
   'notification:new': (notification: UserNotification & { forUserId: Uuid }) => void;
+  /**
+   * Something changed in a chat room the acting person is in. Addressed like a
+   * notification, and like one it never enters the change ring: a panel that
+   * missed it reads the room again.
+   */
+  'chat:event': (push: ChatPush & { forUserId: Uuid }) => void;
 }
 
 /** Per-connection state the Master attaches after authenticating a socket. */

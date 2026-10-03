@@ -197,6 +197,42 @@ describe('the notification bell', () => {
   });
 });
 
+describe('the Chatroom\'s notices', () => {
+  const at = '2026-10-03T09:00:00.000Z';
+  const notices: UserNotification[] = [
+    { id: 'c-1', kind: 'chat.mention', params: { name: 'Bina', room: 'Dispatch desk' }, link: { kind: 'chat', id: 'room-1', messageId: 'CM1' }, createdAt: at, readAt: null },
+    { id: 'c-2', kind: 'task.assigned', params: { name: 'Bina', room: 'Dispatch desk' }, link: { kind: 'chat', id: 'room-1' }, createdAt: at, readAt: null },
+    { id: 'c-3', kind: 'task.done', params: { name: 'Chetan', room: 'Godown' }, link: { kind: 'chat', id: 'room-2' }, createdAt: at, readAt: null },
+    { id: 'c-4', kind: 'access.requested', params: { name: 'Bina', capability: 'chat.tasks' }, link: { kind: 'role', id: 'RL1' }, createdAt: at, readAt: null },
+  ];
+
+  it('reads each kind as a sentence, with the requested right worded in the reader\'s language', async () => {
+    render(<NotificationBell transport={transport(notices, 4)} revision={0} />);
+    await settle();
+    await openBell(4);
+
+    expect(screen.getByText(t('notification.chat.mention', { name: 'Bina', room: 'Dispatch desk' }))).toBeTruthy();
+    expect(screen.getByText(t('notification.task.assigned', { name: 'Bina', room: 'Dispatch desk' }))).toBeTruthy();
+    expect(screen.getByText(t('notification.task.done', { name: 'Chetan', room: 'Godown' }))).toBeTruthy();
+    expect(
+      screen.getByText(t('notification.access.requested', { name: 'Bina', capability: t('permission.chat.tasks') })),
+    ).toBeTruthy();
+  });
+
+  it('hands a chat or role link to the panel', async () => {
+    const onOpen = vi.fn();
+    render(<NotificationBell transport={transport(notices, 4)} revision={0} onOpen={onOpen} />);
+    await settle();
+    await openBell(4);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText(t('notification.chat.mention', { name: 'Bina', room: 'Dispatch desk' })));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(onOpen).toHaveBeenCalledWith({ kind: 'chat', id: 'room-1', messageId: 'CM1' });
+  });
+});
+
 describe('formatElapsed', () => {
   const MINUTE = 60_000;
 

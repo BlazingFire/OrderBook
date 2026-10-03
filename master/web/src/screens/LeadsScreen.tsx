@@ -18,6 +18,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { shownColour } from '@orderbook/shared';
 import type {
+  ChatRecordChip,
   Lead,
   LineItem,
   NoteKind,
@@ -77,6 +78,8 @@ interface Props {
   onOpenId: (id: string | null) => void;
   /** Takes the person to the final order a lead became. */
   onOpenOrder: (orderId: string) => void;
+  /** Present only for somebody who may share records in chat (`chat.use` and `chat.shareRecords`). */
+  onShareInChat?: (chip: ChatRecordChip) => void;
   /** `leads.create`: the empty state offers New pending order. */
   canCreate: boolean;
   onNewLead: () => void;
@@ -131,6 +134,7 @@ export function LeadsScreen({
   openId,
   onOpenId,
   onOpenOrder,
+  onShareInChat,
   canCreate,
   onNewLead,
   canCreateParty,
@@ -140,6 +144,8 @@ export function LeadsScreen({
   // The shell hands a fresh callback every render; the fetch below must not.
   const onOpenIdRef = useRef(onOpenId);
   onOpenIdRef.current = onOpenId;
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
   const [scope, setScope] = useState<PartyScopeFilter>('all');
   const [search, setSearch] = useState('');
   const term = useDebounced(search.trim());
@@ -241,8 +247,11 @@ export function LeadsScreen({
         if (!cancelled) setFetched(lead);
       })
       .catch((caught) => {
-        // Gone, or not this person's to see: back to the list, not a blank screen.
-        if (!cancelled && caught instanceof ApiError && caught.code === 'not_found') onOpenIdRef.current(null);
+        // Gone, or not this person's to see: back to the list, and say so.
+        if (!cancelled && caught instanceof ApiError && (caught.code === 'not_found' || caught.code === 'forbidden')) {
+          toastRef.current.push(t('nav.recordNotAvailable'), { tone: 'info' });
+          onOpenIdRef.current(null);
+        }
       });
     return () => {
       cancelled = true;
@@ -545,6 +554,16 @@ export function LeadsScreen({
           }
           actions={
             <>
+              {onShareInChat && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon="chat"
+                  onClick={() => onShareInChat({ kind: 'lead', id: openLead.id })}
+                >
+                  {t('chat.share.button')}
+                </Button>
+              )}
               {canEdit && !openLead.convertedOrderId && (
                 <Button variant="secondary" size="sm" onClick={() => setEditingId(openLead.id)}>
                   {t('lead.edit.action')}

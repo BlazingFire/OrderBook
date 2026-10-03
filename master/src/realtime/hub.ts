@@ -13,7 +13,9 @@ import { Server, type ExtendedError, type Socket } from 'socket.io';
 import {
   ROOM_MASTER_ADMINS,
   PARTY_BULK_MIN_PROTOCOL,
+  CHAT_MIN_PROTOCOL,
   ROOM_OFFICE_PANELS,
+  type ChatPush,
   type ClientToServerEvents,
   type CommandAck,
   type CommandResult,
@@ -59,7 +61,8 @@ import * as pipelineRepo from '../repositories/pipeline.repository.js';
 import * as authService from '../services/auth.service.js';
 import { resolveSession } from '../services/auth.service.js';
 import * as catalogService from '../services/catalog.service.js';
-import { onChange, onConflict, onNotification } from '../services/change-bus.js';
+import { onChange, onChat, onConflict, onNotification } from '../services/change-bus.js';
+import * as chatService from '../services/chat.service.js';
 import * as conflictService from '../services/conflict.service.js';
 import * as dashboardService from '../services/dashboard.service.js';
 import * as fieldsService from '../services/fields.service.js';
@@ -328,6 +331,24 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
     );
   });
 
+  // Chat: addressed to a room's members who hold `chat.use`. A message's
+  // record chips are worked out again for each recipient, because two members
+  // of one room can differ in what they may open. A panel older than protocol 5
+  // does not know the event and is not sent it.
+  const unsubscribeChat = onChat(({ tenantId, userIds, push }) => {
+    void emitToActors(
+      io,
+      tenantId,
+      'chat:event',
+      push,
+      (actor, socket) =>
+        actorCan(actor, 'chat.use') &&
+        (socket.data.kind !== 'office-panel' || (socket.data.protocol ?? 1) >= CHAT_MIN_PROTOCOL),
+      userIds,
+      (actor, body) => chatService.personalisePush(body as ChatPush, actor),
+    ).catch((error: unknown) => log.warn(`Could not deliver a chat event: ${toErrorMessage(error)}`));
+  });
+
   // Panels that were away when this Master stopped still get their notice.
   void panelService
     .scheduleLongOfflineNoticesAtBoot()
@@ -342,6 +363,7 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
       unsubscribeChanges();
       unsubscribeConflicts();
       unsubscribeNotifications();
+      unsubscribeChat();
       setPanelLink(null);
       // Cleared before the close, so the closing sockets' own handlers leave
       // presence alone; the last-seen time is written here instead, awaited
@@ -845,6 +867,38 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
     run(ack, (actor) => notificationService.markRead(input, actor)),
   );
 
+  // The Chatroom. There is no `chat:post`: an Office posts through `sync:push`
+  // as a `chat.post` mutation, which gives it the outbox and a safe resend.
+  socket.on('chat:people', (ack) => run(ack, (actor) => chatService.listPeople(actor)));
+  socket.on('chat:rooms', (input, ack) => run(ack, (actor) => chatService.listRooms(input, actor)));
+  socket.on('chat:room', (roomId, ack) => run(ack, (actor) => chatService.getRoom(roomId, actor)));
+  socket.on('chat:messages', (input, ack) =>
+    run(ack, (actor) => chatService.listMessages(input, actor)),
+  );
+  socket.on('chat:search', (input, ack) => run(ack, (actor) => chatService.search(input, actor)));
+  socket.on('chat:tasks', (input, ack) => run(ack, (actor) => chatService.listTasks(input, actor)));
+  socket.on('chat:roomCreate', (input, ack) =>
+    run(ack, (actor) => chatService.createRoom(input, actor)),
+  );
+  socket.on('chat:roomUpdate', (input, ack) =>
+    run(ack, (actor) => chatService.updateRoom(input, actor)),
+  );
+  socket.on('chat:memberSet', (input, ack) =>
+    run(ack, (actor) => chatService.setMember(input, actor)),
+  );
+  socket.on('chat:direct', (input, ack) => run(ack, (actor) => chatService.openDirect(input, actor)));
+  socket.on('chat:edit', (input, ack) => run(ack, (actor) => chatService.editMessage(input, actor)));
+  socket.on('chat:delete', (messageId, ack) =>
+    run(ack, (actor) => chatService.deleteMessage(messageId, actor)),
+  );
+  socket.on('chat:pin', (input, ack) => run(ack, (actor) => chatService.pinMessage(input, actor)));
+  socket.on('chat:taskDone', (input, ack) => run(ack, (actor) => chatService.setTaskDone(input, actor)));
+  socket.on('chat:read', (input, ack) => run(ack, (actor) => chatService.markRead(input, actor)));
+  socket.on('chat:mute', (input, ack) => run(ack, (actor) => chatService.setMuted(input, actor)));
+  socket.on('chat:requestAccess', (input, ack) =>
+    run(ack, (actor) => chatService.requestAccess(input, actor)),
+  );
+
   // The one live pull; everything else rides on `SyncSnapshot.dashboard` and
   // the `dashboard:changed` push both extended below.
   socket.on('dashboard:get', (ack) =>
@@ -1233,6 +1287,11 @@ async function emitToActors<E extends PerUserEvent>(
   payload: Omit<Parameters<ServerToClientEvents[E]>[0], 'forUserId'>,
   accept: (actor: ActorContext, socket: RecipientSocket) => boolean,
   userIds?: readonly string[],
+  /** Reshape the payload for this recipient (chat re-resolves its record chips). */
+  personalise?: (
+    actor: ActorContext,
+    body: Omit<Parameters<ServerToClientEvents[E]>[0], 'forUserId'>,
+  ) => Promise<Omit<Parameters<ServerToClientEvents[E]>[0], 'forUserId'>>,
 ): Promise<void> {
   const wanted = userIds ? new Set(userIds) : null;
   const personOf = (socket: RecipientSocket): string | undefined =>
@@ -1253,8 +1312,9 @@ async function emitToActors<E extends PerUserEvent>(
         if (!actor?.userId || (wanted && !wanted.has(actor.userId))) return;
         if (!accept(actor, socket)) return;
 
+        const body = personalise ? await personalise(actor, payload) : payload;
         (socket.emit as (name: string, body: unknown) => void)(event, {
-          ...payload,
+          ...body,
           forUserId: actor.userId,
         });
       } catch (error: unknown) {

@@ -97,7 +97,7 @@ export const MODULE_ACTIONS: Record<PermissionModule, readonly PermissionAction[
 
 // --- Capabilities ----------------------------------------------------------
 
-export const CAPABILITY_GROUPS = ['workflow', 'stock', 'admin'] as const;
+export const CAPABILITY_GROUPS = ['workflow', 'stock', 'admin', 'chat'] as const;
 
 export type CapabilityGroup = (typeof CAPABILITY_GROUPS)[number];
 
@@ -173,6 +173,15 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
   // picture without being given the power to redraw it.
   { key: 'party.accessAll', group: 'admin', labelToken: 'permission.party.accessAll' },
   { key: 'party.assign', group: 'admin', labelToken: 'permission.party.assign' },
+
+  // Chatroom (1.3 Phase 6). `chat.use` is the switch: without it the Chatroom
+  // is absent from both panels. The other five are finer rights inside it.
+  { key: 'chat.use', group: 'chat', labelToken: 'permission.chat.use' },
+  { key: 'chat.directMessages', group: 'chat', labelToken: 'permission.chat.directMessages' },
+  { key: 'chat.shareRecords', group: 'chat', labelToken: 'permission.chat.shareRecords' },
+  { key: 'chat.tasks', group: 'chat', labelToken: 'permission.chat.tasks' },
+  { key: 'chat.createGroups', group: 'chat', labelToken: 'permission.chat.createGroups' },
+  { key: 'chat.manage', group: 'chat', labelToken: 'permission.chat.manage' },
 ] as const;
 
 // --- The frozen key list ---------------------------------------------------
@@ -254,6 +263,11 @@ const MINIMUM_TIER: Record<string, RoleTier> = {
   // which is what "changed in the admin login only" means in practice.
   'party.accessAll': 'management',
   'party.assign': 'admin',
+
+  // Chat: everything but these two is office tier. Opening a group is a
+  // supervisor's call; administering every group in the company is governance.
+  'chat.createGroups': 'management',
+  'chat.manage': 'admin',
 };
 
 /** The lowest tier permitted to hold a key. */
@@ -332,6 +346,10 @@ export const ROLE_TEMPLATES: ReadonlyArray<{
       'reports.view',
       'reports.export',
       'lead.convert',
+      'chat.use',
+      'chat.directMessages',
+      'chat.shareRecords',
+      'chat.tasks',
     ],
   },
   {
@@ -347,6 +365,7 @@ export const ROLE_TEMPLATES: ReadonlyArray<{
       'stock.adjust',
       'reports.view',
       'reports.export',
+      'chat.use',
     ],
   },
 ];

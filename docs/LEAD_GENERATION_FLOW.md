@@ -271,6 +271,16 @@ writes the pair to `id_map` (`mapTemporaryId` in `master/src/services/sync.servi
 record's own `temporary_id` column stays empty. The push answers with the pairs, and the panel
 rewrites any follow-up still in its outbox ("move lead X to Quoted") to the permanent ID.
 
+> **The outbox also carries `chat.post` (1.3 Phase 6).** A chat message is an offline-able write like
+> any other: the Office server queues it (`queue()`), answers `202` with the mutation id, and the
+> outbox sends it with the rest. Two differences. It is **held per author**: the batch leaves out any
+> `chat.post` whose `actorUserId` is not the person signed in now, so it waits for them to sign in
+> again and never goes up under the panel actor or another person (which would earn the whole batch a
+> refusal and stall lead and order sync). And the Master refuses, and records, one that arrives under
+> the wrong person (`validation.chat.wrongAuthor`). The mutation id doubles as the message's
+> `client_id`, so a resend returns the message it already made. See
+> `docs/backend-modules/04-API-CONTRACT.md` section 14.4.
+
 **Order across panels (1.3, rule 6).** Every push goes through the Master's push gate
 (`master/src/services/push-gate.ts`). The gate collects the pushes that arrive within a gather
 window, sorts all their mutations together by HLC physical time, then HLC counter, then device

@@ -26,6 +26,7 @@ import {
 import { db } from '../src/db/knex.js';
 import type { ActorContext } from '../src/domain/actor.js';
 import * as catalog from '../src/services/catalog.service.js';
+import * as chat from '../src/services/chat.service.js';
 import * as conflicts from '../src/services/conflict.service.js';
 import * as leads from '../src/services/lead.service.js';
 import * as partyAccess from '../src/services/party-access.service.js';
@@ -1153,6 +1154,99 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
         .where({ parent_id: lead.id, kind: 'system' })
         .select('message');
       expect(moves.map((row) => row.message)).toContain('Moved from Negotiating to Quoted');
+    });
+  });
+
+  describe('a chat post (Phase 6)', () => {
+    /** A real person, a room they are in, and the actor their session resolves to. */
+    async function author(username: string) {
+      const role = await roleService.createRole(
+        { name: `Chat ${username}`, tier: 'management', permissions: ['chat.use', 'chat.createGroups'] },
+        actor,
+      );
+      const { user } = await userService.createUser(
+        { username, displayName: username, roleId: role.id, password: 'correct-horse' },
+        actor,
+      );
+      const asUser = {
+        ...(await actorWith(['chat.use', 'chat.createGroups'])),
+        actorId: user.id,
+        userId: user.id,
+        actorName: username,
+      };
+      const room = await chat.createRoom({ name: `Room ${username}` }, asUser);
+      return { user, asUser, roomId: room.id };
+    }
+
+    const post = (roomId: string, actorUserId: string | null, body = 'hello from the shop floor') =>
+      mutation({
+        kind: 'chat.post',
+        entity: 'chat_message',
+        entityId: formatTemporaryId(PANEL_A, 41),
+        payload: { roomId, body },
+        actorUserId,
+      });
+
+    it('creates the message, maps its temporary id, and replays as a duplicate with one row', async () => {
+      const { user, asUser, roomId } = await author('asha');
+      const m = post(roomId, user.id);
+
+      const first = await sync.applyPush({ mutations: [m] }, asUser);
+      expect(first.results[0]?.status).toBe('applied');
+      expect(first.results[0]?.entityId).toMatch(/^CM\d{10}$/);
+      expect(first.idMappings.map((mapping) => mapping.temporaryId)).toEqual([m.entityId]);
+
+      const second = await sync.applyPush({ mutations: [m] }, asUser);
+      expect(second.results[0]?.status).toBe('duplicate');
+      expect(await db()('chat_messages').where({ room_id: roomId, kind: 'text' })).toHaveLength(1);
+    });
+
+    it('is never applied as somebody else: a post by A pushed under B is rejected and recorded', async () => {
+      const a = await author('asha');
+      const b = await author('bina');
+      const m = post(a.roomId, a.user.id);
+
+      const { results } = await sync.applyPush({ mutations: [m] }, b.asUser);
+      expect(results[0]?.status).toBe('rejected');
+      expect(results[0]?.error).toMatch(/someone else/i);
+      expect(await db()('chat_messages').where({ room_id: a.roomId, kind: 'text' })).toHaveLength(0);
+
+      // Replayed as the refusal it was, not tried again as A.
+      const again = await sync.applyPush({ mutations: [m] }, a.asUser);
+      expect(again.results[0]?.status).toBe('duplicate');
+    });
+
+    it('rejects a post by a person without chat.use, naming the key', async () => {
+      const { user, roomId } = await author('asha');
+      const limited = { ...(await actorWith(['leads.view'])), actorId: user.id, userId: user.id };
+
+      const { results } = await sync.applyPush({ mutations: [post(roomId, user.id)] }, limited);
+      expect(results[0]).toMatchObject({ status: 'rejected', missingPermission: 'chat.use' });
+    });
+
+    it('applies a lead pushed beside a post by a signed-out user, and refuses the post without a 503', async () => {
+      const { party, product } = await seed();
+      const { user, roomId } = await author('asha');
+      const lead = mutation({
+        kind: 'lead.create',
+        entity: 'lead',
+        payload: {
+          partyId: party.id,
+          items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 2, packaging: 'carton' }],
+        },
+      });
+
+      // Under the bare panel role, which cannot chat: the Office would never send this, so the Master's answer is the net.
+      const held = post(roomId, user.id);
+      const response = await sync.applyPush(
+        { mutations: [lead, held] },
+        { ...actor, actorType: 'office_panel' },
+      );
+      const statusOf = (id: string) => response.results.find((result) => result.mutationId === id)?.status;
+      expect(statusOf(lead.mutationId)).toBe('applied');
+      expect(statusOf(held.mutationId)).toBe('rejected');
+      expect(await db()('leads').select('id')).toHaveLength(1);
+      expect(await db()('chat_messages').where({ room_id: roomId, kind: 'text' })).toHaveLength(0);
     });
   });
 

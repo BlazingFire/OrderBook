@@ -37,6 +37,8 @@ interface Props {
   syncLabel: string;
   onNavigate: (tab: DashboardTab) => void;
   onOpenLead: (id: string) => void;
+  /** Unread chat messages, from the Chatroom; no tile when absent (no `chat.use`). */
+  chatUnread?: number;
 }
 
 /** Local calendar date as `YYYY-MM-DD`, matching `Lead.followUpDate`'s format. */
@@ -169,6 +171,7 @@ export function DashboardScreen({
   syncLabel,
   onNavigate,
   onOpenLead,
+  chatUnread,
 }: Props) {
   const canViewLeads = view.permissions.includes('leads.view');
   const canViewOrders = view.permissions.includes('orders.view');
@@ -319,6 +322,10 @@ export function DashboardScreen({
                   })
             }
           />
+        )}
+
+        {chatUnread !== undefined && (
+          <StatTile label={t('dashboard.stat.chatUnread')} value={chatUnread.toLocaleString('en-IN')} />
         )}
 
         <StatTile
