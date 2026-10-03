@@ -52,6 +52,9 @@ $ContentWrite = [int]($FS::WriteData -bor $FS::AppendData -bor $FS::WriteExtende
 # What lets them replace the folder itself, as a child of an ancestor.
 $Replace = [int]($FS::Delete -bor $FS::DeleteSubdirectoriesAndFiles -bor $FS::ChangePermissions -bor $FS::TakeOwnership)
 
+# The system's own icacls, by absolute path: never whatever PATH finds first.
+$Icacls = Join-Path ([Environment]::SystemDirectory) 'icacls.exe'
+
 function Get-Entry([string]$Target) { Get-Item -LiteralPath $Target -Force }
 
 function Test-Link([string]$Target) {
@@ -101,7 +104,7 @@ function Test-Chain([string]$Target, [bool]$ContentTarget) {
 
 function Set-Protected([string]$Target, [object[]]$Grants) {
     # Owner first (icacls handles the privilege), then a DACL with inheritance cut and only what is listed.
-    & icacls.exe $Target /setowner "*$AdminsSid" /L | Out-Null
+    & $Icacls $Target /setowner "*$AdminsSid" /L | Out-Null
     $security = New-Object System.Security.AccessControl.DirectorySecurity
     $security.SetOwner((New-Object System.Security.Principal.SecurityIdentifier $AdminsSid))
     $security.SetAccessRuleProtection($true, $false)
@@ -143,7 +146,7 @@ function Install-Mode {
         @{ Sid = $SystemSid; Rights = $full; Subtree = $true },
         @{ Sid = $UsersSid; Rights = $readRun; Subtree = $true })
     # Anything already inside it that is a link, or owned or writable by somebody else.
-    & icacls.exe $install /setowner "*$AdminsSid" /T /C /L | Out-Null
+    & $Icacls $install /setowner "*$AdminsSid" /T /C /L | Out-Null
     foreach ($item in (Get-ChildItem -LiteralPath $install -Recurse -Force -Directory)) {
         if (Test-Link $item.FullName) { throw "$($item.FullName) is a link inside the program folder" }
         $weak = Get-WeakEntry $item.FullName $ContentWrite $false

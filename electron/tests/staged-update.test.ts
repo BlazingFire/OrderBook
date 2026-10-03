@@ -1,6 +1,6 @@
-import { generateKeyPairSync, sign, type KeyObject } from 'node:crypto';
+import { createHash, generateKeyPairSync, sign, type KeyObject } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -260,18 +260,18 @@ describe('the pieces fit together', () => {
 
   it('the installer hands the folders to update-dirs.ps1 and registers the task only if it succeeds', () => {
     expect(nsis).toContain('update-dirs.ps1');
-    expect(nsis).toContain('-Mode Install -InstallDir "$INSTDIR"');
+    expect(nsis).toContain('-Mode Install -InstallDir \\"$INSTDIR\\"');
     // The system's own PowerShell, by absolute path, not whatever PATH finds.
     expect(nsis).toContain('"$SYSDIR\\WindowsPowerShell\\v1.0\\powershell.exe"');
     const run = nsis.indexOf('-Mode Install');
-    const register = nsis.indexOf('schtasks /Create /F /TN "OrderBook Master Update"');
+    const register = nsis.indexOf('/Create /F /TN "OrderBook Master Update"');
     const guard = nsis.indexOf('${If} $R1 == "0"', run);
     expect(register).toBeGreaterThan(guard);
     expect(guard).toBeGreaterThan(run);
     expect(nsis).toContain('/RL HIGHEST');
     expect(nsis).toContain('apply-update\\apply-update.cmd');
     // And an earlier version's task goes when the folders cannot be made trustworthy.
-    expect(nsis).toMatch(/\$\{Else\}[\s\S]{0,300}schtasks \/Delete \/F \/TN "OrderBook Master Update"/);
+    expect(nsis).toMatch(/\$\{Else\}[\s\S]{0,300}\/Delete \/F \/TN "OrderBook Master Update"/);
   });
 
   it('the installer no longer reuses %ProgramData%\\OrderBook with a plain icacls (the squatting hole)', () => {
@@ -299,7 +299,7 @@ describe('the pieces fit together', () => {
     // Paths come from the known-folder API, never from $env:.
     expect(ps1).not.toMatch(/\$env:/i);
     // Every icacls call that could meet a link says /L.
-    for (const line of ps1.split('\n').filter((l) => l.includes('icacls.exe'))) expect(line, line).toContain('/L');
+    for (const line of ps1.split('\n').filter((l) => l.includes('& $Icacls'))) expect(line, line).toContain('/L');
   });
 
   it('the launcher clears every NODE_* and ELECTRON_* variable, then runs the script by a path from its own location', () => {
@@ -312,7 +312,7 @@ describe('the pieces fit together', () => {
   });
 
   it('the uninstaller removes the task, but not during an update that may have been started by it', () => {
-    const removal = nsis.indexOf('schtasks /Delete /F /TN "OrderBook Master Update"', nsis.indexOf('customUnInstall'));
+    const removal = nsis.indexOf('/Delete /F /TN "OrderBook Master Update"', nsis.indexOf('customUnInstall'));
     const guard = nsis.lastIndexOf('${IfNot} ${isUpdated}', removal);
     expect(removal).toBeGreaterThan(-1);
     expect(guard).toBeGreaterThan(-1);
@@ -448,5 +448,104 @@ describe.skipIf(process.platform !== 'win32')('update-dirs.ps1 -Mode Check, run 
 
   it('refuses a folder that does not exist rather than passing it', () => {
     expect(check(path.join(root, 'nothing-here')).code).toBe(1);
+  });
+});
+
+describe('install-time commands are absolute, and the installer script is verified before it runs (CH1 hardening)', () => {
+  const nsis = read('master/installer/installer.nsh');
+  const ps1 = read('master/installer/apply-update/update-dirs.ps1');
+  const { writeUpdateDirsHash } = createRequire(import.meta.url)('../../tools/flip-fuses.cjs') as {
+    writeUpdateDirsHash: (projectDir: string) => string | null;
+  };
+  const sha = (text: string): string => createHash('sha256').update(text).digest('hex');
+
+  it('every program the installer runs elevated is named by its System32 path, never found through PATH or COMSPEC', () => {
+    const lines = nsis.split('\n').filter((line) => /nsExec::/.test(line));
+    expect(lines.length).toBeGreaterThan(3);
+    for (const line of lines) {
+      if (/netsh/.test(line)) continue; // the firewall rules predate this and have no user-writable path
+      expect(line, line).toMatch(/\$SYSDIR\\/);
+    }
+    expect(nsis).not.toMatch(/nsExec::Exec 'schtasks /);
+    expect(nsis).not.toMatch(/nsExec::Exec 'powershell\.exe/);
+  });
+
+  it("the task's command is cmd.exe by absolute path, with the script quoted for cmd /c", () => {
+    expect(nsis).toContain('/TR "\\"$SYSDIR\\cmd.exe\\" /c \\"\\"$INSTDIR\\resources\\apply-update\\apply-update.cmd\\"\\""');
+  });
+
+  it('update-dirs.ps1 runs the system icacls by absolute path, always with /L', () => {
+    expect(ps1).toContain("$Icacls = Join-Path ([Environment]::SystemDirectory) 'icacls.exe'");
+    expect(ps1).not.toMatch(/& icacls\.exe/);
+    const calls = ps1.split('\n').filter((line) => line.includes('& $Icacls'));
+    expect(calls.length).toBeGreaterThan(1);
+    for (const line of calls) expect(line, line).toContain('/L');
+  });
+
+  it('the installer script is checked against a build-time SHA-256 and run from memory, so a swap after the check changes nothing', () => {
+    expect(nsis).toContain('!include "${BUILD_RESOURCES_DIR}\\apply-update\\update-dirs-hash.nsh"');
+    expect(nsis).toMatch(/!ifndef UPDATE_DIRS_SHA256[\s\S]{0,200}!error/);
+    expect(nsis).toContain('ReadAllBytes');
+    expect(nsis).toContain('if ($$h -ne \\"${UPDATE_DIRS_SHA256}\\") { exit 9 }');
+    expect(nsis).toContain('[scriptblock]::Create(');
+    // Never `-File` on the extracted script for the Install mode.
+    expect(nsis).not.toMatch(/-File "\$PLUGINSDIR\\update-dirs\.ps1"/);
+    // The registered task is created only after the checked script says 0.
+    expect(nsis.indexOf('/Create /F /TN')).toBeGreaterThan(nsis.indexOf('exit 9'));
+  });
+
+  it('afterPack bakes the SHA-256 of the exact script bytes into the include, and does nothing for a build without one', () => {
+    const project = mkdtempSync(path.join(os.tmpdir(), 'ob-hash-'));
+    try {
+      expect(writeUpdateDirsHash(project)).toBeNull();
+      mkdirSync(path.join(project, 'installer', 'apply-update'), { recursive: true });
+      writeFileSync(path.join(project, 'installer', 'apply-update', 'update-dirs.ps1'), 'exit 0\n');
+      expect(writeUpdateDirsHash(project)).toBe(sha('exit 0\n'));
+      const written = readFileSync(path.join(project, 'installer', 'apply-update', 'update-dirs-hash.nsh'), 'utf8');
+      expect(written).toContain(`!define UPDATE_DIRS_SHA256 "${sha('exit 0\n')}"`);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+    expect(readFileSync(path.join(repo, 'tools', 'flip-fuses.cjs'), 'utf8')).toContain('writeUpdateDirsHash(context.packager.projectDir)');
+  });
+
+  describe.skipIf(process.platform !== 'win32')('the verifying bootstrap, run for real', () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'ob-boot-'));
+    afterAll(() => rmSync(root, { recursive: true, force: true }));
+    const original = readFileSync(path.join(repo, 'master', 'installer', 'apply-update', 'update-dirs.ps1'));
+
+    /** The very command line the installer builds, with NSIS's `$$` and the placeholders filled in, in Chain mode. */
+    function bootstrap(file: string, expectedHash: string): number {
+      const line = nsis.split('\n').find((l) => l.includes('-Command "$$b=')) ?? '';
+      const command = /-Command "(.*)"'\s*$/.exec(line)?.[1] ?? '';
+      expect(command).not.toBe('');
+      const filled = command
+        .replaceAll('$$', '$')
+        .replaceAll('\\"', '"')
+        .replace('$PLUGINSDIR\\update-dirs.ps1', file)
+        .replace('${UPDATE_DIRS_SHA256}', expectedHash)
+        .replace('-Mode Install -InstallDir "$INSTDIR"', `-Mode Chain -Path "${process.env.SystemRoot ?? 'C:\\Windows'}"`);
+      return spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', filled], {
+        windowsHide: true,
+      }).status ?? -1;
+    }
+
+    it('runs the script when the bytes are the ones that were hashed', () => {
+      const file = path.join(root, 'good.ps1');
+      writeFileSync(file, original);
+      expect(bootstrap(file, createHash('sha256').update(original).digest('hex'))).toBe(0);
+    });
+
+    it('refuses a script that was changed after the hash was taken: exit 9, nothing run', () => {
+      const file = path.join(root, 'swapped.ps1');
+      writeFileSync(file, Buffer.concat([original, Buffer.from('\r\nWrite-Output "evil"; exit 0\r\n')]));
+      expect(bootstrap(file, createHash('sha256').update(original).digest('hex'))).toBe(9);
+    });
+
+    it('refuses when the baked hash is wrong', () => {
+      const file = path.join(root, 'wronghash.ps1');
+      writeFileSync(file, original);
+      expect(bootstrap(file, 'f'.repeat(64))).toBe(9);
+    });
   });
 });

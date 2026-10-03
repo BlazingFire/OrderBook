@@ -88,7 +88,12 @@ export function parseUpdatePaths(text: string): UpdatePaths | null {
   return dirs;
 }
 
-/** What the task tells the shell, in the (untrusted) stage folder: a hint, never an instruction. */
+/**
+ * What the task tells the shell, in `result.json` in its own work folder, which
+ * only administrators can write and the shell's account can read: a hint, never
+ * an instruction. (It is not in the stage folder: the elevated task must never
+ * write into a folder anybody can replace with a link.)
+ */
 export const TASK_RESULT = 'result.json';
 
 export type TaskStatus = 'checking' | 'installing' | 'refused';

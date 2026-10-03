@@ -36,23 +36,37 @@
   ;    folder owned by anybody else is moved aside, and the new one is created
   ;    Administrators-owned with a protected ACL, then re-read and verified;
   ;  - the folders are found by the known-folder API, not an environment variable.
-  ; The script is extracted to $PLUGINSDIR (this installer's private temp folder) and
-  ; run from there with the system's own PowerShell, by absolute path.
+  ; Every program an administrator runs here is named by its absolute System32
+  ; path ($SYSDIR), never found through PATH or COMSPEC.
+  ;
+  ; The script is extracted to $PLUGINSDIR (this installer's private temp folder),
+  ; which another program running as the same account can write. So it is never run
+  ; from there: the PowerShell it is handed to reads the file ONCE, checks the bytes
+  ; against the SHA-256 baked in at build time (UPDATE_DIRS_SHA256, written next to
+  ; the script by tools/flip-fuses.cjs), and runs *those bytes from memory*. Swapping
+  ; the file after the check changes nothing, and swapping it before makes the
+  ; check fail (exit 9, no task). `$$` is NSIS for a literal `$`.
+  !include "${BUILD_RESOURCES_DIR}\apply-update\update-dirs-hash.nsh"
+  !ifndef UPDATE_DIRS_SHA256
+    !error "update-dirs-hash.nsh did not define UPDATE_DIRS_SHA256 (tools/flip-fuses.cjs writes it in afterPack)"
+  !endif
   Push $R0
   Push $R1
   InitPluginsDir
   File "/oname=$PLUGINSDIR\update-dirs.ps1" "${BUILD_RESOURCES_DIR}\apply-update\update-dirs.ps1"
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\update-dirs.ps1" -Mode Install -InstallDir "$INSTDIR"'
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$b=[IO.File]::ReadAllBytes(\"$PLUGINSDIR\update-dirs.ps1\"); $$h=([BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($$b))).Replace(\"-\",\"\").ToLower(); if ($$h -ne \"${UPDATE_DIRS_SHA256}\") { exit 9 }; $$s=[scriptblock]::Create([Text.Encoding]::UTF8.GetString($$b).TrimStart([char]0xFEFF)); & $$s -Mode Install -InstallDir \"$INSTDIR\"; exit $$LASTEXITCODE"'
   Pop $R1
   ${If} $R1 == "0"
     ; Highest privileges, as the account running this installer; never started by a
     ; schedule (the start time is a placeholder), only by `schtasks /Run` from the app.
-    nsExec::Exec 'schtasks /Create /F /TN "OrderBook Master Update" /SC ONCE /ST 00:00 /RL HIGHEST /TR "\"$INSTDIR\resources\apply-update\apply-update.cmd\""'
+    ; The action is `cmd.exe /c ""<script>""` with cmd.exe by absolute path, so the
+    ; account's COMSPEC does not choose the program that runs elevated.
+    nsExec::Exec '"$SYSDIR\schtasks.exe" /Create /F /TN "OrderBook Master Update" /SC ONCE /ST 00:00 /RL HIGHEST /TR "\"$SYSDIR\cmd.exe\" /c \"\"$INSTDIR\resources\apply-update\apply-update.cmd\"\""'
     Pop $R1
   ${Else}
     ; Not registered, and any task left by an earlier version is removed: without
     ; trustworthy folders the nightly update falls back to asking for approval.
-    nsExec::Exec 'schtasks /Delete /F /TN "OrderBook Master Update"'
+    nsExec::Exec '"$SYSDIR\schtasks.exe" /Delete /F /TN "OrderBook Master Update"'
     Pop $R1
     DetailPrint "The nightly update task was not registered: its folders could not be made trustworthy."
   ${EndIf}
@@ -83,7 +97,7 @@
   ${IfNot} ${isUpdated}
     ; The nightly update's task and folders go with the program. Not during an
     ; update: the task may be what started it, and customInstall re-registers it.
-    nsExec::Exec 'schtasks /Delete /F /TN "OrderBook Master Update"'
+    nsExec::Exec '"$SYSDIR\schtasks.exe" /Delete /F /TN "OrderBook Master Update"'
     Push $R0
     ReadEnvStr $R0 ProgramData
     ${If} $R0 == ""
@@ -114,7 +128,7 @@
     orderbookDataAnswered:
 
     IfFileExists "$TEMP\OrderBook-uninstall-master\uninstall-orderbook.ps1" 0 orderbookSweepSkipped
-    nsExec::Exec 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$TEMP\OrderBook-uninstall-master\uninstall-orderbook.ps1" -Panel master -LeftoversOnly -Yes $R7'
+    nsExec::Exec '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$TEMP\OrderBook-uninstall-master\uninstall-orderbook.ps1" -Panel master -LeftoversOnly -Yes $R7'
     orderbookSweepSkipped:
   ${EndIf}
 
