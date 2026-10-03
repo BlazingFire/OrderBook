@@ -150,8 +150,6 @@ interface VariantFacts {
   code: string;
   /** Per piece, or null while the master has no figure for it yet. */
   weightKg: number | null;
-  /** Free to sell, or null when this panel holds no stock row for the variant. */
-  availableBoxes: number | null;
 }
 
 /** One variant of the model on the draft card, in one colour, with the quantity as typed. */
@@ -317,7 +315,6 @@ function chorded(event: {
 
 /** A saved lead's lines as the form's own, so they can be modified and removed like new ones. */
 function linesOf(lead: Lead, view: LocalView): DraftLine[] {
-  const free = new Map(view.stock.map((level) => [level.variantId, level.availableBoxes]));
   return lead.items.map((item, index) => {
     const product = view.products.find((candidate) => candidate.id === item.productId);
     // The product's own rule while the catalogue still has it; otherwise read
@@ -347,7 +344,6 @@ function linesOf(lead: Lead, view: LocalView): DraftLine[] {
       variantLabel: item.variantLabel,
       code: item.code ?? '',
       weightKg: item.weightKg,
-      availableBoxes: free.get(item.variantId) ?? null,
       colour: item.colour ?? '',
       quantity: item.quantity,
     };
@@ -576,12 +572,6 @@ function AddLeadForm({
   );
   const partyWiseMode = partyRecordFor.size > 0;
 
-  /** Free stock per variant, from the snapshot. Absent means unknown, not zero. */
-  const freeFor = useMemo(
-    () => new Map(view.stock.map((level) => [level.variantId, level.availableBoxes])),
-    [view.stock],
-  );
-
   // --- Party search -------------------------------------------------------
 
   const partyTerm = useDebounced(partyQuery, 200);
@@ -754,7 +744,6 @@ function AddLeadForm({
       variantLabel: variant.label,
       code: variant.code,
       weightKg: variant.weightKg,
-      availableBoxes: freeFor.get(variant.id) ?? null,
     };
   }
 
@@ -905,7 +894,6 @@ function AddLeadForm({
       variantLabel,
       code,
       weightKg,
-      availableBoxes,
       ...facts
     } = line;
     const variant: VariantFacts = {
@@ -913,7 +901,6 @@ function AddLeadForm({
       variantLabel,
       code,
       weightKg,
-      availableBoxes: freeFor.get(variantId) ?? availableBoxes,
     };
     setDraft({
       ...facts,
@@ -2208,7 +2195,7 @@ function WeightCell({ kg }: { kg: number | null }) {
  * it.
  *
  * One row, not five. It was five: a variant line, a weight line, a packaging
- * line, a stock line and a button line, each the full width of the panel and
+ * line, and a button line, each the full width of the panel and
  * mostly empty — expanding one product pushed the next three off the screen.
  * The facts are short words; they belong beside each other, separated by a
  * middot, and they wrap when there is no room.
@@ -2242,7 +2229,6 @@ function LeadLine({
   onModify: () => void;
   onRemove: () => void;
 }) {
-  const over = line.availableBoxes !== null && line.quantity > line.availableBoxes;
   const kg = lineWeight(line);
   const packaging = line.packaging.trim();
   const grade = line.grade.trim();
@@ -2333,13 +2319,6 @@ function LeadLine({
               </span>
             )}
           </span>
-          {over && (
-            <span
-              className="ob-lead-short"
-              title={t('lead.add.products.overFree')}
-              aria-label={t('lead.add.products.overFree')}
-            />
-          )}
           <span
             className="ob-micro"
             style={{
@@ -2369,19 +2348,6 @@ function LeadLine({
           </span>
 
           <span className="ob-lead-line__acts">
-            {/* What was asked against what is free — the one figure the head
-                cannot show, and the reason this row is worth opening. */}
-            {line.availableBoxes !== null && (
-              <span
-                className="ob-micro"
-                style={{
-                  color: over ? 'var(--state-offline)' : 'var(--fg-tertiary)',
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              >
-                {line.quantity} {t('lead.add.line.ofFree', { free: line.availableBoxes })}
-              </span>
-            )}
             {/*
              * Icons on a tinted square, not words (owner's instruction). Two
              * verbs repeated down a list of twenty lines is twenty times the

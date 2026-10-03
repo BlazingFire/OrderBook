@@ -684,7 +684,7 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
 
         // `owners` because a Server Master may raise an order for anybody.
         expect(Object.keys(view.body).sort()).toEqual(
-          ['features', 'optionLists', 'owners', 'partyGrants', 'partyVariants', 'products', 'stock'].sort(),
+          ['features', 'optionLists', 'owners', 'partyGrants', 'partyVariants', 'products'].sort(),
         );
         // The catalogue rides along so editing a multicolour line keeps its colour rule.
         expect(view.body.products.map((product: { id: string }) => product.id)).toContain(seeded.productId);
@@ -692,18 +692,6 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
           expect.objectContaining({ partyId: seeded.partyId, alias: 'Carrara (Patel)' }),
         ]);
         expect(Array.isArray(view.body.optionLists)).toBe(true);
-        expect(view.body.stock.length).toBeGreaterThan(0);
-      });
-
-      it('sends stock as [] without inventory.view', async () => {
-        const { password } = await initialize();
-        const admin = await signedInAgent(password);
-        await seedLead(admin);
-        const desk = await agentWith(['leads.create']);
-
-        const view = await desk.get('/api/lead-entry').expect(200);
-
-        expect(view.body.stock).toEqual([]);
       });
 
       it('leaves products out without products.view', async () => {
@@ -773,24 +761,16 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       });
     });
 
-    it('dispatches an order and moves the stock ledger', async () => {
+    it('dispatches an order', async () => {
       const { password } = await initialize();
       const agent = await signedInAgent(password);
-      const { variantId, lead } = await seedLead(agent);
-
-      await agent.post('/api/stock/inbound').send({ variantId, quantityBoxes: 50 }).expect(200);
+      const { lead } = await seedLead(agent);
 
       const order = await agent.post(`/api/leads/${lead.id}/convert`).send({}).expect(201);
-
-      // Reserved, not yet gone.
-      const held = await agent.get('/api/stock').expect(200);
-      expect(held.body[0]).toMatchObject({ quantityBoxes: 50, reservedBoxes: 12, availableBoxes: 38 });
-
       await agent.post(`/api/orders/${order.body.id}/dispatch`).send({}).expect(200);
-
-      const after = await agent.get('/api/stock').expect(200);
-      expect(after.body[0]).toMatchObject({ quantityBoxes: 38, reservedBoxes: 0 });
+      await agent.get('/api/stock').expect(404);
     });
+
 
     it('lists only converted leads for convertedOnly, which skips the open-board guard', async () => {
       const { password } = await initialize();
@@ -887,7 +867,6 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
         orderCount: 0,
         partyCount: 1,
         productCount: 1,
-        lowStockCount: 0,
         followUpsDueCount: 0,
         openConflictCount: 0,
       });

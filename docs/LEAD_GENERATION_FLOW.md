@@ -85,7 +85,7 @@ Picking a variant snapshots these onto the line **at that moment**:
 
 | Field | Source |
 |---|---|
-| `productId`, `variantId` | Selected model and variant — kept live for stock movement and traceability; the variant must belong to the product and still be active (`validation.lead.variantMissing`) |
+| `productId`, `variantId` | Selected model and variant — kept live for traceability; the variant must belong to the product and still be active (`validation.lead.variantMissing`) |
 | `code`, `variantLabel`, `weightKg` | Copied from the **variant** — a party's record never changes what a basin weighs |
 | `productName`, `alias`, `size` | Copied from the product, or from the party's record when `partyWiseMode` is on |
 | `categoryName`, `categoryCode`, `brandName` | Copied from the product's category (the owner's Product) — its name, code and brand — unless the panel sent them with the line, as its catalogue had them (`categoryCode` and `brandName` since 2026-09-29) |
@@ -201,8 +201,8 @@ Trigger: a user holding **`lead.convert`** presses **Convert to Order**.
    discriminated by `(parent_type, parent_id)`, so conversion inserts copies with
    `parent_type = 'order'` — a straight copy, never a re-derivation. Snapshotted values are **not**
    re-read from the product.
-4. **Stock is reserved** — one `stock_reservations` row per line, keyed by the line's variant.
-   A white basin in stock does not satisfy a reservation for a blue one.
+4. **Nothing is reserved.** *(Superseded in 1.4: stock and inventory were removed, so conversion
+   no longer reserves stock and nothing replaced it.)*
 5. **The lead is marked converted** — `converted_order_id` and `converted_at` are set. The lead is
    never deleted; it stays as history pointing at its order.
 6. **The order starts its own pipeline** — a separate configurable pipeline (seeded In Progress /
@@ -219,7 +219,6 @@ Trigger: a user holding **`lead.convert`** presses **Convert to Order**.
 - A line's snapshotted `weightKg` and `colour` do **not** move when the product or its variant is
   edited afterwards; an order already raised is untouched by a weight entered later.
 - `packaging` is **never** auto-filled during conversion — it keeps exactly what was entered.
-- Reservations are per variant, never aggregated to a product total.
 - A variant of another product, or one taken off the form, is refused on a new lead; a line with
   no quantity is refused.
 
@@ -227,8 +226,10 @@ Trigger: a user holding **`lead.convert`** presses **Convert to Order**.
 
 ## 6. After conversion
 
-- **Dispatch** — marking an order dispatched consumes its reservations and writes the stock
-  movement, always as a **signed delta**, never an absolute value.
+- **Dispatch** — marking an order dispatched stamps it (`dispatched_at`), moves it to the
+  Dispatched stage, adds the timeline message `Dispatched` and logs `order.dispatched` with empty
+  details. *(Superseded in 1.4: it used to consume reservations and write a signed stock movement;
+  stock was removed, so dispatch now has no stock side.)*
 - **Handoff to accounting** — the confirmed order leaves for the company's separate accounting
   software. This system does no invoicing, tax or GST.
 
@@ -397,7 +398,7 @@ Frozen the moment the line is added; editing the product or its variant later do
 
 | Field | Notes |
 |---|---|
-| `productId`, `variantId` | Live references, for stock movement and traceability |
+| `productId`, `variantId` | Live references, for traceability |
 | `sequence` | Display order |
 | `packaging` | Manual on every line — never auto-filled |
 | `grade` | Manual on every line, from `line.grade`; never auto-filled. Copied to the order like the rest of the snapshot |
@@ -461,7 +462,6 @@ excluded from the vector itself.
  +------------------------------------------+
  | New Order:                                |
  |  - line items copied unchanged            |
- |  - stock reserved per variant             |
  |  - lead.convertedOrderId / convertedAt set|
  +---------------------+--------------------+
                        |
@@ -472,7 +472,7 @@ excluded from the vector itself.
                  Mark dispatched
                        |
                        v
-   Reservations consumed -> signed stock movement written
+   Order stamped dispatched, moved to the Dispatched stage
                        |
                        v
            Handed off to accounting software

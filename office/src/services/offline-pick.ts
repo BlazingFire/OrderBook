@@ -188,12 +188,12 @@ export function pickFromView(
     // check the Master's own `EXISTS` clause makes, here as a set built from
     // the cached page. The order is the Master's too: a code typed in full
     // first, then catalogue order.
-    const stocked = new Set(view.products.map((product) => product.categoryId));
+    const withProducts = new Set(view.products.map((product) => product.categoryId));
     const term = query.term?.trim().toLowerCase() ?? '';
     const exact = (category: ProductCategory): number =>
       term !== '' && (category.code ?? '').toLowerCase() === term ? 0 : 1;
     return pickInOrder(
-      view.categories.filter((category) => stocked.has(category.id)),
+      view.categories.filter((category) => withProducts.has(category.id)),
       (category) => categoryMatches(category, term),
       (a, b) => exact(a) - exact(b) || byCatalogueOrder(a, b),
       query,

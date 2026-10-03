@@ -20,7 +20,7 @@ import type { ChangedEntity } from '../protocol/socket.js';
  * Reports screen on exactly these (the Master's `SCREEN_ENTITIES.reports`, the
  * Office's `change` listener), so the two cannot drift apart.
  */
-export const REPORT_ENTITIES: readonly ChangedEntity[] = ['lead', 'order', 'party', 'party_bulk', 'stock'];
+export const REPORT_ENTITIES: readonly ChangedEntity[] = ['lead', 'order', 'party', 'party_bulk'];
 
 export type ReportPeriod =
   | 'thisMonth'

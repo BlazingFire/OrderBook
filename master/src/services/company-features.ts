@@ -12,7 +12,7 @@ import { getSetting } from './settings.service.js';
 /**
  * Resolved in one place, for both channels.
  *
- * `getSetting` is cached per tenant, so once the cache is warm the five reads
+ * `getSetting` is cached per tenant, so once the cache is warm the reads
  * cost no query at all (on a cold cache the five run in parallel and each
  * loads the tenant's settings — nothing de-duplicates a load in flight). And
  * one function is what stops the Master's `/me` and the panel's snapshot
@@ -29,7 +29,7 @@ export async function companyFeatures(tenantId: string): Promise<CompanyFeatures
    * Read as named properties, never as a positional array.
    *
    * `Promise.all` with an array destructure would be shorter and is how this
-   * was first written. Four of these five are booleans, so swapping two of them
+   * was first written. Most of these are booleans, so swapping two of them
    * — inserting a key in the reads and not in the destructure — typechecks
    * perfectly and hands every panel the wrong switch under the right name.
    * Naming both ends makes that a compile error instead.
@@ -39,18 +39,14 @@ export async function companyFeatures(tenantId: string): Promise<CompanyFeatures
 
   const values = Object.fromEntries(
     await Promise.all([
-      read('inventory.freeToSell'),
       read('security.offlineSignInEnabled'),
-      read('inventory.adjustmentNoteRequired'),
       read('leads.followUpDefaultDays'),
       read('leads.packagingRequiredOnConvert'),
       read('reports.visibleToOffice'),
       read('reports.visibleToManagement'),
     ]),
   ) as {
-    'inventory.freeToSell': boolean;
     'security.offlineSignInEnabled': boolean;
-    'inventory.adjustmentNoteRequired': boolean;
     'leads.followUpDefaultDays': number;
     'leads.packagingRequiredOnConvert': boolean;
     'reports.visibleToOffice': boolean;
@@ -58,16 +54,10 @@ export async function companyFeatures(tenantId: string): Promise<CompanyFeatures
   };
 
   return {
-    freeToSell: values['inventory.freeToSell'],
     offlineSignInEnabled: values['security.offlineSignInEnabled'],
-    adjustmentNoteRequired: values['inventory.adjustmentNoteRequired'],
     followUpDefaultDays: values['leads.followUpDefaultDays'],
     packagingRequiredOnConvert: values['leads.packagingRequiredOnConvert'],
     reportsVisibleToOffice: values['reports.visibleToOffice'],
     reportsVisibleToManagement: values['reports.visibleToManagement'],
   };
-}
-
-export async function freeToSell(tenantId: string): Promise<boolean> {
-  return getSetting(tenantId, 'inventory.freeToSell');
 }

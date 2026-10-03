@@ -94,11 +94,11 @@ export interface BinEntry {
  * (the per-entity policy table in `04-API-CONTRACT.md` §4.5).
  */
 export interface BinBlocker {
-  /** Not every blocker is a Bin entity — a line item or a stock row can block a delete without ever being restorable itself. */
-  entityType: RecycleBinEntityType | 'line_item' | 'inventory_stock';
+  /** Not every blocker is a Bin entity — a line item can block a delete without ever being restorable itself. */
+  entityType: RecycleBinEntityType | 'line_item';
   id: RecordId;
   label: string;
-  reason: 'parent_deleted' | 'live_reference' | 'stock_on_hand' | 'converted' | 'dispatched';
+  reason: 'parent_deleted' | 'live_reference' | 'converted' | 'dispatched';
 }
 
 export interface BinRestoreResult {

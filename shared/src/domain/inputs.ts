@@ -271,46 +271,6 @@ export interface OrderDispatchInput {
   note?: string | null;
 }
 
-/** Stock arriving from the factory or a purchase, for one variant. */
-export interface StockInboundInput {
-  variantId: RecordId;
-  quantityBoxes: number;
-  note?: string | null;
-}
-
-/**
- * A correction after a physical count. `quantityBoxes` is the counted total,
- * not a delta — staff count what is on the floor, they do not compute
- * differences. The service turns it into a signed movement.
- */
-export interface StockAdjustmentInput {
-  variantId: RecordId;
-  quantityBoxes: number;
-  note?: string | null;
-}
-
-/**
- * The stock band for one variant.
- *
- * Every level is optional and **absent means untouched** — the same partial
- * patch rule the product columns follow. That is what stops the existing
- * "set the reorder level" screen, which knows nothing about min and max, from
- * clearing them every time somebody uses it.
- */
-export interface StockLevelsInput {
-  variantId: RecordId;
-  reorderLevel?: number | null;
-  minStockLevel?: number | null;
-  maxStockLevel?: number | null;
-}
-
-/**
- * The old name, kept so `MUTATION_PERMISSIONS` and the `stock.setReorderLevel`
- * mutation kind need no rename — the wire contract has not changed, only what
- * a caller is allowed to leave out.
- */
-export type ReorderLevelInput = StockLevelsInput;
-
 /**
  * Which slice of the party book a list is asking for.
  *
@@ -367,15 +327,6 @@ export interface LeadListQuery extends ListQuery {
 export interface OrderListQuery extends ListQuery {
   stageIds?: Uuid[];
   ownerId?: Uuid;
-}
-
-export interface StockListQuery extends ListQuery {
-  /** Restrict to variant rows at or below their reorder level. */
-  lowOnly?: boolean;
-  /** Only rows of this brand (a `product.brand` value), case-insensitively. */
-  brand?: string;
-  /** Only rows of this category (the owner's Product). */
-  categoryId?: RecordId;
 }
 
 export interface SearchQuery {

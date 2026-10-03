@@ -138,7 +138,7 @@ export interface User {
 /**
  * The company switches a screen — or an offline panel — reads without asking.
  *
- * Every field beyond `freeToSell` is **optional**, and that is enforced by
+ * Every field is **optional**, and that is enforced by
  * `shared/tests/wire-optionality.test.ts` rather than left to judgement. This
  * type crosses the Master/Office boundary twice, inside `SyncSnapshot.features`
  * and inside `SignedInUser.features`, and neither crossing validates a payload:
@@ -149,12 +149,8 @@ export interface User {
  * to the setting's own declared fallback.
  */
 export interface CompanyFeatures {
-  /** `inventory.freeToSell`: whether stock is split into on hand / reserved / free. */
-  freeToSell: boolean;
   /** `security.offlineSignInEnabled`: read off the cached snapshot, with the Master off. */
   offlineSignInEnabled?: boolean;
-  /** `inventory.adjustmentNoteRequired`: so a form can ask before the Master refuses. */
-  adjustmentNoteRequired?: boolean;
   /** `leads.followUpDefaultDays`: the follow-up date a new lead starts with. */
   followUpDefaultDays?: number;
   /** `leads.packagingRequiredOnConvert`: whether the lead screens ask for packaging. */
@@ -170,7 +166,7 @@ export interface SignedInUser extends User {
   permissions: string[];
   /** Bumped when the role changes, so a stale session is detected per call. */
   roleVersion: number;
-  /** The company switches the screens read (`domain/inventory-view.ts`). */
+  /** The company switches the screens read (`domain/company-features.ts`). */
   features: CompanyFeatures;
 }
 
@@ -798,106 +794,6 @@ export interface Order {
 
   items: LineItem[];
   timeline: TimelineEntry[];
-  reservations: StockReservation[];
-}
-
-// --- Inventory -------------------------------------------------------------
-
-export type ReservationStatus = 'active' | 'released' | 'consumed';
-
-/**
- * Stock held for an order, per variant — a white basin in stock does not
- * satisfy a reservation for a blue one (docs/LEAD_GENERATION_FLOW.md §5.1).
- */
-export interface StockReservation {
-  id: RecordId;
-  tenantId: Uuid;
-  orderId: RecordId;
-  lineItemId: RecordId;
-  productId: RecordId;
-  productName: string;
-  variantId: RecordId;
-  variantCode: string;
-  variantLabel: string | null;
-  quantity: number;
-  status: ReservationStatus;
-  createdAt: IsoTimestamp;
-  settledAt: IsoTimestamp | null;
-}
-
-/**
- * Current stock for one variant. `quantityBoxes` is what is on the floor;
- * `reservedBoxes` is committed to orders not yet dispatched; the difference
- * is what a new order can actually draw on. All three may go negative —
- * selling against an undelivered factory order is routine, so the shortfall
- * is surfaced rather than blocked.
- */
-export interface InventoryStockLevel {
-  productId: RecordId;
-  productName: string;
-  /** The category (the owner's Product) — for the Product column and its filter. */
-  categoryId: RecordId;
-  categoryName: string | null;
-  /** The category's code (`OPT`), for the Product column's `code · name`. */
-  categoryCode: string | null;
-  /** The category's brand, for the Brand column and the brand filter. */
-  brand: string | null;
-  /**
-   * The product's `multiColour`: its one stock row stands for every colour, so
-   * the Colour cell stays blank rather than naming one.
-   */
-  multiColour: boolean;
-  size: string | null;
-  variantId: RecordId;
-  /** The variant's own code — the number somebody types at the counter. */
-  variantCode: string;
-  /** Colour or pattern text; null on a no-variant product. */
-  variantLabel: string | null;
-  weightKg: number | null;
-  quantityBoxes: number;
-  reservedBoxes: number;
-  availableBoxes: number;
-  reorderLevel: number | null;
-  /**
-   * The band a buyer works to. Advisory: nothing refuses a movement for
-   * crossing them, and `isLow` is still driven by `reorderLevel` alone — a
-   * second low-stock rule would make the dashboard's figure ambiguous.
-   */
-  minStockLevel: number | null;
-  maxStockLevel: number | null;
-  /** True when available stock is at or below the reorder level. */
-  isLow: boolean;
-  updatedAt: IsoTimestamp | null;
-}
-
-export type StockMovementType = 'inbound' | 'outbound' | 'adjustment';
-
-export interface StockMovement {
-  id: number;
-  tenantId: Uuid;
-  productId: RecordId;
-  productName: string;
-  variantId: RecordId;
-  variantCode: string;
-  variantLabel: string | null;
-  movementType: StockMovementType;
-  /** Signed delta, never an absolute value. */
-  quantityBoxes: number;
-  referenceType: string | null;
-  referenceId: RecordId | null;
-  note: string | null;
-  /**
-   * Which lot this quantity came from.
-   *
-   * On the movement, not on the product, and that is the whole design: one
-   * product receives many lots, so a `batch_no` column on `products` would be
-   * false the second time stock arrives. "Which lot is this" is a question
-   * about a movement, and the ledger is where the answer lives.
-   */
-  batchNo: string | null;
-  shade: string | null;
-  calibre: string | null;
-  createdAt: IsoTimestamp;
 }
 
 // --- Sync ------------------------------------------------------------------
@@ -980,8 +876,6 @@ export interface DashboardSummary {
   orderCount?: number;
   partyCount?: number;
   productCount?: number;
-  /** Products at or below their reorder level. */
-  lowStockCount?: number;
   /** Leads whose follow-up date has arrived. */
   followUpsDueCount?: number;
   /** Unresolved rows in `sync_conflicts`. */

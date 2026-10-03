@@ -69,7 +69,7 @@ import {
 const PAGE_SIZE = 500;
 
 interface Props {
-  /** Bumped by the live socket whenever lead, order, party or stock data changes. */
+  /** Bumped by the live socket whenever lead, order or party data changes. */
   revision: number;
   /** The lead pipeline's stages, in order — read once by the shell. */
   stages: PipelineStage[];

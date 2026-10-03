@@ -5,9 +5,9 @@
  * `writeSetting` published nothing and a panel learned a switch exactly once —
  * on its first snapshot. A connected panel never saw a flip, and a panel that
  * reconnected with a usable cursor took a delta, which carries no `features`
- * either. `inventory.freeToSell` shipped with that: an administrator turned it
- * off, the Settings screen agreed, and every panel went on showing reserved and
- * free stock until somebody restarted it.
+ * either. A switch shipped with that: an administrator turned it off, the
+ * Settings screen agreed, and every panel went on behaving as before until
+ * somebody restarted it.
  *
  * The repair is one list. `'setting'` is a `SNAPSHOT_FORCING_ENTITY`, which
  * buys both halves at once: the live path refreshes, and the reconnect path
@@ -33,7 +33,6 @@ function emptySnapshot(): SyncSnapshot {
     partyVariants: [],
     leads: [],
     orders: [],
-    stock: [],
     pipelines: [],
     optionLists: [],
     customFields: [],
@@ -54,13 +53,13 @@ describe('a company switch reaching a connected panel', () => {
     // 'ignored' is what today's tree answers, because the `default` arm catches
     // an entity it does not know — which is right for a genuinely unknown
     // entity from a newer Master, and wrong for this one.
-    expect(applyChangeToSnapshot(emptySnapshot(), settingChanged('inventory.freeToSell'))).toBe(
+    expect(applyChangeToSnapshot(emptySnapshot(), settingChanged('leads.quietAfterDays'))).toBe(
       'refresh',
     );
   });
 
   it('answers the same for every key, since the payload is never read', () => {
-    for (const key of ['security.offlineSignInEnabled', 'inventory.freeToSell', 'leads.quietAfterDays']) {
+    for (const key of ['security.offlineSignInEnabled', 'leads.followUpDefaultDays', 'leads.quietAfterDays']) {
       expect(applyChangeToSnapshot(emptySnapshot(), settingChanged(key))).toBe('refresh');
     }
   });
@@ -69,7 +68,7 @@ describe('a company switch reaching a connected panel', () => {
     // A refresh replaces the whole snapshot from the Master. Mutating this copy
     // first would be a half-applied change that survives if the refetch fails.
     const snapshot = emptySnapshot();
-    applyChangeToSnapshot(snapshot, settingChanged('inventory.freeToSell'));
+    applyChangeToSnapshot(snapshot, settingChanged('leads.quietAfterDays'));
     expect(snapshot).toEqual(emptySnapshot());
   });
 

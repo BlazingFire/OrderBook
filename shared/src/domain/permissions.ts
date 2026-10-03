@@ -62,7 +62,6 @@ export const MODULES = [
   'orders',
   'parties',
   'products',
-  'inventory',
   'reports',
   'roles',
   'logs',
@@ -79,16 +78,13 @@ export type PermissionAction = (typeof ACTIONS)[number];
  *
  * A module/action pair missing from here renders as "not applicable" in the
  * grid, which is a different statement from "your tier may not hold it". Orders
- * declare no `create` because an order only ever comes from converting a lead;
- * inventory declares no `create`/`delete` because stock arrives and leaves
- * through movements, never by creating or removing a row.
+ * declare no `create` because an order only ever comes from converting a lead.
  */
 export const MODULE_ACTIONS: Record<PermissionModule, readonly PermissionAction[]> = {
   leads: ['view', 'create', 'edit', 'delete', 'export', 'bulk'],
   orders: ['view', 'edit', 'delete', 'export', 'bulk'],
   parties: ['view', 'create', 'edit', 'delete', 'export', 'bulk'],
   products: ['view', 'create', 'edit', 'delete', 'export', 'bulk'],
-  inventory: ['view', 'edit', 'export'],
   reports: ['view', 'export'],
   roles: ['view', 'create', 'edit', 'delete'],
   // No create/edit/delete: the trail is append-only and the triggers refuse both.
@@ -97,7 +93,7 @@ export const MODULE_ACTIONS: Record<PermissionModule, readonly PermissionAction[
 
 // --- Capabilities ----------------------------------------------------------
 
-export const CAPABILITY_GROUPS = ['workflow', 'stock', 'admin', 'chat'] as const;
+export const CAPABILITY_GROUPS = ['workflow', 'admin', 'chat'] as const;
 
 export type CapabilityGroup = (typeof CAPABILITY_GROUPS)[number];
 
@@ -116,8 +112,6 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
     group: 'workflow',
     labelToken: 'permission.record.reassignOwner',
   },
-
-  { key: 'stock.adjust', group: 'stock', labelToken: 'permission.stock.adjust' },
 
   { key: 'users.manage', group: 'admin', labelToken: 'permission.users.manage' },
   /**
@@ -366,7 +360,6 @@ export const ROLE_TEMPLATES: ReadonlyArray<{
       'parties.create',
       'parties.edit',
       'products.view',
-      'inventory.view',
       'reports.view',
       'reports.export',
       'lead.convert',
@@ -384,10 +377,7 @@ export const ROLE_TEMPLATES: ReadonlyArray<{
       'orders.view',
       'orders.edit',
       'products.view',
-      'inventory.view',
-      'inventory.edit',
       'orders.dispatch',
-      'stock.adjust',
       'reports.view',
       'reports.export',
       'chat.use',

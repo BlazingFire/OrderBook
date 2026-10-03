@@ -2,7 +2,7 @@
  * The permission grid's names come from the catalogue.
  *
  * `permissionLabels.ts` used to build English from the key itself —
- * `stock.adjust` read "Stock adjust" — and never looked at the `permission.*`,
+ * `lead.convert` read "Lead convert" — and never looked at the `permission.*`,
  * `module.*`, `action.*` and `capabilityGroup.*` tokens that
  * `shared/tests/i18n-coverage.test.ts` makes the catalogue carry for every
  * key. So the grid and the role summary stayed English in Hindi, and a
@@ -40,7 +40,6 @@ describe('permission labels', () => {
       'Final Orders',
       'Parties',
       'Products',
-      'Inventory',
       'Reports',
       'Roles',
       'Logs',
@@ -66,7 +65,6 @@ describe('permission labels', () => {
     for (const group of CAPABILITY_GROUPS) {
       expect(groupLabel(group)).toBe(en[`capabilityGroup.${group}`]);
     }
-    expect(capabilityLabel('stock.adjust')).toBe('Adjust stock by physical count');
   });
 
   it('speaks Hindi when the panel does', () => {

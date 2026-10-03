@@ -29,7 +29,6 @@ import * as partyRepo from '../../repositories/party.repository.js';
 import * as productRepo from '../../repositories/product.repository.js';
 import * as tenantRepo from '../../repositories/tenant.repository.js';
 import * as catalogService from '../../services/catalog.service.js';
-import * as inventoryService from '../../services/inventory.service.js';
 import * as leadService from '../../services/lead.service.js';
 import * as orderService from '../../services/order.service.js';
 import * as searchService from '../../services/search.service.js';
@@ -131,21 +130,6 @@ const HANDLERS: Record<PublicApiOperationId, Handler> = {
         actor,
       ),
     );
-  },
-
-  listStock: async (req, res, actor) => {
-    res.json(
-      await inventoryService.listStock(
-        { ...paging(req.query), lowOnly: req.query.lowOnly === 'true' },
-        actor,
-      ),
-    );
-  },
-  stockInbound: async (req, res, actor) => {
-    res.status(201).json(await inventoryService.recordInbound(body(req) as never, actor));
-  },
-  stockAdjust: async (req, res, actor) => {
-    res.status(201).json(await inventoryService.recordAdjustment(body(req) as never, actor));
   },
 
   listLeads: async (req, res, actor) => {

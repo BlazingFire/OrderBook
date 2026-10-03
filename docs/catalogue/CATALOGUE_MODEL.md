@@ -1,7 +1,7 @@
 # Catalogue model v2 on the 1.2 product master — Brand → Product → Sub product
 
 Design for the owner's 2026-09-28 catalogue restructure, **ported onto main's
-1.2 product master** (category → model → variant, per-variant stock, no money).
+1.2 product master** (category → model → variant, no money; stock was removed in 1.4).
 The data lives in [`master/assets/catalogue/swisware-plus-2026.md`](../../master/assets/catalogue/swisware-plus-2026.md)
 (shipped with the Master so the `/api/developer/load-catalogue` route can load it in an installed copy; no screen calls it since 5a32106).
 
@@ -9,7 +9,7 @@ The owner's request, in short: load the SWISWARE 2026 catalogue as Brand →
 Product → Sub product, allow more than one brand, give every product a software
 code, apply the catalogue's colour rules, rebuild lead entry around a product
 bar and a sub-product bar, manage lead sources and the default follow-up from a
-Leads settings tab, and make inventory and a lead PDF follow the same model.
+Leads settings tab, and make a lead PDF follow the same model.
 
 Owner answers this rests on (2026-09-28):
 
@@ -63,8 +63,6 @@ repeats the name" helper. No sentinel colour value.
 - **The Master coerces, never refuses:** a colour sent for a product that is not
   multi-colour is dropped (`colour = null`) instead of `LineColourError` — a
   queued offline lead must not bounce on it. This amends HANDOFF decision 15.
-- Stock stays per variant (a multicolour sub product has one stock row, not
-  one per colour).
 - The colour range (catalogue page 2: 16 colours + 5 rustic, with hex) is the
   `stock.colour` list; the loader upserts it.
 
@@ -112,8 +110,8 @@ Never edit a shipped migration.
   catalogue-dependent data only.
 - `npm run reload:catalog` — parse, refuse while another connection to the
   database is open (stop the Master first), warn to drain Office outboxes,
-  `loadCatalogue({replace:true})`. Deletes leads, orders, lines, stock,
-  movements, reservations, party variants, product images, products and
+  `loadCatalogue({replace:true})`. Deletes leads, orders, lines, party variants,
+  any rows left in the retired stock tables (for FK safety), product images, products and
   categories; **keeps parties, users, roles, settings, option lists and the
   activity log**; one `catalog.reloaded` activity row.
 - `npm run seed:demo-parties` — adds 13 demo dealers, wipes nothing, skips a
@@ -189,7 +187,7 @@ Never edit a shipped migration.
   - *Files.* Export names are dated: `products-YYYY-MM-DD.csv|xlsx`, `main-products-YYYY-MM-DD.csv|xlsx`
     (the PC's date); the template stays `products-template.csv|xlsx`. CSV exports start with a BOM so
     Excel opens Hindi names correctly.
-- Snapshot and list caps rise so 549+ sub products and their stock rows reach
+- Snapshot and list caps rise so 549+ sub products reach
   panels complete.
 - Settings: main's existing `leads.followUpDefaultDays` — **fallback 3**
   (was 0), range kept. `leads.packagingRequiredOnConvert` fallback **false**
@@ -223,12 +221,7 @@ Never edit a shipped migration.
 
 ## 7. Inventory (Master screen)
 
-Rows: Brand, Product (`CODE · Name`), Sub product, Size, Colour (the fixed
-colour; blank for dedicated and multicolour), Code, on hand / reserved / free,
-reorder, status. **Every live variant is listed**, stocked or not; deleted or
-inactive products never; the dashboard low count uses the same rule. Filters:
-search (also brand and product code), brand chips, product filter, low only.
-Stock-in / count: product bar → sub-product bar → the variant.
+Removed in 1.4 (stock and inventory).
 
 ## 8. Lead PDF (fixed layout, no designer)
 

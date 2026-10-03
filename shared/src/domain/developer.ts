@@ -153,7 +153,6 @@ export interface SampleDataCounts {
   customFields: number;
   partyVariants: number;
   partyAssignments: number;
-  stockMovements: number;
   leads: number;
   orders: number;
   dispatched: number;

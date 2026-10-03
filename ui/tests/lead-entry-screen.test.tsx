@@ -169,7 +169,6 @@ function viewOf(overrides: Record<string, unknown> = {}): LeadEntryView {
   return {
     optionLists: COLOURS,
     partyVariants: [],
-    stock: [],
     partyGrants: [],
     ...overrides,
   } as unknown as LeadEntryView;

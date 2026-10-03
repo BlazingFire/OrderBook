@@ -1,13 +1,13 @@
 /**
  * Sample data for a demo or a fresh development Master: parties, products
- * with photos, stock, leads at every stage, orders in progress and
+ * with photos, leads at every stage, orders in progress and
  * dispatched, remarks, party-wise records, party access, custom fields and a
  * few records in the Recycle Bin — six months of a small tile trade
  * (`domain/sample-data.ts` holds the dataset).
  *
  * Every record is written **through the same services the panels call**, as
  * one of the three test users. That is the point of the exercise: the
- * activity log, the timelines, the stock ledger and the reservations come
+ * activity log, and the timelines come
  * out exactly as they would from real use, because they came from the real
  * code path. The one thing the services cannot do is write history — every
  * row they insert is stamped `now()` — so the seed runs its events in date
@@ -28,22 +28,15 @@ import type {
 import type { ActorContext } from '../domain/actor.js';
 import {
   createRandom,
-  DEFAULT_MAX_STOCK_LEVEL,
-  DEFAULT_MIN_STOCK_LEVEL,
-  DEFAULT_OPENING_PIECES,
-  DEFAULT_REORDER_LEVEL,
   SAMPLE_CUSTOM_FIELDS,
   SAMPLE_DELETIONS,
   SAMPLE_LEADS,
   SAMPLE_MARKER_PARTY_KEY,
-  SAMPLE_OPENING_STOCK,
   SAMPLE_OPTION_VALUES,
   SAMPLE_PARTIES,
   SAMPLE_PARTY_ASSIGNMENTS,
   SAMPLE_PARTY_VARIANTS,
   SAMPLE_PRODUCTS,
-  SAMPLE_STOCK_ARRIVALS,
-  SAMPLE_STOCK_COUNTS,
   SAMPLE_SUB_PRODUCTS,
   SAMPLE_WINDOW_DAYS,
   type SampleLead,
@@ -64,7 +57,6 @@ import { readCatalogueFile, seedCatalogue } from './catalogue-seed.service.js';
 import { seedDummyUsers } from './developer.service.js';
 import * as fields from './fields.service.js';
 import { uploadImage } from './image.service.js';
-import * as inventory from './inventory.service.js';
 import * as leads from './lead.service.js';
 import * as orders from './order.service.js';
 import * as partyAccess from './party-access.service.js';
@@ -119,7 +111,7 @@ export async function seedSampleData(
 
   // Resolved as the events run; every later event looks ids up here.
   const partyIds = new Map<string, string>();
-  /** Sample key → the ids a line, a stock movement or a party record needs. */
+  /** Sample key → the ids a line or a party record needs. */
   const variantIds = new Map<string, { variantId: string; productId: string }>();
   // The printed swatches, so a photo is drawn in its sub product's colour.
   const colourHex = new Map(
@@ -171,7 +163,6 @@ export async function seedSampleData(
       for (const key of Object.keys(product.weights)) keys.add(key);
     for (const line of SAMPLE_LEADS.flatMap((lead) => lead.lines)) keys.add(line.code);
     for (const variant of SAMPLE_PARTY_VARIANTS) keys.add(variant.code);
-    for (const entry of [...SAMPLE_STOCK_ARRIVALS, ...SAMPLE_STOCK_COUNTS]) keys.add(entry.code);
     keys.add(SAMPLE_DELETIONS.productCode);
     for (const key of keys) {
       const where = SAMPLE_SUB_PRODUCTS[key];
@@ -316,61 +307,6 @@ export async function seedSampleData(
         actors.admin,
       );
       counts.partyAssignments += assignment.entries.length;
-    });
-  });
-
-  // --- Day 6–9: opening stock and the stock bands ---------------------------
-
-  let stockSequence = 0;
-  for (const product of SAMPLE_PRODUCTS) {
-    for (const code of Object.keys(product.weights)) {
-      const pieces = SAMPLE_OPENING_STOCK[code] ?? DEFAULT_OPENING_PIECES;
-      const slot = stockSequence++;
-      schedule(clock.at(6 + (slot % 4), slot), async () => {
-        const { variantId } = requireVariant(variantIds, code);
-        await inventory.recordInbound(
-          { variantId, quantityBoxes: pieces, note: 'Opening stock' },
-          actors.management,
-        );
-        counts.stockMovements += 1;
-        await inventory.setReorderLevel(
-          {
-            variantId,
-            reorderLevel: DEFAULT_REORDER_LEVEL,
-            minStockLevel: DEFAULT_MIN_STOCK_LEVEL,
-            maxStockLevel: DEFAULT_MAX_STOCK_LEVEL,
-          },
-          actors.management,
-        );
-      });
-    }
-  }
-
-  SAMPLE_STOCK_ARRIVALS.forEach((arrival, index) => {
-    schedule(clock.at(arrival.day, index), async () => {
-      await inventory.recordInbound(
-        {
-          variantId: requireVariant(variantIds, arrival.code).variantId,
-          quantityBoxes: arrival.pieces,
-          note: arrival.note,
-        },
-        actors.management,
-      );
-      counts.stockMovements += 1;
-    });
-  });
-
-  SAMPLE_STOCK_COUNTS.forEach((count, index) => {
-    schedule(clock.at(count.day, 30 + index), async () => {
-      await inventory.recordAdjustment(
-        {
-          variantId: requireVariant(variantIds, count.code).variantId,
-          quantityBoxes: count.countedPieces,
-          note: count.note,
-        },
-        actors.management,
-      );
-      counts.stockMovements += 1;
     });
   });
 
@@ -678,7 +614,6 @@ function emptyCounts(): SampleDataCounts {
     customFields: 0,
     partyVariants: 0,
     partyAssignments: 0,
-    stockMovements: 0,
     leads: 0,
     orders: 0,
     dispatched: 0,
@@ -787,9 +722,6 @@ function createBackdater(tenantId: string): (since: Date, at: Date) => Promise<v
   const columns: Record<string, string[]> = {
     activity_log: ['created_at'],
     timeline_entries: ['created_at'],
-    stock_movements: ['created_at'],
-    stock_reservations: ['created_at', 'settled_at'],
-    inventory_stock: ['updated_at'],
     line_items: ['created_at', 'updated_at'],
     leads: ['created_at', 'updated_at', 'converted_at', 'deleted_at'],
     orders: ['created_at', 'updated_at', 'dispatched_at', 'deleted_at'],

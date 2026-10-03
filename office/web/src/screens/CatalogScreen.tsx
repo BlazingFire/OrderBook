@@ -52,15 +52,14 @@
  * and `weightFilter`. `api.listProducts` still accepts both, and the Master
  * still implements them, should they come back. Parties kept its city chips.
  *
- * The thumbnail and per-variant stock columns went the same way. Stock is read
- * on the product's own detail screen now, which is the same argument
+ * The thumbnail column went the same way, which is the same argument
  * `fitColumns` rests on: the whole record is one click from the row.
  *
  * **Catalogue v2 (2026-09-28) made the Products tab the sub-product list**
  * (`docs/catalogue/CATALOGUE_MODEL.md` §1): Brand, Product (`OPT · One Piece
  * Toilet`), Sub product, Size, the colour its rule shows (§2), Codes, Weight
- * and the free stock of its one variant — back as one figure per row, now
- * that a sub product has one variant rather than a table of them. Its
+ * — one figure per row, now that a sub product has one variant rather than a
+ * table of them. Its
  * filters are the catalogue's own and run on the Master: brand chips from the
  * `product.brand` list, and a product picker. That picker sits above the
  * table, not in the strip, because `.ob-filterbar` clips anything that drops
@@ -272,15 +271,6 @@ export function CatalogScreen({
       : { code: product.categoryCode, name: product.categoryName, brand: product.brand };
   };
 
-  // Free stock per sub product, summed over its variants' stock rows.
-  const freeByProduct = useMemo(() => {
-    const free = new Map<string, number>();
-    for (const level of view.stock) {
-      free.set(level.productId, (free.get(level.productId) ?? 0) + level.availableBoxes);
-    }
-    return free;
-  }, [view.stock]);
-
   const parties = useMemo(
     () =>
       view.parties.filter(
@@ -349,7 +339,7 @@ export function CatalogScreen({
    * What the snapshot says about products, as one string: ids and clocks.
    * It moves when a queued create is acknowledged, when a product is edited
    * anywhere, and when the snapshot is refreshed after a bulk import — and
-   * not when a lead, an order or a stock figure changes. The categories are
+   * not when a lead or an order changes. The categories are
    * in it too: renaming a product or moving it to another brand changes what
    * the brand and product filters return without touching a sub product.
    */
@@ -844,31 +834,6 @@ export function CatalogScreen({
           <StatusPill tone="offline">{t('product.weight.missing')}</StatusPill>
         ) : (
           weight
-        );
-      },
-    },
-    {
-      // Free to sell — the Master hands out on-hand as free while the company
-      // does not split stock, so this one figure is right either way. A dash,
-      // not a zero, for a sub product that has never had a stock row.
-      key: 'stock',
-      header: t('catalog.products.column.stock'),
-      priority: 2,
-      width: 'minmax(0, 0.6fr)',
-      align: 'right',
-      render: (product) => {
-        const free = freeByProduct.get(product.id);
-        if (free === undefined) return '—';
-        return (
-          <span
-            className="ob-data"
-            style={{
-              color:
-                free < 0 ? 'var(--state-conflict)' : free === 0 ? 'var(--fg-tertiary)' : undefined,
-            }}
-          >
-            {free}
-          </span>
         );
       },
     },

@@ -11,7 +11,7 @@
  * there, not in a row.
  *
  * **Delete** is `orders.delete`: a soft delete into the Recycle Bin, refused
- * with a 409 `blockedBy` when stock or a dispatch still hangs on the order,
+ * with a 409 `blockedBy` when a dispatch still hangs on the order,
  * which is shown as the reason rather than as a generic failure.
  */
 
@@ -64,14 +64,12 @@ import {
 const PAGE_SIZE = 500;
 
 interface Props {
-  /** Bumped by the live socket whenever lead, order, party or stock data changes. */
+  /** Bumped by the live socket whenever lead, order or party data changes. */
   revision: number;
   /** The order pipeline's stages, in order — read once by the shell. */
   stages: PipelineStage[];
   /** The signed-in caller's own resolved permissions. */
   permissions: string[];
-  /** Off, the reservations that hold an order's stock are not a thing on screen. */
-  freeToSell: boolean;
   /** The stage showing, or null for all — chosen here or from the sidebar's stage pages. */
   stageId: string | null;
   onStageChange: (stageId: string | null) => void;
@@ -110,7 +108,6 @@ export function OrdersScreen({
   revision,
   stages,
   permissions,
-  freeToSell,
   stageId: stageFilter,
   onStageChange,
   openId,
@@ -334,7 +331,7 @@ export function OrdersScreen({
   /**
    * A refused delete is usually not a failure to report as one. The server
    * answers 409 with `blockedBy` naming what still points at the record —
-   * reserved stock, a dispatch — and the operator needs that, not "could not
+   * a dispatch — and the operator needs that, not "could not
    * delete".
    */
   function deleteFailureMessage(caught: unknown): string {
@@ -518,7 +515,6 @@ export function OrdersScreen({
             order={openOrder}
             stages={stages}
             optionLists={optionLists}
-            freeToSell={freeToSell}
             canEdit={canEdit}
             canDispatch={canDispatch}
             transport={orderRecordTransport}

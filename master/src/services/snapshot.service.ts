@@ -27,7 +27,6 @@ import { resolvePartyScope } from '../domain/party-scope.js';
 import * as catalogService from './catalog.service.js';
 import { companyFeatures } from './company-features.js';
 import * as dashboardService from './dashboard.service.js';
-import * as inventoryService from './inventory.service.js';
 import * as leadService from './lead.service.js';
 import * as orderService from './order.service.js';
 import { appVersion } from '../lib/app-version.js';
@@ -60,9 +59,8 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
   const canProducts = actorCan(actor, 'products.view');
   const canLeads = actorCan(actor, 'leads.view');
   const canOrders = actorCan(actor, 'orders.view');
-  const canInventory = actorCan(actor, 'inventory.view');
 
-  const [parties, products, categories, leads, orders, stock] = await Promise.all([
+  const [parties, products, categories, leads, orders] = await Promise.all([
     canParties
       ? catalogService.listParties({ limit: SNAPSHOT_LIMIT }, actor).then((page) => page.items)
       : Promise.resolve([]),
@@ -77,9 +75,6 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
       : Promise.resolve([]),
     canOrders
       ? orderService.listOrders({ limit: SNAPSHOT_LIMIT }, actor).then((page) => page.items)
-      : Promise.resolve([]),
-    canInventory
-      ? inventoryService.listStock({ limit: CATALOGUE_SNAPSHOT_LIMIT }, actor)
       : Promise.resolve([]),
   ]);
 
@@ -126,7 +121,7 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
     partyVariants: variants,
     leads,
     orders,
-    stock,
+    stock: [],
     pipelines,
     optionLists,
     customFields,
@@ -152,7 +147,7 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
 /**
  * The slice of the snapshot the New / Edit pending order form reads, for the
  * Master's own web client: option lists, the party's own product records
- * (party-scoped), free stock (empty without `inventory.view`), this person's
+ * (party-scoped), this person's
  * grants (all of them — the snapshot's list stops at its 500 parties) and the
  * company switches. `products` is the catalogue page the snapshot carries, and
  * only for a caller with `products.view` (absent otherwise): editing a lead
@@ -162,7 +157,7 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
 export async function buildLeadEntryView(
   actor: ActorContext,
 ): Promise<
-  Pick<SyncSnapshot, 'optionLists' | 'partyVariants' | 'stock' | 'partyGrants' | 'features'> & {
+  Pick<SyncSnapshot, 'optionLists' | 'partyVariants' | 'partyGrants' | 'features'> & {
     products?: SyncSnapshot['products'];
     /** Who the form's Owner picker offers; only for a caller who may name an owner. */
     owners?: AssignablePerson[];
@@ -172,12 +167,9 @@ export async function buildLeadEntryView(
     throw new ForbiddenError('leads.create');
   }
   const partyScope = resolvePartyScope(actor);
-  const [partyVariants, optionLists, stock, partyGrants, features, products, owners] = await Promise.all([
+  const [partyVariants, optionLists, partyGrants, features, products, owners] = await Promise.all([
     variantRepo.listAll(actor.tenantId, partyScope),
     customFieldRepo.listOptions(actor.tenantId),
-    actorCan(actor, 'inventory.view')
-      ? inventoryService.listStock({ limit: CATALOGUE_SNAPSHOT_LIMIT }, actor)
-      : Promise.resolve([]),
     partyAccessRepo.grantsForUser(actor.tenantId, partyScope.userId),
     companyFeatures(actor.tenantId),
     actorCan(actor, 'products.view')
@@ -193,7 +185,6 @@ export async function buildLeadEntryView(
   return {
     optionLists,
     partyVariants,
-    stock,
     partyGrants,
     features,
     ...(products ? { products } : {}),

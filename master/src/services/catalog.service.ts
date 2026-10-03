@@ -680,10 +680,7 @@ export async function updateProduct(
 }
 
 /**
- * Refused while a live line item still quotes this product, or while any
- * colour has non-zero on-hand or reserved stock — on-hand boxes are physical
- * goods in a warehouse, and a catalogue entry can be wrong but the pallet is
- * not.
+ * Refused while a live line item still quotes this product.
  */
 export async function deleteProduct(
   id: string,
@@ -700,10 +697,9 @@ export async function deleteProduct(
       'error.conflict.blockedByLiveReferences',
       {},
       {
-        blockedBy: blockers.map((b): BinBlocker => {
-          const reason = b.entityType === 'line_item' ? 'live_reference' : 'stock_on_hand';
-          return { entityType: b.entityType, id: b.id, label: b.label, reason };
-        }),
+        blockedBy: blockers.map(
+          (b): BinBlocker => ({ entityType: b.entityType, id: b.id, label: b.label, reason: 'live_reference' }),
+        ),
       },
     );
   }

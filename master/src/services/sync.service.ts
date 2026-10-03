@@ -38,10 +38,7 @@ import type {
   PartyProductVariantInput,
   ProductInput,
   RemarkInput,
-  ReorderLevelInput,
   StageChangeInput,
-  StockAdjustmentInput,
-  StockInboundInput,
   SyncPushRequest,
   SyncPushResponse,
 } from '@orderbook/shared';
@@ -94,7 +91,6 @@ import { actorStamp, publishChange, publishConflict } from './change-bus.js';
 import { notify } from './notification.service.js';
 import * as catalogService from './catalog.service.js';
 import * as chatService from './chat.service.js';
-import * as inventoryService from './inventory.service.js';
 import * as leadService from './lead.service.js';
 import * as orderService from './order.service.js';
 import { runPush, type PostCommit } from './push-gate.js';
@@ -139,8 +135,11 @@ export async function applyPush(
     mutations.some(
       // A chat post is left out: it is refused on its own below (`wrongAuthor`)
       // and recorded, never allowed to stall the lead and order work around it.
+      // A kind this Master no longer knows (an old Office's `stock.*`) is
+      // likewise refused one by one below, not by stalling the whole push.
       (m) =>
         m.kind !== 'chat.post' &&
+        REQUIRED_PERMISSION[m.kind] &&
         m.actorUserId &&
         !actorCan(actor, REQUIRED_PERMISSION[m.kind] as Permission),
     )
@@ -512,21 +511,6 @@ async function route(
         actor,
       );
       return applied(mutation, variant.id);
-    }
-
-    case 'stock.inbound': {
-      await inventoryService.recordInbound(payloadAs<StockInboundInput>(mutation), actor);
-      return applied(mutation, mutation.entityId);
-    }
-
-    case 'stock.adjust': {
-      await inventoryService.recordAdjustment(payloadAs<StockAdjustmentInput>(mutation), actor);
-      return applied(mutation, mutation.entityId);
-    }
-
-    case 'stock.setReorderLevel': {
-      await inventoryService.setReorderLevel(payloadAs<ReorderLevelInput>(mutation), actor);
-      return applied(mutation, mutation.entityId);
     }
 
     case 'chat.post': {

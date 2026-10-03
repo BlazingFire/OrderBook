@@ -192,7 +192,7 @@ export function DashboardScreen({
   const canViewLeads = view.permissions.includes('leads.view');
   const canViewOrders = view.permissions.includes('orders.view');
   const canViewConflicts = view.permissions.includes('sync.resolveConflicts');
-  const nothingYet = view.leads.length === 0 && view.orders.length === 0 && view.stock.length === 0;
+  const nothingYet = view.leads.length === 0 && view.orders.length === 0;
   if (nothingYet) {
     return (
       <EmptyState
@@ -215,12 +215,8 @@ export function DashboardScreen({
   );
 
   const openOrders = view.orders.filter((order) => !order.dispatchedAt);
-  const boxesReserved = openOrders.reduce(
-    (sum, order) =>
-      sum +
-      order.reservations
-        .filter((reservation) => reservation.status === 'active')
-        .reduce((s, reservation) => s + reservation.quantity, 0),
+  const boxesOpen = openOrders.reduce(
+    (sum, order) => sum + order.items.reduce((s, item) => s + item.quantity, 0),
     0,
   );
 
@@ -308,11 +304,11 @@ export function DashboardScreen({
             label={t('dashboard.orders.title')}
             value={openOrders.length.toLocaleString('en-IN')}
             note={
-              boxesReserved > 0
-                ? t('dashboard.orders.boxesReserved', {
-                    count: boxesReserved.toLocaleString('en-IN'),
+              boxesOpen > 0
+                ? t('dashboard.orders.boxesOpen', {
+                    count: boxesOpen.toLocaleString('en-IN'),
                   })
-                : t('dashboard.orders.noneReserved')
+                : t('dashboard.orders.noneOpen')
             }
             onClick={() => onNavigate('orders')}
           />

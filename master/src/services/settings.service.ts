@@ -241,7 +241,7 @@ export async function writeSetting<K extends SettingKey>(
    * would be served the value that was just replaced.
    *
    * Until this existed a company switch reached a panel exactly once, on its
-   * first snapshot. `inventory.freeToSell` has shipped with that: an
+   * first snapshot. `reports.visibleToOffice` has shipped with that: an
    * administrator flipped it, the Settings screen said so, and every panel
    * went on showing the old shape until somebody restarted it. `'setting'` is
    * in `SNAPSHOT_FORCING_ENTITIES`, so this both refreshes a connected panel

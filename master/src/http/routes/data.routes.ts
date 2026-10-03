@@ -27,7 +27,6 @@ import * as conflictService from '../../services/conflict.service.js';
 import * as dashboardService from '../../services/dashboard.service.js';
 import * as fieldsService from '../../services/fields.service.js';
 import * as productShareService from '../../services/product-share.service.js';
-import * as inventoryService from '../../services/inventory.service.js';
 import * as leadService from '../../services/lead.service.js';
 import * as orderService from '../../services/order.service.js';
 import * as presenceService from '../../services/presence.service.js';
@@ -512,90 +511,6 @@ dataRoutes.delete(
   needs('products.delete'),
   asyncHandler(async (req, res) => {
     res.json(await catalogService.deleteCategory(String(req.params.id), actorFromRequest(req)));
-  }),
-);
-
-// --- Inventory -------------------------------------------------------------
-
-dataRoutes.get(
-  '/stock',
-  asyncHandler(async (req, res) => {
-    res.json(
-      await inventoryService.listStock(
-        {
-          ...paging(req.query),
-          lowOnly: req.query.lowOnly === 'true',
-          brand: typeof req.query.brand === 'string' ? req.query.brand : undefined,
-          categoryId: typeof req.query.categoryId === 'string' ? req.query.categoryId : undefined,
-        },
-        actorFromRequest(req),
-      ),
-    );
-  }),
-);
-
-dataRoutes.get(
-  '/stock/movements',
-  asyncHandler(async (req, res) => {
-    res.json(
-      await inventoryService.listMovements(
-        {
-          productId: typeof req.query.productId === 'string' ? req.query.productId : undefined,
-          variantId: typeof req.query.variantId === 'string' ? req.query.variantId : undefined,
-          limit: req.query.limit ? Number(req.query.limit) : undefined,
-        },
-        actorFromRequest(req),
-      ),
-    );
-  }),
-);
-
-dataRoutes.post(
-  '/stock/inbound',
-  asyncHandler(async (req, res) => {
-    res.json(await inventoryService.recordInbound(req.body, actorFromRequest(req)));
-  }),
-);
-
-dataRoutes.post(
-  '/stock/adjust',
-  asyncHandler(async (req, res) => {
-    res.json(await inventoryService.recordAdjustment(req.body, actorFromRequest(req)));
-  }),
-);
-
-dataRoutes.post(
-  '/stock/reorder-level',
-  asyncHandler(async (req, res) => {
-    const { variantId } = req.body ?? {};
-    if (typeof variantId !== 'string' || !variantId)
-      throw new ValidationError('validation.stock.variantRequired');
-
-    /*
-     * Three distinct meanings, and the route has to keep them apart:
-     * **absent** is "leave it alone", **empty string or null** is "clear it",
-     * and a number is a number. Collapsing the first two would make the
-     * existing reorder-level screen wipe the min and max every time it saved.
-     */
-    const level = (value: unknown): number | null | undefined => {
-      if (value === undefined) return undefined;
-      if (value === null || value === '') return null;
-      return Number(value);
-    };
-
-    const body = req.body as Record<string, unknown>;
-
-    res.json(
-      await inventoryService.setReorderLevel(
-        {
-          variantId,
-          reorderLevel: level(body.reorderLevel),
-          minStockLevel: level(body.minStockLevel),
-          maxStockLevel: level(body.maxStockLevel),
-        },
-        actorFromRequest(req),
-      ),
-    );
   }),
 );
 

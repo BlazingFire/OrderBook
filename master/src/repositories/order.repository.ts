@@ -5,7 +5,7 @@
  * Structurally a near-twin of the lead repository, which is expected: the two
  * share the `line_items` table and the timeline, and differ only in the fields
  * that exist once something is a commitment rather than a conversation —
- * dispatch address, expected date, weight, reservations.
+ * dispatch address, expected date, weight.
  */
 
 import type { Order, OrderListQuery, Paginated, PartyScopeFilter } from '@orderbook/shared';
@@ -22,7 +22,6 @@ import * as lineItems from './line-item.repository.js';
 import { firstCount, mapOrder, toJsonObject } from './mappers.js';
 import { applyPartyScope } from './party-access.repository.js';
 import { applyRecordSearch } from './record-search.js';
-import * as reservations from './reservation.repository.js';
 import * as timeline from './timeline.repository.js';
 import type { TransactionContext } from './transaction.js';
 
@@ -124,10 +123,9 @@ async function hydrate(
   if (rows.length === 0) return [];
 
   const ids = rows.map((row) => String(row.id));
-  const [linesByOrder, timelineByOrder, reservationsByOrder, definitions] = await Promise.all([
+  const [linesByOrder, timelineByOrder, definitions] = await Promise.all([
     lineItems.loadLinesFor(tenantId, 'order', ids, runner),
     timeline.loadTimelinesFor(tenantId, 'order', ids, runner),
-    reservations.loadForOrders(tenantId, ids, runner),
     customFields.definitionsFor(tenantId, 'order', runner),
   ]);
 
@@ -137,7 +135,6 @@ async function hydrate(
       row,
       linesByOrder.get(id) ?? [],
       timelineByOrder.get(id) ?? [],
-      reservationsByOrder.get(id) ?? [],
       evaluateCompleteness(
         (row.custom_fields as Record<string, unknown> | null) ?? {},
         definitions,
@@ -221,8 +218,8 @@ export async function updateOrderColumns(
  * whether it may still be dispatched — mirrors `product.repository.ts`'s
  * `lockProduct`/`party.repository.ts`'s `lockParty`. Without it, two
  * `dispatchOrder` calls that overlap before either commits both read
- * `dispatched_at` as null under READ COMMITTED and both write stock
- * movements. `null` means the order does not exist (or is soft-deleted);
+ * `dispatched_at` as null under READ COMMITTED and both record the dispatch. `null` means the order does not exist (or is
+ * soft-deleted);
  * the returned `dispatchedAt` is the caller's authoritative, freshly-locked
  * answer to "has this already been dispatched?", and `stageId` and `fieldHlc`
  * the stage and per-field clocks as they stand under the lock, for the write
@@ -274,9 +271,7 @@ export async function markDispatched(
 }
 
 /**
- * Soft delete. Active reservations are the caller's responsibility to
- * release first (`reservation.repository.ts:releaseForOrder`) — this
- * function only stamps the tombstone and the sync clock.
+ * Soft delete: stamps the tombstone and the sync clock.
  */
 export async function softDeleteOrder(
   tenantId: string,

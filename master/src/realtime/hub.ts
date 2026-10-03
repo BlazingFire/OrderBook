@@ -70,7 +70,6 @@ import * as chatService from '../services/chat.service.js';
 import * as conflictService from '../services/conflict.service.js';
 import * as dashboardService from '../services/dashboard.service.js';
 import * as fieldsService from '../services/fields.service.js';
-import * as inventoryService from '../services/inventory.service.js';
 import * as leadService from '../services/lead.service.js';
 import * as productShareService from '../services/product-share.service.js';
 import * as panelCredentialRepo from '../repositories/panel-credential.repository.js';
@@ -308,7 +307,7 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
       // from what this fix is about.
       io.to(ROOM_MASTER_ADMINS).emit('data:changed', event);
     } else if (REQUIRED_PERMISSION[event.entity]) {
-      // A module gate applies (`product`/`product_category`/`stock`/
+      // A module gate applies (`product`/`product_category`/
       // `sync_conflict`) and this entity is not party-scoped, so
       // `emitPartyScopedChange` never runs for it — this is the only place
       // that would otherwise have broadcast it unconditionally.
@@ -812,21 +811,15 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   );
   socket.on('order:delete', (id, ack) => run(ack, (actor) => orderService.deleteOrder(id, actor)));
 
-  socket.on('stock:list', (query, ack) =>
-    run(ack, (actor) => inventoryService.listStock(query, actor)),
-  );
-  socket.on('stock:movements', (query, ack) =>
-    run(ack, (actor) => inventoryService.listMovements(query, actor)),
-  );
-  socket.on('stock:inbound', (input, ack) =>
-    run(ack, (actor) => inventoryService.recordInbound(input, actor)),
-  );
-  socket.on('stock:adjust', (input, ack) =>
-    run(ack, (actor) => inventoryService.recordAdjustment(input, actor)),
-  );
-  socket.on('stock:setReorderLevel', (input, ack) =>
-    run(ack, (actor) => inventoryService.setReorderLevel(input, actor)),
-  );
+  // Stock and inventory were removed in 1.4. An Office still on an older build may
+  // send its `stock:*` commands; answer each with a refusal so its call settles
+  // instead of waiting for an acknowledgement that would never come.
+  socket.onAny((event: string, ...args: unknown[]) => {
+    if (!event.startsWith('stock:')) return;
+    respond(args[args.length - 1] as CommandAck<never>, async () => {
+      throw new ValidationError('validation.stock.retired');
+    });
+  });
 
   socket.on('search:query', (query, ack) =>
     run(ack, (actor) => searchService.search(query, actor)),
@@ -1348,7 +1341,7 @@ async function emitPartyScopedChange(
 
 /**
  * A change gated purely by module permission — no party to scope it by, but
- * still not everyone's to see (`product`, `product_category`, `stock`,
+ * still not everyone's to see (`product`, `product_category`,
  * `sync_conflict`; see `REQUIRED_PERMISSION`). Every connected panel and
  * admin socket is resolved to its current actor and checked individually,
  * the same as `emitPartyScopedChange` already does for party-scoped rows —
@@ -1710,7 +1703,7 @@ async function broadcastDashboard(io: RealtimeHub['io']): Promise<void> {
   // so it registers no `dashboard:changed` handler and Socket.IO drops the event
   // on arrival. Sending it anyway cost a `panelActor` resolution plus a full
   // dashboard aggregate **per connected panel, per lead/order/party/product/
-  // stock/conflict change**, for a payload nothing read. If a panel ever needs a
+  // conflict change**, for a payload nothing read. If a panel ever needs a
   // figure `LocalView` cannot produce, restore the fan-out and add the handler in
   // the same change — one without the other is what this comment exists to stop.
 }

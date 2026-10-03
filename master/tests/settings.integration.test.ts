@@ -86,15 +86,16 @@ describe.skipIf(!canRunIntegrationTests)('settings (integration)', () => {
   });
 
   it('falls back to the default when a stored value no longer parses, rather than throwing', async () => {
-    // The fixture seeds this row (free-to-sell on); corrupt it in place, the
+    // Store a real value, then corrupt it in place, the
     // way a narrowed parser in a newer build would find an older value.
+    await settingsService.writeSetting(admin, 'externalApi.enabled', true);
     await db()('settings')
-      .where({ tenant_id: admin.tenantId, key: 'inventory.freeToSell' })
+      .where({ tenant_id: admin.tenantId, key: 'externalApi.enabled' })
       .update({ value: JSON.stringify('yes') });
     settingsService.invalidateSettingsCache();
 
-    expect(await settingsService.getSetting(admin.tenantId, 'inventory.freeToSell')).toBe(false);
-    expect(viewFor(await settingsService.readSettings(admin), 'inventory.freeToSell')).toMatchObject({
+    expect(await settingsService.getSetting(admin.tenantId, 'externalApi.enabled')).toBe(false);
+    expect(viewFor(await settingsService.readSettings(admin), 'externalApi.enabled')).toMatchObject({
       value: false,
       isDefault: false,
     });
@@ -119,7 +120,7 @@ describe.skipIf(!canRunIntegrationTests)('settings (integration)', () => {
 
   it('audits every write, naming the key and both values', async () => {
     await settingsService.writeSetting(admin, 'externalApi.enabled', true);
-    await settingsService.writeSetting(admin, 'inventory.freeToSell', false);
+    await settingsService.writeSetting(admin, 'leads.packagingRequiredOnConvert', true);
 
     const rows = await db()('activity_log')
       .where({ tenant_id: admin.tenantId, entity_type: 'setting' })
@@ -132,7 +133,7 @@ describe.skipIf(!canRunIntegrationTests)('settings (integration)', () => {
 
     expect(rows.map((row) => `${row.entity_id}:${row.action}`)).toEqual([
       'externalApi.enabled:updated',
-      'inventory.freeToSell:updated',
+      'leads.packagingRequiredOnConvert:updated',
     ]);
 
     // `labelToken` and a switch's `fromToken` / `toToken` are message keys the
@@ -145,14 +146,13 @@ describe.skipIf(!canRunIntegrationTests)('settings (integration)', () => {
       fromToken: 'settingValue.off',
       toToken: 'settingValue.on',
     });
-    // The fixture seeds free-to-sell on, so this write is the flip back off.
     expect(rows[1]?.details).toEqual({
-      name: 'inventory.freeToSell',
-      labelToken: 'setting.inventory.freeToSell.label',
-      from: 'true',
-      to: 'false',
-      fromToken: 'settingValue.on',
-      toToken: 'settingValue.off',
+      name: 'leads.packagingRequiredOnConvert',
+      labelToken: 'setting.leads.packagingRequiredOnConvert.label',
+      from: 'false',
+      to: 'true',
+      fromToken: 'settingValue.off',
+      toToken: 'settingValue.on',
     });
   });
 });

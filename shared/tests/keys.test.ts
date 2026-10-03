@@ -279,8 +279,6 @@ describe('the command catalogue', () => {
     // The Office's Logs row has no chord either, like the Master's.
     expect('logs' in office).toBe(true);
     expect(office.logs).toBeUndefined();
-    // Inventory's screen is hidden on the Master; its row went with it.
-    expect('inventory' in master).toBe(false);
   });
 
   it('does not use up an Alt digit on a row with an explicit chord or none', () => {
