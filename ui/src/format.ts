@@ -1,5 +1,7 @@
 /** Display helpers shared across screens. */
 
+import { t } from './i18n.js';
+
 /**
  * A weight in kilograms, to three decimals at most — the precision the master
  * stores. `null` is an unentered weight, shown as a dash rather than a zero so
@@ -25,4 +27,19 @@ export function formatBytes(bytes: number | null): string {
 export function formatDateTime(iso: string | null): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleString();
+}
+
+/**
+ * How long something has lasted, to the minute: "42 m", "1 h", "1 h 5 m".
+ * The unit words come from the catalogue, so the numbers never sit in it.
+ * Seconds are dropped and anything under a minute reads "0 m"; a negative
+ * span (a clock that moved back) reads the same.
+ */
+export function formatElapsed(ms: number): string {
+  const minutes = Number.isFinite(ms) ? Math.max(0, Math.floor(ms / 60_000)) : 0;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours === 0) return t('time.minutes.short', { count: rest });
+  const whole = t('time.hours.short', { count: hours });
+  return rest === 0 ? whole : `${whole} ${t('time.minutes.short', { count: rest })}`;
 }

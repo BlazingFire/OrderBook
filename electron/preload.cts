@@ -87,6 +87,9 @@ contextBridge.exposeInMainWorld('orderbook', {
       cancelled?: boolean;
       error?: string;
     }>,
+  /** A system notification plus a taskbar flash, for a notice the operator should not miss. */
+  notify: (notice: { title: string; body: string }): Promise<boolean> =>
+    ipcRenderer.invoke('orderbook:notify', notice) as Promise<boolean>,
 
   /**
    * The application menu asking the page to go somewhere. One-way and

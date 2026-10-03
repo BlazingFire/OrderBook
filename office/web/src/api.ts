@@ -38,6 +38,7 @@ import type {
   LeadUpdateInput,
   MessageKey,
   MessageParams,
+  UserNotification,
   MutationResult,
   OptionListItem,
   OptionListItemInput,
@@ -140,6 +141,24 @@ export interface ConnectionInfo {
    * Absent when the server could not read it.
    */
   deviceCode?: string;
+  /*
+   * The link's finer state (1.3). Optional: an Office server older than this
+   * page sends none of them, and each one's absence means "nothing to show".
+   */
+  /** The protocol the Master announced; null until it has. */
+  masterProtocol?: number | null;
+  /** When this run of the panel lost the link, or first failed to make it. */
+  disconnectedSince?: string | null;
+  /** Connected, with what was missed not yet in and the outbox not yet sent. */
+  catchingUp?: boolean;
+  /** This PC's clock minus the Master's at the last snapshot or delta. */
+  clockSkewMs?: number | null;
+  /** The address the Master was found to have moved from. */
+  rediscoveredFrom?: string | null;
+  /** The Master at the saved address does not know this panel; the pairing is kept. */
+  notRecognised?: boolean;
+  /** An address that answered as this panel's Master and could not prove it. */
+  rediscoveryRefused?: string | null;
 }
 
 export interface DiscoveredMaster {
@@ -785,6 +804,14 @@ export const api = {
   // Reachable from both panels — forwarded live, failing hard (503) offline
   // like every other module in this batch.
 
+  /**
+   * The signed-in person's notifications, newest first: the bell. Not counted
+   * by the loading strip, since the bell reads it in the background.
+   */
+  notifications: () =>
+    requestUntracked<{ items: UserNotification[]; unreadCount: number }>('/api/notifications'),
+  markNotificationsRead: (which: { ids: string[] } | { all: true }) =>
+    post<{ unreadCount: number }>('/api/notifications/read', which),
   logs: (query: ActivityLogQuery = {}) => {
     const params = new URLSearchParams();
     if (query.cursor) params.set('cursor', query.cursor);

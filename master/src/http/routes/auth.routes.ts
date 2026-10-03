@@ -4,8 +4,9 @@ import { config } from '../../config/index.js';
 import { ValidationError } from '../../lib/errors.js';
 import { isLoopback, masterPcAddress } from '../../lib/network.js';
 import * as authService from '../../services/auth.service.js';
+import * as notificationService from '../../services/notification.service.js';
 import { asyncHandler } from '../async-handler.js';
-import { requireAuth } from '../middleware/require-auth.js';
+import { actorFromRequest, requireAuth } from '../middleware/require-auth.js';
 
 export const authRoutes: Router = Router();
 
@@ -60,5 +61,33 @@ authRoutes.get(
       sessionToken: req.sessionToken,
       defaultLocale: config.locale.defaultLocale,
     });
+  }),
+);
+
+/**
+ * The bell, mounted at `/api/notifications`. Beside `/me` because, like it, it
+ * needs only a signed-in person and reaches only that person's own rows.
+ */
+export const notificationRoutes: Router = Router();
+
+notificationRoutes.get(
+  '/',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const limit = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
+    res.json(
+      await notificationService.listNotifications(
+        { limit, before: req.query.before },
+        actorFromRequest(req),
+      ),
+    );
+  }),
+);
+
+notificationRoutes.post(
+  '/read',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    res.json(await notificationService.markRead(req.body, actorFromRequest(req)));
   }),
 );

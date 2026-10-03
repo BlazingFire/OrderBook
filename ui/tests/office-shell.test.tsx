@@ -25,6 +25,9 @@ import { StrictMode } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { LONG_OFFLINE_MS } from '@orderbook/shared';
+
+import { formatElapsed } from '../src/format.js';
 import { t } from '../src/i18n.js';
 import { publishSessionEnded } from '../src/sessionEnded.js';
 import {
@@ -159,6 +162,9 @@ async function boot({ permissions, view = {}, refusals = [], route }: Boot): Pro
       return json({ session: panelSession(permissions), defaultLocale: 'en' });
     }
     if (path === '/api/sync') return json({ ...CONNECTION, pendingCount: 0, rejections: held });
+    // Answered for every test: `api.ts` shares one in-flight GET per path across
+    // the file, so a bell read left hanging by one test would swallow the next's.
+    if (path === '/api/notifications') return json({ items: [], unreadCount: 0 });
     if (path === '/api/sync/flush' && method === 'POST') {
       held = refusals;
       return json({
@@ -228,6 +234,7 @@ function newLeadButton(): HTMLElement {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  delete (window as { orderbook?: unknown }).orderbook;
 });
 
 /** The panel's own lead form, as far as a draft card with one quantity typed. */
@@ -268,6 +275,167 @@ describe('the event stream', () => {
 
     expect(FakeEventSource.opened).toBe(opened);
     expect(FakeEventSource.instances).toHaveLength(1);
+  });
+});
+
+describe('the link to the Master (1.3)', () => {
+  const MINUTE = 60_000;
+  const footerSync = () => document.querySelector('.ob-footer-sync')?.textContent ?? '';
+
+  /** One `status` frame, as the panel's server sends it when the link changes. */
+  async function status(frame: Record<string, unknown>): Promise<void> {
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('status', frame);
+      await wait(0);
+    });
+  }
+
+  /** Stands in for the desktop shell's bridge; a browser tab has none. */
+  function desktopShell() {
+    const notify = vi.fn(async () => true);
+    (window as { orderbook?: unknown }).orderbook = {
+      shellVersion: 'test',
+      applyUpdate: async () => false,
+      notify,
+    };
+    return notify;
+  }
+
+  it('reads Catching up until what was missed is in, then Synced, then Offline', async () => {
+    await boot({ permissions: ['leads.view'] });
+
+    // Already connected, so no state in the frame: a move to connected re-reads
+    // `/api/connection`, which this test's server answers without the field.
+    await status({ catchingUp: true });
+    expect(footerSync()).toBe(t('sync.catchingUp'));
+
+    await status({ catchingUp: false });
+    expect(footerSync()).toBe(t('sync.synced'));
+
+    await status({ state: 'disconnected', disconnectedSince: new Date().toISOString() });
+    expect(footerSync()).toBe(t('sync.offline'));
+  });
+
+  it('says in the sync popover since when, and for how long, it has been offline', async () => {
+    await boot({ permissions: ['leads.view'] });
+    await status({
+      state: 'disconnected',
+      disconnectedSince: new Date(Date.now() - 5 * MINUTE).toISOString(),
+    });
+
+    await act(async () => {
+      fireEvent.click(document.querySelector<HTMLElement>('.ob-footer-sync')!);
+      await wait(0);
+    });
+
+    const since = screen.getByText(t('office.sync.offlineSince'));
+    expect(since.nextElementSibling?.textContent).toContain(
+      `(${formatElapsed(5 * MINUTE)})`,
+    );
+  });
+
+  it('does not let the Dashboard say "All synced" while offline', async () => {
+    // One record, or the Dashboard is its empty state and has no cards.
+    await boot({ permissions: ['leads.view'], view: { orders: [ORDER] } });
+    await pressAltDigitUntil(2, t('nav.dashboard'));
+    expect(screen.getByText(t('dashboard.sync.allSynced'))).toBeTruthy();
+
+    await status({ state: 'disconnected', disconnectedSince: new Date().toISOString() });
+
+    expect(screen.queryByText(t('dashboard.sync.allSynced'))).toBeNull();
+    const tile = screen.getByText(t('dashboard.sync.title')).closest('.ob-stattile')!;
+    expect(within(tile as HTMLElement).getByText(t('sync.offline'))).toBeTruthy();
+  });
+
+  it('after an hour offline: one banner, one bell entry and one desktop notice per episode', async () => {
+    const notify = desktopShell();
+    await boot({ permissions: ['leads.view'] });
+    const since = new Date().toISOString();
+
+    // Only the hour is faked. Nothing below may wait on a timer meanwhile.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      await act(async () => {
+        FakeEventSource.instances.at(-1)!.emit('status', {
+          state: 'disconnected',
+          disconnectedSince: since,
+        });
+      });
+      expect(screen.queryByText(t('office.link.offlineLongTitle'))).toBeNull();
+      expect(notify).not.toHaveBeenCalled();
+
+      await act(async () => {
+        vi.advanceTimersByTime(LONG_OFFLINE_MS);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(await screen.findByText(t('office.link.offlineLongTitle'))).toBeTruthy();
+    expect(screen.getByRole('button', { name: t('notification.unreadLabel', { count: 1 }) })).toBeTruthy();
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({ title: t('office.link.offlineLongTitle') }),
+    );
+
+    // More frames in the same episode do not notify again.
+    await status({ state: 'disconnected', disconnectedSince: since, hasNetworkLink: false });
+    expect(notify).toHaveBeenCalledTimes(1);
+
+    // The link back ends the episode, and the banner with it.
+    await status({ state: 'connected', disconnectedSince: null, hasNetworkLink: true });
+    expect(screen.queryByText(t('office.link.offlineLongTitle'))).toBeNull();
+  });
+
+  it('shows the clock difference only past two minutes, and a Master that does not know this panel', async () => {
+    await boot({ permissions: ['leads.view'] });
+
+    await status({ clockSkewMs: 90_000 });
+    expect(screen.queryByText(t('office.link.clockSkew', { duration: formatElapsed(90_000) }))).toBeNull();
+
+    await status({ clockSkewMs: -5 * MINUTE });
+    expect(
+      screen.getByText(t('office.link.clockSkew', { duration: formatElapsed(5 * MINUTE) })),
+    ).toBeTruthy();
+
+    await status({ state: 'disconnected', notRecognised: true });
+    expect(screen.getByText(t('office.link.notRecognised', { host: '10.0.0.1' }))).toBeTruthy();
+  });
+
+  it('re-reads the bell on a pushed notice and when the stream reopens, on the same stream', async () => {
+    const notify = desktopShell();
+    const calls = await boot({ permissions: ['leads.view'] });
+    const reads = () => calls.filter((call) => call.url.split('?')[0] === '/api/notifications').length;
+    await waitFor(() => expect(reads()).toBeGreaterThan(0));
+    const opened = FakeEventSource.opened;
+
+    let before = reads();
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('notification', {
+        id: 'n-1',
+        kind: 'panel.offlineLong',
+        params: { panel: 'Counter' },
+        link: { kind: 'panel', id: 'panel-1' },
+        createdAt: new Date().toISOString(),
+        readAt: null,
+        forUserId: 'user-1',
+      });
+      await wait(0);
+    });
+    expect(reads()).toBeGreaterThan(before);
+    expect(notify).toHaveBeenCalledWith({
+      title: t('notification.title'),
+      body: t('notification.panel.offlineLong', { panel: 'Counter' }),
+    });
+
+    before = reads();
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('error', {});
+      FakeEventSource.instances.at(-1)!.emit('open', {});
+      await wait(0);
+    });
+    expect(reads()).toBeGreaterThan(before);
+    expect(FakeEventSource.opened).toBe(opened);
   });
 });
 

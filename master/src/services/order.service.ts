@@ -31,7 +31,14 @@ import {
 import { normalizeCustomFields } from '../domain/custom-fields.js';
 import { clampPaging } from '../domain/paging.js';
 import { resolvePartyScope, UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
-import { assertStageMove, defaultStage, findStage, stageChangeMessage } from '../domain/pipeline.js';
+import {
+  assertStageFresh,
+  assertStageMove,
+  defaultStage,
+  findStage,
+  stageChangeMessage,
+  type StageEdit,
+} from '../domain/pipeline.js';
 import { assertParentsLive } from '../domain/recycle-bin.js';
 import { db } from '../db/knex.js';
 import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
@@ -324,9 +331,11 @@ export async function updateOrder(
   return order;
 }
 
+/** `edit` is the offline sync path's clock, as on `lead.service.ts#setStage`. */
 export async function setStage(
   input: { id: string; stageId: string; remark?: string | null },
   actor: ActorContext,
+  edit?: StageEdit,
 ): Promise<Order> {
   requirePermission(actor, 'orders.edit');
 
@@ -337,19 +346,42 @@ export async function setStage(
   // not a 404 that reads as "somebody deleted it".
   await requirePartyAccess(existing.partyId, 'manage', actor);
 
+  // Before the same-stage and move checks, so a stale move becomes a conflict
+  // rather than a refusal.
+  if (edit) {
+    assertStageFresh({ stageId: existing.stageId, fieldHlc: existing.sync.fieldHlc }, input.stageId, edit);
+  }
+
   if (existing.stageId === input.stageId) return existing;
 
   const stages = await pipelineRepo.stagesFor(actor.tenantId, 'order');
-  const from = findStage(stages, existing.stageId);
-  const to = assertStageMove(stages, existing.stageId, input.stageId);
+  let from = findStage(stages, existing.stageId);
+  let to = assertStageMove(stages, existing.stageId, input.stageId);
 
   await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
+    let fieldHlc = { ...existing.sync.fieldHlc, stageId: hlc };
+
+    if (edit) {
+      // Clock, then row, as every write takes them. Re-read under the lock:
+      // another move may have landed since the read above.
+      await orderRepo.lockOrder(actor.tenantId, input.id, trx);
+      const current = await orderRepo.findOrderById(actor.tenantId, input.id, UNSCOPED_PARTY_ACCESS, trx);
+      if (!current) throw new NotFoundError('Order');
+      assertStageFresh({ stageId: current.stageId, fieldHlc: current.sync.fieldHlc }, input.stageId, edit);
+      if (current.stageId === input.stageId) return;
+      if (current.stageId !== existing.stageId) {
+        from = findStage(stages, current.stageId);
+        to = assertStageMove(stages, current.stageId, input.stageId);
+      }
+      fieldHlc = { ...current.sync.fieldHlc, stageId: edit.hlc };
+    }
+
     await orderRepo.updateOrderColumns(
       actor.tenantId,
       input.id,
       { stage_id: to.id },
-      { hlc, fieldHlc: { ...existing.sync.fieldHlc, stageId: hlc } },
+      { hlc, fieldHlc },
       trx,
     );
 

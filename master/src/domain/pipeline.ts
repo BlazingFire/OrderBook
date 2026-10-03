@@ -9,7 +9,9 @@
  * refuse most drags is a board people fight rather than use.
  */
 
-import { NotFoundError, ValidationError } from '../lib/errors.js';
+import { baseForUnversionedEdit, mergeFields } from '@orderbook/shared';
+
+import { NotFoundError, StaleEditError, ValidationError } from '../lib/errors.js';
 
 export interface Stage {
   id: string;
@@ -94,4 +96,37 @@ export function assertStageMove(
 /** Human-readable line for the automatic timeline entry a move writes. */
 export function stageChangeMessage(from: Stage, to: Stage): string {
   return `Moved from ${from.name} to ${to.name}`;
+}
+
+/** The clock of an offline stage change, from the mutation that carried it. */
+export interface StageEdit {
+  hlc: string;
+  deviceCode: string;
+}
+
+/**
+ * Rule 6 for stage changes: an offline move older than the stage already
+ * stored loses, as a field edit does, and is thrown as a `stageId` conflict
+ * rather than overwriting the newer stage. The base is synthesised as for
+ * lead and order edits (`baseForUnversionedEdit`), so a newer move applies as
+ * an ordinary edit. A stale move to the stage already stored is no clash and
+ * passes; the caller's same-stage check makes it a no-op.
+ */
+export function assertStageFresh(
+  stored: { stageId: string; fieldHlc: Record<string, string> },
+  stageId: string,
+  edit: StageEdit,
+): void {
+  const outcome = mergeFields(
+    { values: { stageId: stored.stageId }, fieldHlc: stored.fieldHlc },
+    {
+      fields: ['stageId'],
+      values: { stageId },
+      baseFieldHlc: baseForUnversionedEdit(['stageId'], stored.fieldHlc, edit.hlc),
+      hlc: edit.hlc,
+      deviceCode: edit.deviceCode,
+    },
+  );
+  const conflict = outcome.conflicts[0];
+  if (!('stageId' in outcome.accepted) && conflict) throw new StaleEditError(conflict);
 }

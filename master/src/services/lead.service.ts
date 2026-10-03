@@ -25,7 +25,14 @@ import { buildLineSnapshot, type LineDraft, type LineSnapshot } from '../domain/
 import { leadPdfTable } from '../domain/lead-pdf.js';
 import { clampPaging } from '../domain/paging.js';
 import { resolvePartyScope, UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
-import { assertStageMove, defaultStage, findStage, stageChangeMessage } from '../domain/pipeline.js';
+import {
+  assertStageFresh,
+  assertStageMove,
+  defaultStage,
+  findStage,
+  stageChangeMessage,
+  type StageEdit,
+} from '../domain/pipeline.js';
 import { assertParentsLive } from '../domain/recycle-bin.js';
 import { db } from '../db/knex.js';
 import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
@@ -104,7 +111,14 @@ function localIsoDate(now: Date): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-export async function createLead(input: LeadInput, actor: ActorContext): Promise<Lead> {
+/**
+ * `madeAt` is the HLC an offline panel stamped the create with, from the sync
+ * path. The fields it set carry that clock rather than the time it reached the
+ * Master, so the same panel's later offline edits and stage moves are newer
+ * than the create, as they were when they were made, and are not recorded as
+ * losing to it (rule 6).
+ */
+export async function createLead(input: LeadInput, actor: ActorContext, madeAt?: string): Promise<Lead> {
   requirePermission(actor, 'leads.create');
 
   const ownerId = await resolveOwner(input.ownerId ?? null, actor);
@@ -158,7 +172,7 @@ export async function createLead(input: LeadInput, actor: ActorContext): Promise
         // field as "written at creation" would make the first edit of a field
         // nobody ever filled in look like a clash with the creator, and bury
         // the real conflicts in noise.
-        fieldHlc: initialFieldHlc(input, hlc),
+        fieldHlc: initialFieldHlc(input, madeAt ?? hlc),
         temporaryId: null,
       },
       lines,
@@ -301,9 +315,16 @@ export async function updateLead(
   return lead;
 }
 
+/**
+ * `edit` is set only by the offline sync path. The move then carries its own
+ * clock: a stale one throws `StaleEditError` (see `assertStageFresh`) and
+ * writes nothing, and a fresh one stamps the stage's field clock with the
+ * edit's HLC rather than the time it was applied.
+ */
 export async function setStage(
   input: { id: string; stageId: string; remark?: string | null },
   actor: ActorContext,
+  edit?: StageEdit,
 ): Promise<Lead> {
   requirePermission(actor, 'leads.edit');
 
@@ -314,21 +335,46 @@ export async function setStage(
   // not a 404 that reads as "somebody deleted it".
   await requirePartyAccess(existing.partyId, 'manage', actor);
 
+  // Before the same-stage and move checks, so a stale move becomes a conflict
+  // rather than a refusal.
+  if (edit) {
+    assertStageFresh({ stageId: existing.stageId, fieldHlc: existing.sync.fieldHlc }, input.stageId, edit);
+  }
+
   if (existing.stageId === input.stageId) return existing;
 
   const stages = await pipelineRepo.stagesFor(actor.tenantId, 'lead');
-  const from = findStage(stages, existing.stageId);
-  const to = assertStageMove(stages, existing.stageId, input.stageId, {
+  let from = findStage(stages, existing.stageId);
+  let to = assertStageMove(stages, existing.stageId, input.stageId, {
     convertedOrderId: existing.convertedOrderId,
   });
 
   await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
+    let fieldHlc = { ...existing.sync.fieldHlc, stageId: hlc };
+
+    if (edit) {
+      // Clock, then row, as every write takes them. Re-read under the lock:
+      // another move may have landed since the read above.
+      await leadRepo.lockLead(actor.tenantId, input.id, trx);
+      const current = await leadRepo.findLeadById(actor.tenantId, input.id, UNSCOPED_PARTY_ACCESS, trx);
+      if (!current) throw new NotFoundError('Lead');
+      assertStageFresh({ stageId: current.stageId, fieldHlc: current.sync.fieldHlc }, input.stageId, edit);
+      if (current.stageId === input.stageId) return;
+      if (current.stageId !== existing.stageId) {
+        from = findStage(stages, current.stageId);
+        to = assertStageMove(stages, current.stageId, input.stageId, {
+          convertedOrderId: current.convertedOrderId,
+        });
+      }
+      fieldHlc = { ...current.sync.fieldHlc, stageId: edit.hlc };
+    }
+
     await leadRepo.updateLeadColumns(
       actor.tenantId,
       input.id,
       { stage_id: to.id },
-      { hlc, fieldHlc: { ...existing.sync.fieldHlc, stageId: hlc } },
+      { hlc, fieldHlc },
       trx,
     );
 

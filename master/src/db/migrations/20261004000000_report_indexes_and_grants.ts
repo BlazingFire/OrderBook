@@ -41,7 +41,8 @@ interface RoleRow {
 
 export async function up(knex: Knex): Promise<void> {
   await knex.raw(
-    `CREATE INDEX IF NOT EXISTS idx_leads_owner_created ON leads (tenant_id, owner_id, created_at) WHERE deleted_at IS NULL`,
+    `CREATE INDEX IF NOT EXISTS idx_leads_owner_created ON leads (tenant_id, owner_id, created_at)
+       WHERE deleted_at IS NULL`,
   );
   await knex.raw(
     `CREATE INDEX IF NOT EXISTS idx_orders_owner_dispatched ON orders (tenant_id, owner_id, dispatched_at)

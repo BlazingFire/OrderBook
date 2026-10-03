@@ -248,6 +248,29 @@ on it.
   - *Update the Master before the Offices.* An Office newer than its Master says
     "update the Master" for a command the Master cannot answer yet instead of
     waiting out a timeout.
+- **Release note for 1.3 (Phase 3, 2026-10-03) — the link, the order of offline
+  work, the bell.** Put these lines in the release notes:
+  - *An Office notices a lost link within about 10 seconds* (a pulled cable in
+    about 2) and reconnects on its own within about 5 seconds of the Master being
+    back; it never needs a restart. After reconnecting it reads "Catching up"
+    until what it missed is in and its queued work is sent.
+  - *An Office that has been offline for an hour says so*: a banner, an entry in
+    the bell and, in the desktop app, one Windows notification and a flashing
+    taskbar button per episode. The sync popover shows since when. Everyone who
+    manages panels gets a bell notice, and the Master's Office panels screen
+    and Dashboard show which panels have been away an hour.
+  - *The notification bell* is in the top bar of both panels.
+  - *If the Master's address changes*, an Office finds it again by itself, but
+    only after it has connected once since this update, and only after the new
+    address proves it is the same Master. An Office whose Master does not know
+    it keeps its pairing and says "Not recognised by this Master" instead of
+    forgetting it.
+  - *Work done offline on several PCs is numbered in the order it was done* when
+    they come back together (within about 6 seconds of each other). A stage
+    change made offline that is older than a change made since becomes a
+    conflict to review rather than overwriting it.
+  - *A PC whose clock is more than 2 minutes off the Master's* shows a banner;
+    set the right time there.
 - **Hindi is 1,245 strings behind** (`grep -c 'TODO(i18n-hi)'
   shared/src/i18n/hi.ts`). The parity test only checks keys exist, so nothing
   fails on it — except an `activity.*` template, where
@@ -808,6 +831,30 @@ terms, multiple contacts); concurrent edits of one lead from two panels
 
 ## Traps worth knowing
 
+- **Rediscovery needs one connect after the 1.3 update.** An Office whose
+  Master moved to another address finds it only if that panel has connected to
+  the Master at least once since the update: `authenticatePanel` fills
+  `office_panels.master_proof_key` then, and until it is filled
+  `POST /api/panel/prove` answers 404 and the Office stays with the saved
+  address. A panel paired after the update has the key from pairing.
+- **`master_proof_key` is left out of the `.obbackup` export** (`dumpTable` in
+  `backup.repository.ts`), since that restore revokes every panel. The Phase 8
+  archive keeps pairing, so its export must carry the column, or Offices cannot
+  rediscover a restored Master. This differs from the plan's migration row 2a,
+  which has been updated.
+- **Heartbeat timings are constants, not settings.** The hub pings every 4 s and
+  drops a socket silent for 6 s more (`master/src/realtime/hub.ts`), so a dead
+  link shows within about 10 s and a stall up to that long is tolerated. The
+  Office reconnects after 1 s growing to 5 s (±50 %), retries a refused handshake
+  from 5 s doubling to 60 s, polls the network every 2 s, and looks for a moved
+  Master after 3 failures at most once a minute. Lowering the 6 s timeout makes
+  a busy Master drop healthy panels.
+- **The shell tests must answer `/api/notifications`.** Both panels' `api.ts`
+  share one in-flight GET per path for the whole test file, and the harness
+  leaves an unanswered request pending for ever, so one test's unanswered bell
+  read swallows every later test's (`ui/tests/office-shell.test.tsx` and
+  `master-shell.test.tsx` answer it in `boot`).
+
 - **Every grant migration after `20261001000000_server_master_tier` grants to
   `tier IN ('admin', 'server_master')`**, with a frozen inline permission list.
   The Server Master role must hold every permission there is; a grant that
@@ -1023,6 +1070,35 @@ terms, multiple contacts); concurrent edits of one lead from two panels
 
 Condensed. The full entries are in `git show 5b8ebe2:HANDOFF.md` and in
 `docs/AI_COLLABORATION.md`.
+
+- **2026-10-03 — 1.3 Phase 3: realtime rules 1, 5 and 6, push gate, stage HLC,
+  notification centre (Claude).** Migrations `20261002000000_user_notifications`
+  and `20261002000001_office_panel_master_proof` (both additive). Shared:
+  `notifications.ts` (`NOTIFICATION_KINDS`, `LONG_OFFLINE_MS`, `isLongOffline`),
+  `compareForIdAssignment`'s mutation-id tie-break, `baseForUnversionedEdit`,
+  `PANEL_PROTOCOL_VERSION = 3`, handshake `actingUserToken`, the notification
+  commands and push, the rediscovery proof types, `DesktopBridge.notify`. Master:
+  hub heartbeat 4 s / 6 s, refusal codes, stale-socket close and the presence
+  race, one snapshot on reconnect, `emitToActors`; `push-gate.ts` (100 ms / 6 s /
+  5 s gather, coalescing, one mutation at a time, pool stays 10); stale offline
+  stage moves become `stageId` conflicts; `notification.repository.ts` and
+  `.service.ts` with the pruner; `/api/notifications`, `POST /api/panel/prove`;
+  long-offline notices to `panels.manage` holders. Office: reconnect and refusal
+  rules, credentials cleared only by its own Master's revoke, `catchingUp`,
+  `disconnectedSince`, `clockSkewMs`, the 2 s network poll, `retryNow`, proven
+  rediscovery, `broadcastForUser`. Electron: `lib/attention.ts`,
+  `orderbook:notify`, `appUserModelId`. ui and web: `NotificationBell`,
+  `formatElapsed`, the `bell` icon; the Office's Catching up label, offline-since
+  row, hour-offline banner with one desktop notice per episode, clock and
+  not-recognised banners, `streamEpoch`; the Office Dashboard's Sync card follows
+  the footer; the Master's reconnecting state, reconnect after a server
+  disconnect, `'*'` revision, "Offline for" and "Update needed" chips and the
+  "Offline over an hour" tile. Docs: `LEAD_GENERATION_FLOW.md` §4 and §7,
+  `docs/schema/01-identity-and-network.md`, `STRUCTURE.md`, the API contract.
+  **Not done:** a browser or Electron walk of the bell, the banners and the
+  Windows notification (the toast needs an installed build, whose shortcut
+  carries the app id); `markRead` does not push to the same person's other
+  sockets, so a second panel's count catches up on its next read.
 
 - **2026-10-03 — 1.3 Phase 2: Server Master tier, master key, protocol
   handshake, complete audit (rule 4), Logs on Office (Claude).** Migration

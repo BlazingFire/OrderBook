@@ -13,16 +13,23 @@
  * gating on it.
  */
 
-import { Activity, useCallback, useEffect, useState } from 'react';
+import { Activity, useCallback, useEffect, useRef, useState } from 'react';
 import {
   applyChangeToSnapshot,
   isRoleTier,
+  LONG_OFFLINE_MS,
   offeredReportKinds,
   REPORT_META,
   reportsOffered,
   resolveCompanyFeatures,
 } from '@orderbook/shared';
-import type { DataChangedEvent, MessageKey, MutationResult, ReportKind } from '@orderbook/shared';
+import type {
+  DataChangedEvent,
+  MessageKey,
+  MutationResult,
+  ReportKind,
+  UserNotification,
+} from '@orderbook/shared';
 
 import {
   ApiError,
@@ -42,6 +49,8 @@ import {
   Clock,
   FilterBarOutlet,
   FilterBarProvider,
+  formatDateTime,
+  formatElapsed,
   GalleryScreen,
   Icon,
   IconButton,
@@ -49,6 +58,8 @@ import {
   KeyboardProvider,
   landingScreen,
   lazyScreen,
+  NotificationBell,
+  notificationText,
   PaletteButton,
   apiErrorText,
   ConfirmProvider,
@@ -74,8 +85,10 @@ import {
   useToast,
   splitSubPage,
   withSubPages,
+  type LocalNotice,
   type NavGroup,
   type NavItem,
+  type NotificationTransport,
   type ScreenSpec,
   type SidebarMode,
   type SubPage,
@@ -137,6 +150,23 @@ function readHash(): string {
 
 /** The cold-start steps the splash reports, in the order they run. */
 const BOOT_STEPS = ['server', 'session', 'assets'] as const;
+
+/** Past this, this PC's clock and the Master's disagree enough to say so (1.3). */
+const CLOCK_SKEW_BANNER_MS = 2 * 60_000;
+
+/** The bell reads the signed-in person's notices from the Master, through this panel. */
+const notificationTransport: NotificationTransport = {
+  list: () => api.notifications(),
+  markRead: (which) => api.markNotificationsRead(which),
+};
+
+/** "10:42" today, the full date and time on an earlier day. */
+function offlineSinceText(since: number): string {
+  const at = new Date(since);
+  return at.toDateString() === new Date().toDateString()
+    ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : formatDateTime(at.toISOString());
+}
 
 /**
  * A ceiling on every boot call, so a panel server that accepts the socket and
@@ -275,6 +305,70 @@ function OfficePanel() {
    * lead exactly where it was when it is not.
    */
   const [newLeadNonce, setNewLeadNonce] = useState(0);
+
+  /*
+   * Moves when the event stream comes back after a drop, and when the link to
+   * the Master does: anything that lists live data from the Master (the bell
+   * now) reads it again then. Bumped from inside the stream's listeners, never
+   * a dependency of the stream itself, which must stay one per session.
+   */
+  const [streamEpoch, setStreamEpoch] = useState(0);
+  /** Moves with each notice pushed to the signed-in person, so the bell re-reads. */
+  const [noticeRevision, setNoticeRevision] = useState(0);
+
+  /*
+   * An hour without the Master. One timer to the hour mark, re-armed when the
+   * episode changes; the panel's server keeps `disconnectedSince` for as long
+   * as the link stays down, so one value is one episode.
+   */
+  const disconnectedSince = connection?.disconnectedSince ?? null;
+  const [longOffline, setLongOffline] = useState(false);
+  useEffect(() => {
+    setLongOffline(false);
+    const since = disconnectedSince ? Date.parse(disconnectedSince) : NaN;
+    if (!Number.isFinite(since)) return;
+    const due = since + LONG_OFFLINE_MS - Date.now();
+    if (due <= 0) {
+      setLongOffline(true);
+      return;
+    }
+    const timer = setTimeout(() => setLongOffline(true), due);
+    return () => clearTimeout(timer);
+  }, [disconnectedSince]);
+
+  /*
+   * One system notification and taskbar flash per episode, from the desktop
+   * shell. In a browser tab there is no shell, and the banner and the bell say
+   * it alone. The ref outlives a re-run of the effect, so a remount does not
+   * notify twice.
+   */
+  const notifiedEpisode = useRef<string | null>(null);
+  useEffect(() => {
+    if (!longOffline || !disconnectedSince || notifiedEpisode.current === disconnectedSince) return;
+    notifiedEpisode.current = disconnectedSince;
+    void desktopBridge()
+      ?.notify?.({
+        title: t('office.link.offlineLongTitle'),
+        body: t('office.link.offlineLong', {
+          duration: formatElapsed(Date.now() - Date.parse(disconnectedSince)),
+        }),
+      })
+      .catch(() => undefined);
+  }, [longOffline, disconnectedSince]);
+
+  // The Master was found at a new address and this panel moved with it: say so once.
+  const rediscoveredFrom = connection?.rediscoveredFrom ?? null;
+  const toastedMove = useRef<string | null>(null);
+  useEffect(() => {
+    if (!rediscoveredFrom || toastedMove.current === rediscoveredFrom) return;
+    toastedMove.current = rediscoveredFrom;
+    const to = connection?.masterHost
+      ? `${connection.masterHost}:${connection.masterPort ?? ''}`
+      : '—';
+    toast.push(t('office.link.rediscovered', { from: rediscoveredFrom, to }), { tone: 'info' });
+    // Only a new move is news; the address it moved to arrives in the same frame.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rediscoveredFrom]);
 
   // Stable, or every boot-step render would hand Splash a new callback and
   // restart its hold timer.
@@ -427,16 +521,48 @@ function OfficePanel() {
 
     const source = new EventSource('/api/events');
 
+    /** Everything a fresh link or a reopened stream may have missed. */
+    const catchUp = (): void => {
+      setStreamEpoch((epoch) => epoch + 1);
+      void refreshConnection();
+      void refreshSyncState();
+      // The link coming back is when the Master gets to re-check who this
+      // is; a since-deactivated user learns about it here.
+      void refreshSession();
+    };
+
+    /*
+     * Status frames also carry the link's finer state (catching up, the
+     * network, the clock), so a connected panel sends several. Only the move
+     * *to* connected is a reconnect.
+     */
+    let lastState: ConnectionInfo['state'] | undefined;
     source.addEventListener('status', (event) => {
       const status = JSON.parse((event as MessageEvent).data) as Partial<ConnectionInfo>;
       setConnection((current) => (current ? { ...current, ...status } : current));
-      if (status.state === 'connected') {
-        void refreshConnection();
-        void refreshSyncState();
-        // The link coming back is when the Master gets to re-check who this
-        // is; a since-deactivated user learns about it here.
-        void refreshSession();
-      }
+      if (status.state === 'connected' && lastState !== 'connected') catchUp();
+      if (status.state) lastState = status.state;
+    });
+
+    // The stream to this panel's own server dropped and the browser reopened
+    // it: frames sent meanwhile are gone, so read again what they would have said.
+    let dropped = false;
+    source.addEventListener('error', () => {
+      dropped = true;
+    });
+    source.addEventListener('open', () => {
+      if (!dropped) return;
+      dropped = false;
+      catchUp();
+    });
+
+    // A notice for the person signed in here (the server drops anyone else's).
+    source.addEventListener('notification', (event) => {
+      const notice = JSON.parse((event as MessageEvent).data) as UserNotification;
+      setNoticeRevision((count) => count + 1);
+      void desktopBridge()
+        ?.notify?.({ title: t('notification.title'), body: notificationText(notice) })
+        .catch(() => undefined);
     });
 
     source.addEventListener('snapshot', (event) => {
@@ -636,6 +762,8 @@ function OfficePanel() {
   if (openConflicts > 0 && can('sync.resolveConflicts')) railState = 'conflict';
   else if (linkDown || connection.state === 'unpaired' || connection.state === 'connecting')
     railState = pendingCount > 0 ? 'offlinePending' : 'offline';
+  // Connected, but what was missed is still coming in: not "Synced" yet.
+  else if (connection.catchingUp) railState = 'syncing';
   else railState = flushing || pendingCount > 0 ? 'syncing' : 'synced';
 
   const syncLabel =
@@ -646,7 +774,9 @@ function OfficePanel() {
         : railState === 'offline'
           ? t('sync.offline')
           : railState === 'syncing'
-            ? t('sync.syncing', { count: pendingCount })
+            ? connection.catchingUp
+              ? t('sync.catchingUp')
+              : t('sync.syncing', { count: pendingCount })
             : t('sync.synced');
 
   const railDotColour =
@@ -925,6 +1055,76 @@ function OfficePanel() {
     ? new Date(connection.lastSyncedAt).toLocaleString()
     : '—';
 
+  // ---- The link's own notices (1.3): read at render, so each says how things stand now.
+  const offlineSince = disconnectedSince ? Date.parse(disconnectedSince) : NaN;
+  const skewMs = connection.clockSkewMs ?? null;
+  const skewShown = skewMs !== null && Math.abs(skewMs) > CLOCK_SKEW_BANNER_MS;
+  const skewText =
+    skewMs === null
+      ? ''
+      : skewMs > 0
+        ? t('office.sync.clockAhead', { duration: formatElapsed(skewMs) })
+        : t('office.sync.clockBehind', { duration: formatElapsed(-skewMs) });
+
+  /*
+   * The bell's own entry for an hour offline. The Master cannot keep it, being
+   * the one out of reach, so it lives here for as long as the episode does.
+   */
+  const localNotices: LocalNotice[] =
+    longOffline && Number.isFinite(offlineSince)
+      ? [
+          {
+            id: 'local:offlineLong',
+            text: t('office.link.offlineLongTitle'),
+            createdAt: new Date(offlineSince + LONG_OFFLINE_MS).toISOString(),
+          },
+        ]
+      : [];
+
+  const banners = [
+    longOffline && Number.isFinite(offlineSince) ? (
+      <div key="offline" className="ob-banner ob-banner--offline" role="status">
+        <Icon name="warning" />
+        <span className="ob-body-strong">{t('office.link.offlineLongTitle')}</span>
+        <span>{`${t('office.sync.offlineSince')} ${offlineSinceText(offlineSince)}`}</span>
+      </div>
+    ) : null,
+    connection.notRecognised && connection.state !== 'connected' ? (
+      <div key="notRecognised" className="ob-banner ob-banner--conflict" role="alert">
+        <Icon name="warning" />
+        <span>{t('office.link.notRecognised', { host: connection.masterHost ?? '—' })}</span>
+      </div>
+    ) : null,
+    connection.rediscoveryRefused && connection.state !== 'connected' ? (
+      <div key="refused" className="ob-banner ob-banner--conflict" role="alert">
+        <Icon name="shield" />
+        <span>
+          {t('office.link.rediscoveryRefused', { address: connection.rediscoveryRefused })}
+        </span>
+      </div>
+    ) : null,
+    skewShown ? (
+      <div key="skew" className="ob-banner" role="status">
+        <Icon name="warning" />
+        <span>{t('office.link.clockSkew', { duration: formatElapsed(Math.abs(skewMs ?? 0)) })}</span>
+      </div>
+    ) : null,
+  ].filter((banner) => banner !== null);
+
+  const banner =
+    banners.length > 0 ? (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 'var(--s-8)',
+          padding: 'var(--s-8) var(--s-20) 0',
+        }}
+      >
+        {banners}
+      </div>
+    ) : undefined;
+
   const topbar = (
     <>
       <TopbarTitle groups={groups} activeId={activeId} fallback={activeLabel} />
@@ -944,6 +1144,12 @@ function OfficePanel() {
         label={t('screen.reset')}
         title={t('screen.resetHint')}
         onClick={() => void resetActiveScreen()}
+      />
+
+      <NotificationBell
+        transport={notificationTransport}
+        revision={streamEpoch + noticeRevision}
+        local={localNotices}
       />
 
       <button className="ob-btn ob-btn--ghost" onClick={() => void signOut()}>
@@ -1060,6 +1266,20 @@ function OfficePanel() {
               <dd className="ob-mono" style={{ fontSize: rem(11.5) }}>
                 {connection.masterHost ?? '—'}
               </dd>
+              {Number.isFinite(offlineSince) && (
+                <>
+                  <dt>{t('office.sync.offlineSince')}</dt>
+                  <dd>
+                    {`${offlineSinceText(offlineSince)} (${formatElapsed(Date.now() - offlineSince)})`}
+                  </dd>
+                </>
+              )}
+              {skewShown && (
+                <>
+                  <dt>{t('office.sync.clockSkew')}</dt>
+                  <dd>{skewText}</dd>
+                </>
+              )}
             </dl>
             <div
               style={{
@@ -1187,6 +1407,8 @@ function OfficePanel() {
             <DashboardScreen
               view={view}
               linkDown={linkDown}
+              railState={railState}
+              syncLabel={syncLabel}
               onNavigate={goToTab}
               onOpenLead={(id) => {
                 setOpenLeadId(id);
@@ -1364,6 +1586,7 @@ function OfficePanel() {
           collapsed={collapsed}
           onToggleCollapsed={toggleSidebar}
           topbar={topbar}
+          banner={banner}
           filterbar={<FilterBarOutlet />}
           footer={footer}
           rail={railState}

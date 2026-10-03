@@ -15,6 +15,7 @@ import { runPanelShell } from './shell.js';
 runPanelShell({
   panel: 'office',
   productName: 'OrderBook Office Panel',
+  appUserModelId: 'com.orderbook.office',
   port: Number(process.env.OFFICE_PORT ?? 4200),
   readyTimeoutMs: 60_000,
   autoStartByDefault: false,

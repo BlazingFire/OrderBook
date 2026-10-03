@@ -33,6 +33,7 @@ import * as roleService from '../src/services/role.service.js';
 import * as userService from '../src/services/user.service.js';
 import * as orders from '../src/services/order.service.js';
 import * as sync from '../src/services/sync.service.js';
+import { onConflict } from '../src/services/change-bus.js';
 
 const PANEL_A = 'A3F9K2';
 const PANEL_B = 'B7QMX4';
@@ -1005,6 +1006,153 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
       const lead = await leads.getLead(second.results[0]!.entityId, actor);
       expect(lead.partyName).toBe('Raised offline');
       expect(lead.partyId).toMatch(/^PT\d{10}$/);
+    });
+  });
+
+  describe('stage moves are ordered by HLC (rule 6)', () => {
+    async function aLead() {
+      const { party, product } = await seed();
+      return leads.createLead(
+        {
+          partyId: party.id,
+          items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 1, packaging: 'carton' }],
+        },
+        actor,
+      );
+    }
+
+    const stageMove = (
+      kind: 'lead.setStage' | 'order.setStage',
+      entityId: string,
+      stageId: string,
+      offsetMs: number,
+    ) =>
+      mutation({
+        kind,
+        entity: kind === 'lead.setStage' ? 'lead' : 'order',
+        entityId,
+        deviceCode: PANEL_B,
+        hlc: hlcFor(PANEL_B, offsetMs),
+        fields: ['stageId'],
+        payload: { stageId },
+      });
+
+    function collectConflicts() {
+      const seen: string[] = [];
+      const stop = onConflict((conflict) => seen.push(conflict.field));
+      return { seen, stop };
+    }
+
+    it('records a stale offline lead move as a stageId conflict and keeps the newer stage', async () => {
+      const lead = await aLead();
+      await leads.setStage({ id: lead.id, stageId: await stageIdByName('lead', 'Negotiating') }, actor);
+      const published = collectConflicts();
+
+      const stale = stageMove('lead.setStage', lead.id, await stageIdByName('lead', 'Quoted'), -60_000);
+      const { results } = await sync.applyPush({ mutations: [stale] }, actor);
+      published.stop();
+
+      expect(results[0]?.status).toBe('merged');
+      expect(results[0]?.conflicts[0]?.field).toBe('stageId');
+      expect((await leads.getLead(lead.id, actor)).stageName).toBe('Negotiating');
+      const rows = await db()('sync_conflicts').select('field', 'entity_id');
+      expect(rows).toEqual([{ field: 'stageId', entity_id: lead.id }]);
+      expect(published.seen).toEqual(['stageId']);
+
+      // Replayed, it is the recorded outcome, not a second conflict.
+      const again = await sync.applyPush({ mutations: [stale] }, actor);
+      expect(again.results[0]?.status).toBe('duplicate');
+      expect(await db()('sync_conflicts').select('id')).toHaveLength(1);
+    });
+
+    it('applies a newer offline lead move and stamps the stage clock with its HLC', async () => {
+      const lead = await aLead();
+      await leads.setStage({ id: lead.id, stageId: await stageIdByName('lead', 'Negotiating') }, actor);
+
+      const newer = stageMove('lead.setStage', lead.id, await stageIdByName('lead', 'Quoted'), 200_000);
+      const { results } = await sync.applyPush({ mutations: [newer] }, actor);
+
+      expect(results[0]?.status).toBe('applied');
+      const after = await leads.getLead(lead.id, actor);
+      expect(after.stageName).toBe('Quoted');
+      expect(after.sync.fieldHlc.stageId).toBe(newer.hlc);
+      expect(await db()('sync_conflicts').select('id')).toHaveLength(0);
+    });
+
+    it('applies a move made offline after an offline create, though both reach the Master later', async () => {
+      const { party, product } = await seed();
+      const temporaryId = formatTemporaryId(PANEL_B, 41);
+      const created = mutation({
+        kind: 'lead.create',
+        entity: 'lead',
+        entityId: temporaryId,
+        deviceCode: PANEL_B,
+        hlc: hlcFor(PANEL_B, -600_000),
+        payload: {
+          partyId: party.id,
+          items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 1, packaging: 'carton' }],
+        },
+      });
+      // Older than the moment the create is applied here: the create's fields
+      // carry its own HLC, so this is still the newer write.
+      const moved = stageMove('lead.setStage', temporaryId, await stageIdByName('lead', 'Quoted'), -300_000);
+
+      const { results } = await sync.applyPush({ mutations: [created, moved] }, actor);
+
+      expect(results.map((result) => result.status)).toEqual(['applied', 'applied']);
+      expect((await leads.getLead(results[0]!.entityId, actor)).stageName).toBe('Quoted');
+    });
+
+    it('orders offline order moves the same way', async () => {
+      const lead = await aLead();
+      const order = await orders.convertLead({ leadId: lead.id }, actor);
+      await orders.setStage({ id: order.id, stageId: await stageIdByName('order', 'Postpone') }, actor);
+
+      const stale = stageMove('order.setStage', order.id, await stageIdByName('order', 'Cancelled'), -60_000);
+      const first = await sync.applyPush({ mutations: [stale] }, actor);
+      expect(first.results[0]?.status).toBe('merged');
+      expect((await orders.getOrder(order.id, actor)).stageName).toBe('Postpone');
+      expect(await db()('sync_conflicts').where({ field: 'stageId' }).select('id')).toHaveLength(1);
+
+      const newer = stageMove('order.setStage', order.id, await stageIdByName('order', 'Cancelled'), 200_000);
+      const second = await sync.applyPush({ mutations: [newer] }, actor);
+      expect(second.results[0]?.status).toBe('applied');
+      const after = await orders.getOrder(order.id, actor);
+      expect(after.stageName).toBe('Cancelled');
+      expect(after.sync.fieldHlc.stageId).toBe(newer.hlc);
+    });
+
+    it('applies an older Office’s move on arrival, however old its clock', async () => {
+      const lead = await aLead();
+      await leads.setStage({ id: lead.id, stageId: await stageIdByName('lead', 'Negotiating') }, actor);
+
+      // A protocol 2 Office never folds the Master's change clocks into its own,
+      // so a live drag from a PC whose clock runs behind still wins.
+      const behind = stageMove('lead.setStage', lead.id, await stageIdByName('lead', 'Quoted'), -60_000);
+      const { results } = await sync.applyPush({ mutations: [behind] }, actor, undefined, 2);
+
+      expect(results[0]?.status).toBe('applied');
+      expect((await leads.getLead(lead.id, actor)).stageName).toBe('Quoted');
+      expect(await db()('sync_conflicts').select('id')).toHaveLength(0);
+    });
+
+    it('puts a losing stage back through the stage move, timeline included', async () => {
+      const lead = await aLead();
+      await leads.setStage({ id: lead.id, stageId: await stageIdByName('lead', 'Negotiating') }, actor);
+      await sync.applyPush(
+        { mutations: [stageMove('lead.setStage', lead.id, await stageIdByName('lead', 'Quoted'), -60_000)] },
+        actor,
+      );
+
+      const [conflict] = await conflicts.listConflicts(actor);
+      await conflicts.resolveConflict({ conflictId: conflict!.id, action: 'restoreLoser' }, actor);
+
+      expect((await leads.getLead(lead.id, actor)).stageName).toBe('Quoted');
+      expect(await conflicts.listConflicts(actor)).toHaveLength(0);
+      const moves = await db()('timeline_entries')
+        .where({ parent_id: lead.id, kind: 'system' })
+        .select('message');
+      expect(moves.map((row) => row.message)).toContain('Moved from Negotiating to Quoted');
     });
   });
 

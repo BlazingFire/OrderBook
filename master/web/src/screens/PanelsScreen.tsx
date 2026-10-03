@@ -6,6 +6,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { isLongOffline, PANEL_PROTOCOL_VERSION } from '@orderbook/shared';
 import type { OfficePanelDetail, OfficePanelWithPresence } from '@orderbook/shared';
 
 import { api } from '../api';
@@ -16,6 +17,7 @@ import {
   DataTable,
   EditorScreen,
   EmptyState,
+  formatElapsed,
   FormField,
   IdField,
   Input,
@@ -31,6 +33,41 @@ import {
 interface Props {
   panels: OfficePanelWithPresence[];
   onRefresh: () => void;
+}
+
+/**
+ * Connected, but on a protocol older than this Master's: it works, and the
+ * commands newer than it are refused with "update needed" until it is updated.
+ * An Office too old to announce a protocol counts as the first.
+ */
+function needsUpdate(panel: OfficePanelWithPresence): boolean {
+  return panel.runtime !== null && (panel.runtime.protocol ?? 1) < PANEL_PROTOCOL_VERSION;
+}
+
+/**
+ * The status chips: connected or offline, "Offline for 3 h 5 m" once that
+ * has lasted an hour (1.3), and "Update needed" beside either.
+ */
+function StatusChips({ panel }: { panel: OfficePanelWithPresence }) {
+  const now = Date.now();
+  return (
+    <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 'var(--s-4)' }}>
+      {panel.status === 'revoked' ? (
+        <StatusPill tone="default">{t('panels.status.removed')}</StatusPill>
+      ) : panel.isConnected ? (
+        <StatusPill tone="ok">{t('panels.status.connected')}</StatusPill>
+      ) : isLongOffline(panel, now) ? (
+        <StatusPill tone="offline">
+          {t('panels.offlineFor', {
+            duration: formatElapsed(now - Date.parse(panel.lastSeenAt ?? '')),
+          })}
+        </StatusPill>
+      ) : (
+        <StatusPill tone="offline">{t('panels.status.offline')}</StatusPill>
+      )}
+      {needsUpdate(panel) && <StatusPill tone="accent">{t('panels.updateNeeded')}</StatusPill>}
+    </span>
+  );
 }
 
 /** Spelled out rather than interpolated, so every key is greppable. */
@@ -124,15 +161,8 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
     {
       key: 'status',
       header: t('panels.table.status'),
-      width: rem(120),
-      render: (panel) =>
-        panel.status === 'revoked' ? (
-          <StatusPill tone="default">{t('panels.status.removed')}</StatusPill>
-        ) : panel.isConnected ? (
-          <StatusPill tone="ok">{t('panels.status.connected')}</StatusPill>
-        ) : (
-          <StatusPill tone="offline">{t('panels.status.offline')}</StatusPill>
-        ),
+      width: rem(180),
+      render: (panel) => <StatusChips panel={panel} />,
     },
     {
       key: 'name',

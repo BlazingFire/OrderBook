@@ -113,6 +113,7 @@ import type {
 } from '../domain/pick.js';
 import type { BinCounts, BinEntry, BinRestoreResult } from '../domain/recycle-bin.js';
 import type { SettingKey, SettingView } from '../domain/settings.js';
+import type { UserNotification } from '../domain/notifications.js';
 import type { SyncPushRequest, SyncPushResponse } from '../sync/mutations.js';
 
 /** Socket.IO rooms the Master uses to target broadcasts. */
@@ -143,6 +144,12 @@ export interface PanelAuthPayload {
   protocol?: number;
   /** The Office's own version, for the Master's Panels screen. */
   appVersion?: string;
+  /**
+   * The session token of whoever is signed in on the panel, so the Master acts
+   * as them from the first message instead of sending a panel-scoped snapshot
+   * and a second one after `auth:assume`. An older Master ignores it.
+   */
+  actingUserToken?: string;
 }
 
 /**
@@ -150,7 +157,7 @@ export interface PanelAuthPayload {
  * socket command, so either side can tell the other is too old for one before
  * sending it, instead of waiting out a timeout.
  */
-export const PANEL_PROTOCOL_VERSION = 2;
+export const PANEL_PROTOCOL_VERSION = 3;
 
 /**
  * The lowest Master protocol each command needs. A command not listed has
@@ -159,6 +166,10 @@ export const PANEL_PROTOCOL_VERSION = 2;
  */
 export const COMMAND_MIN_PROTOCOL: Partial<Record<keyof ClientToServerEvents, number>> = {
   'auth:offlineEvents': 2,
+  'report:table': 2,
+  'report:options': 2,
+  'notification:list': 3,
+  'notification:markRead': 3,
 };
 
 /**
@@ -820,6 +831,18 @@ export interface ClientToServerEvents {
   'report:options': (ack: CommandAck<ReportOptions>) => void;
 
 
+  // --- Notifications (the bell) --------------------------------------------
+  /** The acting person's newest notifications. With nobody signed in: none. */
+  'notification:list': (
+    input: { limit?: number; before?: IsoTimestamp },
+    ack: CommandAck<{ items: UserNotification[]; unreadCount: number }>,
+  ) => void;
+  /** Mark some (`ids`) or all of the acting person's notifications read. */
+  'notification:markRead': (
+    input: { ids?: string[]; all?: boolean },
+    ack: CommandAck<{ unreadCount: number }>,
+  ) => void;
+
   // --- Dashboard (docs/backend-modules/04-API-CONTRACT.md §7) ---------------
   /** The one live pull — everything else rides on `SyncSnapshot.dashboard` and the `dashboard:changed` push. */
   'dashboard:get': (ack: CommandAck<DashboardSummary>) => void;
@@ -880,6 +903,11 @@ export interface ServerToClientEvents {
    * offline verifier it holds for them.
    */
   'session:rejected': (reason: SessionRejection) => void;
+  /**
+   * A notification for one person. `forUserId` names them, and a panel drops it
+   * unless that person is still the one signed in there.
+   */
+  'notification:new': (notification: UserNotification & { forUserId: Uuid }) => void;
 }
 
 /** Per-connection state the Master attaches after authenticating a socket. */
@@ -897,6 +925,8 @@ export interface SocketData {
    * socket reconnected.
    */
   actingUserToken?: string;
+  /** The person `actingUserToken` resolved to, for addressing per-user pushes. */
+  actingUserId?: Uuid;
   /**
    * A Master Panel browser's own session token, kept so the socket can
    * re-resolve it rather than trusting the handshake forever. Without it a

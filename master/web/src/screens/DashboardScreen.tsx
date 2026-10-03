@@ -19,6 +19,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { isLongOffline } from '@orderbook/shared';
 import type { DashboardSummary, Lead, OfficePanelWithPresence } from '@orderbook/shared';
 
 import { api } from '../api';
@@ -42,7 +43,7 @@ interface Props {
   canViewLeads: boolean;
   /** Moves when a lead, order or party changes, so the follow-ups list re-reads. */
   revision: number;
-  onNavigate: (target: 'leads' | 'orders' | 'conflicts') => void;
+  onNavigate: (target: 'leads' | 'orders' | 'conflicts' | 'panels') => void;
   onOpenLead: (id: string) => void;
   /** Print jobs waiting, from the Printroom; no tile when absent. */
   printPending?: number;
@@ -65,6 +66,8 @@ export function DashboardScreen({
   const active = panels.filter((panel) => panel.status === 'active');
   const loading = summary === null;
   const offlineCount = active.length - connected;
+  // Read at render: the panels list re-arrives on every connect and disconnect.
+  const longOfflineCount = panels.filter((panel) => isLongOffline(panel, Date.now())).length;
 
   const [followUps, setFollowUps] = useState<Lead[] | null>(null);
   useEffect(() => {
@@ -170,6 +173,20 @@ export function DashboardScreen({
                       : t('dashboard.stat.panelsOnline.noteSome', { count: offlineCount })
                 }
                 tone={active.length > 0 && offlineCount > 0 ? 'offline' : undefined}
+              />
+            )}
+            {canManagePanels && (
+              <StatTile
+                icon="warning"
+                label={t('dashboard.stat.panelsOfflineLong')}
+                value={count(longOfflineCount)}
+                note={
+                  longOfflineCount === 0
+                    ? t('dashboard.stat.panelsOfflineLong.noteNone')
+                    : t('dashboard.stat.panelsOfflineLong.noteSome')
+                }
+                tone={longOfflineCount > 0 ? 'offline' : undefined}
+                onClick={longOfflineCount > 0 ? () => onNavigate('panels') : undefined}
               />
             )}
             {openOrderCount !== undefined && (

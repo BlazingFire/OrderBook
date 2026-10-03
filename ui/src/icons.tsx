@@ -42,7 +42,8 @@ export type IconName =
   | 'drag'
   | 'external'
   | 'upload'
-  | 'download';
+  | 'download'
+  | 'bell';
 
 const PATHS: Record<IconName, string> = {
   // The Basic Home launcher, as drawn in the owner's mockup.
@@ -89,6 +90,8 @@ const PATHS: Record<IconName, string> = {
   // A tray with an arrow: up out of it to send a file, down into it to save one.
   upload: 'M8 10.5V3M4.8 6.2L8 3l3.2 3.2M3 10.5v2.5h10v-2.5',
   download: 'M8 3v7.5M4.8 7.3L8 10.5l3.2-3.2M3 10.5v2.5h10v-2.5',
+  // The notification bell in the topbar.
+  bell: 'M4 11.5V7a4 4 0 0 1 8 0v4.5l1 1.5H3zM6.5 13.5a1.5 1.5 0 0 0 3 0',
 };
 
 export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {

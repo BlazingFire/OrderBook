@@ -142,6 +142,30 @@ describe('record ids', () => {
     expect(arrivedLateFirst[0]?.hlc).toBe('0000001700000000001-00000-A3F9K2');
   });
 
+  it('breaks an exact (hlc, device) tie by mutation id, so the order is total', () => {
+    const hlc = '0000001700000000001-00000-A3F9K2';
+    const batch = [
+      { hlc, deviceCode: PANEL_A, mutationId: 'c-third' },
+      { hlc, deviceCode: PANEL_A, mutationId: 'a-first' },
+      { hlc, deviceCode: PANEL_A, mutationId: 'b-second' },
+    ];
+
+    const forwards = [...batch].sort(compareForIdAssignment);
+    const backwards = [...batch].reverse().sort(compareForIdAssignment);
+
+    expect(forwards.map((m) => m.mutationId)).toEqual(['a-first', 'b-second', 'c-third']);
+    expect(backwards).toEqual(forwards);
+    // The mutation id only ever breaks a tie: an earlier HLC still goes first.
+    expect(
+      compareForIdAssignment(
+        { hlc: '0000001700000000000-00000-B7QMX4', deviceCode: PANEL_B, mutationId: 'z' },
+        { hlc, deviceCode: PANEL_A, mutationId: 'a' },
+      ),
+    ).toBeLessThan(0);
+    // Without one, an exact tie is still a tie, as before.
+    expect(compareForIdAssignment({ hlc, deviceCode: PANEL_A }, { hlc, deviceCode: PANEL_A })).toBe(0);
+  });
+
   it('refuses a device code it cannot round-trip', () => {
     expect(() => formatTemporaryId('short', 1)).toThrow(/Invalid device code/);
     expect(() => formatTemporaryId(PANEL_A, -1)).toThrow(/non-negative/);

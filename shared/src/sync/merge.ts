@@ -123,6 +123,28 @@ export function mergeFields(target: MergeTarget, incoming: MergeCandidate): Merg
   };
 }
 
+/**
+ * A base for an edit that carries none.
+ *
+ * The Office outbox stores `{}` as the base of every lead and order edit, so
+ * "stored clock newer than the base" would flag every second edit as a clash.
+ * With no base at all, each field's stored clock is taken as the base when it
+ * predates this edit: a newer edit wins as an ordinary edit, and an older one
+ * still loses and is recorded as a conflict.
+ */
+export function baseForUnversionedEdit(
+  fields: readonly string[],
+  fieldHlc: Record<string, string>,
+  hlc: string,
+): Record<string, string> {
+  const base: Record<string, string> = {};
+  for (const field of fields) {
+    const stored = fieldHlc[field];
+    if (stored && compareHlc(hlc, stored) > 0) base[field] = stored;
+  }
+  return base;
+}
+
 function pushConflict(
   conflicts: MutationFieldConflict[],
   field: string,

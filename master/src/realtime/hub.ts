@@ -9,7 +9,7 @@
  */
 
 import type { Server as HttpServer } from 'node:http';
-import { Server, type Socket } from 'socket.io';
+import { Server, type ExtendedError, type Socket } from 'socket.io';
 import {
   ROOM_MASTER_ADMINS,
   PARTY_BULK_MIN_PROTOCOL,
@@ -18,8 +18,10 @@ import {
   type CommandAck,
   type CommandResult,
   type DashboardSummary,
+  type MessageKey,
   type SyncDeltaCursor,
   type DataChangedEvent,
+  type PanelAuthPayload,
   type ServerToClientEvents,
   type SocketAuthPayload,
   type SocketData,
@@ -28,6 +30,7 @@ import {
   parseReportQuery,
   type ReportExportOptions,
   type ReportQuery,
+  t,
 } from '@orderbook/shared';
 
 import { actorCan, type ActorContext } from '../domain/actor.js';
@@ -41,7 +44,13 @@ import {
   partyIdOfChange,
 } from './fan-out.js';
 import * as partyAccessRepo from '../repositories/party-access.repository.js';
-import { AppError, ForbiddenError, toErrorMessage, ValidationError } from '../lib/errors.js';
+import {
+  AppError,
+  ForbiddenError,
+  toErrorMessage,
+  UnauthorizedError,
+  ValidationError,
+} from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import { masterPcAddress } from '../lib/network.js';
 import { setPanelLink, type PanelRequest } from './panel-link.js';
@@ -50,13 +59,15 @@ import * as pipelineRepo from '../repositories/pipeline.repository.js';
 import * as authService from '../services/auth.service.js';
 import { resolveSession } from '../services/auth.service.js';
 import * as catalogService from '../services/catalog.service.js';
-import { onChange, onConflict } from '../services/change-bus.js';
+import { onChange, onConflict, onNotification } from '../services/change-bus.js';
 import * as conflictService from '../services/conflict.service.js';
 import * as dashboardService from '../services/dashboard.service.js';
 import * as fieldsService from '../services/fields.service.js';
 import * as inventoryService from '../services/inventory.service.js';
 import * as leadService from '../services/lead.service.js';
 import * as panelCredentialRepo from '../repositories/panel-credential.repository.js';
+import { findMasterConfig } from '../repositories/master-config.repository.js';
+import * as notificationService from '../services/notification.service.js';
 import * as orderService from '../services/order.service.js';
 import {
   RefusedActingTokenError,
@@ -174,6 +185,14 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
     // Snapshots and command acks are JSON and compress well; below a kilobyte
     // the framing costs more than it saves.
     perMessageDeflate: { threshold: 1024 },
+    /*
+     * A link that dies without a word (a pulled switch, a sleeping laptop) is
+     * noticed within about ten seconds rather than the default forty-five. Not
+     * tighter: a snapshot or PDF build can stall this event loop for a few
+     * seconds, and a 5 s / 5 s pair would then drop every panel at once.
+     */
+    pingInterval: 4000,
+    pingTimeout: 6000,
   });
   ioInstance = io;
 
@@ -183,7 +202,17 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
       next();
     } catch (error) {
       log.warn(`Rejected socket connection: ${toErrorMessage(error)}`);
-      next(new Error(toErrorMessage(error)));
+      const refusal = authRefusal(error);
+      // An Office forgets its pairing on `panelRevoked` only when the Master
+      // saying so is the one it paired with, so say which Master this is: a
+      // different Master install answering at the saved address keeps it.
+      // A backup restored elsewhere brings back this same id, and since a
+      // restore revokes every panel, those panels are rightly unpaired.
+      if (refusal.data?.code === 'panelRevoked') {
+        const masterConfig = await findMasterConfig().catch(() => null);
+        if (masterConfig) refusal.data.masterUniqueId = masterConfig.master_unique_id;
+      }
+      next(refusal);
     }
   });
 
@@ -218,6 +247,7 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
         if (!token || !tokens.has(token)) continue;
         // The same two steps `panelActor` takes on the command path.
         socket.data.actingUserToken = undefined;
+        socket.data.actingUserId = undefined;
         socket.emit('session:rejected', reason);
       }
     },
@@ -290,15 +320,44 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
     scheduleDashboard(io);
   });
 
+  // A notification is the addressee's own, so the only gate is that the socket
+  // is acting as them right now.
+  const unsubscribeNotifications = onNotification(({ tenantId, userId, ...notification }) => {
+    void emitToActors(io, tenantId, 'notification:new', notification, () => true, [userId]).catch(
+      (error: unknown) => log.warn(`Could not deliver a notification: ${toErrorMessage(error)}`),
+    );
+  });
+
+  // Panels that were away when this Master stopped still get their notice.
+  void panelService
+    .scheduleLongOfflineNoticesAtBoot()
+    .catch((error: unknown) =>
+      log.warn(`Could not schedule the long-offline notices: ${toErrorMessage(error)}`),
+    );
+
   return {
     io,
     stop: async () => {
       cancelScheduledDashboard();
       unsubscribeChanges();
       unsubscribeConflicts();
+      unsubscribeNotifications();
       setPanelLink(null);
+      // Cleared before the close, so the closing sockets' own handlers leave
+      // presence alone; the last-seen time is written here instead, awaited
+      // while the database is still up, so the "offline for" times after a
+      // restart start from this stop and not from when each panel connected.
+      const connectedPanels = [...panelSockets.keys()];
       panelSockets.clear();
+      await Promise.all(
+        connectedPanels.map((panelId) =>
+          panelService.markPanelDisconnected(panelId).catch((error: unknown) =>
+            log.warn(`Could not record a panel disconnect: ${toErrorMessage(error)}`),
+          ),
+        ),
+      );
       await io.close();
+      panelService.cancelLongOfflineNotices();
       if (ioInstance === io) ioInstance = null;
     },
   };
@@ -324,7 +383,7 @@ async function authenticate(socket: PanelSocket): Promise<void> {
     // A Master browser on the Master PC may hold a Server Master session; one
     // on another PC may not, so the address goes with every resolution.
     const user = await resolveSession(auth.sessionToken, sessionAddress(socket));
-    if (!user) throw new Error('Session is not valid');
+    if (!user) throw new UnauthorizedError();
 
     socket.data.kind = 'master-admin';
     socket.data.tenantId = user.tenantId;
@@ -333,7 +392,29 @@ async function authenticate(socket: PanelSocket): Promise<void> {
     return;
   }
 
-  throw new Error('Missing connection credentials');
+  throw new UnauthorizedError();
+}
+
+/**
+ * The error a refused handshake hands the client, with `data` it can branch on.
+ *
+ * `code` is the last part of the message key for a refusal (`panelNotPaired`,
+ * `panelRevoked`, `panelCredentialsInvalid`, `unauthorized`), so an Office can
+ * tell "this Master revoked me" from "this Master does not know me". Anything
+ * else is the Master failing rather than refusing, a database still starting
+ * or a reset under way, and reads as `maintenance`: transient, retry. Its own
+ * text is logged above and not sent, since it may name internals.
+ */
+function authRefusal(error: unknown): ExtendedError {
+  const messageKey: MessageKey =
+    error instanceof AppError ? error.messageKey : 'error.unavailable.maintenance';
+  const code =
+    error instanceof AppError ? messageKey.slice(messageKey.lastIndexOf('.') + 1) : 'maintenance';
+  const refusal: ExtendedError = new Error(
+    error instanceof AppError ? error.message : t('en', 'error.unavailable.maintenance'),
+  );
+  refusal.data = { code, messageKey };
+  return refusal;
 }
 
 async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Promise<void> {
@@ -359,13 +440,58 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
   const panelId = socket.data.panelId;
   if (!panelId) return;
 
-  await socket.join(ROOM_OFFICE_PANELS);
+  /*
+   * Everything up to the first `await` below runs before any packet from this
+   * socket is read, and the order matters.
+   *
+   * The socket goes on file first, and a previous socket for the same panel
+   * (one the panel gave up on, which the heartbeat has not yet noticed) is
+   * closed after it: its `disconnect` then finds itself no longer on file and
+   * leaves presence alone. The `disconnect` handler is registered before any
+   * await, so a drop during the awaits is never missed, and only the socket
+   * still on file may clear presence — otherwise a slow teardown of the old
+   * socket marked a live panel offline. `markPanelConnected` sets presence
+   * synchronously, before its own first await, for the same reason.
+   */
+  const previous = panelSockets.get(panelId);
   panelSockets.set(panelId, socket);
-  await panelService.markPanelConnected(panelId, remoteAddress(socket), socket.data.protocol);
-  log.info(`Office panel connected: ${panelId}`);
-  await broadcastPanels(io);
+  if (previous && previous !== socket) {
+    // The same PC reconnecting comes from the same address. A live socket from
+    // another one means two PCs hold this panel's pairing and keep replacing
+    // each other (the Office backs off after a few).
+    const from = remoteAddress(socket);
+    if (previous.connected && remoteAddress(previous) !== from) {
+      log.warn(`Office panel ${panelId} connected from ${from ?? 'an unknown address'} while still connected from ${remoteAddress(previous) ?? 'an unknown address'}; two PCs may share its pairing`);
+    }
+    previous.disconnect(true);
+  }
 
-  const actorFor = (): Promise<ActorContext> => panelActor(socket, panelId);
+  socket.on('disconnect', () => {
+    if (panelSockets.get(panelId) !== socket) return;
+    panelSockets.delete(panelId);
+    void (async () => {
+      await panelService.markPanelDisconnected(panelId);
+      log.info(`Office panel disconnected: ${panelId}`);
+      await broadcastPanels(io);
+    })().catch((error: unknown) =>
+      log.warn(`Could not record a panel disconnect: ${toErrorMessage(error)}`),
+    );
+  });
+
+  const connected = panelService.markPanelConnected(
+    panelId,
+    remoteAddress(socket),
+    socket.data.protocol,
+  );
+
+  // Who is signed in on the panel, from the handshake, settled before anything
+  // is built for it or any command runs. Without it the first snapshot was the
+  // panel's own view and `auth:assume` sent the person's straight after it.
+  const ready = adoptHandshakeToken(socket);
+  const actorFor = async (): Promise<ActorContext> => {
+    await ready;
+    return panelActor(socket, panelId);
+  };
 
   // Whose snapshot this is depends on who is signed in, and the snapshot carries
   // the permission set the panel's UI renders from — so signing in or out has to
@@ -378,7 +504,12 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
   };
 
   registerCommands(socket, actorFor);
-  registerAuthCommands(socket, sendSnapshot);
+  registerAuthCommands(socket, sendSnapshot, ready);
+
+  await socket.join(ROOM_OFFICE_PANELS);
+  await connected;
+  log.info(`Office panel connected: ${panelId}`);
+  await broadcastPanels(io);
 
   /*
    * Catch the panel up in one round trip before incremental changes resume.
@@ -399,18 +530,28 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
   } else {
     socket.emit('sync:snapshot', await buildSnapshot(actor));
   }
+}
 
-  socket.on('disconnect', () => {
-    void (async () => {
-      // Only if this socket is still the one on file: a panel that reconnected
-      // before its old socket finished tearing down has already replaced the
-      // entry, and evicting it here would make a live panel look offline.
-      if (panelSockets.get(panelId) === socket) panelSockets.delete(panelId);
-      await panelService.markPanelDisconnected(panelId);
-      log.info(`Office panel disconnected: ${panelId}`);
-      await broadcastPanels(io);
-    })();
-  });
+/**
+ * Act as the person whose token the panel sent in its handshake, if the
+ * Master still honours it. Anything else leaves the panel acting as itself,
+ * exactly as before the field existed; the panel's own `auth:assume` then
+ * learns why. Never throws: a failure here must not stop the connection.
+ */
+async function adoptHandshakeToken(socket: PanelSocket): Promise<void> {
+  const token = (socket.handshake.auth as Partial<PanelAuthPayload> | undefined)?.actingUserToken;
+  if (typeof token !== 'string' || !token) return;
+
+  try {
+    // As on `auth:assume`: never a Server Master on a panel.
+    const resolution = await authService.resolveSessionDetailed(token);
+    if (resolution.status === 'active' && !isServerMasterTier(resolution.user.roleTier)) {
+      socket.data.actingUserToken = token;
+      socket.data.actingUserId = resolution.user.id;
+    }
+  } catch (error: unknown) {
+    log.warn(`Could not resolve a handshake session: ${toErrorMessage(error)}`);
+  }
 }
 
 /**
@@ -439,7 +580,9 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
 
   socket.on('sync:request', (ack) => run(ack, (actor) => buildSnapshot(actor)));
   socket.on('sync:push', (request, ack) =>
-    run(ack, (actor) => syncService.applyPush(request, actor)),
+    run(ack, (actor) =>
+      syncService.applyPush(request, actor, socket.handshake.issued, socket.data.protocol ?? 1),
+    ),
   );
 
   socket.on('party:list', (query, ack) =>
@@ -694,6 +837,14 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   );
   socket.on('report:options', (ack) => run(ack, (actor) => reportService.reportOptions(actor)));
 
+  // The bell: only ever the acting person's own notices; nobody signed in, none.
+  socket.on('notification:list', (input, ack) =>
+    run(ack, (actor) => notificationService.listNotifications(input, actor)),
+  );
+  socket.on('notification:markRead', (input, ack) =>
+    run(ack, (actor) => notificationService.markRead(input, actor)),
+  );
+
   // The one live pull; everything else rides on `SyncSnapshot.dashboard` and
   // the `dashboard:changed` push both extended below.
   socket.on('dashboard:get', (ack) =>
@@ -707,10 +858,28 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
  * These are the one group a panel may issue while holding no user identity at
  * all — a person cannot sign in if signing in already required being signed in.
  * They are authorised by the panel's own pairing secret, checked at handshake.
+ *
+ * `onActorChanged` re-sends the snapshot, and only when the person acted as
+ * really changes. A reconnecting panel sends its handshake token and then
+ * `auth:assume` with the same token; re-sending there was a second full
+ * snapshot on every reconnect. Each command waits for `ready`, the handshake
+ * token's resolution, so it compares against what the handshake settled.
  */
-function registerAuthCommands(socket: PanelSocket, onActorChanged: () => void): void {
+function registerAuthCommands(
+  socket: PanelSocket,
+  onActorChanged: () => void,
+  ready: Promise<void>,
+): void {
+  const actAs = (token: string | undefined, userId: string | undefined): void => {
+    const changed = socket.data.actingUserToken !== token;
+    socket.data.actingUserToken = token;
+    socket.data.actingUserId = token ? userId : undefined;
+    if (changed) onActorChanged();
+  };
+
   socket.on('auth:signIn', (input, ack) =>
     respond(ack, async () => {
+      await ready;
       const session = await authService.signIn(
         input?.username ?? '',
         input?.password ?? '',
@@ -727,8 +896,7 @@ function registerAuthCommands(socket: PanelSocket, onActorChanged: () => void): 
       // Deliberately one signed-in person per panel: an Office Panel is one PC
       // at one counter. Replacing the previous session keeps "who is acting"
       // unambiguous for every command that follows on this socket.
-      socket.data.actingUserToken = session.token;
-      onActorChanged();
+      actAs(session.token, session.user.id);
 
       return session;
     }),
@@ -736,9 +904,9 @@ function registerAuthCommands(socket: PanelSocket, onActorChanged: () => void): 
 
   socket.on('auth:assume', (token, ack) =>
     respond(ack, async () => {
+      await ready;
       if (!token) {
-        socket.data.actingUserToken = undefined;
-        onActorChanged();
+        actAs(undefined, undefined);
         return { status: 'released' as const };
       }
 
@@ -749,8 +917,7 @@ function registerAuthCommands(socket: PanelSocket, onActorChanged: () => void): 
       const resolution = await authService.resolveSessionDetailed(token);
 
       if (resolution.status === 'active' && !isServerMasterTier(resolution.user.roleTier)) {
-        socket.data.actingUserToken = token;
-        onActorChanged();
+        actAs(token, resolution.user.id);
         return {
           status: 'active' as const,
           user: await authService.decorate(resolution.user, token),
@@ -761,8 +928,7 @@ function registerAuthCommands(socket: PanelSocket, onActorChanged: () => void): 
       // acting as someone the Master no longer recognises. The *reason* travels
       // with it, because only `revoked` justifies the panel destroying the
       // offline verifier it holds for that person.
-      socket.data.actingUserToken = undefined;
-      onActorChanged();
+      actAs(undefined, undefined);
 
       return {
         status: 'rejected' as const,
@@ -802,9 +968,9 @@ function registerAuthCommands(socket: PanelSocket, onActorChanged: () => void): 
 
   socket.on('auth:signOut', (token, ack) =>
     respond(ack, async () => {
+      await ready;
       await authService.signOut(token);
-      if (socket.data.actingUserToken === token) socket.data.actingUserToken = undefined;
-      onActorChanged();
+      if (socket.data.actingUserToken === token) actAs(undefined, undefined);
       return null;
     }),
   );
@@ -892,6 +1058,7 @@ async function panelActor(socket: PanelSocket, panelId: string): Promise<ActorCo
     if (!(error instanceof RefusedActingTokenError)) throw error;
 
     socket.data.actingUserToken = undefined;
+    socket.data.actingUserId = undefined;
 
     // Told, not left to be discovered. Clearing the token silently meant the
     // panel carried on showing somebody as signed in — and kept their offline
@@ -1028,6 +1195,70 @@ async function emitGatedChange(io: RealtimeHub['io'], event: DataChangedEvent): 
         socket.emit('data:changed', event);
       } catch (error: unknown) {
         log.warn(`Could not gate a change for a socket: ${toErrorMessage(error)}`);
+      }
+    }),
+  );
+}
+
+/** Master → client events addressed to one person: their payload names them in `forUserId`. */
+type PerUserEvent = {
+  [K in keyof ServerToClientEvents]: Parameters<ServerToClientEvents[K]>[0] extends {
+    forUserId: string;
+  }
+    ? K
+    : never;
+}[keyof ServerToClientEvents];
+
+type RecipientSocket =
+  | PanelSocket
+  | Awaited<ReturnType<RealtimeHub['io']['fetchSockets']>>[number];
+
+/**
+ * Send a per-person push to every socket acting as a person it may reach.
+ *
+ * The one fan-out for notifications, and later presence, chat and print. It
+ * walks the panel sockets and the Master browsers of one company; with
+ * `userIds` it first keeps only sockets whose person (`userId` on a Master
+ * browser, `actingUserId` on a panel) is named, which saves resolving the
+ * rest. Each survivor is resolved to its actor now, through
+ * `actorForRecipient` rather than `panelActor`, so a background push can never
+ * sign anybody out; a socket with no person behind it gets nothing. `accept`
+ * makes the domain's own check, and the payload is stamped with `forUserId`
+ * so a panel can drop it if the person has changed by the time it lands.
+ */
+async function emitToActors<E extends PerUserEvent>(
+  io: RealtimeHub['io'],
+  tenantId: string,
+  event: E,
+  payload: Omit<Parameters<ServerToClientEvents[E]>[0], 'forUserId'>,
+  accept: (actor: ActorContext, socket: RecipientSocket) => boolean,
+  userIds?: readonly string[],
+): Promise<void> {
+  const wanted = userIds ? new Set(userIds) : null;
+  const personOf = (socket: RecipientSocket): string | undefined =>
+    socket.data.kind === 'master-admin' ? socket.data.userId : socket.data.actingUserId;
+
+  const recipients: RecipientSocket[] = [
+    ...panelSockets.values(),
+    ...(await io.in(ROOM_MASTER_ADMINS).fetchSockets()),
+  ].filter(
+    (socket) =>
+      socket.data.tenantId === tenantId && (!wanted || wanted.has(personOf(socket) ?? '')),
+  );
+
+  await Promise.all(
+    recipients.map(async (socket) => {
+      try {
+        const actor = await actorForRecipient(socket);
+        if (!actor?.userId || (wanted && !wanted.has(actor.userId))) return;
+        if (!accept(actor, socket)) return;
+
+        (socket.emit as (name: string, body: unknown) => void)(event, {
+          ...payload,
+          forUserId: actor.userId,
+        });
+      } catch (error: unknown) {
+        log.warn(`Could not deliver ${event} to a socket: ${toErrorMessage(error)}`);
       }
     }),
   );

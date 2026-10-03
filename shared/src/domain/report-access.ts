@@ -5,8 +5,8 @@
  * only read it to draw the right thing, so a nav row hidden here is a courtesy
  * and a refused request is the guarantee.
  *
- * - An administrator (and a Server Master, once that tier exists above it) sees
- *   Reports always and may pick any user — other administrators included.
+ * - An administrator and a Server Master (the tier above it) see Reports
+ *   always and may pick any user, other administrators included.
  * - The Office and Management tiers see Reports only while their company switch
  *   is on (`reports.visibleToOffice` / `reports.visibleToManagement`, both on
  *   unless switched off) and only their own figures.

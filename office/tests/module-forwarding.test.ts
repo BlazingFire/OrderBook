@@ -8,6 +8,9 @@
  * so this suite needs no cluster and cannot silently skip.
  */
 
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
+
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -450,6 +453,29 @@ describe('reports', () => {
     expect(commandSpy).toHaveBeenCalledWith('report:options');
   });
 
+  it('answers 426 for the options from a Master on protocol 1, without asking it', async () => {
+    // The real `command()`, over a connected socket to a Master that announced
+    // protocol 1: `report:options` needs 2, so it is refused before sending.
+    const emitWithAck = vi.fn();
+    const connection = masterConnection as unknown as Record<string, unknown>;
+    const saved = { socket: connection.socket, state: connection.state, masterProtocol: connection.masterProtocol };
+    Object.assign(connection, {
+      socket: { timeout: () => ({ emitWithAck }) },
+      state: 'connected',
+      masterProtocol: 1,
+    });
+
+    try {
+      const response = await request(createApp()).get('/api/reports/options');
+
+      expect(response.status).toBe(426);
+      expect(response.body).toMatchObject({ error: 'updateNeeded', messageKey: 'error.updateNeeded.master' });
+      expect(emitWithAck).not.toHaveBeenCalled();
+    } finally {
+      Object.assign(connection, saved);
+    }
+  });
+
   it('forwards a table with the kind and the whole query, read by the shared parser', async () => {
     const commandSpy = vi.spyOn(masterConnection, 'command').mockResolvedValue({ kind: 'by-user' } as never);
 
@@ -720,5 +746,97 @@ describe('categories, the Leads setting and the lead PDF', () => {
     expect(response.headers['content-type']).toBe('application/pdf');
     expect(response.headers['content-disposition']).toBe('inline; filename="lead-LD1.pdf"');
     expect(Buffer.from(response.body as Buffer).toString()).toBe('%PDF-1.7 test');
+  });
+});
+
+describe('notifications', () => {
+  const UNREACHABLE = new MasterCommandError('Not connected', undefined, undefined, true);
+
+  beforeEach(() => {
+    vi.spyOn(userSession, 'currentSession').mockReturnValue(FAKE_SESSION as never);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('forwards the list with its page, and marking read with only well-formed ids', async () => {
+    const commandSpy = vi
+      .spyOn(masterConnection, 'command')
+      .mockResolvedValue({ items: [], unreadCount: 0 } as never);
+    const app = createApp();
+
+    await request(app).get('/api/notifications?limit=20&before=2026-10-01T00:00:00.000Z').expect(200);
+    await request(app).get('/api/notifications').expect(200);
+    await request(app).post('/api/notifications/read').send({ ids: ['N1', 7, 'N2'] }).expect(200);
+    await request(app).post('/api/notifications/read').send({ all: true }).expect(200);
+
+    expect(commandSpy.mock.calls).toEqual([
+      ['notification:list', { limit: 20, before: '2026-10-01T00:00:00.000Z' }],
+      ['notification:list', {}],
+      ['notification:markRead', { ids: ['N1', 'N2'] }],
+      ['notification:markRead', { all: true }],
+    ]);
+  });
+
+  it('answers 503 when the Master is away and 426 when it is too old for the bell', async () => {
+    const commandSpy = vi.spyOn(masterConnection, 'command').mockRejectedValue(UNREACHABLE);
+    const app = createApp();
+
+    const away = await request(app).get('/api/notifications');
+    expect(away.status).toBe(503);
+    expect(away.body).toMatchObject({ messageKey: 'error.unavailable' });
+
+    commandSpy.mockRejectedValue(
+      new MasterCommandError(
+        'The Master Panel needs an update before it can do this',
+        'updateNeeded',
+        undefined,
+        false,
+        undefined,
+        'error.updateNeeded.master',
+      ),
+    );
+    const old = await request(app).post('/api/notifications/read').send({ all: true });
+    expect(old.status).toBe(426);
+    expect(old.body).toMatchObject({ messageKey: 'error.updateNeeded.master' });
+  });
+
+  it('streams a notification only to the person it is for, even after someone else signs in', async () => {
+    vi.spyOn(localStore, 'getView').mockResolvedValue(null);
+    const session = vi
+      .spyOn(userSession, 'currentSession')
+      .mockReturnValue({ ...FAKE_SESSION, userId: 'US000000000A' } as never);
+
+    const server = createApp().listen(0);
+    const { port } = server.address() as AddressInfo;
+    let received = '';
+    const stream = http.get(`http://127.0.0.1:${port}/api/events`, (response) => {
+      response.setEncoding('utf8');
+      response.on('data', (chunk: string) => {
+        received += chunk;
+      });
+    });
+
+    try {
+      await vi.waitFor(() => expect(received).toContain('event: status'));
+
+      masterConnection.emit('notification', { id: 'for-a-1', forUserId: 'US000000000A' });
+      await vi.waitFor(() => expect(received).toContain('for-a-1'));
+
+      // Shift change: B signs in on the same PC before A's next notice lands.
+      session.mockReturnValue({ ...FAKE_SESSION, userId: 'US000000000B' } as never);
+      masterConnection.emit('notification', { id: 'for-a-2', forUserId: 'US000000000A' });
+      masterConnection.emit('notification', { id: 'unaddressed' });
+      masterConnection.emit('notification', { id: 'for-b-1', forUserId: 'US000000000B' });
+      await vi.waitFor(() => expect(received).toContain('for-b-1'));
+
+      expect(received).not.toContain('for-a-2');
+      expect(received).not.toContain('unaddressed');
+      expect(received.match(/event: notification/g)).toHaveLength(2);
+    } finally {
+      stream.destroy();
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 });

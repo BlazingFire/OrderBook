@@ -1,11 +1,16 @@
 /**
- * The Office half of the protocol handshake
- * (`office/src/realtime/master-connection.ts`).
+ * The Office's link to the Master (`office/src/realtime/master-connection.ts`).
  *
  * The panel announces its protocol and version, learns the Master's from each
  * snapshot or delta, and refuses at once a command the Master is too old for,
  * rather than waiting out the ack timeout. It also uploads the sign-ins it
  * checked offline once the Master has said it can take them.
+ *
+ * And it never needs a restart: it reconnects after the Master closes the
+ * socket or refuses the handshake, keeps its pairing unless its own Master
+ * revokes it, reports how long it has been offline and whether it is still
+ * catching up, watches the network cable, and moves to a Master's new address
+ * only after that address proves itself.
  *
  * Drives the real socket handlers against a fake socket, so no Master is needed.
  */
@@ -15,8 +20,12 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import { createHmac } from 'node:crypto';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PANEL_PROTOCOL_VERSION } from '@orderbook/shared';
+import { MASTER_PROOF_CONTEXT, masterProofMessage, PANEL_PROTOCOL_VERSION } from '@orderbook/shared';
 
 let dataDir: string;
 
@@ -34,8 +43,21 @@ class FakeSocket extends EventEmitter {
   sent: Array<{ event: string; args: unknown[] }> = [];
   answer: (event: string, args: unknown[]) => Ack = () => ({ ok: true, data: null });
 
-  constructor(readonly options: { auth: Record<string, unknown> }) {
+  /** False once a handshake was refused, as socket.io-client leaves it. */
+  active = true;
+  connect = vi.fn();
+  disconnect = vi.fn();
+
+  constructor(
+    readonly url: string,
+    readonly options: { auth: (send: (payload: Record<string, unknown>) => void) => void },
+  ) {
     super();
+  }
+
+  /** The auth this socket would send on its next handshake. */
+  handshake(): Promise<Record<string, unknown>> {
+    return new Promise((resolve) => this.options.auth(resolve));
   }
 
   timeout() {
@@ -47,34 +69,62 @@ class FakeSocket extends EventEmitter {
     };
   }
 
-  disconnect(): void {}
-
   commands(event: string) {
     return this.sent.filter((entry) => entry.event === event);
   }
 }
 
 let socket: FakeSocket;
+let opened = 0;
 
 vi.mock('socket.io-client', () => ({
-  io: (_url: string, options: { auth: Record<string, unknown> }) => {
-    socket = new FakeSocket(options);
+  io: (url: string, options: FakeSocket['options']) => {
+    socket = new FakeSocket(url, options);
+    opened += 1;
     return socket;
   },
 }));
 
+const MASTER_ID = '6f1c2a4e-0000-4000-8000-000000000001';
+
+const PAIRED = {
+  panelId: 'OP0000000001',
+  panelSecret: 'secret',
+  masterUniqueId: MASTER_ID,
+  masterHost: '192.168.1.10',
+  masterPort: 4000,
+  companyName: 'Acme Ceramics',
+  pairedAt: '2026-10-01T00:00:00.000Z',
+};
+
+/** The pairing on "disk", and what was done to it. */
+const credentials = {
+  current: { ...PAIRED } as typeof PAIRED | null,
+  saved: [] as Array<typeof PAIRED>,
+  cleared: 0,
+};
+
 vi.mock('../src/services/credentials.store.js', () => ({
-  loadCredentials: () =>
-    Promise.resolve({
-      panelId: 'OP0000000001',
-      panelSecret: 'secret',
-      masterHost: '192.168.1.10',
-      masterPort: 4000,
-      companyName: 'Acme Ceramics',
-    }),
-  masterBaseUrl: () => 'http://192.168.1.10:4000',
-  saveCredentials: () => Promise.resolve(),
-  clearCredentials: () => Promise.resolve(),
+  loadCredentials: () => Promise.resolve(credentials.current),
+  masterBaseUrl: (c: typeof PAIRED) => `http://${c.masterHost}:${c.masterPort}`,
+  saveCredentials: (next: typeof PAIRED) => {
+    credentials.saved.push(next);
+    credentials.current = next;
+    return Promise.resolve();
+  },
+  clearCredentials: () => {
+    credentials.cleared += 1;
+    credentials.current = null;
+    return Promise.resolve();
+  },
+}));
+
+const network = { up: true };
+vi.mock('../src/lib/network.js', () => ({ hasNetworkLink: () => network.up }));
+
+const discoverMasters = vi.fn();
+vi.mock('../src/discovery/client.js', () => ({
+  discoverMasters: (...args: unknown[]) => discoverMasters(...args),
 }));
 
 vi.mock('../src/services/panel-report.service.js', () => ({
@@ -82,26 +132,39 @@ vi.mock('../src/services/panel-report.service.js', () => ({
   moveStorage: () => Promise.resolve({}),
 }));
 
-vi.mock('../src/sync/clock.js', () => ({ observe: () => Promise.resolve() }));
+/** Every Master clock folded into this panel's, in order. */
+const observed: string[] = [];
+vi.mock('../src/sync/clock.js', () => ({
+  observe: (hlc: string) => {
+    observed.push(hlc);
+    return Promise.resolve();
+  },
+}));
 
+const local = { cursor: null as { bootId: string; lastSeq: number } | null };
 vi.mock('../src/sync/local-store.js', () => ({
   restore: () => Promise.resolve(null),
-  getCursor: () => null,
+  getCursor: () => local.cursor,
   setSnapshot: () => Promise.resolve(),
   noteApplied: () => {},
   persistCurrent: () => Promise.resolve(),
 }));
 
-const flushed = vi.fn(() => Promise.resolve());
+/** The order the link wired the transport and flushed, across a test. */
+const calls: string[] = [];
+const flushed = vi.fn(() => {
+  calls.push('flush');
+  return Promise.resolve();
+});
 vi.mock('../src/sync/sync.service.js', () => ({
   flush: () => flushed(),
-  setTransport: () => {},
+  setTransport: (transport: unknown) => calls.push(transport ? 'transport' : 'no transport'),
   stopSync: () => {},
 }));
 
 vi.mock('../src/lib/app-version.js', () => ({ appVersion: () => '1.3.0' }));
 
-const { masterConnection, MasterCommandError } =
+const { masterConnection, MasterCommandError, masterProves } =
   await import('../src/realtime/master-connection.js');
 const store = await import('../src/services/offline-auth-events.store.js');
 
@@ -133,10 +196,20 @@ beforeEach(async () => {
   dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'orderbook-master-link-'));
   store.resetOfflineAuthEvents();
   flushed.mockClear();
+  calls.length = 0;
+  credentials.current = { ...PAIRED };
+  credentials.saved = [];
+  credentials.cleared = 0;
+  network.up = true;
+  local.cursor = null;
+  discoverMasters.mockReset();
 });
 
 afterEach(async () => {
   masterConnection.disconnect();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   await fs.rm(dataDir, { recursive: true, force: true });
 });
 
@@ -144,12 +217,36 @@ describe('the protocol handshake', () => {
   it('announces this build’s protocol and version in the socket auth', async () => {
     const link = await connected();
 
-    expect(link.options.auth).toMatchObject({
+    expect(await link.handshake()).toMatchObject({
       kind: 'office-panel',
       panelId: 'OP0000000001',
       protocol: PANEL_PROTOCOL_VERSION,
       appVersion: '1.3.0',
     });
+  });
+
+  it('builds the auth afresh for every handshake: the current cursor, token and secret', async () => {
+    const link = await connected();
+    link.emit('sync:snapshot', snapshot(3));
+    await settle();
+
+    local.cursor = { bootId: 'boot', lastSeq: 4 };
+    const first = await link.handshake();
+    expect(first).toMatchObject({ syncCursor: { bootId: 'boot', lastSeq: 4 } });
+    expect(first).not.toHaveProperty('actingUserToken');
+
+    // Somebody signs in while the link is down, and the secret is reissued.
+    link.emit('disconnect', 'transport close');
+    await masterConnection.assume('token-of-sunita');
+    local.cursor = { bootId: 'boot', lastSeq: 9 };
+    credentials.current = { ...PAIRED, panelSecret: 'reissued' };
+
+    expect(await link.handshake()).toMatchObject({
+      syncCursor: { bootId: 'boot', lastSeq: 9 },
+      actingUserToken: 'token-of-sunita',
+      panelSecret: 'reissued',
+    });
+    await masterConnection.assume(null);
   });
 
   it('refuses a newer command at once, without sending it, until the Master says it can take it', async () => {
@@ -280,5 +377,426 @@ describe('uploading offline sign-ins', () => {
 
     expect(link.commands('auth:offlineEvents')).toHaveLength(0);
     expect(await store.peek()).toEqual(STORED);
+  });
+});
+
+/** An error as socket.io-client hands it over for a refused handshake. */
+function refusal(code: string, extra: Record<string, unknown> = {}) {
+  return Object.assign(new Error(code), { data: { code, ...extra } });
+}
+
+/** Let promise callbacks and the I/O queue run once. */
+function tick(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+describe('reconnecting without a restart', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    // No jitter, so the delays are exact.
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+  });
+
+  it('reconnects after the Master closes the socket, but not after it revokes the panel', async () => {
+    const link = await connected();
+
+    link.emit('disconnect', 'io server disconnect');
+    vi.advanceTimersByTime(1_499);
+    expect(link.connect).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(link.connect).toHaveBeenCalledTimes(1);
+
+    link.emit('connect');
+    link.emit('panel:revoked');
+    link.emit('disconnect', 'io server disconnect');
+    vi.advanceTimersByTime(60_000);
+
+    expect(link.connect).toHaveBeenCalledTimes(1);
+    expect(link.disconnect).toHaveBeenCalled();
+    await vi.waitFor(() => expect(masterConnection.getStatus().state).toBe('unpaired'));
+    expect(credentials.cleared).toBe(1);
+  });
+
+  it('backs off when the Master keeps closing the socket, as when two PCs share a pairing', async () => {
+    const link = await connected();
+
+    // The first two closes are retried at once, as a Master restart is.
+    for (let close = 1; close <= 2; close += 1) {
+      link.emit('disconnect', 'io server disconnect');
+      vi.advanceTimersByTime(1_500);
+      expect(link.connect).toHaveBeenCalledTimes(close);
+      link.emit('connect');
+    }
+
+    // The third within half a minute waits out the refusal backoff instead.
+    link.emit('disconnect', 'io server disconnect');
+    vi.advanceTimersByTime(4_999);
+    expect(link.connect).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(1);
+    expect(link.connect).toHaveBeenCalledTimes(3);
+  });
+
+  it('retries a refused handshake with a backoff, which socket.io-client does not', async () => {
+    const link = await connected();
+    link.emit('disconnect', 'transport close');
+
+    link.active = false;
+    link.emit('connect_error', refusal('maintenance'));
+    await tick();
+    vi.advanceTimersByTime(4_999);
+    expect(link.connect).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(link.connect).toHaveBeenCalledTimes(1);
+
+    // Refused again: twice as long.
+    link.emit('connect_error', refusal('maintenance'));
+    await tick();
+    vi.advanceTimersByTime(9_999);
+    expect(link.connect).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1);
+    expect(link.connect).toHaveBeenCalledTimes(2);
+    expect(credentials.cleared).toBe(0);
+  });
+
+  it('keeps the pairing when the Master does not recognise the panel, says so, and keeps trying', async () => {
+    const link = await connected();
+    link.emit('disconnect', 'transport close');
+
+    link.active = false;
+    link.emit('connect_error', refusal('panelNotPaired'));
+    await tick();
+    expect(masterConnection.getStatus().notRecognised).toBe(true);
+
+    expect(credentials.cleared).toBe(0);
+    expect(credentials.current).toEqual(PAIRED);
+    vi.advanceTimersByTime(5_000);
+    expect(link.connect).toHaveBeenCalledTimes(1);
+
+    link.active = true;
+    link.emit('connect');
+    expect(masterConnection.getStatus().notRecognised).toBe(false);
+  });
+
+  it('forgets the pairing on panelRevoked only from the Master it paired with', async () => {
+    const link = await connected();
+    link.emit('disconnect', 'transport close');
+    link.active = false;
+
+    // Another Master (a copy restored on some other PC), or one that does not say.
+    link.emit('connect_error', refusal('panelRevoked', { masterUniqueId: 'someone-else' }));
+    link.emit('connect_error', refusal('panelRevoked'));
+    await tick();
+    expect(masterConnection.getStatus().notRecognised).toBe(true);
+    expect(credentials.cleared).toBe(0);
+
+    link.emit('connect_error', refusal('panelRevoked', { masterUniqueId: MASTER_ID }));
+    await tick();
+    await vi.waitFor(() => expect(masterConnection.getStatus().state).toBe('unpaired'));
+    expect(credentials.cleared).toBe(1);
+    vi.advanceTimersByTime(60_000);
+    expect(link.connect).not.toHaveBeenCalled();
+  });
+});
+
+describe('what the status says', () => {
+  it('sets disconnectedSince when the link is lost, keeps it through failures, clears it on connect', async () => {
+    const link = await connected();
+    expect(masterConnection.getStatus().disconnectedSince).toBeNull();
+
+    link.emit('disconnect', 'transport close');
+    const since = masterConnection.getStatus().disconnectedSince;
+    expect(since).toEqual(expect.any(String));
+
+    link.emit('connect_error', new Error('websocket error'));
+    expect(masterConnection.getStatus().disconnectedSince).toBe(since);
+
+    link.emit('connect');
+    expect(masterConnection.getStatus().disconnectedSince).toBeNull();
+  });
+
+  it('is catching up from connect until the snapshot is stored and the outbox flushed after the transport', async () => {
+    const statuses: Array<{ catchingUp: boolean }> = [];
+    const listener = (status: { catchingUp: boolean }) => statuses.push(status);
+    masterConnection.on('status', listener);
+
+    try {
+      const link = await connected();
+      expect(masterConnection.getStatus().catchingUp).toBe(true);
+
+      // The flush right after the transport is wired is half of it.
+      await vi.waitFor(() => expect(calls).toEqual(['transport', 'flush']));
+      expect(masterConnection.getStatus().catchingUp).toBe(true);
+
+      link.emit('sync:snapshot', {
+        ...snapshot(3),
+        serverTime: new Date(Date.now() - 90_000).toISOString(),
+      });
+      await vi.waitFor(() => expect(masterConnection.getStatus().catchingUp).toBe(false));
+      expect(statuses[statuses.length - 1]).toMatchObject({ catchingUp: false });
+
+      // This PC is about a minute and a half ahead of the Master.
+      expect(masterConnection.getStatus().clockSkewMs).toBeGreaterThanOrEqual(90_000);
+      expect(masterConnection.getStatus().clockSkewMs).toBeLessThan(100_000);
+    } finally {
+      masterConnection.off('status', listener);
+    }
+  });
+
+  it("folds each live change's clock into this panel's, so a later move sorts after it", async () => {
+    const link = await connected();
+    link.emit('sync:snapshot', snapshot(3));
+    observed.length = 0;
+
+    const hlc = '0001900000000000:0000:OP0000000002';
+    link.emit('data:changed', {
+      entity: 'lead',
+      action: 'updated',
+      id: 'L1',
+      payload: { id: 'L1', sync: { version: 2, hlc, fieldHlc: { stageId: hlc }, temporaryId: null } },
+    });
+    // A change without a row clock is passed over, not folded.
+    link.emit('data:changed', { entity: 'lead', action: 'deleted', id: 'L2', payload: { id: 'L2' } });
+
+    expect(observed).toEqual([hlc]);
+  });
+
+  it('watches the network cable, speaks only on a change, and retries at once when it returns', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const statuses: Array<{ hasNetworkLink: boolean }> = [];
+    const listener = (status: { hasNetworkLink: boolean }) => statuses.push(status);
+
+    const link = await connected();
+    link.emit('disconnect', 'transport close');
+    masterConnection.on('status', listener);
+
+    try {
+      vi.advanceTimersByTime(2_000);
+      expect(statuses).toEqual([]);
+
+      network.up = false;
+      vi.advanceTimersByTime(2_000);
+      expect(statuses.map((status) => status.hasNetworkLink)).toEqual([false]);
+      vi.advanceTimersByTime(4_000);
+      expect(statuses).toHaveLength(1);
+      expect(link.connect).not.toHaveBeenCalled();
+
+      network.up = true;
+      vi.advanceTimersByTime(2_000);
+      expect(statuses.map((status) => status.hasNetworkLink)).toEqual([false, true]);
+      expect(link.disconnect).toHaveBeenCalledTimes(1);
+      expect(link.connect).toHaveBeenCalledTimes(1);
+    } finally {
+      masterConnection.off('status', listener);
+    }
+  });
+});
+
+describe('finding a Master that moved', () => {
+  const MOVED = {
+    masterUniqueId: MASTER_ID,
+    companyName: 'Acme Ceramics',
+    lanIp: '192.168.1.20',
+    httpPort: 4000,
+    acceptingPairing: false,
+    nonce: 'n',
+  };
+
+  /** Each test starts well past the previous one's once-a-minute limit. */
+  let clock = Date.parse('2027-01-01T00:00:00.000Z');
+
+  beforeEach(() => {
+    clock += 10 * 60_000;
+    vi.useFakeTimers({ toFake: ['Date'], now: clock });
+  });
+
+  /** Three failed attempts in a row on a fresh connection. */
+  async function failThrice(): Promise<FakeSocket> {
+    const link = await connected();
+    link.emit('disconnect', 'transport close');
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      link.emit('connect_error', new Error('websocket error'));
+    }
+    return link;
+  }
+
+  /** A `/api/panel/prove` that answers with `answer(nonce)`. */
+  function prover(answer: (nonce: string) => string) {
+    const fetchSpy = vi.fn((_url: string, init: { body: string }) => {
+      const { nonce } = JSON.parse(init.body) as { nonce: string };
+      return Promise.resolve(
+        new Response(JSON.stringify({ proof: answer(nonce) }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+    return fetchSpy;
+  }
+
+  /** What the Master that holds this panel's proof key answers when reached at `host:port`. */
+  const answerAt = (host: string, port: number) => (nonce: string) => {
+    const key = createHmac('sha256', PAIRED.panelSecret).update(MASTER_PROOF_CONTEXT).digest();
+    return createHmac('sha256', key).update(masterProofMessage(nonce, host, port)).digest('hex');
+  };
+  const genuine = answerAt('192.168.1.20', 4000);
+
+  it('does not look before the third failure, nor without a network, nor twice a minute', async () => {
+    discoverMasters.mockResolvedValue([]);
+    const link = await connected();
+    link.emit('disconnect', 'transport close');
+    link.emit('connect_error', new Error('websocket error'));
+    link.emit('connect_error', new Error('websocket error'));
+    expect(discoverMasters).not.toHaveBeenCalled();
+
+    network.up = false;
+    link.emit('connect_error', new Error('websocket error'));
+    expect(discoverMasters).not.toHaveBeenCalled();
+
+    network.up = true;
+    link.emit('connect_error', new Error('websocket error'));
+    await vi.waitFor(() => expect(discoverMasters).toHaveBeenCalledWith({ timeoutMs: 3000 }));
+
+    link.emit('connect_error', new Error('websocket error'));
+    await tick();
+    expect(discoverMasters).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not adopt an address that answers with the right Master id but cannot prove it', async () => {
+    discoverMasters.mockResolvedValue([MOVED]);
+    const fetchSpy = prover(() => 'ab'.repeat(32));
+    const before = opened;
+
+    await failThrice();
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalled());
+    await tick();
+
+    const [url, init] = fetchSpy.mock.calls[0] as [string, { body: string }];
+    expect(url).toBe('http://192.168.1.20:4000/api/panel/prove');
+    expect(JSON.parse(init.body)).toEqual({
+      panelId: PAIRED.panelId,
+      nonce: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+    // The secret never went there, and nothing connected there.
+    expect(init.body).not.toContain(PAIRED.panelSecret);
+    expect(opened).toBe(before + 1);
+    expect(credentials.saved).toEqual([]);
+    expect(masterConnection.getStatus()).toMatchObject({
+      masterHost: '192.168.1.10',
+      rediscoveredFrom: null,
+      // Said on screen, so somebody can look for the device answering there.
+      rediscoveryRefused: '192.168.1.20:4000',
+    });
+  });
+
+  it('trusts neither of two addresses claiming the same Master', async () => {
+    discoverMasters.mockResolvedValue([{ ...MOVED, conflictingAddress: true }]);
+    const fetchSpy = prover(genuine);
+    const before = opened;
+
+    await failThrice();
+    await vi.waitFor(() => expect(discoverMasters).toHaveBeenCalled());
+    await tick();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(opened).toBe(before + 1);
+    expect(masterConnection.getStatus().rediscoveryRefused).toBe('192.168.1.20:4000');
+  });
+
+  it('refuses an address that relays the real Master’s answer for the real Master’s address', async () => {
+    discoverMasters.mockResolvedValue([MOVED]);
+    // The device at .20 forwards the nonce to the real Master at .10 and hands back its answer.
+    const fetchSpy = prover(answerAt('192.168.1.10', 4000));
+    const before = opened;
+
+    await failThrice();
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalled());
+    await tick();
+
+    expect(opened).toBe(before + 1);
+    expect(credentials.saved).toEqual([]);
+    expect(masterConnection.getStatus().rediscoveryRefused).toBe('192.168.1.20:4000');
+  });
+
+  it('connects to a proven new address, and saves it only once that connection authenticates', async () => {
+    discoverMasters.mockResolvedValue([MOVED]);
+    prover(genuine);
+    const before = opened;
+
+    const old = await failThrice();
+    await vi.waitFor(() => expect(opened).toBe(before + 2));
+
+    expect(old.disconnect).toHaveBeenCalled();
+    expect(socket.url).toBe('http://192.168.1.20:4000');
+    expect(await socket.handshake()).toMatchObject({ panelSecret: PAIRED.panelSecret });
+    expect(credentials.saved).toEqual([]);
+
+    // Refused there is not good enough either.
+    socket.active = false;
+    socket.emit('connect_error', refusal('maintenance'));
+    await tick();
+    expect(credentials.saved).toEqual([]);
+
+    socket.active = true;
+    socket.emit('connect');
+    await vi.waitFor(() =>
+      expect(credentials.saved).toEqual([
+        { ...PAIRED, masterHost: '192.168.1.20', masterPort: 4000 },
+      ]),
+    );
+    expect(masterConnection.getStatus()).toMatchObject({
+      state: 'connected',
+      masterHost: '192.168.1.20',
+      rediscoveredFrom: '192.168.1.10:4000',
+    });
+  });
+});
+
+describe('asking an unproven address for its proof', () => {
+  /** A local server that answers `/api/panel/prove` with `respond`. */
+  async function serve(respond: (res: http.ServerResponse) => void) {
+    const server = http.createServer((_req, res) => respond(res));
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    return { server, port: (server.address() as AddressInfo).port };
+  }
+
+  it('stops reading a body past 1 KB instead of holding it all', async () => {
+    let sent = 0;
+    const { server, port } = await serve((res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      const chunk = Buffer.alloc(64 * 1024, 0x20);
+      // Endless unless the reader goes away.
+      const pump = () => {
+        while (sent < 64 * 1024 * 1024 && res.write(chunk)) sent += chunk.length;
+        if (sent < 64 * 1024 * 1024 && !res.destroyed) res.once('drain', pump);
+      };
+      res.on('close', () => res.removeAllListeners('drain'));
+      pump();
+    });
+    try {
+      expect(await masterProves('127.0.0.1', port, PAIRED)).toBe(false);
+      expect(sent).toBeLessThan(16 * 1024 * 1024);
+    } finally {
+      server.closeAllConnections();
+      server.close();
+    }
+  });
+
+  it('refuses a declared length over the limit and a redirect', async () => {
+    const { server, port } = await serve((res) => {
+      res.writeHead(302, { Location: 'http://127.0.0.1:1/api/panel/prove' });
+      res.end();
+    });
+    const big = await serve((res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': 4096 });
+      res.end(' '.repeat(4096));
+    });
+    try {
+      expect(await masterProves('127.0.0.1', port, PAIRED)).toBe(false);
+      expect(await masterProves('127.0.0.1', big.port, PAIRED)).toBe(false);
+    } finally {
+      server.close();
+      big.server.close();
+    }
   });
 });

@@ -8,13 +8,14 @@
  */
 
 import { EventEmitter } from 'node:events';
-import type { DataChangedEvent, SyncConflict } from '@orderbook/shared';
+import type { DataChangedEvent, SyncConflict, UserNotification } from '@orderbook/shared';
 
 import * as changeRing from '../realtime/change-ring.js';
 
 const emitter = new EventEmitter();
 const CHANGE_EVENT = 'change';
 const CONFLICT_EVENT = 'conflict';
+const NOTIFICATION_EVENT = 'notification';
 
 emitter.setMaxListeners(50);
 
@@ -54,4 +55,23 @@ export function publishConflict(conflict: SyncConflict): void {
 export function onConflict(listener: (conflict: SyncConflict) => void): () => void {
   emitter.on(CONFLICT_EVENT, listener);
   return () => emitter.off(CONFLICT_EVENT, listener);
+}
+
+/** A stored notification and the one person it is for. */
+export type AddressedNotification = UserNotification & { tenantId: string; userId: string };
+
+/**
+ * A notification was stored for one person. Like a conflict it is addressed,
+ * so it has its own channel, and it never enters the change ring: a panel that
+ * missed it reads it from the list when the bell opens.
+ */
+export function publishNotification(notification: AddressedNotification): void {
+  emitter.emit(NOTIFICATION_EVENT, notification);
+}
+
+export function onNotification(
+  listener: (notification: AddressedNotification) => void,
+): () => void {
+  emitter.on(NOTIFICATION_EVENT, listener);
+  return () => emitter.off(NOTIFICATION_EVENT, listener);
 }

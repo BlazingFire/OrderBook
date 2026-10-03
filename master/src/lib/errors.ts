@@ -13,7 +13,7 @@
  * permission that enforces nothing is worse than a missing one".
  */
 
-import { t, type MessageKey, type MessageParams } from '@orderbook/shared';
+import { t, type MessageKey, type MessageParams, type MutationFieldConflict } from '@orderbook/shared';
 
 export class AppError extends Error {
   constructor(
@@ -147,6 +147,19 @@ export class BackupError extends AppError {
     params: MessageParams = {},
   ) {
     super(messageKey, params, BACKUP_FAILURE_STATUS[reason], `backup_${reason}`, { reason });
+  }
+}
+
+/**
+ * An offline edit lost to a newer value already stored (rule 6). Thrown from
+ * inside the write transaction, so nothing is written; the sync path catches it
+ * and records `conflict` as a sync conflict. Not an `AppError`: it never
+ * reaches a client as a refusal.
+ */
+export class StaleEditError extends Error {
+  constructor(readonly conflict: MutationFieldConflict) {
+    super(`Stale edit to ${conflict.field}`);
+    this.name = 'StaleEditError';
   }
 }
 

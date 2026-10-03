@@ -152,6 +152,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'error.unauthorized.differentMaster': 'यह उस मास्टर पैनल से अलग है जिसे आपने दर्ज किया था',
   'error.unauthorized.panelNotPaired': 'यह पैनल जोड़ा नहीं गया है',
   'error.unauthorized.panelCredentialsInvalid': 'पैनल क्रेडेंशियल मान्य नहीं हैं',
+  'error.unauthorized.panelRevoked': 'इस पैनल की जोड़ी रद्द कर दी गई है',
   // TODO(i18n-hi)
   'error.unauthorized.developerPassword': 'That is not the developer password',
   // TODO(i18n-hi)
@@ -179,6 +180,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'error.conflict.dataDirectoryPopulated':
     'इस इंस्टॉलेशन में पहले से डेटा है। पुनर्स्थापित करने से पहले इसे मिटाने की पुष्टि करें।',
   'error.unavailable': 'मास्टर पैनल तक नहीं पहुँचा जा सका। लिंक वापस आने पर फिर कोशिश करें।',
+  'error.unavailable.maintenance':
+    'मास्टर पैनल अभी शुरू हो रहा है या उसका रखरखाव चल रहा है। लिंक अपने आप वापस आ जाएगा।',
   'error.unavailable.signInToSync':
     'कतार में रखा काम तब तक रुका रहेगा जब तक उसे करने वाला व्यक्ति दोबारा साइन इन नहीं करता।',
   'error.updateNeeded.master': 'यह करने से पहले मास्टर पैनल को अपडेट करना होगा।',
@@ -3910,4 +3913,30 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'logs.action.updated': 'अपडेट किया गया',
   'logs.action.variant_saved': 'पार्टी-वार रिकॉर्ड सहेजा गया',
   'logs.action.verified': 'सत्यापित',
+  'notification.panel.offlineLong': '{panel} एक घंटे से ज़्यादा समय से ऑफ़लाइन है',
+  'notification.title': 'सूचनाएँ',
+  'notification.unreadLabel': 'सूचनाएँ, {count} बिना पढ़ी',
+  'notification.markAllRead': 'सभी को पढ़ा हुआ मानें',
+  'notification.empty': 'कुछ नया नहीं',
+  'notification.offlineNote': 'मास्टर से संपर्क नहीं है, इसलिए यह सूची पुरानी हो सकती है।',
+  'time.hours.short': '{count} घंटे',
+  'time.minutes.short': '{count} मिनट',
+  'sync.catchingUp': 'छूटे बदलाव ला रहा है',
+  'office.sync.offlineSince': 'कब से ऑफ़लाइन',
+  'office.sync.clockSkew': 'घड़ी का अंतर',
+  'office.sync.clockAhead': 'मास्टर से {duration} आगे',
+  'office.sync.clockBehind': 'मास्टर से {duration} पीछे',
+  'office.link.offlineLongTitle': 'एक घंटे से ज़्यादा समय से ऑफ़लाइन',
+  'office.link.offlineLong': 'यह पीसी {duration} से मास्टर तक नहीं पहुँचा है। यहाँ सहेजा गया काम सुरक्षित है और कनेक्शन लौटने पर सिंक हो जाएगा।',
+  'office.link.clockSkew': 'इस पीसी की घड़ी मास्टर की घड़ी से {duration} अलग है। सही समय सेट करें ताकि यहाँ किए गए बदलाव सही क्रम में लगें।',
+  'office.link.notRecognised': '{host} पर मौजूद मास्टर इस पैनल को नहीं पहचानता। जोड़ी बनी रहेगी और यह पैनल कोशिश करता रहेगा; किसी एडमिन से मास्टर पर ऑफ़िस पैनल जाँचने को कहें।',
+  'office.link.rediscovered': 'मास्टर {from} से {to} पर चला गया है। यह पैनल अब नए पते का उपयोग करता है।',
+  'office.link.rediscoveryRefused': '{address} पर किसी ने इस पैनल का मास्टर होने का जवाब दिया, पर वह इसे साबित नहीं कर सका। यह पैनल सहेजे गए पते पर ही रहेगा।',
+  'master.sync.serverUnreachable': 'मास्टर सर्वर से दोबारा जुड़ रहा है…',
+  'panels.offlineFor': '{duration} से ऑफ़लाइन',
+  'panels.updateNeeded': 'अपडेट ज़रूरी',
+  'panels.offlineLong': 'एक घंटे से ज़्यादा ऑफ़लाइन',
+  'dashboard.stat.panelsOfflineLong': 'एक घंटे से ज़्यादा ऑफ़लाइन',
+  'dashboard.stat.panelsOfflineLong.noteNone': 'हर पैनल पिछले एक घंटे में दिखा है',
+  'dashboard.stat.panelsOfflineLong.noteSome': 'एक घंटे या उससे ज़्यादा समय से कोई संपर्क नहीं',
 };

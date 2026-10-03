@@ -13,13 +13,13 @@
  *    Referential integrity lives in the service guards instead (§4.1).
  */
 
-import type { RoleTier, User } from '@orderbook/shared';
+import type { Permission, RoleTier, User } from '@orderbook/shared';
 import type { Knex } from 'knex';
 
 import { db } from '../db/knex.js';
 import { allocatePermanentId } from './identity.repository.js';
 import { mapUser } from './mappers.js';
-import type { RolePermissionRow } from './role.repository.js';
+import { permissionSetFromRow, type RolePermissionRow } from './role.repository.js';
 import type { TransactionContext } from './transaction.js';
 
 const TABLE = 'users';
@@ -162,6 +162,41 @@ export async function findByIdWithRole(
       : null;
 
   return { user: mapUser(row as never), role };
+}
+
+/**
+ * The active, undeleted people whose role currently grants `permission`, for
+ * addressing a notification ("everyone who manages panels"). Resolved through
+ * `permissionSetFromRow`, so the tier ceiling applies exactly as at sign-in.
+ */
+export async function findActiveUserIdsWithPermission(
+  tenantId: string,
+  permission: Permission,
+  runner: Runner = db(),
+): Promise<string[]> {
+  const rows = await runner(`${TABLE} as u`)
+    .join('roles as r', function join() {
+      this.on('r.id', '=', 'u.role_id').andOn('r.tenant_id', '=', 'u.tenant_id');
+    })
+    .where({ 'u.tenant_id': tenantId, 'u.is_active': true })
+    .whereNull('u.deleted_at')
+    .whereNull('r.deleted_at')
+    .orderBy('u.id')
+    .select<
+      { id: string; role_id: string; name: string; tier: RoleTier; permissions: unknown; version: number }[]
+    >('u.id', 'u.role_id', 'r.name', 'r.tier', 'r.permissions', 'r.version');
+
+  return rows
+    .filter((row) =>
+      permissionSetFromRow(tenantId, {
+        id: row.role_id,
+        name: row.name,
+        tier: row.tier,
+        permissions: row.permissions,
+        version: Number(row.version),
+      }).permissions.includes(permission),
+    )
+    .map((row) => row.id);
 }
 
 export interface CredentialRow {

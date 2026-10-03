@@ -523,12 +523,14 @@ describe.skipIf(!canRunIntegrationTests)('audited writes commit with their entry
       const { party, product, order } = await seedOrder();
       const panelActor = await testActor({ deviceCode: PANEL, actorType: 'office_panel', actorName: 'Front Desk' });
 
+      // The push gate applies in HLC order, as a panel's outbox stamps it; equal
+      // stamps would fall back to the random mutation ids.
       const response = await sync.applyPush(
         {
           mutations: [
-            mergeMutation({ kind: 'party.update', entity: 'party', entityId: party.id, fields: ['city'], payload: { city: 'Morbi' } }),
-            mergeMutation({ kind: 'product.update', entity: 'product', entityId: product.id, fields: ['alias'], payload: { alias: 'AB' } }),
-            mergeMutation({ kind: 'order.update', entity: 'order', entityId: order.id, fields: ['notes'], payload: { notes: 'Call first' } }),
+            mergeMutation({ hlc: hlcFor(60_000), kind: 'party.update', entity: 'party', entityId: party.id, fields: ['city'], payload: { city: 'Morbi' } }),
+            mergeMutation({ hlc: hlcFor(60_001), kind: 'product.update', entity: 'product', entityId: product.id, fields: ['alias'], payload: { alias: 'AB' } }),
+            mergeMutation({ hlc: hlcFor(60_002), kind: 'order.update', entity: 'order', entityId: order.id, fields: ['notes'], payload: { notes: 'Call first' } }),
           ],
         },
         panelActor,

@@ -305,6 +305,7 @@ export default tseslint.config(
       'ui/src/ProductImages.tsx',
       'ui/src/LogsScreen.tsx',
       'ui/src/TierPill.tsx',
+      'ui/src/NotificationBell.tsx',
       'office/web/src/components/ProductImages.tsx',
     ],
     plugins: { 'orderbook-i18n': orderbookI18n },

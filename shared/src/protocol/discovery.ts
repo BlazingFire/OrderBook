@@ -50,6 +50,41 @@ export interface HelloMessage {
   acceptingPairing: boolean;
 }
 
+/**
+ * Proof that the Master at a newly discovered address is the one this panel
+ * paired with, asked for before the panel sends its secret there.
+ *
+ * Both sides derive the same 32-byte proof key: HMAC-SHA256 keyed by the panel
+ * secret (its UTF-8 text) over MASTER_PROOF_CONTEXT. The Office sends a random
+ * hex nonce to `POST /api/panel/prove`; the Master answers HMAC-SHA256 keyed by
+ * the proof key's bytes over `masterProofMessage`, in hex. (The Master stores
+ * the key as hex, `office_panels.master_proof_key`, and decodes it before use.)
+ * Only a Master that once saw this panel's secret can answer, and the secret
+ * itself never crosses the wire.
+ */
+export const MASTER_PROOF_CONTEXT = 'orderbook/master-proof/v1';
+
+/**
+ * What the proof covers: the nonce and the address the request reached. The
+ * Office uses the address it contacted, the Master the address the connection
+ * arrived at, so a device that relays the nonce to the real Master gets back
+ * an answer for the real Master's address, not its own, and is refused.
+ */
+export function masterProofMessage(nonce: string, host: string, port: number): string {
+  return `${nonce}|${host}:${port}`;
+}
+
+export interface MasterProofRequest {
+  panelId: string;
+  /** Random, hex, made fresh for each attempt. */
+  nonce: string;
+}
+
+export interface MasterProofResponse {
+  /** HMAC-SHA256(proofKey, masterProofMessage(...)), hex. */
+  proof: string;
+}
+
 export type DiscoveryMessage = DiscoverMessage | HelloMessage;
 
 export function createDiscoverMessage(nonce: string, hostname: string): DiscoverMessage {

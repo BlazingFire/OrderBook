@@ -11,6 +11,7 @@ import { runPanelShell } from './shell.js';
 runPanelShell({
   panel: 'master',
   productName: 'OrderBook Master Panel',
+  appUserModelId: 'com.orderbook.master',
   port: Number(process.env.PORT ?? 4100),
   /** First run builds a PostgreSQL cluster; that is the slow one to allow for. */
   readyTimeoutMs: 180_000,

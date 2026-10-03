@@ -38,6 +38,7 @@ import { StrictMode } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { formatElapsed } from '../src/format.js';
 import { t } from '../src/i18n.js';
 import { publishSessionEnded } from '../src/sessionEnded.js';
 import {
@@ -56,6 +57,8 @@ const { sockets } = vi.hoisted(() => {
   /** The browser end of the Master's Socket.IO link, with a way to push events down it. */
   class FakeSocket {
     closed = false;
+    /** How often the panel asked it to connect again by hand. */
+    connects = 0;
     private readonly handlers = new Map<string, Array<(payload: unknown) => void>>();
 
     on(event: string, handler: (payload: unknown) => void): this {
@@ -65,6 +68,10 @@ const { sockets } = vi.hoisted(() => {
 
     close(): void {
       this.closed = true;
+    }
+
+    connect(): void {
+      this.connects += 1;
     }
 
     emit(event: string, payload: unknown): void {
@@ -141,6 +148,9 @@ async function boot(
       return json({ modules: [], capabilities: [], tiers: [] });
     }
     if (path === '/api/pipelines') return json([]);
+    // Answered for every test: `api.ts` shares one in-flight GET per path across
+    // the file, so a bell read left hanging by one test would swallow the next's.
+    if (path === '/api/notifications') return json({ items: [], unreadCount: 0 });
     // The Products module: its categories, and the catalogue page it lists from.
     if (path === '/api/categories') return json([]);
     if (path === '/api/products') return json({ items: [], total: 0, limit: 100, offset: 0 });
@@ -1557,5 +1567,114 @@ describe('Server Masters at first run and sign-in (1.3)', () => {
     const footer = document.querySelector('.ob-footer')!;
     expect(footer.querySelector('[data-server-master]')).not.toBeNull();
     expect(footer.querySelector('.ob-avatar[data-highlight="true"]')).not.toBeNull();
+  });
+});
+
+describe('the link to the Master server, and the bell (1.3)', () => {
+  const live = () => sockets.all.filter((socket) => !socket.closed).at(-1);
+  const footerSync = () => document.querySelector('.ob-footer-sync')?.textContent ?? '';
+
+  async function socketEvent(event: string, payload?: unknown): Promise<void> {
+    await waitFor(() => expect(live()).toBeDefined());
+    await act(async () => {
+      live()!.emit(event, payload);
+      await wait(0);
+    });
+  }
+
+  const NOTICE = {
+    id: 'n-1',
+    kind: 'panel.offlineLong',
+    params: { panel: 'Front desk' },
+    link: { kind: 'panel', id: 'panel-1' },
+    createdAt: '2026-10-03T09:00:00.000Z',
+    readAt: null,
+  };
+
+  it('says it is reconnecting while the socket is down, and re-reads every screen once it is back', async () => {
+    const calls = await boot(ADMIN);
+    await waitFor(() => expect(gets(calls, '/api/pipelines')).toBeGreaterThan(0));
+    const pipelines = gets(calls, '/api/pipelines');
+    const me = gets(calls, '/api/auth/me');
+
+    await socketEvent('disconnect', 'transport close');
+    expect(footerSync()).toBe(t('master.sync.serverUnreachable'));
+    // A dropped transport comes back by itself; nothing to do by hand.
+    expect(live()!.connects).toBe(0);
+
+    await socketEvent('connect');
+    expect(footerSync()).not.toBe(t('master.sync.serverUnreachable'));
+    await waitFor(() => expect(gets(calls, '/api/pipelines')).toBeGreaterThan(pipelines));
+    expect(gets(calls, '/api/auth/me')).toBeGreaterThan(me);
+  });
+
+  it('connects again after the server closed the socket on purpose', async () => {
+    await boot(ADMIN);
+    await socketEvent('disconnect', 'io server disconnect');
+
+    await waitFor(() => expect(live()!.connects).toBe(1), { timeout: 3000 });
+  });
+
+  it('counts unread notices, and opening one marks it read and goes where it points', async () => {
+    const calls = await boot(ADMIN, (call) =>
+      call.url.split('?')[0] === '/api/notifications'
+        ? json({ items: [NOTICE], unreadCount: 1 })
+        : call.url === '/api/notifications/read'
+          ? json({ unreadCount: 0 })
+          : undefined,
+    );
+    const bell = await screen.findByRole('button', {
+      name: t('notification.unreadLabel', { count: 1 }),
+    });
+
+    await act(async () => {
+      fireEvent.click(bell);
+      await wait(0);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText(t('notification.panel.offlineLong', { panel: 'Front desk' })));
+      await wait(0);
+    });
+
+    expect(calls.find((call) => call.url === '/api/notifications/read')?.body).toEqual({
+      ids: ['n-1'],
+    });
+    await waitFor(() => expect(topbarTitle()).toBe(t('nav.master.panels')));
+  });
+
+  it('re-reads the bell when a notice is pushed', async () => {
+    const calls = await boot(ADMIN);
+    await waitFor(() => expect(gets(calls, '/api/notifications')).toBeGreaterThan(0));
+    const before = gets(calls, '/api/notifications');
+
+    await socketEvent('notification:new', { ...NOTICE, forUserId: 'user-1' });
+
+    await waitFor(() => expect(gets(calls, '/api/notifications')).toBeGreaterThan(before));
+  });
+
+  it('puts a panel offline over an hour on the Dashboard and the Panels list', async () => {
+    await boot(ADMIN);
+    const away = {
+      id: 'panel-1', name: 'Front desk', deviceCode: 'DSK-1', status: 'active', roleId: null,
+      lanIp: null, pairedAt: null, createdAt: '2026-09-01T00:00:00.000Z',
+      updatedAt: '2026-09-01T00:00:00.000Z', isConnected: false, runtime: null,
+      lastSeenAt: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+    };
+    await socketEvent('panels:changed', [away]);
+    await summaryArrives({ leadCount: 0 });
+    await pressAltDigitUntil(2, t('nav.master.dashboard'));
+
+    const tile = (await screen.findByText(t('dashboard.stat.panelsOfflineLong'))).closest(
+      '.ob-stattile',
+    ) as HTMLElement;
+    expect(within(tile).getByText('1')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(tile);
+      await wait(0);
+    });
+    expect(
+      await screen.findByText(t('panels.offlineFor', { duration: formatElapsed(2 * 3_600_000) })),
+    ).toBeTruthy();
   });
 });

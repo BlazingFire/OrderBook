@@ -39,6 +39,7 @@ import { listLanAddresses } from './lib/network.js';
 import { createRealtimeHub, type RealtimeHub } from './realtime/hub.js';
 import { purgeExpiredSessions } from './services/auth.service.js';
 import { startConnectorScheduler } from './services/connector-scheduler.js';
+import { startNotificationPruner } from './services/notification.service.js';
 import { startReleasePolling } from './services/update.service.js';
 import { isSetupComplete, refreshStoredLanIp } from './services/setup.service.js';
 import { startMemoryMonitor } from './lib/memory-monitor.js';
@@ -280,6 +281,9 @@ async function main(): Promise<void> {
     // Same shape: the poller owns its timers and hands back the way to stop
     // them. A no-op unless a releases repository is configured.
     disposables.push(startReleasePolling());
+
+    // Same shape again: old read notices and anything past 500 a person go.
+    disposables.push(startNotificationPruner());
 
     // Start memory pressure monitoring — warns at 75%, critical at 90% of
     // the heap ceiling. It logs; it does not intervene. There is no GC hint:

@@ -50,6 +50,8 @@ import * as optionListsRepair from './20260327000000_option_lists_repair.js';
 import * as linePackagingDefaults from './20260328000000_line_packaging_defaults.js';
 import * as orderVehicleNumber from './20260401000000_order_vehicle_number.js';
 import * as serverMasterTier from './20261001000000_server_master_tier.js';
+import * as userNotifications from './20261002000000_user_notifications.js';
+import * as officePanelMasterProof from './20261002000001_office_panel_master_proof.js';
 import * as reportIndexesAndGrants from './20261004000000_report_indexes_and_grants.js';
 
 export interface Migration {
@@ -215,6 +217,16 @@ export const migrations: Migration[] = [
   {
     name: '20261001000000_server_master_tier',
     ...serverMasterTier,
+  },
+  // The notification bell's table (1.3 Phase 3, migration #2).
+  {
+    name: '20261002000000_user_notifications',
+    ...userNotifications,
+  },
+  // The Master's proof key for panel rediscovery (1.3 Phase 3, migration #2a).
+  {
+    name: '20261002000001_office_panel_master_proof',
+    ...officePanelMasterProof,
   },
   // Reports for the Office and Management tiers (1.3 H2): the owner-by-date
   // indexes the reports read through, and `reports.view` / `reports.export` for
