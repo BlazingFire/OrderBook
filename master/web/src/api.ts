@@ -5,6 +5,13 @@ import type {
   Locale,
   PickKind,
   ChatAccessCapability,
+  PrintJob,
+  PrintJobInput,
+  PrintJobPage,
+  PrintJobQuery,
+  PrintJobSummary,
+  PrintStation,
+  PrintStationInput,
   ChatMemberRole,
   ChatMessage,
   ChatPerson,
@@ -1062,6 +1069,30 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ capability, ...(note ? { note } : {}) }),
     }),
+
+  // --- The Printroom (`/api/print-jobs`, `/api/print-stations`). Background reads, so the loading strip stays still. ---
+  printJobs: (query: PrintJobQuery) => {
+    const params = new URLSearchParams();
+    if (query.status) params.set('status', query.status);
+    if (query.mine) params.set('mine', '1');
+    if (query.cursor) params.set('cursor', query.cursor);
+    if (query.limit) params.set('limit', String(query.limit));
+    const qs = params.toString();
+    return requestUntracked<PrintJobPage>(`/api/print-jobs${qs ? `?${qs}` : ''}`);
+  },
+  printJob: (id: string) => requestUntracked<PrintJob>(`/api/print-jobs/${encodeURIComponent(id)}`),
+  sendPrintJob: (input: PrintJobInput) =>
+    requestUntracked<PrintJob>('/api/print-jobs', { method: 'POST', body: JSON.stringify(input) }),
+  markPrintJob: (id: string, printed: boolean, printerName?: string | null) =>
+    requestUntracked<PrintJobSummary>(`/api/print-jobs/${encodeURIComponent(id)}/printed`, {
+      method: 'POST',
+      body: JSON.stringify({ printed, ...(printerName ? { printerName } : {}) }),
+    }),
+  cancelPrintJob: (id: string) =>
+    requestUntracked<PrintJobSummary>(`/api/print-jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+  printStations: () => requestUntracked<PrintStation[]>('/api/print-stations'),
+  savePrintStation: (input: PrintStationInput) =>
+    requestUntracked<PrintStation>('/api/print-stations/self', { method: 'PUT', body: JSON.stringify(input) }),
   logs: (query: ActivityLogQuery = {}) => {
     const params = new URLSearchParams();
     if (query.cursor) params.set('cursor', query.cursor);

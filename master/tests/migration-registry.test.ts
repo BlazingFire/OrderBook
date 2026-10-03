@@ -104,6 +104,8 @@ describe('the migration registry matches the directory', () => {
     '20261004000000_report_indexes_and_grants',
     // The Chatroom tables and the chat grants (1.3 Phase 6, migration #5).
     '20261005000000_chatroom',
+    // The Printroom tables and the print grants (1.3 Phase 7, migration #6).
+    '20261006000000_printroom',
   ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {

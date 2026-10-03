@@ -87,6 +87,10 @@ contextBridge.exposeInMainWorld('orderbook', {
       cancelled?: boolean;
       error?: string;
     }>,
+  /** Keep the window rendering while minimised, for an auto-print station. */
+  setStationMode: (on: boolean): Promise<boolean> =>
+    ipcRenderer.invoke('orderbook:setStationMode', on) as Promise<boolean>,
+
   /** A system notification plus a taskbar flash, for a notice the operator should not miss. */
   notify: (notice: { title: string; body: string }): Promise<boolean> =>
     ipcRenderer.invoke('orderbook:notify', notice) as Promise<boolean>,

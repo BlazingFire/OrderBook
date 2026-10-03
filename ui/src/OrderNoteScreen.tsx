@@ -16,6 +16,7 @@ import {
   buildOrderNote,
   cleanVehicleNumber,
   clampNoteCopies,
+  isTemporaryId,
   noteHeader,
   NOTE_MAX_COPIES,
   paginateOrderNote,
@@ -34,6 +35,8 @@ import { EditorScreen } from './EditorScreen.js';
 import { t } from './i18n.js';
 import { OrderNote } from './OrderNote.js';
 import { printOnly } from './printPortal.js';
+import type { PrintroomTransport } from './printroomModel.js';
+import { SendToPrintroomDialog } from './SendToPrintroomDialog.js';
 import { Segmented } from './Tabs.js';
 import { useToast } from './Toast.js';
 
@@ -75,6 +78,12 @@ export interface OrderNoteScreenProps {
   onSaveVehicle: (vehicleNumber: string | null) => Promise<unknown>;
   onBack: () => void;
   desktop?: Pick<DesktopBridge, 'listPrinters' | 'printPage' | 'savePdf'>;
+  /**
+   * Offers "Send to Printroom". Supplied by the panel only to somebody holding
+   * `print.send`, and for a pending order only once the Master has it (the
+   * Master builds the sheet from its own copy).
+   */
+  printroom?: PrintroomTransport;
 }
 
 export function OrderNoteScreen({
@@ -86,8 +95,12 @@ export function OrderNoteScreen({
   onSaveVehicle,
   onBack,
   desktop,
+  printroom,
 }: OrderNoteScreenProps) {
   const toast = useToast();
+  const [sending, setSending] = useState(false);
+  // A record still carrying the id its panel made offline is not on the Master yet: it has nothing to print from.
+  const canSend = printroom !== undefined && !isTemporaryId(record.id);
   const printOnlyVehicle = source === 'lead';
   const editableVehicle = printOnlyVehicle || canEditVehicle;
   const savedVehicle = source === 'order' ? ((record as Order).vehicleNumber ?? '') : '';
@@ -257,6 +270,11 @@ export function OrderNoteScreen({
               { value: 'dispatch', label: t('orderNote.dispatch') },
             ]}
           />
+          {canSend && (
+            <Button variant="secondary" disabled={printing || saving} onClick={() => setSending(true)}>
+              {t('orderNote.sendToPrintroom')}
+            </Button>
+          )}
           {desktop?.savePdf && (
             <Button variant="secondary" busy={saving} disabled={printing || saving} onClick={() => void savePdf()}>
               {t('orderNote.savePdf')}
@@ -343,6 +361,20 @@ export function OrderNoteScreen({
           <OrderNote {...noteProps} />
         </div>,
         document.body,
+      )}
+
+      {canSend && printroom && (
+        <SendToPrintroomDialog
+          open={sending}
+          onClose={() => setSending(false)}
+          transport={printroom}
+          source={source}
+          sourceId={record.id}
+          label={`${header.number ?? header.id} · ${record.partyName}`}
+          initialKind={kind}
+          initialVehicle={vehicle}
+          initialCopies={copies}
+        />
       )}
     </EditorScreen>
   );

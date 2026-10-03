@@ -776,3 +776,29 @@ gaps in this specification: the Office snapshot has no module-level filtering (`
 `office/src/http/app.ts:395-407` re-masks `field.saleRate.view` correctly for whoever is signed in now,
 but does not filter rows by `leads.view` / `orders.view`), and `panel:revoked` is defined in the socket
 contract and still never emitted. Both need their own owner; this batch must not widen either.
+
+---
+
+## 9. The Printroom keys (1.3 Phase 7)
+
+Two capabilities in the `workflow` group, office tier, added with migration `20261006000000_printroom`:
+
+| Key | Gates | Note |
+|---|---|---|
+| `print.send` | `POST /api/print-jobs` (and `print:send`), listing / reading / cancelling **own** jobs, `GET /api/print-stations` | Needs the note's own export right as well (`leads.export` for a pending order, `orders.export` for a final one) |
+| `print.station` | listing every job, `POST /api/print-jobs/:id/printed`, claiming, cancelling any queued job, `PUT /api/print-stations/self` | **A deliberate cross-party grant**: a holder sees and prints every party's job, because the sender addressed the printroom, not a person |
+
+- **Grant.** The migration unions both keys into every `admin` and `server_master` role (frozen lists,
+  idempotent, no tenant or `deleted_at` filter, per §5.2). Office and management roles get them from an
+  administrator in the grid (the no-wildcard rule). Role templates: Sales offers `print.send`, Dispatch
+  offers both.
+- **Why `print.station` ignores Party Access.** The sheet is frozen from the *sender's* view when it is
+  sent; the station operator sees a sheet the sender deliberately addressed to the printroom. Grant it
+  knowingly. An unattended printer PC needs a person signed in on it who holds the key (the runner is part
+  of the signed-in UI and the Master addresses pushes to a person); Windows auto-login plus the app at
+  start-up is the supported way.
+- **Enforcement.** `print.send` / `print.station` are named in `needs()` on the routes that have exactly
+  one key (`POST /print-jobs`, `POST /:id/printed`, `PUT /self`); the routes open to either key (list,
+  read, cancel, list stations) are scoped by `print.service` and listed as exemptions with reasons in
+  `credential-invariants.test.ts`. The socket path has no route middleware, so `print.service` checks every
+  function itself (`requirePermission` first).

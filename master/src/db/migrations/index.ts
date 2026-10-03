@@ -55,6 +55,7 @@ import * as officePanelMasterProof from './20261002000001_office_panel_master_pr
 import * as pendingOrderNumbers from './20261003000000_pending_order_numbers.js';
 import * as reportIndexesAndGrants from './20261004000000_report_indexes_and_grants.js';
 import * as chatroom from './20261005000000_chatroom.js';
+import * as printroom from './20261006000000_printroom.js';
 
 export interface Migration {
   name: string;
@@ -246,6 +247,11 @@ export const migrations: Migration[] = [
   {
     name: '20261005000000_chatroom',
     ...chatroom,
+  },
+  // The Printroom (1.3 Phase 7, migration #6): two tables and the print grants.
+  {
+    name: '20261006000000_printroom',
+    ...printroom,
   },
 ];
 

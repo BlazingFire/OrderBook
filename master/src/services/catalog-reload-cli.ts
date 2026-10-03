@@ -105,6 +105,8 @@ const BUSINESS_TABLES = [
   'chat_messages',
   'chat_members',
   'chat_rooms',
+  // Print jobs freeze a note of a record this wipes; the stations stay (configuration).
+  'print_jobs',
 ];
 
 const SAMPLE_PARTIES: PartyInput[] = [

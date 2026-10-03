@@ -145,6 +145,15 @@ export interface DesktopBridge {
   }): Promise<{ ok: boolean; path?: string; cancelled?: boolean; error?: string }>;
 
   /**
+   * Turn this PC's auto-print station mode on or off. While it is on the shell
+   * keeps the window rendering when it is minimised or hidden (no background
+   * throttling), so a printer PC left minimised keeps printing. Anything but
+   * the boolean `true` turns it off. Silent printing itself is unchanged: it
+   * still goes only to a printer Windows lists (`printPage`).
+   */
+  setStationMode?(on: boolean): Promise<boolean>;
+
+  /**
    * Show a system notification and flash the taskbar button, for something the
    * operator should see even with the window behind another one. Resolves
    * `false` when the shell could not show it.

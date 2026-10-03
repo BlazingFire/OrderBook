@@ -19,6 +19,8 @@ export const NOTIFICATION_KINDS = [
   'task.assigned',
   'task.done',
   'access.requested',
+  // The Printroom (Phase 7): somebody else printed a note you sent.
+  'print.printed',
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
@@ -35,7 +37,9 @@ export type NotificationLink =
   /** A chat room, and the message in it when there is one. */
   | { kind: 'chat'; id: string; messageId?: string }
   /** A role in the roles editor. */
-  | { kind: 'role'; id: string };
+  | { kind: 'role'; id: string }
+  /** A Printroom job. */
+  | { kind: 'print'; id: string };
 
 export interface UserNotification {
   id: Uuid;

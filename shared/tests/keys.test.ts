@@ -191,15 +191,17 @@ function navChords(panel: 'master' | 'office'): Array<[string, string | undefine
 describe('the command catalogue', () => {
   it('numbers each panel nav from one, in that panel own sidebar order', () => {
     const office = COMMANDS.filter((command) => command.panel === 'office' && command.navOrder);
-    expect(office.map((command) => command.navOrder)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+    expect(office.map((command) => command.navOrder)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
     expect(office[0]?.tab).toBe('basicHome');
     expect(office[4]?.tab).toBe('conflicts');
     // The Chatroom follows Conflicts in the Work group; its letter chord takes no digit.
     expect(office[5]?.tab).toBe('chatroom');
+    // The Printroom follows the Chatroom, with a letter chord of its own.
+    expect(office[6]?.tab).toBe('printroom');
     // Reports has a row and no chord, so it takes no digit and pushes nothing else.
-    expect(office[6]?.tab).toBe('reports');
-    expect(office[10]?.tab).toBe('settings');
-    expect(office[11]?.tab).toBe('logs');
+    expect(office[7]?.tab).toBe('reports');
+    expect(office[11]?.tab).toBe('settings');
+    expect(office[12]?.tab).toBe('logs');
   });
 
   it('binds the Chatroom to Alt+C on both panels, with no Meta twin on a Mac', () => {
@@ -208,6 +210,19 @@ describe('the command catalogue', () => {
       expect(chatroom?.defaultChord).toBe('Alt+C');
       expect(chatroom?.platformDefaultChord).toBeUndefined();
       expect(chatroom?.titleToken).toBe('nav.chatroom');
+    }
+  });
+
+  it('binds the Printroom to Alt+P on both panels, with no Meta twin on a Mac, and no other command takes it', () => {
+    for (const panel of ['master', 'office'] as const) {
+      const printroom = COMMANDS.find((command) => command.panel === panel && command.tab === 'printroom');
+      expect(printroom?.defaultChord).toBe('Alt+P');
+      expect(printroom?.platformDefaultChord).toBeUndefined();
+      expect(printroom?.titleToken).toBe('nav.printroom');
+      const holders = COMMANDS.filter(
+        (command) => (command.panel === panel || command.panel === undefined) && command.defaultChord === 'Alt+P',
+      );
+      expect(holders.map((command) => command.id)).toEqual([`nav.${panel}.printroom`]);
     }
   });
 

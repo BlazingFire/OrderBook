@@ -2510,6 +2510,131 @@ Notifications (after commit, `notify()`): `chat.mention` (also into a muted room
 
 ---
 
+## 16. The Printroom (1.3 Phase 7)
+
+A shared print queue and an auto-print station. Anybody holding `print.send` can queue a pending or a
+final order's Filling note or Dispatch note; the PC with the printer (a holder of `print.station`) prints
+it. Like the Chatroom it is **outside the change ring and the activity chain** (§16.6 says what is
+audited). The shapes are in `shared/src/domain/printroom.ts`; the code in
+`master/src/services/print.service.ts` and `master/src/repositories/print.repository.ts`; the design in
+`docs/ORDER_NOTES_PLAN.md` section 11.
+
+### 16.1 Permissions
+
+| Key | Tier ceiling | Gates |
+|---|---|---|
+| `print.send` | office | sending a note (`POST /print-jobs`), listing, reading and cancelling **your own** jobs, listing the printrooms to aim at |
+| `print.station` | office | **every** job whatever its party (see below), claiming, marking printed and not printed, cancelling any queued job, registering this PC as a station (`PUT /print-stations/self`) |
+
+Sending also needs the note's own export right, checked by the service: `leads.export` for a pending
+order, `orders.export` for a final order. The sender's own view decides whether they may print the record
+at all: the service reads it through `getLead` / `getOrder`, so Party Access applies and a record they
+cannot see is a 404.
+
+**`print.station` is a deliberate cross-party grant.** The sender addressed the printroom, not a person,
+so the PC that prints sees and prints every job whatever party it is for and whether or not that PC's
+user holds `party.accessAll`. The permission label says so, and `docs/ROLES_AND_USERS.md` tells
+administrators to grant it knowingly. An unattended printer PC needs a person signed in on it (the
+station runner lives in the signed-in UI and the Master addresses pushes to a person); grant
+`print.station` to the role of the user who stays signed in there.
+
+Migration `20261006000000_printroom` unions both keys into every `admin` and `server_master` role (frozen
+list, idempotent, no tenant or `deleted_at` filter). Office and management roles get them when an
+administrator ticks them. The Sales template offers `print.send`; Dispatch offers both.
+
+### 16.2 Master REST (`requireAuth`; mounted before `dataRoutes`)
+
+| Route | Guard | Body / query | Answer |
+|---|---|---|---|
+| `GET /api/print-jobs?status=&mine=&cursor=&limit=` | service: `print.send` (own) or `print.station` (all) | `status` is `waiting` (queued and printing, oldest first), `printed`, `cancelled` or `all` (newest first); `mine=1` limits a station holder to their own | `PrintJobPage {jobs, nextCursor, waitingCount}`; no sheet in a list |
+| `POST /api/print-jobs` | `needs('print.send')` | `PrintJobInput {requestId, kind, source, sourceId, copies, targetStationId?, vehicleNumber?, note?}` | 201 `PrintJob` (with its `document`). A retried `requestId` returns the job already made |
+| `GET /api/print-jobs/:id` | service: own job, or `print.station` | | `PrintJob`; 404 for a job that is not yours to see |
+| `POST /api/print-jobs/:id/printed` | `needs('print.station')` | `{printed, printerName?}` | `PrintJobSummary`. `printed: false` puts a printed job back in the queue (and gives a failed claim back) |
+| `POST /api/print-jobs/:id/cancel` | service: own queued job, or any for `print.station` | | `PrintJobSummary`; 400 `validation.print.notQueued` once a station holds it |
+| `GET /api/print-stations` | service: either key | | `PrintStation[]` with `online` (heard from within 90 s) and `isSelf` |
+| `PUT /api/print-stations/self` | `needs('print.station')` | `PrintStationInput {displayName?, printerName, autoPrint}` | `PrintStation`. 403 `validation.print.stationNeedsDesktop` unless the request comes from the Master PC itself |
+
+There is **no REST claim**: a claim belongs to a connection (§16.4). The Master PC's own window claims
+with the `print:claim` event on its own socket.
+
+**The station key is never read from a body.** On the Master PC it is `master` (`isOnMasterPc`: loopback
+address and a `Host` / `Origin` that name this PC); for an Office it is `panel:<panel id>` from the
+panel's socket. A browser on any other PC has none and cannot be a station.
+
+`kind` is `filling` or `dispatch`; `source` is `lead` or `order`; `sourceId` may be a temporary id (the
+Master resolves it through `id_map`). `copies` is a whole number 1 to 50 (never rounded, a refusal is
+`validation.print.copies`); the vehicle number is cleaned as everywhere (`cleanVehicleNumber`), kept
+only for a Dispatch note, and a final order falls back to its own saved one; `note` is at most 200
+characters. `requestId` is 32 hex characters made by the sender with `crypto.getRandomValues`
+(`randomUUID` is absent on a plain-http LAN origin) and is unique per sender.
+
+**The Master builds the sheet.** `sendJob` reads the lead or order, its party and its PO number itself and
+freezes `noteDocument(...)` in `print_jobs.payload`, so the printer PC never depends on its own snapshot
+cap or party scope, and a later edit of the record leaves the job's sheet as sent. Rows are kept for
+good; the sheet of a printed or cancelled job is dropped 30 days after it by one `UPDATE` on each send
+(`hasDocument: false`, and the screen says so). Refusals are `validation.print.*` keys (`requestId`,
+`kind`, `source`, `copies`, `note`, `vehicle`, `station`, `printer`, `notQueued`, `notPrintable`,
+`stationNeedsDesktop`, `stationUnknown`).
+
+### 16.3 Socket commands (Office to Master), protocol 6
+
+Eight, twinned with the routes above and forwarded by the Office at the same paths:
+`print:list`, `print:get`, `print:send`, `print:mark`, `print:cancel`, `print:claim`, `print:stations`,
+`print:station`. All sit in `COMMAND_MIN_PROTOCOL` at `PRINTROOM_MIN_PROTOCOL` (6, a named constant in
+`shared/src/domain/printroom.ts`); an Office on an older Master answers 426. `PANEL_PROTOCOL_VERSION`
+is 6 with this phase. Everything is online-only: with the Master out of reach the Office answers 503
+`error.unavailable`, a send is **never** queued in the outbox (a note printed an hour late on an
+unattended PC wastes paper), and the note's own Print button keeps working. A send first lets the outbox
+hand over a just-edited order (`flushBriefly`, at most four seconds, failures ignored).
+
+`print:claim` and `print:station` take their station from the connection (`socket.data.panelId`), never
+from the payload; a forged `stationKey` is ignored. The Master PC's window can also send `print:claim` on
+its own admin socket.
+
+### 16.4 Claims belong to a connection
+
+`print:claim` flips a `queued` job to `printing` with one atomic `UPDATE`. It names the claiming station,
+person and **socket id**, and wins only if the job is queued (or its claim is older than ten minutes), has
+its sheet, and is not aimed at a different station. The loser gets `null`, an ordinary outcome. Then:
+
+- a socket that **disconnects** releases every job it held (`releaseClaimsOf`), whether or not a newer
+  connection from the same panel has replaced it;
+- a claim **older than ten minutes** may be taken by another station (`PRINT_LIMITS.claimStaleMs`);
+- every claim is **cleared at Master boot** (`releaseAllClaimsAtBoot`);
+- a station whose print failed gives its own claim back with `print:mark {printed: false}` (only the
+  claimant can), and the runner does not try that job again this session.
+
+So two stations never print one sheet, and a station that crashes or loses its link never strands a job.
+
+### 16.5 Live updates
+
+`print.service` publishes `{tenantId, job}` on the change bus's own `print` channel (`publishPrintJob` /
+`onPrintJob`, never the ring). `hub.ts` sends `print:changed` through `emitToActors` to sockets whose
+current actor holds `print.station`, or holds `print.send` and **is** the job's sender, skipping an Office
+older than protocol 6. The payload is a `PrintJobSummary` (never the sheet) stamped `forUserId`. The
+Office relays it as SSE `print` through `broadcastForUser`. SSE has no replay, so both web apps read the
+list again on a reconnect (`dispatchPrint({kind: 'resync'})`), and the auto-print runner lists the queue
+again on every beat.
+
+When someone **else** prints a job, the sender gets a `print.printed` notification (`{name, party}`,
+link `{kind: 'print', id}`), after the commit.
+
+### 16.6 Audit
+
+Written with `recordActivity` in the change's own transaction, entity `print_job`, details
+`{number, kind}`: `sent`, `printed`, `unprinted`, `cancelled`. Claims, giving a claim back and station
+heartbeats are not audited. The sentences are `activity.print_job.*`.
+
+### 16.7 Station mode in the desktop shell
+
+`DesktopBridge.setStationMode(on)` (IPC `orderbook:setStationMode`, panel window only, only the boolean
+`true` turns it on) switches off background throttling while a PC is an auto-print station, so a minimised
+printer PC keeps printing. Silent printing is unchanged: `printPage` prints without a dialog only to a
+printer Windows lists, and the station runner treats an unlisted printer as a failure rather than letting
+a dialog open on an unattended PC.
+
+---
+
 ## Appendix — new permission keys
 
 **`08-PERMISSIONS.md` is the authority for permission keys, tiers and the grant-migration algorithm.**

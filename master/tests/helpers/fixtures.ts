@@ -43,6 +43,9 @@ const DATA_TABLES = [
   'chat_messages',
   'chat_members',
   'chat_rooms',
+  // Print jobs name users and stations, so they go before both.
+  'print_jobs',
+  'print_stations',
   'sync_conflicts',
   'applied_mutations',
   'id_map',

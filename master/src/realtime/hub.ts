@@ -14,6 +14,9 @@ import {
   ROOM_MASTER_ADMINS,
   PARTY_BULK_MIN_PROTOCOL,
   CHAT_MIN_PROTOCOL,
+  MASTER_STATION_KEY,
+  PRINTROOM_MIN_PROTOCOL,
+  panelStationKey,
   ROOM_OFFICE_PANELS,
   type ChatPush,
   type ClientToServerEvents,
@@ -54,14 +57,14 @@ import {
   ValidationError,
 } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
-import { masterPcAddress } from '../lib/network.js';
+import { isOnMasterPc, masterPcAddress } from '../lib/network.js';
 import { setPanelLink, type PanelRequest } from './panel-link.js';
 import { isAllowedSocketOrigin } from './socket-origin.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
 import * as authService from '../services/auth.service.js';
 import { resolveSession } from '../services/auth.service.js';
 import * as catalogService from '../services/catalog.service.js';
-import { onChange, onChat, onConflict, onNotification } from '../services/change-bus.js';
+import { onChange, onChat, onConflict, onNotification, onPrintJob } from '../services/change-bus.js';
 import * as chatService from '../services/chat.service.js';
 import * as conflictService from '../services/conflict.service.js';
 import * as dashboardService from '../services/dashboard.service.js';
@@ -83,6 +86,8 @@ import * as imageService from '../services/image.service.js';
 import * as panelService from '../services/panel.service.js';
 import * as partyAccessService from '../services/party-access.service.js';
 import * as presenceService from '../services/presence.service.js';
+import * as printService from '../services/print.service.js';
+import type { PrintOrigin } from '../services/print.service.js';
 import type { PresenceChange } from './presence-store.js';
 import * as recycleBinService from '../services/recycle-bin.service.js';
 import * as searchService from '../services/search.service.js';
@@ -370,6 +375,24 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
     );
   });
 
+  // Printroom: a job is for its sender and for every holder of `print.station`,
+  // each judged now, because a role can change while a socket stays up. A panel
+  // older than protocol 6 does not know the event and is not sent it.
+  const unsubscribePrint = onPrintJob(({ tenantId, job }) => {
+    void emitToActors(
+      io,
+      tenantId,
+      'print:changed',
+      job,
+      (actor, socket) =>
+        (socket.data.kind !== 'office-panel' || (socket.data.protocol ?? 1) >= PRINTROOM_MIN_PROTOCOL) &&
+        (actorCan(actor, 'print.station') ||
+          (actorCan(actor, 'print.send') && actor.userId !== null && actor.userId === job.sender?.id)),
+    ).catch((error: unknown) => log.warn(`Could not deliver a print job: ${toErrorMessage(error)}`));
+  });
+  // No connection survives a restart, so no claim may.
+  void printService.releaseAllClaimsAtBoot();
+
   // Panels that were away when this Master stopped still get their notice.
   void panelService
     .scheduleLongOfflineNoticesAtBoot()
@@ -385,6 +408,7 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
       unsubscribeConflicts();
       unsubscribeNotifications();
       unsubscribeChat();
+      unsubscribePrint();
       unsubscribePresence();
       presenceService.resetPresence();
       adminPresenceSockets.clear();
@@ -480,7 +504,24 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
     const presenceKey = socket.data.tabId ? `admin:${actor.userId}:${socket.data.tabId}` : null;
     if (presenceKey) adminPresenceSockets.set(presenceKey, socket);
 
+    // The Master PC's own window can be a print station. Its claim is held by
+    // this socket, so closing the window puts the job back in the queue. Only a
+    // window on the Master PC has a station; a Master browser elsewhere has none.
+    const masterOrigin: PrintOrigin = {
+      from: 'master',
+      stationKey: isOnMasterPc(socket.handshake.address, socket.handshake.headers) ? MASTER_STATION_KEY : null,
+      holder: socket.id,
+    };
+    socket.on('print:claim', (id, ack) =>
+      respond(ack, async () => {
+        const claimant = await adminActor(socket);
+        if (!claimant) throw new UnauthorizedError();
+        return printService.claimJob(id, claimant, masterOrigin);
+      }),
+    );
+
     socket.on('disconnect', () => {
+      void printService.releaseClaimsOf(socket.id);
       adminSocketCount = Math.max(0, adminSocketCount - 1);
       if (presenceKey && adminPresenceSockets.get(presenceKey) === socket) {
         adminPresenceSockets.delete(presenceKey);
@@ -521,6 +562,11 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
     }
     previous.disconnect(true);
   }
+
+  // Whether or not a newer connection has replaced this one: what it held is free.
+  socket.on('disconnect', () => {
+    void printService.releaseClaimsOf(socket.id);
+  });
 
   socket.on('disconnect', () => {
     if (panelSockets.get(panelId) !== socket) return;
@@ -948,6 +994,30 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
     run(ack, (actor) =>
       presenceService.beat(actor, `panel:${socket.data.panelId ?? ''}:`, beat),
     ),
+  );
+
+  // The Printroom. The station a claim or a heartbeat speaks for is this panel's
+  // own connection, never a field of the payload.
+  const printOrigin = (): PrintOrigin => ({
+    from: socket.data.deviceCode ?? 'panel',
+    stationKey: socket.data.panelId ? panelStationKey(socket.data.panelId) : null,
+    holder: socket.id,
+  });
+  socket.on('print:list', (input, ack) => run(ack, (actor) => printService.listJobs(input, actor)));
+  socket.on('print:get', (id, ack) => run(ack, (actor) => printService.getJob(id, actor)));
+  socket.on('print:send', (input, ack) =>
+    run(ack, (actor) => printService.sendJob(input, actor, printOrigin())),
+  );
+  socket.on('print:mark', (input, ack) =>
+    run(ack, (actor) => printService.markJob(input, actor, printOrigin())),
+  );
+  socket.on('print:cancel', (id, ack) => run(ack, (actor) => printService.cancelJob(id, actor)));
+  socket.on('print:claim', (id, ack) =>
+    run(ack, (actor) => printService.claimJob(id, actor, printOrigin())),
+  );
+  socket.on('print:stations', (ack) => run(ack, (actor) => printService.listStations(actor, printOrigin())));
+  socket.on('print:station', (input, ack) =>
+    run(ack, (actor) => printService.saveStation(input, actor, printOrigin())),
   );
 
   // The one live pull; everything else rides on `SyncSnapshot.dashboard` and

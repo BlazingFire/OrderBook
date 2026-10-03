@@ -4299,3 +4299,153 @@ button.ob-chat-chip-open:not(:disabled):hover {
   display: flex;
   gap: var(--s-8);
 }
+
+/* The Printroom (1.3 Phase 7). Tokens only; the note itself is paper and lives in order-note.css. */
+.ob-print-page,
+.ob-print-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+}
+.ob-print-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-8);
+}
+.ob-print-search {
+  flex: 1 1 14rem;
+  min-width: 12rem;
+  max-width: 28rem;
+}
+.ob-print-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  padding: 0 var(--s-8);
+  border-radius: var(--r-md);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-weight: 600;
+}
+.ob-print-station {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+  padding: var(--s-12);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+}
+.ob-print-station-title {
+  margin: 0;
+  font-size: 1rem;
+}
+.ob-print-station-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-8) var(--s-16);
+}
+.ob-print-stations {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-4) var(--s-16);
+}
+.ob-print-stations > li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-8);
+}
+.ob-print-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--fg-muted);
+}
+.ob-print-dot[data-online='true'] {
+  background: var(--state-ok);
+}
+.ob-print-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-16);
+}
+.ob-print-grouphead {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  padding-bottom: var(--s-8);
+}
+.ob-print-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+}
+.ob-print-list > li + li {
+  border-top: 1px solid var(--line);
+}
+.ob-print-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  padding-right: var(--s-12);
+}
+.ob-print-row[data-status='cancelled'] .ob-print-what {
+  color: var(--fg-muted);
+}
+.ob-print-rowmain {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-4) var(--s-16);
+  min-width: 0;
+  padding: var(--s-8) var(--s-12);
+  border: 0;
+  background: transparent;
+  color: var(--fg-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ob-print-rowmain:hover {
+  background: var(--bg-hover);
+}
+.ob-print-what {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+.ob-print-when {
+  flex: none;
+  min-width: 8rem;
+}
+.ob-print-sender {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-4);
+}
+.ob-print-note {
+  flex-basis: 100%;
+}
+.ob-print-actions {
+  display: inline-flex;
+  gap: var(--s-4);
+  flex: none;
+}
+.ob-print-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+}

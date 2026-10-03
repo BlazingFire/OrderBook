@@ -47,6 +47,7 @@ import {
   useSubNav,
   useToast,
   type DataTableColumn,
+  type PrintroomTransport,
 } from '@orderbook/ui';
 import { AddLeadScreen } from './AddLeadScreen';
 import { LeadDetail } from './LeadDetail';
@@ -65,6 +66,8 @@ interface Props {
   onAddLead?: () => void;
   /** Present only for somebody who may share records in chat (`chat.use` and `chat.shareRecords`). */
   onShareInChat?: (chip: ChatRecordChip) => void;
+  /** Present only for somebody who may send to the Printroom (`print.send`): the note screen offers it. */
+  printroom?: PrintroomTransport;
   /** The signed-in person, left out of who else is on the open lead. */
   userId?: string | null;
   /** Temporary id → permanent id, for provisional leads the Master has numbered. */
@@ -126,6 +129,7 @@ export function LeadBoardScreen({
   onError,
   onAddLead,
   onShareInChat,
+  printroom,
   userId,
   numberedIds,
 }: Props) {
@@ -288,6 +292,7 @@ export function LeadBoardScreen({
         onSaveVehicle={async () => undefined}
         onBack={() => setNote(null)}
         desktop={desktopBridge() ?? undefined}
+        printroom={printroom}
       />
     );
   }

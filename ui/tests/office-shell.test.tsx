@@ -1302,6 +1302,90 @@ describe('Edit lead', () => {
       expect(screen.getByRole('button', { name: t('orderNote.dispatch') })).toBeTruthy();
     });
 
+    describe('Send to Printroom', () => {
+      async function openNote(permissions: string[]): Promise<Call[]> {
+        const calls = await boot({
+          permissions,
+          view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] },
+          route: (call) => {
+            const path = call.url.split('?')[0];
+            if (path === '/api/print-jobs' && call.method === 'POST') return json({ id: 'sent' }, 201);
+            if (path === '/api/print-jobs') return json({ jobs: [], nextCursor: null, waitingCount: 0 });
+            if (path === '/api/print-stations') return json([]);
+            return undefined;
+          },
+        });
+        await act(async () => {
+          fireEvent.click(screen.getByTitle(t('nav.leads')));
+        });
+        await act(async () => {
+          fireEvent.click((await screen.findAllByText(PARTY.name))[0]!);
+        });
+        await screen.findByText(t('lead.detail.lineItems'));
+        fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+        await screen.findByLabelText(t('orderNote.copies'));
+        return calls;
+      }
+
+      it('is offered only with print.send', async () => {
+        await openNote(['leads.view', 'leads.export']);
+        expect(screen.queryByRole('button', { name: t('orderNote.sendToPrintroom') })).toBeNull();
+        cleanup();
+
+        await openNote(['leads.view', 'leads.export', 'print.send']);
+        expect(screen.getByRole('button', { name: t('orderNote.sendToPrintroom') })).toBeTruthy();
+      });
+
+      it('posts the pending order to this panel\'s server, which forwards it to the Master', async () => {
+        const calls = await openNote(['leads.view', 'leads.export', 'print.send']);
+        fireEvent.change(screen.getByLabelText(t('orderNote.copies')), { target: { value: '2' } });
+        fireEvent.click(screen.getByRole('button', { name: t('orderNote.sendToPrintroom') }));
+
+        const dialog = await screen.findByRole('dialog');
+        fireEvent.click(within(dialog).getByRole('button', { name: t('printroom.dialog.send') }));
+
+        await waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url === '/api/print-jobs')).toBe(true));
+        const post = calls.find((call) => call.method === 'POST' && call.url === '/api/print-jobs')!;
+        expect(post.body).toMatchObject({ kind: 'filling', source: 'lead', sourceId: LEAD.id, copies: 2 });
+      });
+
+      it('says the Master is not reachable when the panel\'s server answers 503, and the local Print still works', async () => {
+        const printPage = vi.fn().mockResolvedValue({ ok: true });
+        (window as Window & { orderbook?: unknown }).orderbook = { shellVersion: 't', applyUpdate: vi.fn(), printPage };
+        const calls = await boot({
+          permissions: ['leads.view', 'leads.export', 'print.send'],
+          view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] },
+          route: (call) => {
+            const path = call.url.split('?')[0];
+            if (path === '/api/print-jobs' && call.method === 'POST') {
+              return json({ error: 'unavailable', message: 'Not connected', messageKey: 'error.unavailable' }, 503);
+            }
+            if (path === '/api/print-jobs') return json({ jobs: [], nextCursor: null, waitingCount: 0 });
+            if (path === '/api/print-stations') return json([]);
+            return undefined;
+          },
+        });
+        await act(async () => {
+          fireEvent.click(screen.getByTitle(t('nav.leads')));
+        });
+        await act(async () => {
+          fireEvent.click((await screen.findAllByText(PARTY.name))[0]!);
+        });
+        await screen.findByText(t('lead.detail.lineItems'));
+        fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+        fireEvent.click(await screen.findByRole('button', { name: t('orderNote.sendToPrintroom') }));
+        const dialog = await screen.findByRole('dialog');
+        fireEvent.click(within(dialog).getByRole('button', { name: t('printroom.dialog.send') }));
+
+        expect(await screen.findByText(t('printroom.dialog.offline'))).toBeTruthy();
+        expect(calls.filter((call) => call.method === 'POST' && call.url === '/api/print-jobs')).toHaveLength(1);
+
+        fireEvent.click(within(dialog).getByRole('button', { name: t('common.cancel') }));
+        fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
+        await waitFor(() => expect(printPage).toHaveBeenCalled());
+      });
+    });
+
     it('opens the note from the local snapshot, headed "Pending Order No.", and back returns to the lead', async () => {
       await openLead(['leads.view', 'leads.export']);
       fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
@@ -1739,5 +1823,91 @@ describe('the Chatroom (1.3 Phase 6)', () => {
       expect(await screen.findByText(t('nav.recordNotAvailable'))).toBeTruthy();
       expect(screen.queryByRole('button', { name: t('action.backToList') })).toBeNull();
     });
+  });
+});
+
+describe('the Printroom (1.3 Phase 7)', () => {
+  const JOB = {
+    id: 'job-1', kind: 'filling', source: 'lead', sourceId: 'LD0000000001', sourceNumber: 'PO/2026-27/00001',
+    partyName: 'Shree Ceramics', copies: 2, note: null, targetStation: null, status: 'queued',
+    sender: { id: 'user-2', displayName: 'Bina', avatar: null, tier: 'office' }, requestedFrom: 'lan',
+    requestedAt: '2026-10-03T09:00:00.000Z', claimedAt: null, claimedStationName: null, printedBy: null,
+    printedAt: null, printerName: null, printedStationName: null, cancelledBy: null, cancelledAt: null,
+    hasDocument: true,
+  };
+
+  const printRoutes = (call: Call): Response | undefined => {
+    const path = call.url.split('?')[0];
+    if (path === '/api/print-jobs') return json({ jobs: [JOB], nextCursor: null, waitingCount: 3 });
+    if (path === '/api/print-stations') return json([]);
+    return undefined;
+  };
+
+  const bootPrint = (permissions: string[], extra?: Boot['route'], view: Record<string, unknown> = {}) =>
+    boot({ permissions, view, route: (call) => extra?.(call) ?? printRoutes(call) });
+
+  const row = () => screen.queryByTitle(t('nav.printroom'));
+  const gets = (calls: Call[], path: string) =>
+    calls.filter((call) => call.method === 'GET' && call.url.split('?')[0] === path).length;
+
+  it('is a Work row only with print.send or print.station, carrying the waiting count', async () => {
+    await bootPrint(['print.send']);
+    await waitFor(() => expect(row()?.textContent).toContain('3'));
+    cleanup();
+
+    await bootPrint(['print.station']);
+    await waitFor(() => expect(row()?.textContent).toContain('3'));
+    cleanup();
+
+    const calls = await boot({ permissions: ['leads.view'] });
+    expect(row()).toBeNull();
+    expect(gets(calls, '/api/print-jobs')).toBe(0);
+  });
+
+  it('opens on Alt+P and lists the jobs, with no snapshot needed', async () => {
+    await bootPrint(['print.station']);
+    await waitFor(() => expect(row()).not.toBeNull());
+
+    await waitFor(() => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'p', code: 'KeyP', altKey: true, bubbles: true, cancelable: true }),
+      );
+      expect(topbarTitle()).toBe(t('printroom.filter.waiting'));
+    });
+    expect(await screen.findByText('Shree Ceramics')).toBeTruthy();
+  });
+
+  it('counts again when a print frame arrives and when the stream comes back, without opening a second stream', async () => {
+    const calls = await bootPrint(['print.station']);
+    await waitFor(() => expect(gets(calls, '/api/print-jobs')).toBeGreaterThan(0));
+    const before = gets(calls, '/api/print-jobs');
+
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('print', { ...JOB, forUserId: 'user-1' });
+      await wait(700);
+    });
+    expect(gets(calls, '/api/print-jobs')).toBeGreaterThan(before);
+
+    const afterPush = gets(calls, '/api/print-jobs');
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('error', {});
+      FakeEventSource.instances.at(-1)!.emit('open', {});
+      await wait(700);
+    });
+    expect(gets(calls, '/api/print-jobs')).toBeGreaterThan(afterPush);
+    expect(FakeEventSource.instances).toHaveLength(1);
+  });
+
+  it('says the Master is not reachable when the panel\'s server answers 503', async () => {
+    await bootPrint(['print.station'], (call) =>
+      call.url.split('?')[0] === '/api/print-jobs'
+        ? json({ error: 'unavailable', message: 'Not connected', messageKey: 'error.unavailable' }, 503)
+        : undefined,
+    );
+    await act(async () => {
+      fireEvent.click(await screen.findByTitle(t('nav.printroom')));
+      await wait(0);
+    });
+    expect(await screen.findByText(t('printroom.error.offline'))).toBeTruthy();
   });
 });

@@ -58,6 +58,7 @@ import { isPdfWindowUrl } from './lib/lead-pdf.js';
 import { openLogFile, type LogFile } from './lib/log-file.js';
 import { rendererHeapFlag, serverHeapMb } from './lib/memory.js';
 import { pdfFileName, printOptions } from './lib/print-options.js';
+import { backgroundThrottlingFor, parseStationMode } from './lib/station-mode.js';
 import {
   readDataDirOverride,
   readShellSettings,
@@ -911,6 +912,20 @@ export function runPanelShell(config: PanelShellConfig): void {
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
+  });
+
+  /*
+   * Auto-print station mode (the Printroom). While it is on, the panel's window
+   * keeps rendering and running timers when it is minimised or hidden, so a
+   * printer PC left minimised keeps printing. Only the panel's own window may
+   * ask, only the literal `true` turns it on (`lib/station-mode.ts`), and it
+   * changes nothing about what may be printed silently: that stays the printers
+   * Windows lists (`orderbook:printPage`).
+   */
+  ipcMain.handle('orderbook:setStationMode', (event, value: unknown): boolean => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return false;
+    mainWindow.webContents.setBackgroundThrottling(backgroundThrottlingFor(parseStationMode(value)));
+    return true;
   });
 
   /*

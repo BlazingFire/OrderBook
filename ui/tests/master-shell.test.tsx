@@ -1910,3 +1910,173 @@ describe('the Chatroom (1.3 Phase 6)', () => {
     });
   });
 });
+
+describe('the Printroom (1.3 Phase 7)', () => {
+  const live = () => sockets.all.filter((socket) => !socket.closed).at(-1);
+  const JOB = {
+    id: 'job-1', kind: 'filling', source: 'lead', sourceId: 'LD0000000001', sourceNumber: 'PO/2026-27/00001',
+    partyName: 'Shree Ceramics', copies: 2, note: null, targetStation: null, status: 'queued',
+    sender: { id: 'user-2', displayName: 'Bina', avatar: null, tier: 'office' }, requestedFrom: 'lan',
+    requestedAt: '2026-10-03T09:00:00.000Z', claimedAt: null, claimedStationName: null, printedBy: null,
+    printedAt: null, printerName: null, printedStationName: null, cancelledBy: null, cancelledAt: null,
+    hasDocument: true,
+  };
+  const row = () => screen.queryByTitle(t('nav.printroom'));
+
+  /** Boots as somebody with `permissions`, answering the Printroom routes with one waiting job. */
+  function bootPrint(permissions: string[], extra?: (call: Call) => Response | undefined): Promise<Call[]> {
+    return boot(permissions, (call) => {
+      const path = call.url.split('?')[0];
+      const answered = extra?.(call);
+      if (answered) return answered;
+      if (path === '/api/print-jobs') return json({ jobs: [JOB], nextCursor: null, waitingCount: 3 });
+      if (path === '/api/print-stations') return json([]);
+      return undefined;
+    });
+  }
+
+  it('is a Work row only with print.send or print.station, carrying the waiting count', async () => {
+    await bootPrint(['print.send']);
+    await waitFor(() => expect(row()?.textContent).toContain('3'));
+    cleanup();
+
+    await bootPrint(['print.station']);
+    await waitFor(() => expect(row()?.textContent).toContain('3'));
+    cleanup();
+
+    const calls = await bootPrint(['leads.view']);
+    expect(row()).toBeNull();
+    // Without either right the shell does not even ask.
+    expect(gets(calls, '/api/print-jobs')).toBe(0);
+  });
+
+  it('opens on Alt+P, on its first page, Waiting', async () => {
+    await bootPrint(['print.station']);
+    await waitFor(() => expect(row()).not.toBeNull());
+
+    await waitFor(() => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'p', code: 'KeyP', altKey: true, bubbles: true, cancelable: true }),
+      );
+      expect(topbarTitle()).toBe(t('printroom.filter.waiting'));
+    });
+    expect(await screen.findByText('Shree Ceramics')).toBeTruthy();
+  });
+
+  it('does not open on Alt+P without either right', async () => {
+    await boot(['leads.view']);
+    await pressAltDigitUntil(3, t('lead.board.tab.list'));
+    await act(async () => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'p', code: 'KeyP', altKey: true, bubbles: true, cancelable: true }),
+      );
+      await wait(0);
+    });
+    expect(topbarTitle()).toBe(t('lead.board.tab.list'));
+  });
+
+  it('offers Waiting, Printed and Sent by me as pages', async () => {
+    await bootPrint(['print.send']);
+    await waitFor(() => expect(row()).not.toBeNull());
+    await open(t('nav.printroom'));
+    expect(await screen.findByTitle(t('printroom.filter.printed'))).toBeTruthy();
+    expect(screen.getByTitle(t('printroom.filter.mine'))).toBeTruthy();
+  });
+
+  it('counts the waiting jobs again when the Master pushes print:changed', async () => {
+    const calls = await bootPrint(['print.station']);
+    await waitFor(() => expect(gets(calls, '/api/print-jobs')).toBeGreaterThan(0));
+    const before = gets(calls, '/api/print-jobs');
+
+    await waitFor(() => expect(live()).toBeDefined());
+    await act(async () => {
+      live()!.emit('print:changed', { ...JOB, forUserId: 'user-1' });
+      await wait(700);
+    });
+
+    expect(gets(calls, '/api/print-jobs')).toBeGreaterThan(before);
+  });
+
+  it('draws the Dashboard\'s waiting-jobs figure only for somebody with a Printroom right', async () => {
+    await bootPrint(['orders.view', 'print.station']);
+    await summaryArrives({ openOrderCount: 1 });
+    expect(await screen.findByText(t('dashboard.stat.printPending'))).toBeTruthy();
+    cleanup();
+
+    await boot(['orders.view']);
+    await summaryArrives({ openOrderCount: 1 });
+    await screen.findByText(t('dashboard.orders.title'));
+    expect(screen.queryByText(t('dashboard.stat.printPending'))).toBeNull();
+  });
+
+  it('opens the job a bell entry points at', async () => {
+    const calls = await bootPrint(['print.station'], (call) => {
+      const path = call.url.split('?')[0];
+      if (path === '/api/notifications') {
+        return json({
+          items: [
+            {
+              id: 'n-7', kind: 'print.printed', params: { name: 'Desk', party: 'Shree Ceramics' },
+              link: { kind: 'print', id: 'job-1' }, createdAt: '2026-10-03T09:00:00.000Z', readAt: null,
+            },
+          ],
+          unreadCount: 1,
+        });
+      }
+      if (call.url === '/api/notifications/read') return json({ unreadCount: 0 });
+      if (path === '/api/print-jobs/job-1') return json({ ...JOB, document: null, hasDocument: false });
+      return undefined;
+    });
+
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: t('notification.unreadLabel', { count: 1 }) }));
+      await wait(0);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText(t('notification.print.printed', { name: 'Desk', party: 'Shree Ceramics' })));
+      await wait(0);
+    });
+
+    await waitFor(() => expect(calls.some((call) => call.url === '/api/print-jobs/job-1')).toBe(true));
+    expect(await screen.findByRole('button', { name: t('action.backToList') })).toBeTruthy();
+  });
+
+  describe('Send to Printroom from a pending order\'s note', () => {
+    async function openNote(permissions: string[]) {
+      const calls = await openList(permissions, t('nav.leads'), (call) => {
+        const path = call.url.split('?')[0];
+        if (path === '/api/print-jobs' && call.method === 'POST') return json({ id: 'sent' }, 201);
+        if (path === '/api/print-jobs') return json({ jobs: [], nextCursor: null, waitingCount: 0 });
+        if (path === '/api/print-stations') return json([]);
+        return undefined;
+      });
+      fireEvent.click(await screen.findByText(LEAD.id));
+      fireEvent.click(await screen.findByRole('button', { name: t('orderNote.filling') }));
+      await screen.findByLabelText(t('orderNote.copies'));
+      return calls;
+    }
+
+    it('is offered only with print.send', async () => {
+      await openNote(['leads.view', 'leads.export', 'parties.view']);
+      expect(screen.queryByRole('button', { name: t('orderNote.sendToPrintroom') })).toBeNull();
+      cleanup();
+
+      await openNote(['leads.view', 'leads.export', 'parties.view', 'print.send']);
+      expect(screen.getByRole('button', { name: t('orderNote.sendToPrintroom') })).toBeTruthy();
+    });
+
+    it('posts the pending order to /api/print-jobs with its copies and a request id', async () => {
+      const calls = await openNote(['leads.view', 'leads.export', 'parties.view', 'print.send']);
+      fireEvent.change(screen.getByLabelText(t('orderNote.copies')), { target: { value: '3' } });
+      fireEvent.click(screen.getByRole('button', { name: t('orderNote.sendToPrintroom') }));
+
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: t('printroom.dialog.send') }));
+
+      await waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url === '/api/print-jobs')).toBe(true));
+      const post = calls.find((call) => call.method === 'POST' && call.url === '/api/print-jobs')!;
+      expect(post.body).toMatchObject({ kind: 'filling', source: 'lead', sourceId: LEAD.id, copies: 3 });
+      expect((post.body as { requestId: string }).requestId).toMatch(/^[0-9a-f]{32}$/);
+    });
+  });
+});

@@ -48,6 +48,7 @@ const KIND_TEXT: Record<NotificationKind, MessageKey> = {
   'task.assigned': 'notification.task.assigned',
   'task.done': 'notification.task.done',
   'access.requested': 'notification.access.requested',
+  'print.printed': 'notification.print.printed',
 };
 
 /** A chat right named in a notice, as the reader's language words it. */

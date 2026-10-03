@@ -629,6 +629,42 @@ export function createApp(): Express {
     }),
   );
 
+  // --- The Printroom ----------------------------------------------------------
+  //
+  // Online-only, forwarded one to one with the same paths the Master's own
+  // browser uses: a note printed an hour late on an unattended printer PC wastes
+  // paper, so a send is never queued. With the Master out of reach every one of
+  // these answers 503 and the local Print button on a note still works. A send
+  // first lets the outbox hand over a just-edited order, so the Master builds
+  // the sheet from what was on this screen. The claim, like the heartbeat, is
+  // held by this panel's connection to the Master.
+  app.get('/api/print-jobs', (req, res) =>
+    forward(res, 'print:list', {
+      ...(typeof req.query.status === 'string' ? { status: req.query.status } : {}),
+      mine: req.query.mine === '1',
+      ...(typeof req.query.cursor === 'string' ? { cursor: req.query.cursor } : {}),
+      ...(Number.isFinite(Number(req.query.limit)) && req.query.limit !== undefined
+        ? { limit: Number(req.query.limit) }
+        : {}),
+    }),
+  );
+  app.post('/api/print-jobs', async (req, res) => {
+    await flushBriefly();
+    await forward(res, 'print:send', req.body ?? {});
+  });
+  app.get('/api/print-jobs/:id', (req, res) => forward(res, 'print:get', req.params.id));
+  app.post('/api/print-jobs/:id/printed', (req, res) =>
+    forward(res, 'print:mark', {
+      id: req.params.id,
+      printed: req.body?.printed === true,
+      ...(typeof req.body?.printerName === 'string' ? { printerName: req.body.printerName } : {}),
+    }),
+  );
+  app.post('/api/print-jobs/:id/cancel', (req, res) => forward(res, 'print:cancel', req.params.id));
+  app.post('/api/print-jobs/:id/claim', (req, res) => forward(res, 'print:claim', req.params.id));
+  app.get('/api/print-stations', (_req, res) => forward(res, 'print:stations'));
+  app.put('/api/print-stations/self', (req, res) => forward(res, 'print:station', req.body ?? {}));
+
   /*
    * One record by id, for a chat chip or a bell entry that points past the 500
    * rows this panel keeps. The local view first (it also holds work queued here
@@ -2231,6 +2267,27 @@ function failForward(res: Response, error: unknown): void {
   });
 }
 
+/**
+ * Lets the outbox hand over whatever is queued, for at most a few seconds: a
+ * Printroom send waits for it so the Master reads the order as this screen
+ * showed it, but a slow or dead link must not hold the send for a minute.
+ * Never rejects.
+ */
+async function flushBriefly(): Promise<void> {
+  const FLUSH_WAIT_MS = 4000;
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      sync.flush().catch(() => undefined),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, FLUSH_WAIT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function forward(res: Response, event: string, ...payload: unknown[]): Promise<void> {
   try {
     const data = await masterConnection.command(event as never, ...payload);
@@ -2513,6 +2570,8 @@ masterConnection.on('notification', (notification: { forUserId?: unknown }) =>
 );
 // Chat is addressed to one person too, and only reaches them while they are the one signed in.
 masterConnection.on('chat', (push: { forUserId?: unknown }) => broadcastForUser('chat', push));
+// A Printroom job is addressed to its sender and to the station holders, per person likewise.
+masterConnection.on('print', (job: { forUserId?: unknown }) => broadcastForUser('print', job));
 masterConnection.on('presence', (presence: { forUserId?: unknown }) =>
   broadcastForUser('presence', presence),
 );

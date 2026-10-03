@@ -114,6 +114,16 @@ import type {
 import type { BinCounts, BinEntry, BinRestoreResult } from '../domain/recycle-bin.js';
 import type { SettingKey, SettingView } from '../domain/settings.js';
 import { CHAT_MIN_PROTOCOL } from '../domain/chat.js';
+import { PRINTROOM_MIN_PROTOCOL } from '../domain/printroom.js';
+import type {
+  PrintJob,
+  PrintJobInput,
+  PrintJobPage,
+  PrintJobQuery,
+  PrintJobSummary,
+  PrintStation,
+  PrintStationInput,
+} from '../domain/printroom.js';
 import type {
   ChatAccessRequest,
   ChatMemberRole,
@@ -172,7 +182,7 @@ export interface PanelAuthPayload {
  * socket command, so either side can tell the other is too old for one before
  * sending it, instead of waiting out a timeout.
  */
-export const PANEL_PROTOCOL_VERSION = 5;
+export const PANEL_PROTOCOL_VERSION = 6;
 
 /**
  * The lowest Master protocol each command needs. A command not listed has
@@ -203,6 +213,15 @@ export const COMMAND_MIN_PROTOCOL: Partial<Record<keyof ClientToServerEvents, nu
   'chat:read': CHAT_MIN_PROTOCOL,
   'chat:mute': CHAT_MIN_PROTOCOL,
   'chat:requestAccess': CHAT_MIN_PROTOCOL,
+  // The Printroom (1.3 Phase 7): chat took 5, so this is 6.
+  'print:list': PRINTROOM_MIN_PROTOCOL,
+  'print:get': PRINTROOM_MIN_PROTOCOL,
+  'print:send': PRINTROOM_MIN_PROTOCOL,
+  'print:mark': PRINTROOM_MIN_PROTOCOL,
+  'print:cancel': PRINTROOM_MIN_PROTOCOL,
+  'print:claim': PRINTROOM_MIN_PROTOCOL,
+  'print:stations': PRINTROOM_MIN_PROTOCOL,
+  'print:station': PRINTROOM_MIN_PROTOCOL,
   'presence:beat': 4,
 };
 
@@ -946,6 +965,29 @@ export interface ClientToServerEvents {
    */
   'presence:beat': (beat: PresenceBeat, ack: CommandAck<RecordPresence | null>) => void;
 
+  // --- Printroom (1.3 Phase 7) ----------------------------------------------
+  /*
+   * Twinned with the Master's `/api/print-jobs` and `/api/print-stations` REST
+   * routes: the Master's own browser uses those (and, for its claim, this
+   * command over its own socket), an Office Panel uses these. The station a
+   * `print:claim` or `print:station` speaks for comes from the connection
+   * (`socket.data.panelId`), never from the payload.
+   */
+  'print:list': (input: PrintJobQuery, ack: CommandAck<PrintJobPage>) => void;
+  'print:get': (id: Uuid, ack: CommandAck<PrintJob>) => void;
+  'print:send': (input: PrintJobInput, ack: CommandAck<PrintJob>) => void;
+  /** Mark a job printed, or (`printed: false`) put a printed one back in the queue. */
+  'print:mark': (
+    input: { id: Uuid; printed: boolean; printerName?: string | null },
+    ack: CommandAck<PrintJobSummary>,
+  ) => void;
+  'print:cancel': (id: Uuid, ack: CommandAck<PrintJobSummary>) => void;
+  /** Take a job for this connection's station; `null` when somebody else holds it or it is gone. */
+  'print:claim': (id: Uuid, ack: CommandAck<PrintJob | null>) => void;
+  'print:stations': (ack: CommandAck<PrintStation[]>) => void;
+  /** Register this PC as a station, or say it is still alive. */
+  'print:station': (input: PrintStationInput, ack: CommandAck<PrintStation>) => void;
+
   // --- Dashboard (docs/backend-modules/04-API-CONTRACT.md §7) ---------------
   /** The one live pull — everything else rides on `SyncSnapshot.dashboard` and the `dashboard:changed` push. */
   'dashboard:get': (ack: CommandAck<DashboardSummary>) => void;
@@ -1017,6 +1059,12 @@ export interface ServerToClientEvents {
    * missed it reads the room again.
    */
   'chat:event': (push: ChatPush & { forUserId: Uuid }) => void;
+  /**
+   * A print job was sent or changed. Addressed to the sender and to every
+   * holder of `print.station`; live only (no change ring), so a panel that
+   * missed one reads the list again.
+   */
+  'print:changed': (job: PrintJobSummary & { forUserId: Uuid }) => void;
   /**
    * Who is on a record changed. Sent only to people on that record who may
    * still see it, each addressed by `forUserId` like a notification.

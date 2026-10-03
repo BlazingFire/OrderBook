@@ -323,3 +323,75 @@ CREATE INDEX chat_messages_open_tasks_idx ON chat_messages (tenant_id)
 - **Grant.** The same migration unions `chat.*` into `roles.permissions` (all six for `admin` and
   `server_master`, `chat.use` + `chat.shareRecords` for `office` and `management`); see
   `docs/ROLES_AND_USERS.md` section 5.
+
+
+## Printroom tables — `print_stations`, `print_jobs`
+
+Added in 1.3 Phase 7 (migration #6, `20261006000000_printroom`). A shared print queue; the shapes are in
+`shared/src/domain/printroom.ts`, the SQL in `master/src/repositories/print.repository.ts`. Neither is a
+sync table: they never enter the change ring or the offline merge. Every column that names a person is
+`TEXT REFERENCES users(id)`. Both carry `tenant_id`, so a backup in `selected` scope takes them without a
+transitively-scoped entry. `wipe:business` empties `print_jobs` (the frozen sheet is of a record that
+wipe removes) and leaves `print_stations` (configuration).
+
+```sql
+CREATE TABLE print_stations (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  station_key  TEXT NOT NULL CHECK (station_key = 'master' OR station_key ~ '^panel:[0-9A-Fa-f-]{36}$'),
+  display_name TEXT NOT NULL CHECK (char_length(btrim(display_name)) BETWEEN 1 AND 60),
+  printer_name TEXT NULL CHECK (printer_name IS NULL OR char_length(printer_name) <= 200),
+  auto_print   BOOLEAN NOT NULL DEFAULT false,
+  last_seen_at TIMESTAMPTZ NULL,                  -- online = heard from within 90 seconds
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT print_stations_key_uq UNIQUE (tenant_id, station_key)
+);
+
+CREATE TABLE print_jobs (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id          UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  request_id         TEXT NOT NULL CHECK (request_id ~ '^[0-9a-f]{32}$'),
+  kind               TEXT NOT NULL CHECK (kind IN ('filling','dispatch')),
+  source_type        TEXT NOT NULL CHECK (source_type IN ('lead','order')),
+  source_id          TEXT NOT NULL,                -- the permanent LD / OD id; no FK, the sheet stands alone
+  source_number      TEXT NULL,                    -- the PO number at send time
+  party_name         TEXT NOT NULL,
+  payload            JSONB NULL,                   -- the frozen NoteDocument; NULL 30 days after printed / cancelled
+  copies             SMALLINT NOT NULL CHECK (copies BETWEEN 1 AND 50),
+  note               TEXT NULL CHECK (note IS NULL OR char_length(note) <= 200),
+  target_station_id  UUID NULL REFERENCES print_stations(id) ON DELETE SET NULL,
+  status             TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','printing','printed','cancelled')),
+  sender_id          TEXT NOT NULL REFERENCES users(id),
+  requested_from     TEXT NULL,                    -- a panel's device code, 'master' or 'lan'
+  requested_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  claimed_by         TEXT NULL REFERENCES users(id),
+  claimed_station_id UUID NULL REFERENCES print_stations(id) ON DELETE SET NULL,
+  claimed_at         TIMESTAMPTZ NULL,
+  claim_socket       TEXT NULL,                    -- the connection holding the claim
+  printed_by         TEXT NULL REFERENCES users(id),  -- NULL for an auto-print station with nobody signed in
+  printed_station_id UUID NULL REFERENCES print_stations(id) ON DELETE SET NULL,
+  printed_at         TIMESTAMPTZ NULL,
+  printer_name       TEXT NULL,
+  cancelled_by       TEXT NULL REFERENCES users(id),
+  cancelled_at       TIMESTAMPTZ NULL,
+  updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT print_jobs_request_uq UNIQUE (tenant_id, sender_id, request_id)
+);
+CREATE INDEX print_jobs_queue_idx  ON print_jobs (tenant_id, status, requested_at DESC, id DESC);
+CREATE INDEX print_jobs_sender_idx ON print_jobs (tenant_id, sender_id, requested_at DESC);
+CREATE INDEX print_jobs_claim_idx  ON print_jobs (claim_socket) WHERE claim_socket IS NOT NULL;
+```
+
+- **Idempotent sends.** `UNIQUE (tenant_id, sender_id, request_id)` plus `ON CONFLICT DO NOTHING`: a
+  retried send finds the row it already made. The id is per sender, so one person can never read
+  another's job by repeating its request id.
+- **The claim.** `status = 'printing'` with `claim_socket` set is a claim held by that connection.
+  `releaseClaimsOf(socket)` and the boot sweep put such rows back to `queued` and clear the three
+  `claimed_*` columns and `claim_socket`; a claim older than ten minutes may be taken over. All of it
+  is one atomic `UPDATE ... WHERE`, so two stations cannot both win.
+- **Retention.** One `UPDATE` on each send sets `payload = NULL` where `status IN ('printed','cancelled')`
+  and `updated_at` is more than 30 days old. The row (who, what, when) stays. `ponytail:` piggybacked on
+  sends, no scheduler; if sends become rare and the backlog matters, move it to a scheduled sweep.
+- **Grant.** The same migration unions `print.send` and `print.station` into `roles.permissions` of every
+  `admin` and `server_master` role; see `docs/ROLES_AND_USERS.md` section 5.2.

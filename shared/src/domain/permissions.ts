@@ -182,6 +182,14 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
   { key: 'chat.tasks', group: 'chat', labelToken: 'permission.chat.tasks' },
   { key: 'chat.createGroups', group: 'chat', labelToken: 'permission.chat.createGroups' },
   { key: 'chat.manage', group: 'chat', labelToken: 'permission.chat.manage' },
+
+  // Printroom (1.3 Phase 7). `print.send` queues a note for the printer PC and
+  // shows the sender their own jobs. `print.station` runs a printroom: it sees
+  // and prints EVERY job whatever the party (a deliberate cross-party grant,
+  // because the sender addressed the printroom, not a person), marks jobs
+  // printed, cancels any queued one and turns a PC into an auto-print station.
+  { key: 'print.send', group: 'workflow', labelToken: 'permission.print.send' },
+  { key: 'print.station', group: 'workflow', labelToken: 'permission.print.station' },
 ] as const;
 
 // --- The frozen key list ---------------------------------------------------
@@ -350,6 +358,7 @@ export const ROLE_TEMPLATES: ReadonlyArray<{
       'chat.directMessages',
       'chat.shareRecords',
       'chat.tasks',
+      'print.send',
     ],
   },
   {
@@ -366,6 +375,8 @@ export const ROLE_TEMPLATES: ReadonlyArray<{
       'reports.view',
       'reports.export',
       'chat.use',
+      'print.send',
+      'print.station',
     ],
   },
 ];

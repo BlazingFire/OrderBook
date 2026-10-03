@@ -410,6 +410,64 @@ Built on top of everything above; sections 1 to 9 describe the original build.
   future caller of `printPage` or `savePdf`.
 - **Report PDFs.** Not a note, but the same window rule: see
   `docs/catalogue/CATALOGUE_MODEL.md` §8 for the PDF window allowlist.
-- **Not here.** A shared print queue, print stations and auto-printing
-  (the Printroom) are a later task (H5); this adds nothing for them but the
-  `printOnly` rule and the `copies` option they will use.
+- **Not here.** The shared print queue, print stations and auto-printing
+  (the Printroom) are section 11; they reuse the `printOnly` rule and the
+  `copies` option this section added.
+
+---
+
+## 11. Added in 1.3 (H5): the Printroom and the auto-print station
+
+The shared print queue. Contract: `docs/backend-modules/04-API-CONTRACT.md` section 16; tables:
+`docs/schema/01-identity-and-network.md`; flow: `docs/STRUCTURE.md` 11.8c.
+
+- **Sending.** The note screen (pending or final order) has **Send to Printroom** next to Print and Save
+  PDF, shown only to somebody holding `print.send` and only for a record the Master has (a record still
+  carrying the id its panel made offline has nothing to print from). It opens
+  `SendToPrintroomDialog`: which note, copies (1 to 50), which printroom ("Any Printroom" or an online
+  station; an offline one is listed but disabled), a vehicle number for a Dispatch note, and an optional
+  message of up to 200 characters. The dialog keeps one request id for as long as it is open, so pressing
+  Send again after a slow answer cannot queue a second sheet.
+- **The Master builds the sheet.** The client names the record; `print.service#sendJob` reads it through
+  `getLead` / `getOrder` (the sender's own scope), adds the party header and the PO number, and freezes
+  `noteDocument(...)` in the job. The printer PC never needs the record, its party or a big enough
+  snapshot, and a later edit leaves the sheet as sent. Sending is **online-only**: with the Master out of
+  reach the dialog says "Print on this PC instead", and the note's own Print button still works. A job
+  printed an hour late on an unattended PC would only waste paper.
+- **The Printroom screen** (`ui/src/PrintroomScreen.tsx`, one transport per panel). Three sidebar pages:
+  Waiting (grouped by who sent them, a Server Master with the badge, oldest first), Printed (with a
+  Cancelled toggle) and Sent by me. A search box carries `data-screen-search`. Opening a job is a
+  sub-screen with a back button and a nested sidebar entry: it shows the exact sheets (the same
+  `OrderNote` renderer and pagination as the note screen), the sender, the message and the state, and a
+  station holder prints **N copies** (default the sender's, editable 1 to 50), marks printed or not
+  printed, or cancels. A sender sees their own jobs and may cancel one while it is still queued.
+- **A station.** On the desktop app a holder of `print.station` gets a "This PC" strip: which printer,
+  the name senders see, **Auto-print new jobs on this PC**, and the printrooms with an online dot.
+  Those settings belong to the PC (localStorage `ob.printroom.station`) and are mirrored to the Master by
+  the station's heartbeat only so senders can see "online".
+- **Auto-print** (`ui/src/PrintStationRunner.tsx`, mounted at the top of both panels, not inside the
+  screen, because a hidden screen's effects stop). While Auto-print is on and a printer is chosen it asks
+  the shell to keep rendering when minimised (`setStationMode`), says it is alive every minute, and
+  works the queue one job at a time: **claim** (atomic, held by this connection), mount the one sheet,
+  wait a macrotask and the fonts (a minimised window has no animation frames), print silently with the
+  job's copies through `printOnly`, mark printed with the printer name, unmount. A claim lost to another
+  station is skipped. A failed print (including a printer Windows does not list: an unattended PC must
+  not open a dialog) is reported once, given back to the queue, and not tried again until a person
+  prints it. The runner lists the queue again on every push, every reconnect and every beat.
+- **Two stations never print one sheet.** The claim belongs to the connection that made it: released
+  when it disconnects, stale after ten minutes, cleared at Master boot (API contract 16.4).
+- **Notifications.** The sender gets a bell entry ("{name} printed your note for {party}") when somebody
+  else prints their job; opening it opens the job. A failed auto-print shows a toast on the station PC
+  (never stored).
+- **Who sees what.** `print.station` is a deliberate cross-party grant: it sees and prints every job, so
+  grant it only to the people at a printer (`docs/ROLES_AND_USERS.md` 5.2). Sent, printed, unprinted and
+  cancelled are audited (`print_job.*`); claims are not.
+- **Retention.** A printed or cancelled job's sheet is dropped after 30 days (one `UPDATE` on each send).
+  The row, who sent and printed it and when, stays; an old job reads "this job's note has been removed" and
+  is printed again from the order itself.
+- **Browser limits.** A LAN browser cannot be a station (no silent print, no printer list); it can list
+  and cancel its own jobs, and a holder of `print.station` can print a job there with `window.print()`
+  (one copy; the dialog asks for more) and mark it printed by hand.
+- **Owed.** A real-printer check in packaged Electron (33 and the legacy 22): copies on the owner's
+  printers, silent auto-print while the window is minimised with station mode on, `savePdf`, and the PDF
+  window. Some drivers ignore Electron's `copies`; the fallback (print N times in a row) costs no DOM.

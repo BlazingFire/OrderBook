@@ -3069,6 +3069,7 @@ are recounted in the 1.3 Phase 9 reconciliation.
 | 39 | `master/src/db/migrations/20261003000000_pending_order_numbers.ts` | 91 | **Pinned, additive, idempotent** (1.3 Phase 4). `leads.po_number TEXT` with the guarded CHECK `leads_po_number_format`; an UPDATE-only backfill per tenant and financial year in `(created_at, id)` order, deleted leads included, the time zone frozen inline as Asia/Kolkata, continuing after the higher of the existing numbers and the counter; the partial UNIQUE `leads_po_number_uq (tenant_id, po_number) WHERE po_number IS NOT NULL`; seeds `id_sequences` `po:<fy>` with ON CONFLICT greatest. `identity.repository.ts#backfillPendingOrderNumbers` is a frozen copy for a pre-1.3 `.obbackup` restore. `master/tests/migration-pending-order-numbers.integration.test.ts` |
 | 40 | `master/src/db/migrations/20261004000000_report_indexes_and_grants.ts` | — | **Pinned, additive, idempotent** (1.3 H2). The owner-by-date indexes the reports read through, and a union grant of `reports.view` + `reports.export` to the office and management tiers |
 | 41 | `master/src/db/migrations/20261005000000_chatroom.ts` | — | **Pinned last, additive, idempotent** (1.3 Phase 6, migration #5). `chat_rooms`, `chat_members`, `chat_messages` (every user column `TEXT REFERENCES users(id)`), their partial unique and lookup indexes, and a union grant of the six `chat.*` keys to `admin` / `server_master` roles and `chat.use` + `chat.shareRecords` to `office` / `management` roles. `down()` drops the tables only |
+| 41 | `master/src/db/migrations/20261006000000_printroom.ts` | — | **Pinned last, additive, idempotent** (1.3 Phase 7, migration #6). `print_stations` and `print_jobs` (every user column `TEXT REFERENCES users(id)`; a job's `status` is `queued` / `printing` / `printed` / `cancelled`, its claim held by `claim_socket`; `UNIQUE (tenant_id, sender_id, request_id)` makes a retried send idempotent), their indexes, and a union grant of `print.send` + `print.station` to `admin` / `server_master` roles. `down()` drops the tables only |
 
 ### 6.3 Conventions across the schema
 
@@ -3216,6 +3217,10 @@ restore revokes the panels; the Phase 8 archive, which keeps pairing, must carry
 Also new in 1.3 Phase 6, and also not sync tables: `chat_rooms`, `chat_members` and `chat_messages`
 (the Chatroom; a post from an Office travels as a `chat.post` mutation but is stored here, never in the
 change ring). Backups take them through `tenant_id`. Same file, and flow 11.8b.
+
+Also new in 1.3 Phase 7, also not sync tables: `print_stations` and `print_jobs` (the Printroom; a job freezes the
+note's sheet in `payload`, dropped 30 days after printing). Backups take them through `tenant_id`; `wipe:business` empties
+`print_jobs` and leaves the stations. Same file, and flow 11.8c.
 
 ### 6.12 Settings, option lists, custom fields, activity log, integrations
 
@@ -5766,6 +5771,70 @@ the Chatroom row, tab, sub-pages, bell links and Share in chat in both `App.tsx`
 `ui/tests/chatroom.test.tsx` and the Chatroom blocks of `master-shell.test.tsx`,
 `office-shell.test.tsx` and `notification-bell.test.tsx`.
 
+### 11.8c The Printroom and the auto-print station (1.3 Phase 7)
+
+A shared print queue; the contract is `docs/backend-modules/04-API-CONTRACT.md` section 16, the tables
+`docs/schema/01-identity-and-network.md`, the plan `docs/ORDER_NOTES_PLAN.md` section 11. Like the
+Chatroom it lives **outside the change ring and the activity chain** (only sent / printed / unprinted /
+cancelled are audited), and it is absent for anybody holding neither `print.send` nor `print.station`.
+
+1. **Send.** The note screen's *Send to Printroom* (`print.send`, a record the Master has) opens
+   `SendToPrintroomDialog`; `POST /api/print-jobs` (an Office: `print:send`, after `flushBriefly` lets the
+   outbox hand over a just-edited order) → `print.service#sendJob`: `cleanPrintJobInput` (shared), the
+   sender's rights (`print.send` plus `leads.export` / `orders.export`), the record read as the sender
+   (`getLead` / `getOrder`, party scope), then one transaction: `insertJob` (`ON CONFLICT (tenant, sender,
+   request_id) DO NOTHING`), the 30-day payload strip, the `print_job.sent` audit row. After the commit:
+   `publishPrintJob`. Online-only: an Office with no link answers 503 and nothing is queued.
+2. **Push.** `publishPrintJob` → `hub.ts#onPrintJob` → `emitToActors('print:changed')` to sockets whose
+   current actor holds `print.station`, or holds `print.send` and sent the job, speaking protocol 6 or
+   later; the Office relays it as SSE `print` through `broadcastForUser`. Each panel's `PrintroomTransport`
+   turns it into `{kind: 'changed'}`; the nav badge (`usePrintWaiting`), the list and the runner re-read.
+   `dispatchPrint({kind: 'resync'})` follows every reconnect.
+3. **Claim.** `PrintStationRunner` (mounted at the top of both `App.tsx`, enabled by `print.station`, a
+   printer chosen and *Auto-print* on in this PC's settings `ob.printroom.station`) beats every 60 s
+   (`PUT /print-stations/self` / `print:station`, which registers the station under a key the Master takes
+   from the connection) and works the waiting queue one job at a time: `print:claim` → one atomic `UPDATE`
+   that makes the job `printing` for this station and this **socket** (the Master PC's window claims over
+   its own admin socket). `null` = lost the race, skip.
+4. **Print.** The claimed `PrintJob` carries its frozen `document`; the runner mounts
+   `NoteDocumentPortal`, waits a macrotask and the fonts, runs `printOnly(portal, () => printPage({deviceName,
+   copies}))` (silent, only to a printer Windows lists; an unlisted one fails without a dialog), then
+   `POST /print-jobs/:id/printed` → `markJob` (`print_job.printed` audit, `notify(sender, 'print.printed')`
+   when somebody else printed it) and unmounts. A failure is toasted once, handed back with
+   `markJob(printed: false)` (only the claimant can) and skipped for the session.
+5. **Release.** A socket that closes releases what it held (`hub.ts` → `print.service#releaseClaimsOf`), a
+   claim older than ten minutes can be taken over, and `releaseAllClaimsAtBoot` clears every claim when the
+   Master starts. Two stations never print one sheet; none strands a job.
+6. **By hand.** A holder of `print.station` opens a job from the Printroom, sees the exact sheets, prints N
+   copies (or `window.print()` in a browser) and marks it printed or not printed; a sender cancels their own
+   queued job; `print.station` cancels any queued one.
+7. **Shell.** `DesktopBridge.setStationMode` / IPC `orderbook:setStationMode` (panel window only; only the
+   boolean `true` is on, `electron/lib/station-mode.ts`) turns background throttling off while a PC is a
+   station, so a minimised printer PC keeps rendering.
+
+**Files.** Shared: `shared/src/domain/printroom.ts` (types, `PRINTROOM_MIN_PROTOCOL`, `PRINT_LIMITS`,
+`cleanPrintJobInput`), `print.send` / `print.station` in `permissions.ts`, eight `print:*` commands and
+`print:changed` in `protocol/socket.ts`, `setStationMode` in `protocol/desktop.ts`, the `print.printed`
+notification kind and `print` link, nav id `printroom` (Alt+P) in `keys/commands.ts`. Master: migration
+`20261006000000_printroom.ts`, `repositories/print.repository.ts`, `services/print.service.ts`,
+`http/routes/print.routes.ts`, `publishPrintJob` / `onPrintJob` in `services/change-bus.ts`, the `print:*`
+commands, the push and the claim release in `realtime/hub.ts`, `catalog-reload-cli.ts` (the wipe).
+Office server: the `/api/print-*` block, `flushBriefly` and the SSE `print` frame in `http/app.ts`,
+`master-connection.ts` (`print:changed`). Electron: `lib/station-mode.ts`, `orderbook:setStationMode` in
+`shell.ts`, `preload.cts`. ui: `printroomModel.ts` (transport, this PC's settings, grouping),
+`PrintroomScreen.tsx` (+ `usePrintWaiting`), `SendToPrintroomDialog.tsx`, `PrintStationRunner.tsx`,
+`NoteDocumentPortal.tsx`, the *Send to Printroom* button in `OrderNoteScreen.tsx`, icon `print`, `.ob-print-*`
+in `base.css`. Panels: `master/web/src/printroomTransport.ts`, `office/web/src/printroomTransport.ts`, the
+Printroom row, tab, sub-pages, bell link, Dashboard `printPending` and the runner in both `App.tsx`, and the
+`printroom` prop on the Pending / Final Order screens.
+
+**Tests.** `master/tests/printroom.integration.test.ts` (send, scope, claim race, release, stale, boot,
+retention, audit, REST, grant), `master/tests/printroom-push.test.ts` (addressing and connection-held
+claims over real sockets), the Printroom guard in `credential-invariants.test.ts`;
+`office/tests/print-forwarding.test.ts`; `shared/tests/printroom.test.ts`; `electron/tests/station-mode.test.ts`;
+`ui/tests/printroom-screen.test.tsx`, `print-station-runner.test.tsx`, `send-to-printroom.test.tsx` and the
+Printroom blocks of `master-shell.test.tsx` and `office-shell.test.tsx`.
+
 ### 11.9 Internationalisation (i18n)
 
 1. **Catalogue:** add English to `EN_MESSAGES` (`shared/src/i18n/en.ts`); `npm run
@@ -6353,6 +6422,7 @@ also imports `masterConnection`.
 | Add a keyboard command | `shared/src/keys/commands.ts`, a handler (`useCommand`, a `command.id ===` switch, or `shellCommands`), a label token; the palette lists it only while `KeyboardProvider#offers()` says it would do something, so a chord-only command needs no palette row | `shared/tests/keys-implemented.test.ts`, `shared/tests/keys.test.ts`, `ui/tests/keyboard-provider.test.tsx` |
 | Change a note's layout, copies, Save PDF or the PDF window | `shared/src/domain/order-note.ts` (model, header, pagination), `ui/src/OrderNote.tsx`, `ui/src/OrderNoteScreen.tsx`, `ui/src/printPortal.ts`, `ui/src/order-note.css`; the shell half in `electron/lib/print-options.ts`, `electron/lib/lead-pdf.ts`, `electron/shell.ts`, `electron/preload.cts`, `shared/src/protocol/desktop.ts`; plan `docs/ORDER_NOTES_PLAN.md`, window allowlist `docs/catalogue/CATALOGUE_MODEL.md` §8 | `shared/tests/order-note.test.ts`, `ui/tests/order-note-screen.test.tsx`, `ui/tests/master-shell.test.tsx`, `ui/tests/office-shell.test.tsx`, `electron/tests/print-options.test.ts`, `electron/tests/lead-pdf.test.ts` |
 | Change the Chatroom | `shared/src/domain/chat.ts` (types, limits, `cleanChatPost`), `master/src/services/chat.service.ts` (every rule: membership, announcement, the five-minute window, chips resolved per viewer, audit), `master/src/repositories/chat.repository.ts`, `master/src/http/routes/chat.routes.ts` and the twinned `chat:*` commands in `master/src/realtime/hub.ts`; the Office forwards in `office/src/http/app.ts` and the held-post rule in `office/src/sync/sync.service.ts`; `ui/src/Chat*.tsx` and `ui/src/chatModel.ts`; both `chatTransport.ts` and `App.tsx`; a new right needs the permission steps above plus the grant in a new migration | `master/tests/chat.integration.test.ts`, `master/tests/chat-fanout.integration.test.ts`, `master/tests/sync.integration.test.ts`, `master/tests/credential-invariants.test.ts`, `office/tests/chat-forwarding.test.ts`, `office/tests/sync-hold.test.ts`, `shared/tests/chat.test.ts`, `ui/tests/chatroom.test.tsx` |
+| Change the Printroom or the auto-print station | `shared/src/domain/printroom.ts` (types, limits, `cleanPrintJobInput`), `master/src/services/print.service.ts` (every rule: who sees what, the claim, mark / cancel, audit, retention), `master/src/repositories/print.repository.ts`, `master/src/http/routes/print.routes.ts` and the twinned `print:*` commands, the push and the claim release in `master/src/realtime/hub.ts`; the Office forwards in `office/src/http/app.ts`; `ui/src/PrintroomScreen.tsx`, `SendToPrintroomDialog.tsx`, `PrintStationRunner.tsx`, `NoteDocumentPortal.tsx`, `printroomModel.ts`; both `printroomTransport.ts` and `App.tsx`; the shell half in `electron/lib/station-mode.ts`, `electron/shell.ts`, `electron/preload.cts`; plan `docs/ORDER_NOTES_PLAN.md` section 11 | `master/tests/printroom.integration.test.ts`, `master/tests/printroom-push.test.ts`, `master/tests/credential-invariants.test.ts`, `office/tests/print-forwarding.test.ts`, `shared/tests/printroom.test.ts`, `electron/tests/station-mode.test.ts`, `ui/tests/printroom-screen.test.tsx`, `ui/tests/print-station-runner.test.tsx`, `ui/tests/send-to-printroom.test.tsx` |
 | Change a report | `shared/src/domain/reports.ts` (columns, meta), `master/src/repositories/report.repository.ts` (the SQL), `master/src/services/report.service.ts` (access, table, export), `ui/src/ReportsScreen.tsx`, `shared/src/domain/report-access.ts` | `master/tests/reports.integration.test.ts` (legacy), `master/tests/report-tables.integration.test.ts`, `master/tests/report-hub.integration.test.ts`, `master/tests/report-range.test.ts`, `master/tests/report-range-periods.test.ts`, `master/tests/report-export-streaming.test.ts`, `shared/tests/report-query.test.ts`, `shared/tests/report-access.test.ts`, `ui/tests/reports-screen.test.tsx`, `master/tests/report-pdf-route.integration.test.ts` (the inline PDF route), `office/tests/module-forwarding.test.ts` |
 | Change the product import format | `master/src/domain/product-import.ts` (`IMPORT_COLUMNS`), `master/src/services/product-import.service.ts`, `master/src/lib/spreadsheet.ts`, `shared/src/domain/product-import.ts` | `master/tests/product-import-domain.test.ts`, `master/tests/product-import.integration.test.ts`, `master/tests/spreadsheet.test.ts`, `master/tests/import-category-gate.test.ts` |
 | Change the party import format | `shared/src/domain/party-import.ts` (`PARTY_IMPORT_COLUMNS`), `master/src/domain/party-import.ts`, `master/src/services/party-import.service.ts`, `docs/PARTY_IMPORT_FORMAT.md` | `master/tests/party-import-domain.test.ts`, `master/tests/party-import.integration.test.ts`, `office/tests/module-forwarding.test.ts` |

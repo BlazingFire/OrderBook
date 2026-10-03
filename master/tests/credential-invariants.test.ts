@@ -172,6 +172,34 @@ describe('the two-layer permission check', () => {
     expect(guards.every((line) => line.includes("needs('chat.use')"))).toBe(true);
   });
 
+  it('guards every Printroom route with its key, or names it as service-gated with the reason (1.3 Phase 7)', () => {
+    const routes = read('http/routes/print.routes.ts');
+    const lines = routes.split('\n');
+
+    const handlers = lines.filter((line) => /(printJobRoutes|printStationRoutes)\.(get|post|put|delete)\(/.test(line)).length;
+    const guards = lines.filter((line) => !line.trim().startsWith('*') && line.includes('needs(')).length;
+
+    // The routes that carry no `needs()`, each because two keys open it and the
+    // service scopes the answer (a sender sees and cancels only their own jobs;
+    // `print.station` sees every job). Adding a route means guarding it or
+    // adding it here with its reason.
+    const SERVICE_GATED = [
+      "printJobRoutes.get(\n  '/',", // listJobs: print.send (own) or print.station (all)
+      "printJobRoutes.get(\n  '/:id',", // getJob: the sender's own job, or any for print.station
+      "printJobRoutes.post(\n  '/:id/cancel',", // cancelJob: the sender's own queued job, or any for print.station
+      "printStationRoutes.get(\n  '/',", // listStations: print.send or print.station
+    ];
+    for (const exempt of SERVICE_GATED) expect(routes, exempt).toContain(exempt);
+
+    expect(handlers).toBe(7);
+    expect(guards).toBe(handlers - SERVICE_GATED.length);
+    expect(routes).toContain("needs('print.send')");
+    expect(routes).toContain("needs('print.station')");
+    // Station holders alone mark and register, and the service checks again.
+    expect(routes).toMatch(/'\/:id\/printed',\s+needs\('print\.station'\)/);
+    expect(routes).toMatch(/'\/self',\s+needs\('print\.station'\)/);
+  });
+
   it('guards every Reports route (Stage 5 extends the pattern to its own router)', () => {
     const routes = read('http/routes/report.routes.ts');
 

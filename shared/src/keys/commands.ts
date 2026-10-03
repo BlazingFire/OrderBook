@@ -80,6 +80,8 @@ const MASTER_NAV: NavEntry[] = [
   ['conflicts', 'nav.master.conflicts'],
   // An explicit letter chord: Chatroom sits past the tenth row, and Alt+C has no darwin Meta twin.
   ['chatroom', 'nav.chatroom', 'Alt+C'],
+  // Alt+P: Option+P is a plain letter chord on a Mac, so Cmd+P (print) is left alone.
+  ['printroom', 'nav.printroom', 'Alt+P'],
   ['reports', 'nav.reports', null],
   ['products', 'nav.products'],
   ['parties', 'nav.master.parties'],
@@ -105,6 +107,7 @@ const OFFICE_NAV: NavEntry[] = [
   ['orders', 'nav.orders'],
   ['conflicts', 'nav.conflicts'],
   ['chatroom', 'nav.chatroom', 'Alt+C'],
+  ['printroom', 'nav.printroom', 'Alt+P'],
   ['reports', 'nav.reports', null],
   ['products', 'nav.products'],
   ['parties', 'nav.parties'],

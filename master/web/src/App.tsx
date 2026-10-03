@@ -41,6 +41,7 @@ import {
 
 import { ApiError, api, desktopBridge } from './api';
 import { dispatchChat, masterChatTransport } from './chatTransport';
+import { attachPrintSocket, dispatchPrint, masterPrintroomTransport } from './printroomTransport';
 import { presenceChannel } from './presence';
 import { reportsTransport } from './transports';
 import {
@@ -51,6 +52,8 @@ import {
   BasicHome,
   BP_NARROW,
   ChatroomScreen,
+  PrintroomScreen,
+  PrintStationRunner,
   Clock,
   FilterBarOutlet,
   FilterBarProvider,
@@ -84,6 +87,7 @@ import {
   storeSidebarMode,
   t,
   useChatUnread,
+  usePrintWaiting,
   useClearSubNav,
   useMediaQuery,
   useToast,
@@ -93,6 +97,7 @@ import {
   splitSubPage,
   withSubPages,
   type ChatPage,
+  type PrintPage,
   type ChatRecordOption,
   type NavGroup,
   type NavItem,
@@ -154,6 +159,7 @@ type Tab =
   | 'recycleBin'
   | 'conflicts'
   | 'chatroom'
+  | 'printroom'
   | 'settings'
   | 'updates';
 type Route = '' | 'gallery';
@@ -185,7 +191,7 @@ type RecycleBinType = RecycleBinEntityType | '';
  */
 /** Screens whose open record publishes a sidebar label; signing out must not leave them for the next user. */
 const SUB_NAV_SCREENS = [
-  'leads', 'orders', 'parties', 'panels', 'logs', 'access', 'products', 'addLead', 'chatroom',
+  'leads', 'orders', 'parties', 'panels', 'logs', 'access', 'products', 'addLead', 'chatroom', 'printroom',
 ] as const;
 
 const SCREEN_ENTITIES: Record<string, readonly string[]> = {
@@ -317,6 +323,9 @@ function MasterPanel() {
   const [chatShare, setChatShare] = useState<ChatRecordChip | null>(null);
   /** Bumped when the sidebar picks a Chatroom page, so a settings sub-screen left open closes. */
   const [chatResetNonce, setChatResetNonce] = useState(0);
+  /** The Printroom job open as a sub-screen (the bell can open one), and the nonce the sidebar bumps to close it. */
+  const [printOpen, setPrintOpen] = useState<string | null>(null);
+  const [printResetNonce, setPrintResetNonce] = useState(0);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [settingsTab, setSettingsTab] = useSettingsTab(
     'ob.settings.tab.master',
@@ -538,6 +547,9 @@ function MasterPanel() {
 
     // Chat is addressed to this person's rooms; the Chatroom and the unread badge follow it.
     socket.on('chat:event', (push) => dispatchChat(push));
+    // A Printroom job moved (live only). The claim of a station on this PC rides this same socket.
+    attachPrintSocket(socket as unknown as Socket);
+    socket.on('print:changed', (job) => dispatchPrint({ kind: 'changed', job }));
     // Who else is on the record open here; never stored, never a revision.
     socket.on('presence:changed', (presence) => presenceChannel.push(presence));
 
@@ -573,6 +585,7 @@ function MasterPanel() {
       bump('*');
       // Chat has no replay: whatever was said while this window was away is read again.
       dispatchChat({ kind: 'resync' });
+      dispatchPrint({ kind: 'resync' });
       refreshUser();
       void api
         .panels()
@@ -598,6 +611,7 @@ function MasterPanel() {
 
     return () => {
       if (retry) clearTimeout(retry);
+      attachPrintSocket(null);
       socket.close();
     };
   }, [phase, sessionToken, refreshUser]);
@@ -641,6 +655,16 @@ function MasterPanel() {
    */
   const canChat = phase === 'ready' && (user?.permissions.includes('chat.use') ?? false);
   const chatUnread = useChatUnread(masterChatTransport, canChat);
+
+  /*
+   * The Printroom exists for somebody holding either of its two rights and for
+   * nobody else. Its waiting count sits above the early returns like every hook
+   * here, and asks for nothing while this window is not signed in.
+   */
+  const canSendPrint = phase === 'ready' && (user?.permissions.includes('print.send') ?? false);
+  const canRunStation = phase === 'ready' && (user?.permissions.includes('print.station') ?? false);
+  const canPrintroom = canSendPrint || canRunStation;
+  const printWaiting = usePrintWaiting(masterPrintroomTransport, canPrintroom);
 
   const refreshPanels = useCallback(() => {
     void api.panels().then((result) => setPanels(result.panels));
@@ -880,6 +904,11 @@ function MasterPanel() {
       label: t(REPORT_META[kind].titleToken),
       icon: REPORT_META[kind].icon,
     })),
+    printroom: [
+      { key: 'waiting', label: t('printroom.filter.waiting'), icon: 'print' },
+      { key: 'printed', label: t('printroom.filter.printed'), icon: 'task' },
+      { key: 'sentByMe', label: t('printroom.filter.mine'), icon: 'upload' },
+    ],
     chatroom: [
       { key: 'rooms', label: t('chat.sub.rooms'), icon: 'chat' },
       { key: 'tasks', label: t('chat.sub.tasks'), icon: 'task' },
@@ -961,6 +990,11 @@ function MasterPanel() {
     else if (module === 'leads') {
       setSubKeys((current) => ({ ...current, leads: key }));
       setTab('leads');
+    } else if (module === 'printroom') {
+      // A page picked in the sidebar leaves any open job.
+      setPrintOpen(null);
+      setPrintResetNonce((current) => current + 1);
+      setSubKeys((current) => ({ ...current, printroom: key }));
     } else if (module === 'chatroom') {
       // A page picked in the sidebar leaves any open room or share sheet.
       setChatOpen(null);
@@ -1011,6 +1045,14 @@ function MasterPanel() {
               label: t('nav.chatroom'),
               icon: 'chat',
               count: chatUnread.total > 0 ? chatUnread.total : undefined,
+            }
+          : null,
+        canPrintroom
+          ? {
+              id: 'printroom',
+              label: t('nav.printroom'),
+              icon: 'print',
+              count: printWaiting > 0 ? printWaiting : undefined,
             }
           : null,
         // Under Work rather than Admin: a report is something a manager
@@ -1146,6 +1188,12 @@ function MasterPanel() {
     if (room) navigate('chatroom');
   }
 
+  /** Opens a Printroom job (from the bell). */
+  function openPrintJob(id: string): void {
+    setPrintOpen(id);
+    navigate('printroom');
+  }
+
   /** "Share in chat" on a record: the Chatroom's share sheet, with that record ready. */
   const shareInChat =
     canChat && user.permissions.includes('chat.shareRecords')
@@ -1203,6 +1251,7 @@ function MasterPanel() {
         onOpen={(link) => {
           if (link.kind === 'panel') navigate('panels');
           else if (link.kind === 'chat') openChatRoom({ id: link.id });
+          else if (link.kind === 'print') openPrintJob(link.id);
           else if (link.kind === 'role') navigate('access');
           else if (link.kind === 'lead') openRecord('leads', link.id);
         }}
@@ -1355,6 +1404,7 @@ function MasterPanel() {
           revision={revisionOf(revisions, 'records')}
           onNavigate={navigate}
           onOpenLead={(id) => openRecord('leads', id)}
+          printPending={canPrintroom ? printWaiting : undefined}
           chatUnread={canChat ? chatUnread.total : undefined}
         />
       ),
@@ -1391,6 +1441,7 @@ function MasterPanel() {
           onOpenId={(id) => setOpenIds((current) => ({ ...current, leads: id }))}
           onOpenOrder={(orderId) => openRecord('orders', orderId)}
           onShareInChat={shareInChat}
+          printroom={canSendPrint ? masterPrintroomTransport : undefined}
           userId={user.id}
         />
       ),
@@ -1433,10 +1484,30 @@ function MasterPanel() {
           onOpenId={(id) => setOpenIds((current) => ({ ...current, orders: id }))}
           onOpenLead={(leadId) => openRecord('leads', leadId)}
           onShareInChat={shareInChat}
+          printroom={canSendPrint ? masterPrintroomTransport : undefined}
           userId={user.id}
         />
       ),
     },
+    ...(canPrintroom
+      ? [
+          {
+            id: 'printroom',
+            render: () => (
+              <PrintroomScreen
+                transport={masterPrintroomTransport}
+                permissions={{ send: canSendPrint, station: canRunStation }}
+                viewerId={user.id}
+                desktop={desktopBridge() ?? undefined}
+                page={subKeyOf('printroom') as PrintPage}
+                openJobId={printOpen}
+                onOpenJob={setPrintOpen}
+                resetNonce={printResetNonce}
+              />
+            ),
+          } satisfies ScreenSpec,
+        ]
+      : []),
     ...(canChat
       ? [
           {
@@ -1602,6 +1673,13 @@ function MasterPanel() {
         }}
       />
       {syncOverlay}
+      {/* The auto-print station: invisible, and at the top so it keeps working whichever screen is showing. */}
+      <PrintStationRunner
+        transport={masterPrintroomTransport}
+        enabled={canRunStation}
+        desktop={desktopBridge() ?? undefined}
+        onNotify={(message) => toast.push(message, { tone: 'error' })}
+      />
       <ChangePasswordDialog
         open={changingPassword}
         onClose={() => setChangingPassword(false)}

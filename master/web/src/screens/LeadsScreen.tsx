@@ -63,6 +63,7 @@ import {
   useSubNav,
   useToast,
   type DataTableColumn,
+  type PrintroomTransport,
 } from '@orderbook/ui';
 
 const PAGE_SIZE = 500;
@@ -85,6 +86,8 @@ interface Props {
   onOpenOrder: (orderId: string) => void;
   /** Present only for somebody who may share records in chat (`chat.use` and `chat.shareRecords`). */
   onShareInChat?: (chip: ChatRecordChip) => void;
+  /** Present only for somebody who may send to the Printroom (`print.send`): the note screen offers it. */
+  printroom?: PrintroomTransport;
   /** `leads.create`: the empty state offers New pending order. */
   canCreate: boolean;
   onNewLead: () => void;
@@ -142,6 +145,7 @@ export function LeadsScreen({
   onOpenId,
   onOpenOrder,
   onShareInChat,
+  printroom,
   canCreate,
   onNewLead,
   canCreateParty,
@@ -517,6 +521,7 @@ export function LeadsScreen({
         onSaveVehicle={async () => undefined}
         onBack={() => setNote(null)}
         desktop={desktopBridge() ?? undefined}
+        printroom={printroom}
       />
     );
   }

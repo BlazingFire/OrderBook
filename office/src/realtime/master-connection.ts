@@ -521,6 +521,11 @@ class MasterConnection extends EventEmitter {
       this.emit('chat', push);
     });
 
+    // A Printroom job, addressed the same way.
+    socket.on('print:changed', (job) => {
+      this.emit('print', job);
+    });
+
     // Who else has a record open. Addressed the same way (`forUserId`) and
     // filtered by the HTTP layer in the same place.
     socket.on('presence:changed', (presence) => {

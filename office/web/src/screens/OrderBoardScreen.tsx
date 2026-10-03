@@ -58,6 +58,7 @@ import {
   useSubNav,
   useToast,
   type PillTone,
+  type PrintroomTransport,
 } from '@orderbook/ui';
 import type { DataTableColumn } from '@orderbook/ui';
 
@@ -79,6 +80,8 @@ interface Props {
   onStageChange: (stageId: string | null) => void;
   /** Present only for somebody who may share records in chat (`chat.use` and `chat.shareRecords`). */
   onShareInChat?: (chip: ChatRecordChip) => void;
+  /** Present only for somebody who may send to the Printroom (`print.send`): the note screen offers it. */
+  printroom?: PrintroomTransport;
 }
 
 const DISPATCH_PERMISSION = 'orders.dispatch';
@@ -140,6 +143,7 @@ export function OrderBoardScreen({
   stageId: stageFilter,
   onStageChange: setStageFilter,
   onShareInChat,
+  printroom,
   userId,
 }: Props) {
   const toast = useToast();
@@ -279,6 +283,7 @@ export function OrderBoardScreen({
         }}
         onBack={() => setNote(null)}
         desktop={desktopBridge() ?? undefined}
+        printroom={printroom}
       />
     );
   }

@@ -57,6 +57,7 @@ import {
   useSubNav,
   type DataTableColumn,
   type PillTone,
+  type PrintroomTransport,
   useToast,
 } from '@orderbook/ui';
 
@@ -81,6 +82,8 @@ interface Props {
   onOpenLead: (leadId: string) => void;
   /** Present only for somebody who may share records in chat (`chat.use` and `chat.shareRecords`). */
   onShareInChat?: (chip: ChatRecordChip) => void;
+  /** Present only for somebody who may send to the Printroom (`print.send`): the note screen offers it. */
+  printroom?: PrintroomTransport;
   /** The signed-in person, left out of who else is on the open record. */
   userId: string;
 }
@@ -114,6 +117,7 @@ export function OrdersScreen({
   onOpenId,
   onOpenLead,
   onShareInChat,
+  printroom,
   userId,
 }: Props) {
   const toast = useToast();
@@ -437,6 +441,7 @@ export function OrdersScreen({
         }}
         onBack={() => setNote(null)}
         desktop={desktopBridge() ?? undefined}
+        printroom={printroom}
       />
     );
   }
