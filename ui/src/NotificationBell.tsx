@@ -44,13 +44,13 @@ export interface LocalNotice {
 const KIND_TEXT: Record<NotificationKind, MessageKey> = {
   'panel.offlineLong': 'notification.panel.offlineLong',
   'lead.numbered': 'notification.lead.numbered',
-  'backup.autoSkipped': 'notification.backup.autoSkipped',
-  'backup.autoFailed': 'notification.backup.autoFailed',
   'chat.mention': 'notification.chat.mention',
   'task.assigned': 'notification.task.assigned',
   'task.done': 'notification.task.done',
   'access.requested': 'notification.access.requested',
   'print.printed': 'notification.print.printed',
+  'backup.autoSkipped': 'notification.backup.autoSkipped',
+  'backup.autoFailed': 'notification.backup.autoFailed',
 };
 
 /** A chat right named in a notice, as the reader's language words it. */
