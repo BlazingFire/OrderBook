@@ -4192,4 +4192,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'updates.saveAll.recordNote': 'नोट जोड़ा नहीं गया: "{text}"',
   'updates.saveAll.storagePath': 'नया डेटा फ़ोल्डर लागू नहीं किया गया (कंपनी का डेटा अपने आप नहीं हटाया जाता)',
   'updates.saveAll.leadEdit': '{party} के पेंडिंग ऑर्डर में बदलाव',
+  'updates.waiting.title': 'मास्टर के अपडेट होने की प्रतीक्षा',
+  'updates.waiting.body': 'यह ऑफ़िस पैनल संस्करण {mine} पर है, जो मास्टर पैनल ({master}) से नया है। मास्टर के उसी संस्करण पर अपडेट होने पर यह खुलेगा। यह स्क्रीन अपने आप फिर जाँच करती रहती है।',
+  'updates.saveAll.vehicle': 'वाहन नंबर {number}',
+  'updates.saveAll.stationName': 'प्रिंटरूम स्टेशन का नाम {name}',
 };

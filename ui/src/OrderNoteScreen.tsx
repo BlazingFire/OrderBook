@@ -33,6 +33,7 @@ import { createPortal } from 'react-dom';
 import { Button } from './Button.js';
 import { EditorScreen } from './EditorScreen.js';
 import { t } from './i18n.js';
+import { useUnsavedWork } from './unsavedWork.js';
 import { OrderNote } from './OrderNote.js';
 import { printOnly } from './printPortal.js';
 import type { PrintroomTransport } from './printroomModel.js';
@@ -237,6 +238,30 @@ export function OrderNoteScreen({
     setPrinter(next);
     remember(KEY_PRINTER, next);
   }
+
+  // "Save all and update": a vehicle number typed on an order and not yet saved (it
+  // saves when the field loses focus) is saved. On a pending order it is only
+  // printed, never saved, so there is nothing to lose.
+  useUnsavedWork(
+    `vehicle:${record.id}`,
+    !printOnlyVehicle && editableVehicle && cleanVehicleNumber(vehicle).trim() !== sentVehicle.current
+      ? {
+          label: t('updates.saveAll.vehicle', { number: cleanVehicleNumber(vehicle).trim() || '…' }),
+          save: async () => {
+            const value = cleanVehicleNumber(vehicle).trim();
+            try {
+              await onSaveVehicle(value === '' ? null : value);
+              sentVehicle.current = value;
+              // Shown as saved (and re-rendered, so this form stops counting as unsaved).
+              setVehicle(value);
+              return true;
+            } catch {
+              return false;
+            }
+          },
+        }
+      : null,
+  );
 
   function saveVehicle(): void {
     const value = cleanVehicleNumber(vehicle).trim();

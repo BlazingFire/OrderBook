@@ -8,7 +8,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Lead, Order } from '@orderbook/shared';
 
@@ -16,12 +16,14 @@ import { t } from '../src/i18n.js';
 import { OrderNoteScreen } from '../src/OrderNoteScreen.js';
 import { printOnly } from '../src/printPortal.js';
 import { ToastProvider } from '../src/Toast.js';
+import { listUnsavedWork, saveAllUnsavedWork, __resetUnsavedWorkForTests } from '../src/unsavedWork.js';
 import { installBrowserStubs } from './panel-harness.js';
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 beforeEach(() => {
   installBrowserStubs();
+  __resetUnsavedWorkForTests();
 });
 
 afterEach(() => {
@@ -105,6 +107,29 @@ describe('the vehicle number', () => {
     fireEvent.change(field, { target: { value: 'gj 03 ab 4471' } });
     fireEvent.blur(field);
     await waitFor(() => expect(onSaveVehicle).toHaveBeenCalledWith('GJ 03 AB 4471'));
+  });
+
+  it('Save all and update saves a vehicle number typed and not yet blurred, and lists nothing on a pending order', async () => {
+    const onSaveVehicle = vi.fn(async () => undefined);
+    mount({ record: ORDER, source: 'order', canEditVehicle: true, onSaveVehicle });
+    expect(listUnsavedWork()).toEqual([]);
+
+    fireEvent.change(screen.getByLabelText(t('orderNote.vehicleNo')), { target: { value: 'gj 03 ab 4471' } });
+    expect(listUnsavedWork().map((item) => item.label)).toEqual([
+      t('updates.saveAll.vehicle', { number: 'GJ 03 AB 4471' }),
+    ]);
+    await act(async () => {
+      await saveAllUnsavedWork();
+    });
+    expect(onSaveVehicle).toHaveBeenCalledWith('GJ 03 AB 4471');
+    // Saved: nothing left to lose.
+    expect(listUnsavedWork()).toEqual([]);
+    cleanup();
+
+    // A pending order's number is only printed, so it is never work.
+    mount({ onSaveVehicle });
+    fireEvent.change(screen.getByLabelText(t('orderNote.vehicleNo')), { target: { value: 'GJ 05 XX 1' } });
+    expect(listUnsavedWork()).toEqual([]);
   });
 
   it('is read-only on a final order the person may not edit', () => {

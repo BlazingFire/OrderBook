@@ -9,7 +9,7 @@
  * Master" are mocked. The settings file is real, in the test data folder.
  */
 
-import { rm } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -92,15 +92,40 @@ describe('when the nightly update is due', () => {
     expect(await auto.getAutoUpdateStatus()).toEqual({ enabled: true, time: '23:00', lastRun: null });
   });
 
-  it('opens at the chosen time and closes two hours later, so a PC switched on next morning does not restart itself', () => {
+  it('a night-time choice runs from that time until 05:00 the next morning, across midnight', () => {
     expect(auto.isAutoUpdateDue(file(), { date: '2026-10-03', time: '22:59' })).toBe(false);
     expect(auto.isAutoUpdateDue(file(), { date: '2026-10-03', time: '23:00' })).toBe(true);
     expect(auto.isAutoUpdateDue(file(), { date: '2026-10-03', time: '23:59' })).toBe(true);
-    // The clock has rolled over to the small hours of the next date.
-    expect(auto.isAutoUpdateDue(file(), { date: '2026-10-04', time: '00:30' })).toBe(false);
+    // The clock has rolled over to the next date: it is still the same night.
+    expect(auto.isAutoUpdateDue(file(), { date: '2026-10-04', time: '00:30' })).toBe(true);
+    expect(auto.isAutoUpdateDue(file(), { date: '2026-10-04', time: '04:59' })).toBe(true);
+    // ... and a PC switched on at breakfast does not restart itself.
+    expect(auto.isAutoUpdateDue(file(), { date: '2026-10-04', time: '05:00' })).toBe(false);
     expect(auto.isAutoUpdateDue(file(), { date: '2026-10-04', time: '08:00' })).toBe(false);
-    expect(auto.isAutoUpdateDue(file({ time: '21:00' }), { date: '2026-10-03', time: '22:59' })).toBe(true);
-    expect(auto.isAutoUpdateDue(file({ time: '21:00' }), { date: '2026-10-03', time: '23:00' })).toBe(false);
+    expect(auto.isAutoUpdateDue(file({ time: '23:30' }), { date: '2026-10-04', time: '00:10' })).toBe(true);
+    expect(auto.isAutoUpdateDue(file({ time: '21:00' }), { date: '2026-10-03', time: '23:10' })).toBe(true);
+  });
+
+  it('a run after midnight and the run before it are the same night: one a night', () => {
+    // It ran at 23:10 on the 3rd, so 00:40 on the 4th is the same night.
+    expect(auto.updateNight('23:00', { date: '2026-10-03', time: '23:10' })).toBe('2026-10-03');
+    expect(auto.updateNight('23:00', { date: '2026-10-04', time: '00:40' })).toBe('2026-10-03');
+    expect(auto.isAutoUpdateDue(file({ lastAttemptDate: '2026-10-03' }), { date: '2026-10-04', time: '00:40' })).toBe(false);
+    // The next evening is a new night.
+    expect(auto.isAutoUpdateDue(file({ lastAttemptDate: '2026-10-03' }), { date: '2026-10-04', time: '23:05' })).toBe(true);
+    // Calendar arithmetic across a month and a year.
+    expect(auto.previousDate('2026-11-01')).toBe('2026-10-31');
+    expect(auto.previousDate('2027-01-01')).toBe('2026-12-31');
+    expect(auto.previousDate('2028-03-01')).toBe('2028-02-29');
+  });
+
+  it('an early-morning choice runs the same date until 05:00; a daytime one keeps a short window', () => {
+    expect(auto.isAutoUpdateDue(file({ time: '02:00' }), { date: '2026-10-04', time: '01:59' })).toBe(false);
+    expect(auto.isAutoUpdateDue(file({ time: '02:00' }), { date: '2026-10-04', time: '04:59' })).toBe(true);
+    expect(auto.isAutoUpdateDue(file({ time: '02:00' }), { date: '2026-10-04', time: '05:00' })).toBe(false);
+    expect(auto.isAutoUpdateDue(file({ time: '14:00' }), { date: '2026-10-03', time: '16:59' })).toBe(true);
+    expect(auto.isAutoUpdateDue(file({ time: '14:00' }), { date: '2026-10-03', time: '17:00' })).toBe(false);
+    expect(auto.isAutoUpdateDue(file({ time: '14:00' }), { date: '2026-10-04', time: '01:00' })).toBe(false);
   });
 
   it('is once a day, and never when switched off', () => {
@@ -132,6 +157,17 @@ describe('the nightly run', () => {
     }));
     const status = await auto.getAutoUpdateStatus();
     expect(status.lastRun).toMatchObject({ outcome: 'installing', version: '1.3.0' });
+  });
+
+  it('still runs at 00:40 when 23:00 was missed (busy, restarting), once, and records the night it began', async () => {
+    const after = new Date('2026-10-03T19:10:00Z'); // 00:40 on the 4th in Kolkata
+    await auto.runScheduledUpdate(after);
+    expect(mocks.prepareMasterUpdate).toHaveBeenCalledTimes(1);
+    expect(auto.pendingAutoUpdate()).toMatchObject({ version: '1.3.0' });
+    // The same night, a minute later: not again.
+    await auto.runScheduledUpdate(new Date(after.getTime() + 60_000));
+    expect(mocks.prepareMasterUpdate).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(await readFile(SETTINGS, 'utf8')).lastAttemptDate).toBe('2026-10-03');
   });
 
   it('runs once a day, not on every tick of the hour', async () => {

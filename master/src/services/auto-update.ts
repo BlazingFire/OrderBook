@@ -57,8 +57,10 @@ const log = createLogger('auto-update');
 
 const TICK_MS = 60_000;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
-/** How long after the chosen time a night's update may still start. */
-export const WINDOW_MINUTES = 120;
+/** A night-time choice may start any time until this hour the next morning. */
+export const NIGHT_ENDS_AT = '05:00';
+/** A daytime choice (before 20:00, from 05:00) may start this many minutes after the chosen time. */
+export const DAYTIME_WINDOW_MINUTES = 180;
 /** Pre-update copies kept in `<dataDir>/pre-update-backups`. */
 export const KEEP_PRE_UPDATE_COPIES = 3;
 /** How long the shell has to act on a request before it lapses. */
@@ -66,7 +68,7 @@ export const REQUEST_LIFETIME_MS = 30 * 60_000;
 
 interface AutoUpdateFile extends AutoUpdateConfig {
   lastRun: AutoUpdateRun | null;
-  /** The local date (`yyyy-mm-dd`) the nightly update last started: one a day. */
+  /** The night (the local date it began, `yyyy-mm-dd`) the update last started: one a night. */
   lastAttemptDate: string | null;
   /** The newest version everybody has been told about. */
   lastNotifiedVersion: string | null;
@@ -118,14 +120,45 @@ function changeAutoUpdate(edit: (file: AutoUpdateFile) => AutoUpdateFile): Promi
 
 const minutesOf = (time: string): number => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
 
-/** Whether tonight's update may start now: on, inside the window, not yet tried today. */
+/** The calendar day before `date` (`yyyy-mm-dd`), by calendar arithmetic and no time zone. */
+export function previousDate(date: string): string {
+  const [year, month, day] = date.split('-').map(Number) as [number, number, number];
+  return new Date(Date.UTC(year, month - 1, day - 1)).toISOString().slice(0, 10);
+}
+
+/**
+ * Which night `clock` falls in, or `null` outside the window.
+ *
+ * A night-time choice (20:00 to 05:00) runs from the chosen time **until
+ * 05:00 the next morning**, so a 23:30 setting, or a Master that was busy or
+ * restarting at 23:00, still gets its run after midnight. The night is named by
+ * the date it began on, which is what `lastAttemptDate` holds, so a run at 00:40
+ * and one at 23:10 the evening before are the same night, and one a day.
+ * A daytime choice keeps a three-hour window and the date it is on.
+ */
+export function updateNight(time: string, clock: { date: string; time: string }): string | null {
+  const start = minutesOf(time);
+  const now = minutesOf(clock.time);
+  const end = minutesOf(NIGHT_ENDS_AT);
+  if (start >= 20 * 60) {
+    if (now >= start) return clock.date;
+    if (now < end) return previousDate(clock.date);
+    return null;
+  }
+  if (start < end) {
+    return now >= start && now < end ? clock.date : null;
+  }
+  return now >= start && now < start + DAYTIME_WINDOW_MINUTES ? clock.date : null;
+}
+
+/** Whether tonight's update may start now: on, inside the window, not yet tried this night. */
 export function isAutoUpdateDue(
   file: Pick<AutoUpdateFile, 'enabled' | 'time' | 'lastAttemptDate'>,
   clock: { date: string; time: string },
 ): boolean {
-  if (!file.enabled || file.lastAttemptDate === clock.date) return false;
-  const since = minutesOf(clock.time) - minutesOf(file.time);
-  return since >= 0 && since < WINDOW_MINUTES;
+  if (!file.enabled) return false;
+  const night = updateNight(file.time, clock);
+  return night !== null && file.lastAttemptDate !== night;
 }
 
 /**
@@ -198,7 +231,8 @@ export async function runScheduledUpdate(now: Date = new Date()): Promise<void> 
   if (!identity) return;
   const at = now.toISOString();
   // Marked before anything else: whatever happens, this is tonight's one attempt.
-  await changeAutoUpdate((current) => ({ ...current, lastAttemptDate: clock.date }));
+  const night = updateNight(file.time, clock) ?? clock.date;
+  await changeAutoUpdate((current) => ({ ...current, lastAttemptDate: night }));
 
   const record = (run: AutoUpdateRun) => changeAutoUpdate((current) => ({ ...current, lastRun: run }));
 
@@ -223,7 +257,7 @@ export async function runScheduledUpdate(now: Date = new Date()): Promise<void> 
         kind: 'update.installing',
         params: { version: available.version },
         link: { kind: 'update', id: available.version },
-        dedupeKey: `update.installing:${available.version}:${clock.date}`,
+        dedupeKey: `update.installing:${available.version}:${night}`,
       });
     } catch (error) {
       log.warn(`Could not send the update.installing notice: ${toErrorMessage(error)}`);

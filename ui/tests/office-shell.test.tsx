@@ -2007,7 +2007,7 @@ describe('an Office on another version than its Master (1.4 R7e)', () => {
     expect(screen.queryByRole('heading', { name: t('updates.required.title') })).toBeNull();
   });
 
-  it('does not block an Office that is ahead of its Master: only the Master can be updated for that', async () => {
+  it('also holds an Office that is ahead of its Master, waiting, with no install to offer', async () => {
     vi.stubGlobal('__APP_VERSION__', '1.4.0');
     const App = await bootWith('1.3.0');
     render(
@@ -2015,7 +2015,12 @@ describe('an Office on another version than its Master (1.4 R7e)', () => {
         <App />
       </StrictMode>,
     );
-    await screen.findByRole('link', { name: t('footer.designSystem') });
-    expect(screen.queryByRole('heading', { name: t('updates.required.title') })).toBeNull();
+
+    expect(await screen.findByRole('heading', { name: t('updates.waiting.title') })).toBeTruthy();
+    expect(screen.getByText(t('updates.waiting.body', { mine: '1.4.0', master: '1.3.0' }))).toBeTruthy();
+    // Nothing of the app, and nothing to install: only the Master can be updated for this.
+    expect(screen.queryByRole('link', { name: t('footer.designSystem') })).toBeNull();
+    expect(screen.queryByRole('button', { name: t('updates.installNow') })).toBeNull();
+    expect(screen.getByRole('button', { name: t('action.signOut') })).toBeTruthy();
   });
 });

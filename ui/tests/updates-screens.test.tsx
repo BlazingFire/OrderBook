@@ -268,6 +268,62 @@ describe('the Master update screen', () => {
   });
 });
 
+describe('the Office waiting screen (ahead of its Master)', () => {
+  async function loadRequired() {
+    configureUi({ panel: 'office', defaultTheme: 'light', themeStorageKey: 'ob.theme' });
+    const path = '../../office/web/src/screens/UpdateRequiredScreen.tsx';
+    return (await import(/* @vite-ignore */ path)) as {
+      UpdateRequiredScreen: ComponentType<Record<string, unknown>>;
+      RECHECK_MS: number;
+    };
+  }
+  const connection = { masterVersion: '1.3.0', lastSyncedAt: null };
+
+  it('asks for the Master version again every few seconds, and stops when it is no longer waiting', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    try {
+      const { UpdateRequiredScreen, RECHECK_MS } = await loadRequired();
+      const onRecheck = vi.fn();
+      const view = render(
+        <ConfirmProvider>
+          <ToastProvider>
+            <UpdateRequiredScreen connection={connection} permissions={[]} onSignOut={vi.fn()} ahead onRecheck={onRecheck} />
+          </ToastProvider>
+        </ConfirmProvider>,
+      );
+      expect(onRecheck).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(RECHECK_MS * 3 + 10);
+      expect(onRecheck).toHaveBeenCalledTimes(3);
+
+      view.unmount();
+      vi.advanceTimersByTime(RECHECK_MS * 3);
+      expect(onRecheck).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not poll when it is the behind-the-Master screen: that one offers the install instead', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    try {
+      routeFetch(({ url }) => (url === '/api/updates/available' ? json({ current: 'test', available: null }) : url === '/api/updates/progress' ? json(IDLE) : undefined));
+      const { UpdateRequiredScreen, RECHECK_MS } = await loadRequired();
+      const onRecheck = vi.fn();
+      render(
+        <ConfirmProvider>
+          <ToastProvider>
+            <UpdateRequiredScreen connection={connection} permissions={[]} onSignOut={vi.fn()} onRecheck={onRecheck} />
+          </ToastProvider>
+        </ConfirmProvider>,
+      );
+      vi.advanceTimersByTime(RECHECK_MS * 3);
+      expect(onRecheck).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('the Office update screen', () => {
   const connection = { masterVersion: '1.3.0', lastSyncedAt: null };
   const props = { connection, permissions: ['settings.manage'] };

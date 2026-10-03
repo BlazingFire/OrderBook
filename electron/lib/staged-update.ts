@@ -38,19 +38,78 @@ export const TASK_NAME = 'OrderBook Master Update';
 /** The signed manifest the shell stages beside the setup file. */
 export const STAGED_MANIFEST = 'manifest.json';
 
+/** Where the installer records the folders below, in the administrator-only program folder. */
+export const UPDATE_PATHS_FILE = 'paths.json';
+
 /**
- * The two folders under `%ProgramData%\OrderBook`.
+ * The folders the update task works in, **read from a file the installer wrote
+ * into the program folder**, never from the environment.
+ *
+ * The task runs as an account whose environment (`%ProgramData%`, `%TEMP%`,
+ * `NODE_OPTIONS` …) the same account's other programs can change, so a path
+ * derived from it is a path an attacker can choose. `paths.json` is written once,
+ * by the installer, from the Windows known-folder API, into a folder only an
+ * administrator can write.
  *
  *  - `stage`: where the (unelevated) shell puts what it wants installed. Anyone
  *    may write it, so nothing in it is believed.
- *  - `work`: created by the installer with an administrators-only ACL. The task
- *    copies the setup file here before hashing it, so it cannot be swapped
- *    between the check and the run.
+ *  - `work`: created by the installer, owned by Administrators with a protected
+ *    ACL (administrators and SYSTEM only). The task copies the setup file here
+ *    before hashing it, and runs it with `TEMP` here, so neither can be swapped.
+ *  - `powershell`: the system's own `powershell.exe`, for the ACL re-check.
  */
-export function stagedUpdateDirs(env: Record<string, string | undefined>): { stage: string; work: string } {
-  const base = env.ProgramData ?? env.PROGRAMDATA ?? 'C:\\ProgramData';
-  const root = path.win32.join(base, 'OrderBook');
-  return { stage: path.win32.join(root, 'staged-update'), work: path.win32.join(root, 'elevated') };
+export interface UpdatePaths {
+  stage: string;
+  work: string;
+  powershell: string;
+}
+
+const WINDOWS_ABSOLUTE = /^[A-Za-z]:\\[^<>:"|?*\0]+$/;
+
+/** Parse `paths.json`; `null` when anything about it is not what the installer writes. */
+export function parseUpdatePaths(text: string): UpdatePaths | null {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (typeof raw !== 'object' || raw === null) return null;
+  const { stage, work, powershell } = raw as Record<string, unknown>;
+  if (![stage, work, powershell].every((value) => typeof value === 'string' && WINDOWS_ABSOLUTE.test(value))) {
+    return null;
+  }
+  const dirs = { stage: stage as string, work: work as string, powershell: powershell as string };
+  // Two different folders under one root, and the system's own PowerShell.
+  if (dirs.stage.toLowerCase() === dirs.work.toLowerCase()) return null;
+  if (path.win32.dirname(dirs.stage).toLowerCase() !== path.win32.dirname(dirs.work).toLowerCase()) return null;
+  if (path.win32.basename(dirs.powershell).toLowerCase() !== 'powershell.exe') return null;
+  if (dirs.stage.includes('..') || dirs.work.includes('..') || dirs.powershell.includes('..')) return null;
+  return dirs;
+}
+
+/** What the task tells the shell, in the (untrusted) stage folder: a hint, never an instruction. */
+export const TASK_RESULT = 'result.json';
+
+export type TaskStatus = 'checking' | 'installing' | 'refused';
+
+/** The shell's next move after asking Windows to run the task. */
+export type AfterTaskStart = 'wait' | 'quit' | 'recover';
+
+/** How long the shell waits for the task to say anything before it brings the server back. */
+export const TASK_ANSWER_MS = 90_000;
+
+/**
+ * `quit` only when the task says it is installing; `recover` (restart the server
+ * that was stopped) when it refused, or said nothing for `TASK_ANSWER_MS` (the
+ * account was not logged on, the task could not start, the script crashed).
+ * Anything unreadable counts as saying nothing. A forged result can therefore
+ * only make the shell quit early or restart its own server.
+ */
+export function decideAfterTaskStart(status: unknown, elapsedMs: number): AfterTaskStart {
+  if (status === 'installing') return 'quit';
+  if (status === 'refused') return 'recover';
+  return elapsedMs >= TASK_ANSWER_MS ? 'recover' : 'wait';
 }
 
 /** The slice of `@orderbook/shared` the verification needs, passed in because the shell cannot import it at build time. */

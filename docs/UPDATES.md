@@ -208,11 +208,16 @@ screen after sign-in, in place of the app, and anybody signed in may install
 only once the Office *knows* the Master's version, which it learns from the
 Master's own snapshot, so an Office that starts with no connection works offline
 as ever; the first snapshot from a newer Master brings the screen. An Office that
-is *ahead* of its Master is not blocked: updating the Master is what fixes that.
+is *ahead* of its Master is held too, on a "Waiting for the Master to update"
+screen that has no install to offer: the owner's rule is that the app starts only
+when both are on the same version. That screen asks for the Master's version again
+every ten seconds and opens by itself the moment the Master matches.
 
 **The nightly update** (Master only, default **on at 23:00**, set on the App update
-screen by anybody with `settings.manage`): within the two hours after the chosen
-time the Master (1) fetches, (2) writes a copy of its data to
+screen by anybody with `settings.manage`): from the chosen time until **05:00 the
+next morning** (so a 23:30 setting, or a Master that was busy or restarting at
+23:00, still gets its run after midnight; a daytime choice keeps a three-hour
+window), once a *night*, the Master (1) fetches, (2) writes a copy of its data to
 `<dataDir>/pre-update-backups` (the newest three kept; no photos), (3) verifies
 and holds the installer, and (4) puts one request on its loopback health route.
 Its desktop shell polls that route every 30 s and runs the same checked install as
@@ -231,7 +236,43 @@ under `%ProgramData%\OrderBook`:
 | Folder | Who can write it | What it is for |
 |---|---|---|
 | `staged-update` | anybody | the Master app (not elevated) leaves the setup file and its signed `manifest.json` here |
-| `elevated` | administrators and SYSTEM only (inheritance removed) | the task copies the setup file here and hashes the copy |
+| `elevated` | administrators and SYSTEM only (inheritance removed, owner Administrators); Users may read | the task copies the setup file here, hashes the copy, runs it with `TEMP` here, and writes `result.json` and `apply.log` |
+
+**Making those folders is not a plain `icacls`.** A folder that already exists, or
+a custom install location, is the classic way to turn "install once as
+administrator" into "any program becomes administrator". So `update-dirs.ps1
+-Mode Install` (run by the installer, elevated; `master/installer/apply-update`):
+
+- **takes over the program folder** (a custom install such as `C:\OrderBook` inherits
+  Users:Modify, which would make the task's script and the release keys editable by
+  any program): owner Administrators, a protected ACL, Users read-and-run, and a
+  scan for links or foreign entries inside it;
+- **checks every folder above it**, up to the drive root: not a link, owned by
+  Administrators, SYSTEM or TrustedInstaller, and nobody else allowed to delete or
+  rewrite it (creating a new sibling, as `C:\` lets any user, is harmless);
+- **never reuses `%ProgramData%\OrderBook` as found**: a junction or symbolic link
+  there is removed (never followed), a folder owned by anybody else is moved aside,
+  and the new one is created Administrators-owned with a protected ACL, then
+  re-read and verified. `icacls` is only ever run with `/L`, so it cannot follow a
+  link and leave the attacker as owner;
+- **finds the folders by the Windows known-folder API** and records them, with the
+  system's own `powershell.exe`, in `resources\apply-update\paths.json` in the
+  hardened program folder. The task reads that file; it trusts **no environment
+  variable** (`%ProgramData%`, `%TEMP%`, `NODE_OPTIONS`… are all things the
+  account's other programs can change).
+
+If any of that fails the task is **not registered** (and an older one is removed):
+the nightly update then falls back to asking for approval, as it does without a
+task. The task re-runs the same folder check (`-Mode Check`) before it touches
+anything, and does nothing, not even write a log, if its folder fails it.
+
+The launcher (`apply-update.cmd`) clears every `NODE_*` and `ELECTRON_*` variable
+before it starts the program as plain Node, and the shipped `.exe` has the Electron
+fuses `EnableNodeOptionsEnvironmentVariable` and `EnableNodeCliInspectArguments`
+switched off (`tools/flip-fuses.cjs`, an `afterPack` hook on every Windows build,
+the Windows 7 one included), so `NODE_OPTIONS=--require evil.js` or `--inspect`
+cannot run code in the elevated process. The `RunAsNode` fuse stays on: the
+product starts its own server that way.
 
 At 23:00 the shell does not install anything itself: it stages the files and asks
 Windows to run the task (`schtasks /Run /TN "OrderBook Master Update"`). The task
@@ -245,7 +286,17 @@ only by an administrator) that **believes nothing it is given**:
    installed version, so an old signed release cannot be replayed;
 3. it copies the setup file into `elevated`, checks the copy's **size and SHA-256**
    against the signed values, and only then runs the copy, silently
-   (`/S --force-run`), waiting for it to finish.
+   (`/S --force-run`), with `TEMP` and `TMP` pointing into `elevated\tmp` (the
+   account's own temp folder is one its other programs can write), waiting for it
+   to finish.
+
+**If the task refuses, the server comes back.** By the time the shell asks Windows
+to run the task it has stopped the server. The task writes its answer
+(`checking`, `installing` or `refused`) to `elevated\result.json`, which the shell
+may read; the shell quits only on `installing`, and restarts the server on
+`refused`, or when nothing has been said for 90 seconds (the account was not
+logged on, the task could not start, its folder failed the check). A forged
+answer can only make the shell quit early or restart its own server.
 
 Anyone who can write `staged-update` can therefore make the task install only a
 build the owner signed, and only a newer one. The shell makes the same checks

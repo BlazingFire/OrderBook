@@ -26,18 +26,37 @@
   ;  - `elevated` is administrators-and-SYSTEM only: the task copies the setup file
   ;    there and hashes the copy, so it cannot be swapped between the check and
   ;    the run. (Well-known SIDs, so the names work on any Windows language.)
+  ;
+  ; Everything below is done by `update-dirs.ps1 -Mode Install`, and the task is
+  ; registered only if it succeeds. It does what a plain `icacls` could not:
+  ;  - a program folder that was made by a standard user, or inherits Users:Modify
+  ;    from a custom install location, is taken over (owner Administrators, a
+  ;    protected ACL, Users read-and-run) and checked for links inside it;
+  ;  - `%ProgramData%\OrderBook` is never reused as found: a link is removed, a
+  ;    folder owned by anybody else is moved aside, and the new one is created
+  ;    Administrators-owned with a protected ACL, then re-read and verified;
+  ;  - the folders are found by the known-folder API, not an environment variable.
+  ; The script is extracted to $PLUGINSDIR (this installer's private temp folder) and
+  ; run from there with the system's own PowerShell, by absolute path.
   Push $R0
-  ReadEnvStr $R0 ProgramData
-  ${If} $R0 == ""
-    StrCpy $R0 "C:\ProgramData"
+  Push $R1
+  InitPluginsDir
+  File "/oname=$PLUGINSDIR\update-dirs.ps1" "${BUILD_RESOURCES_DIR}\apply-update\update-dirs.ps1"
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\update-dirs.ps1" -Mode Install -InstallDir "$INSTDIR"'
+  Pop $R1
+  ${If} $R1 == "0"
+    ; Highest privileges, as the account running this installer; never started by a
+    ; schedule (the start time is a placeholder), only by `schtasks /Run` from the app.
+    nsExec::Exec 'schtasks /Create /F /TN "OrderBook Master Update" /SC ONCE /ST 00:00 /RL HIGHEST /TR "\"$INSTDIR\resources\apply-update\apply-update.cmd\""'
+    Pop $R1
+  ${Else}
+    ; Not registered, and any task left by an earlier version is removed: without
+    ; trustworthy folders the nightly update falls back to asking for approval.
+    nsExec::Exec 'schtasks /Delete /F /TN "OrderBook Master Update"'
+    Pop $R1
+    DetailPrint "The nightly update task was not registered: its folders could not be made trustworthy."
   ${EndIf}
-  CreateDirectory "$R0\OrderBook\staged-update"
-  nsExec::Exec 'icacls "$R0\OrderBook\staged-update" /grant *S-1-5-32-545:(OI)(CI)M'
-  CreateDirectory "$R0\OrderBook\elevated"
-  nsExec::Exec 'icacls "$R0\OrderBook\elevated" /inheritance:r /grant:r *S-1-5-32-544:(OI)(CI)F *S-1-5-18:(OI)(CI)F'
-  ; Highest privileges, as the account running this installer; never started by a
-  ; schedule (the start time is a placeholder), only by `schtasks /Run` from the app.
-  nsExec::Exec 'schtasks /Create /F /TN "OrderBook Master Update" /SC ONCE /ST 00:00 /RL HIGHEST /TR "\"$INSTDIR\resources\apply-update\apply-update.cmd\""'
+  Pop $R1
   Pop $R0
 !macroend
 

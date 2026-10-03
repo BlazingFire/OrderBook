@@ -1,16 +1,21 @@
 import { generateKeyPairSync, sign, type KeyObject } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import os from 'node:os';
 import path from 'node:path';
 
 import { canonicalManifestPayload, isNewer } from '@orderbook/shared';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
 import {
   TASK_NAME,
   judgeInstallerFile,
   judgeStagedManifest,
   signatureHolds,
-  stagedUpdateDirs,
+  TASK_ANSWER_MS,
+  decideAfterTaskStart,
+  parseUpdatePaths,
   type ReleaseTrust,
   type StagedManifest,
 } from '../lib/staged-update.js';
@@ -131,13 +136,58 @@ describe('judgeInstallerFile: the bytes that are about to run', () => {
   });
 });
 
-describe('where the files live', () => {
-  it('uses %ProgramData%\\OrderBook, staged for anybody and elevated for administrators', () => {
-    expect(stagedUpdateDirs({ ProgramData: 'D:\\PD' })).toEqual({
-      stage: 'D:\\PD\\OrderBook\\staged-update',
-      work: 'D:\\PD\\OrderBook\\elevated',
-    });
-    expect(stagedUpdateDirs({}).stage).toBe('C:\\ProgramData\\OrderBook\\staged-update');
+describe('parseUpdatePaths: where the task works, from the installer and not the environment', () => {
+  const good = {
+    stage: 'C:\\ProgramData\\OrderBook\\staged-update',
+    work: 'C:\\ProgramData\\OrderBook\\elevated',
+    powershell: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+  };
+
+  it('reads what the installer wrote', () => {
+    expect(parseUpdatePaths(JSON.stringify(good))).toEqual(good);
+  });
+
+  it('refuses anything the installer would not have written', () => {
+    const cases: Array<[string, unknown]> = [
+      ['relative stage', { ...good, stage: 'staged-update' }],
+      ['UNC work', { ...good, work: '\\\\evil\\share\\elevated' }],
+      ['dot-dot', { ...good, work: 'C:\\ProgramData\\OrderBook\\..\\elevated' }],
+      ['same folder twice', { ...good, work: good.stage }],
+      ['different parents', { ...good, work: 'D:\\Other\\elevated' }],
+      ['not the system powershell', { ...good, powershell: 'C:\\Users\\x\\powershell.exe.bat' }],
+      ['another program', { ...good, powershell: 'C:\\Windows\\System32\\cmd.exe' }],
+      ['missing key', { stage: good.stage, work: good.work }],
+      ['numbers', { stage: 1, work: 2, powershell: 3 }],
+    ];
+    for (const [name, value] of cases) expect(parseUpdatePaths(JSON.stringify(value)), name).toBeNull();
+    for (const text of ['', 'not json', 'null', '[]', '"x"']) expect(parseUpdatePaths(text), text).toBeNull();
+  });
+});
+
+describe('decideAfterTaskStart: bringing the server back when the task refuses', () => {
+  it('quits only when the task says it is installing', () => {
+    expect(decideAfterTaskStart('installing', 0)).toBe('quit');
+    expect(decideAfterTaskStart('installing', TASK_ANSWER_MS * 2)).toBe('quit');
+  });
+
+  it('recovers at once when the task refused', () => {
+    expect(decideAfterTaskStart('refused', 0)).toBe('recover');
+  });
+
+  it('waits while it is still checking, then recovers if it never answers', () => {
+    expect(decideAfterTaskStart('checking', 1_000)).toBe('wait');
+    expect(decideAfterTaskStart(undefined, 1_000)).toBe('wait');
+    expect(decideAfterTaskStart(undefined, TASK_ANSWER_MS - 1)).toBe('wait');
+    // The account was not logged on, the task crashed, the folder failed its check: silence.
+    expect(decideAfterTaskStart(undefined, TASK_ANSWER_MS)).toBe('recover');
+    expect(decideAfterTaskStart('checking', TASK_ANSWER_MS)).toBe('recover');
+  });
+
+  it('reads anything odd as silence, never as permission to quit', () => {
+    for (const odd of ['INSTALLING', 42, {}, null, true]) {
+      expect(decideAfterTaskStart(odd, 1_000), String(odd)).toBe('wait');
+      expect(decideAfterTaskStart(odd, TASK_ANSWER_MS)).toBe('recover');
+    }
   });
 });
 
@@ -166,7 +216,9 @@ describe('the task in the launch plan', () => {
 describe('the pieces fit together', () => {
   const script = read('electron/apply-staged-update.ts');
   const nsis = read('master/installer/installer.nsh');
-  const builder = read('master/electron-builder.yml');
+  const cmd = read('master/installer/apply-update/apply-update.cmd');
+  const ps1 = read('master/installer/apply-update/update-dirs.ps1');
+  const builders = ['master/electron-builder.yml', 'office/electron-builder.yml', 'office/electron-builder.legacy.yml'];
   const shell = read('electron/shell.ts');
 
   it('the script verifies the manifest, copies, then hashes the copy, then runs the copy', () => {
@@ -179,37 +231,222 @@ describe('the pieces fit together', () => {
     expect(script).not.toMatch(/spawn\(path\.join\(stage/);
   });
 
-  it('the script refuses to run when the administrators-only folder is missing', () => {
-    expect(script).toMatch(/await stat\(work\)[\s\S]{0,80}return 3/);
+  it('the script takes every path from paths.json and nothing from the environment', () => {
+    expect(script).toContain('UPDATE_PATHS_FILE');
+    expect(script).toContain('parseUpdatePaths(');
+    expect(script).not.toContain('stagedUpdateDirs');
+    // Not a single path comes from process.env; the only use is passing the rest of it on, with TEMP overridden.
+    expect(script.match(/process\.env/g)?.length).toBe(1);
+    expect(script).toMatch(/env: \{ \.\.\.process\.env, TEMP: temp, TMP: temp \}/);
+    expect(shell).not.toContain('stagedUpdateDirs');
+    expect(shell).toContain('readUpdatePaths()');
   });
 
-  it('the installer registers a highest-privilege task and an administrators-only folder', () => {
-    expect(nsis).toContain('schtasks /Create /F /TN "OrderBook Master Update"');
+  it('the setup is run with TEMP and TMP in the administrators-only work folder', () => {
+    expect(script).toMatch(/const temp = path\.join\(work, 'tmp'\)/);
+    expect(script).toMatch(/TEMP: temp, TMP: temp/);
+  });
+
+  it('the script has PowerShell re-check the work folder before anything is written to it, and writes nothing if that fails', () => {
+    const check = script.indexOf("'update-dirs.ps1'");
+    const firstWrite = script.indexOf("await tell('checking')");
+    expect(check).toBeGreaterThan(-1);
+    expect(firstWrite).toBeGreaterThan(check);
+    expect(script).toMatch(/if \(check\.code !== 0\) \{[\s\S]{0,400}return 2;\s*\}/);
+    // The check-failed branch must not write through the folder that failed it.
+    const branch = script.slice(script.indexOf('if (check.code !== 0)'), script.indexOf("await say('Nightly update task started')"));
+    expect(branch).not.toMatch(/tell\(|say\(|writeFile|appendFile|refuse\(/);
+  });
+
+  it('the installer hands the folders to update-dirs.ps1 and registers the task only if it succeeds', () => {
+    expect(nsis).toContain('update-dirs.ps1');
+    expect(nsis).toContain('-Mode Install -InstallDir "$INSTDIR"');
+    // The system's own PowerShell, by absolute path, not whatever PATH finds.
+    expect(nsis).toContain('"$SYSDIR\\WindowsPowerShell\\v1.0\\powershell.exe"');
+    const run = nsis.indexOf('-Mode Install');
+    const register = nsis.indexOf('schtasks /Create /F /TN "OrderBook Master Update"');
+    const guard = nsis.indexOf('${If} $R1 == "0"', run);
+    expect(register).toBeGreaterThan(guard);
+    expect(guard).toBeGreaterThan(run);
     expect(nsis).toContain('/RL HIGHEST');
     expect(nsis).toContain('apply-update\\apply-update.cmd');
-    // Administrators and SYSTEM by well-known SID, inheritance removed.
-    expect(nsis).toMatch(/elevated" \/inheritance:r \/grant:r \*S-1-5-32-544:\(OI\)\(CI\)F \*S-1-5-18:\(OI\)\(CI\)F/);
-    expect(nsis).toContain(TASK_NAME);
+    // And an earlier version's task goes when the folders cannot be made trustworthy.
+    expect(nsis).toMatch(/\$\{Else\}[\s\S]{0,300}schtasks \/Delete \/F \/TN "OrderBook Master Update"/);
+  });
+
+  it('the installer no longer reuses %ProgramData%\\OrderBook with a plain icacls (the squatting hole)', () => {
+    expect(nsis).not.toContain('ReadEnvStr $R0 ProgramData\n  ${If}');
+    expect(nsis).not.toMatch(/CreateDirectory "\$R0\\OrderBook\\(staged-update|elevated)"/);
+    expect(nsis).not.toContain('/grant *S-1-5-32-545:(OI)(CI)M');
+    expect(nsis).not.toMatch(/icacls "\$R0\\OrderBook\\elevated" \/inheritance:r/);
+  });
+
+  it('update-dirs.ps1 takes ownership, removes links, moves a foreign folder aside, and trusts no environment variable', () => {
+    for (const piece of [
+      'Clear-Squatter',
+      '[System.IO.Directory]::Delete($Target, $false)',
+      '.untrusted-',
+      '/setowner',
+      'SetAccessRuleProtection($true, $false)',
+      'GetFolderPath(\'CommonApplicationData\')',
+      '[Environment]::SystemDirectory',
+      'is a link',
+      'is owned by',
+      'lets ',
+    ]) {
+      expect(ps1, piece).toContain(piece);
+    }
+    // Paths come from the known-folder API, never from $env:.
+    expect(ps1).not.toMatch(/\$env:/i);
+    // Every icacls call that could meet a link says /L.
+    for (const line of ps1.split('\n').filter((l) => l.includes('icacls.exe'))) expect(line, line).toContain('/L');
+  });
+
+  it('the launcher clears every NODE_* and ELECTRON_* variable, then runs the script by a path from its own location', () => {
+    expect(cmd).toContain("for /f \"delims==\" %%A in ('set NODE_ 2^>nul') do set \"%%A=\"");
+    expect(cmd).toContain("for /f \"delims==\" %%A in ('set ELECTRON_ 2^>nul') do set \"%%A=\"");
+    expect(cmd).toContain('set "NODE_OPTIONS="');
+    expect(cmd.indexOf('set ELECTRON_')).toBeLessThan(cmd.indexOf('set "ELECTRON_RUN_AS_NODE=1"'));
+    // resources\apply-update\ -> the program folder is two levels up.
+    expect(cmd).toContain('"%~dp0..\\..\\OrderBook Master Panel.exe" "%~dp0apply-staged-update.js"');
   });
 
   it('the uninstaller removes the task, but not during an update that may have been started by it', () => {
-    const removal = nsis.indexOf('schtasks /Delete /F /TN "OrderBook Master Update"');
+    const removal = nsis.indexOf('schtasks /Delete /F /TN "OrderBook Master Update"', nsis.indexOf('customUnInstall'));
     const guard = nsis.lastIndexOf('${IfNot} ${isUpdated}', removal);
     expect(removal).toBeGreaterThan(-1);
     expect(guard).toBeGreaterThan(-1);
     expect(nsis.slice(guard, removal)).not.toContain('${EndIf}');
   });
 
-  it('the package ships the script, its helper and the launcher as real files', () => {
-    for (const piece of ['apply-staged-update.js', 'lib/staged-update.js', 'apply-update/package.json', 'apply-update.cmd']) {
+  it('the package ships the script, its helper, the launcher and the PowerShell script as real files', () => {
+    const builder = read('master/electron-builder.yml');
+    for (const piece of ['apply-staged-update.js', 'lib/staged-update.js', 'apply-update/package.json', 'apply-update.cmd', 'update-dirs.ps1']) {
       expect(builder, piece).toContain(piece);
     }
   });
 
-  it('the shell stages and checks before it stops the server', () => {
+  it('every Windows build switches the NODE_OPTIONS and --inspect fuses off after packing', () => {
+    for (const file of builders) expect(read(file), file).toMatch(/^afterPack: \.\.\/tools\/flip-fuses\.cjs$/m);
+  });
+
+  it('the shell stages and checks before it stops the server, and waits for the task before it quits', () => {
     const stage = shell.indexOf('stageForUpdateTask(verdict.path, prepared)');
     const stop = shell.indexOf('await stopServer();', stage);
     expect(stage).toBeGreaterThan(-1);
     expect(stop).toBeGreaterThan(stage);
+    const run = shell.indexOf("plan.how === 'task'", stop);
+    const wait = shell.indexOf('waitForUpdateTask(startedAt)', run);
+    const quit = shell.indexOf('app.quit();', wait);
+    expect(wait).toBeGreaterThan(run);
+    expect(quit).toBeGreaterThan(wait);
+    expect(shell).toMatch(/=== 'recover'\) \{\s*throw new Error/);
+  });
+});
+
+describe('the fuses', () => {
+  const { flipFuses, readFuses, SENTINEL } = createRequire(import.meta.url)('../../tools/flip-fuses.cjs') as {
+    flipFuses: (buffer: Buffer, indexes?: Record<number, string>) => string[];
+    readFuses: (buffer: Buffer) => Record<string, boolean | null>;
+    SENTINEL: Buffer;
+  };
+
+  /** A binary-shaped buffer: padding, the sentinel, version 1, the wire length, and the fuse bytes. */
+  const exe = (wire: string, pad = 64): Buffer =>
+    Buffer.concat([Buffer.alloc(pad, 0x90), SENTINEL, Buffer.from([1, wire.length]), Buffer.from(wire, 'latin1'), Buffer.alloc(pad, 0x90)]);
+
+  it('turns NODE_OPTIONS and --inspect off and leaves the rest as they were, RunAsNode included', () => {
+    const bytes = exe('11111r10'); // RunAsNode on, ..., NodeOptions on, Inspect on, ...
+    expect(flipFuses(bytes)).toEqual(['EnableNodeOptionsEnvironmentVariable', 'EnableNodeCliInspectArguments']);
+    expect(bytes.subarray(bytes.indexOf(SENTINEL) + SENTINEL.length + 2).toString('latin1').slice(0, 8)).toBe('11001r10');
+    expect(readFuses(bytes)).toEqual({ EnableNodeOptionsEnvironmentVariable: false, EnableNodeCliInspectArguments: false });
+  });
+
+  it('is a no-op on fuses that are already off, and says nothing was switched', () => {
+    expect(flipFuses(exe('10001111'))).toEqual([]);
+  });
+
+  it('refuses a binary it cannot read, rather than leaving a fuse on without saying', () => {
+    expect(() => flipFuses(Buffer.alloc(100))).toThrow(/sentinel was not found/);
+    expect(() => flipFuses(Buffer.concat([exe('11111111'), exe('11111111')]))).toThrow(/twice/);
+    expect(() => flipFuses(exe('11'))).toThrow(/fuse wire has 2 fuses/);
+    const odd = exe('1111');
+    odd[odd.indexOf(SENTINEL) + SENTINEL.length] = 9;
+    expect(() => flipFuses(odd)).toThrow(/version 9/);
+  });
+
+  it('works on the Electron this repository ships', () => {
+    const electron = path.join(repo, 'node_modules', 'electron', 'dist', 'electron.exe');
+    if (!existsSync(electron)) return;
+    const bytes = readFileSync(electron);
+    expect(readFuses(bytes)).toEqual({ EnableNodeOptionsEnvironmentVariable: true, EnableNodeCliInspectArguments: true });
+    flipFuses(bytes);
+    expect(readFuses(bytes)).toEqual({ EnableNodeOptionsEnvironmentVariable: false, EnableNodeCliInspectArguments: false });
+  });
+});
+
+/**
+ * The folder rules, run for real (Windows only): the same PowerShell the task runs
+ * to re-check its folders. Elevated pieces (taking ownership) cannot run in a
+ * test, so what is exercised is the *refusing* half, which is the half that stops
+ * a squatter.
+ */
+describe.skipIf(process.platform !== 'win32')('update-dirs.ps1 -Mode Check, run for real', () => {
+  const script = path.join(repo, 'master', 'installer', 'apply-update', 'update-dirs.ps1');
+  const root = mkdtempSync(path.join(os.tmpdir(), 'ob-ps-'));
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+
+  function check(target: string): { code: number; output: string } {
+    const result = spawnSync(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Mode', 'Check', '-Path', target],
+      { encoding: 'utf8', windowsHide: true },
+    );
+    return { code: result.status ?? -1, output: String(result.stdout).trim() };
+  }
+
+  it('accepts a folder Windows itself owns and protects', () => {
+    expect(check(process.env.SystemRoot ?? 'C:\\Windows')).toEqual({ code: 0, output: '' });
+  });
+
+  it('refuses a folder the current user owns and can write: that is what a squatter would have made', () => {
+    const squatted = path.join(root, 'OrderBook');
+    mkdirSync(squatted);
+    const { code, output } = check(squatted);
+    expect(code).toBe(1);
+    expect(output).toMatch(/is owned by|lets /);
+  });
+
+  it('refuses a folder whose ACL is perfect but whose owner is a standard user: an owner can always rewrite the ACL', () => {
+    const folder = path.join(root, 'owned-by-user');
+    mkdirSync(folder);
+    // Only Administrators and SYSTEM listed, inheritance cut: no weak entry at all.
+    const acl = spawnSync('icacls.exe', [folder, '/inheritance:r', '/grant:r', '*S-1-5-32-544:(OI)(CI)F', '*S-1-5-18:(OI)(CI)F'], { windowsHide: true });
+    expect(acl.status).toBe(0);
+    const { code, output } = check(folder);
+    expect(code).toBe(1);
+    expect(output).toContain('is owned by');
+    // Give it back so the temp folder can be removed.
+    spawnSync('icacls.exe', [folder, '/reset'], { windowsHide: true });
+  });
+
+  it('refuses a junction, even to a perfectly good folder, so a write cannot be steered through it', () => {
+    const link = path.join(root, 'junction');
+    symlinkSync(process.env.SystemRoot ?? 'C:\\Windows', link, 'junction');
+    const { code, output } = check(link);
+    expect(code).toBe(1);
+    expect(output).toContain('is a link');
+  });
+
+  it('refuses a folder reached through a link in any ancestor', () => {
+    const link = path.join(root, 'junction');
+    if (!existsSync(link)) symlinkSync(process.env.SystemRoot ?? 'C:\\Windows', link, 'junction');
+    const { code, output } = check(path.join(link, 'System32'));
+    expect(code).toBe(1);
+    expect(output).toContain('is a link');
+  });
+
+  it('refuses a folder that does not exist rather than passing it', () => {
+    expect(check(path.join(root, 'nothing-here')).code).toBe(1);
   });
 });

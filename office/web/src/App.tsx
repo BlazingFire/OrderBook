@@ -837,14 +837,17 @@ function OfficePanel() {
     );
   }
 
-  // A different version from the Master's (1.4 R7e): nothing past this point
-  // until this panel is updated. Only once the Master's version is known.
-  if (standing(__APP_VERSION__, connection.masterVersion) === 'behind') {
+  // A different version from the Master's (1.4 R7e), in either direction: nothing
+  // past this point until the two match. Only once the Master's version is known.
+  const against = standing(__APP_VERSION__, connection.masterVersion);
+  if (against === 'behind' || against === 'ahead') {
     return (
       <UpdateRequiredScreen
         connection={connection}
         permissions={session.permissions}
         onSignOut={() => void signOut()}
+        ahead={against === 'ahead'}
+        onRecheck={() => void refreshConnection()}
       />
     );
   }

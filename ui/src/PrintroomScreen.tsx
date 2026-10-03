@@ -27,6 +27,7 @@ import { apiErrorText } from './errorText.js';
 import { Input, Switch } from './Form.js';
 import { formatDateTime } from './format.js';
 import { t } from './i18n.js';
+import { useUnsavedWork } from './unsavedWork.js';
 import { NoteDocumentPortal, NoteDocumentSheets } from './NoteDocumentPortal.js';
 import { printOnly } from './printPortal.js';
 import {
@@ -157,7 +158,8 @@ function StationStrip({
   // A remembered printer that has gone is not offered as chosen.
   const chosen = printers.some((printer) => printer.name === config.printerName) ? config.printerName : '';
 
-  async function save(next: { printerName: string; autoPrint: boolean; displayName: string }): Promise<void> {
+  /** True when the station was saved on the Master; a failure is shown as a toast and answers false. */
+  async function save(next: { printerName: string; autoPrint: boolean; displayName: string }): Promise<boolean> {
     writeStationConfig(next);
     try {
       await transportRef.current.saveStation({
@@ -165,10 +167,24 @@ function StationStrip({
         printerName: next.printerName === '' ? null : next.printerName,
         autoPrint: next.autoPrint,
       });
+      return true;
     } catch (caught) {
       toast.push(apiErrorText(caught, 'printroom.error.load'), { tone: 'error' });
+      return false;
     }
   }
+
+  // "Save all and update": a station name typed and not yet saved (it saves when the
+  // field loses focus) is saved.
+  useUnsavedWork(
+    'print-station-name',
+    name.trim() !== config.displayName
+      ? {
+          label: t('updates.saveAll.stationName', { name: name.trim() || '…' }),
+          save: () => save({ ...config, displayName: name.trim() }),
+        }
+      : null,
+  );
 
   return (
     <section className="ob-print-station" aria-label={t('printroom.station.title')}>

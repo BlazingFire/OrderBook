@@ -3213,4 +3213,8 @@ export const EN_MESSAGES = {
   'updates.saveAll.recordNote': 'Note not added: "{text}"',
   'updates.saveAll.storagePath': 'New data folder not applied (moving the company data is not done for you)',
   'updates.saveAll.leadEdit': 'Changes to the pending order for {party}',
+  'updates.waiting.title': 'Waiting for the Master to update',
+  'updates.waiting.body': 'This Office Panel is on version {mine}, which is newer than the Master Panel ({master}). It opens when the Master has been updated to the same version. This screen checks again by itself.',
+  'updates.saveAll.vehicle': 'Vehicle number {number}',
+  'updates.saveAll.stationName': 'Printroom station name {name}',
 } as const;

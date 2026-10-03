@@ -30,7 +30,7 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { existsSync } from 'node:fs';
-import { copyFile, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -71,7 +71,17 @@ import {
 import { detectStandaloneBuild, loginItemOptions } from './lib/standalone.js';
 import { canRestart, isExpectedExit, pruneRestarts, RESTART_LIMIT } from './lib/supervisor.js';
 import { uninstallCommand, uninstallScriptsDir } from './lib/uninstall.js';
-import { judgeStagedManifest, STAGED_MANIFEST, stagedUpdateDirs, TASK_NAME, type ReleaseTrust } from './lib/staged-update.js';
+import {
+  decideAfterTaskStart,
+  judgeStagedManifest,
+  parseUpdatePaths,
+  STAGED_MANIFEST,
+  TASK_NAME,
+  TASK_RESULT,
+  UPDATE_PATHS_FILE,
+  type ReleaseTrust,
+  type UpdatePaths,
+} from './lib/staged-update.js';
 import { isHighIntegrity, planInstallerLaunch, unattendedInstallDue } from './lib/update-launch.js';
 
 export interface PanelShellConfig {
@@ -575,10 +585,25 @@ export function runPanelShell(config: PanelShellConfig): void {
     }
   }
 
-  /** The installer's update task is registered, and the two folders it works in exist. */
+  /**
+   * The folders the update task works in, from the file the installer wrote into
+   * the (administrator-only) program folder. Never from the environment, which
+   * this account's other programs can change.
+   */
+  async function readUpdatePaths(): Promise<UpdatePaths | null> {
+    try {
+      return parseUpdatePaths(
+        await readFile(path.join(process.resourcesPath, 'apply-update', UPDATE_PATHS_FILE), 'utf8'),
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  /** The installer's update task is registered, and the folders it works in exist. */
   async function updateTaskIsReady(): Promise<boolean> {
-    const { stage, work } = stagedUpdateDirs(process.env);
-    if (!existsSync(stage) || !existsSync(work)) return false;
+    const paths = await readUpdatePaths();
+    if (!paths || !existsSync(paths.stage) || !existsSync(paths.work)) return false;
     return new Promise((resolve) => {
       execFile('schtasks.exe', ['/Query', '/TN', TASK_NAME], { windowsHide: true, timeout: 10_000 }, (error) =>
         resolve(!error),
@@ -627,7 +652,9 @@ export function runPanelShell(config: PanelShellConfig): void {
     if (!verdict.ok) return verdict.reason;
     if (verdict.manifest.file !== path.basename(setupPath)) return 'the manifest names another file';
 
-    const { stage } = stagedUpdateDirs(process.env);
+    const paths = await readUpdatePaths();
+    if (!paths) return 'the installer did not record where the update folders are';
+    const { stage } = paths;
     try {
       await mkdir(stage, { recursive: true });
       for (const entry of await readdir(stage)) await rm(path.join(stage, entry), { force: true, recursive: true });
@@ -637,6 +664,34 @@ export function runPanelShell(config: PanelShellConfig): void {
       return `the files could not be staged (${String(error)})`;
     }
     return null;
+  }
+
+  /**
+   * After asking Windows to run the update task, wait for what it says (the task
+   * writes `result.json` into its own folder, which this account may read). The
+   * server is stopped by now, so a task that refuses, or never starts (its account
+   * is not logged on, it crashed), must bring it back: `recover` says so. Only
+   * `installing` lets this app quit.
+   */
+  async function waitForUpdateTask(startedAt: number): Promise<'quit' | 'recover'> {
+    const paths = await readUpdatePaths();
+    const resultFile = paths ? path.join(paths.work, TASK_RESULT) : null;
+    for (;;) {
+      let status: unknown;
+      if (resultFile) {
+        try {
+          // Only an answer written after this run was asked for: an old one is not about this run.
+          if ((await stat(resultFile)).mtimeMs >= startedAt - 1_000) {
+            status = (JSON.parse(await readFile(resultFile, 'utf8')) as { status?: unknown }).status;
+          }
+        } catch {
+          // Not written yet, or half-written: the next look decides.
+        }
+      }
+      const next = decideAfterTaskStart(status, Date.now() - startedAt);
+      if (next !== 'wait') return next;
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
   }
 
   /** Whether this process holds an elevated token. Windows only; anything else is "no". */
@@ -854,6 +909,15 @@ export function runPanelShell(config: PanelShellConfig): void {
       if (plan.how === 'open') {
         const failure = await electronShell.openPath(verdict.path);
         if (failure) throw new Error(failure);
+      } else if (plan.how === 'task') {
+        const startedAt = Date.now();
+        const child = spawn(plan.command, plan.args, { stdio: 'ignore', windowsHide: true });
+        const [code] = (await once(child, 'exit')) as [number | null];
+        if (code !== 0) throw new Error(`Windows did not start the update task (exit ${String(code)})`);
+        // The task may still refuse after Windows started it: wait for it to say so.
+        if ((await waitForUpdateTask(startedAt)) === 'recover') {
+          throw new Error('the update task did not go on to install; bringing the server back');
+        }
       } else {
         const child = spawn(plan.command, plan.args, {
           detached: plan.how === 'spawn',

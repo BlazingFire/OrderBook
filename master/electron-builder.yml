@@ -30,6 +30,9 @@ directories:
 # workspace — which strips the repo's dev dependencies and breaks the next
 # `npm run build` on the developer's own machine. It did exactly that once.
 npmRebuild: false
+# Switches off the fuses that let NODE_OPTIONS or --inspect steer the program (1.4 R8;
+# `tools/flip-fuses.cjs` says why). The `RunAsNode` fuse stays on: the server is started with it.
+afterPack: ../tools/flip-fuses.cjs
 buildDependenciesFromSource: false
 
 files:
@@ -71,6 +74,10 @@ extraResources:
     to: apply-update/package.json
   - from: installer/apply-update/apply-update.cmd
     to: apply-update/apply-update.cmd
+  # The task re-checks its folders with this before every run, and the installer
+  # runs it to make them (`-Mode Install`).
+  - from: installer/apply-update/update-dirs.ps1
+    to: apply-update/update-dirs.ps1
 
 # One 1024px PNG per panel, rendered by `node tools/make-icons.mjs` from the
 # logo lattice; electron-builder derives the .ico and .icns from it.

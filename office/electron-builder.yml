@@ -30,6 +30,9 @@ directories:
 # workspace — which strips the repo's dev dependencies and breaks the next
 # `npm run build` on the developer's own machine. It did exactly that once.
 npmRebuild: false
+# Switches off the fuses that let NODE_OPTIONS or --inspect steer the program (1.4 R8;
+# `tools/flip-fuses.cjs` says why). The `RunAsNode` fuse stays on: the server is started with it.
+afterPack: ../tools/flip-fuses.cjs
 buildDependenciesFromSource: false
 
 files:

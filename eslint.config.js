@@ -238,6 +238,13 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
+    // `tools/flip-fuses.cjs` is an electron-builder `afterPack` hook, which
+    // electron-builder `require`s: it has to be CommonJS.
+    files: ['tools/**/*.cjs'],
+    languageOptions: { sourceType: 'commonjs', globals: globals.node },
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
+  {
     /*
      * The rules of hooks, enforced rather than assumed.
      *

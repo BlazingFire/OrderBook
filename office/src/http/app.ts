@@ -1369,7 +1369,8 @@ export function createApp(): Express {
    */
   app.post('/api/updates/download', requireUser, (_req, res) => {
     // Behind the Master, anyone signed in may update: the "Update needed" screen
-    // (1.4 R7e) blocks everything else, so it would be a dead end otherwise.
+    // (1.4 R7e) blocks everything else, so it would be a dead end otherwise. (Ahead
+    // of the Master there is nothing to install: that screen only waits.)
     const mandatory = standing(appVersion(), masterConnection.getStatus().masterVersion) === 'behind';
     if (!mandatory && !userSession.can('settings.manage')) {
       res.status(403).json({
