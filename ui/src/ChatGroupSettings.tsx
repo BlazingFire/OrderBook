@@ -23,6 +23,7 @@ import { t } from './i18n.js';
 import { ConflictBanner, SkeletonRows } from './States.js';
 import { ServerMasterBadge } from './TierPill.js';
 import { useToast } from './Toast.js';
+import { useFormBaseline, useUnsavedWork } from './unsavedWork.js';
 
 export interface ChatGroupSettingsProps {
   transport: ChatTransport;
@@ -54,6 +55,10 @@ export function ChatGroupSettings(props: ChatGroupSettingsProps) {
   const [newMembers, setNewMembers] = useState<ChatPerson[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A new group starts empty; an existing one is marked once its detail arrives.
+  const baseline = useFormBaseline<unknown>(
+    props.roomId === 'new' ? { name: '', description: '', announce: false, members: [] } : undefined,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -74,6 +79,12 @@ export function ChatGroupSettings(props: ChatGroupSettingsProps) {
     void transportRef.current.room(roomId).then(
       (room) => {
         if (cancelled) return;
+        baseline.mark({
+          name: room.name ?? '',
+          description: room.description ?? '',
+          announce: room.announceOnly,
+          members: [],
+        });
         setDetail(room);
         setName(room.name ?? '');
         setDescription(room.description ?? '');
@@ -86,7 +97,7 @@ export function ChatGroupSettings(props: ChatGroupSettingsProps) {
     return () => {
       cancelled = true;
     };
-  }, [roomId, creating]);
+  }, [roomId, creating, baseline]);
 
   const isManager = viewer.permissions.includes('chat.manage');
   const mayEdit = creating || detail?.myRole === 'admin' || isManager;
@@ -99,7 +110,8 @@ export function ChatGroupSettings(props: ChatGroupSettingsProps) {
     setDetail(await transportRef.current.room(roomId));
   }
 
-  async function save(): Promise<void> {
+  /** True when the group was saved; false when it failed (the reason is shown in the form). */
+  async function save(): Promise<boolean> {
     setBusy(true);
     setError(null);
     try {
@@ -121,12 +133,32 @@ export function ChatGroupSettings(props: ChatGroupSettingsProps) {
         toast.push(t('chat.group.saved'), { tone: 'ok' });
         await refresh();
       }
+      return true;
     } catch (caught) {
       setError(apiErrorText(caught, 'chat.error.group'));
+      return false;
     } finally {
       setBusy(false);
     }
   }
+
+  // "Save all and update": a group being created or renamed is saved if it has a
+  // name, and named if it has not.
+  useUnsavedWork(
+    'chat-group',
+    mayEdit &&
+      baseline.dirty({
+        name,
+        description,
+        announce,
+        members: newMembers.map((person) => person.id),
+      })
+      ? {
+          label: t('updates.saveAll.chatGroup', { name: name.trim() || '…' }),
+          save: async () => (name.trim() ? save() : false),
+        }
+      : null,
+  );
 
   async function archive(archived: boolean): Promise<void> {
     if (archived) {

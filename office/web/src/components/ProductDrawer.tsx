@@ -65,6 +65,8 @@ import {
   useColourHex,
   useCommand,
   useEnterToAdvance,
+  useFormBaseline,
+  useUnsavedWork,
 } from '@orderbook/ui';
 
 export interface CreatedProduct {
@@ -133,6 +135,7 @@ export function ProductDrawer({
   const [multiColour, setMultiColour] = useState(false);
   const [rows, setRows] = useState<VariantRow[]>([EMPTY_ROW]);
   const [busy, setBusy] = useState(false);
+  const baseline = useFormBaseline<unknown>();
 
   const set = (field: keyof Draft, value: string): void =>
     setDraft((current) => ({ ...current, [field]: value }));
@@ -148,22 +151,23 @@ export function ProductDrawer({
   useEffect(() => {
     if (!open) return;
 
+    let loaded: { draft: Draft; hasVariants: boolean; multiColour: boolean; rows: VariantRow[] };
     if (editing) {
       const single = editing.variants[0];
-      setDraft({
-        name: editing.name,
-        categoryId: editing.categoryId,
-        alias: editing.alias ?? '',
-        size: editing.size ?? '',
-        code: !editing.hasVariants && single ? single.code : '',
-        weightKg: !editing.hasVariants && single?.weightKg != null ? String(single.weightKg) : '',
-      });
-      setHasVariants(editing.hasVariants);
-      setMultiColour(editing.multiColour);
-      // Deactivated variants stay off the table: they are history's, not the
-      // form's, and re-adding the same label brings the old row back.
-      setRows(
-        editing.hasVariants
+      loaded = {
+        draft: {
+          name: editing.name,
+          categoryId: editing.categoryId,
+          alias: editing.alias ?? '',
+          size: editing.size ?? '',
+          code: !editing.hasVariants && single ? single.code : '',
+          weightKg: !editing.hasVariants && single?.weightKg != null ? String(single.weightKg) : '',
+        },
+        hasVariants: editing.hasVariants,
+        multiColour: editing.multiColour,
+        // Deactivated variants stay off the table: they are history's, not the
+        // form's, and re-adding the same label brings the old row back.
+        rows: editing.hasVariants
           ? editing.variants
               .filter((variant) => variant.isActive)
               .map((variant) => ({
@@ -173,13 +177,15 @@ export function ProductDrawer({
                 weightKg: variant.weightKg != null ? String(variant.weightKg) : '',
               }))
           : [EMPTY_ROW],
-      );
+      };
     } else {
-      setDraft(EMPTY);
-      setHasVariants(false);
-      setMultiColour(false);
-      setRows([EMPTY_ROW]);
+      loaded = { draft: EMPTY, hasVariants: false, multiColour: false, rows: [EMPTY_ROW] };
     }
+    baseline.mark(loaded);
+    setDraft(loaded.draft);
+    setHasVariants(loaded.hasVariants);
+    setMultiColour(loaded.multiColour);
+    setRows(loaded.rows);
 
     // Keyed on the record's identity, not the record: an unrelated field
     // arriving through the event stream must not wipe a half-typed draft.
@@ -223,16 +229,17 @@ export function ProductDrawer({
       }));
   }
 
-  async function save(): Promise<void> {
+  /** True when the product was saved; false when it was refused or failed (the reason went to `onError`). */
+  async function save(): Promise<boolean> {
     const name = draft.name.trim();
 
     if (!name) {
       onError(t('product.nameRequired'));
-      return;
+      return false;
     }
     if (!draft.categoryId) {
       onError(t('validation.product.categoryRequired'));
-      return;
+      return false;
     }
 
     const variants = variantInputs();
@@ -242,7 +249,7 @@ export function ProductDrawer({
       validateProductVariants(variants, hasVariants);
     } catch (caught) {
       onError(caught instanceof ProductValidationError ? t(caught.messageKey) : String(caught));
-      return;
+      return false;
     }
 
     const text = (field: keyof Draft): string | null => draft[field].trim() || null;
@@ -275,13 +282,25 @@ export function ProductDrawer({
         const result = await api.createProduct(input);
         onCreated?.({ id: result.id, name, code: variants[0]?.code ?? '' });
         setDraft(EMPTY);
+        baseline.mark({ draft: EMPTY, hasVariants, multiColour, rows });
       }
+      return true;
     } catch (caught) {
       onError(caught instanceof Error ? caught.message : t('product.createFailed'));
+      return false;
     } finally {
       setBusy(false);
     }
   }
+
+  // "Save all and update": a product form with something typed in it is saved if it
+  // is complete, and named if it is not.
+  useUnsavedWork(
+    'product-form',
+    open && baseline.dirty({ draft, hasVariants, multiColour, rows })
+      ? { label: t('updates.saveAll.product', { name: draft.name.trim() || '…' }), save }
+      : null,
+  );
 
   const text = (field: keyof Draft, label: string, extra: Record<string, unknown> = {}) => (
     <Field label={label}>

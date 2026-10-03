@@ -16,14 +16,17 @@
  *    `CreateProcess`, which cannot elevate.
  *  - **Nobody is** (the nightly update): a prompt on the secure desktop would
  *    wait for an answer that is not coming, with the server already stopped and
- *    the shop's Master down all night. So the nightly update runs the installer
- *    only if this process is *already* elevated; otherwise it declines
- *    (`needs-approval`) and leaves everything running. Making the unattended
- *    install work for a non-elevated Master is an owner decision (see the D1
- *    log, QUESTION on UAC).
+ *    the shop's Master down all night. So the nightly update never raises one:
+ *      - already elevated: it runs the setup directly;
+ *      - not elevated, but the installer registered the "OrderBook Master Update"
+ *        task at install time: it asks Windows to run that task (`task`), which
+ *        verifies the signed manifest itself and installs (`lib/staged-update.ts`);
+ *      - neither: it declines (`needs-approval`) and leaves everything running.
  *
  * macOS opens the `.dmg`; Linux is the AppImage path and does not come here.
  */
+
+import { TASK_NAME } from './staged-update.js';
 
 /** The arguments the NSIS setup is run with: silent, and start the app afterwards. */
 export const INSTALLER_ARGUMENTS: readonly string[] = ['/S', '--force-run'];
@@ -35,6 +38,8 @@ export type InstallerLaunch =
   | { how: 'spawn'; command: string; args: string[] }
   /** Ask Windows to elevate it, which raises the UAC prompt. */
   | { how: 'elevate'; command: string; args: string[] }
+  /** Ask Windows to run the pre-approved update task; the task does the checking and the install. */
+  | { how: 'task'; command: string; args: string[] }
   /** Cannot be done without somebody to approve it. Nothing was started. */
   | { how: 'needs-approval' };
 
@@ -58,13 +63,19 @@ export function planInstallerLaunch(input: {
   unattended: boolean;
   /** Whether this process already holds an elevated token (Windows). */
   elevated: boolean;
+  /** Whether the installer's update task is registered and its folders are in place. */
+  taskReady?: boolean;
 }): InstallerLaunch {
   if (input.platform !== 'win32') return { how: 'open' };
 
   if (input.elevated) {
     return { how: 'spawn', command: input.file, args: [...INSTALLER_ARGUMENTS] };
   }
-  if (input.unattended) return { how: 'needs-approval' };
+  if (input.unattended) {
+    return input.taskReady
+      ? { how: 'task', command: 'schtasks.exe', args: ['/Run', '/TN', TASK_NAME] }
+      : { how: 'needs-approval' };
+  }
 
   const list = INSTALLER_ARGUMENTS.map(powershellQuote).join(',');
   return {

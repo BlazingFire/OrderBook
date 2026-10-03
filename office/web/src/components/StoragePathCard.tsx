@@ -19,7 +19,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-import { Button, Card, FormField, Input, formatBytes, t } from '@orderbook/ui';
+import { Button, Card, FormField, Input, formatBytes, t, useUnsavedWork } from '@orderbook/ui';
 
 import { api, desktopBridge } from '../api';
 
@@ -31,6 +31,15 @@ export function StoragePathCard() {
   const [error, setError] = useState<string | null>(null);
   const [moved, setMoved] = useState<string | null>(null);
   const [freeBytes, setFreeBytes] = useState<number | null>(null);
+
+  // "Save all and update": a new data folder typed and not yet applied is named,
+  // never applied. Moving the company's data is not something to do behind an update.
+  useUnsavedWork(
+    'storage-path',
+    dataDir !== null && draft.trim() !== '' && draft.trim() !== dataDir
+      ? { label: t('updates.saveAll.storagePath') }
+      : null,
+  );
 
   /*
    * Read again after a move, not just on mount. `relocateDataDir` refuses a

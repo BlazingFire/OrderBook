@@ -17,9 +17,10 @@ you push to main
 ```
 
 Office panels never reach the internet for an update: they ask their Master
-over the LAN. The Master reaches GitHub only when `ORDERBOOK_RELEASES_GITHUB_REPO`
-is set, and it is unset by default — so out of the box nothing in the update
-path leaves the LAN. (It is one of two internet-capable paths in the product;
+over the LAN. Since 1.4 the Master reaches GitHub by default, to the public
+`BlazingFire/OrderBook-Releases` (`ORDERBOOK_RELEASES_GITHUB_REPO` overrides it, and
+setting it to nothing turns it off). Only the Master ever does; no Office Panel
+leaves the LAN. (It is one of two internet-capable paths in the product;
 the other is the Master's outbound connectors, which call whatever URL an
 administrator configures under Integrations.) A shop floor with no route to the
 outside world still updates every till from one PC, and a site with no
@@ -65,8 +66,8 @@ signs, then drop the old one.
 
 ### 3. Make the releases repository
 
-Create a **public** repository holding nothing but release assets, e.g.
-`you/orderbook-releases`.
+The releases repository is **public** and holds nothing but release assets:
+`BlazingFire/OrderBook-Releases` (created 2026-10-03).
 
 It is public on purpose. Release assets on a private repository need an
 `Authorization` header, so fetching them means shipping a token to every
@@ -84,13 +85,16 @@ On this repository, in Settings → Secrets and variables → Actions:
 | Secret   | `RELEASE_KEY`     | contents of the private `.pem` from step 1    |
 | Secret   | `RELEASES_TOKEN`  | a token with `contents: write` on the releases repo |
 | Variable | `RELEASE_KEY_ID`  | the key id the keygen script printed          |
-| Variable | `RELEASES_REPO`   | `you/orderbook-releases`                       |
+| Variable | `RELEASES_REPO`   | optional: only to publish somewhere other than `BlazingFire/OrderBook-Releases` |
 
-On each Master PC, in its `.env`:
+On each Master PC nothing is needed: it fetches from `BlazingFire/OrderBook-Releases`.
+To use another repository, or none, put this in its `.env`:
 
 ```
-ORDERBOOK_RELEASES_GITHUB_REPO=you/orderbook-releases
+ORDERBOOK_RELEASES_GITHUB_REPO=you/other-releases
+ORDERBOOK_RELEASES_GITHUB_REPO=
 ```
+(the first points elsewhere; the second, empty, turns fetching off).
 
 Without `RELEASE_KEY` the workflow still builds, but publishes a **draft** — and
 drafts are ignored by every panel. No key, no fleet update. That is deliberate:
@@ -147,8 +151,11 @@ for an operating system the shop no longer runs, delete its
 **What has to be true on a real install for any of this to run.** Three things,
 all in `.env` or in the build, none of them a code change:
 
-1. `ORDERBOOK_RELEASES_GITHUB_REPO=owner/repo` on the Master PC (there is no
-   default repository: it is the owner's own releases repository).
+1. Nothing, for the repository: every Master fetches from the public
+   `BlazingFire/OrderBook-Releases` by default (`DEFAULT_RELEASES_REPO`).
+   `ORDERBOOK_RELEASES_GITHUB_REPO=owner/repo` in `.env` points it elsewhere, and
+   setting it to nothing (`ORDERBOOK_RELEASES_GITHUB_REPO=`) turns fetching off
+   for an air-gapped site. Under tests (`NODE_ENV=test`) the default is off.
 2. The build carries the release key. `TRUSTED_RELEASE_KEYS` holds
    `release-2026-10-01`, so a release signed with the matching private key is
    trusted and `ORDERBOOK_ALLOW_UNSIGNED_RELEASES` is **not** needed. An
@@ -214,12 +221,45 @@ the Offices as soon as it is up, and the window shows the sign-in screen: nobody
 has to sign in for the shop to work. The PC has to be switched on and signed in to
 Windows overnight (it is a desktop app).
 
-**The UAC limit.** The Windows installer is per-machine and needs administrator
-approval. A shell that is *already* elevated runs it silently; one that is not
-**declines the unattended install and leaves the server running**, rather than
-raising a prompt nobody can answer with the server already stopped. The screen
-then says the update was prepared and not installed. Making the unattended
-install work for a non-elevated Master is the owner's decision (D1 log, QUESTION).
+**How the unattended install gets administrator rights (and why that is safe).**
+The Windows installer is per-machine and needs administrator approval, and at
+23:00 nobody can give it. So the installer, which *is* approved once when the
+Master is installed, registers a scheduled task, **OrderBook Master Update**, with
+the highest privileges of the account that installed it, and makes two folders
+under `%ProgramData%\OrderBook`:
+
+| Folder | Who can write it | What it is for |
+|---|---|---|
+| `staged-update` | anybody | the Master app (not elevated) leaves the setup file and its signed `manifest.json` here |
+| `elevated` | administrators and SYSTEM only (inheritance removed) | the task copies the setup file here and hashes the copy |
+
+At 23:00 the shell does not install anything itself: it stages the files and asks
+Windows to run the task (`schtasks /Run /TN "OrderBook Master Update"`). The task
+runs a fixed script from the program folder (`resources\apply-update`, writable
+only by an administrator) that **believes nothing it is given**:
+
+1. it verifies the manifest's **Ed25519 signature itself**, against the release
+   keys compiled into the *installed* program, and refuses an unsigned one
+   whatever `ORDERBOOK_ALLOW_UNSIGNED_RELEASES` says;
+2. it checks the manifest is for the Master on Windows and is **newer** than the
+   installed version, so an old signed release cannot be replayed;
+3. it copies the setup file into `elevated`, checks the copy's **size and SHA-256**
+   against the signed values, and only then runs the copy, silently
+   (`/S --force-run`), waiting for it to finish.
+
+Anyone who can write `staged-update` can therefore make the task install only a
+build the owner signed, and only a newer one. The shell makes the same checks
+first, so a refusal happens with the server still running; the task's own checks
+and `elevated\apply.log` are what stand if the shell is lied to.
+
+If the task is not there (a Master installed before 1.4, or run from source), a
+shell that is already elevated installs directly; anything else **declines and
+leaves the server running**, and the screen says the update was prepared and not
+installed. The first interactive "Install now" after upgrading registers the
+task for the nights after. The task belongs to the account that ran the
+installer, so that account must be the one signed in to Windows on the Master PC
+overnight. Uninstalling removes the task and both folders (not during an update,
+which the task may have started).
 
 **Where the old menu went.** The menu bar is gone on Windows and Linux; macOS
 keeps only Quit, Edit (Copy/Paste) and Window.

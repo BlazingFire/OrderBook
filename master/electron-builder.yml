@@ -58,6 +58,19 @@ extraResources:
   # One copy of the scripts, shipped by both panels.
   - from: ../tools/uninstall
     to: uninstall
+  # What the "OrderBook Master Update" scheduled task runs (1.4 R8): a script
+  # that checks the signed manifest and the setup file's hash itself, then runs
+  # the install with administrator rights. Real files under `resources`, which
+  # only an administrator can write, because the task runs them elevated.
+  # `package.json` marks the folder as ES modules, as the shell's own is.
+  - from: electron/dist/apply-staged-update.js
+    to: apply-update/apply-staged-update.js
+  - from: electron/dist/lib/staged-update.js
+    to: apply-update/lib/staged-update.js
+  - from: installer/apply-update/package.json
+    to: apply-update/package.json
+  - from: installer/apply-update/apply-update.cmd
+    to: apply-update/apply-update.cmd
 
 # One 1024px PNG per panel, rendered by `node tools/make-icons.mjs` from the
 # logo lattice; electron-builder derives the .ico and .icns from it.

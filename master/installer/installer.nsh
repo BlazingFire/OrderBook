@@ -14,6 +14,31 @@
 !macro customInstall
   nsExec::Exec 'netsh advfirewall firewall add rule name="OrderBook Master (TCP 4100)" dir=in action=allow protocol=TCP localport=4100'
   nsExec::Exec 'netsh advfirewall firewall add rule name="OrderBook Discovery (UDP 45789)" dir=in action=allow protocol=UDP localport=45789'
+
+  ; The nightly update (1.4). This installer is running elevated, once, with the
+  ; administrator's approval; it uses that to register a task that can install
+  ; the next version with nobody present. The task runs a fixed script from the
+  ; program folder, and that script trusts nothing it is handed: it verifies the
+  ; signed manifest and the setup file's hash itself (electron/lib/staged-update.ts).
+  ;
+  ;  - `staged-update` is where the (unelevated) Master app leaves what it wants
+  ;    installed. Anyone may write it, so nothing in it is believed.
+  ;  - `elevated` is administrators-and-SYSTEM only: the task copies the setup file
+  ;    there and hashes the copy, so it cannot be swapped between the check and
+  ;    the run. (Well-known SIDs, so the names work on any Windows language.)
+  Push $R0
+  ReadEnvStr $R0 ProgramData
+  ${If} $R0 == ""
+    StrCpy $R0 "C:\ProgramData"
+  ${EndIf}
+  CreateDirectory "$R0\OrderBook\staged-update"
+  nsExec::Exec 'icacls "$R0\OrderBook\staged-update" /grant *S-1-5-32-545:(OI)(CI)M'
+  CreateDirectory "$R0\OrderBook\elevated"
+  nsExec::Exec 'icacls "$R0\OrderBook\elevated" /inheritance:r /grant:r *S-1-5-32-544:(OI)(CI)F *S-1-5-18:(OI)(CI)F'
+  ; Highest privileges, as the account running this installer; never started by a
+  ; schedule (the start time is a placeholder), only by `schtasks /Run` from the app.
+  nsExec::Exec 'schtasks /Create /F /TN "OrderBook Master Update" /SC ONCE /ST 00:00 /RL HIGHEST /TR "\"$INSTDIR\resources\apply-update\apply-update.cmd\""'
+  Pop $R0
 !macroend
 
 ; The sweep script has to be taken out of the program folder while there still
@@ -37,6 +62,19 @@
   ; over this one, and the sweep would delete the data directory and the profile
   ; that the version now being staged is about to open.
   ${IfNot} ${isUpdated}
+    ; The nightly update's task and folders go with the program. Not during an
+    ; update: the task may be what started it, and customInstall re-registers it.
+    nsExec::Exec 'schtasks /Delete /F /TN "OrderBook Master Update"'
+    Push $R0
+    ReadEnvStr $R0 ProgramData
+    ${If} $R0 == ""
+      StrCpy $R0 "C:\ProgramData"
+    ${EndIf}
+    RMDir /r "$R0\OrderBook\elevated"
+    RMDir /r "$R0\OrderBook\staged-update"
+    RMDir "$R0\OrderBook"
+    Pop $R0
+
     ; $R7 is the script's data flag either way, so both branches below answer
     ; the same parameter and an unanswered question keeps the data.
     StrCpy $R7 "-KeepData"

@@ -48,6 +48,8 @@ import {
   Section,
   Segmented,
   Select,
+  useFormBaseline,
+  useUnsavedWork,
   SkeletonRows,
   StatusPill,
   Switch,
@@ -509,6 +511,14 @@ function DefinitionDialog({
     diff: Record<string, FieldDifference>;
   } | null>(null);
   const [baseVersion, setBaseVersion] = useState(definition?.version ?? 0);
+  const baseline = useFormBaseline({
+    key: '',
+    label: definition?.label ?? '',
+    fieldType: definition?.fieldType ?? 'text',
+    isRequired: definition?.isRequired ?? false,
+    isActive: definition?.isActive ?? true,
+    optionText: (definition?.options ?? []).join('\n'),
+  });
 
   const options = optionText
     .split('\n')
@@ -521,7 +531,8 @@ function DefinitionDialog({
     (definition ? label.trim() !== '' : key.trim() !== '') &&
     (!needsOptions || options.length > 0);
 
-  async function save(overwrite = false): Promise<void> {
+  /** True when the definition was saved; a clash or a failure is shown in the dialog and answers false. */
+  async function save(overwrite = false): Promise<boolean> {
     setBusy(true);
     setFailure(null);
     setConflict(null);
@@ -545,6 +556,7 @@ function DefinitionDialog({
         });
       }
       onSaved();
+      return true;
     } catch (caught) {
       if (caught instanceof ApiError && caught.isConflict && caught.storedVersion !== undefined) {
         setBaseVersion(caught.storedVersion);
@@ -552,10 +564,23 @@ function DefinitionDialog({
       } else {
         setFailure(caught instanceof Error ? caught.message : t('fields.error.save'));
       }
+      return false;
     } finally {
       setBusy(false);
     }
   }
+
+  // "Save all and update": a field being added or changed is saved if it is
+  // complete, and named if it is not.
+  useUnsavedWork(
+    'field-definition',
+    baseline.dirty({ key, label, fieldType, isRequired, isActive, optionText })
+      ? {
+          label: t('updates.saveAll.field', { name: label.trim() || key.trim() || '…' }),
+          save: async () => (ready ? save() : false),
+        }
+      : null,
+  );
 
   return (
     <Modal

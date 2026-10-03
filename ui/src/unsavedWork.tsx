@@ -104,6 +104,30 @@ export function useUnsavedWork(id: string, item: UnsavedWorkItem | null): void {
 }
 
 /**
+ * Whether a form differs from how it was loaded.
+ *
+ * `mark` is called where the form is filled (the effect that copies a record
+ * into the fields, or the one that clears them for a new record), with the same
+ * values that go into the fields; `dirty` is asked on every render with the
+ * values as they are now. Compared as JSON, so the values must be plain data.
+ * Nothing is dirty until `mark` has been called once, so a form that has not
+ * been opened never claims to hold work.
+ */
+export function useFormBaseline<T>(
+  initial?: T,
+): { mark: (value: T) => void; dirty: (value: T) => boolean } {
+  // A form that is mounted already filled (a dialog opened on a record) passes
+  // its starting values here; one that fills itself in an effect calls `mark`.
+  const base = useRef<string | null>(initial === undefined ? null : JSON.stringify(initial));
+  return useRef({
+    mark: (value: T): void => {
+      base.current = JSON.stringify(value);
+    },
+    dirty: (value: T): boolean => base.current !== null && JSON.stringify(value) !== base.current,
+  }).current;
+}
+
+/**
  * The "Save all" step of an update, for the Updates screens: resolves true when
  * it is fine to go on and close the window.
  *

@@ -27,6 +27,7 @@ import { DateField, FormField, Input } from './Form.js';
 import { formatDateTime, formatKg } from './format.js';
 import { apiErrorText } from './errorText.js';
 import { t } from './i18n.js';
+import { useUnsavedWork } from './unsavedWork.js';
 import { recordNumberText } from './RecordNumber.js';
 import { Select } from './SuggestInput.js';
 import { ConflictBanner } from './States.js';
@@ -82,6 +83,12 @@ export function LeadRecordView({
   const [expectedDate, setExpectedDate] = useState('');
   const [busy, setBusy] = useState(false);
   const colourHex = useColourHex(optionLists);
+
+  // "Save all and update": a remark typed on the pending order and not yet added is named.
+  useUnsavedWork(
+    `lead-remark:${lead.id}`,
+    remark.trim() ? { label: t('updates.saveAll.recordNote', { text: remark.trim().slice(0, 40) }) } : null,
+  );
 
   async function run(action: () => Promise<unknown>, failure: MessageKey): Promise<void> {
     setBusy(true);

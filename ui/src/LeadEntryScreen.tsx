@@ -1117,6 +1117,41 @@ function LeadEntryForm({
     return null;
   }
 
+  /** The form as the Master would receive it; also what "Save all" compares with the lead as opened. */
+  function buildInput(): LeadFormValues {
+    const items: LineItemInput[] = lines.map((line, index) => ({
+      productId: line.productId,
+      variantId: line.variantId,
+      quantity: line.quantity,
+      productName: line.productName,
+      categoryName: line.categoryName,
+      categoryCode: line.categoryCode,
+      brandName: line.brand,
+      alias: line.alias,
+      code: line.code,
+      variantLabel: line.variantLabel,
+      // Only a multicolour sub product carries one; the Master drops any other.
+      colour: line.colour.trim() || null,
+      grade: line.grade.trim() || null,
+      size: line.size,
+      weightKg: line.weightKg,
+      packaging: line.packaging.trim(),
+      sequence: index + 1,
+      fromPartyVariant: line.fromPartyVariant,
+      notes: line.notes.trim() || null,
+    }));
+
+    return {
+      partyId,
+      sourcePlatform: sourcePlatform || null,
+      followUpDate: followUpDate || null,
+      partyWiseMode,
+      notes: notes.trim() || null,
+      items,
+      ownerId: view.owners ? ownerId : undefined,
+    };
+  }
+
   async function save(): Promise<void> {
     if (saving.current) return;
     const problem = refusal();
@@ -1130,37 +1165,7 @@ function LeadEntryForm({
     setError(null);
 
     try {
-      const items: LineItemInput[] = lines.map((line, index) => ({
-        productId: line.productId,
-        variantId: line.variantId,
-        quantity: line.quantity,
-        productName: line.productName,
-        categoryName: line.categoryName,
-        categoryCode: line.categoryCode,
-        brandName: line.brand,
-        alias: line.alias,
-        code: line.code,
-        variantLabel: line.variantLabel,
-        // Only a multicolour sub product carries one; the Master drops any other.
-        colour: line.colour.trim() || null,
-        grade: line.grade.trim() || null,
-        size: line.size,
-        weightKg: line.weightKg,
-        packaging: line.packaging.trim(),
-        sequence: index + 1,
-        fromPartyVariant: line.fromPartyVariant,
-        notes: line.notes.trim() || null,
-      }));
-
-      const input: LeadFormValues = {
-        partyId,
-        sourcePlatform: sourcePlatform || null,
-        followUpDate: followUpDate || null,
-        partyWiseMode,
-        notes: notes.trim() || null,
-        items,
-        ownerId: view.owners ? ownerId : undefined,
-      };
+      const input = buildInput();
 
       if (lead && editBase.opened) {
         // Only what changed, checked against the clocks it was opened at.
@@ -1292,13 +1297,18 @@ function LeadEntryForm({
 
   // "Save all and update" (1.4 R7b): a new lead that is ready is saved before an
   // update closes the window; one that is not is named, so nobody loses it unawares.
+  const editChanged = Boolean(
+    lead && editBase.opened && changedLeadFields(editBase.opened, buildInput(), editBase.base),
+  );
   useUnsavedWork(
-    'new-lead',
-    !lead && (partyId || lines.length > 0 || draft || notes.trim())
+    lead ? `lead-edit:${lead.id}` : 'new-lead',
+    (lead ? editChanged : partyId || lines.length > 0 || draft || notes.trim())
       ? {
-          label: selectedParty?.name
-            ? t('updates.saveAll.leadFor', { party: selectedParty.name })
-            : t('updates.saveAll.newLead'),
+          label: lead
+            ? t('updates.saveAll.leadEdit', { party: lead.partyName })
+            : selectedParty?.name
+              ? t('updates.saveAll.leadFor', { party: selectedParty.name })
+              : t('updates.saveAll.newLead'),
           save: async () => {
             if (refusal()) return false;
             await save();

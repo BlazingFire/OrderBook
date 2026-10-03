@@ -43,8 +43,10 @@ import {
   copyText,
   t,
   useSubNav,
+  useFormBaseline,
   useToast,
   useTopbarActions,
+  useUnsavedWork,
 } from '@orderbook/ui';
 
 import { api } from '../api';
@@ -266,6 +268,14 @@ function IssueKeyDialog({
   const [users, setUsers] = useState<Array<{ id: string; displayName: string }>>([]);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
+
+  // "Save all and update": named, never saved. An API key ends in a token that is
+  // shown once, to somebody watching; issuing one behind an update's back would
+  // lose it.
+  useUnsavedWork(
+    'new-api-key',
+    label.trim() ? { label: t('updates.saveAll.apiKey', { name: label.trim() }) } : null,
+  );
 
   useEffect(() => {
     void api
@@ -602,7 +612,7 @@ function ConnectorDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [draft, setDraft] = useState({
+  const initial = {
     slug: connector?.slug ?? '',
     label: connector?.label ?? '',
     baseUrl: connector?.baseUrl ?? '',
@@ -614,7 +624,9 @@ function ConnectorDialog({
     intervalMin: String(connector?.intervalMin ?? 15),
     runAsUserId: connector?.runAsUserId ?? '',
     isEnabled: connector?.isEnabled ?? false,
-  });
+  };
+  const [draft, setDraft] = useState(initial);
+  const baseline = useFormBaseline(initial);
   const [users, setUsers] = useState<Array<{ id: string; displayName: string }>>([]);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
@@ -631,7 +643,8 @@ function ConnectorDialog({
   const set = (field: keyof typeof draft, value: string | boolean): void =>
     setDraft((current) => ({ ...current, [field]: value }));
 
-  async function save(): Promise<void> {
+  /** True when the connector was saved; a failure is shown as a toast and answers false. */
+  async function save(): Promise<boolean> {
     setBusy(true);
     try {
       const input = {
@@ -654,14 +667,28 @@ function ConnectorDialog({
       else await api.createConnector(input);
 
       onSaved();
+      return true;
     } catch (error) {
       toast.push(error instanceof Error ? error.message : t('integrations.loadFailed'), {
         tone: 'error',
       });
+      return false;
     } finally {
       setBusy(false);
     }
   }
+
+  // "Save all and update": a connector being added or changed is saved when it
+  // has a name and an address, and named when it has not.
+  useUnsavedWork(
+    'connector',
+    baseline.dirty(draft)
+      ? {
+          label: t('updates.saveAll.connector', { name: draft.label.trim() || draft.slug.trim() || '…' }),
+          save: async () => (draft.label.trim() && draft.slug.trim() && draft.baseUrl.trim() ? save() : false),
+        }
+      : null,
+  );
 
   return (
     <Modal
@@ -883,6 +910,7 @@ function MappingEditor({
   const [probe, setProbe] = useState<ConnectorTestResult | null>(null);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
+  const baseline = useFormBaseline(resources);
 
   const current = resources.find((resource) => resource.entity === entity);
 
@@ -910,19 +938,29 @@ function MappingEditor({
     });
   }
 
-  async function save(): Promise<void> {
+  async function save(): Promise<boolean> {
     setBusy(true);
     try {
       onSaved(await api.setConnectorMapping(connector.id, resources));
       toast.push(t('integrations.mapping.saved'), { tone: 'ok' });
+      return true;
     } catch (error) {
       toast.push(error instanceof Error ? error.message : t('integrations.loadFailed'), {
         tone: 'error',
       });
+      return false;
     } finally {
       setBusy(false);
     }
   }
+
+  // "Save all and update": a changed field mapping is saved if the Master accepts it.
+  useUnsavedWork(
+    'connector-mapping',
+    baseline.dirty(resources)
+      ? { label: t('updates.saveAll.mapping', { name: connector.label }), save }
+      : null,
+  );
 
   return (
     <div className="ob-pane">

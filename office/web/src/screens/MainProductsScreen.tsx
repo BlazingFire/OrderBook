@@ -62,7 +62,9 @@ import {
   useEnterToAdvance,
   useFilterBar,
   useSubNav,
+  useFormBaseline,
   useToast,
+  useUnsavedWork,
   type DataTableColumn,
 } from '@orderbook/ui';
 import { SubProductColour } from './ProductDetail';
@@ -464,13 +466,21 @@ function MainProductForm({
   const [brand, setBrand] = useState('');
   const [sortOrder, setSortOrder] = useState('');
   const [busy, setBusy] = useState(false);
+  const baseline = useFormBaseline<unknown>();
 
   useEffect(() => {
     if (!open) return;
-    setCode(category?.code ?? '');
-    setName(category?.name ?? '');
-    setBrand(category?.brand ?? '');
-    setSortOrder(category?.sortOrder != null ? String(category.sortOrder) : '');
+    const loaded = {
+      code: category?.code ?? '',
+      name: category?.name ?? '',
+      brand: category?.brand ?? '',
+      sortOrder: category?.sortOrder != null ? String(category.sortOrder) : '',
+    };
+    baseline.mark(loaded);
+    setCode(loaded.code);
+    setName(loaded.name);
+    setBrand(loaded.brand);
+    setSortOrder(loaded.sortOrder);
     // Keyed on identity: a live update must not wipe what is being typed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, category?.id]);
@@ -485,7 +495,8 @@ function MainProductForm({
   useEnterToAdvance(fields, () => void save(), open);
   useCommand('record.save', open && !busy ? () => void save() : null);
 
-  async function save(): Promise<void> {
+  /** True when the product was saved; false when it was refused or failed (the reason went to `onError`). */
+  async function save(): Promise<boolean> {
     const input: CategoryInput = {
       code: code.trim(),
       name: name.trim(),
@@ -498,11 +509,11 @@ function MainProductForm({
     if (category && input.brand === category.brand) delete input.brand;
     if (!CATEGORY_CODE_PATTERN.test(input.code)) {
       onError(t('catalog.mainProducts.codeInvalid'));
-      return;
+      return false;
     }
     if (!input.name) {
       onError(t('catalog.mainProducts.nameRequired'));
-      return;
+      return false;
     }
 
     setBusy(true);
@@ -510,12 +521,23 @@ function MainProductForm({
       if (category) await api.updateCategory(category.id, input);
       else await api.createCategory(input);
       onSaved(input.name, !category);
+      return true;
     } catch (caught) {
       onError(apiErrorText(caught, 'catalog.mainProducts.saveFailed'));
+      return false;
     } finally {
       setBusy(false);
     }
   }
+
+  // "Save all and update": a main product being added or changed is saved if it
+  // is complete, and named if it is not.
+  useUnsavedWork(
+    'main-product-form',
+    open && baseline.dirty({ code, name, brand, sortOrder })
+      ? { label: t('updates.saveAll.mainProduct', { name: name.trim() || code.trim() || '…' }), save }
+      : null,
+  );
 
   return (
     <Modal

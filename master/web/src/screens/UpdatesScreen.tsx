@@ -55,6 +55,7 @@ import {
   t,
   useSaveAllBeforeUpdate,
   useToast,
+  useUnsavedWork,
   type DataTableColumn,
 } from '@orderbook/ui';
 
@@ -487,18 +488,28 @@ function AutoUpdateSection({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function save(): Promise<void> {
+  async function save(): Promise<boolean> {
     setSaving(true);
     setError(null);
     try {
       onSaved(await api.saveAutoUpdate({ enabled, time }));
       toast.push(t('updates.auto.saved'), { tone: 'ok' });
+      return true;
     } catch (caught) {
       setError(apiErrorText(caught, 'error.requestFailed'));
+      return false;
     } finally {
       setSaving(false);
     }
   }
+
+  // Saved before an update closes the window, like every other form.
+  useUnsavedWork(
+    'auto-update',
+    enabled !== status.enabled || time !== status.time
+      ? { label: t('updates.saveAll.setting', { name: t('updates.auto.title') }), save }
+      : null,
+  );
 
   const run = status.lastRun;
   const runText = !run

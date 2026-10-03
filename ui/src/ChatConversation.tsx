@@ -54,6 +54,7 @@ import { Popover } from './Popover.js';
 import { ServerMasterBadge } from './TierPill.js';
 import { useDebounced } from './useDebounced.js';
 import { useToast } from './Toast.js';
+import { useUnsavedWork } from './unsavedWork.js';
 
 /** How long a person must have a room open at the bottom before it counts as read. */
 const READ_DELAY_MS = 1_000;
@@ -459,6 +460,13 @@ function Composer({
   const taskReady = !asTask || assignees.length > 0;
   const canSend = (trimmed !== '' || refs.length > 0) && taskReady && !sending;
   const left = CHAT_LIMITS.bodyMax - text.length;
+
+  // "Save all and update": a message half-written is named, never sent. It would
+  // go to other people in the writer's name, which an update has no business doing.
+  useUnsavedWork(
+    `chat-draft:${roomKey}`,
+    text.trim() ? { label: t('updates.saveAll.chatMessage', { text: text.trim().slice(0, 40) }) } : null,
+  );
 
   async function send(): Promise<void> {
     if (!canSend) return;

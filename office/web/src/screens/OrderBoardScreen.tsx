@@ -57,6 +57,7 @@ import {
   useRecordPresence,
   useSubNav,
   useToast,
+  useUnsavedWork,
   type PillTone,
   type PrintroomTransport,
 } from '@orderbook/ui';
@@ -494,6 +495,12 @@ function OrderDetailBody({
   const overrideValue = override === '' ? null : Number(override);
   const overrideInvalid = overrideValue !== null && Number.isNaN(overrideValue);
   const [busy, setBusy] = useState(false);
+
+  // "Save all and update": a note typed on the order and not yet added is named.
+  useUnsavedWork(
+    `order-note:${order.id}`,
+    note.trim() ? { label: t('updates.saveAll.recordNote', { text: note.trim().slice(0, 40) }) } : null,
+  );
 
   const active = order.reservations.filter((reservation) => reservation.status === 'active');
 

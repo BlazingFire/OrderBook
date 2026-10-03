@@ -60,6 +60,7 @@ import {
   formatDateTime,
   t,
   useConfirm,
+  useUnsavedWork,
   type SettingsTab,
 } from '@orderbook/ui';
 
@@ -515,6 +516,25 @@ function CompanySetting({
   const definition = SETTINGS[setting.key];
   const label = t(definition.labelToken);
   const help = t(definition.descriptionToken);
+
+  // "Save all and update": a secret typed into this row and not yet saved is saved.
+  useUnsavedWork(
+    `secret-setting:${setting.key}`,
+    setting.secret && draft.length > 0
+      ? {
+          label: t('updates.saveAll.setting', { name: label }),
+          save: async () => {
+            try {
+              await onSave(setting.key, draft);
+              setDraft('');
+              return true;
+            } catch {
+              return false;
+            }
+          },
+        }
+      : null,
+  );
 
   function control() {
     if (setting.secret) {

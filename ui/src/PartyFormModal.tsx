@@ -39,6 +39,7 @@ import { Modal } from './Modal.js';
 import { t } from './i18n.js';
 import { useCommand } from './KeyboardProvider.js';
 import { useEnterToAdvance } from './useEnterToAdvance.js';
+import { useFormBaseline, useUnsavedWork } from './unsavedWork.js';
 
 /** What the caller learns about a party that was just created. */
 export interface CreatedParty {
@@ -106,6 +107,7 @@ export function PartyFormModal({
 
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [busy, setBusy] = useState(false);
+  const baseline = useFormBaseline<Draft>();
   const fields = useRef<HTMLDivElement>(null);
   const transportRef = useRef(transport);
   transportRef.current = transport;
@@ -119,23 +121,23 @@ export function PartyFormModal({
   useEffect(() => {
     if (!open) return;
 
-    setDraft(
-      editing
-        ? {
-            name: editing.name,
-            phone: editing.phone ?? '',
-            altPhone: editing.altPhone ?? '',
-            email: editing.email ?? '',
-            addressLine1: editing.addressLine1 ?? '',
-            addressLine2: editing.addressLine2 ?? '',
-            city: editing.city ?? '',
-            state: editing.state ?? '',
-            pincode: editing.pincode ?? '',
-            gstNumber: editing.gstNumber ?? '',
-            notes: editing.notes ?? '',
-          }
-        : EMPTY,
-    );
+    const loaded = editing
+      ? {
+          name: editing.name,
+          phone: editing.phone ?? '',
+          altPhone: editing.altPhone ?? '',
+          email: editing.email ?? '',
+          addressLine1: editing.addressLine1 ?? '',
+          addressLine2: editing.addressLine2 ?? '',
+          city: editing.city ?? '',
+          state: editing.state ?? '',
+          pincode: editing.pincode ?? '',
+          gstNumber: editing.gstNumber ?? '',
+          notes: editing.notes ?? '',
+        }
+      : EMPTY;
+    baseline.mark(loaded);
+    setDraft(loaded);
     // Keyed on the record's identity, not the record: an unrelated field
     // arriving through the event stream must not wipe a half-typed draft.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -143,14 +145,16 @@ export function PartyFormModal({
 
   function close(): void {
     setDraft(EMPTY);
+    baseline.mark(EMPTY);
     onClose();
   }
 
-  async function save(): Promise<void> {
+  /** True when the party was saved; false when it was refused or failed (the reason went to `onError`). */
+  async function save(): Promise<boolean> {
     const name = draft.name.trim();
     if (!name) {
       onError(t('party.nameRequired'));
-      return;
+      return false;
     }
 
     const trimmed = (field: keyof Draft): string | null => draft[field].trim() || null;
@@ -181,13 +185,25 @@ export function PartyFormModal({
         const result = await transportRef.current.createParty(input);
         onCreated?.({ id: result.id, name, phone: input.phone, city: input.city });
         setDraft(EMPTY);
+        baseline.mark(EMPTY);
       }
+      return true;
     } catch (caught) {
       onError(caught instanceof Error ? caught.message : t('party.createFailed'));
+      return false;
     } finally {
       setBusy(false);
     }
   }
+
+  // "Save all and update": a party form with something typed in it is saved if it
+  // is complete, and named if it is not.
+  useUnsavedWork(
+    'party-form',
+    open && baseline.dirty(draft)
+      ? { label: t('updates.saveAll.party', { name: draft.name.trim() || '…' }), save }
+      : null,
+  );
 
   /** A plain text cell. The dense grid gives every one of these a column. */
   const text = (field: keyof Draft, label: string, extra: Record<string, unknown> = {}) => (

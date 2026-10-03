@@ -30,9 +30,10 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { existsSync } from 'node:fs';
-import { writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import {
   app,
@@ -70,6 +71,7 @@ import {
 import { detectStandaloneBuild, loginItemOptions } from './lib/standalone.js';
 import { canRestart, isExpectedExit, pruneRestarts, RESTART_LIMIT } from './lib/supervisor.js';
 import { uninstallCommand, uninstallScriptsDir } from './lib/uninstall.js';
+import { judgeStagedManifest, STAGED_MANIFEST, stagedUpdateDirs, TASK_NAME, type ReleaseTrust } from './lib/staged-update.js';
 import { isHighIntegrity, planInstallerLaunch, unattendedInstallDue } from './lib/update-launch.js';
 
 export interface PanelShellConfig {
@@ -573,6 +575,70 @@ export function runPanelShell(config: PanelShellConfig): void {
     }
   }
 
+  /** The installer's update task is registered, and the two folders it works in exist. */
+  async function updateTaskIsReady(): Promise<boolean> {
+    const { stage, work } = stagedUpdateDirs(process.env);
+    if (!existsSync(stage) || !existsSync(work)) return false;
+    return new Promise((resolve) => {
+      execFile('schtasks.exe', ['/Query', '/TN', TASK_NAME], { windowsHide: true, timeout: 10_000 }, (error) =>
+        resolve(!error),
+      );
+    });
+  }
+
+  /** The release keys and signed-payload rules of the installed program, the ones the task will use. */
+  async function loadReleaseTrust(): Promise<ReleaseTrust | null> {
+    try {
+      const shared = path.join(process.resourcesPath, 'panel', 'node_modules', '@orderbook', 'shared', 'dist', 'index.js');
+      return (await import(pathToFileURL(shared).href)) as ReleaseTrust;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Put the verified setup file and its signed manifest where the update task
+   * reads them, after making the decision the task will make. Resolves to the
+   * reason when it must not go ahead, or `null` when it may.
+   */
+  async function stageForUpdateTask(
+    setupPath: string,
+    prepared: { sha256: string; version: string },
+  ): Promise<string | null> {
+    if (!installerDir) return 'the releases folder is not known';
+    let manifestText: string | null = null;
+    for (const name of ['latest-win32.json', 'latest.json']) {
+      try {
+        const text = await readFile(path.join(installerDir, name), 'utf8');
+        const parsed = JSON.parse(text) as { sha256?: string; version?: string };
+        if (parsed.sha256?.toLowerCase() === prepared.sha256.toLowerCase() && parsed.version === prepared.version) {
+          manifestText = text;
+          break;
+        }
+      } catch {
+        // Not there, or not this build's: the next name gets a turn.
+      }
+    }
+    if (manifestText === null) return 'the signed manifest for this build is not in the releases folder';
+
+    const trust = await loadReleaseTrust();
+    if (!trust) return 'the installed release keys could not be loaded';
+    const verdict = judgeStagedManifest(JSON.parse(manifestText), app.getVersion(), trust);
+    if (!verdict.ok) return verdict.reason;
+    if (verdict.manifest.file !== path.basename(setupPath)) return 'the manifest names another file';
+
+    const { stage } = stagedUpdateDirs(process.env);
+    try {
+      await mkdir(stage, { recursive: true });
+      for (const entry of await readdir(stage)) await rm(path.join(stage, entry), { force: true, recursive: true });
+      await copyFile(setupPath, path.join(stage, verdict.manifest.file));
+      await writeFile(path.join(stage, STAGED_MANIFEST), manifestText);
+    } catch (error) {
+      return `the files could not be staged (${String(error)})`;
+    }
+    return null;
+  }
+
   /** Whether this process holds an elevated token. Windows only; anything else is "no". */
   function isElevated(): Promise<boolean> {
     return new Promise((resolve) => {
@@ -749,12 +815,24 @@ export function runPanelShell(config: PanelShellConfig): void {
       file: verdict.path,
       unattended,
       elevated,
+      taskReady:
+        process.platform === 'win32' && unattended && !elevated ? await updateTaskIsReady() : false,
     });
     if (plan.how === 'needs-approval') {
       say(
         `Did not install ${prepared.version} unattended: it needs administrator approval and nobody is here to give it. The server is still running.`,
       );
       return false;
+    }
+    if (plan.how === 'task') {
+      // The task checks everything again, in its own elevated process. Checking
+      // the same things here first is what makes a refusal happen with the
+      // server still running, not after it has been stopped.
+      const refusal = await stageForUpdateTask(verdict.path, prepared);
+      if (refusal) {
+        say(`Did not install ${prepared.version} through the update task: ${refusal}. The server is still running.`);
+        return false;
+      }
     }
 
     // Everything the page holds that can still be saved, before the window goes.

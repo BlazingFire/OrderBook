@@ -7,7 +7,7 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-import { isLocale, DEFAULT_LOCALE } from '@orderbook/shared';
+import { isLocale, DEFAULT_LOCALE, releasesRepo } from '@orderbook/shared';
 
 import { loadEnvFiles } from '../lib/env-file.js';
 
@@ -93,7 +93,7 @@ export const config = {
      * source. A separate public releases repository costs nothing and means no
      * secret ever leaves this machine.
      */
-    githubRepo: process.env.ORDERBOOK_RELEASES_GITHUB_REPO?.trim() || null,
+    githubRepo: releasesRepo(process.env),
 
     /**
      * A token, if the releases repository really must be private.

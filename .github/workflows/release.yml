@@ -44,10 +44,12 @@ name: Release
 # `master/src/services/github-releases.ts` explains why the assets should live
 # in their own **public** repository: assets on a private repository need an
 # `Authorization` header, and shipping a token that can read them ships a
-# credential that can generally read the source. Set the `RELEASES_REPO`
-# variable (e.g. `you/orderbook-releases`) and a `RELEASES_TOKEN` secret with
-# `contents: write` on it. With neither set, this publishes to this repository,
-# which is correct only while this repository is public.
+# credential that can generally read the source. Releases go to the public
+# repository `BlazingFire/OrderBook-Releases` (1.4), which is also the default
+# every Master fetches from (`DEFAULT_RELEASES_REPO` in
+# `shared/src/domain/release-keys.ts`). Set the `RELEASES_TOKEN` secret to a
+# token with `contents: write` on it; set the `RELEASES_REPO` variable only to
+# publish somewhere else.
 #
 # ## Signing
 #
@@ -97,7 +99,7 @@ jobs:
           # with a separate releases repository configured, looking for the tag
           # here would never find it and every push would try to publish again.
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
-          REPO: ${{ vars.RELEASES_REPO || github.repository }}
+          REPO: ${{ vars.RELEASES_REPO || 'BlazingFire/OrderBook-Releases' }}
           RELEASE_KEY: ${{ secrets.RELEASE_KEY }}
           EVENT: ${{ github.event_name }}
           WANT_PUBLISH: ${{ inputs.publish }}
@@ -170,7 +172,7 @@ jobs:
       - name: Create the release
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
-          REPO: ${{ vars.RELEASES_REPO || github.repository }}
+          REPO: ${{ vars.RELEASES_REPO || 'BlazingFire/OrderBook-Releases' }}
           # Through the environment, never pasted into the script: a commit
           # message containing a quote or `$(…)` would otherwise break out of
           # the argument and run as shell.
@@ -328,7 +330,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
-          REPO: ${{ vars.RELEASES_REPO || github.repository }}
+          REPO: ${{ vars.RELEASES_REPO || 'BlazingFire/OrderBook-Releases' }}
         run: |
           tag='${{ needs.check.outputs.tag }}'
           # --clobber so a re-run of one leg replaces its own assets instead of

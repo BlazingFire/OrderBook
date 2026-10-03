@@ -32,6 +32,7 @@ import {
   apiErrorText,
   publishSessionEnded,
   t,
+  useUnsavedWork,
 } from '@orderbook/ui';
 
 /** The server's own floor (`validation.password.tooShort`), checked here too. */
@@ -53,6 +54,14 @@ export function ChangePasswordDialog({
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // "Save all and update": named, never submitted. Changing a password signs the
+  // person out of this window, which is not something to do in the middle of an
+  // update, and a password is not typed twice for a machine to finish.
+  useUnsavedWork(
+    'change-password',
+    open && (current || next || confirm) ? { label: t('updates.saveAll.password') } : null,
+  );
 
   function close(): void {
     setMasterKey('');
