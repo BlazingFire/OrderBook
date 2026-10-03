@@ -55,6 +55,7 @@ import { DataTable, type DataTableColumn } from './DataTable.js';
 import { EditorScreen } from './EditorScreen.js';
 import { apiErrorText } from './errorText.js';
 import { FilterChip } from './FilterBar.js';
+import { ProductShareBar } from './ProductShare.js';
 import {
   NO_PRODUCT_LIST_FILTERS,
   presenceOf,
@@ -125,6 +126,8 @@ export function SubProductsScreen({
   // 1.4 D3 (R17): the server sorts, so the order holds across pages; kept per machine.
   const [sort, setSort] = useStoredSort('products.sub', { key: 'category', dir: 'asc' });
   const [listFilters, setListFilters] = useState<ProductListFilters>(NO_PRODUCT_LIST_FILTERS);
+  // 1.4 D3 (R16): ticked rows for Create product share.
+  const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   /*
@@ -555,6 +558,11 @@ export function SubProductsScreen({
         </Select>
       </div>
       <ProductFilterRow value={listFilters} onChange={setListFilters} />
+      <ProductShareBar
+        count={ticked.size}
+        onClear={() => setTicked(new Set())}
+        build={() => transportRef.current.productSharePdf([...ticked])}
+      />
       {page === null && !loadFailed ? (
         <SkeletonTable columns={columns} rows={8} />
       ) : (
@@ -567,6 +575,8 @@ export function SubProductsScreen({
           sort={sort}
           onSortChange={setSort}
           sortLocally={false}
+          selectedIds={ticked}
+          onSelectionChange={setTicked}
           empty={
             loadFailed ? (
               <ErrorState

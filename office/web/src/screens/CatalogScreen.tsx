@@ -90,6 +90,7 @@ import {
   NO_PARTY_LIST_FILTERS,
   NO_PRODUCT_LIST_FILTERS,
   PartyFilterRow,
+  ProductShareBar,
   presenceOf,
   ProductFilterRow,
   productFiltersActive,
@@ -197,6 +198,8 @@ export function CatalogScreen({
   // 1.4 D3 (R17). Products sort on the Master (or the cached snapshot, offline); parties here.
   const [productSort, setProductSort] = useStoredSort('products.sub', { key: 'category', dir: 'asc' });
   const [productListFilters, setProductListFilters] = useState<ProductListFilters>(NO_PRODUCT_LIST_FILTERS);
+  // 1.4 D3 (R16): ticked rows for Create product share.
+  const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
   const [partySort, setPartySort] = useStoredSort('parties', { key: 'name', dir: 'asc' });
   const [partyListFilters, setPartyListFilters] = useState<PartyListFilters>(NO_PARTY_LIST_FILTERS);
   const [productDrawerOpen, setProductDrawerOpen] = useState(false);
@@ -924,6 +927,11 @@ export function CatalogScreen({
         </Select>
       </div>
       <ProductFilterRow value={productListFilters} onChange={setProductListFilters} />
+      <ProductShareBar
+        count={ticked.size}
+        onClear={() => setTicked(new Set())}
+        build={() => api.productSharePdf([...ticked])}
+      />
       {page === null && !loadFailed ? (
         <SkeletonTable columns={columns} rows={8} />
       ) : (
@@ -936,6 +944,8 @@ export function CatalogScreen({
           sort={productSort}
           onSortChange={setProductSort}
           sortLocally={false}
+          selectedIds={ticked}
+          onSelectionChange={setTicked}
           empty={
             loadFailed ? (
               <ErrorState

@@ -117,3 +117,4 @@ export * from './useEnterToAdvance.js';
 export * from './useOverlay.js';
 export * from './CatalogListsScreen.js';
 export * from './ListFilters.js';
+export * from './ProductShare.js';

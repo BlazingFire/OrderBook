@@ -1183,6 +1183,27 @@ export function createApp(): Express {
     })();
   });
 
+  /**
+   * Create product share (1.4 D3): the Master renders the four-to-a-page PDF with
+   * its photographs and this hands it to the browser. Online only, like the other
+   * PDFs: the Master holds the renderer, the fonts and the image files.
+   */
+  app.post('/api/products/share.pdf', (req, res) => {
+    void (async () => {
+      try {
+        const pdf = await masterConnection.command<
+          'product:sharePdf',
+          { fileName: string; bytes: Uint8Array }
+        >('product:sharePdf', Array.isArray(req.body?.ids) ? req.body.ids : []);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${pdf.fileName}"`);
+        res.send(Buffer.from(pdf.bytes));
+      } catch (error) {
+        failForward(res, error);
+      }
+    })();
+  });
+
   app.put('/api/orders/:id', (req, res) =>
     queue(res, {
       kind: 'order.update',

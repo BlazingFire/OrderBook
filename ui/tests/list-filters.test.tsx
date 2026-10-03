@@ -172,3 +172,51 @@ describe('the filter rows', () => {
     expect(seen.at(-1)).toEqual(NO_PARTY_LIST_FILTERS);
   });
 });
+
+describe('DataTable tick boxes (1.4 D3, R16)', () => {
+  const columns: DataTableColumn<Row>[] = [{ key: 'name', header: 'Name', render: (row) => row.name }];
+  const rows: Row[] = [
+    { id: '1', name: 'Zed' },
+    { id: '2', name: 'Abe' },
+    { id: '3', name: 'Mo' },
+  ];
+
+  function Harness({ onOpen }: { onOpen: (row: Row) => void }) {
+    const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
+    return (
+      <>
+        <output data-testid="ticked">{[...ticked].sort().join(',')}</output>
+        <DataTable
+          columns={columns}
+          rows={rows}
+          rowKey={(row) => row.id}
+          onRowOpen={onOpen}
+          selectedIds={ticked}
+          onSelectionChange={setTicked}
+        />
+      </>
+    );
+  }
+
+  it('ticks a row without opening it, and select-all ticks every shown row', () => {
+    const onOpen = vi.fn();
+    render(<Harness onOpen={onOpen} />);
+
+    const boxes = screen.getAllByRole('checkbox', { name: t('table.selectRow') });
+    expect(boxes).toHaveLength(3);
+    fireEvent.click(boxes[1]!);
+    expect(screen.getByTestId('ticked').textContent).toBe('2');
+    expect(onOpen).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: t('table.selectAll') }));
+    expect(screen.getByTestId('ticked').textContent).toBe('1,2,3');
+
+    fireEvent.click(screen.getByRole('checkbox', { name: t('table.selectAll') }));
+    expect(screen.getByTestId('ticked').textContent).toBe('');
+  });
+
+  it('adds no tick column when it is not asked for', () => {
+    render(<DataTable columns={columns} rows={rows} rowKey={(row) => row.id} />);
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+  });
+});

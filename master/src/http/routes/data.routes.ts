@@ -26,6 +26,7 @@ import * as catalogService from '../../services/catalog.service.js';
 import * as conflictService from '../../services/conflict.service.js';
 import * as dashboardService from '../../services/dashboard.service.js';
 import * as fieldsService from '../../services/fields.service.js';
+import * as productShareService from '../../services/product-share.service.js';
 import * as inventoryService from '../../services/inventory.service.js';
 import * as leadService from '../../services/lead.service.js';
 import * as orderService from '../../services/order.service.js';
@@ -389,6 +390,24 @@ dataRoutes.post(
   '/party-variants',
   asyncHandler(async (req, res) => {
     res.json(await catalogService.upsertVariant(req.body, actorFromRequest(req)));
+  }),
+);
+
+/**
+ * Create product share (1.4 D3): the chosen products as an A4 PDF, four to a
+ * page. A POST because the ids are a list; sent `inline` so a window can show it.
+ * Ahead of `/products/:id`.
+ */
+dataRoutes.post(
+  '/products/share.pdf',
+  asyncHandler(async (req, res) => {
+    const { fileName, bytes } = await productShareService.productSharePdf(
+      req.body?.ids,
+      actorFromRequest(req),
+    );
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+    res.send(Buffer.from(bytes));
   }),
 );
 

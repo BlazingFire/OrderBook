@@ -615,6 +615,18 @@ export const api = {
   deleteCategory: (id: string) =>
     request<{ id: string; deletedAt: string }>(`/api/categories/${id}`, { method: 'DELETE' }),
 
+  /** 1.4 D3: Create product share; online only, the Master draws the PDF with the photographs. */
+  productSharePdf: (ids: string[]) =>
+    fetchBlob(
+      '/api/products/share.pdf',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      },
+      'product-share.pdf',
+    ),
+
   // --- Bulk product import: online-only, like images ------------------------
 
   productImportTemplate: (format: ProductImportFormat) =>

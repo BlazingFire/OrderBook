@@ -139,6 +139,8 @@ export interface CatalogueView {
 /** What the catalogue screens write through, and how they page the list. */
 export interface CatalogueTransport {
   listProducts(query: ProductListQuery, signal?: AbortSignal): Promise<ProductListPage>;
+  /** 1.4 D3: the chosen products as a four-to-a-page PDF with photographs. */
+  productSharePdf(ids: string[]): Promise<{ blob: Blob; fileName: string }>;
   categories(query?: { search?: string; brand?: string }): Promise<ProductCategoryListRow[]>;
   createCategory(input: CategoryInput): Promise<unknown>;
   updateCategory(id: string, input: CategoryUpdateInput): Promise<unknown>;

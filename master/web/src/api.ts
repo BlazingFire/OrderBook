@@ -424,8 +424,12 @@ async function requestBlob(path: string, body: unknown): Promise<{ blob: Blob; f
 }
 
 /** A binary download by GET, for the product import template — the response is the file itself. */
-async function requestFile(path: string, fallbackName: string): Promise<{ blob: Blob; fileName: string }> {
-  const response = await fetch(path, { credentials: 'same-origin' });
+async function requestFile(
+  path: string,
+  fallbackName: string,
+  init: RequestInit = {},
+): Promise<{ blob: Blob; fileName: string }> {
+  const response = await fetch(path, { credentials: 'same-origin', ...init });
   await throwIfNotOk(response);
 
   const match = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') ?? '');
@@ -764,6 +768,14 @@ export const api = {
     request<ProductCategory>(`/api/categories/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   deleteCategory: (id: string) =>
     request<{ id: string; deletedAt: string }>(`/api/categories/${id}`, { method: 'DELETE' }),
+
+  /** 1.4 D3: Create product share; the Master draws the PDF with the photographs. */
+  productSharePdf: (ids: string[]) =>
+    requestFile('/api/products/share.pdf', 'product-share.pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    }),
 
   // Bulk product import (`products.bulk`, checked by the service).
   productImportTemplate: (format: ProductImportFormat) =>
