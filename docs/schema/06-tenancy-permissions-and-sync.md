@@ -141,7 +141,7 @@ carries a value that one role may see and another may not.
 
 *History:* `20260301` created `roles` with a UUID id and a `role_permissions (role_id,
 permission)` join table; `20260303` folded that table into the `permissions` array (remapping the
-coarse `parties.manage`, `products.manage` and `inventory.manage` keys onto their finer
+coarse `parties.manage`, `products.manage` and `inventory.manage` keys (the last is gone since 1.4: stock was removed and a stored `inventory.*` or `stock.adjust` string is silently filtered by `isPermission`) onto their finer
 successors), moved the id to text and added soft delete and sync bookkeeping; `20260304` re-filtered
 every stored array through its tier ceiling.
 
@@ -193,9 +193,6 @@ in `master/src/repositories/party-access.repository.ts` (`applyPartyScope` for q
 `partyScopeLogSql` for the activity log, where the subject is named indirectly by
 `(entity_type, entity_id)`). Writes go through `requirePartyAccess(partyId, 'manage', actor)` in the
 **service** layer, never a route guard — an Office Panel reaches the same functions over Socket.IO.
-
-Deliberately **not** scoped: inventory. Stock belongs to no party, and hiding the warehouse from the
-people who pick from it would be wrong rather than safe.
 
 ---
 
@@ -410,13 +407,13 @@ On `roles` and `users` the columns are ahead of the code. The Master's own write
 `hlc` and `field_hlc`, but there is no `role.*` or `user.*` mutation kind, so no panel edit reaches
 either table through sync and `temporary_id` is always NULL (`docs/ROLES_AND_USERS.md` §15.5).
 
-The other five syncable entities — line items, product categories, product variants, timeline
-entries and reservations — carry no clock of their own, and the Master names each one with a
+The other four syncable entities — line items, product categories, product variants and timeline
+entries — carry no clock of their own, and the Master names each one with a
 permanent id when it applies the write that makes it (the `allocatePermanentIds` calls in their
-repositories). Four are only ever made as part of a parent's write; a product category is made that
+repositories). Three are only ever made as part of a parent's write; a product category is made that
 way too (a product form naming a new category), and since catalogue v2 also has its own online-only
 create, edit and soft delete — never queued, so never offline. A panel mints a temporary id only for the
-record a mutation is about — a lead, party, product or party variant — so none of the five ever
+record a mutation is about — a lead, party, product or party variant — so none of the four ever
 appears in `id_map`.
 
 `field_hlc` is the column that makes the guide's §4.5 promise achievable: edits to *different*
@@ -505,7 +502,7 @@ CREATE TABLE master_clock (
 
 `applied_mutations` is never pruned; `idx_applied_mutations_at` serves the dashboard's "mutations
 from panels in the last hour" figure. `id_sequences` has one row per syncable entity per tenant — 12
-on a fresh database, every one at 1 except `role` at 4. Since 1.3 it also holds one row per
+on a fresh database (one of them, `reservation`, is retired in 1.4 and no longer used), every one at 1 except `role` at 4. Since 1.3 it also holds one row per
 financial year for the pending order numbers, `po:2026-27` and so on: seeded by
 `20261003000000_pending_order_numbers` past the numbers it back-filled, created by the first save
 of a new year, never reset by the business-data wipe, and restarted only by a developer factory

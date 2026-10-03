@@ -17,7 +17,6 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { planDispatchMovements, planReservations } from '../src/domain/conversion.js';
 import {
   buildLineSnapshot,
   computeTotalWeightKg,
@@ -170,28 +169,5 @@ describe('quantities and weights', () => {
 
     expect(computeTotalWeightKg(lines)).toBe(125);
     expect(linesWithoutWeight(lines)).toBe(1);
-  });
-});
-
-describe('what a line means for stock', () => {
-  const lines: LineSnapshot[] = [
-    buildLineSnapshot(draft({ quantity: 5 }), PRODUCT, WHITE, null, 1),
-    buildLineSnapshot(draft({ variantId: UNWEIGHED.id, quantity: 3 }), PRODUCT, UNWEIGHED, null, 2),
-    buildLineSnapshot(draft({ quantity: 2 }), PRODUCT, WHITE, null, 3),
-  ];
-
-  it('reserves one hold per line, keyed by the variant — a colour is not a stock key', () => {
-    expect(planReservations(lines)).toEqual([
-      { productId: PRODUCT.id, variantId: WHITE.id, quantity: 5, lineIndex: 0 },
-      { productId: PRODUCT.id, variantId: UNWEIGHED.id, quantity: 3, lineIndex: 1 },
-      { productId: PRODUCT.id, variantId: WHITE.id, quantity: 2, lineIndex: 2 },
-    ]);
-  });
-
-  it('sums the holds per variant into one signed movement each on dispatch', () => {
-    expect(planDispatchMovements(planReservations(lines))).toEqual([
-      { productId: PRODUCT.id, variantId: WHITE.id, quantityBoxes: -7 },
-      { productId: PRODUCT.id, variantId: UNWEIGHED.id, quantityBoxes: -3 },
-    ]);
   });
 });

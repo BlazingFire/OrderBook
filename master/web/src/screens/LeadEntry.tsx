@@ -4,7 +4,7 @@
  * to ask for, `GET /api/lead-entry`.
  *
  * The view is re-read whenever `revision` moves (a party's records, the option
- * lists or stock changed), and **the form is never unmounted for it**: the busy
+ * lists changed), and **the form is never unmounted for it**: the busy
  * mark shows only until the first answer, after which the previous view stays
  * on screen while the next one loads. Unmounting would throw away a half-typed
  * lead.

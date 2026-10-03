@@ -28,7 +28,7 @@ async function officeRole(name = 'Dispatch') {
     {
       name,
       tier: 'office',
-      permissions: ['orders.view', 'orders.edit', 'inventory.view', 'stock.adjust'],
+      permissions: ['orders.view', 'orders.edit', 'parties.view'],
     },
     admin,
   );
@@ -87,11 +87,11 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
 
     it('stores the permission set sorted, so a reorder is not an edit', async () => {
       const role = await roleService.createRole(
-        { name: 'Shuffled', tier: 'office', permissions: ['orders.view', 'inventory.view'] },
+        { name: 'Shuffled', tier: 'office', permissions: ['orders.view', 'parties.view'] },
         admin,
       );
 
-      expect(role.permissions).toEqual(['inventory.view', 'orders.view']);
+      expect(role.permissions).toEqual(['orders.view', 'parties.view']);
     });
 
     it('rejects the whole save on an unknown key rather than dropping it', async () => {
@@ -162,7 +162,7 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
         {
           name: role.name,
           tier: 'office',
-          permissions: ['orders.view', 'inventory.view'],
+          permissions: ['orders.view', 'parties.view'],
           expectedVersion: role.sync.version,
         },
         admin,
@@ -175,7 +175,7 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
       // An auditor asks "what could this role do on 14 March"; a chain of diffs
       // makes that a replay instead of a lookup.
       expect(entry?.details.permissions.from).toEqual(role.permissions);
-      expect(entry?.details.permissions.to).toEqual(['inventory.view', 'orders.view']);
+      expect(entry?.details.permissions.to).toEqual(['orders.view', 'parties.view']);
     });
 
     it('refuses a stale save rather than silently overwriting the other edit', async () => {
@@ -201,7 +201,7 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
           {
             name: role.name,
             tier: 'office',
-            permissions: ['inventory.view'],
+            permissions: ['parties.view'],
             expectedVersion: staleVersion,
           },
           admin,

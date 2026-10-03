@@ -29,7 +29,7 @@ where they are now.
 |---|---|
 | `01-identity-and-network.md` | `master_config`, `users`, `office_panels`, `user_notifications`, `chat_rooms`, `chat_members`, `chat_messages`, `print_stations`, `print_jobs` |
 | `02-parties-and-products.md` | `parties`, `product_categories`, `products`, `product_variants`, `product_images` |
-| `03-leads-orders-inventory.md` | `leads`, `orders`, `line_items`, `timeline_entries`, `party_product_variants`, `inventory_stock`, `stock_reservations`, `stock_movements` |
+| `03-leads-orders-inventory.md` | `leads`, `orders`, `line_items`, `timeline_entries`, `party_product_variants`; also the three tables retired in 1.4 (`inventory_stock`, `stock_reservations`, `stock_movements`, kept for data safety — nothing reads or writes them) |
 | `04-activity-log.md` | `activity_log` (the hash-chained audit trail) |
 | `05-scaling-and-operations.md` | Why PostgreSQL, how it stays "zero-install" on a shop PC, and how it scales as data grows |
 | `06-tenancy-permissions-and-sync.md` | `tenants`, `roles`, `party_access`, `settings`, `user_password_vault`, `pipelines`, `pipeline_stages`, `option_lists`, `custom_field_definitions`, `id_map`, `applied_mutations`, `sync_conflicts`, `id_sequences`, `master_clock`, and the search vectors |
@@ -48,7 +48,7 @@ Designer's `document_assets`, `document_templates` and `document_exports` (creat
 `20260322000000_drop_document_designer`), and the sequences `lead_number_seq` and
 `product_code_seq`. Two intermediate table names survive only in constraint names: on a
 fresh database `leads` has `leads_new_pkey` (and `leads_new_*_fkey`) and
-`inventory_stock` has `inventory_stock_new_pkey`, from the tables `20260302` built and
+the retired `inventory_stock` has `inventory_stock_new_pkey`, from the tables `20260302` built and
 then renamed.
 
 ## 1. Database Engine: PostgreSQL
@@ -112,7 +112,7 @@ uploads and backups are all under the chosen folder. Backups are in
     record types the offline id scheme is built for: `leads` (`LD`), `orders` (`OD`),
     `line_items` (`LI`), `parties` (`PT`), `products` (`PR`), `product_categories`
     (`PC`), `product_variants` (`VR`), `party_product_variants` (`PV`),
-    `timeline_entries` (`TL`), `stock_reservations` (`RS`), `roles` (`RL`), `users`
+    `timeline_entries` (`TL`), `roles` (`RL`), `users`
     (`US`). A panel mints a 15-character **temporary** id
     (`<6-char device code><9-digit counter>`); the Master assigns the 12-character
     **permanent** one (`<prefix><10 digits>`) and keeps the pair in `id_map` forever
@@ -122,11 +122,11 @@ uploads and backups are all under the chosen folder. Backups are in
     the Master's own API, always with a permanent id (`docs/ROLES_AND_USERS.md` §15.5).
   - **UUIDs** for rows only the Master creates: `tenants`, `office_panels`,
     `pipelines`, `pipeline_stages`, `option_lists`, `custom_field_definitions`,
-    `product_images`, `inventory_stock` (generated in the application), and
+    `product_images`, and
     `party_access`, the `api_*` tables except runs, and `ai_runs` (database default
     `gen_random_uuid()`).
   - **`BIGSERIAL`** for append-only logs where row order itself is meaningful:
-    `activity_log`, `stock_movements`, `sync_conflicts`, `api_connector_runs`.
+    `activity_log`, `sync_conflicts`, `api_connector_runs`.
   - **Composite or singleton keys** where the row is identified by what it is about:
     `id_map (tenant_id, temporary_id)`, `applied_mutations (tenant_id, mutation_id)`,
     `id_sequences (tenant_id, entity)`, `settings (tenant_id, key)`,
@@ -199,10 +199,6 @@ erDiagram
     LEADS ||--o{ LINE_ITEMS : "parent_type=lead (no FK)"
     ORDERS ||--o{ LINE_ITEMS : "parent_type=order (no FK)"
     PRODUCT_VARIANTS ||--o{ LINE_ITEMS : "variant_id"
-    PRODUCT_VARIANTS ||--o| INVENTORY_STOCK : "one row per variant"
-    PRODUCT_VARIANTS ||--o{ STOCK_MOVEMENTS : "variant_id"
-    ORDERS ||--o{ STOCK_RESERVATIONS : "cascade"
-    LINE_ITEMS ||--o{ STOCK_RESERVATIONS : "cascade"
     LEADS ||--o{ TIMELINE_ENTRIES : "parent_type=lead (no FK)"
     ORDERS ||--o{ TIMELINE_ENTRIES : "parent_type=order (no FK)"
     USERS ||--o{ LEADS : "owner_id / created_by_user_id"

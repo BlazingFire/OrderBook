@@ -22,7 +22,6 @@ export * from './domain/recycle-bin.js';
 export * from './domain/record-search.js';
 export * from './domain/report-access.js';
 export * from './domain/reports.js';
-export * from './domain/inventory-view.js';
 export * from './domain/order-note.js';
 export * from './domain/settings.js';
 export * from './domain/version.js';

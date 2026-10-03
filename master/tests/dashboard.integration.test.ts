@@ -14,7 +14,6 @@ import { config } from '../src/config/index.js';
 import { db } from '../src/db/knex.js';
 import * as catalogService from '../src/services/catalog.service.js';
 import * as dashboardService from '../src/services/dashboard.service.js';
-import * as inventoryService from '../src/services/inventory.service.js';
 import * as leadService from '../src/services/lead.service.js';
 import * as orderService from '../src/services/order.service.js';
 import * as snapshotService from '../src/services/snapshot.service.js';
@@ -36,7 +35,6 @@ async function createLead(): Promise<{ leadId: string; partyId: string; productI
     actor,
   );
   const variantId = product.variants[0]!.id;
-  await inventoryService.recordInbound({ variantId, quantityBoxes: 100 }, actor);
 
   const lead = await leadService.createLead(
     {

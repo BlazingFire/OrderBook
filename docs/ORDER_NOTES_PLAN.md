@@ -335,8 +335,7 @@ export function paginateOrderNote(model: OrderNoteModel, kind: NoteKind, codeCol
   inline from it.
 - **`isNumericSubProduct` is the only rule** for left vs right. Don't add a
   second test (e.g. "has a code column") that can disagree.
-- **Quantities are pieces** on order lines (`LineItem.quantity`); stock is in
-  boxes. The note prints what the line holds.
+- **Quantities are pieces** on order lines (`LineItem.quantity`). The note prints what the line holds.
 - **Offline Office**: the preview must not call the Master. Saving the vehicle
   number offline queues like any order edit.
 - **Old shells**: the bridge members are optional; never assume them.

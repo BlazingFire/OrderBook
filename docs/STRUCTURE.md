@@ -1,6 +1,6 @@
 # OrderBook — software and code structure
 
-**What this is.** OrderBook is an offline, LAN-only order and inventory management
+**What this is.** OrderBook is an offline, LAN-only order management
 application for a ceramic company. It is two cooperating web apps, each wrapped in
 one Electron desktop shell:
 
@@ -819,21 +819,20 @@ Tracked: **79 files** — 51 in `shared/src/` (`domain/` 28, `i18n/` 9, `keys/` 
 
 | File | Purpose | Main exports |
 |---|---|---|
-| `shared/src/domain/entities.ts` | Every record shape on the wire (61 exports). No money fields. `PartyProductVariant` holds only `productName`, `alias`, `size`, `weightKg`, `packaging`. `LineItem` snapshots `productName`, `categoryName`, `categoryCode`, `brandName` (the last two since catalogue v2, 2026-09-29), `alias`, `code`, `variantLabel`, `colour`, `size` and `weightKg` at add time; `ProductCategory` carries `code`, `brand`, `sortOrder`, `updatedAt`, `deletedAt` and `ProductCategoryListRow` adds `subProductCount`; `Product` carries `categoryCode`, `brand` (read through the category) and `sortOrder`; `InventoryStockLevel` carries `categoryId`, `categoryCode`, `brand`, `multiColour`; `packaging` and `grade` (restored 2026-09-22 as a line-only attribute) sit outside the snapshot block and are chosen by hand on each line. | `Uuid`, `RecordId`, `IsoTimestamp`, `IsoDate`, `SyncMeta` (`version`, `hlc`, `fieldHlc`, `temporaryId`), `Tenant`, `Role`, `RoleTierName`, `User`, `UserAvatar`, `AVATAR_VARIANTS`, `CompanyFeatures`, `SignedInUser`, `OfficePanel*`, `Pipeline`, `PipelineStage`, `OptionListItem`, `CustomFieldDefinition`, `CUSTOM_FIELD_ENTITIES`, `isCustomFieldEntity`, `Party`, `ProductCategory`, `ProductVariant`, `Product`, `ProductImage`, `IMAGE_VARIANTS`, `IMAGE_VARIANT_LONG_EDGES`, `variantForSlot`, `MAX_IMAGE_SOURCE_BYTES`, `PartyProductVariant`, `LineItem`, `TimelineEntry`, `Lead`, `Order`, `WeightSource`, `StockReservation`, `InventoryStockLevel`, `StockMovement`, `SyncConflict`, `IdMapping`, `SearchHit`, `MasterIdentity`, `StorageUsage`, `DashboardSummary` |
-| `shared/src/domain/inputs.ts` | Every write payload and list query (60 exports). If a form sends it, its type is here. | `PartyInput`, `ProductInput` (catalogue v2 adds `categoryCode` — resolves a live category, never creates one — `categoryBrand` and `sortOrder`), `CategoryInput`/`CategoryUpdateInput` (catalogue v2: `name`, `code`, `brand?`, `sortOrder?`), `ProductVariantInput`, `ImageCropInput`, `ProductImageUpdateInput`, `ProductImageReorderInput`, `PartyProductVariantInput`, `LineItemInput`, `LeadInput`, `LeadUpdateInput`, `StageChangeInput`, `RemarkInput`, `LeadConvertInput`, `OrderUpdateInput`, `OrderDispatchInput`, `StockInboundInput`, `StockAdjustmentInput`, `StockLevelsInput`, `ReorderLevelInput`, `ListQuery` (+ Lead/Order/Stock/Product/PartyAccess/RecycleBin variants), `SearchQuery`, `RoleInput`, `UserInput`, `UserUpdateInput`, `PasswordResetInput`, `ChangeOwnPasswordInput`, `OneTimeSecret`, `VaultStatus`, `ConflictResolutionInput`, `Paginated<T>`, `ProductListPage`, `CursorQuery`, `CursorPage<T>`, `RestoreInput`, `OptionListItem*Input`, `CustomFieldDefinition*Input`, `PipelineStageInput`, `StageReorderInput`, `OfficePanelReportInput`, `OfficePanelUpdateInput`, `PanelStoragePathInput`/`Result`, `PanelSecretRotation`, `PartyAccessLevel` (`'view' \| 'manage'`), `PartyAccessEntry`/`Assignee`/`Row`/`Input`, `AssignablePerson`, `PartyScopeFilter` |
+| `shared/src/domain/entities.ts` | Every record shape on the wire (56 exports). No money and no stock fields. `PartyProductVariant` holds only `productName`, `alias`, `size`, `weightKg`, `packaging`. `LineItem` snapshots `productName`, `categoryName`, `categoryCode`, `brandName` (the last two since catalogue v2, 2026-09-29), `alias`, `code`, `variantLabel`, `colour`, `size` and `weightKg` at add time; `ProductCategory` carries `code`, `brand`, `sortOrder`, `updatedAt`, `deletedAt` and `ProductCategoryListRow` adds `subProductCount`; `Product` carries `categoryCode`, `brand` (read through the category) and `sortOrder`; `packaging` and `grade` (restored 2026-09-22 as a line-only attribute) sit outside the snapshot block and are chosen by hand on each line. | `Uuid`, `RecordId`, `IsoTimestamp`, `IsoDate`, `SyncMeta` (`version`, `hlc`, `fieldHlc`, `temporaryId`), `Tenant`, `Role`, `RoleTierName`, `User`, `UserAvatar`, `AVATAR_VARIANTS`, `CompanyFeatures`, `SignedInUser`, `OfficePanel*`, `Pipeline`, `PipelineStage`, `OptionListItem`, `CustomFieldDefinition`, `CUSTOM_FIELD_ENTITIES`, `isCustomFieldEntity`, `Party`, `ProductCategory`, `ProductVariant`, `Product`, `ProductImage`, `IMAGE_VARIANTS`, `IMAGE_VARIANT_LONG_EDGES`, `variantForSlot`, `MAX_IMAGE_SOURCE_BYTES`, `PartyProductVariant`, `LineItem`, `TimelineEntry`, `Lead`, `Order`, `WeightSource`, `SyncConflict`, `IdMapping`, `SearchHit`, `MasterIdentity`, `StorageUsage`, `DashboardSummary` |
+| `shared/src/domain/inputs.ts` | Every write payload and list query (55 exports). If a form sends it, its type is here. | `PartyInput`, `ProductInput` (catalogue v2 adds `categoryCode` — resolves a live category, never creates one — `categoryBrand` and `sortOrder`), `CategoryInput`/`CategoryUpdateInput` (catalogue v2: `name`, `code`, `brand?`, `sortOrder?`), `ProductVariantInput`, `ImageCropInput`, `ProductImageUpdateInput`, `ProductImageReorderInput`, `PartyProductVariantInput`, `LineItemInput`, `LeadInput`, `LeadUpdateInput`, `StageChangeInput`, `RemarkInput`, `LeadConvertInput`, `OrderUpdateInput`, `OrderDispatchInput`, `ListQuery` (+ Lead/Order/Product/PartyAccess/RecycleBin variants), `SearchQuery`, `RoleInput`, `UserInput`, `UserUpdateInput`, `PasswordResetInput`, `ChangeOwnPasswordInput`, `OneTimeSecret`, `VaultStatus`, `ConflictResolutionInput`, `Paginated<T>`, `ProductListPage`, `CursorQuery`, `CursorPage<T>`, `RestoreInput`, `OptionListItem*Input`, `CustomFieldDefinition*Input`, `PipelineStageInput`, `StageReorderInput`, `OfficePanelReportInput`, `OfficePanelUpdateInput`, `PanelStoragePathInput`/`Result`, `PanelSecretRotation`, `PartyAccessLevel` (`'view' \| 'manage'`), `PartyAccessEntry`/`Assignee`/`Row`/`Input`, `AssignablePerson`, `PartyScopeFilter` |
 | `shared/src/domain/columns.ts` | **The one wire-field → database-column map** (§3.3). | `JSON_COLUMNS`, `PARTY_COLUMNS`, `PRODUCT_COLUMNS`, `LEAD_COLUMNS`, `ORDER_COLUMNS`, `USER_COLUMNS`, `MERGEABLE_PRODUCT_COLUMNS`, `MERGEABLE_COLUMNS`, `MergeableEntity`, `columnPatch()`, `fieldFor()` |
 | `shared/src/domain/settings.ts` | The company settings catalogue (§3.4). | `SETTING_GROUPS`, `SettingGroup`, `SettingControl`, `SettingDefinition`, `SETTINGS`, `SettingKey`, `SettingValue<K>`, `SETTING_KEYS`, `isSettingKey()`, `isSecretSetting()`, `SettingView` |
 | `shared/src/domain/company-features.ts` | Fills every missing `CompanyFeatures` field from the setting's declared fallback, so no screen writes its own `?? true`. | `ResolvedCompanyFeatures`, `resolveCompanyFeatures()` |
 | `shared/src/domain/permissions.ts` | Permission catalogue, tier ceiling, role templates, the grid catalogue (§3.6). | `ROLE_TIERS`, `RoleTier`, `isRoleTier`, `tierRank`, `MODULES`, `ACTIONS`, `MODULE_ACTIONS`, `CAPABILITY_GROUPS`, `CAPABILITIES`, `PERMISSIONS`, `isPermission`, `minimumTierFor`, `isPermittedForTier`, `keysAboveTier`, `effectivePermissions`, `allPermissions`, `ROLE_TEMPLATES`, `PermissionSet`, `hasPermission`, `PermissionCatalogue`, `moduleActionLabelToken`, `actionLabelToken`, `buildPermissionCatalogue`; since 1.3 Phase 2 `SERVER_MASTER_TIER`, `isServerMasterTier` |
 | `shared/src/domain/fields.ts` | Wire vocabulary for the Fields screen. **5** managed option-list sets: `lead.sourcePlatform`, `stock.colour` (the only one with `hasHex`), `product.brand` (catalogue v2: the brands a category is sold under), `line.packaging`, `line.grade`. | `FIELD_LIST_KEYS`, `FieldListKey`, `isFieldListKey`, `FieldSetDefinition`, `FieldCatalogue`, `buildFieldCatalogue()`, `FieldUsage`, `FieldUsageBreakdown` |
 | `shared/src/domain/order-note.ts` | The Filling and Dispatch notes as pure data (2026-09-30, `docs/ORDER_NOTES_PLAN.md`). `buildOrderNote(order)` merges lines of one variant/colour/grade/packaging, splits named from coded with `isNumericSubProduct` (the only test), sorts, groups the coded side by product; `paginateOrderNote(model, kind)` cuts it into A4 `NotePage`s by arithmetic on `NOTE_LAYOUT`'s fixed heights (no DOM), gives a product of three or more codes one header with its codes below, three to a row (repeated as `continued` when it runs into the next column), and prints the product on each code of a smaller one; the coded half is one column beside the named half, two when it has the page, reserves the signature row on the last page. **1.3 H3:** a note is made from a pending order (a lead) as well as a final order — `NoteSource` (`'lead'` \| `'order'`), `NoteRecord` (what `buildOrderNote` reads; a lead's missing `weightSource` means the computed weight), `NoteHeader` (source, id, printed number, created-at), `NotePartyHeader`, `NoteDocument`; `noteNumber({id, poNumber?})` is the one place the printed number is chosen (the PO number, or null so the sheet prints the id), `noteHeader`, `noteDocument`, `cleanVehicleNumber` (moved here from the screen), `clampNoteCopies` / `NOTE_MAX_COPIES` (1..50). | `NOTE_LAYOUT`, `buildOrderNote`, `paginateOrderNote`, `clampNoteColumns`, `NoteKind`, `NoteLine`, `NotePage`, `NoteSource`, `NoteHeader`, `noteHeader`, `noteDocument`, `noteNumber`, `cleanVehicleNumber`, `clampNoteCopies` |
-| `shared/src/domain/inventory-view.ts` | Two pure transforms the Master applies to every stock figure it sends. `withoutReservations` (free-to-sell off): reserved → 0, available → on-hand. `withDefaultReorderLevel`: judges low stock against the company default only for lines with no level of their own, never writing it onto the row. | `withoutReservations()`, `withDefaultReorderLevel()` |
-| `shared/src/domain/product-validation.ts` | Variant and stock-level rules that run on the service path and the offline merge path, before Postgres. Refuses blank or duplicate codes/labels (case-insensitive), a missing label on a variant product, weight ≤ 0. Validates only keys the input contains. | `CATEGORY_CODE_PATTERN` (`/^[A-Za-z0-9]+$/`, catalogue v2), `ProductValidationError` (carries `messageKey`), `validateProductInput`, `validateProductVariants`, `validateStockLevels`, `isBlankNote` |
+| `shared/src/domain/product-validation.ts` | Variant rules that run on the service path and the offline merge path, before Postgres. Refuses blank or duplicate codes/labels (case-insensitive), a missing label on a variant product, weight ≤ 0. Validates only keys the input contains. | `CATEGORY_CODE_PATTERN` (`/^[A-Za-z0-9]+$/`, catalogue v2), `ProductValidationError` (carries `messageKey`), `validateProductInput`, `validateProductVariants` |
 | `shared/src/domain/product-import.ts` | Wire shape and limits for bulk product import (the parser is on the Master). | `MAX_PRODUCT_IMPORT_BYTES` (50 MiB), `MAX_PRODUCT_IMPORT_ISSUES` (1000), `ProductImportMode` (`create`/`upsert`), `ProductImportFormat` (`csv`/`xlsx`), `ProductImportIssue`, `ProductImportResult` |
 | `shared/src/domain/party-import.ts` | Wire shape, columns and limits for bulk party import and export (1.3 H1; format: `docs/PARTY_IMPORT_FORMAT.md`; the parser is on the Master). | `MAX_PARTY_IMPORT_BYTES` (5 MiB), `MAX_PARTY_IMPORT_ROWS` (5000), `MAX_PARTY_IMPORT_ISSUES` (1000), `PARTY_BULK_MIN_PROTOCOL` (2), `PartyImportMode` (`create`/`updateByCode`), `PARTY_IMPORT_COLUMNS` / `PARTY_IMPORT_HEADERS` (12 columns, template order), `PartyImportIssue`, `PartyImportResult` |
 | `shared/src/domain/pick.ts` | Contract for the searchable picker; kinds `category`, `product`, `party`. | `PickKind`, `PickQuery`, `PickPage<T>`, `ProductPickPage`, `PartyPickPage`, `CategoryPickPage`, `PICK_DEFAULT_LIMIT` (20), `PICK_MAX_LIMIT` (1000 since catalogue v2, was 50: the sub-product bar lists a whole category), `isPickKind` |
 | `shared/src/domain/pick-score.ts` | One ranking rule for picker rows: exact > prefix > word-start > substring, then shorter label, then `localeCompare`. Imported by `office/src/services/offline-pick.ts`. | `PICK_SCORE` (`none 0 … exact 4`), `PickScore`, `pickScore()`, `comparePicked()` |
-| `shared/src/domain/colour-rule.ts` | Catalogue v2 (2026-09-29): the owner's colour rule, derived from a model and its variant rather than stored, and the lead PDF's Model/Code split and colour text. Pure; used by the lead screen, inventory and the lead PDF. | `ColourRule` (`fixed`/`dedicated`/`selectable`), `colourRuleOf` (`multiColour` wins, then a non-blank first label is `fixed`, else `dedicated`), `colourRepeatsName`, `shownColour`, `isNumericSubProduct`, `subProductCells` (numeric → `code`, else `model`), `lineColourText` (sums same colours case-insensitively; several print as `White ×10, Ivory ×5`) |
+| `shared/src/domain/colour-rule.ts` | Catalogue v2 (2026-09-29): the owner's colour rule, derived from a model and its variant rather than stored, and the lead PDF's Model/Code split and colour text. Pure; used by the lead screen and the lead PDF. | `ColourRule` (`fixed`/`dedicated`/`selectable`), `colourRuleOf` (`multiColour` wins, then a non-blank first label is `fixed`, else `dedicated`), `colourRepeatsName`, `shownColour`, `isNumericSubProduct`, `subProductCells` (numeric → `code`, else `model`), `lineColourText` (sums same colours case-insensitively; several print as `White ×10, Ivory ×5`) |
 | `shared/src/domain/recycle-bin.ts` | Recycle Bin vocabulary: 8 entity types; a restore needs the same key as deleting that entity. | `RECYCLE_BIN_ENTITIES` (`lead`, `order`, `party`, `product`, `role`, `user`, `option_list_item`, `custom_field_definition`), `isRecycleBinEntityType`, `RESTORE_PERMISSION` (e.g. `lead→leads.delete`, `user→users.manage`, both field types → `fields.manage`), `BinEntry`, `BinBlocker`, `BinRestoreResult`, `BinCounts` |
 | `shared/src/domain/reports.ts` | Report types and the catalogue of fifteen kinds — counts, pieces and kilograms; no amounts. The three legacy kinds keep their typed shapes; every kind is also a `ReportTable` (1.3 H2). | `ReportPeriod` (adds `thisFinancialYear`, `customDates`), `ReportRangeInput`, `ReportRange`, `DispatchesReport`, `LeadOutcomesReport`, `TopPartiesReport`, `ReportKind` x15, `REPORT_KINDS`, `LEGACY_REPORT_KINDS`, `REPORT_COLUMNS` (with units), `REPORT_META` (title, icon, range or snapshot), `ReportTable`, `ReportRow`, `ReportSection`, `ReportOptions`, `ReportQuery`, `parseReportQuery`, `reportQueryParams`, `REPORT_TABLE_ROW_CAP` (2,000), `REPORT_EXPORT_CAPS` (100,000 / 100,000 / 10,000), `ReportFormat` (`csv`/`xlsx`/`pdf`), `ReportExportOptions` (adds `lang`), `isReportKind`, `isReportFormat`, `SUMMABLE_UNITS` |
 | `shared/src/domain/report-access.ts` | **The one rule for who sees Reports and whose figures** (the server enforces it; the screens read it). | `mayReportOnOthers(tier)` (admin and above, by rank), `reportsVisibleForTier(tier, features)` (the two company switches; an administrator is never off), `reportsOffered(tier, features, permissions)`, `offeredReportKinds` |
@@ -882,7 +881,7 @@ is: **`undefined` = not asserted, `null` = clear it.**
 Each setting is one row per key in the Master's `settings` table. **An absent row
 means the declared `fallback`, so adding a key needs no migration.** Each entry
 declares `labelToken`, `descriptionToken`, a `group` (one of
-`SETTING_GROUPS = ['access','stock','leads','integrations']`), a `control`
+`SETTING_GROUPS = ['access','products','leads','reports','integrations']`), a `control`
 (`boolean`, or `number` with min/max/step, optional `nullable` and a `unitToken`),
 a `fallback`, and one `parse(raw)` validator used on both write and read (a stored
 value that no longer parses reads back as the fallback). Every setting is stored on
@@ -892,34 +891,35 @@ signed-in user (`settings:save`). A `secret?: boolean`
 flag exists (sealed with AES-256-GCM, read back only as `{configured}`), but **no
 current key sets it**.
 
-The 13 keys, in declaration order:
+The 12 keys, in declaration order (the three `inventory.*` keys and the `stock` group were
+removed in 1.4; the group that held `catalog.importCreatesCategories` is now `products`):
 
 | Key | Group | Control | Fallback |
 |---|---|---|---|
 | `security.passwordRevealEnabled` | access | boolean | `false` |
-| `inventory.freeToSell` | stock | boolean | `false` |
+| `reports.visibleToOffice` | reports | boolean | `true` |
+| `reports.visibleToManagement` | reports | boolean | `true` |
 | `externalApi.enabled` | integrations | boolean | `false` |
 | `panels.autoPairingEnabled` | access | boolean | `true` |
 | `security.developerModeEnabled` | access | boolean | `true` (ignored while `ORDERBOOK_DEVELOPER_PASSWORD` is set) |
 | `security.sessionHours` | access | number 1–24, hours | `12` |
-| `inventory.defaultReorderLevel` | stock | number 0–100000, nullable, boxes, 2 dp | `null` |
 | `security.offlineSignInEnabled` | access | boolean | `true` |
-| `inventory.adjustmentNoteRequired` | stock | boolean | `false` |
-| `catalog.importCreatesCategories` | stock | boolean | `true` |
+| `catalog.importCreatesCategories` | products | boolean | `true` |
 | `leads.followUpDefaultDays` | leads | number 0–90, days | `3` (catalogue v2; was `0`, today) |
 | `leads.packagingRequiredOnConvert` | leads | boolean | `false` (catalogue v2; was `true`) |
 | `leads.quietAfterDays` | leads | number 1–365, days | `30` |
 
-Group headings: `settingGroup.access` "Who can get in", `settingGroup.stock` "Stock"
-(Hindi `'स्टॉक'`; "Stock and prices" until 2026-09-25), `settingGroup.leads` "Leads
-and follow-up", `settingGroup.integrations` "Other software".
+Group headings: `settingGroup.access` "Who can get in", `settingGroup.products` "Products",
+`settingGroup.leads` "Pending Orders and follow-up", `settingGroup.reports` "Reports",
+`settingGroup.integrations` "Other software".
 
 ### 3.5 Company features
 
 `CompanyFeatures` (in `entities.ts`) is the subset of settings the panels' screens
 and an offline Office panel need. It travels in `SyncSnapshot.features` and
-`SignedInUser.features`: `freeToSell` (required), `offlineSignInEnabled?`,
-`adjustmentNoteRequired?`, `followUpDefaultDays?`, `packagingRequiredOnConvert?`.
+`SignedInUser.features`: `offlineSignInEnabled?`,
+`followUpDefaultDays?`, `packagingRequiredOnConvert?`, `reportsVisibleToOffice?`,
+`reportsVisibleToManagement?` (`freeToSell` and `adjustmentNoteRequired` were removed in 1.4).
 **Every field added after the 1.0.2 core must be optional**, because a Master and a
 panel on different versions is normal mid-update; `shared/tests/wire-optionality.test.ts`
 enforces it. The Master builds the object in
@@ -938,39 +938,44 @@ the Office four screens — `office/web/src/screens/AddLeadScreen.tsx`,
   and the role editor never offers it (`docs/ROLES_AND_USERS.md` §3.2). On screen
   tiers are named through `tier.*` (`ui/src/TierPill.tsx`): Office, Management,
   **Normal Admin**, Server Master.
-- **Module actions:** 8 `MODULES` × 6 `ACTIONS`, filtered by `MODULE_ACTIONS`:
-  leads, parties, products — all 6; orders — 5 (no `create`); inventory — view,
-  edit, export; reports — view, export; roles — view, create, edit, delete; logs —
-  view, export. **34 module-action keys.**
-- **Capabilities:** 20 in 3 groups — workflow: `lead.convert`, `orders.dispatch`,
-  `record.reassignOwner`; stock: `stock.adjust`; admin (16): `users.manage`,
+- **Module actions:** 7 `MODULES` × 6 `ACTIONS`, filtered by `MODULE_ACTIONS`:
+  leads, parties, products — all 6; orders — 5 (no `create`); reports — view, export;
+  roles — view, create, edit, delete; logs — view, export. **31 module-action keys.**
+  (The `inventory` module and the `stock.adjust` capability were removed in 1.4. A stored
+  role that still holds those strings keeps loading: `isPermission` silently filters
+  them out.)
+- **Capabilities:** 27 in 3 groups (`CAPABILITY_GROUPS = workflow, admin, chat`; the `stock`
+  group went in 1.4) — workflow: `lead.convert`, `orders.dispatch`,
+  `record.reassignOwner`, `print.send`, `print.station`; chat (6): `chat.use`,
+  `chat.directMessages`, `chat.shareRecords`, `chat.tasks`, `chat.createGroups`,
+  `chat.manage`; admin (16): `users.manage`,
   `users.viewPassword`, `roles.assign`, `panels.manage`, `settings.manage`,
   `storage.manage`, `storage.backupAll` (1.3 Phase 8: back up everything to a
   drive, restore it, schedule it), `fields.manage`, `api.manage`, `logs.verifyChain`,
   `sync.resolveConflicts`, `recycleBin.view`, `recycleBin.viewAll`, `fields.view`,
   `party.accessAll`, `party.assign`.
-- **`PERMISSIONS` holds 54 keys**, derived from the two lists, never typed by hand.
+- **`PERMISSIONS` holds 58 keys**, derived from the two lists, never typed by hand.
   The four rate keys went with pricing.
 - **Tier ceiling:** the private `MINIMUM_TIER` map gives each key its lowest tier; a
-  key not in the map is open to every tier. 26 keys are above office. **Server
+  key not in the map is open to every tier. 28 keys are above office. **Server
   Master (1):** `storage.backupAll`, granted to the Server Master role by migration
   `20261007000000_backup_all_permission_grant`, which also takes it off every other
   role, since the `20260303000000` live-catalogue seed gives it to Administrator
-  (v1 `.obbackup` export and restore keep `storage.manage`). **Admin (13):**
+  (v1 `.obbackup` export and restore keep `storage.manage`). **Admin (14):**
   `users.manage`, `users.viewPassword`, `roles.assign`, `panels.manage`,
   `settings.manage`, `storage.manage`, `api.manage`, `sync.resolveConflicts`,
-  `roles.view`/`create`/`edit`/`delete`, `party.assign`. **Management (12):**
+  `roles.view`/`create`/`edit`/`delete`, `party.assign`, `chat.manage`. **Management (13):**
   `leads`/`orders`/`parties`/`products` `.delete` and `.bulk`,
-  `record.reassignOwner`, `recycleBin.viewAll`, `fields.manage`, `party.accessAll`.
-  The other 28 are open to office tier.
+  `record.reassignOwner`, `recycleBin.viewAll`, `fields.manage`, `party.accessAll`,
+  `chat.createGroups`. The other 30 are open to office tier.
 - **`effectivePermissions(held, tier)`** intersects what a role holds with its tier,
   de-duplicates and sorts, and drops unknown keys. It runs at save and again at
   sign-in; it is also imported by several migrations and by
   `master/src/http/middleware/require-api-key.ts`.
 - **Seeds and templates:** `allPermissions()` is the Administrator grant (explicit
-  list, no wildcard). `ROLE_TEMPLATES` offers `roleTemplate.sales` (management, 15
-  keys) and `roleTemplate.dispatch` (office, 7 keys) as starting points — templates,
-  not seeded rows.
+  list, no wildcard). `ROLE_TEMPLATES` offers `roleTemplate.sales` (management, 19
+  keys) and `roleTemplate.dispatch` (office, 9 keys) as starting points — templates,
+  not seeded rows; neither lists `inventory.*` or `stock.adjust` since 1.4.
 - `buildPermissionCatalogue()` is served by `master/src/services/role.service.ts`
   to the `PermissionGrid`.
 
@@ -985,7 +990,7 @@ the Office four screens — `office/web/src/screens/AddLeadScreen.tsx`,
 | `shared/src/i18n/locales.ts` | `LOCALES = ['en','hi']`, `Locale`, `DEFAULT_LOCALE = 'en'`, `isLocale`, `LOCALE_LABELS`. The locale is per machine, never synced. |
 | `shared/src/i18n/panel-scoped.ts` | `PANEL_SCOPED_KEYS`: 12 keys (`app.panel`, `backup.export.title`, `backup.restore.confirmWipe`, `settings.storage.title`, `settings.subtitle`, `sync.conflictReview`, `sync.offline`, `sync.offlinePending`, `sync.pendingChanges`, `sync.popoverTitle.offline`/`offlinePending`/`synced`). Each is stored twice in `en.ts` as `master.<key>` and `office.<key>`; the bare key does not exist. `ui/src/i18n.ts` rewrites a bare key to `${uiConfig().panel}.${key}`; `master/tests/i18n-call-sites.test.ts` reads the same list. |
 | `shared/src/i18n/errors.ts` | `ErrorPayload` (`error`, `message`, `messageKey?`, `params?`, `details?`) describes the HTTP error envelope (`error` = stable code, `message` = English). **Nothing imports it**, and the file header's "one shape for HTTP errors and socket acks" is not what the code does: socket acks use `CommandResult` from `socket.ts`, where `error` is the English message and `code` is the stable code (`hub.ts#respond`), so the two shapes put the code in different fields. `errorMessageKey(code)` looks the code up in the private `CODE_TOKENS` map — 22 stable codes (`validation_error`, `forbidden` → `error.generic.forbidden`, `not_found`, `locked_out`, `offline_disabled`, …) — and returns `error.unknown` for any other code; it does not build `error.<code>`. Consumed by `ui/src/errorText.ts`. |
-| `shared/src/i18n/activity.ts` | `ACTIVITY_TOKENS`, derived from every `activity.<entityType>.<action>` key (79 pairs; the 2026-09-25 audit round added `activity.stock.levels_changed`, `activity.party.variant_saved` and `activity.order.stage_changed`). **Append-only**, because `activity_log` rows can never be updated; `activity.ai_run.*` and `activity.document_template.*` are kept for old rows. `activityMessageKey()` (null for an unknown pair) and `renderActivity(t, input)` (falls back to `"<entityType> · <action>"`, and to `logs.actor.unknown` — en "Somebody", hi `'किसी'`, the oblique form every Hindi `{actor} ने …` template needs — when there is no actor name). |
+| `shared/src/i18n/activity.ts` | `ACTIVITY_TOKENS`, derived from every `activity.<entityType>.<action>` key (79 pairs; the 2026-09-25 audit round added `activity.stock.levels_changed` (kept in 1.4: the `activity.stock.*` tokens and `logs.entity.stock` / `logs.action.adjusted|inbound|levels_changed` stay so old log rows still render), `activity.party.variant_saved` and `activity.order.stage_changed`). **Append-only**, because `activity_log` rows can never be updated; `activity.ai_run.*` and `activity.document_template.*` are kept for old rows. `activityMessageKey()` (null for an unknown pair) and `renderActivity(t, input)` (falls back to `"<entityType> · <action>"`, and to `logs.actor.unknown` — en "Somebody", hi `'किसी'`, the oblique form every Hindi `{actor} ने …` template needs — when there is no actor name). |
 | `shared/src/i18n/index.ts` | Sub-barrel re-exporting the other 8. |
 
 `tools/i18n-sync.mjs` has no dependencies: it finds each object literal by scanning
@@ -1008,10 +1013,10 @@ appends every missing key just before the final `};` with its English text and a
 | File | Purpose / exports |
 |---|---|
 | `shared/src/sync/hlc.ts` | Hybrid logical clock, fixed-width so string order is causal order: `PPPPPPPPPPPPPPPP-CCCCC-DDDDDD` (16-digit ms, 5-digit counter, 6-char device code). Never runs backwards; the counter throws above 99 999. `HlcParts`, `Hlc`, `formatHlc`, `parseHlc`, `compareHlc`, `HlcState`, `initialHlcState(deviceCode)`, `tickHlc(state, nowMs)`, `observeHlc(state, remote, nowMs)`. The caller passes the time in. |
-| `shared/src/sync/ids.ts` | Record identity across the offline boundary. **Temporary id:** 15 chars (`TEMP_ID_LENGTH`) = 6-char device code + 9-digit counter, minted by `office/src/sync/device.ts`. **Permanent id:** 12 chars (`PERMANENT_ID_LENGTH`) = 2-letter prefix + 10 digits, minted only by the Master (formatted by `master/src/repositories/identity.repository.ts`), in `compareForIdAssignment` order (HLC, then device code) — the sort is applied in `master/src/services/sync.service.ts#applyPush` (`[...request.mutations].sort(compareForIdAssignment)`, line 92), not in the repository. Device alphabet `23456789ABCDEFGHJKMNPQRSTVWXYZ` (no 0/O/1/I/L/U). `SYNCABLE_ENTITIES` (12) and `ENTITY_PREFIX`: lead LD, order OD, line_item LI, party PT, product PR, product_category PC, product_variant VR, party_variant PV, timeline_entry TL, reservation RS, role RL, user US. Also `isSyncableEntity`, `isValidDeviceCode`, `deviceCodeFromSeed` (FNV-1a), `formatTemporaryId`, `formatPermanentId`, `isTemporaryId`, `isPermanentId`, `DEVICE_CODE_LENGTH`. |
-| `shared/src/sync/mutations.ts` | The outbox record. `Mutation`: `mutationId` (client-generated; replay is a no-op), `kind`, `entity`, `entityId`, `hlc`, `deviceCode`, `payload`, `fields` (exactly the fields this edit asserts), `baseFieldHlc` (per-field HLC the editor saw), `actorUserId`, `createdAt`. **`MUTATION_KINDS` (16):** `lead.create`, `lead.update`, `lead.setStage`, `lead.addRemark`, `lead.convert`, `order.update`, `order.setStage`, `order.dispatch`, `party.create`, `party.update`, `product.create`, `product.update`, `partyVariant.upsert`, `stock.inbound`, `stock.adjust`, `stock.setReorderLevel`. `MUTATION_PERMISSIONS` maps each kind to its key (e.g. `lead.convert→lead.convert`, `order.dispatch→orders.dispatch`, `partyVariant.upsert→parties.edit`, `stock.inbound`/`setReorderLevel→inventory.edit`); the panel checks it locally and the Master again. `MutationStatus` (`applied`/`merged`/`duplicate`/`rejected`), `MutationFieldConflict`, `MutationResult`, `SyncPushRequest`, `SyncPushResponse` (`results`, `idMappings`, `serverHlc`). **Deletes and restores are never mutations**; they need the Master online. |
+| `shared/src/sync/ids.ts` | Record identity across the offline boundary. **Temporary id:** 15 chars (`TEMP_ID_LENGTH`) = 6-char device code + 9-digit counter, minted by `office/src/sync/device.ts`. **Permanent id:** 12 chars (`PERMANENT_ID_LENGTH`) = 2-letter prefix + 10 digits, minted only by the Master (formatted by `master/src/repositories/identity.repository.ts`), in `compareForIdAssignment` order (HLC, then device code) — the sort is applied in `master/src/services/sync.service.ts#applyPush` (`[...request.mutations].sort(compareForIdAssignment)`, line 92), not in the repository. Device alphabet `23456789ABCDEFGHJKMNPQRSTVWXYZ` (no 0/O/1/I/L/U). `SYNCABLE_ENTITIES` (11) and `ENTITY_PREFIX`: lead LD, order OD, line_item LI, party PT, product PR, product_category PC, product_variant VR, party_variant PV, timeline_entry TL, role RL, user US (the `reservation` kind and its `RS` prefix were removed in 1.4). Also `isSyncableEntity`, `isValidDeviceCode`, `deviceCodeFromSeed` (FNV-1a), `formatTemporaryId`, `formatPermanentId`, `isTemporaryId`, `isPermanentId`, `DEVICE_CODE_LENGTH`. |
+| `shared/src/sync/mutations.ts` | The outbox record. `Mutation`: `mutationId` (client-generated; replay is a no-op), `kind`, `entity`, `entityId`, `hlc`, `deviceCode`, `payload`, `fields` (exactly the fields this edit asserts), `baseFieldHlc` (per-field HLC the editor saw), `actorUserId`, `createdAt`. **`MUTATION_KINDS` (14):** `lead.create`, `lead.update`, `lead.setStage`, `lead.addRemark`, `lead.convert`, `order.update`, `order.setStage`, `order.dispatch`, `party.create`, `party.update`, `product.create`, `product.update`, `partyVariant.upsert`, `chat.post`. A queued `stock.inbound|adjust|setReorderLevel` from a pre-1.4 Office is no longer a kind: the Master rejects it per mutation as "Unknown mutation" and the rest of the push still applies (`sync.service.ts`). `MUTATION_PERMISSIONS` maps each kind to its key (e.g. `lead.convert→lead.convert`, `order.dispatch→orders.dispatch`, `partyVariant.upsert→parties.edit`); the panel checks it locally and the Master again. `MutationStatus` (`applied`/`merged`/`duplicate`/`rejected`), `MutationFieldConflict`, `MutationResult`, `SyncPushRequest`, `SyncPushResponse` (`results`, `idMappings`, `serverHlc`). **Deletes and restores are never mutations**; they need the Master online. |
 | `shared/src/sync/merge.ts` | `mergeFields(target, incoming)` per asserted field (below). Fields in the private `NON_CONFLICTING_FIELDS` set (`updatedAt`, `version`, `hlc`, `searchVector`; not exported — exposed only through `isConflictWorthy`) are never reported. Values are compared with `===`, or with `JSON.stringify` only when both are objects. Outcome: `accepted`, `fieldHlc`, `conflicts`, `status` (`merged`/`applied`). Also `isConflictWorthy`, `MergeCandidate`, `MergeTarget`, `MergeOutcome`. **Used only by `master/src/services/sync.service.ts`** (`mergeFields(` at line 503); `order.service.ts` and `catalog.service.ts` only stamp the per-field HLCs the merge later reads (they name `mergeFields` in comments). Nothing in `office/src` uses it. Since 1.3 Phase 4 it also holds `lineKey` and `sameLines(stored, incoming)`, moved here from `master/src/services/sync.service.ts`: whether two line sets say the same thing in the same order, used by the Master's merge and by both lead forms to leave unchanged lines out of an edit. |
-| `shared/src/sync/apply-change.ts` | `applyChangeToSnapshot(snapshot, event)` → `ApplyOutcome` `applied` / `refresh` / `ignored`. Any entity in `SNAPSHOT_FORCING_ENTITIES` gives `refresh`. `deleted` removes the row (lead, party, product, order). Otherwise upsert (new rows first) for lead, party, product, product_category, order, and stock keyed by `variantId`. Unknown entities → `ignored`. One implementation shared by `office/src/realtime/master-connection.ts` and `office/web/src/App.tsx`. |
+| `shared/src/sync/apply-change.ts` | `applyChangeToSnapshot(snapshot, event)` → `ApplyOutcome` `applied` / `refresh` / `ignored`. Any entity in `SNAPSHOT_FORCING_ENTITIES` gives `refresh`. `deleted` removes the row (lead, party, product, order). Otherwise upsert (new rows first) for lead, party, product, product_category and order. Unknown entities → `ignored`. One implementation shared by `office/src/realtime/master-connection.ts` and `office/web/src/App.tsx`. |
 
 **How a merge decides**, for each field the incoming edit asserts:
 
@@ -1037,10 +1042,11 @@ appends every missing key just before the final `};` with its English text and a
 - Acks: `CommandResult<T>` — `{ok:true,data}` or
   `{ok:false,error,code?,missingPermission?,details?,messageKey?,params?}`.
 - `DataChangedEvent`: `entity`, `action` (`created`/`updated`/`deleted`/`restored`),
-  `id`, `payload`, optional `seq`. `ChangedEntity` has 17 values in three disjoint
-  lists: **`REPLAYABLE_ENTITIES`** (6: lead, order, party, product, product_category,
-  stock), **`SNAPSHOT_FORCING_ENTITIES`** (8: party_variant, sync_conflict,
-  reservation, pipeline, option_list, custom_field, catalog, setting),
+  `id`, `payload`, optional `seq`. `ChangedEntity` has 16 values in three disjoint
+  lists: **`REPLAYABLE_ENTITIES`** (5: lead, order, party, product, product_category;
+  `stock` left this list in 1.4), **`SNAPSHOT_FORCING_ENTITIES`** (8: party_variant,
+  sync_conflict, pipeline, option_list, custom_field, catalog, party_bulk, setting;
+  `reservation` left in 1.4),
   **`PANEL_IRRELEVANT_ENTITIES`** (3: office_panel, role, user).
   `master/src/services/delta.service.ts` reads two of the three lists: it drops
   `PANEL_IRRELEVANT` events and refuses the delta (→ full snapshot) if any remaining
@@ -1049,15 +1055,23 @@ appends every missing key just before the final `};` with its English text and a
   path), which returns `refresh`; it forces a delta refusal only indirectly, by being
   absent from `REPLAYABLE`.
 - `SyncSnapshot`: the panel's offline working set — parties, products, categories,
-  partyVariants, leads, orders, stock, pipelines, optionLists, customFields,
+  partyVariants, leads, orders, pipelines, optionLists, customFields,
   conflicts, dashboard, permissions, serverHlc, serverTime; optional `partyGrants`,
+  and the deprecated `stock?: never[]` (see "Old-Office compatibility" below),
   `builtForUserId`, `bootId`, `seq`, `serverVersion`, `productsComplete`,
-  `features`. `SyncDelta` replaces it when the Master's change ring covers the
+  `features`. **Old-Office compatibility (1.4):** `SyncSnapshot.stock` is an optional,
+  deprecated field typed `never[]`; the Master still sends `stock: []` so an Office built
+  before 1.4, which reads `snapshot.stock` unguarded, does not crash. A `stock:*` socket
+  event from such an Office gets an error ack with message key `validation.stock.retired`
+  ("Stock is no longer part of OrderBook") from a `socket.onAny` in
+  `master/src/realtime/hub.ts`, and a queued `stock.*` mutation is rejected per mutation
+  without stalling the rest of the push. `SyncDelta` replaces it when the Master's change ring covers the
   panel's cursor. `SocketData` holds per-connection state.
-- **`ClientToServerEvents`: 84 events** declared Office → Master (79 before
-  catalogue v2 added five; the interface declares a direction, not that each is
-  sent). The Office server emits 62 of them; the other 22 (listed in §3.12) have
-  Master handlers but no Office caller. Every
+- **`ClientToServerEvents`: 79 events** declared Office → Master (84 before 1.4 removed
+  the five `stock:*` commands; the interface declares a direction, not that each is
+  sent). The Office server emitted 62 of the 84 (the other 22, listed in §3.12, have
+  Master handlers but no Office caller); the stock commands are gone from both
+  lists, so recount against `office/src` before relying on the 62. Every
   one has a `socket.on` handler in `master/src/realtime/hub.ts` (checked by diff):
   - auth: `auth:signIn`, `auth:assume`, `auth:signOut`, `auth:reconcile`
   - parties: `party:list`/`create`/`update`/`delete`
@@ -1068,7 +1082,6 @@ appends every missing key just before the final `};` with its English text and a
   - `lead:pdf` (catalogue v2: the fixed-layout lead PDF's bytes, `leads.export`)
   - leads: `lead:list`/`get`/`create`/`update`/`setStage`/`addRemark`/`convert`/`delete`
   - orders: `order:list`/`get`/`update`/`setStage`/`dispatch`/`delete`
-  - stock: `stock:list`/`movements`/`inbound`/`adjust`/`setReorderLevel`
   - `search:query`, `pipeline:list`, `conflict:list`/`resolve`
   - sync: `sync:request`, `sync:push` (the outbox drain; the only write path that can conflict)
   - recycle bin: `recycleBin:list`/`counts`/`restore`
@@ -1172,14 +1185,13 @@ and the one it added show their `it(` count instead, marked `it(`.
 | `shared/tests/i18n.test.ts` | 16 `it(` | `t`, `tCount`, `createTranslator`, `renderActivity`'s `logs.actor.unknown` stand-in |
 | `shared/tests/keys-nav-order.test.ts` | 2 `it(` | reads both `App.tsx` sidebars and holds `MASTER_NAV` and `OFFICE_NAV` to their order (added 2026-09-25) |
 | `shared/tests/pick-score.test.ts` | 8 | picker tiers and tie-breaks |
-| `shared/tests/inventory-view.test.ts` | 7 | `withDefaultReorderLevel`, `withoutReservations` |
+| `shared/tests/stock-retired.test.ts` | 3 `it(` | 1.4 (R15): no `inventory.*` setting, `inventory` module, `stock.adjust` capability or `stock.*` mutation kind; no inventory or stock-permission i18n keys in EN or HI; an old cached snapshot and old `CompanyFeatures` are tolerated. Keeps the append-only `activity.stock.*` tokens and the colour list `fieldSet.stock.colour` legitimate |
 | `shared/tests/order-note.test.ts` | 48 | `buildOrderNote` (merge, named/coded, sort, weight) and `paginateOrderNote` for both notes: every line once, quantities add up, last-page-only signature, wide halves, group headers; 1.3 H3: a lead as the source (same model as the equivalent order), `noteHeader` / `noteDocument`, `clampNoteCopies`, `cleanVehicleNumber` |
-| `shared/tests/wire-optionality.test.ts` | 7 | reads the source: `SyncSnapshot` fields beyond the 1.0.2 core and `CompanyFeatures` fields other than `freeToSell` are optional |
+| `shared/tests/wire-optionality.test.ts` | 4 `it(` | reads the source: `SyncSnapshot` fields beyond the 1.0.2 core (`stock` is the deprecated optional one) and every `CompanyFeatures` field are optional |
 | `shared/tests/version.test.ts` | 6 | `compareVersions` etc.; 7 `package.json` versions equal (`cleaner/package.json` is not in its list) |
 | `shared/tests/company-features-resolve.test.ts` | 5 | `resolveCompanyFeatures` fills from fallbacks |
 | `shared/tests/apply-setting-change.test.ts` | 4 | a `setting` change forces a refresh on a connected panel |
 | `shared/tests/keys-implemented.test.ts` | 4 | every `COMMANDS` id is handled by `useCommand(…)`, a `command.id ===` switch or a `shellCommands` key under `ui/src`, `master/web/src` or `office/web/src` (walks the disk) |
-| `shared/tests/stock-note.test.ts` | 3 | `isBlankNote` |
 | `shared/tests/colour-rule.test.ts` | 12 `it(` | catalogue v2: `colourRuleOf` precedence (`multiColour` wins even with a label), blank labels, `shownColour`/`colourRepeatsName`, the numeric Model/Code split, `lineColourText` summing and grouping |
 | `shared/tests/fields.test.ts` | 3 `it(` | catalogue v2: `product.brand` is a managed set with no hex, in `FIELD_LIST_KEYS` and the catalogue |
 | `shared/tests/apply-category-change.test.ts` | 1 `it(` | a `deleted` category change takes the category out of a connected panel's snapshot, and a restore puts it back |
@@ -1194,9 +1206,9 @@ and the one it added show their `it(` count instead, marked `it(`.
 - **Fixed 2026-09-25 — stale pricing wording** in the comments of `socket.ts`,
   `apply-change.ts`, `merge.ts`, `product-import.ts` and `settings.ts`, and in the
   "quoted at" idioms of `entities.ts` and `inputs.ts`.
-- **Fixed 2026-09-25 — user-visible:** `settingGroup.stock` read "Stock and prices"
-  (Hindi `'स्टॉक और दाम'`); it is "Stock" / `'स्टॉक'`, and
-  `shared/tests/i18n-coverage.test.ts` now keeps price words out of both catalogues.
+- **Fixed 2026-09-25 — user-visible:** the settings group heading read "Stock and prices";
+  `shared/tests/i18n-coverage.test.ts` now keeps price words out of both catalogues. (The
+  group itself was renamed `products` in 1.4 along with the removal of stock.)
 - **Fixed 2026-09-25 — wrong counts in comments** (`permissions.ts` tokens,
   `commands.ts` "Thirteen screens", `settings.ts` "fifteen settings") and the
   **misplaced doc comments** in `SETTINGS` (`catalog.importCreatesCategories`,
@@ -1224,7 +1236,7 @@ and the one it added show their `it(` count instead, marked `it(`.
   each literal event name finds none; `category:list` gained one with catalogue v2):
   `party:list`/`create`/`update`, `product:create`/`update`, `partyVariant:list`/`upsert`,
   `lead:list`/`get`/`create`/`update`/`setStage`/`addRemark`/`convert`,
-  `order:list`/`get`/`update`/`setStage`/`dispatch`, `stock:list`/`movements`,
+  `order:list`/`get`/`update`/`setStage`/`dispatch`,
   `pipeline:list`. The Office writes those through the `sync:push` outbox and reads
   them from the snapshot; the Master still registers handlers for them.
 
@@ -1370,10 +1382,10 @@ removed on 2026-09-25.
 | `ui/src/SettingsLayout.tsx` | `SettingsTab`, `SettingsPage`, `requestSettingsTab`, `useSettingsTab`, `SettingsSection`, `SettingRow`, `NumberSetting` (moved here from the Master's Settings screen for catalogue v2, so the Office Leads tab can use it: `{ control, value, label, saving, onSave(value) }`), `AppearanceSettings`, `DeveloperTransport`, `useDeveloperSession`, `DeveloperTool`, `DeveloperPanel`, `useUninstallTool`, `UninstallBridge` | Both panels' `screens/SettingsScreen.tsx`. `useSettingsTab` stores the tab under `ob.settings.tab.master`/`.office`. `AppearanceSettings`: language (`setLocale` then `window.location.reload()`), theme, scale slider, density, motion. Developer tab: password unlock, token only in React state; `confirmWord` gates destructive tools; `useUninstallTool(bridge)` shows "unavailable" in a plain browser. |
 | `ui/src/OrderNoteScreen.tsx`, `ui/src/OrderNote.tsx`, `ui/src/order-note.css` | 2026-09-30: the order's Filling / Dispatch note. `OrderNoteScreen` is the preview sub-screen (`EditorScreen`): note switch (also Alt+F / Alt+D), Dispatch-only Vehicle no. field saved on blur/Enter via `onSaveVehicle`, printer picker (desktop only, remembered in `localStorage['ob.note.printer']`), Print (also Ctrl+P) → `desktop.printPage` else `window.print()`. `OrderNote` draws the sheets (794 × 1123 px, heights from `NOTE_LAYOUT` as CSS custom properties); a second copy is portalled to `<body>` and is all `@media print` shows. Paper colours are the sheet's own, not theme tokens. **1.3 H3:** `OrderNoteScreen` takes `record` (an `Order` or a `Lead`) plus `source`; `OrderNote` takes `header: NoteHeader` ("Pending Order No." for a lead, "Final Order No." for an order). A **Copies** field (1..50, clamped on blur) goes to `printPage({deviceName, copies})`; **Save PDF** shows only when the shell has `savePdf`, named `<number>-<filling\|dispatch>.pdf`. A pending order's vehicle number is print-only (never saved, whatever `onSaveVehicle` is). Print and Save PDF both run inside `printOnly(portalRef.current, ...)` (`ui/src/printPortal.ts`): it puts `ob-note-print-portal--active` on this screen's portal and `ob-printing` on `<body>` for the job, and `order-note.css` hides every other `.ob-note-print-portal` meanwhile, so a hidden kept-alive note screen never prints beneath the visible one. Held by `ui/tests/order-note-screen.test.tsx`. | `OrderBoardScreen` (Office), `OrdersScreen` (Master), and for pending orders `LeadBoardScreen` (Office), `LeadsScreen` (Master) |
 | `ui/src/printPortal.ts` | 1.3 H3: `printOnly(portal, run)` — marks the one note portal meant for the paper (`ob-note-print-portal--active` on it, `ob-printing` on `<body>`) for as long as `run` (a print or a Save PDF) takes, and restores the page in a `finally` whatever `run` does; with no portal it runs `run` as it is, because marking nothing would hide every note. The CSS half is one rule in `order-note.css` (`body.ob-printing .ob-note-print-portal:not(.ob-note-print-portal--active) { display: none !important }`), which jsdom cannot see: the real-printer check is owed (HANDOFF) | `OrderNoteScreen` |
-| `ui/src/LeadEntryScreen.tsx` | 2026-10-01 (P3): the New / Edit pending order form, a port of `office/web/src/screens/AddLeadScreen.tsx` — keep in step; the Office still has its own copy (HANDOFF owed work). `LeadEntryView` (`optionLists`, `partyVariants`, `stock`, `partyGrants`, `features`, optional `products`), `LeadEntryTransport extends PartyFormTransport { pick, createLead, updateLead }` read through `transportRef`. Differences: Master wording keys (`lead.add.savingHintOnline`, `…draft.packagingEmptyFields`/`gradeEmptyFields`), `canCreateParty` hides Create party, `onSaved(id, saved?)`, errors through `apiErrorText`, edit seeds the picker with the lead's own party. Since 1.3 Phase 4 (both copies): an edit sends only what changed plus `baseFieldHlc` and shows `StaleEditNotice` (`remoteChange` prop); Reload theirs remounts the form from the newest lead (the exported component is a thin wrapper keyed on it). This copy only: an **Owner** picker when `view.owners` is present (`record.reassignOwner`; a Server Master is marked in the list), `ownerId` sent on create, or on edit when changed; `createLead` answers `{id, poNumber?}`, and `onSaved(id, created)` hands the created lead on when it has a number. | `LeadEntry` (Master) |
+| `ui/src/LeadEntryScreen.tsx` | 2026-10-01 (P3): the New / Edit pending order form, a port of `office/web/src/screens/AddLeadScreen.tsx` — keep in step; the Office still has its own copy (HANDOFF owed work). `LeadEntryView` (`optionLists`, `partyVariants`, `partyGrants`, `features`, optional `products`), `LeadEntryTransport extends PartyFormTransport { pick, createLead, updateLead }` read through `transportRef`. Differences: Master wording keys (`lead.add.savingHintOnline`, `…draft.packagingEmptyFields`/`gradeEmptyFields`), `canCreateParty` hides Create party, `onSaved(id, saved?)`, errors through `apiErrorText`, edit seeds the picker with the lead's own party. Since 1.3 Phase 4 (both copies): an edit sends only what changed plus `baseFieldHlc` and shows `StaleEditNotice` (`remoteChange` prop); Reload theirs remounts the form from the newest lead (the exported component is a thin wrapper keyed on it). This copy only: an **Owner** picker when `view.owners` is present (`record.reassignOwner`; a Server Master is marked in the list), `ownerId` sent on create, or on edit when changed; `createLead` answers `{id, poNumber?}`, and `onSaved(id, created)` hands the created lead on when it has a number. | `LeadEntry` (Master) |
 | `ui/src/LeadStaleEdit.tsx` | 1.3 Phase 4: stale-edit protection shared by both lead forms. `changedLeadFields(opened, values, base)` (only what changed since the form opened, `items` only when `sameLines` says they differ, plus `baseFieldHlc`; null when nothing changed), `useLeadEditBase(lead)` (the opened lead, the clocks the next save is checked against, `conflicted` when somebody else's save reached the open form or a save came back 409 `error.conflict.staleEdit`, `refused(error)`, `keepMine()`), and `StaleEditNotice` ("Ravi saved this at 10:42" from the presence push's `lastWrite`, else `error.conflict.staleEdit`, with Reload theirs / Keep mine through `ConflictNotice`'s new `overwriteLabel`). In the strict-i18n lint list. Tests: `ui/tests/lead-entry-screen.test.tsx`, `ui/tests/office-shell.test.tsx` | `LeadEntryScreen`, `office/web/src/screens/AddLeadScreen.tsx` |
-| `ui/src/catalogueSummary.ts` | 2026-10-01 (P4): `productLabel`, `byCatalogueOrder`, `shownColours`, `codesOf`, `weightLabel` (verbatim from `office/web/src/productSummary.ts` — keep in step) and the two types the catalogue ports share: `CatalogueView` (`permissions`, `optionLists`, `categories`, `products`, and `stock`, optional since 1.3 Phase 1 because the Master no longer passes it) and `CatalogueTransport` (list/paging, category and product writes, photos, import) | the six catalogue ports below |
-| `ui/src/SubProductsScreen.tsx` | 2026-10-01 (P4): Products → Sub products, the products half of `office/web/src/screens/CatalogScreen.tsx` — keep in step. Brand chips, the Product picker above the table, search, `LoadMorePager`; refetch on the host's `revision` and after its own writes. Dropped from the Office copy: parties, not-synced rows, snapshot overlay, "cached page". New / Import / Edit / photo controls absent without `products.create` / `products.bulk` / `products.edit`. The free-stock column is left out when `view.stock` is undefined, which on the Master it always is since 1.3 Phase 1. | `ProductsScreen` (Master) |
+| `ui/src/catalogueSummary.ts` | 2026-10-01 (P4): `productLabel`, `byCatalogueOrder`, `shownColours`, `codesOf`, `weightLabel` (verbatim from `office/web/src/productSummary.ts` — keep in step) and the two types the catalogue ports share: `CatalogueView` (`permissions`, `optionLists`, `categories` and `products`; its `stock` member was removed in 1.4) and `CatalogueTransport` (list/paging, category and product writes, photos, import) | the six catalogue ports below |
+| `ui/src/SubProductsScreen.tsx` | 2026-10-01 (P4): Products → Sub products, the products half of `office/web/src/screens/CatalogScreen.tsx` — keep in step. Brand chips, the Product picker above the table, search, `LoadMorePager`; refetch on the host's `revision` and after its own writes. Dropped from the Office copy: parties, not-synced rows, snapshot overlay, "cached page". New / Import / Edit / photo controls absent without `products.create` / `products.bulk` / `products.edit`. There is no Stock column on either panel since 1.4. | `ProductsScreen` (Master) |
 | `ui/src/MainProductsScreen.tsx` | 2026-10-01 (P4): `MainProductsScreen` (Products page: list, detail with sub products from `view.products` in catalogue order, `MainProductForm`; a brand retired since it was set is not re-sent) and `BrandsScreen({ permissions, transport, revision })` (the shared `OptionListEditor` on `product.brand`; no-access message without `fields.view`). Port of `office/web/src/screens/MainProductsScreen.tsx`. | `ProductsScreen` (Master) |
 | `ui/src/ProductDetail.tsx`, `ui/src/ProductDrawer.tsx`, `ui/src/ProductImages.tsx`, `ui/src/ProductImportModal.tsx` | 2026-10-01 (P4): ports of the Office's `ProductDetail`, `ProductDrawer`, `ProductImages`, `ProductImportModal` — keep in step. Every one reads the `CatalogueTransport` through `transportRef`; `ProductDetail` and `ProductImages` take `canEdit`; the import shows `apiErrorText`. `ProductImages` is in the strict-i18n lint list. Photos load through `ProgressiveImage` → `/uploads/images/:id/:variant`, which the Master now serves. | `SubProductsScreen`, `MainProductsScreen` |
 | `ui/src/ImportDialog.tsx`, `ui/src/PartyImportModal.tsx` | 1.3 H1: `ImportDialog` is the three-step import dialog (pick → preview → done) extracted from `ProductImportModal` with its DOM and behaviour unchanged; `ProductImportModal` and `PartyImportModal` are the words, modes, calls and sample columns of each. `PartyImportControls` is the Export CSV and Import buttons with their dialog, mounted on the Master's Parties screen and the Office's Catalog Parties tab; each button is absent without `parties.view` / `parties.bulk`. Takes a `PartyImportTransport`, never an api client. | `PartiesScreen` (Master), `CatalogScreen` (Office) |
@@ -1557,7 +1569,10 @@ Added 2026-09-29 for catalogue v2 (`it(` counts):
 - `ui/tests/catalog-product-filter.test.tsx` (3) — the Office sub-product list's
   filters.
 - `ui/tests/inventory-movement-form.test.tsx` and `ui/tests/inventory-stock-race.test.tsx`
-  were deleted with the Master's Inventory screen in 1.3 Phase 1.
+  were deleted with the Master's Inventory screen in 1.3 Phase 1 (the screen code itself is
+  gone; stock as a whole was removed in 1.4).
+- `ui/tests/stock-retired.test.tsx` (2 `it(`) — 1.4 (R15): `OrderRecordView` shows no
+  reservations and no stock held, and its dispatch card says only what dispatching does.
 
 Added in 1.3 Phase 1:
 
@@ -1698,7 +1713,7 @@ invariant goes in `domain/`.**
    `order.service.ts#dispatchOrder` joined them on 2026-09-25 (it had stamped
    nothing), and `party-access.service.ts#replaceAssignments` was put in the same
    order (it locked the party first and deadlocked, `40P01`, against `updateParty`
-   and the merge). `inventory.service.ts`, `fields.service.ts` and
+   and the merge). `fields.service.ts` and
    `image.service.ts` still never call `nextHlc`. **Re-check under the row lock**
    (`lockLead`, `lockOrder` — which returns the order's `dispatched_at`, `stage_id`
    and `field_hlc`, so a dispatch reads the stage it leaves from the locked row).
@@ -2016,7 +2031,7 @@ exercised only through service integration tests.
 | `master/src/domain/access.ts` (218) | role/user guards G1–G8 (the G4 *rule*; its locked read is `access-guard.repository.ts`) | `assertAdminTier`, `assertTierWithinActor`, `assertPermissionsWithinTier`, `assertSystemRoleEditable`, `assertAdministrativeCapabilityRetained`, `assertRoleUnused`, `assertNameAvailable`, `assertVersionMatches`, `fieldDiff` | none |
 | `master/src/domain/party-scope.ts` (101) | Party Access semantics: no grants = open; grants = only named users; `party.accessAll` bypasses | `PartyScope`, `UNSCOPED_PARTY_ACCESS`, `resolvePartyScope`, `levelFor`, `assertPartyAccess` | `master/tests/party-access.integration.test.ts` |
 | `master/src/domain/line-items.ts` (178) | the line snapshot rule: one line = one variant, frozen name, category (name, code and brand), variant code, colour and weight; since catalogue v2 a colour on a product that is not multi-colour is dropped, not refused (`LineColourError` removed) | `buildLineSnapshot`, `LineSnapshot`, `LineDraft`, `normaliseQuantity`, `lineWeightKg`, `computeTotalWeightKg`, `linesWithoutWeight` | `master/tests/line-items-domain.test.ts` |
-| `master/src/domain/conversion.ts` (144) | lead → order: lines copied unchanged, packaging never auto-filled, reservations per variant | `copyLinesForOrder`, `planReservations`, `planDispatchMovements`, `assertConvertible`, `ConversionRules` | `master/tests/line-items-domain.test.ts` |
+| `master/src/domain/conversion.ts` (84) | lead → order: lines copied unchanged, packaging never auto-filled (no reservations since 1.4) | `copyLinesForOrder`, `assertConvertible`, `ConversionRules` | `master/tests/line-items-domain.test.ts` |
 | `master/src/domain/pipeline.ts` (97) | stage rules | `defaultStage`, `findStage`, `assertStageMove`, `stageChangeMessage` | none |
 | `master/src/domain/lead-outcome.ts` (78) | "went quiet" classifier; only `converted_order_id` counts as converted. **No runtime code calls it**: the report classifies in SQL (`report.repository.ts#leadOutcomesByMonth`); this is the tested pure mirror of that CASE | `classifyLeadOutcome`, `daysBetween`, `QUIET_AFTER_DAYS` (30) | `master/tests/report-range.test.ts` (and compared with the SQL in `master/tests/reports.integration.test.ts`) |
 | `master/src/domain/custom-fields.ts` (88) | a required custom field flags the record incomplete, never rejects the save; `evaluateCompleteness` runs at read time in the lead and order repository mappers, `normalizeCustomFields` on the write path | `evaluateCompleteness`, `normalizeCustomFields` | `master/tests/custom-fields-domain.test.ts` |
@@ -2027,7 +2042,7 @@ exercised only through service integration tests.
 | ~~`master/src/domain/swisware-catalogue.ts`~~ (deleted by catalogue v2, 2026-09-29) | was the Swisware 2026 catalogue as TypeScript data (12 categories → 251 models → 549 variants); replaced by `master/assets/catalogue/swisware-plus-2026.md` and `catalogue-markdown.ts` | — | — |
 | `master/src/domain/catalogue-markdown.ts` (392) | catalogue v2 (2026-09-29): the strict parser of `master/assets/catalogue/swisware-plus-2026.md` — the brands table, the colour range with hex, `### CODE — Name` product blocks with `- Brand:` and `\| # \| Sub product \| Size \| Colour rule \| Colour \|` tables. Refuses malformed input with a line number; maps the file's `multicolour` to the shared `selectable` in one place; `colour` is set only on a `fixed` sub product | `parseCatalogueMarkdown`, `ParsedCatalogue`, `CatalogueColour`, `CatalogueProduct`, `CatalogueSubProduct`, `CatalogueParseError` (`line`) | `master/tests/catalogue-markdown.test.ts` (29 tests passed, including the real file: 1 brand, 21 colours, 41 products, 549 sub products) |
 | `master/src/domain/lead-pdf.ts` (107) | catalogue v2 (2026-09-29): the lead PDF's table — `# \| [Brand] \| Main product \| Model \| Size \| Colour \| Code \| Qty`; the lines of one variant grouped into one row with the quantity summed; Model or Code by `subProductCells`, colour text by `lineColourText`; Brand only when the lines span two brands; English headings; the party block (name, address, phone, GST). Pure — no PDFKit, no database, no clock; `lead.service.ts#leadPdf` renders it through `renderReportPdf` | `leadPdfTable` | `master/tests/lead-pdf.test.ts` |
-| `master/src/domain/sample-data.ts` (809) | the demo dataset + a seeded RNG | `SAMPLE_WINDOW_DAYS` (170), `SAMPLE_PRODUCTS`, `SAMPLE_PARTIES`, `SAMPLE_LEADS`, `SAMPLE_OPENING_STOCK`, `SAMPLE_DELETIONS`, `createRandom` | `master/tests/sample-data.integration.test.ts` |
+| `master/src/domain/sample-data.ts` (809) | the demo dataset + a seeded RNG | `SAMPLE_WINDOW_DAYS` (170), `SAMPLE_PRODUCTS`, `SAMPLE_PARTIES`, `SAMPLE_LEADS`, `SAMPLE_DELETIONS`, `createRandom` | `master/tests/sample-data.integration.test.ts` |
 | `master/src/domain/cursor.ts` (60) | the one base64url cursor codec | `encodeCursor`, `decodeCursor`, `clampCursorLimit` | `master/tests/cursor.test.ts` |
 | `master/src/domain/log-cursor.ts` (36) | Logs keyset cursor | `clampLogPage`, `encodeLogCursor`, `decodeLogCursor` | none |
 | `master/src/domain/paging.ts` (23) | page-size clamp | `clampPaging`, `clampLimit` | none |
@@ -2144,7 +2159,7 @@ exercised only through service integration tests.
   categories through `ensureCategories` (code, brand, catalogue order), one-variant
   sub products coded `CODE-0001…` with `hasVariants = rule === 'fixed'`,
   `multiColour = rule === 'selectable'` and the fixed colour as the label, weights
-  blank; `replace` first runs `clearCatalogueData` (stock, movements, reservations,
+  blank; `replace` first runs `clearCatalogueData` (the retired stock, movement and reservation tables, still cleared for FK safety;
   lines, timelines, leads, orders, their sync conflicts, party-wise records, photo
   rows, product connector links, variants, sub products, categories). One
   `catalog.reloaded` or `catalog.imported` activity row and one `catalog` change
@@ -2158,7 +2173,7 @@ exercised only through service integration tests.
   `wipe:business` (no flag; `--with-catalog` also loads) and `seed:parties`
   (`--with-parties`) (§5.3).
 
-**Leads, orders, stock**
+**Leads and orders**
 
 - `master/src/services/lead.service.ts` (680) — `listLeads`, `getLead`, `leadPdf`
   (catalogue v2: `leads.export`; `getLead` after `resolveId`, then `leadPdfTable` →
@@ -2170,20 +2185,15 @@ exercised only through service integration tests.
 - `master/src/services/order.service.ts` (654) — `listOrders`, `getOrder`,
   `convertLead`, `updateOrder`, `setStage`, `dispatchOrder`, `countOrders`,
   `deleteOrder`, `restoreOrder`. **`convertLead` is the only way an order is
-  created**; `dispatchOrder` writes outbound movements, consumes reservations and
-  marks the order dispatched in one transaction (§11.4). Since 2026-09-25 a
+  created**; `dispatchOrder` stamps the order, moves it to the Dispatched
+  stage, adds the timeline message `Dispatched` and logs `order.dispatched` (empty details)
+  in one transaction; it touches no stock (§11.4). Since 2026-09-25 a
   dispatch stamps the clock like every other order write — `nextHlc` before
   `lockOrder`, and `order.repository.ts#markDispatched` writes `hlc`, `field_hlc`
   (`dispatchedAt`, and `stageId` when the stage moves) and `version + 1` — and
   takes the stage it leaves from the locked row; `updateOrder` (`order.updated`) and
   order `setStage` (`order.stage_changed`) are now audited. It still picks the stage
   literally named `'Dispatched'` (§5.11 item 7).
-- `master/src/services/inventory.service.ts` (386) — `listStock`, `listMovements`
-  (`inventory.view`), `recordInbound` (`inventory.edit`), `recordAdjustment`
-  (`stock.adjust`; note required when `inventory.adjustmentNoteRequired`),
-  `setReorderLevel` (`inventory.edit`; audited since 2026-09-25 as
-  `stock.levels_changed`), `publishStockFor`, `countLowStock`. An order
-  is never blocked by a shortage.
 
 **Sync, snapshot, delta, conflicts**
 
@@ -2242,14 +2252,14 @@ exercised only through service integration tests.
   `onPresenceChange`, `resetPresence`, `isPresenceTabId`. Never logs and never goes
   through `publishChange`.
 - `master/src/services/snapshot.service.ts` (147) — `buildSnapshot(actor)`: parties,
-  products, categories, leads, orders, stock (500 each, except products and stock
-  rows at `PRODUCT_PAGING.maxLimit`, 2000, since catalogue v2 — 549 sub products
-  no longer lose their tail), party variants, pipelines,
+  products, categories, leads, orders (500 each, except products
+  at `PRODUCT_PAGING.maxLimit`, 2000, since catalogue v2 — 549 sub products
+  no longer lose their tail), a constant empty `stock: []` (see "Old-Office compatibility"
+  in §3), party variants, pipelines,
   option lists, custom fields, 100 conflicts, dashboard, features, permissions,
-  grants. Only six collections are gated with `actorCan` (resolving to empty rather
+  grants. Only five collections are gated with `actorCan` (resolving to empty rather
   than failing the whole snapshot): parties (`parties.view`), products and categories
-  (`products.view`), leads (`leads.view`), orders (`orders.view`) and stock
-  (`inventory.view`). Party variants and
+  (`products.view`), leads (`leads.view`) and orders (`orders.view`). Party variants and
   conflicts are filtered only by `resolvePartyScope` (read straight from
   `party-variant.repository.ts` and `sync.repository.ts`); pipelines, option lists
   and custom fields (read from `pipeline.repository.ts` and
@@ -2278,8 +2288,8 @@ exercised only through service integration tests.
   `security.passwordRevealEnabled` off purges the vault in the same transaction),
   `invalidateSettingsCache`.
 - `master/src/services/company-features.ts` (67) — `companyFeatures(tenantId)`
-  resolves the five `CompanyFeatures` settings for `/me` and the snapshot; also
-  `freeToSell`.
+  resolves the five `CompanyFeatures` settings for `/me` and the snapshot
+  (`freeToSell` is gone in 1.4).
 - `master/src/services/panel.service.ts` (734) — pairing (`openPairingWindow` 5 min,
   `closePairingWindow`, `isAcceptingPairing`, `isAutoPairingOpen`, `pairPanel`),
   credentials (`authenticatePanel`, `permissionsForPanel` — falls back to the
@@ -2445,9 +2455,8 @@ exercised only through service integration tests.
 | `lead.setStage`, `lead.addRemark`, `lead.convert` | `leadService.setStage`, `leadService.addRemark`, `orderService.convertLead` |
 | `order.setStage`, `order.dispatch` | `orderService.setStage`, `orderService.dispatchOrder` |
 | `partyVariant.upsert` | `catalogService.upsertVariant` |
-| `stock.inbound`, `stock.adjust`, `stock.setReorderLevel` | `inventoryService.recordInbound`, `recordAdjustment`, `setReorderLevel` |
 
-### 5.7 `repositories/` — all SQL (36 files)
+### 5.7 `repositories/` — all SQL (38 files)
 
 **Conventions:** every query leads with `tenant_id`; rows are mapped in
 `master/src/repositories/mappers.ts` (`NUMERIC`/`BIGINT` arrive as strings;
@@ -2468,10 +2477,10 @@ Knex.Transaction`). In practice services open transactions themselves with
 
 | Group | Files |
 |---|---|
-| Core plumbing | `master/src/repositories/transaction.ts`; `master/src/repositories/mappers.ts` (`mapUser`, `mapParty`, `mapProduct`, `mapProductVariant`, `mapLead`, `mapOrder`, `mapLineItem`, `mapStockLevel`, `mapSyncConflict`, `toNumber`, `toIso`, …); `master/src/repositories/identity.repository.ts` (permanent id allocation `allocatePermanentId(s)`, `recordIdMapping`, `resolveId`, `listIdMappings`, the Master's HLC `nextHlc`, `observeAndNextHlc`, `peekHlc`; device code `'MASTER'`); `master/src/repositories/tenant.repository.ts` (`findDefaultTenantId`, a read that never creates a tenant; `resolveDefaultTenantId`, which creates one if none exists; one tenant per install); `master/src/repositories/master-config.repository.ts` (the single `master_config` row); `master/src/repositories/settings.repository.ts` (raw `settings` rows) |
+| Core plumbing | `master/src/repositories/transaction.ts`; `master/src/repositories/mappers.ts` (`mapUser`, `mapParty`, `mapProduct`, `mapProductVariant`, `mapLead`, `mapOrder`, `mapLineItem`, `mapSyncConflict`, `toNumber`, `toIso`, …); `master/src/repositories/identity.repository.ts` (permanent id allocation `allocatePermanentId(s)`, `recordIdMapping`, `resolveId`, `listIdMappings`, the Master's HLC `nextHlc`, `observeAndNextHlc`, `peekHlc`; device code `'MASTER'`); `master/src/repositories/tenant.repository.ts` (`findDefaultTenantId`, a read that never creates a tenant; `resolveDefaultTenantId`, which creates one if none exists; one tenant per install); `master/src/repositories/master-config.repository.ts` (the single `master_config` row); `master/src/repositories/settings.repository.ts` (raw `settings` rows) |
 | Identity & access | `master/src/repositories/user.repository.ts` (`readCredentialForVerification` is the only path returning `password_hash`; `role_id` is not a foreign key; `panel-credential.repository.ts` also selects the column, to compute fingerprints); `master/src/repositories/role.repository.ts` (permissions as one JSONB array; `permissionSetForRole`, `permissionSetFromRow`, `roleVersion`); `master/src/repositories/access-guard.repository.ts` (`lockTenantAccessGuards`, `readAdministrativeCapability`); `master/src/repositories/party-access.repository.ts` (grants, `applyPartyScope`, `partyScopeSql`, `partyScopeLogSql`); `master/src/repositories/password-vault.repository.ts`; `master/src/repositories/panel-credential.repository.ts` (`fingerprintForUser`, `findRevokedOfflineCredentials`); `master/src/repositories/office-panel.repository.ts` (paired panels; secret hash returned separately); `master/src/repositories/api-key.repository.ts` (`mintToken`, `parseToken`, `secretMatches`, `findByPrefix`, `listKeys`, `insertKey`, `revokeKey`, `touchKeys`) |
 | Catalogue | `master/src/repositories/party.repository.ts` (reference checks before delete; `P-0001` codes from `party_code_seq`); `master/src/repositories/party-variant.repository.ts` (per-party alias/size/weight/packaging: `listForParty`, `listAll`, `upsertVariant`); `master/src/repositories/product.repository.ts` (models with variants, `ensureCategories`, `listCategories`); `master/src/repositories/product-variant.repository.ts` (every code and weight: `replaceVariants`, `findVariantByCode`, `codesTakenElsewhere`); `master/src/repositories/product-image.repository.ts` (UUID ids, online-only); `master/src/repositories/custom-field.repository.ts` (option lists + definitions); `master/src/repositories/field-usage.repository.ts` (`usageForListKey`); `master/src/repositories/pipeline.repository.ts` (stages updated/reordered/archived/restored, never created or deleted) |
-| Leads, orders, stock | `master/src/repositories/lead.repository.ts` (`scope` is required; `markConverted`, `lockLead`, soft delete/restore); `master/src/repositories/order.repository.ts` (`markDispatched` — stage, `dispatched_at`, `hlc`, `field_hlc`, `version + 1`; `lockOrder` — `FOR UPDATE`, returns `dispatched_at`, `stage_id`, `field_hlc`); `master/src/repositories/line-item.repository.ts` (one `line_items` table for both parents; `replaceLines`); `master/src/repositories/timeline.repository.ts` (append-only system and remark entries); `master/src/repositories/inventory.repository.ts` (`stock_movements` ledger + `inventory_stock` snapshot, both written by `applyMovement`); `master/src/repositories/reservation.repository.ts` (`reservedTotals`, consume/release/reactivate) |
+| Leads and orders | `master/src/repositories/lead.repository.ts` (`scope` is required; `markConverted`, `lockLead`, soft delete/restore); `master/src/repositories/order.repository.ts` (`markDispatched` — stage, `dispatched_at`, `hlc`, `field_hlc`, `version + 1`; `lockOrder` — `FOR UPDATE`, returns `dispatched_at`, `stage_id`, `field_hlc`); `master/src/repositories/line-item.repository.ts` (one `line_items` table for both parents; `replaceLines`); `master/src/repositories/timeline.repository.ts` (append-only system and remark entries). `inventory.repository.ts` and `reservation.repository.ts` were deleted in 1.4: nothing reads or writes the retired stock tables (§6.10) |
 | Read models | `master/src/repositories/search.repository.ts` (`tsvector` + GIN: `search`, `pickProducts`, `pickCategories`, `pickParties`); `master/src/repositories/dashboard.repository.ts`; `master/src/repositories/report.repository.ts` (month buckets in SQL in the business timezone); `master/src/repositories/recycle-bin.repository.ts` (`listBinEntries`: a `UNION ALL` over the 8 soft-deletable tables; `binCounts`: one count query per branch, summed) |
 | Notifications | `master/src/repositories/notification.repository.ts` (1.3 Phase 3): `insertNotifications` (multi-row insert, `ON CONFLICT … WHERE dedupe_key IS NOT NULL AND read_at IS NULL DO NOTHING RETURNING *`, so only rows added come back), `listForUser` (newest first; `before` compared at millisecond precision), `countUnread`, `markRead(ids \| 'all')` (unread rows of that person only), `prune()`. `office-panel.repository.ts` gains `findPanelProofKey`, `fillPanelProofKey` (fills a null key only) and `listActivePanels`; `user.repository.ts` gains `findActiveUserIdsWithPermission` (through the tier ceiling) |
 | Sync, audit, backup, integrations | `master/src/repositories/sync.repository.ts` (`applied_mutations`, conflict log); `master/src/repositories/activity-log.repository.ts` (`recordActivity`, `recordDetachedActivity` — its header states when detached is right, §5.1 — `listEntries`, `verifyChain`, `chainBounds`, `listFacets`, `listPanelActivity`); `master/src/repositories/backup.repository.ts` (generic dump/load via `information_schema`, `session_replication_role='replica'` during a load, `EXCLUDED_TABLES`, `TRANSITIVELY_SCOPED`); `master/src/repositories/connector.repository.ts` (credential sealed; `openCredential` is the only unsealer) |
@@ -2533,7 +2542,6 @@ Knex.Transaction`). In practice services open transactions themselves with
 | Meta | `GET /openapi.json`, `GET /whoami` |
 | Parties | `GET /parties`, `POST /parties`, `GET /parties/:id`, `PATCH /parties/:id` (`parties.*`) |
 | Products | `GET /products`, `POST /products`, `GET /products/:id`, `PATCH /products/:id` (`products.*`) |
-| Stock | `GET /stock` (`inventory.view`), `POST /stock/inbound` (`inventory.edit`), `POST /stock/adjust` (`stock.adjust`) |
 | Leads | `GET /leads`, `GET /leads/:id` (read only) |
 | Orders | `GET /orders`, `GET /orders/:id`, `PATCH /orders/:id`, `POST /orders/:id/stage` |
 | Other | `GET /search`, `GET /events` (`logs.view`, the activity log, cursor-paged) |
@@ -2745,8 +2753,7 @@ the service checks.
   /products`, `PUT /products/:id`, `DELETE /products/:id` (`products.delete`), `GET
   /categories` (`?search=&brand=`), and since catalogue v2 `POST /categories`, `PUT
   /categories/:id`, `DELETE /categories/:id` (`products.delete`; the others checked in
-  the service); stock `GET /stock` (`?brand=&categoryId=` since catalogue v2), `GET /stock/movements`, `POST /stock/inbound`,
-  `POST /stock/adjust`, `POST /stock/reorder-level`; leads `POST /leads`
+  the service); leads `POST /leads`
   (`leads.create`), `GET /leads`, `GET /leads/:id`, `POST /leads/:id/stage`, `POST
   /leads/:id/remarks`, `DELETE /leads/:id` (`leads.delete`), `POST
   /leads/:id/convert`, `GET /leads/:id/pdf` (catalogue v2, `leads.export`: the
@@ -2819,8 +2826,8 @@ the service checks.
 - **`master/src/realtime/fan-out.ts`** — delivery rules shared by the live push and
   the reconnect replay: `DIRECTORY_ENTITIES` (`role`, `user`),
   `PARTY_SCOPED_ENTITIES` (`lead`, `order`, `party`, `party_variant`),
-  `DASHBOARD_ENTITIES`, `REQUIRED_PERMISSION` (e.g. `lead` → `leads.view`, `stock` →
-  `inventory.view`, `sync_conflict` → `sync.resolveConflicts`), `partyIdOfChange()`,
+  `DASHBOARD_ENTITIES`, `REQUIRED_PERMISSION` (e.g. `lead` → `leads.view`,
+  `sync_conflict` → `sync.resolveConflicts`), `partyIdOfChange()`,
   `mayReceive()`.
 - **`master/src/realtime/change-ring.ts`** — in-memory ring of the last 2,000
   `DataChangedEvent`s: `record()` (stamps `seq`; called by `publishChange`),
@@ -2907,8 +2914,7 @@ audit and left open; item 24 records what it found deliberate.
    entry describes a wiped record, and `TRUNCATE` is the only way past its row
    triggers — and the CLI now says so, with counts, before it starts.
 5. **Fixed 2026-09-25 — detached audit writes on the main paths.** Parties,
-   products, leads, lead stage moves, conversion, dispatch, stock in, count
-   corrections, pairing, revocation and panel editing wrote their entry after the
+   products, leads, lead stage moves, conversion, dispatch, pairing, revocation and panel editing wrote their entry after the
    commit through `recordDetachedActivity`, which swallows a failure, so a change
    could commit with no entry. Each now calls `recordActivity` as the last statement
    of its own transaction (§5.1; `master/tests/audit-atomicity.integration.test.ts`).
@@ -2916,7 +2922,7 @@ audit and left open; item 24 records what it found deliberate.
    connector runs, and a panel's reissued secret or moved storage folder.
 6. **Fixed 2026-09-25 — writes with no activity-log call** now record:
    `catalog.service.ts#upsertVariant` (`party.variant_saved`),
-   `inventory.service.ts#setReorderLevel` (`stock.levels_changed`), offline merged
+   offline merged
    updates in `sync.service.ts#mergeUpdate`, `updateOrder` and order `setStage`
    (`order.stage_changed`).
 7. **Dispatch picks a stage by name:** `dispatchOrder` moves the order to the stage
@@ -2943,9 +2949,7 @@ audit and left open; item 24 records what it found deliberate.
     several repositories and services and the OpenAPI description, and
     `seed-sample-data-cli.ts` (now "party-wise records"). Still stale: the header of
     migration `20260314000000_settings_and_password_vault.ts` refers to a
-    non-existent `COLUMN_MAP` (a migration is never rewritten); and
-    `inventory.service.ts` (near line 179) says `isBlankNote` is shared with both
-    panels' forms, but no web code imports it.
+    non-existent `COLUMN_MAP` (a migration is never rewritten).
 13. **Other things to know:** sessions do not survive a restart;
     `github-releases.ts` is the only *built-in* internet path, but connector runs
     (`connector-run.service.ts`) `fetch()` whatever `base_url` an administrator
@@ -2966,12 +2970,12 @@ audit and left open; item 24 records what it found deliberate.
     `master/tests/http-api.integration.test.ts`.)
 15. **Fixed 2026-09-25 — a dispatch was invisible to offline merge bookkeeping**: it
     now bumps `version`, `hlc` and `field_hlc` like every other order write (§5.6;
-    a clock test in `master/tests/inventory.integration.test.ts`).
+    the clock test lived in the since-deleted `inventory.integration.test.ts`).
 16. **An unknown `/api/*` path is a 401 without a session**, not a 404, because the
     `dataRoutes` catch-all runs `requireAuth` first (§5.8.3).
 17. **`deleteOrder` can race a dispatch.** It checks `dispatchedAt` on a read taken
     before its transaction and never locks the order, so a dispatch that commits in
-    between leaves a soft-deleted order whose stock has already gone out.
+    between leaves a soft-deleted order that has already been dispatched.
 18. **Closed in 1.3 Phase 8: the public API's tenant cache after a whole restore.**
     A whole v1 restore used to leave `/api/v1` reading the off switch of a tenant
     that was gone until a restart. Every restore and the developer reset now call
@@ -3097,7 +3101,7 @@ are recounted in the 1.3 Phase 9 reconciliation.
 | 15 | `master/src/db/migrations/20260313000000_panel_app_version.ts` | 54 | idempotent `ADD COLUMN IF NOT EXISTS office_panels.app_version` — kept so databases that ran it still boot |
 | 16 | `master/src/db/migrations/20260313000000_party_access.ts` | 100 | `party_access`; grants `party.accessAll`, `party.assign` to admin roles |
 | 17 | `master/src/db/migrations/20260314000000_settings_and_password_vault.ts` | 67 | `settings`, `user_password_vault`; nothing seeded |
-| 18 | `master/src/db/migrations/20260315000000_product_trade_and_ceramic_attributes.ts` | 271 | trade/ceramic product columns (mostly dropped by #30); `inventory_stock.min/max_stock_level` and `stock_movements.batch_no/shade/calibre` (survive) |
+| 18 | `master/src/db/migrations/20260315000000_product_trade_and_ceramic_attributes.ts` | 271 | trade/ceramic product columns (mostly dropped by #30); `inventory_stock.min/max_stock_level` and `stock_movements.batch_no/shade/calibre` (survive, on tables retired in 1.4) |
 | 19 | `master/src/db/migrations/20260316000000_public_api_and_connectors.ts` | 254 | the 7 `api_*` tables; widens the `activity_log.actor_type` CHECK; grants `api.manage` |
 | 20 | `master/src/db/migrations/20260317000000_ai_assistant.ts` | 116 | `ai_runs`; grants `ai.manage`/`ai.write`/`ai.use` — **both still present** (§6.14) |
 | 21 | `master/src/db/migrations/20260318000000_document_layout_v2.ts` | 491 | rewrote Designer layouts (tables gone since #29) |
@@ -3130,10 +3134,10 @@ are recounted in the 1.3 Phase 9 reconciliation.
 
 | Shape | Tables |
 |---|---|
-| **Text permanent id**, 12 chars (`formatPermanentId`, `ENTITY_PREFIX`) | `leads` LD, `orders` OD, `line_items` LI, `parties` PT, `products` PR, `product_categories` PC, `product_variants` VR, `party_product_variants` PV, `timeline_entries` TL, `stock_reservations` RS, `roles` RL, `users` US — the 12 `SYNCABLE_ENTITIES` |
-| **Text temporary id**, 15 chars | minted offline by a panel for the record a mutation is about; mapped forever through `id_map`. A `temporary_id` column exists only on the 7 sync-bookkept tables (`leads`, `orders`, `parties`, `products`, `party_product_variants`, `roles`, `users`), and only lead, party and product creates record a mapping (`mapTemporaryId` in `sync.service.ts`; not a `partyVariant.upsert`, §5.11 item 22). Roles and users have no mutation kind, so theirs is always NULL; an order is named by the Master at conversion; `line_items`, `product_categories`, `product_variants`, `timeline_entries` and `stock_reservations` are named by the Master when it applies their parent's write, so none of them reaches `id_map` |
-| UUID | `tenants`, `office_panels`, `pipelines`, `pipeline_stages`, `option_lists`, `custom_field_definitions`, `product_images`, `inventory_stock`; with a `gen_random_uuid()` default: `party_access`, the `api_*` tables except runs, `ai_runs` |
-| BIGSERIAL | `activity_log`, `stock_movements`, `sync_conflicts`, `api_connector_runs` |
+| **Text permanent id**, 12 chars (`formatPermanentId`, `ENTITY_PREFIX`) | `leads` LD, `orders` OD, `line_items` LI, `parties` PT, `products` PR, `product_categories` PC, `product_variants` VR, `party_product_variants` PV, `timeline_entries` TL, `roles` RL, `users` US — the 11 `SYNCABLE_ENTITIES` (the `stock_reservations` RS kind was retired in 1.4) |
+| **Text temporary id**, 15 chars | minted offline by a panel for the record a mutation is about; mapped forever through `id_map`. A `temporary_id` column exists only on the 7 sync-bookkept tables (`leads`, `orders`, `parties`, `products`, `party_product_variants`, `roles`, `users`), and only lead, party and product creates record a mapping (`mapTemporaryId` in `sync.service.ts`; not a `partyVariant.upsert`, §5.11 item 22). Roles and users have no mutation kind, so theirs is always NULL; an order is named by the Master at conversion; `line_items`, `product_categories`, `product_variants`, and `timeline_entries` are named by the Master when it applies their parent's write, so none of them reaches `id_map` |
+| UUID | `tenants`, `office_panels`, `pipelines`, `pipeline_stages`, `option_lists`, `custom_field_definitions`, `product_images` (and the retired `inventory_stock`); with a `gen_random_uuid()` default: `party_access`, the `api_*` tables except runs, `ai_runs` |
+| BIGSERIAL | `activity_log`, `sync_conflicts`, (the retired `stock_movements`), `api_connector_runs` |
 | Composite key | `id_map (tenant_id, temporary_id)`, `applied_mutations (tenant_id, mutation_id)`, `id_sequences (tenant_id, entity)`, `settings (tenant_id, key)`, `user_password_vault (tenant_id, user_id)` |
 | Singleton `CHECK (id = 1)` | `master_config`, `master_clock` |
 
@@ -3183,10 +3187,6 @@ erDiagram
     LEADS ||--o{ LINE_ITEMS : "parent_type=lead (no FK)"
     ORDERS ||--o{ LINE_ITEMS : "parent_type=order (no FK)"
     PRODUCT_VARIANTS ||--o{ LINE_ITEMS : variant_id
-    PRODUCT_VARIANTS ||--o| INVENTORY_STOCK : "unique per variant"
-    PRODUCT_VARIANTS ||--o{ STOCK_MOVEMENTS : variant_id
-    ORDERS ||--o{ STOCK_RESERVATIONS : cascade
-    LINE_ITEMS ||--o{ STOCK_RESERVATIONS : cascade
     ORDERS ||--o{ TIMELINE_ENTRIES : "parent (no FK)"
 ```
 
@@ -3244,13 +3244,24 @@ digest of each user's `password_hash`, never the hash.
 | `line_items` | `id` (LI…), `parent_type`, `parent_id` (no FK), `product_id`, `variant_id`; snapshots `product_name`, `category_name`, `category_code`, `brand_name` (the two since catalogue v2), `alias`, `code`, `variant_label`, `colour`, `size`, `weight_kg`, `packaging`, `grade`; `sequence`, `from_party_variant`, `image_path`, `notes`, `quantity` NUMERIC(12,2), `search_vector` | CHECK `quantity > 0`; index `(tenant_id, parent_type, parent_id)` | one table for both parents, one line per variant, snapshot frozen when added; `replaceLines` deletes and re-inserts; `line-item.repository.ts` |
 | `timeline_entries` | `id` (TL…), `parent_type`/`parent_id`, `kind` (`system`/`remark`), `message`, `from_stage_id`, `to_stage_id`, `actor_user_id` | FKs to stages and users | history and remarks; `timeline.repository.ts` |
 
-### 6.10 Inventory, movements, reservations
+### 6.10 Retired tables: inventory, movements, reservations
+
+**Stock and inventory were removed from the software in 1.4. These three tables are
+RETIRED but kept** — migrations after 1.2.0 only add, and a customer's rows are never
+dropped by an update. **Nothing reads or writes them**: no service, repository, route,
+socket command or screen. They are left out of the ER diagram above and are described
+here only as the historical record (full DDL in `docs/schema/03-leads-orders-inventory.md`).
+Three FK-driven exceptions remain in code: `catalog-reload-cli.ts` (`BUSINESS_TABLES`) and
+`catalogue-seed.service.ts#clearCatalogueData` still `DELETE` from them so a wipe/reload can
+remove variants, and `product-variant.repository.ts#referencedVariantIds` still counts a row
+there as a reference, so a variant with legacy rows is deactivated, not deleted (the tables
+are FK-ed to `product_variants`). Do not write new code against them.
 
 | Table | Key columns | Keys and constraints | Purpose / code |
 |---|---|---|---|
-| `inventory_stock` | `id`, `product_id`, `variant_id`, `quantity_boxes` NUMERIC(12,2), `reorder_level`, `min_stock_level`, `max_stock_level`, `updated_at` | UNIQUE `(tenant_id, variant_id)`; CHECK `max >= min` | stock on hand, **one row per variant**; `inventory.repository.ts` |
-| `stock_movements` | `id`, `product_id`, `variant_id`, `movement_type` (`inbound`/`outbound`/`adjustment`), `quantity_boxes`, `reference_type`/`reference_id` (dispatch uses `'order'` + id), `note`, `batch_no`, `shade`, `calibre`, `created_by_user_id` | partial index on `batch_no` | the ledger; append-only by convention (no trigger); `inventory.repository.ts`, `report.repository.ts` |
-| `stock_reservations` | `id` (RS…), `order_id`, `line_item_id`, `product_id`, `variant_id`, `quantity`, `status` (`active`/`released`/`consumed`), `settled_at` | FKs CASCADE on order and line; partial `(tenant_id, variant_id) WHERE status='active'` | reserved at conversion, consumed at dispatch; `reservation.repository.ts` |
+| `inventory_stock` | `id`, `product_id`, `variant_id`, `quantity_boxes` NUMERIC(12,2), `reorder_level`, `min_stock_level`, `max_stock_level`, `updated_at` | UNIQUE `(tenant_id, variant_id)`; CHECK `max >= min` | retired: was stock on hand, one row per variant |
+| `stock_movements` | `id`, `product_id`, `variant_id`, `movement_type` (`inbound`/`outbound`/`adjustment`), `quantity_boxes`, `reference_type`/`reference_id` (dispatch uses `'order'` + id), `note`, `batch_no`, `shade`, `calibre`, `created_by_user_id` | partial index on `batch_no` | retired: was the ledger, append-only by convention (no trigger) |
+| `stock_reservations` | `id` (RS…), `order_id`, `line_item_id`, `product_id`, `variant_id`, `quantity`, `status` (`active`/`released`/`consumed`), `settled_at` | FKs CASCADE on order and line; partial `(tenant_id, variant_id) WHERE status='active'` | retired: was reserved at conversion, consumed at dispatch |
 
 ### 6.11 Sync tables
 
@@ -3443,8 +3454,9 @@ The sidebar is one `const groups: NavGroup[] = [ … ].map((group) => …)` lite
 
 An entry the user may not use is **absent**, not greyed out. Basic Home's tiles are
 built from these same groups, so a module with no row has no tile. **Inventory has
-no row, Tab member, screen or sub-pages since 1.3 Phase 1**; the server's stock
-routes, socket events, dispatch movements and the Dispatches report are untouched.
+no row, Tab member, screen or sub-pages since 1.3 Phase 1**, and since 1.4 the server's
+stock routes, socket events and dispatch movements are gone too (the Dispatches report
+stays, counting boxes from the dispatched orders' lines).
 
 **Pending and Final Orders (2026-10-01, parity plan P2).** `leads` and `orders` are
 modules of their own (`LeadsOrdersScreen` is gone). Sub-pages: leads = `list`,
@@ -3473,8 +3485,7 @@ blocks so each page keeps its search, filters and open record. A record opens as
 sub-screen (`products.detail` under `products.sub`, `products.main.detail` under
 `products.main`); the edit forms, the delete confirm, the import and the photo
 crop are modals. A `product` search hit goes to `products.sub` when offered, else
-`products`. There is no free-stock column or stock fetch on the Master since 1.3
-Phase 1 (the Office keeps its own).
+`products`. There is no Stock column or stock fetch on either panel since 1.4.
 
 **Sub-pages** (grafted with `withSubPages` and `graftSubNav`; key in `subKeys`
 state, Settings via `useSettingsTab('ob.settings.tab.master', SETTINGS_TAB_IDS,
@@ -3505,12 +3516,12 @@ transports: ['websocket'] })` once `ready`. On connect the server emits
 | `sync:conflict` | `bump('sync_conflict')` |
 
 `revisionOf(revisions, key)` sums counters for `SCREEN_ENTITIES[key]`: `records`
-(lead, order, party, product, catalog, stock, reservation, option_list → LeadsScreen and
-OrdersScreen), `leadEntry` (option_list, party, party_variant, stock, reservation, product, catalog, setting → the New / Edit pending order form's `GET /api/lead-entry`),
+(lead, order, party, party_bulk, product, catalog, option_list → LeadsScreen and
+OrdersScreen), `leadEntry` (option_list, party, party_bulk, party_variant, product, catalog, setting → the New / Edit pending order form's `GET /api/lead-entry`),
 `stages` (pipeline → the shell's own `api.pipelines()` read, which feeds both screens'
 stage chips and the sidebar's `stage:<id>` pages; apart from `records` so a lead edit
 does not re-read it), `catalogue` (product, catalog, product_category) and
-`catalogueLists` (option_list) for Products, `reports` (lead, order, party, stock), `fields` (option_list, custom_field,
+`catalogueLists` (option_list) for Products, `reports` (`REPORT_ENTITIES`: lead, order, party, party_bulk), `fields` (option_list, custom_field,
 pipeline), `access` (user, role → AccessScreen), `partyAccess` (party), `parties`
 (party), `recycleBin` (lead, order, party, product, product_category, role, user,
 option_list, custom_field), `conflicts` (sync_conflict). Every key is read by a screen; `catalog`
@@ -3522,7 +3533,7 @@ Settings receive no revision.
 **Rail, footer, topbar, overlays.** `railState` in order: `conflict` (open
 conflicts), `offlinePending`, `offline` (a panel `!isConnected`), `syncing`
 (`pendingSyncCount` > 0), `synced`; clicking it opens a popover (pending changes,
-panels online, "Review conflicts"; the low-stock row went with Inventory). Footer:
+panels online, "Review conflicts"). Footer:
 the sync-status button (`ob-footer-sync`: rail dot plus sync label; toggles the sync
 popover), the company name (`setupStatus().companyName`, 1.3 Phase 1), avatar and
 "signed in as", the `#/gallery` link, `v{__APP_VERSION__}`, `<Clock/>`. Topbar:
@@ -3559,7 +3570,7 @@ for its brand button.
 | `parties` | `PartiesScreen revision recordsRevision permissions openId onOpenId onOpenLead onOpenPartyAccess` |
 | `leads` | `LeadsScreen revision stages permissions packagingRequired view openId onOpenId onOpenOrder canCreate onNewLead canCreateParty leadEntryRevision` |
 | `addLead` | `LeadEntry revision focusNonce canCreateParty onSaved onCancel` — only registered with `leads.create`; no sidebar row (`NAVLESS_SCREENS.master.addLead`), reached by the topbar "New pending order", the `leads.new` sub-page or `record.new`; `shownTab` exempts it (`NOT_IN_SIDEBAR`), `activeId` maps it to `leads.new` |
-| `orders` | `OrdersScreen revision stages permissions freeToSell stageId onStageChange openId onOpenId onOpenLead` |
+| `orders` | `OrdersScreen revision stages permissions stageId onStageChange openId onOpenId onOpenLead` |
 | `reports` | `ReportsScreen` from `@orderbook/ui` — `transport` (`reportsTransport`), `revision`, `kind`, `onKindChange`; since 1.3 H2 the Master has no screen of its own |
 | `access` | `AccessScreen revision permissions currentUserId currentUserTier tab onTabChange` |
 | `partyAccess` | `PartyAccessScreen permissions revision restriction onRestrictionChange` |
@@ -3629,8 +3640,8 @@ The `NotificationBell` sits beside the palette button: `api.notifications()` /
 | Catalogue import and photos (6) | `productImportTemplate` (GET blob via `requestFile`), `importProducts`, `uploadProductImage` (both `requestForm`), `updateProductImage` (PATCH), `reorderProductImages`, `deleteProductImage` | `products/import…`, `products/:id/images…` |
 
 The five stock members (`stock`, `stockMovements`, `stockInbound`, `stockAdjust`,
-`setReorderLevel`) were deleted with the Inventory screen in 1.3 Phase 1. The
-`stock/*` routes stay on the server for the socket and the public API.
+`setReorderLevel`) were deleted with the Inventory screen in 1.3 Phase 1; the `stock/*`
+routes were removed from the server in 1.4.
 | Leads, orders (15) | `leads`, `lead`, `createLead`, `updateLead` (PUT), `leadEntryView`, `setLeadStage`, `addLeadRemark`, `convertLead`, `deleteLead`, `orders`, `order`, `updateOrder`, `setOrderStage`, `dispatchOrder`, `deleteOrder` | `leads/*`, `orders/*` |
 | Access (19) | `permissionCatalogue`, `roles`, `deletedRoles`, `role`, `createRole`, `updateRole`, `deleteRole`, `restoreRole`, `users`, `deletedUsers`, `createUser`, `updateUser`, `deleteUser`, `restoreUser`, `resetPassword`, `revealPassword`, `changeOwnPassword`, `uploadAvatar`, `removeAvatar` | `access/*` |
 | Settings | `settings`, `saveSetting`, `vaultStatus` | `settings/*` |
@@ -3655,12 +3666,12 @@ Settings and Updates.
 
 | Screen (lines) | What it shows and does | `api` calls | Permissions checked inside |
 |---|---|---|---|
-| `master/web/src/screens/DashboardScreen.tsx` | a `StatTile` row (1.3 Phase 1; `StatTileSkeleton` while the summary loads), counts only, a tile only for each figure the summary carries: Pending Orders → `leads`, converted today, dispatched today, follow-ups due, Final Orders → `orders`, dispatched this week, panels online (`panels.manage`), conflicts → Conflicts, pending sync. Optional `printPending` and `chatUnread` props draw a tile only when given (for later phases). The low-stock card is gone; stage bars with "Open board"; follow-ups due (`leads.view` only; a row opens the lead); active panels (`panels.manage`). Not ported: the Office's recent-activity box and reserved-boxes note (`reservedBoxes` would break the Office server's exhaustive `DASHBOARD_FIGURE_PERMISSIONS` type) | `leads` (follow-ups) | `panels.manage`, `leads.view` |
+| `master/web/src/screens/DashboardScreen.tsx` | a `StatTile` row (1.3 Phase 1; `StatTileSkeleton` while the summary loads), counts only, a tile only for each figure the summary carries: Pending Orders → `leads`, converted today, dispatched today, follow-ups due, Final Orders → `orders`, dispatched this week, panels online (`panels.manage`), conflicts → Conflicts, pending sync. Optional `printPending` and `chatUnread` props draw a tile only when given (for later phases). There is no low-stock card (`lowStockCount` is gone from `DashboardSummary`); stage bars with "Open board"; follow-ups due (`leads.view` only; a row opens the lead); active panels (`panels.manage`). Not ported: the Office's recent-activity box | `leads` (follow-ups) | `panels.manage`, `leads.view` |
 | `master/web/src/screens/PanelsScreen.tsx` (417) | "Add Office Panel" opens the pairing window and waits until a new row arrives over the socket (the window is also closed on effect cleanup); table of status, name, device code, LAN IP, paired, last seen; detail is an `EditorScreen` sub-screen (sub-nav `panels.detail`) that loads `api.panel(id)` for the acting role and work counts, with **Rename** and **Remove** (modal confirms) only | `openPairingWindow`, `closePairingWindow`, `panel`, `renamePanel`, `revokePanel` | none (nav needs `panels.manage`) |
 | `master/web/src/screens/LeadsScreen.tsx` | Pending Orders (leads), 2026-10-01 (parity plan P2). List: server `search` (debounced, `data-screen-search`), All / My parties, client-side stage chips counting the loaded rows, `LoadMorePager` at 500 per page, no actions column; `view` `list` or `converted` (`convertedOnly`). A row opens `EditorScreen` as a sub-screen (back button, `useSubNav('leads', ...)`): Filling note and Dispatch note (`leads.export`, a not-yet-converted lead only; `OrderNoteScreen` with `source="lead"`, sub-nav `leads.note`, party via `api.party`; 1.3 H3), Preview PDF (`leads.export`), Delete (`leads.delete`, 409 `blockedBy` named), then `LeadRecordView`; party card via `api.party` only with `parties.view`. `openId` not in the loaded rows falls back to `api.lead(id)` (a 404 clears it). | `leads`, `lead`, `party`, `optionLists`, `deleteLead` (+ the transport's `addLeadRemark`, `setLeadStage`, `convertLead`) | `leads.edit`, `lead.convert`, `leads.delete`, `leads.export`, `parties.view` |
 | `master/web/src/screens/LeadEntry.tsx` | New / Edit pending order, 2026-10-01 (P3). Host of `ui/LeadEntryScreen`: reads `api.leadEntryView()` (`GET /api/lead-entry`) on mount and whenever `revision` moves, shows a busy mark only until the first answer and never unmounts the form afterwards, so a half-typed draft survives. Mounted by `App.tsx` as the nav-less `addLead` screen and by `LeadsScreen` inside an `EditorScreen` (`lead` prop) for Edit pending order. | `leadEntryView` (+ the transport's `pick`, `createLead`, `updateLead`, `createParty`, `updateParty`) | `canCreateParty` prop (`parties.create`) |
 | `master/web/src/screens/OrdersScreen.tsx` | Final Orders, 2026-10-01 (P2). Same list shape as Pending Orders; stage chips follow the sidebar's `stage:<id>` pages (`stageId`/`onStageChange`); columns Final Order, Party, From pending order (a link that opens the lead), Qty, Weight (`*` = manual), Stage. A row opens the order as a sub-screen: Filling / Dispatch note (`orders.export`, `OrderNoteScreen`, sub-nav `orders.note`, party loaded with `parties.view`), Delete (`orders.delete`, 409 named), then `OrderRecordView`. `openId` not loaded falls back to `api.order(id)`. | `orders`, `order`, `party`, `optionLists`, `updateOrder`, `deleteOrder` (+ the transport's `setOrderStage`, `dispatchOrder`) | `orders.edit`, `orders.dispatch`, `orders.export`, `orders.delete`, `parties.view` |
-| `master/web/src/screens/ProductsScreen.tsx` | Products, 2026-10-01 (P4). Host of the catalogue ports: loads option lists, categories and every sub product (`listProducts({limit: 2000})`), each on its own revision, keeping the previous data on screen while the next loads; renders `SubProductsScreen`, `MainProductsScreen` and `BrandsScreen` (with `optionListTransport` from `transports.ts`) in `<Activity>` blocks. No free stock since 1.3 Phase 1: the stock fetch, `canViewStock` and the `stockRevision` prop are gone, so the view carries no `stock` and the free-stock column is left out. | `optionLists`, `categories`, `listProducts` (+ the transport's catalogue writes) | `permissions` prop |
+| `master/web/src/screens/ProductsScreen.tsx` | Products, 2026-10-01 (P4). Host of the catalogue ports: loads option lists, categories and every sub product (`listProducts({limit: 2000})`), each on its own revision, keeping the previous data on screen while the next loads; renders `SubProductsScreen`, `MainProductsScreen` and `BrandsScreen` (with `optionListTransport` from `transports.ts`) in `<Activity>` blocks. No stock: the stock fetch, `canViewStock` and the `stockRevision` prop are gone, and the view carries no `stock` and no Stock column. | `optionLists`, `categories`, `listProducts` (+ the transport's catalogue writes) | `permissions` prop |
 | `master/web/src/screens/PartiesScreen.tsx` | paged list (`PAGE_SIZE = 100`, `LoadMorePager`), debounced search, client sort, columns incl. own-record count and the caller's own access; a row opens a **sub-screen** (`useSubNav('parties', …'parties.detail')`, `openId` held by the shell, deep link falls back to `api.party`): contact, own access (`myAccess`; plus assignees and a "Party access" button with `party.assign`/`party.accessAll`), own product records with `catalogueName`, recent pending orders (`leads.view`; a row opens the lead); Edit via `PartyFormModal`; Delete with confirm, 409 lists blockers | `parties`, `party`, `partyRecords`, `partyAccessFor`, `leads`, `deleteParty` (+ transport) | `parties.create`, `parties.edit`, `parties.delete`, `leads.view`, `party.assign`/`party.accessAll` |
 | `ui/src/ReportsScreen.tsx`, `master/web/src/transports.ts#reportsTransport`, `office/web/src/reportsTransport.ts` | **1.3 H2: one Reports screen for both panels.** The kind comes from the sidebar's sub-pages (`offeredReportKinds`) or a picker; controls are the period (named, a month range, or exact dates), whose figures (only when `ReportOptions.subjects` is not `null`) and a search box (`data-screen-search`); the body is `StatTile`s of the totals, one `DataTable` of the rows and the legacy extra sections. A request is aborted when the controls move on (`AbortController`); a refused range names its field and leaves the last good report; a hidden report says why. CSV / Excel / PDF through `trackLoad` and `saveBlob`, only with `canExport`; beside them **Preview PDF** (1.3 H3), a `ButtonLink target="_blank"` to `reportPdfPath(kind, query, lang)` (`shared/src/domain/reports.ts`) — a window of its own in the desktop shell (`isPdfWindowUrl`), a new tab in a LAN browser; it shares the export buttons' gate, so a refused range or an offline Office takes it away with them. Takes a `ReportsTransport`, never an api client. Replaces the Master's own `ReportsScreen.tsx` | `reportOptions`, `reportTable`, `reportExport` | `reports.view`, `reports.export` |
 | `master/web/src/screens/AccessScreen.tsx` (2136) | Users and Roles; refetches on another administrator's `user`/`role` change (`revision`). Since 1.3 Phase 2: `TierPill` for every tier, Server Masters highlighted (row, avatar ring, `ServerMasterBadge`); a caller below a person's tier gets **no** controls on them (`mayManage` by `tierRank`); the last two active Server Masters cannot be deactivated or deleted (reason shown); guarded calls go through `withKey`, which repeats a call refused with `error.unauthorized.masterKeyRequired` after `useMasterKeyPrompt`; the role picker offers only roles at or below the caller's tier; the tier `Select` never offers `server_master` and labels tiers via `tierLabel`; the Server Master role has no Edit. Users: filters, add (`UserForm`, password shown once in `OneTimeSecretDialog`), detail as an `EditorScreen` sub-screen (sub-nav `access.person`; role change with `expectedVersion`, avatar, activate/deactivate, set/generate/reveal password, delete), `UserEditForm` as an `EditorScreen` with a sub-nav entry; last active admin protected client-side. Roles: `RoleEditor` (loaded through `api.role(id)` on open; `PermissionGrid`, tier, stale-version banner with Reload/Overwrite), delete. Inline restore of deleted roles and users. | `permissionCatalogue`, `roles`, `role`, `users`, `vaultStatus`, user and role CRUD, `resetPassword`, `revealPassword`, `uploadAvatar`, `removeAvatar`, `deletedRoles`, `deletedUsers`, `restoreRole`, `restoreUser` | `users.manage`, `roles.*`, `roles.assign`, `users.viewPassword` |
@@ -3670,7 +3681,7 @@ Settings and Updates.
 | `master/web/src/screens/RecycleBinScreen.tsx` (578) | soft-deleted records, `LoadMorePager`, type/search/deleted-by filters, counts, own/everyone scope; restore per row with `RESTORE_PERMISSION[type]`; a 409 opens `RefusalDialog` (suggested rename, or restore parents first and retry with `cascadeParents: true`) | `recycleBin`, `recycleBinCounts`, `recycleBinDeleters`, `restoreFromBin` | `recycleBin.view`, `recycleBin.viewAll`, `RESTORE_PERMISSION` |
 | `master/web/src/screens/ConflictsScreen.tsx` (179) | one card per conflict: kept vs overwritten with device codes (a line or variant set reads one row per line, not JSON); Keep (`keepWinner`) / Restore overwritten (`restoreLoser`). The module is gated `sync.resolveConflicts`, so no control is conditional | `conflicts`, `resolveConflict` | none (module gate `sync.resolveConflicts`) |
 | `master/web/src/screens/IntegrationsScreen.tsx` (1108) | Keys (issue — token shown once in `IssuedTokenDialog`, copied with `copyText` — and revoke) and Connectors (list, `ConnectorDialog`, dry run and import, run history, `MappingEditor` as a sub-nav editor) | `apiKeys`, `connectors`, `issueApiKey`, `revokeApiKey`, `users`, `createConnector`, `updateConnector`, `runConnector`, `connectorRuns`, `setConnectorMapping`, `testConnector` | `canManage` (`api.manage`) |
-| `master/web/src/screens/SettingsScreen.tsx` (608) | `SettingsScreen`; `SETTINGS_TAB_IDS` and `settingsTabIdsFor` moved to `settingsTabs.ts` in 1.3 Phase 1. `MASTER_HIDDEN_SETTINGS` (1.3 Phase 1) leaves `inventory.defaultReorderLevel` and `inventory.adjustmentNoteRequired` off the Company tab; both keys stay valid. Since catalogue v2 a **Leads** tab holds the lead-source list (`OptionListEditor`, the Fields permissions) and the `leads` settings group, which left the Company tab; `NumberSetting` moved to `ui/src/SettingsLayout.tsx`. Takes `permissions` from the shell (since 2026-09-25; it used to read `/me` on mount and start from "yes"), so tabs and reads are right on the first render and keyed on booleans. Since 1.3 Phase 2 the Connection tab offers **Change pairing password** to a Server Master on the Master PC (`canChangePairingPassword`): confirm, master key, then the new password shown once. Appearance; Shortcuts; **Company** (only if `api.settings()` returned — `settings.manage`; one section per `SETTING_GROUPS` entry, row-level save; vault coverage beside `security.passwordRevealEnabled`); Connection (company, LAN address:port, master id, setup date; `settings.manage`, the identity read is not made without it); Storage & backup (`settings.tab.storageBackup` since 1.3 Phase 8: usage figures, `StorageBackupActions` with `storage.manage`, and with `storage.backupAll` the `BackupAllSection` and `AutoBackupSection`, told `onMasterPc` by the shell; `settings.manage`). Appearance and Shortcuts are offered to everyone; there is no Developer tab (the routes remain) | `identity`, `storage`, `settings`, `saveSetting`, `vaultStatus`, `developer.*` | `settings.manage`, `storage.manage`, `users.viewPassword` |
+| `master/web/src/screens/SettingsScreen.tsx` (608) | `SettingsScreen`; `SETTINGS_TAB_IDS` and `settingsTabIdsFor` moved to `settingsTabs.ts` in 1.3 Phase 1. (`MASTER_HIDDEN_SETTINGS` and the three `inventory.*` settings are gone in 1.4.) Since catalogue v2 a **Leads** tab holds the lead-source list (`OptionListEditor`, the Fields permissions) and the `leads` settings group, which left the Company tab; `NumberSetting` moved to `ui/src/SettingsLayout.tsx`. Takes `permissions` from the shell (since 2026-09-25; it used to read `/me` on mount and start from "yes"), so tabs and reads are right on the first render and keyed on booleans. Since 1.3 Phase 2 the Connection tab offers **Change pairing password** to a Server Master on the Master PC (`canChangePairingPassword`): confirm, master key, then the new password shown once. Appearance; Shortcuts; **Company** (only if `api.settings()` returned — `settings.manage`; one section per `SETTING_GROUPS` entry, row-level save; vault coverage beside `security.passwordRevealEnabled`); Connection (company, LAN address:port, master id, setup date; `settings.manage`, the identity read is not made without it); Storage & backup (`settings.tab.storageBackup` since 1.3 Phase 8: usage figures, `StorageBackupActions` with `storage.manage`, and with `storage.backupAll` the `BackupAllSection` and `AutoBackupSection`, told `onMasterPc` by the shell; `settings.manage`). Appearance and Shortcuts are offered to everyone; there is no Developer tab (the routes remain) | `identity`, `storage`, `settings`, `saveSetting`, `vaultStatus`, `developer.*` | `settings.manage`, `storage.manage`, `users.viewPassword` |
 | `master/web/src/screens/UpdatesScreen.tsx` (372) | this Master's version, panels behind (`standing()`), the offer from the local releases folder; **Install** → `prepareMasterUpdate` → `desktopBridge().applyUpdate()` (in a browser shows the path); a build that cannot install over itself shows how to update by hand instead of the button — the standalone `.exe` (`updates.standaloneBody`) or a Linux copy not started from an AppImage (`getShellSettings().systemPackage`, `updates.systemPackageBody`); panel version table | `updateStatus`, `prepareMasterUpdate` | `settings.manage` |
 | `master/web/src/screens/FirstRunScreen.tsx` (640) | "Set up new site" (company name and, since 1.3 Phase 2, two typed Server Master account blocks prefilled `master` / `master-backup`, checked for length, match and distinct usernames → `initialize` → the two usernames, LAN addresses, master id and the pairing password shown once; no `admin` is created) or, since 1.3 Phase 8, **Magic restore from a backup drive** (`MagicRestoreFlow`: the zip's path, typed or from `chooseFile`; the preview; the restore followed with `useBackupJob` over `setupArchiveJob`; then Continue to sign-in, with the secrets to re-enter) or "Restore an encrypted backup (.obbackup)" (preview, passphrase, restore, new pairing password); `DataDirCard` | `initialize`, `previewRestoreSetup`, `restoreSetup`, `setupPreviewArchive`, `setupRestoreArchive`, `setupArchiveJob` | none |
 | `master/web/src/screens/SignInScreen.tsx` (165) | username (empty since 1.3 Phase 2; a fresh setup has no `admin`) and password; errors via `apiErrorText`; shows the shell's `notice`. On the Master PC (`onMasterPc` from `/api/setup/status`): `ServerMasterSetupFlow` instead of the form while `serverMasterSetupNeeded`, and a "Forgot Server Master password?" link to `MasterKeyRecoveryFlow` | `signIn` | none |
@@ -3920,7 +3931,6 @@ cache, else fetch `/api/panel/...` and cache (401/404 on refusal, 503 unreachabl
 | Area | Routes → command |
 |---|---|
 | Images | `PATCH /api/products/:productId/images/:imageId` → `product:image:update`; `POST …/images/reorder` → `product:image:reorder`; `DELETE …/images/:imageId` → `product:image:delete` |
-| Stock (deliberately not queued) | `POST /api/stock/inbound` → `stock:inbound`; `/api/stock/adjust` → `stock:adjust`; `/api/stock/reorder-level` → `stock:setReorderLevel` |
 | Search | `GET /api/search` → `search:query` (limit 20) |
 | Conflicts | `GET /api/conflicts` → `conflict:list`; `POST /api/conflicts/:id/resolve` → `conflict:resolve` |
 | Soft delete | `DELETE /api/parties/:id`, `/api/products/:id`, `/api/leads/:id`, `/api/orders/:id` → `*:delete` |
@@ -4020,7 +4030,7 @@ from the Master's `lead.numbered` notification).
   mutation, memoised on `revision:outboxRevision()`. **The overlay models only
   `lead.create`, `lead.update`, `lead.setStage`, `party.create` and
   `product.create`** (`provisionalLead`, `provisionalLine`, `provisionalParty`,
-  `provisionalProduct`, with `sync.hlc === ''` and `sync.temporaryId`); queued stock,
+  `provisionalProduct`, with `sync.hlc === ''` and `sync.temporaryId`); queued
   order, update, remark, convert and party-variant mutations are not shown until the
   Master answers.
 - `office/src/sync/clock.ts` — persisted HLC: `stamp()` (`tickHlc`), `observe(remote)`
@@ -4209,6 +4219,7 @@ does.
 | `office/tests/sync-settle.test.ts` | 6 | 1.3 Phase 4: `awaitSettled` resolves with the permanent id and PO number, and null on timeout; a save during a flush reruns at once; `numbered` says `announced` only when a save was waiting |
 | `office/tests/presence-route.test.ts` | 4 | 1.3 Phase 4: `POST /api/presence` forwards `presence:beat` with the body cut down to the protocol's fields; 503 offline |
 | `office/tests/snapshot-for-user.test.ts` | 5 | `GET /api/snapshot` key set (DSH-1), permissions replaced, other people's restricted parties withheld |
+| `office/tests/stock-retired.test.ts` | 2 `it(` | 1.4 (R15): a snapshot cached before stock was removed (old `stock` rows, `reservations` on orders, `lowStockCount`) and one with no `stock` key both restore and build a view |
 | `office/tests/local-store-restore.test.ts` | 4 | concurrent `restore()`, never-synced, torn file |
 | `office/tests/local-store-overlay.test.ts` | 1 | 1.3 Phase 4: a queued lead edit stamps its fields' clocks on the view, so the next edit's base is that edit and the Master's merge sees no clash |
 | `office/tests/health-route.test.ts` | 3 | `/api/health` without a session; the gate holds; JSON 404 |
@@ -4286,7 +4297,7 @@ record; the real record arrives later over the SSE stream.
 | `office/web/src/screens/PartyDetail.tsx` | 218 | CatalogScreen | contact, access state, the party's own product records, ≤ 5 recent leads |
 | `office/web/src/screens/LeadBoardScreen.tsx` | 538 | App (`leads`) | open leads as list (default) or kanban; scope and stage filters; card menu move/convert; since catalogue v2 **Preview PDF** on an open lead the Master has received (`leads.export`); since 1.3 H3 **Filling note** / **Dispatch note** on an open, not-converted lead (`leads.export`, `OrderNoteScreen source="lead"` from the local snapshot and `view.parties`, so they work offline and need no sync; sub-nav `leads.note`) |
 | `office/web/src/screens/LeadDetail.tsx` | 366 | LeadBoardScreen | lines, history, remark input, stage select, party/details cards, convert form |
-| `office/web/src/screens/OrderBoardScreen.tsx` | 647 | App (`orders`) | orders table; in-file `OrderDetailBody` (lines, reservations, weight override, stage, history, dispatch) |
+| `office/web/src/screens/OrderBoardScreen.tsx` | 647 | App (`orders`) | orders table; in-file `OrderDetailBody` (lines, weight override, stage, history, dispatch; no reservations card since 1.4) |
 | `office/web/src/screens/PartyAccessScreen.tsx` | 509 | App (`partyAccess`, lazy) | live from the Master; byte-identical to the Master's copy |
 | `office/web/src/screens/ConflictsScreen.tsx` | 265 | App (`conflicts`, lazy) | refused writes (anyone can dismiss) + merge conflicts (resolving needs `sync.resolveConflicts`) |
 | `office/web/src/screens/SettingsScreen.tsx` | 254 | App (`settings`, lazy) | tabs appearance, shortcuts, machine, storage and, since catalogue v2, **leads** — the lead sources (`OptionListEditor`, `fields.view`/`fields.manage`) and the follow-up default (`NumberSetting`, saved through `PUT /api/settings/:key` with `settings.manage`). `SETTINGS_TAB_IDS` moved to `settingsTabs.ts` in 1.3 Phase 1 |
@@ -4512,7 +4523,7 @@ each with a reason in `ALLOWED_UNCALLED.office`).
   label, expected date → `api.convertLead`).
 - **`OrderBoardScreen`** — table only; stage filter controlled by `App` (so the
   `orders.stage:<id>` sub-pages and chips agree). `OrderDetailBody`: lines table,
-  reservations table only when `freeToSell`, weight card with an override
+  weight card with an override
   `NumberInput` that calls `api.updateOrder({ totalWeightKgOverride })` on blur only
   when the value differs from what this screen last sent (`sentOverride`, set as a
   send starts and put back if it fails — not the order's own figure, which a queued
@@ -4549,8 +4560,8 @@ each with a reason in `ALLOWED_UNCALLED.office`).
   profiles from `api.profiles()` with `api.profileAvatarUrl`; "×" forgets after
   `useConfirm`; `api.signIn(username, password)`; errors via `apiErrorText`.
 - **`DashboardScreen`** — the landing screen for admin-tier people. Four `StatTile`s
-  computed from `view`: open leads (+ due today), open orders (+ active reserved
-  boxes), dispatched this week (pieces), sync status (conflicts first, then queued work). Pipeline bars
+  computed from `view`: open leads (+ due today), open orders (+ boxes still to
+  dispatch: the sum of line quantities on open orders, `dashboard.orders.boxesOpen`), dispatched this week (pieces), sync status (conflicts first, then queued work). Pipeline bars
   from `view.dashboard.pipelineBreakdown`; the 5 latest timeline entries (matching the
   English messages `Converted to order …`, `Dispatched…`, `Moved from … to …`, plus
   "saved offline" for unsynced leads); ≤ 8 follow-ups due; an "as of" line.
@@ -5493,7 +5504,7 @@ rediscovery works for a panel that has connected once since the update.
    /api/sync` and the Office `ConflictsScreen`, cleared by `POST
    /api/sync/rejections/acknowledge`. The permanent records arrive through
    `data:changed`.
-9. **Online-only work** — stock, deletes, Recycle Bin, Party Access, Fields, Logs,
+9. **Online-only work** — deletes, Recycle Bin, Party Access, Fields, Logs,
    Reports, conflicts, search, product images, bulk import, updates — is forwarded
    live (reads as well as writes) and answers 503 `unavailable` offline; nothing is
    queued. Product lists and pickers fall back to the cached snapshot with
@@ -5514,7 +5525,7 @@ connect until what it missed is stored and its outbox is sent, and the Master's
 `notify()` puts a "panel offline over an hour" notice in the bell of everyone who
 manages panels.
 
-### 11.4 Lead → order → dispatch, and stock reservations
+### 11.4 Lead → order → dispatch (no stock since 1.4)
 
 1. **Create the lead (Office).** `office/web/src/screens/AddLeadScreen.tsx` → `api.createLead`
    → `POST /api/leads` → `queue('lead.create')` (permission, then
@@ -5544,38 +5555,26 @@ manages panels.
    (`master/src/services/order.service.ts`): `requirePermission('lead.convert')`;
    `assertConvertible` (`master/src/domain/conversion.ts`; packaging required on every
    line when `leads.packagingRequiredOnConvert` is on); **before** the transaction,
-   `copyLinesForOrder` (lines copied unchanged) and `planReservations`; then one
+   `copyLinesForOrder` (lines copied unchanged); then one
    transaction: `nextHlc`, `lockLead`, re-check `convertedOrderId`, insert the
    `orders` row (`OD…`, default order stage) and its lines with `parent_type 'order'`,
-   insert the planned reservations (`reservation.repository.ts`, one `active`
-   reservation per variant), `leadRepo.markConverted`, timeline entries on both
-   records and, last, `recordActivity`; after commit, publish lead, order and
-   reservation changes. **This is the only way an order is created.**
-4. **Stock view.** `inventory_stock.quantity_boxes` per variant is on-hand;
-   `reservedTotals` (active reservations) gives reserved; available = on-hand −
-   reserved and may go negative (**an order is never blocked by a shortage**). When
-   `inventory.freeToSell` is off, `withoutReservations` hides reservations;
-   `withDefaultReorderLevel` applies `inventory.defaultReorderLevel` to lines with no
-   level (`shared/src/domain/inventory-view.ts`).
-5. **Dispatch.** `order.dispatch` (queued) or `POST /api/orders/:id/dispatch` →
+   `leadRepo.markConverted`, timeline entries on both
+   records and, last, `recordActivity`; after commit, publish lead and order
+   changes. **Conversion reserves nothing** (it used to write one reservation per
+   variant; stock was removed in 1.4 and nothing replaced it). **This is the only way
+   an order is created.**
+4. **Dispatch.** `order.dispatch` (queued) or `POST /api/orders/:id/dispatch` →
    `orderService.dispatchOrder`: `requirePermission('orders.dispatch')`, party access,
    and, before the transaction, the order's stages (the target is the one named
-   `'Dispatched'`, §5.11 item 7) and `planDispatchMovements` over the active
-   reservations; then one transaction: `nextHlc`, then `lockOrder` (re-checks
-   `dispatchedAt`; the stage being left comes from the locked row), a ledger check
-   that no movement exists for the order, `inventory.repository.ts#applyMovement`
-   writes an `outbound` movement per variant (`reference_type 'order'`) and updates
-   `inventory_stock`, reservations are consumed, `markDispatched` (stage,
-   `dispatched_at`, `hlc`, `field_hlc`, `version + 1` — since 2026-09-25), a timeline
-   entry and, last, `recordActivity`; after commit publish order and stock changes.
-   (`deleteOrder` checks `dispatchedAt` without that lock, so it can race a
-   dispatch — §5.11 item 17.)
-6. **Stock in and adjustments.** `inventoryService.recordInbound` (`inventory.edit`)
-   and `recordAdjustment` (`stock.adjust`; note required when
-   `inventory.adjustmentNoteRequired` is on) → one transaction: `applyMovement` and,
-   last, `recordActivity`; `publishStockFor` after commit. On the Office these are
-   forwarded live, not queued.
-7. **Reports** read the dispatch movements and lead outcomes
+   `'Dispatched'`, §5.11 item 7); then one transaction: `nextHlc`, then `lockOrder`
+   (re-checks `dispatchedAt`; the stage being left comes from the locked row),
+   `markDispatched` (stage, `dispatched_at`, `hlc`, `field_hlc`, `version + 1` — since
+   2026-09-25), a `system` timeline entry with the message `Dispatched` and, last,
+   `recordActivity` (`order.dispatched`, empty details); after commit publish the order
+   change. No movement is written and no reservation consumed. Deleting or restoring an
+   order likewise has no stock side. (`deleteOrder` checks `dispatchedAt` without that
+   lock, so it can race a dispatch — §5.11 item 17.)
+5. **Reports** read the dispatched orders' lines (boxes) and lead outcomes
    (`master/src/repositories/report.repository.ts`, month buckets in
    `ORDERBOOK_TIMEZONE`); lead outcomes are classified by the SQL `CASE` in
    `leadOutcomesByMonth`, with `leads.quietAfterDays` passed in by the caller.
@@ -5586,7 +5585,7 @@ manages panels.
 ### 11.5 Product catalogue, images and import
 
 - **Model.** `product_categories` → `products` (a model) → `product_variants` (every
-  code and weight) → `inventory_stock` per variant; `party_product_variants` per
+  code and weight); `party_product_variants` per
   (party, product) holds a party's own name, alias, size, weight and packaging. Since
   catalogue v2 (2026-09-29) the screens call a category a **Product** (code, brand,
   catalogue order, a soft delete of its own) and a model a **Sub product** (one
@@ -6030,7 +6029,8 @@ All call `setupDatabase`, `teardownDatabase`, `resetData` and wrap their body in
 | Access, auth and audit (9) | `access`, `access-lockout`, `audit-trail`, `audit-atomicity`, `auth-pairing`, `permissions`, `panel-actor`, `party-access`, `password-vault` | the Roles & Users gate list (cited as "docs/ROLES_AND_USERS.md §15" in the test header, but that section is now "Signing in on an Office Panel" and the list is not in that file); last-admin lockout (G4); the audit row commits/rolls back with its transaction — for roles and users (`audit-trail`) and, since 2026-09-25, every write path that used to record detached or not at all, with the entry written after every row lock (`audit-atomicity`, which forces the entry to fail with a trigger and probes lock order under a 500 ms `lock_timeout`); setup, sign-in, sessions and pairing; a refusal names its permission; an Office command runs as the signed-in person; per-party grants; the vault stores nothing while off |
 | HTTP surfaces (5) | `http-api`, `public-api`, `panel-administration`, `panel-catalog-route`, `panel-image-route` | `requireAuth` coverage and no static uploads mount; `GET /api/storage` needs `settings.manage`; `/api/v1` (off switch 404, key auth, 429, PATCH merge, key ∩ owner permissions, an OpenAPI description with no masking claim); panel secret rotation order; panel import/image routes authenticate as the user, once per request and before the upload is parsed, and a refused acting token is a 401 |
 | Catalogue (10) | `catalog`, `catalogue-seed`, `catalogue-categories` (catalogue v2), `product-attributes`, `product-hierarchy`, `product-variants`, `product-import`, `partial-patch`, `images`, `image-sequence` | parties and products; the catalogue load (since catalogue v2 the shipped Markdown file: every product and sub product, codes, brand and order, `CODE-####`, the colour rule read back by `colourRuleOf`, hex, idempotent, and a replacing load that keeps parties and the log); categories found by id, code, then name, live rows only, and `ensureCategories` never updating an existing row (`catalogue-categories`, 9); a partial write never nulls fields it was not given; `replaceVariants`; bulk import names bad rows and a re-upload changes nothing; the image pipeline with real `sharp`; gallery `sequence` after a delete |
-| Leads, orders, stock (5) | `lead`, `inventory`, `free-to-sell`, `pick`, `search` | conversion copies lines and snapshots weights; reserved at conversion, deducted at dispatch, which stamps the order's clock (`audit-atomicity` also pins that a dispatch reads its stage under the lock); the free-to-sell switch; picker prefix matching; `tsvector` search |
+| Leads and orders (3) | `lead`, `pick`, `search` | conversion copies lines and snapshots weights; dispatch stamps the order's clock (`audit-atomicity` also pins that a dispatch reads its stage under the lock); picker prefix matching; `tsvector` search. `inventory` and `free-to-sell` were deleted in 1.4 |
+| Stock retired (1) | `stock-retired` | 1.4 (R15): converting and dispatching work with no stock rows and write none; the Dispatches report counts boxes from line quantities; an older Office's `stock:*` command gets a refusal ack (`validation.stock.retired`); a stored role holding the removed permissions loads and grants neither; a stored `inventory.freeToSell` row is ignored; `stock: []` is still sent; a queued `stock.inbound` is rejected alone and the lead beside it still applies (8 `it(`) |
 | Sync (2) | `sync`, `sync-delta` | outbox apply (duplicates, conflicts, reconnect order); a delta replay equals a fresh snapshot |
 | Modules (5) | `fields`, `logs`, `recycle-bin`, `reports`, `dashboard` | gate ids from `docs/backend-modules/10-TESTING.md`: FLD-5…21, LOG-1…15, §6.2–6.3, RPT-6…18 (incl. IST month boundaries; RPT-18 is beyond the range the file's own header claims), DSH-4…9 |
 | Settings (2) | `settings`, `company-settings` | the table; each company switch changes behaviour |
@@ -6079,7 +6079,7 @@ They read files and assert on the text; they need no database and cannot skip.
 | `master/tests/no-duplicate-ui.test.ts` | panel `ui/` folders, the barrel | no panel copy of the kit; every kit module in the barrel |
 | `master/tests/ui-conventions.test.ts` | `ui/src/tokens.css`, `ui/src/base.css`, JSX | rem vs px; no raw px in style objects; no `<Drawer`; `priority` only on row-opening tables |
 | `master/tests/company-features-complete.test.ts` | `entities.ts`, `company-features.ts` | every `CompanyFeatures` field read and returned |
-| `master/tests/company-settings-wiring.test.ts` | services | where and in what order `inventory.adjustmentNoteRequired` and `leads.packagingRequiredOnConvert` are checked |
+| `master/tests/company-settings-wiring.test.ts` | services | where and in what order `leads.packagingRequiredOnConvert` is checked |
 | `master/tests/import-category-gate.test.ts` | `product-import.service.ts` | `catalog.importCreatesCategories` settled above the dry-run return |
 | `master/tests/settings-publish.test.ts` | `settings.service.ts` | `writeSetting` publishes after dropping the cache, outside the transaction, with no payload |
 | `master/tests/credential-invariants.test.ts` | `master/src`, `shared/src` | `password_hash` selected in one query; route-guard counts per router; no token on the browser shape; the password minimum on every hashing path |
@@ -6155,7 +6155,7 @@ highlighted and badged, `data-screen-search`, translated dropdowns, `?locale=`).
   `runMigrations`, capture seeded roles, option lists, stages, tenant; delete crashed
   leftovers), `resetData()` (`TRUNCATE … RESTART IDENTITY CASCADE` over `DATA_TABLES`,
   reset `party_code_seq`, `id_sequences`, `master_clock`, restore seeds, turn
-  `inventory.freeToSell` on, clear role/pipeline/field/settings caches,
+  clear role/pipeline/field/settings caches,
   `resetAuthState()`), `teardownDatabase()`, builders `testTenantId`,
   `stageIdByName`, `ALL_PERMISSIONS`, `testActor`, `actorWith`, `createTestProduct`.
 - `master/tests/helpers/audit-probe.ts` — `refuseAuditEntries(action?)` puts a trigger
@@ -6166,7 +6166,7 @@ highlighted and badged, `data-screen-search`, translated dropdowns, `?locale=`).
 ### 12.6 Running the integration suites, and the root trap
 
 `canRunIntegrationTests = findPostgresBinDir() !== null && !isRoot()`. PostgreSQL
-refuses to start as root, so **as root all 48 integration files report as skipped
+refuses to start as root, so **as root all 75 integration files report as skipped
 and the summary still looks green.** Nothing fails a run when they skip
 (`ORDERBOOK_REQUIRE_INTEGRATION` exists only as a proposal in
 `docs/backend-modules/10-TESTING.md`); always read the skipped count. CI's runner is
@@ -6234,7 +6234,7 @@ written before or during the build — check claims against the tree), **Mixed**
 | `docs/AI_COLLABORATION.md` | Current process + log | multi-agent playbook and change log (dated entries, not strictly newest-first) |
 | `docs/BACKEND_MODULES.md` | Historical | plan for Fields, Logs, Recycle Bin, Reports, PDF Designer, i18n; status line says all built but the Designer, which was removed |
 | `docs/UI_REDESIGN.md` | Historical | plan for porting the design system into `ui/` |
-| `docs/catalogue/CATALOGUE_MODEL.md` | Current (spec) | catalogue v2 (2026-09-29): the owner's Brand → Product → Sub product mapped onto the 1.2 tables — terms and storage (§1), derived colour rules (§2), the two migrations (§3), the Markdown catalogue and its loader (§4), services and transport (§5), lead entry (§6), inventory (§7), the fixed-layout lead PDF (§8), activity (§9). Written before the port; check a claim against the tree |
+| `docs/catalogue/CATALOGUE_MODEL.md` | Current (spec) | catalogue v2 (2026-09-29): the owner's Brand → Product → Sub product mapped onto the 1.2 tables — terms and storage (§1), derived colour rules (§2), the two migrations (§3), the Markdown catalogue and its loader (§4), services and transport (§5), lead entry (§6), inventory (§7, removed in 1.4), the fixed-layout lead PDF (§8), activity (§9). Written before the port; check a claim against the tree |
 
 **`docs/schema/` (8, current — rewritten 2026-09-24 against a freshly migrated
 database, superseded shapes kept as dated history notes; §6.15):**
@@ -6385,7 +6385,7 @@ matches 2,074 → 2,122; `t` from `@orderbook/ui` 42 → 44 files and from `./i1
 | 6 | `ClientToServerEvents`, `SyncSnapshot` | `shared/src/protocol/socket.ts` | `ClientToServerEvents` imported only by `master/src/realtime/hub.ts` and `office/src/realtime/master-connection.ts`; `SyncSnapshot` by 13 files | the typed Master↔Office contract (79 + 11 events; the Office emits 56 of the 79 and receives 9 of the 11); `office/src/http/app.ts` has 44 `forward()` calls |
 | 7 | `rem()` | `ui/src/rem.ts` | 30 files via `@orderbook/ui`, 6 in `ui/src`; ~253 `rem(` matches | px → rem so the UI scales; enforced by `ui-conventions` |
 | 8 | `nextHlc()` | `master/src/repositories/identity.repository.ts` | 13 `master/src` files; `identity.repository.ts` has 28 importers | stamps the HLC on every Master-started write |
-| 9 | Integration harness | `master/tests/helpers/fixtures.ts`, `master/tests/helpers/db.ts` | all 48 integration files (`testActor` 41) | shared PostgreSQL fixtures; `canRunIntegrationTests` is the skip switch |
+| 9 | Integration harness | `master/tests/helpers/fixtures.ts`, `master/tests/helpers/db.ts` | all 75 integration files (`testActor` 41) | shared PostgreSQL fixtures; `canRunIntegrationTests` is the skip switch |
 | 10 | `vitest` | root `package.json` | 193 test files + `vitest.config.ts` | the runner |
 
 Smaller confirmed hubs: `formatDateTime()` (`ui/src/format.ts`, 17 importers),
@@ -6430,7 +6430,7 @@ shift slightly with another seed. The twelve clusters with 3+ files:
 |---|---|---|---|
 | Front end | 102 (ui/src 48, office/web 25, master/web 24, ui/tests 4, master/tests 1) | the kit and **both** web apps, held together by `t()`, `rem()`, the barrel and each `api.ts` | `ui/src/i18n.ts`, `ui/src/rem.ts`, `office/web/src/api.ts`, `office/web/src/App.tsx`, `master/web/src/App.tsx`, `master/web/src/api.ts`, `ui/src/index.ts`, `ui/src/format.ts` |
 | Master data plumbing, admin/ops services, test harness | 91 (master/tests 48, master/src 43) | Knex, the PostgreSQL launcher, seed/migrate CLIs, backup, settings, setup, developer, sample data, catalogue seeding; the integration suites join through `db()` | `master/src/db/knex.ts`, `master/tests/helpers/fixtures.ts`, `master/tests/helpers/db.ts`, `master/src/services/developer.service.ts`, `master/src/services/settings.service.ts`, `master/src/lib/logger.ts` |
-| Master business services, authorization, realtime | 65 (master/src 51, master/tests 13, ui/tests 1) | catalog, lead, order, fields, inventory, auth, role, user, panel, sync, report, search; the domain rules they enforce; errors, change bus, hub and fan-out | `master/src/lib/errors.ts`, `master/src/domain/actor.ts`, `master/src/services/catalog.service.ts`, `master/src/services/lead.service.ts`, `master/src/services/order.service.ts`, `master/src/services/change-bus.ts` |
+| Master business services, authorization, realtime | 65 (master/src 51, master/tests 13, ui/tests 1) | catalog, lead, order, fields, auth, role, user, panel, sync, report, search; the domain rules they enforce; errors, change bus, hub and fan-out | `master/src/lib/errors.ts`, `master/src/domain/actor.ts`, `master/src/services/catalog.service.ts`, `master/src/services/lead.service.ts`, `master/src/services/order.service.ts`, `master/src/services/change-bus.ts` |
 | Shared contract | 55 (shared/src 43, shared/tests 12) | `domain/*`, `protocol/*`, `sync/*`, `i18n/*`, `keys/*` | `shared/src/protocol/socket.ts`, `shared/src/domain/entities.ts`, `shared/src/domain/inputs.ts`, `shared/src/i18n/keys.ts`, `shared/src/index.ts` |
 | Office server | 45 (office/src 32, office/tests 12, tools 1) | local HTTP server, Master link, outbox/snapshot, pairing, sessions, backups, updates | `office/src/http/app.ts`, `office/src/config/paths.ts`, `office/src/services/credentials.store.ts`, `office/src/realtime/master-connection.ts`, `office/src/services/panel-report.service.ts` |
 | Master boot, health, updates, PDF | 33 (master/src 22, master/tests 11) | `master/src/index.ts`, `master/src/boot-status.ts`, boot app, health, config, network, the release updater and signatures, change ring and delta, `master/src/pdf/` | `master/src/index.ts`, `master/src/config/index.ts`, `master/src/http/health.ts`, `master/src/services/update.service.ts`, `master/src/realtime/change-ring.ts` |

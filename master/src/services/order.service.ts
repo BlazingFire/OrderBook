@@ -3,10 +3,7 @@
  * (docs/LEAD_GENERATION_FLOW.md §5, §6).
  *
  * Conversion and dispatch each run in a single transaction. That is not
- * incidental tidiness — an order that saved without its reservations, or a
- * dispatch that consumed reservations without writing the ledger entry, would
- * leave stock permanently disagreeing with itself, and nothing in the UI would
- * reveal which half was wrong.
+ * incidental tidiness — an order must never exist half-converted.
  */
 
 import { fieldFor, ORDER_COLUMNS, recordNumber } from '@orderbook/shared';
@@ -26,8 +23,6 @@ import { actorUserId, requirePermission, type ActorContext } from '../domain/act
 import {
   assertConvertible,
   copyLinesForOrder,
-  planDispatchMovements,
-  planReservations,
 } from '../domain/conversion.js';
 import { normalizeCustomFields } from '../domain/custom-fields.js';
 import { clampPaging } from '../domain/paging.js';
@@ -46,18 +41,14 @@ import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js'
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as customFieldRepo from '../repositories/custom-field.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
-import * as inventoryRepo from '../repositories/inventory.repository.js';
 import * as leadRepo from '../repositories/lead.repository.js';
 import * as lineItemRepo from '../repositories/line-item.repository.js';
 import * as orderRepo from '../repositories/order.repository.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
 import * as recycleBinRepo from '../repositories/recycle-bin.repository.js';
-import * as reservationRepo from '../repositories/reservation.repository.js';
 import * as timelineRepo from '../repositories/timeline.repository.js';
-import { publishStockFor } from './inventory.service.js';
 import { actorStamp, publishChange } from './change-bus.js';
 import { requirePartyAccess } from './party-access.service.js';
-import * as inventoryService from './inventory.service.js';
 import { getSetting } from './settings.service.js';
 
 const PAGING = { defaultLimit: 100, maxLimit: 500 };
@@ -125,7 +116,6 @@ export async function convertLead(
 
   const orderStages = await pipelineRepo.stagesFor(actor.tenantId, 'order');
   const orderLines = copyLinesForOrder(leadLines);
-  const reservationPlan = planReservations(orderLines);
 
   const orderId = await db().transaction(async (trx) => {
     // Stamped before the row lock, not after: every other write path takes
@@ -145,7 +135,7 @@ export async function convertLead(
     if (!locked) throw new NotFoundError('Lead');
     if (locked.convertedOrderId) throw new ValidationError('validation.lead.alreadyConverted');
 
-    const { id, lineItemIds } = await orderRepo.insertOrder(
+    const { id } = await orderRepo.insertOrder(
       {
         tenantId: actor.tenantId,
         leadId: lead.id,
@@ -162,17 +152,6 @@ export async function convertLead(
         temporaryId: null,
       },
       orderLines,
-      trx,
-    );
-
-    await reservationRepo.insertReservations(
-      { tenantId: actor.tenantId, orderId: id },
-      reservationPlan.map((entry) => ({
-        lineItemId: lineItemIds[entry.lineIndex] ?? '',
-        productId: entry.productId,
-        variantId: entry.variantId,
-        quantity: entry.quantity,
-      })),
       trx,
     );
 
@@ -212,7 +191,7 @@ export async function convertLead(
       action: 'created',
       actorType: actor.actorType,
       actorId: actor.actorId,
-      details: { leadId: lead.id, reservations: reservationPlan.length, poNumber: lead.poNumber ?? null },
+      details: { leadId: lead.id, poNumber: lead.poNumber ?? null },
     }, actor, trx);
 
     // The lead's own history says where it went. Both entries close the
@@ -238,12 +217,6 @@ export async function convertLead(
   if (updatedLead) {
     publishChange({ entity: 'lead', action: 'updated', id: lead.id, payload: updatedLead, ...actorStamp(actor) });
   }
-  // Reserving changes what the next order can draw on, so every panel's stock
-  // view has to move even though no boxes left the building.
-  await inventoryService.publishStockFor(
-    actor.tenantId,
-    reservationPlan.map((entry) => entry.variantId),
-  );
 
   return order;
 }
@@ -444,11 +417,8 @@ export async function setStage(
 }
 
 /**
- * Dispatch (§6): the moment stock actually leaves.
- *
- * Reservations become `consumed` and the ledger gets one **signed** movement
- * per (product, colour) — never an absolute value, so replaying the ledger
- * always reconstructs the running total.
+ * Dispatch (§6): the order has left. It stamps the order and moves it to
+ * Dispatched; no stock is touched, because OrderBook keeps none.
  */
 export async function dispatchOrder(
   input: OrderDispatchInput,
@@ -474,9 +444,6 @@ export async function dispatchOrder(
   // by migration and a way to set it — an owner decision.
   const dispatchedStage = stages.find((stage) => stage.name === 'Dispatched');
 
-  const active = await reservationRepo.activeForOrder(actor.tenantId, input.orderId);
-  const movements = planDispatchMovements(active);
-
   await db().transaction(async (trx) => {
     // Stamped before the row lock, as `convertLead` does and for its reason:
     // every write takes `master_clock`'s lock before the entity row's, and a
@@ -488,9 +455,9 @@ export async function dispatchOrder(
     // Row-lock next, before anything is read or written: the
     // `existing.dispatchedAt` check above ran outside any transaction, so two
     // dispatch calls that overlap before either commits would otherwise both
-    // read it as null and both write stock movements. The lock serialises
+    // read it as null and both dispatch. The lock serialises
     // them — the second caller waits for the first to commit, then sees the
-    // order already dispatched here and stops before touching stock.
+    // order already dispatched here and stops.
     const locked = await orderRepo.lockOrder(actor.tenantId, input.orderId, trx);
     if (!locked) throw new NotFoundError('Order');
     if (locked.dispatchedAt) throw new ValidationError('validation.order.alreadyDispatched');
@@ -501,32 +468,6 @@ export async function dispatchOrder(
     // mean where it is now — and the timeline would name the wrong stage.
     const from = findStage(stages, locked.stageId);
     const dispatched = dispatchedStage ?? from;
-
-    // The ledger is a second, independent idempotency check: an order that
-    // somehow reaches this path twice cannot double-count, because the first
-    // pass left a record.
-    if (await inventoryRepo.hasMovementForOrder(actor.tenantId, input.orderId, trx)) {
-      throw new ValidationError('validation.order.stockAlreadyMoved');
-    }
-
-    for (const movement of movements) {
-      await inventoryRepo.applyMovement(
-        {
-          tenantId: actor.tenantId,
-          productId: movement.productId,
-          variantId: movement.variantId,
-          movementType: 'outbound',
-          deltaBoxes: movement.quantityBoxes,
-          referenceType: 'order',
-          referenceId: input.orderId,
-          note: input.note ?? `Dispatched order ${input.orderId}`,
-          createdByUserId: actorUserId(actor),
-        },
-        trx,
-      );
-    }
-
-    await reservationRepo.consumeForOrder(actor.tenantId, input.orderId, trx);
 
     // Stamped like every other order write — the stage and `dispatchedAt` are
     // what changed. From the locked row's own clocks, not `existing`'s, which
@@ -541,7 +482,7 @@ export async function dispatchOrder(
         parentType: 'order',
         parentId: input.orderId,
         kind: 'system',
-        message: `Dispatched — ${movements.length} stock movement(s) written`,
+        message: 'Dispatched',
         fromStageId: from.id,
         toStageId: dispatched.id,
         actorUserId: actorUserId(actor),
@@ -556,7 +497,7 @@ export async function dispatchOrder(
       action: 'dispatched',
       actorType: actor.actorType,
       actorId: actor.actorId,
-      details: { movements: movements.length },
+      details: {},
     }, actor, trx);
   });
 
@@ -564,12 +505,6 @@ export async function dispatchOrder(
   if (!order) throw new NotFoundError('Order');
 
   publishChange({ entity: 'order', action: 'updated', id: order.id, payload: order, ...actorStamp(actor) });
-  // Published after the transaction commits, so panels never see stock figures
-  // from a transaction that could still roll back.
-  await inventoryService.publishStockFor(
-    actor.tenantId,
-    movements.map((movement) => movement.variantId),
-  );
 
   return order;
 }
@@ -579,11 +514,8 @@ export async function countOrders(actor: ActorContext): Promise<number> {
 }
 
 /**
- * Refused once an order has been dispatched — goods left the building and
- * the ledger says so, and the dispatch note may already be in a customer's
- * hands. Otherwise releases the order's active reservations in the same
- * transaction, finally giving `releaseForOrder` a caller, and publishes the
- * affected stock levels after commit.
+ * Refused once an order has been dispatched — goods left the building, and the
+ * dispatch note may already be in a customer's hands.
  */
 export async function deleteOrder(
   id: string,
@@ -606,8 +538,6 @@ export async function deleteOrder(
     });
   }
 
-  let releasedTargets: Array<{ productId: string; variantId: string; quantity: number }> = [];
-
   const order = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
 
@@ -624,12 +554,8 @@ export async function deleteOrder(
       });
     }
 
-    releasedTargets = await reservationRepo.activeForOrder(actor.tenantId, id, trx);
-
     const fieldHlc = { ...locked.fieldHlc, deletedAt: hlc };
     const row = await orderRepo.softDeleteOrder(actor.tenantId, id, actorUserId(actor), { hlc, fieldHlc }, trx);
-
-    await reservationRepo.releaseForOrder(actor.tenantId, id, trx);
 
     await activityLog.recordActivity(
       {
@@ -652,10 +578,6 @@ export async function deleteOrder(
   if (!order) throw new NotFoundError('Order');
 
   publishChange({ entity: 'order', action: 'deleted', id, payload: order, ...actorStamp(actor) });
-  await publishStockFor(
-    actor.tenantId,
-    releasedTargets.map((target) => target.variantId),
-  );
 
   return { id: order.id, deletedAt: order.updatedAt };
 }
@@ -698,21 +620,10 @@ export async function restoreOrder(id: string, actor: ActorContext): Promise<Bin
       : []),
   ]);
 
-  let reactivatedTargets: string[] = [];
-
   const order = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
     const fieldHlc = { ...existing.sync.fieldHlc, deletedAt: hlc };
     const row = await orderRepo.restoreOrder(actor.tenantId, id, { hlc, fieldHlc }, trx);
-
-    // The mirror image of `deleteOrder` releasing these reservations. An
-    // order can only be soft-deleted while `dispatchedAt` is null, so any
-    // `released` rows on it can only have come from that same delete —
-    // reactivating them here is what lets a later dispatch have something to
-    // consume, instead of silently shipping stock with zero ledger movements.
-    if (row) {
-      reactivatedTargets = await reservationRepo.reactivateForOrder(actor.tenantId, id, trx);
-    }
 
     await activityLog.recordActivity(
       {
@@ -735,8 +646,5 @@ export async function restoreOrder(id: string, actor: ActorContext): Promise<Bin
   if (!order) throw new NotFoundError('Order');
 
   publishChange({ entity: 'order', action: 'restored', id, payload: order, ...actorStamp(actor) });
-  // Reactivating changes what the next order can draw on, same as a fresh
-  // reservation does — every panel's stock view has to move.
-  await publishStockFor(actor.tenantId, reactivatedTargets);
   return { entityType: 'order', id, alsoRestored: [] };
 }

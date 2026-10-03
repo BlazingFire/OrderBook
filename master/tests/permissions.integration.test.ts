@@ -63,7 +63,6 @@ const OFFICE_KEYS = [
   'parties.view',
   'parties.create',
   'products.view',
-  'inventory.view',
 ];
 
 describe.skipIf(!canRunIntegrationTests)('permissions (integration)', () => {

@@ -12,7 +12,7 @@
  *     has a label unique within its model;
  *   · a weight is either unknown or greater than zero;
  *   · a saved row keeps its id — matched by id, or by label when the form
- *     did not send one — because stock, lines and reservations point at it;
+ *     did not send one — because lines point at it;
  *   · a row taken off the form is deleted, unless history quotes it, in which
  *     case it is deactivated and stays readable.
  *
@@ -26,7 +26,6 @@ import { canRunIntegrationTests } from './helpers/db.js';
 import { resetData, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
 import type { ActorContext } from '../src/domain/actor.js';
 import * as catalog from '../src/services/catalog.service.js';
-import * as inventory from '../src/services/inventory.service.js';
 import * as leads from '../src/services/lead.service.js';
 
 let actor: ActorContext;
@@ -336,10 +335,14 @@ describe.skipIf(!canRunIntegrationTests)('product variants (integration)', () =>
       ).rejects.toMatchObject({ messageKey: 'validation.lead.variantMissing' });
     });
 
-    it('deactivates a removed row that has stock on the shelf, and reactivates it when it comes back', async () => {
+    it('deactivates a removed row a lead still quotes, and reactivates it when it comes back', async () => {
       const product = await damru();
       const [v41, v42, white] = product.variants;
-      await inventory.recordInbound({ variantId: white!.id, quantityBoxes: 6 }, actor);
+      const party = await catalog.createParty({ name: 'Patel Sanitary' }, actor);
+      await leads.createLead(
+        { partyId: party.id, items: [{ productId: product.id, variantId: white!.id, quantity: 6, packaging: 'carton' }] },
+        actor,
+      );
 
       const trimmed = await catalog.updateProduct(
         product.id,
@@ -354,7 +357,7 @@ describe.skipIf(!canRunIntegrationTests)('product variants (integration)', () =>
       );
       expect(trimmed.variants.find((variant) => variant.id === white!.id)?.isActive).toBe(false);
 
-      // Sent back by label: the same row, with its stock, comes back to life.
+      // Sent back by label: the same row, with its lines, comes back to life.
       const restored = await catalog.updateProduct(
         product.id,
         {
@@ -370,8 +373,6 @@ describe.skipIf(!canRunIntegrationTests)('product variants (integration)', () =>
       const back = restored.variants.find((variant) => variant.label === 'White');
       expect(back).toMatchObject({ id: white!.id, isActive: true });
 
-      const stock = await inventory.listStock({}, actor);
-      expect(stock.find((level) => level.variantId === white!.id)?.quantityBoxes).toBe(6);
     });
 
     it('turns the switch off by keeping one unlabelled row, and refuses to do so with a labelled one', async () => {

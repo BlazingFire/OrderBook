@@ -8,12 +8,8 @@
  * edit button in its own header, next to the fields it edits, rather than in a
  * row of buttons under the whole screen.
  *
- * **There is no stock on this screen** (2026-09-22). It used to carry a
- * variants-and-stock table and a "Stock in" / "Adjust count" form; the owner's
- * redesign has neither, and they are gone. Stock is the Master Panel's job —
- * `master/web`'s Inventory screen owns the reorder band, the per-variant
- * ledger and both movement forms — which is also where the single-writer rule
- * says it belongs. Nothing here posts a write except the photo card.
+ * **There is no stock on this screen**, and none anywhere in OrderBook (removed
+ * in 1.4). Nothing here posts a write except the photo card.
  *
  * Every figure comes from the already-flowing snapshot: the details card reads
  * straight off `Product`, through `productSummary.ts` so that its code,

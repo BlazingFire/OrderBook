@@ -376,7 +376,7 @@ const post = <T>(path: string, body?: unknown) =>
  * Each service answers an unasked-for limit with its own default and clamps an
  * asked-for one to its own ceiling (`master/src/services/*.service.ts`'s
  * `PAGING`, via `clampPaging`): parties 100 up to 500 — the one list this
- * helper serves today — leads and orders the same, stock 200 up to 1000. So a
+ * helper serves today — leads and orders the same. So a
  * screen that wants more than one page has to say so, and a screen that reports
  * `rows.length` as the company total is reporting a page size. Both mistakes
  * are easier to avoid with one helper than with template literals per call

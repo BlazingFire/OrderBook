@@ -129,11 +129,6 @@ export interface CatalogueView {
   categories: ProductCategory[];
   /** Every sub product, loaded once (the snapshot's cap); the detail screens list from it. */
   products: Product[];
-  /**
-   * Free stock per sub product; empty without `inventory.view`. Absent on the
-   * Master, whose list then has no free-stock column at all.
-   */
-  stock?: ReadonlyArray<{ productId: string; availableBoxes: number }>;
 }
 
 /** What the catalogue screens write through, and how they page the list. */

@@ -167,7 +167,6 @@ function snapshot(overrides: Record<string, unknown> = {}) {
     partyVariants: [],
     leads: [],
     orders: [],
-    stock: [],
     pipelines: [],
     optionLists: COLOURS,
     customFields: [],

@@ -195,16 +195,15 @@ const SUB_NAV_SCREENS = [
 ] as const;
 
 const SCREEN_ENTITIES: Record<string, readonly string[]> = {
-  records: ['lead', 'order', 'party', 'party_bulk', 'product', 'catalog', 'stock', 'reservation', 'option_list'],
+  records: ['lead', 'order', 'party', 'party_bulk', 'product', 'catalog', 'option_list'],
   /** Pending and Final Orders stage pages, apart from `records` so a lead edit does not re-read it. */
   stages: ['pipeline'],
   /** The New / Edit pending order form: what `/api/lead-entry` is built from. */
-  leadEntry: ['option_list', 'party', 'party_bulk', 'party_variant', 'stock', 'reservation', 'product', 'catalog', 'setting'],
+  leadEntry: ['option_list', 'party', 'party_bulk', 'party_variant', 'product', 'catalog', 'setting'],
   /**
    * The Products module, in two slices so a lead edit reads neither: the
    * products and their sub products (`catalog` is the one event a bulk import
    * publishes), and the option lists the brand chips and colour swatches read.
-   * No free stock on the Master since 1.3, so no stock slice.
    */
   catalogue: ['product', 'catalog', 'product_category'],
   catalogueLists: ['option_list'],
@@ -1477,7 +1476,6 @@ function MasterPanel() {
           revision={revisionOf(revisions, 'records')}
           stages={orderStages}
           permissions={user.permissions}
-          freeToSell={companyFeatures.freeToSell}
           stageId={
             subKeyOf('orders').startsWith('stage:') ? subKeyOf('orders').slice('stage:'.length) : null
           }

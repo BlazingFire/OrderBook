@@ -36,7 +36,7 @@ import type { MessageKey } from '../i18n/keys.js';
  * shopkeeper would use over the phone, not the module names the keys are built
  * from.
  */
-export const SETTING_GROUPS = ['access', 'stock', 'leads', 'reports', 'integrations'] as const;
+export const SETTING_GROUPS = ['access', 'products', 'leads', 'reports', 'integrations'] as const;
 export type SettingGroup = (typeof SETTING_GROUPS)[number];
 
 /**
@@ -112,17 +112,6 @@ function asBoundedInt(min: number, max: number) {
   };
 }
 
-/** `null` — meaning "none" — or a non-negative count, rounded to the 2dp the column holds. */
-function asOptionalCount(max: number) {
-  return (raw: unknown): number | null => {
-    if (raw === null) return null;
-    if (typeof raw !== 'number' || !Number.isFinite(raw) || raw < 0 || raw > max) {
-      throw new RangeError(`expected null or a number between 0 and ${max}`);
-    }
-    return Math.round(raw * 100) / 100;
-  };
-}
-
 /**
  * Every setting the product has. Adding one is this entry, its two catalogue
  * tokens in `en.ts` and `hi.ts`, and a third only if it opens a new group — no
@@ -143,26 +132,6 @@ export const SETTINGS = {
     labelToken: 'setting.security.passwordRevealEnabled.label',
     descriptionToken: 'setting.security.passwordRevealEnabled.help',
     group: 'access',
-    control: { kind: 'boolean' },
-    fallback: false,
-    parse: (raw: unknown): boolean => asBoolean(raw),
-  },
-
-  /**
-   * Whether stock is split into on-hand, reserved and free to sell.
-   *
-   * Off by default: a counter that never reserves ahead has one number per
-   * colour, the boxes on the floor, and a second and third column beside it
-   * are noise. While it is off every stock figure the Master hands out reads
-   * on-hand as free (`withoutReservations` in `domain/inventory-view.ts`),
-   * low stock is judged on the floor count, and the screens drop the
-   * reserved/free columns and the reservation panels. Orders still reserve
-   * quietly underneath, so switching it back on shows the true picture.
-   */
-  'inventory.freeToSell': {
-    labelToken: 'setting.inventory.freeToSell.label',
-    descriptionToken: 'setting.inventory.freeToSell.help',
-    group: 'stock',
     control: { kind: 'boolean' },
     fallback: false,
     parse: (raw: unknown): boolean => asBoolean(raw),
@@ -291,38 +260,6 @@ export const SETTINGS = {
   },
 
   /**
-   * The low-stock level applied to a (product, colour) line that has none of
-   * its own.
-   *
-   * `reorder_level` is NULL on every row a stock movement creates, and low
-   * stock is judged on the reorder level alone — so the Dashboard's "Low stock"
-   * tile reads 0 and the "Low only" filter is empty until somebody opens each
-   * line and types a number by hand. A shop with hundreds of colours never
-   * will, so the feature is dead on every install.
-   *
-   * `null`, not `0`, is the fallback: `0` would flag every out-of-stock colour
-   * the minute an installation upgraded. A line's own explicit level always
-   * wins; this only decides what the rest mean, and it is never written onto a
-   * line — the drawer's field stays blank, or editing one would silently
-   * persist the company default onto that row.
-   */
-  'inventory.defaultReorderLevel': {
-    labelToken: 'setting.inventory.defaultReorderLevel.label',
-    descriptionToken: 'setting.inventory.defaultReorderLevel.help',
-    group: 'stock',
-    control: {
-      kind: 'number',
-      min: 0,
-      max: 100_000,
-      step: 1,
-      nullable: true,
-      unitToken: 'setting.unit.boxes',
-    },
-    fallback: null as number | null,
-    parse: (raw: unknown): number | null => asOptionalCount(100_000)(raw),
-  },
-
-  /**
    * Whether an Office Panel may sign somebody in while the Master is off.
    *
    * The panel keeps a verifier for anybody who has signed in on it before, so
@@ -358,31 +295,6 @@ export const SETTINGS = {
   },
 
   /**
-   * Whether correcting a stock count needs a written reason.
-   *
-   * A correction rewrites a figure nobody can re-derive: the ledger says 40,
-   * somebody counts 37, and the three that went missing leave no other trace.
-   * `stock.adjust` is already granted separately from ordinary stock entry for
-   * that reason; this is the other half, and it is the half an auditor asks
-   * for.
-   *
-   * Confirming a count that already matches is deliberately exempt. That path
-   * writes no movement and no activity row, so a reason collected there would
-   * be discarded — asking for one would be a form that takes something and
-   * throws it away.
-   *
-   * `false` is the fallback: today a correction takes any note or none.
-   */
-  'inventory.adjustmentNoteRequired': {
-    labelToken: 'setting.inventory.adjustmentNoteRequired.label',
-    descriptionToken: 'setting.inventory.adjustmentNoteRequired.help',
-    group: 'stock',
-    control: { kind: 'boolean' },
-    fallback: false,
-    parse: (raw: unknown): boolean => asBoolean(raw),
-  },
-
-  /**
    * Whether a bulk product import may invent a category, or must match one the
    * company already has.
    *
@@ -407,7 +319,7 @@ export const SETTINGS = {
   'catalog.importCreatesCategories': {
     labelToken: 'setting.catalog.importCreatesCategories.label',
     descriptionToken: 'setting.catalog.importCreatesCategories.help',
-    group: 'stock',
+    group: 'products',
     control: { kind: 'boolean' },
     fallback: true,
     parse: (raw: unknown): boolean => asBoolean(raw),

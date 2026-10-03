@@ -280,10 +280,7 @@ function buildView(
 /**
  * Apply one queued mutation to the view.
  *
- * Only the kinds a person watches for are modelled. A queued stock adjustment,
- * for instance, is left off the view deliberately: showing an unconfirmed
- * quantity as though it were real stock would be worse than showing the last
- * figure the Master actually agreed to.
+ * Only the kinds a person watches for are modelled.
  */
 function applyOverlay(view: SyncSnapshot, mutation: Mutation): void {
   switch (mutation.kind) {

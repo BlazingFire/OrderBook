@@ -47,7 +47,6 @@ export const SYNCABLE_ENTITIES = [
   'product_variant',
   'party_variant',
   'timeline_entry',
-  'reservation',
   // Roles and users are here so their ids take this shape and the schema can
   // take one minted offline — an admin taking someone on during an outage
   // should not have to wait for the network. That half is not built: there is
@@ -80,7 +79,6 @@ export const ENTITY_PREFIX: Record<SyncableEntity, string> = {
   product_variant: 'VR',
   party_variant: 'PV',
   timeline_entry: 'TL',
-  reservation: 'RS',
   role: 'RL',
   user: 'US',
   // Posted offline through the outbox like any other write, hence the id scheme.

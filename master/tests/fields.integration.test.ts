@@ -225,15 +225,12 @@ describe.skipIf(!canRunIntegrationTests)('Fields (integration)', () => {
         const { product } = await seedLeadFixture();
 
         await catalogService.updateProduct(product.id, { name: product.name }, actor);
-        // A colour with no inventory row yet is the common case; the point of
-        // this gate is that deleting the option touches nothing in
-        // `inventory_stock`/`line_items`/`stock_reservations` — proven
-        // by there being zero rows for this fresh product before and after.
-        const before = await db()('inventory_stock').where({ tenant_id: actor.tenantId }).select('*');
+        // Deleting the option touches nothing in `line_items`.
+        const before = await db()('line_items').where({ tenant_id: actor.tenantId }).select('*');
 
         await fieldsService.deleteValue(value.id, actor);
 
-        const after = await db()('inventory_stock').where({ tenant_id: actor.tenantId }).select('*');
+        const after = await db()('line_items').where({ tenant_id: actor.tenantId }).select('*');
         expect(after).toEqual(before);
       });
     });
@@ -457,7 +454,7 @@ describe.skipIf(!canRunIntegrationTests)('Fields (integration)', () => {
     });
 
     it('an actor lacking fields.view still receives a complete SyncSnapshot', async () => {
-      const noFieldsActor = await actorWith(['leads.view', 'parties.view', 'products.view', 'orders.view', 'inventory.view']);
+      const noFieldsActor = await actorWith(['leads.view', 'parties.view', 'products.view', 'orders.view']);
       const snapshot = await buildSnapshot(noFieldsActor);
       expect(snapshot.pipelines.length).toBeGreaterThan(0);
       expect(snapshot.optionLists.length).toBeGreaterThan(0);

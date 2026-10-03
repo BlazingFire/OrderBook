@@ -153,7 +153,6 @@ function viewOf(overrides: Partial<CatalogueView> = {}): CatalogueView {
     optionLists: [SWISWARE, OTHER],
     categories: [OPT, WB],
     products: [],
-    // No `stock`: the Master's ProductsScreen builds its view without one.
     ...overrides,
   };
 }
@@ -275,7 +274,7 @@ describe('the sub-product list', () => {
     expect(row('1111').textContent).not.toContain(t('catalog.colourRule.multicolour'));
   });
 
-  it('has no free-stock column on the Master, whose view carries no stock', async () => {
+  it('has no stock column', async () => {
     const transport = makeTransport({
       listProducts: vi.fn(async () => ({
         items: [subProduct('p-1', 'c-opt', { name: 'ORISSA' })],
@@ -286,13 +285,7 @@ describe('the sub-product list', () => {
     });
     renderList(viewOf(), transport);
     await screen.findByText('ORISSA');
-    expect(screen.queryByText(t('catalog.products.column.stock'))).toBeNull();
-
-    // The Office's view carries stock, and its list keeps the column.
-    cleanup();
-    renderList(viewOf({ stock: [{ productId: 'p-1', availableBoxes: 7 }] }), transport);
-    await screen.findByText('ORISSA');
-    expect(screen.getByText(t('catalog.products.column.stock'))).toBeTruthy();
+    expect(screen.queryByText(/stock/i)).toBeNull();
   });
 
   it('offers no New or Import without products.create / products.bulk, and no Edit or photo controls without products.edit', async () => {
