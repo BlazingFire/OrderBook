@@ -187,6 +187,30 @@ describe.skipIf(!canRunIntegrationTests)('what the Master pushes to Office panel
     expect(lastSnapshot<{ permissions: string[] }>(panel).permissions).toContain('orders.view');
   });
 
+  it('tells a connected panel to ask again who it is after a role edit, and says nothing to a panel with nobody signed in (1.4 R9)', async () => {
+    const role = await roleService.createRole(
+      { name: 'Sales', tier: 'management', permissions: ['leads.view'] },
+      admin,
+    );
+    await createStaff('sunita', role.id);
+    const signedIn = await connectPanel('PUSH90');
+    await signIn(signedIn, 'sunita');
+    const idle = await connectPanel('PUSH91');
+    const before = count(signedIn, 'session:refresh');
+
+    await roleService.updateRole(
+      role.id,
+      { name: 'Sales', tier: 'management', permissions: ['leads.view', 'print.send'], expectedVersion: role.sync.version },
+      admin,
+    );
+
+    await waitFor(signedIn, 'session:refresh', before + 1);
+    await settle();
+    expect(count(idle, 'session:refresh')).toBe(0);
+    // The event names no role and no permission: the directory stays off the panel.
+    expect(signedIn.seen.find((entry) => entry.event === 'session:refresh')?.args).toEqual([]);
+  });
+
   it('re-sends snapshots after party access changes, with the new grants (C6)', async () => {
     const role = await roleService.createRole(
       { name: 'Sales', tier: 'management', permissions: ['leads.view', 'parties.view'] },

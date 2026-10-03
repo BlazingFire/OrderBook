@@ -306,6 +306,12 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
       // already trusted with this, and narrowing that is a separate question
       // from what this fix is about.
       io.to(ROOM_MASTER_ADMINS).emit('data:changed', event);
+      // A panel is told only *that* something changed, never what: each one asks
+      // again for its own signed-in person, so a role edit reaches an Office that
+      // stays connected (1.4 R9).
+      for (const panel of panelSockets.values()) {
+        if (panel.data.actingUserToken) panel.emit('session:refresh');
+      }
     } else if (REQUIRED_PERMISSION[event.entity]) {
       // A module gate applies (`product`/`product_category`/`stock`/
       // `sync_conflict`) and this entity is not party-scoped, so

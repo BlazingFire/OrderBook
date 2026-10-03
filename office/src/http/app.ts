@@ -2565,6 +2565,8 @@ masterConnection.on('snapshot', schedulePushView);
 masterConnection.on('snapshot', (snapshot: SyncSnapshot) => void sweepImageCache(snapshot));
 masterConnection.on('change', (event: DataChangedEvent) => broadcast('change', event));
 masterConnection.on('conflict', (value: unknown) => broadcast('conflict', value));
+// The session was refreshed from the Master (a role or user edit): the window asks again who it is.
+masterConnection.on('session:changed', () => broadcast('session', null));
 masterConnection.on('notification', (notification: { forUserId?: unknown }) =>
   broadcastForUser('notification', notification),
 );

@@ -5872,7 +5872,7 @@ cancelled are audited), and it is absent for anybody holding neither `print.send
 1. **Send.** The note screen's *Send to Printroom* (`print.send`, a record the Master has) opens
    `SendToPrintroomDialog`; `POST /api/print-jobs` (an Office: `print:send`, after `flushBriefly` lets the
    outbox hand over a just-edited order) → `print.service#sendJob`: `cleanPrintJobInput` (shared), the
-   sender's rights (`print.send` plus `leads.export` / `orders.export`), the record read as the sender
+   sender's rights (`print.send` plus the right to view the record: `leads.view` / `orders.view`), the record read as the sender
    (`getLead` / `getOrder`, party scope), then one transaction: `insertJob` (`ON CONFLICT (tenant, sender,
    request_id) DO NOTHING`), the 30-day payload strip, the `print_job.sent` audit row. After the commit:
    `publishPrintJob`. Online-only: an Office with no link answers 503 and nothing is queued.

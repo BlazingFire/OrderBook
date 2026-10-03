@@ -402,6 +402,20 @@ describe('the link to the Master (1.3)', () => {
     expect(screen.getByText(t('office.link.notRecognised', { host: '10.0.0.1' }))).toBeTruthy();
   });
 
+  it('re-reads the session on a session frame, so a role edit reaches a window that stays connected (1.4 R9)', async () => {
+    const calls = await boot({ permissions: ['leads.view'] });
+    const reads = () => calls.filter((call) => call.url.split('?')[0] === '/api/session').length;
+    await waitFor(() => expect(reads()).toBeGreaterThan(0));
+
+    const before = reads();
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('session', null);
+      await wait(0);
+    });
+
+    expect(reads()).toBeGreaterThan(before);
+  });
+
   it('re-reads the bell on a pushed notice and when the stream reopens, on the same stream', async () => {
     const notify = desktopShell();
     const calls = await boot({ permissions: ['leads.view'] });

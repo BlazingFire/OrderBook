@@ -109,7 +109,10 @@ async function main(): Promise<void> {
   // events are how the outcome reaches the session. Wired here rather than
   // inside the connection so the transport keeps knowing nothing about sessions.
   masterConnection.on('user', (user) => {
-    void userSession.refreshFrom(user as Parameters<typeof userSession.refreshFrom>[0]);
+    void userSession
+      .refreshFrom(user as Parameters<typeof userSession.refreshFrom>[0])
+      // The window re-reads its session once the server holds the new one.
+      .then(() => masterConnection.emit('session:changed'));
   });
   masterConnection.on('session:rejected', (reason) => {
     void userSession.rejectCurrent(reason as Parameters<typeof userSession.rejectCurrent>[0]);

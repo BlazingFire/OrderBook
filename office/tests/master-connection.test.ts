@@ -800,3 +800,39 @@ describe('asking an unproven address for its proof', () => {
     }
   });
 });
+
+describe('a role or user edit on the Master (1.4 R9)', () => {
+  const ACTIVE = {
+    status: 'active',
+    user: { id: 'US000000000C', permissions: ['leads.view', 'print.send'] },
+  };
+
+  // The connection is a singleton: leave nobody signed in for the next test.
+  afterEach(async () => {
+    await masterConnection.assume(null);
+    masterConnection.removeAllListeners('user');
+  });
+
+  it('asks again who the signed-in person is when the Master says session:refresh, and hands the answer on', async () => {
+    const link = await connected();
+    link.answer = (event) => ({ ok: true, data: event === 'auth:assume' ? ACTIVE : null });
+    await masterConnection.assume('token-1');
+    link.sent.length = 0;
+    const users: unknown[] = [];
+    masterConnection.on('user', (user: unknown) => users.push(user));
+
+    link.emit('session:refresh');
+
+    await vi.waitFor(() => expect(users).toEqual([ACTIVE.user]));
+    expect(link.commands('auth:assume').map((entry) => entry.args[0])).toEqual(['token-1']);
+  });
+
+  it('does nothing when nobody is signed in on this panel', async () => {
+    const link = await connected();
+
+    link.emit('session:refresh');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(link.commands('auth:assume')).toEqual([]);
+  });
+});

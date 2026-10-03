@@ -188,10 +188,11 @@ const audit = (
 // --- Sending ---------------------------------------------------------------------
 
 /**
- * Queue a note. Needs `print.send` and the note's own export right
- * (`leads.export` for a pending order, `orders.export` for a final one). A
- * retry with the same `requestId` returns the job it already made and announces
- * nothing.
+ * Queue a note. Needs `print.send` and the right to view the record the note is
+ * made from (`leads.view` for a pending order, `orders.view` for a final one),
+ * with Party Access applied by the lookup below. Printing a note is not exporting
+ * data, so no `*.export` right is asked (1.4 R10). A retry with the same
+ * `requestId` returns the job it already made and announces nothing.
  */
 export async function sendJob(raw: unknown, actor: ActorContext, origin: PrintOrigin): Promise<PrintJob> {
   const userId = requireSender(actor);
@@ -200,7 +201,7 @@ export async function sendJob(raw: unknown, actor: ActorContext, origin: PrintOr
   if ('errorKey' in cleaned) throw new ValidationError(cleaned.errorKey);
   const input: Required<PrintJobInput> = cleaned.value;
 
-  requirePermission(actor, input.source === 'lead' ? 'leads.export' : 'orders.export');
+  requirePermission(actor, input.source === 'lead' ? 'leads.view' : 'orders.view');
 
   // The same lookups the sender's own screens use, so their view and Party Access apply.
   const id = await identityRepo.resolveId(actor.tenantId, input.sourceId);

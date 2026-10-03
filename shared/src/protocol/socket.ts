@@ -1049,6 +1049,13 @@ export interface ServerToClientEvents {
    */
   'session:rejected': (reason: SessionRejection) => void;
   /**
+   * A role or a user changed on the Master: a panel with somebody signed in asks
+   * again who they are and what they may do (`auth:assume`), without waiting for
+   * a reconnect. Carries no data on purpose, since the directory itself is never
+   * sent to a panel; an older panel ignores an event it does not know (1.4 R9).
+   */
+  'session:refresh': () => void;
+  /**
    * A notification for one person. `forUserId` names them, and a panel drops it
    * unless that person is still the one signed in there.
    */

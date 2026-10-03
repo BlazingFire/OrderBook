@@ -655,6 +655,11 @@ function OfficePanel() {
       }
     });
 
+    // A role or user edit on the Master: read the session again, which now holds the new permissions.
+    source.addEventListener('session', () => {
+      void refreshSession();
+    });
+
     source.addEventListener('snapshot', (event) => {
       setView(JSON.parse((event as MessageEvent).data) as LocalView);
       setViewRevision((count) => count + 1);
