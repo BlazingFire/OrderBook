@@ -13,7 +13,13 @@
  * permission that enforces nothing is worse than a missing one".
  */
 
-import { t, type MessageKey, type MessageParams, type MutationFieldConflict } from '@orderbook/shared';
+import {
+  t,
+  type BackupFailureReason,
+  type MessageKey,
+  type MessageParams,
+  type MutationFieldConflict,
+} from '@orderbook/shared';
 
 export class AppError extends Error {
   constructor(
@@ -118,12 +124,8 @@ export class TooManyRequestsError extends AppError {
   }
 }
 
-export type BackupFailureReason =
-  | 'wrong_passphrase'
-  | 'corrupt_file'
-  | 'populated_data_directory'
-  | 'migration_too_new'
-  | 'hash_chain_invalid';
+/** One list, in `shared`, so the screens branch on the same reasons the Master throws. */
+export type { BackupFailureReason };
 
 const BACKUP_FAILURE_STATUS: Record<BackupFailureReason, number> = {
   wrong_passphrase: 400,
@@ -131,6 +133,11 @@ const BACKUP_FAILURE_STATUS: Record<BackupFailureReason, number> = {
   populated_data_directory: 409,
   migration_too_new: 400,
   hash_chain_invalid: 500,
+  notAnArchive: 400,
+  entryRejected: 400,
+  newerThanApp: 400,
+  insufficientSpace: 400,
+  fat32TooLarge: 400,
 };
 
 /**

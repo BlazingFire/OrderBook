@@ -9,7 +9,13 @@
 import type { MessageParams } from '../i18n/keys.js';
 import type { IsoTimestamp, OfficePanelWithPresence, Uuid } from './entities.js';
 
-export const NOTIFICATION_KINDS = ['panel.offlineLong', 'lead.numbered'] as const;
+export const NOTIFICATION_KINDS = [
+  'panel.offlineLong',
+  'lead.numbered',
+  // The daily automatic backup, to the Server Masters: the drive was missing, or the backup failed.
+  'backup.autoSkipped',
+  'backup.autoFailed',
+] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 

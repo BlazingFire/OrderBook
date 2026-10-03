@@ -98,5 +98,9 @@
   "activity.catalog.exported",
   "activity.party_access.exported",
   "activity.backup.exported",
-  "activity.backup.restored"
+  "activity.backup.restored",
+  "activity.backup.created",
+  "activity.backup.schedule_updated",
+  "activity.backup.failed",
+  "activity.backup.restore_failed"
 ]

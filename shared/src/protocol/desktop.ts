@@ -55,8 +55,18 @@ export interface DesktopBridge {
    * A browser cannot offer one for an arbitrary path, so a plain tab falls back
    * to a text field and this stays undefined — which is why the caller checks
    * for the method rather than only for the bridge.
+   *
+   * `title` names the dialog (the backup folder, say). A shell older than 1.3
+   * ignores it and shows its own title.
    */
-  chooseDirectory?(): Promise<string | null>;
+  chooseDirectory?(options?: { title?: string }): Promise<string | null>;
+
+  /**
+   * Ask the shell to open a native file chooser, for a backup archive on a
+   * drive. `extensions` without the dot; the shell defaults to `zip`.
+   * Resolves `null` on a cancel. Absent from shells older than 1.3.
+   */
+  chooseFile?(options?: { title?: string; extensions?: string[] }): Promise<string | null>;
 
   /** Where this installation keeps its data, and whether that is still the default. */
   getDataDir?(): Promise<{ dataDir: string; isDefault: boolean }>;

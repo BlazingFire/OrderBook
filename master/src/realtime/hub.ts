@@ -54,6 +54,7 @@ import { setPanelLink, type PanelRequest } from './panel-link.js';
 import { isAllowedSocketOrigin } from './socket-origin.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
 import * as authService from '../services/auth.service.js';
+import { isMaintenance, maintenanceError } from '../services/backup-job.js';
 import { resolveSession } from '../services/auth.service.js';
 import * as catalogService from '../services/catalog.service.js';
 import { onChange, onConflict, onNotification } from '../services/change-bus.js';
@@ -203,6 +204,12 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
   ioInstance = io;
 
   io.use(async (socket, next) => {
+    // A restore is replacing the database: nothing may connect until it is
+    // done. Refused as `maintenance`, so an Office retries rather than unpairs.
+    if (isMaintenance()) {
+      next(authRefusal(maintenanceError()));
+      return;
+    }
     try {
       await authenticate(socket as PanelSocket);
       next();
@@ -1023,7 +1030,9 @@ function registerAuthCommands(
 function respond<T>(ack: CommandAck<T>, operation: () => Promise<T>): void {
   if (typeof ack !== 'function') return;
 
-  operation()
+  // A socket that raced the disconnect at the start of a restore still sends
+  // commands for a moment; none of them may touch the database being replaced.
+  (isMaintenance() ? Promise.reject(maintenanceError()) : operation())
     .then((data) => ack({ ok: true, data }))
     .catch((error: unknown) => {
       log.warn(`Command failed: ${toErrorMessage(error)}`);

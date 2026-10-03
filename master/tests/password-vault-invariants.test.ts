@@ -112,7 +112,11 @@ describe('a backup carries neither the ciphertext nor a live row after restore',
 
     const restore = read(path.join(MASTER_SRC, 'services', 'backup-restore.service.ts'));
     expect(restore).toContain('clearVault(trx, tenantIds)');
-    expect(restore).toContain('invalidateSettingsCache()');
+    // The settings cache (the vault's switch) is emptied through the one list
+    // every restore and reset shares.
+    expect(restore).toContain('resetProcessCaches()');
+    const caches = read(path.join(MASTER_SRC, 'services', 'process-caches.ts'));
+    expect(caches).toContain('invalidateSettingsCache()');
   });
 });
 

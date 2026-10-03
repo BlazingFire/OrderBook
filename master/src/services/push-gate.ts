@@ -82,6 +82,8 @@ let bootAt = Date.now();
 let queue: Entry[] = [];
 let timer: ReturnType<typeof setTimeout> | null = null;
 let draining = false;
+/** Settles when the group being applied right now is done; null when none is. */
+let inFlight: Promise<void> | null = null;
 /**
  * Per push key, the connection that has had its backlog window. One entry per
  * panel and person, overwritten on reconnect, so it stays small.
@@ -198,12 +200,42 @@ async function drain(): Promise<void> {
   draining = true;
   const group = queue;
   queue = [];
+  let finished!: () => void;
+  inFlight = new Promise<void>((resolve) => {
+    finished = resolve;
+  });
   try {
     await applyGroup(group);
   } finally {
     draining = false;
+    inFlight = null;
+    finished();
     schedule();
   }
+}
+
+/**
+ * Refuse every push still waiting, with `error`, and forget the per-connection
+ * backlog windows. For a restore or a reset: the data those pushes were made
+ * against is about to be replaced, and a waiter left in the queue would never
+ * be answered. The panel retries each refused push once it reconnects.
+ *
+ * A group already being applied is not stopped; `whenGateIdle` waits for it.
+ */
+export function rejectQueuedPushes(error: unknown): void {
+  if (timer) clearTimeout(timer);
+  timer = null;
+  const refused = queue;
+  queue = [];
+  backlogGiven.clear();
+  for (const entry of refused) {
+    for (const waiter of entry.waiters) waiter.reject(error);
+  }
+}
+
+/** Resolves once no group is being applied. */
+export function whenGateIdle(): Promise<void> {
+  return inFlight ?? Promise.resolve();
 }
 
 async function applyGroup(group: Entry[]): Promise<void> {

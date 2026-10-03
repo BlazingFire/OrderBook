@@ -15,7 +15,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { allPermissions } from '@orderbook/shared';
+import { allPermissions, effectivePermissions } from '@orderbook/shared';
 
 import { canRunIntegrationTests } from './helpers/db.js';
 import {
@@ -134,7 +134,7 @@ describe.skipIf(!canRunIntegrationTests)('the audit trail', () => {
 
     it('records an attempt on a deactivated account', async () => {
       const role = await roleService.createRole(
-        { name: 'Owner', tier: 'admin', permissions: allPermissions() },
+        { name: 'Owner', tier: 'admin', permissions: effectivePermissions(allPermissions(), 'admin') },
         actor,
       );
       await userService.createUser(
@@ -163,7 +163,7 @@ describe.skipIf(!canRunIntegrationTests)('the audit trail', () => {
 
     it('tells a wrong password on a real account apart from an unknown name', async () => {
       const role = await roleService.createRole(
-        { name: 'Owner', tier: 'admin', permissions: allPermissions() },
+        { name: 'Owner', tier: 'admin', permissions: effectivePermissions(allPermissions(), 'admin') },
         actor,
       );
       const { user } = await userService.createUser(
@@ -195,7 +195,7 @@ describe.skipIf(!canRunIntegrationTests)('the audit trail', () => {
   describe('the end of a session', () => {
     async function signedIn(): Promise<{ token: string; userId: string }> {
       const role = await roleService.createRole(
-        { name: 'Owner', tier: 'admin', permissions: allPermissions() },
+        { name: 'Owner', tier: 'admin', permissions: effectivePermissions(allPermissions(), 'admin') },
         actor,
       );
       const { user } = await userService.createUser(

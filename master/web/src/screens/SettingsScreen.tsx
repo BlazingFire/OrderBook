@@ -35,6 +35,8 @@ import type {
 import { SETTINGS, SETTING_GROUPS } from '@orderbook/shared';
 
 import { api } from '../api';
+import { AutoBackupSection } from '../components/AutoBackupSection';
+import { BackupAllSection } from '../components/BackupAllSection';
 import { useMasterKeyPrompt } from '../components/MasterKeyPrompt';
 import { StorageBackupActions } from '../components/StorageBackup';
 import { optionListTransport } from '../transports';
@@ -79,6 +81,7 @@ export function SettingsScreen({
   settingsRevision = 0,
   sourcesRevision = 0,
   canChangePairingPassword = false,
+  onMasterPc = false,
 }: {
   /** Which tab is showing — remembered by the shell, chosen here or from the sidebar. */
   tab: string;
@@ -109,6 +112,8 @@ export function SettingsScreen({
   sourcesRevision?: number;
   /** A Server Master on the Master PC: the connection tab offers a new pairing password. */
   canChangePairingPassword?: boolean;
+  /** This window is on the Master PC itself, where backing up to a drive happens. */
+  onMasterPc?: boolean;
 }) {
   const [identity, setIdentity] = useState<MasterIdentity | null>(null);
   const [storage, setStorage] = useState<StorageUsage | null>(null);
@@ -165,6 +170,7 @@ export function SettingsScreen({
   const canManageSettings = permissions.includes('settings.manage');
   const canReadStorage = canManageSettings;
   const canManageStorage = permissions.includes('storage.manage');
+  const canBackUpAll = permissions.includes('storage.backupAll');
   const canRevealPasswords = permissions.includes('users.viewPassword');
   // The sources are an option list, so the Fields permissions decide them —
   // the same list, and the same rule, as Fields → Values.
@@ -411,45 +417,50 @@ export function SettingsScreen({
         ]
       : []),
     // Absent, not empty, without `settings.manage` — the same rule as the
-    // company tab. Inside it, export and restore still need `storage.manage`.
+    // company tab. Inside it, export and restore still need `storage.manage`,
+    // and the backup-everything sections `storage.backupAll`.
     ...(canManageSettings
       ? [
           {
             id: 'storage',
-            label: t('settings.tab.storage'),
+            label: t('settings.tab.storageBackup'),
             render: () => (
-              <SettingsSection title={t('settings.storage.title')}>
-                {canReadStorage &&
-                  (storage ? (
-                    <KeyValueList
-                      items={[
-                        {
-                          label: t('settings.storage.database'),
-                          value: formatBytes(storage.databaseBytes),
-                        },
-                        {
-                          label: t('settings.storage.uploads'),
-                          value: formatBytes(storage.uploadsBytes),
-                        },
-                        {
-                          label: t('settings.storage.total'),
-                          value: (
-                            <span className="ob-body-strong">
-                              {formatBytes(storage.totalBytes)}
-                            </span>
-                          ),
-                        },
-                        {
-                          label: t('settings.storage.free'),
-                          value: formatBytes(storage.diskFreeBytes),
-                        },
-                      ]}
-                    />
-                  ) : (
-                    <SkeletonKeyValueRows rows={4} />
-                  ))}
-                {canManageStorage && <StorageBackupActions />}
-              </SettingsSection>
+              <>
+                <SettingsSection title={t('settings.storage.title')}>
+                  {canReadStorage &&
+                    (storage ? (
+                      <KeyValueList
+                        items={[
+                          {
+                            label: t('settings.storage.database'),
+                            value: formatBytes(storage.databaseBytes),
+                          },
+                          {
+                            label: t('settings.storage.uploads'),
+                            value: formatBytes(storage.uploadsBytes),
+                          },
+                          {
+                            label: t('settings.storage.total'),
+                            value: (
+                              <span className="ob-body-strong">
+                                {formatBytes(storage.totalBytes)}
+                              </span>
+                            ),
+                          },
+                          {
+                            label: t('settings.storage.free'),
+                            value: formatBytes(storage.diskFreeBytes),
+                          },
+                        ]}
+                      />
+                    ) : (
+                      <SkeletonKeyValueRows rows={4} />
+                    ))}
+                  {canManageStorage && <StorageBackupActions />}
+                </SettingsSection>
+                {canBackUpAll && <BackupAllSection onMasterPc={onMasterPc} />}
+                {canBackUpAll && <AutoBackupSection onMasterPc={onMasterPc} />}
+              </>
             ),
           },
         ]

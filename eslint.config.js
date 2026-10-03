@@ -310,6 +310,8 @@ export default tseslint.config(
       'ui/src/AvatarStack.tsx',
       'ui/src/LeadStaleEdit.tsx',
       'office/web/src/components/ProductImages.tsx',
+      'master/web/src/components/BackupAllSection.tsx',
+      'master/web/src/components/AutoBackupSection.tsx',
     ],
     plugins: { 'orderbook-i18n': orderbookI18n },
     rules: {

@@ -73,6 +73,33 @@ describe('the change ring', () => {
   it('mints a boot id, so a cursor cannot outlive the ring it names', () => {
     expect(BOOT_ID).toMatch(/^[0-9a-f-]{36}$/);
   });
+
+  it('mints a new boot id on reset, so a cursor from before a restore is refused', async () => {
+    record(change('LD1'));
+    const before = BOOT_ID;
+
+    resetChangeRing();
+
+    // A live binding: importers see the new id without importing again.
+    expect(BOOT_ID).not.toBe(before);
+    expect(BOOT_ID).toMatch(/^[0-9a-f-]{36}$/);
+    const { BOOT_ID: fresh } = await import('../src/realtime/change-ring.js');
+    expect(fresh).toBe(BOOT_ID);
+
+    // The delta builder compares the cursor's boot id first, before it
+    // touches the database, so the old cursor is refused here without one.
+    const { buildDelta } = await import('../src/services/delta.service.js');
+    const actor = {
+      tenantId: 'tenant',
+      actorType: 'user' as const,
+      actorId: null,
+      userId: null,
+      permissions: { roleId: null, roleName: 'Test', tier: 'admin' as const, permissions: [] },
+      deviceCode: null,
+      actorName: 'Test',
+    };
+    expect(await buildDelta({ bootId: before, lastSeq: 0 }, actor)).toBeNull();
+  });
 });
 
 describe('every changed entity is in exactly one bucket', () => {

@@ -12,7 +12,9 @@
  * from before a Master restart is worthless — which is correct, not a
  * limitation: the ring is the only record of what happened, and a restart means
  * there is no record. A cursor naming a different boot falls back to the
- * snapshot, which is exactly what happens today.
+ * snapshot, which is exactly what happens today. A restore or a developer
+ * reset replaces the data without a restart, so `resetChangeRing` mints a new
+ * one too.
  *
  * The ring is also the only place a `seq` comes from. Nothing persists one, no
  * column carries one, and no migration exists for this feature — an
@@ -26,9 +28,11 @@ import type { DataChangedEvent } from '@orderbook/shared';
 /**
  * This process's identity, paired with every sequence number it hands out.
  *
- * Regenerated on restart on purpose. See the header.
+ * Regenerated on restart on purpose, and by `resetChangeRing`. A live binding,
+ * so `delta.service.ts` and `snapshot.service.ts` read the current one. See the
+ * header.
  */
-export const BOOT_ID = randomUUID();
+export let BOOT_ID = randomUUID();
 
 /**
  * How many changes are kept.
@@ -86,8 +90,16 @@ export function since(lastSeq: number): DataChangedEvent[] | null {
   return ring.filter((event) => (event.seq ?? 0) > lastSeq);
 }
 
-/** Test seam. There is no production path that empties the ring. */
+/**
+ * Forget every change and start a new boot, after the data behind the ring was
+ * replaced (a restore, a developer reset) and between tests.
+ *
+ * The new `BOOT_ID` is the point. Restarting `seq` at 1 under the old id let a
+ * panel whose cursor was below the refilled ring get a delta of changes to
+ * records it never had, instead of the snapshot it needs.
+ */
 export function resetChangeRing(): void {
   ring.length = 0;
   nextSeq = 1;
+  BOOT_ID = randomUUID();
 }

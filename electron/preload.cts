@@ -37,9 +37,13 @@ contextBridge.exposeInMainWorld('orderbook', {
   setDataDir: (dataDir: string): Promise<boolean> =>
     ipcRenderer.invoke('orderbook:setDataDir', dataDir) as Promise<boolean>,
 
-  /** A native folder chooser, for picking where the panel's data lives. */
-  chooseDirectory: (): Promise<string | null> =>
-    ipcRenderer.invoke('orderbook:chooseDirectory') as Promise<string | null>,
+  /** A native folder chooser: where the panel's data lives, or a backup drive. */
+  chooseDirectory: (options?: { title?: string }): Promise<string | null> =>
+    ipcRenderer.invoke('orderbook:chooseDirectory', options) as Promise<string | null>,
+
+  /** A native file chooser, for a backup archive to restore. */
+  chooseFile: (options?: { title?: string; extensions?: string[] }): Promise<string | null> =>
+    ipcRenderer.invoke('orderbook:chooseFile', options) as Promise<string | null>,
 
   getShellSettings: (): Promise<{
     openAtLogin: boolean;

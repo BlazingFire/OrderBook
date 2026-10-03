@@ -7,6 +7,7 @@ import { config } from '../config/index.js';
 import { queryCountMiddleware } from '../db/query-counter.js';
 import { liveHealth } from './health.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
+import { maintenanceGate } from './middleware/maintenance-gate.js';
 import { attachSession } from './middleware/require-auth.js';
 import { requirePanel } from './middleware/require-panel.js';
 import { accessRoutes } from './routes/access.routes.js';
@@ -36,6 +37,9 @@ export function createApp(): Express {
   // Client IPs are used to record where a panel paired from; the Master sits
   // directly on the LAN with no proxy in front of it.
   app.set('trust proxy', false);
+
+  // First: while a restore replaces the database, nothing below may read it.
+  app.use(maintenanceGate);
 
   app.use(express.json({ limit: '2mb' }));
   app.use(cookieParser());

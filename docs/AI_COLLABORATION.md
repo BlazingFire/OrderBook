@@ -190,6 +190,95 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-03 - 1.3 Phase 8 review fixes, round 2 (Claude)
+
+`master/src/services/archive-restore.service.ts`, `archive-export.service.ts`, `master/src/lib/archive-zip.ts`,
+`master/src/domain/archive.ts`, `master/tests/require-loopback.test.ts`, `master/tests/archive-domain.test.ts`, docs.
+- Once a restore's database load has committed, the later steps (photo swap, LAN address, Server Master role)
+  are best-effort: logged on failure, the job still ends done, and `backup.restore_failed` is not written. A
+  failed photo swap keeps the unpacked photos as `uploads-restored-<time>` beside the uploads folder instead of
+  deleting them with the work folder.
+- The export's REPEATABLE READ transaction ends after the tables; photos are copied after it, so a TRUNCATE or
+  DROP queued behind a long photo copy no longer stalls every query.
+- `openZipReader` refuses a zip whose end record lists more than `MAX_ARCHIVE_ENTRIES` (500,000) before reading
+  the entry list.
+- `require-loopback.test.ts` runs the real permission check for an Administrator on the Master PC: every archive
+  and auto-backup route answers 403 for `storage.backupAll` and no archive service runs.
+- STRUCTURE, HANDOFF and `7-STORAGE-BACKUP-RESTORE.md` say migration #7 also strips the key from other tiers, and
+  describe the two behaviour changes above.
+- Verified: lint, typecheck, `ORDERBOOK_PG_BIN=... npm run test` (239 files passed, 1 skipped, integration files
+  ran), build and smoke:legacy each exit 0.
+
+### 2026-10-03 - 1.3 Phase 8 review fixes, round 1 (Claude)
+
+`master/src/http/middleware/maintenance-gate.ts`, `master/src/services/archive-restore.service.ts`,
+`master/src/db/migrations/20261007000000_backup_all_permission_grant.ts`, tests, `docs/plans/1.3-BATCH.md` row 7.
+- The maintenance gate ignores case, as Express routing does: `/API/...` and `/Uploads/...` get the 503 too.
+- A restore whose photo swap fails no longer deletes the old photos. They are moved aside next to `uploads/`,
+  outside the work folder, and removed only after the swap works. If they cannot be moved back, the log names
+  where they are.
+- The "offline for an hour" timers are re-armed whenever a restore entered maintenance, on failure as well.
+- One archive row line is capped at 64 MB (corrupt file past that), and the newline search no longer rescans
+  the carried-over tail.
+- Migration #7 also takes `storage.backupAll` off every role outside the Server Master tier. On a fresh install,
+  `20260303` seeds Administrator with the live catalogue, so the admin role arrived holding a key above its
+  ceiling and the role editor refused to save it back (`access-lockout.integration` failed on a fresh cluster).
+- `require-loopback.test.ts` keeps the real `requireAuth`. The archive tests sign in through `state.signedIn`, so
+  the pairing-password ordering test fails again if `requireLoopback` is moved after `requireAuth` (checked by
+  swapping them).
+- Verified: lint, typecheck, `ORDERBOOK_PG_BIN=... npm run test` (239 files passed, 1 skipped, all 71
+  integration files ran), build and smoke:legacy each exit 0. The throwaway test cluster in
+  `%TEMP%\orderbook-test-pg` had to be removed first, because it had already recorded migration #7 with its
+  old body.
+
+### 2026-10-03 - 1.3 Phase 8: back up everything to a drive, Magic restore, automatic backup (Claude)
+
+`master/package.json` and `package-lock.json` (`archiver`, `yauzl`), `shared/src` (backup protocol, desktop bridge,
+permissions, notifications, i18n), `master/src` (one migration, archive domain and zip library, backup repository,
+backup job, maintenance gate, process caches, change ring, hub, push gate, storage, archive export and restore,
+scheduler, data and setup routes, index), `electron/` (shell, preload, `lib/dialog-options.ts`), `ui/src/NotificationBell.tsx`,
+`master/web/src` (api, App, three new components, Settings, first run), `eslint.config.js`, tests, docs. Built in
+four slices in one working tree: archive core; export and restore; scheduler and routes; electron, web and docs.
+- **Shared:** `ARCHIVE_FORMAT_VERSION = 2`, `ArchiveManifest`, `ArchivePreview`, `BackupJobStatus`, `AutoBackupConfig`
+  and `AutoBackupStatus`, `ArchiveListEntry`, five new `BackupFailureReason`s; `storage.backupAll` (Server Master
+  tier); `chooseFile?` and `chooseDirectory?({title})`; `backup.autoSkipped`, `backup.autoFailed`.
+- **Master:** migration `20261007000000_backup_all_permission_grant` (UPDATE-only grant, pinned last);
+  `domain/archive.ts` (allowlist, caps, manifest checks, estimate, FAT32 and free-space pre-flight, file name);
+  `lib/archive-zip.ts`; the streaming and loading functions in `backup.repository.ts`, which refuse the excluded
+  tables; `backup-job.ts` (one job, maintenance), `maintenance-gate.ts`, the hub refusing during maintenance;
+  `process-caches.ts` (closes HANDOFF known defect 5); `BOOT_ID` renewed by `resetChangeRing`;
+  `archive-export.service.ts` (`backup.created`, and `backup.failed` on failure); `archive-restore.service.ts`
+  (pairing kept; `backup.restored`, and `backup.restore_failed` for a Settings restore that did not complete);
+  `backup-scheduler.ts`; `/api/storage/archive*`, `/api/storage/auto-backup`, `/api/setup/archive/*`.
+- **Electron:** `orderbook:chooseFile` (main window only, `openFile`, `.zip` filter by default) and a main-window
+  sender check on `orderbook:chooseDirectory`, which lacked one; both open modal to the window and take their title
+  and extensions through `lib/dialog-options.ts`.
+- **Web:** Settings › **Storage & backup** (`settings.tab.storageBackup`; the Office's tab keeps "Storage") with
+  `BackupAllSection` and `AutoBackupSection`, absent without `storage.backupAll` and a notice off the Master PC;
+  `useBackupJob` (polls, survives the maintenance 503s, picks up a running job); the first-run **Magic restore**
+  fork beside new setup and the v1 restore, renamed "Restore an encrypted backup (.obbackup)"; ten `api.ts` members.
+  Both new components are in the strict-i18n lint list.
+- **i18n:** `backupAll.*` (with `backupAll.phase.*` as an explicit key map in `useBackupJob.ts`), `autoBackup.*`,
+  `magicRestore.*`, `firstRun.choose.magicRestore`, `settings.tab.storageBackup`, `activity.backup.failed` and
+  `activity.backup.restore_failed` (with `logs.action.restore_failed`, appended to the lock file), all with real
+  Hindi; `firstRun.choose.restore` relabelled in both.
+- **Tests:** new `master/tests/archive-domain`, `backup-scheduler`, `maintenance-gate`,
+  `archive-roundtrip.integration`, `archive-replay.integration`, `archive-first-run.integration`,
+  `archive-export-paging.integration`, `migration-backup-all-grant.integration`, `electron/tests/dialog-options`
+  (the two option checks, and every chooser, print and notify handler refusing a sender that is not the main
+  window, read from `shell.ts`); extended `change-ring`, `require-loopback`, `migration-registry`,
+  `ui/tests/master-shell` (the Magic restore fork end to end, all three forks on the Master PC, none on a LAN
+  browser, and the backup sections absent without `storage.backupAll`).
+- **Docs:** new `docs/7-STORAGE-BACKUP-RESTORE.md` (numbered to match the `§` citations already in the code);
+  `STRUCTURE.md` §1.5, §3.6, §3.10, §5.4, §5.5, §5.6, §5.8, §5.9, §5.11 item 18, §6.2, §7.1, §7.4, §10.1, §11.8;
+  HANDOFF defect 5 closed, two traps, session history.
+- **Verified by the electron-web-docs slice:** `tsc` for `master`, `master/web`, `ui/tests`, `tsconfig.test.json`
+  and both electron configs exits 0; eslint on every touched file exits 0; `ui/tests/master-shell`,
+  `ui/tests/office-shell`, all of `shared/tests` and `electron/tests`, and `master/tests/i18n-call-sites`,
+  `i18n-tokens`, `web-reachability`, `web-catalogue-text` pass. Not run by the slice: any `*.integration.test.ts`
+  and the full `npm run verify` (left to the verifier with `ORDERBOOK_PG_BIN`), a browser or Electron walk, and a
+  real backup onto FAT32, exFAT and NTFS drives.
+
 ### 2026-10-03 - 1.3 Phase 4 review fixes, round 2 (Claude)
 
 `office/src/sync/sync.service.ts`, `office/src/http/app.ts`, `master/src/realtime/presence-store.ts`,

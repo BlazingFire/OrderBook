@@ -19,7 +19,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { allPermissions, isServerMasterTier, keysAboveTier } from '@orderbook/shared';
+import { allPermissions, effectivePermissions, isServerMasterTier, keysAboveTier } from '@orderbook/shared';
 
 import { canRunIntegrationTests } from './helpers/db.js';
 import {
@@ -39,7 +39,7 @@ let admin: ActorContext;
 /** One admin-tier role, held by one active person. The minimum viable company. */
 async function soleAdministrator(roleName = 'Owner', username = 'ramesh') {
   const role = await roleService.createRole(
-    { name: roleName, tier: 'admin', permissions: allPermissions() },
+    { name: roleName, tier: 'admin', permissions: adminCeiling() },
     admin,
   );
 
@@ -53,7 +53,12 @@ async function soleAdministrator(roleName = 'Owner', username = 'ramesh') {
 
 /** The whole catalogue minus one key, which is how the grid saves an untick. */
 function everythingExcept(...removed: string[]): string[] {
-  return allPermissions().filter((permission) => !removed.includes(permission));
+  return adminCeiling().filter((permission) => !removed.includes(permission));
+}
+
+/** Every key an admin-tier role may hold: the catalogue less the Server-Master-only keys. */
+function adminCeiling(): string[] {
+  return effectivePermissions(allPermissions(), 'admin');
 }
 
 describe.skipIf(!canRunIntegrationTests)('the last-administrator guard', () => {

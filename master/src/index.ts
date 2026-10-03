@@ -38,6 +38,7 @@ import { assertFontsPresent } from './pdf/fonts.js';
 import { listLanAddresses } from './lib/network.js';
 import { createRealtimeHub, type RealtimeHub } from './realtime/hub.js';
 import { purgeExpiredSessions } from './services/auth.service.js';
+import { startBackupScheduler } from './services/backup-scheduler.js';
 import { startConnectorScheduler } from './services/connector-scheduler.js';
 import { startNotificationPruner } from './services/notification.service.js';
 import { startReleasePolling } from './services/update.service.js';
@@ -277,6 +278,9 @@ async function main(): Promise<void> {
     // One disposable, per this file's rule: the scheduler owns its own timer
     // and hands back the way to stop it.
     disposables.push(startConnectorScheduler());
+
+    // Same shape: the daily automatic backup, off until a Server Master turns it on.
+    disposables.push(startBackupScheduler());
 
     // Same shape: the poller owns its timers and hands back the way to stop
     // them. A no-op unless a releases repository is configured.

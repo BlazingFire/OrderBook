@@ -727,9 +727,11 @@ audit listed here is fixed (see "Session history").
 4. **No index on `leads.owner_id` or `orders.owner_id`:**
    `20260303000000_roles_and_users` re-created the columns as TEXT, which took
    both indexes with it (`docs/schema/03-leads-orders-inventory.md`). Needs an add-only migration.
-5. **The public API's tenant cache is stale after a whole restore:**
-   `resetPublicApiTenantCache()` is called by Developer mode's erase only, so
-   until a restart the public API reads the switch of a tenant that is gone.
+5. ~~**The public API's tenant cache is stale after a whole restore.**~~
+   **Closed 2026-10-03 (1.3 Phase 8):** the v1 restore, the archive restore and
+   Developer mode's erase all call `resetProcessCaches()`
+   (`master/src/services/process-caches.ts`), which includes
+   `resetPublicApiTenantCache()`.
 6. **The wipe/reload CLIs stop the database they start**
    (`catalog-reload-cli.ts`; `seed-catalogue-cli.ts` does the same), which
    pulls it out from under a running Master unless `DATABASE_URL` is set.
@@ -838,6 +840,18 @@ terms, multiple contacts); concurrent edits of one lead from two panels
 (last-write-wins is the default); app name/branding.
 
 ## Traps worth knowing
+
+- **The backup-everything zip is not encrypted.** It holds password hashes, the
+  pairing password hash and every Office panel's secret and master proof key
+  (`docs/7-STORAGE-BACKUP-RESTORE.md` §3.4). Do not add a table to it without
+  asking whether it belongs on a USB drive; the excluded ones are in
+  `EXCLUDED_TABLES` (`backup.repository.ts`), and the streaming and loading
+  functions refuse them outright.
+- **A restore signs everyone out, the window that started it included.** While
+  it runs every `/api/*` call answers 503 `error.unavailable.maintenance`; only
+  `/api/health` and `/api/setup/archive/job` get through, so a screen following
+  a restore must poll the setup route (`useBackupJob` in `BackupAllSection` and
+  `FirstRunScreen` does). After it, the Settings screen reloads into sign-in.
 
 - **Presence is never logged and never goes through `publishChange`.** It lives
   in the Master's memory (`master/src/realtime/presence-store.ts`) and is pushed
@@ -1099,6 +1113,27 @@ terms, multiple contacts); concurrent edits of one lead from two panels
 
 Condensed. The full entries are in `git show 5b8ebe2:HANDOFF.md` and in
 `docs/AI_COLLABORATION.md`.
+
+- **2026-10-03 — 1.3 Phase 8: back up everything to a drive, Magic restore,
+  automatic backup (Claude).** Migration `20261007000000_backup_all_permission_grant`
+  (additive: `storage.backupAll` to the Server Master role, and taken off every
+  other role, since the `20260303000000` live-catalogue seed gives it to
+  Administrator; UPDATE only). Packages `archiver`
+  and `yauzl` (Master, shipped). Shared: archive types in `protocol/backup.ts`,
+  `storage.backupAll` (Server Master tier), `chooseFile` and
+  `chooseDirectory({title})` on the bridge, `backup.autoSkipped` /
+  `backup.autoFailed`. Master: `domain/archive.ts`, `lib/archive-zip.ts`,
+  `backup-job.ts` (one job, maintenance), `maintenance-gate.ts`, `process-caches.ts`
+  (closes known defect 5), `BOOT_ID` renewed on reset, `archive-export.service.ts`,
+  `archive-restore.service.ts`, `backup-scheduler.ts`, the `/api/storage/archive*`,
+  `/api/storage/auto-backup` and `/api/setup/archive/*` routes. Electron:
+  `orderbook:chooseFile`, and a main-window sender check on `chooseDirectory`.
+  Web: Settings › Storage & backup (`BackupAllSection`, `AutoBackupSection`), the
+  first-run **Magic restore** fork, the v1 fork renamed "Restore an encrypted
+  backup (.obbackup)". Docs: new `docs/7-STORAGE-BACKUP-RESTORE.md` (cited by the
+  code, missing until now), `STRUCTURE.md` §1.5, §3.6, §5, §6.2, §7, §10.1,
+  §11.8. **Not done:** a real run onto USB drives (FAT32, exFAT, NTFS) and a Magic
+  restore on a second PC; the browser and Electron pass of the new screens.
 
 - **2026-10-03 — 1.3 Phase 4: PO numbers (rule 2), presence (rule 3), stale-edit
   protection, Master authority (Claude).** Migration

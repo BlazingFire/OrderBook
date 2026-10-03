@@ -1,19 +1,23 @@
 /**
- * First screen on a brand-new installation. Two forks
+ * First screen on a brand-new installation. Three forks
  * (docs/7-STORAGE-BACKUP-RESTORE.md §5.1): "Set up new site" asks the owner to
  * type the two Server Master accounts (suggested `master` and
  * `master-backup`), generates this Master's identity and shows the connection
  * details — the only time the pairing password is ever visible, so that screen
  * insists on an explicit acknowledgement before moving on. No `admin` account
- * is created. "Restore from backup" reads an exported file instead and comes
- * up as the site that was backed up. Both run only on the Master PC.
+ * is created. "Magic restore" brings back a backup-everything zip from a drive
+ * (records, photos and pairing), so the Offices find this PC by themselves.
+ * "Restore an encrypted backup" reads a version 1 `.obbackup` file instead.
+ * All three run only on the Master PC.
  */
 
 import { useState } from 'react';
-import type { BackupRestorePreview } from '@orderbook/shared';
+import type { ArchivePreview, BackupRestorePreview } from '@orderbook/shared';
 
-import { api, ApiError, type FirstRunCredentials } from '../api';
+import { api, ApiError, desktopBridge, type FirstRunCredentials } from '../api';
+import { ArchivePreviewFacts, BackupJobProgress } from '../components/BackupAllSection';
 import { DataDirCard } from '../components/DataDirCard';
+import { isJobFinished, useBackupJob } from '../components/useBackupJob';
 import {
   accountDrafts,
   accountDraftsError,
@@ -41,13 +45,15 @@ interface Props {
   onMasterPc: boolean;
 }
 
-type Mode = 'choose' | 'setup' | 'restore';
+type Mode = 'choose' | 'setup' | 'magic' | 'restore';
 
 export function FirstRunScreen({ onComplete, onMasterPc }: Props) {
   const [mode, setMode] = useState<Mode>('choose');
 
   if (mode === 'restore')
     return <RestoreFlow onBack={() => setMode('choose')} onComplete={onComplete} />;
+  if (mode === 'magic')
+    return <MagicRestoreFlow onBack={() => setMode('choose')} onComplete={onComplete} />;
   if (mode === 'setup')
     return <SetupFlow onBack={() => setMode('choose')} onComplete={onComplete} />;
 
@@ -93,7 +99,10 @@ export function FirstRunScreen({ onComplete, onMasterPc }: Props) {
               <Button variant="primary" onClick={() => setMode('setup')}>
                 {t('firstRun.choose.newSite')}
               </Button>
-              <Button variant="secondary" onClick={() => setMode('restore')}>
+              <Button variant="secondary" onClick={() => setMode('magic')}>
+                {t('firstRun.choose.magicRestore')}
+              </Button>
+              <Button variant="ghost" onClick={() => setMode('restore')}>
                 {t('firstRun.choose.restore')}
               </Button>
             </div>
@@ -282,6 +291,184 @@ function SetupFlow({ onBack, onComplete }: { onBack: () => void; onComplete: () 
             <Button variant="ghost" onClick={onBack}>
               {t('firstRun.choose.back')}
             </Button>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Magic restore: a backup-everything zip, by its path on this PC (the shell's
+ * file chooser fills it in). The preview comes from the zip's manifest; the
+ * restore runs as the Master's one job, followed through the setup route that
+ * keeps answering while the database is rebuilt. When it is done, Continue
+ * reads the setup status again and the usual sign-in shows.
+ */
+function MagicRestoreFlow({ onBack, onComplete }: { onBack: () => void; onComplete: () => void }) {
+  const bridge = desktopBridge();
+  const [path, setPath] = useState('');
+  const [preview, setPreview] = useState<ArchivePreview | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const { job, follow } = useBackupJob(() => api.setupArchiveJob());
+  const running = !isJobFinished(job);
+  const done = job?.kind === 'restore' && job.phase === 'done';
+  const sealed = preview ? preview.sealed.secretSettings + preview.sealed.connectorCredentials : 0;
+
+  async function read(file: string): Promise<void> {
+    setBusy(true);
+    setError(null);
+    setPreview(null);
+    try {
+      setPreview(await api.setupPreviewArchive(file));
+    } catch (caught) {
+      setError(apiErrorText(caught, 'backup.restore.readFailed'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function chooseFile(): Promise<void> {
+    const chosen = await bridge?.chooseFile?.({
+      title: t('backupAll.chooseFileTitle'),
+      extensions: ['zip'],
+    });
+    if (!chosen) return;
+    setPath(chosen);
+    await read(chosen);
+  }
+
+  async function restore(): Promise<void> {
+    setBusy(true);
+    setError(null);
+    try {
+      follow(await api.setupRestoreArchive(path.trim()));
+    } catch (caught) {
+      setError(apiErrorText(caught, 'backup.restore.failed'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        minHeight: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 'var(--s-20)',
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: rem(520),
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 'var(--s-20)',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 'var(--s-8)',
+          }}
+        >
+          <Logo size={32} />
+          <h1 className="ob-title" style={{ margin: 0 }}>
+            {done ? t('magicRestore.doneTitle') : t('magicRestore.title')}
+          </h1>
+          {!done && (
+            <p className="ob-small" style={{ margin: 0, textAlign: 'center' }}>
+              {t('magicRestore.help')}
+            </p>
+          )}
+        </div>
+
+        <Card>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+            {done ? (
+              <>
+                <p className="ob-body" style={{ margin: 0 }}>
+                  {t('magicRestore.doneBody')}
+                </p>
+                {preview && sealed > 0 && (
+                  <OfflineBanner>
+                    {t('backupAll.sealedNotice', {
+                      settings: preview.sealed.secretSettings,
+                      connectors: preview.sealed.connectorCredentials,
+                    })}
+                  </OfflineBanner>
+                )}
+                <Button variant="primary" size="lg" onClick={onComplete}>
+                  {t('firstRun.ready.continue')}
+                </Button>
+              </>
+            ) : (
+              <>
+                <FormField label={t('magicRestore.pathLabel')}>
+                  {(id) => (
+                    <div style={{ display: 'flex', gap: 'var(--s-8)' }}>
+                      <Input
+                        id={id}
+                        value={path}
+                        placeholder={t('magicRestore.pathPlaceholder')}
+                        disabled={running}
+                        onChange={(event) => {
+                          setPath(event.target.value);
+                          setPreview(null);
+                        }}
+                      />
+                      {bridge?.chooseFile && (
+                        <Button
+                          variant="secondary"
+                          disabled={running}
+                          onClick={() => void chooseFile()}
+                        >
+                          {t('magicRestore.chooseFile')}
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </FormField>
+
+                {preview ? (
+                  <>
+                    <ArchivePreviewFacts preview={preview} />
+                    <Button
+                      variant="primary"
+                      busy={busy}
+                      disabled={running}
+                      onClick={() => void restore()}
+                    >
+                      {t('magicRestore.start')}
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    variant="primary"
+                    busy={busy}
+                    disabled={!path.trim()}
+                    onClick={() => void read(path.trim())}
+                  >
+                    {t('magicRestore.read')}
+                  </Button>
+                )}
+
+                {job && <BackupJobProgress job={job} />}
+                {error && <FieldError>{error}</FieldError>}
+
+                {!running && (
+                  <Button variant="ghost" onClick={onBack}>
+                    {t('firstRun.choose.back')}
+                  </Button>
+                )}
+              </>
+            )}
           </div>
         </Card>
       </div>

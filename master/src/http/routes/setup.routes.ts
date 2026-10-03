@@ -6,7 +6,10 @@ import { MASTER_KEY_TOKEN_HEADER } from '@orderbook/shared';
 
 import { ConflictError, ValidationError } from '../../lib/errors.js';
 import { isLoopback } from '../../lib/network.js';
+import { previewArchive, restoreArchive } from '../../services/archive-restore.service.js';
 import * as backupRestoreService from '../../services/backup-restore.service.js';
+import { currentJob, startJob } from '../../services/backup-job.js';
+import { requireLocalPath } from '../../services/backup-scheduler.js';
 import { changePairingPassword } from '../../services/server-master.service.js';
 import { asyncHandler } from '../async-handler.js';
 import { actorFromRequest, requireAuth, requirePermissionMiddleware } from '../middleware/require-auth.js';
@@ -128,3 +131,40 @@ setupRoutes.post(
     res.status(201).json(await backupRestoreService.restoreBackup(req.file.buffer, passphrase, false));
   }),
 );
+
+/**
+ * Magic restore: the first-run screen's third fork, a backup-everything zip
+ * from a drive (`docs/7-STORAGE-BACKUP-RESTORE.md`). The path is a file on this
+ * PC, chosen through the shell's picker, never an upload: the zip can be many
+ * gigabytes. Loopback first, then refused once setup has run, as above.
+ */
+setupRoutes.post(
+  '/archive/preview',
+  requireLoopback,
+  refuseAfterSetup,
+  asyncHandler(async (req, res) => {
+    res.json(await previewArchive(requireLocalPath(req.body?.path)));
+  }),
+);
+
+setupRoutes.post(
+  '/archive/restore',
+  requireLoopback,
+  refuseAfterSetup,
+  asyncHandler(async (req, res) => {
+    const file = requireLocalPath(req.body?.path);
+    const { status } = startJob('restore', async (update, jobId) => {
+      await restoreArchive(file, { mode: 'first-run', progress: update, jobId });
+    });
+    res.status(202).json(status);
+  }),
+);
+
+/**
+ * The running backup or restore, for the screen showing its progress. Not
+ * refused after setup, and let through during maintenance: it is polled
+ * through a restore, and after one, before anyone has signed in again.
+ */
+setupRoutes.get('/archive/job', requireLoopback, (_req, res) => {
+  res.json(currentJob());
+});

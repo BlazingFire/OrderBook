@@ -44,6 +44,8 @@ export interface LocalNotice {
 const KIND_TEXT: Record<NotificationKind, MessageKey> = {
   'panel.offlineLong': 'notification.panel.offlineLong',
   'lead.numbered': 'notification.lead.numbered',
+  'backup.autoSkipped': 'notification.backup.autoSkipped',
+  'backup.autoFailed': 'notification.backup.autoFailed',
 };
 
 /** One notice as a sentence. A kind newer than this build reads as a plain "Notifications". */

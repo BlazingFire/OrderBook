@@ -54,6 +54,7 @@ import * as userNotifications from './20261002000000_user_notifications.js';
 import * as officePanelMasterProof from './20261002000001_office_panel_master_proof.js';
 import * as pendingOrderNumbers from './20261003000000_pending_order_numbers.js';
 import * as reportIndexesAndGrants from './20261004000000_report_indexes_and_grants.js';
+import * as backupAllPermissionGrant from './20261007000000_backup_all_permission_grant.js';
 
 export interface Migration {
   name: string;
@@ -240,6 +241,12 @@ export const migrations: Migration[] = [
   {
     name: '20261004000000_report_indexes_and_grants',
     ...reportIndexesAndGrants,
+  },
+  // `storage.backupAll` for the Server Master tier (1.3 Phase 8, migration #7).
+  // UPDATE only; joins the pin at the tail.
+  {
+    name: '20261007000000_backup_all_permission_grant',
+    ...backupAllPermissionGrant,
   },
 ];
 
