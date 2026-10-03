@@ -12,6 +12,7 @@ import {
   chunkPages,
   shareCard,
   shareFileName,
+  shareText,
   shareWeight,
 } from '../src/domain/product-share.js';
 import { renderProductShare } from '../src/pdf/product-share-renderer.js';
@@ -60,7 +61,7 @@ describe('shareCard', () => {
   it('carries every product field, skips the empty ones and the retired variants', () => {
     const card = shareCard(product());
     expect(card.title).toBe('Damru');
-    expect(card.subtitle).toBe('OPT - One Piece Toilet  |  Swisware');
+    expect(card.subtitle).toBe('One Piece Toilet  |  Swisware');
     expect(card.fields).toEqual([
       { label: 'Alias', value: 'Bell' },
       { label: 'Size', value: '600x600' },
@@ -69,6 +70,29 @@ describe('shareCard', () => {
       { label: 'Weight', value: '12.5 kg - 13 kg' },
       { label: 'Finish', value: 'Glossy' },
     ]);
+  });
+
+  it('never prints the main-product code (OPT) anywhere on a card (R14)', () => {
+    for (const locale of ['en', 'hi'] as const) {
+      const card = shareCard(product(), undefined, shareText(locale));
+      const everything = [card.title, card.subtitle, ...card.fields.flatMap((field) => [field.label, field.value])].join('|');
+      expect(everything).not.toMatch(/OPT/);
+    }
+  });
+
+  it('speaks the company language: Hindi labels, and a Hindi page line', () => {
+    const hi = shareText('hi');
+    const card = shareCard(
+      product({ alias: 'घंटी', multiColour: true } as Partial<Product>),
+      undefined,
+      hi,
+    );
+    const labels = card.fields.map((field) => field.label);
+    expect(labels).toEqual(expect.arrayContaining([hi.alias, hi.size, hi.code, hi.colours, hi.colour, hi.weight]));
+    expect(hi.alias).not.toBe(shareText('en').alias);
+    expect(hi.page(2, 5)).toBe('पृष्ठ 2 / 5');
+    expect(shareText('en').page(2, 5)).toBe('Page 2 of 5');
+    expect(card.fields).toContainEqual({ label: hi.colour, value: hi.anyColour });
   });
 
   it('prints a custom field by the company label, and by its key when it has none (1.4 rework)', () => {
@@ -110,6 +134,19 @@ function pageCount(pdf: Buffer): number {
 }
 
 describe('renderProductShare', () => {
+  it('draws a Hindi sheet (Devanagari labels, page line and name) without failing', async () => {
+    const text = shareText('hi');
+    const pdf = await renderProductShare({
+      company: 'शुभ सिरेमिक्स',
+      caption: '2026-10-03',
+      text,
+      entries: [{ card: shareCard(product({ name: 'डमरू', alias: 'घंटी' } as Partial<Product>), undefined, text), photo: null }],
+    });
+    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+    // The Devanagari face is embedded: without it every label would be blank boxes.
+    expect(pdf.toString('latin1')).toMatch(/NotoSansDevanagari/);
+  });
+
   it('draws 9 products on 3 A4 pages', async () => {
     const entries = Array.from({ length: 9 }, (_, index) => ({
       card: shareCard(product({ id: `PR${index}`, name: `Model ${index}` })),

@@ -5,11 +5,15 @@
  * fields are decided here; `pdf/product-share-renderer.ts` only draws them and
  * `services/product-share.service.ts` reads the products and photographs.
  *
- * Headings are English, like the other PDFs (`lead-pdf.ts`): the sheet goes to
- * customers outside the panel's language setting.
+ * The field labels and the page line are in the company's language (`shareText`), because
+ * the sheet goes to its customers. The product's own words (its name, colours, custom
+ * field values) are printed as the company wrote them.
+ *
+ * A card never prints the main product's software code (`OPT`): it is a column and a
+ * field of its own, not part of how a product reads (R14, `ui/src/catalogueSummary.ts`).
  */
 
-import type { Product } from '@orderbook/shared';
+import { t, type Locale, type Product } from '@orderbook/shared';
 
 /** Four products to a page, two across and two down. */
 export const SHARE_PER_PAGE = 4;
@@ -66,29 +70,54 @@ function customFieldText(value: unknown): string {
   return '';
 }
 
+/** The fixed words of the sheet, in one language. */
+export interface ShareText {
+  alias: string;
+  size: string;
+  code: string;
+  colours: string;
+  colour: string;
+  anyColour: string;
+  weight: string;
+  /** "Page 2 of 5". */
+  page: (page: number, total: number) => string;
+  /** The PDF's document title. */
+  title: (company: string) => string;
+}
+
+export function shareText(locale: Locale): ShareText {
+  return {
+    alias: t(locale, 'productShare.pdf.alias'),
+    size: t(locale, 'productShare.pdf.size'),
+    code: t(locale, 'productShare.pdf.code'),
+    colours: t(locale, 'productShare.pdf.colours'),
+    colour: t(locale, 'productShare.pdf.colour'),
+    anyColour: t(locale, 'productShare.pdf.anyColour'),
+    weight: t(locale, 'productShare.pdf.weight'),
+    page: (page, total) => t(locale, 'productShare.pdf.page', { page, total }),
+    title: (company) => t(locale, 'productShare.pdf.title', { company }),
+  };
+}
+
 /** One product as the lines its card prints. A field with no value is left out, never printed empty. */
 export function shareCard(
   product: Product,
   /** The company's label for a custom field's key (the Fields screen); a key with none prints as it is. */
   labelOf: (key: string) => string = (key) => key,
+  text: ShareText = shareText('en'),
 ): ShareCard {
   const variants = liveVariants(product);
-  const subtitle = [
-    [product.categoryCode, product.categoryName].filter(Boolean).join(' - '),
-    product.brand,
-  ]
-    .filter(Boolean)
-    .join('  |  ');
+  const subtitle = [product.categoryName, product.brand].filter(Boolean).join('  |  ');
 
   const colours = variants.map((variant) => variant.label).filter((label): label is string => Boolean(label));
 
   const candidates: Array<[string, string | null | undefined]> = [
-    ['Alias', product.alias],
-    ['Size', product.size],
-    ['Code', variants.map((variant) => variant.code).join(', ')],
-    ['Colours', colours.length > 0 ? colours.join(', ') : null],
-    ['Colour', product.multiColour ? 'Any colour of the range' : null],
-    ['Weight', shareWeight(product)],
+    [text.alias, product.alias],
+    [text.size, product.size],
+    [text.code, variants.map((variant) => variant.code).join(', ')],
+    [text.colours, colours.length > 0 ? colours.join(', ') : null],
+    [text.colour, product.multiColour ? text.anyColour : null],
+    [text.weight, shareWeight(product)],
   ];
 
   const fields: ShareField[] = [];
