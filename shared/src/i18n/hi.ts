@@ -17,7 +17,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'permission.lead.convert': 'पेंडिंग ऑर्डर को फ़ाइनल ऑर्डर में बदलें',
   'permission.orders.dispatch': 'फ़ाइनल ऑर्डर भेजें',
   'permission.record.reassignOwner': 'रिकॉर्ड का स्वामी बदलें',
-  'permission.stock.adjust': 'भौतिक गणना से स्टॉक समायोजित करें',
   'permission.users.manage': 'उपयोगकर्ता प्रबंधित करें',
   'permission.users.viewPassword': 'संग्रहीत पासवर्ड दिखाएँ',
   'permission.roles.assign': 'उपयोगकर्ताओं को भूमिकाएँ सौंपें',
@@ -52,9 +51,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'permission.products.delete': 'उत्पाद हटाएँ',
   'permission.products.export': 'उत्पाद निर्यात करें',
   'permission.products.bulk': 'उत्पाद थोक में संपादित करें',
-  'permission.inventory.view': 'इन्वेंट्री देखें',
-  'permission.inventory.edit': 'इन्वेंट्री संपादित करें',
-  'permission.inventory.export': 'इन्वेंट्री निर्यात करें',
   'permission.reports.view': 'रिपोर्ट देखें',
   'permission.reports.export': 'रिपोर्ट निर्यात करें',
   'permission.roles.view': 'भूमिकाएँ देखें',
@@ -81,7 +77,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'module.orders': 'फ़ाइनल ऑर्डर',
   'module.parties': 'पार्टियाँ',
   'module.products': 'उत्पाद',
-  'module.inventory': 'इन्वेंट्री',
   'module.reports': 'रिपोर्ट',
   'module.roles': 'भूमिकाएँ',
   'module.logs': 'लॉग',
@@ -100,7 +95,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'action.bulk': 'थोक',
 
   'capabilityGroup.workflow': 'कार्यप्रवाह',
-  'capabilityGroup.stock': 'स्टॉक',
   'capabilityGroup.admin': 'प्रशासन',
   'capabilityGroup.chat': 'चैटरूम',
 
@@ -113,9 +107,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'setting.externalApi.enabled.label': 'अन्य सॉफ़्टवेयर को जुड़ने दें',
   'setting.externalApi.enabled.help':
     'नेटवर्क के अन्य प्रोग्रामों से कुंजी-युक्त अनुरोधों के लिए इस मास्टर को खोलता है।',
-  'setting.inventory.freeToSell.label': 'बिक्री-योग्य स्टॉक ट्रैक करें',
-  'setting.inventory.freeToSell.help':
-    'चालू होने पर हर स्टॉक आँकड़ा तीन हिस्सों में दिखता है — उपलब्ध, खुले फ़ाइनल ऑर्डरों के लिए आरक्षित, और बिक्री-योग्य — और कम स्टॉक बिक्री-योग्य पर आँका जाता है। बंद होने पर हर वेरिएंट के लिए एक ही संख्या दिखती है, फ़र्श पर रखे पीस, और आरक्षित/बिक्री-योग्य कहीं नहीं दिखते। फ़ाइनल ऑर्डर नीचे अपना स्टॉक रोके रखते हैं, इसलिए वापस चालू करने पर सही तस्वीर दिखती है।',
   'setting.catalog.importCreatesCategories.label': 'उत्पाद आयात को नई श्रेणियाँ बनाने दें',
   'setting.catalog.importCreatesCategories.help':
     'चालू रहने पर बल्क आयात शीट में लिखी श्रेणी के अनुसार उत्पाद रखता है, और श्रेणी नई हो तो बना देता है। बंद रहने पर श्रेणी पहले से होनी चाहिए — जिस पंक्ति में ऐसी श्रेणी लिखी है जो आपके पास नहीं है वह पंक्ति संख्या सहित अस्वीकार होगी ताकि आप वर्तनी ठीक कर सकें, और जिस पंक्ति में कोई श्रेणी नहीं है वह पहले की तरह आयात होगी।',
@@ -251,11 +242,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.order.weightNegative': 'वज़न ऋणात्मक नहीं हो सकता',
   'validation.order.vehicleInvalid': 'वाहन नंबर: अधिकतम 20 अक्षर, अंक, स्पेस या डैश',
   'validation.order.alreadyDispatched': 'यह फ़ाइनल ऑर्डर पहले ही भेजा जा चुका है',
-  'validation.order.stockAlreadyMoved': 'इस फ़ाइनल ऑर्डर के लिए स्टॉक पहले ही स्थानांतरित हो चुका है',
   'validation.remark.textRequired': 'टिप्पणी में कुछ पाठ होना चाहिए',
-  'validation.stock.boxesArrivedRequired': 'कितने बॉक्स आए यह दर्ज करें',
-  'validation.stock.countedBoxesRequired': 'गिने गए बॉक्सों की संख्या दर्ज करें',
-  'validation.stock.adjustmentNoteRequired': 'बताइए कि यह गिनती क्यों सुधारी जा रही है',
   'validation.lead.partyRequired': 'इस पेंडिंग ऑर्डर के लिए एक पार्टी चुनें',
   'validation.lead.itemsRequired': 'इस पेंडिंग ऑर्डर में कम से कम एक उत्पाद जोड़ें',
   'validation.lead.partyMissing': 'चुनी गई पार्टी अब मौजूद नहीं है',
@@ -288,8 +275,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.updates.noneAvailable': 'इंस्टॉल करने के लिए कोई नया संस्करण नहीं है',
   'validation.partyAccess.levelInvalid': 'पहुँच स्तर view या manage होना चाहिए',
   'validation.partyAccess.userUnknown': '{userId} आईडी वाला कोई सक्रिय खाता नहीं है',
-  'validation.stock.levelRange': 'अधिकतम, न्यूनतम से कम नहीं हो सकता',
-  'validation.stock.levelNegative': 'स्टॉक स्तर ऋणात्मक नहीं हो सकता',
   'validation.pick.unknownKind': 'यह ऐसी चीज़ नहीं है जिसे यह पैनल खोज सके',
   'validation.product.nameRequired': 'उत्पाद का नाम आवश्यक है',
   'validation.product.categoryRequired': 'यह उप-उत्पाद जिस उत्पाद के अंतर्गत है, वह चुनें',
@@ -311,7 +296,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.product.restoreCodesTaken':
     'पुनर्स्थापित नहीं किया जा सकता — {codes} अब किसी अन्य उत्पाद में उपयोग हो रहा है',
   'validation.lead.variantMissing': 'चुने गए उत्पाद वेरिएंट में से एक अब मौजूद नहीं है',
-  'validation.stock.variantRequired': 'चुनें कि यह स्टॉक किस उत्पाद वेरिएंट का है',
   // --- Bulk product import: file-level refusals and per-row issues ----------
   'validation.import.fileRequired': 'कोई CSV या Excel फ़ाइल चुनें',
   'validation.import.unsupportedFormat': 'केवल .csv और .xlsx फ़ाइलें आयात की जा सकती हैं',
@@ -1031,7 +1015,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'catalog.nav.mainProducts': 'उत्पाद',
   'catalog.nav.brands': 'ब्रांड',
   'catalog.products.column.brand': 'ब्रांड',
-  'catalog.products.column.stock': 'स्टॉक',
   'catalog.products.productFilter': 'उत्पाद से छाँटें',
   'catalog.products.allProducts': 'सभी उत्पाद',
   'catalog.colourRule.multicolour': 'बहुरंगी',
@@ -1201,9 +1184,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'dashboard.dispatched.unitOne': 'final order',
   // TODO(i18n-hi)
-  'dashboard.empty.description':
-    'Once pending orders, final orders or stock exist on this panel, your dashboard fills in.',
-  // TODO(i18n-hi)
+  'dashboard.empty.description': 'इस पैनल पर पेंडिंग ऑर्डर या फ़ाइनल ऑर्डर होते ही आपका डैशबोर्ड भर जाएगा।',
   'dashboard.empty.title': 'Nothing here yet',
   // TODO(i18n-hi)
   'dashboard.leads.dueToday': '{count} due for follow-up today',
@@ -1216,10 +1197,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'dashboard.followUp.dueTitle': 'बाकी फ़ॉलो-अप',
   'fields.col.position': 'क्रम',
   'party.detail.access.assigned': 'इन्हें सौंपा गया',
-  // TODO(i18n-hi)
-  'dashboard.orders.boxesReserved': '{count} boxes reserved',
-  // TODO(i18n-hi)
-  'dashboard.orders.noneReserved': 'Nothing reserved',
   // TODO(i18n-hi)
   'dashboard.orders.title': 'Open final orders',
   // TODO(i18n-hi)
@@ -1446,8 +1423,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'fields.type.text': 'Text',
   // TODO(i18n-hi)
-  'fields.usedBy.inventory': 'inventory',
-  // TODO(i18n-hi)
   'fields.usedBy.label': 'Used by {sources}',
   // TODO(i18n-hi)
   'fields.usedBy.leads': 'pending orders',
@@ -1582,111 +1557,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'footer.signedInAs': '{name} · {role}',
   // TODO(i18n-hi)
-  'inventory.action.physicalCount': 'Physical count',
-  // TODO(i18n-hi)
-  'inventory.action.stockIn': 'Stock in',
-  // TODO(i18n-hi)
-  'inventory.drawer.adjust': 'Adjust to physical count',
-  // TODO(i18n-hi)
-  'inventory.drawer.ledgerEmpty.description':
-    'Stock in, dispatch and adjustments for this colour will appear here.',
-  // TODO(i18n-hi)
-  'inventory.drawer.ledgerEmpty.title': 'No movements yet',
-  // TODO(i18n-hi)
-  'inventory.drawer.ledgerTitle': 'Ledger — signed, append-only',
-  // TODO(i18n-hi)
-  'inventory.drawer.title': '{product} — {variant}',
-  'inventory.empty.description':
-    'कैटलॉग का हर उप-उत्पाद यहाँ दिखता है, स्टॉक हो या न हो। फ़िल्टर हटाएँ, या उत्पाद को कैटलॉग में जोड़ें।',
-  'inventory.empty.title': 'दिखाने को कुछ नहीं',
-  // TODO(i18n-hi)
-  'inventory.error.adjust': 'Could not save the count',
-  // TODO(i18n-hi)
-  'inventory.error.inbound': 'Could not record the incoming stock',
-  // TODO(i18n-hi)
-  'inventory.error.load': 'Could not load inventory',
-  // TODO(i18n-hi)
-  'inventory.error.reorder': 'Could not save the reorder level',
-  // TODO(i18n-hi)
-  'inventory.field.note': 'Note',
-  // TODO(i18n-hi)
-  'inventory.field.notePlaceholder': 'e.g. factory lot A-77, breakage',
-  'inventory.field.product': 'उत्पाद',
-  'inventory.field.productPlaceholder': 'उत्पाद चुनें…',
-  // TODO(i18n-hi)
-  'inventory.filter.all': 'All stock',
-  // TODO(i18n-hi)
-  'inventory.filter.lowOnly': 'Low only',
-  // TODO(i18n-hi)
-  'inventory.filterNote': 'Stock only leaves the ledger at dispatch — reservations hold it aside',
-  // TODO(i18n-hi)
-  'inventory.movementType.adjustment': 'Adjusted',
-  // TODO(i18n-hi)
-  'inventory.movementType.inbound': 'Stock in',
-  // TODO(i18n-hi)
-  'inventory.movementType.outbound': 'Dispatched',
-  // TODO(i18n-hi)
-  'inventory.movements.description':
-    'Every row is a signed change, never a total — which is what makes the running figure reconstructible.',
-  // TODO(i18n-hi)
-  'inventory.movements.empty.description': 'Stock in, dispatch and adjustments will appear here.',
-  // TODO(i18n-hi)
-  'inventory.movements.empty.title': 'No movements yet',
-  // TODO(i18n-hi)
-  'inventory.movements.table.change': 'Change',
-  // TODO(i18n-hi)
-  'inventory.movements.table.note': 'Note',
-  // TODO(i18n-hi)
-  'inventory.movements.table.product': 'Product',
-  // TODO(i18n-hi)
-  'inventory.movements.table.reference': 'Reference',
-  // TODO(i18n-hi)
-  'inventory.movements.table.type': 'Type',
-  // TODO(i18n-hi)
-  'inventory.movements.table.when': 'When',
-  // TODO(i18n-hi)
-  'inventory.movements.title': 'Recent movements',
-  // TODO(i18n-hi)
-  'inventory.physicalCount.description':
-    'Enter the number of boxes actually on the shelf — not the difference.',
-  // TODO(i18n-hi)
-  'inventory.physicalCount.submit': 'Save count',
-  // TODO(i18n-hi)
-  'inventory.physicalCount.title': 'Physical count',
-  // TODO(i18n-hi)
-  'inventory.physicalCount.titleForLine': 'भौतिक गिनती — {product} ({variant})',
-  // TODO(i18n-hi)
-  'inventory.reorderLevelLabel': '{product} {variant} का रीऑर्डर स्तर',
-  'inventory.search.placeholder': 'उत्पाद, ब्रांड, कोड या रंग खोजें',
-  // TODO(i18n-hi)
-  'inventory.section.stockLevels': 'Stock levels',
-  // TODO(i18n-hi)
-  'inventory.status.healthy': 'Healthy',
-  // TODO(i18n-hi)
-  'inventory.status.low': 'Low',
-  // TODO(i18n-hi)
-  'inventory.stockIn.description': 'फ़ैक्टरी या खरीद से आए पीस।',
-  // TODO(i18n-hi)
-  'inventory.stockIn.submit': 'Add stock',
-  // TODO(i18n-hi)
-  'inventory.stockIn.title': 'Stock in',
-  // TODO(i18n-hi)
-  'inventory.stockIn.titleForLine': 'स्टॉक इन — {product} ({variant})',
-  // TODO(i18n-hi)
-  'inventory.table.code': 'कोड',
-  // TODO(i18n-hi)
-  'inventory.table.free': 'Free to sell',
-  // TODO(i18n-hi)
-  'inventory.table.onHand': 'On hand',
-  // TODO(i18n-hi)
-  'inventory.table.product': 'Product',
-  // TODO(i18n-hi)
-  'inventory.table.reorder': 'Reorder at',
-  // TODO(i18n-hi)
-  'inventory.table.reserved': 'Reserved',
-  // TODO(i18n-hi)
-  'inventory.table.status': 'Status',
-  // TODO(i18n-hi)
   'lead.add.details.followUp': 'Follow up on',
   // TODO(i18n-hi)
   'lead.add.details.notes': 'Notes',
@@ -1734,8 +1604,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.board.convertedNote': 'Converted pending orders leave the board',
   // TODO(i18n-hi)
-  'lead.board.convertedToast': 'बदल गया — {qty} पीस {orderId} के लिए आरक्षित',
-  // TODO(i18n-hi)
+  'lead.board.convertedToast': 'फ़ाइनल ऑर्डर बना — {qty} पीस, {orderId}',
   'lead.board.emptyColumn': 'No pending orders at this stage.',
   // TODO(i18n-hi)
   'lead.board.emptyDesc': 'Pending Orders you create appear here, online or off.',
@@ -1772,9 +1641,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'lead.detail.convertAction': 'Convert to final order',
   // TODO(i18n-hi)
-  'lead.detail.convertDesc':
-    'इन लाइनों को ज्यों का त्यों कॉपी करके फ़ाइनल ऑर्डर बनाता है, और हर वेरिएंट का स्टॉक आरक्षित करता है।',
-  // TODO(i18n-hi)
+  'lead.detail.convertDesc': 'इन लाइनों को ज्यों का त्यों कॉपी करके फ़ाइनल ऑर्डर बनाता है।',
   'lead.detail.convertMissingPackaging':
     'Choose packaging for {names} first — it is never filled in automatically.',
   // TODO(i18n-hi)
@@ -2277,25 +2144,17 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'orders.detail.dispatchButton': 'Mark dispatched',
   // TODO(i18n-hi)
-  'orders.detail.dispatchNote':
-    'Takes {count} reservation(s) off the stock ledger. This cannot be undone from here.',
-  // TODO(i18n-hi)
+  'orders.detail.dispatchNote': 'ऑर्डर को भेजा हुआ दर्ज करता है। इसे यहाँ से वापस नहीं किया जा सकता।',
   'orders.detail.dispatchNoteLabel': 'Note',
   // TODO(i18n-hi)
   'orders.detail.dispatchNotePlaceholder': 'e.g. lorry AB-12',
   // TODO(i18n-hi)
-  'orders.detail.dispatchedBanner':
-    'Dispatched {when} — reservations consumed, ledger entries written.',
-  // TODO(i18n-hi)
+  'orders.detail.dispatchedBanner': 'भेजा गया {when}।',
   'orders.detail.history': 'History',
   // TODO(i18n-hi)
   'orders.detail.noDispatchPermission': 'Your role does not include {permission}.',
   // TODO(i18n-hi)
-  'orders.detail.noReservations': 'No reservations.',
-  // TODO(i18n-hi)
   'orders.detail.products': 'Products',
-  // TODO(i18n-hi)
-  'orders.detail.reservations': 'Stock held for this final order',
   // TODO(i18n-hi)
   'orders.detail.stage': 'Stage',
   // TODO(i18n-hi)
@@ -2379,14 +2238,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'orders.filter.allStages': 'All stages',
   // TODO(i18n-hi)
-  'orders.filter.note': 'Dispatch consumes reservations — it cannot be undone here',
-  // TODO(i18n-hi)
-  'orders.reservation.status.active': 'Active',
-  // TODO(i18n-hi)
-  'orders.reservation.status.consumed': 'Consumed',
-  // TODO(i18n-hi)
-  'orders.reservation.status.released': 'Released',
-  // TODO(i18n-hi)
+  'orders.filter.note': 'भेजा गया ऑर्डर यहाँ से वापस नहीं किया जा सकता',
   'orders.sync.pending': 'Not synced',
   // TODO(i18n-hi)
   'orders.sync.synced': 'Synced',
@@ -3471,8 +3323,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.products.col.code': 'कोड',
   'lead.add.products.col.product': 'उप-उत्पाद',
   // TODO(i18n-hi)
-  'lead.add.products.overFree': 'over free stock',
-  // TODO(i18n-hi)
   'lead.add.progress': '{done} of {total} required steps',
   // TODO(i18n-hi)
   'lead.add.status.draft': 'Save or cancel the open product first',
@@ -3520,8 +3370,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'lead.add.source.label': 'Source',
   // TODO(i18n-hi)
   'lead.add.summary.countOne': '{count} लाइन · {qty} पीस',
-  // TODO(i18n-hi)
-  'lead.add.line.ofFree': 'of {free} free',
   // TODO(i18n-hi)
   'lead.add.panel.clear': 'Clear',
   // TODO(i18n-hi)
@@ -3572,8 +3420,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'developer.tool.sample.count.products': "Products",
   // TODO(i18n-hi)
   'developer.tool.sample.count.images': "Product photos",
-  // TODO(i18n-hi)
-  'developer.tool.sample.count.stockMovements': "Stock movements",
   // TODO(i18n-hi)
   'developer.tool.sample.count.leads': "Pending Orders",
   // TODO(i18n-hi)
@@ -3670,21 +3516,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'unit.lines': 'लाइनें',
 
   // --- Master panel: inventory per variant, catalogue loader ---
-  'inventory.table.brand': 'ब्रांड',
-  'inventory.table.subProduct': 'उप-उत्पाद',
-  'inventory.table.size': 'साइज़',
-  'inventory.table.colour': 'रंग',
-  'inventory.table.weight': 'वज़न',
-  'inventory.table.min': 'न्यूनतम',
-  'inventory.table.max': 'अधिकतम',
-  'inventory.minLevelLabel': '{product} {variant} का न्यूनतम स्टॉक',
-  'inventory.maxLevelLabel': '{product} {variant} का अधिकतम स्टॉक',
-  'inventory.piecesFree': '{count} पीस उपलब्ध',
-  'inventory.piecesOnHand': '{count} पीस स्टॉक में',
-  'inventory.field.variant': 'वेरिएंट',
-  'inventory.field.variantPlaceholder': 'वेरिएंट चुनें…',
-  'inventory.field.pieces': 'पीस',
-  'inventory.movements.table.variant': 'वेरिएंट',
   'leadsOrders.leads.column.weight': 'वज़न',
   'leadsOrders.linesWithoutWeight': '{count} लाइनों का वज़न अभी नहीं है — आँकड़े में वे शामिल नहीं',
   'developer.tool.swisware.title': 'SWISWARE कैटलॉग लोड करें',
@@ -3698,11 +3529,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'developer.tool.swisware.count.colours': 'जोड़े गए रंग',
   'developer.tool.swisware.count.skipped': 'पहले से मौजूद उप-उत्पाद, अछूते',
   'lead.add.draft.col.qty': 'मात्रा',
-  'inventory.field.subProduct': 'उप-उत्पाद',
-  'inventory.field.subProductPlaceholder': 'उप-उत्पाद चुनें…',
-  'inventory.field.colour': 'रंग',
-  'inventory.filter.product': 'उत्पाद फ़िल्टर',
-  'inventory.filter.allProducts': 'सभी उत्पाद',
 
   // --- Carried over from the v1.1.0 line (sub-pages, free-to-sell) ---
   'nav.fold': 'उप-पृष्ठ छिपाएँ',
@@ -3775,7 +3601,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'settings.appearance.resetAll': 'दिखावट रीसेट करें',
   'partyAccess.showing': 'अब तक {shown} दिख रहे हैं।',
   'settingGroup.access': 'कौन अंदर आ सकता है',
-  'settingGroup.stock': 'स्टॉक',
+  'settingGroup.products': 'प्रोडक्ट',
   'settingGroup.leads': 'पेंडिंग ऑर्डर और फ़ॉलो-अप',
   'settingGroup.reports': 'रिपोर्ट',
   'settingGroup.integrations': 'अन्य सॉफ़्टवेयर',
@@ -3789,14 +3615,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'setting.security.developerModeEnabled.help': 'डेवलपर मोड सारा डेटा मिटा सकता है और टेस्ट उपयोगकर्ता बना सकता है, और इसका पासवर्ड OrderBook की हर कॉपी में एक ही है।',
   'setting.security.sessionHours.label': 'इतने समय बाद साइन आउट करें',
   'setting.security.sessionHours.help': 'कोई व्यक्ति दोबारा पासवर्ड डाले बिना कितनी देर साइन इन रहेगा। जो पहले से साइन इन हैं उनका समय वही रहेगा; यह उनके अगले साइन-इन से लागू होगा।',
-  'setting.inventory.defaultReorderLevel.label': 'इससे कम होने पर स्टॉक कम',
-  'setting.inventory.defaultReorderLevel.help': 'उन रंगों के लिए जिनका अपना कोई स्तर तय नहीं है। कोई नहीं चाहिए तो खाली छोड़ें। जिन रंगों का स्टॉक बिल्कुल नहीं है वे भी कम गिने जाएँगे।',
   'setting.security.offlineSignInEnabled.label': 'मास्टर पैनल बंद होने पर भी साइन इन करने दें',
   'setting.security.offlineSignInEnabled.help':
     'चालू रहने पर जो व्यक्ति पहले इस पैनल पर साइन इन कर चुका है वह मास्टर पैनल बंद होने पर भी दोबारा साइन इन कर सकता है, और उसे वही अनुमतियाँ मिलती हैं जो इस पैनल ने आख़िरी बार सहेजी थीं। बंद रहने पर हर साइन इन के लिए मास्टर चाहिए। जो पैनल पहले से ऑफ़लाइन है वह दोबारा जुड़ने तक अपना पिछला उत्तर ही रखता है।',
-  'setting.inventory.adjustmentNoteRequired.label': 'स्टॉक गिनती सुधारते समय कारण अनिवार्य करें',
-  'setting.inventory.adjustmentNoteRequired.help':
-    'सुधार उस आँकड़े को बदल देता है जिसे दोबारा निकाला नहीं जा सकता। यह चालू होने पर सुधार करने वाले को कारण लिखना होगा। जो गिनती पहले से मेल खाती है उसकी पुष्टि करने पर कुछ दर्ज नहीं होता, इसलिए उसके लिए कारण नहीं चाहिए।',
   'setting.leads.followUpDefaultDays.label': 'नई पेंडिंग ऑर्डर पर इतने दिन बाद संपर्क करें',
   'setting.leads.followUpDefaultDays.help':
     'नई पेंडिंग ऑर्डर आज से इतने दिन बाद की फ़ॉलो-अप तारीख़ के साथ शुरू होती है। जब तक आप इसे न बदलें यह 3 है; 0 का अर्थ है आज। पूछताछ लेने वाला इसे बदल सकता है, और कल / 3 दिन में / अगले हफ़्ते वाले बटन पहले जैसे ही रहते हैं।',
@@ -4310,4 +4131,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'printroom.dialog.sent': 'प्रिंटरूम में भेज दिया गया',
   'printroom.dialog.offline': 'मास्टर तक नहीं पहुँचा जा सका। इसके बजाय इसी PC पर प्रिंट करें।',
   'printroom.autoPrintFailed': '{party} का ऑटो-प्रिंट विफल रहा: {error}',
+
+  // 1.4 D2: stock and inventory removed, replacement wording
+  'validation.stock.retired': 'OrderBook में अब स्टॉक नहीं है',
+  'dashboard.orders.boxesOpen': '{count} बॉक्स भेजने बाकी',
+  'dashboard.orders.noneOpen': 'भेजने के लिए कुछ बाकी नहीं',
 };

@@ -11,7 +11,6 @@ import { canRunIntegrationTests } from './helpers/db.js';
 import { actorWith, resetData, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
 import type { ActorContext } from '../src/domain/actor.js';
 import * as catalogService from '../src/services/catalog.service.js';
-import * as inventoryService from '../src/services/inventory.service.js';
 import * as leadService from '../src/services/lead.service.js';
 import * as orderService from '../src/services/order.service.js';
 import * as recycleBinService from '../src/services/recycle-bin.service.js';
@@ -109,13 +108,17 @@ describe.skipIf(!canRunIntegrationTests)('the Recycle Bin (integration)', () => 
   });
 
   describe('deleting and restoring a product', () => {
-    it('is refused while stock is on hand', async () => {
+    it('is refused while a live line quotes it', async () => {
       const product = await catalogService.createProduct(
         { name: 'Basin', categoryName: 'Basins', variants: [{ code: 'B-1' }] },
         actor,
       );
-      await inventoryService.recordInbound(
-        { variantId: product.variants[0]!.id, quantityBoxes: 10 },
+      const party = await catalogService.createParty({ name: 'Quoting Party' }, actor);
+      await leadService.createLead(
+        {
+          partyId: party.id,
+          items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 10 }],
+        },
         actor,
       );
 
@@ -233,19 +236,14 @@ describe.skipIf(!canRunIntegrationTests)('the Recycle Bin (integration)', () => 
       ).resolves.toMatchObject({ entityType: 'lead', id: leadId });
     });
 
-    it('refuses to delete a dispatched order, and deleting an undispatched one releases its reservations', async () => {
+    it('deletes an undispatched order into the Bin', async () => {
       const { leadId } = await seedLeadWithParty();
       const order = await orderService.convertLead({ leadId }, actor);
 
-      const beforeDelete = await inventoryService.listStock({}, actor);
-      const before = beforeDelete.find((s) => s.productId && s.reservedBoxes > 0);
-      expect(before).toBeDefined();
-
       await orderService.deleteOrder(order.id, actor);
 
-      const afterDelete = await inventoryService.listStock({}, actor);
-      const after = afterDelete.find((s) => s.variantId === before?.variantId);
-      expect(after?.reservedBoxes ?? 0).toBe(0);
+      const bin = await recycleBinService.listBin({}, actor);
+      expect(bin.items.find((e) => e.id === order.id)).toBeDefined();
     });
 
     it('refuses to delete a dispatched order', async () => {

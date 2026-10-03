@@ -739,15 +739,13 @@ export async function nextSubProductCodes(
 
 /**
  * What blocks deleting this product: a live line item (its parent lead or
- * order not itself deleted) or non-zero on-hand/reserved stock on any
- * variant. On-hand boxes are physical goods in a warehouse; a catalogue entry
- * can be wrong, but the pallet is not.
+ * order not itself deleted).
  */
 export async function liveReferencesToProduct(
   tenantId: string,
   productId: string,
   runner: Runner = db(),
-): Promise<Array<{ entityType: 'line_item' | 'inventory_stock'; id: string; label: string }>> {
+): Promise<Array<{ entityType: 'line_item'; id: string; label: string }>> {
   const { rows: lineRows } = await runner.raw<{
     rows: Array<{ id: string; parent_id: string; product_name: string }>;
   }>(
@@ -763,58 +761,12 @@ export async function liveReferencesToProduct(
     [tenantId, productId, tenantId, productId],
   );
 
-  const stockRows = await runner('inventory_stock as s')
-    .join('product_variants as v', 'v.id', 's.variant_id')
-    .where({ 's.tenant_id': tenantId, 's.product_id': productId })
-    .andWhere((builder) => builder.whereNot('s.quantity_boxes', 0))
-    .select<Array<{ id: string; variant_id: string; code: string; label: string | null }>>(
-      's.id',
-      's.variant_id',
-      'v.code',
-      'v.label',
-    );
-
-  const { rows: reservedRows } = await runner.raw<{
-    rows: Array<{ variant_id: string; code: string; label: string | null }>;
-  }>(
-    `SELECT DISTINCT r.variant_id, v.code, v.label
-       FROM stock_reservations r
-       JOIN product_variants v ON v.id = r.variant_id
-      WHERE r.tenant_id = ? AND r.product_id = ? AND r.status = 'active'`,
-    [tenantId, productId],
-  );
-
-  const variantLabel = (row: { code: string; label: string | null }): string =>
-    row.label ? `${row.label} (${row.code})` : row.code;
-
-  // Every row here already has non-zero on-hand (filtered at the query), so
-  // each one is a blocker on its own.
-  const stockBlockers = stockRows.map((row) => ({
-    entityType: 'inventory_stock' as const,
-    id: row.id,
-    label: variantLabel(row),
-  }));
-
-  // A variant with zero on-hand but an active reservation still blocks —
-  // `reservation.repository.ts` never guarantees a stock row exists for
-  // every reserved variant.
-  const stockedVariants = new Set(stockRows.map((row) => String(row.variant_id)));
-  const reservationOnlyBlockers = reservedRows
-    .filter((row) => !stockedVariants.has(String(row.variant_id)))
-    .map((row) => ({
-      entityType: 'inventory_stock' as const,
-      id: String(row.variant_id),
-      label: variantLabel(row),
-    }));
-
   return [
     ...lineRows.map((row) => ({
       entityType: 'line_item' as const,
       id: row.id,
       label: `${row.product_name} (${row.parent_id})`,
     })),
-    ...stockBlockers,
-    ...reservationOnlyBlockers,
   ];
 }
 

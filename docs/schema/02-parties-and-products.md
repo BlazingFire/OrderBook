@@ -119,7 +119,7 @@ case-insensitively. It is also the prefix of the generated sub-product codes
 name, `06-tenancy-permissions-and-sync.md` §4); the category service refuses a brand that is not a
 live value of that list (`validation.category.brandUnknown`), so no filter misses a typed one. The
 column itself carries no foreign key: an option value is not a row id. Brand lives here and is read
-through the join (`Product.brand`, `InventoryStockLevel.brand`); there is no copy on `products` to
+through the join (`Product.brand`); there is no copy on `products` to
 keep in step. The trim of 2026-09-21 dropped the old `products.brand` column and deleted
 the old `product.brand` list; the key was reused on purpose.
 
@@ -225,7 +225,7 @@ CREATE INDEX idx_products_name     ON products (lower(name));   -- from the init
 (the `stock.colour` option list) — the catalogue prints "ALL COLOURS AVAILABLE IN ALL ITEMS"
 over its water closets, pedestal sets, urinals and pans. A lead line on such a model may name a
 colour (`line_items.colour`, `03-leads-orders-inventory.md`); the colour is a line attribute,
-not a stock key. Everything else that once sat on this table — `sin`, `grade`, `product_type`,
+not part of the variant key. Everything else that once sat on this table — `sin`, `grade`, `product_type`,
 `brand`, `barcode`, `hsn_code`, `uom`, every price column, the tile and ceramic attributes and
 the `parameters` bag — was dropped by `20260324000000_product_master_trim` at the owner's
 decision that a product is a name, a category, an alias, a size and its variants. No index
@@ -243,7 +243,7 @@ products).
 | `20260301000000_tenancy_access_and_sync` | `tenant_id`; the code unique per tenant. |
 | `20260302000000_lead_order_rebuild` | Text ids (`PR…`); `alias`, `sin`, `grade`, `product_type`, `weight_kg`, `custom_fields`, the sync columns, `search_vector`; renamed the box price to `rate`. |
 | `20260305000000_soft_delete_columns` | `deleted_at`/`deleted_by`; the code index partial on live rows. |
-| `20260315000000_product_trade_and_ceramic_attributes` | Fourteen trade and ceramic columns (MRP, purchase rate, GST rate, unit of measure, barcode, brand, shade, calibre, water absorption, PEI rating, edge type, surface texture, application, origin plant), the `field.purchaseRate.*` permission keys, and — surviving — `inventory_stock.min_stock_level`/`max_stock_level` and `stock_movements.batch_no`/`shade`/`calibre` (`03-leads-orders-inventory.md`). |
+| `20260315000000_product_trade_and_ceramic_attributes` | Fourteen trade and ceramic columns (MRP, purchase rate, GST rate, unit of measure, barcode, brand, shade, calibre, water absorption, PEI rating, edge type, surface texture, application, origin plant), the `field.purchaseRate.*` permission keys, and — surviving, on tables retired in 1.4 — `inventory_stock.min_stock_level`/`max_stock_level` and `stock_movements.batch_no`/`shade`/`calibre` (`03-leads-orders-inventory.md`). |
 | `20260322000000_product_colour_policy_and_line_category` | `colour_policy` (`fixed`/`selectable`); gone again one migration later. |
 | `20260323000000_product_variants` | Dropped `product_code`, `weight_kg`, `color` and `colour_policy`, added `has_variants`, made `category_id` NOT NULL — see *Product variants* below. |
 | `20260324000000_product_master_trim` | Dropped 26 columns, every price among them, and the permission keys and option lists that went with them; added `multi_colour`. |
@@ -292,8 +292,8 @@ restore — never on its own.
 **Every product has at least one variant.** A product with no colour or
 pattern choices (`has_variants = false`) has exactly one row with `label NULL`
 — which is what lets **one** partial unique index guard every code in the shop
-whichever kind of product it belongs to, and what lets a lead line, a stock
-row and a reservation always point at a `variant_id`. The label index's
+whichever kind of product it belongs to, and what lets a lead line
+always point at a `variant_id`. The label index's
 `coalesce(label, '')` is what stops a second unlabelled row on one model.
 
 The partial code index (`WHERE deleted_at IS NULL`) is why `deleted_at` is
@@ -305,8 +305,8 @@ quotes, so they are never renamed on the way out of the bin the way party
 names are.
 
 `is_active = false` is a variant taken off the form that history still quotes
-(a line, a movement, a stock row with pieces on it, an active reservation):
-`replaceVariants` deactivates such a row rather than deleting it, keeps its
+(a line, or a row left in the retired stock tables): `replaceVariants`
+deactivates such a row rather than deleting it (`referencedVariantIds` still counts the retired tables, which are FK-ed to variants), keeps its
 id and its code, and refuses it on new leads (`validation.lead.variantMissing`).
 An unreferenced row is simply deleted.
 

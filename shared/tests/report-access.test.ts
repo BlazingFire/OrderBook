@@ -26,24 +26,24 @@ describe('reportsVisibleForTier', () => {
     for (const tier of ['office', 'management', 'admin'] as const) {
       expect(reportsVisibleForTier(tier, undefined)).toBe(true);
       expect(reportsVisibleForTier(tier, null)).toBe(true);
-      expect(reportsVisibleForTier(tier, { freeToSell: false })).toBe(true);
+      expect(reportsVisibleForTier(tier, {})).toBe(true);
     }
   });
 
   it("follows each tier's own switch, and never switches an administrator off", () => {
-    const features = { freeToSell: false, reportsVisibleToOffice: false, reportsVisibleToManagement: true };
+    const features = { reportsVisibleToOffice: false, reportsVisibleToManagement: true };
     expect(reportsVisibleForTier('office', features)).toBe(false);
     expect(reportsVisibleForTier('management', features)).toBe(true);
 
-    const allOff = { freeToSell: false, reportsVisibleToOffice: false, reportsVisibleToManagement: false };
+    const allOff = { reportsVisibleToOffice: false, reportsVisibleToManagement: false };
     expect(reportsVisibleForTier('management', allOff)).toBe(false);
     expect(reportsVisibleForTier('admin', allOff)).toBe(true);
   });
 });
 
 describe('reportsOffered and offeredReportKinds', () => {
-  const on = { freeToSell: false };
-  const off = { freeToSell: false, reportsVisibleToOffice: false };
+  const on = {};
+  const off = { reportsVisibleToOffice: false };
 
   it('need the permission as well as the switch', () => {
     expect(reportsOffered('office', on, ['reports.view'])).toBe(true);

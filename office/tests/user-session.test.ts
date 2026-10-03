@@ -464,7 +464,6 @@ describe('the company switch for signing in offline', () => {
       partyVariants: [],
       leads: [],
       orders: [],
-      stock: [],
       pipelines: [],
       optionLists: [],
       customFields: [],
@@ -475,7 +474,7 @@ describe('the company switch for signing in offline', () => {
       serverTime: '2026-09-18T00:00:00.000Z',
       ...(offlineSignInEnabled === undefined
         ? {}
-        : { features: { freeToSell: true, offlineSignInEnabled } }),
+        : { features: { offlineSignInEnabled } }),
     });
   }
 

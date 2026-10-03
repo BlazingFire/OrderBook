@@ -10,9 +10,6 @@
  *  - the products (categories) and every sub product when the catalogue moved,
  *    `limit: 2000` being the cap the snapshot hands an Office panel.
  *
- * No free stock: the Master's Inventory UI was hidden in 1.3, so its list has
- * no free-stock column (the view carries no `stock`). The Office keeps its own.
- *
  * The three pages sit in `<Activity>` so switching between them keeps each
  * one's search, filters and open record, as `ScreenHost` does between modules.
  * Brands is always one of them: without `fields.view` it says so inside the

@@ -31,9 +31,6 @@ export const MUTATION_KINDS = [
   'product.create',
   'product.update',
   'partyVariant.upsert',
-  'stock.inbound',
-  'stock.adjust',
-  'stock.setReorderLevel',
   'chat.post',
 ] as const;
 
@@ -62,9 +59,6 @@ export const MUTATION_PERMISSIONS: Record<MutationKind, string> = {
   'product.create': 'products.create',
   'product.update': 'products.edit',
   'partyVariant.upsert': 'parties.edit',
-  'stock.inbound': 'inventory.edit',
-  'stock.adjust': 'stock.adjust',
-  'stock.setReorderLevel': 'inventory.edit',
   'chat.post': 'chat.use',
 };
 

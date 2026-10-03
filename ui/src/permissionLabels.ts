@@ -31,7 +31,7 @@ export function actionLabel(action: string): string {
 }
 
 /**
- * `stock.adjust` -> "Adjust stock by physical count"; a module action
+ * `orders.dispatch` -> "Mark orders as dispatched"; a module action
  * (`leads.view`) too, which the Integrations screen's key scopes list.
  *
  * Its fallback is built from the whole key, never just its tail: the admin

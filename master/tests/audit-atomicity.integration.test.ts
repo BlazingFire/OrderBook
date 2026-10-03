@@ -2,7 +2,7 @@
  * Every audited write commits with its entry, on the paths that used to write
  * the entry afterwards (docs/ROLES_AND_USERS.md §7).
  *
- * Parties, products, leads, orders, stock and panels recorded their entry
+ * Parties, products, leads, orders and panels recorded their entry
  * through `recordDetachedActivity`, on a second connection, after their own
  * transaction had already committed — and that function swallows a failed
  * insert into a warning. So a change could commit and leave no entry at all,
@@ -37,7 +37,6 @@ import { nextHlc } from '../src/repositories/identity.repository.js';
 import * as catalog from '../src/services/catalog.service.js';
 import * as conflicts from '../src/services/conflict.service.js';
 import * as fields from '../src/services/fields.service.js';
-import * as inventory from '../src/services/inventory.service.js';
 import * as leads from '../src/services/lead.service.js';
 import * as orders from '../src/services/order.service.js';
 import * as panels from '../src/services/panel.service.js';
@@ -147,7 +146,6 @@ describe.skipIf(!canRunIntegrationTests)('audited writes commit with their entry
   afterEach(async () => {
     await acceptAuditEntries();
     await db().raw('DROP TRIGGER IF EXISTS audit_probe_commit ON parties');
-    await db().raw('DROP TRIGGER IF EXISTS audit_probe_commit ON stock_movements');
   });
 
   describe('when the entry cannot be written, the change does not happen', () => {
@@ -229,7 +227,6 @@ describe.skipIf(!canRunIntegrationTests)('audited writes commit with their entry
 
       await expect(orders.convertLead({ leadId: lead.id }, actor)).rejects.toThrow(/audit probe/);
       expect(await countRows('orders')).toBe(0);
-      expect(await countRows('stock_reservations')).toBe(0);
       expect((await db()('leads').where({ id: lead.id }).first())?.converted_order_id).toBeNull();
     });
 
@@ -265,41 +262,6 @@ describe.skipIf(!canRunIntegrationTests)('audited writes commit with their entry
 
       await expect(orders.dispatchOrder({ orderId: order.id }, actor)).rejects.toThrow(/audit probe/);
       expect((await db()('orders').where({ id: order.id }).first())?.dispatched_at).toBeNull();
-      expect(await countRows('stock_movements', { movement_type: 'outbound' })).toBe(0);
-      expect(await countRows('stock_reservations', { status: 'consumed' })).toBe(0);
-    });
-
-    it('recording stock in', async () => {
-      const { variant } = await createTestProduct(actor, { name: 'Audit Basin' });
-      await refuseAuditEntries();
-
-      await expect(
-        inventory.recordInbound({ variantId: variant.id, quantityBoxes: 10 }, actor),
-      ).rejects.toThrow(/audit probe/);
-      expect(await countRows('stock_movements')).toBe(0);
-      expect(await countRows('inventory_stock')).toBe(0);
-    });
-
-    it('correcting a count', async () => {
-      const { variant } = await createTestProduct(actor, { name: 'Audit Basin' });
-      await inventory.recordInbound({ variantId: variant.id, quantityBoxes: 10 }, actor);
-      await refuseAuditEntries();
-
-      await expect(
-        inventory.recordAdjustment({ variantId: variant.id, quantityBoxes: 7, note: 'recount' }, actor),
-      ).rejects.toThrow(/audit probe/);
-      expect(Number((await db()('inventory_stock').where({ variant_id: variant.id }).first())?.quantity_boxes)).toBe(10);
-      expect(await countRows('stock_movements')).toBe(1);
-    });
-
-    it('setting stock levels', async () => {
-      const { variant } = await createTestProduct(actor, { name: 'Audit Basin' });
-      await refuseAuditEntries();
-
-      await expect(
-        inventory.setReorderLevel({ variantId: variant.id, reorderLevel: 5 }, actor),
-      ).rejects.toThrow(/audit probe/);
-      expect(await countRows('inventory_stock')).toBe(0);
     });
 
     it('merging an offline edit', async () => {
@@ -461,17 +423,6 @@ describe.skipIf(!canRunIntegrationTests)('audited writes commit with their entry
       expect(await countRows('activity_log')).toBe(0);
     });
 
-    it('a stock movement', async () => {
-      const { variant } = await createTestProduct(actor, { name: 'Audit Basin' });
-      const before = await countRows('activity_log');
-      await refuseAtCommit('stock_movements');
-
-      await expect(
-        inventory.recordInbound({ variantId: variant.id, quantityBoxes: 10 }, actor),
-      ).rejects.toThrow(/audit probe/);
-      expect(await countRows('stock_movements')).toBe(0);
-      expect(await countRows('activity_log')).toBe(before);
-    });
   });
 
   describe('the writes that used to record nothing', () => {
@@ -486,22 +437,6 @@ describe.skipIf(!canRunIntegrationTests)('audited writes commit with their entry
       const [entry] = await entries({ entity_type: 'party', entity_id: party.id, action: 'variant_saved' });
       expect(entry).toBeDefined();
       expect(rendered(entry!)).toBe('Test Actor saved the party-wise record of Wash Basin for the party Own Names');
-    });
-
-    it('stock levels name the product, and a form that asserts nothing records nothing', async () => {
-      const { product, variant } = await createTestProduct(actor, { name: 'Audit Basin' });
-
-      await inventory.setReorderLevel({ variantId: variant.id, reorderLevel: 5, maxStockLevel: 40 }, actor);
-
-      const [entry] = await entries({ entity_type: 'stock', entity_id: product.id });
-      expect(entry?.action).toBe('levels_changed');
-      expect(entry?.details).toMatchObject({ reorderLevel: 5, maxStockLevel: 40, code: variant.code });
-      expect(entry?.details).not.toHaveProperty('minStockLevel');
-      expect(rendered(entry!)).toBe('Test Actor changed the stock levels for Audit Basin');
-
-      // Nothing asserted is a read in the repository, so it is not an event here.
-      await inventory.setReorderLevel({ variantId: variant.id }, actor);
-      expect(await entries({ entity_type: 'stock' })).toHaveLength(1);
     });
 
     it('an order edit and an order stage move', async () => {
@@ -845,30 +780,6 @@ describe.skipIf(!canRunIntegrationTests)('audited writes commit with their entry
             panelActor,
           ),
           hold: holdRow('orders', { id: order.id }),
-        };
-      }],
-      ['recording stock in', async () => {
-        const { variant } = await createTestProduct(actor, { name: 'Audit Basin' });
-        await inventory.recordInbound({ variantId: variant.id, quantityBoxes: 10 }, actor);
-        return {
-          write: () => inventory.recordInbound({ variantId: variant.id, quantityBoxes: 5 }, actor),
-          hold: holdRow('inventory_stock', { variant_id: variant.id }),
-        };
-      }],
-      ['correcting a count', async () => {
-        const { variant } = await createTestProduct(actor, { name: 'Audit Basin' });
-        await inventory.recordInbound({ variantId: variant.id, quantityBoxes: 10 }, actor);
-        return {
-          write: () => inventory.recordAdjustment({ variantId: variant.id, quantityBoxes: 7, note: 'recount' }, actor),
-          hold: holdRow('inventory_stock', { variant_id: variant.id }),
-        };
-      }],
-      ['setting stock levels', async () => {
-        const { variant } = await createTestProduct(actor, { name: 'Audit Basin' });
-        await inventory.recordInbound({ variantId: variant.id, quantityBoxes: 10 }, actor);
-        return {
-          write: () => inventory.setReorderLevel({ variantId: variant.id, reorderLevel: 5 }, actor),
-          hold: holdRow('inventory_stock', { variant_id: variant.id }),
         };
       }],
       ['pairing a panel', async () => {

@@ -26,9 +26,7 @@ import type { CompanyFeatures } from './entities.js';
 
 /** Every switch present, none optional. */
 export interface ResolvedCompanyFeatures {
-  freeToSell: boolean;
   offlineSignInEnabled: boolean;
-  adjustmentNoteRequired: boolean;
   followUpDefaultDays: number;
   packagingRequiredOnConvert: boolean;
   reportsVisibleToOffice: boolean;
@@ -39,11 +37,8 @@ export function resolveCompanyFeatures(
   features: CompanyFeatures | undefined | null,
 ): ResolvedCompanyFeatures {
   return {
-    freeToSell: features?.freeToSell ?? SETTINGS['inventory.freeToSell'].fallback,
     offlineSignInEnabled:
       features?.offlineSignInEnabled ?? SETTINGS['security.offlineSignInEnabled'].fallback,
-    adjustmentNoteRequired:
-      features?.adjustmentNoteRequired ?? SETTINGS['inventory.adjustmentNoteRequired'].fallback,
     followUpDefaultDays:
       features?.followUpDefaultDays ?? SETTINGS['leads.followUpDefaultDays'].fallback,
     packagingRequiredOnConvert:

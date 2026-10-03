@@ -8,7 +8,7 @@ for the shop-floor operator (see `00-overview.md` §1).
 
 ## 1. How big is "bigger," realistically?
 
-A single ceramic company's order/inventory data, even a large one, over many
+A single ceramic company's order data, even a large one, over many
 years:
 
 | Table | Rough growth | 10-year estimate |
@@ -17,7 +17,6 @@ years:
 | `products` + `product_variants` | catalog changes rarely | hundreds of models, low thousands of variants |
 | `leads` + `orders` | busiest records — say 50–200 leads/day across all Office Panels | hundreds of thousands |
 | `line_items` | a few lines per lead, copied again onto each order | low millions of rows |
-| `stock_movements` | one row per arrival, adjustment or dispatched variant | similar order to `line_items` |
 | `activity_log` | one row per audited write, several per lead | several million rows |
 
 PostgreSQL is proven in production at table sizes and write volumes **far**
@@ -39,14 +38,14 @@ thousands" above reaches it.
   match are served by one index (`06-tenancy-permissions-and-sync.md` §6).
 - **Partial indexes** — the unique codes and names ignore Recycle-Bin rows
   (`WHERE deleted_at IS NULL`); the Bin's own keyset indexes cover only deleted rows;
-  the open-leads, follow-up, dispatched-orders and active-reservation indexes hold
+  the open-leads, follow-up, and dispatched-orders indexes hold
   only the rows those screens ask about. Each stays small however large its table
   grows.
 - **Expression indexes** — `lower(code)` on `product_variants` and
   `product_categories`, `lower(name)` on `product_categories` (with the brand) and
   `roles`, `lower(username)` on `users`: case-insensitive uniqueness enforced by the
   database.
-- **Table partitioning** — if `stock_movements` ever grows large enough to matter
+- **Table partitioning** — if `activity_log` or `line_items` ever grows large enough to matter
   (well beyond the estimate in §1), it can be converted to Postgres **declarative
   partitioning by month/year on `created_at`**: old partitions become trivial to
   archive, and queries scoped to a recent date range only touch the relevant
@@ -114,7 +113,7 @@ thousands" above reaches it.
   frozen panel) even though there's only one application process — don't override
   it down to 1: concurrent socket commands still benefit from more than a single
   connection.
-- If `stock_movements` or `activity_log` ever becomes large enough to matter for
+- If `activity_log` ever becomes large enough to matter for
   backup size or query speed (well beyond this business's realistic scale per §1),
   partition and archive as in §2 — never a silent `DELETE` of audit history, which
   the database refuses anyway (`04-activity-log.md`).

@@ -24,7 +24,7 @@
  * are the order's own weight (`COALESCE(override, computed)`) wherever the
  * grain is an order, and `quantity × weight_kg` over the lines that have a
  * weight wherever the grain is a product — an unentered weight is left out, not
- * counted as zero. *Boxes* are the stock movements a dispatch wrote, and only
+ * counted as zero. *Boxes* are the quantities on a dispatched order's lines, and only
  * the legacy Dispatches report reports them. There is no money anywhere.
  */
 
@@ -111,11 +111,10 @@ export async function dispatchesByMonth(range: DateRange, runner: Runner = db())
      ),
      box_agg AS (
        SELECT to_char(date_trunc('month', o.dispatched_at AT TIME ZONE ?), 'YYYY-MM') AS month,
-              SUM(-m.quantity_boxes) AS box_count
+              SUM(li.quantity) AS box_count
          FROM orders o
-         JOIN stock_movements m
-           ON m.tenant_id = o.tenant_id AND m.reference_type = 'order' AND m.reference_id = o.id
-          AND m.movement_type = 'outbound'
+         JOIN line_items li
+           ON li.tenant_id = o.tenant_id AND li.parent_type = 'order' AND li.parent_id = o.id
         WHERE o.tenant_id = ?
           AND o.dispatched_at >= (?::timestamp AT TIME ZONE ?)
           AND o.dispatched_at <  (?::timestamp AT TIME ZONE ?)
@@ -147,12 +146,11 @@ export async function dispatchesByColour(range: DateRange, runner: Runner = db()
   const tz = config.locale.timeZone;
   const scope = scoped(range, 'o');
   const { rows } = await runner.raw<{ rows: Array<{ colour: string; box_count: string }> }>(
-    `SELECT COALESCE(v.label, '') AS colour, SUM(-m.quantity_boxes) AS box_count
+    `SELECT COALESCE(v.label, '') AS colour, SUM(li.quantity) AS box_count
        FROM orders o
-       JOIN stock_movements m
-         ON m.tenant_id = o.tenant_id AND m.reference_type = 'order' AND m.reference_id = o.id
-        AND m.movement_type = 'outbound'
-       JOIN product_variants v ON v.id = m.variant_id
+       JOIN line_items li
+         ON li.tenant_id = o.tenant_id AND li.parent_type = 'order' AND li.parent_id = o.id
+       JOIN product_variants v ON v.id = li.variant_id
       WHERE o.tenant_id = ?
         AND o.dispatched_at >= (?::timestamp AT TIME ZONE ?)
         AND o.dispatched_at <  (?::timestamp AT TIME ZONE ?)

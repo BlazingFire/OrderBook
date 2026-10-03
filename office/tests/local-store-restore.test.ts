@@ -32,7 +32,6 @@ function snapshotWith(offlineSignInEnabled: boolean) {
     partyVariants: [],
     leads: [],
     orders: [],
-    stock: [],
     pipelines: [],
     optionLists: [],
     customFields: [],
@@ -41,7 +40,7 @@ function snapshotWith(offlineSignInEnabled: boolean) {
     permissions: [],
     serverHlc: '0',
     serverTime: '2026-09-18T00:00:00.000Z',
-    features: { freeToSell: true, offlineSignInEnabled },
+    features: { offlineSignInEnabled },
   };
 }
 

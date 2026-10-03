@@ -340,7 +340,6 @@ describe('local view', () => {
     partyVariants: [],
     leads: [],
     orders: [],
-    stock: [],
     pipelines: [
       {
         id: 'p1',
@@ -517,7 +516,6 @@ describe('the view memo', () => {
     partyVariants: [],
     leads: [],
     orders: [],
-    stock: [],
     pipelines: [],
     optionLists: [],
     customFields: [],
@@ -577,7 +575,6 @@ describe('the sync cursor', () => {
     partyVariants: [],
     leads: [],
     orders: [],
-    stock: [],
     pipelines: [],
     optionLists: [],
     customFields: [],

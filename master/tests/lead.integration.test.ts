@@ -6,7 +6,7 @@
  *   2. A line's snapshotted weight does not move when the product or its
  *      variant is edited afterwards.
  *   3. `packaging` is never auto-filled during conversion.
- *   4. Reservations are per variant, never aggregated to the product.
+ *   4. Order lines are per variant, never aggregated to the product.
  *
  * A line is one variant with one quantity; the code and the weight resolve
  * from the variant, and two colours of one model are two lines. A colour
@@ -274,11 +274,10 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
         [anyColourVariant.id, 'Ivory', 5],
       ]);
 
-      // Stock stays per variant: the order holds both quantities against the
-      // one stock row, one reservation per line.
+      // Both lines ride across to the order against the one variant.
       const order = await orders.convertLead({ leadId: lead.id }, actor);
       expect(order.items.map((item) => item.colour)).toEqual(['White', 'Ivory']);
-      expect(order.reservations.map((reservation) => [reservation.variantId, reservation.quantity])).toEqual([
+      expect(order.items.map((item) => [item.variantId, item.quantity])).toEqual([
         [anyColourVariant.id, 10],
         [anyColourVariant.id, 5],
       ]);
@@ -756,31 +755,16 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
       );
     });
 
-    it('reserves stock per variant rather than per product', async () => {
+    it('carries each line to the order against its own variant, never per product', async () => {
       const { lead, white, blue } = await convertible();
 
       const order = await orders.convertLead({ leadId: lead.id }, actor);
 
-      expect(order.reservations).toHaveLength(2);
-      const byVariant = Object.fromEntries(
-        order.reservations.map((reservation) => [reservation.variantId, reservation.quantity]),
-      );
+      expect(order.items).toHaveLength(2);
+      const byVariant = Object.fromEntries(order.items.map((item) => [item.variantId, item.quantity]));
       expect(byVariant).toEqual({ [white.id]: 4, [blue.id]: 6 });
-      expect(order.reservations.map((reservation) => reservation.variantCode).sort()).toEqual([
-        '1111',
-        '1112',
-      ]);
-      expect(order.reservations.every((r) => r.status === 'active')).toBe(true);
     });
 
-    it('does not touch the stock ledger — reserving is not dispatching', async () => {
-      const { lead } = await convertible();
-
-      await orders.convertLead({ leadId: lead.id }, actor);
-
-      const movements = await db()('stock_movements').select('*');
-      expect(movements).toHaveLength(0);
-    });
 
     it('sums the order weight from the line weights, over the lines that have one', async () => {
       const { party, model, blue, red } = await seed();

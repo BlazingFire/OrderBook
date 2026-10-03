@@ -1607,7 +1607,7 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
     });
   });
 
-  it('replaces the variant set as one field, keeping the ids stock is keyed by', async () => {
+  it('replaces the variant set as one field, keeping the ids lines are keyed by', async () => {
     const product = await existingProduct();
     const [existing] = product.variants;
 
@@ -1708,7 +1708,7 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
 
     const after = await reload(product.id);
     expect(after.variants[0]?.weightKg).toBe(25);
-    // Same variant row, so the stock keyed by it is not orphaned.
+    // Same variant row, so the lines keyed by it are not orphaned.
     expect(after.variants[0]?.id).toBe(existing!.id);
   });
 

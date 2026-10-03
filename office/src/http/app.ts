@@ -948,7 +948,7 @@ export function createApp(): Express {
     }),
   );
 
-  // Images stay online-only, like Stock and Recycle Bin — the offline outbox
+  // Images stay online-only, like the Recycle Bin — the offline outbox
   // carries JSON mutations, and there is no mechanism to queue a multipart
   // file through it (`7-IMAGE-PIPELINE.md` port notes, `HANDOFF.md`).
   app.post('/api/products/:productId/images', imageUpload.single('file'), (req, res) => {
@@ -1201,14 +1201,6 @@ export function createApp(): Express {
       entityId: req.params.id,
       payload: { note: req.body?.note ?? null },
     }),
-  );
-
-  // Stock stays online-only. An unconfirmed quantity shown as real stock
-  // would be worse than the last figure the Master actually agreed to.
-  app.post('/api/stock/inbound', (req, res) => forward(res, 'stock:inbound', req.body));
-  app.post('/api/stock/adjust', (req, res) => forward(res, 'stock:adjust', req.body));
-  app.post('/api/stock/reorder-level', (req, res) =>
-    forward(res, 'stock:setReorderLevel', req.body),
   );
 
   app.get('/api/search', (req, res) =>
@@ -2037,7 +2029,6 @@ const DASHBOARD_FIGURE_PERMISSIONS: Record<
   dispatchedTodayCount: 'orders.view',
   partyCount: 'parties.view',
   productCount: 'products.view',
-  lowStockCount: 'inventory.view',
   openConflictCount: 'sync.resolveConflicts',
   pendingSyncCount: 'sync.resolveConflicts',
 };
@@ -2090,6 +2081,7 @@ export const SNAPSHOT_POLICY: Record<keyof SyncSnapshot, SnapshotPolicy> = {
   partyVariants: 'passthrough',
   leads: 'passthrough',
   orders: 'passthrough',
+  // Always empty from a 1.4 Master; the key stays in the type for older Offices.
   stock: 'passthrough',
   pipelines: 'passthrough',
   optionLists: 'passthrough',
@@ -2117,12 +2109,8 @@ export const SNAPSHOT_POLICY: Record<keyof SyncSnapshot, SnapshotPolicy> = {
   // The company's switches. Not per-person — the same company for whoever is
   // signed in — so nothing here is re-gated or re-scoped for the reader.
   //
-  // This used to say a stale switch "can only be as stale as `stock`". That
-  // was wrong, and only looked right for `inventory.freeToSell`: `stock` is
-  // replayable and gets live upserts, while `features` had no change event of
-  // any kind, so it was refreshed exactly once per snapshot. `'setting'` is a
-  // `ChangedEntity` now and forces a fresh snapshot, which is what finally
-  // makes the sentence above true.
+  // A switch is refreshed with the snapshot: `'setting'` is a `ChangedEntity`
+  // and forces a fresh snapshot, so a stale switch lasts only until the next one.
   features: 'passthrough',
 };
 

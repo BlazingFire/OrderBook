@@ -19,7 +19,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { ActorContext } from '../src/domain/actor.js';
 import { ValidationError } from '../src/lib/errors.js';
 import * as catalog from '../src/services/catalog.service.js';
-import * as inventory from '../src/services/inventory.service.js';
 import { canRunIntegrationTests } from './helpers/db.js';
 import { resetData, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
 
@@ -80,54 +79,6 @@ describe.skipIf(!canRunIntegrationTests)('product attributes (integration)', () 
     ])('refuses %s with a readable message', async (_case, variants) => {
       await expect(
         catalog.createProduct({ categoryName: 'Tiles', name: 'Bad Tile', variants }, admin),
-      ).rejects.toBeInstanceOf(ValidationError);
-    });
-  });
-
-  describe('the stock band is a partial patch', () => {
-    it('leaves min and max alone when only the reorder level is set', async () => {
-      const product = await seedProduct();
-
-      await inventory.setReorderLevel(
-        { variantId: product.variants[0]!.id, minStockLevel: 10, maxStockLevel: 100 },
-        admin,
-      );
-
-      // Exactly what the existing reorder-level screen sends: it knows nothing
-      // about min and max and never will.
-      const level = await inventory.setReorderLevel(
-        { variantId: product.variants[0]!.id, reorderLevel: 25 },
-        admin,
-      );
-
-      expect(level.reorderLevel).toBe(25);
-      expect(level.minStockLevel).toBe(10);
-      expect(level.maxStockLevel).toBe(100);
-    });
-
-    it('clears a level when told to, which is not the same as omitting it', async () => {
-      const product = await seedProduct();
-
-      await inventory.setReorderLevel(
-        { variantId: product.variants[0]!.id, minStockLevel: 10 },
-        admin,
-      );
-      const level = await inventory.setReorderLevel(
-        { variantId: product.variants[0]!.id, minStockLevel: null },
-        admin,
-      );
-
-      expect(level.minStockLevel).toBeNull();
-    });
-
-    it('refuses a maximum below the minimum', async () => {
-      const product = await seedProduct();
-
-      await expect(
-        inventory.setReorderLevel(
-          { variantId: product.variants[0]!.id, minStockLevel: 50, maxStockLevel: 10 },
-          admin,
-        ),
       ).rejects.toBeInstanceOf(ValidationError);
     });
   });

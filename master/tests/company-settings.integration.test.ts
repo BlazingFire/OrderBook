@@ -21,7 +21,6 @@ import { createApp } from '../src/http/app.js';
 import { db } from '../src/db/knex.js';
 import * as catalog from '../src/services/catalog.service.js';
 import { importProducts } from '../src/services/product-import.service.js';
-import * as inventory from '../src/services/inventory.service.js';
 import * as panels from '../src/services/panel.service.js';
 import * as settings from '../src/services/settings.service.js';
 import * as auth from '../src/services/auth.service.js';
@@ -176,75 +175,6 @@ describe.skipIf(!canRunIntegrationTests)('company settings, end to end (integrat
     });
   });
 
-  describe('inventory.defaultReorderLevel', () => {
-    /** One variant with 5 on the floor and no reorder level of its own — the shape every movement creates. */
-    async function seedBare(code = 'FLR-01', name = 'Wash Basin', quantity = 5) {
-      const product = await catalog.createProduct(
-        { name, categoryName: 'Basins', variants: [{ code, weightKg: 12 }] },
-        actor,
-      );
-      const variant = product.variants[0]!;
-      await inventory.recordInbound({ variantId: variant.id, quantityBoxes: quantity }, actor);
-      return variant;
-    }
-
-    async function levelFor(variantId: string) {
-      const levels = await inventory.listStock({ limit: 100 }, actor);
-      return levels.find((level) => level.variantId === variantId);
-    }
-
-    it('reaches the list, the low-only filter, the count and a single level alike', async () => {
-      const variant = await seedBare();
-
-      expect(await levelFor(variant.id)).toMatchObject({ isLow: false, reorderLevel: null });
-      expect(await inventory.countLowStock(actor.tenantId)).toBe(0);
-      expect(await inventory.listStock({ limit: 100, lowOnly: true }, actor)).toHaveLength(0);
-
-      await settings.writeSetting(actor, 'inventory.defaultReorderLevel', 10);
-
-      expect(await levelFor(variant.id)).toMatchObject({ isLow: true, reorderLevel: null });
-      expect(await inventory.countLowStock(actor.tenantId)).toBe(1);
-      expect(await inventory.listStock({ limit: 100, lowOnly: true }, actor)).toHaveLength(1);
-
-      // The single-level path — `setReorderLevel` returns through the same
-      // `outgoing()` every list row goes through.
-      const single = await inventory.setReorderLevel(
-        { variantId: variant.id, reorderLevel: null },
-        actor,
-      );
-      expect(single).toMatchObject({ isLow: true, reorderLevel: null });
-    });
-
-    it('never overrides a level somebody set on the line itself', async () => {
-      const variant = await seedBare();
-      await settings.writeSetting(actor, 'inventory.defaultReorderLevel', 10);
-      await inventory.setReorderLevel({ variantId: variant.id, reorderLevel: 2 }, actor);
-
-      // 5 against a line level of 2 is not low, even though the company
-      // default of 10 would say it is.
-      expect(await levelFor(variant.id)).toMatchObject({ isLow: false, reorderLevel: 2 });
-      expect(await inventory.countLowStock(actor.tenantId)).toBe(0);
-    });
-
-    it('counts a line that has run out when the default is zero', async () => {
-      // `Number(null)` is 0, so a count that coerces the absent column reads
-      // "no default" and "flag anything empty" as the same thing. Only a line
-      // at zero is low here — the 5-piece line is not.
-      const stocked = await seedBare();
-      const empty = await seedBare('FLR-02', 'Pedestal Basin', 3);
-      await inventory.recordAdjustment(
-        { variantId: empty.id, quantityBoxes: 0, note: 'counted' },
-        actor,
-      );
-
-      await settings.writeSetting(actor, 'inventory.defaultReorderLevel', 0);
-
-      expect(await levelFor(stocked.id)).toMatchObject({ isLow: false });
-      expect(await levelFor(empty.id)).toMatchObject({ isLow: true });
-      expect(await inventory.countLowStock(actor.tenantId)).toBe(1);
-    });
-  });
-
   describe('catalog.importCreatesCategories', () => {
     function csv(rows: Array<Array<string | number>>): { buffer: Buffer; fileName: string } {
       return {
@@ -349,79 +279,6 @@ describe.skipIf(!canRunIntegrationTests)('company settings, end to end (integrat
     });
   });
 
-  describe('inventory.adjustmentNoteRequired', () => {
-    /** 40 on the floor, no reorder level — the shape a movement creates. */
-    async function seeded() {
-      const product = await catalog.createProduct(
-        { name: 'Wall Hung Closet', categoryName: 'Closets', variants: [{ code: 'ADJ-01' }] },
-        actor,
-      );
-      const variant = product.variants[0]!;
-      await inventory.recordInbound({ variantId: variant.id, quantityBoxes: 40 }, actor);
-      return variant;
-    }
-
-    it('leaves a correction with no reason alone at the default', async () => {
-      // No writeSetting at all: the one property an upgraded installation
-      // depends on.
-      const variant = await seeded();
-
-      const level = await inventory.recordAdjustment(
-        { variantId: variant.id, quantityBoxes: 37 },
-        actor,
-      );
-      expect(level.quantityBoxes).toBe(37);
-    });
-
-    it('refuses a correction with no reason while the switch is on', async () => {
-      const variant = await seeded();
-      await settings.writeSetting(actor, 'inventory.adjustmentNoteRequired', true);
-
-      await expect(
-        inventory.recordAdjustment({ variantId: variant.id, quantityBoxes: 37 }, actor),
-      ).rejects.toThrow(/say why/i);
-    });
-
-    it('counts a reason of only spaces as no reason', async () => {
-      const variant = await seeded();
-      await settings.writeSetting(actor, 'inventory.adjustmentNoteRequired', true);
-
-      await expect(
-        inventory.recordAdjustment({ variantId: variant.id, quantityBoxes: 37, note: '   ' }, actor),
-      ).rejects.toThrow(/say why/i);
-    });
-
-    it('takes the correction once a reason is given', async () => {
-      const variant = await seeded();
-      await settings.writeSetting(actor, 'inventory.adjustmentNoteRequired', true);
-
-      const level = await inventory.recordAdjustment(
-        { variantId: variant.id, quantityBoxes: 37, note: 'breakage' },
-        actor,
-      );
-      expect(level.quantityBoxes).toBe(37);
-    });
-
-    it('still lets somebody confirm a count that already matches', async () => {
-      // The carve-out. That path writes no movement and no activity row, so a
-      // reason collected there would be discarded — and moving the guard above
-      // the early return is the tempting mistake this pins.
-      const variant = await seeded();
-      await settings.writeSetting(actor, 'inventory.adjustmentNoteRequired', true);
-
-      const before = await inventory.listMovements({ variantId: variant.id }, actor);
-      const level = await inventory.recordAdjustment(
-        { variantId: variant.id, quantityBoxes: 40 },
-        actor,
-      );
-
-      expect(level.quantityBoxes).toBe(40);
-      expect(await inventory.listMovements({ variantId: variant.id }, actor)).toHaveLength(
-        before.length,
-      );
-    });
-  });
-
   describe('leads.packagingRequiredOnConvert', () => {
     /** A lead with one line and no packaging on it. */
     async function leadWithoutPackaging() {
@@ -431,7 +288,6 @@ describe.skipIf(!canRunIntegrationTests)('company settings, end to end (integrat
         actor,
       );
       const variant = product.variants[0]!;
-      await inventory.recordInbound({ variantId: variant.id, quantityBoxes: 50 }, actor);
       return leads.createLead(
         {
           partyId: party.id,
@@ -458,16 +314,13 @@ describe.skipIf(!canRunIntegrationTests)('company settings, end to end (integrat
       );
     });
 
-    it('converts with the switch off, and still reserves the stock', async () => {
+    it('converts with the switch off', async () => {
       const lead = await leadWithoutPackaging();
       await settings.writeSetting(actor, 'leads.packagingRequiredOnConvert', false);
 
       const order = await orders.convertLead({ leadId: lead.id }, actor);
 
       expect(order.items[0]?.packaging ?? null).toBeNull();
-      // The switch relaxes one refusal; it must not skip the rest of the
-      // conversion, and reservations are the part that would go unnoticed.
-      expect(order.reservations.length).toBeGreaterThan(0);
     });
 
     it('refuses again when the switch is turned back on', async () => {
