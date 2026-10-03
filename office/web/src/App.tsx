@@ -96,6 +96,8 @@ import {
   useToast,
   splitSubPage,
   withSubPages,
+  CatalogListsScreen,
+  type CatalogListsPage,
   type ChatPage,
   type PrintPage,
   type ChatRecordOption,
@@ -115,6 +117,7 @@ import { reportsTransport } from './reportsTransport';
 import { AddLeadScreen } from './screens/AddLeadScreen';
 import { CatalogScreen } from './screens/CatalogScreen';
 import { BrandsScreen, MainProductsScreen } from './screens/MainProductsScreen';
+import { optionListTransport } from './optionListTransport';
 import { ConnectionScreen } from './screens/ConnectionScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
 import { LeadBoardScreen } from './screens/LeadBoardScreen';
@@ -143,6 +146,7 @@ type Tab =
   | 'orders'
   | 'parties'
   | 'partyAccess'
+  | 'lists'
   | 'products'
   | 'conflicts'
   | 'chatroom'
@@ -926,6 +930,11 @@ function OfficePanel() {
       label: t(REPORT_META[kind].titleToken),
       icon: REPORT_META[kind].icon,
     })),
+    lists: [
+      { key: 'grades', label: t('lists.nav.grades'), icon: 'edit' },
+      { key: 'packaging', label: t('lists.nav.packaging'), icon: 'edit' },
+      { key: 'brands', label: t('lists.nav.brands'), icon: 'edit' },
+    ],
     partyAccess: [
       { key: 'all', label: t('partyAccess.filter.all'), icon: 'parties' },
       { key: 'restricted', label: t('partyAccess.filter.restricted'), icon: 'shield' },
@@ -1067,6 +1076,9 @@ function OfficePanel() {
           can('party.assign') || can('party.accessAll')
             ? { id: 'partyAccess', label: t('nav.partyAccess'), icon: 'shield' as const }
             : null,
+          can('fields.view')
+            ? { id: 'lists', label: t('nav.lists'), icon: 'task' as const }
+            : null,
         ] satisfies Array<NavItem | null>
       ).filter((item): item is NonNullable<typeof item> => item !== null),
     },
@@ -1093,6 +1105,7 @@ function OfficePanel() {
     orders: 'orders',
     parties: 'parties',
     partyAccess: 'partyAccess',
+    lists: 'lists',
     products: 'products',
     conflicts: 'conflicts',
     chatroom: 'chatroom',
@@ -1725,6 +1738,17 @@ function OfficePanel() {
         // Two entries sharing one screen: the sidebar has separate Parties and
         // Products items, and each keeps its own state.
         { id: 'parties', render: () => <CatalogScreen view={view} tab="parties" /> },
+        {
+          id: 'lists',
+          render: () => (
+            <CatalogListsScreen
+              page={subKeyOf('lists') as CatalogListsPage}
+              permissions={view.permissions}
+              transport={optionListTransport}
+              revision={optionListsRevision}
+            />
+          ),
+        },
         {
           id: 'products',
           // One screen id, three sidebar pages. Each page sits in its own

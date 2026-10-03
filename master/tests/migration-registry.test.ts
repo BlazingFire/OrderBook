@@ -108,6 +108,8 @@ describe('the migration registry matches the directory', () => {
     '20261006000000_printroom',
     // 1.3 Phase 8: `storage.backupAll` for the Server Master tier (#7).
     '20261007000000_backup_all_permission_grant',
+    // 1.4 D3: `catalog.lists.manage` grant.
+    '20261012000000_catalog_lists_grant',
   ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {

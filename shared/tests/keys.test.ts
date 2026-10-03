@@ -191,7 +191,7 @@ function navChords(panel: 'master' | 'office'): Array<[string, string | undefine
 describe('the command catalogue', () => {
   it('numbers each panel nav from one, in that panel own sidebar order', () => {
     const office = COMMANDS.filter((command) => command.panel === 'office' && command.navOrder);
-    expect(office.map((command) => command.navOrder)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
+    expect(office.map((command) => command.navOrder)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
     expect(office[0]?.tab).toBe('basicHome');
     expect(office[4]?.tab).toBe('conflicts');
     // The Chatroom follows Conflicts in the Work group; its letter chord takes no digit.
@@ -200,8 +200,19 @@ describe('the command catalogue', () => {
     expect(office[6]?.tab).toBe('printroom');
     // Reports has a row and no chord, so it takes no digit and pushes nothing else.
     expect(office[7]?.tab).toBe('reports');
-    expect(office[11]?.tab).toBe('settings');
-    expect(office[12]?.tab).toBe('logs');
+    // 1.4 D3: Lists follows Party Access, with a letter chord of its own.
+    expect(office[11]?.tab).toBe('lists');
+    expect(office[12]?.tab).toBe('settings');
+    expect(office[13]?.tab).toBe('logs');
+  });
+
+  it('binds Lists to Alt+G on both panels, and no other command takes it', () => {
+    for (const panel of ['master', 'office'] as const) {
+      const holders = COMMANDS.filter(
+        (command) => (command.panel === panel || command.panel === undefined) && command.defaultChord === 'Alt+G',
+      );
+      expect(holders.map((command) => command.id)).toEqual([`nav.${panel}.lists`]);
+    }
   });
 
   it('binds the Chatroom to Alt+C on both panels, with no Meta twin on a Mac', () => {

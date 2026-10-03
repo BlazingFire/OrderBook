@@ -3267,4 +3267,12 @@ export const EN_MESSAGES = {
   'printroom.dialog.sent': 'Sent to the Printroom',
   'printroom.dialog.offline': 'The Master is not reachable. Print on this PC instead.',
   'printroom.autoPrintFailed': 'Auto-print failed for {party}: {error}',
+  // 1.4 D3: Lists (grades, packaging, brands)
+  'nav.lists': 'Lists',
+  'lists.nav.grades': 'Grades',
+  'lists.nav.packaging': 'Packaging',
+  'lists.nav.brands': 'Brands',
+  'lists.noAccess.title': 'The lists are not part of your role',
+  'lists.noAccess.description': 'Ask an administrator for {permission}.',
+  'permission.catalog.lists.manage': 'Add, rename, reorder and remove grades, packaging types and brands',
 } as const;

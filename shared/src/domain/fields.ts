@@ -27,6 +27,18 @@ export function isFieldListKey(value: unknown): value is FieldListKey {
   return (FIELD_LIST_KEYS as readonly unknown[]).includes(value);
 }
 
+/**
+ * 1.4 D3: the three lists the owner's admin menu edits under
+ * `catalog.lists.manage` instead of `fields.manage`: brands, packaging, grades.
+ */
+export const CATALOG_LIST_KEYS = ['product.brand', 'line.packaging', 'line.grade'] as const;
+
+export type CatalogListKey = (typeof CATALOG_LIST_KEYS)[number];
+
+export function isCatalogListKey(value: unknown): value is CatalogListKey {
+  return (CATALOG_LIST_KEYS as readonly unknown[]).includes(value);
+}
+
 export interface FieldSetDefinition {
   listKey: FieldListKey;
   labelToken: MessageKey;

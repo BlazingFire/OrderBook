@@ -4310,4 +4310,12 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'printroom.dialog.sent': 'प्रिंटरूम में भेज दिया गया',
   'printroom.dialog.offline': 'मास्टर तक नहीं पहुँचा जा सका। इसके बजाय इसी PC पर प्रिंट करें।',
   'printroom.autoPrintFailed': '{party} का ऑटो-प्रिंट विफल रहा: {error}',
+  // 1.4 D3: Lists (grades, packaging, brands)
+  'nav.lists': 'सूचियाँ',
+  'lists.nav.grades': 'ग्रेड',
+  'lists.nav.packaging': 'पैकेजिंग',
+  'lists.nav.brands': 'ब्रांड',
+  'lists.noAccess.title': 'सूचियाँ आपकी भूमिका में शामिल नहीं हैं',
+  'lists.noAccess.description': '{permission} के लिए किसी एडमिन से कहें।',
+  'permission.catalog.lists.manage': 'ग्रेड, पैकेजिंग प्रकार और ब्रांड जोड़ें, नाम बदलें, क्रम बदलें और हटाएँ',
 };

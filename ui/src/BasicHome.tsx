@@ -47,6 +47,7 @@ const HUE: Record<string, string> = {
   products: 'purple',
   parties: 'pink',
   partyAccess: 'indigo',
+  lists: 'green',
   panels: 'cyan',
   access: 'indigo',
   fields: 'teal',
