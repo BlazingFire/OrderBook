@@ -16,7 +16,7 @@
  * weight, product and colour read the same as the list row's.
  *
  * In the owner's words this is a **sub product** (`docs/catalogue/
- * CATALOGUE_MODEL.md` §1): its brand and product (`OPT · One Piece Toilet`)
+ * CATALOGUE_MODEL.md` §1): its brand and product (`One Piece Toilet`)
  * are read through its category, and its colour is shown by the rule the
  * catalogue gives it (§2) — the fixed colour, "Multicolour", or, for a
  * numbered design, no Colour field at all.
@@ -150,7 +150,7 @@ export function ProductDetail({
             <DetailField label={t('product.field.brand')} value={product.brand} />
             <DetailField
               label={t('product.detail.category')}
-              value={productLabel(product.categoryCode, product.categoryName)}
+              value={productLabel(product.categoryName)}
             />
             <DetailField
               label={t('product.detail.code')}

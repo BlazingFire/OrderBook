@@ -208,7 +208,7 @@ describe('the sub-product list', () => {
     expect(filter.closest('.ob-filterbar')).toBeNull();
 
     fireEvent.focus(filter);
-    fireEvent.mouseDown(screen.getByRole('option', { name: 'OPT · One Piece Toilet' }));
+    fireEvent.mouseDown(screen.getByRole('option', { name: 'One Piece Toilet' }));
     await waitFor(() =>
       expect(transport.listProducts).toHaveBeenLastCalledWith(
         expect.objectContaining({ categoryId: 'c-opt' }),
@@ -224,7 +224,7 @@ describe('the sub-product list', () => {
 
     const filter = screen.getByRole('combobox', { name: t('catalog.products.productFilter') });
     fireEvent.focus(filter);
-    fireEvent.mouseDown(screen.getByRole('option', { name: 'OPT · One Piece Toilet' }));
+    fireEvent.mouseDown(screen.getByRole('option', { name: 'One Piece Toilet' }));
     await waitFor(() =>
       expect(transport.listProducts).toHaveBeenLastCalledWith(
         expect.objectContaining({ categoryId: 'c-opt' }),
@@ -241,8 +241,8 @@ describe('the sub-product list', () => {
     );
 
     fireEvent.focus(screen.getByRole('combobox', { name: t('catalog.products.productFilter') }));
-    expect(screen.getByRole('option', { name: 'WB · Wash Basin' })).toBeTruthy();
-    expect(screen.queryByRole('option', { name: 'OPT · One Piece Toilet' })).toBeNull();
+    expect(screen.getByRole('option', { name: 'Wash Basin' })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: 'One Piece Toilet' })).toBeNull();
   });
 
   it('reads each row as the catalogue does: CODE · Name, the brand and the colour by its rule', async () => {
@@ -264,7 +264,9 @@ describe('the sub-product list', () => {
     const row = (name: string) => screen.getByText(name).closest('tr') as HTMLElement;
 
     for (const name of ['102 (9")', 'ORISSA', '1111']) {
-      expect(row(name).textContent).toContain('OPT · One Piece Toilet');
+      expect(row(name).textContent).toContain('One Piece Toilet');
+      // The main-product code is its own column, never part of the product's name (R14).
+      expect(row(name).textContent).not.toMatch(/OPT\s*[·-]\s*One Piece/);
       expect(row(name).textContent).toContain('Swisware+');
       // The row's own joined copy is stale on purpose: the category wins.
       expect(row(name).textContent).not.toContain('Old brand');

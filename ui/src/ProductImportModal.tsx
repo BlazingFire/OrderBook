@@ -11,7 +11,7 @@
  * the party import; this file is what is specific to products: the words, the
  * modes, and a sample row read the way the catalogue does
  * (`docs/catalogue/CATALOGUE_MODEL.md` §1) — brand, product
- * (`OPT · One Piece Toilet`), sub product — so a file whose rows landed under
+ * (`One Piece Toilet`), sub product — so a file whose rows landed under
  * the wrong product is caught before anything is written.
  */
 
@@ -59,7 +59,7 @@ const sampleColumns = (): DataTableColumn<ProductInput>[] => [
     key: 'category',
     header: t('catalog.products.column.category'),
     width: rem(170),
-    render: (row) => productLabel(row.categoryCode, row.categoryName) || '—',
+    render: (row) => productLabel(row.categoryName) || '—',
   },
   {
     key: 'name',

@@ -9,7 +9,7 @@
  *   same reason). This pins where it renders, and that choosing from it filters;
  * - a brand chip asks the Master for that brand and clears a product of
  *   another brand;
- * - each row reads as the catalogue does — `OPT · One Piece Toilet`, the
+ * - each row reads as the catalogue does — `One Piece Toilet`, the
  *   brand, and the colour its rule shows.
  *
  * Here rather than beside the screen because `ui/tests` is the only jsdom suite.
@@ -140,7 +140,7 @@ describe('CatalogScreen sub-product list', () => {
     expect(filter.closest('.ob-filterbar')).toBeNull();
 
     fireEvent.focus(filter);
-    fireEvent.mouseDown(screen.getByRole('option', { name: 'OPT · One Piece Toilet' }));
+    fireEvent.mouseDown(screen.getByRole('option', { name: 'One Piece Toilet' }));
     await waitFor(() =>
       expect(listProducts).toHaveBeenLastCalledWith(
         expect.objectContaining({ categoryId: 'c-opt' }),
@@ -164,8 +164,8 @@ describe('CatalogScreen sub-product list', () => {
     fireEvent.focus(
       screen.getByRole('combobox', { name: t('catalog.products.productFilter') }),
     );
-    expect(screen.getByRole('option', { name: 'OPT · One Piece Toilet' })).toBeTruthy();
-    expect(screen.queryByRole('option', { name: 'WB · Wash Basin' })).toBeNull();
+    expect(screen.getByRole('option', { name: 'One Piece Toilet' })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: 'Wash Basin' })).toBeNull();
   });
 
   it('reads each row as the catalogue does: brand, product, and the colour by its rule', async () => {
@@ -184,7 +184,9 @@ describe('CatalogScreen sub-product list', () => {
     await screen.findByText('1111');
 
     for (const name of ['102 (9")', 'MAGENTA', 'ORISSA', '1111']) {
-      expect(row(name).textContent).toContain('OPT · One Piece Toilet');
+      expect(row(name).textContent).toContain('One Piece Toilet');
+      // The main-product code is its own column, never part of the product's name (R14).
+      expect(row(name).textContent).not.toMatch(/OPT\s*[·-]\s*One Piece/);
       expect(row(name).textContent).toContain('Swisware+');
       expect(row(name).textContent).not.toContain('Old brand');
     }

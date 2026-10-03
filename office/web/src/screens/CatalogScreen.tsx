@@ -56,7 +56,7 @@
  * `fitColumns` rests on: the whole record is one click from the row.
  *
  * **Catalogue v2 (2026-09-28) made the Products tab the sub-product list**
- * (`docs/catalogue/CATALOGUE_MODEL.md` §1): Brand, Product (`OPT · One Piece
+ * (`docs/catalogue/CATALOGUE_MODEL.md` §1): Brand, Product (`One Piece
  * Toilet`), Sub product, Size, the colour its rule shows (§2), Codes, Weight
  * — one figure per row, now that a sub product has one variant rather than a
  * table of them. Its
@@ -715,7 +715,7 @@ export function CatalogScreen({
       width: 'minmax(0, 1.6fr)',
       render: (product) => {
         const category = productOf(product);
-        return productLabel(category.code, category.name) || '—';
+        return productLabel(category.name) || '—';
       },
     },
     {
@@ -835,7 +835,7 @@ export function CatalogScreen({
           <option value="">{t('catalog.products.allProducts')}</option>
           {categories.map((category) => (
             <option key={category.id} value={category.id}>
-              {productLabel(category.code, category.name)}
+              {productLabel(category.name)}
             </option>
           ))}
         </Select>

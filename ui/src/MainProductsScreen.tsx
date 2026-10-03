@@ -14,7 +14,7 @@
  * Products -> Products and -> Brands: the two sidebar pages beside the
  * sub-product list (`docs/catalogue/CATALOGUE_MODEL.md` §1, §5).
  *
- * A **product** here is a category in the code's words — `OPT · One Piece
+ * A **product** here is a category in the code's words — `One Piece
  * Toilet`, with a code, a brand and a catalogue order — and its sub products
  * are the models under it.
  *
@@ -157,7 +157,7 @@ export function MainProductsScreen({
           items: [
             {
               id: 'products.main.detail',
-              label: productLabel(open.code, open.name),
+              label: productLabel(open.name),
               icon: 'products',
             },
           ],
@@ -278,7 +278,7 @@ export function MainProductsScreen({
 
     return (
       <EditorScreen
-        title={productLabel(open.code, open.name)}
+        title={productLabel(open.name)}
         meta={open.brand ? <span className="ob-small">{open.brand}</span> : undefined}
         onBack={() => {
           setOpenId(null);

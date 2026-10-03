@@ -30,12 +30,14 @@ Owner answers this rests on (2026-09-28):
 | Owner's term | Stored as | Example |
 |---|---|---|
 | Brand | option list `product.brand` (value = label = brand name) + `product_categories.brand` | `Swisware+` |
-| Product | `product_categories` row | `OPT — One Piece Toilet` |
+| Product | `product_categories` row | `One Piece Toilet` (code `OPT`) |
 | Product code | `product_categories.code` — alphanumeric, unique per tenant among live rows | `OPT` |
 | Sub product | a `products` row (a "model") with **exactly one variant**; its printed identifier is `products.name` | `102 (9")`, `1111`, `MAGENTA` |
 | Sub product software code | that variant's `product_variants.code` (already tenant-unique) | `OPT-0001` |
 | Size | `products.size` | `L-27, B-15, H-26` |
 | Catalogue order | `product_categories.sort_order`, `products.sort_order` | |
+
+**A product's name never shows its code (1.4, R14).** `OPT` is the Product code: it has its own column and field and still finds the product when typed in a search, but every list, picker, chip, line subtitle, log entry and refusal names the product as `One Piece Toilet` (plus its brand where a picker needs it). The one composer is `productLabel(name, brand?)` in `ui/src/catalogueSummary.ts` (the Office re-exports it) and `categoryLabel` in `master/src/services/catalog.service.ts`; `ui/tests/product-label.test.ts` fails if a screen passes a code to it. This applies to every product code, not only OPT.
 
 UI wording: **Product** = the category, **Sub product** = the model. Code
 identifiers stay (`category*`, `product*`, `variant*`); nothing is renamed.

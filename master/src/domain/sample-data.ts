@@ -165,8 +165,8 @@ export interface SampleProduct {
 
 /* prettier-ignore */
 export const SAMPLE_PRODUCTS: readonly SampleProduct[] = [
-  { model: '102', alias: 'OPT 102', weights: { '102': 32.5 }, pattern: 'plain', launchYear: 2023 },
-  { model: '107', alias: 'OPT 107', weights: { '107': 33 }, pattern: 'plain', launchYear: 2024 },
+  { model: '102', alias: 'Toilet 102', weights: { '102': 32.5 }, pattern: 'plain', launchYear: 2023 },
+  { model: '107', alias: 'Toilet 107', weights: { '107': 33 }, pattern: 'plain', launchYear: 2024 },
   { model: '1181', alias: 'Triangle red', weights: { '1181': 33.5 }, pattern: 'stone', launchYear: 2025 },
   { model: '1184', alias: 'Triangle blue', weights: { '1184': 33.5 }, pattern: 'stone', launchYear: 2025 },
   { model: 'DAMRU', weights: { 'DAMRU-WHITE': 18, '41': 18.5, '42': 18.5, '46': 18.5 }, pattern: 'marble', launchYear: 2022 },
@@ -303,7 +303,7 @@ export interface SamplePartyVariant {
 }
 
 export const SAMPLE_PARTY_VARIANTS: readonly SamplePartyVariant[] = [
-  { party: 'ganesh', code: '102', alias: 'OPT 102', packaging: 'Box' },
+  { party: 'ganesh', code: '102', alias: 'Toilet 102', packaging: 'Box' },
   { party: 'ganesh', code: 'DAMRU-WHITE', alias: 'Damru', packaging: 'Paper' },
   { party: 'ganesh', code: 'BIG-STERLING-SET-WHITE', alias: 'Big Sterling', packaging: 'Box' },
   { party: 'patel', code: 'WB-18X12', alias: 'WB 18x12', packaging: 'Box' },

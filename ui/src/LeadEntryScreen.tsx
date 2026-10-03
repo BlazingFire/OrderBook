@@ -1654,7 +1654,7 @@ function LeadEntryForm({
                   </span>
                   <span className="ob-body-strong">{draft.productName}</span>
                   <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                    {[draft.categoryCode, draft.categoryName, draft.size]
+                    {[draft.categoryName, draft.size]
                       .filter(Boolean)
                       .join(' · ')}
                   </span>
@@ -1688,7 +1688,7 @@ function LeadEntryForm({
                   {category && (
                     <span className="ob-chip" aria-pressed="true" style={{ cursor: 'default' }}>
                       <span className="ob-ellipsis">
-                        {[category.code, category.name].filter(Boolean).join(' · ')}
+                        {category.name}
                       </span>
                       <button
                         type="button"
@@ -3109,7 +3109,7 @@ function ReviewModal({
                 <span className="ob-body-strong">{first.productName}</span>
                 <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
                   {[
-                    first.categoryCode ?? first.categoryName,
+                    first.categoryName,
                     first.size,
                     lineColourText(group, first.productName),
                     first.grade,

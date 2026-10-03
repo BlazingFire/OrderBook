@@ -426,11 +426,9 @@ function assertProductInput(input: ProductInput): void {
   }
 }
 
-/** `OPT · One Piece Toilet` — how the log and a refusal name a sub product's product. */
-function categoryLabel(product: Pick<Product, 'categoryCode' | 'categoryName'>): string {
-  return product.categoryCode
-    ? `${product.categoryCode} · ${product.categoryName}`
-    : product.categoryName;
+/** `One Piece Toilet` — how the log and a refusal name a sub product's product (never its code). */
+function categoryLabel(product: Pick<Product, 'categoryName'>): string {
+  return product.categoryName;
 }
 
 /**

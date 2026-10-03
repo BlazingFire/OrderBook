@@ -22,15 +22,8 @@ function active(product: Product) {
   return product.variants.filter((variant) => variant.isActive);
 }
 
-/**
- * A product (a category) the way the catalogue writes it, `OPT · One Piece
- * Toilet` (`docs/catalogue/CATALOGUE_MODEL.md` §1) — the list column, its
- * filter, the form's picker and the detail all say it so. A category from
- * before catalogue v2 has no code and reads as its bare name.
- */
-export function productLabel(...parts: Array<string | null | undefined>): string {
-  return parts.filter(Boolean).join(' · ');
-}
+/** One copy, in the ui kit: a product's name never carries its main-product code. */
+export { productLabel } from '@orderbook/ui';
 
 /**
  * Catalogue order, for products and sub products alike: `sortOrder` first,
