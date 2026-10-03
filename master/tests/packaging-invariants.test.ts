@@ -850,6 +850,22 @@ describe('the Windows 7 Office yml', () => {
     expect(hook).toContain('KB2999226');
   });
 
+  it('never reads ${__FILEDIR__} inside a macro (it would name electron-builder\'s template folder)', () => {
+    // The 1.3.0 build failed on exactly this: a File line in customInstall used
+    // ${__FILEDIR__}, which makensis expands where the macro is inserted.
+    for (const file of [
+      ['master', 'installer', 'installer.nsh'],
+      ['office', 'installer', 'installer.nsh'],
+      ['office', 'installer', 'installer-legacy.nsh'],
+      ['tools', 'nsis', 'verified-powershell.nsh'],
+    ]) {
+      const text = readText(...file);
+      for (const body of text.match(/^!macro\b[\s\S]*?^!macroend/gm) ?? []) {
+        expect(body, file.join('/')).not.toContain('${__FILEDIR__}');
+      }
+    }
+  });
+
   it('ships the uninstall scripts and the staged panel the same way', () => {
     for (const line of [
       '  - from: staging\n    to: panel',

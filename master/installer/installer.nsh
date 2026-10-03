@@ -25,6 +25,10 @@
   !error "script-hashes.nsh did not define UNINSTALL_SCRIPT_SHA256"
 !endif
 !include "${__FILEDIR__}\..\..\tools\nsis\verified-powershell.nsh"
+; ${__FILEDIR__} inside a macro names the folder of the file the macro is
+; inserted into (electron-builder's installSection.nsh), so this file's own
+; folder is captured here, at top level, for the File line in customInstall.
+!define OB_MASTER_INSTALLER_DIR "${__FILEDIR__}"
 
 !macro customInstall
   ; Every program an administrator runs here is named by its absolute System32
@@ -60,7 +64,7 @@
   Push $R0
   Push $R1
   InitPluginsDir
-  File "/oname=$PLUGINSDIR\update-dirs.ps1" "${__FILEDIR__}\apply-update\update-dirs.ps1"
+  File "/oname=$PLUGINSDIR\update-dirs.ps1" "${OB_MASTER_INSTALLER_DIR}\apply-update\update-dirs.ps1"
   System::Call 'Kernel32::SetEnvironmentVariable(t "OB_INSTDIR", t "$INSTDIR")'
   !insertmacro orderbookRunVerified "$PLUGINSDIR\update-dirs.ps1" "${UPDATE_DIRS_SHA256}" "-Mode Install -InstallDir $$env:OB_INSTDIR" "1"
   Pop $R1
