@@ -74,13 +74,13 @@ describe('BasicHome', () => {
     expect(screen.queryByText('Settings')).toBeNull();
   });
 
-  it('shows the chord each module answers to, and none for a module without one', () => {
+  it('shows the chord each module answers to', () => {
     home();
     expect(tile('Dashboard').querySelector('.ob-tile-chord')?.textContent).toBe('Alt+2');
     expect(tile('Settings').querySelector('.ob-tile-chord')?.textContent).toBe('Alt+9');
     expect(tile('Settings').getAttribute('aria-keyshortcuts')).toBe('Alt+9');
-    // Reports has no chord on either panel.
-    expect(tile('Reports').querySelector('.ob-tile-chord')).toBeNull();
+    // Reports takes a letter chord (1.4 R13), so its tile carries one too.
+    expect(tile('Reports').querySelector('.ob-tile-chord')?.textContent).toBe('Alt+R');
   });
 
   it('follows the person’s own bindings, and hides a chip they cleared', () => {

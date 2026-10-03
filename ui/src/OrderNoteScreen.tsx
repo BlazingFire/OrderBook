@@ -33,6 +33,7 @@ import { createPortal } from 'react-dom';
 import { Button } from './Button.js';
 import { EditorScreen } from './EditorScreen.js';
 import { t } from './i18n.js';
+import { Modal } from './Modal.js';
 import { OrderNote } from './OrderNote.js';
 import { printOnly } from './printPortal.js';
 import type { PrintroomTransport } from './printroomModel.js';
@@ -116,6 +117,8 @@ export function OrderNoteScreen({
   const [printers, setPrinters] = useState<{ name: string; displayName: string }[]>([]);
   const [printer, setPrinter] = useState(() => stored(KEY_PRINTER) ?? '');
   const [printing, setPrinting] = useState(false);
+  /** The Preview dialog (1.4 R11): the pages as printed, with Print and Save PDF at hand. */
+  const [previewing, setPreviewing] = useState(false);
   /** One print or Save PDF at a time: `printOnly` marks the page and is not re-entrant. */
   const busyRef = useRef(false);
   const [printedAt] = useState(() => new Date());
@@ -270,6 +273,9 @@ export function OrderNoteScreen({
               { value: 'dispatch', label: t('orderNote.dispatch') },
             ]}
           />
+          <Button variant="secondary" onClick={() => setPreviewing(true)}>
+            {t('orderNote.previewButton')}
+          </Button>
           {canSend && (
             <Button variant="secondary" disabled={printing || saving} onClick={() => setSending(true)}>
               {t('orderNote.sendToPrintroom')}
@@ -355,6 +361,31 @@ export function OrderNoteScreen({
       <div className="ob-note-canvas">
         <OrderNote {...noteProps} />
       </div>
+
+      <Modal
+        open={previewing}
+        onClose={() => setPreviewing(false)}
+        size="xl"
+        title={t('orderNote.preview.title', {
+          title: `${header.number ?? header.id} · ${t(kind === 'filling' ? 'orderNote.filling' : 'orderNote.dispatch')}`,
+        })}
+        footer={
+          <>
+            {desktop?.savePdf && (
+              <Button variant="secondary" busy={saving} disabled={printing || saving} onClick={() => void savePdf()}>
+                {t('orderNote.savePdf')}
+              </Button>
+            )}
+            <Button variant="primary" busy={printing} disabled={printing || saving} onClick={() => void print()}>
+              {t('orderNote.print')}
+            </Button>
+          </>
+        }
+      >
+        <div className="ob-note-canvas">
+          <OrderNote {...noteProps} />
+        </div>
+      </Modal>
 
       {createPortal(
         <div className="ob-note-print-portal" ref={portalRef}>

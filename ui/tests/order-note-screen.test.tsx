@@ -8,7 +8,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Lead, Order } from '@orderbook/shared';
 
@@ -355,5 +355,32 @@ describe('the print stylesheet', () => {
     expect(print).toMatch(/\.ob-note-print-portal--active \{\s*display: block;/);
     // No rule shows every portal in print (which printed hidden kept-alive notes from a browser-menu print).
     expect(print).not.toMatch(/(^|[\s,])\.ob-note-print-portal \{\s*display: block/);
+  });
+});
+
+describe('the Preview dialog (1.4 R11)', () => {
+  it('opens the pages in an xl modal with Print and Save PDF inside, and prints from it', async () => {
+    const printPage = vi.fn().mockResolvedValue({ ok: true });
+    const savePdf = vi.fn().mockResolvedValue({ ok: true });
+    mount({ desktop: { printPage, savePdf, listPrinters: async () => [] } });
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.previewButton') }));
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.className).toContain('ob-modal--xl');
+    expect(dialog.querySelectorAll('.ob-note-page').length).toBeGreaterThan(0);
+    expect(dialog.textContent).toContain(LEAD.id);
+    expect(within(dialog).getByRole('button', { name: t('orderNote.savePdf') })).toBeTruthy();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: t('orderNote.print') }));
+    await waitFor(() => expect(printPage).toHaveBeenCalledWith({ deviceName: undefined, copies: 1 }));
+  });
+
+  it('closes with its own close button, leaving the note screen', () => {
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.previewButton') }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: t('modal.close') }));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

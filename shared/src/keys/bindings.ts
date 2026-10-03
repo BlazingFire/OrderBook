@@ -66,6 +66,21 @@ export function chordFor(commandId: string, overrides: BindingMap): Chord | null
   return chord;
 }
 
+/**
+ * Every chord that runs a command: the one `chordFor` names, plus its
+ * `alsoChords` while the person has not set a binding of their own for it.
+ */
+export function chordsFor(commandId: string, overrides: BindingMap): Chord[] {
+  const primary = chordFor(commandId, overrides);
+  const chords = primary ? [primary] : [];
+  if (Object.prototype.hasOwnProperty.call(overrides, commandId)) return chords;
+  for (const text of COMMANDS_BY_ID.get(commandId)?.alsoChords ?? []) {
+    const chord = parseChord(text);
+    if (chord && !isReservedChord(chord)) chords.push(chord);
+  }
+  return chords;
+}
+
 export interface BindingConflict {
   chord: string;
   commandIds: string[];

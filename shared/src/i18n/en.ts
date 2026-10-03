@@ -3152,6 +3152,19 @@ export const EN_MESSAGES = {
   'printroom.dialog.sent': 'Sent to the Printroom',
   'printroom.dialog.offline': 'The Master is not reachable. Print on this PC instead.',
   'printroom.autoPrintFailed': 'Auto-print failed for {party}: {error}',
+  // 1.4 D4: password eye
+  'password.show': 'Show password',
+  'password.hide': 'Hide password',
+  // 1.4 D4: note buttons, preview
+  'orderNote.column.notes': 'Notes',
+  'orderNote.previewButton': 'Preview',
+  'orderNote.preview.title': 'Preview: {title}',
+  // 1.4 D4: shortcuts
+  'keys.command.newParty': 'New party',
+  'keys.command.newProduct': 'New product',
+  'keys.command.signOut': 'Sign out',
+  'signOut.confirm.title': 'Sign out?',
+  'signOut.confirm.body': 'Anything you have open and have not saved will be lost.',
 
   // 1.4 D2: stock and inventory removed, replacement wording
   'validation.stock.retired': 'Stock is no longer part of OrderBook',

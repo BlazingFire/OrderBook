@@ -316,6 +316,34 @@ describe('the next person to sign in at this window', () => {
     expect(topbarTitle()).toBe(t('nav.master.dashboard'));
   });
 
+  it('1.4 R13: the sign-out chord asks first, and signs out only on confirm', async () => {
+    const calls = await boot(ADMIN, answers);
+    const chord = () =>
+      act(async () => {
+        document.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'L', code: 'KeyL', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }),
+        );
+        await wait(0);
+      });
+    const signedOut = () => calls.some((call) => call.url === '/api/auth/sign-out' && call.method === 'POST');
+
+    await chord();
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.textContent).toContain(t('signOut.confirm.title'));
+    expect(signedOut()).toBe(false);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: t('common.cancel') }));
+    await act(async () => wait(0));
+    expect(signedOut()).toBe(false);
+
+    await chord();
+    await act(async () => {
+      fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: t('action.signOut') }));
+      await wait(0);
+    });
+    expect(signedOut()).toBe(true);
+  }, 20_000);
+
   it('starts an Office user on Basic Home', async () => {
     await boot(ADMIN, (call) =>
       call.url === '/api/auth/sign-in' && call.method === 'POST'
@@ -464,6 +492,33 @@ describe('Basic Home and the landing screen', () => {
       t('nav.master.settings'),
       t('nav.updates'),
     ]);
+  });
+
+  it('1.4 R9: shows Chatroom and Printroom tiles for Management holding chat.use and print.send', async () => {
+    // Answer the chat and print routes the shell asks once it holds the keys.
+    const permissions = [...MANAGER, 'chat.use', 'print.send'];
+    await boot(permissions, ({ url }) => {
+      const path = url.split('?')[0];
+      if (url === '/api/auth/me') {
+        return json({ user: user(permissions, 'management'), sessionToken: 'session-1', defaultLocale: 'en' });
+      }
+      if (path === '/api/chat/rooms' || path === '/api/chat/tasks') return json([]);
+      if (path === '/api/print-jobs') return json({ jobs: [], nextCursor: null, waitingCount: 0 });
+      if (path === '/api/print-stations') return json([]);
+      return undefined;
+    });
+
+    const tiles = [...launcher().querySelectorAll('.ob-tile-label')].map((tile) => tile.textContent);
+    expect(tiles).toContain(t('nav.chatroom'));
+    expect(tiles).toContain(t('nav.printroom'));
+  });
+
+  it('1.4 R9: shows neither tile without the keys', async () => {
+    await bootAs('management', MANAGER);
+
+    const tiles = [...launcher().querySelectorAll('.ob-tile-label')].map((tile) => tile.textContent);
+    expect(tiles).not.toContain(t('nav.chatroom'));
+    expect(tiles).not.toContain(t('nav.printroom'));
   });
 
   it('opens a module from its tile, and the brand mark comes back to Basic Home', async () => {
@@ -771,9 +826,18 @@ describe('the Filling and Dispatch notes on an order', () => {
     return calls;
   }
 
-  it('is offered only with orders.export', async () => {
+  it('is offered with the right to view orders alone: printing a note is not exporting data (R10)', async () => {
     await openOrders([...ADMIN]);
-    expect(screen.queryByRole('button', { name: t('orderNote.filling') })).toBeNull();
+    expect(screen.getByRole('button', { name: t('orderNote.filling') })).toBeTruthy();
+    expect(screen.getByRole('button', { name: t('orderNote.dispatch') })).toBeTruthy();
+  });
+
+  it('opens a note straight from the list row, without a click on the row itself (R10)', async () => {
+    await openList([...ADMIN, 'parties.view'], t('nav.orders'));
+    await screen.findByText(ORDER.id);
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.dispatch') }));
+
+    expect((await screen.findAllByText(t('orderNote.page', { n: 1, total: 1 }))).length).toBeGreaterThan(0);
   });
 
   it('opens the Dispatch note with the party fetched for its header, and prints through the shell', async () => {
@@ -809,15 +873,18 @@ describe('the Filling and Dispatch notes on a pending order', () => {
     delete (window as { orderbook?: unknown }).orderbook;
   });
 
-  it('is offered only with leads.export, and absent otherwise', async () => {
+  it('is offered with the right to view leads alone, no export right needed (R10)', async () => {
     await openLeads(['leads.view', 'parties.view']);
-    expect(screen.queryByRole('button', { name: t('orderNote.filling') })).toBeNull();
-    expect(screen.queryByRole('button', { name: t('orderNote.dispatch') })).toBeNull();
-
-    cleanup();
-    await openLeads(['leads.view', 'leads.export', 'parties.view']);
     expect(screen.getByRole('button', { name: t('orderNote.filling') })).toBeTruthy();
     expect(screen.getByRole('button', { name: t('orderNote.dispatch') })).toBeTruthy();
+  });
+
+  it('opens a note straight from the list row (R10)', async () => {
+    await openList(['leads.view', 'parties.view'], t('nav.leads'));
+    await screen.findByText(LEAD.id);
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+
+    expect((await screen.findAllByText(t('orderNote.pendingOrderNo'))).length).toBeGreaterThan(0);
   });
 
   it('opens the Filling note headed "Pending Order No." with the lead id, party fetched', async () => {

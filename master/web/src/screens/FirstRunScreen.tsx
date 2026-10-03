@@ -37,6 +37,7 @@ import {
   apiErrorText,
   rem,
   t,
+  PasswordInput,
 } from '@orderbook/ui';
 
 interface Props {
@@ -578,9 +579,8 @@ function RestoreFlow({ onBack, onComplete }: { onBack: () => void; onComplete: (
                 </ul>
                 <FormField label={t('backup.restore.passphraseLabel')}>
                   {(id) => (
-                    <Input
+                    <PasswordInput
                       id={id}
-                      type="password"
                       value={passphrase}
                       onChange={(e) => setPassphrase(e.target.value)}
                       autoComplete="current-password"

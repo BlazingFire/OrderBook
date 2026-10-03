@@ -5871,7 +5871,7 @@ cancelled are audited), and it is absent for anybody holding neither `print.send
 1. **Send.** The note screen's *Send to Printroom* (`print.send`, a record the Master has) opens
    `SendToPrintroomDialog`; `POST /api/print-jobs` (an Office: `print:send`, after `flushBriefly` lets the
    outbox hand over a just-edited order) → `print.service#sendJob`: `cleanPrintJobInput` (shared), the
-   sender's rights (`print.send` plus `leads.export` / `orders.export`), the record read as the sender
+   sender's rights (`print.send` plus the right to view the record: `leads.view` / `orders.view`), the record read as the sender
    (`getLead` / `getOrder`, party scope), then one transaction: `insertJob` (`ON CONFLICT (tenant, sender,
    request_id) DO NOTHING`), the 30-day payload strip, the `print_job.sent` audit row. After the commit:
    `publishPrintJob`. Online-only: an Office with no link answers 503 and nothing is queued.
@@ -6536,3 +6536,19 @@ also imports `masterConnection`.
 
 *End of file. Keep it current: when you add a directory, a flow, a table or a guard,
 update the matching section here in the same change.*
+
+---
+
+## 16. 1.4 D4 additions (password eye, note buttons, preview, icons, shortcuts)
+
+Added on `d4/1.4`; the owner's R-numbers are in `CLAUDE_HELPER_D.md`.
+
+| What | Where | Held by |
+|---|---|---|
+| **R1** `PasswordInput`: an `Input` plus an eye toggle (a `type="button"` with `password.show` / `password.hide` labels, `initiallyVisible` for a field meant to be read). Every password field in `ui/`, `master/web` and `office/web` uses it, the Office pairing password included. | `ui/src/Form.tsx`, `.ob-password*` in `ui/src/base.css` | `ui/tests/password-input.test.tsx` (toggle, no submit, and a grep that fails on any raw `type="password"` outside `Form.tsx`) |
+| **R9** `print.send` for every Office and Management role (add-only union UPDATE, idempotent). The Chatroom grant already covered those tiers. | `master/src/db/migrations/20261013000000_printroom_office_management_grant.ts` | `master/tests/migration-printroom-grant.integration.test.ts`; the `1.4 R9` Basic Home tests in both shell tests |
+| **R10** `NoteButtons`: the Filling and Dispatch pair as a list-row column (`orderNote.column.notes`) on Master Pending and Final Orders and Office Pending and Final Orders, and as items in the Office lead board card menu. The gate is the right to view the record, not `*.export`. | `ui/src/NoteButtons.tsx`; the four screens | the `R10` cases in `master-shell.test.tsx` and `office-shell.test.tsx` |
+| **R11** Preview: a button on the note screen opens the pages in a `Modal` (`size="xl"`) with Print and Save PDF in its footer. | `ui/src/OrderNoteScreen.tsx` | `ui/tests/order-note-screen.test.tsx` |
+| **R12** Sign-out: `sign-out` icon, `.ob-btn--signout` with the `--signout-fg` token (light and dark). | `ui/src/icons.tsx`, `ui/src/tokens.css`, `ui/src/base.css`, both `App.tsx` | `ui/tests/nav-icons.test.tsx` |
+| **R18** `NAV_ICONS`: one icon per module, shared by the sidebar and Basic Home (its tiles without a drawing show the same icon). Both `App.tsx` nav rows read it. | `ui/src/navIcons.ts` | `ui/tests/nav-icons.test.tsx` |
+| **R13** F1 is `keys.help` (Cmd+/ on a Mac); letter chords for Reports Alt+R, Office panels Alt+O, Access Alt+A, Fields Alt+E, Logs Alt+L, Recycle bin Alt+B, Integrations Alt+I, App update Alt+U; new `party.new` Ctrl+Shift+A, `product.new` Ctrl+Shift+M (registered by the Parties / Products screens through `useCommand`), `session.signOut` Ctrl+Shift+L (asks first). A function key fires from inside a field. Alt+F / Alt+D stay the note screen's, Alt+C / Alt+P the Chatroom / Printroom, Alt+G is D3's. | `shared/src/keys/commands.ts`, `ui/src/KeyboardProvider.tsx` | `shared/tests/keys.test.ts`, `ui/tests/keyboard-provider.test.tsx`, `master-shell.test.tsx` |

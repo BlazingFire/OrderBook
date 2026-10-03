@@ -15,7 +15,7 @@ import { useCallback, useState, type FormEvent, type ReactNode } from 'react';
 import type { MasterKeyUnlock } from '@orderbook/shared';
 
 import { api } from '../api';
-import { Button, FieldError, FormField, Input, Modal, apiErrorText, t } from '@orderbook/ui';
+import { Button, FieldError, FormField, Modal, apiErrorText, t, PasswordInput } from '@orderbook/ui';
 
 export function MasterKeyForm({
   onUnlocked,
@@ -51,9 +51,8 @@ export function MasterKeyForm({
     >
       <FormField label={t('masterKey.label')} hint={t('masterKey.help')}>
         {(id) => (
-          <Input
+          <PasswordInput
             id={id}
-            type="password"
             value={key}
             autoFocus
             autoComplete="off"

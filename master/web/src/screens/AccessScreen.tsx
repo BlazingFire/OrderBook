@@ -54,6 +54,7 @@ import {
   useSubNav,
   useTopbarActions,
   type DataTableColumn,
+  PasswordInput,
 } from '@orderbook/ui';
 
 /**
@@ -959,9 +960,8 @@ function UsersTab({
           hint={t('access.users.revealPasswordConfirmHint')}
         >
           {(id) => (
-            <Input
+            <PasswordInput
               id={id}
-              type="password"
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
               autoFocus
@@ -1028,7 +1028,7 @@ function UsersTab({
       >
         <FormField label={t('access.users.newPassword')} hint={t('access.users.newPasswordHint')}>
           {(id) => (
-            <Input
+            <PasswordInput initiallyVisible
               id={id}
               value={passwordValue}
               onChange={(event) => setPasswordValue(event.target.value)}

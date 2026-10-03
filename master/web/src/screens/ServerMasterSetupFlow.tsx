@@ -29,6 +29,7 @@ import {
   apiErrorText,
   rem,
   t,
+  PasswordInput,
 } from '@orderbook/ui';
 
 /** The server's own floor (`validation.password.tooShort`), checked here too. */
@@ -136,9 +137,8 @@ export function ServerMasterAccountFields({
           </FormField>
           <FormField label={t('firstRun.serverMaster.password')}>
             {(id) => (
-              <Input
+              <PasswordInput
                 id={id}
-                type="password"
                 value={draft.password}
                 autoComplete="new-password"
                 onChange={(event) => patch(index, { password: event.target.value })}
@@ -147,9 +147,8 @@ export function ServerMasterAccountFields({
           </FormField>
           <FormField label={t('firstRun.serverMaster.confirmPassword')}>
             {(id) => (
-              <Input
+              <PasswordInput
                 id={id}
-                type="password"
                 value={draft.confirm}
                 autoComplete="new-password"
                 onChange={(event) => patch(index, { confirm: event.target.value })}

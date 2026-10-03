@@ -23,6 +23,7 @@ import {
   rem,
   t,
   type DataTableColumn,
+  PasswordInput,
 } from '@orderbook/ui';
 
 interface Props {
@@ -242,9 +243,8 @@ export function ConnectionScreen({ connection, onConnected }: Props) {
               </ul>
               <FormField label={t('backup.restore.passphraseLabel')}>
                 {(id) => (
-                  <Input
+                  <PasswordInput
                     id={id}
-                    type="password"
                     value={restorePassphrase}
                     onChange={(event) => setRestorePassphrase(event.target.value)}
                     autoComplete="current-password"
@@ -371,7 +371,7 @@ export function ConnectionScreen({ connection, onConnected }: Props) {
             <div style={{ marginTop: 'var(--s-16)' }}>
               <FormField label={t('connection.manual.password')}>
                 {(id) => (
-                  <Input
+                  <PasswordInput
                     id={id}
                     value={pairingPassword}
                     onChange={(event) => setPairingPassword(event.target.value)}

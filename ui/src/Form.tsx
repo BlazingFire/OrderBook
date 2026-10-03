@@ -9,12 +9,14 @@ import { rem } from './rem.js';
  * that wants ↑/↓ ± Shift stepping adds it on its own quantity cells (§9.2).
  */
 
-import { forwardRef, useId } from 'react';
+import { forwardRef, useId, useState } from 'react';
 import type {
   InputHTMLAttributes,
   ReactNode,
   TextareaHTMLAttributes,
 } from 'react';
+import { Icon } from './icons.js';
+import { t } from './i18n.js';
 
 export function Label({ htmlFor, children }: { htmlFor?: string; children: ReactNode }) {
   return (
@@ -73,6 +75,41 @@ export const Input = forwardRef<
       aria-invalid={invalid || undefined}
       {...rest}
     />
+  );
+});
+
+/**
+ * The one password field: an Input with an eye toggle that shows what is typed.
+ * The toggle is a real button that is not a submit button, so Enter still
+ * submits the form and Tab reaches it. `initiallyVisible` is for fields whose
+ * value is meant to be read (an admin choosing someone's new password).
+ */
+export const PasswordInput = forwardRef<
+  HTMLInputElement,
+  Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & {
+    invalid?: boolean;
+    initiallyVisible?: boolean;
+  }
+>(function PasswordInput({ initiallyVisible = false, className, style, ...rest }, ref) {
+  const [visible, setVisible] = useState(initiallyVisible);
+  return (
+    <span className="ob-password" style={style}>
+      <Input
+        ref={ref}
+        className={['ob-password__input', className].filter(Boolean).join(' ')}
+        type={visible ? 'text' : 'password'}
+        {...rest}
+      />
+      <button
+        type="button"
+        className="ob-password__toggle"
+        aria-label={visible ? t('password.hide') : t('password.show')}
+        aria-pressed={visible}
+        onClick={() => setVisible((v) => !v)}
+      >
+        <Icon name={visible ? 'eye-off' : 'eye'} size={16} />
+      </button>
+    </span>
   );
 });
 

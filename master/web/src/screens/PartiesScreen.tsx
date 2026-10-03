@@ -74,6 +74,7 @@ import {
   useSubNav,
   useToast,
   type DataTableColumn,
+  useCommand,
 } from '@orderbook/ui';
 
 /**
@@ -134,6 +135,7 @@ export function PartiesScreen({
   const [recentLeads, setRecentLeads] = useState<Lead[] | null>(null);
 
   const canCreate = permissions.includes('parties.create');
+  useCommand('party.new', canCreate ? () => setCreating(true) : null);
   const canEdit = permissions.includes('parties.edit');
   const canDelete = permissions.includes('parties.delete');
   const canViewLeads = permissions.includes('leads.view');

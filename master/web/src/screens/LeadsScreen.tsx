@@ -64,6 +64,7 @@ import {
   useToast,
   type DataTableColumn,
   type PrintroomTransport,
+  NoteButtons,
 } from '@orderbook/ui';
 
 const PAGE_SIZE = 500;
@@ -293,7 +294,8 @@ export function LeadsScreen({
   useEffect(() => {
     setError(null);
     setEditingId(null);
-    setNote(null);
+    // A note opened from the list's row action arrives with its record; keep it.
+    setNote((current) => (current && current.id === openId ? current : null));
   }, [openId]);
 
   const noteKind = note && note.id === openLead?.id ? note.kind : null;
@@ -505,6 +507,21 @@ export function LeadsScreen({
       width: rem(160),
       render: (lead) => <span className="ob-small">{formatDateTime(lead.createdAt)}</span>,
     },
+    {
+      key: 'notes',
+      header: t('orderNote.column.notes'),
+      priority: 2,
+      width: rem(220),
+      render: (lead) =>
+        lead.convertedOrderId ? null : (
+          <NoteButtons
+            onNote={(kind) => {
+              setNote({ id: lead.id, kind });
+              onOpenId(lead.id);
+            }}
+          />
+        ),
+    },
   ];
 
   // The note of a pending order. Its vehicle number is for the sheet only: a
@@ -591,9 +608,9 @@ export function LeadsScreen({
                   {t('lead.edit.action')}
                 </Button>
               )}
-              {/* The same `leads.export` gate as the PDF, and only for a pending
-                  order: once converted, the final order carries the notes. */}
-              {canPreviewPdf && !openLead.convertedOrderId && (
+              {/* Viewing the record is the right to print its note (1.4 R10); only for a
+                  pending order: once converted, the final order carries the notes. */}
+              {!openLead.convertedOrderId && (
                 <>
                   <Button
                     variant="secondary"

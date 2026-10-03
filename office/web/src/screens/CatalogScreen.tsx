@@ -101,6 +101,7 @@ import {
   useSubNav,
   useToast,
   type DataTableColumn,
+  useCommand,
 } from '@orderbook/ui';
 import { PartyDetail } from './PartyDetail';
 import { ProductDetail, SubProductColour } from './ProductDetail';
@@ -175,6 +176,8 @@ export function CatalogScreen({
    */
   const canCreateParty = view.permissions.includes('parties.create');
   const canCreateProduct = view.permissions.includes('products.create');
+  useCommand('party.new', canCreateParty ? () => setPartyFormOpen(true) : null);
+  useCommand('product.new', canCreateProduct ? () => setProductDrawerOpen(true) : null);
 
   const [partySearch, setPartySearch] = useState('');
   const [cityFilter, setCityFilter] = useState<string | null>(null);

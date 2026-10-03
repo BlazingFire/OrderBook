@@ -57,6 +57,7 @@ import * as reportIndexesAndGrants from './20261004000000_report_indexes_and_gra
 import * as chatroom from './20261005000000_chatroom.js';
 import * as printroom from './20261006000000_printroom.js';
 import * as backupAllPermissionGrant from './20261007000000_backup_all_permission_grant.js';
+import * as printroomOfficeManagementGrant from './20261013000000_printroom_office_management_grant.js';
 
 export interface Migration {
   name: string;
@@ -259,6 +260,11 @@ export const migrations: Migration[] = [
   {
     name: '20261007000000_backup_all_permission_grant',
     ...backupAllPermissionGrant,
+  },
+  // 1.4 D4 (R9): `print.send` for Office and Management roles.
+  {
+    name: '20261013000000_printroom_office_management_grant',
+    ...printroomOfficeManagementGrant,
   },
 ];
 

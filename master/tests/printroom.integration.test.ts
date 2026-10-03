@@ -161,19 +161,30 @@ describe.skipIf(!canRunIntegrationTests)('printroom (integration)', () => {
       expect(again.document?.partyName).toBe('Shree Ceramics');
     });
 
-    it('needs print.send and the note\'s own export right, naming what is missing', async () => {
+    it('needs print.send and the right to view the record, naming what is missing', async () => {
       const { lead } = await seedLead();
       const order = await orders.convertLead({ leadId: lead.id }, admin);
-      const noSend = await person('nosend', ['leads.view', 'leads.export']);
-      const noLeadExport = await person('noexport', ['print.send', 'leads.view', 'orders.view', 'orders.export']);
-      const noOrderExport = await person('noorder', ['print.send', 'leads.view', 'leads.export', 'orders.view']);
+      const noSend = await person('nosend', ['leads.view', 'orders.view']);
+      const noLeadView = await person('noleadview', ['print.send', 'orders.view']);
+      const noOrderView = await person('noorderview', ['print.send', 'leads.view']);
 
       const input = (source: 'lead' | 'order', sourceId: string) => ({ requestId: requestId(), kind: 'filling', source, sourceId, copies: 1 });
 
       await expect(print.sendJob(input('lead', lead.id), noSend.actor, LAN)).rejects.toMatchObject({ permission: 'print.send' });
-      await expect(print.sendJob(input('lead', lead.id), noLeadExport.actor, LAN)).rejects.toMatchObject({ permission: 'leads.export' });
-      await expect(print.sendJob(input('order', order.id), noOrderExport.actor, LAN)).rejects.toMatchObject({ permission: 'orders.export' });
+      await expect(print.sendJob(input('lead', lead.id), noLeadView.actor, LAN)).rejects.toMatchObject({ permission: 'leads.view' });
+      await expect(print.sendJob(input('order', order.id), noOrderView.actor, LAN)).rejects.toMatchObject({ permission: 'orders.view' });
       expect(await db()('print_jobs').count({ count: '*' })).toEqual([{ count: '0' }]);
+    });
+
+    it('lets a user with only view rights send, since printing a note is not exporting (1.4 R9/R10)', async () => {
+      const { lead } = await seedLead();
+      const order = await orders.convertLead({ leadId: lead.id }, admin);
+      const viewer = await person('viewer', ['print.send', 'leads.view', 'orders.view']);
+
+      const input = (source: 'lead' | 'order', sourceId: string) => ({ requestId: requestId(), kind: 'filling', source, sourceId, copies: 1 });
+
+      await expect(print.sendJob(input('lead', lead.id), viewer.actor, LAN)).resolves.toMatchObject({ source: 'lead' });
+      await expect(print.sendJob(input('order', order.id), viewer.actor, LAN)).resolves.toMatchObject({ source: 'order' });
     });
 
     it('sends a final order\'s note, with its saved vehicle number when the dialog gave none', async () => {

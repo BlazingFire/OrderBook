@@ -45,6 +45,7 @@ import {
   useSubNav,
   useToast,
   useTopbarActions,
+  PasswordInput,
 } from '@orderbook/ui';
 
 import { api } from '../api';
@@ -751,9 +752,8 @@ function ConnectorDialog({
               }
             >
               {(id) => (
-                <Input
+                <PasswordInput
                   id={id}
-                  type="password"
                   value={draft.credential}
                   onChange={(e) => set('credential', e.target.value)}
                 />

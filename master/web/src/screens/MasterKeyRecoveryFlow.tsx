@@ -18,12 +18,12 @@ import {
   EmptyState,
   FieldError,
   FormField,
-  Input,
   LogoLockup,
   Select,
   apiErrorText,
   rem,
   t,
+  PasswordInput,
 } from '@orderbook/ui';
 
 /** The server's own floor (`validation.password.tooShort`), checked here too. */
@@ -133,9 +133,8 @@ export function MasterKeyRecoveryFlow({ onBack }: { onBack: () => void }) {
               </FormField>
               <FormField label={t('masterKey.recover.newPassword')}>
                 {(id) => (
-                  <Input
+                  <PasswordInput
                     id={id}
-                    type="password"
                     value={password}
                     autoComplete="new-password"
                     onChange={(event) => setPassword(event.target.value)}
@@ -144,9 +143,8 @@ export function MasterKeyRecoveryFlow({ onBack }: { onBack: () => void }) {
               </FormField>
               <FormField label={t('masterKey.recover.confirmPassword')}>
                 {(id) => (
-                  <Input
+                  <PasswordInput
                     id={id}
-                    type="password"
                     value={confirm}
                     autoComplete="new-password"
                     onChange={(event) => setConfirm(event.target.value)}

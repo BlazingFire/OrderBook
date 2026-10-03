@@ -60,6 +60,7 @@ import { Input } from './Form.js';
 import { t } from './i18n.js';
 import { LoadMorePager } from './CursorPager.js';
 import { ProductDetail, SubProductColour } from './ProductDetail.js';
+import { useCommand } from './KeyboardProvider.js';
 import { ProductDrawer, type CreatedProduct } from './ProductDrawer.js';
 import { ProductImportModal, exportCatalogueCsv } from './ProductImportModal.js';
 import { rem } from './rem.js';
@@ -109,6 +110,7 @@ export function SubProductsScreen({
 
   // Absent, not greyed - the convention `PartyAccessScreen.tsx` states.
   const canCreate = view.permissions.includes('products.create');
+  useCommand('product.new', canCreate ? () => setDrawerOpen(true) : null);
   const canEdit = view.permissions.includes('products.edit');
   const canImport = view.permissions.includes('products.bulk');
 

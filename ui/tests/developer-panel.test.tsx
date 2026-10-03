@@ -54,7 +54,7 @@ describe('DeveloperPanel, locked', () => {
   it('submits the typed password to onUnlock', async () => {
     const { onUnlock } = renderPanel();
 
-    const field = screen.getByLabelText(/password/i) as HTMLInputElement;
+    const field = screen.getByLabelText(/password/i, { selector: 'input' }) as HTMLInputElement;
     expect(field.type).toBe('password');
     fireEvent.change(field, { target: { value: 'Dev@OrderBook2026' } });
     await act(async () => {
@@ -72,7 +72,7 @@ describe('DeveloperPanel, locked', () => {
   it('treats an expired unlock as locked', () => {
     renderPanel({ status: unlockedFor(-5), tools: [tool()] });
     expect(screen.queryByText('Wipe now')).toBeNull();
-    expect(screen.getByLabelText(/password/i)).toBeTruthy();
+    expect(screen.getByLabelText(/password/i, { selector: 'input' })).toBeTruthy();
   });
 });
 

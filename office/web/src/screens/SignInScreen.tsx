@@ -40,6 +40,7 @@ import {
   rem,
   t,
   useConfirm,
+  PasswordInput,
 } from '@orderbook/ui';
 
 import { StoragePathCard } from '../components/StoragePathCard';
@@ -258,9 +259,8 @@ export function SignInScreen({ connection, onSignedIn, notice }: Props) {
 
             <FormField label={t('signin.password')}>
               {(id) => (
-                <Input
+                <PasswordInput
                   id={id}
-                  type="password"
                   value={password}
                   // Focused when a face was picked: the only thing left to do.
                   autoFocus={Boolean(chosen)}

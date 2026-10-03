@@ -47,7 +47,11 @@ export type IconName =
   | 'chat'
   | 'pin'
   | 'task'
-  | 'print';
+  | 'print'
+  | 'sign-out'
+  | 'key'
+  | 'plug'
+  | 'log';
 
 const PATHS: Record<IconName, string> = {
   // The Basic Home launcher, as drawn in the owner's mockup.
@@ -58,8 +62,7 @@ const PATHS: Record<IconName, string> = {
   orders: 'M3 4h10M3 8h10M3 12h7',
   inventory: 'M3 5.5h10v7H3zM3 5.5L5 3h6l2 2.5M8 5.5V12.5',
   products: 'M8 2.5L13.5 8L8 13.5L2.5 8z',
-  parties:
-    'M5.5 6.5a2.5 2.5 0 1 0 0-.01M10.5 6.5a2.5 2.5 0 1 0 0-.01M2.5 13c.6-2.2 2-3.2 3.5-3.2M13.5 13c-.6-2.2-2-3.2-3.5-3.2',
+  parties: 'M5.5 6.5a2.5 2.5 0 1 0 0-.01M10.5 6.5a2.5 2.5 0 1 0 0-.01M2.5 13c.6-2.2 2-3.2 3.5-3.2M13.5 13c-.6-2.2-2-3.2-3.5-3.2',
   conflicts: 'M8 2.8L13.5 12.5H2.5zM8 6.8v2.6M8 11.6v.01',
   settings: 'M3 5.5h10M3 10.5h10M5.5 4v3M10.5 9v3',
   shield: 'M8 2.2l4.8 1.9v3.6c0 2.9-1.9 4.8-4.8 6-2.9-1.2-4.8-3.1-4.8-6V4.1zM8 6v4M8 10h.01',
@@ -104,6 +107,11 @@ const PATHS: Record<IconName, string> = {
   task: 'M3 3.5h10v9H3zM5.5 8l1.8 1.8L10.5 6.5',
   // The Printroom: a printer, paper in at the top and out at the foot.
   print: 'M4.5 6V2.5h7V6M4.5 11.5H2.5V6h11v5.5h-2M4.5 9h7v4.5h-7z',
+  // 1.4 R12: sign-out, a door with an arrow leaving it.
+  'sign-out': 'M6.5 2.5h-3v11h3M6 8h7M10.5 5.3L13.2 8l-2.7 2.7',
+  key: 'M5.2 11a3 3 0 1 0 0-.01M7.4 9.2L13.5 3.3M11.5 5.3l1.5 1.5M9.6 7.1l1.2 1.2',
+  plug: 'M6 2.5v3M10 2.5v3M4.5 5.5h7v2.5a3.5 3.5 0 0 1-7 0zM8 11.5V14',
+  log: 'M3.5 2.5h9v11h-9zM5.5 5.5h5M5.5 8h5M5.5 10.5h3',
 };
 
 export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {

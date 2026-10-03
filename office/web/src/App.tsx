@@ -106,6 +106,8 @@ import {
   type ScreenSpec,
   type SidebarMode,
   type SubPage,
+  NAV_ICONS,
+  useConfirm,
 } from '@orderbook/ui';
 import { dispatchChat, officeChatTransport } from './chatTransport';
 import { dispatchPrint, officePrintroomTransport } from './printroomTransport';
@@ -221,6 +223,7 @@ export function App() {
 
 function OfficePanel() {
   const toast = useToast();
+  const confirm = useConfirm();
   // For the event stream below, which must not reopen whenever this changes.
   const toastRef = useRef(toast);
   toastRef.current = toast;
@@ -652,6 +655,11 @@ function OfficePanel() {
       }
     });
 
+    // A role or user edit on the Master: read the session again, which now holds the new permissions.
+    source.addEventListener('session', () => {
+      void refreshSession();
+    });
+
     source.addEventListener('snapshot', (event) => {
       setView(JSON.parse((event as MessageEvent).data) as LocalView);
       setViewRevision((count) => count + 1);
@@ -996,11 +1004,11 @@ function OfficePanel() {
           // Basic Home and the Dashboard are always present, unlike the rest of
           // this group: they only gather what the screens below already show,
           // so they need no permission of their own beyond being signed in.
-          { id: 'basicHome', label: t('nav.basicHome'), icon: 'home' as const },
-          { id: 'dashboard', label: t('nav.dashboard'), icon: 'dashboard' as const },
-          can('leads.view') ? { id: 'leads', label: t('nav.leads'), icon: 'leads' as const } : null,
+          { id: 'basicHome', label: t('nav.basicHome'), icon: NAV_ICONS.basicHome },
+          { id: 'dashboard', label: t('nav.dashboard'), icon: NAV_ICONS.dashboard },
+          can('leads.view') ? { id: 'leads', label: t('nav.leads'), icon: NAV_ICONS.leads } : null,
           can('orders.view')
-            ? { id: 'orders', label: t('nav.orders'), icon: 'orders' as const }
+            ? { id: 'orders', label: t('nav.orders'), icon: NAV_ICONS.orders }
             : null,
           /*
            * Resolving merge conflicts needs `sync.resolveConflicts`, but the
@@ -1014,14 +1022,14 @@ function OfficePanel() {
             ? {
                 id: 'conflicts',
                 label: t('nav.conflicts'),
-                icon: 'conflicts' as const,
+                icon: NAV_ICONS.conflicts,
                 count: openConflicts > 0 ? openConflicts : undefined,
               }
             : rejections.length > 0 || tab === 'conflicts'
               ? {
                   id: 'conflicts',
                   label: t('nav.conflicts'),
-                  icon: 'conflicts' as const,
+                  icon: NAV_ICONS.conflicts,
                   count: rejections.length > 0 ? rejections.length : undefined,
                 }
               : null,
@@ -1029,7 +1037,7 @@ function OfficePanel() {
             ? {
                 id: 'chatroom',
                 label: t('nav.chatroom'),
-                icon: 'chat' as const,
+                icon: NAV_ICONS.chatroom,
                 count: chatUnread.total > 0 ? chatUnread.total : undefined,
               }
             : null,
@@ -1037,7 +1045,7 @@ function OfficePanel() {
             ? {
                 id: 'printroom',
                 label: t('nav.printroom'),
-                icon: 'print' as const,
+                icon: NAV_ICONS.printroom,
                 count: printWaiting > 0 ? printWaiting : undefined,
               }
             : null,
@@ -1045,7 +1053,7 @@ function OfficePanel() {
           // Master enforces both on every request; this only decides whether to
           // draw the row, so it is offered before the first snapshot too.
           reportsOffered(tier, view?.features, permissions)
-            ? { id: 'reports', label: t('nav.reports'), icon: 'report' as const }
+            ? { id: 'reports', label: t('nav.reports'), icon: NAV_ICONS.reports }
             : null,
         ] satisfies Array<NavItem | null>
       ).filter((item): item is NonNullable<typeof item> => item !== null),
@@ -1055,17 +1063,17 @@ function OfficePanel() {
       items: (
         [
           can('products.view')
-            ? { id: 'products', label: t('nav.products'), icon: 'products' as const }
+            ? { id: 'products', label: t('nav.products'), icon: NAV_ICONS.products }
             : null,
           can('parties.view')
-            ? { id: 'parties', label: t('nav.parties'), icon: 'parties' as const }
+            ? { id: 'parties', label: t('nav.parties'), icon: NAV_ICONS.parties }
             : null,
           // Either key opens it: `party.assign` to redraw the map,
           // `party.accessAll` to read it. Both are admin/management tier, so
           // this never appears for the office-tier role an unattended panel
           // falls back to.
           can('party.assign') || can('party.accessAll')
-            ? { id: 'partyAccess', label: t('nav.partyAccess'), icon: 'shield' as const }
+            ? { id: 'partyAccess', label: t('nav.partyAccess'), icon: NAV_ICONS.partyAccess }
             : null,
         ] satisfies Array<NavItem | null>
       ).filter((item): item is NonNullable<typeof item> => item !== null),
@@ -1077,9 +1085,9 @@ function OfficePanel() {
       label: t('nav.system'),
       items: (
         [
-          { id: 'settings', label: t('nav.settings'), icon: 'settings' as const },
-          can('logs.view') ? { id: 'logs', label: t('nav.logs'), icon: 'eye' as const } : null,
-          { id: 'updates', label: t('nav.updates'), icon: 'sync' as const },
+          { id: 'settings', label: t('nav.settings'), icon: NAV_ICONS.settings },
+          can('logs.view') ? { id: 'logs', label: t('nav.logs'), icon: NAV_ICONS.logs } : null,
+          { id: 'updates', label: t('nav.updates'), icon: NAV_ICONS.updates },
         ] satisfies Array<NavItem | null>
       ).filter((item): item is NonNullable<typeof item> => item !== null),
     },
@@ -1339,7 +1347,8 @@ function OfficePanel() {
         }}
       />
 
-      <button className="ob-btn ob-btn--ghost" onClick={() => void signOut()}>
+      <button className="ob-btn ob-btn--ghost ob-btn--signout" onClick={() => void signOut()}>
+        <Icon name="sign-out" size={16} />
         {t('action.signOut')}
       </button>
     </>
@@ -1682,7 +1691,6 @@ function OfficePanel() {
               openId={openOrderId}
               onOpenId={setOpenOrderId}
               canDispatch={can('orders.dispatch')}
-              canExport={can('orders.export')}
               canEdit={can('orders.edit')}
               onError={setError}
               userId={session?.userId ?? null}
@@ -1820,6 +1828,17 @@ function OfficePanel() {
       </div>
     );
 
+  /** The sign-out chord asks first: a stray press must not drop an open form. */
+  async function askSignOut(): Promise<void> {
+    const ok = await confirm({
+      title: t('signOut.confirm.title'),
+      body: t('signOut.confirm.body'),
+      confirmLabel: t('action.signOut'),
+      tone: 'danger',
+    });
+    if (ok) await signOut();
+  }
+
   return (
     <KeyboardProvider
       panel="office"
@@ -1827,6 +1846,7 @@ function OfficePanel() {
       onNavigate={goToTab}
       canNavigate={offered}
       shellCommands={{
+        'session.signOut': () => void askSignOut(),
         'view.reset': () => void resetActiveScreen(),
         // As on the Master: the shell swallows F5, so this is what hands the key
         // back rather than a second, different meaning for it.

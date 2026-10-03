@@ -4130,6 +4130,19 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'printroom.dialog.sent': 'प्रिंटरूम में भेज दिया गया',
   'printroom.dialog.offline': 'मास्टर तक नहीं पहुँचा जा सका। इसके बजाय इसी PC पर प्रिंट करें।',
   'printroom.autoPrintFailed': '{party} का ऑटो-प्रिंट विफल रहा: {error}',
+  // 1.4 D4: password eye
+  'password.show': 'पासवर्ड दिखाएँ',
+  'password.hide': 'पासवर्ड छिपाएँ',
+  // 1.4 D4: note buttons, preview
+  'orderNote.column.notes': 'नोट',
+  'orderNote.previewButton': 'प्रीव्यू',
+  'orderNote.preview.title': 'प्रीव्यू: {title}',
+  // 1.4 D4: shortcuts
+  'keys.command.newParty': 'नई पार्टी',
+  'keys.command.newProduct': 'नया प्रोडक्ट',
+  'keys.command.signOut': 'साइन आउट',
+  'signOut.confirm.title': 'साइन आउट करें?',
+  'signOut.confirm.body': 'जो कुछ खुला है और सेव नहीं किया गया, वह खो जाएगा।',
 
   // 1.4 D2: stock and inventory removed, replacement wording
   'validation.stock.retired': 'OrderBook में अब स्टॉक नहीं है',

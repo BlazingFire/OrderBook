@@ -46,7 +46,8 @@ function press(init: Partial<KeyboardEventInit> & { key: string; code: string })
 
 const ctrlS = () => press({ key: 's', code: 'KeyS' });
 const ctrlK = () => press({ key: 'k', code: 'KeyK' });
-const ctrlSlash = () => press({ key: '/', code: 'Slash' });
+/** F1, the help chord: a function key, no modifier, and it works from inside a field too. */
+const f1 = () => press({ key: 'F1', code: 'F1', ctrlKey: false });
 
 /**
  * Stands in for `PartyFormModal`: always mounted, and answering `record.save`
@@ -128,12 +129,39 @@ describe('useCommand priority', () => {
     expect(log.at(-1)).toBe('dialog');
 
     // The help sheet changes the same state, and is global too.
-    ctrlSlash();
+    f1();
     expect(screen.getByTestId('help').textContent).toBe('true');
     fireEvent.click(screen.getByText('close help'));
 
     ctrlS();
     expect(log.at(-1)).toBe('dialog');
+  });
+
+  it('still opens help on Ctrl+/ beside F1, until the person rebinds it (1.4 R13)', () => {
+    render(
+      <KeyboardProvider panel="office">
+        <Probe />
+      </KeyboardProvider>,
+    );
+    act(() => {
+      fireEvent.keyDown(document.body, { key: '/', code: 'Slash', ctrlKey: true });
+    });
+    expect(screen.getByTestId('help').textContent).toBe('true');
+  });
+
+  it('opens help on F1 even while typing in a field (1.4 R13)', () => {
+    render(
+      <KeyboardProvider panel="office">
+        <Probe />
+        <input aria-label="field" />
+      </KeyboardProvider>,
+    );
+    const field = screen.getByLabelText('field');
+    field.focus();
+    act(() => {
+      fireEvent.keyDown(field, { key: 'F1', code: 'F1' });
+    });
+    expect(screen.getByTestId('help').textContent).toBe('true');
   });
 
   it('keeps the dialog on top when the screen’s own handler comes back from null', () => {
