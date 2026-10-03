@@ -11,6 +11,9 @@ import type { ReactNode } from 'react';
 import { fitColumns, gridTemplateFor } from './fitColumns.js';
 import { t } from './i18n.js';
 
+/** The key of the tick-box column a table adds when it is given `onSelectionChange`. */
+const SELECT_KEY = '__select';
+
 export interface DataTableColumn<T> {
   key: string;
   header: string;
@@ -37,6 +40,12 @@ export interface DataTableColumn<T> {
    * value never displaces one that has it.
    */
   sortValue?: (row: T) => string | number | null | undefined;
+  /**
+   * 1.4 D3: a column the server sorts. Makes the header a sort control without a
+   * `sortValue`; pair it with `sortLocally={false}` so the rows are shown as the
+   * server ordered them.
+   */
+  sortable?: boolean;
 }
 
 export interface DataTableSort {
@@ -59,6 +68,8 @@ function compareValues(
   return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
 }
 
+const EMPTY_SELECTION: ReadonlySet<string> = new Set();
+
 const VIRTUALIZE_ABOVE = 100;
 const OVERSCAN = 8;
 const DEFAULT_ROW_H = 32;
@@ -72,6 +83,9 @@ export function DataTable<T>({
   empty,
   sort,
   onSortChange,
+  sortLocally = true,
+  selectedIds,
+  onSelectionChange,
   rowHighlight,
 }: {
   columns: DataTableColumn<T>[];
@@ -88,6 +102,19 @@ export function DataTable<T>({
    */
   sort?: DataTableSort;
   onSortChange?: (sort: DataTableSort) => void;
+  /**
+   * False when the server already returned the rows in `sort` order (a paged
+   * list): the header still shows the state and still sorts on click, but the
+   * rows are shown as given, so a later page does not reshuffle an earlier one.
+   */
+  sortLocally?: boolean;
+  /**
+   * 1.4 D3: tick boxes. Give `onSelectionChange` and the table adds a first
+   * column with one per row and a select-all in the header (the rows it holds).
+   * A tick does not open the row. `selectedIds` is the caller's state.
+   */
+  selectedIds?: ReadonlySet<string>;
+  onSelectionChange?: (ids: Set<string>) => void;
   /** Rows this returns true for carry `data-highlight` (a Server Master's rows, today). */
   rowHighlight?: (row: T) => boolean;
 }) {
@@ -154,14 +181,14 @@ export function DataTable<T>({
    * `rows` belongs to the caller and `sort` in place would reorder their state.
    */
   const sorted = useMemo(() => {
-    if (!sort) return rows;
+    if (!sort || !sortLocally) return rows;
     const column = columns.find((c) => c.key === sort.key);
     if (!column?.sortValue) return rows;
 
     const direction = sort.dir === 'asc' ? 1 : -1;
     const value = column.sortValue;
     return [...rows].sort((a, b) => compareValues(value(a), value(b)) * direction);
-  }, [rows, columns, sort]);
+  }, [rows, columns, sort, sortLocally]);
 
   const virtualize = sorted.length > VIRTUALIZE_ABOVE;
   let visibleRows = sorted;
@@ -182,7 +209,34 @@ export function DataTable<T>({
    * measure — see `fitColumns.ts` for why that matters and why it is only safe
    * given the rule that a row opens its whole record in a modal.
    */
-  const visible = fitColumns(columns, viewportW, rootPx);
+  const allColumns = useMemo<DataTableColumn<T>[]>(
+    () =>
+      onSelectionChange
+        ? [
+            {
+              key: SELECT_KEY,
+              header: t('table.selectAll'),
+              width: '2.5rem',
+              render: () => null,
+            },
+            ...columns,
+          ]
+        : columns,
+    [columns, onSelectionChange],
+  );
+  const visible = fitColumns(allColumns, viewportW, rootPx);
+  const chosen = selectedIds ?? EMPTY_SELECTION;
+  const shownKeys = sorted.map(rowKey);
+  const allChosen = shownKeys.length > 0 && shownKeys.every((key) => chosen.has(key));
+  const someChosen = shownKeys.some((key) => chosen.has(key));
+  const toggleAll = (): void =>
+    onSelectionChange?.(allChosen ? new Set() : new Set([...chosen, ...shownKeys]));
+  const toggleOne = (key: string): void => {
+    const next = new Set(chosen);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    onSelectionChange?.(next);
+  };
 
   const gridTemplate = gridTemplateFor(visible);
 
@@ -201,7 +255,22 @@ export function DataTable<T>({
         <thead>
           <tr style={{ display: 'grid', gridTemplateColumns: gridTemplate }}>
             {visible.map((c) => {
-              const sortable = Boolean(c.sortValue && onSortChange);
+              if (c.key === SELECT_KEY) {
+                return (
+                  <th key={c.key} style={{ display: 'flex', alignItems: 'center' }}>
+                    <input
+                      type="checkbox"
+                      aria-label={t('table.selectAll')}
+                      checked={allChosen}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someChosen && !allChosen;
+                      }}
+                      onChange={toggleAll}
+                    />
+                  </th>
+                );
+              }
+              const sortable = Boolean((c.sortValue || c.sortable) && onSortChange);
               const active = sort?.key === c.key ? sort.dir : undefined;
 
               return (
@@ -282,6 +351,24 @@ export function DataTable<T>({
                 }
               >
                 {visible.map((c) => {
+                  if (c.key === SELECT_KEY) {
+                    return (
+                      <td
+                        key={c.key}
+                        style={{ display: 'flex', alignItems: 'center' }}
+                        // A tick is not a request to open the row.
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => event.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          aria-label={t('table.selectRow')}
+                          checked={chosen.has(key)}
+                          onChange={() => toggleOne(key)}
+                        />
+                      </td>
+                    );
+                  }
                   const reason = c.redactedReason?.(row);
                   return (
                     <td

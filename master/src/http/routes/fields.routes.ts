@@ -19,6 +19,11 @@ fieldsRoutes.use(requireAuth);
 const needs = requirePermissionMiddleware;
 
 // --- Reads: fields.view ------------------------------------------------
+//
+// `/values` and `/usage` carry no middleware gate: the service decides, because the
+// brands, packaging types and grades are readable by everyone (1.4 D3) and every
+// other list needs `fields.view`. The same holds for the value writes below:
+// `fields.manage` for the other lists, `catalog.lists.manage` for those three.
 
 fieldsRoutes.get(
   '/catalogue',
@@ -30,7 +35,6 @@ fieldsRoutes.get(
 
 fieldsRoutes.get(
   '/values',
-  needs('fields.view'),
   asyncHandler(async (req, res) => {
     res.json(
       await fieldsService.listValues(
@@ -47,7 +51,6 @@ fieldsRoutes.get(
 
 fieldsRoutes.get(
   '/usage',
-  needs('fields.view'),
   asyncHandler(async (req, res) => {
     res.json(await fieldsService.fieldUsage({ listKey: req.query.listKey }, actorFromRequest(req)));
   }),
@@ -78,7 +81,6 @@ fieldsRoutes.get(
 
 fieldsRoutes.post(
   '/values',
-  needs('fields.manage'),
   asyncHandler(async (req, res) => {
     res.status(201).json(await fieldsService.createValue(req.body, actorFromRequest(req)));
   }),
@@ -86,7 +88,6 @@ fieldsRoutes.post(
 
 fieldsRoutes.put(
   '/values/:id',
-  needs('fields.manage'),
   asyncHandler(async (req, res) => {
     res.json(
       await fieldsService.updateValue(String(req.params.id), req.body, actorFromRequest(req)),
@@ -96,7 +97,6 @@ fieldsRoutes.put(
 
 fieldsRoutes.delete(
   '/values/:id',
-  needs('fields.manage'),
   asyncHandler(async (req, res) => {
     res.json(await fieldsService.deleteValue(String(req.params.id), actorFromRequest(req)));
   }),
@@ -104,7 +104,6 @@ fieldsRoutes.delete(
 
 fieldsRoutes.post(
   '/values/reorder',
-  needs('fields.manage'),
   asyncHandler(async (req, res) => {
     res.json(await fieldsService.reorderValues(req.body, actorFromRequest(req)));
   }),

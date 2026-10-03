@@ -9,7 +9,7 @@ import type {
   BinRestoreResult,
   CategoryInput,
   CategoryUpdateInput,
-  ListQuery,
+  PartyListQuery,
   Paginated,
   Party,
   PartyAccessLevel,
@@ -65,7 +65,7 @@ export const PRODUCT_PAGING = { defaultLimit: 100, maxLimit: 2000 };
 // --- Parties ---------------------------------------------------------------
 
 export async function listParties(
-  query: ListQuery,
+  query: PartyListQuery,
   actor: ActorContext,
 ): Promise<Paginated<Party>> {
   requirePermission(actor, 'parties.view');
@@ -74,6 +74,11 @@ export async function listParties(
     ...clampPaging(query, PAGING),
     scope: resolvePartyScope(actor),
     filter: query.scope,
+    sort: typeof query.sort === 'string' ? query.sort : undefined,
+    dir: query.dir === 'desc' ? 'desc' : 'asc',
+    city: typeof query.city === 'string' ? query.city : undefined,
+    state: typeof query.state === 'string' ? query.state : undefined,
+    hasGst: typeof query.hasGst === 'boolean' ? query.hasGst : undefined,
   });
 }
 
@@ -338,6 +343,10 @@ export async function listProducts(
     categoryId: query.categoryId,
     brand: typeof query.brand === 'string' ? query.brand : undefined,
     missingWeight: query.missingWeight,
+    sort: typeof query.sort === 'string' ? query.sort : undefined,
+    dir: query.dir === 'desc' ? 'desc' : 'asc',
+    size: typeof query.size === 'string' ? query.size : undefined,
+    hasPhoto: typeof query.hasPhoto === 'boolean' ? query.hasPhoto : undefined,
     ...clampPaging(query, PRODUCT_PAGING),
   });
 
@@ -1195,7 +1204,7 @@ export async function getPartyWithAccess(
 
 /** `listParties` with each row's own-record count and the caller's own access to it. */
 export async function listPartiesWithMeta(
-  query: ListQuery,
+  query: PartyListQuery,
   actor: ActorContext,
 ): Promise<Paginated<Party & { recordCount: number; myAccess: PartyMyAccess }>> {
   const page = await listParties(query, actor);

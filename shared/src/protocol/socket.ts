@@ -176,7 +176,7 @@ export interface PanelAuthPayload {
  * socket command, so either side can tell the other is too old for one before
  * sending it, instead of waiting out a timeout.
  */
-export const PANEL_PROTOCOL_VERSION = 6;
+export const PANEL_PROTOCOL_VERSION = 7;
 
 /**
  * The lowest Master protocol each command needs. A command not listed has
@@ -217,6 +217,8 @@ export const COMMAND_MIN_PROTOCOL: Partial<Record<keyof ClientToServerEvents, nu
   'print:stations': PRINTROOM_MIN_PROTOCOL,
   'print:station': PRINTROOM_MIN_PROTOCOL,
   'presence:beat': 4,
+  // 1.4 D3: Create product share. All four 1.4 sessions take protocol 7.
+  'product:sharePdf': 7,
 };
 
 /**
@@ -733,6 +735,11 @@ export interface ClientToServerEvents {
    * in the ack like `report:export`'s PDF. `leads.export`; online-only.
    */
   'lead:pdf': (id: RecordId, ack: CommandAck<{ fileName: string; bytes: Uint8Array }>) => void;
+  /** 1.4 D3: the chosen products as a four-to-a-page A4 PDF with photographs. */
+  'product:sharePdf': (
+    ids: RecordId[],
+    ack: CommandAck<{ fileName: string; bytes: Uint8Array }>,
+  ) => void;
 
   'order:list': (query: OrderListQuery, ack: CommandAck<Paginated<Order>>) => void;
   'order:get': (id: RecordId, ack: CommandAck<Order>) => void;

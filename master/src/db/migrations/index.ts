@@ -57,6 +57,8 @@ import * as reportIndexesAndGrants from './20261004000000_report_indexes_and_gra
 import * as chatroom from './20261005000000_chatroom.js';
 import * as printroom from './20261006000000_printroom.js';
 import * as backupAllPermissionGrant from './20261007000000_backup_all_permission_grant.js';
+// 1.4 D3
+import * as catalogListsGrant from './20261012000000_catalog_lists_grant.js';
 import * as printroomOfficeManagementGrant from './20261013000000_printroom_office_management_grant.js';
 
 export interface Migration {
@@ -260,6 +262,11 @@ export const migrations: Migration[] = [
   {
     name: '20261007000000_backup_all_permission_grant',
     ...backupAllPermissionGrant,
+  },
+  // 1.4 D3: `catalog.lists.manage` for brands, packaging and grades. UPDATE only.
+  {
+    name: '20261012000000_catalog_lists_grant',
+    ...catalogListsGrant,
   },
   // 1.4 D4 (R9): `print.send` for Office and Management roles.
   {

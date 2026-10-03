@@ -159,11 +159,23 @@ interface BinRow {
   version: number | null;
 }
 
+/**
+ * 1.4 D3: which option lists' values the Bin may show. `include` keeps only those
+ * list keys (a person who holds `catalog.lists.manage` and not `fields.manage`);
+ * `exclude` drops them (the reverse: `fields.manage` without the lists key). Neither:
+ * every list.
+ */
+export interface OptionListScope {
+  include?: readonly string[];
+  exclude?: readonly string[];
+}
+
 export interface ListBinOptions {
   types: readonly RecycleBinEntityType[];
   search?: string;
   deletedBy?: string;
   scope: PartyScope;
+  optionListScope?: OptionListScope;
   /** From `decodeBinCursor` — the last row of the previous page. */
   after?: { deletedAt: string; entityType: RecycleBinEntityType; id: string };
   limit: number;
@@ -184,11 +196,21 @@ function buildUnion(
   types: readonly RecycleBinEntityType[],
   tenantId: string,
   scope: PartyScope,
+  /** 1.4 D3: which option lists' values to show. */
+  optionListScope?: OptionListScope,
 ): { sql: string; bindings: Array<string | number> } {
   const chosen = BRANCHES.filter((branch) => types.includes(branch.entityType));
   const bindings: Array<string | number> = [];
   const parts = chosen.map((branch) => {
     bindings.push(tenantId);
+    if (branch.entityType === 'option_list_item' && optionListScope?.include) {
+      bindings.push(...optionListScope.include);
+      return `${branch.sql} AND list_key IN (${optionListScope.include.map(() => '?').join(', ')})`;
+    }
+    if (branch.entityType === 'option_list_item' && optionListScope?.exclude) {
+      bindings.push(...optionListScope.exclude);
+      return `${branch.sql} AND list_key NOT IN (${optionListScope.exclude.map(() => '?').join(', ')})`;
+    }
     if (!branch.partyIdExpr) return branch.sql;
 
     const narrowed = partyScopeSql(branch.partyIdExpr, tenantId, scope);
@@ -205,7 +227,12 @@ export async function listBinEntries(
 ): Promise<BinListResult> {
   if (options.types.length === 0) return { entries: [], hasMore: false };
 
-  const { sql: unionSql, bindings } = buildUnion(options.types, tenantId, options.scope);
+  const { sql: unionSql, bindings } = buildUnion(
+    options.types,
+    tenantId,
+    options.scope,
+    options.optionListScope,
+  );
 
   let where = '';
   if (options.deletedBy) {
@@ -261,6 +288,7 @@ export async function binCounts(
   deletedBy: string | undefined,
   scope: PartyScope,
   runner: Runner = db(),
+  optionListScope?: OptionListScope,
 ): Promise<BinCounts> {
   const chosen = BRANCHES.filter((branch) => types.includes(branch.entityType));
   if (chosen.length === 0) return {};
@@ -269,6 +297,7 @@ export async function binCounts(
     chosen.map((b) => b.entityType),
     tenantId,
     scope,
+    optionListScope,
   );
 
   let where = '';
@@ -303,12 +332,17 @@ export async function binCounts(
  */
 export async function distinctDeleters(
   tenantId: string,
-  options: { types: RecycleBinEntityType[]; scope: PartyScope },
+  options: { types: RecycleBinEntityType[]; scope: PartyScope; optionListScope?: OptionListScope },
   runner: Runner = db(),
 ): Promise<string[]> {
   if (options.types.length === 0) return [];
 
-  const { sql: unionSql, bindings } = buildUnion(options.types, tenantId, options.scope);
+  const { sql: unionSql, bindings } = buildUnion(
+    options.types,
+    tenantId,
+    options.scope,
+    options.optionListScope,
+  );
 
   const { rows } = await runner.raw<{ rows: Array<{ deleted_by: string }> }>(
     `SELECT DISTINCT u.deleted_by FROM (

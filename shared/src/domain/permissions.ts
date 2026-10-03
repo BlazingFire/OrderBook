@@ -139,6 +139,12 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
   { key: 'storage.backupAll', group: 'admin', labelToken: 'permission.storage.backupAll' },
   { key: 'fields.manage', group: 'admin', labelToken: 'permission.fields.manage' },
   /*
+   * 1.4 D3: add, rename, reorder and retire the brands, packaging types and grades
+   * (`CATALOG_LIST_KEYS`). One key for the three lists. It replaces `fields.manage`
+   * on those lists only; every other list and the stages stay behind `fields.manage`.
+   */
+  { key: 'catalog.lists.manage', group: 'admin', labelToken: 'permission.catalog.lists.manage' },
+  /*
    * Minting a credential another program acts under, and pointing this Master
    * at another system. Not folded into `settings.manage`: changing a timezone
    * and issuing a key that can read the whole catalogue over the LAN are not
@@ -267,6 +273,7 @@ const MINIMUM_TIER: Record<string, RoleTier> = {
   // a supervisor. Lowered from admin — an unattended Office Panel still falls
   // back to its office-tier role, so this never reaches an unattended panel.
   'fields.manage': 'management',
+  'catalog.lists.manage': 'management',
 
   // Party Access. Seeing every party is a supervisor's view of the whole book,
   // so an administrator may grant it to a senior manager; deciding who may see

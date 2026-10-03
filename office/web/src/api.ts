@@ -585,6 +585,10 @@ export const api = {
     if (query.categoryId) params.set('categoryId', query.categoryId);
     if (query.brand) params.set('brand', query.brand);
     if (query.missingWeight) params.set('missingWeight', 'true');
+    if (query.sort) params.set('sort', query.sort);
+    if (query.dir) params.set('dir', query.dir);
+    if (query.size) params.set('size', query.size);
+    if (query.hasPhoto !== undefined) params.set('hasPhoto', String(query.hasPhoto));
     if (query.limit) params.set('limit', String(query.limit));
     if (query.offset) params.set('offset', String(query.offset));
     const qs = params.toString();
@@ -610,6 +614,18 @@ export const api = {
     put<ProductCategory>(`/api/categories/${id}`, input),
   deleteCategory: (id: string) =>
     request<{ id: string; deletedAt: string }>(`/api/categories/${id}`, { method: 'DELETE' }),
+
+  /** 1.4 D3: Create product share; online only, the Master draws the PDF with the photographs. */
+  productSharePdf: (ids: string[]) =>
+    fetchBlob(
+      '/api/products/share.pdf',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      },
+      'product-share.pdf',
+    ),
 
   // --- Bulk product import: online-only, like images ------------------------
 

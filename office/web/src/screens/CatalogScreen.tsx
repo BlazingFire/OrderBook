@@ -86,6 +86,13 @@ import {
   EmptyState,
   ErrorState,
   FilterChip,
+  NO_PARTY_LIST_FILTERS,
+  NO_PRODUCT_LIST_FILTERS,
+  PartyFilterRow,
+  ProductShareBar,
+  presenceOf,
+  ProductFilterRow,
+  productFiltersActive,
   PartyFormModal,
   PartyImportControls,
   Input,
@@ -98,10 +105,13 @@ import {
   useColourHex,
   useDebounced,
   useFilterBar,
+  useStoredSort,
   useSubNav,
   useToast,
   type DataTableColumn,
   useCommand,
+  type PartyListFilters,
+  type ProductListFilters,
 } from '@orderbook/ui';
 import { PartyDetail } from './PartyDetail';
 import { ProductDetail, SubProductColour } from './ProductDetail';
@@ -187,6 +197,13 @@ export function CatalogScreen({
 
   const [productSearch, setProductSearch] = useState('');
   const [filters, setFilters] = useState<ProductFilters>(NO_FILTERS);
+  // 1.4 D3 (R17). Products sort on the Master (or the cached snapshot, offline); parties here.
+  const [productSort, setProductSort] = useStoredSort('products.sub', { key: 'category', dir: 'asc' });
+  const [productListFilters, setProductListFilters] = useState<ProductListFilters>(NO_PRODUCT_LIST_FILTERS);
+  // 1.4 D3 (R16): ticked rows for Create product share.
+  const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
+  const [partySort, setPartySort] = useStoredSort('parties', { key: 'name', dir: 'asc' });
+  const [partyListFilters, setPartyListFilters] = useState<PartyListFilters>(NO_PARTY_LIST_FILTERS);
   const [productDrawerOpen, setProductDrawerOpen] = useState(false);
   const [openProductId, setOpenProductId] = useState<string | null>(null);
   /*
@@ -265,9 +282,17 @@ export function CatalogScreen({
             party.name.toLowerCase().includes(partyTerm) ||
             party.partyCode.toLowerCase().includes(partyTerm) ||
             (party.phone ?? '').includes(partyTerm)) &&
-          (!cityFilter || party.city === cityFilter),
+          (!cityFilter || party.city === cityFilter) &&
+          (!partyListFilters.city.trim() ||
+            (party.city ?? '').toLowerCase().includes(partyListFilters.city.trim().toLowerCase())) &&
+          (!partyListFilters.state.trim() ||
+            (party.state ?? '')
+              .toLowerCase()
+              .includes(partyListFilters.state.trim().toLowerCase())) &&
+          (presenceOf(partyListFilters.hasGst) === undefined ||
+            Boolean(party.gstNumber?.trim()) === presenceOf(partyListFilters.hasGst)),
       ),
-    [view.parties, partyTerm, cityFilter],
+    [view.parties, partyTerm, cityFilter, partyListFilters],
   );
 
   // --- Products: one page from the Master (or the cached snapshot, offline) ---
@@ -284,6 +309,10 @@ export function CatalogScreen({
           search: productTerm || undefined,
           brand: filters.brand ?? undefined,
           categoryId: filters.categoryId ?? undefined,
+          sort: productSort.key,
+          dir: productSort.dir,
+          size: productListFilters.size.trim() || undefined,
+          hasPhoto: presenceOf(productListFilters.hasPhoto),
           limit: PAGE,
           offset: 0,
         },
@@ -307,7 +336,7 @@ export function CatalogScreen({
       });
 
     return () => controller.abort();
-  }, [tab, productTerm, filters, revision]);
+  }, [tab, productTerm, filters, productSort, productListFilters, revision]);
 
   /*
    * What the snapshot says about products, as one string: ids and clocks.
@@ -341,6 +370,10 @@ export function CatalogScreen({
         search: productTerm || undefined,
         brand: filters.brand ?? undefined,
         categoryId: filters.categoryId ?? undefined,
+        sort: productSort.key,
+        dir: productSort.dir,
+        size: productListFilters.size.trim() || undefined,
+        hasPhoto: presenceOf(productListFilters.hasPhoto),
         limit: PAGE,
         offset: page.items.length,
       });
@@ -582,6 +615,7 @@ export function CatalogScreen({
     const columns: DataTableColumn<Party>[] = [
       {
         key: 'code',
+        sortValue: (party) => party.partyCode,
         header: t('catalog.parties.column.code'),
         width: rem(100),
         render: (party) => (
@@ -592,6 +626,7 @@ export function CatalogScreen({
       },
       {
         key: 'name',
+        sortValue: (party) => party.name,
         header: t('catalog.parties.column.name'),
         render: (party) => (
           <span
@@ -608,6 +643,7 @@ export function CatalogScreen({
       },
       {
         key: 'phone',
+        sortValue: (party) => party.phone,
         header: t('catalog.parties.column.phone'),
         priority: 2,
         width: rem(130),
@@ -615,6 +651,7 @@ export function CatalogScreen({
       },
       {
         key: 'city',
+        sortValue: (party) => party.city,
         header: t('catalog.parties.column.city'),
         priority: 3,
         width: rem(110),
@@ -656,12 +693,24 @@ export function CatalogScreen({
 
     return (
       <>
+        <PartyFilterRow
+          value={partyListFilters}
+          onChange={setPartyListFilters}
+          extraActive={partySearch.trim() !== '' || cityFilter !== null}
+          onClearAll={() => {
+            setPartySearch('');
+            setCityFilter(null);
+            setPartyListFilters(NO_PARTY_LIST_FILTERS);
+          }}
+        />
         <DataTable
           columns={columns}
           rows={parties}
           rowKey={(party) => party.id}
           onRowOpen={(party) => setOpenPartyId(party.id)}
           selectedId={openPartyId ?? undefined}
+          sort={partySort}
+          onSortChange={setPartySort}
           empty={
             view.parties.length === 0 ? (
               <EmptyState
@@ -707,6 +756,7 @@ export function CatalogScreen({
   const columns: DataTableColumn<Product>[] = [
     {
       key: 'brand',
+      sortable: true,
       header: t('catalog.products.column.brand'),
       priority: 3,
       width: 'minmax(0, 0.8fr)',
@@ -714,6 +764,7 @@ export function CatalogScreen({
     },
     {
       key: 'category',
+      sortable: true,
       header: t('catalog.products.column.category'),
       width: 'minmax(0, 1.6fr)',
       render: (product) => {
@@ -723,6 +774,7 @@ export function CatalogScreen({
     },
     {
       key: 'name',
+      sortable: true,
       header: t('catalog.products.column.name'),
       width: 'minmax(0, 1.6fr)',
       render: (product) => (
@@ -745,6 +797,7 @@ export function CatalogScreen({
     },
     {
       key: 'size',
+      sortable: true,
       header: t('catalog.products.column.size'),
       priority: 3,
       width: 'minmax(0, 1.2fr)',
@@ -753,6 +806,7 @@ export function CatalogScreen({
     {
       // Blank for a numbered design: the owner's rule is no colour anywhere.
       key: 'colours',
+      sortable: true,
       header: t('catalog.products.column.colours'),
       priority: 2,
       width: 'minmax(0, 1fr)',
@@ -760,6 +814,7 @@ export function CatalogScreen({
     },
     {
       key: 'code',
+      sortable: true,
       header: t('catalog.products.column.codes'),
       priority: 2,
       width: 'minmax(0, 0.9fr)',
@@ -771,6 +826,7 @@ export function CatalogScreen({
     },
     {
       key: 'weight',
+      sortable: true,
       header: t('catalog.products.column.weight'),
       priority: 3,
       width: 'minmax(0, 0.8fr)',
@@ -820,7 +876,11 @@ export function CatalogScreen({
     );
   }
 
-  const filtered = productTerm !== '' || filters.brand !== null || filters.categoryId !== null;
+  const filtered =
+    productTerm !== '' ||
+    filters.brand !== null ||
+    filters.categoryId !== null ||
+    productFiltersActive(productListFilters);
   const shownTotal = (page?.total ?? 0) + pending.length;
 
   return (
@@ -843,6 +903,21 @@ export function CatalogScreen({
           ))}
         </Select>
       </div>
+      <ProductFilterRow
+        value={productListFilters}
+        onChange={setProductListFilters}
+        extraActive={productSearch.trim() !== '' || filters.brand !== null || filters.categoryId !== null}
+        onClearAll={() => {
+          setProductSearch('');
+          setFilters(NO_FILTERS);
+          setProductListFilters(NO_PRODUCT_LIST_FILTERS);
+        }}
+      />
+      <ProductShareBar
+        count={ticked.size}
+        onClear={() => setTicked(new Set())}
+        build={() => api.productSharePdf([...ticked])}
+      />
       {page === null && !loadFailed ? (
         <SkeletonTable columns={columns} rows={8} />
       ) : (
@@ -852,6 +927,11 @@ export function CatalogScreen({
           rowKey={(product) => product.id}
           onRowOpen={(product) => setOpenProductId(product.id)}
           selectedId={openProductId ?? undefined}
+          sort={productSort}
+          onSortChange={setProductSort}
+          sortLocally={false}
+          selectedIds={ticked}
+          onSelectionChange={setTicked}
           empty={
             loadFailed ? (
               <ErrorState

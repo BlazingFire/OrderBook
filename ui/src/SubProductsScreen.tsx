@@ -55,6 +55,15 @@ import { DataTable, type DataTableColumn } from './DataTable.js';
 import { EditorScreen } from './EditorScreen.js';
 import { apiErrorText } from './errorText.js';
 import { FilterChip } from './FilterBar.js';
+import { ProductShareBar } from './ProductShare.js';
+import {
+  NO_PRODUCT_LIST_FILTERS,
+  presenceOf,
+  ProductFilterRow,
+  productFiltersActive,
+  useStoredSort,
+  type ProductListFilters,
+} from './ListFilters.js';
 import { useFilterBar } from './FilterBarSlot.js';
 import { Input } from './Form.js';
 import { t } from './i18n.js';
@@ -116,6 +125,11 @@ export function SubProductsScreen({
 
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<ProductFilters>(NO_FILTERS);
+  // 1.4 D3 (R17): the server sorts, so the order holds across pages; kept per machine.
+  const [sort, setSort] = useStoredSort('products.sub', { key: 'category', dir: 'asc' });
+  const [listFilters, setListFilters] = useState<ProductListFilters>(NO_PRODUCT_LIST_FILTERS);
+  // 1.4 D3 (R16): ticked rows for Create product share.
+  const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   /*
@@ -188,6 +202,10 @@ export function SubProductsScreen({
           search: term || undefined,
           brand: filters.brand ?? undefined,
           categoryId: filters.categoryId ?? undefined,
+          sort: sort.key,
+          dir: sort.dir,
+          size: listFilters.size.trim() || undefined,
+          hasPhoto: presenceOf(listFilters.hasPhoto),
           limit: PAGE,
           offset: 0,
         },
@@ -207,7 +225,7 @@ export function SubProductsScreen({
       });
 
     return () => controller.abort();
-  }, [term, filters, revision, refetch]);
+  }, [term, filters, sort, listFilters, revision, refetch]);
 
   async function loadMore(): Promise<void> {
     if (!page || loading) return;
@@ -217,6 +235,10 @@ export function SubProductsScreen({
         search: term || undefined,
         brand: filters.brand ?? undefined,
         categoryId: filters.categoryId ?? undefined,
+        sort: sort.key,
+        dir: sort.dir,
+        size: listFilters.size.trim() || undefined,
+        hasPhoto: presenceOf(listFilters.hasPhoto),
         limit: PAGE,
         offset: page.items.length,
       });
@@ -338,6 +360,7 @@ export function SubProductsScreen({
   const columns: DataTableColumn<Product>[] = [
     {
       key: 'brand',
+      sortable: true,
       header: t('catalog.products.column.brand'),
       priority: 3,
       width: 'minmax(0, 0.8fr)',
@@ -345,6 +368,7 @@ export function SubProductsScreen({
     },
     {
       key: 'category',
+      sortable: true,
       header: t('catalog.products.column.category'),
       width: 'minmax(0, 1.6fr)',
       render: (product) => {
@@ -354,6 +378,7 @@ export function SubProductsScreen({
     },
     {
       key: 'name',
+      sortable: true,
       header: t('catalog.products.column.name'),
       width: 'minmax(0, 1.6fr)',
       render: (product) => (
@@ -373,6 +398,7 @@ export function SubProductsScreen({
     },
     {
       key: 'size',
+      sortable: true,
       header: t('catalog.products.column.size'),
       priority: 3,
       width: 'minmax(0, 1.2fr)',
@@ -381,6 +407,7 @@ export function SubProductsScreen({
     {
       // Blank for a numbered design: the owner's rule is no colour anywhere.
       key: 'colours',
+      sortable: true,
       header: t('catalog.products.column.colours'),
       priority: 2,
       width: 'minmax(0, 1fr)',
@@ -388,6 +415,7 @@ export function SubProductsScreen({
     },
     {
       key: 'code',
+      sortable: true,
       header: t('catalog.products.column.codes'),
       priority: 2,
       width: 'minmax(0, 0.9fr)',
@@ -399,6 +427,7 @@ export function SubProductsScreen({
     },
     {
       key: 'weight',
+      sortable: true,
       header: t('catalog.products.column.weight'),
       priority: 3,
       width: 'minmax(0, 0.8fr)',
@@ -466,7 +495,11 @@ export function SubProductsScreen({
     );
   }
 
-  const filtered = term !== '' || filters.brand !== null || filters.categoryId !== null;
+  const filtered =
+    term !== '' ||
+    filters.brand !== null ||
+    filters.categoryId !== null ||
+    productFiltersActive(listFilters);
 
   return (
     <>
@@ -488,6 +521,21 @@ export function SubProductsScreen({
           ))}
         </Select>
       </div>
+      <ProductFilterRow
+        value={listFilters}
+        onChange={setListFilters}
+        extraActive={search.trim() !== '' || filters.brand !== null || filters.categoryId !== null}
+        onClearAll={() => {
+          setSearch('');
+          setFilters(NO_FILTERS);
+          setListFilters(NO_PRODUCT_LIST_FILTERS);
+        }}
+      />
+      <ProductShareBar
+        count={ticked.size}
+        onClear={() => setTicked(new Set())}
+        build={() => transportRef.current.productSharePdf([...ticked])}
+      />
       {page === null && !loadFailed ? (
         <SkeletonTable columns={columns} rows={8} />
       ) : (
@@ -497,6 +545,11 @@ export function SubProductsScreen({
           rowKey={(product) => product.id}
           onRowOpen={(product) => setOpenId(product.id)}
           selectedId={openId ?? undefined}
+          sort={sort}
+          onSortChange={setSort}
+          sortLocally={false}
+          selectedIds={ticked}
+          onSelectionChange={setTicked}
           empty={
             loadFailed ? (
               <ErrorState

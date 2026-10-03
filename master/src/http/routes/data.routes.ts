@@ -26,6 +26,7 @@ import * as catalogService from '../../services/catalog.service.js';
 import * as conflictService from '../../services/conflict.service.js';
 import * as dashboardService from '../../services/dashboard.service.js';
 import * as fieldsService from '../../services/fields.service.js';
+import * as productShareService from '../../services/product-share.service.js';
 import * as leadService from '../../services/lead.service.js';
 import * as orderService from '../../services/order.service.js';
 import * as presenceService from '../../services/presence.service.js';
@@ -327,7 +328,18 @@ dataRoutes.use(partyImportRoutes(actorFromRequest));
 dataRoutes.get(
   '/parties',
   asyncHandler(async (req, res) => {
-    res.json(await catalogService.listPartiesWithMeta(paging(req.query), actorFromRequest(req)));
+    res.json(
+      await catalogService.listPartiesWithMeta(
+        {
+          ...paging(req.query),
+          city: typeof req.query.city === 'string' && req.query.city ? req.query.city : undefined,
+          state: typeof req.query.state === 'string' && req.query.state ? req.query.state : undefined,
+          hasGst:
+            req.query.hasGst === 'true' ? true : req.query.hasGst === 'false' ? false : undefined,
+        },
+        actorFromRequest(req),
+      ),
+    );
   }),
 );
 
@@ -380,6 +392,24 @@ dataRoutes.post(
   }),
 );
 
+/**
+ * Create product share (1.4 D3): the chosen products as an A4 PDF, four to a
+ * page. A POST because the ids are a list; sent `inline` so a window can show it.
+ * Ahead of `/products/:id`.
+ */
+dataRoutes.post(
+  '/products/share.pdf',
+  asyncHandler(async (req, res) => {
+    const { fileName, bytes } = await productShareService.productSharePdf(
+      req.body?.ids,
+      actorFromRequest(req),
+    );
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+    res.send(Buffer.from(bytes));
+  }),
+);
+
 dataRoutes.get(
   '/products',
   asyncHandler(async (req, res) => {
@@ -391,6 +421,9 @@ dataRoutes.get(
           brand:
             typeof req.query.brand === 'string' && req.query.brand ? req.query.brand : undefined,
           missingWeight: req.query.missingWeight === 'true',
+          size: typeof req.query.size === 'string' && req.query.size ? req.query.size : undefined,
+          hasPhoto:
+            req.query.hasPhoto === 'true' ? true : req.query.hasPhoto === 'false' ? false : undefined,
         },
         actorFromRequest(req),
       ),

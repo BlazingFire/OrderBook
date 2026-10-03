@@ -53,7 +53,6 @@ import {
   Card,
   ConfirmDialog,
   DataTable,
-  type DataTableSort,
   EditorScreen,
   EmptyState,
   ErrorState,
@@ -61,20 +60,25 @@ import {
   Input,
   KeyValueList,
   LoadMorePager,
+  NO_PARTY_LIST_FILTERS,
+  PartyFilterRow,
   PartyFormModal,
   PartyImportControls,
   SkeletonTable,
   StatusPill,
   formatDateTime,
+  presenceOf,
   recordNumberText,
   rem,
   t,
   useDebounced,
   useFilterBar,
+  useStoredSort,
   useSubNav,
   useToast,
   type DataTableColumn,
   useCommand,
+  type PartyListFilters,
 } from '@orderbook/ui';
 
 /**
@@ -123,10 +127,12 @@ export function PartiesScreen({
   const [editing, setEditing] = useState<PartyDetailRecord | null>(null);
   const [deleting, setDeleting] = useState<PartyDetailRecord | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
-  // Client-side, over the pages already loaded — the Master's list route takes
-  // no sort argument, and pretending otherwise would sort one page and call it
-  // the book.
-  const [sort, setSort] = useState<DataTableSort>({ key: 'name', dir: 'asc' });
+  // 1.4 D3 (R17): the Master sorts, so the order holds across pages; the choice is
+  // kept per machine. The filters narrow the same query.
+  const [sort, setSort] = useStoredSort('parties', { key: 'name', dir: 'asc' });
+  const [listFilters, setListFilters] = useState<PartyListFilters>(NO_PARTY_LIST_FILTERS);
+  const debouncedCity = useDebounced(listFilters.city);
+  const debouncedState = useDebounced(listFilters.state);
 
   // The open party's own reads.
   const [fetched, setFetched] = useState<PartyDetailRecord | null>(null);
@@ -147,12 +153,18 @@ export function PartiesScreen({
   // A new search is a new list, not more of the old one.
   useEffect(() => {
     setOffset(0);
-  }, [debouncedSearch]);
+  }, [debouncedSearch, sort, debouncedCity, debouncedState, listFilters.hasGst]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const page = await api.parties(debouncedSearch || undefined, PAGE_SIZE, offset);
+      const page = await api.parties(debouncedSearch || undefined, PAGE_SIZE, offset, {
+        sort: sort.key,
+        dir: sort.dir,
+        city: debouncedCity.trim() || undefined,
+        state: debouncedState.trim() || undefined,
+        hasGst: presenceOf(listFilters.hasGst),
+      });
       // Appended when paging forward, replaced when the search changed — the
       // offset reset above is what tells the two apart.
       setRows((current) => (offset === 0 ? page.items : [...current, ...page.items]));
@@ -163,7 +175,7 @@ export function PartiesScreen({
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, offset]);
+  }, [debouncedSearch, offset, sort, debouncedCity, debouncedState, listFilters.hasGst]);
 
   useEffect(() => {
     void load();
@@ -338,7 +350,7 @@ export function PartiesScreen({
       key: 'code',
       header: t('catalog.parties.column.code'),
       width: rem(100),
-      sortValue: (party) => party.partyCode,
+      sortable: true,
       render: (party) => (
         <span className="ob-mono" style={{ fontSize: rem(12), color: 'var(--fg-secondary)' }}>
           {party.partyCode}
@@ -348,7 +360,7 @@ export function PartiesScreen({
     {
       key: 'name',
       header: t('catalog.parties.column.name'),
-      sortValue: (party) => party.name,
+      sortable: true,
       render: (party) => (
         <span className="ob-body-strong" style={{ fontSize: rem(13.5) }}>
           {party.name}
@@ -360,7 +372,7 @@ export function PartiesScreen({
       header: t('catalog.parties.column.phone'),
       priority: 2,
       width: rem(130),
-      sortValue: (party) => party.phone,
+      sortable: true,
       render: (party) => <span className="ob-data">{party.phone ?? '—'}</span>,
     },
     {
@@ -368,7 +380,7 @@ export function PartiesScreen({
       header: t('catalog.parties.column.city'),
       priority: 3,
       width: rem(110),
-      sortValue: (party) => party.city,
+      sortable: true,
       render: (party) => party.city ?? '—',
     },
     {
@@ -376,7 +388,7 @@ export function PartiesScreen({
       header: t('catalog.parties.column.variants'),
       priority: 3,
       width: rem(140),
-      sortValue: (party) => party.recordCount ?? 0,
+      sortable: true,
       render: (party) => {
         const count = party.recordCount ?? 0;
         return count > 0
@@ -398,7 +410,7 @@ export function PartiesScreen({
       header: t('party.detail.since'),
       priority: 3,
       width: rem(110),
-      sortValue: (party) => party.createdAt,
+      sortable: true,
       render: (party) => formatDateTime(party.createdAt),
     },
   ];
@@ -594,6 +606,15 @@ export function PartiesScreen({
 
   return (
     <>
+      <PartyFilterRow
+        value={listFilters}
+        onChange={setListFilters}
+        extraActive={search.trim() !== ''}
+        onClearAll={() => {
+          setSearch('');
+          setListFilters(NO_PARTY_LIST_FILTERS);
+        }}
+      />
       <DataTable
         columns={columns}
         rows={rows}
@@ -601,8 +622,9 @@ export function PartiesScreen({
         onRowOpen={(party) => onOpenId(party.id)}
         sort={sort}
         onSortChange={setSort}
+        sortLocally={false}
         empty={
-          search ? (
+          search || listFilters.city || listFilters.state || listFilters.hasGst !== 'any' ? (
             <EmptyState title={t('catalog.parties.empty.filtered')} />
           ) : (
             <EmptyState

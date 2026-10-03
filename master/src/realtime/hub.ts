@@ -71,6 +71,7 @@ import * as conflictService from '../services/conflict.service.js';
 import * as dashboardService from '../services/dashboard.service.js';
 import * as fieldsService from '../services/fields.service.js';
 import * as leadService from '../services/lead.service.js';
+import * as productShareService from '../services/product-share.service.js';
 import * as panelCredentialRepo from '../repositories/panel-credential.repository.js';
 import { findMasterConfig } from '../repositories/master-config.repository.js';
 import * as notificationService from '../services/notification.service.js';
@@ -797,6 +798,9 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   );
   socket.on('lead:delete', (id, ack) => run(ack, (actor) => leadService.deleteLead(id, actor)));
   socket.on('lead:pdf', (id, ack) => run(ack, (actor) => leadService.leadPdf(id, actor)));
+  socket.on('product:sharePdf', (ids, ack) =>
+    run(ack, (actor) => productShareService.productSharePdf(ids, actor)),
+  );
 
   socket.on('order:list', (query, ack) =>
     run(ack, (actor) => orderService.listOrders(query, actor)),

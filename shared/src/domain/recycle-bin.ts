@@ -55,6 +55,24 @@ export const RESTORE_PERMISSION: Record<RecycleBinEntityType, string> = {
   product_category: 'products.delete',
 };
 
+/**
+ * 1.4 D3: a second key that also opens a type's restore. A brand, packaging type
+ * or grade value is restored with `catalog.lists.manage` as well as `fields.manage`;
+ * the Bin then offers such a person those three lists' values and no other option.
+ */
+export const ALSO_RESTORES_WITH: Partial<Record<RecycleBinEntityType, string>> = {
+  option_list_item: 'catalog.lists.manage',
+};
+
+/** Whether `has` (a permission test) opens the Bin's restore for this type. */
+export function canRestoreBinType(
+  type: RecycleBinEntityType,
+  has: (permission: string) => boolean,
+): boolean {
+  const also = ALSO_RESTORES_WITH[type];
+  return has(RESTORE_PERMISSION[type]) || (also !== undefined && has(also));
+}
+
 export interface BinEntry {
   entityType: RecycleBinEntityType;
   id: RecordId;

@@ -287,7 +287,30 @@ export interface ListQuery {
   limit?: number;
   offset?: number;
   scope?: PartyScopeFilter;
+  /**
+   * 1.4 D3 (R17): a column to sort by, one of the list's own allowlist
+   * (`PARTY_SORT_KEYS`, `PRODUCT_SORT_KEYS`). Anything else is ignored, so an
+   * old or hand-made query keeps the list's fixed order.
+   */
+  sort?: string;
+  dir?: 'asc' | 'desc';
 }
+
+/** The Parties list's sortable columns (R17), by the key the table column carries. */
+export const PARTY_SORT_KEYS = ['code', 'name', 'phone', 'city', 'state', 'gst', 'since', 'variants'] as const;
+export type PartySortKey = (typeof PARTY_SORT_KEYS)[number];
+
+/** The Parties list's filters: city and state match a part of the text, case-insensitively. */
+export interface PartyListQuery extends ListQuery {
+  city?: string;
+  state?: string;
+  /** True: only parties with a GST number. False: only those without. */
+  hasGst?: boolean;
+}
+
+/** The sub-product list's sortable columns (R17). */
+export const PRODUCT_SORT_KEYS = ['brand', 'category', 'name', 'size', 'colours', 'code', 'weight'] as const;
+export type ProductSortKey = (typeof PRODUCT_SORT_KEYS)[number];
 
 export interface LeadListQuery extends ListQuery {
   stageIds?: Uuid[];
@@ -401,6 +424,10 @@ export interface ProductListQuery extends ListQuery {
   brand?: string;
   /** Only products with at least one variant whose weight has not been entered. */
   missingWeight?: boolean;
+  /** 1.4 D3 (R17): only this size, matched exactly and case-insensitively. */
+  size?: string;
+  /** 1.4 D3 (R17): true, only products with a photo; false, only those without. */
+  hasPhoto?: boolean;
 }
 
 /**

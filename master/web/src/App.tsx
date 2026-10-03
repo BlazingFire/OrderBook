@@ -34,7 +34,7 @@ import {
   REPORT_ENTITIES,
   REPORT_META,
   reportsOffered,
-  RESTORE_PERMISSION,
+  canRestoreBinType,
   resolveCompanyFeatures,
   SERVER_MASTER_TIER,
 } from '@orderbook/shared';
@@ -43,7 +43,7 @@ import { ApiError, api, desktopBridge } from './api';
 import { dispatchChat, masterChatTransport } from './chatTransport';
 import { attachPrintSocket, dispatchPrint, masterPrintroomTransport } from './printroomTransport';
 import { presenceChannel } from './presence';
-import { reportsTransport } from './transports';
+import { optionListTransport, reportsTransport } from './transports';
 import {
   adoptDefaultLocale,
   AppShell,
@@ -96,6 +96,8 @@ import {
   useSubNavState,
   splitSubPage,
   withSubPages,
+  CatalogListsScreen,
+  type CatalogListsPage,
   type ChatPage,
   type PrintPage,
   type ChatRecordOption,
@@ -155,6 +157,7 @@ type Tab =
   | 'reports'
   | 'access'
   | 'partyAccess'
+  | 'lists'
   | 'fields'
   | 'integrations'
   | 'logs'
@@ -896,6 +899,11 @@ function MasterPanel() {
     ],
     // Brands is always offered, as on the Office: without `fields.view` the
     // page says so itself rather than the sidebar quietly dropping it.
+    lists: [
+      { key: 'grades', label: t('lists.nav.grades'), icon: 'edit' },
+      { key: 'packaging', label: t('lists.nav.packaging'), icon: 'edit' },
+      { key: 'brands', label: t('lists.nav.brands'), icon: 'edit' },
+    ],
     products: [
       { key: 'sub', label: t('catalog.nav.subProducts'), icon: 'products' },
       { key: 'main', label: t('catalog.nav.mainProducts'), icon: 'inventory' },
@@ -939,7 +947,7 @@ function MasterPanel() {
     recycleBin: [
       { key: 'all', label: t('recycleBin.filter.allTypes'), icon: 'trash' },
       ...RECYCLE_BIN_ENTITIES.filter((branch) =>
-        user.permissions.includes(RESTORE_PERMISSION[branch]),
+        canRestoreBinType(branch, (permission) => user.permissions.includes(permission)),
       ).map((branch) => ({
         key: branch,
         label: t(`recycleBin.entity.${branch}`),
@@ -1071,6 +1079,8 @@ function MasterPanel() {
         canViewPartyAccess
           ? { id: 'partyAccess', label: t('nav.master.partyAccess'), icon: NAV_ICONS.partyAccess }
           : null,
+        // Everyone reads the three lists; editing is gated inside the page.
+        { id: 'lists', label: t('nav.lists'), icon: 'task' },
       ] satisfies Array<NavItem | null>,
     },
     {
@@ -1537,6 +1547,17 @@ function MasterPanel() {
           } satisfies ScreenSpec,
         ]
       : []),
+    {
+      id: 'lists',
+      render: () => (
+        <CatalogListsScreen
+          page={subKeyOf('lists') as CatalogListsPage}
+          permissions={user.permissions}
+          transport={optionListTransport}
+          revision={revisionOf(revisions, 'catalogueLists')}
+        />
+      ),
+    },
     {
       id: 'products',
       render: () => (

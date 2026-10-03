@@ -16,6 +16,7 @@
 import {
   buildFieldCatalogue,
   FIELD_LIST_KEYS,
+  isCatalogListKey,
   isCustomFieldEntity,
   isFieldListKey,
   type CustomFieldDefinition,
@@ -37,7 +38,7 @@ import {
   type StageReorderInput,
 } from '@orderbook/shared';
 
-import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
+import { actorCan, actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { fieldDiff, assertVersionMatches } from '../domain/access.js';
 import {
   assertCompleteReorder,
@@ -82,12 +83,21 @@ function assertListKey(raw: unknown): FieldListKey {
   return raw;
 }
 
+/**
+ * 1.4 D3 (R5): the brands, packaging types and grades are read by everyone, as the
+ * pickers already read them out of the snapshot; every other list stays behind
+ * `fields.view`.
+ */
+function requireListRead(actor: ActorContext, listKey: string): void {
+  if (!isCatalogListKey(listKey)) requirePermission(actor, 'fields.view');
+}
+
 export async function listValues(
   query: { listKey: unknown; includeDeleted?: boolean; includeUnlisted?: boolean },
   actor: ActorContext,
 ): Promise<{ items: OptionListItem[]; unlisted?: string[] }> {
-  requirePermission(actor, 'fields.view');
   const listKey = assertListKey(query.listKey);
+  requireListRead(actor, listKey);
 
   const items = await customFieldRepo.listOptionsForKey(actor.tenantId, listKey, {
     includeDeleted: query.includeDeleted,
@@ -106,8 +116,8 @@ export async function fieldUsage(
   query: { listKey: unknown },
   actor: ActorContext,
 ): Promise<FieldUsageBreakdown> {
-  requirePermission(actor, 'fields.view');
   const listKey = assertListKey(query.listKey);
+  requireListRead(actor, listKey);
 
   const rows = await fieldUsageRepo.usageForListKey(actor.tenantId, listKey);
   const known = new Set(
@@ -165,15 +175,24 @@ export async function listStages(actor: ActorContext): Promise<Pipeline[]> {
   return pipelineRepo.listPipelines(actor.tenantId);
 }
 
-// --- Writes: fields.manage ---------------------------------------------------
+// --- Writes: fields.manage, or catalog.lists.manage for brands/packaging/grades
+
+/** 1.4 D3: a brand, packaging or grade value is written under its own key. */
+function requireListWrite(actor: ActorContext, listKey: string): void {
+  requirePermission(actor, isCatalogListKey(listKey) ? 'catalog.lists.manage' : 'fields.manage');
+}
+
+/** The cheap gate before a row is read, so a caller with neither key learns nothing about ids. */
+function requireAnyListWrite(actor: ActorContext): void {
+  if (!actorCan(actor, 'fields.manage')) requirePermission(actor, 'catalog.lists.manage');
+}
 
 export async function createValue(
   input: OptionListItemInput,
   actor: ActorContext,
 ): Promise<OptionListItem> {
-  requirePermission(actor, 'fields.manage');
-
   const listKey = assertListKey(input.listKey);
+  requireListWrite(actor, listKey);
   const value = normaliseOptionValue(input.value ?? '');
   if (!value) throw new ValidationError('validation.fields.valueRequired', {}, { field: 'value' });
 
@@ -233,11 +252,12 @@ export async function updateValue(
   input: OptionListItemUpdateInput,
   actor: ActorContext,
 ): Promise<OptionListItem> {
-  requirePermission(actor, 'fields.manage');
+  requireAnyListWrite(actor);
   assertNoImmutableFields(input, ['value', 'listKey']);
 
   const existing = await customFieldRepo.findOptionById(actor.tenantId, id);
   if (!existing) throw new NotFoundError('Option');
+  requireListWrite(actor, existing.listKey);
 
   assertVersionMatches(
     existing.version,
@@ -291,10 +311,11 @@ export async function deleteValue(
   id: string,
   actor: ActorContext,
 ): Promise<{ id: string; deletedAt: string }> {
-  requirePermission(actor, 'fields.manage');
+  requireAnyListWrite(actor);
 
   const existing = await customFieldRepo.findOptionById(actor.tenantId, id);
   if (!existing) throw new NotFoundError('Option');
+  requireListWrite(actor, existing.listKey);
 
   await db().transaction(async (trx) => {
     await customFieldRepo.softDeleteOption(actor.tenantId, id, actorUserId(actor), trx);
@@ -331,10 +352,11 @@ export async function deleteValue(
  * be the sole loophole in that rule.
  */
 export async function restoreValue(id: string, actor: ActorContext): Promise<OptionListItem> {
-  requirePermission(actor, 'fields.manage');
+  requireAnyListWrite(actor);
 
   const existing = await customFieldRepo.findOptionById(actor.tenantId, id, { includeDeleted: true });
   if (!existing) throw new NotFoundError('Option');
+  requireListWrite(actor, existing.listKey);
   if (!existing.deletedAt) return existing;
 
   if (await customFieldRepo.isOptionValueTaken(actor.tenantId, existing.listKey, existing.value, id)) {
@@ -376,9 +398,8 @@ export async function reorderValues(
   input: OptionListReorderInput,
   actor: ActorContext,
 ): Promise<OptionListItem[]> {
-  requirePermission(actor, 'fields.manage');
-
   const listKey = assertListKey(input.listKey);
+  requireListWrite(actor, listKey);
   const live = await customFieldRepo.listOptionsForKey(actor.tenantId, listKey);
   const liveIds = live.map((item) => item.id);
 

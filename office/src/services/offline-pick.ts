@@ -260,6 +260,54 @@ const LIST_MAX_LIMIT = 500;
  * The same two rules as `pickFromView`: it ranks the gated view it is handed,
  * never the raw snapshot, and it gates on the session's permissions.
  */
+/**
+ * 1.4 D3 (R17): the Master's sortable columns, over the snapshot. A missing
+ * value sorts last either way; the name is the tie-break and the default.
+ */
+function productComparator(
+  sort: string | undefined,
+  dir: string | undefined,
+): (a: Product, b: Product) => number {
+  const byName = (a: Product, b: Product): number => a.name.localeCompare(b.name);
+  const live = (product: Product) => product.variants.filter((variant) => variant.isActive);
+  const textOf: Record<string, (product: Product) => string | null> = {
+    brand: (product) => product.brand,
+    category: (product) => product.categoryName,
+    name: (product) => product.name,
+    size: (product) => product.size,
+    colours: (product) =>
+      live(product)
+        .map((variant) => variant.label ?? '')
+        .sort()[0] || null,
+    code: (product) =>
+      live(product)
+        .map((variant) => variant.code)
+        .sort()[0] ?? null,
+  };
+  const weightOf = (product: Product): number | null => {
+    const weights = live(product).flatMap((variant) => (variant.weightKg === null ? [] : [variant.weightKg]));
+    return weights.length > 0 ? Math.min(...weights) : null;
+  };
+  const sign = dir === 'desc' ? -1 : 1;
+
+  if (sort === 'weight') {
+    return (a, b) => {
+      const x = weightOf(a);
+      const y = weightOf(b);
+      if (x === null || y === null) return x === y ? byName(a, b) : x === null ? 1 : -1;
+      return x === y ? byName(a, b) : (x - y) * sign;
+    };
+  }
+  const text = sort !== undefined && Object.prototype.hasOwnProperty.call(textOf, sort) ? textOf[sort] : undefined;
+  if (!text) return byName;
+  return (a, b) => {
+    const x = text(a);
+    const y = text(b);
+    if (!x || !y) return !x && !y ? byName(a, b) : !x ? 1 : -1;
+    return x.localeCompare(y, undefined, { sensitivity: 'base', numeric: true }) * sign || byName(a, b);
+  };
+}
+
 export function listProductsFromView(
   query: ProductListQuery,
   view: SyncSnapshot,
@@ -297,7 +345,9 @@ export function listProductsFromView(
     (product) =>
       matches(product) &&
       (brand === '' || (product.brand ?? '').toLowerCase() === brand) &&
-      (!query.missingWeight || missingWeight(product)),
+      (!query.missingWeight || missingWeight(product)) &&
+      (!query.size?.trim() || (product.size ?? '').toLowerCase() === query.size.trim().toLowerCase()) &&
+      (query.hasPhoto === undefined || (product.images.length > 0) === query.hasPhoto),
   );
 
   // The category facet, counted before the category filter — every chip
@@ -314,7 +364,7 @@ export function listProductsFromView(
     query.categoryId
       ? searched.filter((product) => product.categoryId === query.categoryId)
       : searched
-  ).sort((a, b) => a.name.localeCompare(b.name));
+  ).sort(productComparator(query.sort, query.dir));
 
   return {
     items: filtered.slice(offset, offset + limit),

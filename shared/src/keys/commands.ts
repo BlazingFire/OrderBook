@@ -94,6 +94,8 @@ const MASTER_NAV: NavEntry[] = [
   ['products', 'nav.products'],
   ['parties', 'nav.master.parties'],
   ['partyAccess', 'nav.master.partyAccess'],
+  // 1.4 D3: Lists (grades, packaging, brands). Alt+G, a plain letter chord.
+  ['lists', 'nav.lists', 'Alt+G'],
   ['panels', 'nav.master.panels', 'Alt+O'],
   ['access', 'nav.master.access', 'Alt+A'],
   ['fields', 'nav.master.fields', 'Alt+E'],
@@ -120,6 +122,7 @@ const OFFICE_NAV: NavEntry[] = [
   ['products', 'nav.products'],
   ['parties', 'nav.parties'],
   ['partyAccess', 'nav.partyAccess'],
+  ['lists', 'nav.lists', 'Alt+G'],
   ['settings', 'nav.settings'],
   ['logs', 'nav.logs', 'Alt+L'],
   ['updates', 'nav.updates', 'Alt+U'],

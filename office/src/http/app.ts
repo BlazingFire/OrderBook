@@ -80,6 +80,9 @@ import * as sync from '../sync/sync.service.js';
 
 const log = createLogger('http');
 
+/** A product share of up to 400 products with photographs: far longer than the usual 15 s acknowledgement. */
+const PRODUCT_SHARE_ACK_MS = 120_000;
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const imageUpload = multer({
@@ -734,6 +737,12 @@ export function createApp(): Express {
           : undefined,
       brand: typeof req.query.brand === 'string' && req.query.brand ? req.query.brand : undefined,
       missingWeight: req.query.missingWeight === 'true' ? true : undefined,
+      sort: typeof req.query.sort === 'string' && req.query.sort ? req.query.sort : undefined,
+      dir:
+        req.query.dir === 'desc' ? ('desc' as const) : req.query.dir === 'asc' ? ('asc' as const) : undefined,
+      size: typeof req.query.size === 'string' && req.query.size ? req.query.size : undefined,
+      hasPhoto:
+        req.query.hasPhoto === 'true' ? true : req.query.hasPhoto === 'false' ? false : undefined,
       limit: req.query.limit ? Number(req.query.limit) : undefined,
       offset: req.query.offset ? Number(req.query.offset) : undefined,
     };
@@ -1168,6 +1177,28 @@ export function createApp(): Express {
           'lead:pdf',
           { fileName: string; bytes: Uint8Array }
         >('lead:pdf', req.params.id);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${pdf.fileName}"`);
+        res.send(Buffer.from(pdf.bytes));
+      } catch (error) {
+        failForward(res, error);
+      }
+    })();
+  });
+
+  /**
+   * Create product share (1.4 D3): the Master renders the four-to-a-page PDF with
+   * its photographs and this hands it to the browser. Online only, like the other
+   * PDFs: the Master holds the renderer, the fonts and the image files.
+   */
+  app.post('/api/products/share.pdf', (req, res) => {
+    void (async () => {
+      try {
+        // Up to 400 products with photographs: well past the usual 15 s acknowledgement.
+        const pdf = await masterConnection.commandWithin(PRODUCT_SHARE_ACK_MS)<
+          'product:sharePdf',
+          { fileName: string; bytes: Uint8Array }
+        >('product:sharePdf', Array.isArray(req.body?.ids) ? req.body.ids : []);
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename="${pdf.fileName}"`);
         res.send(Buffer.from(pdf.bytes));

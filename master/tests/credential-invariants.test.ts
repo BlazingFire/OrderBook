@@ -131,13 +131,25 @@ describe('the two-layer permission check', () => {
       return line.includes('needs(');
     });
 
-    // Every Fields endpoint is gated by `fields.view` or `fields.manage` — the
-    // `- 2` exemption above is specific to `access.routes.ts`'s two genuinely
-    // ungated routes and must never be copied here or generalised into a loop
-    // over routers. The two pre-existing ungated reads (`GET /api/pipelines`,
-    // `/api/option-lists`) are a deliberately separate
-    // surface on `data.routes.ts`, not on this router.
-    expect(guards.length).toBe(handlers.length);
+    // Every Fields endpoint is gated by `fields.view` or `fields.manage`, except
+    // the four option-value routes below: since 1.4 D3 the service decides them
+    // (`requireListRead` / `requireListWrite` in `fields.service.ts`), because the
+    // brands, packaging types and grades are read by everyone and written under
+    // `catalog.lists.manage`, while every other list keeps `fields.view` /
+    // `fields.manage`. Adding a route means guarding it or naming it here with its
+    // reason; the `- 2` exemption in `access.routes.ts` must never be copied.
+    // The two pre-existing ungated reads (`GET /api/pipelines`, `/api/option-lists`)
+    // are a deliberately separate surface on `data.routes.ts`, not on this router.
+    const SERVICE_GATED = [
+      "fieldsRoutes.get(\n  '/values',", // listValues: fields.view, or nothing for the three catalog lists
+      "fieldsRoutes.get(\n  '/usage',", // fieldUsage: same
+      "fieldsRoutes.post(\n  '/values',", // createValue: fields.manage, or catalog.lists.manage
+      "fieldsRoutes.put(\n  '/values/:id',", // updateValue: same
+      "fieldsRoutes.delete(\n  '/values/:id',", // deleteValue: same
+      "fieldsRoutes.post(\n  '/values/reorder',", // reorderValues: same
+    ];
+    for (const exempt of SERVICE_GATED) expect(routes, exempt).toContain(exempt);
+    expect(guards.length).toBe(handlers.length - SERVICE_GATED.length);
   });
 
   it('guards every Logs route (Stage 4 extends the pattern to its own router)', () => {

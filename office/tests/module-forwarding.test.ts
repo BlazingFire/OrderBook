@@ -186,6 +186,45 @@ describe('the paged catalogue', () => {
     });
   });
 
+  it('forwards the sort and the size and photo filters (1.4 R17)', async () => {
+    const commandSpy = vi
+      .spyOn(masterConnection, 'command')
+      .mockResolvedValue({ items: [], total: 0, limit: 100, offset: 0, categories: [] } as never);
+
+    await request(createApp()).get('/api/products?sort=weight&dir=desc&size=600x600&hasPhoto=false');
+
+    expect(commandSpy).toHaveBeenCalledWith('product:list', {
+      sort: 'weight',
+      dir: 'desc',
+      size: '600x600',
+      hasPhoto: false,
+    });
+  });
+
+  it('asks the Master for the product share PDF and hands it on inline (1.4 R16)', async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValue({ fileName: 'product-share-2026-10-03.pdf', bytes: new Uint8Array([37, 80, 68, 70]) });
+    const within = vi.spyOn(masterConnection, 'commandWithin').mockReturnValue(send as never);
+
+    const response = await request(createApp()).post('/api/products/share.pdf').send({ ids: ['PR1', 'PR2'] });
+
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toContain('application/pdf');
+    expect(response.headers['content-disposition']).toContain('product-share-2026-10-03.pdf');
+    expect(send).toHaveBeenCalledWith('product:sharePdf', ['PR1', 'PR2']);
+    // A share of up to 400 products with photographs is not a 15 s command.
+    expect(within).toHaveBeenCalledWith(120_000);
+  });
+
+  it('says the Master is unreachable for the product share rather than inventing one (1.4 R16)', async () => {
+    vi.spyOn(masterConnection, 'commandWithin').mockReturnValue(
+      (() => Promise.reject(UNREACHABLE)) as never,
+    );
+    const response = await request(createApp()).post('/api/products/share.pdf').send({ ids: ['PR1'] });
+    expect(response.status).toBe(503);
+  });
+
   it('pages the cached snapshot, and says so, when the Master cannot be reached', async () => {
     vi.spyOn(masterConnection, 'command').mockRejectedValue(UNREACHABLE);
     vi.spyOn(localStore, 'getView').mockResolvedValue({

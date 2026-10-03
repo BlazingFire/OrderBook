@@ -41,6 +41,7 @@ export const leadEntryTransport: LeadEntryTransport = {
 
 export const catalogueTransport: CatalogueTransport = {
   listProducts: (query, signal) => api.listProducts(query, signal),
+  productSharePdf: (ids) => api.productSharePdf(ids),
   categories: (query) => api.categories(query),
   createCategory: (input) => api.createCategory(input),
   updateCategory: (id, input) => api.updateCategory(id, input),
