@@ -133,6 +133,7 @@ import { useResetGuard } from './ResetSlot.js';
 import { Select } from './SuggestInput.js';
 import { ConflictBanner } from './States.js';
 import { useSubNav } from './SubNavSlot.js';
+import { useUnsavedWork } from './unsavedWork.js';
 import { useDebounced } from './useDebounced.js';
 import { useEnterToAdvance, useEscapeToPrevious } from './useEnterToAdvance.js';
 
@@ -1286,6 +1287,24 @@ function LeadEntryForm({
             confirmLabel: t('lead.add.discard'),
             tone: 'danger',
           })
+      : null,
+  );
+
+  // "Save all and update" (1.4 R7b): a new lead that is ready is saved before an
+  // update closes the window; one that is not is named, so nobody loses it unawares.
+  useUnsavedWork(
+    'new-lead',
+    !lead && (partyId || lines.length > 0 || draft || notes.trim())
+      ? {
+          label: selectedParty?.name
+            ? t('updates.saveAll.leadFor', { party: selectedParty.name })
+            : t('updates.saveAll.newLead'),
+          save: async () => {
+            if (refusal()) return false;
+            await save();
+            return saving.current;
+          },
+        }
       : null,
   );
 

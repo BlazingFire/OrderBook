@@ -1564,3 +1564,110 @@ async function aBuildHereAndANewerOneDownloading() {
 
   return { masterDir, here, newer, body };
 }
+
+describe('1.4: Check now and the download bar (R6, R7a)', () => {
+  const etagged = (manifest: ReleaseManifest, etag: string) =>
+    new Response(JSON.stringify(listing(manifest)), {
+      status: 200,
+      headers: { 'content-type': 'text/json', etag },
+    });
+  const apiCalls = () => requested.filter((url) => url === API).length;
+
+  it('R6: one answer from GitHub is shared, so a poll and a roomful of Offices cost one API call', async () => {
+    const manifest = signed();
+    serve({
+      [API]: () => json(listing(manifest)),
+      [MANIFEST_URL]: () => json(manifest),
+      [SETUP_URL]: () => stream(PAYLOAD),
+    });
+
+    const { syncFromGitHub } = await loadService();
+    await syncFromGitHub('master', dir, null, 'win32');
+    await syncFromGitHub('master', dir, null, 'win32');
+    await syncFromGitHub('office', dir, null, 'win32');
+
+    expect(apiCalls()).toBe(1);
+  });
+
+  it('R6: a repeat after the cache window is a conditional request, and a 304 is reused', async () => {
+    const manifest = signed();
+    let conditional: string | null = null;
+    let calls = 0;
+    serve({
+      [API]: (init) => {
+        calls += 1;
+        if (calls === 1) return etagged(manifest, '"v1"');
+        conditional = new Headers(init?.headers).get('if-none-match');
+        return new Response(null, { status: 304 });
+      },
+      [MANIFEST_URL]: () => json(manifest),
+      [SETUP_URL]: () => stream(PAYLOAD),
+    });
+
+    const { syncFromGitHub, forgetLatestRelease } = await loadService();
+    await syncFromGitHub('master', dir, null, 'win32');
+
+    // Check now forgets the answer but keeps its etag, so GitHub can say "unchanged".
+    forgetLatestRelease();
+    const again = await syncFromGitHub('master', dir, null, 'win32');
+
+    expect(calls).toBe(2);
+    expect(again?.version).toBe('2.0.0');
+    expect(conditional).toBe('"v1"');
+  });
+
+  it('R7a: the download reports bytes, the total and the end', async () => {
+    const manifest = signed();
+    const body = openBody();
+    serve({
+      [API]: () => json(listing(manifest)),
+      [MANIFEST_URL]: () => json(manifest),
+      [SETUP_URL]: body.response,
+    });
+
+    const { syncFromGitHub, downloadProgress } = await loadService();
+    expect(downloadProgress('master', 'win32').phase).toBe('idle');
+
+    const landing = syncFromGitHub('master', dir, null, 'win32');
+    await vi.waitFor(() => expect(downloadProgress('master', 'win32').phase).toBe('downloading'));
+    expect(downloadProgress('master', 'win32')).toMatchObject({
+      version: '2.0.0',
+      totalBytes: PAYLOAD.length,
+      receivedBytes: 0,
+    });
+
+    body.push(PAYLOAD.subarray(0, 10));
+    await vi.waitFor(() => expect(downloadProgress('master', 'win32').receivedBytes).toBe(10));
+    expect(downloadProgress('master', 'win32').percent).toBeGreaterThan(0);
+
+    body.push(PAYLOAD.subarray(10));
+    body.end();
+    await landing;
+    expect(downloadProgress('master', 'win32')).toMatchObject({
+      phase: 'done',
+      receivedBytes: PAYLOAD.length,
+      percent: 100,
+    });
+  });
+
+  it('R7a: a download that dies is reported as failed, with the reason', async () => {
+    const manifest = signed();
+    const body = openBody();
+    serve({
+      [API]: () => json(listing(manifest)),
+      [MANIFEST_URL]: () => json(manifest),
+      [SETUP_URL]: body.response,
+    });
+
+    const { syncFromGitHub, downloadProgress } = await loadService();
+    const landing = syncFromGitHub('master', dir, null, 'win32');
+    await vi.waitFor(() => expect(downloadProgress('master', 'win32').phase).toBe('downloading'));
+    // Fewer bytes than the manifest promised, then the stream ends.
+    body.push(PAYLOAD.subarray(0, 5));
+    body.end();
+
+    expect(await landing).toBeNull();
+    expect(downloadProgress('master', 'win32')).toMatchObject({ phase: 'failed' });
+    expect(downloadProgress('master', 'win32').error).toBeTruthy();
+  });
+});

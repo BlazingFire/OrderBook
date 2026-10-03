@@ -115,6 +115,7 @@ import {
   useEnterToAdvance,
   useEscapeToPrevious,
   useResetGuard,
+  useUnsavedWork,
   useCommand,
   useConfirm,
   useLeadEditBase,
@@ -1228,6 +1229,24 @@ function AddLeadForm({
             confirmLabel: t('lead.add.discard'),
             tone: 'danger',
           })
+      : null,
+  );
+
+  // "Save all and update" (1.4 R7b): a new lead that is ready is saved before an
+  // update closes the window; one that is not is named, so nobody loses it unawares.
+  useUnsavedWork(
+    'new-lead',
+    !lead && (partyId || lines.length > 0 || draft || notes.trim())
+      ? {
+          label: selectedParty?.name
+            ? t('updates.saveAll.leadFor', { party: selectedParty.name })
+            : t('updates.saveAll.newLead'),
+          save: async () => {
+            if (refusal()) return false;
+            await save();
+            return saving.current;
+          },
+        }
       : null,
   );
 

@@ -32,6 +32,7 @@ import {
   MUTATION_PERMISSIONS,
   cleanChatPost,
   parseReportQuery,
+  standing,
   t,
   type ChatMessage,
   type DataChangedEvent,
@@ -1357,12 +1358,28 @@ export function createApp(): Express {
       .catch((error: unknown) => respondToUpdateFailure(res, error));
   });
 
+  /** Check now (1.4 R6): the Master asks GitHub before it answers. Any signed-in person may look. */
+  app.post('/api/updates/check', requireUser, (_req, res) => {
+    void updateService
+      .availableUpdate({ check: true })
+      .then((availability) => res.json(availability))
+      .catch((error: unknown) => respondToUpdateFailure(res, error));
+  });
+
+  /** Where this panel's download from the Master stands, for the progress bar (1.4 R7). */
+  app.get('/api/updates/progress', requireUser, (_req, res) => {
+    res.json(updateService.downloadStatus());
+  });
+
   /**
    * Downloads and verifies, then hands back a path. Running it is the desktop
    * shell's job — this process is the one being replaced.
    */
   app.post('/api/updates/download', requireUser, (_req, res) => {
-    if (!userSession.can('settings.manage')) {
+    // Behind the Master, anyone signed in may update: the "Update needed" screen
+    // (1.4 R7e) blocks everything else, so it would be a dead end otherwise.
+    const mandatory = standing(appVersion(), masterConnection.getStatus().masterVersion) === 'behind';
+    if (!mandatory && !userSession.can('settings.manage')) {
       res.status(403).json({
         error: 'forbidden',
         message: 'Missing permission: settings.manage',

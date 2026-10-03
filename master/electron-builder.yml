@@ -103,6 +103,11 @@ portable:
 nsis:
   oneClick: false
   perMachine: true
+  # The new version opens by itself when an install ends (1.4 R7d): in the
+  # wizard this is the "Run" box on the finish page, ticked; in a silent install
+  # (the update button, the Master's nightly update) it is `--force-run`, which
+  # the shell passes (`electron/lib/update-launch.ts`).
+  runAfterFinish: true
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true

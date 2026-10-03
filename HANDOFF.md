@@ -1229,6 +1229,15 @@ terms, multiple contacts); concurrent edits of one lead from two panels
 Condensed. The full entries are in `git show 5b8ebe2:HANDOFF.md` and in
 `docs/AI_COLLABORATION.md`.
 
+- **2026-10-03 — 1.4 D1 (helper): app updates end to end, no menu bar.** No menu bar
+  on Windows/Linux (macOS keeps Quit/Edit/Window); Check now, a download bar,
+  `update.available` / `update.installing` notices, Save all + sign out + silent
+  `--force-run` install, a blocking "Update needed" screen on an Office behind its
+  Master, and the Master's nightly update (23:00, copy of the data first). Poll is
+  2 min, release listing cached with an etag. The unattended install declines
+  rather than raise a UAC prompt nobody can answer: open owner question (D1 log).
+  See `docs/UPDATES.md` "1.4".
+
 - **2026-10-03 — 1.3 Phase 8: back up everything to a drive, Magic restore,
   automatic backup (Claude).** Migration `20261007000000_backup_all_permission_grant`
   (additive: `storage.backupAll` to the Server Master role, and taken off every

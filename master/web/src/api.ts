@@ -78,7 +78,9 @@ import type {
   PartyAccessQuery,
   PartyAccessRow,
   ReleaseManifest,
-  UpdateAvailability,
+  AutoUpdateConfig,
+  AutoUpdateStatus,
+  UpdateStatusResponse,
   PartyScopeFilter,
   PartyInput,
   PartyProductVariant,
@@ -592,10 +594,12 @@ export const api = {
 
   // --- App update ----------------------------------------------------------
 
-  updateStatus: () =>
-    request<{ running: string; master: UpdateAvailability; office: UpdateAvailability }>(
-      '/api/updates/status',
-    ),
+  updateStatus: () => request<UpdateStatusResponse>('/api/updates/status'),
+  /** Check now (1.4 R6): asks GitHub straight away instead of waiting for the poll. */
+  checkForUpdates: () => post<UpdateStatusResponse>('/api/updates/check', {}),
+  /** The nightly update's switch and time (`settings.manage`). */
+  saveAutoUpdate: (input: Partial<AutoUpdateConfig>) =>
+    request<AutoUpdateStatus>('/api/updates/auto', { method: 'PUT', body: JSON.stringify(input) }),
   /** Verifies the setup file and returns its path; the shell runs it. */
   prepareMasterUpdate: () =>
     post<{ path: string; manifest: ReleaseManifest }>('/api/updates/master/install', {}),

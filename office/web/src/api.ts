@@ -73,6 +73,7 @@ import type {
   PartyAccessRow,
   ReleaseManifest,
   UpdateAvailability,
+  UpdateDownloadProgress,
   PartyInput,
   PartyProductVariantInput,
   Pipeline,
@@ -749,6 +750,10 @@ export const api = {
   // --- App update ----------------------------------------------------------
 
   updateAvailable: () => request<UpdateAvailability>('/api/updates/available'),
+  /** Check now (1.4 R6): the Master asks GitHub first, then answers. */
+  checkForUpdates: () => post<UpdateAvailability>('/api/updates/check', {}),
+  /** Where the download from the Master stands (1.4 R7). */
+  updateProgress: () => request<UpdateDownloadProgress>('/api/updates/progress'),
   /** Downloads from the Master and checksums it; the shell runs it. */
   downloadUpdate: () =>
     post<{ path: string; manifest: ReleaseManifest }>('/api/updates/download', {}),

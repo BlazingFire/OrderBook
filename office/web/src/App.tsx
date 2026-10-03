@@ -17,6 +17,7 @@ import { Activity, useCallback, useEffect, useRef, useState } from 'react';
 import {
   applyChangeToSnapshot,
   isRoleTier,
+  standing,
   LONG_OFFLINE_MS,
   matchesRecordSearch,
   recordNumber,
@@ -120,6 +121,7 @@ import { DashboardScreen } from './screens/DashboardScreen';
 import { LeadBoardScreen } from './screens/LeadBoardScreen';
 import { OrderBoardScreen } from './screens/OrderBoardScreen';
 import { SignInScreen } from './screens/SignInScreen';
+import { UpdateRequiredScreen } from './screens/UpdateRequiredScreen';
 import { SETTINGS_TAB_IDS } from './settingsTabs';
 
 /*
@@ -835,6 +837,18 @@ function OfficePanel() {
     );
   }
 
+  // A different version from the Master's (1.4 R7e): nothing past this point
+  // until this panel is updated. Only once the Master's version is known.
+  if (standing(__APP_VERSION__, connection.masterVersion) === 'behind') {
+    return (
+      <UpdateRequiredScreen
+        connection={connection}
+        permissions={session.permissions}
+        onSignOut={() => void signOut()}
+      />
+    );
+  }
+
   const permissions = session.permissions;
   const can = (permission: string): boolean => permissions.includes(permission);
   // The session names the tier as text; the report rules take the tiers there are.
@@ -1335,6 +1349,8 @@ function OfficePanel() {
           } else if (link.kind === 'lead') {
             setOpenLeadId(link.id);
             setTab('leads');
+          } else if (link.kind === 'update') {
+            goToTab('updates');
           }
         }}
       />

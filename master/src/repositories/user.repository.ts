@@ -223,6 +223,16 @@ export async function findActiveUserIdsWithPermission(
     .map((row) => row.id);
 }
 
+/** Every active person in a tenant, for a notice that is for everybody. */
+export async function findAllActiveUserIds(tenantId: string, runner: Runner = db()): Promise<string[]> {
+  const rows = await runner(TABLE)
+    .where({ tenant_id: tenantId, is_active: true })
+    .whereNull('deleted_at')
+    .orderBy('id')
+    .select<{ id: string }[]>('id');
+  return rows.map((row) => row.id);
+}
+
 export interface CredentialRow {
   id: string;
   tenantId: string;

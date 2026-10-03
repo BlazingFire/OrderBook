@@ -28,10 +28,12 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type {
+  AutoUpdateStatus,
   MessageKey,
   OfficePanelWithPresence,
   ReleaseManifest,
   UpdateAvailability,
+  UpdateStatusResponse,
 } from '@orderbook/shared';
 import { standing } from '@orderbook/shared';
 
@@ -41,15 +43,26 @@ import {
   Card,
   DataTable,
   EmptyState,
+  FormField,
+  Input,
   Section,
   StatusPill,
+  Switch,
+  UpdateProgress,
+  apiErrorText,
   formatDateTime,
   rem,
   t,
+  useSaveAllBeforeUpdate,
+  useToast,
   type DataTableColumn,
 } from '@orderbook/ui';
 
 type Phase = 'idle' | 'verifying' | 'launching' | 'failed';
+
+/** How often the screen re-reads while a download runs, and while it does not. */
+const POLL_BUSY_MS = 2_000;
+const POLL_IDLE_MS = 30_000;
 
 export function UpdatesScreen({
   panels,
@@ -63,10 +76,11 @@ export function UpdatesScreen({
   const behind = live.filter((panel) => standing(panel.device.appVersion, master) === 'behind');
   const unknown = live.filter((panel) => panel.device.appVersion === null);
 
-  const [status, setStatus] = useState<{
-    master: UpdateAvailability;
-    office: UpdateAvailability;
-  } | null>(null);
+  const [status, setStatus] = useState<UpdateStatusResponse | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [signedOut, setSignedOut] = useState(false);
+  const saveAll = useSaveAllBeforeUpdate();
+  const toast = useToast();
   const [phase, setPhase] = useState<Phase>('idle');
   const [failure, setFailure] = useState<string | null>(null);
   const [readyPath, setReadyPath] = useState<string | null>(null);
@@ -98,8 +112,7 @@ export function UpdatesScreen({
 
   const load = useCallback(async () => {
     try {
-      const next = await api.updateStatus();
-      setStatus({ master: next.master, office: next.office });
+      setStatus(await api.updateStatus());
     } catch {
       // A broken releases folder must not take the screen down with it — the
       // panel table below is the half somebody may have come here for.
@@ -107,9 +120,32 @@ export function UpdatesScreen({
     }
   }, []);
 
+  // Re-read without a reload (1.4 R6): every 30 s, and every 2 s while a build
+  // is coming down so the progress bar moves.
+  const busyDownloading = ['downloading', 'verifying'].some(
+    (phase) => status?.download.master.phase === phase || status?.download.office.phase === phase,
+  );
   useEffect(() => {
     void load();
-  }, [load]);
+    const timer = setInterval(() => void load(), busyDownloading ? POLL_BUSY_MS : POLL_IDLE_MS);
+    return () => clearInterval(timer);
+  }, [load, busyDownloading]);
+
+  /** Check now: GitHub is asked straight away, not at the next poll. */
+  const checkNow = async (): Promise<void> => {
+    setChecking(true);
+    try {
+      const next = await api.checkForUpdates();
+      setStatus(next);
+      if (!next.master.available && !['downloading', 'verifying'].includes(next.download.master.phase)) {
+        toast.push(t('updates.checkedNone'), { tone: 'ok' });
+      }
+    } catch (caught) {
+      toast.push(apiErrorText(caught, 'error.requestFailed'), { tone: 'error' });
+    } finally {
+      setChecking(false);
+    }
+  };
 
   const install = async (): Promise<void> => {
     setPhase('verifying');
@@ -125,7 +161,19 @@ export function UpdatesScreen({
         return;
       }
 
+      // Save all (1.4 R7b): whatever is open and can be saved is, and what cannot
+      // is named. Declining the last question leaves everything as it was.
+      if (!(await saveAll())) {
+        setPhase('idle');
+        return;
+      }
+
       setPhase('launching');
+      // Signed out before the window closes (R7c). The server's stop would end
+      // the session anyway; doing it here means a refused install shows the
+      // sign-in screen rather than a window that looks signed in and is not.
+      await api.signOut().catch(() => undefined);
+      setSignedOut(true);
       if (!(await shell.applyUpdate())) {
         setPhase('failed');
         setFailure(t('updates.launchRefused'));
@@ -201,6 +249,36 @@ export function UpdatesScreen({
             </div>
           </dl>
 
+          <div
+            style={{
+              marginTop: 'var(--s-12)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--s-12)',
+              flexWrap: 'wrap',
+            }}
+          >
+            <Button variant="secondary" busy={checking} onClick={() => void checkNow()}>
+              {checking ? t('updates.checking') : t('updates.checkNow')}
+            </Button>
+            <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
+              {status?.lastCheckedAt
+                ? t('updates.lastChecked', { time: formatDateTime(status.lastCheckedAt) })
+                : t('updates.notCheckedYet')}
+            </span>
+            {desktopBridge()?.openLogFolder ? (
+              <Button variant="ghost" onClick={() => void desktopBridge()?.openLogFolder?.()}>
+                {t('updates.openLogFolder')}
+              </Button>
+            ) : null}
+          </div>
+
+          {status ? (
+            <div style={{ marginTop: 'var(--s-12)', display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
+              <UpdateProgress progress={status.download.master} />
+            </div>
+          ) : null}
+
           <UpdateOffer
             offer={offer}
             availability={status?.master ?? null}
@@ -211,8 +289,24 @@ export function UpdatesScreen({
             readyPath={readyPath}
             onInstall={() => void install()}
           />
+
+          {signedOut && phase === 'failed' ? (
+            <div style={{ marginTop: 'var(--s-8)' }}>
+              <Button variant="secondary" onClick={() => window.location.reload()}>
+                {t('updates.signInAgain')}
+              </Button>
+            </div>
+          ) : null}
         </Card>
       </Section>
+
+      {permissions.includes('settings.manage') && status ? (
+        <AutoUpdateSection
+          status={status.auto}
+          running={master}
+          onSaved={(auto) => setStatus((current) => (current ? { ...current, auto } : current))}
+        />
+      ) : null}
 
       <Section title={t('updates.panelsTitle')}>
         <p className="ob-small" style={{ margin: 0 }}>
@@ -227,6 +321,7 @@ export function UpdatesScreen({
             {t('updates.officeReady', { version: status.office.available.version })}
           </p>
         ) : null}
+        {status ? <UpdateProgress progress={status.download.office} /> : null}
         <DataTable
           columns={columns}
           rows={live}
@@ -368,5 +463,91 @@ function UpdateOffer({
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * The nightly update (1.4 R8): on by default, at 23:00. The Master prepares the
+ * newest build, takes a copy of its data, installs it with nobody at the
+ * keyboard and starts again; the server serves the Offices as soon as it is up,
+ * and the window shows the sign-in screen for whoever comes in next.
+ */
+function AutoUpdateSection({
+  status,
+  running,
+  onSaved,
+}: {
+  status: AutoUpdateStatus;
+  running: string;
+  onSaved: (status: AutoUpdateStatus) => void;
+}) {
+  const toast = useToast();
+  const [enabled, setEnabled] = useState(status.enabled);
+  const [time, setTime] = useState(status.time);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save(): Promise<void> {
+    setSaving(true);
+    setError(null);
+    try {
+      onSaved(await api.saveAutoUpdate({ enabled, time }));
+      toast.push(t('updates.auto.saved'), { tone: 'ok' });
+    } catch (caught) {
+      setError(apiErrorText(caught, 'error.requestFailed'));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const run = status.lastRun;
+  const runText = !run
+    ? t('updates.auto.never')
+    : run.outcome === 'installing'
+      ? run.version === running
+        ? t('updates.auto.updated', { version: run.version ?? '', at: formatDateTime(run.at) })
+        : t('updates.auto.waiting', { version: run.version ?? '', at: formatDateTime(run.at) })
+      : run.outcome === 'skipped'
+        ? t('updates.auto.skipped', { at: formatDateTime(run.at) })
+        : t('updates.auto.failed', {
+            at: formatDateTime(run.at),
+            reason: run.message ? t(run.message.messageKey as MessageKey, run.message.params) : '',
+          });
+
+  return (
+    <Section title={t('updates.auto.title')}>
+      <Card>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}>
+          <p className="ob-small" style={{ margin: 0 }}>
+            {t('updates.auto.help')}
+          </p>
+          <p className="ob-small" style={{ margin: 0, color: 'var(--fg-tertiary)' }}>
+            {runText}
+          </p>
+          <Switch checked={enabled} onChange={setEnabled} label={t('updates.auto.enabled')} />
+          <FormField label={t('updates.auto.time')}>
+            {(id) => (
+              <Input
+                id={id}
+                type="time"
+                value={time}
+                disabled={!enabled}
+                onChange={(event) => setTime(event.target.value)}
+              />
+            )}
+          </FormField>
+          {error ? (
+            <p className="ob-small" role="alert" style={{ margin: 0, color: 'var(--state-conflict)' }}>
+              {error}
+            </p>
+          ) : null}
+          <div>
+            <Button variant="primary" busy={saving} onClick={() => void save()}>
+              {t('updates.auto.save')}
+            </Button>
+          </div>
+        </div>
+      </Card>
+    </Section>
   );
 }

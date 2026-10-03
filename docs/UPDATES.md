@@ -125,8 +125,8 @@ has always used.
 ## When a new build shows up
 
 A Master with `ORDERBOOK_RELEASES_GITHUB_REPO` set looks for a new release two
-minutes after it starts and then every `ORDERBOOK_RELEASES_POLL_MINUTES` (180
-by default), and downloads it into its releases folder. Opening an Updates
+minutes after it starts and then every `ORDERBOOK_RELEASES_POLL_MINUTES` (**2**
+by default since 1.4; it was 180), and downloads it into its releases folder. Opening an Updates
 screen asks GitHub too, but waits no more than five seconds for the answer — a
 setup file takes minutes to arrive — and then says what the folder holds. So
 between a release being published and the next poll, an Updates screen can say
@@ -141,6 +141,99 @@ asks, its build only starts downloading then, so that panel's Updates screen
 shows nothing to install yet: check again a few minutes later. To stop fetching
 for an operating system the shop no longer runs, delete its
 `latest-<platform>.json` and its setup file from `office-panel`.
+
+## 1.4: Check now, the progress bar, Save all and the nightly update
+
+**What has to be true on a real install for any of this to run.** Three things,
+all in `.env` or in the build, none of them a code change:
+
+1. `ORDERBOOK_RELEASES_GITHUB_REPO=owner/repo` on the Master PC (there is no
+   default repository: it is the owner's own releases repository).
+2. The build carries the release key. `TRUSTED_RELEASE_KEYS` holds
+   `release-2026-10-01`, so a release signed with the matching private key is
+   trusted and `ORDERBOOK_ALLOW_UNSIGNED_RELEASES` is **not** needed. An
+   unsigned release is still refused.
+3. The Master PC can reach `api.github.com` and the asset hosts. Offices never
+   do: they ask the Master.
+
+**Rate limit.** Unauthenticated, GitHub allows 60 API calls an hour. The poll is
+every two minutes, so the release listing is read once per sweep and shared by
+every build and every Office that asks (a 20 s cache), and a repeat after that
+is a *conditional* request (`If-None-Match`), which GitHub answers `304` without
+counting it. Check now forgets the cache but keeps the etag, and presses closer
+together than ten seconds share one answer.
+
+**Check now** is a button on both panels' App update screen. The Master's asks
+GitHub at once; the Office's asks the Master (`/api/updates/office/latest?check=1`),
+which asks GitHub. The answer comes within five seconds; a build still
+downloading is shown by its progress bar and, when it lands, everybody is told.
+
+**Who is told.** The first time a poll or a check finds a build newer than the one
+running, every active account gets one `update.available` bell notice for that
+version (`master/src/services/auto-update.ts`). The version is remembered in
+`<dataDir>/auto-update.json`, so reading the notice and the next poll finding the
+same build does not send it again. An open Updates screen re-reads every 30 s.
+
+**The progress bar** shows bytes done of the total, speed (a five-second moving
+average, so a stall shows as a stall) and time left, for the Master fetching
+from GitHub (`/api/updates/status` → `download`) and for an Office fetching from
+the Master (`/api/updates/progress` on the Office).
+
+**Install now** on either panel: prepare/download and verify, then *Save all*
+(below), sign out, then the shell stops the server and runs the setup silently
+(`/S --force-run`: no wizard, and the new version opens itself when the install
+ends). Windows asks for administrator approval once; declining it puts the server
+back and shows "Sign in again".
+
+**Save all.** No form in this product keeps a draft on disk, so there is no draft
+store to keep things in. What registers (`useUnsavedWork`) is the **New lead**
+form on both panels: a lead that is ready is saved exactly as Ctrl+Enter would,
+and one that is not (no party yet, a product card half-filled) is named in a
+dialog with "Update anyway" or Cancel. The shell also asks the page to save before
+it closes the window (`onBeforeUpdate`, waited on for at most eight seconds), so
+the nightly update does the same. Everything else open (a party form, a product
+drawer) is not saved: the install button's confirmation is the only protection
+there.
+
+**An Office on another version than its Master** shows a blocking "Update needed"
+screen after sign-in, in place of the app, and anybody signed in may install
+(it is mandatory; the Windows prompt still needs an administrator). It applies
+only once the Office *knows* the Master's version, which it learns from the
+Master's own snapshot, so an Office that starts with no connection works offline
+as ever; the first snapshot from a newer Master brings the screen. An Office that
+is *ahead* of its Master is not blocked: updating the Master is what fixes that.
+
+**The nightly update** (Master only, default **on at 23:00**, set on the App update
+screen by anybody with `settings.manage`): within the two hours after the chosen
+time the Master (1) fetches, (2) writes a copy of its data to
+`<dataDir>/pre-update-backups` (the newest three kept; no photos), (3) verifies
+and holds the installer, and (4) puts one request on its loopback health route.
+Its desktop shell polls that route every 30 s and runs the same checked install as
+the button, with nobody there. The new version starts itself, the server serves
+the Offices as soon as it is up, and the window shows the sign-in screen: nobody
+has to sign in for the shop to work. The PC has to be switched on and signed in to
+Windows overnight (it is a desktop app).
+
+**The UAC limit.** The Windows installer is per-machine and needs administrator
+approval. A shell that is *already* elevated runs it silently; one that is not
+**declines the unattended install and leaves the server running**, rather than
+raising a prompt nobody can answer with the server already stopped. The screen
+then says the update was prepared and not installed. Making the unattended
+install work for a non-elevated Master is the owner's decision (D1 log, QUESTION).
+
+**Where the old menu went.** The menu bar is gone on Windows and Linux; macOS
+keeps only Quit, Edit (Copy/Paste) and Window.
+
+| Old menu item | Now |
+|---|---|
+| Edit roles (Cut, Copy, Paste, Select All) | macOS only: the Edit menu; Windows and Linux handle the keys natively |
+| View → Reload (Ctrl+R) | F5, `view.refresh` (already a command) |
+| View → Full screen | F11, in the shell (`shellKeyAction`) |
+| View → Developer tools | Ctrl+Shift+I, in a build that is not packaged |
+| Help → Check for updates | the App update item in the sidebar, and its Check now button |
+| Help → Keyboard shortcuts (F1) | D4 adds F1 as a real chord (`keys.help`) |
+| Help → Open log folder | a button on the App update screen (`openLogFolder`) |
+| Help → Version | the App update screen |
 
 ## What data survives
 

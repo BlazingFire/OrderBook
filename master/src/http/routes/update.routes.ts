@@ -31,6 +31,7 @@ import { Router } from 'express';
 import type { ReleasePlatform } from '@orderbook/shared';
 import { LEGACY_RELEASE_PLATFORM } from '@orderbook/shared';
 
+import * as autoUpdate from '../../services/auto-update.js';
 import * as updateService from '../../services/update.service.js';
 import { appVersion } from '../../lib/app-version.js';
 import { asyncHandler } from '../async-handler.js';
@@ -76,11 +77,15 @@ publicUpdateRoutes.get(
   '/office/latest',
   requirePanel,
   asyncHandler(async (req, res) => {
+    // `?check=1` is an Office's Check now: the Master asks GitHub first
+    // (cooled down, so a roomful of panels share one question).
+    if (req.query.check === '1') await updateService.checkNow();
     res.json(
       await updateService.availability('office', '0.0.0', askingPlatform(req.query.platform)),
     );
   }),
 );
+
 
 publicUpdateRoutes.get(
   '/office/download',
@@ -117,7 +122,42 @@ updateRoutes.get(
       updateService.availability('office', '0.0.0'),
     ]);
 
-    res.json({ running: appVersion(), master, office });
+    res.json({
+      running: appVersion(),
+      master,
+      office,
+      download: updateService.downloadStatus(),
+      lastCheckedAt: updateService.lastChecked(),
+      auto: await autoUpdate.getAutoUpdateStatus(),
+    });
+  }),
+);
+
+/**
+ * Check now (1.4 R6): ask GitHub straight away. Any signed-in person may; the
+ * cool-down in `checkNow` is what keeps repeated presses from spending the API
+ * allowance, so no permission is needed to be allowed to look.
+ */
+updateRoutes.post(
+  '/check',
+  asyncHandler(async (_req, res) => {
+    const { master, office } = await updateService.checkNow();
+    res.json({
+      running: appVersion(),
+      master,
+      office,
+      download: updateService.downloadStatus(),
+      lastCheckedAt: updateService.lastChecked(),
+      auto: await autoUpdate.getAutoUpdateStatus(),
+    });
+  }),
+);
+
+updateRoutes.put(
+  '/auto',
+  requirePermissionMiddleware('settings.manage'),
+  asyncHandler(async (req, res) => {
+    res.json(await autoUpdate.updateAutoUpdateConfig(req.body, actorFromRequest(req)));
   }),
 );
 

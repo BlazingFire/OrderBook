@@ -105,10 +105,13 @@ export const config = {
     githubToken: process.env.ORDERBOOK_RELEASES_GITHUB_TOKEN?.trim() || null,
 
     /**
-     * How often the Master asks GitHub, in minutes. Zero switches polling off
-     * and leaves the Updates screen's own check as the only trigger.
+     * How often the Master asks GitHub, in minutes. Two by default (1.4 R6),
+     * so a new release shows within minutes; the release listing is cached and
+     * asked conditionally, which keeps this inside GitHub's 60 calls an hour
+     * for an unauthenticated caller. Zero switches polling off and leaves the
+     * Updates screen's own check as the only trigger.
      */
-    pollMinutes: Number(process.env.ORDERBOOK_RELEASES_POLL_MINUTES ?? '180'),
+    pollMinutes: Number(process.env.ORDERBOOK_RELEASES_POLL_MINUTES ?? '2'),
   },
 
   pdf: {
