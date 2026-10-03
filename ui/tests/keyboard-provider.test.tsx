@@ -363,3 +363,43 @@ describe('the bare / key', () => {
     }
   });
 });
+
+describe('navigation chords from inside a field (1.4 fix)', () => {
+  function mountWithField() {
+    const went: string[] = [];
+    render(
+      <KeyboardProvider panel="master" onNavigate={(tab) => went.push(tab)}>
+        <input aria-label="vehicle" />
+      </KeyboardProvider>,
+    );
+    const field = screen.getByLabelText('vehicle');
+    field.focus();
+    return { went, field };
+  }
+
+  it('goes to Lists on Alt+G while a field has focus, as on the dispatch note screen', () => {
+    const { went, field } = mountWithField();
+    act(() => {
+      fireEvent.keyDown(field, { key: 'g', code: 'KeyG', altKey: true });
+    });
+    expect(went).toEqual(['lists']);
+  });
+
+  it('goes to a numbered screen on Alt+3 from a field', () => {
+    const { went, field } = mountWithField();
+    act(() => {
+      fireEvent.keyDown(field, { key: '3', code: 'Digit3', altKey: true });
+    });
+    expect(went).toEqual(['leads']);
+  });
+
+  it('still leaves Ctrl+F and a bare letter to the field', () => {
+    const { went, field } = mountWithField();
+    act(() => {
+      fireEvent.keyDown(field, { key: 'f', code: 'KeyF', ctrlKey: true });
+      fireEvent.keyDown(field, { key: 'g', code: 'KeyG' });
+    });
+    expect(went).toEqual([]);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});

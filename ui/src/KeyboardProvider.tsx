@@ -269,7 +269,12 @@ export function KeyboardProvider({
         // box, replacing their browser's find with a palette they did not ask
         // for. A screen-level command has no business firing inside a field;
         // `record.save` is `global` precisely so Ctrl+S still does.
-        if (typing && command.scope === 'screen') continue;
+        // A navigation chord is the exception: Alt+digit or Alt+letter types nothing
+        // in a field, so "go to Lists" must work from the note screen's Vehicle or
+        // Copies box, or a search box, as it does from anywhere else. Ctrl+Alt is
+        // AltGr on many layouts and is never a nav chord.
+        const navigates = command.tab !== undefined && (chord.alt || chord.meta) && !chord.ctrl;
+        if (typing && command.scope === 'screen' && !navigates) continue;
 
         // Modality. `F5` behind a scrim would refresh the screen somebody
         // cannot see, and `Alt+3` would move the pane under an open editor.
