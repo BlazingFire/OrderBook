@@ -49,6 +49,8 @@ const KIND_TEXT: Record<NotificationKind, MessageKey> = {
   'task.done': 'notification.task.done',
   'access.requested': 'notification.access.requested',
   'print.printed': 'notification.print.printed',
+  'backup.autoSkipped': 'notification.backup.autoSkipped',
+  'backup.autoFailed': 'notification.backup.autoFailed',
 };
 
 /** A chat right named in a notice, as the reader's language words it. */

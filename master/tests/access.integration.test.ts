@@ -8,7 +8,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { allPermissions, minimumTierFor, PERMISSIONS } from '@orderbook/shared';
+import { allPermissions, effectivePermissions, minimumTierFor, PERMISSIONS } from '@orderbook/shared';
 
 import { canRunIntegrationTests } from './helpers/db.js';
 import { resetData, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
@@ -35,7 +35,11 @@ async function officeRole(name = 'Dispatch') {
 }
 
 async function adminRole(name = 'Second Admin') {
-  return roleService.createRole({ name, tier: 'admin', permissions: allPermissions() }, admin);
+  // The admin ceiling: `allPermissions()` also holds the Server-Master-only keys.
+  return roleService.createRole(
+    { name, tier: 'admin', permissions: effectivePermissions(allPermissions(), 'admin') },
+    admin,
+  );
 }
 
 describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
@@ -532,7 +536,7 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
         {
           name: role.name,
           tier: 'admin',
-          permissions: allPermissions().filter((key) => key !== 'orders.export'),
+          permissions: effectivePermissions(allPermissions(), 'admin').filter((key) => key !== 'orders.export'),
           expectedVersion: role.sync.version,
         },
         admin,

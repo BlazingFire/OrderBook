@@ -10,6 +10,20 @@ This file assumes both.
 
 ---
 
+## First: finish the 1.3 batch (2026-10-03)
+
+Phases 0–4 and 8 of the owner's 1.3 batch are on `main`, and the helper's
+party import/export and reports are merged. The helper session's branch
+`helper/1.3` (git worktree `C:/Users/Z/Desktop/OrderBook-helper`) also holds
+the pending-order notes, Save PDF and print copies, plus the Printroom, all
+waiting for review and merge. The Chatroom is still to be built.
+
+The status table and the ordered next steps are in `HANDOFF.md` under
+**"1.3 batch — status and how to continue"**. The plan is
+`docs/plans/1.3-BATCH.md` (approved) with `docs/plans/1.3-BATCH-DETAIL.md`.
+Do that list before the older items below. Several of them were touched by
+the batch, so check each against the code before acting on it.
+
 ## Do these first, in this order
 
 ### 1. The owner's five decisions, and three chores only the owner can do

@@ -1411,7 +1411,7 @@ describe('Settings', () => {
     expect(await screen.findByTitle(t('settings.tab.appearance'))).toBeTruthy();
     expect(screen.getByTitle(t('settings.tab.shortcuts'))).toBeTruthy();
     // `leads` is left out: its label is the sidebar's own "Pending Orders".
-    for (const tab of ['company', 'connection', 'storage']) {
+    for (const tab of ['company', 'connection', 'storageBackup']) {
       expect(screen.queryByTitle(t(`settings.tab.${tab}`))).toBeNull();
     }
     const paths = calls.map((call) => call.url.split('?')[0]);
@@ -1424,6 +1424,47 @@ describe('Settings', () => {
     await boot(ADMIN);
     await open(t('nav.master.settings'));
     expect(await screen.findByTitle(t('settings.tab.connection'))).toBeTruthy();
+  });
+
+  async function openStorageTab(): Promise<void> {
+    await open(t('nav.master.settings'));
+    await act(async () => {
+      fireEvent.click(await screen.findByTitle(t('settings.tab.storageBackup')));
+      await wait(0);
+    });
+    // The version 1 export is there either way, so the tab has drawn.
+    await screen.findByRole('button', { name: t('backup.export.action') });
+  }
+
+  it('has no backup-everything sections without storage.backupAll', async () => {
+    const calls = await boot([...ADMIN, 'storage.manage']);
+    await openStorageTab();
+
+    expect(screen.queryByText(t('backupAll.title'))).toBeNull();
+    expect(screen.queryByText(t('autoBackup.title'))).toBeNull();
+    expect(calls.some((call) => call.url.startsWith('/api/storage/auto-backup'))).toBe(false);
+  });
+
+  it('shows them with storage.backupAll, and off the Master PC says where they are done', async () => {
+    await boot([...ADMIN, 'storage.manage', 'storage.backupAll'], ({ url }) =>
+      url === '/api/storage/auto-backup'
+        ? json({
+            enabled: true,
+            folder: 'E:\\Backups',
+            time: '21:00',
+            keepLast: 7,
+            lastRun: null,
+            folderReachable: true,
+          })
+        : undefined,
+    );
+    await openStorageTab();
+
+    expect(await screen.findByText(t('backupAll.title'))).toBeTruthy();
+    expect(screen.getByText(t('backupAll.notMasterPc'))).toBeTruthy();
+    expect(screen.queryByRole('button', { name: t('backupAll.start') })).toBeNull();
+    expect(await screen.findByText(t('autoBackup.title'))).toBeTruthy();
+    expect(screen.queryByRole('button', { name: t('autoBackup.save') })).toBeNull();
   });
 });
 
@@ -1599,6 +1640,83 @@ describe('Server Masters at first run and sign-in (1.3)', () => {
     expect(screen.getByText('pair-word')).toBeTruthy();
   });
 
+  it('first run offers Magic restore: a zip by path, its preview, then the restore to the end', async () => {
+    const PREVIEW = {
+      fileName: 'OrderBook-Backup-shree.zip',
+      company: 'Shree Ceramics',
+      createdAt: '2026-10-01T15:30:00.000Z',
+      appVersion: '1.3.0',
+      masterUniqueId: 'MASTER-1',
+      counts: { parties: 4, products: 9, users: 3, leads: 12, orders: 5 },
+      photos: 7,
+      totalBytes: 2048,
+      sealed: { secretSettings: 1, connectorCredentials: 0 },
+    };
+    const job = (phase: string) => ({
+      id: 'job-1',
+      kind: 'restore',
+      phase,
+      done: 0,
+      total: 0,
+      startedAt: '2026-10-03T00:00:00.000Z',
+    });
+    let started = false;
+    const calls = await bootTo(({ url, method }) => {
+      if (url === '/api/setup/status') {
+        return json({ setupComplete: false, onMasterPc: true, serverMasterSetupNeeded: false });
+      }
+      if (url === '/api/setup/archive/preview' && method === 'POST') return json(PREVIEW);
+      if (url === '/api/setup/archive/restore' && method === 'POST') {
+        started = true;
+        return json(job('checking'), 202);
+      }
+      if (url === '/api/setup/archive/job') return json(started ? job('done') : null);
+      return undefined;
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: t('firstRun.choose.magicRestore') }));
+    // The version 1 restore stays, under its own name.
+    expect(screen.queryByRole('button', { name: t('firstRun.choose.restore') })).toBeNull();
+    fireEvent.change(screen.getByLabelText(t('magicRestore.pathLabel')), {
+      target: { value: 'E:\\OrderBook-Backup-shree.zip' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('magicRestore.read') }));
+      await wait(0);
+    });
+
+    expect(await screen.findByText('Shree Ceramics')).toBeTruthy();
+    expect(calls.find((call) => call.url === '/api/setup/archive/preview')?.body).toEqual({
+      path: 'E:\\OrderBook-Backup-shree.zip',
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('magicRestore.start') }));
+      await wait(0);
+    });
+    expect(await screen.findByText(t('magicRestore.doneTitle'))).toBeTruthy();
+    expect(calls.find((call) => call.url === '/api/setup/archive/restore')?.body).toEqual({
+      path: 'E:\\OrderBook-Backup-shree.zip',
+    });
+    // One secret setting cannot travel, so the owner is told to enter it again.
+    expect(
+      screen.getByText(t('backupAll.sealedNotice', { settings: 1, connectors: 0 })),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: t('firstRun.ready.continue') })).toBeTruthy();
+  });
+
+  it('first run offers all three forks on the Master PC', async () => {
+    await bootTo(({ url }) =>
+      url === '/api/setup/status'
+        ? json({ setupComplete: false, onMasterPc: true, serverMasterSetupNeeded: false })
+        : undefined,
+    );
+
+    expect(await screen.findByRole('button', { name: t('firstRun.choose.newSite') })).toBeTruthy();
+    expect(screen.getByRole('button', { name: t('firstRun.choose.magicRestore') })).toBeTruthy();
+    expect(screen.getByRole('button', { name: t('firstRun.choose.restore') })).toBeTruthy();
+  });
+
   it('first run on a LAN browser says it is done at the Master PC, with no setup or restore', async () => {
     await bootTo(({ url }) =>
       url === '/api/setup/status'
@@ -1609,6 +1727,7 @@ describe('Server Masters at first run and sign-in (1.3)', () => {
     expect(await screen.findByText(t('firstRun.choose.masterPcOnly'))).toBeTruthy();
     expect(screen.queryByRole('button', { name: t('firstRun.choose.newSite') })).toBeNull();
     expect(screen.queryByRole('button', { name: t('firstRun.choose.restore') })).toBeNull();
+    expect(screen.queryByRole('button', { name: t('firstRun.choose.magicRestore') })).toBeNull();
   });
 
   it('signs in with an empty username, never a suggested admin', async () => {

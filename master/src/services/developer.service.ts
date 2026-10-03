@@ -27,26 +27,19 @@ import {
 import { config } from '../config/index.js';
 import { db, runMigrations } from '../db/knex.js';
 import { systemActor, type ActorContext } from '../domain/actor.js';
-import { resetRateLimits } from '../http/middleware/api-key-rate-limit.js';
-import { resetApiKeyFailures } from '../http/middleware/require-api-key.js';
-import { resetPublicApiTenantCache } from '../http/routes/public-api.routes.js';
 import { UnauthorizedError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import { hashPassword } from '../lib/password.js';
 import { resetSecretBox } from '../lib/secret-box.js';
-import { resetChangeRing } from '../realtime/change-ring.js';
 import { disconnectEverySocket } from '../realtime/hub.js';
 import { recordDetachedActivity } from '../repositories/activity-log.repository.js';
-import { invalidateFieldCache } from '../repositories/custom-field.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
-import { invalidatePipelineCache } from '../repositories/pipeline.repository.js';
-import { invalidateRoleCache } from '../repositories/role.repository.js';
 import { resolveDefaultTenantId } from '../repositories/tenant.repository.js';
 import { insertUser, roleIdForTier } from '../repositories/user.repository.js';
 import { invalidateSessionsForUser, resetAuthState } from './auth.service.js';
 import { createDeveloperGate, type DeveloperGate } from './developer-gate.js';
 import { rememberPassword } from './password-vault.service.js';
-import { invalidateSettingsCache } from './settings.service.js';
+import { resetProcessCaches } from './process-caches.js';
 import { getIdentity, isSetupComplete, runFirstTimeSetup } from './setup.service.js';
 
 const log = createLogger('developer');
@@ -151,17 +144,7 @@ export async function resetAllData(actor?: ActorContext): Promise<ResetAllResult
   // Every in-process cache that holds tenant data. Each survives the schema
   // drop, and a stale entry here is a role nobody granted, a setting nobody
   // set, or a tenant id that no longer exists.
-  invalidateSettingsCache();
-  invalidateRoleCache();
-  invalidatePipelineCache();
-  invalidateFieldCache();
-  resetPublicApiTenantCache();
-  resetRateLimits();
-  resetApiKeyFailures();
-  // The change ring's sequence would otherwise carry on from where the old
-  // data left off, and a panel re-paired later could ask for a delta since a
-  // seq that describes records this database never held.
-  resetChangeRing();
+  resetProcessCaches();
 
   log.warn('Developer reset: every record on this Master has been erased');
 

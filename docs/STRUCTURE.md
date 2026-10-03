@@ -107,7 +107,7 @@ the LAN. Scheduled connector runs need the `externalApi.enabled` setting (fallba
 
 | Machine | Process | Code | Listens on | Owns |
 |---|---|---|---|---|
-| Master PC | Electron shell (main process) | `electron/master.main.ts` → `electron/shell.ts` | — | the window, the server child, the menu, and the shell IPC: `orderbook:applyUpdate`, `orderbook:getDataDir`, `orderbook:setDataDir`, `orderbook:chooseDirectory`, `orderbook:getShellSettings`, `orderbook:setShellSettings`, `orderbook:openLogFolder`, `orderbook:uninstall` |
+| Master PC | Electron shell (main process) | `electron/master.main.ts` → `electron/shell.ts` | — | the window, the server child, the menu, and the shell IPC: `orderbook:applyUpdate`, `orderbook:getDataDir`, `orderbook:setDataDir`, `orderbook:chooseDirectory`, `orderbook:chooseFile`, `orderbook:getShellSettings`, `orderbook:setShellSettings`, `orderbook:openLogFolder`, `orderbook:uninstall` |
 | Master PC | Preload bridge (renderer side of that IPC) | `electron/preload.cts` → `window.orderbook` (the reason `electron/tsconfig.json` includes `**/*.cts`) | — | nothing |
 | Master PC | Master server (a Node child of the shell, `ELECTRON_RUN_AS_NODE=1`) | `master/src/index.ts` | TCP `0.0.0.0:4100` (HTTP + Socket.IO), UDP `45789` | everything durable; also runs the in-process connector scheduler (`master/src/services/connector-scheduler.ts`, 60 s tick) and the release poller |
 | Master PC | PostgreSQL cluster (started by the server with `pg_ctl`) | `master/src/db/postgres-server.ts` | TCP `127.0.0.1:55432` only | the database |
@@ -219,6 +219,11 @@ under the shell, `<Electron appData>/OrderBook/master`, relocatable via
   postgres.log                   pg_ctl --log target
   booted-version                 last app version that booted and migrated
   backups/before-<ver>-<stamp>/  pre-upgrade cluster copies + README.txt; newest 2 kept
+  backups/pre-restore-<stamp>.zip  1.3 Phase 8: data-only safety copy a Settings restore
+                                 writes before replacing everything; newest 2 kept
+  auto-backup.json               1.3 Phase 8: this PC's automatic backup {enabled, folder,
+                                 time, keepLast, lastRun, …} (backup-scheduler.ts)
+  tmp/restore-<jobId>/           1.3 Phase 8: a restore's staged photos; removed when it ends
   secrets/vault.key              AES-256-GCM key for master/src/lib/secret-box.ts (dir 0700, file 0600)
   uploads/                       config.uploadsDir
     images/<tenantId>/<imageId>/{master,large,thumb,micro}.webp   product photos
@@ -937,16 +942,21 @@ the Office four screens — `office/web/src/screens/AddLeadScreen.tsx`,
   leads, parties, products — all 6; orders — 5 (no `create`); inventory — view,
   edit, export; reports — view, export; roles — view, create, edit, delete; logs —
   view, export. **34 module-action keys.**
-- **Capabilities:** 19 in 3 groups — workflow: `lead.convert`, `orders.dispatch`,
-  `record.reassignOwner`; stock: `stock.adjust`; admin (15): `users.manage`,
+- **Capabilities:** 20 in 3 groups — workflow: `lead.convert`, `orders.dispatch`,
+  `record.reassignOwner`; stock: `stock.adjust`; admin (16): `users.manage`,
   `users.viewPassword`, `roles.assign`, `panels.manage`, `settings.manage`,
-  `storage.manage`, `fields.manage`, `api.manage`, `logs.verifyChain`,
+  `storage.manage`, `storage.backupAll` (1.3 Phase 8: back up everything to a
+  drive, restore it, schedule it), `fields.manage`, `api.manage`, `logs.verifyChain`,
   `sync.resolveConflicts`, `recycleBin.view`, `recycleBin.viewAll`, `fields.view`,
   `party.accessAll`, `party.assign`.
-- **`PERMISSIONS` holds 53 keys**, derived from the two lists, never typed by hand.
+- **`PERMISSIONS` holds 54 keys**, derived from the two lists, never typed by hand.
   The four rate keys went with pricing.
 - **Tier ceiling:** the private `MINIMUM_TIER` map gives each key its lowest tier; a
-  key not in the map is open to every tier. 25 keys are above office. **Admin (13):**
+  key not in the map is open to every tier. 26 keys are above office. **Server
+  Master (1):** `storage.backupAll`, granted to the Server Master role by migration
+  `20261007000000_backup_all_permission_grant`, which also takes it off every other
+  role, since the `20260303000000` live-catalogue seed gives it to Administrator
+  (v1 `.obbackup` export and restore keep `storage.manage`). **Admin (13):**
   `users.manage`, `users.viewPassword`, `roles.assign`, `panels.manage`,
   `settings.manage`, `storage.manage`, `api.manage`, `sync.resolveConflicts`,
   `roles.view`/`create`/`edit`/`delete`, `party.assign`. **Management (12):**
@@ -1133,7 +1143,9 @@ sending the secret there, and a proof relayed from another address does not veri
 
 **`shared/src/protocol/desktop.ts` — shell/web and health contracts.**
 `DesktopBridge` (`window.orderbook`) requires `applyUpdate()` and `shellVersion`;
-eight methods are optional because older shells lack them (1.3 H3 widens `printPage` to `{deviceName?, copies?}` and adds an optional `savePdf({fileName})`): `chooseDirectory`,
+eight methods are optional because older shells lack them (1.3 H3 widens `printPage` to `{deviceName?, copies?}` and adds an optional `savePdf({fileName})`): `chooseDirectory`
+(since 1.3 Phase 8 with an optional `{title}`), `chooseFile({title, extensions})`
+(1.3 Phase 8, a backup zip for Magic restore),
 `getDataDir`, `setDataDir`, `getShellSettings` (incl. `standalone?` and, since
 2026-09-25, `systemPackage?` — a Linux copy not started from an AppImage, in a
 shipped build the `.deb`, which `applyUpdate` refuses), `setShellSettings`,
@@ -1979,6 +1991,7 @@ primaryLanAddress() ?? '127.0.0.1', httpPort: config.http.port, acceptingPairing
 |---|---|---|---|
 | `master/src/lib/app-version.ts` | 33 | `appVersion()` from `<packageRoot>/package.json`, falls back to `0.0.0` | 8 |
 | `master/src/lib/backup-crypto.ts` | 137 | `.obbackup` envelope `[u32 manifest length][manifest JSON][salt16][iv12][tag16][ciphertext]`, AES-256-GCM with a scrypt key; `encryptBackup`, `readManifest`, `verifyContentHash`, `decryptBackup`, `BackupFileError`. Near-duplicated in `office/src/lib/backup-crypto.ts`. | 2 |
+| `master/src/lib/archive-zip.ts` | 251 | 1.3 Phase 8. `createZipWriter` (archiver, zip64, entries strictly in sequence, each resolving `{bytes, sha256}`; EFBIG becomes `fat32TooLarge`) and `openZipReader` (yauzl with `decodeStrings`, `validateEntrySizes`, `strictFileNames`; a zip listing more than `MAX_ARCHIVE_ENTRIES` is refused before its entries are read; duplicates kept so the domain refuses them; encrypted entries refused). Each entry stream goes through a `PassThrough`, because a stored entry's raw stream never ends under `for await` | 3 |
 | `master/src/lib/csv.ts` | 37 | `toCsv()` — CRLF, quoting, leading apostrophe against formula injection for `= + - @` | 4 |
 | `master/src/lib/durable-file.ts` | 42 | `writeDurable()` — temp, fsync, rename | 1 |
 | `master/src/lib/env-file.ts` | 53 | `loadEnvFiles(...files)` | 1 |
@@ -2025,6 +2038,7 @@ exercised only through service integration tests.
 | `master/src/domain/connector-mapping.ts` (110) | one remote row → one local input via closed transforms | `mapRow`, `applyTransform`, `hashInput`, `changedFields` | `master/tests/connector-mapping.test.ts` |
 | `master/src/domain/panel-report.ts` (106) | validates and clamps the five-minute `panel:report` | `normalisePanelReport` | `master/tests/panel-report-domain.test.ts` |
 | `master/src/domain/backup.ts` (49) | backup format rules | `assertImportableFormatVersion`, `assertPassphraseStrong`, `summarizeManifest` | `master/tests/backup-domain.test.ts` |
+| `master/src/domain/archive.ts` (342) | 1.3 Phase 8: the backup-everything zip's rules, no I/O | `classifyArchiveEntry` (the entry allowlist), `safeUploadTarget`, `parseArchiveManifest`, `assertArchiveRestorable`, `checkArchiveEntries` (sizes, duplicates, caps, missing files), `estimateArchiveBytes`, `assertArchiveFits` (free space × 1.1, FAT32 over 4 GiB − 64 MiB), `companySlug`, `archiveFileName` | `master/tests/archive-domain.test.ts` |
 
 ### 5.6 `services/` — all 43 files, by feature
 
@@ -2367,8 +2381,31 @@ exercised only through service integration tests.
   are not included.**
 - `master/src/services/backup-restore.service.ts` (127) — `previewRestore`,
   `restoreBackup` (§11.8).
-- `master/src/services/storage.service.ts` (65) — `getStorageUsage`: cluster dir,
-  uploads dir, free disk.
+- `master/src/services/storage.service.ts` (92) — `getStorageUsage`: cluster dir,
+  uploads dir, free disk; `freeDiskBytes`; since 1.3 Phase 8 `volumeFileSystem(dir)`
+  (PowerShell `Get-Volume`, the path passed in an environment variable; null off
+  Windows or on failure).
+- **Back up everything (1.3 Phase 8, `docs/7-STORAGE-BACKUP-RESTORE.md`):**
+  - `backup-job.ts` (128) — the one job slot (`startJob` refuses a second with
+    `error.conflict.backupBusy`, `currentJob`) and the maintenance flag:
+    `enterMaintenance` signs everyone out, disconnects every socket, rejects queued
+    pushes and waits for the push gate before the schema is touched.
+  - `process-caches.ts` (47) — `resetProcessCaches()`: everything `resetAllData`
+    resets plus the public-API tenant cache, queued pushes, presence, the
+    long-offline timers and a new `BOOT_ID`. Used by `resetAllData`, the v1 restore
+    and the archive restore.
+  - `archive-export.service.ts` (435) — `exportArchive`: pre-flight, one
+    `REPEATABLE READ READ ONLY` snapshot, keyset pages of 2,000 rows, photos stored
+    after the snapshot ends,
+    `.partial` re-hashed then renamed; `backup.created` or `backup.failed`.
+  - `archive-restore.service.ts` (594) — `previewArchive` (no side effects) and
+    `restoreArchive(path, {mode: 'first-run' | 'replace'})`, in the order of
+    `docs/7-STORAGE-BACKUP-RESTORE.md` §5.3; pairing is kept; `backup.restored` or
+    `backup.restore_failed`, never the latter once the load has committed.
+  - `backup-scheduler.ts` (321) — the daily automatic backup: `<dataDir>/auto-backup.json`,
+    a 60 s tick, the once-a-day missing-drive notice, pruning that only touches this
+    company's archive names, `updateAutoBackupConfig` (`backup.schedule_updated`),
+    `listArchives`.
 - `master/src/services/update.service.ts` (509) — `releaseDirFor`, `releaseFileFor`,
   `readManifest`, `availability` (waits on a GitHub sync for `GITHUB_WAIT_MS` = 5 s
   at most, then answers from the folder), `masterAvailability`, `verifyRelease`,
@@ -2544,7 +2581,10 @@ mount runs `requirePanel`, then both routers pass the path on). `notFoundHandler
 - `master/src/http/async-handler.ts`, `master/src/http/query.ts` (`paging()` —
   `search`, `limit`, `offset`, `scope=assigned`; `idList()`),
   `master/src/http/public-api-contract.ts`.
-- Middleware: `master/src/http/middleware/require-loopback.ts` (1.3 Phase 2,
+- Middleware: `master/src/http/middleware/maintenance-gate.ts` (1.3 Phase 8,
+  mounted first: during a restore every `/api/*` and `/uploads/*` request gets 503
+  `error.unavailable.maintenance` with `Retry-After: 5`, except `/api/health` and
+  `/api/setup/archive/job`); `master/src/http/middleware/require-loopback.ts` (1.3 Phase 2,
   `requireLoopback`: 403 `error.forbidden.masterPcOnly` for anything but the Master
   PC, using `isLoopback` from `lib/network.ts` (address and `Host`/`Origin`); placed before `backupUpload.single` so a
   LAN host never makes the Master buffer an upload);
@@ -2774,7 +2814,9 @@ the service checks.
 - **`master/src/realtime/change-ring.ts`** — in-memory ring of the last 2,000
   `DataChangedEvent`s: `record()` (stamps `seq`; called by `publishChange`),
   `currentSeq()`, `since(lastSeq)` (null = too old), `resetChangeRing()`, per-process
-  `BOOT_ID`. A cursor from before a restart falls back to a snapshot.
+  `BOOT_ID` (an `export let` since 1.3 Phase 8: `resetChangeRing()` mints a new one,
+  so a cursor from before a restore falls back to a snapshot too). A cursor from
+  before a restart falls back to a snapshot.
 - **`master/src/realtime/panel-link.ts`** — `setPanelLink()`/`panelLink()`, a seam so
   `panel.service.ts` can reach one panel's socket (`isConnected`, `request`,
   `disconnect`, `notify`) without importing the hub. Two optional members push to
@@ -2919,12 +2961,11 @@ audit and left open; item 24 records what it found deliberate.
 17. **`deleteOrder` can race a dispatch.** It checks `dispatchedAt` on a read taken
     before its transaction and never locks the order, so a dispatch that commits in
     between leaves a soft-deleted order whose stock has already gone out.
-18. **The public API's tenant cache is stale after a whole restore.**
-    `resetPublicApiTenantCache()` runs on a developer reset, but a whole restore of
-    another installation's backup replaces the tenant row without calling it
-    (`backup-restore.service.ts` empties only the settings and role caches), so
-    `/api/v1` keeps reading the off switch of a tenant that is gone until a restart.
-    The function's comment says so.
+18. **Closed in 1.3 Phase 8: the public API's tenant cache after a whole restore.**
+    A whole v1 restore used to leave `/api/v1` reading the off switch of a tenant
+    that was gone until a restart. Every restore and the developer reset now call
+    `resetProcessCaches()` (`process-caches.ts`), which includes
+    `resetPublicApiTenantCache()`.
 19. **The reload/wipe CLI stops a running Master's database.**
     `catalog-reload-cli.ts` starts the managed cluster through `startPostgres()`,
     which adopts a cluster that is already running, and its `stop()` then runs
@@ -3024,7 +3065,7 @@ are recounted in the 1.3 Phase 9 reconciliation.
   Admin role's stored permissions, so Admin's seeded key set tracks whatever the
   catalogue is when that migration first runs on a database.
 
-### 6.2 All 40 migrations, in the order they are applied
+### 6.2 All 41 migrations, in the order they are applied
 
 | # | Migration | Lines | What it does / leaves behind |
 |---|---|---|---|
@@ -3069,7 +3110,8 @@ are recounted in the 1.3 Phase 9 reconciliation.
 | 39 | `master/src/db/migrations/20261003000000_pending_order_numbers.ts` | 91 | **Pinned, additive, idempotent** (1.3 Phase 4). `leads.po_number TEXT` with the guarded CHECK `leads_po_number_format`; an UPDATE-only backfill per tenant and financial year in `(created_at, id)` order, deleted leads included, the time zone frozen inline as Asia/Kolkata, continuing after the higher of the existing numbers and the counter; the partial UNIQUE `leads_po_number_uq (tenant_id, po_number) WHERE po_number IS NOT NULL`; seeds `id_sequences` `po:<fy>` with ON CONFLICT greatest. `identity.repository.ts#backfillPendingOrderNumbers` is a frozen copy for a pre-1.3 `.obbackup` restore. `master/tests/migration-pending-order-numbers.integration.test.ts` |
 | 40 | `master/src/db/migrations/20261004000000_report_indexes_and_grants.ts` | — | **Pinned, additive, idempotent** (1.3 H2). The owner-by-date indexes the reports read through, and a union grant of `reports.view` + `reports.export` to the office and management tiers |
 | 41 | `master/src/db/migrations/20261005000000_chatroom.ts` | — | **Pinned last, additive, idempotent** (1.3 Phase 6, migration #5). `chat_rooms`, `chat_members`, `chat_messages` (every user column `TEXT REFERENCES users(id)`), their partial unique and lookup indexes, and a union grant of the six `chat.*` keys to `admin` / `server_master` roles and `chat.use` + `chat.shareRecords` to `office` / `management` roles. `down()` drops the tables only |
-| 41 | `master/src/db/migrations/20261006000000_printroom.ts` | — | **Pinned last, additive, idempotent** (1.3 Phase 7, migration #6). `print_stations` and `print_jobs` (every user column `TEXT REFERENCES users(id)`; a job's `status` is `queued` / `printing` / `printed` / `cancelled`, its claim held by `claim_socket`; `UNIQUE (tenant_id, sender_id, request_id)` makes a retried send idempotent), their indexes, and a union grant of `print.send` + `print.station` to `admin` / `server_master` roles. `down()` drops the tables only |
+| 42 | `master/src/db/migrations/20261006000000_printroom.ts` | — | **Pinned last, additive, idempotent** (1.3 Phase 7, migration #6). `print_stations` and `print_jobs` (every user column `TEXT REFERENCES users(id)`; a job's `status` is `queued` / `printing` / `printed` / `cancelled`, its claim held by `claim_socket`; `UNIQUE (tenant_id, sender_id, request_id)` makes a retried send idempotent), their indexes, and a union grant of `print.send` + `print.station` to `admin` / `server_master` roles. `down()` drops the tables only |
+| 43 | `master/src/db/migrations/20261007000000_backup_all_permission_grant.ts` | 59 | **Pinned last, additive, idempotent** (1.3 Phase 8). A frozen inline union grant of `storage.backupAll` to every role with `tier = 'server_master'`, deleted roles included, the array kept sorted. It also removes the key from every role of any other tier, because the `20260303000000` live-catalogue seed gives it to Administrator; still UPDATE only, `down()` a no-op. `master/tests/migration-backup-all-grant.integration.test.ts` |
 
 ### 6.3 Conventions across the schema
 
@@ -3322,7 +3364,7 @@ files of its own** — §7.6 lists the tests that read or boot this source.
 | `master/web/src/vite-env.d.ts` | 2 | `declare const __APP_VERSION__: string` |
 | `master/web/src/main.tsx` | 29 | `configureUi({ panel: 'master', defaultTheme: 'light', themeStorageKey: 'ob.theme.v3' })`, `initAppearance()`, styles, render. The key moved from `ob.theme.v2` in 1.3 Phase 1, so every Master starts on light once; a theme chosen after that persists |
 | `master/web/src/App.tsx` | 1391 | the shell (§7.2) |
-| `master/web/src/api.ts` | 946 | the only HTTP client (§7.3) |
+| `master/web/src/api.ts` | 1106 | the only HTTP client (§7.3); since 1.3 Phase 8 the archive members `startArchiveBackup`, `archiveJob`, `listArchives`, `previewArchive`, `restoreArchive` (master-key header), `autoBackup`, `saveAutoBackup`, `setupPreviewArchive`, `setupRestoreArchive`, `setupArchiveJob` |
 | `master/web/src/settingsTabs.ts` | 30 | 1.3 Phase 1: `SETTINGS_TAB_IDS` and `settingsTabIdsFor(permissions)`, moved out of `SettingsScreen.tsx` so the shell can build the Settings fold without loading that lazy screen |
 | `master/web/src/partyFormTransport.ts` | 20 | hands the shared `PartyFormModal` `api.createParty`/`api.updateParty` |
 | `master/web/src/transports.ts` | 74 | `leadRecordTransport`, `orderRecordTransport`, `leadEntryTransport` and `catalogueTransport`: module-level `api.x` references handed to the shared views (2026-10-01); since 1.3 Phase 1 also `optionListTransport`, moved here from `FieldsScreen.tsx` so Products and Settings do not pull in the lazy Fields screen |
@@ -3332,6 +3374,9 @@ files of its own** — §7.6 lists the tests that read or boot this source.
 | `master/web/src/components/MasterKeyPrompt.tsx` | 114 | 1.3 Phase 2. `MasterKeyForm` (the key field → `api.verifyMasterKey`; a 429 lockout shows its seconds through `apiErrorText`), `MasterKeyPrompt` (it in a `Modal`: a credential prompt, not a record) and `useMasterKeyPrompt()` → `{ ask, prompt }`, an awaitable prompt used by Roles & users and Settings |
 | `master/web/src/components/DataDirCard.tsx` | 74 | first-run-only data-folder chooser; renders only when `desktopBridge()` has `getDataDir`, `setDataDir`, `chooseDirectory` |
 | `master/web/src/components/StorageBackup.tsx` | 236 | `StorageBackupActions`: export (passphrase → `api.exportStorage` → blob download) and restore (`previewRestoreStorage`, passphrase, `restoreStorage`; on `backup_populated_data_directory` asks for a typed wipe confirmation and retries with `confirmWipe`) |
+| `master/web/src/components/useBackupJob.ts` | 102 | 1.3 Phase 8. `useBackupJob(read)` → `{job, follow}`: reads once on mount (shows a job already running), then polls every 500 ms until `done` or `failed`; a failed poll (the 503s of a restore) is ignored and retried. `phaseLabel` maps each `BackupJobPhase` to its `backupAll.phase.*` key |
+| `master/web/src/components/BackupAllSection.tsx` | 351 | 1.3 Phase 8, `storage.backupAll`. Off the Master PC only a notice. On it: the keep-the-drive-safe banner, the folder (typed, or `chooseDirectory` through the shell; seeded from the automatic backup's folder), **Back up everything** with a `ProgressBar`, the backups in that folder (`listArchives`) each with **Restore…**, and **Restore from another file…** (`chooseFile`). A restore shows `ArchivePreviewFacts`, needs CONFIRM and the master key (`useMasterKeyPrompt`), is followed through `setupArchiveJob`, and ends on a reload into sign-in. Exports `BackupJobProgress` and `ArchivePreviewFacts` for the first-run screen |
+| `master/web/src/components/AutoBackupSection.tsx` | 175 | 1.3 Phase 8, `storage.backupAll`. The last-run line and an unreachable-folder warning everywhere; on the Master PC the switch, folder (with the chooser), time, keep-last and Save (`saveAutoBackup`) |
 | `master/web/src/screens/*.tsx` (16) | — | §7.4 |
 
 ### 7.2 `App.tsx` — the shell
@@ -3614,9 +3659,9 @@ Settings and Updates.
 | `master/web/src/screens/RecycleBinScreen.tsx` (578) | soft-deleted records, `LoadMorePager`, type/search/deleted-by filters, counts, own/everyone scope; restore per row with `RESTORE_PERMISSION[type]`; a 409 opens `RefusalDialog` (suggested rename, or restore parents first and retry with `cascadeParents: true`) | `recycleBin`, `recycleBinCounts`, `recycleBinDeleters`, `restoreFromBin` | `recycleBin.view`, `recycleBin.viewAll`, `RESTORE_PERMISSION` |
 | `master/web/src/screens/ConflictsScreen.tsx` (179) | one card per conflict: kept vs overwritten with device codes (a line or variant set reads one row per line, not JSON); Keep (`keepWinner`) / Restore overwritten (`restoreLoser`). The module is gated `sync.resolveConflicts`, so no control is conditional | `conflicts`, `resolveConflict` | none (module gate `sync.resolveConflicts`) |
 | `master/web/src/screens/IntegrationsScreen.tsx` (1108) | Keys (issue — token shown once in `IssuedTokenDialog`, copied with `copyText` — and revoke) and Connectors (list, `ConnectorDialog`, dry run and import, run history, `MappingEditor` as a sub-nav editor) | `apiKeys`, `connectors`, `issueApiKey`, `revokeApiKey`, `users`, `createConnector`, `updateConnector`, `runConnector`, `connectorRuns`, `setConnectorMapping`, `testConnector` | `canManage` (`api.manage`) |
-| `master/web/src/screens/SettingsScreen.tsx` (526) | `SettingsScreen`; `SETTINGS_TAB_IDS` and `settingsTabIdsFor` moved to `settingsTabs.ts` in 1.3 Phase 1. `MASTER_HIDDEN_SETTINGS` (1.3 Phase 1) leaves `inventory.defaultReorderLevel` and `inventory.adjustmentNoteRequired` off the Company tab; both keys stay valid. Since catalogue v2 a **Leads** tab holds the lead-source list (`OptionListEditor`, the Fields permissions) and the `leads` settings group, which left the Company tab; `NumberSetting` moved to `ui/src/SettingsLayout.tsx`. Takes `permissions` from the shell (since 2026-09-25; it used to read `/me` on mount and start from "yes"), so tabs and reads are right on the first render and keyed on booleans. Since 1.3 Phase 2 the Connection tab offers **Change pairing password** to a Server Master on the Master PC (`canChangePairingPassword`): confirm, master key, then the new password shown once. Appearance; Shortcuts; **Company** (only if `api.settings()` returned — `settings.manage`; one section per `SETTING_GROUPS` entry, row-level save; vault coverage beside `security.passwordRevealEnabled`); Connection (company, LAN address:port, master id, setup date; `settings.manage`, the identity read is not made without it); Storage (usage figures, `StorageBackupActions` with `storage.manage`; `settings.manage`). Appearance and Shortcuts are offered to everyone; there is no Developer tab (the routes remain) | `identity`, `storage`, `settings`, `saveSetting`, `vaultStatus`, `developer.*` | `settings.manage`, `storage.manage`, `users.viewPassword` |
+| `master/web/src/screens/SettingsScreen.tsx` (608) | `SettingsScreen`; `SETTINGS_TAB_IDS` and `settingsTabIdsFor` moved to `settingsTabs.ts` in 1.3 Phase 1. `MASTER_HIDDEN_SETTINGS` (1.3 Phase 1) leaves `inventory.defaultReorderLevel` and `inventory.adjustmentNoteRequired` off the Company tab; both keys stay valid. Since catalogue v2 a **Leads** tab holds the lead-source list (`OptionListEditor`, the Fields permissions) and the `leads` settings group, which left the Company tab; `NumberSetting` moved to `ui/src/SettingsLayout.tsx`. Takes `permissions` from the shell (since 2026-09-25; it used to read `/me` on mount and start from "yes"), so tabs and reads are right on the first render and keyed on booleans. Since 1.3 Phase 2 the Connection tab offers **Change pairing password** to a Server Master on the Master PC (`canChangePairingPassword`): confirm, master key, then the new password shown once. Appearance; Shortcuts; **Company** (only if `api.settings()` returned — `settings.manage`; one section per `SETTING_GROUPS` entry, row-level save; vault coverage beside `security.passwordRevealEnabled`); Connection (company, LAN address:port, master id, setup date; `settings.manage`, the identity read is not made without it); Storage & backup (`settings.tab.storageBackup` since 1.3 Phase 8: usage figures, `StorageBackupActions` with `storage.manage`, and with `storage.backupAll` the `BackupAllSection` and `AutoBackupSection`, told `onMasterPc` by the shell; `settings.manage`). Appearance and Shortcuts are offered to everyone; there is no Developer tab (the routes remain) | `identity`, `storage`, `settings`, `saveSetting`, `vaultStatus`, `developer.*` | `settings.manage`, `storage.manage`, `users.viewPassword` |
 | `master/web/src/screens/UpdatesScreen.tsx` (372) | this Master's version, panels behind (`standing()`), the offer from the local releases folder; **Install** → `prepareMasterUpdate` → `desktopBridge().applyUpdate()` (in a browser shows the path); a build that cannot install over itself shows how to update by hand instead of the button — the standalone `.exe` (`updates.standaloneBody`) or a Linux copy not started from an AppImage (`getShellSettings().systemPackage`, `updates.systemPackageBody`); panel version table | `updateStatus`, `prepareMasterUpdate` | `settings.manage` |
-| `master/web/src/screens/FirstRunScreen.tsx` (445) | "Set up new site" (company name and, since 1.3 Phase 2, two typed Server Master account blocks prefilled `master` / `master-backup`, checked for length, match and distinct usernames → `initialize` → the two usernames, LAN addresses, master id and the pairing password shown once; no `admin` is created) or "Restore from backup" (preview, passphrase, restore, new pairing password); `DataDirCard` | `initialize`, `previewRestoreSetup`, `restoreSetup` | none |
+| `master/web/src/screens/FirstRunScreen.tsx` (640) | "Set up new site" (company name and, since 1.3 Phase 2, two typed Server Master account blocks prefilled `master` / `master-backup`, checked for length, match and distinct usernames → `initialize` → the two usernames, LAN addresses, master id and the pairing password shown once; no `admin` is created) or, since 1.3 Phase 8, **Magic restore from a backup drive** (`MagicRestoreFlow`: the zip's path, typed or from `chooseFile`; the preview; the restore followed with `useBackupJob` over `setupArchiveJob`; then Continue to sign-in, with the secrets to re-enter) or "Restore an encrypted backup (.obbackup)" (preview, passphrase, restore, new pairing password); `DataDirCard` | `initialize`, `previewRestoreSetup`, `restoreSetup`, `setupPreviewArchive`, `setupRestoreArchive`, `setupArchiveJob` | none |
 | `master/web/src/screens/SignInScreen.tsx` (165) | username (empty since 1.3 Phase 2; a fresh setup has no `admin`) and password; errors via `apiErrorText`; shows the shell's `notice`. On the Master PC (`onMasterPc` from `/api/setup/status`): `ServerMasterSetupFlow` instead of the form while `serverMasterSetupNeeded`, and a "Forgot Server Master password?" link to `MasterKeyRecoveryFlow` | `signIn` | none |
 | `master/web/src/screens/ServerMasterSetupFlow.tsx` (277) | 1.3 Phase 2. The Server Master accounts an older installation owes: master key (`MasterKeyForm`), then exactly the missing account blocks, no skip; also exports the account blocks and their checks (`accountDrafts`, `accountDraftsError`, `toAccountInputs`, `ServerMasterAccountFields`) that first run uses | `verifyMasterKey`, `serverMasters`, `setUpServerMasters` | none (Master PC, master key) |
 | `master/web/src/screens/MasterKeyRecoveryFlow.tsx` (184) | 1.3 Phase 2. "Forgot Server Master password?": master key, pick the Server Master, new password twice; the password only | `verifyMasterKey`, `serverMasters`, `recoverServerMaster` | none (Master PC, master key) |
@@ -4631,7 +4676,7 @@ Node 16 (§1.6): no `import.meta`, no `fetch`, no `AbortSignal.timeout`.
 | `electron/shell.ts` | 1050 | `runPanelShell(config)` — the whole panel shell (below) |
 | `electron/master.main.ts` | 37 | Master config: port `PORT` or 4100, `readyTimeoutMs: 180_000` (first-run `initdb`), `autoStartByDefault: true`; passes `ORDERBOOK_DATA_DIR`, `PORT`, `ORDERBOOK_LOG_FILE` (no settings file, §1.5) |
 | `electron/office.main.ts` | 22 | Office config: `OFFICE_PORT` or 4200, `readyTimeoutMs: 60_000`, `autoStartByDefault: false`; `serverEnv: officeServerEnv` from `electron/lib/office-env.ts` |
-| `electron/preload.cts` | 79 | CommonJS preload for both panels: `window.orderbook` with `shellVersion`, `applyUpdate()` (takes no path), `getDataDir`, `setDataDir`, `chooseDirectory`, `getShellSettings` (`openAtLogin`, `logFile`, `standalone`, `systemPackage`), `setShellSettings`, `openLogFolder`, `uninstall({keepData})`, `onMenuCommand`, and for the order notes `listPrinters`, `printPage({deviceName?, copies?})`, `savePdf({fileName})` |
+| `electron/preload.cts` | 79 | CommonJS preload for both panels: `window.orderbook` with `shellVersion`, `applyUpdate()` (takes no path), `getDataDir`, `setDataDir`, `chooseDirectory({title?})`, `chooseFile({title?, extensions?})` (1.3 Phase 8), `getShellSettings` (`openAtLogin`, `logFile`, `standalone`, `systemPackage`), `setShellSettings`, `openLogFolder`, `uninstall({keepData})`, `onMenuCommand`, and for the order notes `listPrinters`, `printPage({deviceName?, copies?})`, `savePdf({fileName})` |
 | `electron/cleaner.main.ts` | 285 | the Clean Install tool's main process; shares only `lib/uninstall.ts` and `lib/cleaner/*` |
 | `electron/cleaner.preload.cts` | 50 | `window.cleaner`: `detect`, `chooseBackupFolder`, `backup`, `wipe`, `verify`, `chooseSetupFile`, `checkSetupFile`, `install`, `onLine` |
 | `electron/tsconfig.json` | 14 | extends base, NodeNext, `outDir: dist`, excludes `tests` |
@@ -4709,7 +4754,11 @@ Node 16 (§1.6): no `import.meta`, no `fetch`, no `AbortSignal.timeout`.
      server with `relocating = true`; "first-run only" is **not** enforced here — the
      comment says the renderer enforces it — and `writeDataDirOverride` writes the
      pointer with a plain `writeFileSync`, no temp+rename and no 0600, unlike
-     `writeShellSettings`); `orderbook:chooseDirectory`.
+     `writeShellSettings`); `orderbook:chooseDirectory` and, since 1.3 Phase 8,
+     `orderbook:chooseFile` (`openFile` with an extension filter, `.zip` by default):
+     both answer only the panel's own window (the sender check `chooseDirectory`
+     lacked before), open modal to it, and take their title and extensions through
+     `lib/dialog-options.ts`.
    - `orderbook:getShellSettings` (`openAtLogin`, `logFile` = `openLogPath()`,
      `standalone`, `systemPackage`) / `setShellSettings` (login item via
      `loginItemOptions`); `orderbook:openLogFolder` (the open log's folder).
@@ -4731,6 +4780,7 @@ Node 16 (§1.6): no `import.meta`, no `fetch`, no `AbortSignal.timeout`.
 | `electron/lib/print-options.ts` | 2026-09-30: `printOptions(requested, installed)` — silent print to a named printer only when Windows lists it, otherwise the system dialog; always A4, no margins, backgrounds on. 1.3 H3: `copies` (`clampCopies`: an integer 1..50, anything else is one) with `collate: true`, and `pdfFileName(raw)` (separators and characters Windows refuses become hyphens, one space, 100 characters, always `.pdf`, else `note.pdf`). `orderbook:listPrinters` / `orderbook:printPage` / `orderbook:savePdf` in `shell.ts` use it and answer only the panel's own window; `savePdf` runs `webContents.printToPDF({printBackground, preferCSSPageSize})` (the Electron 21+ options shape, the same call on 22 and 33) and writes to the path from `dialog.showSaveDialog` in the main process, never one from the page. Held by `electron/tests/print-options.test.ts` |
 | `electron/lib/lead-pdf.ts` | `isPdfWindowUrl(origin, url)` — the only URLs a panel window may open a window for, each an exact path: `<origin>/api/leads/<id>/pdf` with no query (catalogue v2), and `<origin>/api/reports/<kind>/pdf` for the 15 `PDF_REPORT_KINDS` (1.3 H3), whose query is parsed with `URLSearchParams` and may hold only `PDF_QUERY_KEYS` (`period`, `fromMonth`, `toMonth`, `fromDate`, `toDate`, `subjectId`, `limit`, `columns`, `totals`, `paperSize`, `orientation`, `lang`), each once, with a value of `[A-Za-z0-9._,:+-]`. No fragment. The kind list is written out here (the shell takes only types from shared) and the test fails if it drifts from `REPORT_KINDS`; held by `electron/tests/lead-pdf.test.ts` |
 | `electron/lib/attention.ts` | 1.3 Phase 3: `attentionText(value)` — the `{title, body}` a page may put in a system notification: both strings, trimmed, cut to 120 / 300 characters, an empty title refused, anything else `null`. `orderbook:notify` in `shell.ts` answers only the panel's own window, flashes the taskbar button until the window is focused, and shows a `Notification` where `Notification.isSupported()` (the Win7 build may not; the in-app bell carries the notice either way); a click on it brings the window forward. The shell calls `app.setAppUserModelId(config.appUserModelId)` on Windows before ready — a new `runPanelShell` field, `com.orderbook.master` / `com.orderbook.office`, matching each `electron-builder.yml` `appId` — so Windows 10/11 shows the toast. Held by `electron/tests/attention.test.ts` |
+| `electron/lib/dialog-options.ts` | 1.3 Phase 8: `dialogTitle(value, fallback)` (a string, trimmed, cut to 120 characters, else the shell's own title) and `dialogExtensions(value)` (plain names only, lowercased, at most eight, else `['zip']`) for the two native choosers. Held by `electron/tests/dialog-options.test.ts`, which also reads `shell.ts` to check every chooser, print and notify handler refuses a sender that is not the main window |
 | `electron/lib/log-file.ts` | `openLogFile(file, tee, maxBytes = 5 MB)` — keeps the live file plus `.1`–`.3` (`KEEP = 3`, up to ~20 MB); drops the log rather than crashing. An oversized file is rotated at open, and since 1.3 Phase 1 **also while running**: bytes written are counted from the file's size at open, and past `maxBytes` the stream is ended, `.1`→`.2`→`.3` shift (the oldest dropped) and a new live file opens. Each stream's error handler clears only its own stream; nothing throws. Held by `electron/tests/log-file.test.ts` |
 | `electron/lib/settings.ts` | `readShellSettings`/`writeShellSettings` (`shell.json` = `{autoStartDefaultApplied}` only — the login item is OS state; temp + rename, 0600); `readDataDirOverride`/`writeDataDirOverride` (plain write of `{dataDir}`, no temp file, default mode; the Office server writes the same pointer temp-then-rename after a storage move, §8.3) |
 | `electron/lib/standalone.ts` | `detectStandaloneBuild(env, packaged)` (`PORTABLE_EXECUTABLE_FILE`/`_DIR`); `loginItemOptions` points at the kept `.exe`, not the `%TEMP%` copy |
@@ -5664,9 +5714,41 @@ manages panels.
   `/api/setup/restore*` routes, which since 1.3 Phase 2 answer only on the Master PC
   (`requireLoopback` ahead of multer) and both refuse once setup has run (409
   `error.conflict.alreadySetUp`, `refuseAfterSetup`). A backup from before 1.3 has
-  no Server Masters; the Master-PC sign-in screen then asks for them (§11.2). A restore empties the settings and role caches but not the public
-  API's cached tenant id, so after a whole restore of another installation `/api/v1`
-  reads a tenant that is gone until the Master restarts (§5.11 item 18).
+  no Server Masters; the Master-PC sign-in screen then asks for them (§11.2). Since
+  1.3 Phase 8 the restore ends with `resetProcessCaches()`, which also clears the
+  public API's cached tenant id (§5.11 item 18, closed).
+- **Back up everything to a drive (1.3 Phase 8, `docs/7-STORAGE-BACKUP-RESTORE.md`
+  §3):** Settings › Storage & backup → `BackupAllSection` → `api.startArchiveBackup`
+  → `POST /api/storage/archive` (`requireLoopback`, `storage.backupAll`; the folder
+  is checked before the job starts) → `startJob('backup', exportArchive)`
+  (`backup-job.ts`, one job at a time) → 202 and the job status, which the screen
+  polls (`useBackupJob`, `GET /api/storage/archive/job`). `exportArchive` checks the
+  drive (free space × 1.1, FAT32 over 4 GiB − 64 MiB via `volumeFileSystem`), reads
+  one `REPEATABLE READ READ ONLY` snapshot in keyset pages, writes
+  `OrderBook-Backup-<company>-<date>.zip.partial` (`lib/archive-zip.ts`), re-hashes
+  every entry and renames it. The zip is plain: it holds password hashes and the
+  pairing proof keys, never `user_password_vault`, `master_clock`,
+  `user_notifications`, `knex_*` or `secrets/vault.key`.
+- **Magic restore (first run) and restore from Settings:** `FirstRunScreen`'s
+  `MagicRestoreFlow` → `POST /api/setup/archive/preview` then `/restore`
+  (`requireLoopback`, `refuseAfterSetup`), or Settings' **Restore…** → `POST
+  /api/storage/archive/preview` then `/restore` (`storage.backupAll`, CONFIRM, the
+  master-key token). Both run `restoreArchive` as the job: check every hash and
+  stage the photos, write a safety copy (Settings only, `<dataDir>/backups/pre-restore-*.zip`),
+  `enterMaintenance()` (sessions and sockets end; `maintenance-gate.ts` and `hub.ts`
+  answer 503 `error.unavailable.maintenance`), drop the schema and migrate to the
+  archive's level, load in replica mode, verify the chain, migrate to latest, swap
+  the photos in, refresh the LAN address, ensure the Server Master role,
+  `resetProcessCaches()` (new `BOOT_ID`), `backup.restored`. Pairing comes back with
+  the rows, so Offices reconnect by themselves. The screen follows the job through
+  `GET /api/setup/archive/job`, which the maintenance gate lets through. A failed
+  load returns a first run to blank and a Settings restore to its safety copy.
+- **Automatic backup:** `backup-scheduler.ts` (started in `master/src/index.ts`)
+  reads `<dataDir>/auto-backup.json` every 60 s and runs the same export once a day
+  after the chosen time; a missing drive is retried and noticed once a day
+  (`backup.autoSkipped`), a failure noticed once (`backup.autoFailed`); old archives
+  of this company beyond `keepLast` are pruned. `GET/PUT /api/storage/auto-backup`
+  (PUT on the Master PC only) → `AutoBackupSection`.
 - **Office export/restore:** `office/src/services/backup-export.service.ts` gzips the
   JSON of `device`, `clock`, `outbox`, `refusals`, `snapshot`, `users`,
   `sign-in-attempts` (`settings-only`: users and attempts only) — **never
@@ -5679,6 +5761,15 @@ manages panels.
   (`master/src/db/cluster-snapshot.ts`, §5.3) keeps the two newest raw copies of the
   database folder.
 - Guards: `master/tests/backup-crypto.test.ts`, `master/tests/backup-domain.test.ts`,
+  `master/tests/archive-domain.test.ts`, `master/tests/backup-scheduler.test.ts`,
+  `master/tests/maintenance-gate.test.ts`, `master/tests/require-loopback.test.ts`,
+  `master/tests/archive-roundtrip.integration.test.ts`,
+  `master/tests/archive-replay.integration.test.ts`,
+  `master/tests/archive-first-run.integration.test.ts`,
+  `master/tests/archive-export-paging.integration.test.ts`,
+  `master/tests/migration-backup-all-grant.integration.test.ts`,
+  `electron/tests/dialog-options.test.ts`, `ui/tests/master-shell.test.tsx` (the
+  Magic restore fork, and the sections absent without `storage.backupAll`),
   `master/tests/backup-chain.integration.test.ts`,
   `master/tests/backup-sequences.integration.test.ts`,
   `master/tests/password-vault-invariants.test.ts`,

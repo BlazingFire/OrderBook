@@ -6,9 +6,20 @@
 
 import { Router } from 'express';
 import multer from 'multer';
-import { isPickKind } from '@orderbook/shared';
+import { isPickKind, MASTER_KEY_TOKEN_HEADER } from '@orderbook/shared';
 
 import { ValidationError } from '../../lib/errors.js';
+import { exportArchive } from '../../services/archive-export.service.js';
+import { previewArchive, restoreArchive } from '../../services/archive-restore.service.js';
+import { currentJob, startJob } from '../../services/backup-job.js';
+import {
+  assertFolderExists,
+  getAutoBackupStatus,
+  listArchives,
+  requireLocalPath,
+  updateAutoBackupConfig,
+} from '../../services/backup-scheduler.js';
+import { masterKeyGate } from '../../services/master-key.service.js';
 import * as backupExportService from '../../services/backup-export.service.js';
 import * as backupRestoreService from '../../services/backup-restore.service.js';
 import * as catalogService from '../../services/catalog.service.js';
@@ -30,6 +41,7 @@ import {
   requireAuth,
   requirePermissionMiddleware,
 } from '../middleware/require-auth.js';
+import { requireLoopback } from '../middleware/require-loopback.js';
 
 export const dataRoutes: Router = Router();
 
@@ -142,6 +154,92 @@ dataRoutes.post(
     res.json(
       await backupRestoreService.restoreBackup(req.file.buffer, passphrase, confirmWipe, actorFromRequest(req)),
     );
+  }),
+);
+
+// --- Storage: back up everything to a drive (archive v2) -------------------
+//
+// Server Masters only (`storage.backupAll`), and only on the Master PC: these
+// read and write whatever path they are given on it. The path is a file or
+// folder on this PC, chosen through the shell's picker, never an upload. A
+// backup or restore runs as the one job (`backup-job.ts`); the screen polls it.
+
+dataRoutes.post(
+  '/storage/archive',
+  requireLoopback,
+  needs('storage.backupAll'),
+  asyncHandler(async (req, res) => {
+    const folder = requireLocalPath(req.body?.folder);
+    await assertFolderExists(folder);
+    const actor = actorFromRequest(req);
+    const { status } = startJob('backup', async (update) => {
+      await exportArchive({ folder, actor, progress: update });
+    });
+    res.status(202).json(status);
+  }),
+);
+
+dataRoutes.get(
+  '/storage/archive/job',
+  requireLoopback,
+  needs('storage.backupAll'),
+  (_req, res) => {
+    res.json(currentJob());
+  },
+);
+
+dataRoutes.get(
+  '/storage/archives',
+  requireLoopback,
+  needs('storage.backupAll'),
+  asyncHandler(async (req, res) => {
+    res.json(await listArchives(requireLocalPath(req.query.folder)));
+  }),
+);
+
+dataRoutes.post(
+  '/storage/archive/preview',
+  requireLoopback,
+  needs('storage.backupAll'),
+  asyncHandler(async (req, res) => {
+    res.json(await previewArchive(requireLocalPath(req.body?.path)));
+  }),
+);
+
+/**
+ * Replaces every record on this Master, so it also needs the master key: the
+ * token `POST /api/master-key/verify` handed out, in its header.
+ */
+dataRoutes.post(
+  '/storage/archive/restore',
+  requireLoopback,
+  needs('storage.backupAll'),
+  asyncHandler(async (req, res) => {
+    masterKeyGate.assertUnlocked(req.header(MASTER_KEY_TOKEN_HEADER));
+    const file = requireLocalPath(req.body?.path);
+    const actor = actorFromRequest(req);
+    const { status } = startJob('restore', async (update, jobId) => {
+      await restoreArchive(file, { mode: 'replace', actor, progress: update, jobId });
+    });
+    res.status(202).json(status);
+  }),
+);
+
+/** Read from any PC; saving names a folder on this one, so it is Master-PC only. */
+dataRoutes.get(
+  '/storage/auto-backup',
+  needs('storage.backupAll'),
+  asyncHandler(async (_req, res) => {
+    res.json(await getAutoBackupStatus());
+  }),
+);
+
+dataRoutes.put(
+  '/storage/auto-backup',
+  requireLoopback,
+  needs('storage.backupAll'),
+  asyncHandler(async (req, res) => {
+    res.json(await updateAutoBackupConfig(req.body, actorFromRequest(req)));
   }),
 );
 

@@ -52,6 +52,7 @@ import {
   startDetached,
 } from './lib/appimage.js';
 import { attentionText } from './lib/attention.js';
+import { dialogExtensions, dialogTitle } from './lib/dialog-options.js';
 import { getJson, interpretHealth, type HealthOutcome } from './lib/health.js';
 import { approveInstaller, updateMethod } from './lib/installer.js';
 import { isPdfWindowUrl } from './lib/lead-pdf.js';
@@ -824,10 +825,32 @@ export function runPanelShell(config: PanelShellConfig): void {
     return true;
   });
 
-  ipcMain.handle('orderbook:chooseDirectory', async () => {
-    const result = await dialog.showOpenDialog({
+  /*
+   * Native choosers: a folder (the data folder at first run, a backup drive)
+   * and a file (a backup archive for Magic restore). Only the panel's own
+   * window may ask, and the title and extensions it sends are checked
+   * (`lib/dialog-options.ts`). The path that comes back is what the person
+   * picked; the server still checks it before using it.
+   */
+  ipcMain.handle('orderbook:chooseDirectory', async (event, value: unknown) => {
+    const window = mainWindow;
+    if (!window || event.sender !== window.webContents) return null;
+    const result = await dialog.showOpenDialog(window, {
       properties: ['openDirectory', 'createDirectory'],
-      title: 'Choose where OrderBook keeps its files',
+      title: dialogTitle(value, 'Choose where OrderBook keeps its files'),
+    });
+
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
+
+  ipcMain.handle('orderbook:chooseFile', async (event, value: unknown) => {
+    const window = mainWindow;
+    if (!window || event.sender !== window.webContents) return null;
+    const extensions = dialogExtensions(value);
+    const result = await dialog.showOpenDialog(window, {
+      properties: ['openFile'],
+      title: dialogTitle(value, 'Choose a file'),
+      filters: [{ name: extensions.map((extension) => `.${extension}`).join(', '), extensions }],
     });
 
     return result.canceled ? null : (result.filePaths[0] ?? null);

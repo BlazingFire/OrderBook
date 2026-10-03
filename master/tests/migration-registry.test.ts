@@ -106,6 +106,8 @@ describe('the migration registry matches the directory', () => {
     '20261005000000_chatroom',
     // The Printroom tables and the print grants (1.3 Phase 7, migration #6).
     '20261006000000_printroom',
+    // 1.3 Phase 8: `storage.backupAll` for the Server Master tier (#7).
+    '20261007000000_backup_all_permission_grant',
   ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {

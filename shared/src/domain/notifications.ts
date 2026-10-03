@@ -21,6 +21,9 @@ export const NOTIFICATION_KINDS = [
   'access.requested',
   // The Printroom (Phase 7): somebody else printed a note you sent.
   'print.printed',
+  // The daily automatic backup, to the Server Masters: the drive was missing, or the backup failed.
+  'backup.autoSkipped',
+  'backup.autoFailed',
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];

@@ -950,7 +950,8 @@ function MasterPanel() {
     ],
     settings: settingsTabIdsFor(user.permissions).map((id) => ({
       key: id,
-      label: t(`settings.tab.${id}`),
+      // The Master's storage tab also holds the backups; the Office's does not.
+      label: id === 'storage' ? t('settings.tab.storageBackup') : t(`settings.tab.${id}`),
       icon: 'settings' as const,
     })),
   };
@@ -1634,6 +1635,7 @@ function MasterPanel() {
           settingsRevision={revisionOf(revisions, 'settings')}
           sourcesRevision={revisionOf(revisions, 'leadSources')}
           canChangePairingPassword={onMasterPc && user.roleTier === SERVER_MASTER_TIER}
+          onMasterPc={onMasterPc}
         />
       ),
     },

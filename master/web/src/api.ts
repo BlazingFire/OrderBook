@@ -26,6 +26,11 @@ import type {
   DesktopBridge,
   ActivityLogFacets,
   ActivityLogQuery,
+  ArchiveListEntry,
+  ArchivePreview,
+  AutoBackupConfig,
+  AutoBackupStatus,
+  BackupJobStatus,
   BackupManifest,
   BackupRestorePreview,
   BinCounts,
@@ -520,6 +525,14 @@ export const api = {
     );
   },
 
+  /** Magic restore at first run: a backup-everything zip on this PC, by path. */
+  setupPreviewArchive: (path: string) =>
+    post<ArchivePreview>('/api/setup/archive/preview', { path }),
+  setupRestoreArchive: (path: string) =>
+    post<BackupJobStatus>('/api/setup/archive/restore', { path }),
+  /** The running backup or restore; answers through the restore's maintenance too. */
+  setupArchiveJob: () => request<BackupJobStatus | null>('/api/setup/archive/job'),
+
   signIn: (username: string, password: string) =>
     post<{ user: SignedInUser; sessionToken: string }>('/api/auth/sign-in', { username, password }),
   signOut: () => post<void>('/api/auth/sign-out'),
@@ -547,6 +560,32 @@ export const api = {
       form,
     );
   },
+
+  // --- Back up everything to a drive (Master PC only; docs/7-STORAGE-BACKUP-RESTORE.md)
+
+  /** Starts the one backup job; the screen follows it with `archiveJob`. */
+  startArchiveBackup: (folder: string) => post<BackupJobStatus>('/api/storage/archive', { folder }),
+  archiveJob: () => request<BackupJobStatus | null>('/api/storage/archive/job'),
+  listArchives: (folder: string) =>
+    request<ArchiveListEntry[]>(`/api/storage/archives?${new URLSearchParams({ folder }).toString()}`),
+  previewArchive: (path: string) => post<ArchivePreview>('/api/storage/archive/preview', { path }),
+  /**
+   * Replaces every record, so it needs the master key. The job is followed
+   * with `setupArchiveJob`, which still answers during the restore and after
+   * it has signed everyone out.
+   */
+  restoreArchive: (path: string, masterKeyToken: string) =>
+    request<BackupJobStatus>('/api/storage/archive/restore', {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+      headers: masterKeyHeader(masterKeyToken),
+    }),
+  autoBackup: () => request<AutoBackupStatus>('/api/storage/auto-backup'),
+  saveAutoBackup: (input: Partial<AutoBackupConfig>) =>
+    request<AutoBackupStatus>('/api/storage/auto-backup', {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
 
   pipelines: () => request<Pipeline[]>('/api/pipelines'),
   optionLists: () => request<OptionListItem[]>('/api/option-lists'),

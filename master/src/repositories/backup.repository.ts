@@ -145,8 +145,7 @@ export async function loadTables(
   await trx.raw(`SET session_replication_role = 'replica'`);
   try {
     if (tenantIds === null) {
-      const identifiers = tables.map((table) => `"${table}"`).join(', ');
-      if (identifiers) await trx.raw(`TRUNCATE TABLE ${identifiers} RESTART IDENTITY CASCADE`);
+      await truncateTables(trx, tables);
     } else {
       for (const table of tables) {
         if (tenantScoped.has(table)) {
@@ -235,7 +234,7 @@ function stringifyJsonColumns(row: Record<string, unknown>): Record<string, unkn
  * index. (Product codes are typed, never generated, so there is no product
  * sequence to resync.)
  */
-async function resyncSequences(trx: Knex.Transaction, tables: readonly string[]): Promise<void> {
+export async function resyncSequences(trx: Knex.Transaction, tables: readonly string[]): Promise<void> {
   await trx.raw(`
     DO $$
     DECLARE
@@ -342,4 +341,159 @@ export async function regeneratePairingPasswordHash(trx: Knex.Transaction, hash:
 export async function listTenantIds(runner: Runner = db()): Promise<string[]> {
   const rows = await runner('tenants').select<{ id: string }[]>('id');
   return rows.map((row) => row.id);
+}
+
+// --- Backup all: the plain-zip archive (format 2) ---------------------------
+//
+// The archive moves every row as Postgres renders it, `row_to_json(t)::text`,
+// and loads it back with `json_populate_recordset`. Postgres does both ends,
+// so timestamps keep their microseconds, numerics their digits and JSONB its
+// shape, and no row ever becomes a JavaScript object on the way through: the
+// low-RAM PCs this runs on hold one page of text at a time.
+
+/** The excluded tables and every Knex bookkeeping table: never read into an archive, never written from one. */
+export function isExcludedTable(table: string): boolean {
+  return EXCLUDED_TABLES.has(table) || table.startsWith('knex_');
+}
+
+/** A table name as a quoted identifier, refusing anything that is not a plain lower-case name. */
+function quotedTable(table: string): string {
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(table)) throw new Error(`Not a table name: ${table}`);
+  return `"${table}"`;
+}
+
+function assertArchivable(table: string): string {
+  if (isExcludedTable(table)) throw new Error(`Table ${table} never travels in a backup`);
+  return quotedTable(table);
+}
+
+/** A primary-key column and its type as Postgres spells it, for casting a keyset bound back. */
+export interface KeyColumn {
+  name: string;
+  type: string;
+}
+
+/** The table's primary-key columns in key order, or `[]` when it has none. */
+export async function primaryKeyColumns(table: string, runner: Runner = db()): Promise<KeyColumn[]> {
+  const { rows } = await runner.raw<{ rows: KeyColumn[] }>(
+    `SELECT a.attname AS name, format_type(a.atttypid, a.atttypmod) AS type
+       FROM pg_index i
+       JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+      WHERE i.indrelid = ?::regclass AND i.indisprimary
+      ORDER BY array_position(i.indkey::int2[], a.attnum)`,
+    [`public.${quotedTable(table)}`],
+  );
+  return rows;
+}
+
+/**
+ * Every row of `table` as one JSON text, handed to `onRow` in primary-key
+ * order, `pageSize` rows per query.
+ *
+ * Keyset paging rather than OFFSET, so the last page costs what the first
+ * did; the bound is read back as text and cast to the key's own type, so a
+ * timestamp key keeps its microseconds. A table without a primary key pages
+ * by `ctid`, which is stable inside the REPEATABLE READ snapshot the export
+ * runs in. Resolves the number of rows.
+ */
+export async function streamTableNdjson(
+  table: string,
+  onRow: (json: string) => void | Promise<void>,
+  options: { runner?: Runner; pageSize?: number } = {},
+): Promise<number> {
+  const runner = options.runner ?? db();
+  const pageSize = options.pageSize ?? 2000;
+  const quoted = assertArchivable(table);
+
+  const keys = await primaryKeyColumns(table, runner);
+  const columns = keys.length > 0 ? keys : [{ name: 'ctid', type: 'tid' }];
+  const keyList = columns.map((key) => `t."${key.name}"`).join(', ');
+  const bound = columns.map((key) => `CAST(? AS ${key.type})`).join(', ');
+  const keyTexts = columns.map((key, index) => `t."${key.name}"::text AS k${index}`).join(', ');
+
+  let after: string[] | null = null;
+  let count = 0;
+  for (;;) {
+    const where = after ? `WHERE (${keyList}) > (${bound})` : '';
+    const page: { rows: Array<Record<string, string>> } = await runner.raw(
+      `SELECT row_to_json(t)::text AS j, ${keyTexts} FROM ${quoted} t ${where} ORDER BY ${keyList} LIMIT ?`,
+      [...(after ?? []), pageSize],
+    );
+    for (const row of page.rows) await onRow(row.j!);
+    count += page.rows.length;
+    if (page.rows.length < pageSize) return count;
+    const last = page.rows[page.rows.length - 1]!;
+    after = columns.map((_key, index) => last[`k${index}`]!);
+  }
+}
+
+/**
+ * The columns a load may write: every column of the live table that is not
+ * generated, narrowed to `among` when given. An archive made at an older
+ * schema level names fewer columns than the table now has; the ones it lacks
+ * are left to their defaults instead of being written as null.
+ */
+export async function insertableColumns(
+  table: string,
+  runner: Runner = db(),
+  among?: Iterable<string>,
+): Promise<string[]> {
+  const { rows } = await runner.raw<{ rows: Array<{ column_name: string }> }>(
+    `SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = ? AND is_generated = 'NEVER'
+      ORDER BY ordinal_position`,
+    [table],
+  );
+  const present = among ? new Set(among) : null;
+  return rows.map((row) => row.column_name).filter((name) => !present || present.has(name));
+}
+
+/**
+ * Insert a batch of JSON rows, each the text of one `row_to_json`, into
+ * `table` in the caller's transaction. `OVERRIDING SYSTEM VALUE` keeps the
+ * original ids of identity columns; the caller resyncs sequences afterwards.
+ */
+export async function insertJsonBatch(
+  trx: Knex.Transaction,
+  table: string,
+  columns: readonly string[],
+  rows: readonly string[],
+): Promise<void> {
+  const quoted = assertArchivable(table);
+  if (rows.length === 0 || columns.length === 0) return;
+  const list = columns.map((column) => `"${column.replace(/"/g, '""')}"`).join(', ');
+  await trx.raw(
+    `INSERT INTO ${quoted} (${list}) OVERRIDING SYSTEM VALUE
+     SELECT ${list} FROM json_populate_recordset(NULL::${quoted}, ?::json)`,
+    [`[${rows.join(',')}]`],
+  );
+}
+
+/** Empty every listed table and restart its identities, in the caller's transaction. */
+export async function truncateTables(trx: Knex.Transaction, tables: readonly string[]): Promise<void> {
+  const identifiers = tables.map(assertArchivable).join(', ');
+  if (identifiers) await trx.raw(`TRUNCATE TABLE ${identifiers} RESTART IDENTITY CASCADE`);
+}
+
+/** The migrations this database has run, in the order it ran them: the schema level of its rows. */
+export async function appliedMigrationNames(runner: Runner = db()): Promise<string[]> {
+  const rows = await runner('knex_migrations').orderBy('id').select<Array<{ name: string }>>('name');
+  return rows.map((row) => row.name);
+}
+
+/**
+ * Sealed values that travel in the rows but cannot be opened on another PC,
+ * because the key that seals them (`secrets/vault.key`) never leaves this one:
+ * secret settings and connector credentials. After a restore onto a new PC
+ * the owner enters these again.
+ */
+export async function countSealedRows(
+  runner: Runner = db(),
+): Promise<{ secretSettings: number; connectorCredentials: number }> {
+  const { rows } = await runner.raw<{ rows: Array<{ settings: string; connectors: string }> }>(
+    `SELECT (SELECT count(*) FROM settings WHERE is_secret) AS settings,
+            (SELECT count(*) FROM api_connectors WHERE credential_sealed IS NOT NULL) AS connectors`,
+  );
+  const row = rows[0];
+  return { secretSettings: Number(row?.settings ?? 0), connectorCredentials: Number(row?.connectors ?? 0) };
 }

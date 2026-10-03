@@ -137,6 +137,12 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
   { key: 'panels.manage', group: 'admin', labelToken: 'permission.panels.manage' },
   { key: 'settings.manage', group: 'admin', labelToken: 'permission.settings.manage' },
   { key: 'storage.manage', group: 'admin', labelToken: 'permission.storage.manage' },
+  /*
+   * The plain-zip backup of everything, its restore, and the daily automatic
+   * backup. Server Master only: the zip is unencrypted and a restore replaces
+   * every account, Server Masters included.
+   */
+  { key: 'storage.backupAll', group: 'admin', labelToken: 'permission.storage.backupAll' },
   { key: 'fields.manage', group: 'admin', labelToken: 'permission.fields.manage' },
   /*
    * Minting a credential another program acts under, and pointing this Master
@@ -243,6 +249,9 @@ const MINIMUM_TIER: Record<string, RoleTier> = {
   'roles.create': 'admin',
   'roles.edit': 'admin',
   'roles.delete': 'admin',
+
+  // The owner's own: a whole-company copy on a drive, and replacing everything from one.
+  'storage.backupAll': 'server_master',
 
   // Destructive or wholesale operations want a supervisor, not a lead desk.
   'leads.delete': 'management',
