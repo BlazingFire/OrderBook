@@ -117,6 +117,26 @@ describe('the table', () => {
     expect(screen.getByText(t('reports.range.caption', { from: '2026-05', to: '2026-10', zone: 'Asia/Kolkata' }))).toBeTruthy();
   });
 
+  it('captions an exact-dates range with the exact first and last day, not with month labels', async () => {
+    const february = tableFor('by-city', {
+      range: { period: 'customDates', fromDate: '2026-02-01', toDateExclusive: '2026-03-01', months: ['2026-02'], timeZone: 'Asia/Kolkata' },
+      rows: [{ city: 'Morbi', parties: 1, orders: 1, pieces: 1, kg: 1 }],
+      rowCount: 1,
+    });
+    mount(makeTransport({ table: vi.fn(async () => february) }));
+    expect(await screen.findByText(t('reports.range.caption', { from: '2026-02-01', to: '2026-02-28', zone: 'Asia/Kolkata' }))).toBeTruthy();
+    cleanup();
+
+    // Across a year boundary the inclusive end is the day before the stored exclusive one.
+    const newYear = tableFor('by-city', {
+      range: { period: 'customDates', fromDate: '2025-12-15', toDateExclusive: '2026-01-01', months: ['2025-12'], timeZone: 'Asia/Kolkata' },
+      rows: [{ city: 'Morbi', parties: 1, orders: 1, pieces: 1, kg: 1 }],
+      rowCount: 1,
+    });
+    mount(makeTransport({ table: vi.fn(async () => newYear) }));
+    expect(await screen.findByText(t('reports.range.caption', { from: '2025-12-15', to: '2025-12-31', zone: 'Asia/Kolkata' }))).toBeTruthy();
+  });
+
   it('shows a dash for an empty cell and says when nothing happened', async () => {
     const empty = tableFor('by-party', { rows: [] });
     mount(makeTransport({ table: vi.fn(async () => empty) }), { kind: 'by-party' });
@@ -315,6 +335,21 @@ describe('a refusal', () => {
     mount(makeTransport({ table: vi.fn(async () => { throw hidden; }) }));
     expect(await screen.findByText(t('reports.hidden.title'))).toBeTruthy();
     expect(screen.getByText(t('reports.hidden.description'))).toBeTruthy();
+  });
+
+  it('says Reports need the Master when the Office cannot reach it, for the table and for a file', async () => {
+    const unreachable = Object.assign(new Error('The Master Panel is not reachable'), {
+      code: 'unavailable',
+      messageKey: 'error.unavailable',
+    });
+    mount(makeTransport({ table: vi.fn(async () => { throw unreachable; }) }));
+    expect(await screen.findByText(t('reports.offline'))).toBeTruthy();
+    cleanup();
+
+    mount(makeTransport({ exportFile: vi.fn(async () => { throw unreachable; }) }));
+    await screen.findByText('Morbi');
+    fireEvent.click(screen.getByRole('button', { name: t('reports.export.csv') }));
+    expect(await screen.findByText(t('reports.offline'))).toBeTruthy();
   });
 
   it('offers a retry for a failure that is not about a field', async () => {

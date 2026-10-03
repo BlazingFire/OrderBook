@@ -477,6 +477,27 @@ describe('Reports', () => {
     expect(document.querySelector('.ob-topbar')?.textContent).toContain(t('reports.kind.dispatches'));
   });
 
+  it('asks again after every change the Master sends, even one that leaves the record counts as they were', async () => {
+    const calls = await boot({ permissions: ['reports.view'], route: reportRoutes });
+    const work = within(screen.getByRole('region', { name: t('nav.work') }));
+    await act(async () => {
+      fireEvent.click(work.getByRole('button', { name: new RegExp(`^${t('nav.reports')}`) }));
+    });
+    await screen.findByText('2026-10');
+
+    const tableCalls = (): number => calls.filter((call) => call.url.startsWith('/api/reports/table/')).length;
+    const change = { entity: 'party', action: 'updated', id: 'PT0000000001', payload: { id: 'PT0000000001', name: 'Shah', city: 'Morbi' } };
+
+    // The first change adds a record; the second edits it in place and moves no count.
+    for (let round = 0; round < 2; round += 1) {
+      const before = tableCalls();
+      await act(async () => {
+        FakeEventSource.instances.at(-1)!.emit('change', change);
+      });
+      await waitFor(() => expect(tableCalls()).toBe(before + 1), { timeout: 2000 });
+    }
+  });
+
   it('is not offered without reports.view, nor when the company has switched it off for the Office tier', async () => {
     await boot({ permissions: ['orders.view'], route: reportRoutes });
     expect(within(screen.getByRole('region', { name: t('nav.work') })).queryByRole('button', { name: new RegExp(`^${t('nav.reports')}`) })).toBeNull();

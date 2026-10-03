@@ -631,7 +631,7 @@ sense of, so the response states which ordering it used.
 
 | | |
 |---|---|
-| **Permission** | `reports.export` — and Reports must not be switched off for the caller's tier (§3.9) |
+| **Permission** | `reports.view` **and** `reports.export` (a file is a report written down; `reports.view` is checked first) — and Reports must not be switched off for the caller's tier (§3.9). New kinds' CSV carries a UTF-8 BOM; the three legacy kinds' CSV bytes are unchanged. The audit row records `subjectId` (null: everyone) |
 | **Path param** | `:report` — any of the fifteen `ReportKind`s (§3.8), validated against `REPORT_KINDS` |
 | **Query** | The `ReportQuery` of §3.8 (`period`, `fromMonth`, `toMonth`, `fromDate`, `toDate`, `subjectId`, `limit`) plus `format` = `csv` (default) \| `xlsx` \| `pdf`, `lang` = `en` (default) \| `hi`, `columns`, `totals`, `paperSize`, `orientation` |
 | **Response** | `200` — `text/csv; charset=utf-8` for a CSV, the workbook's or the PDF's own type otherwise; `Content-Disposition: attachment`. Over the Office's socket the ack is a union: `{ format: 'csv', csv }` or `{ format: 'pdf' \| 'xlsx', fileName, contentType, bytes }` (it was CSV-only until 1.3; an Office older than that reads only the CSV arm) |
@@ -697,7 +697,7 @@ that have a weight wherever the grain is a product (a line with no weight is lef
 Decided in `report.service.ts` and nowhere else (`shared/src/domain/report-access.ts` states the rule for the
 screens):
 
-- `reports.view` (and `reports.export` for a file), then the company switch for the caller's tier —
+- `reports.view` (and `reports.export` as well, for a file), then the company switch for the caller's tier —
   `reports.visibleToOffice` / `reports.visibleToManagement`, both on unless switched off. An administrator is never
   switched off. A hidden report answers `403` `error.forbidden.reportsHidden`.
 - **The Office and Management tiers see only their own figures.** Every query carries `owner_id = the caller`

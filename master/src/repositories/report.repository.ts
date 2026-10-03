@@ -491,7 +491,7 @@ export async function byParty(range: DateRange, limit: number, runner: Runner = 
   }));
 }
 
-/** Parties that ordered before the range and not in it, longest silent first. */
+/** Parties whose latest order of any date fell before the range (none in it, none after), longest silent first. */
 export async function partyDormant(range: DateRange, limit: number, runner: Runner = db()): Promise<TableRow[]> {
   const tz = config.locale.timeZone;
   const lastScope = scoped(range, 'o');
@@ -517,12 +517,13 @@ export async function partyDormant(range: DateRange, limit: number, runner: Runn
        JOIN parties p ON p.id = lo.party_id
        LEFT JOIN in_range ir ON ir.party_id = lo.party_id
       WHERE p.tenant_id = ? AND p.deleted_at IS NULL AND ir.orders IS NULL
+        AND lo.last_at < (?::timestamp AT TIME ZONE ?)
       ORDER BY lo.last_at ASC, p.name
       LIMIT ?`,
     [
       range.tenantId, ...lastScope.bindings,
       range.tenantId, ...rangeBindings(range, tz), ...inScope.bindings,
-      tz, tz, tz, range.tenantId, limit,
+      tz, tz, tz, range.tenantId, range.fromDate, tz, limit,
     ],
   );
 

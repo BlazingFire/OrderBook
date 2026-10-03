@@ -345,6 +345,8 @@ export const ROLE_TEMPLATES: ReadonlyArray<{
       'inventory.edit',
       'orders.dispatch',
       'stock.adjust',
+      'reports.view',
+      'reports.export',
     ],
   },
 ];

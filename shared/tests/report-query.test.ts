@@ -4,6 +4,10 @@
  * back into URL parameters.
  */
 
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -13,6 +17,7 @@ import {
   REPORT_COLUMNS,
   REPORT_KINDS,
   REPORT_META,
+  ROLE_TEMPLATES,
   SUMMABLE_UNITS,
   isReportFormat,
   isReportKind,
@@ -115,6 +120,41 @@ describe('parseReportQuery', () => {
       fromMonth: undefined,
       subjectId: undefined,
     });
+  });
+});
+
+describe('what a reader sees', () => {
+  it('never heads two columns of one report with the same words, in either language', () => {
+    for (const kind of REPORT_KINDS) {
+      for (const messages of [EN_MESSAGES, HI_MESSAGES]) {
+        const heads = REPORT_COLUMNS[kind].map((column) => messages[column.labelToken]);
+        expect(new Set(heads).size, `${kind}: ${heads.join(' | ')}`).toBe(heads.length);
+      }
+    }
+    // Lead sources has a count of converted leads and a rate; the rate says so.
+    expect(EN_MESSAGES['reports.column.conversion']).toBe('Conversion %');
+    expect(HI_MESSAGES['reports.column.conversion']).toBe('बदलाव दर (%)');
+  });
+
+  it('has real Hindi for every report string, with no untranslated marker left on one', () => {
+    const source = readFileSync(
+      path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'i18n', 'hi.ts'),
+      'utf8',
+    ).split(/\r?\n/);
+    const marked = source.filter(
+      (line, index) => /^\s*'[\w.]*reports[\w.]*'/.test(line) && /TODO\(i18n-hi\)/.test(source[index - 1] ?? ''),
+    );
+    expect(marked).toEqual([]);
+
+    // The column words the first cut reused from the legacy screen as English stubs.
+    expect(HI_MESSAGES['reports.column.city']).toBe('शहर');
+    expect(HI_MESSAGES['reports.column.month']).toBe('महीना');
+    expect(HI_MESSAGES['reports.column.party']).toBe('पार्टी');
+  });
+
+  it('puts the report keys on the Dispatch role, which the owner expects to run reports', () => {
+    const dispatch = ROLE_TEMPLATES.find((template) => template.nameToken === 'roleTemplate.dispatch');
+    expect(dispatch?.permissions).toEqual(expect.arrayContaining(['reports.view', 'reports.export']));
   });
 });
 

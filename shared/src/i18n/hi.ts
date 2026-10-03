@@ -2771,95 +2771,35 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'recycleBin.toast.restored': '{label} restored',
   // TODO(i18n-hi)
   'recycleBin.toast.restoredAs': '{label} restored as {name}',
-  // TODO(i18n-hi)
-  'reports.column.boxes': 'Boxes',
-  // TODO(i18n-hi)
-  'reports.column.city': 'City',
-  // TODO(i18n-hi)
-  'reports.column.code': 'Code',
-  // TODO(i18n-hi)
-  'reports.column.colour': 'Colour',
-  // TODO(i18n-hi)
-  'reports.column.converted': 'Converted',
-  // TODO(i18n-hi)
-  'reports.column.lost': 'Lost',
-  // TODO(i18n-hi)
-  'reports.column.month': 'Month',
-  // TODO(i18n-hi)
-  'reports.column.open': 'Still open',
-  // TODO(i18n-hi)
-  'reports.column.orders': 'Final Orders',
-  // TODO(i18n-hi)
-  'reports.column.parties': 'Parties',
-  // TODO(i18n-hi)
-  'reports.column.party': 'Party',
-  // TODO(i18n-hi)
-  'reports.column.quiet': 'Went quiet',
-  // TODO(i18n-hi)
+  'reports.column.city': 'शहर',
+  'reports.column.code': 'कोड',
+  'reports.column.colour': 'रंग',
+  'reports.column.converted': 'बदले गए',
+  'reports.column.lost': 'खोए गए',
+  'reports.column.month': 'महीना',
+  'reports.column.open': 'अभी खुले',
+  'reports.column.orders': 'फ़ाइनल ऑर्डर',
+  'reports.column.parties': 'पार्टियाँ',
+  'reports.column.party': 'पार्टी',
+  'reports.column.quiet': 'निष्क्रिय हुए',
   'reports.kind.dispatches': 'डिस्पैच',
   'reports.kind.leadOutcomes': 'पेंडिंग ऑर्डर परिणाम',
   'reports.kind.topParties': 'शीर्ष पार्टियाँ',
-  'reports.dispatches.byColour': 'By colour',
-  // TODO(i18n-hi)
-  'reports.dispatches.byMonth': 'By month',
-  // TODO(i18n-hi)
-  'reports.dispatches.colours.empty.description':
-    'Dispatched boxes carry a colour — none of the lines in this range did.',
-  // TODO(i18n-hi)
-  'reports.dispatches.colours.empty.title': 'No colours to break down',
-  // TODO(i18n-hi)
-  'reports.dispatches.empty.description':
-    'Nothing was dispatched in these months. Try a wider range.',
-  // TODO(i18n-hi)
-  'reports.empty.title': 'No activity in this range',
-  // TODO(i18n-hi)
-  'reports.error.load': 'Could not load the report',
-  // TODO(i18n-hi)
-  'reports.export': 'Export CSV',
-  // TODO(i18n-hi)
-  'reports.leadOutcomes.byMonth': 'By month',
-  // TODO(i18n-hi)
-  'reports.leadOutcomes.empty.description':
-    'No pending orders were raised in these months. Try a wider range.',
-  // TODO(i18n-hi)
-  'reports.leadOutcomes.quietNote':
-    'A pending order counts as gone quiet after {days} days with no movement.',
-  // TODO(i18n-hi)
-  'reports.noPermission.description': 'Ask an administrator to add {permission}.',
-  // TODO(i18n-hi)
-  'reports.noPermission.title': 'Reports are not part of your role',
-  // TODO(i18n-hi)
-  'reports.period.custom': 'Custom range',
-  // TODO(i18n-hi)
-  'reports.period.last12Months': 'Last 12 months',
-  // TODO(i18n-hi)
-  'reports.period.last3Months': 'Last 3 months',
-  // TODO(i18n-hi)
-  'reports.period.last6Months': 'Last 6 months',
-  // TODO(i18n-hi)
-  'reports.period.thisMonth': 'This month',
-  // TODO(i18n-hi)
-  'reports.range.caption': '{from} to {to} · {zone}',
-  // TODO(i18n-hi)
-  'reports.range.fromMonth': 'From month',
-  // TODO(i18n-hi)
-  'reports.range.period': 'Period',
-  // TODO(i18n-hi)
-  'reports.range.toMonth': 'To month',
-  // TODO(i18n-hi)
-  'reports.range.toMonthHint': 'Leave empty to run up to this month',
-  // TODO(i18n-hi)
-  'reports.stat.boxes': 'Boxes dispatched',
-  // TODO(i18n-hi)
-  'reports.stat.orders': 'Final Orders dispatched',
-  // TODO(i18n-hi)
-  'reports.tab.dispatches': 'Dispatches',
-  // TODO(i18n-hi)
-  'reports.tab.leadOutcomes': 'Pending Order outcomes',
-  // TODO(i18n-hi)
-  'reports.tab.topParties': 'Top parties',
-  // TODO(i18n-hi)
-  'reports.title': 'Reports',
+  'reports.dispatches.byColour': 'रंग के अनुसार',
+  'reports.empty.title': 'इस सीमा में कोई गतिविधि नहीं',
+  'reports.error.load': 'रिपोर्ट लोड नहीं हो सकी',
+  'reports.leadOutcomes.quietNote': '{days} दिन तक कोई हलचल न होने पर पेंडिंग ऑर्डर निष्क्रिय माना जाता है।',
+  'reports.period.custom': 'अपनी सीमा',
+  'reports.period.last12Months': 'पिछले 12 महीने',
+  'reports.period.last3Months': 'पिछले 3 महीने',
+  'reports.period.last6Months': 'पिछले 6 महीने',
+  'reports.period.thisMonth': 'यह महीना',
+  'reports.range.caption': '{from} से {to} · {zone}',
+  'reports.range.fromMonth': 'शुरू का महीना',
+  'reports.range.period': 'अवधि',
+  'reports.range.toMonth': 'अंतिम महीना',
+  'reports.range.toMonthHint': 'इस महीने तक के लिए खाली छोड़ें',
+  'reports.title': 'रिपोर्ट',
   // --- रिपोर्ट: पंद्रह प्रकार, तालिका स्क्रीन और उसका निर्यात (1.3 H2) ----------
   'reports.kind.byUser': 'यूज़र के अनुसार',
   'reports.kind.userDaily': 'यूज़र और दिन के अनुसार',
@@ -2891,7 +2831,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'reports.column.avgDays': 'स्टेज में औसत दिन',
   'reports.column.oldestDays': 'सबसे पुराना (दिन)',
   'reports.column.source': 'स्रोत',
-  'reports.column.conversion': 'बदले गए',
+  'reports.column.conversion': 'बदलाव दर (%)',
   'reports.column.avgDaysToConvert': 'बदलने में औसत दिन',
   'reports.column.maxDays': 'सबसे लंबा (दिन)',
   'reports.column.pendingOrder': 'पेंडिंग ऑर्डर',
@@ -2905,7 +2845,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'reports.subject.label': 'किसके आँकड़े',
   'reports.search': 'इस रिपोर्ट में खोजें',
   'reports.subject.everyone': 'सभी',
-  'reports.subject.own': 'आपके अपने आँकड़े',
   'reports.snapshotNote': 'यह रिपोर्ट अभी जो खुला है वह दिखाती है, इसलिए तारीख की अवधि इस पर लागू नहीं होती।',
   'reports.truncated': '{total} में से पहली {shown} पंक्तियाँ दिख रही हैं — सब पाने के लिए निर्यात करें।',
   'reports.export.csv': 'CSV',
@@ -2915,7 +2854,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'reports.offline': 'रिपोर्ट के लिए मास्टर पैनल चाहिए। लिंक लौटने पर फिर कोशिश करें।',
   'reports.hidden.title': 'आपकी भूमिका के लिए रिपोर्ट बंद हैं',
   'reports.hidden.description': 'प्रशासक इन्हें सेटिंग्स में चालू कर सकता है।',
-  'reports.sheet.name': 'रिपोर्ट',
   'reports.generatedFor': '{name} के आँकड़े',
   'validation.reports.subject.forbidden': 'आप केवल अपने आँकड़े देख सकते हैं',
   'validation.reports.subject.unknown': 'इस आईडी वाला कोई सक्रिय यूज़र नहीं है',
@@ -2925,18 +2863,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.reports.format.unknown': 'यह रिपोर्ट इस फ़ॉर्मेट में नहीं लिखी जा सकती',
   'validation.reports.tooManyRows': 'इस रिपोर्ट में {max} से अधिक पंक्तियाँ हैं — अवधि घटाएँ या दूसरा फ़ॉर्मेट चुनें',
   'error.forbidden.reportsHidden': 'आपकी भूमिका के लिए रिपोर्ट बंद हैं',
-  // TODO(i18n-hi)
-  'reports.topParties.cities': 'Cities',
-  // TODO(i18n-hi)
-  'reports.topParties.cities.empty.description': 'None of these parties has a city recorded.',
-  // TODO(i18n-hi)
-  'reports.topParties.cities.empty.title': 'No cities to group by',
-  // TODO(i18n-hi)
-  'reports.topParties.empty.description': 'No party ordered in these months. Try a wider range.',
-  // TODO(i18n-hi)
-  'reports.topParties.orderedByCount': 'फ़ाइनल ऑर्डर संख्या के अनुसार शीर्ष {limit}।',
-  // TODO(i18n-hi)
-  'reports.topParties.parties': 'Parties',
+  'reports.topParties.cities': 'शहर के अनुसार',
   // TODO(i18n-hi)
   'settings.appearance.subtitle': 'Per-machine — never synced',
   // TODO(i18n-hi)

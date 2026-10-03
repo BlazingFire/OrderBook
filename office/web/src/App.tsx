@@ -186,6 +186,9 @@ function OfficePanel() {
   // `option_list` revision.
   const [optionListsRevision, setOptionListsRevision] = useState(0);
   useEffect(() => setOptionListsRevision((count) => count + 1), [view?.optionLists]);
+  // Bumped on every snapshot and every applied change. The Reports screen re-reads on it: a
+  // count fingerprint misses a lead that changed stage, an order that was dispatched, an edit.
+  const [viewRevision, setViewRevision] = useState(0);
 
   // Set to the person's landing screen at sign-in and on the boot restore.
   const [tab, setTab] = useState<Tab>('basicHome');
@@ -438,6 +441,7 @@ function OfficePanel() {
 
     source.addEventListener('snapshot', (event) => {
       setView(JSON.parse((event as MessageEvent).data) as LocalView);
+      setViewRevision((count) => count + 1);
       void refreshSyncState();
     });
 
@@ -452,6 +456,7 @@ function OfficePanel() {
      */
     source.addEventListener('change', (event) => {
       const change = JSON.parse((event as MessageEvent).data) as DataChangedEvent;
+      setViewRevision((count) => count + 1);
       setView((current) => {
         if (!current) return current;
 
@@ -1151,7 +1156,7 @@ function OfficePanel() {
       render: () => (
         <ReportsScreen
           transport={reportsTransport}
-          revision={view ? `${view.leads.length}:${view.orders.length}:${view.parties.length}` : 0}
+          revision={viewRevision}
           kind={subKeyOf('reports') as ReportKind}
           onKindChange={(kind) => selectSubPage('reports', kind)}
         />

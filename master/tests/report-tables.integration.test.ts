@@ -8,9 +8,9 @@
  * fifteen kinds added.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { REPORT_KINDS, t, type ReportKind } from '@orderbook/shared';
+import { REPORT_EXPORT_CAPS, REPORT_KINDS, type ReportKind } from '@orderbook/shared';
 
 import type { ActorContext } from '../src/domain/actor.js';
 import { config } from '../src/config/index.js';
@@ -22,6 +22,7 @@ import * as catalogService from '../src/services/catalog.service.js';
 import * as inventoryService from '../src/services/inventory.service.js';
 import * as leadService from '../src/services/lead.service.js';
 import * as orderService from '../src/services/order.service.js';
+import * as reportRepo from '../src/repositories/report.repository.js';
 import * as reportService from '../src/services/report.service.js';
 import * as roleService from '../src/services/role.service.js';
 import * as settingsService from '../src/services/settings.service.js';
@@ -262,6 +263,14 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
       });
       await expect(reportService.exportReport('by-user', {}, noExport)).rejects.toMatchObject({ details: { permission: 'reports.export' } });
       expect((await reportService.reportOptions(noExport)).canExport).toBe(false);
+
+      // A file is a report written down: the key to read it comes first, so a
+      // role holding only `reports.export` is refused naming `reports.view`.
+      await expect(reportService.exportReport('by-user', {}, noView)).rejects.toMatchObject({
+        statusCode: 403,
+        details: { permission: 'reports.view' },
+      });
+      await expect(reportService.exportReport('dispatches', {}, noView)).rejects.toBeInstanceOf(ForbiddenError);
     });
 
     it('is granted to every office and management role by the migration, once, and never to an administrator role', async () => {
@@ -360,6 +369,26 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
       expect(Number(table.rows[0]!.daysSince)).toBeGreaterThanOrEqual(500);
       expect(Number(table.rows[1]!.daysSince)).toBeGreaterThanOrEqual(400);
       expect(table.totals).toEqual({ orders: 0 });
+    });
+
+    it('does not list a party that has ordered again since the range — only one whose latest order is older than it', async () => {
+      const alice = await makeUser('alice');
+      const shop = await makeShop();
+      const a = await author(alice);
+
+      const stillOrders = await makeDispatched(a, shop, 'Orders Again', 'Morbi');
+      await db()('orders').where({ id: stillOrders.order.id }).update({ dispatched_at: '2025-12-10T06:00:00.000Z' });
+      const may = await makeDispatched(a, shop, 'Orders Again Spare', 'Morbi');
+      await db()('orders').where({ id: may.order.id }).update({ dispatched_at: '2026-05-10T06:00:00.000Z' });
+      // Same party: make the May order belong to the party that ordered in December.
+      await db()('orders').where({ id: may.order.id }).update({ party_id: stillOrders.party.id });
+
+      const quiet = await makeDispatched(a, shop, 'Truly Quiet', 'Morbi');
+      await db()('orders').where({ id: quiet.order.id }).update({ dispatched_at: '2025-12-12T06:00:00.000Z' });
+
+      const range = { period: 'customDates' as const, fromDate: '2026-01-01', toDate: '2026-03-31' };
+      const table = await reportService.reportTable('party-dormant', range, admin);
+      expect(table.rows.map((row) => row.partyName)).toEqual(['Truly Quiet']);
     });
 
     it('measures a pending order from the stage it entered, ignores the date range, and lists the open ones oldest first', async () => {
@@ -513,7 +542,8 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
 
       const csv = await reportService.exportReport('by-city', { period: 'thisMonth', totals: true }, admin);
       expect(csv.format).toBe('csv');
-      expect((csv as { csv: string }).csv).toBe('city,parties,orders,pieces,kg\r\nMorbi,1,1,10,25\r\nTotal,1,1,10,25\r\n');
+      // A BOM leads the new kinds' CSV, so Excel reads a Hindi city as UTF-8.
+      expect((csv as { csv: string }).csv).toBe('﻿city,parties,orders,pieces,kg\r\nMorbi,1,1,10,25\r\nTotal,1,1,10,25\r\n');
     });
 
     it('writes an Excel workbook whose headers are the reader’s language and whose figures are numbers', async () => {
@@ -534,12 +564,8 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
 
       const hi = await reportService.exportReport('by-city', { period: 'thisMonth', format: 'xlsx', lang: 'hi' }, admin);
       const hindi = await readSheetRows((hi as { bytes: Buffer }).bytes);
-      expect(hindi[0]).toEqual(
-        (['reports.column.city', 'reports.column.parties', 'reports.column.orders', 'reports.column.pieces', 'reports.column.kg'] as const).map((key) =>
-          t('hi', key),
-        ),
-      );
-      expect(hindi[0]![3]).toBe('नग');
+      // Literal words, not `t('hi', key)`: that would echo an English stub back and pass.
+      expect(hindi[0]).toEqual(['शहर', 'पार्टियाँ', 'फ़ाइनल ऑर्डर', 'नग', 'वज़न (किग्रा)']);
     });
 
     it('writes a PDF in either language, saying whose figures they are', async () => {
@@ -566,6 +592,95 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
       await expect(reportService.reportTable('revenue' as ReportKind, {}, admin)).rejects.toMatchObject({
         messageKey: 'validation.reports.kind.unknown',
       });
+    });
+
+    it('records whose figures were exported: the person asked about, or null for everyone', async () => {
+      const alice = await makeUser('alice');
+      await reportService.exportReport('by-brand', { format: 'csv' }, admin);
+      await reportService.exportReport('by-brand', { format: 'csv', subjectId: alice }, admin);
+      await reportService.exportReport('by-brand', { format: 'csv' }, await viewer(alice));
+
+      const rows = await db()('activity_log').where({ entity_type: 'report', action: 'exported' }).orderBy('created_at', 'asc');
+      expect(rows.map((row) => (row.details as { subjectId: string | null }).subjectId)).toEqual([null, alice, alice]);
+    });
+
+    it('sums only the additive columns on the new kinds, leaves days and dates blank, and rounds kilograms to three places', async () => {
+      const alice = await makeUser('alice');
+      const shop = await makeShop();
+      const a = await author(alice);
+      await makeDispatched(a, shop, 'Shah Ceramics', 'Morbi', 10);
+      await makeDispatched(a, shop, 'Patel Traders', 'Rajkot', 4);
+
+      const file = await reportService.exportReport('by-party', { period: 'thisMonth', totals: true }, admin);
+      const lines = (file as { csv: string }).csv.split('\r\n').filter(Boolean);
+      // partyCode, partyName, city, leads, orders, pieces, kg, lastOrder, daysSince
+      expect(lines[0]).toBe('﻿partyCode,partyName,city,leads,orders,pieces,kg,lastOrder,daysSince');
+      expect(lines[lines.length - 1]).toBe('Total,,,2,2,14,35,,');
+    });
+
+    it('rounds a kilogram total to three places, so float noise never reaches the file', async () => {
+      const alice = await makeUser('alice');
+      const a = await author(alice);
+      // 0.1 kg and 0.2 kg on two rows: added as floats they print 0.30000000000000004.
+      const light = await catalogService.createProduct(
+        { name: 'Light Cup', categoryName: 'Cups', hasVariants: true, variants: [{ code: 'LIGHT-1', label: 'White', weightKg: 0.1 }] },
+        admin,
+      );
+      await inventoryService.recordInbound({ variantId: light.variants[0]!.id, quantityBoxes: 100 }, admin);
+      for (const quantity of [1, 2]) {
+        const party = await catalogService.createParty({ name: `Light ${quantity}`, city: 'Surat' }, admin);
+        const lead = await leadService.createLead(
+          { partyId: party.id, items: [{ productId: light.id, variantId: light.variants[0]!.id, quantity, packaging: 'Box' }] },
+          a,
+        );
+        await orderService.dispatchOrder({ orderId: (await orderService.convertLead({ leadId: lead.id }, a)).id }, a);
+      }
+      const file = await reportService.exportReport('by-party', { period: 'thisMonth', totals: true, columns: ['partyName', 'kg'] }, admin);
+      const lines = (file as { csv: string }).csv.split('\r\n').filter(Boolean);
+      expect(lines.slice(1)).toEqual(['Light 1,0.1', 'Light 2,0.2', 'Total,0.3']);
+    });
+
+    it('reads what a client sent defensively: an unknown format is CSV, an unknown language English, columns only a list of strings', async () => {
+      const alice = await makeUser('alice');
+      await makeDispatched(await author(alice), await makeShop(), 'Shah Ceramics', 'Morbi');
+
+      const odd = await reportService.exportReport(
+        'by-city',
+        { format: 'docx', lang: 'fr', columns: 'city' as unknown as string[], totals: 'yes', paperSize: 'a0' } as never,
+        admin,
+      );
+      expect(odd.format).toBe('csv');
+      expect((odd as { csv: string }).csv.split('\r\n')[0]).toBe('﻿city,parties,orders,pieces,kg');
+      expect((odd as { csv: string }).csv).not.toContain('Total');
+
+      expect(reportService.normalizeExportOptions({ columns: ['city', 7, null], lang: 'hi', format: 'pdf', paperSize: 'letter', orientation: 'portrait' })).toEqual({
+        format: 'pdf',
+        columns: ['city'],
+        totals: false,
+        paperSize: 'letter',
+        orientation: 'portrait',
+        lang: 'hi',
+      });
+      expect(reportService.normalizeExportOptions(null)).toMatchObject({ format: 'csv', lang: 'en', paperSize: 'a4', orientation: 'landscape' });
+    });
+
+    it('refuses a report longer than the cap for its format, naming the cap, instead of writing half of it', async () => {
+      for (const format of ['csv', 'xlsx', 'pdf'] as const) {
+        const cap = REPORT_EXPORT_CAPS[format];
+        const spy = vi.spyOn(reportRepo, 'byBrand').mockResolvedValue(
+          Array.from({ length: cap + 1 }, () => ({ brand: 'B', orders: 1, pieces: 1, kg: 1 })),
+        );
+        try {
+          await expect(reportService.exportReport('by-brand', { format }, admin), format).rejects.toMatchObject({
+            messageKey: 'validation.reports.tooManyRows',
+            params: { max: cap },
+          });
+          // The query was asked for one row more than the cap, so "over" is known rather than guessed.
+          expect(spy).toHaveBeenCalledWith(expect.anything(), cap + 1);
+        } finally {
+          spy.mockRestore();
+        }
+      }
     });
   });
 

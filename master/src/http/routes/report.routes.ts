@@ -91,7 +91,8 @@ reportRoutes.get(
 
 reportRoutes.get(
   '/:report/export',
-  needs('reports.export'),
+  // A file is a report written down: both keys, as in 1.2 (the service checks them too).
+  [needs('reports.view'), needs('reports.export')],
   asyncHandler(async (req, res) => {
     const kind = kindOf(req.params.report);
 

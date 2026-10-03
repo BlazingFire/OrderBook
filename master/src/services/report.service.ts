@@ -45,6 +45,8 @@ import {
   REPORT_META,
   REPORT_TABLE_ROW_CAP,
   SUMMABLE_UNITS,
+  isLegacyReportKind,
+  isReportFormat,
   mayReportOnOthers,
   reportsVisibleForTier,
   t,
@@ -187,7 +189,12 @@ async function contextFor(
   actor: ActorContext,
   permission: 'reports.view' | 'reports.export' = 'reports.view',
 ): Promise<Context> {
-  requirePermission(actor, permission);
+  // An export is a view of a report written to a file: it needs both keys, as
+  // it did in 1.2, so a role holding only `reports.export` cannot read figures
+  // it cannot open on screen. `reports.view` is checked first, so that is the
+  // key a refusal names.
+  requirePermission(actor, 'reports.view');
+  if (permission === 'reports.export') requirePermission(actor, 'reports.export');
   await assertReportsVisible(actor);
   const { ownerId, subject } = await resolveSubject(input.subjectId, actor);
   const { range, fromDate, toDateExclusive } = buildRange(input);
@@ -523,13 +530,34 @@ function sheetNameOf(title: string): string {
   return (cleaned || 'Report').slice(0, 31);
 }
 
+type NormalizedExportOptions = Required<Omit<ReportExportOptions, 'columns'>> & Pick<ReportExportOptions, 'columns'>;
+
+/**
+ * What an export asked for, read defensively. The socket and the REST route both
+ * hand over what a client sent; anything that is not a known value becomes the
+ * default instead of reaching a lookup (`REPORT_EXPORT_CAPS[format]`) or a
+ * renderer. Defaults reproduce the byte-identical CSV of every column.
+ */
+export function normalizeExportOptions(raw: unknown): NormalizedExportOptions {
+  const src = (raw !== null && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  return {
+    format: isReportFormat(src.format) ? src.format : 'csv',
+    columns: Array.isArray(src.columns) ? src.columns.filter((key): key is string => typeof key === 'string') : undefined,
+    totals: src.totals === true,
+    paperSize: src.paperSize === 'letter' ? 'letter' : 'a4',
+    orientation: src.orientation === 'portrait' ? 'portrait' : 'landscape',
+    lang: src.lang === 'hi' ? 'hi' : 'en',
+  };
+}
+
 export async function exportReport(
   kind: ReportKind,
-  input: ReportQuery & ReportExportOptions,
+  rawInput: ReportQuery & ReportExportOptions,
   actor: ActorContext,
 ): Promise<ExportedReport> {
+  const input = { ...rawInput, ...normalizeExportOptions(rawInput) };
   const ctx = await contextFor(input, actor, 'reports.export');
-  const format = input.format ?? 'csv';
+  const format = input.format;
   const cap = REPORT_EXPORT_CAPS[format];
 
   const loaded = await rowsOf(kind, ctx, input, cap, actor.tenantId);
@@ -558,20 +586,25 @@ export async function exportReport(
     // "Totals". Computed once, outside the map, so exactly one cell gets the
     // label even when several columns qualify; -1 (no safe column at all)
     // leaves every cell to fall through to the sum/blank logic below.
-    const labelIndex = columns.findIndex(
-      (column) => !rows.some((row) => typeof row[column.key] === 'number'),
-    );
+    // The three legacy kinds sum every numeric column, as they always did. The
+    // others sum only the additive units (`SUMMABLE_UNITS`): a total of days or
+    // of percentages is a number nobody can use.
+    const legacy = isLegacyReportKind(kind);
+    const sums = (column: ReportColumn): boolean =>
+      rows.some((row) => typeof row[column.key] === 'number') &&
+      (legacy || (column.unit !== undefined && SUMMABLE_UNITS.includes(column.unit)));
+    const labelIndex = columns.findIndex((column) => !sums(column));
 
     totals = columns.map((column, index) => {
       if (index === labelIndex) return label('reports.export.totals', input.lang);
+      if (!sums(column)) return '';
 
       const sum = rows.reduce((running, row) => {
         const value = row[column.key];
         return typeof value === 'number' ? running + value : running;
       }, 0);
 
-      const anyNumeric = rows.some((row) => typeof row[column.key] === 'number');
-      return anyNumeric ? sum : '';
+      return legacy ? sum : Math.round(sum * 1000) / 1000;
     });
   }
 
@@ -590,6 +623,8 @@ export async function exportReport(
           to: ctx.range.toDateExclusive,
           rowCount: rows.length,
           format,
+          // Null is everyone.
+          subjectId: ctx.subject.id,
         },
       },
       actor,
@@ -605,7 +640,9 @@ export async function exportReport(
       columns.map((column) => column.key),
       totals ? [...body, totals] : body,
     );
-    return { format: 'csv', csv, rowCount: rows.length };
+    // The new kinds carry names in any script, and Excel reads a BOM-less file as
+    // ANSI; the three legacy kinds stay byte-identical to what they always were.
+    return { format: 'csv', csv: isLegacyReportKind(kind) ? csv : `\uFEFF${csv}`, rowCount: rows.length };
   }
 
   const lang: Locale = input.lang ?? 'en';

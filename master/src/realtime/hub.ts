@@ -25,6 +25,9 @@ import {
   type SocketData,
   type SyncConflict,
   isServerMasterTier,
+  parseReportQuery,
+  type ReportExportOptions,
+  type ReportQuery,
 } from '@orderbook/shared';
 
 import { actorCan, type ActorContext } from '../domain/actor.js';
@@ -667,11 +670,27 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   socket.on('report:topParties', (query, ack) =>
     run(ack, (actor) => reportService.topPartiesReport(query, actor)),
   );
+  // A socket payload is whatever the client sent: the range is read the way the
+  // REST query string is (`parseReportQuery`), and the export options are
+  // normalised by the service.
   socket.on('report:export', (payload, ack) =>
-    run(ack, (actor) => reportService.exportReport(payload.report, payload.query, actor)),
+    run(ack, (actor) => {
+      const raw = (payload?.query ?? {}) as Record<string, unknown>;
+      return reportService.exportReport(
+        payload?.report,
+        { ...raw, ...parseReportQuery(raw) } as ReportQuery & ReportExportOptions,
+        actor,
+      );
+    }),
   );
   socket.on('report:table', (payload, ack) =>
-    run(ack, (actor) => reportService.reportTable(payload.report, payload.query, actor)),
+    run(ack, (actor) =>
+      reportService.reportTable(
+        payload?.report,
+        parseReportQuery((payload?.query ?? {}) as Record<string, unknown>),
+        actor,
+      ),
+    ),
   );
   socket.on('report:options', (ack) => run(ack, (actor) => reportService.reportOptions(actor)));
 

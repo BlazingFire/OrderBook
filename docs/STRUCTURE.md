@@ -2538,7 +2538,7 @@ the service checks.
   `POST /verify` (`logs.verifyChain`); `GET /export` (`logs.export`).
 - `master/src/http/routes/report.routes.ts` (6): `GET /dispatches`,
   `/lead-outcomes`, `/top-parties` (`reports.view`, frozen for older Offices); `GET /options`
-  and `GET /table/:report` (`reports.view`, 1.3 H2); `GET /:report/export` (`reports.export`;
+  and `GET /table/:report` (`reports.view`, 1.3 H2); `GET /:report/export` (`reports.view` + `reports.export`;
   `format=csv|xlsx|pdf`, `lang=en|hi`, `subjectId`, `columns`, `totals`, `paperSize`,
   `orientation`). Contract: `docs/backend-modules/04-API-CONTRACT.md` §3.6–§3.9.
 - `master/src/http/routes/images.routes.ts`: `imagesRoutes` (`products.edit`) —
