@@ -18,7 +18,7 @@
  * navigate the whole window onto it.
  *
  * The preview reads a row the way the catalogue does (`docs/catalogue/
- * CATALOGUE_MODEL.md` §1) — brand, product (`OPT · One Piece Toilet`), sub
+ * CATALOGUE_MODEL.md` §1) — brand, product (`One Piece Toilet`), sub
  * product — so a file whose rows landed under the wrong product is caught
  * here, before anything is written.
  */
@@ -462,7 +462,7 @@ export function ProductImportModal({
                       key: 'category',
                       header: t('catalog.products.column.category'),
                       width: rem(170),
-                      render: (row) => productLabel(row.categoryCode, row.categoryName) || '—',
+                      render: (row) => productLabel(row.categoryName) || '—',
                     },
                     {
                       key: 'name',

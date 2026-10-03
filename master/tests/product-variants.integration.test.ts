@@ -22,8 +22,11 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import { randomUUID } from 'node:crypto';
+
 import { canRunIntegrationTests } from './helpers/db.js';
 import { resetData, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
+import { db } from '../src/db/knex.js';
 import type { ActorContext } from '../src/domain/actor.js';
 import * as catalog from '../src/services/catalog.service.js';
 import * as leads from '../src/services/lead.service.js';
@@ -286,6 +289,40 @@ describe.skipIf(!canRunIntegrationTests)('product variants (integration)', () =>
         actor,
       );
       expect(other.variants[0]!.code).toBe('42');
+    });
+
+    it('deletes a removed row that only the retired stock tables mention (R15)', async () => {
+      const product = await damru();
+      const [v41, v42] = product.variants;
+      // What a database from before 1.4 may hold for a colour that carried stock:
+      // stock and its movements, each foreign-keyed to the variant, none read now.
+      // (A reservation needs an order whose line quotes the variant, which keeps it in use.)
+      await db()('inventory_stock').insert({
+        id: randomUUID(),
+        tenant_id: actor.tenantId,
+        product_id: product.id,
+        variant_id: v42!.id,
+        quantity_boxes: 12,
+      });
+      await db()('stock_movements').insert({
+        tenant_id: actor.tenantId,
+        product_id: product.id,
+        variant_id: v42!.id,
+        movement_type: 'inbound',
+        quantity_boxes: 12,
+      });
+      const updated = await catalog.updateProduct(
+        product.id,
+        { name: product.name, variants: [{ id: v41!.id, code: '41', label: 'Vitrosa 41' }] },
+        actor,
+      );
+
+      // Deleted, not merely deactivated: old stock does not make a variant "in use".
+      expect(updated.variants.map((variant) => [variant.code, variant.isActive])).toEqual([['41', true]]);
+      expect(await db()('product_variants').where({ id: v42!.id }).first()).toBeUndefined();
+      for (const table of ['inventory_stock', 'stock_movements']) {
+        expect(await db()(table).where({ variant_id: v42!.id }).first(), table).toBeUndefined();
+      }
     });
 
     it('deactivates, rather than deletes, a removed row a lead line still quotes', async () => {

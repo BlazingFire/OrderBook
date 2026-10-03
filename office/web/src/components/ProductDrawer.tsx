@@ -10,7 +10,7 @@
  * In the owner's words the record is a **sub product** and its category is its
  * **product** (`docs/catalogue/CATALOGUE_MODEL.md` §1). The product is
  * **pick-only**, from the products this panel holds, each read the way the
- * catalogue writes it (`OPT · One Piece Toilet · Swisware+`). It used to be a
+ * catalogue writes it (`One Piece Toilet · Swisware+`). It used to be a
  * suggest field whose unmatched name created a category on the Master, so a
  * typo became a new product with no code and no brand; products are made on
  * the Products page now, where a code and a brand are asked for. Required,
@@ -388,7 +388,7 @@ export function ProductDrawer({
               >
                 {products.map((category) => (
                   <option key={category.id} value={category.id}>
-                    {productLabel(category.code, category.name, category.brand)}
+                    {productLabel(category.name, category.brand)}
                   </option>
                 ))}
               </Select>

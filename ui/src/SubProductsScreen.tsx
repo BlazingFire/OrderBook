@@ -23,7 +23,7 @@
  * Original header, trimmed to what still applies, follows.
  *
  * **Catalogue v2 (2026-09-28) made the Products tab the sub-product list**
- * (`docs/catalogue/CATALOGUE_MODEL.md` §1): Brand, Product (`OPT - One Piece
+ * (`docs/catalogue/CATALOGUE_MODEL.md` §1): Brand, Product (`One Piece
  * Toilet`), Sub product, Size, the colour its rule shows (§2), Codes and Weight
  * - one figure per row. Its filters are
  * the catalogue's own and run on the server: brand chips from the
@@ -347,7 +347,7 @@ export function SubProductsScreen({
       width: 'minmax(0, 1.6fr)',
       render: (product) => {
         const category = productOf(product);
-        return productLabel(category.code, category.name) || '—';
+        return productLabel(category.name) || '—';
       },
     },
     {
@@ -481,7 +481,7 @@ export function SubProductsScreen({
           <option value="">{t('catalog.products.allProducts')}</option>
           {categories.map((category) => (
             <option key={category.id} value={category.id}>
-              {productLabel(category.code, category.name)}
+              {productLabel(category.name)}
             </option>
           ))}
         </Select>

@@ -50,13 +50,14 @@ function active(product: Product) {
 }
 
 /**
- * A product (a category) the way the catalogue writes it, `OPT · One Piece
- * Toilet` (`docs/catalogue/CATALOGUE_MODEL.md` §1) — the list column, its
- * filter, the form's picker and the detail all say it so. A category from
- * before catalogue v2 has no code and reads as its bare name.
+ * A product (a category) the way staff read it: its name, then its brand when
+ * the caller has one, `One Piece Toilet · Swisware+`. The category's software
+ * code (`OPT`) is never part of the name: it has its own column and field, and a
+ * name that carried it read as `OPT · One Piece Toilet` to the owner's eye.
+ * Every list, picker and detail says it this way (`docs/catalogue/CATALOGUE_MODEL.md` §1).
  */
-export function productLabel(...parts: Array<string | null | undefined>): string {
-  return parts.filter(Boolean).join(' · ');
+export function productLabel(name: string | null | undefined, brand?: string | null): string {
+  return [name, brand].filter(Boolean).join(' · ');
 }
 
 /**

@@ -467,6 +467,17 @@ describe('the sub-product bar', () => {
     expect(request[1].limit).toBe(PICK_MAX_LIMIT);
   });
 
+  it('names the chosen product by its name, never with its main-product code (R14)', async () => {
+    await openForm();
+    fireEvent.focus(searchBox());
+    fireEvent.mouseDown(await screen.findByRole('button', { name: new RegExp(CATEGORY.name) }));
+    await screen.findByRole('button', { name: new RegExp(MULTI.name) });
+
+    // The chip that stands for the product says "ONE PIECE TOILET", not "OPT · ONE PIECE TOILET".
+    expect(document.body.textContent).toContain(CATEGORY.name);
+    expect(document.body.textContent).not.toContain(`${CATEGORY.code} · ${CATEGORY.name}`);
+  });
+
   it('keeps the caret in the bar on an Enter with nothing to take, not in the notes', async () => {
     await openForm();
     fireEvent.focus(searchBox());

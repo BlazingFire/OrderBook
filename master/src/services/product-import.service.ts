@@ -45,6 +45,9 @@ import {
   fieldFor,
   MAX_PRODUCT_IMPORT_ISSUES,
   MAX_PRODUCT_IMPORT_ROWS,
+  PRODUCT_FORMAT_SUBJECT,
+  PRODUCT_FORMAT_VERSION,
+  productFormatOf,
   PRODUCT_COLUMNS,
 } from '@orderbook/shared';
 
@@ -72,7 +75,7 @@ import {
   buildXlsxTemplate,
   XLSX_CONTENT_TYPE,
 } from '../lib/spreadsheet.js';
-import { readSheetRows } from '../lib/spreadsheet.js';
+import { readSheetRows, readSheetSubject } from '../lib/spreadsheet.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as customFieldRepo from '../repositories/custom-field.repository.js';
 import { allocatePermanentIds, nextHlc } from '../repositories/identity.repository.js';
@@ -135,6 +138,7 @@ export async function productImportTemplate(
       ...(column.field === 'colourRule' ? { values: ['fixed', 'dedicated', 'multicolour'] } : {}),
     })),
     guide: [['column', 'required', 'kind', 'note'], ...templateGuideRows(mayCreateCategories)],
+    subject: `${PRODUCT_FORMAT_SUBJECT} ${PRODUCT_FORMAT_VERSION}`,
   });
 
   return { bytes, contentType: XLSX_CONTENT_TYPE, fileName: 'products-template.xlsx' };
@@ -253,6 +257,7 @@ async function buildProductExport(
       text: TEXT_COLUMNS.has(column.field),
     })),
     rows,
+    subject: `${PRODUCT_FORMAT_SUBJECT} ${PRODUCT_FORMAT_VERSION}`,
   });
   return { bytes, contentType: XLSX_CONTENT_TYPE, fileName: `products-${today()}.xlsx`, count: rows.length };
 }
@@ -284,8 +289,10 @@ export async function importProducts(
   }
 
   let rows: string[][];
+  let formatVersion: number | null = null;
   try {
     rows = await readSheetRows(file.buffer);
+    formatVersion = productFormatOf(await readSheetSubject(file.buffer));
   } catch (error) {
     log.warn(`Could not read ${file.fileName}: ${error instanceof Error ? error.message : String(error)}`);
     throw new ValidationError('validation.import.unreadable');
@@ -518,6 +525,7 @@ export async function importProducts(
       issues,
       sample,
       ignoredColumns: match.ignored,
+      formatVersion,
     });
   }
 
@@ -649,6 +657,7 @@ export async function importProducts(
     issues,
     sample,
     ignoredColumns: match.ignored,
+    formatVersion,
   });
 
   if (created + updated > 0) {
@@ -890,6 +899,7 @@ function finish(partial: {
   issues: ProductImportIssue[];
   sample: ProductInput[];
   ignoredColumns: string[];
+  formatVersion: number | null;
 }): ProductImportResult {
   const sorted = [...partial.issues].sort((a, b) => a.row - b.row);
   const skipped = new Set(sorted.filter((issue) => issue.kind === 'skipped').map((issue) => issue.row)).size;
@@ -909,6 +919,7 @@ function finish(partial: {
     issues: sorted.slice(0, MAX_PRODUCT_IMPORT_ISSUES),
     issuesTruncated: sorted.length > MAX_PRODUCT_IMPORT_ISSUES,
     ignoredColumns: partial.ignoredColumns,
+    formatVersion: partial.formatVersion,
     sample: partial.sample,
   };
 }

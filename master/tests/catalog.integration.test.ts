@@ -572,7 +572,7 @@ describe.skipIf(!canRunIntegrationTests)('catalog service (integration)', () => 
 
       await expect(subProduct('magenta', v1812.id)).rejects.toMatchObject({
         messageKey: 'validation.product.nameTaken',
-        params: { name: 'magenta', category: 'V1812 · 18x12 Vitrosa' },
+        params: { name: 'magenta', category: '18x12 Vitrosa' },
       });
       const other = await subProduct('MAGENTA', sfd.id);
 
@@ -594,10 +594,10 @@ describe.skipIf(!canRunIntegrationTests)('catalog service (integration)', () => 
 
       const entries = await db()('activity_log').where({ entity_type: 'product' }).orderBy('id');
       expect(entries.map((entry) => entry.details)).toEqual([
-        { name: '102', product: 'OPT · One Piece Toilet' },
+        { name: '102', product: 'One Piece Toilet' },
         {
           name: '102 (9")',
-          product: 'OPT · One Piece Toilet',
+          product: 'One Piece Toilet',
           changes: { name: { from: '102', to: '102 (9")' }, size: { from: null, to: 'L-27' } },
         },
       ]);
