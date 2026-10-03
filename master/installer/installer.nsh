@@ -11,9 +11,26 @@
 ; the registry entries NSIS does not know about, which is what the sweep below
 ; hands to tools/uninstall/uninstall-orderbook.ps1.
 
+; The SHA-256 of every PowerShell script this installer runs elevated, baked when
+; the installer is compiled (not before: `electron-builder --prepackaged` skips
+; `afterPack`, and a stale hash would silently make the installer refuse its own
+; script). `!system` makes the compile fail if this does not run. See
+; tools/nsis/verified-powershell.nsh for what the hashes are for.
+!system 'node "${__FILEDIR__}\..\..\tools\bake-script-hashes.cjs" "${__FILEDIR__}"' = 0
+!include "${__FILEDIR__}\script-hashes.nsh"
+!ifndef UPDATE_DIRS_SHA256
+  !error "script-hashes.nsh did not define UPDATE_DIRS_SHA256"
+!endif
+!ifndef UNINSTALL_SCRIPT_SHA256
+  !error "script-hashes.nsh did not define UNINSTALL_SCRIPT_SHA256"
+!endif
+!include "${__FILEDIR__}\..\..\tools\nsis\verified-powershell.nsh"
+
 !macro customInstall
-  nsExec::Exec 'netsh advfirewall firewall add rule name="OrderBook Master (TCP 4100)" dir=in action=allow protocol=TCP localport=4100'
-  nsExec::Exec 'netsh advfirewall firewall add rule name="OrderBook Discovery (UDP 45789)" dir=in action=allow protocol=UDP localport=45789'
+  ; Every program an administrator runs here is named by its absolute System32
+  ; path ($SYSDIR): Windows looks in the launching program's own folder first.
+  nsExec::Exec '"$SYSDIR\netsh.exe" advfirewall firewall add rule name="OrderBook Master (TCP 4100)" dir=in action=allow protocol=TCP localport=4100'
+  nsExec::Exec '"$SYSDIR\netsh.exe" advfirewall firewall add rule name="OrderBook Discovery (UDP 45789)" dir=in action=allow protocol=UDP localport=45789'
 
   ; The nightly update (1.4). This installer is running elevated, once, with the
   ; administrator's approval; it uses that to register a task that can install
@@ -36,25 +53,16 @@
   ;    folder owned by anybody else is moved aside, and the new one is created
   ;    Administrators-owned with a protected ACL, then re-read and verified;
   ;  - the folders are found by the known-folder API, not an environment variable.
-  ; Every program an administrator runs here is named by its absolute System32
-  ; path ($SYSDIR), never found through PATH or COMSPEC.
-  ;
   ; The script is extracted to $PLUGINSDIR (this installer's private temp folder),
-  ; which another program running as the same account can write. So it is never run
-  ; from there: the PowerShell it is handed to reads the file ONCE, checks the bytes
-  ; against the SHA-256 baked in at build time (UPDATE_DIRS_SHA256, written next to
-  ; the script by tools/flip-fuses.cjs), and runs *those bytes from memory*. Swapping
-  ; the file after the check changes nothing, and swapping it before makes the
-  ; check fail (exit 9, no task). `$$` is NSIS for a literal `$`.
-  !include "${BUILD_RESOURCES_DIR}\apply-update\update-dirs-hash.nsh"
-  !ifndef UPDATE_DIRS_SHA256
-    !error "update-dirs-hash.nsh did not define UPDATE_DIRS_SHA256 (tools/flip-fuses.cjs writes it in afterPack)"
-  !endif
+  ; which another program running as the same account can write, so it is never run
+  ; from there: it is hash-checked and run from memory (verified-powershell.nsh).
+  ; The install folder reaches it as data (OB_INSTDIR), never inside the command.
   Push $R0
   Push $R1
   InitPluginsDir
-  File "/oname=$PLUGINSDIR\update-dirs.ps1" "${BUILD_RESOURCES_DIR}\apply-update\update-dirs.ps1"
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$b=[IO.File]::ReadAllBytes(\"$PLUGINSDIR\update-dirs.ps1\"); $$h=([BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($$b))).Replace(\"-\",\"\").ToLower(); if ($$h -ne \"${UPDATE_DIRS_SHA256}\") { exit 9 }; $$s=[scriptblock]::Create([Text.Encoding]::UTF8.GetString($$b).TrimStart([char]0xFEFF)); & $$s -Mode Install -InstallDir \"$INSTDIR\"; exit $$LASTEXITCODE"'
+  File "/oname=$PLUGINSDIR\update-dirs.ps1" "${__FILEDIR__}\apply-update\update-dirs.ps1"
+  System::Call 'Kernel32::SetEnvironmentVariable(t "OB_INSTDIR", t "$INSTDIR")'
+  !insertmacro orderbookRunVerified "$PLUGINSDIR\update-dirs.ps1" "${UPDATE_DIRS_SHA256}" "-Mode Install -InstallDir $$env:OB_INSTDIR" "1"
   Pop $R1
   ${If} $R1 == "0"
     ; Highest privileges, as the account running this installer; never started by a
@@ -88,8 +96,8 @@
 !macroend
 
 !macro customUnInstall
-  nsExec::Exec 'netsh advfirewall firewall delete rule name="OrderBook Master (TCP 4100)"'
-  nsExec::Exec 'netsh advfirewall firewall delete rule name="OrderBook Discovery (UDP 45789)"'
+  nsExec::Exec '"$SYSDIR\netsh.exe" advfirewall firewall delete rule name="OrderBook Master (TCP 4100)"'
+  nsExec::Exec '"$SYSDIR\netsh.exe" advfirewall firewall delete rule name="OrderBook Discovery (UDP 45789)"'
 
   ; Never during an update. `isUpdated` means a new version is being installed
   ; over this one, and the sweep would delete the data directory and the profile
@@ -128,7 +136,12 @@
     orderbookDataAnswered:
 
     IfFileExists "$TEMP\OrderBook-uninstall-master\uninstall-orderbook.ps1" 0 orderbookSweepSkipped
-    nsExec::Exec '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$TEMP\OrderBook-uninstall-master\uninstall-orderbook.ps1" -Panel master -LeftoversOnly -Yes $R7'
+    ; The copy in $TEMP can be rewritten by any program running as this account,
+    ; so the sweep is hash-checked and run from memory, not run from the file.
+    Push $R1
+    !insertmacro orderbookRunVerified "$TEMP\OrderBook-uninstall-master\uninstall-orderbook.ps1" "${UNINSTALL_SCRIPT_SHA256}" "-Panel master -LeftoversOnly -Yes $R7" "0"
+    Pop $R1
+    Pop $R1
     orderbookSweepSkipped:
   ${EndIf}
 

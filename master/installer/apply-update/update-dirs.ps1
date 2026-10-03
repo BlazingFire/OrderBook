@@ -34,6 +34,11 @@ param(
     [string]$Path
 )
 
+# First, before any cmdlet: `-NoProfile` does not stop PowerShell auto-loading modules
+# from the user's own (writable) Documents\WindowsPowerShell\Modules, so a planted
+# module would run in this elevated process. Only the system's modules, from here on.
+$env:PSModulePath = $PSHOME + '\Modules'
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 

@@ -89,6 +89,37 @@ export function parseUpdatePaths(text: string): UpdatePaths | null {
 }
 
 /**
+ * A copy of `env` with these variables set, **whatever case their names have there**.
+ *
+ * Windows environment names are case-insensitive, and Node hands them over in the
+ * case the block had (`PSModulePath`, or `PSMODULEPATH`, or `Temp`). `{ ...env,
+ * PSModulePath: x }` over a block that says `PSMODULEPATH` makes *two* entries, and
+ * which one the child sees is not something to leave to chance for the variable that
+ * decides which modules an elevated PowerShell loads. So the old entries go first.
+ */
+export function overrideEnv(
+  env: Record<string, string | undefined>,
+  overrides: Record<string, string>,
+): Record<string, string | undefined> {
+  const names = new Set(Object.keys(overrides).map((name) => name.toLowerCase()));
+  const kept = Object.fromEntries(Object.entries(env).filter(([name]) => !names.has(name.toLowerCase())));
+  return { ...kept, ...overrides };
+}
+
+/**
+ * The only place PowerShell may load modules from, for the task's PowerShell.
+ *
+ * `-NoProfile` does not stop it auto-loading a module of the same name as a built-in
+ * cmdlet from the user's own `Documents\WindowsPowerShell\Modules`, which the
+ * account's other programs can write: it would run in the elevated process on the
+ * first cmdlet. The task starts PowerShell with this as `PSModulePath` (replacing
+ * the account's own), and `update-dirs.ps1` sets the same before its first cmdlet.
+ */
+export function systemModulePath(powershellExe: string): string {
+  return path.win32.join(path.win32.dirname(powershellExe), 'Modules');
+}
+
+/**
  * What the task tells the shell, in `result.json` in its own work folder, which
  * only administrators can write and the shell's account can read: a hint, never
  * an instruction. (It is not in the stage folder: the elevated task must never

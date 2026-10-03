@@ -33,8 +33,10 @@ import {
   TASK_RESULT,
   judgeInstallerFile,
   judgeStagedManifest,
+  overrideEnv,
   parseUpdatePaths,
   sha256OfFile,
+  systemModulePath,
   UPDATE_PATHS_FILE,
   type ReleaseTrust,
   type TaskStatus,
@@ -80,7 +82,12 @@ async function main(): Promise<number> {
         '-Path',
         work,
       ],
-      { windowsHide: true, timeout: 60_000 },
+      {
+        windowsHide: true,
+        timeout: 60_000,
+        // The account's own PSModulePath would put its writable Documents\Modules first.
+        env: overrideEnv(process.env, { PSModulePath: systemModulePath(powershell) }),
+      },
       (error, stdout) => resolve({ code: error ? ((error as { code?: number }).code ?? 1) : 0, output: String(stdout).trim() }),
     );
   });
@@ -140,7 +147,7 @@ async function main(): Promise<number> {
   const child = spawn(copy, ['/S', '--force-run'], {
     stdio: 'ignore',
     windowsHide: true,
-    env: { ...process.env, TEMP: temp, TMP: temp },
+    env: overrideEnv(process.env, { TEMP: temp, TMP: temp }),
   });
   const [code] = (await once(child, 'exit')) as [number | null];
   await say(`The installer exited with ${String(code)}`);

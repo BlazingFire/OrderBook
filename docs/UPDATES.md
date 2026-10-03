@@ -261,6 +261,34 @@ administrator" into "any program becomes administrator". So `update-dirs.ps1
   variable** (`%ProgramData%`, `%TEMP%`, `NODE_OPTIONS`… are all things the
   account's other programs can change).
 
+**The installers' own PowerShell is verified too.** The installer extracts
+`update-dirs.ps1` (and, for the uninstall sweep, `uninstall-orderbook.ps1`, in both
+the Master's and the Office's installer) to a temp folder that another program
+running as the same account can write, and runs them elevated. So none of them is
+run from the file. The command line the installer builds
+(`tools/nsis/verified-powershell.nsh`):
+
+1. is the system's own `powershell.exe` by absolute `$SYSDIR` path, and **pins
+   `PSModulePath` to `$PSHOME\Modules` as its first statement**. `-NoProfile` does
+   not stop PowerShell auto-loading a module such as `Microsoft.PowerShell.Archive`
+   from the user's own writable `Documents\WindowsPowerShell\Modules` (a planted
+   one runs on first use; a test does exactly that). The task's own PowerShell is
+   started with `PSModulePath` replaced the same way, whatever case the account's
+   variable has, and `update-dirs.ps1` pins it again before its first cmdlet;
+2. reads the file **once**, checks its SHA-256 against the value baked in when the
+   installer is **compiled** (`!system` runs `tools/bake-script-hashes.cjs`, so even
+   `electron-builder --prepackaged`, which skips `afterPack`, cannot leave a stale
+   hash, and a failed bake stops the compile), and runs *those bytes from memory*;
+   a swapped file is exit 9 and nothing runs;
+3. wraps the call in `try/catch` and ends in an explicit exit code, so a binding
+   error cannot fall through to success and register the task;
+4. receives every path as an **environment variable** (`OB_SCRIPT`, `OB_INSTDIR`),
+   never pasted into the command, so a `$`, a backtick or a quote in an install
+   path is data and not code.
+
+Every other program an administrator runs there is an absolute `$SYSDIR` path too,
+`netsh.exe`, `schtasks.exe` and `cmd.exe` included.
+
 If any of that fails the task is **not registered** (and an older one is removed):
 the nightly update then falls back to asking for approval, as it does without a
 task. The task re-runs the same folder check (`-Mode Check`) before it touches

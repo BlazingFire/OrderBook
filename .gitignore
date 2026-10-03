@@ -56,5 +56,6 @@ vitest-out.txt
 # The report `npm run test:coverage` writes.
 coverage/
 
-# Written at build time by tools/flip-fuses.cjs (the update script's SHA-256, baked into the installer).
-master/installer/apply-update/update-dirs-hash.nsh
+# Written when an installer is compiled by tools/bake-script-hashes.cjs (the SHA-256 of the scripts it runs elevated).
+master/installer/script-hashes.nsh
+office/installer/script-hashes.nsh

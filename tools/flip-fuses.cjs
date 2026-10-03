@@ -76,38 +76,9 @@ function readFuses(buffer, indexes = SWITCH_OFF) {
   return state;
 }
 
-/**
- * Bake the SHA-256 of `update-dirs.ps1` into an NSIS include, for the Master's
- * installer (1.4 R8). The installer extracts that script to a temp folder another
- * program running as the same account can write, so the PowerShell it hands the
- * script to reads it once, checks it against this hash, and runs the verified
- * bytes from memory (`installer.nsh` says why). The hash is of the exact bytes the
- * installer embeds, taken at build time.
- *
- * Only the panel that ships the script has one; any other build is left alone.
- *
- * @returns the hash, or `null` when this build has no such script
- */
-function writeUpdateDirsHash(projectDir) {
-  const folder = path.join(projectDir, 'installer', 'apply-update');
-  const script = path.join(folder, 'update-dirs.ps1');
-  if (!fs.existsSync(script)) return null;
-  const hash = require('node:crypto').createHash('sha256').update(fs.readFileSync(script)).digest('hex');
-  fs.writeFileSync(
-    path.join(folder, 'update-dirs-hash.nsh'),
-    `; Written by tools/flip-fuses.cjs at build time. Do not edit, do not commit.
-!define UPDATE_DIRS_SHA256 "${hash}"
-`,
-  );
-  return hash;
-}
-
 /** electron-builder `afterPack`: the Windows executable in the unpacked app folder. */
 async function afterPack(context) {
   if (context.electronPlatformName !== 'win32') return;
-  // Before the installer is compiled: `afterPack` runs ahead of the NSIS target.
-  const baked = writeUpdateDirsHash(context.packager.projectDir);
-  if (baked) console.log(`  update-dirs.ps1 SHA-256 ${baked} baked into the installer`);
   const exe = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.exe`);
   const bytes = fs.readFileSync(exe);
   const turnedOff = flipFuses(bytes);
@@ -118,5 +89,4 @@ async function afterPack(context) {
 module.exports = afterPack;
 module.exports.flipFuses = flipFuses;
 module.exports.readFuses = readFuses;
-module.exports.writeUpdateDirsHash = writeUpdateDirsHash;
 module.exports.SENTINEL = SENTINEL;

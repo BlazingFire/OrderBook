@@ -15,6 +15,8 @@ import {
   signatureHolds,
   TASK_ANSWER_MS,
   decideAfterTaskStart,
+  overrideEnv,
+  systemModulePath,
   parseUpdatePaths,
   type ReleaseTrust,
   type StagedManifest,
@@ -236,8 +238,11 @@ describe('the pieces fit together', () => {
     expect(script).toContain('parseUpdatePaths(');
     expect(script).not.toContain('stagedUpdateDirs');
     // Not a single path comes from process.env; the only use is passing the rest of it on, with TEMP overridden.
-    expect(script.match(/process\.env/g)?.length).toBe(1);
-    expect(script).toMatch(/env: \{ \.\.\.process\.env, TEMP: temp, TMP: temp \}/);
+    // Two uses, both passing the rest of it on with one variable overridden: PowerShell's PSModulePath, and the setup's TEMP.
+    expect(script.match(/process\.env/g)?.length).toBe(2);
+    // Through overrideEnv, which replaces a variable whatever case it has in the account's environment.
+    expect(script).toMatch(/env: overrideEnv\(process\.env, \{ PSModulePath: systemModulePath\(powershell\) \}\)/);
+    expect(script).toMatch(/env: overrideEnv\(process\.env, \{ TEMP: temp, TMP: temp \}\)/);
     expect(shell).not.toContain('stagedUpdateDirs');
     expect(shell).toContain('readUpdatePaths()');
   });
@@ -260,9 +265,9 @@ describe('the pieces fit together', () => {
 
   it('the installer hands the folders to update-dirs.ps1 and registers the task only if it succeeds', () => {
     expect(nsis).toContain('update-dirs.ps1');
-    expect(nsis).toContain('-Mode Install -InstallDir \\"$INSTDIR\\"');
+    expect(nsis).toContain('-Mode Install -InstallDir $$env:OB_INSTDIR');
     // The system's own PowerShell, by absolute path, not whatever PATH finds.
-    expect(nsis).toContain('"$SYSDIR\\WindowsPowerShell\\v1.0\\powershell.exe"');
+    expect(read('tools/nsis/verified-powershell.nsh')).toContain('"$SYSDIR\\WindowsPowerShell\\v1.0\\powershell.exe"');
     const run = nsis.indexOf('-Mode Install');
     const register = nsis.indexOf('/Create /F /TN "OrderBook Master Update"');
     const guard = nsis.indexOf('${If} $R1 == "0"', run);
@@ -297,7 +302,9 @@ describe('the pieces fit together', () => {
       expect(ps1, piece).toContain(piece);
     }
     // Paths come from the known-folder API, never from $env:.
-    expect(ps1).not.toMatch(/\$env:/i);
+    // The one use of $env: is the PSModulePath pin, which takes the account's value away.
+    expect(ps1.match(/\$env:/gi)?.length).toBe(1);
+    expect(ps1).toContain("$env:PSModulePath = $PSHOME + '\\Modules'");
     // Every icacls call that could meet a link says /L.
     for (const line of ps1.split('\n').filter((l) => l.includes('& $Icacls'))) expect(line, line).toContain('/L');
   });
@@ -451,27 +458,61 @@ describe.skipIf(process.platform !== 'win32')('update-dirs.ps1 -Mode Check, run 
   });
 });
 
-describe('install-time commands are absolute, and the installer script is verified before it runs (CH1 hardening)', () => {
-  const nsis = read('master/installer/installer.nsh');
+describe('the installer scripts are verified, and PowerShell cannot be steered by the user (CH1 second review)', () => {
+  const macro = read('tools/nsis/verified-powershell.nsh');
+  const masterNsis = read('master/installer/installer.nsh');
+  const officeNsis = read('office/installer/installer.nsh');
   const ps1 = read('master/installer/apply-update/update-dirs.ps1');
-  const { writeUpdateDirsHash } = createRequire(import.meta.url)('../../tools/flip-fuses.cjs') as {
-    writeUpdateDirsHash: (projectDir: string) => string | null;
+  const apply = read('electron/apply-staged-update.ts');
+  const { bakeScriptHashes } = createRequire(import.meta.url)('../../tools/bake-script-hashes.cjs') as {
+    bakeScriptHashes: (installerDir: string) => { target: string; lines: string[] };
   };
-  const sha = (text: string): string => createHash('sha256').update(text).digest('hex');
+  const sha = (data: Buffer | string): string => createHash('sha256').update(data).digest('hex');
+  const SYSTEM_ROOT = process.env.SystemRoot ?? 'C:\\Windows';
 
-  it('every program the installer runs elevated is named by its System32 path, never found through PATH or COMSPEC', () => {
-    const lines = nsis.split('\n').filter((line) => /nsExec::/.test(line));
-    expect(lines.length).toBeGreaterThan(3);
-    for (const line of lines) {
-      if (/netsh/.test(line)) continue; // the firewall rules predate this and have no user-writable path
-      expect(line, line).toMatch(/\$SYSDIR\\/);
+  /** The macro's command line, with NSIS's `$$` resolved and its placeholders filled. */
+  function commandFor(hash: string, args: string, fallthrough: string): string {
+    const line = macro.split('\n').find((l) => l.includes('-Command "$$env:PSModulePath')) ?? '';
+    const command = /-Command "(.*)"`\s*$/.exec(line)?.[1] ?? '';
+    expect(command).not.toBe('');
+    return command
+      .replaceAll('$$', '$')
+      .replace('${SHA256}', hash)
+      .replace('${ARGUMENTS}', args)
+      .replace('${FALLTHROUGH}', fallthrough);
+  }
+
+  function runBootstrap(
+    scriptFile: string,
+    hash: string,
+    args: string,
+    fallthrough: string,
+    env: Record<string, string> = {},
+  ): { code: number; output: string } {
+    const result = spawnSync(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', commandFor(hash, args, fallthrough)],
+      { windowsHide: true, encoding: 'utf8', env: overrideEnv(process.env, { OB_SCRIPT: scriptFile, ...env }) },
+    );
+    return { code: result.status ?? -1, output: String(result.stdout).trim() };
+  }
+
+  it('every program the installers run elevated is named by its System32 path, netsh included', () => {
+    for (const [name, text] of [['master', masterNsis], ['office', officeNsis], ['macro', macro]] as const) {
+      for (const line of text.split('\n').filter((l) => /^\s*nsExec::/.test(l))) {
+        expect(line, `${name}: ${line}`).toMatch(/\$SYSDIR\\/);
+      }
     }
-    expect(nsis).not.toMatch(/nsExec::Exec 'schtasks /);
-    expect(nsis).not.toMatch(/nsExec::Exec 'powershell\.exe/);
+    expect(masterNsis).not.toMatch(/nsExec::Exec 'netsh/);
+    expect(masterNsis).not.toMatch(/nsExec::Exec 'schtasks/);
+    expect(masterNsis).not.toMatch(/powershell\.exe -NoProfile/);
+    expect(officeNsis).not.toMatch(/powershell\.exe -NoProfile/);
+    expect(masterNsis).toContain('"$SYSDIR\\netsh.exe" advfirewall firewall add rule');
+    expect(masterNsis).toContain('"$SYSDIR\\netsh.exe" advfirewall firewall delete rule');
   });
 
   it("the task's command is cmd.exe by absolute path, with the script quoted for cmd /c", () => {
-    expect(nsis).toContain('/TR "\\"$SYSDIR\\cmd.exe\\" /c \\"\\"$INSTDIR\\resources\\apply-update\\apply-update.cmd\\"\\""');
+    expect(masterNsis).toContain('/TR "\\"$SYSDIR\\cmd.exe\\" /c \\"\\"$INSTDIR\\resources\\apply-update\\apply-update.cmd\\"\\""');
   });
 
   it('update-dirs.ps1 runs the system icacls by absolute path, always with /L', () => {
@@ -482,70 +523,205 @@ describe('install-time commands are absolute, and the installer script is verifi
     for (const line of calls) expect(line, line).toContain('/L');
   });
 
-  it('the installer script is checked against a build-time SHA-256 and run from memory, so a swap after the check changes nothing', () => {
-    expect(nsis).toContain('!include "${BUILD_RESOURCES_DIR}\\apply-update\\update-dirs-hash.nsh"');
-    expect(nsis).toMatch(/!ifndef UPDATE_DIRS_SHA256[\s\S]{0,200}!error/);
-    expect(nsis).toContain('ReadAllBytes');
-    expect(nsis).toContain('if ($$h -ne \\"${UPDATE_DIRS_SHA256}\\") { exit 9 }');
-    expect(nsis).toContain('[scriptblock]::Create(');
-    // Never `-File` on the extracted script for the Install mode.
-    expect(nsis).not.toMatch(/-File "\$PLUGINSDIR\\update-dirs\.ps1"/);
-    // The registered task is created only after the checked script says 0.
-    expect(nsis.indexOf('/Create /F /TN')).toBeGreaterThan(nsis.indexOf('exit 9'));
+  it('PSModulePath is the first thing the verifying command does, before any cmdlet', () => {
+    const line = macro.split('\n').find((l) => l.includes('-Command "$$env:PSModulePath')) ?? '';
+    const command = /-Command "(.*)"`\s*$/.exec(line)?.[1] ?? '';
+    expect(command.startsWith("$$env:PSModulePath=$$PSHOME+'\\Modules';")).toBe(true);
+    // Nothing before the check is a cmdlet: only .NET, variables and keywords.
+    const beforeRun = command.slice(0, command.indexOf('& $$s'));
+    expect(beforeRun).not.toMatch(/\b(Join-Path|Get-[A-Z]\w+|Set-[A-Z]\w+|Test-Path|ForEach-Object|Where-Object|Write-\w+)\b/);
   });
 
-  it('afterPack bakes the SHA-256 of the exact script bytes into the include, and does nothing for a build without one', () => {
-    const project = mkdtempSync(path.join(os.tmpdir(), 'ob-hash-'));
+  it('update-dirs.ps1 pins PSModulePath before its first cmdlet, and the task starts it with the system module path only', () => {
+    const pin = ps1.indexOf("$env:PSModulePath = $PSHOME + '\\Modules'");
+    expect(pin).toBeGreaterThan(-1);
+    expect(pin).toBeLessThan(ps1.indexOf('Set-StrictMode'));
+    expect(systemModulePath('C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe')).toBe(
+      'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules',
+    );
+    // Nothing but comments, blank lines and the param block runs before the pin.
+    const header = ps1.slice(0, pin).split('\n').filter((line) => line.trim() !== '' && !line.trim().startsWith('#'));
+    expect(header.join(' ')).toMatch(/^\[CmdletBinding\(\)\] param\([\s\S]*\)$/);
+    expect(header.join(' ')).not.toMatch(/\b(Join-Path|Get-\w+|Set-\w+|Test-\w+)\b/);
+    expect(apply).toContain('PSModulePath: systemModulePath(powershell)');
+    // Not appended to the user's: replaced.
+    expect(apply).not.toMatch(/PSModulePath: `?\$\{?process\.env\.PSModulePath/);
+  });
+
+  describe.skipIf(process.platform !== 'win32')('run for real: the module hijack the reviewer proved', () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'ob-ps-hijack-'));
+    afterAll(() => rmSync(root, { recursive: true, force: true }));
+
+    /** A real user's PSModulePath: their own writable folder first, then the system's. */
+    const userModulePath = (modules: string): string => `${modules};${SYSTEM_ROOT}\\System32\\WindowsPowerShell\\v1.0\\Modules`;
+
+    /**
+     * A user module folder with a planted `Microsoft.PowerShell.Archive` that drops a marker when
+     * it loads. (The core modules are preloaded from the system folder by path; the others, like
+     * this one, are found through PSModulePath on first use, which is where the user's own
+     * writable folder comes first.)
+     */
+    function plantedModules(name: string): { modules: string; marker: string } {
+      const modules = path.join(root, name, 'Modules');
+      const folder = path.join(modules, 'Microsoft.PowerShell.Archive');
+      const marker = path.join(root, name, 'LOADED.txt');
+      mkdirSync(folder, { recursive: true });
+      writeFileSync(
+        path.join(folder, 'Microsoft.PowerShell.Archive.psm1'),
+        `Set-Content -LiteralPath '${marker}' -Value 'planted module ran'
+function Compress-Archive { }
+Export-ModuleMember -Function Compress-Archive`,
+      );
+      return { modules, marker };
+    }
+
+    /** A command that makes PowerShell look for that module. */
+    const TRIGGER = 'try { Compress-Archive -Path nothing -DestinationPath nowhere } catch { }';
+
+    it('the attack works against an unpinned PowerShell here (so the next tests mean something)', () => {
+      const { modules, marker } = plantedModules('control');
+      spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', TRIGGER], {
+        windowsHide: true,
+        env: overrideEnv(process.env, { PSModulePath: userModulePath(modules) }),
+      });
+      expect(existsSync(marker)).toBe(true);
+    });
+
+    it('the installer bootstrap loads nothing from the user module folder, and still runs the script', () => {
+      const { modules, marker } = plantedModules('bootstrap');
+      const script = path.join(root, 'ok.ps1');
+      // A script that uses cmdlets, as update-dirs.ps1 does.
+      writeFileSync(script, `param([string]$Mode)\n${TRIGGER}\nexit 0\n`);
+      const result = runBootstrap(script, sha(readFileSync(script)), '-Mode Install', '1', { PSModulePath: userModulePath(modules) });
+      expect(result.code).toBe(0);
+      expect(existsSync(marker)).toBe(false);
+    });
+
+    it('a script that fails to bind is a failure exit, never a success that registers the task', () => {
+      const script = path.join(root, 'binding.ps1');
+      writeFileSync(script, 'param([Parameter(Mandatory = $true)][string]$Required)\nexit 0\n');
+      // An unknown parameter is a binding error: the Install call falls through to exit 1.
+      expect(runBootstrap(script, sha(readFileSync(script)), '-Nope 1', '1').code).toBe(1);
+      // A script that throws inside the call is caught too.
+      const throws = path.join(root, 'throws.ps1');
+      writeFileSync(throws, "$ErrorActionPreference = 'Stop'\nthrow 'boom'\n");
+      expect(runBootstrap(throws, sha(readFileSync(throws)), '', '1').code).toBe(1);
+      // The sweep, which succeeds by returning, falls through to 0.
+      const sweep = path.join(root, 'sweep.ps1');
+      writeFileSync(sweep, 'Write-Output "swept"\n');
+      expect(runBootstrap(sweep, sha(readFileSync(sweep)), '', '0').code).toBe(0);
+    });
+
+    it('a path with a dollar sign, a quote or a backtick reaches the script as data and runs nothing', () => {
+      const out = path.join(root, 'received.txt');
+      const script = path.join(root, 'echo.ps1');
+      writeFileSync(script, `param($Mode, $InstallDir)\n[IO.File]::WriteAllText('${out}', $InstallDir)\nexit 0\n`);
+      const nasty = `C:\\Program Files\\it's $(Set-Content '${path.join(root, 'EVIL.txt')}' 1) \`n $env:SystemRoot`;
+      const result = runBootstrap(script, sha(readFileSync(script)), '-Mode Install -InstallDir $$env:OB_INSTDIR'.replaceAll('$$', '$'), '1', {
+        OB_INSTDIR: nasty,
+      });
+      expect(result.code).toBe(0);
+      expect(readFileSync(out, 'utf8')).toBe(nasty);
+      expect(existsSync(path.join(root, 'EVIL.txt'))).toBe(false);
+    });
+
+    it('a script swapped for another is refused with exit 9 and nothing runs (install and uninstall alike)', () => {
+      const real = Buffer.from('exit 0\n');
+      const swapped = path.join(root, 'swapped.ps1');
+      writeFileSync(swapped, 'Set-Content -LiteralPath "' + path.join(root, 'SWAPPED-RAN.txt') + '" 1\nexit 0\n');
+      expect(runBootstrap(swapped, sha(real), '-Mode Install', '1').code).toBe(9);
+      expect(runBootstrap(swapped, sha(real), '-Panel master -LeftoversOnly -Yes', '0').code).toBe(9);
+      expect(existsSync(path.join(root, 'SWAPPED-RAN.txt'))).toBe(false);
+    });
+  });
+
+  it('overrideEnv replaces a variable whatever case it has, so there is never a second, ambiguous entry', () => {
+    const base = { PSMODULEPATH: 'C:\\Users\\x\\Modules', Path: 'C:\\bin', temp: 'C:\\u\\tmp' };
+    const made = overrideEnv(base, { PSModulePath: 'C:\\sys', TEMP: 'C:\\work', TMP: 'C:\\work' });
+    expect(Object.keys(made).filter((name) => /^psmodulepath$/i.test(name))).toEqual(['PSModulePath']);
+    expect(Object.keys(made).filter((name) => /^temp$/i.test(name))).toEqual(['TEMP']);
+    expect(made.PSModulePath).toBe('C:\\sys');
+    // Everything else is untouched, and the input is not changed.
+    expect(made.Path).toBe('C:\\bin');
+    expect(base.PSMODULEPATH).toBe('C:\\Users\\x\\Modules');
+  });
+
+  it('the Install call passes its folder as data and falls through to a failure', () => {
+    expect(masterNsis).toContain('System::Call \'Kernel32::SetEnvironmentVariable(t "OB_INSTDIR", t "$INSTDIR")\'');
+    expect(masterNsis).toContain('"-Mode Install -InstallDir $$env:OB_INSTDIR" "1"');
+    // No path is pasted inside the command text any more.
+    expect(macro).not.toContain('$INSTDIR');
+    expect(macro).not.toContain('$PLUGINSDIR');
+    expect(macro).toContain('catch { exit 1 }');
+  });
+
+  it('both uninstallers hash-check the sweep and run it from memory, not -File from a temp folder', () => {
+    for (const [name, text, panel] of [['master', masterNsis, 'master'], ['office', officeNsis, 'office']] as const) {
+      expect(text, name).toContain(`"-Panel ${panel} -LeftoversOnly -Yes $R7" "0"`);
+      expect(text, name).toContain('"${UNINSTALL_SCRIPT_SHA256}"');
+      expect(text, name).not.toMatch(/-File "\$TEMP\\OrderBook-uninstall/);
+    }
+  });
+
+  it('the hashes are baked when the installer is COMPILED, by !system, so a stale one cannot survive a --prepackaged build', () => {
+    for (const [name, text] of [['master', masterNsis], ['office', officeNsis]] as const) {
+      const bake = text.indexOf('!system \'node "${__FILEDIR__}\\..\\..\\tools\\bake-script-hashes.cjs" "${__FILEDIR__}"\' = 0');
+      const include = text.indexOf('!include "${__FILEDIR__}\\script-hashes.nsh"');
+      expect(bake, name).toBeGreaterThan(-1);
+      expect(include, name).toBeGreaterThan(bake);
+    }
+    // Not left to afterPack, which --prepackaged skips.
+    expect(read('tools/flip-fuses.cjs')).not.toMatch(/writeUpdateDirsHash|update-dirs-hash/);
+    expect(masterNsis).not.toContain('update-dirs-hash.nsh');
+  });
+
+  it('bakeScriptHashes writes the hashes of the exact bytes, overwrites a stale file, and fails when a script is missing', () => {
+    const project = mkdtempSync(path.join(os.tmpdir(), 'ob-bake-'));
     try {
-      expect(writeUpdateDirsHash(project)).toBeNull();
-      mkdirSync(path.join(project, 'installer', 'apply-update'), { recursive: true });
-      writeFileSync(path.join(project, 'installer', 'apply-update', 'update-dirs.ps1'), 'exit 0\n');
-      expect(writeUpdateDirsHash(project)).toBe(sha('exit 0\n'));
-      const written = readFileSync(path.join(project, 'installer', 'apply-update', 'update-dirs-hash.nsh'), 'utf8');
-      expect(written).toContain(`!define UPDATE_DIRS_SHA256 "${sha('exit 0\n')}"`);
+      const installer = path.join(project, 'master', 'installer');
+      mkdirSync(path.join(installer, 'apply-update'), { recursive: true });
+      mkdirSync(path.join(project, 'tools', 'uninstall'), { recursive: true });
+      const uninstall = path.join(project, 'tools', 'uninstall', 'uninstall-orderbook.ps1');
+      const update = path.join(installer, 'apply-update', 'update-dirs.ps1');
+      writeFileSync(uninstall, 'sweep v1\n');
+      writeFileSync(update, 'update v1\n');
+      // A stale file from an earlier build.
+      writeFileSync(path.join(installer, 'script-hashes.nsh'), '!define UPDATE_DIRS_SHA256 "stale"\n');
+
+      bakeScriptHashes(installer);
+      let baked = readFileSync(path.join(installer, 'script-hashes.nsh'), 'utf8');
+      expect(baked).toContain(`!define UNINSTALL_SCRIPT_SHA256 "${sha('sweep v1\n')}"`);
+      expect(baked).toContain(`!define UPDATE_DIRS_SHA256 "${sha('update v1\n')}"`);
+      expect(baked).not.toContain('stale');
+
+      // The script changes, the next compile bakes the new hash.
+      writeFileSync(update, 'update v2\n');
+      bakeScriptHashes(installer);
+      baked = readFileSync(path.join(installer, 'script-hashes.nsh'), 'utf8');
+      expect(baked).toContain(sha('update v2\n'));
+
+      // An installer folder with no update script (the Office's) gets only the uninstall hash.
+      const office = path.join(project, 'office', 'installer');
+      mkdirSync(office, { recursive: true });
+      bakeScriptHashes(office);
+      const officeBaked = readFileSync(path.join(office, 'script-hashes.nsh'), 'utf8');
+      expect(officeBaked).toContain('UNINSTALL_SCRIPT_SHA256');
+      expect(officeBaked).not.toContain('UPDATE_DIRS_SHA256');
+
+      // The CLI is what `!system` runs: it exits non-zero when a script is missing, which stops the compile.
+      rmSync(uninstall);
+      const failed = spawnSync(process.execPath, [path.join(repo, 'tools', 'bake-script-hashes.cjs'), installer], { encoding: 'utf8' });
+      expect(failed.status).toBe(1);
+      expect(() => bakeScriptHashes(installer)).toThrow(/uninstall script is missing/);
     } finally {
       rmSync(project, { recursive: true, force: true });
     }
-    expect(readFileSync(path.join(repo, 'tools', 'flip-fuses.cjs'), 'utf8')).toContain('writeUpdateDirsHash(context.packager.projectDir)');
   });
 
-  describe.skipIf(process.platform !== 'win32')('the verifying bootstrap, run for real', () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), 'ob-boot-'));
-    afterAll(() => rmSync(root, { recursive: true, force: true }));
-    const original = readFileSync(path.join(repo, 'master', 'installer', 'apply-update', 'update-dirs.ps1'));
-
-    /** The very command line the installer builds, with NSIS's `$$` and the placeholders filled in, in Chain mode. */
-    function bootstrap(file: string, expectedHash: string): number {
-      const line = nsis.split('\n').find((l) => l.includes('-Command "$$b=')) ?? '';
-      const command = /-Command "(.*)"'\s*$/.exec(line)?.[1] ?? '';
-      expect(command).not.toBe('');
-      const filled = command
-        .replaceAll('$$', '$')
-        .replaceAll('\\"', '"')
-        .replace('$PLUGINSDIR\\update-dirs.ps1', file)
-        .replace('${UPDATE_DIRS_SHA256}', expectedHash)
-        .replace('-Mode Install -InstallDir "$INSTDIR"', `-Mode Chain -Path "${process.env.SystemRoot ?? 'C:\\Windows'}"`);
-      return spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', filled], {
-        windowsHide: true,
-      }).status ?? -1;
+  it('the checked-in hashes are current for the scripts as they are now', () => {
+    for (const folder of ['master/installer', 'office/installer']) {
+      const baked = bakeScriptHashes(path.join(repo, folder));
+      expect(baked.lines.join('\n')).toContain(sha(readFileSync(path.join(repo, 'tools', 'uninstall', 'uninstall-orderbook.ps1'))));
     }
-
-    it('runs the script when the bytes are the ones that were hashed', () => {
-      const file = path.join(root, 'good.ps1');
-      writeFileSync(file, original);
-      expect(bootstrap(file, createHash('sha256').update(original).digest('hex'))).toBe(0);
-    });
-
-    it('refuses a script that was changed after the hash was taken: exit 9, nothing run', () => {
-      const file = path.join(root, 'swapped.ps1');
-      writeFileSync(file, Buffer.concat([original, Buffer.from('\r\nWrite-Output "evil"; exit 0\r\n')]));
-      expect(bootstrap(file, createHash('sha256').update(original).digest('hex'))).toBe(9);
-    });
-
-    it('refuses when the baked hash is wrong', () => {
-      const file = path.join(root, 'wronghash.ps1');
-      writeFileSync(file, original);
-      expect(bootstrap(file, 'f'.repeat(64))).toBe(9);
-    });
   });
 });

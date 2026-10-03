@@ -10,6 +10,16 @@
 ; profile, an updater cache, shortcuts and registry entries behind. That is what
 ; tools/uninstall/uninstall-orderbook.ps1 clears.
 
+; The SHA-256 of the uninstall sweep, baked when the installer is compiled, and
+; the macro that runs it hash-checked from memory (tools/nsis/verified-powershell.nsh).
+; `!system` makes the compile fail if the bake does not run.
+!system 'node "${__FILEDIR__}\..\..\tools\bake-script-hashes.cjs" "${__FILEDIR__}"' = 0
+!include "${__FILEDIR__}\script-hashes.nsh"
+!ifndef UNINSTALL_SCRIPT_SHA256
+  !error "script-hashes.nsh did not define UNINSTALL_SCRIPT_SHA256"
+!endif
+!include "${__FILEDIR__}\..\..\tools\nsis\verified-powershell.nsh"
+
 !macro customInstall
 !macroend
 
@@ -51,7 +61,12 @@
     orderbookDataAnswered:
 
     IfFileExists "$TEMP\OrderBook-uninstall-office\uninstall-orderbook.ps1" 0 orderbookSweepSkipped
-    nsExec::Exec 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$TEMP\OrderBook-uninstall-office\uninstall-orderbook.ps1" -Panel office -LeftoversOnly -Yes $R7'
+    ; The copy in $TEMP can be rewritten by any program running as this account,
+    ; so the sweep is hash-checked and run from memory, not run from the file.
+    Push $R1
+    !insertmacro orderbookRunVerified "$TEMP\OrderBook-uninstall-office\uninstall-orderbook.ps1" "${UNINSTALL_SCRIPT_SHA256}" "-Panel office -LeftoversOnly -Yes $R7" "0"
+    Pop $R1
+    Pop $R1
     orderbookSweepSkipped:
   ${EndIf}
 
