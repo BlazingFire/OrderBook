@@ -419,6 +419,19 @@ export function reportQueryParams(query: ReportQuery): URLSearchParams {
   return params;
 }
 
+/**
+ * Where a report's PDF is shown inline — the Preview PDF link. The Master answers
+ * `application/pdf` at this path whatever the query says, and the Office proxies
+ * it; the desktop shell opens exactly this shape in a window of its own
+ * (`electron/lib/lead-pdf.ts` allows these keys and no others).
+ */
+export function reportPdfPath(kind: ReportKind, query: ReportQuery, lang?: ReportLocale): string {
+  const params = reportQueryParams(query);
+  if (lang === 'hi') params.set('lang', 'hi');
+  const qs = params.toString();
+  return `/api/reports/${kind}/pdf${qs ? `?${qs}` : ''}`;
+}
+
 // --- Export ----------------------------------------------------------------
 
 export type ReportFormat = 'csv' | 'xlsx' | 'pdf';

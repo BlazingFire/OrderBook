@@ -74,8 +74,19 @@ contextBridge.exposeInMainWorld('orderbook', {
     >,
 
   /** Print the page (A4, its print stylesheet) — to a named printer, or via the system dialog. */
-  printPage: (options: { deviceName?: string }): Promise<{ ok: boolean; error?: string }> =>
+  printPage: (options: { deviceName?: string; copies?: number }): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('orderbook:printPage', options) as Promise<{ ok: boolean; error?: string }>,
+
+  /** Save the page as a PDF. The shell asks where; the page offers only a file name. */
+  savePdf: (options: {
+    fileName: string;
+  }): Promise<{ ok: boolean; path?: string; cancelled?: boolean; error?: string }> =>
+    ipcRenderer.invoke('orderbook:savePdf', options) as Promise<{
+      ok: boolean;
+      path?: string;
+      cancelled?: boolean;
+      error?: string;
+    }>,
 
   /**
    * The application menu asking the page to go somewhere. One-way and

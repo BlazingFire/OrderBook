@@ -15,9 +15,9 @@
 
 import { useState } from 'react';
 import { matchesRecordSearch, resolveCompanyFeatures, shownColour } from '@orderbook/shared';
-import type { Lead, PartyScopeFilter, SyncSnapshot } from '@orderbook/shared';
+import type { Lead, NoteKind, PartyScopeFilter, SyncSnapshot } from '@orderbook/shared';
 
-import { api, type LocalView } from '../api';
+import { api, desktopBridge, type LocalView } from '../api';
 import {
   Button,
   ButtonLink,
@@ -30,6 +30,7 @@ import {
   Input,
   IconButton,
   KanbanBoard,
+  OrderNoteScreen,
   Popover,
   Segmented,
   StatusPill,
@@ -51,7 +52,7 @@ interface Props {
   openId: string | null;
   onOpenId: (id: string | null) => void;
   canConvert: boolean;
-  /** `leads.export` — the open lead's header offers Preview PDF. */
+  /** `leads.export` — the open lead's header offers Preview PDF and the Filling and Dispatch notes. */
   canPreviewPdf: boolean;
   /** `leads.edit` — the open lead's header offers Edit lead. */
   canEdit: boolean;
@@ -116,6 +117,8 @@ export function LeadBoardScreen({
 }: Props) {
   /** The open lead whose lines are in the entry form, or null. */
   const [editingId, setEditingId] = useState<string | null>(null);
+  /** The Filling or Dispatch note open over a pending order, when there is one. */
+  const [note, setNote] = useState<{ id: string; kind: NoteKind } | null>(null);
   const [tab, setTab] = useState<BoardTab>('list');
   const [stageFilter, setStageFilter] = useState<string | null>(null);
   const [scope, setScope] = useState<PartyScopeFilter>('all');
@@ -190,16 +193,43 @@ export function LeadBoardScreen({
     ) : null,
   );
 
+  const noteKind = note && note.id === openLead?.id ? note.kind : null;
+
   useSubNav(
     'leads',
     openLead
       ? {
           parentId: 'leads',
-          items: [{ id: 'leads.detail', label: openLead.partyName, icon: 'leads' }],
-          activeId: 'leads.detail',
+          items: [
+            {
+              id: noteKind ? 'leads.note' : 'leads.detail',
+              label: openLead.partyName,
+              icon: 'leads',
+            },
+          ],
+          activeId: noteKind ? 'leads.note' : 'leads.detail',
         }
       : null,
   );
+
+  // The note of a pending order, drawn from the lead and party this panel
+  // already holds, so it previews and prints with the Master unreachable. Its
+  // vehicle number is for the sheet only (`OrderNoteScreen`).
+  if (openLead && noteKind) {
+    return (
+      <OrderNoteScreen
+        key={openLead.id}
+        record={openLead}
+        source="lead"
+        party={view.parties.find((candidate) => candidate.id === openLead.partyId) ?? null}
+        initialKind={noteKind}
+        canEditVehicle
+        onSaveVehicle={async () => undefined}
+        onBack={() => setNote(null)}
+        desktop={desktopBridge() ?? undefined}
+      />
+    );
+  }
 
   if (openLead && editingId === openLead.id) {
     return (
@@ -250,6 +280,26 @@ export function LeadBoardScreen({
               <Button variant="secondary" size="sm" onClick={() => setEditingId(openLead.id)}>
                 {t('lead.edit.action')}
               </Button>
+            )}
+            {/* Notes come from the local snapshot, so they need no Master and no
+                sync; once converted, the final order carries them. */}
+            {canPreviewPdf && !openLead.convertedOrderId && (
+              <>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setNote({ id: openLead.id, kind: 'filling' })}
+                >
+                  {t('orderNote.filling')}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setNote({ id: openLead.id, kind: 'dispatch' })}
+                >
+                  {t('orderNote.dispatch')}
+                </Button>
+              </>
             )}
             {/* The Master renders the PDF, so a lead it has not received yet
                 has none to show. Opens beside the app (CATALOGUE_MODEL §8). */}

@@ -221,7 +221,8 @@ export function OrderBoardScreen({
     return (
       <OrderNoteScreen
         key={openOrder.id}
-        order={noteOrder}
+        record={noteOrder}
+        source="order"
         party={view.parties.find((candidate) => candidate.id === openOrder.partyId) ?? null}
         initialKind={noteKind}
         canEditVehicle={canEdit && !openOrder.dispatchedAt}

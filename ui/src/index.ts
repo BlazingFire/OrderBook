@@ -52,6 +52,7 @@ export * from './OptionListEditor.js';
 export * from './OrderNote.js';
 export * from './OrderRecordView.js';
 export * from './OrderNoteScreen.js';
+export * from './printPortal.js';
 export * from './PermissionGrid.js';
 export * from './PermissionSummary.js';
 export * from './PartyFormModal.js';

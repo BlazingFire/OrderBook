@@ -33,9 +33,9 @@ import type {
   ReportRow,
   ReportTable,
 } from '@orderbook/shared';
-import { REPORT_KINDS, REPORT_META, SUMMABLE_UNITS } from '@orderbook/shared';
+import { REPORT_KINDS, REPORT_META, reportPdfPath, SUMMABLE_UNITS } from '@orderbook/shared';
 
-import { Button } from './Button.js';
+import { Button, ButtonLink } from './Button.js';
 import { Card, Section } from './Card.js';
 import { DataTable, type DataTableColumn } from './DataTable.js';
 import { apiErrorText } from './errorText.js';
@@ -363,6 +363,19 @@ export function ReportsScreen({ transport, kind, onKindChange, revision }: Repor
               offered as a file even though the last report is still on screen. */}
           {options?.canExport && active && !failure && (
             <div style={{ display: 'flex', gap: 'var(--s-8)', alignSelf: 'flex-end' }}>
+              {/* Opens beside the app: the desktop shell allows exactly this path
+                  a window of its own, a LAN browser gets a new tab. The Master
+                  draws it, so on the Office it needs the link up — a refusal or an
+                  offline Master shows as the error state above, and takes this
+                  with it. */}
+              <ButtonLink
+                href={reportPdfPath(kind, query, locale() === 'hi' ? 'hi' : 'en')}
+                target="_blank"
+                variant="secondary"
+                size="sm"
+              >
+                {t('reports.previewPdf')}
+              </ButtonLink>
               {(['csv', 'xlsx', 'pdf'] as const).map((format) => (
                 <Button
                   key={format}

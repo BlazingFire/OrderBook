@@ -361,3 +361,55 @@ export function paginateOrderNote(model: OrderNoteModel, kind: NoteKind, codeCol
 - An audit entry ("Dispatch note printed by …") in the order timeline.
   Printing is not a data change; add it if the owner wants proof of printing.
 - Company logo or address on the notes — the artifact has none.
+
+---
+
+## 10. Added in 1.3 (H3): pending-order notes, copies, Save PDF
+
+Built on top of everything above; sections 1 to 9 describe the original build.
+
+- **Notes from a pending order.** A pending order (a lead) opens the same
+  Filling and Dispatch notes. Master `LeadsScreen` and Office `LeadBoardScreen`
+  show **Filling note** and **Dispatch note** in the open lead's header, gated
+  on `leads.export` (absent, not greyed, without it) and only while the lead is
+  not converted: a converted lead is history, and the final order carries the
+  notes. `OrderNoteScreen` takes `record` (an `Order` or a `Lead`) and `source`
+  (`'lead'` | `'order'`); `buildOrderNote` reads only what both share, and a
+  lead's missing weight source means the computed weight. The Office builds the
+  note from its local snapshot, so it previews and prints offline and needs no
+  sync.
+- **The number on the sheet.** The header eyebrow reads **Pending Order No.**
+  for a lead and **Final Order No.** for an order (it was "Final Order ID").
+  The value is `noteNumber(record)` in `shared/src/domain/order-note.ts`, the
+  one place it is chosen: the record's id today, so switching to the pending-order
+  number once it exists is a one-line change there. The "not yet synced" tag
+  still shows for a temporary id.
+- **Vehicle number on a lead is print-only.** A lead has no vehicle column, so
+  the field takes input (any user with `leads.export`) and the sheet prints it,
+  but nothing is saved, whatever `onSaveVehicle` does, and it is gone when the
+  screen closes.
+- **Copies.** A **Copies** field (1 to 50; a value outside is pulled into range
+  when the field is left, an empty one is 1) is sent as
+  `printPage({ deviceName, copies })`. The shell clamps again (an integer 1..50,
+  anything else is one copy) and sets `collate: true`. A browser has no copies
+  option, so `window.print()` shows a hint to set the number in the print dialog.
+  Some printer drivers ignore Electron's `copies`; the fallback is calling
+  `print` N times in a row, which costs no DOM.
+- **Save PDF.** Shown only when the shell offers `savePdf`. It calls
+  `webContents.printToPDF({ printBackground: true, preferCSSPageSize: true })`
+  (the Electron 21+ options shape, the same on the legacy 22 build), then
+  `dialog.showSaveDialog` in the main process, and writes there: the page offers
+  a file name (`<number>-<filling|dispatch>.pdf`, cleaned by `pdfFileName`),
+  never a path. A closed dialog is a cancel, not an error.
+- **One note on the paper.** `ScreenHost` keeps hidden screens mounted, and
+  every note screen portals a copy of its note to `<body>` that the print
+  stylesheet shows. `printOnly(portal, run)` (`ui/src/printPortal.ts`) marks the
+  one portal meant for the job (`ob-note-print-portal--active`, plus
+  `ob-printing` on `<body>`) and a rule in `order-note.css` hides every other
+  portal while it is set. Print and Save PDF both go through it; so must any
+  future caller of `printPage` or `savePdf`.
+- **Report PDFs.** Not a note, but the same window rule: see
+  `docs/catalogue/CATALOGUE_MODEL.md` §8 for the PDF window allowlist.
+- **Not here.** A shared print queue, print stations and auto-printing
+  (the Printroom) are a later task (H5); this adds nothing for them but the
+  `printOnly` rule and the `copies` option they will use.

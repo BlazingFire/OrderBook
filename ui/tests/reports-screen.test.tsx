@@ -375,6 +375,27 @@ describe('files', () => {
     expect(screen.queryByRole('button', { name: t('reports.export.xlsx') })).toBeNull();
   });
 
+  it('previews the PDF in a window of its own, for the range the controls describe, and only to somebody who may export', async () => {
+    mount(makeTransport());
+    await screen.findByText('Morbi');
+    const link = screen.getByRole('link', { name: t('reports.previewPdf') });
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toBe('noopener');
+    expect(link.getAttribute('href')).toBe(`/api/reports/by-city/pdf?period=last6Months`);
+
+    pick(combo(t('reports.range.period')), t('reports.period.thisMonth'));
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: t('reports.previewPdf') }).getAttribute('href')).toBe(
+        '/api/reports/by-city/pdf?period=thisMonth',
+      ),
+    );
+    cleanup();
+
+    mount(makeTransport({ options: vi.fn(async () => OFFICE_OPTIONS) }));
+    await screen.findByText('Morbi');
+    expect(screen.queryByRole('link', { name: t('reports.previewPdf') })).toBeNull();
+  });
+
   it('writes the file the controls describe, in the language on screen, and stays busy until it arrives', async () => {
     let finish: (value: { blob: Blob; fileName: string }) => void = () => undefined;
     const transport = makeTransport({

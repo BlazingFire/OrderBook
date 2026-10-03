@@ -20,13 +20,14 @@ import { shownColour } from '@orderbook/shared';
 import type {
   Lead,
   LineItem,
+  NoteKind,
   OptionListItem,
   Party,
   PartyScopeFilter,
   PipelineStage,
 } from '@orderbook/shared';
 
-import { ApiError, api } from '../api';
+import { ApiError, api, desktopBridge } from '../api';
 import { leadRecordTransport } from '../transports';
 import { LeadEntry } from './LeadEntry';
 import {
@@ -43,6 +44,7 @@ import {
   Input,
   LeadRecordView,
   LoadMorePager,
+  OrderNoteScreen,
   Segmented,
   SkeletonTable,
   StatusPill,
@@ -152,6 +154,8 @@ export function LeadsScreen({
   /** The open lead when it is not in `rows` — a search hit, or one past the loaded page. */
   const [fetched, setFetched] = useState<Lead | null>(null);
   const [party, setParty] = useState<Party | null>(null);
+  /** The Filling or Dispatch note open over a pending order, when there is one. */
+  const [note, setNote] = useState<{ id: string; kind: NoteKind } | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   /** The lead being edited in the form, when it is not the record view. */
@@ -268,7 +272,10 @@ export function LeadsScreen({
   useEffect(() => {
     setError(null);
     setEditingId(null);
+    setNote(null);
   }, [openId]);
+
+  const noteKind = note && note.id === openLead?.id ? note.kind : null;
 
   const open = view === 'list';
   const shown = stageFilter ? rows.filter((lead) => lead.stageId === stageFilter) : rows;
@@ -325,8 +332,14 @@ export function LeadsScreen({
     openLead
       ? {
           parentId: 'leads',
-          items: [{ id: 'leads.detail', label: openLead.partyName, icon: 'leads' }],
-          activeId: 'leads.detail',
+          items: [
+            {
+              id: noteKind ? 'leads.note' : 'leads.detail',
+              label: openLead.partyName,
+              icon: 'leads',
+            },
+          ],
+          activeId: noteKind ? 'leads.note' : 'leads.detail',
         }
       : null,
   );
@@ -467,6 +480,24 @@ export function LeadsScreen({
     },
   ];
 
+  // The note of a pending order. Its vehicle number is for the sheet only: a
+  // lead has no vehicle column, so nothing is saved (`OrderNoteScreen`).
+  if (openLead && noteKind) {
+    return (
+      <OrderNoteScreen
+        key={openLead.id}
+        record={openLead}
+        source="lead"
+        party={party}
+        initialKind={noteKind}
+        canEditVehicle
+        onSaveVehicle={async () => undefined}
+        onBack={() => setNote(null)}
+        desktop={desktopBridge() ?? undefined}
+      />
+    );
+  }
+
   if (openLead && editingId === openLead.id) {
     return (
       <EditorScreen
@@ -518,6 +549,26 @@ export function LeadsScreen({
                 <Button variant="secondary" size="sm" onClick={() => setEditingId(openLead.id)}>
                   {t('lead.edit.action')}
                 </Button>
+              )}
+              {/* The same `leads.export` gate as the PDF, and only for a pending
+                  order: once converted, the final order carries the notes. */}
+              {canPreviewPdf && !openLead.convertedOrderId && (
+                <>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setNote({ id: openLead.id, kind: 'filling' })}
+                  >
+                    {t('orderNote.filling')}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setNote({ id: openLead.id, kind: 'dispatch' })}
+                  >
+                    {t('orderNote.dispatch')}
+                  </Button>
+                </>
               )}
               {/* Opens beside the app: the Electron shell allows this one URL a
                   window of its own (CATALOGUE_MODEL §8). */}

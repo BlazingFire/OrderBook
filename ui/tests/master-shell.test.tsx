@@ -770,12 +770,115 @@ describe('the Filling and Dispatch notes on an order', () => {
     expect(calls.some((call) => call.url === '/api/parties/party-1')).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
-    await waitFor(() => expect(printPage).toHaveBeenCalledWith({ deviceName: undefined }));
+    // `copies` is always sent now (deliberate): one unless the person set more.
+    await waitFor(() => expect(printPage).toHaveBeenCalledWith({ deviceName: undefined, copies: 1 }));
 
     // Back from the note lands on the order, and back from that on the list.
     fireEvent.click(screen.getByRole('button', { name: t('action.backToList') }));
     fireEvent.click(await screen.findByRole('button', { name: t('action.backToList') }));
     expect(await screen.findByText(ORDER.id)).toBeTruthy();
+  });
+});
+
+describe('the Filling and Dispatch notes on a pending order', () => {
+  async function openLeads(permissions: string[]) {
+    const calls = await openList(permissions, t('nav.leads'));
+    fireEvent.click(await screen.findByText(LEAD.id));
+    await screen.findByRole('button', { name: t('action.backToList') });
+    return calls;
+  }
+
+  afterEach(() => {
+    delete (window as { orderbook?: unknown }).orderbook;
+  });
+
+  it('is offered only with leads.export, and absent otherwise', async () => {
+    await openLeads(['leads.view', 'parties.view']);
+    expect(screen.queryByRole('button', { name: t('orderNote.filling') })).toBeNull();
+    expect(screen.queryByRole('button', { name: t('orderNote.dispatch') })).toBeNull();
+
+    cleanup();
+    await openLeads(['leads.view', 'leads.export', 'parties.view']);
+    expect(screen.getByRole('button', { name: t('orderNote.filling') })).toBeTruthy();
+    expect(screen.getByRole('button', { name: t('orderNote.dispatch') })).toBeTruthy();
+  });
+
+  it('opens the Filling note headed "Pending Order No." with the lead id, party fetched', async () => {
+    const calls = await openLeads(['leads.view', 'leads.export', 'parties.view']);
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+
+    expect((await screen.findAllByText(t('orderNote.pendingOrderNo'))).length).toBeGreaterThan(0);
+    expect(screen.queryByText(t('orderNote.orderId'))).toBeNull();
+    expect(screen.getAllByText(LEAD.id).length).toBeGreaterThan(0);
+    expect(calls.some((call) => call.url === '/api/parties/party-1')).toBe(true);
+
+    // Back from the note lands on the lead.
+    fireEvent.click(screen.getByRole('button', { name: t('action.backToList') }));
+    expect(await screen.findByRole('button', { name: t('orderNote.filling') })).toBeTruthy();
+  });
+
+  it('prints the copies asked for through the shell, and keeps the vehicle number off the server', async () => {
+    const printPage = vi.fn().mockResolvedValue({ ok: true });
+    (window as { orderbook?: unknown }).orderbook = { shellVersion: 't', applyUpdate: vi.fn(), printPage };
+    const calls = await openLeads(['leads.view', 'leads.export', 'parties.view']);
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.dispatch') }));
+
+    // A pending order has no vehicle column: the field takes input without leads.edit and saves nothing.
+    const field = await screen.findByLabelText(t('orderNote.vehicleNo'));
+    expect((field as HTMLInputElement).disabled).toBe(false);
+    await act(async () => {
+      fireEvent.change(field, { target: { value: 'gj 03  ab 4471' } });
+      fireEvent.blur(field);
+      await wait(0);
+    });
+    expect((field as HTMLInputElement).value).toBe('GJ 03 AB 4471');
+
+    fireEvent.change(screen.getByLabelText(t('orderNote.copies')), { target: { value: '3' } });
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
+    await waitFor(() => expect(printPage).toHaveBeenCalledWith({ deviceName: undefined, copies: 3 }));
+
+    expect(calls.filter((call) => call.method !== 'GET' && call.url.startsWith('/api/leads'))).toEqual([]);
+  });
+
+  it('keeps the copies between 1 and 50', async () => {
+    const printPage = vi.fn().mockResolvedValue({ ok: true });
+    (window as { orderbook?: unknown }).orderbook = { shellVersion: 't', applyUpdate: vi.fn(), printPage };
+    await openLeads(['leads.view', 'leads.export']);
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.dispatch') }));
+    const copies = await screen.findByLabelText(t('orderNote.copies'));
+
+    fireEvent.change(copies, { target: { value: '500' } });
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
+    await waitFor(() => expect(printPage).toHaveBeenLastCalledWith({ deviceName: undefined, copies: 50 }));
+
+    fireEvent.change(copies, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
+    await waitFor(() => expect(printPage).toHaveBeenLastCalledWith({ deviceName: undefined, copies: 1 }));
+  });
+
+  it('offers Save PDF only when the shell can, named for the lead and the note', async () => {
+    const savePdf = vi.fn().mockResolvedValue({ ok: true, path: 'C:\\x.pdf' });
+    (window as { orderbook?: unknown }).orderbook = { shellVersion: 't', applyUpdate: vi.fn(), printPage: vi.fn(), savePdf };
+    await openLeads(['leads.view', 'leads.export']);
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+    fireEvent.click(await screen.findByRole('button', { name: t('orderNote.savePdf') }));
+    await waitFor(() => expect(savePdf).toHaveBeenCalledWith({ fileName: `${LEAD.id}-filling.pdf` }));
+    cleanup();
+
+    delete (window as { orderbook?: unknown }).orderbook;
+    await openLeads(['leads.view', 'leads.export']);
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+    await screen.findAllByText(t('orderNote.pendingOrderNo'));
+    expect(screen.queryByRole('button', { name: t('orderNote.savePdf') })).toBeNull();
+  });
+
+  it('heads a final order "Final Order No."', async () => {
+    await openList(['orders.view', 'orders.export'], t('nav.orders'));
+    fireEvent.click(await screen.findByText(ORDER.id));
+    await screen.findByRole('button', { name: t('action.backToList') });
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+    expect((await screen.findAllByText(t('orderNote.orderId'))).length).toBeGreaterThan(0);
+    expect(screen.queryByText(t('orderNote.pendingOrderNo'))).toBeNull();
   });
 });
 

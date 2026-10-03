@@ -9,12 +9,12 @@
 import {
   isTemporaryId,
   NOTE_LAYOUT,
+  type NoteHeader,
   type NoteKind,
   type NoteLine,
   type NotePage,
+  type NotePartyHeader,
   type NoteSlot,
-  type Order,
-  type Party,
 } from '@orderbook/shared';
 import type { CSSProperties } from 'react';
 
@@ -39,8 +39,9 @@ const LAYOUT_VARS = {
 export interface OrderNoteProps {
   pages: NotePage[];
   kind: NoteKind;
-  order: Pick<Order, 'id' | 'leadCreatedAt'>;
-  party: Party | null;
+  /** Which record this is: its number, whether it is a pending or a final order, and when the lead was made. */
+  header: NoteHeader;
+  party: NotePartyHeader | null;
   partyName: string;
   vehicleNumber: string;
   /** Total pieces and weight of the whole order, for the last page's strip. */
@@ -68,6 +69,11 @@ function stamp(value: Date | string | null | undefined, withTime = true): string
       ...(withTime ? { hour: '2-digit', minute: '2-digit', hour12: false } : {}),
     })
     .replace(', ', ' · ');
+}
+
+/** What the sheet calls the record: its number, or its id until it has one. */
+function numberOf(header: NoteHeader): string {
+  return header.number ?? header.id;
 }
 
 function range(from: number, count: number, all: number): string {
@@ -134,7 +140,7 @@ function Strip({
   page: NotePage;
   position: 'top' | 'bottom';
 }) {
-  const { kind, order } = props;
+  const { kind, header } = props;
   const last = page.isLast;
   return (
     <div className={`ob-note-strip ob-note-strip-${position}`}>
@@ -168,7 +174,7 @@ function Strip({
       </div>
       <span className="ob-note-strip-rule" />
       <div className="ob-note-strip-page">
-        <div className="ob-note-strip-page-id ob-note-clip">{order.id}</div>
+        <div className="ob-note-strip-page-id ob-note-clip">{numberOf(header)}</div>
         <div className="ob-note-strip-page-no">
           {t('orderNote.page', { n: page.pageNo, total: page.pageCount })}
         </div>
@@ -181,7 +187,7 @@ function Strip({
 }
 
 function Header({ props, page }: { props: OrderNoteProps; page: NotePage }) {
-  const { kind, order, party, partyName } = props;
+  const { kind, header, party, partyName } = props;
   const filling = kind === 'filling';
   const title = filling ? t('orderNote.filling') : t('orderNote.dispatch');
   const pageLabel = t('orderNote.page', { n: page.pageNo, total: page.pageCount });
@@ -197,7 +203,7 @@ function Header({ props, page }: { props: OrderNoteProps; page: NotePage }) {
           </span>
         </div>
         <div className="ob-note-head-cont-page ob-note-mono">
-          {order.id} · {pageLabel}
+          {numberOf(header)} · {pageLabel}
         </div>
       </div>
     );
@@ -230,14 +236,16 @@ function Header({ props, page }: { props: OrderNoteProps; page: NotePage }) {
         )}
       </div>
       <div className="ob-note-meta">
-        <span className="ob-note-eyebrow">{t('orderNote.orderId')}</span>
+        <span className="ob-note-eyebrow">
+          {t(header.source === 'lead' ? 'orderNote.pendingOrderNo' : 'orderNote.orderId')}
+        </span>
         <span className="ob-note-meta-value ob-note-meta-id">
-          {order.id}
-          {isTemporaryId(order.id) && <span className="ob-note-unsynced">{t('orderNote.unsynced')}</span>}
+          {numberOf(header)}
+          {isTemporaryId(header.id) && <span className="ob-note-unsynced">{t('orderNote.unsynced')}</span>}
         </span>
         <span className="ob-note-eyebrow">{t('orderNote.leadGenerated')}</span>
         <span className="ob-note-meta-value ob-note-meta-when">
-          {stamp(order.leadCreatedAt, false)}
+          {stamp(header.createdAt, false)}
         </span>
         <span className="ob-note-eyebrow">{t('orderNote.printed')}</span>
         <span className="ob-note-meta-value ob-note-meta-when">

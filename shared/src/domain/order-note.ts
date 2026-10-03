@@ -14,9 +14,67 @@
  */
 
 import { isNumericSubProduct } from './colour-rule.js';
-import type { LineItem, Order } from './entities.js';
+import type { IsoTimestamp, Lead, LineItem, Order, Party, RecordId } from './entities.js';
 
 export type NoteKind = 'filling' | 'dispatch';
+
+/** What a note is printed from: a pending order (a lead) or a final order. */
+export type NoteSource = 'lead' | 'order';
+
+/**
+ * The fields `buildOrderNote` reads. An `Order` and a `Lead` both satisfy it; a
+ * missing `weightSource` or override means the computed weight, which is all a
+ * lead has.
+ */
+export type NoteRecord = Pick<Order, 'items' | 'totalWeightKg'> &
+  Partial<Pick<Order, 'weightSource' | 'totalWeightKgOverride'>>;
+
+/** The identity block of a note: which record, and what to call it ("Pending" or "Final Order No."). */
+export interface NoteHeader {
+  source: NoteSource;
+  id: RecordId;
+  /** What is printed as the order number; the record id when there is none yet. */
+  number: string | null;
+  /** When the lead was created (an order's `leadCreatedAt`). */
+  createdAt: IsoTimestamp | null;
+}
+
+/** The four party fields the Filling note's header prints. */
+export type NotePartyHeader = Pick<Party, 'partyCode' | 'city' | 'phone' | 'gstNumber'>;
+
+/** Everything a note is drawn from, frozen at one moment. */
+export interface NoteDocument {
+  header: NoteHeader;
+  partyName: string;
+  party: NotePartyHeader | null;
+  vehicleNumber: string | null;
+  model: OrderNoteModel;
+}
+
+/**
+ * The number a note prints for a record. The one place it is decided: until the
+ * pending-order numbering lands it is the record's id.
+ */
+export function noteNumber(record: { id: RecordId }): string {
+  return record.id;
+}
+
+/** Copies of a note one print job may ask for. */
+export const NOTE_MAX_COPIES = 50;
+
+/** The copies a field holds as a whole number 1..NOTE_MAX_COPIES: rounded, then pulled into range; not a number is one. */
+export function clampNoteCopies(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number.NaN;
+  return Number.isFinite(n) ? Math.min(NOTE_MAX_COPIES, Math.max(1, Math.round(n))) : 1;
+}
+
+/** The vehicle number as the Master holds it: upper-case, letters, digits, spaces and hyphens, one space between parts. */
+export function cleanVehicleNumber(value: string): string {
+  return value
+    .toUpperCase()
+    .replace(/[^A-Z0-9 -]/g, '')
+    .replace(/\s+/g, ' ');
+}
 
 /** All in CSS pixels at 96 dpi: one A4 sheet is 794 × 1123. */
 export const NOTE_LAYOUT = {
@@ -136,7 +194,7 @@ function compareLines(a: NoteLine, b: NoteLine): number {
  * packaging), splits them by `isNumericSubProduct` — the only test of named
  * against coded — and sorts each half.
  */
-export function buildOrderNote(order: Order): OrderNoteModel {
+export function buildOrderNote(order: NoteRecord): OrderNoteModel {
   const merged = new Map<string, NoteLine>();
 
   for (const line of order.items) {
@@ -187,9 +245,34 @@ export function buildOrderNote(order: Order): OrderNoteModel {
     itemCount: lines.length,
     totalQuantity: lines.reduce((sum, line) => sum + line.quantity, 0),
     totalWeightKg:
-      order.weightSource === 'manual' && order.totalWeightKgOverride !== null
+      order.weightSource === 'manual' && typeof order.totalWeightKgOverride === 'number'
         ? order.totalWeightKgOverride
         : order.totalWeightKg,
+  };
+}
+
+/** The identity block of a note for a lead (pending order) or a final order. */
+export function noteHeader(record: Lead | Order, source: NoteSource): NoteHeader {
+  const createdAt =
+    source === 'lead' ? (record as Lead).createdAt : ((record as Order).leadCreatedAt ?? null);
+  return { source, id: record.id, number: noteNumber(record), createdAt };
+}
+
+/** Builds the document a note is drawn from, for a lead (pending order) or a final order. */
+export function noteDocument(
+  record: Lead | Order,
+  source: NoteSource,
+  party: Party | null,
+  vehicleNumber: string | null,
+): NoteDocument {
+  return {
+    header: noteHeader(record, source),
+    partyName: record.partyName,
+    party: party
+      ? { partyCode: party.partyCode, city: party.city, phone: party.phone, gstNumber: party.gstNumber }
+      : null,
+    vehicleNumber,
+    model: buildOrderNote(record),
   };
 }
 

@@ -1025,6 +1025,67 @@ describe('Edit lead', () => {
     expect(calls.some((call) => call.url === '/api/leads' && call.method === 'POST')).toBe(false);
   });
 
+  describe('the Filling and Dispatch notes on a pending order', () => {
+    async function openLead(permissions: string[]): Promise<Call[]> {
+      const calls = await boot({ permissions, view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] } });
+      await act(async () => {
+        fireEvent.click(screen.getByTitle(t('nav.leads')));
+      });
+      await act(async () => {
+        fireEvent.click((await screen.findAllByText(PARTY.name))[0]!);
+      });
+      await screen.findByText(t('lead.detail.lineItems'));
+      return calls;
+    }
+
+    afterEach(() => {
+      delete (window as Window & { orderbook?: unknown }).orderbook;
+    });
+
+    it('is absent without leads.export and offered with it', async () => {
+      await openLead(['leads.view']);
+      expect(screen.queryByRole('button', { name: t('orderNote.filling') })).toBeNull();
+      expect(screen.queryByRole('button', { name: t('orderNote.dispatch') })).toBeNull();
+
+      cleanup();
+      await openLead(['leads.view', 'leads.export']);
+      expect(screen.getByRole('button', { name: t('orderNote.filling') })).toBeTruthy();
+      expect(screen.getByRole('button', { name: t('orderNote.dispatch') })).toBeTruthy();
+    });
+
+    it('opens the note from the local snapshot, headed "Pending Order No.", and back returns to the lead', async () => {
+      await openLead(['leads.view', 'leads.export']);
+      fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+
+      expect((await screen.findAllByText(t('orderNote.pendingOrderNo'))).length).toBeGreaterThan(0);
+      expect(screen.queryByText(t('orderNote.orderId'))).toBeNull();
+      expect(screen.getAllByText(LEAD.id).length).toBeGreaterThan(0);
+
+      fireEvent.click(screen.getByRole('button', { name: t('action.backToList') }));
+      expect(await screen.findByText(t('lead.detail.lineItems'))).toBeTruthy();
+    });
+
+    it('prints the copies asked for, and sends no write for the vehicle number', async () => {
+      const printPage = vi.fn().mockResolvedValue({ ok: true });
+      (window as Window & { orderbook?: unknown }).orderbook = { shellVersion: 'test', applyUpdate: vi.fn(), printPage };
+      const calls = await openLead(['leads.view', 'leads.export']);
+      fireEvent.click(screen.getByRole('button', { name: t('orderNote.dispatch') }));
+
+      const field = await screen.findByLabelText(t('orderNote.vehicleNo'));
+      expect((field as HTMLInputElement).disabled).toBe(false);
+      await act(async () => {
+        fireEvent.change(field, { target: { value: 'gj 03 ab 4471' } });
+        fireEvent.blur(field);
+        await wait(0);
+      });
+
+      fireEvent.change(screen.getByLabelText(t('orderNote.copies')), { target: { value: '4' } });
+      fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
+      await waitFor(() => expect(printPage).toHaveBeenLastCalledWith({ deviceName: undefined, copies: 4 }));
+      expect(calls.filter((call) => call.method !== 'GET' && call.url.startsWith('/api/leads'))).toEqual([]);
+    });
+  });
+
   it('is not offered without leads.edit', async () => {
     await boot({
       permissions: ['leads.view'],
@@ -1106,11 +1167,12 @@ describe('the Filling and Dispatch notes on an order', () => {
     await screen.findByRole('option', { name: 'HP Laser' });
 
     fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
-    await waitFor(() => expect(printPage).toHaveBeenLastCalledWith({ deviceName: undefined }));
+    // `copies` is always sent now (deliberate): one unless the person set more.
+    await waitFor(() => expect(printPage).toHaveBeenLastCalledWith({ deviceName: undefined, copies: 1 }));
 
     fireEvent.change(printer, { target: { value: 'HP Laser' } });
     fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
-    await waitFor(() => expect(printPage).toHaveBeenLastCalledWith({ deviceName: 'HP Laser' }));
+    await waitFor(() => expect(printPage).toHaveBeenLastCalledWith({ deviceName: 'HP Laser', copies: 1 }));
   });
 
   it('falls back to the browser print when there is no shell', async () => {

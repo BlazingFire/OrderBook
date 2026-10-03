@@ -14,9 +14,15 @@
 
 import {
   buildOrderNote,
+  cleanVehicleNumber,
+  clampNoteCopies,
+  noteHeader,
+  NOTE_MAX_COPIES,
   paginateOrderNote,
   type DesktopBridge,
+  type Lead,
   type NoteKind,
+  type NoteSource,
   type Order,
   type Party,
 } from '@orderbook/shared';
@@ -27,6 +33,7 @@ import { Button } from './Button.js';
 import { EditorScreen } from './EditorScreen.js';
 import { t } from './i18n.js';
 import { OrderNote } from './OrderNote.js';
+import { printOnly } from './printPortal.js';
 import { Segmented } from './Tabs.js';
 import { useToast } from './Toast.js';
 
@@ -48,28 +55,31 @@ function remember(key: string, value: string): void {
   }
 }
 
-/** The vehicle number as the Master will hold it: trimmed, upper-case, one space between parts. */
-function cleanVehicle(value: string): string {
-  return value
-    .toUpperCase()
-    .replace(/[^A-Z0-9 -]/g, '')
-    .replace(/\s+/g, ' ');
-}
-
 export interface OrderNoteScreenProps {
-  order: Order;
+  /** The pending order (a lead) or the final order the note is made from. */
+  record: Order | Lead;
+  source: NoteSource;
   party: Party | null;
   initialKind: NoteKind;
-  /** Whether the person may change the vehicle number: `orders.edit`, on an order not yet dispatched. */
+  /**
+   * Whether the person may change the vehicle number: `orders.edit`, on an
+   * order not yet dispatched. A pending order's is always editable, because it
+   * is only printed — see `onSaveVehicle`.
+   */
   canEditVehicle: boolean;
-  /** Saves the vehicle number; null clears it. May reject — the field then says so. */
+  /**
+   * Saves the vehicle number; null clears it. May reject — the field then says
+   * so. Never called for a pending order: a lead has no vehicle column, so its
+   * number is typed for the sheet and gone when the screen closes.
+   */
   onSaveVehicle: (vehicleNumber: string | null) => Promise<unknown>;
   onBack: () => void;
-  desktop?: Pick<DesktopBridge, 'listPrinters' | 'printPage'>;
+  desktop?: Pick<DesktopBridge, 'listPrinters' | 'printPage' | 'savePdf'>;
 }
 
 export function OrderNoteScreen({
-  order,
+  record,
+  source,
   party,
   initialKind,
   canEditVehicle,
@@ -78,17 +88,25 @@ export function OrderNoteScreen({
   desktop,
 }: OrderNoteScreenProps) {
   const toast = useToast();
+  const printOnlyVehicle = source === 'lead';
+  const editableVehicle = printOnlyVehicle || canEditVehicle;
+  const savedVehicle = source === 'order' ? ((record as Order).vehicleNumber ?? '') : '';
   const [kind, setKind] = useState<NoteKind>(initialKind);
-  const [vehicle, setVehicle] = useState(order.vehicleNumber ?? '');
+  const [vehicle, setVehicle] = useState(savedVehicle);
   /** The vehicle number as last sent, so a blur with nothing changed writes nothing. */
-  const sentVehicle = useRef(order.vehicleNumber ?? '');
+  const sentVehicle = useRef(savedVehicle);
+  const [copiesText, setCopiesText] = useState('1');
+  const copies = clampNoteCopies(copiesText.trim() === '' ? Number.NaN : Number(copiesText));
+  const portalRef = useRef<HTMLDivElement | null>(null);
+  const [saving, setSaving] = useState(false);
   const [vehicleError, setVehicleError] = useState<string | null>(null);
   const [printers, setPrinters] = useState<{ name: string; displayName: string }[]>([]);
   const [printer, setPrinter] = useState(() => stored(KEY_PRINTER) ?? '');
   const [printing, setPrinting] = useState(false);
   const [printedAt] = useState(() => new Date());
 
-  const model = useMemo(() => buildOrderNote(order), [order]);
+  const model = useMemo(() => buildOrderNote(record), [record]);
+  const header = useMemo(() => noteHeader(record, source), [record, source]);
   const pages = useMemo(() => paginateOrderNote(model, kind), [model, kind]);
 
   useEffect(() => {
@@ -111,9 +129,9 @@ export function OrderNoteScreen({
   const noteProps = {
     pages,
     kind,
-    order,
+    header,
     party,
-    partyName: order.partyName,
+    partyName: record.partyName,
     vehicleNumber: vehicle,
     totalQuantity: model.totalQuantity,
     totalWeightKg: model.totalWeightKg,
@@ -125,12 +143,17 @@ export function OrderNoteScreen({
 
   async function print(): Promise<void> {
     if (!desktop?.printPage) {
-      window.print();
+      // A browser prints one copy at a time: say where the rest is asked for.
+      if (copies > 1) toast.push(t('orderNote.copiesHint', { n: copies }), { tone: 'info' });
+      await printOnly(portalRef.current, () => window.print());
       return;
     }
+    const printPage = desktop.printPage;
     setPrinting(true);
     try {
-      const result = await desktop.printPage({ deviceName: chosenPrinter || undefined });
+      const result = await printOnly(portalRef.current, () =>
+        printPage({ deviceName: chosenPrinter || undefined, copies }),
+      );
       if (!result.ok) {
         toast.push(t('orderNote.printFailed', { error: result.error ?? '—' }), { tone: 'error' });
       }
@@ -141,6 +164,28 @@ export function OrderNoteScreen({
       );
     } finally {
       setPrinting(false);
+    }
+  }
+
+  async function savePdf(): Promise<void> {
+    const save = desktop?.savePdf;
+    if (!save) return;
+    setSaving(true);
+    try {
+      const result = await printOnly(portalRef.current, () =>
+        save({ fileName: `${header.number ?? header.id}-${kind}.pdf` }),
+      );
+      // A closed Save dialog is a cancel, not a failure worth a toast.
+      if (!result.ok && !result.cancelled) {
+        toast.push(t('orderNote.savePdfFailed', { error: result.error ?? '—' }), { tone: 'error' });
+      }
+    } catch (caught) {
+      toast.push(
+        t('orderNote.savePdfFailed', { error: caught instanceof Error ? caught.message : '—' }),
+        { tone: 'error' },
+      );
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -169,9 +214,9 @@ export function OrderNoteScreen({
   }
 
   function saveVehicle(): void {
-    const value = cleanVehicle(vehicle).trim();
+    const value = cleanVehicleNumber(vehicle).trim();
     setVehicle(value);
-    if (value === sentVehicle.current) return;
+    if (printOnlyVehicle || value === sentVehicle.current) return;
     const before = sentVehicle.current;
     sentVehicle.current = value;
     setVehicleError(null);
@@ -200,6 +245,11 @@ export function OrderNoteScreen({
               { value: 'dispatch', label: t('orderNote.dispatch') },
             ]}
           />
+          {desktop?.savePdf && (
+            <Button variant="secondary" busy={saving} onClick={() => void savePdf()}>
+              {t('orderNote.savePdf')}
+            </Button>
+          )}
           <Button variant="primary" busy={printing} onClick={() => void print()}>
             {t('orderNote.print')}
           </Button>
@@ -215,9 +265,15 @@ export function OrderNoteScreen({
               value={vehicle}
               maxLength={20}
               placeholder={t('orderNote.vehiclePlaceholder')}
-              disabled={!canEditVehicle}
-              title={canEditVehicle ? undefined : t('orderNote.vehicleLocked')}
-              onChange={(event) => setVehicle(cleanVehicle(event.target.value))}
+              disabled={!editableVehicle}
+              title={
+                !editableVehicle
+                  ? t('orderNote.vehicleLocked')
+                  : printOnlyVehicle
+                    ? t('orderNote.vehicleNotSaved')
+                    : undefined
+              }
+              onChange={(event) => setVehicle(cleanVehicleNumber(event.target.value))}
               onBlur={saveVehicle}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') saveVehicle();
@@ -231,6 +287,20 @@ export function OrderNoteScreen({
             )}
           </label>
         )}
+
+        <label className="ob-note-toolbar-item">
+          <span className="ob-small">{t('orderNote.copies')}</span>
+          <input
+            className="ob-input ob-note-copies-input"
+            type="number"
+            min={1}
+            max={NOTE_MAX_COPIES}
+            step={1}
+            value={copiesText}
+            onChange={(event) => setCopiesText(event.target.value)}
+            onBlur={() => setCopiesText(String(copies))}
+          />
+        </label>
 
         {desktop?.listPrinters && (
           <label className="ob-note-toolbar-item">
@@ -257,7 +327,7 @@ export function OrderNoteScreen({
       </div>
 
       {createPortal(
-        <div className="ob-note-print-portal">
+        <div className="ob-note-print-portal" ref={portalRef}>
           <OrderNote {...noteProps} />
         </div>,
         document.body,

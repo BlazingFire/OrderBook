@@ -11,16 +11,54 @@
  * cannot run under the suite; this decision can.
  */
 
+export const MAX_COPIES = 50;
+
+/** An integer 1..50; anything else (a string, 0, 51, 2.5, missing) is one copy. */
+export function clampCopies(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= MAX_COPIES
+    ? value
+    : 1;
+}
+
+/**
+ * The file name offered to Save PDF. The page names it, so it is cleaned here:
+ * no path separators or characters Windows refuses, no control characters, one
+ * space between parts, at most 100 characters, always ending `.pdf`.
+ */
+export function pdfFileName(raw: unknown): string {
+  const text = typeof raw === 'string' ? raw : '';
+  const cleaned = text
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-')
+    .replace(/\s+/g, ' ')
+    .replace(/\.pdf$/i, '')
+    .trim()
+    .replace(/^[-. ]+|[. ]+$/g, '')
+    .slice(0, 100)
+    .trim();
+  return cleaned === '' ? 'note.pdf' : `${cleaned}.pdf`;
+}
+
 export interface PrintRequest {
   silent: boolean;
   deviceName?: string;
+  /** Sheets of the whole job, 1..50, collated — set whether or not a printer is named. */
+  copies: number;
+  collate: true;
   printBackground: true;
   pageSize: 'A4';
   margins: { marginType: 'none' };
 }
 
 export function printOptions(requested: unknown, installed: readonly string[]): PrintRequest {
-  const base = { printBackground: true, pageSize: 'A4', margins: { marginType: 'none' } } as const;
+  const copies = clampCopies((requested as { copies?: unknown } | null)?.copies);
+  const base = {
+    printBackground: true,
+    pageSize: 'A4',
+    margins: { marginType: 'none' },
+    copies,
+    collate: true,
+  } as const;
   const name = (requested as { deviceName?: unknown } | null)?.deviceName;
 
   if (typeof name === 'string' && name !== '' && installed.includes(name)) {

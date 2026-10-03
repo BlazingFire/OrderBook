@@ -672,6 +672,13 @@
     zoom: 1;
   }
 
+  /* One note on the paper: while a print or Save PDF runs, `printOnly` marks the
+     one portal meant for it, and a hidden kept-alive note screen's portal stays
+     out of the job. */
+  body.ob-printing .ob-note-print-portal:not(.ob-note-print-portal--active) {
+    display: none !important;
+  }
+
   .ob-note-print-portal .ob-note-scope {
     display: block;
     gap: 0;
@@ -713,4 +720,8 @@
 .ob-note-vehicle-input {
   width: 180px;
   font-family: var(--font-mono);
+}
+
+.ob-note-copies-input {
+  width: 72px;
 }

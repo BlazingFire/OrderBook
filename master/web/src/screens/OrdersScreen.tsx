@@ -415,7 +415,8 @@ export function OrdersScreen({
       <OrderNoteScreen
         // A new mount per note, so the vehicle field starts from that order's.
         key={openOrder.id}
-        order={openOrder}
+        record={openOrder}
+        source="order"
         party={party}
         initialKind={noteKind}
         canEditVehicle={canEdit && !openOrder.dispatchedAt}

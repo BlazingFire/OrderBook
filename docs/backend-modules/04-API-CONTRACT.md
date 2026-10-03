@@ -652,6 +652,18 @@ pins the exact strings, and they pass against the pre-1.3 code too).
 | `ForbiddenError` | 403 | `{ permission: 'reports.view' }` | `error.forbidden.reportsHidden`, or `validation.reports.subject.forbidden` (§3.9) |
 | *range errors* | 400 | as §3.2 | |
 
+### 3.6a `GET /api/reports/:report/pdf` (1.3 H3, Preview PDF)
+
+The same call as §3.6 with the format forced to `pdf` and the answer shown instead of saved.
+
+| | |
+|---|---|
+| **Permission** | As §3.6: `reports.view` and `reports.export`, Reports not switched off for the tier, the same subject rule and Party Access, the same 10,000-row PDF cap and the same `report` / `exported` audit row |
+| **Query** | As §3.6; `format` is ignored — whatever is asked, the answer is a PDF |
+| **Response** | `200` `application/pdf`, `Content-Disposition: inline` (so a window or a tab displays it). The desktop shell opens only this exact shape in a window of its own (`docs/catalogue/CATALOGUE_MODEL.md` §8). Errors are §3.6's; an Office with the Master unreachable answers 503 |
+
+The Office proxies it through the same `report:export` command, forced to `pdf`.
+
 ### 3.7 `GET /api/reports/options`
 
 | | |

@@ -130,8 +130,19 @@ export interface DesktopBridge {
    * system's print dialog opens. A name the shell cannot find among the
    * installed printers also opens the dialog rather than failing, so a
    * remembered printer that has been unplugged never blocks a print.
+   *
+   * `copies` is a whole number 1..50 (anything else prints one), collated.
    */
-  printPage?(options: { deviceName?: string }): Promise<{ ok: boolean; error?: string }>;
+  printPage?(options: { deviceName?: string; copies?: number }): Promise<{ ok: boolean; error?: string }>;
+
+  /**
+   * Save the page as a PDF (A4, its print stylesheet). The shell shows its own
+   * Save dialog and writes the file; the page offers only a file name, which
+   * the shell cleans. A closed dialog is `{ ok: false, cancelled: true }`.
+   */
+  savePdf?(options: {
+    fileName: string;
+  }): Promise<{ ok: boolean; path?: string; cancelled?: boolean; error?: string }>;
 }
 
 export interface PrinterInfo {

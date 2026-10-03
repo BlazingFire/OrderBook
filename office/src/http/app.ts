@@ -1316,6 +1316,54 @@ export function createApp(): Express {
   app.get('/api/reports/table/:report', (req, res) =>
     forward(res, 'report:table', { report: req.params.report, query: parseReportQuery(req.query) }),
   );
+  /** The export options a query string carries, for the file route and the inline PDF route alike. */
+  const reportExportQuery = (query: Record<string, unknown>) => {
+    const columns = String(query.columns ?? '')
+      .split(',')
+      .map((key) => key.trim())
+      .filter(Boolean);
+    return {
+      ...parseReportQuery(query),
+      format: isReportFormat(query.format) ? query.format : undefined,
+      columns: columns.length > 0 ? columns : undefined,
+      totals: query.totals === 'true',
+      paperSize: query.paperSize === 'letter' ? ('letter' as const) : undefined,
+      orientation: query.orientation === 'portrait' ? ('portrait' as const) : undefined,
+      lang: query.lang === 'hi' ? ('hi' as const) : undefined,
+    };
+  };
+
+  /**
+   * Preview PDF: the Master's PDF for a report, handed to the browser `inline`
+   * so a window or a tab shows it. The same `report:export` command the file
+   * route sends, with the format forced to `pdf`, so who may see what is the
+   * Master's decision and nothing here widens it. Online only — the Master holds
+   * the renderer and the fonts — so an unreachable Master is a 503.
+   */
+  app.get('/api/reports/:report/pdf', (req, res) => {
+    void (async () => {
+      try {
+        const exported = await masterConnection.command<
+          'report:export',
+          | { format: 'csv'; csv: string; rowCount: number }
+          | { format: 'pdf' | 'xlsx'; fileName: string; contentType: string; bytes: Uint8Array; rowCount: number }
+        >('report:export', {
+          report: req.params.report as ReportKind,
+          query: { ...reportExportQuery(req.query), format: 'pdf' },
+        });
+        if (exported.format !== 'pdf') {
+          res.status(502).json({ error: 'unavailable', message: 'The Master did not answer with a PDF' });
+          return;
+        }
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${exported.fileName}"`);
+        res.send(Buffer.from(exported.bytes));
+      } catch (error) {
+        failForward(res, error);
+      }
+    })();
+  });
+
   /**
    * A report export, in whichever format the Master answered with.
    *
@@ -1327,11 +1375,6 @@ export function createApp(): Express {
    */
   app.get('/api/reports/:report/export', (req, res) => {
     const report = req.params.report;
-
-    const columns = String(req.query.columns ?? '')
-      .split(',')
-      .map((key) => key.trim())
-      .filter(Boolean);
 
     void (async () => {
       try {
@@ -1347,15 +1390,7 @@ export function createApp(): Express {
             }
         >('report:export', {
           report: report as ReportKind,
-          query: {
-            ...parseReportQuery(req.query),
-            format: isReportFormat(req.query.format) ? req.query.format : undefined,
-            columns: columns.length > 0 ? columns : undefined,
-            totals: req.query.totals === 'true',
-            paperSize: req.query.paperSize === 'letter' ? 'letter' : undefined,
-            orientation: req.query.orientation === 'portrait' ? 'portrait' : undefined,
-            lang: req.query.lang === 'hi' ? 'hi' : undefined,
-          },
+          query: reportExportQuery(req.query),
         });
 
         if (exported.format === 'csv') {
