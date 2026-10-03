@@ -3270,4 +3270,9 @@ export const EN_MESSAGES = {
   // 1.4 D4: password eye
   'password.show': 'Show password',
   'password.hide': 'Hide password',
+  // 1.4 D4: note buttons, preview
+  'orderNote.column.notes': 'Notes',
+  'orderNote.previewButton': 'Preview',
+  'orderNote.preview.title': 'Preview: {title}',
+  'orderNote.preview.close': 'Close preview',
 } as const;

@@ -59,6 +59,7 @@ import {
   type PillTone,
   type PrintroomTransport,
   useToast,
+  NoteButtons,
 } from '@orderbook/ui';
 
 const PAGE_SIZE = 500;
@@ -146,7 +147,6 @@ export function OrdersScreen({
   const canEdit = permissions.includes('orders.edit');
   const canDispatch = permissions.includes('orders.dispatch');
   const canDelete = permissions.includes('orders.delete');
-  const canExport = permissions.includes('orders.export');
   const canViewParties = permissions.includes('parties.view');
 
   const loadKey = `${scope}|${term}`;
@@ -257,7 +257,8 @@ export function OrdersScreen({
   // An error or note shown for one record is not the next one's.
   useEffect(() => {
     setError(null);
-    setNote(null);
+    // A note opened from the list's row action arrives with its record; keep it.
+    setNote((current) => (current && current.id === openId ? current : null));
   }, [openId]);
 
   const noteKind = note && note.id === openOrder?.id ? note.kind : null;
@@ -424,6 +425,20 @@ export function OrdersScreen({
       width: rem(130),
       render: (order) => <StatusPill tone={stageTone(order, stages)}>{order.stageName}</StatusPill>,
     },
+    {
+      key: 'notes',
+      header: t('orderNote.column.notes'),
+      priority: 2,
+      width: rem(220),
+      render: (order) => (
+        <NoteButtons
+          onNote={(kind) => {
+            setNote({ id: order.id, kind });
+            onOpenId(order.id);
+          }}
+        />
+      ),
+    },
   ];
 
   if (openOrder && noteKind) {
@@ -484,16 +499,13 @@ export function OrdersScreen({
                   {t('chat.share.button')}
                 </Button>
               )}
-              {canExport && (
-                <>
-                  <Button onClick={() => setNote({ id: openOrder.id, kind: 'filling' })}>
-                    {t('orderNote.filling')}
-                  </Button>
-                  <Button onClick={() => setNote({ id: openOrder.id, kind: 'dispatch' })}>
-                    {t('orderNote.dispatch')}
-                  </Button>
-                </>
-              )}
+              {/* Viewing the order is the right to print its note (1.4 R10). */}
+              <Button onClick={() => setNote({ id: openOrder.id, kind: 'filling' })}>
+                {t('orderNote.filling')}
+              </Button>
+              <Button onClick={() => setNote({ id: openOrder.id, kind: 'dispatch' })}>
+                {t('orderNote.dispatch')}
+              </Button>
               {/* Absent, not greyed, without the permission — the house rule. */}
               {canDelete && (
                 <IconButton

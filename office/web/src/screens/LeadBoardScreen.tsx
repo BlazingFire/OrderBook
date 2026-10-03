@@ -48,6 +48,7 @@ import {
   useToast,
   type DataTableColumn,
   type PrintroomTransport,
+  NoteButtons,
 } from '@orderbook/ui';
 import { AddLeadScreen } from './AddLeadScreen';
 import { LeadDetail } from './LeadDetail';
@@ -360,7 +361,7 @@ export function LeadBoardScreen({
             )}
             {/* Notes come from the local snapshot, so they need no Master and no
                 sync; once converted, the final order carries them. */}
-            {canPreviewPdf && !openLead.convertedOrderId && (
+            {!openLead.convertedOrderId && (
               <>
                 <Button
                   variant="secondary"
@@ -528,6 +529,21 @@ export function LeadBoardScreen({
         </span>
       ),
     },
+    {
+      key: 'notes',
+      header: t('orderNote.column.notes'),
+      priority: 2,
+      width: rem(220),
+      render: (lead) =>
+        lead.convertedOrderId ? null : (
+          <NoteButtons
+            onNote={(kind) => {
+              setNote({ id: lead.id, kind });
+              onOpenId(lead.id);
+            }}
+          />
+        ),
+    },
   ];
 
   return (
@@ -586,6 +602,22 @@ export function LeadBoardScreen({
                       >
                         {t('lead.board.menu.open')}
                       </button>
+                      {!lead.convertedOrderId &&
+                        (['filling', 'dispatch'] as const).map((kind) => (
+                          <button
+                            key={kind}
+                            type="button"
+                            className="ob-menu-item ob-body"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setMenuId(null);
+                              setNote({ id: lead.id, kind });
+                              onOpenId(lead.id);
+                            }}
+                          >
+                            {t(kind === 'filling' ? 'orderNote.filling' : 'orderNote.dispatch')}
+                          </button>
+                        ))}
                       {nextStage && (
                         <button
                           type="button"

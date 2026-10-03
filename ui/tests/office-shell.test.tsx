@@ -471,6 +471,9 @@ describe('where a person lands', () => {
       if (path === '/api/connection') return json(CONNECTION);
       if (path === '/api/session') return json({ session: panelSession(permissions), defaultLocale: 'en' });
       if (path === '/api/sync') return json({ ...CONNECTION, pendingCount: 0, rejections: [] });
+      if (path === '/api/chat/rooms' || path === '/api/chat/tasks') return json([]);
+      if (path === '/api/print-jobs') return json({ jobs: [], nextCursor: null, waitingCount: 0 });
+      if (path === '/api/print-stations') return json([]);
       return undefined;
     });
     const App = await loadApp('office');
@@ -1313,15 +1316,45 @@ describe('Edit lead', () => {
       delete (window as Window & { orderbook?: unknown }).orderbook;
     });
 
-    it('is absent without leads.export and offered with it', async () => {
+    it('is offered with the right to view leads alone, no export right needed (R10)', async () => {
       await openLead(['leads.view']);
-      expect(screen.queryByRole('button', { name: t('orderNote.filling') })).toBeNull();
-      expect(screen.queryByRole('button', { name: t('orderNote.dispatch') })).toBeNull();
-
-      cleanup();
-      await openLead(['leads.view', 'leads.export']);
       expect(screen.getByRole('button', { name: t('orderNote.filling') })).toBeTruthy();
       expect(screen.getByRole('button', { name: t('orderNote.dispatch') })).toBeTruthy();
+    });
+
+    it('opens a note straight from the list row (R10)', async () => {
+      await boot({ permissions: ['leads.view'], view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] } });
+      await act(async () => {
+        fireEvent.click(screen.getByTitle(t('nav.leads')));
+      });
+      await screen.findAllByText(PARTY.name);
+      await act(async () => {
+        fireEvent.click(screen.getAllByRole('button', { name: t('lead.board.tab.list') })[0]!);
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: t('orderNote.dispatch') }));
+      });
+
+      expect((await screen.findAllByText(t('orderNote.page', { n: 1, total: 1 }))).length).toBeGreaterThan(0);
+    });
+
+    it('opens a note from the board card menu (R10)', async () => {
+      await boot({ permissions: ['leads.view'], view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] } });
+      await act(async () => {
+        fireEvent.click(screen.getByTitle(t('nav.leads')));
+      });
+      await screen.findAllByText(PARTY.name);
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: t('lead.board.tab.board') }));
+      });
+      await act(async () => {
+        fireEvent.click((await screen.findAllByRole('button', { name: t('lead.board.cardMenu') }))[0]!);
+      });
+      await act(async () => {
+        fireEvent.click(await screen.findByRole('button', { name: t('orderNote.filling') }));
+      });
+
+      expect((await screen.findAllByText(t('orderNote.pendingOrderNo'))).length).toBeGreaterThan(0);
     });
 
     describe('Send to Printroom', () => {
@@ -1561,11 +1594,24 @@ describe('the Filling and Dispatch notes on an order', () => {
     delete (window as Window & { orderbook?: unknown }).orderbook;
   });
 
-  it('is not offered without orders.export', async () => {
+  it('is offered with the right to view orders alone, no export right needed (R10)', async () => {
     await openOrder(['orders.view']);
     await screen.findByText(t('orders.detail.products'));
-    expect(screen.queryByRole('button', { name: t('orderNote.filling') })).toBeNull();
-    expect(screen.queryByRole('button', { name: t('orderNote.dispatch') })).toBeNull();
+    expect(screen.getByRole('button', { name: t('orderNote.filling') })).toBeTruthy();
+    expect(screen.getByRole('button', { name: t('orderNote.dispatch') })).toBeTruthy();
+  });
+
+  it('opens a note straight from the list row (R10)', async () => {
+    await boot({ permissions: ['orders.view'], view: { orders: [NOTE_ORDER], pipelines: [ORDER_PIPELINE] } });
+    await act(async () => {
+      fireEvent.click(screen.getByTitle(t('nav.orders')));
+    });
+    await screen.findByText(ORDER.id);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+    });
+
+    expect((await screen.findAllByText(pageLabel)).length).toBeGreaterThan(0);
   });
 
   it('opens a preview with the order on it, and back returns to the order', async () => {

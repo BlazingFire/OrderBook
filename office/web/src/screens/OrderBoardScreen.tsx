@@ -59,6 +59,7 @@ import {
   useToast,
   type PillTone,
   type PrintroomTransport,
+  NoteButtons,
 } from '@orderbook/ui';
 import type { DataTableColumn } from '@orderbook/ui';
 
@@ -68,8 +69,6 @@ interface Props {
   openId: string | null;
   onOpenId: (id: string | null) => void;
   canDispatch: boolean;
-  /** `orders.export`: may open the Filling and Dispatch notes. */
-  canExport: boolean;
   /** `orders.edit`: may set the vehicle number on the Dispatch note. */
   canEdit: boolean;
   onError: (message: string) => void;
@@ -137,7 +136,6 @@ export function OrderBoardScreen({
   openId,
   onOpenId,
   canDispatch,
-  canExport,
   canEdit,
   onError,
   stageId: stageFilter,
@@ -316,12 +314,9 @@ export function OrderBoardScreen({
                 {t('chat.share.button')}
               </Button>
             )}
-            {canExport && (
-              <>
-                <Button onClick={() => setNote({ id: openOrder.id, kind: 'filling' })}>{t('orderNote.filling')}</Button>
-                <Button onClick={() => setNote({ id: openOrder.id, kind: 'dispatch' })}>{t('orderNote.dispatch')}</Button>
-              </>
-            )}
+            {/* Viewing the order is the right to print its note (1.4 R10). */}
+            <Button onClick={() => setNote({ id: openOrder.id, kind: 'filling' })}>{t('orderNote.filling')}</Button>
+            <Button onClick={() => setNote({ id: openOrder.id, kind: 'dispatch' })}>{t('orderNote.dispatch')}</Button>
           </>
         }
         onBack={() => {
@@ -425,6 +420,20 @@ export function OrderBoardScreen({
         >
           {order.sync.hlc ? t('orders.sync.synced') : t('orders.sync.pending')}
         </span>
+      ),
+    },
+    {
+      key: 'notes',
+      header: t('orderNote.column.notes'),
+      priority: 2,
+      width: rem(220),
+      render: (order) => (
+        <NoteButtons
+          onNote={(kind) => {
+            setNote({ id: order.id, kind });
+            onOpenId(order.id);
+          }}
+        />
       ),
     },
   ];
