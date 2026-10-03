@@ -72,6 +72,12 @@ param(
 # inside a function $MyInvocation describes the function instead.
 $scriptPath = $MyInvocation.MyCommand.Path
 
+# Before the first cmdlet: `-NoProfile` does not stop PowerShell auto-loading a module
+# from the user's own writable Documents\WindowsPowerShell\Modules, which would run in
+# this (usually elevated) process. Only the system's modules, from here on. The
+# installers run this script by hash from memory and set the same first thing.
+$env:PSModulePath = $PSHOME + '\Modules'
+
 Set-StrictMode -Version Latest
 # Stop on the unexpected; every removal that may legitimately fail (a locked
 # file, a missing key) is wrapped so it is counted and reported instead.
@@ -98,8 +104,71 @@ function Note([string]$tag, [string]$message) {
   Write-Host ("[{0}] {1}" -f $tag, $message)
 }
 
+# What this script may delete. It usually runs ELEVATED, and the paths it is handed come
+# from places the account's own programs can write (the registry's InstallLocation, a
+# `<panel>-location.json` pointer, a redirected known folder), so a path is acted on only
+# if it is plainly OrderBook's:
+#   - its own name, or its parent folder's, says OrderBook (`...\OrderBook\master`,
+#     `...\OrderBook Master Panel`, `orderbook-master-updater`, `OrderBook-Releases`);
+#   - it is not a drive root, and neither it nor any folder above it is a link
+#     (junction or symbolic link), so a delete cannot be steered somewhere else.
+# A folder that fails is KEPT and said so: a data folder the operator moved to
+# `E:\CompanyData` is the operator's to delete, not an elevated script's to guess.
+function Get-DeleteRefusal([string]$path) {
+  try { $full = [System.IO.Path]::GetFullPath($path) } catch { return 'it is not a valid path' }
+  $full = $full.TrimEnd([char]92)
+  $parent = [System.IO.Path]::GetDirectoryName($full)
+  if (-not $parent) { return 'it is a drive root' }
+  $leaf = [System.IO.Path]::GetFileName($full)
+  $parentLeaf = [System.IO.Path]::GetFileName($parent.TrimEnd([char]92))
+  if (($leaf -notlike '*OrderBook*') -and ($parentLeaf -notlike '*OrderBook*')) {
+    return 'it is not an OrderBook folder (neither its name nor its parent folder says OrderBook)'
+  }
+  $walk = $full
+  while ($walk) {
+    # Attributes straight from the API: a folder that is not there is fine (there is
+    # nothing to delete), one that cannot be read cannot be checked, so it is left alone.
+    $attributes = $null
+    try {
+      $attributes = [System.IO.File]::GetAttributes($walk)
+    } catch [System.IO.FileNotFoundException], [System.IO.DirectoryNotFoundException] {
+      $attributes = $null
+    } catch {
+      return "$walk cannot be read, so it cannot be checked"
+    }
+    if ($null -ne $attributes -and ($attributes -band [System.IO.FileAttributes]::ReparsePoint)) { return "$walk is a link" }
+    $walk = [System.IO.Path]::GetDirectoryName($walk)
+  }
+  return $null
+}
+
+# Links inside a folder that is about to be deleted are removed AS links, never followed:
+# Remove-Item -Recurse in Windows PowerShell can walk through a junction and delete what it
+# points at. Iterative, and never descends into a link.
+function Remove-InnerLinks([string]$root) {
+  if (-not (Test-Path -LiteralPath $root -PathType Container)) { return }
+  $pending = New-Object System.Collections.Generic.Stack[string]
+  $pending.Push($root)
+  while ($pending.Count -gt 0) {
+    $dir = $pending.Pop()
+    foreach ($entry in @(Get-ChildItem -LiteralPath $dir -Force -ErrorAction SilentlyContinue)) {
+      if ($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+        if ($entry.PSIsContainer) { [System.IO.Directory]::Delete($entry.FullName, $false) } else { [System.IO.File]::Delete($entry.FullName) }
+      } elseif ($entry.PSIsContainer) {
+        $pending.Push($entry.FullName)
+      }
+    }
+  }
+}
+
 function Remove-Leftover([string]$path, [string]$what) {
   if (-not $path) { return }
+  $refusal = Get-DeleteRefusal $path
+  if ($refusal) {
+    Note 'keep' ("{0} left alone ({1}): {2}" -f $what, $refusal, $path)
+    $script:counts.kept++
+    return
+  }
   $exists = Test-Path -LiteralPath $path
   if ($DryRun) {
     $suffix = ''
@@ -112,6 +181,7 @@ function Remove-Leftover([string]$path, [string]$what) {
     $script:counts.skipped++
     return
   }
+  Remove-InnerLinks $path
   Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
   if (Test-Path -LiteralPath $path) {
     Note 'fail' ("could not remove {0}: {1}" -f $what, $path)
@@ -188,8 +258,17 @@ foreach ($root in $uninstallRoots) {
   }
 }
 
-$programRoots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}, (Join-Path $env:LOCALAPPDATA 'Programs')) |
-  Where-Object { $_ }
+# Where things are comes from the Windows known-folder API, never from an environment
+# variable: the variables are something the account's other programs can set, and this
+# script deletes what it finds here, usually elevated. (Every delete is also checked by
+# Get-DeleteRefusal, because even a known folder can be redirected by the account.)
+$systemDrive = [System.IO.Path]::GetPathRoot([Environment]::SystemDirectory).TrimEnd([char]92)
+$localAppData = [Environment]::GetFolderPath('LocalApplicationData')
+$programRoots = @(
+  [Environment]::GetFolderPath('ProgramFiles'),
+  [Environment]::GetFolderPath('ProgramFilesX86'),
+  (Join-Path $localAppData 'Programs')
+) | Where-Object { $_ }
 $installDirs = New-Object System.Collections.Generic.List[string]
 $seenDirs = @{}
 function Add-InstallDir([string]$dir) {
@@ -212,8 +291,8 @@ foreach ($p in $panels) {
   foreach ($root in $programRoots) { Add-InstallDir (Join-Path $root $p.Product) }
 }
 
-# Every profile on the PC. The current user's folders come from the
-# environment (they may be redirected); the others from C:\Users.
+# Every profile on the PC. The current user's folders come from the known-folder
+# API (they may be redirected); the others from C:\Users.
 $profiles = New-Object System.Collections.Generic.List[object]
 $seenProfiles = @{}
 function Add-Profile([string]$homeDir, [string]$roaming, [string]$local) {
@@ -222,15 +301,17 @@ function Add-Profile([string]$homeDir, [string]$roaming, [string]$local) {
     $profiles.Add(@{ Home = $homeDir; Roaming = $roaming; Local = $local })
   }
 }
-Add-Profile $env:USERPROFILE $env:APPDATA $env:LOCALAPPDATA
-$usersRoot = Join-Path $env:SystemDrive 'Users'
+Add-Profile ([Environment]::GetFolderPath('UserProfile')) ([Environment]::GetFolderPath('ApplicationData')) $localAppData
+$usersRoot = Join-Path $systemDrive 'Users'
 foreach ($u in @(Get-ChildItem -Path $usersRoot -ErrorAction SilentlyContinue | Where-Object { $_.PSIsContainer })) {
   if (@('Public', 'Default', 'Default User', 'All Users') -contains $u.Name) { continue }
   Add-Profile $u.FullName (Join-Path $u.FullName 'AppData\Roaming') (Join-Path $u.FullName 'AppData\Local')
 }
 
-$releasesDir = $env:ORDERBOOK_RELEASES_DIR
-if (-not $releasesDir) { $releasesDir = Join-Path $env:SystemDrive 'OrderBook-Releases' }
+# The default drop folder only. A different one set with ORDERBOOK_RELEASES_DIR is
+# NOT read from the environment here (an elevated recursive delete must never take its
+# target from there); it is the operator's to remove by hand.
+$releasesDir = Join-Path $systemDrive 'OrderBook-Releases'
 
 # ------------------------------------------------------------------ summary
 $mode = 'REMOVE'
@@ -325,7 +406,6 @@ foreach ($p in $panels) {
 }
 foreach ($u in $profiles) {
   $tmp = Join-Path $u.Local 'Temp'
-  if ($u.Home -eq $env:USERPROFILE -and $env:TEMP) { $tmp = $env:TEMP }
   $tmpFiles = @(Get-ChildItem -Path $tmp -Filter 'orderbook*' -ErrorAction SilentlyContinue)
   foreach ($t in $tmpFiles) { Remove-Leftover $t.FullName 'temp file' }
   if ($tmpFiles.Count -eq 0) { Note 'skip' ("no temp files: {0}\orderbook*" -f $tmp) }
@@ -376,8 +456,8 @@ if ($panels | Where-Object { $_.Panel -eq 'master' }) {
 
 Write-Host '-- Shortcuts'
 $shortcutRoots = @(
-  (Join-Path $env:Public 'Desktop'),
-  (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs')
+  [Environment]::GetFolderPath('CommonDesktopDirectory'),
+  [Environment]::GetFolderPath('CommonPrograms')
 )
 foreach ($u in $profiles) {
   $shortcutRoots += (Join-Path $u.Home 'Desktop')

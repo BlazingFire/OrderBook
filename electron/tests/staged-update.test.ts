@@ -15,8 +15,8 @@ import {
   signatureHolds,
   TASK_ANSWER_MS,
   decideAfterTaskStart,
-  overrideEnv,
   systemModulePath,
+  taskChildEnv,
   parseUpdatePaths,
   type ReleaseTrust,
   type StagedManifest,
@@ -25,6 +25,17 @@ import { planInstallerLaunch } from '../lib/update-launch.js';
 
 const repo = path.resolve(import.meta.dirname, '..', '..');
 const read = (file: string): string => readFileSync(path.join(repo, file), 'utf8');
+
+/**
+ * This process's environment with some variables set, **whatever case their names have**:
+ * Windows names are case-insensitive and vitest hands them over upper-cased (`PSMODULEPATH`),
+ * so a plain spread plus `PSModulePath: x` would make two entries and the child could see either.
+ */
+function withEnv(overrides: Record<string, string>): Record<string, string | undefined> {
+  const names = new Set(Object.keys(overrides).map((name) => name.toLowerCase()));
+  const kept = Object.fromEntries(Object.entries(process.env).filter(([name]) => !names.has(name.toLowerCase())));
+  return { ...kept, ...overrides };
+}
 
 const owner = generateKeyPairSync('ed25519');
 const stranger = generateKeyPairSync('ed25519');
@@ -237,12 +248,11 @@ describe('the pieces fit together', () => {
     expect(script).toContain('UPDATE_PATHS_FILE');
     expect(script).toContain('parseUpdatePaths(');
     expect(script).not.toContain('stagedUpdateDirs');
-    // Not a single path comes from process.env; the only use is passing the rest of it on, with TEMP overridden.
-    // Two uses, both passing the rest of it on with one variable overridden: PowerShell's PSModulePath, and the setup's TEMP.
-    expect(script.match(/process\.env/g)?.length).toBe(2);
-    // Through overrideEnv, which replaces a variable whatever case it has in the account's environment.
-    expect(script).toMatch(/env: overrideEnv\(process\.env, \{ PSModulePath: systemModulePath\(powershell\) \}\)/);
-    expect(script).toMatch(/env: overrideEnv\(process\.env, \{ TEMP: temp, TMP: temp \}\)/);
+    // Nothing at all comes from process.env: the children's environment is built from nothing.
+    expect(script).not.toContain('process.env');
+    // Every child's environment is built from nothing (taskChildEnv), not from the account's.
+    expect(script).toMatch(/env: taskChildEnv\(paths, \{ PSModulePath: systemModulePath\(powershell\) \}\)/);
+    expect(script).toMatch(/env: taskChildEnv\(paths, \{ TEMP: temp, TMP: temp \}\)/);
     expect(shell).not.toContain('stagedUpdateDirs');
     expect(shell).toContain('readUpdatePaths()');
   });
@@ -492,7 +502,7 @@ describe('the installer scripts are verified, and PowerShell cannot be steered b
     const result = spawnSync(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', commandFor(hash, args, fallthrough)],
-      { windowsHide: true, encoding: 'utf8', env: overrideEnv(process.env, { OB_SCRIPT: scriptFile, ...env }) },
+      { windowsHide: true, encoding: 'utf8', env: withEnv({ OB_SCRIPT: scriptFile, ...env }) },
     );
     return { code: result.status ?? -1, output: String(result.stdout).trim() };
   }
@@ -582,7 +592,7 @@ Export-ModuleMember -Function Compress-Archive`,
       const { modules, marker } = plantedModules('control');
       spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', TRIGGER], {
         windowsHide: true,
-        env: overrideEnv(process.env, { PSModulePath: userModulePath(modules) }),
+        env: withEnv({ PSModulePath: userModulePath(modules) }),
       });
       expect(existsSync(marker)).toBe(true);
     });
@@ -635,15 +645,82 @@ Export-ModuleMember -Function Compress-Archive`,
     });
   });
 
-  it('overrideEnv replaces a variable whatever case it has, so there is never a second, ambiguous entry', () => {
-    const base = { PSMODULEPATH: 'C:\\Users\\x\\Modules', Path: 'C:\\bin', temp: 'C:\\u\\tmp' };
-    const made = overrideEnv(base, { PSModulePath: 'C:\\sys', TEMP: 'C:\\work', TMP: 'C:\\work' });
-    expect(Object.keys(made).filter((name) => /^psmodulepath$/i.test(name))).toEqual(['PSModulePath']);
-    expect(Object.keys(made).filter((name) => /^temp$/i.test(name))).toEqual(['TEMP']);
-    expect(made.PSModulePath).toBe('C:\\sys');
-    // Everything else is untouched, and the input is not changed.
-    expect(made.Path).toBe('C:\\bin');
-    expect(base.PSMODULEPATH).toBe('C:\\Users\\x\\Modules');
+  it('taskChildEnv is built from nothing: no .NET profiler, Node or user PATH can reach the elevated children', () => {
+    const paths = {
+      powershell: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      stage: 'D:\\ProgramData\\OrderBook\\staged-update',
+    };
+    const made = taskChildEnv(paths, { TEMP: 'D:\\w\\tmp' });
+    expect(made.SystemRoot).toBe('C:\\Windows');
+    expect(made.ProgramData).toBe('D:\\ProgramData');
+    expect(made.PATH).toBe('C:\\Windows\\System32;C:\\Windows;C:\\Windows\\System32\\Wbem');
+    expect(made.TEMP).toBe('D:\\w\\tmp');
+    for (const name of Object.keys(made)) expect(name).not.toMatch(/^(COR_|CORECLR_|COMPLUS_|DOTNET_|NODE_|ELECTRON_)/i);
+    // Whatever this process has, none of it is copied across.
+    expect(Object.keys(made).length).toBeLessThan(12);
+  });
+
+  it('the elevated script never reads process.env; the cmd and the installer macro clear the profiler variables', () => {
+    expect(read('electron/apply-staged-update.ts')).not.toContain('process.env');
+    const cmd = read('master/installer/apply-update/apply-update.cmd');
+    for (const prefix of ['NODE_', 'ELECTRON_', 'COR_', 'CORECLR_', 'COMPLUS_', 'DOTNET_']) {
+      expect(cmd).toContain(`'set ${prefix} 2^>nul'`);
+    }
+    for (const name of ['COR_ENABLE_PROFILING', 'COR_PROFILER', 'COR_PROFILER_PATH', 'CORECLR_PROFILER', 'CORECLR_PROFILER_PATH', 'DOTNET_STARTUP_HOOKS']) {
+      expect(macro).toContain(`SetEnvironmentVariable(t "${name}"`);
+    }
+    expect(macro).toMatch(/!macro orderbookRunVerified[^\n]*\n\s*!insertmacro orderbookClearProfilerEnvironment/);
+  });
+
+  it('the uninstall sweep takes no delete target from the environment', () => {
+    const sweep = read('tools/uninstall/uninstall-orderbook.ps1');
+    const envUses = sweep.match(/\$env:\w+|\$\{env:[^}]+\}/gi) ?? [];
+    expect(envUses.every((use) => /^\$env:PSModulePath$/i.test(use))).toBe(true);
+    expect(sweep).not.toContain('ORDERBOOK_RELEASES_DIR=');
+    expect(sweep).not.toMatch(/\$releasesDir = \$env/);
+    expect(sweep).toContain('Get-DeleteRefusal $path');
+    expect(sweep).toContain('Remove-InnerLinks $path');
+  });
+
+  it.runIf(process.platform === 'win32')('the delete guard refuses non-OrderBook folders, roots and links, and unlinks inner junctions without following them', () => {
+    const sweep = read('tools/uninstall/uninstall-orderbook.ps1');
+    const grab = (name: string): string => {
+      const start = sweep.indexOf(`function ${name}(`);
+      const next = sweep.indexOf('\nfunction ', start + 1);
+      return sweep.slice(start, next).trimEnd();
+    };
+    const root = mkdtempSync(path.join(os.tmpdir(), 'ob-del-'));
+    try {
+      const keep = path.join(root, 'CompanyData');
+      const app = path.join(root, 'OrderBook Master Panel');
+      const victim = path.join(root, 'victim');
+      mkdirSync(keep); mkdirSync(app); mkdirSync(victim);
+      writeFileSync(path.join(victim, 'precious.txt'), 'x');
+      writeFileSync(path.join(keep, 'data.txt'), 'x');
+      const innerLink = path.join(app, 'inner');
+      const aliasOrderBook = path.join(root, 'OrderBook-alias');
+      const script = [
+        '$DryRun = $false', '$script:counts = @{ kept = 0 }', 'function Note($a, $b) { Write-Output "NOTE $a $b" }',
+        grab('Get-DeleteRefusal'), grab('Remove-InnerLinks'), grab('Remove-Leftover'),
+        `New-Item -ItemType Junction -Path '${innerLink}' -Target '${victim}' | Out-Null`,
+        `New-Item -ItemType Junction -Path '${aliasOrderBook}' -Target '${victim}' | Out-Null`,
+        `foreach ($p in @('C:\\Windows', 'C:\\', '${keep}', '${aliasOrderBook}', '${path.join(aliasOrderBook, 'sub')}')) { "REFUSE|$p|" + [bool](Get-DeleteRefusal $p) }`,
+        `foreach ($p in @('${app}', 'C:\\x\\OrderBook\\master', 'C:\\x\\orderbook-master-updater', 'C:\\OrderBook-Releases')) { "ALLOW|$p|" + [bool](Get-DeleteRefusal $p) }`,
+        `Remove-Leftover '${app}' 'app'`,
+        `Remove-Leftover '${keep}' 'data'`,
+      ].join('\n');
+      const file = path.join(root, 'guard.ps1');
+      writeFileSync(file, script);
+      const out = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', file], { encoding: 'utf8' }).stdout;
+      for (const line of out.split(/\r?\n/).filter((l) => l.startsWith('REFUSE|'))) expect(line.endsWith('|True')).toBe(true);
+      for (const line of out.split(/\r?\n/).filter((l) => l.startsWith('ALLOW|'))) expect(line.endsWith('|False')).toBe(true);
+      expect(existsSync(app)).toBe(false);
+      expect(existsSync(path.join(victim, 'precious.txt'))).toBe(true);
+      expect(existsSync(path.join(keep, 'data.txt'))).toBe(true);
+    } finally {
+      try { spawnSync('cmd.exe', ['/c', 'rmdir', path.join(root, 'OrderBook-alias')]); } catch { /* not there */ }
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('the Install call passes its folder as data and falls through to a failure', () => {

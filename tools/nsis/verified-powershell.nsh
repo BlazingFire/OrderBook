@@ -28,7 +28,36 @@
 ; absolute path ($SYSDIR), never found through PATH.
 ;
 ; Leaves the process exit code on the stack (nsExec::ExecToLog).
+!macro orderbookClearProfilerEnvironment
+  ; PowerShell is a .NET program. If the account's environment says COR_ENABLE_PROFILING=1
+  ; with a COR_PROFILER and COR_PROFILER_PATH, the CLR loads that DLL into the elevated
+  ; process before a line of script runs (a known UAC bypass). `n` is a null value, which
+  ; deletes the variable. The two *_ENABLE_PROFILING switches are set to "0" as well, so
+  ; a profiler that was named some way not listed here still stays off.
+  ;
+  ; NSIS cannot delete by prefix, so the names that load code are listed; the nightly
+  ; task, which runs unattended, does not rely on this: it builds its children's
+  ; environment from an allowlist (electron/lib/staged-update.ts, taskChildEnv).
+  System::Call 'Kernel32::SetEnvironmentVariable(t "COR_ENABLE_PROFILING", t "0")'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "CORECLR_ENABLE_PROFILING", t "0")'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "COR_PROFILER", n)'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "COR_PROFILER_PATH", n)'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "COR_PROFILER_PATH_32", n)'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "COR_PROFILER_PATH_64", n)'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "CORECLR_PROFILER", n)'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "CORECLR_PROFILER_PATH", n)'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "CORECLR_PROFILER_PATH_32", n)'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "CORECLR_PROFILER_PATH_64", n)'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "COMPlus_ProfAPI_ProfilerCompatibilitySetting", n)'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "COMPlus_Version", n)'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "COMPlus_InstallRoot", n)'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "DOTNET_STARTUP_HOOKS", n)'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "DOTNET_ROOT", n)'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "DOTNET_gcServer", n)'
+!macroend
+
 !macro orderbookRunVerified SCRIPT SHA256 ARGUMENTS FALLTHROUGH
+  !insertmacro orderbookClearProfilerEnvironment
   System::Call 'Kernel32::SetEnvironmentVariable(t "OB_SCRIPT", t "${SCRIPT}")'
   nsExec::ExecToLog `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$env:PSModulePath=$$PSHOME+'\Modules'; $$b=[IO.File]::ReadAllBytes($$env:OB_SCRIPT); $$h=([BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($$b))).Replace('-','').ToLower(); if ($$h -ne '${SHA256}') { exit 9 }; try { $$s=[scriptblock]::Create([Text.Encoding]::UTF8.GetString($$b).TrimStart([char]0xFEFF)); & $$s ${ARGUMENTS} } catch { exit 1 }; exit ${FALLTHROUGH}"`
 !macroend

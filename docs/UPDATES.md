@@ -273,8 +273,14 @@ run from the file. The command line the installer builds
    not stop PowerShell auto-loading a module such as `Microsoft.PowerShell.Archive`
    from the user's own writable `Documents\WindowsPowerShell\Modules` (a planted
    one runs on first use; a test does exactly that). The task's own PowerShell is
-   started with `PSModulePath` replaced the same way, whatever case the account's
-   variable has, and `update-dirs.ps1` pins it again before its first cmdlet;
+   started with an environment **built from nothing** (`taskChildEnv`: system folders
+   derived from `paths.json`, a fixed `PATH`; no `COR_*`/`COMPlus_*`/`DOTNET_*`
+   .NET-profiler variable, which would load a DLL into the elevated process, no
+   `NODE_*`, no user `PATH`). `apply-update.cmd` and this macro clear those variables
+   too, and `update-dirs.ps1` pins the module path again before its first cmdlet.
+   The elevated uninstall sweep takes **no delete target from the environment** (known-folder
+   API only; `ORDERBOOK_RELEASES_DIR` is not read), refuses any folder that is not
+   plainly OrderBook's, a drive root, or a link, and removes links inside a folder as links;
 2. reads the file **once**, checks its SHA-256 against the value baked in when the
    installer is **compiled** (`!system` runs `tools/bake-script-hashes.cjs`, so even
    `electron-builder --prepackaged`, which skips `afterPack`, cannot leave a stale

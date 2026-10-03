@@ -89,21 +89,43 @@ export function parseUpdatePaths(text: string): UpdatePaths | null {
 }
 
 /**
- * A copy of `env` with these variables set, **whatever case their names have there**.
+ * The environment of every process the elevated task starts, **built from nothing**.
  *
- * Windows environment names are case-insensitive, and Node hands them over in the
- * case the block had (`PSModulePath`, or `PSMODULEPATH`, or `Temp`). `{ ...env,
- * PSModulePath: x }` over a block that says `PSMODULEPATH` makes *two* entries, and
- * which one the child sees is not something to leave to chance for the variable that
- * decides which modules an elevated PowerShell loads. So the old entries go first.
+ * Not `process.env` with a few variables changed. The task runs as an account whose
+ * environment its other programs can write, and an inherited variable can steer an
+ * elevated program: `NODE_OPTIONS` and `--inspect` for Node, `PSModulePath` for
+ * PowerShell, and for the .NET that PowerShell is, `COR_ENABLE_PROFILING` with
+ * `COR_PROFILER` / `COR_PROFILER_PATH` (and the `COMPlus_*`, `CORECLR_*` and
+ * `DOTNET_*` families), which make the CLR load a DLL of the attacker's choosing
+ * into the elevated process: a known UAC bypass. So an allowlist, not a denylist: a
+ * variable that is not named here does not exist for the child.
+ *
+ * Every value is derived from `paths.json` (written by the installer) or fixed, never
+ * read from the environment: the system folder is four levels above the system's
+ * `powershell.exe`, and ProgramData two above the staging folder.
  */
-export function overrideEnv(
-  env: Record<string, string | undefined>,
-  overrides: Record<string, string>,
-): Record<string, string | undefined> {
-  const names = new Set(Object.keys(overrides).map((name) => name.toLowerCase()));
-  const kept = Object.fromEntries(Object.entries(env).filter(([name]) => !names.has(name.toLowerCase())));
-  return { ...kept, ...overrides };
+export function taskChildEnv(
+  paths: Pick<UpdatePaths, 'powershell' | 'stage'>,
+  extra: Record<string, string> = {},
+): Record<string, string> {
+  const up = (file: string, levels: number): string => {
+    let current = file;
+    for (let index = 0; index < levels; index += 1) current = path.win32.dirname(current);
+    return current;
+  };
+  // C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -> C:\Windows
+  const systemRoot = up(paths.powershell, 4);
+  const system32 = path.win32.join(systemRoot, 'System32');
+  return {
+    SystemRoot: systemRoot,
+    windir: systemRoot,
+    SystemDrive: systemRoot.slice(0, 2),
+    ProgramData: up(paths.stage, 2),
+    PATH: [system32, systemRoot, path.win32.join(system32, 'Wbem')].join(';'),
+    PATHEXT: '.COM;.EXE;.BAT;.CMD',
+    ComSpec: path.win32.join(system32, 'cmd.exe'),
+    ...extra,
+  };
 }
 
 /**
