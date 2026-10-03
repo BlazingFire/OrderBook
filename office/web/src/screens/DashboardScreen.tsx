@@ -32,6 +32,9 @@ interface Props {
   view: LocalView;
   /** Whether the Master is out of reach — the figures are then a picture of the past. */
   linkDown: boolean;
+  /** The footer's sync state and its words, so this card never says more than the footer does. */
+  railState: 'synced' | 'syncing' | 'offline' | 'offlinePending' | 'conflict';
+  syncLabel: string;
   onNavigate: (tab: DashboardTab) => void;
   onOpenLead: (id: string) => void;
 }
@@ -159,7 +162,14 @@ function describeActivity(
   return items.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
 }
 
-export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead }: Props) {
+export function DashboardScreen({
+  view,
+  linkDown,
+  railState,
+  syncLabel,
+  onNavigate,
+  onOpenLead,
+}: Props) {
   const canViewLeads = view.permissions.includes('leads.view');
   const canViewOrders = view.permissions.includes('orders.view');
   const canViewConflicts = view.permissions.includes('sync.resolveConflicts');
@@ -210,19 +220,32 @@ export function DashboardScreen({ view, linkDown, onNavigate, onOpenLead }: Prop
   const openConflicts = view.conflicts.filter((conflict) => !conflict.resolvedAt).length;
   const pendingCount = view.pendingCount;
 
+  /*
+   * Follows the footer: offline is offline, and catching up after a reconnect
+   * is not yet synced. Read off the local queue alone, this card said "All
+   * synced" with the Master out of reach and nothing queued.
+   */
+  const offline = railState === 'offline' || railState === 'offlinePending';
   const syncValue =
     openConflicts > 0
       ? t('dashboard.sync.toReview', { count: openConflicts })
-      : pendingCount > 0
-        ? t('dashboard.sync.pending', { count: pendingCount })
-        : t('dashboard.sync.allSynced');
+      : offline
+        ? syncLabel
+        : pendingCount > 0
+          ? t('dashboard.sync.pending', { count: pendingCount })
+          : railState === 'syncing'
+            ? syncLabel
+            : t('dashboard.sync.allSynced');
   const syncNote =
     openConflicts > 0
       ? t('dashboard.sync.conflictNote')
       : pendingCount > 0
         ? t('dashboard.sync.pendingNote')
-        : t('dashboard.sync.allSyncedNote');
-  const syncTone = openConflicts > 0 ? 'conflict' : pendingCount > 0 ? 'offline' : undefined;
+        : offline || railState === 'syncing'
+          ? null
+          : t('dashboard.sync.allSyncedNote');
+  const syncTone =
+    openConflicts > 0 ? 'conflict' : offline || pendingCount > 0 ? 'offline' : undefined;
 
   // Already ordered by the Master, but the sequence is the contract, not the
   // array order.

@@ -7,7 +7,7 @@
  * deliberate action at the Master.
  */
 
-import { randomBytes } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import path from 'node:path';
 import type {
   ActivityLogEntry,
@@ -24,7 +24,14 @@ import type {
   PanelStoragePathResult,
   PermissionSet,
 } from '@orderbook/shared';
-import { deviceCodeFromSeed, isServerMasterTier } from '@orderbook/shared';
+import {
+  deviceCodeFromSeed,
+  isServerMasterTier,
+  LONG_OFFLINE_MS,
+  MASTER_PROOF_CONTEXT,
+  masterProofMessage,
+  type MasterProofResponse,
+} from '@orderbook/shared';
 import bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
 
@@ -32,15 +39,16 @@ import { db } from '../db/knex.js';
 import type { ActorContext } from '../domain/actor.js';
 import { systemActor } from '../domain/actor.js';
 import { normalisePanelReport } from '../domain/panel-report.js';
-import { NotFoundError, UnauthorizedError, ValidationError } from '../lib/errors.js';
+import { NotFoundError, toErrorMessage, UnauthorizedError, ValidationError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import { panelLink } from '../realtime/panel-link.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as panelRepo from '../repositories/office-panel.repository.js';
 import { permissionSetForRole } from '../repositories/role.repository.js';
 import type { TransactionContext } from '../repositories/transaction.js';
-import { roleIdForTier } from '../repositories/user.repository.js';
+import { findActiveUserIdsWithPermission, roleIdForTier } from '../repositories/user.repository.js';
 import { publishChange } from './change-bus.js';
+import { notify } from './notification.service.js';
 import { getSetting } from './settings.service.js';
 import { getIdentity, verifyPairingPassword } from './setup.service.js';
 
@@ -179,6 +187,7 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
         // temporary ids stay attributable to it.
         device_code: deviceCodeFromSeed(panelId),
         secret_hash: secretHash,
+        master_proof_key: masterProofKey(panelSecret),
         lan_ip: remoteIp,
         status: 'active',
         paired_at: new Date(),
@@ -218,16 +227,77 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
   };
 }
 
+/**
+ * Check a panel's id and secret.
+ *
+ * The three refusals carry distinct message keys, which the socket hub turns
+ * into distinct codes: a revoked pairing (`panelRevoked`) is the one an Office
+ * acts on by forgetting its credentials, while a row this Master does not have
+ * (`panelNotPaired`, say on a Master restored from an older backup) or a
+ * secret mid-rotation must not wipe a pairing that may still be good.
+ */
 export async function authenticatePanel(panelId: string, panelSecret: string): Promise<OfficePanel> {
+  // Checked before the query: the column is a uuid, and Postgres answers a
+  // malformed one with an error rather than no row.
+  if (typeof panelId !== 'string' || !UUID_PATTERN.test(panelId)) {
+    throw new UnauthorizedError('error.unauthorized.panelNotPaired');
+  }
   const panel = await panelRepo.findPanelById(panelId);
+  if (panel?.status === 'revoked') throw new UnauthorizedError('error.unauthorized.panelRevoked');
   if (!panel || panel.status !== 'active') throw new UnauthorizedError('error.unauthorized.panelNotPaired');
 
-  const secretHash = await panelRepo.findPanelSecretHash(panelId);
-  if (!secretHash || !(await bcrypt.compare(panelSecret, secretHash))) {
+  const secret = await panelRepo.findPanelSecretHash(panelId);
+  if (!secret || !(await bcrypt.compare(panelSecret, secret.hash))) {
     throw new UnauthorizedError('error.unauthorized.panelCredentialsInvalid');
   }
 
+  // A panel paired before 1.3 has no proof key yet, and this is the one moment
+  // the Master holds its plaintext secret to derive it from. Skipped once set,
+  // so the per-request panel HTTP path pays no write.
+  if (!secret.hasProofKey) {
+    await panelRepo.fillPanelProofKey(panelId, masterProofKey(panelSecret));
+  }
+
   return panel;
+}
+
+/**
+ * The key a Master proves itself with (`shared/src/protocol/discovery.ts`):
+ * HMAC-SHA256 keyed by the panel secret over `MASTER_PROOF_CONTEXT`, hex.
+ */
+export function masterProofKey(panelSecret: string): string {
+  return createHmac('sha256', panelSecret).update(MASTER_PROOF_CONTEXT).digest('hex');
+}
+
+/** A nonce is hex, long enough to be unguessable and short enough to be cheap. */
+const NONCE_PATTERN = /^[0-9a-f]{32,128}$/i;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Prove to a panel that found this Master at a new address that it is the
+ * Master the panel paired with, before the panel sends its secret here.
+ *
+ * A 404 for a panel this Master does not know, has revoked, or has no proof
+ * key for yet: in each case the panel must not adopt this address. `host` and
+ * `port` are where the request arrived on this machine; the proof covers them.
+ */
+export async function proveMaster(
+  panelId: string,
+  nonce: string,
+  host: string | null,
+  port: number | undefined,
+): Promise<MasterProofResponse> {
+  if (!NONCE_PATTERN.test(nonce)) throw new ValidationError('validation.panel.fieldInvalid');
+
+  if (!UUID_PATTERN.test(panelId) || !host || !port) throw new NotFoundError('Panel');
+  const row = await panelRepo.findPanelProofKey(panelId);
+  if (!row || row.status !== 'active' || !row.key) throw new NotFoundError('Panel');
+
+  return {
+    proof: createHmac('sha256', Buffer.from(row.key, 'hex'))
+      .update(masterProofMessage(nonce, host, port))
+      .digest('hex'),
+  };
 }
 
 export async function revokePanel(panelId: string, actor?: ActorContext): Promise<OfficePanel> {
@@ -408,6 +478,9 @@ export async function markPanelConnected(
   /** What the panel announced in its handshake; absent from an older Office. */
   protocol?: number,
 ): Promise<void> {
+  // Synchronous up to the first await, so the hub can mark a panel present
+  // before it awaits anything and a disconnect that follows clears it.
+  cancelLongOfflineNotice(panelId);
   connectedPanelIds.add(panelId);
   panelRuntime.set(panelId, {
     pendingMutations: null,
@@ -422,7 +495,73 @@ export async function markPanelConnected(
 
 export async function markPanelDisconnected(panelId: string): Promise<void> {
   forgetPanelConnection(panelId);
+  scheduleLongOfflineNotice(panelId, LONG_OFFLINE_MS);
   await panelRepo.touchLastSeen(panelId, null);
+}
+
+/**
+ * One timer per panel that has dropped, firing once it has been away for
+ * `LONG_OFFLINE_MS`. Held in memory: a Master restart loses them, and
+ * `scheduleLongOfflineNoticesAtBoot` puts them back from `last_seen_at`.
+ */
+const longOfflineTimers = new Map<string, NodeJS.Timeout>();
+
+/** After a restart, give panels this long to reconnect before any notice. */
+const BOOT_GRACE_MS = 5 * 60 * 1000;
+
+function scheduleLongOfflineNotice(panelId: string, delayMs: number): void {
+  cancelLongOfflineNotice(panelId);
+  const timer = setTimeout(() => {
+    longOfflineTimers.delete(panelId);
+    void noticeLongOffline(panelId).catch((error: unknown) =>
+      log.warn(`Could not send the long-offline notice for ${panelId}: ${toErrorMessage(error)}`),
+    );
+  }, delayMs);
+  timer.unref?.();
+  longOfflineTimers.set(panelId, timer);
+}
+
+function cancelLongOfflineNotice(panelId: string): void {
+  const timer = longOfflineTimers.get(panelId);
+  if (timer) clearTimeout(timer);
+  longOfflineTimers.delete(panelId);
+}
+
+/** Drop every pending notice; the hub calls this when it stops. */
+export function cancelLongOfflineNotices(): void {
+  for (const timer of longOfflineTimers.values()) clearTimeout(timer);
+  longOfflineTimers.clear();
+}
+
+/**
+ * Re-arm the notices a restart lost: each active, absent panel is noticed an
+ * hour after it was last seen, but never sooner than `BOOT_GRACE_MS` from now,
+ * so a Master that was itself switched off does not report every panel at once.
+ */
+export async function scheduleLongOfflineNoticesAtBoot(now: number = Date.now()): Promise<void> {
+  for (const panel of await panelRepo.listActivePanels()) {
+    if (connectedPanelIds.has(panel.id) || longOfflineTimers.has(panel.id) || !panel.lastSeenAt) continue;
+    const due = Date.parse(panel.lastSeenAt) + LONG_OFFLINE_MS;
+    scheduleLongOfflineNotice(panel.id, Math.max(due, now + BOOT_GRACE_MS) - now);
+  }
+}
+
+async function noticeLongOffline(panelId: string): Promise<void> {
+  // Read again: the panel may have come back, been renamed or been revoked.
+  if (connectedPanelIds.has(panelId)) return;
+  const panel = await panelRepo.findPanelById(panelId);
+  if (!panel || panel.status !== 'active') return;
+
+  await notify(
+    panel.tenantId,
+    await findActiveUserIdsWithPermission(panel.tenantId, 'panels.manage'),
+    {
+      kind: 'panel.offlineLong',
+      params: { panel: panel.name },
+      link: { kind: 'panel', id: panel.id },
+      dedupeKey: `panel.offlineLong:${panel.id}`,
+    },
+  );
 }
 
 export function isPanelConnected(panelId: string): boolean {
@@ -524,6 +663,7 @@ export async function rotatePanelSecret(
   const updated = await panelRepo.updatePanelSecretHash(
     panelId,
     await bcrypt.hash(panelSecret, BCRYPT_ROUNDS),
+    masterProofKey(panelSecret),
   );
   if (!updated) throw new NotFoundError('Panel');
 
@@ -614,7 +754,9 @@ export async function listPanelActivity(
 /**
  * Drop a panel's socket without touching its pairing.
  *
- * The panel reconnects on its own within seconds — which is the point. It is
+ * The panel reconnects on its own within seconds — which is the point. An
+ * Office from 1.3 on reconnects after a Master-side disconnect; an older one
+ * read that drop as final and waited for a restart. It is
  * the "turn it off and on again" of this system: a panel wedged on a stale
  * session or a half-applied snapshot gets a clean one, and nobody has to walk
  * to that PC. Revoking would be the wrong tool: that ends the pairing.

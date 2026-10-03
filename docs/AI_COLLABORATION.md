@@ -190,6 +190,97 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-03 - 1.3 Phase 3 review fixes, round 3 (Claude)
+
+- **Panel sign-in:** `authenticatePanel` fills the proof key only when the row has none; the existing
+  secret-hash read now also says whether the key is set, so per-request panel HTTP calls pay no extra write.
+- **Docs:** STRUCTURE §3.10 and plan detail §3c give the proof as HMAC over `nonce|host:port`;
+  LEAD_GENERATION_FLOW §4 item 6 says the stage clock applies only to Offices on protocol 3 or later.
+
+### 2026-10-03 - 1.3 Phase 3 review fixes, round 2 (Claude)
+
+- **Stage clock:** `applyPush` takes the panel's protocol (the hub passes `socket.data.protocol ?? 1`); a stage
+  move is checked against the stored stage HLC only from protocol 3 on, so an older Office's live drags still
+  apply on arrival.
+- **Hub stop:** records each connected panel's disconnect (last seen) before closing, so "offline for" times
+  after a restart start from the stop.
+- **Master proof:** covers `nonce|host:port` (`masterProofMessage`); the Master signs the address the request
+  arrived at, so a relay at another address fails. The Office reads at most 1 KB of the answer, refuses
+  redirects.
+- **Docs:** hub `panelRevoked` comment (a restored copy keeps the same Master id), contract §13.4
+  (`rediscoveryRefused`, proof message), STRUCTURE shared count and dated schema totals.
+- **Tests:** `sync.integration` (protocol 2 move applies), `panel-proof.integration` (relay refused),
+  `office/tests/master-connection` (relayed answer refused, 1 KB cap, declared length, redirect).
+
+### 2026-10-03 - 1.3 Phase 3 review fixes, round 1 (Claude)
+
+- **Office clock:** `applyChange` folds each `data:changed` row's `sync.hlc` into the panel's clock, and the
+  debounced snapshot refresh folds `serverHlc`, so an online stage move on a slow-clock PC is no longer refused as stale.
+- **Push gate:** the 6 s backlog window is given once per connection and only in the first minute after it
+  (`connectedAt` = socket `handshake.issued`, through `applyPush` to `runPush`), so later backlog batches and a
+  slow-clock PC's live creates drain at the normal window.
+- **Shared pairing:** the Office backs off (refusal backoff) after the third Master close within 30 s and logs that
+  another PC may hold its pairing; the Master warns when it replaces a live socket from another address.
+- **Restore:** `clearNotifications` next to `clearVault`, so a selected restore drops the restored companies' notices.
+- **Proof key:** kept out of the `.obbackup` export (that restore revokes every panel); the plan row 2a, schema doc,
+  STRUCTURE and a HANDOFF trap now say the Phase 8 archive must carry it. Plan row 2 now names the built indexes.
+- **Electron:** `orderbook:notify` arms one focus listener per window while it flashes.
+- **Tests:** `office/tests/master-connection` (clock fold, back-off after repeated closes), `push-gate.integration`
+  (backlog once per connection; old create long after connect), `backup-chain.integration` (selected restore clears
+  notices).
+
+### 2026-10-03 - 1.3 Phase 3: realtime rules 1, 5, 6, push gate, stage HLC, notification centre (Claude)
+
+`shared/src` (ids, merge, notifications, socket, discovery, desktop, i18n), `master/src` (two migrations, hub, push
+gate, stage HLC, notification repository and service, panel service, routes), `office/src` (the Master link,
+discovery, HTTP forwards), `electron/`, `ui/src`, `master/web`, `office/web`, `eslint.config.js`, tests, docs. Built in
+five slices in one working tree: shared + hub + panel service; push gate + stage HLC; notification centre; the Office
+link; Electron, ui, web and docs.
+- **Shared:** `compareForIdAssignment` takes the mutation id as its last tie-break and no longer claims panel order
+  does not matter; `baseForUnversionedEdit` moved from `sync.service.ts`; `notifications.ts` (`NOTIFICATION_KINDS`,
+  `UserNotification`, `NotificationLink`, `LONG_OFFLINE_MS`, `isLongOffline`); `PANEL_PROTOCOL_VERSION = 3`,
+  handshake `actingUserToken`, `notification:list` / `markRead` / `notification:new`; `MASTER_PROOF_CONTEXT` and the
+  proof types; `DesktopBridge.notify`.
+- **Master:** migrations `20261002000000_user_notifications` and `20261002000001_office_panel_master_proof`, appended
+  and pinned after `server_master_tier`; hub ping 4 s / timeout 6 s, refusal codes in `err.data`, the stale socket
+  closed, presence cleared only by the current socket, one snapshot on reconnect, `emitToActors`; `push-gate.ts`;
+  stale offline stage moves recorded as `stageId` conflicts (`StaleEditError`, `assertStageFresh`, `restoreLoser`
+  through `setStage`); `notification.repository.ts`, `notification.service.ts` and its pruner; `/api/notifications`;
+  `POST /api/panel/prove`; the proof key filled at `authenticatePanel`; long-offline timers notifying `panels.manage`
+  holders; `user_notifications` kept out of backups and the proof key out of exports.
+- **Office:** handshake rebuilt per attempt; reconnect after a server disconnect; refusals backed off; credentials
+  cleared only by its own Master's revoke; `disconnectedSince`, `catchingUp`, `clockSkewMs`, the 2 s network poll,
+  `retryNow`, `rediscoveryRefused`; rediscovery that proves the new address before sending the secret;
+  `conflictingAddress`; notification forwards and `broadcastForUser`; `sync:push` acked within 60 s.
+- **Electron:** `lib/attention.ts`, `orderbook:notify` (own window only; taskbar flash; a `Notification` where
+  supported), `appUserModelId` as a `runPanelShell` field, `notify` in `preload.cts`.
+- **ui and web:** `NotificationBell` (in the strict-i18n lint list), `formatElapsed`, the `bell` icon, notification
+  methods in both `api.ts`. Office: Catching up, the offline-since and clock rows in the sync popover, banners for an
+  hour offline, a Master that does not know this panel, an untrusted address and a clock over 2 minutes off; one
+  desktop notice per offline episode; `streamEpoch` on a reconnect and on the stream reopening, bumped inside the
+  stream's listeners only; the Dashboard's Sync card from `railState`. Master: `linkUp` and "Reconnecting to the
+  Master server…", reconnect after a server disconnect and after a refusal, the `'*'` revision, the long-offline
+  panels in the sync popover, "Offline for" and "Update needed" chips, the "Offline over an hour" tile.
+- **Tests:** new `push-gate.integration`, `notifications.integration`, `panel-proof.integration`,
+  `shared/tests/notifications`, `ui/tests/notification-bell`, `electron/tests/attention`; extended `sync.integration`,
+  `panel-push.integration`, `auth-pairing.integration`, `shared/tests/sync`, `office/tests/master-connection`,
+  `office/tests/module-forwarding`, `ui/tests/office-shell` (Catching up / Synced / Offline, the offline-since row,
+  the Dashboard card, the hour-offline banner under a faked clock with one desktop notice, the clock and
+  not-recognised banners, the bell re-read on a push and a reopened stream; the one-stream test unchanged) and
+  `ui/tests/master-shell` (reconnecting and the re-read on reconnect, reconnect after a server disconnect, the bell,
+  the long-offline tile and chip). Both shell harnesses now answer `/api/notifications` (HANDOFF trap).
+- **Docs:** `LEAD_GENERATION_FLOW.md` §4 (stale stage move → conflict) and §7 (the gate windows replace the "first
+  push applied is numbered first" sentence); `docs/schema/00-overview.md` and `01-identity-and-network.md`;
+  `04-API-CONTRACT.md` §13.4; `STRUCTURE.md` §3.2, §3.10, §4.3, §4.7, §4.8, §5.6, §5.7, §5.8.5, §5.9, §6.2, §6.11,
+  §7.2, §8.4, §8.5, §8.6, §9.2, §9.3, §10.1, §11.1, §11.3, §12.2; HANDOFF release note, traps and session history.
+- **Verified by the electron-ui-web-docs slice:** `npm run typecheck` exits 0; eslint on every file it changed exits
+  0; `electron/tests` (all), all of `ui/tests`, `office/tests` (unit), and the guard suites `i18n-call-sites`,
+  `i18n-coverage`, `shared/tests/notifications`, `no-transport-dep`, `ui-conventions`, `tooling-config`,
+  `legacy-floor`, `no-duplicate-ui`, `screen-reachability`, `web-reachability`, `keys-nav-order`,
+  `wire-optionality`, `socket-contract` and `dashboard-staleness` pass. Not run by the slices: any
+  `*.integration.test.ts` and the full `npm run verify` (left to the verifier with `ORDERBOOK_PG_BIN`), and a browser
+  or Electron walk of the bell, the banners and the Windows notification.
+
 ### 2026-10-03 - Merge of `helper/1.3` into `main`: H1 party import/export, H2 reports (Claude)
 
 - Merged the helper session's branch (Claude, Sonnet): H1 party import and export on both panels

@@ -132,6 +132,13 @@ export interface DesktopBridge {
    * remembered printer that has been unplugged never blocks a print.
    */
   printPage?(options: { deviceName?: string }): Promise<{ ok: boolean; error?: string }>;
+
+  /**
+   * Show a system notification and flash the taskbar button, for something the
+   * operator should see even with the window behind another one. Resolves
+   * `false` when the shell could not show it.
+   */
+  notify?(notice: { title: string; body: string }): Promise<boolean>;
 }
 
 export interface PrinterInfo {

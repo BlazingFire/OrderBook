@@ -25,6 +25,7 @@ import { invalidateFieldCache } from '../../src/repositories/custom-field.reposi
 import { invalidatePipelineCache } from '../../src/repositories/pipeline.repository.js';
 import { invalidateRoleCache } from '../../src/repositories/role.repository.js';
 import * as catalogService from '../../src/services/catalog.service.js';
+import { configurePushGate } from '../../src/services/push-gate.js';
 import { upsertSetting } from '../../src/repositories/settings.repository.js';
 import { invalidateSettingsCache } from '../../src/services/settings.service.js';
 import { resetAuthState } from '../../src/services/auth.service.js';
@@ -73,6 +74,8 @@ const DATA_TABLES = [
   // Both this and `settings` must be listed or every integration suite leaks
   // rows into the next; no migration seeds either, so every row is test data.
   'user_password_vault',
+  // References `users` with a cascade; listed first all the same.
+  'user_notifications',
   'users',
   'settings',
   'master_config',
@@ -121,6 +124,10 @@ let seededStages: StageSnapshot[] = [];
 let seededTenantId = '';
 
 export async function setupDatabase(): Promise<void> {
+  // No gather windows: a push applies on the next tick, so suites that push
+  // do not each wait out the 5 s boot window. `push-gate.integration` sets
+  // its own.
+  configurePushGate({ windowMs: 0, backlogMs: 0, bootMs: 0 });
   await startTestPostgres();
   initDatabase(testConnectionUrl());
   await runMigrations();

@@ -25,6 +25,7 @@ import type {
   SignedInUser,
 } from '@orderbook/shared';
 import {
+  isLongOffline,
   offeredReportKinds,
   RECYCLE_BIN_ENTITIES,
   REPORT_META,
@@ -53,6 +54,8 @@ import {
   landingScreen,
   lazyScreen,
   KeyboardProvider,
+  NotificationBell,
+  notificationText,
   PaletteButton,
   ConfirmProvider,
   onSessionEnded,
@@ -81,6 +84,7 @@ import {
   withSubPages,
   type NavGroup,
   type NavItem,
+  type NotificationTransport,
   type ScreenSpec,
   type SidebarMode,
   type SubPage,
@@ -207,13 +211,26 @@ const SCREEN_ENTITIES: Record<string, readonly string[]> = {
   leadSources: ['option_list'],
 };
 
-/** One number that moves when any of the named entities does. */
+/**
+ * One number that moves when any of the named entities does — and when the
+ * socket comes back after a drop (`'*'`), since changes made meanwhile were
+ * never pushed and every screen has to read again.
+ */
 function revisionOf(revisions: Record<string, number>, key: string): number {
   return (SCREEN_ENTITIES[key] ?? []).reduce(
     (total, entity) => total + (revisions[entity] ?? 0),
-    0,
+    revisions['*'] ?? 0,
   );
 }
+
+/** How long a refused socket waits before it tries again (the server said no, not nothing). */
+const REFUSED_RETRY_MS = 5_000;
+
+/** The bell reads the signed-in person's notices from this server. */
+const notificationTransport: NotificationTransport = {
+  list: () => api.notifications(),
+  markRead: (which) => api.markNotificationsRead(which),
+};
 
 /** The cold-start steps the splash reports, in the order they run. */
 const BOOT_STEPS = ['server', 'session', 'assets'] as const;
@@ -298,6 +315,14 @@ function MasterPanel() {
   // Incremented on every relevant change so screens that fetch their own data
   // know to refetch, without this shell having to model their state for them.
   const [revisions, setRevisions] = useState<Record<string, number>>({});
+  /*
+   * Whether this window's socket to the Master server is up. The server is on
+   * the same PC or the LAN, but it restarts for an update, and a window left
+   * open across that used to go on showing a frozen picture as if live.
+   */
+  const [linkUp, setLinkUp] = useState(true);
+  /** Moves with each notice pushed to this person, so the bell re-reads. */
+  const [noticeRevision, setNoticeRevision] = useState(0);
 
   // Shell chrome state.
   const [splashDone, setSplashDone] = useState(false);
@@ -492,7 +517,60 @@ function MasterPanel() {
     // synthetic key rather than riding on some other entity's counter.
     socket.on('sync:conflict', () => bump('sync_conflict'));
 
+    // A notice for this person: the bell re-reads, and the desktop shell (when
+    // there is one) puts it in front of somebody whose window is behind another.
+    socket.on('notification:new', (notice) => {
+      setNoticeRevision((count) => count + 1);
+      void desktopBridge()
+        ?.notify?.({ title: t('notification.title'), body: notificationText(notice) })
+        .catch(() => undefined);
+    });
+
+    /*
+     * The link itself. socket.io-client comes back on its own after a dropped
+     * transport, but not after the server closed the socket on purpose (a
+     * restart) nor after it refused the handshake, so both are retried here.
+     * Coming back re-reads everything: changes made while down were never
+     * pushed to this window.
+     */
+    let down = false;
+    let retry: ReturnType<typeof setTimeout> | null = null;
+    const retryIn = (ms: number): void => {
+      if (retry) clearTimeout(retry);
+      retry = setTimeout(() => {
+        retry = null;
+        socket.connect();
+      }, ms);
+    };
+    socket.on('connect', () => {
+      setLinkUp(true);
+      if (!down) return;
+      down = false;
+      bump('*');
+      refreshUser();
+      void api
+        .panels()
+        .then((result) => setPanels(result.panels))
+        .catch(() => undefined);
+    });
+    socket.on('disconnect', (reason) => {
+      down = true;
+      setLinkUp(false);
+      if (reason === 'io server disconnect') retryIn(1_000);
+    });
+    socket.on('connect_error', () => {
+      down = true;
+      setLinkUp(false);
+      // Still active: the transport failed and socket.io-client is retrying.
+      if (socket.active) return;
+      // Refused. A session that has ended reaches the sign-in screen through
+      // the 401 this read gets; anything else is worth another try.
+      refreshUser();
+      retryIn(REFUSED_RETRY_MS);
+    });
+
     return () => {
+      if (retry) clearTimeout(retry);
       socket.close();
     };
   }, [phase, sessionToken, refreshUser]);
@@ -657,14 +735,20 @@ function MasterPanel() {
   const canViewProducts = user.permissions.includes('products.view');
   const canResolveConflicts = user.permissions.includes('sync.resolveConflicts');
 
+  // Panels that have been out of touch for an hour or more (1.3).
+  const longOffline = panels.filter((panel) => isLongOffline(panel, Date.now()));
+
   let railState: 'synced' | 'syncing' | 'offline' | 'offlinePending' | 'conflict';
-  if (openConflicts > 0) railState = 'conflict';
+  // This window's own link first: with it down, every figure below is old.
+  if (!linkUp) railState = 'offline';
+  else if (openConflicts > 0) railState = 'conflict';
   else if (offlinePanels > 0 && pendingSync > 0) railState = 'offlinePending';
   else if (offlinePanels > 0) railState = 'offline';
   else railState = pendingSync > 0 ? 'syncing' : 'synced';
 
-  const syncLabel =
-    railState === 'conflict'
+  const syncLabel = !linkUp
+    ? t('master.sync.serverUnreachable')
+    : railState === 'conflict'
       ? t('sync.conflictReview', { count: openConflicts })
       : railState === 'offlinePending'
         ? t('sync.offlinePending', { count: offlinePanels, pending: pendingSync })
@@ -1018,6 +1102,13 @@ function MasterPanel() {
         onClick={() => void resetActiveScreen()}
       />
       <PaletteButton />
+      <NotificationBell
+        transport={notificationTransport}
+        revision={(revisions['*'] ?? 0) + noticeRevision}
+        onOpen={(link) => {
+          if (link.kind === 'panel') navigate('panels');
+        }}
+      />
       {/* Beside Sign out, because the two are the same kind of thing — what you
           do with your own account — and the topbar is on every screen. */}
       <button className="ob-btn ob-btn--ghost" onClick={() => setChangingPassword(true)}>
@@ -1086,7 +1177,7 @@ function MasterPanel() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
-          <span className="ob-body-strong">{t(popoverTitleKey)}</span>
+          <span className="ob-body-strong">{linkUp ? t(popoverTitleKey) : syncLabel}</span>
           <span style={{ flex: 1 }} />
           <button
             type="button"
@@ -1105,6 +1196,12 @@ function MasterPanel() {
           <dd className="ob-data">
             {panels.length - offlinePanels}/{panels.length}
           </dd>
+          {longOffline.length > 0 && (
+            <>
+              <dt>{t('panels.offlineLong')}</dt>
+              <dd>{longOffline.map((panel) => panel.name).join(', ')}</dd>
+            </>
+          )}
         </dl>
         {openConflicts > 0 && (
           <div

@@ -33,7 +33,15 @@ import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell as electronShell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  Notification,
+  shell as electronShell,
+} from 'electron';
 
 import {
   detectAppImage,
@@ -42,6 +50,7 @@ import {
   replaceAppImage,
   startDetached,
 } from './lib/appimage.js';
+import { attentionText } from './lib/attention.js';
 import { getJson, interpretHealth, type HealthOutcome } from './lib/health.js';
 import { approveInstaller, updateMethod } from './lib/installer.js';
 import { isLeadPdfUrl } from './lib/lead-pdf.js';
@@ -62,6 +71,11 @@ export interface PanelShellConfig {
   readonly panel: 'master' | 'office';
   /** Must match `productName` in the panel's electron-builder.yml. */
   readonly productName: string;
+  /**
+   * Must match `appId` in the panel's electron-builder.yml. Windows shows a
+   * system notification only for an app id its Start-menu shortcut carries.
+   */
+  readonly appUserModelId: string;
   readonly port: number;
   /** Master builds a PostgreSQL cluster on first run; that is the slow one. */
   readonly readyTimeoutMs: number;
@@ -864,6 +878,42 @@ export function runPanelShell(config: PanelShellConfig): void {
     });
   });
 
+  /*
+   * A notice the operator should see with the window behind another one: the
+   * Office's link offline for an hour, say. Only the panel's own window may
+   * ask, and the text is clamped (`lib/attention.ts`). The taskbar button
+   * flashes until the window is focused. The system notification appears only
+   * where the OS supports one, which the Windows 7 build may not; the in-app
+   * bell carries the notice either way.
+   */
+  // Windows already flashing, so a burst of notices adds one focus listener, not one each.
+  const flashing = new WeakSet<BrowserWindow>();
+  ipcMain.handle('orderbook:notify', (event, value: unknown): boolean => {
+    const window = mainWindow;
+    if (!window || event.sender !== window.webContents) return false;
+    const notice = attentionText(value);
+    if (!notice) return false;
+    if (!window.isFocused() && !flashing.has(window)) {
+      flashing.add(window);
+      window.flashFrame(true);
+      window.once('focus', () => {
+        flashing.delete(window);
+        window.flashFrame(false);
+      });
+    }
+    if (Notification.isSupported()) {
+      const toast = new Notification({ title: notice.title, body: notice.body });
+      toast.on('click', () => {
+        if (window.isDestroyed()) return;
+        if (window.isMinimized()) window.restore();
+        window.show();
+        window.focus();
+      });
+      toast.show();
+    }
+    return true;
+  });
+
   ipcMain.handle('orderbook:openLogFolder', () => {
     electronShell.showItemInFolder(openLogPath());
     return true;
@@ -978,6 +1028,8 @@ export function runPanelShell(config: PanelShellConfig): void {
    * Chromium profile, wiping every viewer's stored preferences.
    */
   app.setName(config.productName);
+  // Windows ties a system notification to this id; it must match the installer's.
+  if (process.platform === 'win32') app.setAppUserModelId(config.appUserModelId);
 
   // One instance only. A second copy would fail to bind the port and leave the
   // operator looking at two windows, one of them permanently on the splash.

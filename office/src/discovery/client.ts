@@ -50,6 +50,13 @@ export interface DiscoveredMaster {
   acceptingPairing: boolean;
   /** Echoed back to the Master during pairing to tie the request to this search. */
   nonce: string;
+  /**
+   * True when a second reply for the same `masterUniqueId` came from a
+   * different address. The id is announced in the clear, so anything on the
+   * LAN can repeat it; a panel looking for its Master at a new address must not
+   * pick between two claimants.
+   */
+  conflictingAddress?: boolean;
 }
 
 export interface DiscoverOptions {
@@ -103,6 +110,19 @@ export async function discoverMasters(options: DiscoverOptions = {}): Promise<Di
       // Ignore replies to some other panel's search happening at the same time.
       if (hello.nonce !== nonce) return;
 
+      // Repeated broadcasts bring repeated replies from the same address, which
+      // still update the entry (pairing may have opened since). A reply from a
+      // different address only marks the first one as contested.
+      const earlier = found.get(hello.masterUniqueId);
+      if (earlier && (earlier.lanIp !== hello.lanIp || earlier.httpPort !== hello.httpPort)) {
+        earlier.conflictingAddress = true;
+        log.warn(
+          `Master ${hello.masterUniqueId} answered from ${earlier.lanIp}:${earlier.httpPort} ` +
+            `and from ${hello.lanIp}:${hello.httpPort}`,
+        );
+        return;
+      }
+
       found.set(hello.masterUniqueId, {
         masterUniqueId: hello.masterUniqueId,
         companyName: hello.companyName,
@@ -110,6 +130,7 @@ export async function discoverMasters(options: DiscoverOptions = {}): Promise<Di
         httpPort: hello.httpPort,
         acceptingPairing: hello.acceptingPairing,
         nonce,
+        ...(earlier?.conflictingAddress ? { conflictingAddress: true } : {}),
       });
 
       log.info(

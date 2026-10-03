@@ -11,7 +11,7 @@ import { attachSession } from './middleware/require-auth.js';
 import { requirePanel } from './middleware/require-panel.js';
 import { accessRoutes } from './routes/access.routes.js';
 import { avatarFilesRoutes, avatarRoutes } from './routes/avatar.routes.js';
-import { authRoutes } from './routes/auth.routes.js';
+import { authRoutes, notificationRoutes } from './routes/auth.routes.js';
 import { dataRoutes } from './routes/data.routes.js';
 import { fieldsRoutes } from './routes/fields.routes.js';
 import { imageFilesRoutes, imagesRoutes } from './routes/images.routes.js';
@@ -19,7 +19,7 @@ import { integrationRoutes } from './routes/integration.routes.js';
 import { logRoutes } from './routes/log.routes.js';
 import { panelCatalogRoutes } from './routes/panel-catalog.routes.js';
 import { panelImageRoutes } from './routes/panel-image.routes.js';
-import { panelRoutes, pairingRoutes } from './routes/panel.routes.js';
+import { panelProofRoutes, panelRoutes, pairingRoutes } from './routes/panel.routes.js';
 import { partyAccessRoutes } from './routes/party-access.routes.js';
 import { publicApiRoutes } from './routes/public-api.routes.js';
 import { recycleBinRoutes } from './routes/recycle-bin.routes.js';
@@ -61,6 +61,7 @@ export function createApp(): Express {
   // Master-PC only, and before the `/api` catch-all: recovery runs before sign-in.
   app.use('/api/master-key', masterKeyRoutes);
   app.use('/api/auth', authRoutes);
+  app.use('/api/notifications', notificationRoutes);
   app.use('/api/pairing', pairingRoutes);
   app.use('/api/panels', panelRoutes);
   app.use('/api/access', accessRoutes);
@@ -82,6 +83,9 @@ export function createApp(): Express {
   // enters it whether or not one of its routes matches — so an import paid for
   // the bcrypt compare and the acting-person lookup in the image router, fell
   // through, and paid for both again in its own.
+  // Before `requirePanel`: the proof is asked for before the panel will send
+  // this address its secret.
+  app.use('/api/panel/prove', panelProofRoutes);
   app.use('/api/panel', requirePanel, panelImageRoutes, panelCatalogRoutes);
   app.use('/api/images', imageFilesRoutes);
   // The same router, mounted a second time, for the same reason as avatars

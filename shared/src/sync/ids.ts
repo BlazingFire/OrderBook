@@ -8,11 +8,13 @@
  *   temporary  A3F9K2000000123   15 chars = 6-char device code + 9-digit counter
  *   permanent  LD0000000042      12 chars = 2-char entity prefix + 10-digit seq
  *
- * Only the Master mints permanent ids, and it does so in `(hlc, deviceCode)`
- * order rather than arrival order — so two panels syncing in either sequence
- * produce identical numbering. The temporary id keeps resolving forever through
- * the `id_map` table, which is why a docket printed while offline is still
- * findable after renumbering.
+ * Only the Master mints permanent ids, and it sorts each batch it applies by
+ * `(hlc, deviceCode, mutationId)` rather than arrival order. Pushes that reach
+ * the Master inside the same gather window are therefore numbered by HLC
+ * whichever panel sent first; pushes further apart are numbered in the order
+ * they arrive, because a number already handed out is never taken back. The
+ * temporary id keeps resolving forever through the `id_map` table, which is why
+ * a docket printed while offline is still findable after renumbering.
  *
  * Pure string handling: no randomness, no clock, no I/O. Callers supply the
  * counter, which is what makes id assignment reproducible in tests.
@@ -162,15 +164,22 @@ export function isPermanentId(value: string): boolean {
 }
 
 /**
- * Ordering for permanent-id assignment: HLC first, device code to break exact
- * ties. Sorting the batch this way — rather than assigning in arrival order — is
- * what makes numbering independent of which panel reconnected first.
+ * Ordering for permanent-id assignment: HLC first (its physical time, then its
+ * counter), the device code to break an exact tie, and the mutation id last so
+ * the order is total even for two mutations a panel stamped with the same HLC.
+ *
+ * This orders one batch. It does not make numbering independent of which panel
+ * reconnected first: the Master can only sort the pushes it holds at once (the
+ * push gate's gather window), and ids minted for an earlier batch stay minted.
  */
 export function compareForIdAssignment(
-  a: { hlc: string; deviceCode: string },
-  b: { hlc: string; deviceCode: string },
+  a: { hlc: string; deviceCode: string; mutationId?: string },
+  b: { hlc: string; deviceCode: string; mutationId?: string },
 ): number {
   if (a.hlc !== b.hlc) return a.hlc < b.hlc ? -1 : 1;
   if (a.deviceCode !== b.deviceCode) return a.deviceCode < b.deviceCode ? -1 : 1;
+  const am = a.mutationId ?? '';
+  const bm = b.mutationId ?? '';
+  if (am !== bm) return am < bm ? -1 : 1;
   return 0;
 }

@@ -29,6 +29,7 @@ import {
   tenantScopedTables,
   verifyActivityLogChain,
 } from '../repositories/backup.repository.js';
+import { clearNotifications } from '../repositories/notification.repository.js';
 import { clearVault } from '../repositories/password-vault.repository.js';
 import { invalidateRoleCache } from '../repositories/role.repository.js';
 import { invalidateSettingsCache } from './settings.service.js';
@@ -112,6 +113,8 @@ export async function restoreBackup(
     // that may now mean somebody else entirely. (The table is named in exactly
     // three files, none of them this one — `password-vault-invariants.test.ts`.)
     await clearVault(trx, tenantIds);
+    // Notices are left out of a backup for the same reason.
+    await clearNotifications(trx, tenantIds);
 
     if (tables.includes('office_panels')) await revokeAllOfficePanels(trx);
     if (tables.includes('master_config')) await regeneratePairingPasswordHash(trx, newPairingHash);

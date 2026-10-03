@@ -791,8 +791,8 @@ uses Node's `Buffer`). If a rule must mean the same thing on both sides of the L
 a permission key, a setting's fallback, a column name, how two offline edits
 merge, a socket event's payload — it is declared here once.
 
-Tracked: **71 files** — 47 in `shared/src/` (`domain/` 24, `i18n/` 9, `keys/` 3,
-`protocol/` 5, `sync/` 5, `shared/src/index.ts`), 22 in `shared/tests/` (21 suites +
+Tracked: **79 files** — 51 in `shared/src/` (`domain/` 28, `i18n/` 9, `keys/` 3,
+`protocol/` 5, `sync/` 5, `shared/src/index.ts`), 26 in `shared/tests/` (25 suites +
 `shared/tests/activity-tokens.lock.json`), `shared/package.json`,
 `shared/tsconfig.json`.
 
@@ -836,6 +836,7 @@ Tracked: **71 files** — 47 in `shared/src/` (`domain/` 24, `i18n/` 9, `keys/` 
 | `shared/src/domain/connectors.ts` | Outbound connectors to other systems, described as data. Conflicts resolve by a per-field rule, not by HLC. Entities: `party` and `product`. | `Connector`, `ConnectorInput`, `ConnectorResource(Input)`, `ConnectorFieldMap(Input)`, `ConnectorTransform`, `CONNECTOR_TRANSFORMS`, `ConnectorRun`, `ConnectorRowResult`, `ConnectorTestResult`, `ConnectorProfile`, `ConnectorConflictRule`, `CONNECTOR_MIN_INTERVAL_MIN` (5), `CONNECTOR_FLAGGABLE_FIELDS` |
 | `shared/src/domain/developer.ts` | Developer-mode constants. The password hash is `scrypt$…`; the plaintext is only in `docs/DEVELOPER_MODE.md`. | `DEVELOPER_TOKEN_TTL_MS` (15 min), `DEVELOPER_TOKEN_HEADER` (`x-developer-token`), `DEVELOPER_UNLOCK_MAX_FAILURES` (5), `DEVELOPER_UNLOCK_LOCKOUT_MS`, `DEVELOPER_PASSWORD_HASH`, `DEVELOPER_RESET_CONFIRMATION` (`'RESET'`), `DUMMY_USERS` (admin, management, office), `DUMMY_SERVER_MASTERS` (1.3 Phase 2: `master`, `master-backup`, used only when seeding runs setup itself), `SeedDummyUsersResult`, `ResetAllResult`, `SeedSampleDataResult`, `LoadCatalogueResult`, `SampleDataCounts` |
 | `shared/src/domain/master-key.ts` | 1.3 Phase 2. The master key (`docs/MASTER_KEY.md`, the only place the plaintext appears): its scrypt hash, the token header and lifetime, and the Server Master account shapes. No `.env` override. | `MASTER_KEY_HASH`, `MASTER_KEY_TOKEN_HEADER` (`x-master-key-token`), `MASTER_KEY_TOKEN_TTL_MS` (5 min), `SERVER_MASTER_MIN_ACTIVE` (2), `SUGGESTED_SERVER_MASTER_USERNAMES` (`master`, `master-backup`), `MasterKeyUnlock`, `ServerMasterAccountInput`, `ServerMasterAccount` |
+| `shared/src/domain/notifications.ts` | 1.3 Phase 3. The notification bell's vocabulary and the one-hour offline rule both panels and the Master share. Kinds grow phase by phase; each has one `notification.<kind>` message key. | `NOTIFICATION_KINDS` (`panel.offlineLong`), `NotificationKind`, `isNotificationKind`, `NotificationLink` (`{kind:'panel', id}`), `UserNotification`, `LONG_OFFLINE_MS` (3 600 000), `isLongOffline(panel, nowMs)` (an active, unconnected panel last seen an hour or more ago; never-seen and revoked panels do not count) |
 | `shared/src/domain/version.ts` | Version comparison and the release manifest. | `parseVersion`, `compareVersions`, `isNewer`, `standing`, `VersionStanding`, `PanelKind`, `ReleasePlatform` (`win32`/`darwin`/`linux`, plus `win7` for the Electron 22 Office line), `releasePlatformFor(platform, electronVersion)` (`win7` for Windows on an Electron major below `LEGACY_ELECTRON_CEILING` = 23), `LEGACY_RELEASE_PLATFORM` (`'win32'`: a manifest with no `platform` is a Windows build), `ReleaseManifest`, `UpdateAvailability` |
 | `shared/src/domain/release-signature.ts` | Exactly which bytes an Ed25519 release signature covers. Browser-safe (no `node:crypto`). | `SIGNED_MANIFEST_FIELDS` (`panel`, `platform`, `version`, `file`, `sizeBytes`, `sha256`, `releasedAt`), `canonicalManifestPayload()` (`field=value` lines joined by newlines, `sha256` lower-cased), `ManifestSignature`, `isManifestSigned` |
 | `shared/src/domain/release-keys.ts` | The public keys a build trusts; rewritten by `tools/make-release-key.mjs`. **`TRUSTED_RELEASE_KEYS` is currently empty.** | `TrustedReleaseKey`, `TRUSTED_RELEASE_KEYS`, `trustedKeyById`, `allowUnsignedReleases(env)` |
@@ -1071,6 +1072,18 @@ appends every missing key just before the final `};` with its English text and a
   office-panel socket; `panels:changed` and `dashboard:changed` go to master-admin
   sockets only (§1.3).
 
+**1.3 Phase 3 on the socket contract.** `PANEL_PROTOCOL_VERSION` is 3.
+`PanelAuthPayload` gains `actingUserToken?` (the Master resolves it before building
+the delta, so a reconnect sends one snapshot, not two) and `SocketData` gains
+`actingUserId?`. New commands `notification:list` and `notification:markRead`
+(`COMMAND_MIN_PROTOCOL` 3; `report:table` and `report:options` are listed at 2) and
+the push `notification:new` (`UserNotification & {forUserId}`; an Office drops it
+unless it names the person signed in there). A refused handshake's `connect_error`
+carries `err.data {code, messageKey}`: `panelNotPaired`, `panelRevoked` (with the
+Master's `masterUniqueId`), `panelCredentialsInvalid`, `unauthorized`, or
+`maintenance` for anything that is not an `AppError`. The hub pings every 4 s and
+drops a socket silent for 6 s more.
+
 **`shared/src/protocol/discovery.ts` — custom UDP discovery (not mDNS).**
 `DISCOVERY_PORT = 45789`, `DISCOVERY_MAGIC = 'ORDERBOOK'`,
 `DISCOVERY_PROTOCOL_VERSION = 1`, `DISCOVERY_BROADCAST_INTERVAL_MS = 1500`. The
@@ -1079,7 +1092,13 @@ unicast with a `HelloMessage` (`nonce`, `masterUniqueId`, `companyName`, `lanIp`
 `httpPort`, `acceptingPairing`). Helpers: `createDiscoverMessage`,
 `createHelloMessage`, `encodeDiscoveryMessage` (JSON → `Buffer`),
 `decodeDiscoveryMessage` (null for anything that is not a well-formed packet of this
-protocol and version).
+protocol and version). Since 1.3 Phase 3 also the rediscovery proof:
+`MASTER_PROOF_CONTEXT = 'orderbook/master-proof/v1'`, `MasterProofRequest`
+(`panelId`, hex `nonce`) and `MasterProofResponse` (`proof`). The Master's proof key is
+HMAC-SHA256(panelSecret, context); the proof is HMAC-SHA256(key bytes,
+`masterProofMessage(nonce, host, port)`), that is `nonce|host:port` for the address and
+port the request reached, so a panel can check an address is its own Master without
+sending the secret there, and a proof relayed from another address does not verify.
 
 **`shared/src/protocol/pairing.ts` — the HTTP pairing step.**
 `PAIRING_ENDPOINT = '/api/pairing/request'`, `PairingMode` (`auto`/`manual`).
@@ -1099,7 +1118,9 @@ eight methods are optional because older shells lack them: `chooseDirectory`,
 `getDataDir`, `setDataDir`, `getShellSettings` (incl. `standalone?` and, since
 2026-09-25, `systemPackage?` — a Linux copy not started from an AppImage, in a
 shipped build the `.deb`, which `applyUpdate` refuses), `setShellSettings`,
-`openLogFolder`, `uninstall({keepData})`, `onMenuCommand`.
+`openLogFolder`, `uninstall({keepData})`, `onMenuCommand`, and later `listPrinters`,
+`printPage` (2026-09-30) and `notify({title, body})` (1.3 Phase 3: a system
+notification plus a taskbar flash, `false` when the shell could not show it).
 `PanelHealth` is the `GET /api/health` shape the shell polls; its `dataDir`,
 `logFile`, `installerDir`, `installer` and `runtime` fields go to loopback callers
 only. Also `PanelBootState`, `PanelBootStatus`, `PanelHealthInterface`,
@@ -1261,7 +1282,7 @@ never talks to a server** (§4.10). (`ui/tests/panel-harness.ts` is the one plac
 | `ui/src/Button.tsx` | `ButtonVariant`, `ButtonSize`, `Button`, `IconButton`, `ButtonLink` | only combines `.ob-btn*` classes; `busy` disables and sets `aria-busy` |
 | `ui/src/Card.tsx` | `Card`, `Section` | `.ob-card` (hairline, no shadow) |
 | `ui/src/Tabs.tsx` | `TabItem`, `Tabs`, `Segmented` | underline tabs with roving focus; `Segmented<T>` pill switcher |
-| `ui/src/icons.tsx` | `IconName`, `Icon` | 36 inline 16×16 stroke icons |
+| `ui/src/icons.tsx` | `IconName`, `Icon` | inline 16×16 stroke icons; `bell` added in 1.3 Phase 3 |
 | `ui/src/Logo.tsx` | `Logo`, `LogoLockup` | the 4×3 lattice mark ("The Fill"); wordmark literal `OrderBook` |
 | `ui/src/logoCells.ts` | `CELLS` | the 10 lattice cells shared by `Logo`, `Splash`, `BusyMark` and `tools/make-icons.mjs` |
 | `ui/src/BusyMark.tsx` | `BusyMark` | the only spinner |
@@ -1324,6 +1345,7 @@ removed on 2026-09-25.
 | `ui/src/LeadRecordView.tsx`, `ui/src/OrderRecordView.tsx` | 2026-10-01: the Master's record bodies, ports of `office/web/src/screens/LeadDetail.tsx` and `OrderDetailBody` (`OrderBoardScreen.tsx`) — keep in step; the Office still has its own copies (HANDOFF owed work). Props plus a transport read through `transportRef` (`LeadRecordTransport { addLeadRemark, setLeadStage, convertLead }`, `OrderRecordTransport { updateOrder, setOrderStage, dispatchOrder }`). Unlike the Office copies, the stage select, Add note, weight override, Convert card and Dispatch card are **absent** without `canEdit` / `canConvert` / `canDispatch`. | `LeadsScreen`, `OrdersScreen` (Master) |
 | `ui/src/OptionListEditor.tsx` | `OptionListEditor`, `OptionListEditorProps`, `OptionListTransport`, `FieldDifference`, `ConflictNotice`, `HexField`, `HEX_PATTERN`, `HEX_EXAMPLE` | Catalogue v2 (2026-09-29): one option list's values — add, relabel, hex, reorder, remove to the Recycle Bin, "used by" counts, the stale-save conflict with Overwrite — lifted out of the Master's Fields screen so a Settings tab can edit the lead sources and the brands. Props `{ listKey, canManage, transport, revision?, compact? }`; it reads its list descriptors from `buildFieldCatalogue()`, as the server does. Transport `{ fieldValues, fieldUsage, createFieldValue, updateFieldValue, deleteFieldValue, reorderFieldValues, conflictOf(error) }`; the Master's is `optionListTransport` in `master/web/src/screens/FieldsScreen.tsx`. Test: `ui/tests/option-list-editor.test.tsx`. |
 | `ui/src/LogsScreen.tsx` | `LogsScreen`, `LogsTransport` | 1.3 Phase 2, moved from `master/web/src/screens/LogsScreen.tsx` so both panels mount it. The activity log: text/actor/entity/action/date filters (entity and action names through `logsEntityLabelKey`/`logsActionLabelKey`, raw for a token this build does not know; the search `Input` carries `data-screen-search`), `NewerOlderPager`, rows rendered with `renderActivity(createTranslator(locale()), …)`, entry detail as an `EditorScreen` sub-screen (sub-nav `logs.entry`), "Verify chain" (`VerificationVerdict`), CSV export with `?locale=`. A Server Master's rows are highlighted (`rowHighlight` on `actor.tier`) and badged. Transport `{ logs, logFacets, verifyLogChain, logsExportUrl }`, read through `transportRef`; each panel's `screens/LogsScreen.tsx` is a thin mount building it from its own `api`. Test: `ui/tests/logs-screen.test.tsx`. | `logs` on both panels |
+| `ui/src/NotificationBell.tsx` | `NotificationBell`, `NotificationTransport`, `LocalNotice`, `notificationText` | 1.3 Phase 3. The topbar bell on both panels: an icon with the unread count (stored unread plus the panel's own `local` notices), a list popover anchored under it (newest first, unread in bold, Mark all as read, an empty state, a "may be out of date" note when the read fails), closed by Escape or a click elsewhere. Opening a notice marks it read and hands its link to `onOpen(link)`. It re-reads when `revision` moves and each time it is opened. `notificationText` renders a notice from an explicit kind → key map. Transport `{ list(), markRead({ids} \| {all:true}) }` read through a ref; each panel builds it from its own `api`. In the strict-i18n lint list. Test: `ui/tests/notification-bell.test.tsx`. | the topbar of both `App.tsx` |
 | `ui/src/ShortcutSettings.tsx` | `ShortcutSettings` | rebinding by capture (`chordFromEvent`, `isReservedChord`), stored via `keyboard.setBinding(id, formatChord(chord))` |
 | `ui/src/GalleryScreen.tsx` | `GalleryScreen` | token and component gallery, reached only at `#/gallery` (footer link), rendered outside `ScreenHost` |
 | `ui/src/AvatarPicker.tsx` | `AvatarPicker` | upload/replace/clear a profile picture, checks type and `MAX_AVATAR_SOURCE_BYTES`. Master only. |
@@ -1337,7 +1359,7 @@ removed on 2026-09-25.
 | `ui/src/useEnterToAdvance.ts` | `useEnterToAdvance`, `useEscapeToPrevious` | Enter walks fields (`input`, `select`, `textarea`, `[data-field]`) in a container ref, skipping `[data-keys-grid]`, leaving textareas alone; on the last field calls `onSubmit`. On a native `<select>` the first Enter opens its picker (`showPicker()`) and only the next Enter advances (Chromium 121+; on the Win7 build's Chromium 108 the call throws, is caught, and Enter just advances); Enter on a `button` or an element with `role="button"` is left alone (it is a click). Escape walks back. |
 | `ui/src/breakpoints.ts` | `BP_NARROW` (`max-width: 1180px`) | physical px; `base.css` repeats it and also steps at 1080px wide and 800px tall (the unused `BP_TIGHT`/`BP_SHORT` constants were removed 2026-09-25) |
 | `ui/src/rem.ts` | `rem` | `rem(px)` = `px/14` rem for inline styles |
-| `ui/src/format.ts` | `formatKg`, `formatBytes`, `formatDateTime` | `formatKg` uses `en-IN`, ≤ 3 decimals; `null` → `—` |
+| `ui/src/format.ts` | `formatKg`, `formatBytes`, `formatDateTime`, `formatElapsed` | `formatKg` uses `en-IN`, ≤ 3 decimals; `null` → `—`. `formatElapsed(ms)` (1.3 Phase 3) reads "42 m", "1 h", "1 h 5 m" with the unit words from `time.hours.short` / `time.minutes.short`; a negative or broken span reads "0 m" |
 | `ui/src/errorText.ts` | `apiErrorText` | if the error is an `Error` with a string `code`: `t(messageKey)`, else `t(errorMessageKey(code))` (a `CODE_TOKENS` entry or `error.unknown` — so a coded error never falls through to its English message); otherwise an `Error`'s `.message`, else `t(fallback)`. Checks shape rather than importing a panel's `ApiError` |
 | `ui/src/sessionEnded.ts` | `SessionEndedReason`, `publishSessionEnded`, `onSessionEnded` | module-level emitter the api clients call on a 401 |
 | `ui/src/abort.ts` | `anySignal` | added in 1.3 Phase 0: `AbortSignal.any` for Chromium 108 (which has it only from 116). Aborts with the first input's reason, returns an already-aborted signal for an already-aborted input, and removes its listeners once settled. Used by both panels' `api.ts` to join a caller's signal to the request timeout. Test: `ui/tests/abort.test.ts` |
@@ -1428,7 +1450,9 @@ is therefore kept as two byte-identical copies** (`master/web/src/screens/PartyA
 
 ### 4.11 Tests that guard the kit
 
-`ui/tests/` (jsdom, 18 files; the counts in brackets are tests passed at `43fd5b0`):
+`ui/tests/` (jsdom; the counts in brackets are tests passed at `43fd5b0`; 1.3 Phase 3
+added `ui/tests/notification-bell.test.tsx` and the link and bell cases in both shell
+tests, below):
 `ui/tests/activity-spike.test.tsx` (3, `<Activity>` semantics),
 `ui/tests/screen-host.test.tsx` (5), `ui/tests/app-shell-nav.test.tsx` (4),
 `ui/tests/settings-layout.test.tsx` (9), `ui/tests/developer-panel.test.tsx` (6),
@@ -2134,6 +2158,38 @@ exercised only through service integration tests.
   errors (`40001`, `40P01`, pool timeout) are rethrown, not recorded. Only
   `lead.create`, `party.create` and `product.create` record a temporary-id mapping
   (`mapTemporaryId`).
+  **Since 1.3 Phase 3** fresh mutations go through the push gate
+  (`runPush(actor, fresh, applyOne)`); the sort, the 503 pre-check and the
+  `alreadyApplied` pre-read stay here. `applyOne`, `route` and `mergeUpdate` take an
+  `afterCommit` list, so `publishConflict` runs after `applied_mutations` commits.
+  `lead.setStage` / `order.setStage` go through `stageChange()`, which passes the
+  mutation's `{hlc, deviceCode}` to `setStage`; a `StaleEditError` becomes a
+  `stageId` row in `sync_conflicts` and the result `merged`.
+- `master/src/services/push-gate.ts` — 1.3 Phase 3 (rule 6). `runPush`,
+  `configurePushGate({windowMs, backlogMs, bootMs})`, `__resetGateForTests`. One
+  module FIFO, one entry per push; the gather deadline is measured from the oldest
+  queued push: 100 ms for a live `*.create`, 6 s for a `*.create` whose HLC is over
+  10 s old, and at least 5 s after boot; anything else drains on the next tick. The
+  6 s window is given once per connection (`connectedAt`, the socket's
+  `handshake.issued`, passed in through `applyPush`) and only in its first minute,
+  so later backlog batches and a slow-clock PC's live creates do not wait 6 s. A
+  queued push from the same panel and person is merged with the newer one (union by
+  `mutationId`). The group is sorted with `compareForIdAssignment` and applied one
+  mutation at a time, so at most one pooled connection holds the advisory lock (the
+  pool stays 10). A throw from `applyOne` fails only that entry: its later mutations
+  are skipped unrecorded and only its callers reject. Post-commit hooks run after
+  each mutation. Two `ponytail:` notes: one gate for every tenant, and no slicing of
+  a large backlog. `master/tests/helpers/fixtures.ts` sets every window to 0.
+- `master/src/services/notification.service.ts` — 1.3 Phase 3. `notify(tenantId,
+  userIds, {kind, params, link?, dedupeKey?})`: checks the kind, removes duplicate
+  ids, inserts on the pool (never inside a caller's transaction, so callers notify
+  after commit) and calls `publishNotification` once per row actually added (a
+  notice held back by the dedupe index is not pushed). `listNotifications` (limit
+  1–100, default 50; a `before` that is not a date → 400
+  `validation.cursor.malformed`), `markRead({all:true} | {ids})` (at most 500 uuid
+  ids, returns `unreadCount`), `startNotificationPruner()` (at start, then every 6 h:
+  read notices over 60 days old and anything past a person's newest 500). Both reads
+  return nothing when the actor has no `userId`.
 - `master/src/services/snapshot.service.ts` (147) — `buildSnapshot(actor)`: parties,
   products, categories, leads, orders, stock (500 each, except products and stock
   rows at `PRODUCT_PAGING.maxLimit`, 2000, since catalogue v2 — 549 sub products
@@ -2157,7 +2213,11 @@ exercised only through service integration tests.
   `resolveConflict` (`keepWinner` / `restoreLoser`), `countOpen`;
   `sync.resolveConflicts`.
 - `master/src/services/change-bus.ts` (57) — `publishChange`, `onChange`,
-  `publishConflict`, `onConflict`.
+  `publishConflict`, `onConflict`; since 1.3 Phase 3 `publishNotification` /
+  `onNotification` (`AddressedNotification`, on a channel of its own: no change
+  ring, no activity chain). `conflict.service.ts#restoreLoser` on a lead or order
+  `stageId` conflict calls `setStage` first, so the move rules, timeline and
+  activity apply.
 
 **Settings, panels, setup**
 
@@ -2180,7 +2240,18 @@ exercised only through service integration tests.
   editing write their audit entry in their own transaction (`recordPanelActivity`);
   `updatePanel` now commits every field and the entry together, so a refused role
   no longer leaves the panel renamed; only a reissued secret or a moved storage
-  folder is recorded detached (`recordRemotePanelActivity`).
+  folder is recorded detached (`recordRemotePanelActivity`). Since 1.3 Phase 3:
+  `authenticatePanel` answers `panelNotPaired` for an unknown or malformed id and
+  `panelRevoked` for a revoked row, and fills `master_proof_key` when it is null;
+  `masterProofKey(secret)` is written at pairing and at secret rotation too;
+  `proveMaster(panelId, nonce)` answers `POST /api/panel/prove` (hex nonce of 32–128
+  characters, else 400; 404 for an unknown, inactive or keyless panel). Per-panel
+  unref'd one-hour timers are armed in `markPanelDisconnected` and cleared in
+  `markPanelConnected`; when one fires it re-reads the panel and notifies every
+  `panels.manage` holder (`panel.offlineLong`, dedupe key
+  `panel.offlineLong:<id>`). `scheduleLongOfflineNoticesAtBoot` arms them for
+  panels already away when the Master starts (due at the later of last seen + 1 h
+  and now + 5 min); `cancelLongOfflineNotices` on stop.
 - `master/src/services/panel-actor.service.ts` (152) — `resolvePanelActor`,
   `resolvePanelActorAllowingRefusal`, `RefusedActingTokenError`: a panel presents a
   session token, re-validated on every command.
@@ -2317,6 +2388,7 @@ Knex.Transaction`). In practice services open transactions themselves with
 | Catalogue | `master/src/repositories/party.repository.ts` (reference checks before delete; `P-0001` codes from `party_code_seq`); `master/src/repositories/party-variant.repository.ts` (per-party alias/size/weight/packaging: `listForParty`, `listAll`, `upsertVariant`); `master/src/repositories/product.repository.ts` (models with variants, `ensureCategories`, `listCategories`); `master/src/repositories/product-variant.repository.ts` (every code and weight: `replaceVariants`, `findVariantByCode`, `codesTakenElsewhere`); `master/src/repositories/product-image.repository.ts` (UUID ids, online-only); `master/src/repositories/custom-field.repository.ts` (option lists + definitions); `master/src/repositories/field-usage.repository.ts` (`usageForListKey`); `master/src/repositories/pipeline.repository.ts` (stages updated/reordered/archived/restored, never created or deleted) |
 | Leads, orders, stock | `master/src/repositories/lead.repository.ts` (`scope` is required; `markConverted`, `lockLead`, soft delete/restore); `master/src/repositories/order.repository.ts` (`markDispatched` — stage, `dispatched_at`, `hlc`, `field_hlc`, `version + 1`; `lockOrder` — `FOR UPDATE`, returns `dispatched_at`, `stage_id`, `field_hlc`); `master/src/repositories/line-item.repository.ts` (one `line_items` table for both parents; `replaceLines`); `master/src/repositories/timeline.repository.ts` (append-only system and remark entries); `master/src/repositories/inventory.repository.ts` (`stock_movements` ledger + `inventory_stock` snapshot, both written by `applyMovement`); `master/src/repositories/reservation.repository.ts` (`reservedTotals`, consume/release/reactivate) |
 | Read models | `master/src/repositories/search.repository.ts` (`tsvector` + GIN: `search`, `pickProducts`, `pickCategories`, `pickParties`); `master/src/repositories/dashboard.repository.ts`; `master/src/repositories/report.repository.ts` (month buckets in SQL in the business timezone); `master/src/repositories/recycle-bin.repository.ts` (`listBinEntries`: a `UNION ALL` over the 8 soft-deletable tables; `binCounts`: one count query per branch, summed) |
+| Notifications | `master/src/repositories/notification.repository.ts` (1.3 Phase 3): `insertNotifications` (multi-row insert, `ON CONFLICT … WHERE dedupe_key IS NOT NULL AND read_at IS NULL DO NOTHING RETURNING *`, so only rows added come back), `listForUser` (newest first; `before` compared at millisecond precision), `countUnread`, `markRead(ids \| 'all')` (unread rows of that person only), `prune()`. `office-panel.repository.ts` gains `findPanelProofKey`, `fillPanelProofKey` (fills a null key only) and `listActivePanels`; `user.repository.ts` gains `findActiveUserIdsWithPermission` (through the tier ceiling) |
 | Sync, audit, backup, integrations | `master/src/repositories/sync.repository.ts` (`applied_mutations`, conflict log); `master/src/repositories/activity-log.repository.ts` (`recordActivity`, `recordDetachedActivity` — its header states when detached is right, §5.1 — `listEntries`, `verifyChain`, `chainBounds`, `listFacets`, `listPanelActivity`); `master/src/repositories/backup.repository.ts` (generic dump/load via `information_schema`, `session_replication_role='replica'` during a load, `EXCLUDED_TABLES`, `TRANSITIVELY_SCOPED`); `master/src/repositories/connector.repository.ts` (credential sealed; `openCredential` is the only unsealer) |
 
 ### 5.8 HTTP (`master/src/http/`)
@@ -2459,6 +2531,7 @@ mount runs `requirePanel`, then both routers pass the path on). `notFoundHandler
 | `/api/v1` | `publicApiRoutes` (`public-api.routes.ts`) | off switch → `requireApiKey` |
 | `/api/setup` | `setupRoutes` | none (per route) |
 | `/api/auth` | `authRoutes` | none (per route) |
+| `/api/notifications` | `notificationRoutes` (`auth.routes.ts`, 1.3 Phase 3): `GET /`, `POST /read`, the signed-in person's own notices only | `requireAuth` |
 | `/api/pairing` | `pairingRoutes` (`panel.routes.ts`) | none |
 | `/api/panels` | `panelRoutes` (`panel.routes.ts`) | `requireAuth` |
 | `/api/access` | `accessRoutes` | `requireAuth` |
@@ -2469,6 +2542,7 @@ mount runs `requirePanel`, then both routers pass the path on). `notFoundHandler
 | `/api/logs` | `logRoutes` | `requireAuth` |
 | `/api/reports` | `reportRoutes` | `requireAuth` |
 | `/api/products/:productId/images` | `imagesRoutes` (`images.routes.ts`) | `requireAuth` |
+| `/api/panel/prove` | `panelProofRoutes` (`panel.routes.ts`, 1.3 Phase 3): the unauthenticated rediscovery proof, mounted ahead of the `requirePanel` mount below | none; rate-limited per IP (`prove:<ip>`, 30) |
 | `/api/panel` | `panelImageRoutes`, then `panelCatalogRoutes` | `requirePanel`, once, at the mount in front of both (each router used to `.use` its own, so an import paid two bcrypt compares; fixed 2026-09-25) |
 | `/api/images` and `/uploads/images` | `imageFilesRoutes` (`images.routes.ts`, mounted twice — `ui/ProgressiveImage` loads `/uploads/images/:id/:variant`; 404 for a product the caller may not see) | `requireAuth` |
 | `/api/access/users/:userId/avatar` | `avatarRoutes` (`avatar.routes.ts`) | `requireAuth` |
@@ -2626,6 +2700,22 @@ the service checks.
     `emitGatedChange`; everything else to both rooms. A revoked `office_panel` also
     triggers `panel:revoked`. `dashboard:changed` is debounced (250 ms trailing),
     admin sockets only, memoised per permission/party scope.
+  - **1.3 Phase 3.** `pingInterval` 4000 / `pingTimeout` 6000, so a dead link is
+    seen within about 10 s and a stall of that length is tolerated. A refused
+    handshake throws `authRefusal()` with `err.data {code, messageKey}` (the code
+    is the last part of the message key; any non-`AppError` is `maintenance`, so
+    internal text is never sent); a `panelRevoked` refusal also carries this
+    Master's `masterUniqueId`. A panel's new socket goes on file first and then a
+    stale previous socket for that panel is closed; the disconnect handler is
+    registered before any await and only the socket still on file clears presence.
+    `adoptHandshakeToken()` resolves `actingUserToken` before `buildDelta`, and
+    every command waits for it; `actAs()` re-sends the snapshot only when the token
+    really changes. `emitToActors(io, tenantId, event, payload, accept, userIds?)`
+    is the one per-person fan-out: Master browser sockets of that user and panel
+    sockets acting as them. `onNotification` → `notification:new` through it.
+    `notification:list` / `notification:markRead` are registered through `run()`,
+    so they act as the acting person. The long-offline notices are scheduled at
+    start and cancelled in `stop()`.
 - **`master/src/realtime/fan-out.ts`** — delivery rules shared by the live push and
   the reconnect replay: `DIRECTORY_ENTITIES` (`role`, `user`),
   `PARTY_SCOPED_ENTITIES` (`lead`, `order`, `party`, `party_variant`),
@@ -2825,6 +2915,9 @@ indexes, 7 non-internal triggers, 7 functions, `btree_gin`). **Not verified:** t
 an installation which upgraded through the older migrations reaches the same
 structure — no upgrade path was replayed. Its seed data certainly can differ
 (values backfilled by `20260306`, rows removed by the `20260323` wipe).
+**Dated:** the totals below predate 1.3 Phase 3's migrations
+(`20261002000000_user_notifications` adds a table with its own keys and indexes) and
+are recounted in the 1.3 Phase 9 reconciliation.
 
 - The migrated database has **41 base tables**: 39 application tables plus Knex's
   `knex_migrations` and `knex_migrations_lock`.
@@ -2882,7 +2975,7 @@ structure — no upgrade path was replayed. Its seed data certainly can differ
   Admin role's stored permissions, so Admin's seeded key set tracks whatever the
   catalogue is when that migration first runs on a database.
 
-### 6.2 All 32 migrations, in the order they are applied
+### 6.2 All 39 migrations, in the order they are applied
 
 | # | Migration | Lines | What it does / leaves behind |
 |---|---|---|---|
@@ -2922,6 +3015,9 @@ structure — no upgrade path was replayed. Its seed data certainly can differ
 | 35 | `master/src/db/migrations/20260401000000_order_vehicle_number.ts` | 24 | **Pinned last, additive** (2026-09-30). `orders.vehicle_number TEXT NULL`, `CHECK (char_length <= 20)`, no backfill; `down()` drops it. Written by `order:update` (`vehicleNumber`, trimmed/upper-cased, `[A-Z0-9 -]`), a mergeable column (`ORDER_COLUMNS`), printed on the Dispatch note |
 | 34 | `master/src/db/migrations/20260328000000_line_packaging_defaults.ts` | 55 | **Pinned, additive** (owner's instruction, 2026-09-30). Inserts Box, Grass and Paper into every tenant's `line.packaging` list, after its highest `sequence`, skipping a value the list already holds in any case or state (live, retired or deleted); `master/tests/migration-line-packaging-defaults.integration.test.ts` |
 | 36 | `master/src/db/migrations/20261001000000_server_master_tier.ts` | — | **Pinned last, additive, idempotent** (1.3 Phase 2, the first migration of the 1.3 batch). Drops and re-adds `roles_tier_check` with `server_master`; for each tenant with no live Server Master role seeds one `is_system` "Server Master" role ("Server Master (system)" on a name clash) holding a frozen inline copy of the 53 keys, id from `id_sequences` `role`. `down()` is empty |
+| 37 | `master/src/db/migrations/20261002000000_user_notifications.ts` | 51 | **Pinned, additive, idempotent** (1.3 Phase 3). `user_notifications` (uuid id, `user_id TEXT REFERENCES users(id)`, kind CHECK `^[a-z]+[.][a-zA-Z]+$`, params, link, dedupe_key, created_at, read_at), the `(tenant_id, user_id, created_at DESC)` index, the partial unread index and the partial UNIQUE dedupe index (`WHERE dedupe_key IS NOT NULL AND read_at IS NULL`) |
+| 38 | `master/src/db/migrations/20261002000001_office_panel_master_proof.ts` | 23 | **Pinned, additive** (1.3 Phase 3). `ADD COLUMN IF NOT EXISTS office_panels.master_proof_key TEXT NULL`, filled at the panel's next `authenticatePanel` |
+| 39 | `master/src/db/migrations/20261004000000_report_indexes_and_grants.ts` | — | **Pinned last, additive, idempotent** (1.3 H2). The owner-by-date indexes the reports read through, and a union grant of `reports.view` + `reports.export` to the office and management tiers |
 
 ### 6.3 Conventions across the schema
 
@@ -3057,9 +3153,14 @@ digest of each user's `password_hash`, never the hash.
 |---|---|---|---|
 | `id_map` | `entity`, `temporary_id`, `permanent_id`, `device_code`, `created_at` | PK `(tenant_id, temporary_id)`; index on `permanent_id` | temporary → permanent, **kept forever**; `recordIdMapping`, `resolveId` |
 | `applied_mutations` | `mutation_id`, `entity`, `entity_id`, `status`, `result` JSONB, `applied_at` | PK `(tenant_id, mutation_id)` | idempotent replay: a resent mutation gets its stored result; `sync.repository.ts` |
-| `sync_conflicts` | `id`, `entity`, `entity_id`, `field`, `losing_value`/`_hlc`/`_device_code`, `winning_value`/`_hlc`/`_device_code`, `resolved_at`, `resolved_by_user_id` | partial index on open conflicts | field-level merge losses kept for review |
+| `sync_conflicts` | `id`, `entity`, `entity_id`, `field`, `losing_value`/`_hlc`/`_device_code`, `winning_value`/`_hlc`/`_device_code`, `resolved_at`, `resolved_by_user_id` | partial index on open conflicts | field-level merge losses kept for review; since 1.3 Phase 3 also a stale offline stage move (`field` `stageId`), restored through `setStage` |
 | `id_sequences` | `entity`, `next_value` | PK `(tenant_id, entity)` | gap-free permanent-id counters under `FOR UPDATE`; 12 rows on a fresh database |
 | `master_clock` | `id`=1, `device_code` (`MASTER`), `physical`, `counter` | CHECK `id=1` | the Master's persisted HLC; excluded from backups |
+
+Not a sync table, but new beside them in 1.3 Phase 3: `user_notifications` (the bell,
+one row per notice per person; pruned by the service; excluded from backups) and
+`office_panels.master_proof_key` (left out of the `.obbackup` export, nulled when its
+restore revokes the panels; the Phase 8 archive, which keeps pairing, must carry it). Both in `docs/schema/01-identity-and-network.md`.
 
 ### 6.12 Settings, option lists, custom fields, activity log, integrations
 
@@ -3354,6 +3455,18 @@ for its brand button.
 | `settings` | `SettingsScreen tab onTabChange onSaved={refreshUser} permissions settingsRevision sourcesRevision` - offered to everyone; the company / leads / connection / storage tabs need `settings.manage` (`settingsTabIdsFor`) |
 
 `FirstRunScreen` and `SignInScreen` are rendered by the phase logic.
+
+**1.3 Phase 3 in the shell.** `linkUp` follows the socket's `connect` /
+`disconnect` / `connect_error`; while it is down the rail and footer read
+`master.sync.serverUnreachable` ("Reconnecting to the Master server…"), checked
+before the panel aggregate. After `io server disconnect` the socket is reconnected
+in 1 s; a refused handshake (`!socket.active`) re-reads `/api/auth/me` (a 401 there
+signs out) and retries in 5 s. A reconnect bumps `revisions['*']`, which
+`revisionOf()` adds to every key, so every open screen re-reads; it also re-reads
+the user and the panels. The sync popover lists panels `isLongOffline` reports.
+The `NotificationBell` sits beside the palette button: `api.notifications()` /
+`api.markNotificationsRead()`, re-read on `notification:new` (which also calls
+`desktopBridge()?.notify`) and on a reconnect; a `panel` link opens Panels.
 
 ### 7.3 `api.ts` — the client
 
@@ -3721,6 +3834,15 @@ per stream at most every 120 ms). Every `snapshot` event also runs `sweepImageCa
 which deletes cached image directories the Master no longer lists, only when
 `productsComplete` is true.
 
+**1.3 Phase 3 in the Office HTTP API.** `GET /api/notifications` forwards
+`notification:list` (numeric `limit`, `before`) and `POST /api/notifications/read`
+forwards `notification:markRead` (`all:true` and/or the string `ids`); both are
+online only (503 through `failForward`, 426 for a Master too old). `broadcastForUser`
+sends an SSE event only when its `forUserId` is the person signed in here, and drops
+one with none; `masterConnection.on('notification')` goes through it. `POST
+/api/sync/flush` calls `masterConnection.retryNow()` first. The SSE `status` frame and
+`/api/sync` carry the new status fields (below) through `getStatus()`.
+
 ### 8.5 Sync layer — `office/src/sync/`
 
 - `office/src/sync/outbox.store.ts` — the durable queue. `enqueue()` stamps
@@ -3749,6 +3871,10 @@ which deletes cached image directories the Master no longer lists, only when
   schedules a retry (`retryMs`) when more is waiting or the push threw; never throws.
   `submit()` enqueues, emits, and starts an un-awaited `flush()`. Also
   `recentRejections`, `acknowledgeRejections`, `onSyncEvent`, `stopSync`.
+  Since 1.3 Phase 3 the transport is `commandWithin(60_000)` for `sync:push`, since a
+  push may wait its turn in the Master's push gate, and the link flushes right after
+  `setTransport` on every connect, so work queued while the link was idle without a
+  transport is sent.
 - `office/src/sync/local-store.ts` — snapshot + derived overlay.
   `setSnapshot(snapshot, cursor)` writes `{version:2,…}` (plain `writeFile`; a torn
   file reads back null). `restore()` shares one in-flight read. `noteApplied(seq,
@@ -3794,6 +3920,47 @@ Singleton `masterConnection` (an `EventEmitter`).
 - Also `assume(token)` (offline: store only, return `released`), `reconcile(users)`,
   `getStatus()`, `getSnapshot()`, `getActingToken()`, `disconnect()` (stops sync and
   reporting, flushes a pending persist).
+
+**1.3 Phase 3: the link never needs a restart and never forgets its pairing.**
+
+- `auth` is a function, so every handshake reloads the credentials (a reissued secret
+  is used) and sends the current cursor, `actingUserToken`, `protocol` and
+  `appVersion`. Socket options: `reconnectionDelay` 1000, `reconnectionDelayMax`
+  5000, `randomizationFactor` 0.5, engine `timeout` 5000.
+- After `io server disconnect` it reconnects in 1–2 s unless the panel was revoked.
+  The third such close within 30 s (two PCs sharing one pairing keep replacing each
+  other) is retried on the refusal backoff instead, with a warning in the log; the
+  Master logs a warning too when a live socket from another address is replaced.
+- Every `data:changed` row's `sync.hlc` is folded into the panel's clock (`observe`),
+  as are snapshots and deltas, so a stage move made after seeing another one sorts
+  after it even on a PC whose clock is behind (rule 6's stale-move check).
+  A refused handshake is retried with its own backoff, 5 s doubling to 60 s with
+  ±50 % jitter (`scheduleRetry`, guarded by socket identity, revoked and connected).
+- Only the `panel:revoked` event, or a `panelRevoked` refusal whose `masterUniqueId`
+  is the saved one, clears the credentials. `panelNotPaired`, and a `panelRevoked`
+  from another Master (a backup restored on another PC), keep them, set
+  `notRecognised` and count towards rediscovery. `maintenance` is transient.
+- Status: `disconnectedSince` (in memory, kept through repeated failures, cleared on
+  connect or unpair), `catchingUp` (from `connect` until the snapshot or delta is
+  stored and the first flush returns, capped at 30 s, guarded by a connection
+  epoch), `clockSkewMs` (this PC's clock minus the Master's `serverTime`),
+  `hasNetworkLink` (polled every 2 s; the link coming back calls `retryNow()`),
+  `masterProtocol`, `rediscoveredFrom`, `notRecognised`, and `rediscoveryRefused`
+  (an address that answered as this Master and was not trusted). `emitStatus()`
+  sends `status` only when the JSON changes.
+- `retryNow()` restarts the socket (which also resets socket.io's backoff); nothing
+  while connected or revoked.
+- **Rediscovery** (`maybeRediscover`): after 3 failures in a row, only with a
+  network, at most once a minute, never twice at once. `discoverMasters({timeoutMs:
+  3000})` must find the saved `masterUniqueId` at one address only
+  (`conflictingAddress` from `office/src/discovery/client.ts` is refused). Before any
+  secret goes to a new address, `masterProves(host, port, creds)` POSTs
+  `/api/panel/prove` with a random 32-byte nonce and checks the HMAC with
+  `timingSafeEqual`. A proven address is tried; it is saved (and `rediscoveredFrom`
+  set) only when a connection there authenticates (`adoptCandidate`). The saved
+  address needs no proof. **It works only for a panel that has connected once since
+  the update**, because the Master fills the proof key at `authenticatePanel`.
+- `notification:new` is re-emitted as `notification` for `broadcastForUser`.
 
 ### 8.7 Pairing, discovery, sign-in and the other services
 
@@ -4085,6 +4252,23 @@ record publishes a nested sidebar entry through `useSubNav`.
   module. Menu `settings.developer` → `goToTab('settings')` +
   `requestSettingsTab('developer')`.
 
+**1.3 Phase 3 in the shell.** The rail reads "Catching up" (`sync.catchingUp`, the
+`syncing` state) while `connection.catchingUp`; the sync popover adds "Offline since
+10:42 (1 h 5 m)" and, past two minutes, the clock difference. `AppShell`'s `banner`
+carries the link's notices: an hour offline (`LONG_OFFLINE_MS`, one timer re-armed
+when `disconnectedSince` changes), "Not recognised by this Master", an untrusted
+rediscovery address, and a clock more than 2 minutes off. An hour offline also adds a
+local bell entry and calls `desktopBridge()?.notify` once per episode (a ref keyed on
+`disconnectedSince`); in a browser there is no notice beyond the page. A
+rediscovered Master is a one-time info toast. `streamEpoch` moves on the move *to*
+connected in a status frame and when the SSE stream reopens after an `error`; both
+also re-read the connection, sync state and session. It is bumped from inside the
+stream's listeners and is never a dependency of the stream, which stays one per
+session (`ui/tests/office-shell.test.tsx` "stays one stream"). The bell sits before
+Sign out and re-reads on `streamEpoch` and on each SSE `notification` (which also
+calls `notify`). `DashboardScreen` takes `railState` and `syncLabel`, so its Sync card
+never reads "All synced" while offline or catching up.
+
 ### 9.3 `api.ts`
 
 - Transport: `send` (JSON; `ApiError(message, code, details, messageKey, params)`;
@@ -4110,7 +4294,7 @@ record publishes a nested sidebar entry through `useSubNav`.
   and `offline`); also `ConnectionInfo` (with an optional `deviceCode` since 1.3
   Phase 1), `DiscoveredMaster`, `PanelProfile`, `SyncState`, `FlushOutcome`.
 
-**87 top-level members.** Those marked * have no caller in `office/web/src` (39,
+**95 top-level members.** Those marked * have no caller in `office/web/src` (23,
 each with a reason in `ALLOWED_UNCALLED.office`).
 
 | Group | Members | Behaviour |
@@ -4119,20 +4303,24 @@ each with a reason in `ALLOWED_UNCALLED.office`).
 | Session (6) | `session`, `signIn`, `signOut`, `profiles`, `forgetProfile`, `profileAvatarUrl` | `/api/session*`, `/api/auth/*` |
 | Sync (4) | `snapshot`*, `syncState`, `flush`, `acknowledgeRejections` | `/api/snapshot`, `/api/sync*` |
 | Storage (5) | `exportStorage`, `previewRestoreStorage`, `restoreStorage`, `storagePath`, `setStoragePath` | `/api/storage/*` |
-| **Queued writes (13)** | `createParty`, `updateParty`, `createProduct`, `updateProduct`, `upsertVariant`*, `createLead`, `updateLead`*, `setLeadStage`, `addLeadRemark`, `convertLead`, `setOrderStage`, `updateOrder`, `dispatchOrder` | return `QueuedResult`, work offline; `updateParty`/`updateProduct` accept `baseFieldHlc` |
+| **Queued writes (13)** | `createParty`, `updateParty`, `createProduct`, `updateProduct`, `upsertVariant`*, `createLead`, `updateLead`, `setLeadStage`, `addLeadRemark`, `convertLead`, `setOrderStage`, `updateOrder`, `dispatchOrder` | return `QueuedResult`, work offline; `updateParty`/`updateProduct` accept `baseFieldHlc` |
 | Catalogue reads (3) | `listProducts`, `pick`, `search` | the first two fall back to the snapshot (`offline`); `search` fails offline |
-| Product import (2) | `productImportTemplate`, `importProducts` | online-only |
+| Categories (4) | `categories`, `createCategory`, `updateCategory`, `deleteCategory` | `/api/categories*`; online-only |
+| Product import (3) | `productImportTemplate`, `exportProducts`, `importProducts` | online-only |
+| Party import (3) | `partyImportTemplate`, `exportParties`, `importParties` | `/api/parties/import*`, `/api/parties/export.*`; online-only (1.3 H1) |
 | Product images (4) | `uploadProductImage`, `updateProductImage`, `reorderProductImages`, `deleteProductImage` | return the full `Product`; online-only |
 | Conflicts (2) | `conflicts`*, `resolveConflict` | — |
 | Deletes (4) | `deleteParty`*, `deleteProduct`*, `deleteLead`*, `deleteOrder`* | online-only |
 | Recycle bin (3) | `recycleBin`*, `recycleBinCounts`*, `restoreFromBin`* | Master screen |
 | Updates (2) | `updateAvailable`, `downloadUpdate` | — |
 | Party access (5) | `partyAccess`, `partyAccessPeople`, `partyAccessFor`*, `partyAccessExportUrl`, `savePartyAccess` | live, 503 offline |
-| Fields (17) | `fieldsCatalogue` … `restoreFieldStage` (all *) | Master screen |
-| Logs (4) | all * | Master screen |
+| Option-list values (6) | `fieldValues`, `fieldUsage`, `createFieldValue`, `updateFieldValue`, `deleteFieldValue`, `reorderFieldValues` | through `optionListTransport` (Products → Brands, Settings → Leads' sources) |
+| Settings (1) | `saveSetting` | Settings → Leads |
+| Fields (11) | `fieldsCatalogue`, `fieldDefinitions` … `restoreFieldStage` (all *) | Master screen |
+| Logs (4) | `logs`, `logFacets`, `verifyLogChain`, `logsExportUrl` | the Office `LogsScreen` (1.3 Phase 2); live, 503 offline |
 | Reports (3) | `reportOptions`, `reportTable`, `reportExport` | `ReportsScreen`, both panels; live, 503 offline on the Office |
 | Dashboard (1) | `refreshDashboard`* | — |
-| Developer (1) | `developer.{status, unlock, lock, resetAll}` | token in a header; `resetAll` sends `'RESET'` |
+| Notifications (2) | `notifications`, `markNotificationsRead` | the bell (1.3 Phase 3); `notifications` is not counted by the loading strip; live, 503 offline |
 
 ### 9.4 Screens in detail
 
@@ -4454,6 +4642,7 @@ Node 16 (§1.6): no `import.meta`, no `fetch`, no `AbortSignal.timeout`.
 | `electron/lib/appimage.ts` | added 2026-09-25: `detectAppImage` (trusts `APPIMAGE` only when this executable runs from inside `APPDIR`, compared by real path, so variables inherited from another AppImage cannot point the shell at somebody else's program), `replaceAppImage` (verified copy written beside the target, created exclusively, `chmod 0755`, fsync, atomic rename), `relaunchCommand`, `relaunchArguments` (keeps `--appimage-extract-and-run`, detected from `APPDIR`'s `appimage_extracted_` folder, unless `APPIMAGE_EXTRACT_AND_RUN` is set), `startDetached` (resolves once the relaunch is running, since `spawn` reports `ENOENT`/`EACCES` asynchronously) |
 | `electron/lib/office-env.ts` | added 2026-09-25: `officeServerEnv({dataDir, port, logFile, locationFile})` — the Office server's environment (§2.10), in its own module because `office.main.ts` starts the shell the moment it is imported; held by `electron/tests/office-env.test.ts` and used by `office/tests/storage-path.test.ts` to start the config the way the shell does |
 | `electron/lib/print-options.ts` | 2026-09-30: `printOptions(requested, installed)` — silent print to a named printer only when Windows lists it, otherwise the system dialog; always A4, no margins, backgrounds on. `orderbook:listPrinters` / `orderbook:printPage` in `shell.ts` use it and answer only the panel's own window. Held by `electron/tests/print-options.test.ts` |
+| `electron/lib/attention.ts` | 1.3 Phase 3: `attentionText(value)` — the `{title, body}` a page may put in a system notification: both strings, trimmed, cut to 120 / 300 characters, an empty title refused, anything else `null`. `orderbook:notify` in `shell.ts` answers only the panel's own window, flashes the taskbar button until the window is focused, and shows a `Notification` where `Notification.isSupported()` (the Win7 build may not; the in-app bell carries the notice either way); a click on it brings the window forward. The shell calls `app.setAppUserModelId(config.appUserModelId)` on Windows before ready — a new `runPanelShell` field, `com.orderbook.master` / `com.orderbook.office`, matching each `electron-builder.yml` `appId` — so Windows 10/11 shows the toast. Held by `electron/tests/attention.test.ts` |
 | `electron/lib/lead-pdf.ts` | catalogue v2: `isLeadPdfUrl(origin, url)` — the one URL a panel window may open a window for, `<origin>/api/leads/<id>/pdf` with no query or fragment; held by `electron/tests/lead-pdf.test.ts` |
 | `electron/lib/log-file.ts` | `openLogFile(file, tee, maxBytes = 5 MB)` — keeps the live file plus `.1`–`.3` (`KEEP = 3`, up to ~20 MB); drops the log rather than crashing. An oversized file is rotated at open, and since 1.3 Phase 1 **also while running**: bytes written are counted from the file's size at open, and past `maxBytes` the stream is ended, `.1`→`.2`→`.3` shift (the oldest dropped) and a new live file opens. Each stream's error handler clears only its own stream; nothing throws. Held by `electron/tests/log-file.test.ts` |
 | `electron/lib/settings.ts` | `readShellSettings`/`writeShellSettings` (`shell.json` = `{autoStartDefaultApplied}` only — the login item is OS state; temp + rename, 0600); `readDataDirOverride`/`writeDataDirOverride` (plain write of `{dataDir}`, no temp file, default mode; the Office server writes the same pointer temp-then-rename after a storage move, §8.3) |
@@ -4982,6 +5171,17 @@ Each flow names the files and functions in the order they run. "Master" means
    unpaired. Rotating (`rotatePanelSecret`) sends `panel:credentials`; the panel saves
    the new secret before acking.
 
+**When the Master's address changes (1.3 Phase 3).** A paired Office whose
+connection fails three times in a row looks for its Master again on the network
+(`maybeRediscover`, §8.6). It accepts a HELLO only with the saved `masterUniqueId`
+and from one address; before sending its secret there it asks the address to prove
+itself (`POST /api/panel/prove`, `proveMaster` in `panel.service.ts`, the HMAC in
+§3.10), and it saves the new address only after a connection there authenticates. A
+Master that does not know the panel (`panelNotPaired`) leaves the pairing in place
+and the Office shows "Not recognised by this Master"; only a revoke from the Master it
+paired with unpairs it. The proof key is filled when a panel authenticates, so
+rediscovery works for a panel that has connected once since the update.
+
 ### 11.2 Sign-in, sessions, permissions and tiers
 
 **Master browser**
@@ -5146,6 +5346,21 @@ Each flow names the files and functions in the order they run. "Master" means
    live (reads as well as writes) and answers 503 `unavailable` offline; nothing is
    queued. Product lists and pickers fall back to the cached snapshot with
    `offline: true`.
+
+**Ordering and stage moves (1.3 Phase 3).** Every push passes the Master's push gate
+(`master/src/services/push-gate.ts`, §5.6): pushes arriving within a gather window
+(100 ms live, 6 s for an offline backlog, 5 s after the Master starts) are sorted
+together by HLC, device code and mutation id and applied one at a time, so panels
+that come back together are numbered in the order their work was done; a push after
+the window closes is numbered after, and minted ids never move
+(`docs/LEAD_GENERATION_FLOW.md` §7). A queued stage move older than the stored stage
+becomes a `stageId` conflict instead of overwriting it (`assertStageFresh` in
+`master/src/domain/pipeline.ts`; §4 there); a move from an Office older than
+protocol 3, which does not fold the Master's change clocks, still applies on arrival.
+The Office shows "Catching up" from
+connect until what it missed is stored and its outbox is sent, and the Master's
+`notify()` puts a "panel offline over an hour" notice in the bell of everyone who
+manages panels.
 
 ### 11.4 Lead → order → dispatch, and stock reservations
 
@@ -5475,6 +5690,15 @@ electron/tsconfig.json --noEmit` over the shell source itself (not its tests). L
 covers test files too.
 
 ### 12.2 Integration suites (`master/tests/*.integration.test.ts`, 50 — catalogue v2 added two)
+
+1.3 Phase 3 added three: `push-gate` (ten concurrent pushes without a pool
+timeout, HLC order inside a window, two backlogs 3 s apart, a retryable create that
+skips only its own push's dependants, coalescing, a 1.2 Office answered under the
+5 s boot gather), `notifications` (stored once per person and pushed only to them,
+written outside the caller's transaction, dedupe, REST and socket commands, prune,
+the long-offline timer) and `panel-proof` (the proof matches the Office's
+derivation; 404 without a key). `sync`, `panel-push` and `auth-pairing` gained the
+stage-HLC, handshake-token, stale-socket and refusal-code cases.
 
 All call `setupDatabase`, `teardownDatabase`, `resetData` and wrap their body in
 `describe.skipIf(!canRunIntegrationTests)`. Seven drive HTTP with `supertest`:

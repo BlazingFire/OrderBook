@@ -38,6 +38,7 @@ import type {
   MasterKeyUnlock,
   MessageKey,
   MessageParams,
+  UserNotification,
   OfficePanelDetail,
   OfficePanelWithPresence,
   OptionListItem,
@@ -955,6 +956,14 @@ export const api = {
 
   // --- Logs (docs/backend-modules/04-API-CONTRACT.md §2) --------------------
 
+  /**
+   * The signed-in person's notifications, newest first: the bell. Not counted
+   * by the loading strip, since the bell reads it in the background.
+   */
+  notifications: () =>
+    requestUntracked<{ items: UserNotification[]; unreadCount: number }>('/api/notifications'),
+  markNotificationsRead: (which: { ids: string[] } | { all: true }) =>
+    post<{ unreadCount: number }>('/api/notifications/read', which),
   logs: (query: ActivityLogQuery = {}) => {
     const params = new URLSearchParams();
     if (query.cursor) params.set('cursor', query.cursor);

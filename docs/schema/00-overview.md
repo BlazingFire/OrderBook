@@ -27,7 +27,7 @@ where they are now.
 
 | File | Covers |
 |---|---|
-| `01-identity-and-network.md` | `master_config`, `users`, `office_panels` |
+| `01-identity-and-network.md` | `master_config`, `users`, `office_panels`, `user_notifications` |
 | `02-parties-and-products.md` | `parties`, `product_categories`, `products`, `product_variants`, `product_images` |
 | `03-leads-orders-inventory.md` | `leads`, `orders`, `line_items`, `timeline_entries`, `party_product_variants`, `inventory_stock`, `stock_reservations`, `stock_movements` |
 | `04-activity-log.md` | `activity_log` (the hash-chained audit trail) |

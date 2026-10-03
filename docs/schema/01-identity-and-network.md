@@ -119,6 +119,7 @@ CREATE TABLE office_panels (
   lan_ip              TEXT,                             -- last-known IP, informational only
   mac_address         TEXT,                             -- never written (see below)
   secret_rotated_at   TIMESTAMPTZ,
+  master_proof_key    TEXT,                             -- HMAC of the secret, for rediscovery (below)
   notes               TEXT,                             -- free text an admin keeps against the panel
   -- what the panel says about its own machine (next section)
   hostname            TEXT,
@@ -151,11 +152,13 @@ CREATE INDEX        idx_office_panels_tenant ON office_panels (tenant_id);
 | `status` | `active` once paired, `revoked` if the admin removes it from the Master's "Connected Office Panels" screen (or a restore revokes every panel) — a revoked panel's secret is rejected on its next reconnect attempt even though the row is kept for history/audit. `pending` is allowed by the CHECK but nothing writes it today: pairing inserts the row as `active`. |
 | `last_seen_at` | Stamped when the panel's socket connects and again when it disconnects (`markPanelConnected` / `markPanelDisconnected` in `panel.service.ts`), with `lan_ip` refreshed on connect. The live connected/offline indicator (`PROJECT_PLAN.md` §5.4) comes from the Master's in-memory set of connected sockets, not from this column; the column is what "last seen" shows for a panel that is off. |
 | `mac_address` | From the initial schema, meant to re-identify a panel across DHCP lease changes. Nothing in `master/src` writes or reads it. |
+| `master_proof_key` | HMAC-SHA256 of the panel secret over `'orderbook/master-proof/v1'`, hex (`MASTER_PROOF_CONTEXT`, `shared/src/protocol/discovery.ts`). `POST /api/panel/prove` answers an HMAC of the panel's nonce with it, so a panel that finds its Master at a new address can check it is the same Master before sending its secret. Written at pairing and at secret rotation; a panel paired before 1.3 gets it the next time it connects (`authenticatePanel`), and until then its proof is a 404. Left out of the `.obbackup` export (`dumpTable`), and cleared when that restore revokes the panels: with the panels revoked the key has no use, so it is not put in a file. The Phase 8 archive keeps the pairing, so its export must carry this column for a restored Master to prove itself. |
 
 *History:* the initial schema had the identity columns and `status` only.
 `20260301000000_tenancy_access_and_sync` added `tenant_id`, `device_code` and a
 UUID `role_id`; `20260303000000_roles_and_users` re-created `role_id` as TEXT without
-a foreign key; `20260312000000_office_panel_administration` added the rest.
+a foreign key; `20260312000000_office_panel_administration` added the rest;
+`20261002000001_office_panel_master_proof` added `master_proof_key` (1.3).
 
 ### What the panel says about its own machine
 
@@ -197,3 +200,36 @@ The pairing password's hash is on `master_config`, each panel's secret hash on
 Master is off live on that panel, not here; `panel-credential.repository.ts` tells a
 panel whether they are still valid by returning a digest of each user's
 `password_hash` (`fingerprintForUser`), never the hash itself.
+
+## `user_notifications`
+
+One notice for one person: the bell on both panels (1.3 Phase 3,
+`20261002000000_user_notifications`).
+
+```sql
+CREATE TABLE user_notifications (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind        TEXT NOT NULL CHECK (kind ~ '^[a-z]+[.][a-zA-Z]+$'),  -- e.g. panel.offlineLong
+  params      JSONB NOT NULL DEFAULT '{}',                       -- fills notification.<kind>
+  link        JSONB,                                             -- { kind, id } to open, or NULL
+  dedupe_key  TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  read_at     TIMESTAMPTZ
+);
+
+CREATE INDEX        idx_user_notifications_user_created ON user_notifications (tenant_id, user_id, created_at DESC);
+CREATE INDEX        idx_user_notifications_unread       ON user_notifications (tenant_id, user_id) WHERE read_at IS NULL;
+CREATE UNIQUE INDEX uq_user_notifications_unread_dedupe ON user_notifications (tenant_id, user_id, dedupe_key)
+  WHERE dedupe_key IS NOT NULL AND read_at IS NULL;
+```
+
+| Column | Notes |
+|---|---|
+| `kind` | One of `NOTIFICATION_KINDS` (`shared/src/domain/notifications.ts`); the CHECK only holds the shape, so a later kind needs no migration. |
+| `dedupe_key` | While an unread notice with this key exists for a person, another is not added (a panel that keeps dropping is one notice until it is read). |
+| `read_at` | Set when the person marks it read. Read notices older than 60 days, and anything past a person's newest 500, are pruned every six hours by the notification service (`startNotificationPruner`), not by a migration. |
+
+Not carried in a backup (`EXCLUDED_TABLES`): the notices are about this installation's
+own events and point at ids a restore may give to other records.

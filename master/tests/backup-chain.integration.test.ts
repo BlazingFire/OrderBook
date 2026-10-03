@@ -171,6 +171,36 @@ describe.skipIf(!canRunIntegrationTests)('the password vault and backups (integr
 });
 
 /**
+ * Notices are left out of a backup too, since they point at user ids a restore
+ * may give to somebody else. A selected restore deletes users with the
+ * foreign-key cascade switched off, so the restore has to clear them itself.
+ */
+describe.skipIf(!canRunIntegrationTests)('notices and a selected restore (integration)', () => {
+  beforeAll(setupDatabase);
+  afterAll(teardownDatabase);
+  beforeEach(resetData);
+
+  it("clears the restored company's notices", async () => {
+    await setUpFirstRun('Notice Backup Co');
+    const tenantId = await testTenantId();
+    const user = await db()('users').where({ tenant_id: tenantId }).first<{ id: string }>('id');
+    await db()('user_notifications').insert({ tenant_id: tenantId, user_id: user!.id, kind: 'panel.offlineLong' });
+
+    const { data } = await exportBackup({
+      scope: 'selected',
+      tenantIds: [tenantId],
+      passphrase: 'a-long-enough-backup-passphrase',
+    });
+    await restoreBackup(data, 'a-long-enough-backup-passphrase', true);
+
+    expect(await db()('user_notifications').count<{ count: string }>({ count: '*' }).first()).toMatchObject({
+      count: '0',
+    });
+    expect(await db()('users').where({ id: user!.id }).first()).toBeTruthy();
+  });
+});
+
+/**
  * A backup from before 1.3 has no Server Master role, and the migration that
  * seeds it has already run on the database being restored into, so the
  * restore itself has to put the role back.

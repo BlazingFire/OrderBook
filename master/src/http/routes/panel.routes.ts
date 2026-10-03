@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import type { OfficePanelUpdateInput, PairingRequest } from '@orderbook/shared';
+import type { MasterProofRequest, OfficePanelUpdateInput, PairingRequest } from '@orderbook/shared';
 
 import { ValidationError } from '../../lib/errors.js';
 import * as panelService from '../../services/panel.service.js';
@@ -62,6 +62,38 @@ pairingRoutes.post(
     );
 
     res.status(201).json(result);
+  }),
+);
+
+/** How many proofs one source IP may ask for per minute. */
+const PROOF_LIMIT_PER_MIN = 30;
+
+/**
+ * `POST /api/panel/prove`: unauthenticated, because the panel asking does not
+ * yet trust this address enough to send it a secret. The answer gives nothing
+ * away: an HMAC over a nonce the asker chose and the address the request
+ * arrived at, by a key only the Master and that panel hold. Limited per source
+ * address all the same, like pairing.
+ */
+export const panelProofRoutes: Router = Router();
+
+panelProofRoutes.post(
+  '/',
+  asyncHandler(async (req, res) => {
+    consume(`prove:${normalizeIp(req.ip) ?? 'unknown'}`, PROOF_LIMIT_PER_MIN);
+
+    const body = (req.body ?? {}) as Partial<MasterProofRequest>;
+    if (typeof body.panelId !== 'string' || typeof body.nonce !== 'string') {
+      throw new ValidationError('validation.panel.fieldInvalid');
+    }
+    res.json(
+      await panelService.proveMaster(
+        body.panelId,
+        body.nonce,
+        normalizeIp(req.socket.localAddress),
+        req.socket.localPort,
+      ),
+    );
   }),
 );
 

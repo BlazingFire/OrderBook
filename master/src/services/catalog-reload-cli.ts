@@ -99,6 +99,8 @@ const BUSINESS_TABLES = [
   'id_map',
   'api_connector_links',
   'activity_log',
+  // Notices point at records this wipes, so they go with them.
+  'user_notifications',
 ];
 
 const SAMPLE_PARTIES: PartyInput[] = [

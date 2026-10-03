@@ -2353,6 +2353,82 @@ button.ob-stattile:hover {
   box-shadow: var(--sh-2);
 }
 
+/*
+ * The notification bell (`NotificationBell.tsx`): a topbar icon with an unread
+ * count, opening a list anchored under it.
+ */
+.ob-bell {
+  position: relative;
+  display: inline-flex;
+}
+.ob-bell > .ob-icon-btn {
+  position: relative;
+}
+.ob-bell-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  transform: translate(35%, -25%);
+  min-width: var(--s-16);
+  padding: 0 var(--s-4);
+  border-radius: var(--r-lg);
+  background: var(--accent);
+  color: var(--fg-on-accent);
+  font-size: var(--t-micro-size);
+  line-height: var(--s-16);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.ob-bell-list {
+  top: calc(100% + var(--s-4));
+  right: 0;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: var(--s-8);
+}
+.ob-bell-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  padding: var(--s-4) var(--s-8) var(--s-8);
+}
+.ob-bell-note {
+  padding: var(--s-4) var(--s-8);
+  color: var(--fg-tertiary);
+}
+.ob-bell-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ob-bell-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  width: 100%;
+  padding: var(--s-8);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-secondary);
+  font: inherit;
+  text-align: left;
+}
+button.ob-bell-item {
+  cursor: pointer;
+}
+button.ob-bell-item:hover {
+  background: var(--bg-hover);
+}
+.ob-bell-item[data-unread='true'] {
+  color: var(--fg-primary);
+  font-weight: 550;
+}
+.ob-bell-when {
+  color: var(--fg-tertiary);
+  font-weight: 400;
+}
+
 .ob-menu {
   display: flex;
   flex-direction: column;

@@ -2231,7 +2231,7 @@ Every route but `verify` reads the token from the **`x-master-key-token`** heade
 
 ### 13.4 The panel protocol
 
-- `PANEL_PROTOCOL_VERSION` (`shared/src/protocol/socket.ts`, now 2) rises by one in each release
+- `PANEL_PROTOCOL_VERSION` (`shared/src/protocol/socket.ts`, now 3) rises by one in each release
   that adds a socket command. An absent value on either side means 1.
 - The Office handshake `auth` payload adds `protocol` and `appVersion`. Snapshots and deltas add the
   Master's `protocol`.
@@ -2242,6 +2242,47 @@ Every route but `verify` reads the token from the **`x-master-key-token`** heade
   checked offline, oldest first, at most 500 per call (more is 400
   `validation.offlineEvents.tooMany`). A malformed entry or a username over 100 characters is
   skipped. The Master files them under the panel's device code; the Office drops them only on the ack.
+- `report:table` and `report:options` (protocol 2, the reports of 1.3 H2): `{ report, query }` →
+  `ReportTable`, and nothing → `ReportOptions`. An Office on a protocol-1 Master answers 426 for
+  `GET /api/reports/options` and `GET /api/reports/table/:report` without asking it.
+- `notification:list` (protocol 3): `{ limit?, before? }` → `{ items: UserNotification[], unreadCount }`
+  for the acting person; none with nobody signed in. `notification:markRead` (protocol 3):
+  `{ ids? } | { all: true }` → `{ unreadCount }`.
+- `notification:new` (Master → panel, protocol 3): a `UserNotification` plus `forUserId`. Sent only
+  to sockets acting as that person; the Office drops it if someone else is signed in by then.
+- `GET /api/notifications?limit=&before=` and `POST /api/notifications/read` `{ ids? } | { all: true }`
+  (Master, 1.3 Phase 3): the same two answers for the signed-in person over REST, `requireAuth` only.
+  Newest first, `limit` 1–100 (default 50); `before` is the `createdAt` of the last row seen, 400
+  `validation.cursor.malformed` when it is not a date. Ids that are not the person's own match nothing.
+  Read notices older than 60 days, and anything past a person's newest 500, are pruned every six hours.
+- The handshake also carries `actingUserToken` (1.3 Phase 3). The Master acts as that person from
+  the first snapshot, and a following `auth:assume` with the same token sends no second snapshot.
+- A refused handshake's `connect_error` carries `data: { code, messageKey }`. `panelRevoked` (the
+  pairing was revoked; `data.masterUniqueId` names this Master, and the Office forgets its credentials
+  only when that matches the Master it paired with), `panelNotPaired` (this Master has no such active
+  panel: keep them, the address may be wrong), `panelCredentialsInvalid`, and `maintenance` (the
+  Master failed rather than refused: retry). socket.io-client does not retry a refused handshake on
+  its own, so the Office retries with its own backoff (5 s doubling to 60 s).
+- `POST /api/panel/prove` `{ panelId, nonce }`, no credentials (1.3 Phase 3): `{ proof }`, the
+  HMAC-SHA256 of `nonce|host:port` keyed by the panel's proof key (`MASTER_PROOF_CONTEXT` and
+  `masterProofMessage` in `shared/src/protocol/discovery.ts`). The Master uses the address and port
+  the request arrived at, the Office the ones it contacted, so a device relaying the nonce to the real
+  Master gets an answer that does not match its own address. The Office reads at most 1 KB of the
+  answer and refuses redirects. 404 for an unknown, revoked or not-yet-keyed panel, 400 for a
+  malformed nonce, 429 past 30 a minute from one address.
+- Office side (1.3 Phase 3). `GET /api/notifications` and `POST /api/notifications/read` forward to
+  the two commands above (503 offline, 426 for a Master older than protocol 3). The SSE stream gains
+  a `notification` event, sent only while the person signed in is the one in `forUserId`; anything
+  else is dropped (`broadcastForUser` in `office/src/http/app.ts`). The SSE `status` frame,
+  `GET /api/connection` and `GET /api/sync` gain `masterProtocol`, `disconnectedSince`, `catchingUp`,
+  `hasNetworkLink`, `clockSkewMs` (this PC minus the Master), `rediscoveredFrom`, `notRecognised` and
+  `rediscoveryRefused` (an address that answered as this Master but failed the proof or was one of two
+  claiming it; cleared on connect).
+  `POST /api/sync/flush` also retries the Master at once when the link is down.
+- Rediscovery. After three failed connects in a row (at most once a minute, only with a network
+  link) the Office looks for its `masterUniqueId` over UDP. A reply from one address only is then
+  asked to prove itself at `/api/panel/prove` before the panel secret is sent there, and the new
+  address is saved only after a connection there authenticates.
 
 ---
 

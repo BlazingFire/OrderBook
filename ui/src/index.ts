@@ -48,6 +48,7 @@ export * from './LeadRecordView.js';
 export * from './Logo.js';
 export * from './LogsScreen.js';
 export * from './Modal.js';
+export * from './NotificationBell.js';
 export * from './OptionListEditor.js';
 export * from './OrderNote.js';
 export * from './OrderRecordView.js';

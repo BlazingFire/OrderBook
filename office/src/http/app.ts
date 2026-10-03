@@ -152,8 +152,8 @@ export function createApp(): Express {
     const credentials = await loadCredentials();
     res.json({
       // Two separate signals, because "no network" and "network but no Master"
-      // need different advice on screen.
-      hasNetworkLink: hasNetworkLink(),
+      // need different advice on screen: `hasNetworkLink` (in the status
+      // below) and the link `state`.
       interfaces: listLanInterfaces(),
       isPaired: credentials !== null,
       panelName: config.panelName,
@@ -475,7 +475,10 @@ export function createApp(): Express {
     });
   });
 
+  // Pressing Sync also tries the Master again at once instead of waiting out
+  // the reconnect backoff; a no-op while connected.
   app.post('/api/sync/flush', async (_req, res) => {
+    masterConnection.retryNow();
     res.json(await sync.flush());
   });
 
@@ -496,6 +499,25 @@ export function createApp(): Express {
 
     await sync.acknowledgeRejections(ids);
     res.json({ rejections: await sync.recentRejections() });
+  });
+
+  // --- Notifications (the bell), stored on the Master, so online only ---
+
+  app.get('/api/notifications', (req, res) => {
+    const limit = Number(req.query.limit);
+    return forward(res, 'notification:list', {
+      ...(typeof req.query.limit === 'string' && Number.isFinite(limit) ? { limit } : {}),
+      ...(typeof req.query.before === 'string' ? { before: req.query.before } : {}),
+    });
+  });
+  app.post('/api/notifications/read', (req, res) => {
+    const body = (req.body ?? {}) as { ids?: unknown; all?: unknown };
+    return forward(res, 'notification:markRead', {
+      ...(body.all === true ? { all: true } : {}),
+      ...(Array.isArray(body.ids)
+        ? { ids: body.ids.filter((id): id is string => typeof id === 'string') }
+        : {}),
+    });
   });
 
   /**
@@ -2111,6 +2133,22 @@ function broadcast(type: string, data: unknown): void {
 }
 
 /**
+ * Broadcast an event addressed to one person, only while that person is the
+ * one signed in here.
+ *
+ * The Master addresses it to whoever this panel was acting as when it sent,
+ * and on a shared PC that can be the previous shift by the time it lands. One
+ * filter for every per-person event (notifications now, presence, chat and
+ * print later), and anything without a `forUserId` is dropped rather than
+ * shown to whoever happens to be here.
+ */
+function broadcastForUser(type: string, data: { forUserId?: unknown }): void {
+  const userId = userSession.currentSession()?.userId;
+  if (!userId || data.forUserId !== userId) return;
+  broadcast(type, data);
+}
+
+/**
  * Reconcile this panel's local product-image cache against what the Master's
  * snapshot still lists, whenever the link hands over a snapshot: a full one on
  * connect or after a ring miss, a pulled refresh, or the in-memory one a
@@ -2185,6 +2223,9 @@ masterConnection.on('snapshot', schedulePushView);
 masterConnection.on('snapshot', (snapshot: SyncSnapshot) => void sweepImageCache(snapshot));
 masterConnection.on('change', (event: DataChangedEvent) => broadcast('change', event));
 masterConnection.on('conflict', (value: unknown) => broadcast('conflict', value));
+masterConnection.on('notification', (notification: { forUserId?: unknown }) =>
+  broadcastForUser('notification', notification),
+);
 sync.onSyncEvent(schedulePushView);
 
 /**

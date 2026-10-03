@@ -68,11 +68,18 @@ async function waitFor(client: Client, event: string, n = 1): Promise<void> {
 }
 
 async function connectPanel(deviceCode: string, protocol?: number): Promise<Client & { panelId: string }> {
-  const panelId = await pairPanel(deviceCode);
+  return openPanelSocket(await pairPanel(deviceCode), { protocol });
+}
+
+/** Another socket for a panel already paired, as a reconnect would open. */
+async function openPanelSocket(
+  panelId: string,
+  extra: { protocol?: number; actingUserToken?: string } = {},
+): Promise<Client & { panelId: string }> {
   const { port } = server.address() as AddressInfo;
   const socket = connect(`http://127.0.0.1:${port}`, {
     transports: ['websocket'],
-    auth: { kind: 'office-panel', panelId, panelSecret: 'panel-secret', protocol },
+    auth: { kind: 'office-panel', panelId, panelSecret: 'panel-secret', ...extra },
   });
   const client = { socket, seen: [] as Client['seen'], panelId };
   socket.onAny((event: string, ...args: unknown[]) => client.seen.push({ event, args }));
@@ -258,9 +265,56 @@ describe.skipIf(!canRunIntegrationTests)('what the Master pushes to Office panel
     await signIn(panel, 'kavita');
     const changedBefore = count(panel, 'data:changed');
 
+    const snapshotsBefore = count(panel, 'sync:snapshot');
+
     publishChange({ entity: 'party_bulk', action: 'updated', id: tenantId, payload: { created: 2, updated: 0, skipped: 0, failed: 0 } });
 
     await waitFor(panel, 'data:changed', changedBefore + 1);
+    await settle();
+    const changes = panel.seen.filter((entry) => entry.event === 'data:changed');
+    expect((changes.at(-1)?.args[0] as { entity: string }).entity).toBe('party_bulk');
+    // The event in place of the snapshot an older panel gets, never as well.
+    expect(count(panel, 'sync:snapshot')).toBe(snapshotsBefore);
+  });
+
+  it('acts as the handshake token from the first snapshot, and does not send a second on auth:assume', async () => {
+    const role = await roleService.createRole(
+      { name: 'Sales3', tier: 'management', permissions: ['leads.view', 'orders.view'] },
+      admin,
+    );
+    await createStaff('meera', role.id);
+    const first = await connectPanel('PUSH11');
+    const token = await signIn(first, 'meera');
+    first.socket.close();
+    await waitFor(first, 'disconnect');
+
+    // The reconnect a 1.3 Office makes: the person's token in the handshake,
+    // then `auth:assume` with the same token once connected.
+    const again = await openPanelSocket(first.panelId, { actingUserToken: token });
+    expect(lastSnapshot<{ permissions: string[] }>(again).permissions).toContain('orders.view');
+
+    const ack = await ask<{ ok: boolean; data: { status: string } }>(again, 'auth:assume', token);
+    expect(ack.data.status).toBe('active');
+    await settle();
+    expect(count(again, 'sync:snapshot')).toBe(1);
+    expect(count(again, 'sync:delta')).toBe(0);
+  });
+
+  it('closes a panel’s stale socket on reconnect, and only the current socket clears presence', async () => {
+    const first = await connectPanel('PUSH12');
+    const second = await openPanelSocket(first.panelId);
+
+    // The Master drops the socket the panel gave up on.
+    await waitFor(first, 'disconnect');
+    await settle();
+    expect(panelService.isPanelConnected(first.panelId)).toBe(true);
+    const listed = await panelService.listPanelsWithPresence(tenantId);
+    expect(listed.find((panel) => panel.id === first.panelId)?.isConnected).toBe(true);
+
+    second.socket.close();
+    const deadline = Date.now() + 5000;
+    while (panelService.isPanelConnected(first.panelId) && Date.now() < deadline) await settle();
+    expect(panelService.isPanelConnected(first.panelId)).toBe(false);
   });
 
   it('does not tell a panel whose person may not see parties anything about a bulk party import', async () => {

@@ -157,6 +157,16 @@ footer, which also counts such lines beside the total weight it could compute.
 5. **Two people editing offline** — edits to *different* fields both survive the reconnect. Edits to
    the *same* field resolve to the higher HLC, and the losing value is retained in `sync_conflicts`
    for review. Nothing is silently discarded.
+6. **A stage move made offline** (1.3) — follows the same rule as a field edit. The queued
+   `lead.setStage` / `order.setStage` carries the HLC of the moment it was made. If the stage has
+   moved since by a newer change, the offline move does not win: it is recorded as a `stageId`
+   conflict (the push answers `merged`), and restoring it from Conflicts makes the move through
+   `setStage` again, so the move rules, the timeline entry and the activity row apply. A move that
+   is newer than the stored stage applies, and stamps `fieldHlc.stageId` with the move's own HLC,
+   not the time it arrived (`assertStageFresh` in `master/src/domain/pipeline.ts`). A stale move to
+   the stage the record is already in is a no-op. The check applies only to moves from an Office on
+   protocol 3 or later (`STAGE_CLOCK_MIN_PROTOCOL` in `master/src/services/sync.service.ts`); a move
+   from an older Office keeps the last-arrival rule and applies when it arrives.
 
 ---
 
@@ -259,10 +269,28 @@ lead, and the Master creates the order when it applies it. A lead raised on the 
 **Promotion.** When a create arrives, the Master inserts the record under a new permanent ID and
 writes the pair to `id_map` (`mapTemporaryId` in `master/src/services/sync.service.ts`); the
 record's own `temporary_id` column stays empty. The push answers with the pairs, and the panel
-rewrites any follow-up still in its outbox ("move lead X to Quoted") to the permanent ID. The
-Master sorts each pushed batch by `(hlc, device_code)` (`compareForIdAssignment`) before applying
-it; a batch comes from one panel, so between two panels the one whose push is applied first is
-numbered first.
+rewrites any follow-up still in its outbox ("move lead X to Quoted") to the permanent ID.
+
+**Order across panels (1.3, rule 6).** Every push goes through the Master's push gate
+(`master/src/services/push-gate.ts`). The gate collects the pushes that arrive within a gather
+window, sorts all their mutations together by HLC physical time, then HLC counter, then device
+code, then mutation id (`compareForIdAssignment`), and applies them one at a time. The window is
+measured from the oldest push waiting:
+
+- **100 ms** when a push carries a live create;
+- **6 s** when a push carries a create whose HLC is more than 10 s old, an offline backlog, so
+  panels that come back online together are numbered in the order their work was done.
+  Given once per connection, and only within a minute of the panel connecting: the rest
+  of a backlog's batches drain at once behind the first, and a live create from a PC
+  whose clock is behind the Master's does not wait 6 s on every save;
+- **until 5 s after the Master started**, so panels reconnecting after a Master restart are
+  sorted together;
+- anything else applies on the next tick.
+
+The order holds within one gather window only. A panel whose push arrives after a window has
+closed is numbered after everything already applied, however old its work, because a permanent ID
+once minted is never moved. So the slowest a push waits is about 6 s. Two pushes from the same
+panel (a 1.2 Office's ack retry) are merged in the gate rather than queued twice.
 
 **`id_map` keeps a temporary ID resolvable for writes.** A mutation addressed by it, and a
 `partyId`, `ownerId` or `productId` inside a payload, or a line's `productId`, that names one — a

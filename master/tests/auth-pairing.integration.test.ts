@@ -293,8 +293,10 @@ describe.skipIf(!canRunIntegrationTests)('setup, auth and pairing (integration)'
       const paired = await pairOne();
       await panels.revokePanel(paired.panelId);
 
+      // Its own refusal, distinct from "not paired": only this one tells the
+      // Office to forget its credentials.
       await expect(panels.authenticatePanel(paired.panelId, paired.panelSecret)).rejects.toThrow(
-        /not paired/i,
+        /revoked/i,
       );
     });
 

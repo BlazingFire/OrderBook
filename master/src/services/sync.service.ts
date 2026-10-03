@@ -3,9 +3,11 @@
  *
  * Three properties this has to deliver, and how:
  *
- *  **Deterministic numbering.** The batch is sorted by `(hlc, deviceCode)`
- *  before anything is applied, so two panels reconnecting in either order
- *  produce identical permanent ids.
+ *  **Deterministic numbering.** Every push goes through the push gate
+ *  (`push-gate.ts`), which gathers the pushes that arrive together and applies
+ *  them one mutation at a time in `(hlc, deviceCode, mutationId)` order. Panels
+ *  pushing within one gather window are numbered by HLC whatever order they
+ *  arrived in; a push that arrives later is numbered later.
  *
  *  **Idempotent replay.** A panel that pushes, loses the link before the
  *  acknowledgement arrives, and pushes again on reconnect must not apply
@@ -19,7 +21,9 @@
  * Creates are delegated to the ordinary services so they get the same
  * validation an online write would, then the temporary id is mapped to the
  * permanent one the service minted. Updates cannot be delegated — no service
- * takes a per-field clock — so they run against the repositories here.
+ * takes a per-field clock — so they run against the repositories here. Stage
+ * moves are delegated with the mutation's clock, so a stale one becomes a
+ * conflict rather than overwriting a newer stage.
  */
 
 import type {
@@ -41,11 +45,11 @@ import type {
   SyncPushResponse,
 } from '@orderbook/shared';
 import {
+  baseForUnversionedEdit,
   columnPatch,
   ProductValidationError,
   validateProductInput,
   compareForIdAssignment,
-  compareHlc,
   isSyncableEntity,
   isTemporaryId,
   type MergeableEntity,
@@ -65,6 +69,7 @@ import {
   AppError,
   ForbiddenError,
   NotFoundError,
+  StaleEditError,
   toErrorMessage,
   ValidationError,
 } from '../lib/errors.js';
@@ -85,6 +90,7 @@ import * as catalogService from './catalog.service.js';
 import * as inventoryService from './inventory.service.js';
 import * as leadService from './lead.service.js';
 import * as orderService from './order.service.js';
+import { runPush, type PostCommit } from './push-gate.js';
 
 const log = createLogger('sync');
 
@@ -96,9 +102,24 @@ const log = createLogger('sync');
  */
 const REQUIRED_PERMISSION: Record<Mutation['kind'], Permission> = MUTATION_PERMISSIONS;
 
+/** The first panel protocol whose stage moves are ordered by their HLC (rule 6). */
+const STAGE_CLOCK_MIN_PROTOCOL = 3;
+
+/**
+ * Answer one push. The checks that concern the whole push and the replayed
+ * duplicates are settled here; everything else waits its turn in the push
+ * gate, which hands each mutation to `applyOne`.
+ */
 export async function applyPush(
   request: SyncPushRequest,
   actor: ActorContext,
+  /** When the pushing panel's socket connected; the push gate's backlog rule needs it. */
+  connectedAt?: number,
+  /**
+   * The pushing panel's protocol. Absent means a caller without a socket (a
+   * test), judged like the current build.
+   */
+  panelProtocol?: number,
 ): Promise<SyncPushResponse> {
   const mutations = [...(request.mutations ?? [])].sort(compareForIdAssignment);
 
@@ -120,6 +141,16 @@ export async function applyPush(
     mutations.map((mutation) => mutation.mutationId),
   );
 
+  const fresh = mutations.filter((mutation) => !alreadyApplied.has(mutation.mutationId));
+  // Stage moves are ordered by their HLC only for an Office that folds the
+  // Master's change clocks into its own (protocol 3 on). An older Office never
+  // sees a live Master-side move's clock, so a slow clock there would turn its
+  // live drags into conflicts; its moves keep the old last-arrival rule.
+  const stageClock = panelProtocol === undefined || panelProtocol >= STAGE_CLOCK_MIN_PROTOCOL;
+  const apply = (mutation: Mutation, pushActor: ActorContext, afterCommit: PostCommit[]) =>
+    applyOne(mutation, pushActor, afterCommit, stageClock);
+  const outcomes = fresh.length > 0 ? await runPush(actor, fresh, apply, connectedAt) : new Map<string, MutationResult>();
+
   const results: MutationResult[] = [];
   const temporaryIds: string[] = [];
 
@@ -130,17 +161,15 @@ export async function applyPush(
       continue;
     }
 
-    const result = await applyOne(mutation, actor);
+    const result = outcomes.get(mutation.mutationId);
+    if (!result) throw new Error(`Push gate returned no result for ${mutation.mutationId}`);
     results.push(result);
 
     // Fed back into the same map, so a mutation id repeated *within one batch*
-    // is recognised as the duplicate it is. Reading the applied set once before
-    // the loop and never updating it meant two copies in one request both
-    // applied — two leads from one `lead.create` — while the second
-    // `applied_mutations` insert was swallowed by `onConflict().ignore()` and
-    // left no trace. Only the panel's per-enqueue `randomUUID()` was preventing
-    // it, which is an accident of the client rather than a property of the
-    // protocol.
+    // is reported as the duplicate it is. The gate applies each id once; two
+    // copies in one request used to apply twice — two leads from one
+    // `lead.create` — while the second `applied_mutations` insert was
+    // swallowed by `onConflict().ignore()` and left no trace.
     alreadyApplied.set(mutation.mutationId, result);
 
     if (isTemporaryId(mutation.entityId)) temporaryIds.push(mutation.entityId);
@@ -178,7 +207,17 @@ function isRetryableDatabaseError(error: unknown): boolean {
   return (error as { name?: string } | null)?.name === 'TimeoutAcquiringConnection';
 }
 
-async function applyOne(mutation: Mutation, actor: ActorContext): Promise<MutationResult> {
+/**
+ * Apply one mutation, recording its outcome. Called only by the push gate, one
+ * at a time. Work that must wait for the commit (`publishConflict`) is pushed
+ * onto `afterCommit`, which the gate runs once this returns.
+ */
+async function applyOne(
+  mutation: Mutation,
+  actor: ActorContext,
+  afterCommit: PostCommit[],
+  stageClock = true,
+): Promise<MutationResult> {
   const permission = REQUIRED_PERMISSION[mutation.kind];
 
   if (!permission || !isSyncableEntity(mutation.entity)) {
@@ -226,8 +265,9 @@ async function applyOne(mutation: Mutation, actor: ActorContext): Promise<Mutati
    * left free to open its own separate transactions for the actual writes
    * (exactly as it already does for creates and merges); the lock only needs
    * this outer transaction to stay open, not the writes to run inside it.
-   * Holding one pooled connection idle for a mutation's full `route()` is an
-   * accepted cost at this product's LAN, one-panel-batch-at-a-time scale.
+   * This holds one pooled connection idle for the mutation's full `route()`,
+   * which takes others; the push gate applies one mutation at a time, so only
+   * one connection is ever held this way.
    */
   return db().transaction(async (trx) => {
     await trx.raw('SELECT pg_advisory_xact_lock(?, hashtext(?))', [
@@ -241,7 +281,7 @@ async function applyOne(mutation: Mutation, actor: ActorContext): Promise<Mutati
 
     let result: MutationResult;
     try {
-      result = await route(mutation, actor);
+      result = await route(mutation, actor, afterCommit, stageClock);
     } catch (error) {
       // A transient failure — a serialization/deadlock abort from crossing
       // another transaction's lock order, or a pool-acquire timeout under a
@@ -249,8 +289,8 @@ async function applyOne(mutation: Mutation, actor: ActorContext): Promise<Mutati
       // validation or permission refusal is. Recording it below would make
       // `applied_mutations` replay the same rejection forever and destroy an
       // offline edit that only needed a retry. Rethrown instead, so it
-      // propagates out of `applyPush` and the panel's own push retry (not a
-      // recorded refusal) is what runs next.
+      // fails this push in the gate (its later mutations are skipped, not
+      // recorded) and the panel's own push retry is what runs next.
       if (isRetryableDatabaseError(error)) throw error;
 
       log.warn(`Mutation ${mutation.mutationId} (${mutation.kind}) rejected: ${toErrorMessage(error)}`);
@@ -362,12 +402,17 @@ async function resolvePayloadIds(mutation: Mutation, actor: ActorContext): Promi
   return { ...mutation, payload };
 }
 
-async function route(incoming: Mutation, actor: ActorContext): Promise<MutationResult> {
+async function route(
+  incoming: Mutation,
+  actor: ActorContext,
+  afterCommit: PostCommit[],
+  stageClock: boolean,
+): Promise<MutationResult> {
   const mutation = await resolvePayloadIds(incoming, actor);
 
   switch (mutation.kind) {
     case 'lead.create': {
-      const lead = await leadService.createLead(payloadAs<LeadInput>(mutation), actor);
+      const lead = await leadService.createLead(payloadAs<LeadInput>(mutation), actor, mutation.hlc);
       await mapTemporaryId(mutation, lead.id, actor);
       return applied(mutation, lead.id);
     }
@@ -385,19 +430,16 @@ async function route(incoming: Mutation, actor: ActorContext): Promise<MutationR
     }
 
     case 'lead.update':
-      return mergeUpdate('lead', mutation, actor);
+      return mergeUpdate('lead', mutation, actor, afterCommit);
     case 'order.update':
-      return mergeUpdate('order', mutation, actor);
+      return mergeUpdate('order', mutation, actor, afterCommit);
     case 'party.update':
-      return mergeUpdate('party', mutation, actor);
+      return mergeUpdate('party', mutation, actor, afterCommit);
     case 'product.update':
-      return mergeUpdate('product', mutation, actor);
+      return mergeUpdate('product', mutation, actor, afterCommit);
 
-    case 'lead.setStage': {
-      const id = await identityRepo.resolveId(actor.tenantId, mutation.entityId);
-      await leadService.setStage({ ...payloadAs<StageChangeInput>(mutation), id }, actor);
-      return applied(mutation, id);
-    }
+    case 'lead.setStage':
+      return stageChange('lead', mutation, actor, afterCommit, stageClock);
 
     case 'lead.addRemark': {
       const id = await identityRepo.resolveId(actor.tenantId, mutation.entityId);
@@ -414,11 +456,8 @@ async function route(incoming: Mutation, actor: ActorContext): Promise<MutationR
       return applied(mutation, order.id);
     }
 
-    case 'order.setStage': {
-      const id = await identityRepo.resolveId(actor.tenantId, mutation.entityId);
-      await orderService.setStage({ ...payloadAs<StageChangeInput>(mutation), id }, actor);
-      return applied(mutation, id);
-    }
+    case 'order.setStage':
+      return stageChange('order', mutation, actor, afterCommit, stageClock);
 
     case 'order.dispatch': {
       const orderId = await identityRepo.resolveId(actor.tenantId, mutation.entityId);
@@ -458,6 +497,55 @@ async function route(incoming: Mutation, actor: ActorContext): Promise<MutationR
 }
 
 /**
+ * A stage move from the outbox, ordered by its HLC like a field edit (rule 6).
+ * A move older than the stored stage is not applied: the service throws
+ * `StaleEditError` before writing, and the move is recorded as a `stageId`
+ * conflict someone can restore. Without `stageClock` (an Office older than
+ * protocol 3) the move applies on arrival, as it always did.
+ */
+async function stageChange(
+  entity: 'lead' | 'order',
+  mutation: Mutation,
+  actor: ActorContext,
+  afterCommit: PostCommit[],
+  stageClock: boolean,
+): Promise<MutationResult> {
+  const id = await identityRepo.resolveId(actor.tenantId, mutation.entityId);
+  const input = { ...payloadAs<StageChangeInput>(mutation), id };
+  const edit = stageClock ? { hlc: mutation.hlc, deviceCode: mutation.deviceCode } : undefined;
+
+  try {
+    if (entity === 'lead') await leadService.setStage(input, actor, edit);
+    else await orderService.setStage(input, actor, edit);
+    return applied(mutation, id);
+  } catch (error) {
+    if (!(error instanceof StaleEditError)) throw error;
+    const { conflict } = error;
+    const stored = await db().transaction((trx) =>
+      syncRepo.recordConflicts(
+        [
+          {
+            tenantId: actor.tenantId,
+            entity,
+            entityId: id,
+            field: conflict.field,
+            losingValue: conflict.losingValue,
+            losingHlc: mutation.hlc,
+            losingDeviceCode: mutation.deviceCode,
+            winningValue: conflict.winningValue,
+            winningHlc: conflict.winningHlc,
+            winningDeviceCode: conflict.winningDeviceCode,
+          },
+        ],
+        trx,
+      ),
+    );
+    afterCommit.push(() => stored.forEach((row) => publishConflict(row)));
+    return { mutationId: mutation.mutationId, status: 'merged', entityId: id, conflicts: [conflict] };
+  }
+}
+
+/**
  * Apply an update through the field-level merge.
  *
  * Only the fields the mutation actually asserts are considered. Anything the
@@ -468,6 +556,7 @@ async function mergeUpdate(
   entity: MergeableEntity,
   mutation: Mutation,
   actor: ActorContext,
+  afterCommit: PostCommit[],
 ): Promise<MutationResult> {
   const id = await identityRepo.resolveId(actor.tenantId, mutation.entityId);
 
@@ -549,17 +638,12 @@ async function mergeUpdate(
       }
     }
 
-    // The Office outbox stores `{}` as the base of every lead/order edit, so
-    // "stored clock newer than the base" would flag every second edit as a
-    // clash. With no base at all, treat each field's stored clock as the base
-    // when it predates this edit: a newer edit wins, an older one still loses
-    // and is recorded. Parties and products send real bases and are untouched.
-    const base: Record<string, string> = { ...(mutation.baseFieldHlc ?? {}) };
+    // Lead and order edits from the Office carry no base (see
+    // `baseForUnversionedEdit`). Parties and products send real bases and are
+    // untouched.
+    let base: Record<string, string> = { ...(mutation.baseFieldHlc ?? {}) };
     if ((entity === 'lead' || entity === 'order') && Object.keys(base).length === 0) {
-      for (const field of fields) {
-        const stored = current.fieldHlc[field];
-        if (stored && compareHlc(mutation.hlc, stored) > 0) base[field] = stored;
-      }
+      base = baseForUnversionedEdit(fields, current.fieldHlc, mutation.hlc);
     }
 
     const outcome = mergeFields(
@@ -736,7 +820,8 @@ async function mergeUpdate(
 
   // Published only after the transaction has committed, so a panel never
   // learns about a conflict or a row change that could still have rolled back.
-  for (const conflict of storedConflicts) publishConflict(conflict);
+  // The conflicts wait for the gate, after this mutation's outcome is recorded.
+  afterCommit.push(() => storedConflicts.forEach((conflict) => publishConflict(conflict)));
   await republish(entity, actor.tenantId, id);
 
   return {

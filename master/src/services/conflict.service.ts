@@ -24,7 +24,8 @@ import * as productVariantRepo from '../repositories/product-variant.repository.
 import { nextHlc } from '../repositories/identity.repository.js';
 import * as syncRepo from '../repositories/sync.repository.js';
 import { publishChange } from './change-bus.js';
-import { buildLines } from './lead.service.js';
+import * as leadService from './lead.service.js';
+import * as orderService from './order.service.js';
 import { requirePartyAccess } from './party-access.service.js';
 import {
   assertMergeAllowed,
@@ -72,8 +73,25 @@ export async function resolveConflict(
   // cannot see is not theirs to review, restore or dismiss.
   await requireConflictScope(conflict, actor);
 
+  // A stage is put back as a move through the service, so the move rules, the
+  // timeline entry and the activity entry apply as they do to any move. It
+  // runs before the review is marked, in its own transaction, as the service
+  // always does.
+  const restoreStage =
+    input.action === 'restoreLoser' &&
+    conflict.field === 'stageId' &&
+    (conflict.entity === 'lead' || conflict.entity === 'order');
+  if (restoreStage) {
+    if (typeof conflict.losingValue !== 'string') {
+      throw new ValidationError('validation.conflict.cannotRestoreField', { field: conflict.field });
+    }
+    const move = { id: conflict.entityId, stageId: conflict.losingValue };
+    if (conflict.entity === 'lead') await leadService.setStage(move, actor);
+    else await orderService.setStage(move, actor);
+  }
+
   const resolved = await db().transaction(async (trx) => {
-    if (input.action === 'restoreLoser') {
+    if (input.action === 'restoreLoser' && !restoreStage) {
       // Sets, not columns: the lead's lines and a product's variants are child
       // tables, restored as a whole set like they were merged.
       if (
@@ -208,7 +226,7 @@ async function restoreSet(conflict: SyncConflict, actor: ActorContext, trx: Trx)
 
   if (conflict.entity === 'lead') {
     if (target.values.convertedOrderId) throw new ValidationError('validation.lead.convertedLocked');
-    const lines = await buildLines(tenantId, String(target.values.partyId), conflict.losingValue as never, {
+    const lines = await leadService.buildLines(tenantId, String(target.values.partyId), conflict.losingValue as never, {
       partyWiseMode: Boolean(target.values.partyWiseMode),
     });
     await leadRepo.replaceLeadLines(tenantId, conflict.entityId, lines, trx);

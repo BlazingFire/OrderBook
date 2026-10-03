@@ -27,10 +27,32 @@ export async function findPanelById(id: string): Promise<OfficePanel | null> {
   return row ? mapOfficePanel(row) : null;
 }
 
-/** Secret hash is returned separately so it never leaks into a domain object. */
-export async function findPanelSecretHash(id: string): Promise<string | null> {
-  const row = await db()(TABLE).select('secret_hash').where({ id }).first();
-  return row ? String(row.secret_hash) : null;
+/**
+ * Secret hash is returned separately so it never leaks into a domain object.
+ * `hasProofKey` rides along so sign-in fills the proof key only when missing.
+ */
+export async function findPanelSecretHash(id: string): Promise<{ hash: string; hasProofKey: boolean } | null> {
+  const row = await db()(TABLE).select('secret_hash', 'master_proof_key').where({ id }).first();
+  return row ? { hash: String(row.secret_hash), hasProofKey: row.master_proof_key != null } : null;
+}
+
+/** The key `proveMaster` answers with; null until the panel has connected since 1.3. */
+export async function findPanelProofKey(id: string): Promise<{ status: OfficePanelStatus; key: string | null } | null> {
+  const row = await db()(TABLE).select('status', 'master_proof_key').where({ id }).first();
+  return row
+    ? { status: row.status as OfficePanelStatus, key: (row.master_proof_key as string | null) ?? null }
+    : null;
+}
+
+/** Fill the proof key for a panel paired before it existed; never overwrites one. */
+export async function fillPanelProofKey(id: string, key: string): Promise<void> {
+  await db()(TABLE).where({ id }).whereNull('master_proof_key').update({ master_proof_key: key });
+}
+
+/** Active panels of every company, for scheduling the long-offline notices at boot. */
+export async function listActivePanels(): Promise<OfficePanel[]> {
+  const rows = await db()(TABLE).where({ status: 'active' });
+  return rows.map(mapOfficePanel);
 }
 
 export async function insertPanel(values: {
@@ -39,6 +61,7 @@ export async function insertPanel(values: {
   name: string;
   device_code: string;
   secret_hash: string;
+  master_proof_key?: string;
   lan_ip: string | null;
   status: OfficePanelStatus;
   paired_at: Date;
@@ -111,14 +134,23 @@ export async function updateDeviceReport(
   return row ? mapOfficePanel(row) : null;
 }
 
-/** Replaces the stored bcrypt hash. `secret_rotated_at` is what dates the change. */
+/**
+ * Replaces the stored bcrypt hash, and the proof key derived from the same
+ * secret with it. `secret_rotated_at` is what dates the change.
+ */
 export async function updatePanelSecretHash(
   id: string,
   secretHash: string,
+  masterProofKey: string,
 ): Promise<OfficePanel | null> {
   const [row] = await db()(TABLE)
     .where({ id })
-    .update({ secret_hash: secretHash, secret_rotated_at: db().fn.now(), updated_at: db().fn.now() })
+    .update({
+      secret_hash: secretHash,
+      master_proof_key: masterProofKey,
+      secret_rotated_at: db().fn.now(),
+      updated_at: db().fn.now(),
+    })
     .returning('*');
   return row ? mapOfficePanel(row) : null;
 }

@@ -63,6 +63,10 @@ const EXCLUDED_TABLES = new Set([
   // rather than "fixed", because the live row is correct for *this*
   // installation and a restored one would not be.
   'master_clock',
+  // A person's notices are about this installation's own events (a panel that
+  // dropped, a print that finished) and point at ids a restore may reuse for
+  // other records. Like the vault, not carried across.
+  'user_notifications',
 ]);
 
 /**
@@ -117,7 +121,12 @@ export async function dumpTable(
       }
     }
   }
-  return query;
+  const rows: Record<string, unknown>[] = await query;
+  // `master_proof_key` stays out of every export: it lets whoever holds it pass
+  // as this Master to its panels (`proveMaster`), and a restored panel is
+  // revoked and re-paired anyway (`revokeAllOfficePanels`).
+  if (table === 'office_panels') for (const row of rows) delete row.master_proof_key;
+  return rows;
 }
 
 /**
@@ -322,6 +331,7 @@ export async function revokeAllOfficePanels(trx: Knex.Transaction): Promise<void
   await trx('office_panels').update({
     status: 'revoked',
     secret_hash: `restored$${randomBytes(32).toString('hex')}`,
+    master_proof_key: null,
   });
 }
 

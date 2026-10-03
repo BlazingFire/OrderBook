@@ -77,6 +77,10 @@ contextBridge.exposeInMainWorld('orderbook', {
   printPage: (options: { deviceName?: string }): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('orderbook:printPage', options) as Promise<{ ok: boolean; error?: string }>,
 
+  /** A system notification plus a taskbar flash, for a notice the operator should not miss. */
+  notify: (notice: { title: string; body: string }): Promise<boolean> =>
+    ipcRenderer.invoke('orderbook:notify', notice) as Promise<boolean>,
+
   /**
    * The application menu asking the page to go somewhere. One-way and
    * id-based: the menu is built in the main process and the renderer only
