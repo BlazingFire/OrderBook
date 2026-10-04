@@ -75,8 +75,8 @@ interface Known {
 
 type Panel = 'bulk' | 'copy' | null;
 
-/** The footer keeps this height whether it shows Save or the discard question, so the dialog does not jump. */
-const FOOT_MIN = rem(44);
+/** The footer keeps this height (two lines of text) whether it shows Save or the discard question, so the dialog does not jump. */
+const FOOT_MIN = rem(48);
 const ROW = { display: 'flex', alignItems: 'center', gap: 'var(--s-8)' } as const;
 /** How many parties the copy picker asks for at a time; it narrows as the person types. */
 const COPY_PAGE = 20;
@@ -301,13 +301,10 @@ export function PartyAccessEditor({ party, people, canEdit, onClose, onSaved }: 
             ref={discardRef}
             role="alertdialog"
             aria-label={t('partyAccess.editor.discardTitle')}
-            style={{ ...ROW, justifyContent: 'space-between', width: '100%', flexWrap: 'nowrap', minHeight: FOOT_MIN }}
+            style={{ ...ROW, justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', minHeight: FOOT_MIN }}
           >
-            {/* One row, like the Save footer, so the dialog does not change height; the full text is the title. */}
-            <span
-              title={`${t('partyAccess.editor.discardTitle')} ${t('partyAccess.editor.discardBody', { name: party.partyName })}`}
-              style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-            >
+            {/* May wrap to two lines; the Save footer reserves that height too, so the dialog does not move. */}
+            <span style={{ minWidth: 0 }}>
               <strong>{t('partyAccess.editor.discardTitle')}</strong>{' '}
               <span className="ob-small">{t('partyAccess.editor.discardBody', { name: party.partyName })}</span>
             </span>
