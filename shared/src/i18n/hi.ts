@@ -4297,4 +4297,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'panels.rotate.failed': 'सीक्रेट दोबारा जारी नहीं किया जा सका',
   'panels.list.showRemoved': 'हटाए गए दिखाएँ ({count})',
   'panels.list.hideRemoved': 'हटाए गए छिपाएँ',
+  'activity.office_panel.re_paired': '{actor} ने ऑफ़िस पैनल {name} को दोबारा पेयर किया, उसकी पिछली पेयरिंग ({previousStatus}) की जगह',
+  'logs.action.re_paired': 'दोबारा पेयर किया गया',
 };

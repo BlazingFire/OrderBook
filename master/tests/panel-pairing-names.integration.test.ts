@@ -55,6 +55,26 @@ describe.skipIf(!canRunIntegrationTests)('pairing again (integration)', () => {
     await expect(panels.authenticatePanel(first.panelId, first.panelSecret)).rejects.toThrow();
   });
 
+  it('still needs a valid pairing: a matching machine name alone gets nothing, and the entry names the row it replaced', async () => {
+    const first = await pairAs('Reception', 'FRONT-PC');
+    await panels.revokePanel(first.panelId, await testActor());
+
+    panels.closePairingWindow();
+    await expect(
+      panels.pairPanel({ mode: 'auto', panelName: 'Reception', hostname: 'FRONT-PC' }, '192.168.1.20'),
+    ).rejects.toThrow(/not accepting/i);
+    await expect(
+      panels.pairPanel({ mode: 'manual', panelName: 'Reception', hostname: 'FRONT-PC', pairingPassword: 'wrong' }, '192.168.1.20'),
+    ).rejects.toThrow(/pairing password/i);
+    expect((await rows())[0]).toMatchObject({ status: 'revoked' });
+
+    await pairAs('Reception', 'FRONT-PC');
+    const entry = await db()('activity_log').where({ entity_id: first.panelId, action: 're_paired' }).first();
+    expect(entry).toBeTruthy();
+    expect(JSON.stringify(entry.details)).toContain('"previousStatus":"removed"');
+    expect(JSON.stringify(entry.details)).toContain(first.panelId);
+  });
+
   it('does the same for a reinstalled PC whose old row was never removed, but not for another PC with the same name', async () => {
     const first = await pairAs('Counter', 'COUNTER-PC');
     expect((await pairAs('Counter', 'COUNTER-PC')).panelId).toBe(first.panelId);

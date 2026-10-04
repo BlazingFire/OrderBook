@@ -3354,4 +3354,6 @@ export const EN_MESSAGES = {
   'panels.rotate.failed': 'Could not reissue the secret',
   'panels.list.showRemoved': 'Show removed ({count})',
   'panels.list.hideRemoved': 'Hide removed',
+  'activity.office_panel.re_paired': '{actor} paired the office panel {name} again, replacing its earlier pairing ({previousStatus})',
+  'logs.action.re_paired': 'Paired again',
 } as const;
