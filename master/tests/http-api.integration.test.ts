@@ -396,6 +396,21 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
         const list = await admin.get('/api/parties').expect(200);
         expect(list.body.items).toMatchObject([{ id: party.id, recordCount: 1, myAccess: 'manage' }]);
       });
+
+      it('serves the Party Access summary before :partyId, and a sorted list that survives a bad sort', async () => {
+        const { password } = await initialize();
+        const admin = await signedInAgent(password);
+        await seedRecord();
+
+        // `summary` is a path, not a party id: it must answer counts, not 404 "Party".
+        const counts = await admin.get('/api/party-access/summary').expect(200);
+        expect(counts.body).toEqual({ total: 1, restricted: 0, open: 1 });
+
+        await admin.get('/api/party-access?sort=city&dir=desc').expect(200);
+        // Never a 500 from an unlisted column or direction.
+        const odd = await admin.get('/api/party-access?sort=phone%3Bdrop&dir=sideways').expect(200);
+        expect(odd.body.total).toBe(1);
+      });
     });
 
     it('filters parties by search term', async () => {

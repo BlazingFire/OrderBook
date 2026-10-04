@@ -30,6 +30,7 @@ import {
   MAX_PARTY_IMPORT_BYTES,
   MAX_PRODUCT_IMPORT_BYTES,
   MUTATION_PERMISSIONS,
+  PARTY_ACCESS_SORTS,
   cleanChatPost,
   parseReportQuery,
   standing,
@@ -1371,6 +1372,8 @@ export function createApp(): Express {
         req.query.restriction === 'open' || req.query.restriction === 'restricted'
           ? req.query.restriction
           : undefined,
+      sort: PARTY_ACCESS_SORTS.find((column) => column === req.query.sort),
+      dir: req.query.dir === 'desc' ? 'desc' : 'asc',
       limit: req.query.limit ? Number(req.query.limit) : undefined,
       offset: req.query.offset ? Number(req.query.offset) : undefined,
     }),
@@ -1429,6 +1432,9 @@ export function createApp(): Express {
   });
 
   app.get('/api/party-access/people', (_req, res) => forward(res, 'partyAccess:people'));
+  // The summary strip's counts. Online only, like the rest: an Office without the Master
+  // shows no counts rather than a stale number (a Master older than protocol 8 answers 'update needed').
+  app.get('/api/party-access/summary', (_req, res) => forward(res, 'partyAccess:summary'));
   // Through `forwardCsv`, the same path Logs and Reports already take, so this
   // panel serves the file rather than needing a download route of its own.
   app.get('/api/party-access/export.csv', (_req, res) =>

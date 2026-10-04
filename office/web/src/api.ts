@@ -73,6 +73,7 @@ import type {
   PartyAccessInput,
   PartyAccessQuery,
   PartyAccessRow,
+  PartyAccessSummary,
   ReleaseManifest,
   UpdateAvailability,
   UpdateDownloadProgress,
@@ -785,11 +786,15 @@ export const api = {
     if (query.search) params.set('search', query.search);
     if (query.userId) params.set('userId', query.userId);
     if (query.restriction) params.set('restriction', query.restriction);
+    if (query.sort) params.set('sort', query.sort);
+    if (query.dir) params.set('dir', query.dir);
     if (query.limit) params.set('limit', String(query.limit));
     if (query.offset) params.set('offset', String(query.offset));
     const search = params.toString();
     return request<Paginated<PartyAccessRow>>(`/api/party-access${search ? `?${search}` : ''}`);
   },
+  /** Company-wide counts for the summary strip; whatever the search or filter on the list. */
+  partyAccessSummary: () => request<PartyAccessSummary>('/api/party-access/summary'),
   partyAccessPeople: () => request<AssignablePerson[]>('/api/party-access/people'),
   partyAccessFor: (partyId: string) => request<PartyAccessRow>(`/api/party-access/${partyId}`),
   partyAccessExportUrl: () => '/api/party-access/export.csv',

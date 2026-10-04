@@ -135,6 +135,8 @@ const ALLOWED_UNCALLED: Record<'master' | 'office', Record<string, string>> = {
     // --- Single-record fetches superseded by the list the screen already holds.
     // --- Kept because a detail screen that deep-links to one record will want
     // --- exactly these, and the routes are part of the shipped API contract.
+    partyAccessSummary:
+      'the redesigned Party Access list calls it for its summary strip; remove this line in the same commit that does',
   },
   office: {
     // --- Administration lives on the Master. These exist because both clients
@@ -165,6 +167,8 @@ const ALLOWED_UNCALLED: Record<'master' | 'office', Record<string, string>> = {
     restoreFieldStage: 'as fieldsCatalogue',
     partyAccessFor:
       'PartyAccessScreen edits a party out of the assignment list it loaded; nothing reads one party alone',
+    partyAccessSummary:
+      'the redesigned Party Access list calls it for its summary strip; remove this line in the same commit that does',
     upsertVariant:
       'no screen edits a party’s own product records — PartyDetail and New lead only read view.partyVariants',
 

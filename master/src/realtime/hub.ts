@@ -893,6 +893,7 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   socket.on('partyAccess:list', (query, ack) =>
     run(ack, (actor) => partyAccessService.listAssignments(query, actor)),
   );
+  socket.on('partyAccess:summary', (ack) => run(ack, (actor) => partyAccessService.summary(actor)));
   socket.on('partyAccess:forParty', (partyId, ack) =>
     run(ack, (actor) => partyAccessService.assignmentsForParty(partyId, actor)),
   );

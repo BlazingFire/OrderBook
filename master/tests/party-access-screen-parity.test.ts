@@ -34,9 +34,15 @@ import { describe, expect, it } from 'vitest';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-const COPIES = [
-  path.join(REPO_ROOT, 'master', 'web', 'src', 'screens', 'PartyAccessScreen.tsx'),
-  path.join(REPO_ROOT, 'office', 'web', 'src', 'screens', 'PartyAccessScreen.tsx'),
+/**
+ * Every file of the screen. The editor was split out of the screen (Party Access redesign) and
+ * is held to the same rule; a file added to this feature goes on this list.
+ */
+const FILES = ['PartyAccessScreen.tsx', 'PartyAccessEditor.tsx'] as const;
+
+const copiesOf = (file: string): [string, string] => [
+  path.join(REPO_ROOT, 'master', 'web', 'src', 'screens', file),
+  path.join(REPO_ROOT, 'office', 'web', 'src', 'screens', file),
 ];
 
 /**
@@ -49,8 +55,8 @@ function read(file: string): string {
 }
 
 describe('the Party Access screen is one screen in two places', () => {
-  it('is byte-identical across both panels', () => {
-    const [master, office] = COPIES.map(read);
+  it.each(FILES)('%s is byte-identical across both panels', (file) => {
+    const [master, office] = copiesOf(file).map(read);
 
     // Asserted as a line-array rather than one string: a whole-file mismatch
     // reports as two 400-line blobs, and the first job on a failure is finding
@@ -58,8 +64,18 @@ describe('the Party Access screen is one screen in two places', () => {
     expect(office?.split('\n')).toEqual(master?.split('\n'));
   });
 
-  it('says so in its own header, so the rule is visible without this test', () => {
-    const [master] = COPIES.map(read);
+  it.each(FILES)('%s says so in its own header, so the rule is visible without this test', (file) => {
+    const [master] = copiesOf(file).map(read);
     expect(master).toContain('byte-identical');
+  });
+
+  it('has a screen that uses the one editor component, and no editor of its own', () => {
+    const [screen] = copiesOf('PartyAccessScreen.tsx').map(read);
+    const [editor] = copiesOf('PartyAccessEditor.tsx').map(read);
+
+    expect(editor).toContain('export function PartyAccessEditor(');
+    expect(screen).toContain("import { PartyAccessEditor } from './PartyAccessEditor';");
+    expect(screen).not.toContain('function AccessEditor');
+    expect(screen).not.toContain('<Modal');
   });
 });
