@@ -39,7 +39,6 @@
     "seed:catalogue": "npm run build:shared && npm run seed:catalogue --workspace @orderbook/master",
     "typecheck": "npm run typecheck --workspaces --if-present && tsc -p tsconfig.test.json && tsc -p ui/tests/tsconfig.json && tsc -p electron/tsconfig.json --noEmit && tsc -p electron/tsconfig.legacy.json --noEmit",
     "lint": "eslint .",
-    "i18n:sync": "node tools/i18n-sync.mjs",
     "format": "prettier --write .",
     "pretest": "npm run build:shared",
     "test": "vitest run",

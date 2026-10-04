@@ -7,7 +7,6 @@
 export * from './activity.js';
 export * from './en.js';
 export * from './errors.js';
-export * from './hi.js';
 export * from './keys.js';
 export * from './locales.js';
 export * from './panel-scoped.js';

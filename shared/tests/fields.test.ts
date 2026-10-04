@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { EN_MESSAGES, FIELD_LIST_KEYS, HI_MESSAGES, buildFieldCatalogue, isFieldListKey } from '../src/index.js';
+import { EN_MESSAGES, FIELD_LIST_KEYS, buildFieldCatalogue, isFieldListKey } from '../src/index.js';
 
 describe('the field sets', () => {
   const { sets } = buildFieldCatalogue();
@@ -17,10 +17,9 @@ describe('the field sets', () => {
     expect(sets.map((set) => set.listKey)).toEqual([...FIELD_LIST_KEYS]);
   });
 
-  it('label every set in English and Hindi', () => {
+  it('label every set in English', () => {
     for (const set of sets) {
       expect(EN_MESSAGES[set.labelToken], set.listKey).toBeTruthy();
-      expect((HI_MESSAGES as Record<string, string>)[set.labelToken], set.listKey).toBeTruthy();
     }
   });
 

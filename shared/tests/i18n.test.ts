@@ -42,10 +42,6 @@ describe('t()', () => {
     expect(t('en', 'validation.conflict.cannotRestoreField', { field: hash })).toContain(hash);
   });
 
-  it('renders Hindi from the Hindi catalogue', () => {
-    expect(t('hi', 'common.save')).toBe('सहेजें');
-  });
-
   it('falls back to the raw key for a messageKey this bundle does not recognise', () => {
     const rendered = (t as (locale: string, key: string) => string)('en', 'screen.doesNotExistYet');
     expect(rendered).toBe('screen.doesNotExistYet');
@@ -71,18 +67,13 @@ describe('tCount()', () => {
   it('injects the count as a number, never pre-formatted with a separator', () => {
     expect(tCount('en', 'count.rows', 1000)).toBe('1000 rows');
   });
-
-  it('applies Hindi plural rules through the same mechanism', () => {
-    expect(tCount('hi', 'count.rows', 1)).toBe('1 पंक्ति');
-    expect(tCount('hi', 'count.rows', 3)).toBe('3 पंक्तियाँ');
-  });
 });
 
 describe('createTranslator()', () => {
   it('binds the locale so callers do not pass it on every call', () => {
-    const translator = createTranslator('hi');
-    expect(translator.locale).toBe('hi');
-    expect(translator.t('common.cancel')).toBe('रद्द करें');
+    const translator = createTranslator('en');
+    expect(translator.locale).toBe('en');
+    expect(translator.t('common.cancel')).toBe('Cancel');
   });
 
   it('exposes tCount bound to the same locale', () => {
@@ -99,19 +90,15 @@ describe('renderActivity()', () => {
     details: { name: 'Sharma Tiles' },
   };
 
-  it('names a row with no recorded actor in the reader’s own language', () => {
+  it('names a row with no recorded actor from the catalogue', () => {
     expect(renderActivity(createTranslator('en'), row)).toBe(
       'Somebody added the party Sharma Tiles',
     );
-    // The stand-in was a hard-coded English word, so a Hindi reader got
-    // "Somebody ने पार्टी … जोड़ी". Every Hindi template puts a postposition
-    // after `{actor}` (`{actor} ने …`), which wants the oblique `किसी`, not `कोई`.
-    expect(renderActivity(createTranslator('hi'), row)).toBe('किसी ने पार्टी Sharma Tiles जोड़ी');
   });
 
   it('uses the recorded name when there is one', () => {
-    expect(renderActivity(createTranslator('hi'), { ...row, actorName: 'Karan' })).toBe(
-      'Karan ने पार्टी Sharma Tiles जोड़ी',
+    expect(renderActivity(createTranslator('en'), { ...row, actorName: 'Karan' })).toBe(
+      'Karan added the party Sharma Tiles',
     );
   });
 
@@ -131,7 +118,7 @@ describe('renderActivity()', () => {
     );
   });
 
-  it('translates *Token details, so a setting change reads in the reader’s language', () => {
+  it('translates *Token details, so a setting change names its label and values', () => {
     const changed = {
       entityType: 'setting',
       action: 'updated',
@@ -147,9 +134,6 @@ describe('renderActivity()', () => {
     };
     expect(renderActivity(createTranslator('en'), changed)).toBe(
       'Karan changed Allow signing in while the Master Panel is off from On to Off',
-    );
-    expect(renderActivity(createTranslator('hi'), changed)).toBe(
-      'Karan ने मास्टर पैनल बंद होने पर भी साइन इन करने दें को चालू से बंद किया',
     );
     // A *Token value that is not a message key is left alone, never looked up
     // on the object's prototype.

@@ -48,9 +48,8 @@ export function renderActivity(t: Translator, input: ActivityRenderInput): strin
 
   if (!key) return `${input.entityType} · ${input.action}`;
 
-  // From the catalogue, not a literal: this is the subject of a sentence the
-  // reader's own catalogue builds, and an English word there rendered as
-  // "Somebody ने …".
+  // From the catalogue, not a literal: it is the subject of a sentence the
+  // catalogue builds, so there is one place to change the stand-in.
   const actor = input.actorName ?? t.t('logs.actor.unknown');
   const params: Record<string, string | number> = { actor };
   for (const [field, value] of Object.entries(input.details ?? {})) {

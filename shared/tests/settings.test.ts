@@ -11,7 +11,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
   EN_MESSAGES,
-  HI_MESSAGES,
   SETTINGS,
   SETTING_GROUPS,
   SETTING_KEYS,
@@ -20,13 +19,12 @@ import {
   type SettingControl,
 } from '../src/index.js';
 
-describe('every setting is renderable in both languages', () => {
-  it.each(SETTING_KEYS)('%s has an EN and HI label and help token', (key) => {
+describe('every setting is renderable', () => {
+  it.each(SETTING_KEYS)('%s has a label and help token', (key) => {
     const { labelToken, descriptionToken } = SETTINGS[key];
 
     for (const token of [labelToken, descriptionToken]) {
       expect(Object.keys(EN_MESSAGES)).toContain(token);
-      expect(Object.keys(HI_MESSAGES)).toContain(token);
     }
   });
 });
@@ -113,10 +111,9 @@ describe('every setting belongs to a declared group', () => {
     expect(SETTING_GROUPS).toContain(SETTINGS[key].group);
   });
 
-  it('every group has a heading in both catalogues', () => {
+  it('every group has a heading', () => {
     for (const group of SETTING_GROUPS) {
       expect(Object.keys(EN_MESSAGES)).toContain(`settingGroup.${group}`);
-      expect(Object.keys(HI_MESSAGES)).toContain(`settingGroup.${group}`);
     }
   });
 
@@ -128,12 +125,11 @@ describe('every setting belongs to a declared group', () => {
   });
 });
 
-describe('every number control names a unit both catalogues can render', () => {
+describe('every number control names a unit the catalogue can render', () => {
   it.each(SETTING_KEYS)('%s', (key) => {
     const { control } = SETTINGS[key];
     if (control.kind !== 'number') return;
     expect(Object.keys(EN_MESSAGES)).toContain(control.unitToken);
-    expect(Object.keys(HI_MESSAGES)).toContain(control.unitToken);
     expect(control.min).toBeLessThan(control.max);
   });
 });

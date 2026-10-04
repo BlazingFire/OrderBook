@@ -4,15 +4,10 @@
  * back into URL parameters.
  */
 
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
 import { describe, expect, it } from 'vitest';
 
 import {
   EN_MESSAGES,
-  HI_MESSAGES,
   LEGACY_REPORT_KINDS,
   REPORT_COLUMNS,
   REPORT_KINDS,
@@ -33,14 +28,13 @@ describe('the catalogue', () => {
     expect(LEGACY_REPORT_KINDS).toEqual(['dispatches', 'lead-outcomes', 'top-parties']);
   });
 
-  it('gives every kind columns, a title and an icon, all in both catalogues', () => {
+  it('gives every kind columns, a title and an icon, all in the catalogue', () => {
     for (const kind of REPORT_KINDS) {
       expect(REPORT_COLUMNS[kind].length).toBeGreaterThan(0);
       expect(REPORT_META[kind].icon).toBeTruthy();
       const tokens = [REPORT_META[kind].titleToken, ...REPORT_COLUMNS[kind].map((column) => column.labelToken)];
       for (const token of tokens) {
         expect(Object.keys(EN_MESSAGES), token).toContain(token);
-        expect(Object.keys(HI_MESSAGES), token).toContain(token);
       }
     }
   });
@@ -124,35 +118,13 @@ describe('parseReportQuery', () => {
 });
 
 describe('what a reader sees', () => {
-  it('never heads two columns of one report with the same words, in either language', () => {
+  it('never heads two columns of one report with the same words', () => {
     for (const kind of REPORT_KINDS) {
-      for (const messages of [EN_MESSAGES, HI_MESSAGES]) {
-        const heads = REPORT_COLUMNS[kind].map((column) => messages[column.labelToken]);
-        expect(new Set(heads).size, `${kind}: ${heads.join(' | ')}`).toBe(heads.length);
-      }
+      const heads = REPORT_COLUMNS[kind].map((column) => EN_MESSAGES[column.labelToken]);
+      expect(new Set(heads).size, `${kind}: ${heads.join(' | ')}`).toBe(heads.length);
     }
     // Lead sources has a count of converted leads and a rate; the rate says so.
     expect(EN_MESSAGES['reports.column.conversion']).toBe('Conversion %');
-    expect(HI_MESSAGES['reports.column.conversion']).toBe('फ़ाइनल ऑर्डर बनने की दर (%)');
-    expect(HI_MESSAGES['reports.column.converted']).toBe('फ़ाइनल ऑर्डर बने');
-    expect(HI_MESSAGES['reports.kind.conversionTime']).toBe('फ़ाइनल ऑर्डर बनने में लगा समय');
-    expect(HI_MESSAGES['reports.column.avgDaysToConvert']).toBe('फ़ाइनल ऑर्डर बनने में औसत दिन');
-  });
-
-  it('has real Hindi for every report string, with no untranslated marker left on one', () => {
-    const source = readFileSync(
-      path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'i18n', 'hi.ts'),
-      'utf8',
-    ).split(/\r?\n/);
-    const marked = source.filter(
-      (line, index) => /^\s*'[\w.]*reports[\w.]*'/.test(line) && /TODO\(i18n-hi\)/.test(source[index - 1] ?? ''),
-    );
-    expect(marked).toEqual([]);
-
-    // The column words the first cut reused from the legacy screen as English stubs.
-    expect(HI_MESSAGES['reports.column.city']).toBe('शहर');
-    expect(HI_MESSAGES['reports.column.month']).toBe('महीना');
-    expect(HI_MESSAGES['reports.column.party']).toBe('पार्टी');
   });
 
   it('puts the report keys on the Dispatch role, which the owner expects to run reports', () => {

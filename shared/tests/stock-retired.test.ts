@@ -12,7 +12,6 @@ import { describe, expect, it } from 'vitest';
 import {
   CAPABILITIES,
   EN_MESSAGES,
-  HI_MESSAGES,
   MODULES,
   MUTATION_KINDS,
   SETTINGS,
@@ -31,10 +30,8 @@ describe('the removed stock surface stays removed', () => {
     expect(MUTATION_KINDS.filter((kind) => kind.startsWith('stock.'))).toEqual([]);
   });
 
-  it.each([
-    ['EN', EN_MESSAGES],
-    ['HI', HI_MESSAGES],
-  ] as const)('%s catalogue has no inventory or stock-permission keys', (_name, catalogue) => {
+  it('the catalogue has no inventory or stock-permission keys', () => {
+    const catalogue = EN_MESSAGES;
     const retired = ['inventory.', 'setting.inventory.', 'permission.inventory.', 'permission.stock.', 'module.inventory'];
     const offenders = Object.keys(catalogue).filter((key) =>
       retired.some((prefix) => key.startsWith(prefix)),

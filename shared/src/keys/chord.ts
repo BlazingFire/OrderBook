@@ -13,7 +13,7 @@
  *
  * **Rule two: letters match on `key.toLowerCase()`, unless Alt is held.** Then
  * they match on `code` too, because macOS Alt+K is `˚`. Letters cannot match on
- * `code` always: a French or Devanagari layout maps `KeyA` to something else,
+ * `code` always: a French or Russian layout maps `KeyA` to something else,
  * and somebody pressing the key labelled with the letter in the shortcut is
  * what a shortcut means.
  *
