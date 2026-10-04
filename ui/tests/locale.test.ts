@@ -1,6 +1,6 @@
 /**
  * The interface is English only. A browser profile that saved another language under
- * `ob.locale` in an older build (Hindi was offered once) must open in English, with
+ * `ob.locale` in an older build must open in English, with
  * no error, and the stored value is left alone: ignored, never read, never migrated.
  */
 
