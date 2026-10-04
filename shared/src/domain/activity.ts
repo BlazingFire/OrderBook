@@ -11,7 +11,6 @@
 
 import type { IsoTimestamp, RecordId, Uuid } from './entities.js';
 import type { CursorQuery } from './inputs.js';
-import type { Locale } from '../i18n/locales.js';
 import type { RoleTier } from './permissions.js';
 
 export type ActivityActorType = 'user' | 'office_panel' | 'system' | 'api_key' | 'connector';
@@ -60,8 +59,6 @@ export interface ActivityLogQuery extends CursorQuery {
   to?: string;
   /** Free text over entity_id and details::text. */
   q?: string;
-  /** Export only: the language of the CSV's `sentence` column. Defaults to English. */
-  locale?: Locale;
 }
 
 export interface ActivityLogFacets {

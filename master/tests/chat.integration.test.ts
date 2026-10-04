@@ -137,7 +137,7 @@ describe.skipIf(!canRunIntegrationTests)('chatroom (integration)', () => {
 
       await expect(chat.getRoom(roomId, outsider.actor)).rejects.toThrow(NotFoundError);
       await expect(chat.listMessages({ roomId }, outsider.actor)).rejects.toThrow(NotFoundError);
-      await expect(chat.postMessage(roomId, { body: 'hi' }, outsider.actor)).rejects.toThrow(NotFoundError);
+      await expect(chat.postMessage(roomId, { body: 'hello' }, outsider.actor)).rejects.toThrow(NotFoundError);
       await expect(chat.markRead({ roomId, seq: 1 }, outsider.actor)).rejects.toThrow(NotFoundError);
       await expect(chat.setMuted({ roomId, muted: true }, outsider.actor)).rejects.toThrow(NotFoundError);
     });
@@ -251,7 +251,7 @@ describe.skipIf(!canRunIntegrationTests)('chatroom (integration)', () => {
         chat.listRooms({}, nobody.actor),
         chat.getRoom(roomId, nobody.actor),
         chat.listMessages({ roomId }, nobody.actor),
-        chat.postMessage(roomId, { body: 'hi' }, nobody.actor),
+        chat.postMessage(roomId, { body: 'hello' }, nobody.actor),
         chat.editMessage({ messageId: 'CM0000000001', body: 'x' }, nobody.actor),
         chat.deleteMessage('CM0000000001', nobody.actor),
         chat.pinMessage({ messageId: 'CM0000000001', pinned: true }, nobody.actor),

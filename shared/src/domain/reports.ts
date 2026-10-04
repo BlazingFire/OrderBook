@@ -433,7 +433,7 @@ export function reportQueryParams(query: ReportQuery): URLSearchParams {
  * it; the desktop shell opens exactly this shape in a window of its own
  * (`electron/lib/lead-pdf.ts` allows these keys and no others).
  */
-export function reportPdfPath(kind: ReportKind, query: ReportQuery, _lang?: ReportLocale): string {
+export function reportPdfPath(kind: ReportKind, query: ReportQuery): string {
   const params = reportQueryParams(query);
   const qs = params.toString();
   return `/api/reports/${kind}/pdf${qs ? `?${qs}` : ''}`;
@@ -445,9 +445,6 @@ export type ReportFormat = 'csv' | 'xlsx' | 'pdf';
 
 export type ReportPaperSize = 'a4' | 'letter';
 export type ReportOrientation = 'portrait' | 'landscape';
-
-/** The language an Excel or PDF export is written in; a CSV is keys, never words. */
-export type ReportLocale = 'en';
 
 /**
  * What an export asks for beyond the date range.
@@ -465,8 +462,6 @@ export interface ReportExportOptions {
   totals?: boolean;
   paperSize?: ReportPaperSize;
   orientation?: ReportOrientation;
-  /** Words for the Excel and PDF headings and cells. English when omitted. */
-  lang?: ReportLocale;
 }
 
 export function isReportFormat(value: unknown): value is ReportFormat {

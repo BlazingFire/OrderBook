@@ -101,7 +101,6 @@ async function openLeadsTab(permissions: string[], view = snapshot()): Promise<C
           offline: false,
           signedInAt: '2026-09-24T00:00:00.000Z',
         },
-        defaultLocale: 'en',
       });
     }
     if (path === '/api/sync') return json({ ...CONNECTION, pendingCount: 0, rejections: [] });
