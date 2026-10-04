@@ -160,11 +160,28 @@ describe.each(['master', 'office'] as const)('the Party Access editor on the %s 
       expect(within(asha).getByRole('button', { name: t('partyAccess.editor.removeFor', { name: 'Asha Rao' }) })).toBeTruthy();
     });
 
+    it('moves the keyboard to the next Remove button, else the previous, when a row is removed', async () => {
+      await mount(panel, { party: party([grant('u1', 'view'), grant('u2', 'view'), grant('u3', 'view')]) });
+      const removeOf = (name: string) => screen.getByRole('button', { name: t('partyAccess.editor.removeFor', { name }) });
+      fireEvent.click(removeOf('Bela Shah'));
+      await waitFor(() => expect(document.activeElement).toBe(removeOf('Chirag Mehta')));
+      fireEvent.click(removeOf('Chirag Mehta'));
+      await waitFor(() => expect(document.activeElement).toBe(removeOf('Asha Rao')));
+    });
+
     it('puts the keyboard on the add field, list closed, when the last row is removed', async () => {
       await mount(panel, { party: party([grant('u1', 'view')]) });
       fireEvent.click(screen.getByRole('button', { name: t('partyAccess.editor.removeFor', { name: 'Asha Rao' }) }));
       await waitFor(() => expect(document.activeElement).toBe(addField()));
       expect(screen.queryAllByRole('option')).toHaveLength(0);
+    });
+
+    it('announces changes in a screen-reader-only live region, not as visible text', async () => {
+      await mount(panel, { party: party([grant('u1', 'view')]) });
+      fireEvent.click(within(rowOf('Asha Rao')).getByRole('button', { name: t('partyAccess.level.manage') }));
+      const live = screen.getByText(t('partyAccess.editor.levelSet', { name: 'Asha Rao', level: t('partyAccess.level.manage') }));
+      expect(live.getAttribute('role')).toBe('status');
+      expect(live.className).toContain('sr-only');
     });
 
     it('changes a level from the switch, and removes a row', async () => {
@@ -393,6 +410,25 @@ describe.each(['master', 'office'] as const)('the Party Access editor on the %s 
       fireEvent.click(screen.getByRole('button', { name: t('partyAccess.editor.keepEditing') }));
       expect(screen.queryByText(t('partyAccess.editor.discardTitle'))).toBeNull();
       expect(names()).toEqual(['Asha Rao']);
+    });
+
+    it('puts the keyboard on Keep editing when the question appears', async () => {
+      await mount(panel);
+      addByTyping('asha');
+      fireEvent.click(cancel());
+      await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: t('partyAccess.editor.keepEditing') })));
+    });
+
+    it('keeps the footer one row of the same minimum height with or without the question, so the dialog does not move', async () => {
+      await mount(panel);
+      addByTyping('asha');
+      const foot = () => document.querySelector('.ob-modal-foot > div') as HTMLElement;
+      const before = { minHeight: foot().style.minHeight, wrap: foot().style.flexWrap };
+      fireEvent.click(cancel());
+      const after = { minHeight: foot().style.minHeight, wrap: foot().style.flexWrap };
+      expect(before.minHeight).not.toBe('');
+      expect(after).toEqual({ minHeight: before.minHeight, wrap: 'nowrap' });
+      expect(before.wrap).not.toBe('wrap');
     });
 
     it('Discard closes without saving; Escape while asked means keep editing', async () => {

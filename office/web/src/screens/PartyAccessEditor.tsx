@@ -24,7 +24,7 @@
  * greyed (`AccessScreen.tsx`'s convention).
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type {
   AssignablePerson,
   PartyAccessEntry,
@@ -104,6 +104,10 @@ export function PartyAccessEditor({ party, people, canEdit, onClose, onSaved }: 
   const [failure, setFailure] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  // The question replaces the footer: put the keyboard on its safe answer, "Keep editing".
+  useEffect(() => {
+    if (confirming) discardRef.current?.querySelector('button')?.focus();
+  }, [confirming]);
   const [panel, setPanel] = useState<Panel>(null);
   /** What the last action did, spoken to a screen reader and shown under the controls. */
   const [message, setMessage] = useState<string | null>(null);
@@ -111,6 +115,8 @@ export function PartyAccessEditor({ party, people, canEdit, onClose, onSaved }: 
   const baseline = useFormBaseline(canonical(party.assignees));
   const addRef = useRef<HTMLInputElement>(null);
   const quietFocus = useRef(false);
+  const focusAfterRemove = useRef<number | null>(null);
+  const discardRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
   // --- Who is who ---------------------------------------------------------
@@ -180,19 +186,26 @@ export function PartyAccessEditor({ party, people, canEdit, onClose, onSaved }: 
     const at = ordered.findIndex((entry) => entry.userId === userId);
     setEntries((current) => current.filter((item) => item.userId !== userId));
     say(t('partyAccess.editor.removed', { name: nameOf(userId) }));
-    // Keep the keyboard where the row was: the next row's Remove, else the field that adds.
-    window.requestAnimationFrame(() => {
-      const buttons = listRef.current?.querySelectorAll<HTMLElement>('[data-remove]');
-      const next = buttons?.[Math.min(at, (buttons?.length ?? 1) - 1)];
-      if (next) next.focus();
-      else {
-        // The last row went: the keyboard goes to the add field, which must not pop its list open.
-        quietFocus.current = document.activeElement !== addRef.current;
-        addRef.current?.focus();
-        quietFocus.current = false;
-      }
-    });
+    // Keep the keyboard where the row was; the effect below does it once the row is really gone.
+    focusAfterRemove.current = at;
   };
+
+  // The next row's Remove, else the previous one's, else the field that adds. Runs after the
+  // commit, so the removed row (and the button that had focus) is already out of the DOM.
+  useLayoutEffect(() => {
+    const at = focusAfterRemove.current;
+    if (at === null) return;
+    focusAfterRemove.current = null;
+    const buttons = listRef.current?.querySelectorAll<HTMLElement>('[data-remove]');
+    const next = buttons && buttons.length > 0 ? buttons[Math.min(at, buttons.length - 1)] : undefined;
+    if (next) next.focus();
+    else {
+      // The last row went: the add field gets the keyboard, and must not pop its list open.
+      quietFocus.current = document.activeElement !== addRef.current;
+      addRef.current?.focus();
+      quietFocus.current = false;
+    }
+  }, [entries]);
 
   const addOne = (option: ComboboxOption<string>) => {
     add([{ userId: option.value, level: 'view' }]);
@@ -285,16 +298,21 @@ export function PartyAccessEditor({ party, people, canEdit, onClose, onSaved }: 
       footer={
         confirming ? (
           <div
+            ref={discardRef}
             role="alertdialog"
             aria-label={t('partyAccess.editor.discardTitle')}
-            style={{ ...ROW, justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', minHeight: FOOT_MIN }}
+            style={{ ...ROW, justifyContent: 'space-between', width: '100%', flexWrap: 'nowrap', minHeight: FOOT_MIN }}
           >
-            <span style={{ minWidth: 0 }}>
+            {/* One row, like the Save footer, so the dialog does not change height; the full text is the title. */}
+            <span
+              title={`${t('partyAccess.editor.discardTitle')} ${t('partyAccess.editor.discardBody', { name: party.partyName })}`}
+              style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            >
               <strong>{t('partyAccess.editor.discardTitle')}</strong>{' '}
               <span className="ob-small">{t('partyAccess.editor.discardBody', { name: party.partyName })}</span>
             </span>
             <span style={ROW}>
-              <Button variant="primary" autoFocus onClick={() => setConfirming(false)}>
+              <Button variant="primary" onClick={() => setConfirming(false)}>
                 {t('partyAccess.editor.keepEditing')}
               </Button>
               <Button variant="danger" onClick={onClose}>
@@ -462,12 +480,7 @@ export function PartyAccessEditor({ party, people, canEdit, onClose, onSaved }: 
           </>
         ) : null}
 
-        <div
-          className="ob-small"
-          role="status"
-          aria-live="polite"
-          style={{ minHeight: '1.25em', color: 'var(--fg-secondary)' }}
-        >
+        <div className="sr-only" role="status" aria-live="polite">
           {message}
         </div>
 
