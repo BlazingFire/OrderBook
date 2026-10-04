@@ -4705,8 +4705,8 @@ button.ob-chat-chip-open:not(:disabled):hover {
 
 .ob-pa-search {
   position: relative;
-  width: 20rem;
-  max-width: 100%;
+  flex: 1 1 9rem;
+  max-width: 20rem;
 }
 .ob-pa-search input {
   width: 100%;
@@ -4733,8 +4733,8 @@ button.ob-chat-chip-open:not(:disabled):hover {
   color: var(--fg-primary);
 }
 .ob-pa-person {
-  width: 18rem;
-  max-width: 100%;
+  flex: 1 1 9rem;
+  max-width: 18rem;
 }
 .ob-pa-chip {
   display: inline-flex;
@@ -4798,4 +4798,77 @@ button.ob-chat-chip-open:not(:disabled):hover {
 .ob-pa-more {
   color: var(--fg-secondary);
   font-weight: 600;
+}
+
+/* Long names, codes and cities end in an ellipsis (the whole text is the title)
+   instead of being cut mid-word. */
+.ob-pa-ellipsis,
+.ob-pa-open {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The party name is the row's one button: it looks like text, opens the editor. */
+.ob-pa-open {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ob-pa-table tbody tr[data-row] {
+  cursor: pointer;
+}
+/* A refetch (filter, sort, live update) dims the rows still on screen. */
+.ob-pa-table[data-fetching] {
+  opacity: 0.55;
+  transition: opacity 120ms;
+}
+/* A grant held by somebody no longer active: still counted, shown muted. */
+.ob-pa-inactive {
+  color: var(--fg-tertiary);
+  font-style: italic;
+}
+.ob-pa-inactive-tag {
+  font-style: normal;
+}
+
+/* Narrow strip (a small window, or 157 % scale): one line per count, the hint is
+   the tooltip, so the rows below get the room. Container query, so it follows the
+   strip's own width in rem and not the viewport. */
+.ob-pa-strip {
+  container: pa-strip / inline-size;
+}
+@container pa-strip (max-width: 44rem) {
+  .ob-pa-stat {
+    grid-template-areas: 'label count';
+    padding: var(--s-6) var(--s-12);
+  }
+  .ob-pa-stat-hint {
+    display: none;
+  }
+}
+
+/* A narrow page (a small window, or 157 % scale): the one-line explanation goes, so
+   the table gets the height. Its meaning is in the strip's tooltips and the empty
+   states; the toolbar's search and person boxes share a row instead of wrapping. */
+.ob-pa-root {
+  container: pa-root / inline-size;
+}
+@container pa-root (max-width: 44rem) {
+  .ob-pa-intro {
+    display: none;
+  }
+  /* One line per row (the tooltip has the rest): at this scale a two-line row is 75 px
+     and only four fit under the toolbar. The skeleton shares the rule. */
+  .ob-pa-assignees {
+    -webkit-line-clamp: 1;
+  }
+  .ob-pa-table tbody tr {
+    min-height: 2.5rem;
+  }
 }

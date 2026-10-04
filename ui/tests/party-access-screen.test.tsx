@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import nodePath from 'node:path';
 import { useState } from 'react';
 import type { ComponentType } from 'react';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { configureUi } from '../src/config.js';
@@ -63,8 +63,20 @@ const SAMIR = assignee('u-5', 'Samir Khan', 'manage');
 const ROWS = [party(1, [ANITA]), party(2), party(3, [ANITA, VIKRAM, MEERA, ROHAN, SAMIR])];
 
 const PEOPLE = [
-  { id: 'u-1', displayName: 'Anita Rao', username: 'anita', roleName: 'Manager', roleTier: 'staff' },
-  { id: 'u-2', displayName: 'Vikram Shah', username: 'vikram', roleName: 'Sales', roleTier: 'staff' },
+  {
+    id: 'u-1',
+    displayName: 'Anita Rao',
+    username: 'anita',
+    roleName: 'Manager',
+    roleTier: 'staff',
+  },
+  {
+    id: 'u-2',
+    displayName: 'Vikram Shah',
+    username: 'vikram',
+    roleName: 'Sales',
+    roleTier: 'staff',
+  },
 ];
 
 const SUMMARY = { total: 450, restricted: 120, open: 330 };
@@ -87,6 +99,8 @@ function listCalls(calls: Call[]): Call[] {
 interface Mounted {
   calls: Call[];
   onRestrictionChange: ReturnType<typeof vi.fn>;
+  /** A live update from the Master: the screen's `revision` goes up by one. */
+  bump: () => void;
 }
 
 interface Routes {
@@ -125,21 +139,23 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
       }
       if (where === '/api/party-access') {
         return (
-          routes.list?.(call) ??
-          json({ items: ROWS, total: ROWS.length, limit: 200, offset: 0 })
+          routes.list?.(call) ?? json({ items: ROWS, total: ROWS.length, limit: 200, offset: 0 })
         );
       }
       return undefined;
     });
 
     const onRestrictionChange = vi.fn();
+    let setRevision: (update: (value: number) => number) => void = () => undefined;
     function Host() {
       const [restriction, setRestriction] = useState<Restriction>(initial);
+      const [revision, setRev] = useState(0);
+      setRevision = setRev;
       return (
         <KeyboardProvider panel={panel}>
           <PartyAccessScreen
             permissions={permissions}
-            revision={0}
+            revision={revision}
             restriction={restriction}
             onRestrictionChange={(next) => {
               onRestrictionChange(next);
@@ -149,8 +165,17 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
         </KeyboardProvider>
       );
     }
-    render(<Host />);
-    return { calls, onRestrictionChange };
+    // The pane the app scrolls in: the table measures and scrolls against it.
+    render(
+      <div className="ob-pane">
+        <Host />
+      </div>,
+    );
+    return {
+      calls,
+      onRestrictionChange,
+      bump: () => act(() => setRevision((value) => value + 1)),
+    };
   }
 
   async function loaded(): Promise<void> {
@@ -196,15 +221,17 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
       const { calls } = await mount();
       await loaded();
       fireEvent.change(searchBox(), { target: { value: 'Party 2' } });
-      await waitFor(() => expect(listCalls(calls).some((c) => query(c).get('search') === 'Party 2')).toBe(true));
+      await waitFor(() =>
+        expect(listCalls(calls).some((c) => query(c).get('search') === 'Party 2')).toBe(true),
+      );
 
       const strip = screen.getByRole('group', { name: t('partyAccess.strip.label') });
       expect(within(strip).getByText('450')).toBeTruthy();
       // And it was not asked again with the term.
       expect(
-        calls.filter((call) => path(call) === '/api/party-access/summary').every(
-          (call) => new URL(call.url, 'http://panel.test').search === '',
-        ),
+        calls
+          .filter((call) => path(call) === '/api/party-access/summary')
+          .every((call) => new URL(call.url, 'http://panel.test').search === ''),
       ).toBe(true);
     });
 
@@ -213,11 +240,15 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
       await loaded();
 
       const strip = screen.getByRole('group', { name: t('partyAccess.strip.label') });
-      fireEvent.click(within(strip).getByRole('button', { name: new RegExp(t('partyAccess.strip.restricted')) }));
+      fireEvent.click(
+        within(strip).getByRole('button', { name: new RegExp(t('partyAccess.strip.restricted')) }),
+      );
 
       expect(onRestrictionChange).toHaveBeenCalledWith('restricted');
       await waitFor(() =>
-        expect(listCalls(calls).some((call) => query(call).get('restriction') === 'restricted')).toBe(true),
+        expect(
+          listCalls(calls).some((call) => query(call).get('restriction') === 'restricted'),
+        ).toBe(true),
       );
       expect(
         within(strip)
@@ -245,17 +276,37 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
       delete (HTMLElement.prototype as { offsetParent?: unknown }).offsetParent;
     });
 
-    it('sends one request about 250 ms after the last keystroke, not one per key', async () => {
+    it('sends one request 250 ms after the last keystroke: none at 249 ms, one at 250 ms', async () => {
       const { calls } = await mount();
       await loaded();
       const before = listCalls(calls).length;
 
-      for (const value of ['b', 'ba', 'bat']) fireEvent.change(searchBox(), { target: { value } });
-      await wait(100);
-      expect(listCalls(calls).length).toBe(before);
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        // Each keystroke starts the wait again, so three keys are still one request.
+        fireEvent.change(searchBox(), { target: { value: 'b' } });
+        await act(async () => {
+          vi.advanceTimersByTime(100);
+        });
+        fireEvent.change(searchBox(), { target: { value: 'ba' } });
+        await act(async () => {
+          vi.advanceTimersByTime(100);
+        });
+        fireEvent.change(searchBox(), { target: { value: 'bat' } });
 
-      await waitFor(() => expect(listCalls(calls).length).toBe(before + 1));
-      expect(query(listCalls(calls).at(-1)!).get('search')).toBe('bat');
+        await act(async () => {
+          vi.advanceTimersByTime(249);
+        });
+        expect(listCalls(calls).length).toBe(before);
+
+        await act(async () => {
+          vi.advanceTimersByTime(1);
+        });
+        expect(listCalls(calls).length).toBe(before + 1);
+        expect(query(listCalls(calls).at(-1)!).get('search')).toBe('bat');
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('keeps focus in the box while the results arrive', async () => {
@@ -263,7 +314,9 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
       await loaded();
       searchBox().focus();
       fireEvent.change(searchBox(), { target: { value: 'Party' } });
-      await waitFor(() => expect(listCalls(calls).some((c) => query(c).get('search') === 'Party')).toBe(true));
+      await waitFor(() =>
+        expect(listCalls(calls).some((c) => query(c).get('search') === 'Party')).toBe(true),
+      );
       await wait(50);
 
       expect(document.activeElement).toBe(searchBox());
@@ -299,20 +352,26 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
 
       const group = screen
         .getAllByRole('group')
-        .find((element) => within(element).queryByRole('button', { name: t('partyAccess.filter.open') }));
+        .find((element) =>
+          within(element).queryByRole('button', { name: t('partyAccess.filter.open') }),
+        );
       expect(group).toBeTruthy();
       fireEvent.click(within(group!).getByRole('button', { name: t('partyAccess.filter.open') }));
 
       expect(onRestrictionChange).toHaveBeenCalledWith('open');
       await waitFor(() =>
-        expect(listCalls(calls).some((call) => query(call).get('restriction') === 'open')).toBe(true),
+        expect(listCalls(calls).some((call) => query(call).get('restriction') === 'open')).toBe(
+          true,
+        ),
       );
     });
 
     it('filters by the person parties are assigned to, and the chip takes it off', async () => {
       const { calls } = await mount();
       await loaded();
-      await waitFor(() => expect(calls.some((call) => path(call) === '/api/party-access/people')).toBe(true));
+      await waitFor(() =>
+        expect(calls.some((call) => path(call) === '/api/party-access/people')).toBe(true),
+      );
 
       const box = screen.getByPlaceholderText(t('partyAccess.filter.personPlaceholder'));
       fireEvent.focus(box);
@@ -324,17 +383,69 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
       await waitFor(() =>
         expect(listCalls(calls).some((call) => query(call).get('userId') === 'u-1')).toBe(true),
       );
-      fireEvent.click(screen.getByRole('button', { name: t('partyAccess.filter.personClear', { name: 'Anita Rao' }) }));
-      await waitFor(() => expect(listCalls(calls).at(-1) && query(listCalls(calls).at(-1)!).get('userId')).toBeNull());
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: t('partyAccess.filter.personClear', { name: 'Anita Rao' }),
+        }),
+      );
+      await waitFor(() =>
+        expect(listCalls(calls).at(-1) && query(listCalls(calls).at(-1)!).get('userId')).toBeNull(),
+      );
+    });
+
+    it('choosing Open takes the person filter off, so the result cannot be empty by contradiction', async () => {
+      const { calls } = await mount();
+      await loaded();
+      await waitFor(() =>
+        expect(calls.some((call) => path(call) === '/api/party-access/people')).toBe(true),
+      );
+
+      fireEvent.focus(screen.getByPlaceholderText(t('partyAccess.filter.personPlaceholder')));
+      fireEvent.mouseDown(await screen.findByRole('option', { name: /Anita Rao/ }));
+      await waitFor(() =>
+        expect(listCalls(calls).some((c) => query(c).get('userId') === 'u-1')).toBe(true),
+      );
+      expect(
+        screen.getByRole('button', {
+          name: t('partyAccess.filter.personClear', { name: 'Anita Rao' }),
+        }),
+      ).toBeTruthy();
+
+      // From the strip, as well as from the segmented control.
+      const strip = screen.getByRole('group', { name: t('partyAccess.strip.label') });
+      fireEvent.click(
+        within(strip).getByRole('button', { name: new RegExp(t('partyAccess.strip.open')) }),
+      );
+
+      await waitFor(() => {
+        const last = query(listCalls(calls).at(-1)!);
+        expect(last.get('restriction')).toBe('open');
+        expect(last.get('userId')).toBeNull();
+      });
+      expect(
+        screen.queryByRole('button', {
+          name: t('partyAccess.filter.personClear', { name: 'Anita Rao' }),
+        }),
+      ).toBeNull();
+      // And no request ever asked for both at once.
+      expect(
+        listCalls(calls).some(
+          (c) => query(c).get('restriction') === 'open' && query(c).get('userId') !== null,
+        ),
+      ).toBe(false);
     });
 
     it('"Nobody" is the Open filter', async () => {
       const { onRestrictionChange } = await mount();
       await loaded();
-      await waitFor(() => expect(screen.getByPlaceholderText(t('partyAccess.filter.personPlaceholder'))).toBeTruthy());
+      await waitFor(() =>
+        expect(screen.getByPlaceholderText(t('partyAccess.filter.personPlaceholder'))).toBeTruthy(),
+      );
 
       fireEvent.focus(screen.getByPlaceholderText(t('partyAccess.filter.personPlaceholder')));
-      fireEvent.mouseDown(await screen.findByRole('option', { name: t('partyAccess.filter.nobody') }));
+      fireEvent.mouseDown(
+        await screen.findByRole('option', { name: t('partyAccess.filter.nobody') }),
+      );
 
       expect(onRestrictionChange).toHaveBeenCalledWith('open');
     });
@@ -352,11 +463,15 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
         },
       });
       await loaded();
-      expect(screen.getByRole('status').textContent).toBe(t('partyAccess.count', { shown: 200, total: 250 }));
+      expect(screen.getByRole('status').textContent).toBe(
+        t('partyAccess.count', { shown: 200, total: 250 }),
+      );
 
       fireEvent.click(screen.getByRole('button', { name: t('common.loadMore') }));
       await waitFor(() =>
-        expect(screen.getByRole('status').textContent).toBe(t('partyAccess.count', { shown: 250, total: 250 })),
+        expect(screen.getByRole('status').textContent).toBe(
+          t('partyAccess.count', { shown: 250, total: 250 }),
+        ),
       );
     });
   });
@@ -385,7 +500,9 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
       await waitFor(() => expect(query(listCalls(calls).at(-1)!).get('dir')).toBe('asc'));
       fireEvent.click(screen.getByRole('button', { name: city }));
       await waitFor(() => expect(query(listCalls(calls).at(-1)!).get('dir')).toBe('desc'));
-      expect(screen.getByRole('columnheader', { name: new RegExp(city) }).getAttribute('aria-sort')).toBe('descending');
+      expect(
+        screen.getByRole('columnheader', { name: new RegExp(city) }).getAttribute('aria-sort'),
+      ).toBe('descending');
     });
 
     it('lists the first three names with their level, then "+N more" with everyone in the tooltip', async () => {
@@ -413,14 +530,14 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
       expect(within(row).getByText(t('partyAccess.everyone'))).toBeTruthy();
     });
 
-    it('moves between rows with Up and Down, and Enter opens the one in focus', async () => {
+    it('moves between rows with Up and Down on the party buttons, and Enter opens the one in focus', async () => {
       await mount();
       await loaded();
 
-      const first = screen.getByText('Party 1').closest('tr')!;
+      const first = screen.getByRole('button', { name: 'Party 1' });
       first.focus();
       fireEvent.keyDown(first, { key: 'ArrowDown' });
-      const second = screen.getByText('Party 2').closest('tr')!;
+      const second = screen.getByRole('button', { name: 'Party 2' });
       expect(document.activeElement).toBe(second);
       fireEvent.keyDown(second, { key: 'ArrowUp' });
       expect(document.activeElement).toBe(first);
@@ -428,8 +545,161 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
       fireEvent.keyDown(first, { key: 'ArrowUp' });
       expect(document.activeElement).toBe(first);
 
-      fireEvent.keyDown(second, { key: 'Enter' });
+      // A button's Enter is its click: the native path, not a handler of ours.
+      fireEvent.click(second);
       expect(await screen.findByRole('dialog')).toBeTruthy();
+    });
+
+    it('is not a button with a button inside it: the row is a row, the party name is the one control', async () => {
+      await mount();
+      await loaded();
+
+      expect(document.querySelectorAll('tr[data-row][role="button"]').length).toBe(0);
+      expect(document.querySelectorAll('[role="button"] button').length).toBe(0);
+      const rowControls = screen.getByText('Party 1').closest('tr')!.querySelectorAll('button');
+      // The name, and (for somebody who may assign) Edit access: siblings, not nested.
+      expect(rowControls.length).toBe(2);
+      expect(rowControls[0]!.querySelector('button')).toBeNull();
+    });
+
+    it('ends long names, codes and cities in an ellipsis with the whole text as the title', async () => {
+      const long = party(9, [ANITA]);
+      long.partyName = 'Shree Ganesh Tiles & Sanitaryware Traders Private Limited';
+      long.partyCode = 'P-0099-LONG-CODE';
+      long.city = 'Thiruvananthapuram Cantonment';
+      await mount(WRITE, { list: () => json({ items: [long], total: 1, limit: 200, offset: 0 }) });
+      await screen.findByText(long.partyName);
+
+      const name = screen.getByRole('button', { name: long.partyName });
+      expect(name.getAttribute('title')).toBe(long.partyName);
+      expect(name.className).toContain('ob-pa-open');
+      expect(screen.getByText(long.partyCode).getAttribute('title')).toBe(long.partyCode);
+      expect(screen.getByText(long.city).getAttribute('title')).toBe(long.city);
+      // The ellipsis itself is CSS, pinned beside the table rule below.
+      expect(screen.getByText(long.city).className).toContain('ob-pa-ellipsis');
+    });
+
+    it('marks a grant held by somebody no longer active: muted, tagged, still counted', async () => {
+      const gone = { ...VIKRAM, isActive: false };
+      await mount(WRITE, {
+        list: () => json({ items: [party(7, [ANITA, gone])], total: 1, limit: 200, offset: 0 }),
+      });
+      await screen.findByText('Party 7');
+
+      const row = screen.getByText('Party 7').closest('tr')!;
+      const tag = within(row).getByText(t('partyAccess.editor.deactivated'));
+      expect(tag.closest('.ob-pa-inactive')?.textContent).toContain('Vikram Shah');
+      // The active one is not tagged.
+      expect(
+        within(row)
+          .getByText(/Anita Rao/)
+          .closest('.ob-pa-inactive'),
+      ).toBeNull();
+      expect(within(row).getAllByText(t('partyAccess.editor.deactivated')).length).toBe(1);
+      expect(
+        within(row)
+          .getByText(t('partyAccess.level.manage'))
+          .closest('.ob-pa-assignees')
+          ?.getAttribute('title'),
+      ).toContain(`Vikram Shah (View) — ${t('partyAccess.editor.deactivated')}`);
+    });
+
+    it('dims the rows while a filter is being fetched, and stops when it arrives', async () => {
+      let release: (response: Response) => void = () => undefined;
+      let calls = 0;
+      await mount(WRITE, {
+        list: () => {
+          calls += 1;
+          if (calls === 1) return json({ items: ROWS, total: 3, limit: 200, offset: 0 });
+          return new Promise<Response>((resolve) => {
+            release = resolve;
+          }) as unknown as Response;
+        },
+      });
+      await loaded();
+      const table = (): HTMLElement => document.querySelector('.ob-pa-table') as HTMLElement;
+      expect(table().getAttribute('aria-busy')).toBe('false');
+
+      fireEvent.click(screen.getByRole('button', { name: t('partyAccess.filter.restricted') }));
+      await waitFor(() => expect(table().getAttribute('aria-busy')).toBe('true'));
+      // The old rows are still there, not a skeleton.
+      expect(screen.getByText('Party 1')).toBeTruthy();
+
+      await act(async () => {
+        release(json({ items: [ROWS[0]], total: 1, limit: 200, offset: 0 }));
+      });
+      await waitFor(() => expect(table().getAttribute('aria-busy')).toBe('false'));
+    });
+
+    it('keeps every page already loaded when the Master pushes an update', async () => {
+      const page = (offset: number) =>
+        json({
+          items: Array.from({ length: offset === 0 ? 200 : 50 }, (_, i) => party(offset + i + 1)),
+          total: 250,
+          limit: 200,
+          offset,
+        });
+      const { calls, bump } = await mount(WRITE, {
+        list: (call) => page(Number(query(call).get('offset') ?? 0)),
+      });
+      await loaded();
+      fireEvent.click(screen.getByRole('button', { name: t('common.loadMore') }));
+      await waitFor(() =>
+        expect(screen.getByRole('status').textContent).toBe(
+          t('partyAccess.count', { shown: 250, total: 250 }),
+        ),
+      );
+      const before = listCalls(calls).length;
+
+      bump();
+      await waitFor(() => expect(listCalls(calls).length).toBe(before + 2));
+      // Both pages again, from the top, and nothing was thrown away meanwhile.
+      expect(
+        listCalls(calls)
+          .slice(-2)
+          .map((call) => query(call).get('offset')),
+      ).toEqual([null, '200']);
+      expect(screen.getByRole('status').textContent).toBe(
+        t('partyAccess.count', { shown: 250, total: 250 }),
+      );
+      expect(document.querySelector('.ob-pa-table .ob-tablewrap[aria-hidden="true"]')).toBeNull();
+    });
+
+    it('moves on to a row beyond the rendered window with Down, scrolling to it first', async () => {
+      const page = () =>
+        json({
+          items: Array.from({ length: 200 }, (_, i) => party(i + 1)),
+          total: 200,
+          limit: 200,
+          offset: 0,
+        });
+      await mount(WRITE, { list: () => page() });
+      await loaded();
+
+      // jsdom lays nothing out: give the pane a height and a scrollTop that fires `scroll`.
+      const pane = document.querySelector('.ob-pane') as HTMLElement;
+      let top = 0;
+      Object.defineProperty(pane, 'clientHeight', { configurable: true, get: () => 320 });
+      Object.defineProperty(pane, 'scrollTop', {
+        configurable: true,
+        get: () => top,
+        set: (value: number) => {
+          top = value;
+          pane.dispatchEvent(new Event('scroll'));
+        },
+      });
+      await act(async () => {
+        pane.dispatchEvent(new Event('scroll'));
+      });
+
+      // 320 px of 32 px rows plus the table's overscan: the window ends at Party 26.
+      const last = await screen.findByRole('button', { name: 'Party 26' });
+      expect(screen.queryByRole('button', { name: 'Party 27' })).toBeNull();
+
+      last.focus();
+      fireEvent.keyDown(last, { key: 'ArrowDown' });
+      await waitFor(() => expect(document.activeElement?.textContent).toBe('Party 27'));
+      expect(top).toBeGreaterThan(0);
     });
 
     it('keeps the row selected after a save, and asks for the strip counts again', async () => {
@@ -438,7 +708,11 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
 
       fireEvent.click(screen.getByText('Party 1'));
       const dialog = await screen.findByRole('dialog');
-      fireEvent.click(within(dialog).getByRole('button', { name: t('partyAccess.remove') }));
+      fireEvent.click(
+        within(dialog).getByRole('button', {
+          name: t('partyAccess.editor.removeFor', { name: 'Anita Rao' }),
+        }),
+      );
       fireEvent.click(within(dialog).getByRole('button', { name: t('partyAccess.action.save') }));
 
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -451,13 +725,15 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
   });
 
   describe('the states', () => {
-    it('shows a skeleton with the table\'s own columns while loading', async () => {
+    it("shows a skeleton with the table's own columns while loading", async () => {
       await mount(WRITE, { list: () => undefined });
       const skeleton = document.querySelector('.ob-pa-table [aria-hidden="true"]');
       expect(skeleton).toBeTruthy();
       // The toolbar and the strip are already there, so nothing moves when the rows arrive.
       expect(searchBox()).toBeTruthy();
-      expect(within(skeleton as HTMLElement).getByText(t('partyAccess.column.assignedTo'))).toBeTruthy();
+      expect(
+        within(skeleton as HTMLElement).getByText(t('partyAccess.column.assignedTo')),
+      ).toBeTruthy();
     });
 
     it('says which search found nothing and clears it from there', async () => {
@@ -502,7 +778,9 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
       await mount();
       await loaded();
 
-      const buttons = screen.getAllByRole('button', { name: new RegExp(`^${t('partyAccess.action.edit')}:`) });
+      const buttons = screen.getAllByRole('button', {
+        name: new RegExp(`^${t('partyAccess.action.edit')}:`),
+      });
       expect(buttons.length).toBe(ROWS.length);
       fireEvent.click(buttons[1]!);
       expect(await screen.findByRole('dialog')).toBeTruthy();
@@ -512,26 +790,69 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
       const { calls } = await mount(['party.accessAll']);
       await loaded();
 
-      expect(screen.queryByRole('button', { name: new RegExp(`^${t('partyAccess.action.edit')}:`) })).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: new RegExp(`^${t('partyAccess.action.edit')}:`) }),
+      ).toBeNull();
       // The person filter is a reading control: a reader has it, fed by the same people list.
       expect(screen.getByPlaceholderText(t('partyAccess.filter.personPlaceholder'))).toBeTruthy();
       expect(calls.some((call) => path(call) === '/api/party-access/people')).toBe(true);
 
       fireEvent.click(screen.getByText('Party 1'));
       const dialog = await screen.findByRole('dialog');
-      expect(within(dialog).queryByRole('button', { name: t('partyAccess.action.save') })).toBeNull();
-      expect(within(dialog).getAllByRole('button', { name: t('action.close') }).length).toBeGreaterThan(0);
+      expect(
+        within(dialog).queryByRole('button', { name: t('partyAccess.action.save') }),
+      ).toBeNull();
+      expect(
+        within(dialog).getAllByRole('button', { name: t('action.close') }).length,
+      ).toBeGreaterThan(0);
     });
   });
 });
 
 describe('the table the list sits in', () => {
   it('clips its corners without becoming a scroll container, so the sticky header sticks to the pane', () => {
-    const css = readFileSync(nodePath.join(__dirname, '..', 'src', 'base.css'), 'utf8').replace(/\r\n/g, '\n');
+    const css = readFileSync(nodePath.join(__dirname, '..', 'src', 'base.css'), 'utf8').replace(
+      /\r\n/g,
+      '\n',
+    );
     const block = css.match(/\n\.ob-tablewrap \{([^}]*)\}/)?.[1] ?? '';
     // `overflow: hidden` alone makes `.ob-tablewrap` the sticky containing block, which never
     // scrolls: the header scrolled away with the rows. `clip` must be the winning declaration.
     expect(block).toMatch(/overflow: clip;/);
-    expect(block.lastIndexOf('overflow: clip')).toBeGreaterThan(block.lastIndexOf('overflow: hidden'));
+    expect(block.lastIndexOf('overflow: clip')).toBeGreaterThan(
+      block.lastIndexOf('overflow: hidden'),
+    );
+  });
+});
+
+describe('the styles of the list', () => {
+  const css = readFileSync(nodePath.join(__dirname, '..', 'src', 'base.css'), 'utf8')
+    .split(String.fromCharCode(13))
+    .join('');
+  const rule = (selector: string): string => {
+    const at = css.indexOf(selector + ' {');
+    return at < 0 ? '' : css.slice(at, css.indexOf('}', at));
+  };
+
+  it('ends a long name, code or city in an ellipsis instead of cutting it mid-word', () => {
+    const at = css.indexOf('.ob-pa-ellipsis,');
+    const block = css.slice(at, css.indexOf('}', at));
+    expect(block).toContain('.ob-pa-open');
+    expect(block).toContain('text-overflow: ellipsis');
+    expect(block).toContain('overflow: hidden');
+    expect(block).toContain('white-space: nowrap');
+    expect(block).toContain('min-width: 0');
+  });
+
+  it('shrinks the summary strip to one line at a narrow width or a large scale', () => {
+    expect(css).toContain('container: pa-strip / inline-size');
+    const query = css.slice(css.indexOf('@container pa-strip'));
+    expect(query).toContain('max-width: 44rem');
+    expect(query).toContain('.ob-pa-stat-hint');
+    expect(query).toContain('display: none');
+  });
+
+  it('dims the rows while a refetch is under way', () => {
+    expect(rule('.ob-pa-table[data-fetching]')).toContain('opacity');
   });
 });

@@ -30,7 +30,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent } from 'react';
+import type { KeyboardEvent, MouseEvent } from 'react';
 import type {
   AssignablePerson,
   PartyAccessAssignee,
@@ -82,6 +82,9 @@ const SEARCH_DEBOUNCE_MS = 250;
 /** How many names the Assigned-to cell spells out before it says "+N more". */
 const NAMES_SHOWN = 3;
 
+/** The table's own default row height, for when a row has not been measured. */
+const ROW_PX = 32;
+
 type SortKey = 'code' | 'name' | 'city' | 'access';
 
 function levelLabel(level: PartyAccessLevel): string {
@@ -97,6 +100,8 @@ export function PartyAccessScreen({
   const canAssign = permissions.includes('party.assign');
 
   const [rows, setRows] = useState<PartyAccessRow[]>([]);
+  const rowsRef = useRef<PartyAccessRow[]>([]);
+  rowsRef.current = rows;
   /** What the Master says the filtered query matches, company-wide — not the page. */
   const [total, setTotal] = useState(0);
   /** The strip's numbers: the whole company's, whatever the search or filter says. */
@@ -113,6 +118,8 @@ export function PartyAccessScreen({
   const [person, setPerson] = useState<AssignablePerson | null>(null);
   const [sort, setSort] = useState<DataTableSort | undefined>(undefined);
   const [loading, setLoading] = useState(true);
+  /** A filter, a sort or a live update is being fetched while the old rows are still shown. */
+  const [fetching, setFetching] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
@@ -120,64 +127,98 @@ export function PartyAccessScreen({
   /** Kept after the editor closes, so the row somebody just worked on stays marked. */
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   const searchRef = useRef<HTMLInputElement>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
 
   const term = useDebounced(search.trim(), SEARCH_DEBOUNCE_MS);
-  const personId = person?.id;
+
+  /*
+   * "Open" means nobody is assigned, so a person filter beside it can only be empty
+   * by contradiction. Choosing Open — from the strip, the segmented control, the
+   * sidebar or "Nobody" in the person list — drops the person. Derived first, so the
+   * contradictory query is never sent; the effect then lets the state catch up.
+   */
+  const activePerson = restriction === 'open' ? null : person;
+  useEffect(() => {
+    if (restriction === 'open') setPerson(null);
+  }, [restriction]);
+  const personId = activePerson?.id;
 
   /*
    * One key for "which list is this". A new key is a new list, not more of the
    * old one: the page offset belongs to the key it was asked under, so a changed
-   * filter, a sort or a live update starts again at the top without a second
-   * effect to reset it (and without a second fetch for the reset to cause).
+   * filter or sort starts again at the top without a second effect to reset it.
+   * A live update (`revision`) is deliberately *not* in it: it refreshes the rows
+   * already loaded instead of throwing the scrolled-to pages away.
    */
-  const listKey = [
-    term,
-    restriction,
-    personId ?? '',
-    sort?.key ?? '',
-    sort?.dir ?? '',
-    revision,
-  ].join('|');
-  const [paging, setPaging] = useState({ key: listKey, offset: 0 });
-  const offset = paging.key === listKey ? paging.offset : 0;
+  const filterKey = [term, restriction, personId ?? '', sort?.key ?? '', sort?.dir ?? ''].join('|');
+  const [paging, setPaging] = useState({ key: filterKey, offset: 0 });
+  const offset = paging.key === filterKey ? paging.offset : 0;
+  const seen = useRef({ key: filterKey, revision });
 
   useEffect(() => {
     let live = true;
-    setFailure(null);
-    if (offset > 0) setLoadingMore(true);
+    const filterChanged = seen.current.key !== filterKey;
+    const refresh = !filterChanged && seen.current.revision !== revision;
+    seen.current = { key: filterKey, revision };
+    const mode = refresh ? 'refresh' : offset === 0 ? 'replace' : 'append';
 
-    api
-      .partyAccess({
+    setFailure(null);
+    if (mode === 'append') setLoadingMore(true);
+    else setFetching(true);
+
+    const ask = (at: number) =>
+      api.partyAccess({
         search: term || undefined,
         restriction: restriction === 'all' ? undefined : restriction,
         userId: personId,
         sort: sort?.key as SortKey | undefined,
         dir: sort?.dir,
         limit: PAGE_SIZE,
-        offset,
-      })
-      .then((page) => {
-        if (!live) return;
-        setRows((current) => (offset === 0 ? page.items : [...current, ...page.items]));
-        setTotal(page.total);
-      })
-      .catch((caught: unknown) => {
-        if (!live) return;
-        setFailure(caught instanceof Error ? caught.message : t('partyAccess.error.load'));
-      })
-      .finally(() => {
-        if (!live) return;
-        setLoading(false);
-        setLoadingMore(false);
+        offset: at,
       });
+
+    void (async () => {
+      try {
+        if (mode === 'refresh') {
+          // As many pages as are on screen now, so the list keeps its length.
+          const pages = Math.max(1, Math.ceil(rowsRef.current.length / PAGE_SIZE));
+          let items: PartyAccessRow[] = [];
+          let count = 0;
+          for (let page = 0; page < pages; page += 1) {
+            const answer = await ask(page * PAGE_SIZE);
+            if (!live) return;
+            items = [...items, ...answer.items];
+            count = answer.total;
+          }
+          setRows(items);
+          setTotal(count);
+        } else {
+          const answer = await ask(offset);
+          if (!live) return;
+          setRows((current) => (mode === 'replace' ? answer.items : [...current, ...answer.items]));
+          setTotal(answer.total);
+        }
+      } catch (caught) {
+        // A live refresh that fails leaves the list as it was; a failed query does not.
+        if (live && mode !== 'refresh') {
+          setFailure(caught instanceof Error ? caught.message : t('partyAccess.error.load'));
+        }
+      } finally {
+        if (live) {
+          setLoading(false);
+          setLoadingMore(false);
+          setFetching(false);
+        }
+      }
+    })();
 
     // A superseded request must not land on top of the newer one.
     return () => {
       live = false;
     };
-    // `listKey` stands for every filter above.
+    // `filterKey` stands for every filter above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listKey, offset, retry]);
+  }, [filterKey, offset, retry, revision]);
 
   // The strip's numbers are the company's: no search, no filter, no page.
   useEffect(() => {
@@ -224,24 +265,49 @@ export function PartyAccessScreen({
       {
         key: 'code',
         header: t('partyAccess.column.code'),
-        width: '8rem',
+        width: '6rem',
         sortable: true,
-        render: (row) => <span className="ob-mono">{row.partyCode}</span>,
+        render: (row) => (
+          <span className="ob-mono ob-pa-ellipsis" title={row.partyCode}>
+            {row.partyCode}
+          </span>
+        ),
       },
       {
         key: 'name',
         header: t('partyAccess.column.party'),
-        width: '1.4fr',
+        // A rem width, not a share: the table decides what fits from rem widths, and a
+        // share is assumed to need only 120 px, which left the name three letters wide.
+        width: '16rem',
         sortable: true,
-        render: (row) => row.partyName,
+        // Rows open their record (the convention `ui-conventions.test.ts` holds a table
+        // to before it may drop columns), but not through the table's `onRowOpen`: that
+        // makes the row itself a button, and the Edit button would sit inside it.
+        // The one control in the row that opens it, so a row is not a button with a
+        // button inside it: Tab reaches it, Enter opens it, and a click anywhere else
+        // in the row is handled once, on the table (`onTableClick`).
+        render: (row) => (
+          <button
+            type="button"
+            className="ob-pa-open"
+            data-party-id={row.partyId}
+            title={row.partyName}
+          >
+            {row.partyName}
+          </button>
+        ),
       },
       {
         key: 'city',
         header: t('partyAccess.column.city'),
         priority: 3,
-        width: '9rem',
+        width: '8rem',
         sortable: true,
-        render: (row) => row.city ?? '—',
+        render: (row) => (
+          <span className="ob-pa-ellipsis" title={row.city ?? undefined}>
+            {row.city ?? '—'}
+          </span>
+        ),
       },
       {
         key: 'access',
@@ -258,8 +324,8 @@ export function PartyAccessScreen({
       {
         key: 'assignees',
         header: t('partyAccess.column.assignedTo'),
-        // Twice the share of the party name: this is the column with the most to say.
-        width: '2fr',
+        // The column with the most to say: it takes whatever the others leave.
+        width: '1fr',
         render: (row) => <AssigneeList assignees={row.assignees} />,
       },
       // Absent for a reader: a button nobody may use is not a control to grey.
@@ -268,7 +334,10 @@ export function PartyAccessScreen({
             {
               key: 'edit',
               header: '',
-              width: '7.5rem',
+              width: '6.5rem',
+              // Dropped before the access column on a narrow screen: a click on the row
+              // opens the same editor.
+              priority: 2 as const,
               align: 'right' as const,
               render: (row: PartyAccessRow) => (
                 <Button
@@ -291,20 +360,60 @@ export function PartyAccessScreen({
     [canAssign, openEditor],
   );
 
-  /** Up / Down move between rows; Enter (the table's own) opens one. */
+  /** A click anywhere on a row opens it, as on every other list. */
+  const onTableClick = (event: MouseEvent<HTMLDivElement>): void => {
+    const row = (event.target as HTMLElement).closest('tr[data-row]');
+    const id = row?.querySelector<HTMLElement>('[data-party-id]')?.dataset.partyId;
+    const party = rows.find((item) => item.partyId === id);
+    if (party) openEditor(party);
+  };
+
+  const control = (partyId: string): HTMLElement | undefined =>
+    Array.from(tableRef.current?.querySelectorAll<HTMLElement>('[data-party-id]') ?? []).find(
+      (element) => element.dataset.partyId === partyId,
+    );
+
+  /**
+   * Up / Down move between rows. The table renders only a window of a long list, so
+   * a row beyond it is not in the page yet: scroll that way until it is, then focus it.
+   */
   const onTableKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-    const row = (event.target as HTMLElement).closest('tr[data-row]');
-    if (!row) return;
+    const current = (event.target as HTMLElement).closest('tr[data-row]');
+    const id = current?.querySelector<HTMLElement>('[data-party-id]')?.dataset.partyId;
+    const index = rows.findIndex((item) => item.partyId === id);
+    const next = rows[index + (event.key === 'ArrowDown' ? 1 : -1)];
+    if (index < 0 || !next) return;
     event.preventDefault();
-    const next = event.key === 'ArrowDown' ? row.nextElementSibling : row.previousElementSibling;
-    if (next instanceof HTMLElement && next.matches('tr[data-row]')) next.focus();
+
+    const here = control(next.partyId);
+    if (here) {
+      here.focus();
+      return;
+    }
+    const pane = tableRef.current?.closest('.ob-pane');
+    if (!pane) return;
+    const step = ((current as HTMLElement).offsetHeight || ROW_PX) * 4;
+    let tries = 0;
+    const tick = (): void => {
+      const found = control(next.partyId);
+      if (found) {
+        found.focus();
+        return;
+      }
+      tries += 1;
+      if (tries > 80) return;
+      pane.scrollTop += event.key === 'ArrowDown' ? step : -step;
+      window.setTimeout(tick, 16);
+    };
+    tick();
   };
 
   const stat = (value: Restriction, label: string, hint: string, count: number | undefined) => (
     <button
       type="button"
       className="ob-pa-stat"
+      title={hint}
       aria-pressed={restriction === value}
       onClick={() => onRestrictionChange(value)}
     >
@@ -327,13 +436,13 @@ export function PartyAccessScreen({
   );
 
   return (
-    <div style={STACK}>
+    <div style={STACK} className="ob-pa-root">
       <div style={{ ...ROW, justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
           <h1 className="ob-title" style={{ margin: 0 }}>
             {t('partyAccess.title')}
           </h1>
-          <p className="ob-small" style={{ margin: 0, maxWidth: rem(640) }}>
+          <p className="ob-small ob-pa-intro" style={{ margin: 0, maxWidth: rem(640) }}>
             {t('partyAccess.intro')}
           </p>
         </div>
@@ -401,14 +510,14 @@ export function PartyAccessScreen({
           ]}
         />
 
-        {person ? (
+        {activePerson ? (
           <span className="ob-pa-chip">
             <span>
-              {t('partyAccess.filter.person')}: {person.displayName}
+              {t('partyAccess.filter.person')}: {activePerson.displayName}
             </span>
             <button
               type="button"
-              aria-label={t('partyAccess.filter.personClear', { name: person.displayName })}
+              aria-label={t('partyAccess.filter.personClear', { name: activePerson.displayName })}
               onClick={() => setPerson(null)}
             >
               ×
@@ -425,7 +534,7 @@ export function PartyAccessScreen({
                   return;
                 }
                 setPerson(option.value);
-                // Somebody's parties are restricted ones by definition.
+                // Somebody's parties are restricted ones: leave "Open" for it.
                 if (restriction === 'open') onRestrictionChange('all');
               }}
             />
@@ -452,14 +561,21 @@ export function PartyAccessScreen({
         />
       ) : (
         <>
-          {/* Row keyboard handling lives on this wrapper: the table renders its
-              own rows and a row cannot be handed a handler. */}
-          <div className="ob-pa-table" onKeyDown={onTableKeyDown}>
+          {/* Row clicks and keys are handled here, once: the table renders its own
+              rows, and a row that was itself a button would hold the Edit button inside
+              it. Dimmed while a filter, sort or live update is being fetched. */}
+          <div
+            ref={tableRef}
+            className="ob-pa-table"
+            aria-busy={fetching}
+            data-fetching={fetching || undefined}
+            onClick={onTableClick}
+            onKeyDown={onTableKeyDown}
+          >
             <DataTable
               columns={columns}
               rows={rows}
               rowKey={(row) => row.partyId}
-              onRowOpen={openEditor}
               selectedId={selectedId}
               sort={sort}
               onSortChange={setSort}
@@ -482,7 +598,7 @@ export function PartyAccessScreen({
           <LoadMorePager
             hasMore={rows.length < total}
             loading={loadingMore}
-            onLoadMore={() => setPaging({ key: listKey, offset: rows.length })}
+            onLoadMore={() => setPaging({ key: filterKey, offset: rows.length })}
           />
         </>
       )}
@@ -511,6 +627,11 @@ export function PartyAccessScreen({
  * Who a party is assigned to: the first few names with their level, then
  * "+N more". Two lines at most, so a row never grows without bound; the whole
  * list is the tooltip, so nothing is only ever readable by opening the editor.
+ *
+ * A grant held by somebody who is no longer active still counts — the party is
+ * restricted, and only a reader with `party.accessAll` can see it — so it is shown,
+ * muted and tagged, rather than left out and leaving a "Restricted" row that
+ * appears to name nobody.
  */
 function AssigneeList({ assignees }: { assignees: PartyAccessAssignee[] }) {
   if (assignees.length === 0) {
@@ -518,20 +639,36 @@ function AssigneeList({ assignees }: { assignees: PartyAccessAssignee[] }) {
   }
 
   const full = assignees
-    .map((person) => `${person.displayName} (${levelLabel(person.level)})`)
+    .map(
+      (person) =>
+        `${person.displayName} (${levelLabel(person.level)})${
+          person.isActive === false ? ` — ${t('partyAccess.editor.deactivated')}` : ''
+        }`,
+    )
     .join(', ');
   const shown = assignees.slice(0, NAMES_SHOWN);
   const hidden = assignees.length - shown.length;
 
   return (
     <span className="ob-pa-assignees" title={full}>
-      {shown.map((person, index) => (
-        <span key={person.userId} className="ob-pa-assignee">
-          {person.displayName}
-          <span className="ob-pa-level">{levelLabel(person.level)}</span>
-          {index < shown.length - 1 || hidden > 0 ? ', ' : ''}
-        </span>
-      ))}
+      {shown.map((person, index) => {
+        const inactive = person.isActive === false;
+        return (
+          <span
+            key={person.userId}
+            className={inactive ? 'ob-pa-assignee ob-pa-inactive' : 'ob-pa-assignee'}
+          >
+            {person.displayName}
+            <span className="ob-pa-level">{levelLabel(person.level)}</span>
+            {inactive ? (
+              <span className="ob-pa-level ob-pa-inactive-tag">
+                {t('partyAccess.editor.deactivated')}
+              </span>
+            ) : null}
+            {index < shown.length - 1 || hidden > 0 ? ', ' : ''}
+          </span>
+        );
+      })}
       {hidden > 0 ? (
         <span className="ob-pa-more">{t('partyAccess.more', { count: hidden })}</span>
       ) : null}

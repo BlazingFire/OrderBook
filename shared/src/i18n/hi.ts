@@ -2523,8 +2523,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'partyAccess.scope.assigned': 'My parties',
   'partyAccess.searchPlaceholder': 'पार्टी खोजें',
   'partyAccess.staleSave': 'किसी और ने इस पार्टी का एक्सेस पहले बदल दिया। उनका संस्करण देखने के लिए फिर से लोड करें; यहाँ के आपके बदलाव सहेजे नहीं गए हैं।',
-  // TODO(i18n-hi)
-  'partyAccess.summary': '{restricted} of {total} parties are restricted.',
   'partyAccess.title': 'पार्टी एक्सेस',
   'product.createFailed': 'उप-उत्पाद नहीं बनाया जा सका',
   'product.detail.editAction': 'उप-उत्पाद संपादित करें',

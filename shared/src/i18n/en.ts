@@ -2034,7 +2034,6 @@ export const EN_MESSAGES = {
   'partyAccess.scope.assigned': 'My parties',
   'partyAccess.searchPlaceholder': 'Search parties',
   'partyAccess.staleSave': 'Somebody else changed this party’s access first. Reload to see their version; your changes here are not saved.',
-  'partyAccess.summary': '{restricted} of {total} parties are restricted.',
   'partyAccess.title': 'Party access',
   'product.createFailed': 'Could not create the sub product',
   'product.detail.editAction': 'Edit sub product',
