@@ -287,7 +287,7 @@ describe('manual pairing: what the Master said is recognised, not passed through
   });
 
   it('anything else the Master refuses is a plain refusal with a key of ours', async () => {
-    handler = refuse(403, { message: 'whatever the Master said' });
+    handler = refuse(403, { error: 'forbidden', message: 'whatever the Master said' });
     const error = await failure(manual());
     expect(error).toMatchObject({ code: 'refused', messageKey: 'connection.error.refused' });
     expect(error.message).not.toContain('whatever');
@@ -309,6 +309,16 @@ describe('manual pairing: what the Master said is recognised, not passed through
     // A 200 that is JSON but is not a pairing answer.
     handler = refuse(200, { hello: 'world' });
     expect((await failure(manual())).code).toBe('not_a_master');
+
+    // An error status with JSON that is not a Master's refusal is somebody else's server, not "refused".
+    handler = refuse(400, { hello: 'world' });
+    expect((await failure(manual())).code).toBe('not_a_master');
+    handler = refuse(403, ['nope']);
+    expect((await failure(manual())).code).toBe('not_a_master');
+
+    // A Master that says no in its own words stays a refusal.
+    handler = refuse(403, { error: 'forbidden', message: 'Not allowed' });
+    expect((await failure(manual())).code).toBe('refused');
   });
 
   it('nothing listening is "connection refused", named with its port', async () => {

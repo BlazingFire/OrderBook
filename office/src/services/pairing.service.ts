@@ -183,6 +183,12 @@ export function describeRefusal(
   return new PairingError('refused', 'connection.error.refused');
 }
 
+/** A Master's refusal always carries an `error` or a `messageKey`; any other JSON is some other server's. */
+function looksLikeMasterReply(body: unknown): boolean {
+  const reply = body as { error?: unknown; messageKey?: unknown } | null;
+  return typeof reply?.error === 'string' || typeof reply?.messageKey === 'string';
+}
+
 /** One AbortSignal for the caller's Cancel and this request's own timer, and which fired. */
 function withTimeout(
   ms: number,
@@ -504,7 +510,7 @@ async function requestPairingAt(
 
   if (!response.ok) {
     // No pairing route, or not JSON: another web server is answering on that port.
-    if (body === null || response.status === 404)
+    if (body === null || response.status === 404 || !looksLikeMasterReply(body))
       throw new PairingError('not_a_master', 'connection.error.notAMaster', {
         address: `${host}:${port}`,
       });

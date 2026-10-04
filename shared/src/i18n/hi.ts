@@ -872,28 +872,20 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'backup.export.scopeLabel': 'What to export',
   // TODO(i18n-hi)
   'backup.export.scopeSettingsOnly': 'Local settings only',
-  // TODO(i18n-hi)
-  'backup.restore.action': 'Restore from backup…',
-  // TODO(i18n-hi)
-  'backup.restore.cancel': 'Cancel',
-  // TODO(i18n-hi)
-  'backup.restore.chooseFile': 'Choose backup file…',
-  // TODO(i18n-hi)
-  'backup.restore.confirm': 'Restore',
-  // TODO(i18n-hi)
-  'backup.restore.confirmWipeInput': 'Type CONFIRM',
-  // TODO(i18n-hi)
+  'backup.restore.action': 'बैकअप से पुनर्स्थापित करें…',
+  'backup.restore.cancel': 'रद्द करें',
+  'backup.restore.chooseFile': 'बैकअप फ़ाइल चुनें…',
+  'backup.restore.confirm': 'पुनर्स्थापित करें',
+  'backup.restore.confirmWipeInput': 'CONFIRM टाइप करें',
   'backup.restore.donePairAgain':
-    'This device has been restored. It will now reload and ask you to pair again.',
+    'यह डिवाइस पुनर्स्थापित हो गया है। अब यह दोबारा लोड होगा और आपसे फिर से जोड़ने को कहेगा।',
   'backup.restore.failed': 'पुनर्स्थापना विफल रही',
   // TODO(i18n-hi)
   'backup.restore.newPairingPassword':
     'New pairing password (shown once): {password}. Every Office Panel must re-pair using it.',
-  // TODO(i18n-hi)
-  'backup.restore.passphraseLabel': 'Backup passphrase',
+  'backup.restore.passphraseLabel': 'बैकअप पासफ़्रेज़',
   'backup.restore.readFailed': 'वह फ़ाइल पढ़ी नहीं जा सकी',
-  // TODO(i18n-hi)
-  'backup.restore.title': 'Restore from backup',
+  'backup.restore.title': 'बैकअप से पुनर्स्थापित करें',
   'backupAll.title': 'सब कुछ ड्राइव पर बैकअप करें',
   'backupAll.help': 'हर रिकॉर्ड और हर फ़ोटो की एक zip फ़ाइल, आपके चुने फ़ोल्डर में, जैसे USB ड्राइव में। इससे मैजिक रीस्टोर द्वारा नया Master PC सेट अप किया जा सकता है।',
   'backupAll.keepSafe': 'इस ड्राइव को सुरक्षित रखें। zip एन्क्रिप्ट नहीं है: इसमें पासवर्ड के हैश और Office पैनल को जोड़ने वाली कुंजियाँ हैं।',

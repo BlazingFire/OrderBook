@@ -267,6 +267,8 @@ export function ConnectionScreen({ connection, onConnected }: Props) {
       setPortError(null);
       return parsed;
     }
+    // A new problem with the address replaces an old answer (a wrong password) that no longer applies.
+    setFailure(null);
     const message = t(ADDRESS_PROBLEM_KEY[parsed.problem], ADDRESS_MESSAGE_PARAMS);
     setAddressError(parsed.problem === 'invalid_port' ? null : message);
     setPortError(parsed.problem === 'invalid_port' ? message : null);

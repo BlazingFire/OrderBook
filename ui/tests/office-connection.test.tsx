@@ -410,6 +410,24 @@ describe('the connection screen', () => {
       );
     });
 
+    it('a later mistake in the address replaces the old wrong-password banner', async () => {
+      await mount(() => refusal('wrong_password', 'connection.error.wrongPassword', {}, {}, 400));
+      toManual();
+      type(address(), '192.168.1.10');
+      type(passwordBox(), 'nope');
+      connect();
+      await screen.findByText(t('connection.error.wrongPassword'));
+
+      type(address(), 'not an address');
+      type(passwordBox(), 'pw');
+      connect();
+
+      expect(
+        await screen.findByText(t('connection.error.invalidAddress', ADDRESS_MESSAGE_PARAMS)),
+      ).toBeTruthy();
+      expect(screen.queryByText(t('connection.error.wrongPassword'))).toBeNull();
+    });
+
     it('shows progress while connecting and can be cancelled', async () => {
       const { calls } = await mount(() => undefined);
       let signal: AbortSignal | null = null;
