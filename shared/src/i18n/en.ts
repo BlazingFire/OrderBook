@@ -2415,7 +2415,7 @@ export const EN_MESSAGES = {
   'updates.officeReady':
     'Office build {version} is ready on this Master. Each panel can install it from its own App update screen.',
   'updates.panel.behindBody':
-    'The Master is on {version} and this panel is on an older build. Nothing is wrong — it keeps working and syncing exactly as it does now. When a matching build is published on the Master it will appear here to install.',
+    'This PC is on an older build than the Master ({version}), so it must install the update to continue. Everything you saved on this PC is safe and will sync to the Master once it has been updated.',
   'updates.panel.matchBody': 'This panel is on the same version as the Master. Nothing to do.',
   'updates.panel.offerBody':
     'Version {version} is waiting on the Master. Installing it copies the file to this PC first, so nothing depends on the network once it starts. Anything this panel has queued offline is kept.',
