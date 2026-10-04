@@ -3359,4 +3359,6 @@ export const EN_MESSAGES = {
   'error.unauthorized.pairingAutoOff': 'This Master Panel is open for new panels, but only with the pairing password. On the office PC choose manual connection and enter the Master address and the pairing password.',
   'activity.office_panel.left': 'The office panel {name} unpaired itself from this Master',
   'logs.action.left': 'Left',
+  'panels.empty.noActive': 'No active office panels',
+  'panels.empty.noActiveBody': 'Every panel that was paired has been removed. Use Show removed to see them, or add a panel again.',
 } as const;

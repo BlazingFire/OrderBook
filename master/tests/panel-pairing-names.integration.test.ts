@@ -114,6 +114,21 @@ describe.skipIf(!canRunIntegrationTests)('pairing again (integration)', () => {
     expect(trail).not.toContain('previousPanelSecret');
   });
 
+  it('gives a PC that proves an active row with its secret that row, not a removed one that shares its machine name', async () => {
+    const removedOne = await pairAs('Old', 'SHARED-PC');
+    await panels.revokePanel(removedOne.panelId, await testActor());
+    const active = await pairAs('Counter', 'COUNTER-PC');
+
+    panels.openPairingWindow();
+    const result = await panels.pairPanel(
+      { mode: 'auto', panelName: 'Counter', hostname: 'SHARED-PC', previousPanelId: active.panelId, previousPanelSecret: active.panelSecret },
+      null,
+    );
+
+    expect(result.panelId).toBe(active.panelId);
+    expect((await db()('office_panels').where({ id: removedOne.panelId }).first()).status).toBe('revoked');
+  });
+
   it('never takes over a row that is not removed: a reinstalled PC with its old row still active joins as a new panel', async () => {
     const first = await pairAs('Counter', 'COUNTER-PC');
     const second = await pairAs('Counter', 'COUNTER-PC');

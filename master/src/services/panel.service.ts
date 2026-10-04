@@ -203,14 +203,15 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
   // grants nothing by itself, and a working pairing is never taken over. A PC reinstalled without
   // being removed first is a new panel; the old row is for the administrator to remove.
   const returning =
+    // Checked first: a PC that proves it owns an ACTIVE row (the id and the secret it held; it unpaired
+    // itself while the Master could not be told) must get that row, not a removed one that happens to
+    // share its machine name.
+    (await ownedActivePanel(identity.tenantId, request.previousPanelId, request.previousPanelSecret)) ??
     (await panelRepo.findRemovedFor(
       identity.tenantId,
       request.hostname && request.hostname !== 'unknown' ? request.hostname : null,
       request.previousPanelId ?? null,
     )) ??
-    // An ACTIVE row is replaced only by the PC that proves it owns it: the id and the secret it held.
-    // That is a PC that unpaired itself while the Master could not be told.
-    (await ownedActivePanel(identity.tenantId, request.previousPanelId, request.previousPanelSecret)) ??
     undefined;
 
   const panel = await db().transaction(async (trx) => {

@@ -5,7 +5,7 @@
  * waiting state is explicit and closes itself when the operator leaves.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { isLongOffline, PANEL_PROTOCOL_VERSION } from '@orderbook/shared';
 import type {
   OfficePanelDetail,
@@ -109,19 +109,30 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
   const [openPanelId, setOpenPanelId] = useState<string | null>(null);
   /** The server's fuller account (acting role, work counts); the list row stands in until it arrives. */
   const [detail, setDetail] = useState<OfficePanelDetail | null>(null);
-  const previousPanelCount = useRef(panels.length);
 
   const stopWaiting = useCallback(async () => {
     setWaiting(false);
     await api.closePairingWindow().catch(() => {});
   }, []);
 
-  // A panel appearing while we wait is the success signal — the list is pushed
-  // live over the socket, so no polling is needed here.
+  // The list is pushed live over the socket, so a change to it while we wait is the moment to look:
+  // whether a panel joined or one was given its old row back (the count then does not grow), the
+  // Master's own answer says whether the window is still open. A joining panel closes it (auto mode).
   useEffect(() => {
-    if (waiting && panels.length > previousPanelCount.current) void stopWaiting();
-    previousPanelCount.current = panels.length;
-  }, [panels.length, waiting, stopWaiting]);
+    if (!waiting) return;
+    let live = true;
+    api
+      .pairingWindow()
+      .then((state) => {
+        if (!live) return;
+        setWindowState(state);
+        if (!state.open) setWaiting(false);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [panels, waiting]);
 
   // Where a panel can reach this Master by hand, and whether the automatic search is running.
   useEffect(() => {
@@ -645,7 +656,11 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
           </div>
         )}
         {listed.length === 0 ? (
-          <EmptyState title={t('panels.empty.title')} description={t('panels.empty.description')} />
+          removedCount > 0 ? (
+            <EmptyState title={t('panels.empty.noActive')} description={t('panels.empty.noActiveBody')} />
+          ) : (
+            <EmptyState title={t('panels.empty.title')} description={t('panels.empty.description')} />
+          )
         ) : (
           <div style={{ padding: '0 var(--s-16) var(--s-16)' }}>
             <DataTable

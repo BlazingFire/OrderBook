@@ -67,11 +67,16 @@ async function mount(
   openState: Partial<PairingWindowState> = {},
   extra: (call: Call) => Response | undefined = () => undefined,
 ): Promise<Call[]> {
+  let opened = false;
   const calls = routeFetch((call) => {
     const custom = extra(call);
     if (custom) return custom;
-    if (call.method === 'GET' && call.url === '/api/panels/pairing-window') return json(windowState);
+    // Once opened, the Master keeps saying so until the test says otherwise (the screen re-reads it as the list changes).
+    if (call.method === 'GET' && call.url === '/api/panels/pairing-window') {
+      return json(opened ? { ...windowState, open: true, accepting: windowState.autoPairingEnabled, ...openState } : windowState);
+    }
     if (call.method === 'POST' && call.url === '/api/panels/pairing-window/open') {
+      opened = true;
       return json({ ...windowState, open: true, accepting: windowState.autoPairingEnabled, ...openState });
     }
     if (call.method === 'POST' && call.url === '/api/panels/pairing-window/close') return new Response(null, { status: 204 });
@@ -129,7 +134,44 @@ describe('the Add Office Panel card', () => {
   });
 });
 
+describe('the wait ends when the Master says the window closed', () => {
+  it('returns to the Add button when a PC is given its old row back (the count does not grow)', async () => {
+    let open = true;
+    const calls = routeFetch((call) => {
+      if (call.method === 'GET' && call.url === '/api/panels/pairing-window') return json(state({ open, closesAt: open ? Date.now() + 240_000 : null, accepting: open }));
+      if (call.method === 'POST' && call.url === '/api/panels/pairing-window/open') return json(state({ open: true, closesAt: Date.now() + 240_000, accepting: true }));
+      if (call.method === 'POST' && call.url === '/api/panels/pairing-window/close') return new Response(null, { status: 204 });
+      return undefined;
+    });
+    const Screen = await loadScreen();
+    const removed = panel('a', 'Reception', { status: 'revoked' });
+    const view = render(<Screen panels={[removed]} onRefresh={() => undefined} />);
+    await screen.findByText(t('panels.add.manualTitle'));
+    openWindow();
+    expect(await screen.findByText(t('panels.add.waitingTitle'))).toBeTruthy();
+
+    // The Master gives the removed row back and closes the window: one row before, one after.
+    open = false;
+    view.rerender(<Screen panels={[panel('a', 'Reception', { isConnected: true })]} onRefresh={() => undefined} />);
+
+    await waitFor(() => expect(screen.queryByText(t('panels.add.waitingTitle'))).toBeNull());
+    expect(screen.getByRole('button', { name: t('panels.add.action') })).toBeTruthy();
+    expect(calls.filter((call) => call.url === '/api/panels/pairing-window').length).toBeGreaterThan(1);
+  });
+});
+
 describe('the list', () => {
+  it('says there are no active panels, not that there never were any, when every panel was removed', async () => {
+    await mount([panel('b', 'Old counter', { status: 'revoked' })], state());
+    expect(await screen.findByText(t('panels.empty.noActive'))).toBeTruthy();
+    expect(screen.queryByText(t('panels.empty.title'))).toBeNull();
+    expect(screen.getByRole('button', { name: t('panels.list.showRemoved', { count: 1 }) })).toBeTruthy();
+    cleanup();
+
+    await mount([], state());
+    expect(await screen.findByText(t('panels.empty.title'))).toBeTruthy();
+  });
+
   it('keeps removed panels out of the list until asked, and says how many there are', async () => {
     await mount([panel('a', 'Reception'), panel('b', 'Old counter', { status: 'revoked' })], state());
     expect(await screen.findByText('Reception')).toBeTruthy();

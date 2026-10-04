@@ -4302,4 +4302,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'error.unauthorized.pairingAutoOff': 'यह मास्टर पैनल नए पैनल के लिए खुला है, लेकिन केवल पेयरिंग पासवर्ड के साथ। ऑफ़िस PC पर मैन्युअल कनेक्शन चुनें और मास्टर का पता व पेयरिंग पासवर्ड डालें।',
   'activity.office_panel.left': 'ऑफ़िस पैनल {name} ने खुद को इस मास्टर से अलग कर लिया',
   'logs.action.left': 'अलग हुआ',
+  'panels.empty.noActive': 'कोई सक्रिय ऑफ़िस पैनल नहीं',
+  'panels.empty.noActiveBody': 'जो भी पैनल पेयर हुए थे सब हटाए जा चुके हैं। उन्हें देखने के लिए "हटाए गए दिखाएँ" दबाएँ, या नया पैनल जोड़ें।',
 };
