@@ -1955,6 +1955,21 @@ describe('the link to the Master server, and the bell (1.3)', () => {
       await screen.findByText(t('panels.offlineFor', { duration: formatElapsed(2 * 3_600_000) })),
     ).toBeTruthy();
   });
+
+  it('does not count a removed panel as offline', async () => {
+    await boot(ADMIN);
+    const base = {
+      deviceCode: 'DSK', roleId: null, lanIp: null, pairedAt: null, createdAt: '2026-09-01T00:00:00.000Z',
+      updatedAt: '2026-09-01T00:00:00.000Z', isConnected: false, runtime: null, lastSeenAt: null,
+    };
+    await socketEvent('panels:changed', [
+      { ...base, id: 'p1', name: 'Front desk', status: 'active' },
+      { ...base, id: 'p2', name: 'Old counter', status: 'revoked' },
+      { ...base, id: 'p3', name: 'Till', status: 'revoked' },
+    ]);
+    expect(await screen.findByText(t('master.sync.offline', { count: 1 }))).toBeTruthy();
+    expect(screen.queryByText(t('master.sync.offline', { count: 3 }))).toBeNull();
+  });
 });
 
 describe('the Chatroom (1.3 Phase 6)', () => {

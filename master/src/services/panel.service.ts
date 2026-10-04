@@ -136,6 +136,20 @@ export function isAcceptingPairing(): boolean {
   return Date.now() < pairingWindowClosesAt;
 }
 
+/** The window half of `PairingWindowState`; the route adds the addresses and the discovery status. */
+export async function pairingWindowSnapshot(
+  tenantId: string,
+): Promise<{ open: boolean; closesAt: number | null; autoPairingEnabled: boolean; accepting: boolean }> {
+  const open = isAcceptingPairing();
+  const autoPairingEnabled = await getSetting(tenantId, 'panels.autoPairingEnabled');
+  return {
+    open,
+    closesAt: open ? pairingWindowClosesAt : null,
+    autoPairingEnabled,
+    accepting: open && autoPairingEnabled,
+  };
+}
+
 /**
  * Whether a panel may join right now with no password.
  *
@@ -160,7 +174,11 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
 
   if (request.mode === 'auto') {
     if (!(await isAutoPairingOpen(identity.tenantId))) {
-      throw new UnauthorizedError('error.unauthorized.pairingNotAccepting');
+      // Two different reasons, two different next steps: telling somebody to open a window that is
+      // already open (and has the setting off) sends them round in a circle.
+      throw new UnauthorizedError(
+        isAcceptingPairing() ? 'error.unauthorized.pairingAutoOff' : 'error.unauthorized.pairingNotAccepting',
+      );
     }
   } else {
     if (!request.pairingPassword || !(await verifyPairingPassword(request.pairingPassword))) {
@@ -173,10 +191,67 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
 
   const panelSecret = randomBytes(32).toString('base64url');
   const panelId = uuid();
-  const name = request.panelName?.trim() || (await defaultPanelName(identity.tenantId));
+  const asked = request.panelName?.trim();
+  const name = asked
+    ? uniquePanelName(asked, await panelRepo.liveNames(identity.tenantId))
+    : await defaultPanelName(identity.tenantId);
   const secretHash = await bcrypt.hash(panelSecret, BCRYPT_ROUNDS);
 
+  // A PC that was removed and pairs again gets its old row back instead of a second one next to
+  // it: the row it names, or the removed one with its machine name. Only a removed row, only
+  // after the window or the password has already let this request in (above), so a matching name
+  // grants nothing by itself, and a working pairing is never taken over. A PC reinstalled without
+  // being removed first is a new panel; the old row is for the administrator to remove.
+  const returning =
+    // Checked first: a PC that proves it owns an ACTIVE row (the id and the secret it held; it unpaired
+    // itself while the Master could not be told) must get that row, not a removed one that happens to
+    // share its machine name.
+    (await ownedActivePanel(identity.tenantId, request.previousPanelId, request.previousPanelSecret)) ??
+    (await panelRepo.findRemovedFor(
+      identity.tenantId,
+      request.hostname && request.hostname !== 'unknown' ? request.hostname : null,
+      request.previousPanelId ?? null,
+    )) ??
+    undefined;
+
   const panel = await db().transaction(async (trx) => {
+    if (returning) {
+      const others = await panelRepo.liveNames(identity.tenantId, returning.id);
+      const row = await panelRepo.reviveForPairing(
+        returning.id,
+        {
+          secret_hash: secretHash,
+          master_proof_key: masterProofKey(panelSecret),
+          lan_ip: remoteIp,
+          // The name it asked for, else the one it had; numbered if a panel in use took it while this one was away.
+          name: uniquePanelName(asked || returning.name, others),
+        },
+        trx,
+      );
+      await activityLog.recordActivity(
+        {
+          tenantId: identity.tenantId,
+          entityType: 'office_panel',
+          entityId: row.id,
+          action: 're_paired',
+          actorType: 'system',
+          actorId: null,
+          // Names the row it replaced: the same row, as it stood (removed, or offline and never removed).
+          details: {
+            name: row.name,
+            mode: request.mode,
+            hostname: request.hostname,
+            previousPanelId: returning.id,
+            previousName: returning.name,
+            previousStatus: returning.status === 'revoked' ? 'removed' : 'active',
+          },
+        },
+        systemActor(identity.tenantId),
+        trx,
+      );
+      return row;
+    }
+
     const row = await panelRepo.insertPanel(
       {
         id: panelId,
@@ -215,9 +290,17 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
   // pairs, so leaving the screen open does not silently admit others.
   if (request.mode === 'auto') closePairingWindow();
 
-  publishChange({ entity: 'office_panel', action: 'created', id: panel.id, payload: panel });
+  // The old pairing's socket (an active row that was replaced) must not outlive its secret.
+  if (returning && returning.status !== 'revoked') disconnectPanel(returning.id);
 
-  log.info(`Paired office panel "${panel.name}" (${panel.id}) via ${request.mode}`);
+  publishChange({
+    entity: 'office_panel',
+    action: returning ? 'updated' : 'created',
+    id: panel.id,
+    payload: panel,
+  });
+
+  log.info(`${returning ? 'Paired again' : 'Paired'} office panel "${panel.name}" (${panel.id}) via ${request.mode}`);
 
   return {
     panelId: panel.id,
@@ -225,6 +308,53 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
     masterUniqueId: identity.masterUniqueId,
     companyName: identity.companyName,
   };
+}
+
+/** The active panel this id and secret belong to, else null. Never throws, never says which part was wrong. */
+async function ownedActivePanel(
+  tenantId: string,
+  panelId: string | undefined,
+  panelSecret: string | undefined,
+): Promise<OfficePanel | null> {
+  if (!panelId || !panelSecret) return null;
+  try {
+    const panel = await authenticatePanel(panelId, panelSecret);
+    return panel.tenantId === tenantId && panel.status === 'active' ? panel : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A panel unpairing itself (`panel:leave`): its row is marked removed, reason "left", so a PC that
+ * pairs again finds a removed row instead of leaving an active, offline one behind.
+ */
+export async function leavePanel(panelId: string): Promise<void> {
+  const existing = await panelRepo.findPanelById(panelId);
+  if (!existing || existing.status === 'revoked') return;
+
+  const panel = await db().transaction(async (trx) => {
+    const row = await panelRepo.updatePanelStatus(panelId, 'revoked', trx);
+    if (!row) throw new NotFoundError('Panel');
+    await activityLog.recordActivity(
+      {
+        tenantId: row.tenantId,
+        entityType: 'office_panel',
+        entityId: row.id,
+        action: 'left',
+        actorType: 'system',
+        actorId: null,
+        details: { name: row.name, reason: 'left' },
+      },
+      systemActor(row.tenantId),
+      trx,
+    );
+    return row;
+  });
+
+  forgetPanelConnection(panelId);
+  publishChange({ entity: 'office_panel', action: 'updated', id: panelId, payload: panel });
+  log.info(`Office panel "${panel.name}" (${panelId}) left of its own accord`);
 }
 
 /**
@@ -366,6 +496,9 @@ export async function updatePanel(
     if (!trimmed) throw new ValidationError('validation.panel.nameEmpty');
 
     if (trimmed !== existing.name) {
+      if (nameIsTaken(trimmed, await panelRepo.liveNames(existing.tenantId, panelId))) {
+        throw new ValidationError('validation.panel.nameTaken', { name: trimmed });
+      }
       writes.push((trx) => panelRepo.renamePanel(panelId, trimmed, trx));
       changed.name = trimmed;
     }
@@ -811,6 +944,26 @@ const DEFAULT_PANEL_PREFIX = 'Office Panel';
 async function defaultPanelName(tenantId: string): Promise<string> {
   const names = await panelRepo.panelNamesMatching(tenantId, DEFAULT_PANEL_PREFIX);
   return nextPanelName(names);
+}
+
+const sameName = (a: string, b: string): boolean => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/** Whether a panel still in use already has this name (case and surrounding spaces ignored). */
+export function nameIsTaken(name: string, existing: readonly string[]): boolean {
+  return existing.some((other) => sameName(other, name));
+}
+
+/**
+ * A name nobody in use has. A PC that is reinstalled pairs again under the name its
+ * user types, and the old row is still on the list until somebody removes it; two rows
+ * called "Reception" cannot be told apart, so the new one becomes "Reception 2".
+ */
+export function uniquePanelName(name: string, existing: readonly string[]): string {
+  if (!nameIsTaken(name, existing)) return name;
+  for (let suffix = 2; ; suffix += 1) {
+    const candidate = `${name} ${suffix}`;
+    if (!nameIsTaken(candidate, existing)) return candidate;
+  }
 }
 
 /**

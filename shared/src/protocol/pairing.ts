@@ -26,6 +26,18 @@ export interface PairingRequest {
   pairingPassword?: string;
   /** Required in manual mode: guards against pairing with the wrong Master. */
   masterUniqueId?: string;
+  /**
+   * The id this PC was paired under before it was removed, when it still knows it. The Master
+   * gives that row back (same id, name and device code) if it is removed; it never takes an
+   * active row over, and it grants nothing on its own: the window or the password still decides.
+   */
+  previousPanelId?: string;
+  /**
+   * The secret that PC held for `previousPanelId`. With a matching id it proves the request comes from
+   * the PC that owns an **active** row, which is then replaced (the Office unpaired itself without the
+   * Master knowing). Checked against the stored hash, never stored, logged or echoed.
+   */
+  previousPanelSecret?: string;
 }
 
 export interface PairingSuccess {

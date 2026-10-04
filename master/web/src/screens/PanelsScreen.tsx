@@ -5,9 +5,13 @@
  * waiting state is explicit and closes itself when the operator leaves.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { isLongOffline, PANEL_PROTOCOL_VERSION } from '@orderbook/shared';
-import type { OfficePanelDetail, OfficePanelWithPresence } from '@orderbook/shared';
+import type {
+  OfficePanelDetail,
+  OfficePanelWithPresence,
+  PairingWindowState,
+} from '@orderbook/shared';
 
 import { api } from '../api';
 import {
@@ -27,6 +31,7 @@ import {
   rem,
   t,
   useSubNav,
+  useToast,
   useUnsavedWork,
   type DataTableColumn,
 } from '@orderbook/ui';
@@ -78,8 +83,23 @@ const STATUS_KEY: Record<OfficePanelWithPresence['status'], string> = {
   revoked: 'panels.detail.status.revoked',
 };
 
+/** 4:07 for 247 seconds. */
+function countdown(ms: number): string {
+  const seconds = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
 export function PanelsScreen({ panels, onRefresh }: Props) {
+  const toast = useToast();
   const [waiting, setWaiting] = useState(false);
+  /** What the Master says about the window, the setting, its addresses and the UDP search. */
+  const [windowState, setWindowState] = useState<PairingWindowState | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  /** The window ran out while we were waiting: say so instead of waiting for ever. */
+  const [expired, setExpired] = useState(false);
+  const [confirmRotate, setConfirmRotate] = useState<OfficePanelWithPresence | null>(null);
+  /** Removed panels stay in the history but out of the way; this brings them back into the list. */
+  const [showRemoved, setShowRemoved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<OfficePanelWithPresence | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -89,19 +109,55 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
   const [openPanelId, setOpenPanelId] = useState<string | null>(null);
   /** The server's fuller account (acting role, work counts); the list row stands in until it arrives. */
   const [detail, setDetail] = useState<OfficePanelDetail | null>(null);
-  const previousPanelCount = useRef(panels.length);
 
   const stopWaiting = useCallback(async () => {
     setWaiting(false);
     await api.closePairingWindow().catch(() => {});
   }, []);
 
-  // A panel appearing while we wait is the success signal — the list is pushed
-  // live over the socket, so no polling is needed here.
+  // The list is pushed live over the socket, so a change to it while we wait is the moment to look:
+  // whether a panel joined or one was given its old row back (the count then does not grow), the
+  // Master's own answer says whether the window is still open. A joining panel closes it (auto mode).
   useEffect(() => {
-    if (waiting && panels.length > previousPanelCount.current) void stopWaiting();
-    previousPanelCount.current = panels.length;
-  }, [panels.length, waiting, stopWaiting]);
+    if (!waiting) return;
+    let live = true;
+    api
+      .pairingWindow()
+      .then((state) => {
+        if (!live) return;
+        setWindowState(state);
+        if (!state.open) setWaiting(false);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [panels, waiting]);
+
+  // Where a panel can reach this Master by hand, and whether the automatic search is running.
+  useEffect(() => {
+    let live = true;
+    api
+      .pairingWindow()
+      .then((state) => live && setWindowState(state))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  // The countdown, and the moment the Master's five minutes run out.
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [waiting]);
+  useEffect(() => {
+    if (waiting && windowState?.closesAt != null && now >= windowState.closesAt) {
+      setWaiting(false);
+      setExpired(true);
+    }
+  }, [waiting, windowState, now]);
 
   // Leaving this screen must not leave the network open to new panels.
   useEffect(() => {
@@ -126,7 +182,10 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
   async function startWaiting() {
     setError(null);
     try {
-      await api.openPairingWindow();
+      const state = await api.openPairingWindow();
+      setWindowState(state);
+      setNow(Date.now());
+      setExpired(false);
       setWaiting(true);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : t('panels.add.startFailed'));
@@ -156,6 +215,24 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
       ? { label: t('updates.saveAll.panelName', { name: renaming.name }), save: submitRename }
       : null,
   );
+
+  async function confirmRotatePanel() {
+    const target = confirmRotate;
+    setConfirmRotate(null);
+    if (!target) return;
+    try {
+      const rotation = await api.rotatePanelSecret(target.id);
+      toast.push(
+        rotation.delivered
+          ? t('panels.rotate.done', { name: target.name })
+          : t('panels.rotate.notDelivered', { name: target.name }),
+        { tone: rotation.delivered ? 'ok' : 'error' },
+      );
+      onRefresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : t('panels.rotate.failed'));
+    }
+  }
 
   async function confirmRevokePanel() {
     const target = confirmRevoke;
@@ -231,6 +308,8 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
   ];
 
   const openPanel = panels.find((panel) => panel.id === openPanelId) ?? null;
+  const removedCount = panels.filter((panel) => panel.status === 'revoked').length;
+  const listed = showRemoved ? panels : panels.filter((panel) => panel.status !== 'revoked');
 
   useSubNav(
     'panels',
@@ -396,6 +475,24 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
       </Modal>
 
       <Modal
+        open={Boolean(confirmRotate)}
+        onClose={() => setConfirmRotate(null)}
+        title={confirmRotate ? t('panels.rotate.title', { name: confirmRotate.name }) : ''}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmRotate(null)}>
+              {t('panels.revoke.cancel')}
+            </Button>
+            <Button variant="primary" onClick={() => void confirmRotatePanel()}>
+              {t('panels.rotate.confirm')}
+            </Button>
+          </>
+        }
+      >
+        <p className="ob-body">{t('panels.rotate.body')}</p>
+      </Modal>
+
+      <Modal
         open={Boolean(confirmRevoke)}
         onClose={() => setConfirmRevoke(null)}
         title={confirmRevoke ? t('panels.revoke.title', { name: confirmRevoke.name }) : ''}
@@ -443,6 +540,11 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
                 >
                   {t('panels.action.rename')}
                 </Button>
+                {openPanel.isConnected && (
+                  <Button variant="secondary" onClick={() => setConfirmRotate(openPanel)}>
+                    {t('panels.rotate.action')}
+                  </Button>
+                )}
                 <Button variant="danger" onClick={() => setConfirmRevoke(openPanel)}>
                   {t('panels.action.remove')}
                 </Button>
@@ -470,11 +572,36 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
         <h2 className="ob-title" style={{ margin: '0 0 var(--s-12)' }}>
           {t('panels.add.title')}
         </h2>
+        {expired && !waiting && (
+          <div role="status" style={{ marginBottom: 'var(--s-12)' }}>
+            <span className="ob-body-strong">{t('panels.add.expiredTitle')}</span>{' '}
+            <span className="ob-small">{t('panels.add.expiredBody')}</span>
+          </div>
+        )}
+        {windowState && !windowState.discovery.listening && (
+          <div role="alert" className="ob-small" style={{ marginBottom: 'var(--s-12)' }}>
+            {t('panels.add.discoveryDown', { reason: windowState.discovery.reason ?? '' })}
+          </div>
+        )}
         {waiting ? (
           <>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
-              <span className="ob-body-strong">{t('panels.add.waitingTitle')}</span>
-              <span className="ob-small">{t('panels.add.waitingBody')}</span>
+              {windowState && !windowState.autoPairingEnabled ? (
+                <>
+                  <span className="ob-body-strong">{t('panels.add.autoOffTitle')}</span>
+                  <span className="ob-small">{t('panels.add.autoOffBody')}</span>
+                </>
+              ) : (
+                <>
+                  <span className="ob-body-strong">{t('panels.add.waitingTitle')}</span>
+                  <span className="ob-small">{t('panels.add.waitingBody')}</span>
+                </>
+              )}
+              {windowState?.closesAt != null && windowState.autoPairingEnabled && (
+                <span className="ob-small">
+                  {t('panels.add.timeLeft', { time: countdown(windowState.closesAt - now) })}
+                </span>
+              )}
             </div>
             <Button
               variant="secondary"
@@ -494,6 +621,25 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
             </Button>
           </>
         )}
+        {windowState && windowState.addresses.length > 0 && (
+          <div style={{ marginTop: 'var(--s-16)' }}>
+            <span className="ob-body-strong">{t('panels.add.manualTitle')}</span>
+            <p className="ob-small" style={{ margin: 'var(--s-4) 0' }}>
+              {t('panels.add.manualBody')}
+            </p>
+            <ul className="ob-small ob-mono" style={{ margin: 0, paddingLeft: 'var(--s-16)' }}>
+              {windowState.addresses.map((entry) => (
+                <li key={`${entry.name}-${entry.address}`}>
+                  {entry.address}:{windowState.port}{' '}
+                  <span style={{ color: 'var(--fg-tertiary)' }}>({entry.name})</span>
+                </li>
+              ))}
+            </ul>
+            <p className="ob-small" style={{ margin: 'var(--s-8) 0 0' }}>
+              {t('panels.add.reinstallNote')}
+            </p>
+          </div>
+        )}
       </Card>
 
       <Card padded={false}>
@@ -502,13 +648,24 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
             {t('panels.list.title')}
           </h2>
         </div>
-        {panels.length === 0 ? (
-          <EmptyState title={t('panels.empty.title')} description={t('panels.empty.description')} />
+        {removedCount > 0 && (
+          <div style={{ padding: '0 var(--s-16) var(--s-8)' }}>
+            <Button variant="ghost" size="sm" onClick={() => setShowRemoved((current) => !current)}>
+              {showRemoved ? t('panels.list.hideRemoved') : t('panels.list.showRemoved', { count: removedCount })}
+            </Button>
+          </div>
+        )}
+        {listed.length === 0 ? (
+          removedCount > 0 ? (
+            <EmptyState title={t('panels.empty.noActive')} description={t('panels.empty.noActiveBody')} />
+          ) : (
+            <EmptyState title={t('panels.empty.title')} description={t('panels.empty.description')} />
+          )
         ) : (
           <div style={{ padding: '0 var(--s-16) var(--s-16)' }}>
             <DataTable
               columns={columns}
-              rows={panels}
+              rows={listed}
               rowKey={(panel) => panel.id}
               selectedId={openPanelId ?? undefined}
               onRowOpen={(panel) => setOpenPanelId(panel.id)}

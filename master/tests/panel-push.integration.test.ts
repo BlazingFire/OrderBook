@@ -16,6 +16,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { canRunIntegrationTests } from './helpers/db.js';
 import { resetData, setupDatabase, teardownDatabase, testActor, testTenantId } from './helpers/fixtures.js';
 import type { ActorContext } from '../src/domain/actor.js';
+import { db } from '../src/db/knex.js';
 import bcrypt from 'bcryptjs';
 import { createRealtimeHub, type RealtimeHub } from '../src/realtime/hub.js';
 import * as panelRepo from '../src/repositories/office-panel.repository.js';
@@ -356,6 +357,24 @@ describe.skipIf(!canRunIntegrationTests)('what the Master pushes to Office panel
 
     expect(count(panel, 'sync:snapshot')).toBe(before);
     expect(count(panel, 'data:changed')).toBe(0);
+  });
+
+  it('marks a panel that leaves of its own accord as removed (reason left), acks it, closes its socket, and does not tell it it was revoked', async () => {
+    const panel = await connectPanel('PUSH20');
+    const other = await connectPanel('PUSH21');
+
+    const ack = await new Promise<{ ok: boolean }>((resolve) => panel.socket.emit('panel:leave', resolve));
+    expect(ack.ok).toBe(true);
+
+    await waitFor(panel, 'disconnect');
+    expect(count(panel, 'panel:revoked')).toBe(0);
+    const row = await db()('office_panels').where({ id: panel.panelId }).first();
+    expect(row.status).toBe('revoked');
+    const entry = await db()('activity_log').where({ entity_id: panel.panelId, action: 'left' }).first();
+    expect(entry).toBeTruthy();
+    await settle();
+    expect(count(other, 'panel:revoked')).toBe(0);
+    expect((await db()('office_panels').where({ id: other.panelId }).first()).status).toBe('active');
   });
 
   it('tells a revoked panel before closing its socket', async () => {

@@ -2,6 +2,11 @@ import { Router } from 'express';
 import type { MasterProofRequest, OfficePanelUpdateInput, PairingRequest } from '@orderbook/shared';
 
 import { ValidationError } from '../../lib/errors.js';
+import type { PairingWindowState } from '@orderbook/shared';
+
+import { discoveryStatus } from '../../discovery/responder.js';
+import { config } from '../../config/index.js';
+import { listLanInterfaces } from '../../lib/network.js';
 import * as panelService from '../../services/panel.service.js';
 import { asyncHandler } from '../async-handler.js';
 import { consume } from '../middleware/api-key-rate-limit.js';
@@ -57,6 +62,8 @@ pairingRoutes.post(
         nonce: body.nonce,
         pairingPassword: body.pairingPassword,
         masterUniqueId: body.masterUniqueId,
+        previousPanelId: typeof body.previousPanelId === 'string' ? body.previousPanelId : undefined,
+        previousPanelSecret: typeof body.previousPanelSecret === 'string' ? body.previousPanelSecret : undefined,
       },
       normalizeIp(req.ip),
     );
@@ -103,12 +110,20 @@ panelProofRoutes.post(
  * Admitting a panel, revoking one and renaming one are `panels.manage`: opening
  * the pairing window admits any panel that can find the Master over UDP, and a
  * revoke locks a working panel out until somebody re-pairs it by hand. The two
- * reads stay on `requireAuth` alone: the shell's presence rail asks for the
- * panel list on every signed-in session, whatever that session may administer,
- * and the pairing window reports this Master's own transient state rather than
- * anything belonging to the company.
+ * read stays on `requireAuth` alone: the shell's presence rail asks for the
+ * panel list on every signed-in session, whatever that session may administer.
+ * (The pairing window's state lists this PC's addresses and is `panels.manage`.)
  */
 export const panelRoutes: Router = Router();
+
+async function pairingWindowState(tenantId: string): Promise<PairingWindowState> {
+  return {
+    ...(await panelService.pairingWindowSnapshot(tenantId)),
+    port: config.http.port,
+    addresses: listLanInterfaces().map(({ name, address }) => ({ name, address })),
+    discovery: discoveryStatus(),
+  };
+}
 
 panelRoutes.use(requireAuth);
 
@@ -126,7 +141,9 @@ panelRoutes.post(
   '/pairing-window/open',
   needs('panels.manage'),
   asyncHandler(async (req, res) => {
-    res.json(await panelService.openPairingWindowBy(actorFromRequest(req)));
+    const actor = actorFromRequest(req);
+    await panelService.openPairingWindowBy(actor);
+    res.json(await pairingWindowState(actor.tenantId));
   }),
 );
 
@@ -141,12 +158,13 @@ panelRoutes.post(
 
 panelRoutes.get(
   '/pairing-window',
+  // It lists this PC's addresses, so it is for the people who administer panels; the screen that reads it is theirs.
+  needs('panels.manage'),
   asyncHandler(async (req, res) => {
-    // The same question the pairing route and the discovery reply ask. The
+    // `accepting` is the same question the pairing route and the discovery reply ask. The
     // Master's own screen reads this, so answering on the window alone would
     // show "waiting for a panel" for a panel that will be refused on arrival.
-    const actor = actorFromRequest(req);
-    res.json({ accepting: await panelService.isAutoPairingOpen(actor.tenantId) });
+    res.json(await pairingWindowState(actorFromRequest(req).tenantId));
   }),
 );
 

@@ -10,8 +10,31 @@ const LEVEL_ORDER: Record<Level, number> = { debug: 10, info: 20, warn: 30, erro
 
 const activeLevel: Level = (process.env.LOG_LEVEL as Level | undefined) ?? 'info';
 
-function write(level: Level, scope: string, message: string, detail?: unknown): void {
+/** Property names whose values are credentials: a pairing password, a panel's old secret, a token, a key. */
+const SECRET_NAME = /password|secret|token|passphrase|apikey|authorization/i;
+
+/**
+ * A copy of `value` with every credential-named property replaced, so a request body or an error
+ * that carries one (`previousPanelSecret`, `pairingPassword`) cannot put it in the console or a log
+ * file. Defence in depth: nothing logs a request body today, and this keeps it that way when something does.
+ */
+export function redactSecrets(value: unknown, depth = 0): unknown {
+  if (value === null || typeof value !== 'object' || depth > 6) return value;
+  if (Array.isArray(value)) return value.map((item) => redactSecrets(item, depth + 1));
+  const copy: Record<string, unknown> = {};
+  for (const [key, inner] of Object.entries(value as Record<string, unknown>)) {
+    copy[key] = SECRET_NAME.test(key) ? '[redacted]' : redactSecrets(inner, depth + 1);
+  }
+  // An Error keeps its message and stack, which Object.entries does not see.
+  if (value instanceof Error) {
+    return Object.assign(new Error(value.message), { name: value.name, stack: value.stack }, copy);
+  }
+  return copy;
+}
+
+function write(level: Level, scope: string, message: string, rawDetail?: unknown): void {
   if (LEVEL_ORDER[level] < LEVEL_ORDER[activeLevel]) return;
+  const detail = redactSecrets(rawDetail);
 
   const line = `${new Date().toISOString()} ${level.toUpperCase().padEnd(5)} [${scope}] ${message}`;
   const stream = level === 'error' || level === 'warn' ? console.error : console.log;

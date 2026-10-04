@@ -776,7 +776,8 @@ function MasterPanel() {
   // ---- Presence rail (§4.8): the Master's aggregate across its panels.
   const openConflicts = summary?.openConflictCount ?? 0;
   const pendingSync = summary?.pendingSyncCount ?? 0;
-  const offlinePanels = panels.filter((panel) => !panel.isConnected).length;
+  // Removed panels are not offline, they are gone: only active ones count.
+  const offlinePanels = panels.filter((panel) => panel.status === 'active' && !panel.isConnected).length;
   const canManageRoles =
     user.permissions.includes('roles.view') || user.permissions.includes('users.manage');
   const canManagePanels = user.permissions.includes('panels.manage');

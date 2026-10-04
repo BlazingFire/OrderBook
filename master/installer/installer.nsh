@@ -33,8 +33,16 @@
 !macro customInstall
   ; Every program an administrator runs here is named by its absolute System32
   ; path ($SYSDIR): Windows looks in the launching program's own folder first.
-  nsExec::Exec '"$SYSDIR\netsh.exe" advfirewall firewall add rule name="OrderBook Master (TCP 4100)" dir=in action=allow protocol=TCP localport=4100'
-  nsExec::Exec '"$SYSDIR\netsh.exe" advfirewall firewall add rule name="OrderBook Discovery (UDP 45789)" dir=in action=allow protocol=UDP localport=45789'
+  ; Delete, then add: `add rule` never replaces, so every update used to leave one more
+  ; identical pair behind. `profile=any` is what an omitted profile already meant (domain,
+  ; private and public), written down so a shop whose network Windows calls "Public" is
+  ; not left guessing. The ports are pinned to the app's own by master/tests/firewall-rules.test.ts:
+  ; TCP is the packaged Master's default port (electron/master.main.ts); a machine that
+  ; sets PORT itself has to open that port by hand.
+  nsExec::Exec '"$SYSDIR\netsh.exe" advfirewall firewall delete rule name="OrderBook Master (TCP 4100)"'
+  nsExec::Exec '"$SYSDIR\netsh.exe" advfirewall firewall delete rule name="OrderBook Discovery (UDP 45789)"'
+  nsExec::Exec '"$SYSDIR\netsh.exe" advfirewall firewall add rule name="OrderBook Master (TCP 4100)" dir=in action=allow protocol=TCP localport=4100 profile=any'
+  nsExec::Exec '"$SYSDIR\netsh.exe" advfirewall firewall add rule name="OrderBook Discovery (UDP 45789)" dir=in action=allow protocol=UDP localport=45789 profile=any'
 
   ; The nightly update (1.4). This installer is running elevated, once, with the
   ; administrator's approval; it uses that to register a task that can install

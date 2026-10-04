@@ -230,6 +230,57 @@ export async function panelNamesMatching(tenantId: string, prefix: string): Prom
   return rows.map((row) => String((row as { name: unknown }).name));
 }
 
+/**
+ * The removed panel a PC that pairs again gets back: the one it names (`previousId`), else the
+ * most recently seen removed one that reported the same machine name. Only ever a **removed**
+ * row: an active row, connected or not, is a working pairing that nobody asked to end.
+ */
+export async function findRemovedFor(
+  tenantId: string,
+  hostname: string | null,
+  previousId: string | null,
+): Promise<OfficePanel | null> {
+  if (previousId && UUID_FORMAT.test(previousId)) {
+    const byId = await db()(TABLE).where({ tenant_id: tenantId, id: previousId, status: 'revoked' }).first();
+    if (byId) return mapOfficePanel(byId);
+  }
+  if (!hostname) return null;
+  const row = await db()(TABLE)
+    .where({ tenant_id: tenantId, status: 'revoked' })
+    .whereRaw('lower(hostname) = lower(?)', [hostname])
+    .orderBy('last_seen_at', 'desc')
+    .first();
+  return row ? mapOfficePanel(row) : null;
+}
+
+const UUID_FORMAT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Pairing again: a new secret and an active row, keeping the id, the name, the device code and the history. */
+export async function reviveForPairing(
+  id: string,
+  values: { secret_hash: string; master_proof_key: string; lan_ip: string | null; name: string },
+  runner: Runner = db(),
+): Promise<OfficePanel> {
+  const [row] = await runner(TABLE)
+    .where({ id })
+    .update({
+      ...values,
+      status: 'active',
+      paired_at: runner.fn.now(),
+      secret_rotated_at: null,
+      updated_at: runner.fn.now(),
+    })
+    .returning('*');
+  return mapOfficePanel(row);
+}
+
+/** Names of the panels that are still in use (not removed), for telling two apart on a list. */
+export async function liveNames(tenantId: string, exceptId?: string): Promise<string[]> {
+  const query = db()(TABLE).select('name').where({ tenant_id: tenantId }).whereNot({ status: 'revoked' });
+  if (exceptId) query.whereNot({ id: exceptId });
+  return (await query).map((row) => String((row as { name: unknown }).name));
+}
+
 /** Which role a panel's commands act under. Null means the seeded Office role. */
 export async function findPanelRoleId(id: string): Promise<string | null> {
   const row = await db()(TABLE).select('role_id').where({ id }).first();
