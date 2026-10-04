@@ -75,6 +75,45 @@ describe.skipIf(!canRunIntegrationTests)('pairing again (integration)', () => {
     expect(JSON.stringify(entry.details)).toContain(first.panelId);
   });
 
+  it('a panel that leaves leaves a removed row behind, once, with an entry saying so', async () => {
+    const first = await pairAs('Counter', 'COUNTER-PC');
+    await panels.leavePanel(first.panelId);
+    await panels.leavePanel(first.panelId);
+    expect((await rows())[0]).toMatchObject({ status: 'revoked' });
+    const entries = await db()('activity_log').where({ entity_id: first.panelId, action: 'left' });
+    expect(entries).toHaveLength(1);
+    // And it gets the row back when it pairs again.
+    expect((await pairAs('Counter', 'COUNTER-PC')).panelId).toBe(first.panelId);
+  });
+
+  it('replaces an ACTIVE row only for the PC that proves it owns it with the id and the secret, and never stores or echoes the secret', async () => {
+    const first = await pairAs('Counter', 'COUNTER-PC');
+
+    // Id with a wrong secret: a new panel, the old one untouched.
+    panels.openPairingWindow();
+    const wrong = await panels.pairPanel(
+      { mode: 'auto', panelName: 'Till', hostname: 'OTHER-PC', previousPanelId: first.panelId, previousPanelSecret: 'not-the-secret' },
+      null,
+    );
+    expect(wrong.panelId).not.toBe(first.panelId);
+    await expect(panels.authenticatePanel(first.panelId, first.panelSecret)).resolves.toBeDefined();
+
+    // Id and the right secret: the same row, a new secret, the old one dead.
+    panels.openPairingWindow();
+    const owner = await panels.pairPanel(
+      { mode: 'auto', panelName: 'Counter', hostname: 'RENAMED-PC', previousPanelId: first.panelId, previousPanelSecret: first.panelSecret },
+      null,
+    );
+    expect(owner.panelId).toBe(first.panelId);
+    await expect(panels.authenticatePanel(first.panelId, first.panelSecret)).rejects.toThrow();
+    await expect(panels.authenticatePanel(first.panelId, owner.panelSecret)).resolves.toBeDefined();
+
+    // The secret is in no row of the trail.
+    const trail = JSON.stringify(await db()('activity_log').select('details'));
+    expect(trail).not.toContain(first.panelSecret);
+    expect(trail).not.toContain('previousPanelSecret');
+  });
+
   it('never takes over a row that is not removed: a reinstalled PC with its old row still active joins as a new panel', async () => {
     const first = await pairAs('Counter', 'COUNTER-PC');
     const second = await pairAs('Counter', 'COUNTER-PC');

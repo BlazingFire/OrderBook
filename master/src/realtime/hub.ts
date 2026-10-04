@@ -346,7 +346,9 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
       // after an await (it used to wait on `fetchSockets()`) landed on a
       // closed socket and the notice was lost.
       if ((event.payload as { status?: string } | null)?.status === 'revoked') {
-        panelSockets.get(event.id)?.emit('panel:revoked');
+        const leaving = panelSockets.get(event.id);
+        // A panel that left of its own accord already knows; telling it it was removed would be wrong.
+        if (leaving && !leaving.data.leaving) leaving.emit('panel:revoked');
       }
     }
 
@@ -740,6 +742,19 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
     respond(ack, async () => {
       const panelId = socket.data.panelId;
       if (panelId) await panelService.recordPanelReport(panelId, report);
+      return null;
+    }),
+  );
+
+  // The panel leaving: like `panel:report` it is about the panel itself, so it needs no actor. The
+  // socket closes shortly after the ack so the ack itself is delivered first.
+  socket.on('panel:leave', (ack) =>
+    respond(ack, async () => {
+      const panelId = socket.data.panelId;
+      if (!panelId) return null;
+      socket.data.leaving = true;
+      await panelService.leavePanel(panelId);
+      setTimeout(() => socket.disconnect(true), 100).unref?.();
       return null;
     }),
   );

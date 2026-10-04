@@ -178,7 +178,7 @@ export interface PanelAuthPayload {
  * socket command, so either side can tell the other is too old for one before
  * sending it, instead of waiting out a timeout.
  */
-export const PANEL_PROTOCOL_VERSION = 8;
+export const PANEL_PROTOCOL_VERSION = 9;
 
 /**
  * The lowest Master protocol each command needs. A command not listed has
@@ -226,6 +226,9 @@ export const COMMAND_MIN_PROTOCOL: Partial<Record<keyof ClientToServerEvents, nu
   // The Party Access summary strip (Party Access redesign). The list's new `sort`, `dir` and
   // assignee-name search need no gate: an older Master ignores them and answers in its old order.
   'partyAccess:summary': 8,
+  // An Office that unpairs itself tells its Master (Connection audit): the row is marked removed with
+  // reason "left" instead of staying active and offline for ever.
+  'panel:leave': 9,
 };
 
 /**
@@ -1010,6 +1013,13 @@ export interface ClientToServerEvents {
    * answerable on demand through `panel:describe`.
    */
   'panel:report': (report: OfficePanelReportInput, ack: CommandAck<null>) => void;
+  /**
+   * This panel is unpairing itself (the person chose to disconnect this PC from the Master).
+   * Authenticated by the socket it travels on. The Master marks the row removed with the reason
+   * "left", writes an activity entry and closes the socket after the ack; it does not send
+   * `panel:revoked` back, since the panel already knows. No payload.
+   */
+  'panel:leave': (ack: CommandAck<null>) => void;
 }
 
 /** Master → clients. */
@@ -1115,6 +1125,8 @@ export interface SocketData {
    * deactivated administrator's open socket keeps streaming.
    */
   sessionToken?: string;
+  /** Set while a panel is leaving of its own accord, so the Master does not tell it it was revoked. */
+  leaving?: boolean;
   /** The protocol an Office Panel announced in its handshake; absent means 1. */
   protocol?: number;
   /** A Master Panel browser tab's presence id, from its handshake. */

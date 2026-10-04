@@ -32,6 +32,12 @@ export interface PairingRequest {
    * active row over, and it grants nothing on its own: the window or the password still decides.
    */
   previousPanelId?: string;
+  /**
+   * The secret that PC held for `previousPanelId`. With a matching id it proves the request comes from
+   * the PC that owns an **active** row, which is then replaced (the Office unpaired itself without the
+   * Master knowing). Checked against the stored hash, never stored, logged or echoed.
+   */
+  previousPanelSecret?: string;
 }
 
 export interface PairingSuccess {

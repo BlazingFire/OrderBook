@@ -63,6 +63,7 @@ pairingRoutes.post(
         pairingPassword: body.pairingPassword,
         masterUniqueId: body.masterUniqueId,
         previousPanelId: typeof body.previousPanelId === 'string' ? body.previousPanelId : undefined,
+        previousPanelSecret: typeof body.previousPanelSecret === 'string' ? body.previousPanelSecret : undefined,
       },
       normalizeIp(req.ip),
     );
