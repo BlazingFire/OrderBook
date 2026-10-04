@@ -59,7 +59,6 @@ authRoutes.get(
     res.json({
       user: await authService.decorate(req.user!, req.sessionToken),
       sessionToken: req.sessionToken,
-      defaultLocale: config.locale.defaultLocale,
     });
   }),
 );

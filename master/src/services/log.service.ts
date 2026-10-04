@@ -13,7 +13,7 @@ import type {
   CursorPage,
   Translator,
 } from '@orderbook/shared';
-import { createTranslator, isLocale, renderActivity } from '@orderbook/shared';
+import { createTranslator, renderActivity } from '@orderbook/shared';
 
 import { requirePermission, type ActorContext } from '../domain/actor.js';
 import { resolvePartyScope } from '../domain/party-scope.js';
@@ -256,7 +256,7 @@ export async function exportLogs(
   requirePermission(actor, 'logs.export');
   assertDateRange(query.from, query.to);
 
-  const t = createTranslator(isLocale(query.locale) ? query.locale : 'en');
+  const t = createTranslator('en');
   const chunks = [toCsv(CSV_HEADERS, [])];
   let bytes = Buffer.byteLength(chunks[0] as string);
   let rowCount = 0;

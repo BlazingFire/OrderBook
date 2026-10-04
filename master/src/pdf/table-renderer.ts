@@ -2,7 +2,7 @@
  * A report as a printable table.
  *
  * A small renderer over the primitives: the vendored fonts, `mm()`, and text
- * runs that switch faces per script. What it draws is a title, optional
+ * drawn in one face per cell. What it draws is a title, optional
  * preamble lines (the lead PDF's party block), a header row, some rows, and an
  * optional totals line.
  *
@@ -91,8 +91,8 @@ export async function renderReportPdf(table: ReportTablePdf): Promise<Buffer> {
     info: { Title: table.title, Author: 'OrderBook' },
   });
 
-  // The vendored SIL faces. Without them PDFKit falls back to Helvetica, which
-  // has no Devanagari glyphs — a Hindi party name would print as blank boxes.
+  // The vendored SIL faces. Without them PDFKit falls back to Helvetica and the
+  // columns measured in Inter would drift.
   registerFonts(doc);
 
   const chunks: Buffer[] = [];

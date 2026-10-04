@@ -7,7 +7,7 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-import { isLocale, DEFAULT_LOCALE, releasesRepo } from '@orderbook/shared';
+import { releasesRepo } from '@orderbook/shared';
 
 import { loadEnvFiles } from '../lib/env-file.js';
 
@@ -144,9 +144,5 @@ export const config = {
      * one. Validated once at boot by `assertTimeZoneValid()` in `index.ts`.
      */
     timeZone: process.env.ORDERBOOK_TIMEZONE || 'Asia/Kolkata',
-    /** Read by each panel's boot endpoint so a fresh browser profile starts in the deployment's language. */
-    defaultLocale: isLocale(process.env.ORDERBOOK_DEFAULT_LOCALE)
-      ? process.env.ORDERBOOK_DEFAULT_LOCALE
-      : DEFAULT_LOCALE,
   },
 } as const;

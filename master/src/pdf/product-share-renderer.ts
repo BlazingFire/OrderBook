@@ -40,7 +40,7 @@ export interface ShareSheet {
 }
 
 export async function renderProductShare(sheet: ShareSheet): Promise<Buffer> {
-  const text = sheet.text ?? shareText('en');
+  const text = sheet.text ?? shareText();
   const doc = new PDFDocument({
     size: PAGE,
     margins: { top: MARGIN, right: MARGIN, bottom: MARGIN, left: MARGIN },

@@ -1,6 +1,6 @@
 # Vendored font licences
 
-All four faces under `master/assets/fonts/` are licensed under the **SIL Open
+All three faces under `master/assets/fonts/` are licensed under the **SIL Open
 Font License, Version 1.1**, which explicitly permits embedding in a document.
 They are committed as binaries rather than fetched at install time so a Master
 Panel with no internet access can render a PDF on first run — the same reason
@@ -11,9 +11,8 @@ every other asset this product needs is vendored.
 | `Inter-Regular.ttf` | Inter | Copyright 2020 The Inter Project Authors (https://github.com/rsms/inter) |
 | `Inter-SemiBold.ttf` | Inter | Copyright 2020 The Inter Project Authors (https://github.com/rsms/inter) |
 | `SourceCodePro-Regular.ttf` | Source Code Pro | Copyright 2010, 2012 Adobe Systems Incorporated (http://www.adobe.com/), with Reserved Font Name "Source" |
-| `NotoSansDevanagari-Regular.ttf` | Noto Sans Devanagari | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/devanagari) |
 
-The full licence text follows once — it is identical for all three families
+The full licence text follows once — it is identical for both families
 apart from the copyright line above, which the OFL requires be preserved.
 
 ```

@@ -95,8 +95,7 @@ export async function productSharePdf(
   const company = (await findMasterConfig())?.company_name?.trim() || 'OrderBook';
 
   const labelOf = await customFieldLabeler(actor.tenantId);
-  // The sheet goes to the company's customers: its fixed words are in the deployment's language.
-  const text = shareText(config.locale.defaultLocale);
+  const text = shareText();
 
   const entries: ShareEntry[] = [];
   for (const product of products) {

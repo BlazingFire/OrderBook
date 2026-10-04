@@ -109,7 +109,6 @@ function exportOptionsOf(query: Record<string, unknown>) {
     totals: query.totals === 'true',
     paperSize: query.paperSize === 'letter' ? ('letter' as const) : undefined,
     orientation: query.orientation === 'portrait' ? ('portrait' as const) : undefined,
-    lang: query.lang === 'hi' ? ('hi' as const) : undefined,
   };
 }
 

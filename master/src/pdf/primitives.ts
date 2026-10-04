@@ -3,17 +3,13 @@
  * this file, and none may be added: if a column is not in the table it is not
  * drawn, and there is nothing here that could decide otherwise.
  *
- * `runText` is the load-bearing one. PDFKit binds **one font per `text()`
- * call**, so a line mixing scripts — "शर्मा टाइल्स (Sharma Tiles)" is an
- * ordinary party name in this business — has to be drawn as several calls that
- * share a baseline. Doing it any other way renders the Devanagari half as
- * blank boxes in the Latin face.
+ * Text is drawn in one face per call, picked from the style: the body face
+ * (regular or bold), or the monospace face for ids and codes.
  */
 
 import type PDFDocument from 'pdfkit';
 
-import { faceFor } from './fonts.js';
-import { splitByScript, type ScriptTag } from './text.js';
+import { faceFor, type ScriptTag } from './fonts.js';
 
 type Doc = typeof PDFDocument.prototype;
 
@@ -30,20 +26,14 @@ export interface TextStyle {
   script?: ScriptTag;
 }
 
-/**
- * Measures a mixed-script string by summing each run in its own face. A single
- * `widthOfString` under one font is wrong the moment a string mixes scripts,
- * and the error shows up as a column overlapping its neighbour.
- */
+/** Measures a string in the face its style names. */
 export function measureRuns(doc: Doc, text: string, style: TextStyle): number {
-  return splitByScript(text, style.script ?? 'body').reduce((total, run) => {
-    doc.font(faceFor(run.script, style.bold)).fontSize(style.size);
-    return total + doc.widthOfString(run.text);
-  }, 0);
+  doc.font(faceFor(style.script ?? 'body', style.bold)).fontSize(style.size);
+  return doc.widthOfString(text);
 }
 
 /**
- * Draws a mixed-script string on one baseline, switching faces per run.
+ * Draws a string on one baseline in the face its style names.
  *
  * Returns the x coordinate it finished at, so a caller can append. Nothing
  * wraps here: a caller that wants several lines breaks them with `wrapLines`
@@ -58,22 +48,16 @@ export function runText(
   y: number,
   style: TextStyle,
 ): number {
-  let cursor = x;
+  doc
+    .font(faceFor(style.script ?? 'body', style.bold))
+    .fontSize(style.size)
+    .fillColor(style.colour ?? '#111111')
+    .text(text, x, y, { lineBreak: false });
 
-  for (const run of splitByScript(text, style.script ?? 'body')) {
-    doc
-      .font(faceFor(run.script, style.bold))
-      .fontSize(style.size)
-      .fillColor(style.colour ?? '#111111')
-      .text(run.text, cursor, y, { lineBreak: false });
-
-    cursor += doc.widthOfString(run.text);
-  }
-
-  return cursor;
+  return x + doc.widthOfString(text);
 }
 
-/** Truncates to fit a width, appending an ellipsis. Measured per-run, so it is script-correct. */
+/** Truncates to fit a width, appending an ellipsis. */
 export function truncateToWidth(doc: Doc, text: string, maxWidth: number, style: TextStyle): string {
   if (measureRuns(doc, text, style) <= maxWidth) return text;
 
@@ -90,7 +74,7 @@ export function truncateToWidth(doc: Doc, text: string, maxWidth: number, style:
 }
 
 /**
- * Word-wraps a mixed-script string into lines no wider than `maxWidth`,
+ * Word-wraps a string into lines no wider than `maxWidth`,
  * without drawing anything.
  *
  * Measuring and drawing share it, so they cannot disagree: whatever decides how

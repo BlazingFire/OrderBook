@@ -216,9 +216,8 @@ async function main(): Promise<void> {
     loadOrCreateKey();
 
     // A missing PDF font must stop startup here, naming the file. PDFKit's
-    // fallback for an unregistered face is Helvetica, which has no Devanagari
-    // glyphs — so the alternative to failing now is silently printing every
-    // Hindi name as blank boxes on an exported report.
+    // fallback for an unregistered face is Helvetica, so the alternative to
+    // failing now is silently printing a report in a face it was not measured in.
     bootStep('Checking PDF fonts');
     assertFontsPresent();
 
