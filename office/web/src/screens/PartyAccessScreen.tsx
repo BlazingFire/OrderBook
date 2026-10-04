@@ -294,19 +294,9 @@ function AssigneeList({ assignees }: { assignees: PartyAccessAssignee[] }) {
     return <span className="ob-small">{t('partyAccess.everyone')}</span>;
   }
 
-  const shown = assignees.slice(0, 4);
-  const overflow = assignees.length - shown.length;
-
   return (
-    <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-4)' }}>
-      {shown.map((person) => (
-        <span key={person.userId} title={`${person.displayName} · ${levelLabel(person.level)}`}>
-          <Avatar name={person.displayName} avatar={person.avatar} size="sm" />
-        </span>
-      ))}
-      {overflow > 0 ? (
-        <span className="ob-small">{t('partyAccess.more', { count: overflow })}</span>
-      ) : null}
+    <span>
+      {assignees.map((person) => `${person.displayName} (${levelLabel(person.level)})`).join(', ')}
     </span>
   );
 }
@@ -436,7 +426,14 @@ function AccessEditor({
         )
       }
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 'var(--s-12)',
+          minHeight: rem(440),
+        }}
+      >
         {stale ? (
           <ConflictBanner
             action={
