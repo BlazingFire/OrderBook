@@ -109,6 +109,7 @@ import {
   type SubPage,
   NAV_ICONS,
   useConfirm,
+  requestSettingsTab,
 } from '@orderbook/ui';
 import { ChangePasswordDialog } from './components/ChangePasswordDialog';
 import { DashboardScreen } from './screens/DashboardScreen';
@@ -1432,7 +1433,23 @@ function MasterPanel() {
         />
       ),
     },
-    { id: 'panels', render: () => <PanelsScreen panels={panels} onRefresh={refreshPanels} /> },
+    {
+      id: 'panels',
+      render: () => (
+        <PanelsScreen
+          panels={panels}
+          onRefresh={refreshPanels}
+          onOpenSettings={
+            user.permissions.includes('settings.manage')
+              ? () => {
+                  requestSettingsTab('company');
+                  navigate('settings');
+                }
+              : undefined
+          }
+        />
+      ),
+    },
     {
       id: 'parties',
       render: () => (

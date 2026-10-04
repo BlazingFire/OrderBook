@@ -223,8 +223,9 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
           secret_hash: secretHash,
           master_proof_key: masterProofKey(panelSecret),
           lan_ip: remoteIp,
-          // The name it asked for, else the one it had; numbered if a panel in use took it while this one was away.
-          name: uniquePanelName(asked || returning.name, others),
+          // The name it had, not whatever the Office proposes now (its default name would overwrite a name
+          // somebody chose); numbered if a panel in use took it while this one was away.
+          name: uniquePanelName(returning.name, others),
         },
         trx,
       );

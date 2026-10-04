@@ -19,6 +19,7 @@ import { installBrowserStubs, json, routeFetch, type Call } from './panel-harnes
 interface Props {
   panels: OfficePanelWithPresence[];
   onRefresh: () => void;
+  onOpenSettings?: () => void;
 }
 
 async function loadScreen(): Promise<ComponentType<Props>> {
@@ -124,6 +125,30 @@ describe('the Add Office Panel card', () => {
     openWindow();
     expect(await screen.findByText(t('panels.add.autoOffTitle'))).toBeTruthy();
     expect(screen.queryByText(t('panels.add.waitingTitle'))).toBeNull();
+  });
+
+  it('says automatic joining is off before anything is pressed, with a link to the setting', async () => {
+    let opened = 0;
+    const Screen = await loadScreen();
+    routeFetch((call) =>
+      call.method === 'GET' && call.url === '/api/panels/pairing-window' ? json(state({ autoPairingEnabled: false })) : undefined,
+    );
+    render(<Screen panels={[]} onRefresh={() => undefined} onOpenSettings={() => void (opened += 1)} />);
+
+    expect(await screen.findByText(new RegExp(t('panels.add.autoOffNotice')))).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: t('panels.add.autoOffLink') }));
+    expect(opened).toBe(1);
+  });
+
+  it('shows no such notice while joining is on, and no link for somebody who cannot open Settings', async () => {
+    await mount([], state());
+    await screen.findByText(t('panels.add.manualTitle'));
+    expect(screen.queryByText(new RegExp(t('panels.add.autoOffNotice')))).toBeNull();
+    cleanup();
+
+    await mount([], state({ autoPairingEnabled: false }));
+    expect(await screen.findByText(new RegExp(t('panels.add.autoOffNotice')))).toBeTruthy();
+    expect(screen.queryByRole('button', { name: t('panels.add.autoOffLink') })).toBeNull();
   });
 
   it('says the automatic search is not running, with the reason', async () => {

@@ -142,6 +142,16 @@ describe.skipIf(!canRunIntegrationTests)('pairing again (integration)', () => {
     expect((await db()('office_panels').where({ id: first.panelId }).first()).name).toBe('Counter 2');
   });
 
+  it('keeps the earlier custom name of a revived row, not the name the Office proposes now', async () => {
+    const first = await pairAs('Front counter', 'COUNTER-PC');
+    await panels.revokePanel(first.panelId, await testActor());
+
+    const again = await pairAs('COUNTER-PC Office Panel', 'COUNTER-PC');
+
+    expect(again.panelId).toBe(first.panelId);
+    expect((await db()('office_panels').where({ id: first.panelId }).first()).name).toBe('Front counter');
+  });
+
   it('prefers a verified active row, then the removed row it names, then a removed row with its machine name', async () => {
     const byHost = await pairAs('Host match', 'SHARED-PC');
     await panels.revokePanel(byHost.panelId, await testActor());
