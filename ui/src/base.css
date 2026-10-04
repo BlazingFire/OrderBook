@@ -588,14 +588,20 @@
  * same fact `DataTable.tsx`'s virtualiser had to work around by measuring
  * against `.ob-pane`; the two now agree about which element scrolls.
  *
- * `overflow: hidden` keeps the rounded corners clipping the rows without
- * creating a scroll container.
+ * `overflow: clip` keeps the rounded corners clipping the rows without
+ * creating a scroll container (`hidden` does create one, which is what stopped
+ * the sticky header from ever sticking).
  */
 .ob-tablewrap {
   background: var(--bg-surface);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
+  /* `clip`, not only `hidden`: `hidden` makes this element a scroll container, and a
+     sticky header then sticks to *it* (which never scrolls) instead of to the pane, so
+     it scrolled away with the rows. `clip` still rounds the corners and does not.
+     (The `hidden` line is the fallback for an engine without `clip`.) */
   overflow: hidden;
+  overflow: clip;
 }
 
 /*
@@ -3136,8 +3142,29 @@ button.ob-bell-item:hover {
   margin-left: auto;
 }
 
+/*
+ * A flat record table (an order's product lines) is not a DataTable: nothing in it
+ * sticks to the pane, so unlike every other `.ob-tablewrap` it may scroll sideways in
+ * its own box. At 157 % on a 1024 px screen its eight columns do not fit, and `clip`
+ * cut the last ones off with no way to reach them. (`:has` is Chromium 105+; the
+ * floor is 108.) Pinned by `ui/tests/tablewrap-scroll.test.ts`.
+ */
+.ob-tablewrap:has(> .ob-table--flat) {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/*
+ * The permission grid scrolls inside its own box, in both directions: its header row
+ * and its module column are `position: sticky` and must stick to *this* element.
+ * `.ob-tablewrap` is `overflow: clip` (so a DataTable header can stick to the pane),
+ * and clip never scrolls, so without `auto` here a tall set of modules was cut off
+ * at `max-height` with no way to reach the rest. Pinned by
+ * `ui/tests/tablewrap-scroll.test.ts`.
+ */
 .ob-permwrap {
   max-height: 32.8571rem;
+  overflow: auto;
 }
 
 .ob-measure-wide {
@@ -4511,4 +4538,155 @@ button.ob-chat-chip-open:not(:disabled):hover {
   display: inline-flex;
   gap: var(--s-4);
   white-space: nowrap;
+}
+
+/* ===========================================================================
+ * Party Access list (PartyAccessScreen) — summary strip, toolbar bits, row
+ * action, assignee cell. Tokens only, so light and dark both follow.
+ * ======================================================================== */
+
+.ob-pa-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-12);
+}
+
+.ob-pa-stat {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: 'label count' 'hint hint';
+  align-items: baseline;
+  column-gap: var(--s-8);
+  row-gap: var(--s-2);
+  padding: var(--s-8) var(--s-12);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  color: var(--fg-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ob-pa-stat:hover {
+  background: var(--bg-hover);
+}
+.ob-pa-stat[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+.ob-pa-stat:focus-visible {
+  outline: 2px solid var(--line-focus);
+  outline-offset: 2px;
+}
+.ob-pa-stat-label {
+  grid-area: label;
+  font-weight: 600;
+}
+.ob-pa-stat-count {
+  grid-area: count;
+  font-size: 1.4286rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ob-pa-stat-hint {
+  grid-area: hint;
+  font-size: 0.8571rem;
+  color: var(--fg-tertiary);
+}
+
+.ob-pa-search {
+  position: relative;
+  width: 20rem;
+  max-width: 100%;
+}
+.ob-pa-search input {
+  width: 100%;
+  padding-right: 2rem;
+}
+.ob-pa-search-clear {
+  position: absolute;
+  right: var(--s-4);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-tertiary);
+  font: inherit;
+  font-size: 1.1429rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.ob-pa-search-clear:hover {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
+}
+.ob-pa-person {
+  width: 18rem;
+  max-width: 100%;
+}
+.ob-pa-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-6);
+  height: var(--ctl-h-md);
+  padding: 0 var(--s-4) 0 var(--s-8);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--accent-tint);
+}
+.ob-pa-chip button {
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.ob-pa-chip button:hover {
+  background: var(--bg-hover);
+}
+
+/* Visible on hover and on keyboard focus, never display:none — a hidden button
+   would not be reachable by Tab, which is the point of showing it on focus. */
+.ob-table tr[data-row] .ob-row-action {
+  opacity: 0;
+}
+.ob-table tr[data-row]:hover .ob-row-action,
+.ob-table tr[data-row]:focus-within .ob-row-action,
+.ob-table tr[data-row][data-selected] .ob-row-action {
+  opacity: 1;
+}
+
+/* Two lines, then clipped (the whole list is the tooltip). */
+.ob-pa-assignees {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  /* A table cell is nowrap by default; this one wraps, to two lines. */
+  white-space: normal;
+  line-height: 1.4;
+}
+
+/* The skeleton and the loaded table share one row height, so nothing jumps when
+   the rows arrive: a row is two lines of the Assigned-to cell, whatever it holds. */
+.ob-pa-table tbody tr {
+  min-height: 3.4286rem;
+}
+.ob-pa-level {
+  margin-left: var(--s-4);
+  padding: 0 var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: 0.8571rem;
+  color: var(--fg-secondary);
+}
+.ob-pa-more {
+  color: var(--fg-secondary);
+  font-weight: 600;
 }

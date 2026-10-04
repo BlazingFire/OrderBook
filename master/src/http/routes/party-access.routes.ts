@@ -12,6 +12,8 @@
  * duplicating it in a form that could drift.
  */
 
+import { PARTY_ACCESS_SORTS } from '@orderbook/shared';
+import type { PartyAccessSort } from '@orderbook/shared';
 import { Router } from 'express';
 
 import * as partyAccessService from '../../services/party-access.service.js';
@@ -28,6 +30,10 @@ partyAccessRoutes.use(requireAuth);
 
 const needs = requirePermissionMiddleware;
 
+function sortColumn(value: unknown): PartyAccessSort | undefined {
+  return PARTY_ACCESS_SORTS.find((column) => column === value);
+}
+
 function restrictionFilter(value: unknown): 'open' | 'restricted' | undefined {
   return value === 'open' || value === 'restricted' ? value : undefined;
 }
@@ -41,6 +47,8 @@ partyAccessRoutes.get(
           search: typeof req.query.search === 'string' ? req.query.search : undefined,
           userId: typeof req.query.userId === 'string' ? req.query.userId : undefined,
           restriction: restrictionFilter(req.query.restriction),
+          sort: sortColumn(req.query.sort),
+          dir: req.query.dir === 'desc' ? 'desc' : 'asc',
           limit: req.query.limit ? Number(req.query.limit) : undefined,
           offset: req.query.offset ? Number(req.query.offset) : undefined,
         },
@@ -50,10 +58,16 @@ partyAccessRoutes.get(
   }),
 );
 
-// Both of these sit before `/:partyId`, or their paths are read as party ids.
+// These sit before `/:partyId`, or their paths are read as party ids.
+partyAccessRoutes.get(
+  '/summary',
+  asyncHandler(async (req, res) => {
+    res.json(await partyAccessService.summary(actorFromRequest(req)));
+  }),
+);
+
 partyAccessRoutes.get(
   '/people',
-  needs('party.assign'),
   asyncHandler(async (req, res) => {
     res.json(await partyAccessService.assignablePeople(actorFromRequest(req)));
   }),

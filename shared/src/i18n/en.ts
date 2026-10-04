@@ -2036,9 +2036,6 @@ export const EN_MESSAGES = {
   'partyAccess.scope.assigned': 'My parties',
   'partyAccess.searchPlaceholder': 'Search parties',
   'partyAccess.staleSave': 'Somebody else changed this party’s access first. Reload to see it.',
-  'partyAccess.summary': '{restricted} of {total} parties are restricted.',
-  /** Appended when the list is showing fewer rows than the total above. */
-  'partyAccess.showing': 'Showing {shown} so far.',
   'partyAccess.title': 'Party access',
   'product.createFailed': 'Could not create the sub product',
   'product.detail.editAction': 'Edit sub product',
@@ -2418,7 +2415,7 @@ export const EN_MESSAGES = {
   'updates.officeReady':
     'Office build {version} is ready on this Master. Each panel can install it from its own App update screen.',
   'updates.panel.behindBody':
-    'The Master is on {version} and this panel is on an older build. Nothing is wrong — it keeps working and syncing exactly as it does now. When a matching build is published on the Master it will appear here to install.',
+    'This PC is on an older build than the Master ({version}), so it must install the update to continue. Everything you saved on this PC is safe and will sync to the Master once it has been updated.',
   'updates.panel.matchBody': 'This panel is on the same version as the Master. Nothing to do.',
   'updates.panel.offerBody':
     'Version {version} is waiting on the Master. Installing it copies the file to this PC first, so nothing depends on the network once it starts. Anything this panel has queued offline is kept.',
@@ -3269,4 +3266,22 @@ export const EN_MESSAGES = {
   'updates.waiting.body': 'This Office Panel is on version {mine}, which is newer than the Master Panel ({master}). It opens when the Master has been updated to the same version. This screen checks again by itself.',
   'updates.saveAll.vehicle': 'Vehicle number {number}',
   'updates.saveAll.stationName': 'Printroom station name {name}',
+  // Party Access D1: list screen (summary strip, toolbar, row action, empty states)
+  'partyAccess.strip.label': 'Party access summary',
+  'partyAccess.strip.total': 'All parties',
+  'partyAccess.strip.totalHint': 'Every party in the company',
+  'partyAccess.strip.restricted': 'Restricted',
+  'partyAccess.strip.restrictedHint': 'Only the people assigned can see it',
+  'partyAccess.strip.open': 'Open',
+  'partyAccess.strip.openHint': 'Nobody assigned, so everyone can see it',
+  'partyAccess.search.clear': 'Clear search',
+  'partyAccess.filter.person': 'Assigned to',
+  'partyAccess.filter.personPlaceholder': 'Filter by person',
+  'partyAccess.filter.nobody': 'Nobody (open parties)',
+  'partyAccess.filter.personClear': 'Remove the filter for {name}',
+  'partyAccess.count': 'Showing {shown} of {total} parties',
+  'partyAccess.empty.search': 'No party matches “{term}”',
+  'partyAccess.empty.clear': 'Clear filters',
+  'partyAccess.empty.none': 'There are no parties yet',
+  'partyAccess.action.edit': 'Edit access',
 } as const;

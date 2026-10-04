@@ -657,4 +657,161 @@ describe.skipIf(!canRunIntegrationTests)('party access (integration)', () => {
       await expect(partyAccess.exportRows(exporter)).resolves.toHaveProperty('csv');
     });
   });
+
+  describe('the list: search, filter, sort and summary (Party Access redesign)', () => {
+    /** Four parties: two held by people, two open; cities and codes chosen so each sort differs. */
+    async function seedBook() {
+      const asha = await makePerson('asha.r');
+      const bela = await makePerson('bela.s');
+      const alpha = await catalog.createParty({ name: 'Alpha Tiles', city: 'Rajkot' }, admin);
+      const beta = await catalog.createParty({ name: 'beta ceramics', city: 'Morbi' }, admin);
+      const gamma = await catalog.createParty({ name: 'Gamma Bath' }, admin);
+      const delta = await catalog.createParty({ name: 'Delta 50% Traders', city: 'Surat' }, admin);
+
+      const hold = (party: { id: string; sync: { version: number } }, ...who: string[]) =>
+        partyAccess.replaceAssignments(
+          party.id,
+          { entries: who.map((userId) => ({ userId, level: 'view' as const })), expectedVersion: party.sync.version },
+          admin,
+        );
+      await hold(alpha, asha);
+      await hold(beta, asha, bela);
+
+      return { asha, bela, alpha, beta, gamma, delta };
+    }
+
+    const names = (page: { items: Array<{ partyName: string }> }) => page.items.map((row) => row.partyName);
+
+    it('PAR-1: the search also finds a party by the person assigned to it', async () => {
+      const { alpha, beta } = await seedBook();
+
+      // By display name, by username, and case-insensitively.
+      for (const term of ['asha.r', 'ASHA']) {
+        const page = await partyAccess.listAssignments({ search: term }, admin);
+        expect(names(page).sort()).toEqual([alpha.name, beta.name].sort());
+      }
+      expect(names(await partyAccess.listAssignments({ search: 'bela' }, admin))).toEqual([beta.name]);
+      // Nobody called that: no party.
+      expect((await partyAccess.listAssignments({ search: 'nobody-by-this-name' }, admin)).total).toBe(0);
+    });
+
+    it('PAR-2: the search also finds a party by its city, and by code and name as before', async () => {
+      const { delta, gamma } = await seedBook();
+
+      expect(names(await partyAccess.listAssignments({ search: 'surat' }, admin))).toEqual([delta.name]);
+      expect(names(await partyAccess.listAssignments({ search: gamma.name }, admin))).toEqual([gamma.name]);
+      const code = (await partyAccess.assignmentsForParty(gamma.id, admin)).partyCode;
+      expect(names(await partyAccess.listAssignments({ search: code }, admin))).toEqual([gamma.name]);
+    });
+
+    it('PAR-3: a percent sign or underscore in the search is the character, not a wildcard', async () => {
+      const { delta } = await seedBook();
+
+      expect(names(await partyAccess.listAssignments({ search: '50%' }, admin))).toEqual([delta.name]);
+      // `%` alone would match every party if it were a pattern.
+      expect(names(await partyAccess.listAssignments({ search: '%' }, admin))).toEqual([delta.name]);
+      expect((await partyAccess.listAssignments({ search: '_' }, admin)).total).toBe(0);
+    });
+
+    it('PAR-4: a person filter, and "nobody / open" as restriction, combine with the search', async () => {
+      const { asha, bela, alpha, beta, gamma, delta } = await seedBook();
+
+      expect(names(await partyAccess.listAssignments({ userId: asha }, admin)).sort()).toEqual(
+        [alpha.name, beta.name].sort(),
+      );
+      expect(names(await partyAccess.listAssignments({ userId: bela }, admin))).toEqual([beta.name]);
+      expect(names(await partyAccess.listAssignments({ restriction: 'open' }, admin)).sort()).toEqual(
+        [gamma.name, delta.name].sort(),
+      );
+      // Nobody can be both "assigned to Asha" and open.
+      expect((await partyAccess.listAssignments({ userId: asha, restriction: 'open' }, admin)).total).toBe(0);
+      // Search narrows inside a filter.
+      expect(names(await partyAccess.listAssignments({ userId: asha, search: 'morbi' }, admin))).toEqual([beta.name]);
+    });
+
+    it('PAR-5: sorts by each column in both directions, ties broken by name', async () => {
+      const { alpha, beta, gamma, delta } = await seedBook();
+      const order = async (sort: 'code' | 'name' | 'city' | 'access', dir: 'asc' | 'desc') =>
+        names(await partyAccess.listAssignments({ sort, dir }, admin));
+
+      // Name, case-insensitive: "beta ceramics" sits between Alpha and Delta.
+      expect(await order('name', 'asc')).toEqual([alpha.name, beta.name, delta.name, gamma.name]);
+      expect(await order('name', 'desc')).toEqual([gamma.name, delta.name, beta.name, alpha.name]);
+      // Codes are handed out in creation order.
+      expect(await order('code', 'asc')).toEqual([alpha.name, beta.name, gamma.name, delta.name]);
+      expect(await order('code', 'desc')).toEqual([delta.name, gamma.name, beta.name, alpha.name]);
+      // City: Morbi, Rajkot, Surat; the party with no city is last in both directions.
+      expect(await order('city', 'asc')).toEqual([beta.name, alpha.name, delta.name, gamma.name]);
+      expect(await order('city', 'desc')).toEqual([delta.name, alpha.name, beta.name, gamma.name]);
+      // Access is how many people hold it: open parties first when ascending, name breaking the tie.
+      expect(await order('access', 'asc')).toEqual([delta.name, gamma.name, alpha.name, beta.name]);
+      expect(await order('access', 'desc')).toEqual([beta.name, alpha.name, delta.name, gamma.name]);
+    });
+
+    it('PAR-6: an unknown sort or direction falls back to the old order, and pages do not repeat rows', async () => {
+      const { alpha, beta, gamma, delta } = await seedBook();
+
+      const unknown = await partyAccess.listAssignments(
+        { sort: 'phone' as never, dir: 'sideways' as never },
+        admin,
+      );
+      expect(names(unknown)).toEqual(names(await partyAccess.listAssignments({}, admin)));
+
+      // Page through a sort one row at a time: every party exactly once.
+      const seen: string[] = [];
+      for (let offset = 0; offset < 4; offset += 1) {
+        seen.push(...names(await partyAccess.listAssignments({ sort: 'access', dir: 'asc', limit: 1, offset }, admin)));
+      }
+      expect(seen.sort()).toEqual([alpha.name, beta.name, delta.name, gamma.name].sort());
+    });
+
+    it('PAR-7: the summary counts the whole book, whatever the search or the page', async () => {
+      await seedBook();
+
+      expect(await partyAccess.summary(admin)).toEqual({ total: 4, restricted: 2, open: 2 });
+
+      // A deleted party is not part of the book.
+      const extra = await catalog.createParty({ name: 'Zeta Gone' }, admin);
+      expect((await partyAccess.summary(admin)).total).toBe(5);
+      await catalog.deleteParty(extra.id, admin);
+      expect(await partyAccess.summary(admin)).toEqual({ total: 4, restricted: 2, open: 2 });
+
+      // Opening a party moves one count to the other.
+      const held = (await partyAccess.listAssignments({ restriction: 'restricted', limit: 1 }, admin)).items[0]!;
+      await partyAccess.replaceAssignments(held.partyId, { entries: [], expectedVersion: held.version }, admin);
+      expect(await partyAccess.summary(admin)).toEqual({ total: 4, restricted: 1, open: 3 });
+    });
+
+    it('PAR-9: the people list serves party.assign and party.accessAll, with the same narrow shape, and refuses everybody else', async () => {
+      await makePerson('asha.r');
+
+      const forEditor = await partyAccess.assignablePeople(await actorWith(['party.assign']));
+      const forReader = await partyAccess.assignablePeople(await actorWith(['party.accessAll']));
+
+      expect(forReader).toEqual(forEditor);
+      expect(forReader.map((person) => person.username)).toContain('asha.r');
+      // Names and roles for a picker and a filter, nothing from the staff directory.
+      for (const person of forReader) {
+        expect(Object.keys(person).sort()).toEqual(
+          ['avatar', 'displayName', 'id', 'roleName', 'roleTier', 'username'].sort(),
+        );
+      }
+
+      const failure = await partyAccess
+        .assignablePeople(await actorWith(['parties.view']))
+        .catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(ForbiddenError);
+    });
+
+    it('PAR-8: the summary is readable with party.accessAll alone, and refused without either key', async () => {
+      await seedBook();
+
+      const reader = await actorWith(['party.accessAll']);
+      await expect(partyAccess.summary(reader)).resolves.toMatchObject({ total: 4 });
+
+      const stranger = await actorWith(['parties.view']);
+      const failure = await partyAccess.summary(stranger).catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(ForbiddenError);
+    });
+  });
 });

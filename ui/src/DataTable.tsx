@@ -131,7 +131,7 @@ export function DataTable<T>({
    *
    * This used to read `wrapRef.current.clientHeight` and take `scrollTop` from
    * an `onScroll` on the wrapper — and the whole virtualiser was therefore
-   * inert. `.ob-tablewrap` has `overflow: auto` but no height constraint, so
+   * inert. `.ob-tablewrap` clips (`overflow: clip`) and has no height constraint, so
    * it grows to the full height of the table and never scrolls; the real
    * scroller is the enclosing `.ob-pane`. `clientHeight` was the entire table
    * height, `visibleCount` came out larger than `rows.length`, and React's

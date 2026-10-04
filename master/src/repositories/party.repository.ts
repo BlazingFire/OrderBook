@@ -3,7 +3,14 @@
  */
 
 import { columnPatch, PARTY_COLUMNS } from '@orderbook/shared';
-import type { Paginated, Party, PartyInput, PartyScopeFilter } from '@orderbook/shared';
+import type {
+  Paginated,
+  Party,
+  PartyAccessSort,
+  PartyAccessSortDir,
+  PartyInput,
+  PartyScopeFilter,
+} from '@orderbook/shared';
 import type { Knex } from 'knex';
 
 import { db } from '../db/knex.js';
@@ -386,19 +393,41 @@ export async function listPartiesForAccess(
     search?: string;
     userId?: string;
     restriction?: 'open' | 'restricted';
+    sort?: PartyAccessSort;
+    dir?: PartyAccessSortDir;
     limit: number;
     offset: number;
   },
 ): Promise<Paginated<PartyAccessListRow>> {
   const base = db()(TABLE).where({ tenant_id: tenantId }).whereNull('deleted_at');
 
-  if (options.search) {
-    const pattern = `%${options.search}%`;
+  /*
+   * Plain text, not a LIKE pattern: a person typing `50%` or `a_b` means those
+   * characters. Matches the party's code, name, city and phone, and anybody
+   * assigned to it by display name or username — the question an administrator
+   * asks is as often "which parties does Ravi hold" as "which party is this".
+   */
+  const term = options.search?.trim();
+  if (term) {
+    const pattern = `%${term.replace(/[\\%_]/g, (match) => `\\${match}`)}%`;
     base.andWhere((builder) =>
       builder
         .whereILike('name', pattern)
         .orWhereILike('phone', pattern)
-        .orWhereILike('party_code', pattern),
+        .orWhereILike('party_code', pattern)
+        .orWhereILike('city', pattern)
+        .orWhereExists((sub) =>
+          sub
+            .select(db().raw('1'))
+            .from('party_access as pac_s')
+            .join('users as pac_u', 'pac_u.id', 'pac_s.user_id')
+            .where('pac_s.tenant_id', tenantId)
+            .whereNull('pac_u.deleted_at')
+            .whereRaw(`pac_s.party_id = ${TABLE}.id`)
+            .andWhere((who) =>
+              who.whereILike('pac_u.display_name', pattern).orWhereILike('pac_u.username', pattern),
+            ),
+        ),
     );
   }
 
@@ -426,9 +455,7 @@ export async function listPartiesForAccess(
   }
 
   const countRows = await base.clone().clearOrder().count<Array<{ count: string }>>('id as count');
-  const rows = await base
-    .clone()
-    .orderBy('name', 'asc')
+  const rows = await orderForAccess(base.clone(), tenantId, options.sort, options.dir)
     .limit(options.limit)
     .offset(options.offset)
     .select('id', 'party_code', 'name', 'city', 'version');
@@ -445,6 +472,61 @@ export async function listPartiesForAccess(
     limit: options.limit,
     offset: options.offset,
   };
+}
+
+/**
+ * The list's order. Every branch ends on name then id, so a page boundary never repeats or
+ * drops a row whatever the column; an empty city sorts last in both directions (a blank is
+ * not "before A"). `access` is the number of people assigned.
+ */
+function orderForAccess(
+  query: Knex.QueryBuilder,
+  tenantId: string,
+  sort: PartyAccessSort | undefined,
+  dir: PartyAccessSortDir | undefined,
+): Knex.QueryBuilder {
+  const direction = dir === 'desc' ? 'desc' : 'asc';
+
+  switch (sort) {
+    case 'code':
+      query.orderBy('party_code', direction);
+      break;
+    case 'city':
+      query.orderByRaw(`(city IS NULL OR btrim(city) = '') ASC`);
+      query.orderByRaw(`lower(city) ${direction}`);
+      break;
+    case 'access':
+      query.orderByRaw(
+        `(SELECT count(*) FROM party_access pac_o WHERE pac_o.tenant_id = ? AND pac_o.party_id = ${TABLE}.id) ${direction}`,
+        [tenantId],
+      );
+      break;
+    case 'name':
+      query.orderByRaw(`lower(name) ${direction}`);
+      break;
+    default:
+      // No (or an unknown) sort: the order this list has always had.
+      return query.orderBy('name', 'asc').orderBy('id', 'asc');
+  }
+
+  return query.orderByRaw('lower(name) ASC').orderBy('id', 'asc');
+}
+
+/** Live parties company-wide and how many of them somebody is assigned to. */
+export async function partyAccessCounts(
+  tenantId: string,
+): Promise<{ total: number; restricted: number }> {
+  const { rows } = await db().raw<{ rows: Array<{ total: string; restricted: string }> }>(
+    `SELECT count(*) AS total,
+            count(*) FILTER (WHERE EXISTS (
+              SELECT 1 FROM party_access pac_c
+               WHERE pac_c.tenant_id = p.tenant_id AND pac_c.party_id = p.id
+            )) AS restricted
+       FROM ${TABLE} p
+      WHERE p.tenant_id = ? AND p.deleted_at IS NULL`,
+    [tenantId],
+  );
+  return { total: Number(rows[0]?.total ?? 0), restricted: Number(rows[0]?.restricted ?? 0) };
 }
 
 /**

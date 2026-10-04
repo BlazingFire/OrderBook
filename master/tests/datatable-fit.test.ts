@@ -73,7 +73,7 @@ describe('fitColumns', () => {
     ]);
 
     // Narrower than even those two: the survivors are the same set, and
-    // `.ob-tablewrap`'s `overflow: auto` is what handles the overflow.
+    // `.ob-tablewrap` (`overflow: clip`) is what contains the overflow.
     expect(fitColumns(COLUMNS, 100, ROOT).map((c) => c.key)).toEqual(['name', 'status']);
   });
 

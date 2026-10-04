@@ -83,6 +83,7 @@ import type {
   PartyAccessLevel,
   PartyAccessQuery,
   PartyAccessRow,
+  PartyAccessSummary,
   PartyInput,
   PartyProductVariantInput,
   PipelineStageInput,
@@ -177,7 +178,7 @@ export interface PanelAuthPayload {
  * socket command, so either side can tell the other is too old for one before
  * sending it, instead of waiting out a timeout.
  */
-export const PANEL_PROTOCOL_VERSION = 7;
+export const PANEL_PROTOCOL_VERSION = 8;
 
 /**
  * The lowest Master protocol each command needs. A command not listed has
@@ -222,6 +223,9 @@ export const COMMAND_MIN_PROTOCOL: Partial<Record<keyof ClientToServerEvents, nu
   'product:sharePdf': 7,
   // Who is on each card of a board (1.4 R22).
   'presence:board': BOARD_PRESENCE_MIN_PROTOCOL,
+  // The Party Access summary strip (Party Access redesign). The list's new `sort`, `dir` and
+  // assignee-name search need no gate: an older Master ignores them and answers in its old order.
+  'partyAccess:summary': 8,
 };
 
 /**
@@ -784,6 +788,8 @@ export interface ClientToServerEvents {
   // approved.
   'partyAccess:list': (query: PartyAccessQuery, ack: CommandAck<Paginated<PartyAccessRow>>) => void;
   'partyAccess:forParty': (partyId: RecordId, ack: CommandAck<PartyAccessRow>) => void;
+  /** Company-wide counts for the summary strip (protocol 8). */
+  'partyAccess:summary': (ack: CommandAck<PartyAccessSummary>) => void;
   'partyAccess:people': (ack: CommandAck<AssignablePerson[]>) => void;
   'partyAccess:export': (ack: CommandAck<{ csv: string; rowCount: number }>) => void;
   'partyAccess:replace': (
