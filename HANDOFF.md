@@ -52,6 +52,78 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
+## Party Access redesign + 1.4.0 (2026-10-04)
+
+**State: everything below is on the integration branch `d5/1.4` @ `96d0b7f`, not yet on `main`, not pushed.** `main` is at `6372234` (Assigned-to full names, modal minimum height). CH1 merges the two docs branches (D2's STRUCTURE and API contract, D3's HANDOFF/NEXT_PHASE/AI_COLLABORATION/release notes), bumps the version from 1.3.0 to **1.4.0**, and builds. Protocol is now **8** (`PANEL_PROTOCOL_VERSION`; 7 came from R16/R22 in the batch above, 8 adds the Party Access summary socket command `partyAccess:summary`).
+
+Last full gate, each step separate, on `59a71c4`: lint 0, build 0, typecheck 0, test 0 (294 files passed + 1 skipped, 4,171 tests passed + 17 skipped), `smoke:legacy` 0. The branch head `96d0b7f` adds one more D2 merge (`480d270`, the discard question wraps and the footer reserves its height); that commit had its own tests run by D2 but **no recorded full gate**. CH1 gates the version bump anyway.
+
+Plan and evidence: `CLAUDE_HELPER_PA.md` (plan, requirement IDs, interface contract, CH1 messages) and the logs `CLAUDE_HELPER_D1.md`, `D2.md`, `D3.md`, `D4.md`, `D5.md` (untracked coordination files in the main checkout). Who did what: D1 the Party Access list screen, D2 the editor and the backend, D3 two independent audits (no code), D4 shared-kit and shell fixes, D5 the merges and the browser acceptance (A2), CH1 plan, verdicts and the release.
+
+### What landed, per row
+
+IDs are from `CLAUDE_HELPER_PA.md` section 2. PA1-PA17 are the brief-level rows; D1.x is the list screen, D2.x the editor and the backend, A1-A3 the acceptance.
+
+| Row | What | Commits (on `d5/1.4`) |
+|---|---|---|
+| PA1 PA2 | The Party Access module is a **list of every party with its access state** (Open to everyone / Restricted to N people) and who holds it, with a summary strip (total, open, restricted) that filters the list when clicked; the old "pick a party, then edit" flow is gone | D1 `f4ccdf7`, `51047ad`, `66d2cbb`, `b8482b7` |
+| PA3 PA4 | Search by party name, code, city **and assignee name** (debounced 250 ms, Esc clears), a person filter, server-side sort by party, code, city, access (`sort` and `dir` params, kept per machine), 48 px rows, a skeleton of the same shape while loading, the Assigned-to cell showing full names with level and "+N more" | D1 `f4ccdf7`, `3d5262d`; Assigned-to names `6372234` (also on `main`) |
+| PA5 | **One editor, `PartyAccessEditor.tsx`, byte-identical in `master/web` and `office/web`** (a parity test compares the two files); the list screen imports it with a `canEdit` prop | D2 `7e53bb6`, final `5110579` |
+| PA6 | No new dependency (no `package.json` changed) and no money wording anywhere | D1, D2 evidence in their logs |
+| PA7 | Fits 1024x768 at 100 % and 157 % scale on both panels with no horizontal scroll: columns drop in order (city, then edit) and names end in an ellipsis with the whole text as the `title`; 6 full rows show at 157 % | D1 `66d2cbb`; D4 topbar at 157 % `2383e74` |
+| PA8 | The editor reuses the kit: `Combobox`, `Segmented`, `Modal`, `StatusPill`, `Avatar`, `EmptyState`, `ConflictBanner`. The one new kit component is `MultiPicker` | D2 `5110579` |
+| PA9 | Kit defects found while building were fixed once in `ui/`, with tests, not patched in the screen: `Combobox` (keyboard, `aria-activedescendant`, Home/End/Page keys, Esc claimed only while open), `comboboxPlacement` (the list flips above when there is no room), `MultiPicker`, `Segmented` accessible name, `Avatar` initials, `DataTable` sticky header and `aria-selected` rows, the permission grid scrolls, flat record tables scroll sideways | D2 `5110579`; D1 `840ea61`; D4 `754bfe9`, `c92a0f7` |
+| PA10 PA11 | English and real Hindi for every new string; unused keys removed (`partyAccess.addPerson`, `partyAccess.editor.done`, `partyAccess.summary`, `partyAccess.showing`) | D1, D2, D5 merges, D2 `92aa49b` |
+| PA12 | The gate above | D5 |
+| PA13 | Every guard test was seen to fail once when the code was broken (D1, D2 each; D3 re-did D2's list independently, see below) | logs |
+| D1.2-D1.7 | Search, strip, person filter, sort, sticky header, ellipsis, loading shape, arrow-key walking through the virtual window (a held key no longer drops the focus to the page body), the busy cue while refetching, no button nested in a button | D1 `f4ccdf7` ... `f076d5c` |
+| D2.1-D2.6 | The editor: header with name, code, city and a state pill that follows the draft; add by type-to-filter with keyboard; **Add several** (pick many, choose the level once); **Copy access from another party** (existing levels are kept, inactive people left out); a discard question inside the same dialog; a conflict banner with Reload (`expectedVersion`); Save disabled until something changed; "Inactive user" rows shown muted with Remove; the "everyone can see this party" warning; a read-only view for a reader who has `party.accessAll` but not `party.assign`; the Hindi, dark and long-name audit | D2 `7e53bb6`, `5110579`, `92aa49b`, `f9aec2e`, `43d1c87`, `480d270` |
+| Backend | `GET /api/party-access/summary` (socket `partyAccess:summary`, protocol 8) with counts, `sort`/`dir`, assignee search with the LIKE wildcards escaped; `/people` is readable by `party.assign` **or** `party.accessAll`; a new grant must be a live account, a deleted user is never counted active | D2 `7e53bb6`; contract in `docs/backend-modules/04-API-CONTRACT.md` (D2) |
+| A1 | Independent audit of D2's editor at `5110579`: no blocker, 3 low defects (focus after the last Remove opened the add list; the modal jumped about 11 px when the discard question appeared; two unused i18n keys), 4 guard gaps. D2 fixed all three defects and added guards | D3 audit; fixes `92aa49b`, `43d1c87`, `480d270` |
+| A2 | Browser acceptance on both panels in English, Hindi, light and dark at 1024x768 and 1920x1080; it found the discard sentence cut off in English (603 px of text in a 557 px box) | D5; fixed by D2 `480d270` |
+| A3 | Final verdicts: D2 accepted at `f9aec2e` (then the follow-ups), D1 at `f076d5c`, D4 kit `d26a8b9` and topbar `2383e74` | CH1 |
+| D4 | The Office "Update needed" screen text no longer says "Nothing is wrong" while the app is blocked | D4 `d26a8b9` |
+
+### Decisions taken (do not re-decide without a reason)
+
+- **Opening a row never changes who holds it.** The editor only writes when Save is pressed; Cancel, X and Esc ask first if there are unsaved changes, in the same dialog, and the question is registered with "Save all and update" like every other form.
+- **A person who was deactivated keeps their grant and is shown, marked "Inactive user".** Remove drops it; saving the others never drops it silently (guard tests for both).
+- **Copy access keeps what a person already has** and never copies an inactive account.
+- **The reader view is part of the editor.** A role with `party.accessAll` and no `party.assign` sees the list, can filter by person and open a row read-only (levels as pills, Close only). `/people` allows both permissions for that reason.
+- **The shared editor stays one file in two panels** (a copy kept identical by a test), because the two web apps do not import each other; do not let the copies drift.
+- **The kit fix to `.ob-tablewrap` stays** (see the trap below): every `DataTable` header now sticks to the top of its pane.
+
+### Traps found
+
+- **PowerShell turns an empty environment value into a deleted variable.** `$env:ORDERBOOK_RELEASES_GITHUB_REPO = ''` removes the variable, so the server falls back to its built-in default, the real `BlazingFire/OrderBook-Releases`. D4 and D5 both ran a scratch Master that way. To keep a scratch server away from the network and from disk, set `ORDERBOOK_RELEASES_POLL_MINUTES=0` **and** point `ORDERBOOK_RELEASES_DIR` at a scratch folder inside your worktree.
+- **A scratch Master wrote to the real `C:\OrderBook-Releases`.** D1's first browser pass ran with the default releases settings: it cleared 8 old Master installers, fetched the 1.3.0 Setup and left a `.part` file. CH1 removed the `.part` and accepted the rest. Never start a preview server without `ORDERBOOK_RELEASES_DIR` set.
+- **`.ob-tablewrap { overflow: hidden }` made the wrapper the sticky containing block, so no `DataTable` header ever stuck.** Measured by D1: header top -20 px after scrolling 264 px. The fix is `overflow: hidden; overflow: clip;` in `ui/src/base.css` (a guard test fails with `hidden` alone). Because it is a kit change it affects every table; look for a table that relied on the wrapper scrolling.
+- **Cells inherit the table's `white-space: nowrap`**, so a "clamp to two lines" needs `white-space: normal` as well. And a column given a `fr` share is assumed to need 120 px by `fitColumns`, which left a name 3 letters wide: give columns rem widths.
+- **A held arrow key repeats faster than a virtual table moves its window.** Focus a row that may not exist yet and it unmounts and the focus falls to `<body>`. Keep the focus on the table's edge row nearest the target and move the target one row at a time (`PartyAccessScreen.tsx`, with a test that fails if the active element is ever `<body>`).
+- **Removing a row with no other Remove button focuses the add field, and that opens its list.** Hand the focus back quietly (the `quietFocus` flag) the way closing the panel does.
+- **A footer that changes height moves the modal.** The discard question replaced a one-row footer with a two-row one; the footer now reserves its height and the sentence wraps.
+- **Browser pane screenshots arrive one frame late and stale after the page-zoom trick.** Read geometry from the DOM (`getBoundingClientRect`, `scrollWidth`) for anything that matters.
+- **Role permissions are cached by the Master.** A permission edited straight in the scratch database is seen only after a Master restart.
+- **The Office reads `OFFICE_PORT`, not `PORT`.** Older traps still apply: build before typecheck after a `shared/` change, CRLF in source-reading tests, two panels on one host share cookies (use `localhost` and `127.0.0.1`), stop only your own PIDs, one `TEMP` and PG port per session.
+- **Load-sensitive tests:** `master/tests/update-check.test.ts` "answers within the wait while a slow download carries on" failed once under load and passed on the next run; same for `ui/tests/chatroom.test.tsx`.
+
+### Not verified (carried forward)
+
+No real Electron window, no real held key, no real printer and no Windows 7. Not captured: the Office reader in a browser on the final editor, Add several and Copy in dark at 1920x1080, a 1920x1080 capture of the admin list and editor, a 200-row list scrolled for real (jsdom only). Pre-existing, not part of this work: the Hindi sidebar still shows "Party access" in English.
+
+### Owed by the owner
+
+1. **Install 1.4.0.** Order: install the **Master by hand over the existing one** (no uninstall, data stays), then each Office the same way. After that the Master fetches updates from the releases repository and the Offices update from it. Full wording in `docs/releases/1.4.0.md`.
+2. **The real-PC checklist** from the "1.4 batch" section above (the ten items from D1, the Printroom station claim and a real printer, the Win7 VMs, the Hindi native review, the Master UI pass) is **still owed**; 1.4.0 is the first release that can be tried that way.
+3. **A real-PC look at Party Access:** open a party with 20 or more people, use the keyboard only (Tab, arrows, Enter, Esc) through add, Add several, Copy and the discard question, and confirm that the list header sticks while scrolling on a real display at 125 % and 150 %.
+4. **The 11 pm Master auto-update** has never run for real: leave the Master PC on overnight once with a newer signed release published and check `result.json` and that the Offices reconnect.
+5. **Branches and push.** `main` is not pushed. After the 1.4.0 release CH1 and the owner decide which local branches and worktrees (`d1/party-access`, `d2/party-access`, `d3/pa-docs`, `d4/party-access-kit`, `d5/1.4` and the older ones) are retired.
+6. **The master key is not in the repository** (unchanged).
+
+### Next session
+
+`docs/NEXT_PHASE.md` "First: 1.4.0 is built; what comes next".
+
 ## 1.4 batch (2026-10-03) — what landed, what was decided, what is owed
 
 **State: all of it is on `main` @ `4caa3a4` (fast-forward, not pushed).** Final gate on

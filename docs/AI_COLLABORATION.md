@@ -190,6 +190,37 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-04 - Party Access redesign for 1.4.0: CH1 and five Sonnet sessions, audit loop again (Claude, Opus + Sonnet)
+
+- **Who.** **CH1** (Opus) wrote the plan and the numbered rows (`CLAUDE_HELPER_PA.md`:
+  PA1-PA17, D1.x, D2.x, A1-A3), answered every Done entry with ACCEPTED or REWORK, and
+  owns the version bump and the build. **D1** built the Party Access list screen; **D2**
+  the shared editor and the backend (summary endpoint, protocol 8, `/people` gate);
+  **D3** audited, wrote no code, and wrote the release docs; **D4** fixed shared-kit and
+  shell defects (permission grid, flat tables, `aria-selected` rows, the topbar at 157 %,
+  the Office "Update needed" text); **D5** merged in order, ran the gate and the browser
+  acceptance on both panels.
+- **The loop.** Each session worked in its own worktree and branch and wrote a Done entry
+  with evidence and a "not verified" list; CH1 replied ACCEPTED or REWORK with a numbered
+  list; D3 re-ran D2's tests and broke D2's code on purpose (about 25 mutations, 4 guard
+  gaps found) and drove the editor in a browser; D5 merged and re-measured in a browser.
+  Three rounds on the editor (first pass, audit fixes, discard-question fixes) and two on
+  the list (sticky header found broken, then the rework) came out of that loop.
+- **What changed on the repo.** Everything is on `d5/1.4` @ `96d0b7f`; the row-by-row list is
+  in `HANDOFF.md` "Party Access redesign + 1.4.0". This change adds only documentation:
+  `HANDOFF.md`, `docs/NEXT_PHASE.md`, this entry and `docs/releases/1.4.0.md`
+  (`docs/STRUCTURE.md` and the API contract are D2's).
+- **Verified.** Last full gate on `59a71c4`: lint, build, typecheck, test (294 files,
+  4,171 tests passed), `smoke:legacy`, each 0. `96d0b7f` was not separately gated at the
+  time of writing. No lint-only docs change touches code.
+- **Not verified.** Anything on a real PC, Electron shell, printer or Windows 7; the held
+  arrow key in a real browser; dark and Hindi at 1920x1080 for Add several and Copy.
+- **Lessons.** Two scratch servers reached the real releases repository or folder because
+  PowerShell deletes a variable set to an empty string: set the poll to 0 and the releases
+  folder to a scratch path instead. A kit change (`.ob-tablewrap { overflow: clip }`) fixed
+  every sticky table header at once, and the one session that found it was the one that
+  measured instead of trusting the CSS.
+
 ### 2026-10-03 - 1.4 batch: CH1 and five Sonnet sessions, worktrees and an audit loop (Claude, Opus + Sonnet)
 
 - **Who.** **CH1** (Opus, the lead) planned the batch, wrote the numbered requirements
