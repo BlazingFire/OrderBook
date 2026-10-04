@@ -8,6 +8,8 @@
  * its own `api` client and its own copy of `ui/`'s wiring.
  */
 
+import { readFileSync } from 'node:fs';
+import nodePath from 'node:path';
 import { useState } from 'react';
 import type { ComponentType } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -430,8 +432,8 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
       expect(await screen.findByRole('dialog')).toBeTruthy();
     });
 
-    it('keeps the row selected after a save', async () => {
-      await mount();
+    it('keeps the row selected after a save, and asks for the strip counts again', async () => {
+      const { calls } = await mount();
       await loaded();
 
       fireEvent.click(screen.getByText('Party 1'));
@@ -441,6 +443,10 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
 
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
       expect(screen.getByText('Party 1').closest('tr')!.getAttribute('data-selected')).toBe('true');
+      // The save changed who is restricted; nothing else would tell the strip.
+      await waitFor(() =>
+        expect(calls.filter((call) => path(call) === '/api/party-access/summary').length).toBe(2),
+      );
     });
   });
 
@@ -516,5 +522,16 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
       expect(within(dialog).queryByRole('button', { name: t('partyAccess.action.save') })).toBeNull();
       expect(within(dialog).getAllByRole('button', { name: t('action.close') }).length).toBeGreaterThan(0);
     });
+  });
+});
+
+describe('the table the list sits in', () => {
+  it('clips its corners without becoming a scroll container, so the sticky header sticks to the pane', () => {
+    const css = readFileSync(nodePath.join(__dirname, '..', 'src', 'base.css'), 'utf8').replace(/\r\n/g, '\n');
+    const block = css.match(/\n\.ob-tablewrap \{([^}]*)\}/)?.[1] ?? '';
+    // `overflow: hidden` alone makes `.ob-tablewrap` the sticky containing block, which never
+    // scrolls: the header scrolled away with the rows. `clip` must be the winning declaration.
+    expect(block).toMatch(/overflow: clip;/);
+    expect(block.lastIndexOf('overflow: clip')).toBeGreaterThan(block.lastIndexOf('overflow: hidden'));
   });
 });

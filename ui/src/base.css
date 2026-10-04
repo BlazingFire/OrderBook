@@ -588,14 +588,20 @@
  * same fact `DataTable.tsx`'s virtualiser had to work around by measuring
  * against `.ob-pane`; the two now agree about which element scrolls.
  *
- * `overflow: hidden` keeps the rounded corners clipping the rows without
- * creating a scroll container.
+ * `overflow: clip` keeps the rounded corners clipping the rows without
+ * creating a scroll container (`hidden` does create one, which is what stopped
+ * the sticky header from ever sticking).
  */
 .ob-tablewrap {
   background: var(--bg-surface);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
+  /* `clip`, not only `hidden`: `hidden` makes this element a scroll container, and a
+     sticky header then sticks to *it* (which never scrolls) instead of to the pane, so
+     it scrolled away with the rows. `clip` still rounds the corners and does not.
+     (The `hidden` line is the fallback for an engine without `clip`.) */
   overflow: hidden;
+  overflow: clip;
 }
 
 /*
@@ -4597,7 +4603,7 @@ button.ob-chat-chip-open:not(:disabled):hover {
   color: var(--fg-primary);
 }
 .ob-pa-person {
-  width: 16rem;
+  width: 18rem;
   max-width: 100%;
 }
 .ob-pa-chip {
@@ -4641,6 +4647,8 @@ button.ob-chat-chip-open:not(:disabled):hover {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
+  /* A table cell is nowrap by default; this one wraps, to two lines. */
+  white-space: normal;
   line-height: 1.4;
 }
 

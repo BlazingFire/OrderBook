@@ -105,6 +105,8 @@ export function PartyAccessScreen({
     restricted: number;
     open: number;
   } | null>(null);
+  /** Bumped after a save: the counts changed, and nothing else tells this screen so yet. */
+  const [summaryTick, setSummaryTick] = useState(0);
   const [people, setPeople] = useState<AssignablePerson[]>([]);
   const [search, setSearch] = useState('');
   /** `null` — anybody; otherwise only parties this person is assigned to. */
@@ -192,7 +194,7 @@ export function PartyAccessScreen({
     return () => {
       live = false;
     };
-  }, [revision]);
+  }, [revision, summaryTick]);
 
   // Fetched once rather than with every filter change: it feeds the editor's
   // picker and the toolbar's person filter, which a reader has too (the Master
@@ -222,13 +224,14 @@ export function PartyAccessScreen({
       {
         key: 'code',
         header: t('partyAccess.column.code'),
-        width: '9rem',
+        width: '8rem',
         sortable: true,
         render: (row) => <span className="ob-mono">{row.partyCode}</span>,
       },
       {
         key: 'name',
         header: t('partyAccess.column.party'),
+        width: '1.4fr',
         sortable: true,
         render: (row) => row.partyName,
       },
@@ -236,14 +239,14 @@ export function PartyAccessScreen({
         key: 'city',
         header: t('partyAccess.column.city'),
         priority: 3,
-        width: '11rem',
+        width: '9rem',
         sortable: true,
         render: (row) => row.city ?? '—',
       },
       {
         key: 'access',
         header: t('partyAccess.column.access'),
-        width: '9rem',
+        width: '7.5rem',
         sortable: true,
         render: (row) =>
           row.isRestricted ? (
@@ -255,6 +258,8 @@ export function PartyAccessScreen({
       {
         key: 'assignees',
         header: t('partyAccess.column.assignedTo'),
+        // Twice the share of the party name: this is the column with the most to say.
+        width: '2fr',
         render: (row) => <AssigneeList assignees={row.assignees} />,
       },
       // Absent for a reader: a button nobody may use is not a control to grey.
@@ -263,7 +268,7 @@ export function PartyAccessScreen({
             {
               key: 'edit',
               header: '',
-              width: '8rem',
+              width: '7.5rem',
               align: 'right' as const,
               render: (row: PartyAccessRow) => (
                 <Button
@@ -493,6 +498,7 @@ export function PartyAccessScreen({
               current.map((item) => (item.partyId === row.partyId ? row : item)),
             );
             setSelectedId(row.partyId);
+            setSummaryTick((count) => count + 1);
             setOpenParty(null);
           }}
         />
