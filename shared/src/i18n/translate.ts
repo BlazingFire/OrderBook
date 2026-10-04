@@ -8,13 +8,11 @@
  */
 
 import { EN_MESSAGES } from './en.js';
-import { HI_MESSAGES } from './hi.js';
 import type { CountKey, LocaleCatalogue, MessageKey, MessageParams, ParamsFor } from './keys.js';
 import type { Locale } from './locales.js';
 
 const CATALOGUES: Record<Locale, LocaleCatalogue> = {
   en: EN_MESSAGES,
-  hi: HI_MESSAGES,
 };
 
 export function resolveCatalogue(locale: Locale): LocaleCatalogue {
@@ -34,8 +32,7 @@ function fill(template: string, params: MessageParams): string {
  * only be missing at runtime when it arrived as a *string off the wire* — a
  * `messageKey` from a newer Master than this bundle. Order:
  *   1. the requested locale's catalogue;
- *   2. EN_MESSAGES (insurance against a future partial `hi.ts`, impossible
- *      today because `HI_MESSAGES` is a total `Record`);
+ *   2. EN_MESSAGES;
  *   3. the raw key, returned verbatim — ugly, honest, greppable, and never
  *      confusable with a real translation.
  */
@@ -50,7 +47,7 @@ export function t<K extends MessageKey>(locale: Locale, key: K, ...params: Param
 
 /**
  * Plural selection via `Intl.PluralRules` — ECMA-402 core, no network, no DOM.
- * English and Hindi share the same two-category set (`one`, `other`).
+ * English has two categories (`one`, `other`).
  * `count` is injected as the `{count}` param, so it is never concatenated onto
  * the sentence and is never reformatted (it is a number, not localised text).
  */
