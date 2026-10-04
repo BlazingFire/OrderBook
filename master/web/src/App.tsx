@@ -1274,8 +1274,13 @@ function MasterPanel() {
       />
       {/* Beside Sign out, because the two are the same kind of thing — what you
           do with your own account — and the topbar is on every screen. */}
-      <button className="ob-btn ob-btn--ghost" onClick={() => setChangingPassword(true)}>
-        {t('action.changePassword')}
+      {/* The label is in a span so it can end in an ellipsis when the bar is full. */}
+      <button
+        className="ob-btn ob-btn--ghost"
+        title={t('action.changePassword')}
+        onClick={() => setChangingPassword(true)}
+      >
+        <span>{t('action.changePassword')}</span>
       </button>
       <button className="ob-btn ob-btn--ghost ob-btn--signout" onClick={() => void signOut()}>
         <Icon name="sign-out" size={16} />

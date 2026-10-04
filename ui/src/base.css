@@ -1497,6 +1497,58 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
 .ob-footer > * {
   min-width: 0;
 }
+
+/*
+ * The topbar's own priorities, so no screen's title is squeezed to nothing and no
+ * button's label spills over its neighbour (found at 157 % on a 1024 px screen: the
+ * title shrank to 0-28 px, "New pending order" and "Change password" overflowed
+ * their boxes and drew over what stood beside them, on every screen).
+ *
+ *  - an action keeps its whole label (`flex: none`);
+ *  - the buttons with their label in a `<span>` (the command palette, Change password) are
+ *    what gives way, down to a floor, and its label ends in an ellipsis;
+ *  - the title keeps a floor of its own and ends in an ellipsis (`TopbarTitle` puts
+ *    the full name in `title`), and below 70rem of main column (the 1024 px floor at 100 %) the module eyebrow goes,
+ *    which hands its width to the title.
+ * Pinned by `ui/tests/topbar-fit.test.tsx`.
+ */
+/* The container is the main column, not the bar: a container query cannot restyle
+   its own container, and the bar's gap and padding are what has to give. */
+.ob-main {
+  container-type: inline-size;
+  container-name: ob-main;
+}
+.ob-topbar .ob-btn {
+  flex: none;
+  white-space: nowrap;
+}
+.ob-topbar .ob-btn:has(> span) {
+  flex: 0 1 auto;
+  min-width: 3.5rem;
+}
+.ob-topbar-title {
+  flex: 0 1 auto;
+  min-width: 6rem;
+}
+.ob-topbar .ob-icon-btn,
+.ob-topbar .ob-bell {
+  flex: none;
+}
+@container ob-main (max-width: 70rem) {
+  .ob-topbar-eyebrow {
+    display: none;
+  }
+  /* The same row, tighter: at 157 % on a 1024 px screen the actions alone are wider
+     than the bar, so gaps and button padding give a little before anything is cut. */
+  .ob-topbar {
+    column-gap: var(--s-4);
+    padding-inline: var(--s-12);
+  }
+  .ob-topbar .ob-btn {
+    padding-inline: var(--s-8);
+  }
+}
+
 .ob-topbar .ob-btn > span,
 .ob-footer > span,
 .ob-footer > a {

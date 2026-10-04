@@ -72,7 +72,17 @@ export function TopbarTitle({
     <span className="ob-topbar-title">
       {top && <Icon name={top.icon} size={18} />}
       {group && <span className="ob-eyebrow ob-topbar-eyebrow">{group.label}</span>}
-      <h1 className="ob-title">{page?.label ?? fallback}</h1>
+      {/* The full name as a tooltip, but only while it is cut: a standing `title` would
+          also name this heading to every query that looks a sidebar row up by title. */}
+      <h1
+        className="ob-title"
+        onMouseEnter={(event) => {
+          const heading = event.currentTarget;
+          heading.title = heading.scrollWidth > heading.clientWidth ? (heading.textContent ?? '') : '';
+        }}
+      >
+        {page?.label ?? fallback}
+      </h1>
     </span>
   );
 }
