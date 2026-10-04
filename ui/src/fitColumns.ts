@@ -81,9 +81,9 @@ export function fitColumns<T extends FittableColumn>(
   if (needed(withoutThree) <= availableWidth) return withoutThree;
 
   // Priority 1 (and an absent priority, which means the same) never drops. If
-  // the table still does not fit, `.ob-tablewrap`'s `overflow: auto` is the
-  // fallback — a horizontal scrollbar inside the table, not a body that
-  // scrolls sideways.
+  // the table still does not fit, `.ob-tablewrap` clips what overflows (it is
+  // `overflow: clip`, which never scrolls): a priority-1 column that cannot fit is
+  // cut at the table's edge rather than making the body scroll sideways.
   return withoutThree.filter((column) => column.priority !== 2);
 }
 

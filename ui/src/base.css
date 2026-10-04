@@ -3142,8 +3142,29 @@ button.ob-bell-item:hover {
   margin-left: auto;
 }
 
+/*
+ * A flat record table (an order's product lines) is not a DataTable: nothing in it
+ * sticks to the pane, so unlike every other `.ob-tablewrap` it may scroll sideways in
+ * its own box. At 157 % on a 1024 px screen its eight columns do not fit, and `clip`
+ * cut the last ones off with no way to reach them. (`:has` is Chromium 105+; the
+ * floor is 108.) Pinned by `ui/tests/tablewrap-scroll.test.ts`.
+ */
+.ob-tablewrap:has(> .ob-table--flat) {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/*
+ * The permission grid scrolls inside its own box, in both directions: its header row
+ * and its module column are `position: sticky` and must stick to *this* element.
+ * `.ob-tablewrap` is `overflow: clip` (so a DataTable header can stick to the pane),
+ * and clip never scrolls, so without `auto` here a tall set of modules was cut off
+ * at `max-height` with no way to reach the rest. Pinned by
+ * `ui/tests/tablewrap-scroll.test.ts`.
+ */
 .ob-permwrap {
   max-height: 32.8571rem;
+  overflow: auto;
 }
 
 .ob-measure-wide {
