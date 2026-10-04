@@ -87,6 +87,8 @@ passed + 1 skipped; 4,316 tests passed + 17 skipped), `smoke:legacy` 0.
 
 **Not verified:** dark theme on the filter strip, the Electron shell, real PCs (as in 1.4.1).
 
+**Release trap:** the Master installed on this PC uses `C:\OrderBook-Releases` as its releases folder. It deleted the freshly built 1.4.2 Master Setup, because GitHub's Latest was still 1.4.1. Build releases with `ORDERBOOK_RELEASES_DIR` pointing at a scratch folder (for example `.tmpel<version>`) and upload from there. **Real-install proof:** after v1.4.2 was published, that installed Master fetched `OrderBook-Master-1.4.2-Setup.exe` from GitHub by itself within about 15 minutes, and its SHA-256 matched the signed manifest.
+
 ## Add-connection audit, Setup-only builds + 1.4.1 (2026-10-04)
 
 **State: released.** `main` @ `2a7649a` is the 1.4.1 version bump and is pushed. GitHub
