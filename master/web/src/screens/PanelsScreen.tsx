@@ -586,7 +586,7 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
                   <span className="ob-small">{t('panels.add.waitingBody')}</span>
                 </>
               )}
-              {windowState?.closesAt != null && (
+              {windowState?.closesAt != null && windowState.autoPairingEnabled && (
                 <span className="ob-small">
                   {t('panels.add.timeLeft', { time: countdown(windowState.closesAt - now) })}
                 </span>

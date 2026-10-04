@@ -62,6 +62,7 @@ pairingRoutes.post(
         nonce: body.nonce,
         pairingPassword: body.pairingPassword,
         masterUniqueId: body.masterUniqueId,
+        previousPanelId: typeof body.previousPanelId === 'string' ? body.previousPanelId : undefined,
       },
       normalizeIp(req.ip),
     );
@@ -157,6 +158,8 @@ panelRoutes.post(
 
 panelRoutes.get(
   '/pairing-window',
+  // It lists this PC's addresses, so it is for the people who administer panels; the screen that reads it is theirs.
+  needs('panels.manage'),
   asyncHandler(async (req, res) => {
     // `accepting` is the same question the pairing route and the discovery reply ask. The
     // Master's own screen reads this, so answering on the window alone would

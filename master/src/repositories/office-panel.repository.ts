@@ -231,17 +231,29 @@ export async function panelNamesMatching(tenantId: string, prefix: string): Prom
 }
 
 /**
- * Panels that reported this machine name and are not in use right now: removed, or
- * switched off. The candidates for a PC that pairs again after a reinstall or a removal.
- * The caller skips the ones that are connected, which this table cannot know.
+ * The removed panel a PC that pairs again gets back: the one it names (`previousId`), else the
+ * most recently seen removed one that reported the same machine name. Only ever a **removed**
+ * row: an active row, connected or not, is a working pairing that nobody asked to end.
  */
-export async function findByHostname(tenantId: string, hostname: string): Promise<OfficePanel[]> {
-  const rows = await db()(TABLE)
-    .where({ tenant_id: tenantId })
+export async function findRemovedFor(
+  tenantId: string,
+  hostname: string | null,
+  previousId: string | null,
+): Promise<OfficePanel | null> {
+  if (previousId && UUID_FORMAT.test(previousId)) {
+    const byId = await db()(TABLE).where({ tenant_id: tenantId, id: previousId, status: 'revoked' }).first();
+    if (byId) return mapOfficePanel(byId);
+  }
+  if (!hostname) return null;
+  const row = await db()(TABLE)
+    .where({ tenant_id: tenantId, status: 'revoked' })
     .whereRaw('lower(hostname) = lower(?)', [hostname])
-    .orderBy('last_seen_at', 'desc');
-  return rows.map(mapOfficePanel);
+    .orderBy('last_seen_at', 'desc')
+    .first();
+  return row ? mapOfficePanel(row) : null;
 }
+
+const UUID_FORMAT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Pairing again: a new secret and an active row, keeping the id, the name, the device code and the history. */
 export async function reviveForPairing(

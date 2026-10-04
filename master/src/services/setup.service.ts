@@ -138,7 +138,8 @@ export async function getIdentity(): Promise<MasterIdentity | null> {
     tenantId: row.tenant_id ?? (await resolveDefaultTenantId()),
     companyName: row.company_name,
     lanIps: listLanAddresses(),
-    port: row.port,
+    // The port this process listens on, not the one stored at setup: they differ when it was started with another PORT.
+    port: config.http.port,
     setupCompletedAt: row.setup_completed_at.toISOString(),
   };
 }

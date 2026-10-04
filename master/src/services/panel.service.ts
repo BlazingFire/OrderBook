@@ -174,7 +174,11 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
 
   if (request.mode === 'auto') {
     if (!(await isAutoPairingOpen(identity.tenantId))) {
-      throw new UnauthorizedError('error.unauthorized.pairingNotAccepting');
+      // Two different reasons, two different next steps: telling somebody to open a window that is
+      // already open (and has the setting off) sends them round in a circle.
+      throw new UnauthorizedError(
+        isAcceptingPairing() ? 'error.unauthorized.pairingAutoOff' : 'error.unauthorized.pairingNotAccepting',
+      );
     }
   } else {
     if (!request.pairingPassword || !(await verifyPairingPassword(request.pairingPassword))) {
@@ -193,15 +197,17 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
     : await defaultPanelName(identity.tenantId);
   const secretHash = await bcrypt.hash(panelSecret, BCRYPT_ROUNDS);
 
-  // The same PC pairing again (after it was removed, or reinstalled without being removed)
-  // gets its old row back instead of a second one next to it. Never one that is connected
-  // right now: that is another PC with the same machine name, or somebody trying to take it over.
+  // A PC that was removed and pairs again gets its old row back instead of a second one next to
+  // it: the row it names, or the removed one with its machine name. Only a removed row, only
+  // after the window or the password has already let this request in (above), so a matching name
+  // grants nothing by itself, and a working pairing is never taken over. A PC reinstalled without
+  // being removed first is a new panel; the old row is for the administrator to remove.
   const returning =
-    request.hostname && request.hostname !== 'unknown'
-      ? (await panelRepo.findByHostname(identity.tenantId, request.hostname)).find(
-          (candidate) => !connectedPanelIds.has(candidate.id),
-        )
-      : undefined;
+    (await panelRepo.findRemovedFor(
+      identity.tenantId,
+      request.hostname && request.hostname !== 'unknown' ? request.hostname : null,
+      request.previousPanelId ?? null,
+    )) ?? undefined;
 
   const panel = await db().transaction(async (trx) => {
     if (returning) {
@@ -231,7 +237,7 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
             hostname: request.hostname,
             previousPanelId: returning.id,
             previousName: returning.name,
-            previousStatus: returning.status === 'revoked' ? 'removed' : 'offline',
+            previousStatus: 'removed',
           },
         },
         systemActor(identity.tenantId),

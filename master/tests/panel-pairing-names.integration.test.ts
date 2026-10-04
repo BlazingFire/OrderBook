@@ -75,24 +75,42 @@ describe.skipIf(!canRunIntegrationTests)('pairing again (integration)', () => {
     expect(JSON.stringify(entry.details)).toContain(first.panelId);
   });
 
-  it('does the same for a reinstalled PC whose old row was never removed, but not for another PC with the same name', async () => {
+  it('never takes over a row that is not removed: a reinstalled PC with its old row still active joins as a new panel', async () => {
     const first = await pairAs('Counter', 'COUNTER-PC');
-    expect((await pairAs('Counter', 'COUNTER-PC')).panelId).toBe(first.panelId);
-    const other = await pairAs('Counter', 'OTHER-PC');
-    expect(other.panelId).not.toBe(first.panelId);
-    expect(await rows()).toHaveLength(2);
+    const second = await pairAs('Counter', 'COUNTER-PC');
+    expect(second.panelId).not.toBe(first.panelId);
+    expect((await rows()).map((row) => row.name).sort()).toEqual(['Counter', 'Counter 2']);
+    // The first is untouched: its secret still works.
+    await expect(panels.authenticatePanel(first.panelId, first.panelSecret)).resolves.toBeDefined();
   });
 
-  it('leaves a PC alone that is connected right now', async () => {
+  it('gives the row back to the PC that names it, even under another machine name, and not to a different PC', async () => {
     const first = await pairAs('Counter', 'COUNTER-PC');
-    await panels.markPanelConnected(first.panelId, '192.168.1.20', 8);
-    try {
-      const second = await pairAs('Counter', 'COUNTER-PC');
-      expect(second.panelId).not.toBe(first.panelId);
-      await expect(panels.authenticatePanel(first.panelId, first.panelSecret)).resolves.toBeDefined();
-    } finally {
-      await panels.markPanelDisconnected(first.panelId);
-    }
+    await panels.revokePanel(first.panelId, await testActor());
+
+    panels.openPairingWindow();
+    const other = await panels.pairPanel({ mode: 'auto', panelName: 'Till', hostname: 'OTHER-PC' }, '192.168.1.21');
+    expect(other.panelId).not.toBe(first.panelId);
+
+    panels.openPairingWindow();
+    const named = await panels.pairPanel(
+      { mode: 'auto', panelName: 'Counter', hostname: 'RENAMED-PC', previousPanelId: first.panelId },
+      '192.168.1.20',
+    );
+    expect(named.panelId).toBe(first.panelId);
+  });
+
+  it('ignores a previous id that is not a removed panel of this company', async () => {
+    const live = await pairAs('Counter', 'COUNTER-PC');
+    panels.openPairingWindow();
+    const again = await panels.pairPanel(
+      { mode: 'auto', panelName: 'Till', hostname: 'OTHER-PC', previousPanelId: live.panelId },
+      '192.168.1.21',
+    );
+    expect(again.panelId).not.toBe(live.panelId);
+    panels.openPairingWindow();
+    const junk = await panels.pairPanel({ mode: 'auto', panelName: 'Till', hostname: 'X', previousPanelId: 'not-a-uuid' }, null);
+    expect(junk.panelId).toBeTruthy();
   });
 });
 

@@ -46,7 +46,7 @@ export function discoveryStatus(): DiscoveryStatus {
 /** How long to wait before trying the port again after it could not be bound. */
 const RETRY_MS = 30_000;
 
-function bindOnce(): Promise<dgram.Socket> {
+function bindOnce(onLaterError: (error: Error) => void): Promise<dgram.Socket> {
   const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
   socket.on('message', (buffer, remote) => {
     void handleMessage(socket, buffer, remote);
@@ -59,10 +59,7 @@ function bindOnce(): Promise<dgram.Socket> {
     socket.bind(DISCOVERY_PORT, () => {
       socket.setBroadcast(true);
       socket.removeAllListeners('error');
-      socket.on('error', (error) => {
-        log.error('Discovery socket error', error);
-        status = { listening: false, port: DISCOVERY_PORT, reason: toErrorMessage(error) };
-      });
+      socket.on('error', onLaterError);
       resolve(socket);
     });
   });
@@ -80,9 +77,30 @@ export async function startDiscoveryResponder(): Promise<DiscoveryResponder> {
   let timer: NodeJS.Timeout | null = null;
   let stopped = false;
 
+  const retryLater = (): void => {
+    if (stopped) return;
+    timer = setTimeout(() => void attempt(), RETRY_MS);
+    timer.unref?.();
+  };
+
+  // A socket that bound and then failed (the adapter went away, the network changed) is as
+  // dead as one that never bound: close it, say so, and bind a fresh one later.
+  const onLaterError = (error: Error): void => {
+    log.error('Discovery socket error', error);
+    status = { listening: false, port: DISCOVERY_PORT, reason: toErrorMessage(error) };
+    const dead = socket;
+    socket = null;
+    try {
+      dead?.close();
+    } catch {
+      // already closed
+    }
+    retryLater();
+  };
+
   const attempt = async (): Promise<void> => {
     try {
-      socket = await bindOnce();
+      socket = await bindOnce(onLaterError);
       if (stopped) {
         socket.close();
         socket = null;
@@ -95,10 +113,7 @@ export async function startDiscoveryResponder(): Promise<DiscoveryResponder> {
       log.warn(
         `Cannot listen on UDP ${DISCOVERY_PORT} (${status.reason}); panels must be paired by address until it is free. Trying again in ${RETRY_MS / 1000} s.`,
       );
-      if (!stopped) {
-        timer = setTimeout(() => void attempt(), RETRY_MS);
-        timer.unref?.();
-      }
+      retryLater();
     }
   };
   await attempt();

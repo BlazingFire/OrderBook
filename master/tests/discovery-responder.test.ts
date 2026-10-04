@@ -34,6 +34,10 @@ class FakeSocket {
       queueMicrotask(done);
     }
   }
+  /** Test seam: the socket reports an error after it was bound. */
+  fail(error: Error): void {
+    (this.handlers.get('error') ?? []).forEach((handler) => handler(error));
+  }
   setBroadcast(): void {}
   send(): void {}
   close(done?: () => void): void {
@@ -65,6 +69,27 @@ describe('startDiscoveryResponder', () => {
     expect(discoveryStatus()).toMatchObject({ listening: true, port: 45789, reason: null });
     await responder.stop();
     expect(discoveryStatus().listening).toBe(false);
+  });
+
+  it('binds a fresh socket after one that bound well fails later (the adapter went away)', async () => {
+    vi.useFakeTimers();
+    try {
+      const responder = await startDiscoveryResponder();
+      expect(discoveryStatus().listening).toBe(true);
+      const first = sockets[0]!;
+
+      first.fail(Object.assign(new Error('send ENETUNREACH'), { code: 'ENETUNREACH' }));
+      expect(discoveryStatus()).toMatchObject({ listening: false });
+      expect(discoveryStatus().reason).toContain('ENETUNREACH');
+      expect(first.closed).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(sockets).toHaveLength(2);
+      expect(discoveryStatus()).toMatchObject({ listening: true, reason: null });
+      await responder.stop();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('does not reject when the port cannot be bound: it reports why and keeps the Master running', async () => {

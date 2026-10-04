@@ -56,6 +56,12 @@ describe.skipIf(!canRunIntegrationTests)('company settings, end to end (integrat
       expect(panels.isAcceptingPairing()).toBe(true);
       await expect(
         panels.pairPanel({ mode: 'auto', panelName: 'Front Desk', hostname: 'pc1' }, '192.168.1.20'),
+      ).rejects.toThrow(/only with the pairing password/i);
+
+      // And a window that is not open says the other thing: open it.
+      panels.closePairingWindow();
+      await expect(
+        panels.pairPanel({ mode: 'auto', panelName: 'Front Desk', hostname: 'pc1' }, '192.168.1.20'),
       ).rejects.toThrow(/not accepting new panels/i);
     });
 

@@ -3344,7 +3344,7 @@ export const EN_MESSAGES = {
   'panels.add.manualTitle': 'To connect by address instead',
   'panels.add.manualBody': 'On the office PC choose manual connection and enter one of these addresses and the pairing password. The password was shown once when this Master was set up. If it is lost, whoever runs the Master PC can set a new one in Settings, on the Connection tab, with the master key.',
   'panels.add.discoveryDown': 'Automatic search is not running ({reason}), so panels cannot find this Master by themselves. Use the address below. This Master tries again every 30 seconds.',
-  'panels.add.reinstallNote': 'A PC that was reinstalled joins as a new panel. Remove its old row from the list once the new one appears.',
+  'panels.add.reinstallNote': 'A PC that was removed from this list gets its old row back when it pairs again. A PC that was reinstalled without being removed first joins as a new panel: remove its old row once the new one appears.',
   'panels.rotate.action': 'Reissue secret',
   'panels.rotate.title': 'Reissue the secret for "{name}"?',
   'panels.rotate.body': 'This panel gets a new secret over its live connection and carries on working. Nothing has to be typed. If the panel is switched off while this happens it has to be paired again, so only do it while the panel shows Connected.',
@@ -3356,4 +3356,5 @@ export const EN_MESSAGES = {
   'panels.list.hideRemoved': 'Hide removed',
   'activity.office_panel.re_paired': '{actor} paired the office panel {name} again, replacing its earlier pairing ({previousStatus})',
   'logs.action.re_paired': 'Paired again',
+  'error.unauthorized.pairingAutoOff': 'This Master Panel is open for new panels, but only with the pairing password. On the office PC choose manual connection and enter the Master address and the pairing password.',
 } as const;
