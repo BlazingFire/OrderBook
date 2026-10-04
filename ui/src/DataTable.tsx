@@ -333,6 +333,16 @@ export function DataTable<T>({
                 // rather than trusting a CSS token it would have to parse.
                 data-row=""
                 data-selected={selectedId === key || undefined}
+                // A row says whether it is selected when the table has any idea of
+                // selection (the open record, or ticked rows); `row` is explicit because
+                // a grid-laid-out `tr` is not reliably a row to assistive tech, and
+                // `aria-selected` is not allowed on the `button` role the row used to carry.
+                role="row"
+                aria-selected={
+                  selectedId !== undefined || onSelectionChange
+                    ? selectedId === key || chosen.has(key)
+                    : undefined
+                }
                 data-highlight={rowHighlight?.(row) || undefined}
                 style={{
                   display: 'grid',
@@ -340,7 +350,6 @@ export function DataTable<T>({
                   cursor: onRowOpen ? 'pointer' : undefined,
                 }}
                 tabIndex={onRowOpen ? 0 : undefined}
-                role={onRowOpen ? 'button' : undefined}
                 onClick={onRowOpen ? () => onRowOpen(row) : undefined}
                 onKeyDown={
                   onRowOpen
