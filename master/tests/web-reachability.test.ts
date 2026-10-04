@@ -165,8 +165,6 @@ const ALLOWED_UNCALLED: Record<'master' | 'office', Record<string, string>> = {
     reorderFieldStages: 'as fieldsCatalogue',
     archiveFieldStage: 'as fieldsCatalogue',
     restoreFieldStage: 'as fieldsCatalogue',
-    partyAccessFor:
-      'PartyAccessScreen edits a party out of the assignment list it loaded; nothing reads one party alone',
     partyAccessSummary:
       'the redesigned Party Access list calls it for its summary strip; remove this line in the same commit that does',
     upsertVariant:

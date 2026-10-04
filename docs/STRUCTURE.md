@@ -1345,7 +1345,9 @@ never talks to a server** (§4.10). (`ui/tests/panel-harness.ts` is the one plac
 | `ui/src/Form.tsx` | `Label`, `HelperText`, `FieldError`, `FormField`, `Input` (forwardRef), `NumberInput`, `Textarea`, `DateField`, `Checkbox`, `Switch`, `Slider` | `FormField` takes `children(id)` and wires the label with `useId()`. `NumberInput` is `type="text" inputMode="decimal"`. `Switch` is `role="switch"`. |
 | `ui/src/FieldGrid.tsx` | `FieldGrid`, `FieldGroup`, `Field` | dense multi-column form grid, `span` 1–3 |
 | `ui/src/SuggestInput.tsx` | `SuggestInput`, `Select` (forwardRef) | `SuggestInput`: type or pick, off-list values accepted. `Select`: pick-only with the `<select>` API (reads `<option>` children, emits `{ target: { value } }`). Neither calls `preventDefault` on Enter, so `useEnterToAdvance` moves on in the same keypress; Escape is claimed only when the list was "summoned". |
-| `ui/src/Combobox.tsx` | `ComboboxOption<T>`, `Combobox` | typeahead that adds a row; renders ≤ 200 matches (`RENDER_CAP`) |
+| `ui/src/Combobox.tsx` | `ComboboxOption<T>`, `Combobox` | typeahead that adds a row; renders ≤ 200 matches (`RENDER_CAP`). Filters label and hint; list placed below/above the field inside whatever clips it (`comboboxPlacement.ts#placeListbox`); full keyboard (Arrows/Home/End/PageUp/PageDown, Enter only on an open list, Escape claims the key only while a list is open, Tab closes); `emptyLabel`, `loading`, `filter={false}` + `onQueryChange` for a host that searches; `quietFocusRef` for a focus from code that must not open the list |
+| `ui/src/comboboxPlacement.ts` | `placeListbox`, `clippingSpan` | pure arithmetic for where a combobox list goes (tested without layout) |
+| `ui/src/MultiPicker.tsx` | `MultiPicker` | searchable tick-list with Select all / Clear; used by the Party Access "Add several people" panel |
 | `ui/src/FilterBar.tsx` | `FilterChip`, `FilterDivider` | pieces a list screen publishes via `useFilterBar` |
 
 `ui/src/Picker.tsx` (a server-backed picker neither panel imported) and its CSS were
@@ -1499,8 +1501,7 @@ transport in a ref (`transportRef`, `latest`) because callers may build it inlin
 hook dependency array in `ui/src`, `master/web/src` or `office/web/src`.
 
 A screen that imports `{ api }` cannot move into `ui/`. **`PartyAccessScreen.tsx`
-is therefore kept as two byte-identical copies** (`master/web/src/screens/PartyAccessScreen.tsx`,
-`office/web/src/screens/PartyAccessScreen.tsx`), held equal by
+and `PartyAccessEditor.tsx` are therefore kept as byte-identical copies** (`master/web/src/screens/` and `office/web/src/screens/`; the editor is the modal: header, add person, add several, copy access, level switches, save, conflict, unsaved work; its test is `ui/tests/party-access-editor.test.tsx`), held equal by
 `master/tests/party-access-screen-parity.test.ts`. Edit one, copy it over.
 
 ### 4.11 Tests that guard the kit
@@ -2704,7 +2705,7 @@ the service checks.
   `POST /master/install` (`settings.manage`; verifies the installer and returns its
   path, never runs it).
 - `master/src/http/routes/party-access.routes.ts` (`/api/party-access`, 5): `GET /`,
-  `GET /:partyId` (svc `requireCanRead`); `GET /people` (`party.assign`); `GET
+  `GET /summary` (company-wide `{total, restricted, open}`, registered before `/:partyId`), `GET /:partyId` (svc `requireCanRead`); `GET /people` (`party.assign` OR `party.accessAll`, checked in the service); list takes `sort` (`code|name|city|access`) and `dir`; `GET
   /export.csv` (`parties.export`); `PUT /:partyId` (`party.assign`).
 - `master/src/http/routes/recycle-bin.routes.ts` (4): `GET /`, `/counts`,
   `/deleters`, `POST /restore` (`recycleBin.view`; the service then applies

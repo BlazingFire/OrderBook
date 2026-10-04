@@ -210,6 +210,20 @@
   background: var(--accent);
   color: var(--fg-on-accent);
 }
+.ob-seg > button:focus-visible {
+  outline: 2px solid var(--line-focus);
+  outline-offset: -2px;
+}
+.ob-seg > button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.ob-seg > button:disabled:hover {
+  background: var(--bg-surface);
+}
+.ob-seg > button[aria-pressed='true']:disabled:hover {
+  background: var(--accent);
+}
 
 /*
  * A screen's own control in the topbar's trailing cluster, set apart from the
@@ -2303,7 +2317,8 @@ button.ob-stattile:hover {
   top: calc(100% + var(--s-4));
   left: 0;
   right: 0;
-  max-height: min(17.1429rem, 40vh);
+  /* `--ob-combobox-room` is the room the component measured on its side of the field. */
+  max-height: min(17.1429rem, 40vh, var(--ob-combobox-room, 100vh));
   overflow-y: auto;
   background: var(--bg-surface);
   border: 1px solid var(--line);
@@ -2311,6 +2326,10 @@ button.ob-stattile:hover {
   box-shadow: var(--sh-2);
   animation: ob-pop-in var(--d-base) var(--e-standard);
   padding: var(--s-4);
+}
+.ob-combobox-listbox--above {
+  top: auto;
+  bottom: calc(100% + var(--s-4));
 }
 .ob-combobox-option {
   display: flex;
@@ -2322,6 +2341,27 @@ button.ob-stattile:hover {
   cursor: pointer;
   color: var(--fg-primary);
 }
+/* A long name is cut with an ellipsis (its full text is the row's title), never wrapped into a tall row. */
+.ob-combobox-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ob-combobox-hint {
+  flex: 0 1 40%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-tertiary);
+}
+.ob-combobox-more {
+  padding: var(--s-6) var(--s-8);
+  font-size: var(--t-small-size);
+  color: var(--fg-tertiary);
+}
 .ob-combobox-option[data-active='true'] {
   background: var(--bg-hover);
 }
@@ -2332,6 +2372,75 @@ button.ob-stattile:hover {
 .ob-combobox-empty {
   padding: var(--s-8);
   font-size: var(--t-small-size);
+  color: var(--fg-tertiary);
+}
+
+/* ===========================================================================
+ * MultiPicker — a searchable checklist
+ * ======================================================================== */
+
+.ob-multipicker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+  min-height: 0;
+}
+.ob-multipicker-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-8);
+  min-height: var(--ctl-h-sm);
+}
+.ob-multipicker-actions {
+  display: inline-flex;
+  gap: var(--s-4);
+}
+.ob-multipicker-list {
+  max-height: min(17.1429rem, 36vh);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  padding: var(--s-4);
+}
+.ob-multipicker-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  padding: var(--s-6) var(--s-8);
+  border-radius: var(--r-sm);
+  font-size: var(--t-small-size);
+  cursor: pointer;
+  color: var(--fg-primary);
+}
+.ob-multipicker-row[data-active='true'] {
+  background: var(--bg-hover);
+}
+.ob-multipicker-row[aria-selected='true'] .ob-checkbox-box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.ob-multipicker-text {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: baseline;
+  gap: var(--s-8);
+  min-width: 0;
+}
+.ob-multipicker-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ob-multipicker-hint {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--fg-tertiary);
 }
 
@@ -3267,7 +3376,7 @@ button.ob-bell-item:hover {
   /* A 768-tall screen with a taskbar has no vertical slack. Popovers that
      assume a tall window push their own actions off-screen. */
   .ob-combobox-listbox {
-    max-height: 30vh;
+    max-height: min(30vh, var(--ob-combobox-room, 100vh));
   }
 
   .ob-boardcol {

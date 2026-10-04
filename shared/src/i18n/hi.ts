@@ -2490,14 +2490,11 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'party.saving': 'Saving…',
   // TODO(i18n-hi)
   'party.updated': '{name} updated',
-  // TODO(i18n-hi)
-  'partyAccess.action.cancel': 'Cancel',
+  'partyAccess.action.cancel': 'रद्द करें',
   // TODO(i18n-hi)
   'partyAccess.action.export': 'Export',
-  // TODO(i18n-hi)
-  'partyAccess.action.save': 'Save',
-  // TODO(i18n-hi)
-  'partyAccess.addPerson': 'Add a person',
+  'partyAccess.action.save': 'सहेजें',
+  'partyAccess.addPerson': 'व्यक्ति जोड़ें',
   // TODO(i18n-hi)
   'partyAccess.column.access': 'Access',
   // TODO(i18n-hi)
@@ -2512,16 +2509,10 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'partyAccess.empty': 'No parties match this filter',
   // TODO(i18n-hi)
   'partyAccess.error.load': 'Could not load party access',
-  // TODO(i18n-hi)
-  'partyAccess.error.save': 'Could not save the assignments',
-  // TODO(i18n-hi)
-  'partyAccess.everyone': 'Everyone',
-  // TODO(i18n-hi)
-  'partyAccess.explainOpen':
-    'Nobody is assigned, so everyone with the right role can see and work this party.',
-  // TODO(i18n-hi)
-  'partyAccess.explainRestricted':
-    'Only the people below can see this party and its pending orders and final orders. View can read; manage can also create and edit.',
+  'partyAccess.error.save': 'असाइनमेंट सहेजे नहीं जा सके',
+  'partyAccess.everyone': 'सभी',
+  'partyAccess.explainOpen': 'किसी को नहीं जोड़ा गया है, इसलिए हर कोई इस पार्टी को देख सकता है और इस पर काम कर सकता है। चुने हुए लोगों तक सीमित करने के लिए किसी को जोड़ें।',
+  'partyAccess.explainRestricted': 'केवल नीचे दिए लोग इस पार्टी और इसके पेंडिंग व फ़ाइनल ऑर्डर देख सकते हैं। देखना से वे सिर्फ़ देख सकते हैं; प्रबंधन से वे बना और बदल भी सकते हैं। फिर से सभी के लिए खोलने के लिए सबको हटा दें।',
   // TODO(i18n-hi)
   'partyAccess.filter.all': 'All',
   // TODO(i18n-hi)
@@ -2531,30 +2522,22 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'partyAccess.intro':
     'A party nobody is assigned to is open to everyone. Assign someone and only they can reach it.',
-  // TODO(i18n-hi)
-  'partyAccess.level.manage': 'Manage',
-  // TODO(i18n-hi)
-  'partyAccess.level.view': 'View',
+  'partyAccess.level.manage': 'प्रबंधन',
+  'partyAccess.level.view': 'देखना',
   // TODO(i18n-hi)
   'partyAccess.more': '+{count} more',
-  // TODO(i18n-hi)
-  'partyAccess.noAssignees': 'Nobody is assigned',
-  // TODO(i18n-hi)
-  'partyAccess.open': 'Open',
-  // TODO(i18n-hi)
-  'partyAccess.reload': 'Reload',
-  // TODO(i18n-hi)
-  'partyAccess.remove': 'Remove',
-  // TODO(i18n-hi)
-  'partyAccess.restricted': 'Restricted',
+  'partyAccess.noAssignees': 'अभी किसी को नहीं जोड़ा गया',
+  'partyAccess.open': 'खुली',
+  'partyAccess.reload': 'फिर से लोड करें',
+  'partyAccess.remove': 'हटाएँ',
+  'partyAccess.restricted': 'सीमित',
   // TODO(i18n-hi)
   'partyAccess.scope.all': 'All parties',
   // TODO(i18n-hi)
   'partyAccess.scope.assigned': 'My parties',
   // TODO(i18n-hi)
   'partyAccess.searchPlaceholder': 'Search parties',
-  // TODO(i18n-hi)
-  'partyAccess.staleSave': 'Somebody else changed this party’s access first. Reload to see it.',
+  'partyAccess.staleSave': 'किसी और ने इस पार्टी का एक्सेस पहले बदल दिया। उनका संस्करण देखने के लिए फिर से लोड करें; यहाँ के आपके बदलाव सहेजे नहीं गए हैं।',
   // TODO(i18n-hi)
   'partyAccess.summary': '{restricted} of {total} parties are restricted.',
   // TODO(i18n-hi)
@@ -4247,4 +4230,59 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'updates.waiting.body': 'यह ऑफ़िस पैनल संस्करण {mine} पर है, जो मास्टर पैनल ({master}) से नया है। मास्टर के उसी संस्करण पर अपडेट होने पर यह खुलेगा। यह स्क्रीन अपने आप फिर जाँच करती रहती है।',
   'updates.saveAll.vehicle': 'वाहन नंबर {number}',
   'updates.saveAll.stationName': 'प्रिंटरूम स्टेशन का नाम {name}',
+
+  // Party Access redesign (D2): the editor, the multi-picker and the combobox states.
+  'common.searching': 'खोज रहे हैं…',
+  'common.refineSearch': 'पहले {count} मिलान दिख रहे हैं — सूची छोटी करने के लिए टाइप करें',
+  'multiPicker.selected': '{count} चुने गए',
+  'multiPicker.selectAll': 'सभी चुनें',
+  'multiPicker.selectShown': 'दिखे हुए सभी चुनें',
+  'multiPicker.clear': 'साफ़ करें',
+  'partyAccess.editor.stateOpen': 'सभी के लिए खुली',
+  'partyAccess.editor.stateRestricted.one': '1 व्यक्ति तक सीमित',
+  'partyAccess.editor.stateRestricted.other': '{count} लोगों तक सीमित',
+  'partyAccess.editor.unsaved': 'बिना सहेजे बदलाव',
+  'partyAccess.editor.noChanges': 'अभी कोई बदलाव नहीं',
+  'partyAccess.editor.openWarningTitle': 'हर कोई यह पार्टी देख सकेगा',
+  'partyAccess.editor.openWarningBody': 'आपने आख़िरी व्यक्ति को हटा दिया है। सहेजने पर {name} फिर से सभी के लिए खुली हो जाएगी।',
+  'partyAccess.editor.levelFor': '{name} का एक्सेस स्तर',
+  'partyAccess.editor.removeFor': '{name} को हटाएँ',
+  'partyAccess.editor.deactivated': 'निष्क्रिय उपयोगकर्ता',
+  'partyAccess.editor.deactivatedHelp': 'निष्क्रिय उपयोगकर्ताओं का एक्सेस इसलिए बना रहता है कि वे लौट सकते हैं। इसे हटाने के लिए उन्हें हटाएँ।',
+  'partyAccess.editor.addLabel': 'इस पार्टी में व्यक्ति जोड़ें',
+  'partyAccess.editor.addPlaceholder': 'व्यक्ति जोड़ें — नाम या भूमिका टाइप करें',
+  'partyAccess.editor.allAssigned': 'सभी पहले से जुड़े हुए हैं',
+  'partyAccess.editor.noPeople': 'चुनने के लिए कोई व्यक्ति नहीं है',
+  'partyAccess.editor.bulkDone.one': '{level} एक्सेस के साथ 1 व्यक्ति जोड़ा गया',
+  'partyAccess.editor.bulkDone.other': '{level} एक्सेस के साथ {count} लोग जोड़े गए',
+  'partyAccess.editor.added': '{name} को {level} एक्सेस के साथ जोड़ा गया',
+  'partyAccess.editor.removed': '{name} को हटाया गया',
+  'partyAccess.editor.levelSet': '{name}: {level} एक्सेस',
+  'partyAccess.editor.bulkButton': 'कई लोगों को जोड़ें',
+  'partyAccess.editor.bulkTitle': 'कई लोगों को जोड़ें',
+  'partyAccess.editor.bulkSearch': 'नाम या भूमिका से खोजें',
+  'partyAccess.editor.bulkLevel': 'उन्हें दें',
+  'partyAccess.editor.bulkAdd.one': 'एक व्यक्ति जोड़ें',
+  'partyAccess.editor.bulkAdd.other': '{count} लोगों को जोड़ें',
+  'partyAccess.editor.copyButton': 'दूसरी पार्टी से एक्सेस कॉपी करें',
+  'partyAccess.editor.copyTitle': 'दूसरी पार्टी से एक्सेस कॉपी करें',
+  'partyAccess.editor.copyHelp': 'उस पार्टी को देख सकने वाले लोग जुड़ जाते हैं। जो यहाँ पहले से हैं उनका स्तर वैसा ही रहता है।',
+  'partyAccess.editor.copySearch': 'पार्टी को नाम, कोड या शहर से खोजें',
+  'partyAccess.editor.copyOpenHint': 'सभी के लिए खुली',
+  'partyAccess.editor.copyPeopleHint': '{count} लोग',
+  'partyAccess.editor.copied.one': '{party} से 1 व्यक्ति कॉपी हुआ',
+  'partyAccess.editor.copied.other': '{party} से {count} लोग कॉपी हुए',
+  'partyAccess.editor.copyNothing': '{party} सभी के लिए खुली है, इसलिए कॉपी करने को कुछ नहीं है।',
+  'partyAccess.editor.copyAlreadyHere': '{party} को देख सकने वाले सभी लोग यहाँ पहले से हैं।',
+  'partyAccess.editor.copyLeftOut.one': '1 निष्क्रिय खाता छोड़ा गया।',
+  'partyAccess.editor.copyLeftOut.other': '{count} निष्क्रिय खाते छोड़े गए।',
+  'partyAccess.editor.copyError': 'पार्टियाँ लोड नहीं हो सकीं',
+  'partyAccess.editor.done': 'हो गया',
+  'partyAccess.editor.discardTitle': 'बदलाव छोड़ दें?',
+  'partyAccess.editor.discardBody': '{name} को कौन देख सकता है, इसमें किए बदलाव सहेजे नहीं गए हैं।',
+  'partyAccess.editor.keepEditing': 'संपादन जारी रखें',
+  'partyAccess.editor.discard': 'बदलाव छोड़ें',
+  'partyAccess.editor.reloaded': 'ताज़ा एक्सेस लोड किया गया।',
+  'partyAccess.editor.readOnlyOpen': 'हर कोई इस पार्टी को देख सकता है और इस पर काम कर सकता है।',
+  'partyAccess.editor.readOnlyRestricted': 'केवल नीचे दिए लोग ही इस पार्टी को देख सकते हैं।',
 };
