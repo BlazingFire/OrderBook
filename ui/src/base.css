@@ -1605,6 +1605,18 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
 .ob-filterbar > * {
   flex: none;
 }
+/* A bare control in the strip keeps its own width. `.ob-input` / `.ob-select` are `width: 100%`, which
+ * means "fill the line" — harmless while the strip did not wrap, but now a control that is alone in
+ * its flex item takes a whole row and pushes its neighbours below it (the Activity log's two date
+ * fields did exactly that at 1024x768). A date is as wide as "dd/mm/yyyy" and a picker icon. */
+.ob-filterbar > .ob-input,
+.ob-filterbar > .ob-select {
+  width: auto;
+  max-width: 100%;
+}
+.ob-filterbar > input[type='date'].ob-input {
+  width: 10.7143rem; /* 150px: dd/mm/yyyy plus the picker icon */
+}
 
 /* The content area holds one pane per visited screen — all mounted, all but
    one hidden — so it must not scroll itself. Each pane is its own scroller,
