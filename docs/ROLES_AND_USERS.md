@@ -590,4 +590,4 @@ secret costs: `docs/DEVELOPER_MODE.md`.
 | Recycle Bin module (`2-…` §4.12) | **Built** — soft delete and restore, and the Master's Recycle Bin screen lists the deleted records of eight entity types (`RECYCLE_BIN_ENTITIES`), roles and users among them | The Bin has no permission of its own: restoring a record needs that entity's own delete permission, so it cannot become a back door |
 | API keys (`api_keys` referencing `role_id`) | **Built** — `api_keys` with `api_key_scopes`, owned by a user (`owner_user_id`), not a role | Specified in `docs/schema/07-integrations.md`, not here |
 | Developer Panel vendor support session | **Not built** | There is no Developer Panel in OrderBook |
-| i18n via `labelToken` from the first commit | Tokens are in the catalogue and served, and `t()` renders them in English or Hindi | Much of the Hindi is still a copy of the English (`docs/NEXT_PHASE.md`, "Hindi") |
+| i18n via `labelToken` from the first commit | Tokens are in the catalogue and served, and `t()` renders them in English | None |

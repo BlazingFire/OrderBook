@@ -78,7 +78,7 @@ In order:
 
 1. **The real-PC pass.** Nothing in 1.4 has run on a real PC. `HANDOFF.md` "Owed by the
    owner" has the checklist: the installer and the scheduled task (items 1-10 from D1),
-   the Printroom station claim, a real printer, the Win7 VMs, the Hindi native review and
+   the Printroom station claim, a real printer, the Win7 VMs and
    the owner's own pass over the Master panel.
 2. **Release 1.3.0, Master first.** Bump the version everywhere (it is still 1.2.5), then
    `npm run release` and `npm run release -- --os win7` (the releases repository is
@@ -382,9 +382,9 @@ concept across two tables as the reason a previous key was deleted.
 
 ---
 
-## Two long-standing decisions waiting on the owner
+## A long-standing decision waiting on the owner
 
-Neither is a code question, and both have been re-litigated more than once.
+It is not a code question, and it has been re-litigated more than once.
 
 **Retention.** A soft-deleted row stays in the database forever. So does the
 sealed password of a deleted user, and the image files of a deleted product.
@@ -393,18 +393,6 @@ options — leave it and document it, a retention sweep, or a manual "delete
 forever" behind an admin permission — are written up in the brief, along with
 the four questions any of them has to answer (foreign keys, the sync tombstone,
 files on disk, and an offline panel reconnecting after a purge it never saw).
-
-**Hindi.** `hi.ts` is 1,245 strings behind (2026-09-25) — `grep -c 'TODO(i18n-hi)'` is the
-live number. A Hindi panel is mostly in English today and almost no test can see
-it, because the parity check only asserts a key exists; the exceptions are an
-`activity.*` template, whose English stub `shared/tests/i18n-coverage.test.ts`
-now fails until it is translated, and the kit chrome keys
-`ui/tests/kit-i18n.test.tsx` checks. Either that backlog gets
-worked through, or the Hindi option should be honest about being partial. It is
-currently neither — and as of 2026-09-17 it is also *reachable*, which raises
-the stakes: before the picker existed no user could see the backlog, and now
-anybody who tries the language can. Ship the translations, or say on the picker
-that Hindi is partial. Leaving it silent is now a choice with a reader.
 
 Still open from before: extra party fields (credit terms, multiple contacts —
 GST is already there); concurrent edits of one lead from two panels
@@ -426,21 +414,13 @@ Ranked by what this session actually ran into, not by taste.
    last few rounds lived there or in a skipped suite, and the harness makes the
    next screen test cheap.
 
-2. **A guard against untranslated Hindi.** The parity test proves a key exists;
-   it cannot tell a translation from a copy of the English, except for
-   `activity.*` templates and the kit's own chrome, which
-   `i18n-coverage.test.ts` and `kit-i18n.test.tsx` now check. A test
-   asserting that `TODO(i18n-hi)` does not *grow* would at least stop the rest
-   of the backlog getting worse, which is cheap and would have prevented it
-   reaching four figures.
-
-3. **Finish what `web-reachability.test.ts` started.** Its `ALLOWED_UNCALLED`
+2. **Finish what `web-reachability.test.ts` started.** Its `ALLOWED_UNCALLED`
    list is still long, each one a screen somebody has not built or code
    somebody should delete. That list is an honest inventory of the gap between
    the API surface and the product, and it is worth reading as a roadmap rather
    than as a mute button.
 
-4. **A second look at `realtime/hub.ts`.** It is the one file where both panels'
+3. **A second look at `realtime/hub.ts`.** It is the one file where both panels'
    traffic meets, it carries policy it should not (the acting-token enforcement
    that moved out of it on 2026-09-17 was there for months), and it is long
    enough that the next thing hiding in it will hide well.

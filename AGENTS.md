@@ -70,6 +70,9 @@ There is no AI assistant.
   writes over Socket.IO; they never write their own database.
 - **Runtime is offline-only**: nothing loads from a CDN or calls the internet.
   Bundled fonts/assets only. `.env` config is optional (see `.env.example`).
+- **English only**: the UI is English-only, with no other-language requirement. There is no
+  second language, language picker or per-user language setting; every string still lives in
+  `shared/src/i18n/en.ts` and is looked up through `t()`.
 - **Desktop only**: design floor 1024×768, laptop-to-4K at 79–157 % scale. No phone layout.
 - **Monorepo layout**: `shared/` (types + Socket.IO + discovery protocol + i18n),
   `ui/` (shared React kit), `master/` + `master/web/`, `office/` + `office/web/`,

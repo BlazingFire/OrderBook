@@ -40,7 +40,7 @@ master/     Master Panel — server (src/) + React frontend (web/)
 office/     Office Panel — server (src/) + React frontend (web/)
 electron/   the desktop shell wrapping each panel (and the clean-install tool)
 cleaner/    packaging for OrderBook Clean Install
-tools/      release, web build, icon, i18n-sync and the uninstall scripts
+tools/      release, web build, icon and the uninstall scripts
 ```
 
 ## Running it

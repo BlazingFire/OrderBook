@@ -165,9 +165,7 @@ the key to satisfy a renderer that is about to be replaced would be the wrong tr
 
 Every new key in §2 therefore carries a `labelToken`, and the i18n module's coverage test
 (`shared/tests/i18n-coverage.test.ts`, `docs/BACKEND_MODULES.md` §4.5) is what makes it load-bearing:
-every key in `PERMISSIONS` must have a `permission.<key>` token, and `hi.ts` is a **total**
-`Record<MessageKey, string>`, so an untranslated new key turns the build red rather than shipping
-English into a Hindi UI.
+every key in `PERMISSIONS` must have a `permission.<key>` token.
 
 ---
 
@@ -323,27 +321,6 @@ would lock a user out of the entire Office Panel over a key that governs a manag
 `GET /api/access/permission-catalogue` also stays ungated (`access.routes.ts:40-42`) — it is static
 product configuration, not company data, and `credential-invariants.test.ts:84-88` accounts for it
 explicitly in its guard-count assertion.
-
-**The locale picker is ungated, and that is a ruling, not an oversight.** Choosing the interface
-language mints **no permission key at all** — not `settings.manage`, not a new `locale.set`, nothing.
-The reasoning is the same shape as the `/me/password` exception the guard-count comment already
-records: `settings.manage` sits at tier `admin` (`permissions.ts:162`), so gating the picker behind it
-would mean an **office-tier user could never read their own screen in Hindi**, which inverts the
-entire purpose of the i18n module. A permission that stops somebody reading the language they read is
-not access control.
-
-It is also, mechanically, not a server decision. Locale is per-machine and never synced: the
-catalogues are compiled into each panel's bundle, the picker writes `localStorage`, and switching
-languages makes **no server call at all** — it works with the Master switched off. There is no request
-to guard. The only server involvement is `defaultLocale` on `/api/auth/me` and the Office's
-`/api/session`, which seeds a fresh browser profile; the Office's `/api/session` is registered
-**before** the `requireUser` gate at `office/src/http/app.ts:133` precisely so the sign-in screen
-renders in the right language before anybody has signed in.
-
-This is the one surface in the batch that is deliberately ungated for the user's own benefit rather
-than for a mechanical reason, and `07-UI-SPEC.md` §10.2 states the same rule from the UI side. The
-picker component itself is a UI-phase file and is not written in this batch; the permission decision
-is settled now so the UI phase does not re-open it.
 
 ---
 
@@ -746,7 +723,7 @@ is a NEW file, not an extension.** `shared/tests/` currently holds exactly two f
 | Suite | Kind | Asserts |
 |---|---|---|
 | `shared/tests/permissions.test.ts` (**new**) | pure | The eleven new keys are in `PERMISSIONS`; `minimumTierFor` returns the tier this document's §2 table states, for every new key; `allowedForTier('office')` excludes `documents.delete` and `recycleBin.viewAll` and includes `fields.view` |
-| `shared/tests/i18n-coverage.test.ts` | pure | Every key in `PERMISSIONS` has a `permission.<key>` token; every module in `MODULES` has `module.<key>`; `hi.ts` is total. This is what makes `labelToken` load-bearing rather than decorative (§1.7) |
+| `shared/tests/i18n-coverage.test.ts` | pure | Every key in `PERMISSIONS` has a `permission.<key>` token; every module in `MODULES` has `module.<key>`. This is what makes `labelToken` load-bearing rather than decorative (§1.7) |
 | `master/tests/permission-enforcement.test.ts` (**new**) | pure, source-reading | Every key in `PERMISSIONS` appears in at least one `requirePermission(` call in `master/src/services/`, or in a named indirect-enforcement helper (`canSeeRates`, `canEditRates`, `RESTORE_PERMISSION`, `REQUIRED_PERMISSION`). The allow-list is explicit, so adding to it is a visible act. This is the automated form of `HANDOFF.md`'s "a permission that enforces nothing" rule, in the established `credential-invariants.test.ts` style |
 | `master/tests/credential-invariants.test.ts` (extend) | pure, source-reading | Each new router mounts a guard on every handler except a stated exception list — the `guards.length === handlers.length - N` assertion, per router |
 | `master/tests/access.integration.test.ts` (extend) | integration | The tier change: a management-tier role can now be saved holding `fields.manage`; an office-tier role still cannot, and the whole save is rejected naming the key |

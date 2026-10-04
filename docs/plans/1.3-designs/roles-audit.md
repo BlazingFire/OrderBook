@@ -39,7 +39,7 @@ Audit: every gap from map 2 is closed with the existing recordActivity (last sta
 - Existing installs: the upgrade flow is non-blocking. The Master-PC sign-in screen opens 'Set up Server Master accounts' first, with a 'Not now' link, every time until two active Server Masters exist. It asks for (2 - active) accounts. ensureServerMasterRole() re-creates the role if a restore from an older backup lacks it.
 - /api/setup/initialize, /api/setup/restore/preview and /api/setup/restore become loopback-only (requireLoopback middleware -> 403 error.forbidden.masterPcOnly). /api/setup/status stays open and adds onMasterPc and serverMasterSetupNeeded.
 - Report scope rule: office/management -> self only (owner_id = self). Admin -> anyone, including other admins and Server Masters (owner said 'anyone's'). Server Master -> anyone. 'All users' aggregate reports only for tier >= admin.
-- Display names: tier.server_master 'Server Master', tier.admin 'Admin' (the owner's 'Normal Admin'), tier.management 'Management', tier.office 'Office'. Hindi: 'सर्वर मास्टर' / 'एडमिन' / 'मैनेजमेंट' / 'ऑफ़िस'.
+- Display names: tier.server_master 'Server Master', tier.admin 'Admin' (the owner's 'Normal Admin'), tier.management 'Management', tier.office 'Office'.
 - Highlight: a new PillTone 'master' (solid var(--accent) fill, var(--fg-on-accent) text). The Avatar prop highlight draws a 2px var(--accent) ring. DataTable rowHighlight sets data-highlight, styled with var(--accent-tint) plus a 3px var(--accent) left rail. Only semantic tokens are used.
 - The sign-in username prefill 'admin' is removed (empty, autofocused), because fresh installs have no 'admin'.
 - Audit scope (rule 4): every business, settings, user, security, panel-admin, export and backup operation is logged. NOT logged into the hash chain: individual chat messages, presence heartbeats, print status ticks and natural panel connect/disconnect. These would serialise every tenant write on the chain lock.
@@ -49,7 +49,7 @@ Audit: every gap from map 2 is closed with the existing recordActivity (last sta
 - Sign-out is logged (detached). Session expiry is logged by the sweep (detached, one row per expired session; Session gains username, displayName, source). Office offline sign-ins are queued locally (capped at 500, oldest dropped) and uploaded on reconnect through the new auth:offlineEvents command. They are written detached, with the real time in details.at.
 - Developer tools: unlock / unlock_failed / lock are logged (detached). resetAllData writes developer.data_erased into the fresh database after the reset (system actor). seedDummyUsers logs developer.dummy_users_seeded and never touches a Server Master. When seeding runs setup itself it creates the documented dummy Server Masters 'master' / 'master-backup' (passwords in docs/DEVELOPER_MODE.md).
 - The Logs screen moves to ui/src/LogsScreen.tsx with an injected LogsApi. The Master mounts it as today. The Office mounts it gated by logs.view (party scope applies server-side) with no Alt chord (OFFICE_NAV is full), reachable from the sidebar System group, a Basic Home tile and the command palette.
-- Log CSV keeps its 9 columns in order and appends 'sentence' (rendered in the requested ?locale=en|hi, default en) and 'details' (JSON) at the end, so existing consumers keep working.
+- Log CSV keeps its 9 columns in order and appends 'sentence' and 'details' (JSON) at the end, so existing consumers keep working.
 - No new permission keys: Server-Master-only actions are gated by tier plus the master key, not by a grid key that an admin might try to grant.
 
 ## dataModel
@@ -84,7 +84,7 @@ Audit: every gap from map 2 is closed with the existing recordActivity (last sta
 -   POST /api/setup/restore/preview and /api/setup/restore become loopback-only.
 -   POST /api/auth/sign-in now passes {onMasterPc: isLoopback(req)}. A Server Master off the Master PC gets 401 error.unauthorized.serverMasterMasterPcOnly.
 -   POST /api/access/users, PUT /api/access/users/:id, DELETE /api/access/users/:id, POST /api/access/users/:id/reset-password and POST /api/access/me/password read the optional header x-master-key-token and pass it to the service as {masterKeyToken}. The needs() lines are unchanged, so the credential-invariants count is unchanged.
--   GET /api/logs/export?locale=en|hi (Master and Office forward) gains columns sentence, details.
+-   GET /api/logs/export (Master and Office forward) gains columns sentence, details.
 - NEW socket C->S (shared/src/protocol/socket.ts ClientToServerEvents, registered in hub.ts registerAuthCommands): 'auth:offlineEvents': (events: OfflineAuthEvent[], ack: CommandAck<{recorded:number}>). Accepts at most 500 events per call; each is validated (username <= 100 chars, at = ISO, success boolean).
 - Changed socket handling, no shape change: 'auth:signIn' refuses server_master. 'auth:assume' rejects a server_master token with {status:'rejected', reason:'expired'}. 'auth:reconcile' forgets server_master users.
 - No new S->C pushes and no Office SSE event types: user/role changes keep riding publishChange('user'|'role').
@@ -339,11 +339,11 @@ renderActivity:
 - Then, if `activityDetail.${pair}` exists in EN_MESSAGES and every {placeholder} of its EN template is present in params, render that key; else render activity.* as today.
 - About 12 lines. ACTIVITY_TOKENS is unchanged because the activityDetail.* prefix is not under activity.*.
 
-### 12. 12. i18n catalogue (EN + real Hindi + lock)
+### 12. 12. i18n catalogue (en.ts + lock)
 
-Files: `shared/src/i18n/en.ts`, `shared/src/i18n/hi.ts`, `shared/tests/activity-tokens.lock.json`
+Files: `shared/src/i18n/en.ts`, `shared/tests/activity-tokens.lock.json`
 
-New activity.* tokens (EN shown; Hindi must put a postposition after {actor}, e.g. '{actor} ने …'):
+New activity.* tokens (EN shown):
 - lead.remark_added '{actor} added a remark on this pending order'
 - lead.converted '{actor} converted this pending order into a final order'
 - lead|order|party|product .conflict_kept '{actor} kept the current value after a sync conflict on this …' (4 tokens)
@@ -489,7 +489,6 @@ HANDOFF.md / AI_COLLABORATION.md: entries for this change.
 - Upload on connect drops on ack and keeps on failure.
 - signInAgainstMaster refuses to remember a server_master user (extend office/tests/user-session.test.ts).
 - EXTEND shared/tests/i18n-coverage.test.ts:
-- Apply the Hindi postposition rule to activityDetail.* as well.
 - Every activityDetail.<pair> has a matching activity.<pair>.
 - Every entityType and action in ACTIVITY_TOKENS has logs.entity.* and logs.action.* tokens.
 - tier.<t> exists for every ROLE_TIERS member.
@@ -534,7 +533,7 @@ HANDOFF.md / AI_COLLABORATION.md: entries for this change.
 - docs/DEVELOPER_MODE.md: dummy Server Masters master/master-backup with their passwords; seeding never touches an existing Server Master.
 - docs/STRUCTURE.md: §3.6 permissions/tiers, §6.5 users/roles, §11.2 sign-in, §11.8 setup/restore loopback-only, new routes (/api/master-key/*, /api/setup/pairing-password), the auth:offlineEvents command, the audit catalogue additions, activityDetail.* and *Token rendering, the Logs screen in ui/ mounted on both panels, the CSV columns.
 - HANDOFF.md: record the change, the new invariants, and that the batch's grant migrations must include server_master.
-- AI_COLLABORATION.md: working-agreement note that every new audited action needs an activity token, EN plus real Hindi, a lock entry, and must not log chat messages, presence or print ticks.
+- AI_COLLABORATION.md: working-agreement note that every new audited action needs an activity token, a lock entry, and must not log chat messages, presence or print ticks.
 
 ## risks
 
@@ -545,7 +544,7 @@ HANDOFF.md / AI_COLLABORATION.md: entries for this change.
 - Test churn: about 10 integration tests assume setup creates 'admin' and that signIn works without options. They need deliberate updates (listed). Missing one turns CI red rather than causing silent breakage.
 - Mixed versions: an old Office paired to a new Master sees the role tier 'server_master' in role lists and is refused when signing in as a Server Master (correct). It ignores the auth:offlineEvents command it does not know, because the command is Office->Master only. A new Office on an old Master gets a 15 s timeout on auth:offlineEvents; it keeps the queue and retries, so nothing breaks.
 - Hash-chain load: the new detached audit entries (sign-out, session expiry, offline uploads) each take the per-tenant chain lock. Expiry is batched by the 60 s sweep and offline uploads are capped at 500 per call. Chat messages, presence and print ticks are explicitly excluded.
-- renderActivity's activityDetail selection reads EN templates for the placeholder list. If a Hindi template uses a different placeholder set, i18n-coverage parity already fails, so this stays consistent.
+- renderActivity's activityDetail selection reads EN templates for the placeholder list.
 - The setup and restore routes becoming loopback-only blocks a LAN-browser first-run, which may have been how some installers worked. The Electron Master always runs locally, so the owner's flow is unaffected (stated in the docs).
 - Restore from an older backup removes the Server Master role and users. Until two Server Masters are set up again, only restored admins can sign in. ensureServerMasterRole plus the upgrade flow restores this, and the backup domain must not block sign-in in the meantime.
 
@@ -560,7 +559,7 @@ HANDOFF.md / AI_COLLABORATION.md: entries for this change.
 - Backup-all / magic-restore domain: keeps the backup.exported / backup.restored / backup.restore_failed calls and writes backup.auto_ran / backup.auto_failed {folder}. The magic-restore first-run path stays loopback-only and lands on the Server Master setup flow when fewer than two Server Masters exist. It must never include user_password_vault or secrets/vault.key.
 - UI-shell / Basic Home domain: an Office nav entry and Basic Home 'System' tile for Logs (logs.view, no Alt chord). The Master sidebar Admin group keeps Logs. The footer 'user · role' segment uses TierPill / ServerMasterBadge. Basic Home vs Dashboard landing treats server_master like admin (lands on Dashboard).
 - Sync/realtime domain: no change needed. The disconnected > 1 h notification is theirs; natural panel connect/disconnect is deliberately not in the audit chain.
-- Party import/export domain: writes its own party import/export audit tokens following the same rules (EN + Hindi + lock).
+- Party import/export domain: writes its own party import/export audit tokens following the same rules (en.ts + lock).
 
 ## openQuestions
 
@@ -569,4 +568,4 @@ HANDOFF.md / AI_COLLABORATION.md: entries for this change.
 
 ## effort
 
-About 50 files touched: roughly 18 master/src, 9 master/web, 8 shared, 7 ui, 4 office, 5 docs, plus about 14 test files. Around 2,600-3,200 new or changed lines: about 900 service/guard/route code, about 700 UI (three small flows, the TierPill, the Logs move), about 600 i18n lines (EN + real Hindi for about 75 activity tokens, the logs.entity/action labels, errors and UI strings), and about 900 tests. That is 3-4 focused sessions in this order: shared + migration + guards; auth/sessions/master key/setup; the audit sweep + i18n; UI + docs.
+About 50 files touched: roughly 18 master/src, 9 master/web, 8 shared, 7 ui, 4 office, 5 docs, plus about 14 test files. Around 2,600-3,200 new or changed lines: about 900 service/guard/route code, about 700 UI (three small flows, the TierPill, the Logs move), about 600 i18n lines (en.ts for about 75 activity tokens, the logs.entity/action labels, errors and UI strings), and about 900 tests. That is 3-4 focused sessions in this order: shared + migration + guards; auth/sessions/master key/setup; the audit sweep + i18n; UI + docs.

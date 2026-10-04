@@ -351,7 +351,7 @@ export interface ChainVerification {
 ```
 
 `ActivityActor` is structured and never a rendered label. The wording is the client's — that is the
-i18n contact point, and it is why an entry written today renders in Hindi tomorrow with no schema
+i18n contact point, and it is why an entry's wording can change with no schema
 change and no chain rewrite.
 
 **`hash` is on the entry because the Logs screen has an Entry-hash column, and that column is the
@@ -451,7 +451,7 @@ CSV of the current filtered range.
 | | |
 |---|---|
 | **Permission** | `logs.export` |
-| **Query** | Same filters as §2.2, **no cursor**, plus `locale` (`en` or `hi`, default `en`) for the `sentence` column |
+| **Query** | Same filters as §2.2, **no cursor** |
 | **Response** | `200 text/csv`, `Content-Disposition: attachment; filename="logs-<from>-<to>.csv"` |
 | **Service** | `logService.exportLogs`, reading through `activityLogRepo.streamForExport` |
 | **Columns** | `id,sequence,createdAt,actorType,actorName,entityType,entityId,action,hash,sentence,details`. The last two (1.3) are the rendered activity sentence and the entry's details as JSON, appended so a sheet built on the first nine still lines up |
@@ -635,10 +635,9 @@ sense of, so the response states which ordering it used.
 |---|---|
 | **Permission** | `reports.view` **and** `reports.export` (a file is a report written down; `reports.view` is checked first) — and Reports must not be switched off for the caller's tier (§3.9). New kinds' CSV carries a UTF-8 BOM; the three legacy kinds' CSV bytes are unchanged. The audit row records `subjectId` (null: everyone) |
 | **Path param** | `:report` — any of the fifteen `ReportKind`s (§3.8), validated against `REPORT_KINDS` |
-| **Query** | The `ReportQuery` of §3.8 (`period`, `fromMonth`, `toMonth`, `fromDate`, `toDate`, `subjectId`, `limit`) plus `format` = `csv` (default) \| `xlsx` \| `pdf`, `lang` = `en` (default) \| `hi`, `columns`, `totals`, `paperSize`, `orientation` |
+| **Query** | The `ReportQuery` of §3.8 (`period`, `fromMonth`, `toMonth`, `fromDate`, `toDate`, `subjectId`, `limit`) plus `format` = `csv` (default) \| `xlsx` \| `pdf`, `columns`, `totals`, `paperSize`, `orientation` |
 | **Response** | `200` — `text/csv; charset=utf-8` for a CSV, the workbook's or the PDF's own type otherwise; `Content-Disposition: attachment`. Over the Office's socket the ack is a union: `{ format: 'csv', csv }` or `{ format: 'pdf' \| 'xlsx', fileName, contentType, bytes }` (it was CSV-only until 1.3; an Office older than that reads only the CSV arm) |
 | **Caps** | 100,000 rows for CSV and Excel, 10,000 for PDF (`REPORT_EXPORT_CAPS`); more is a `ValidationError` `validation.reports.tooManyRows`, never a silent cut |
-| **Language** | `lang` writes Excel and PDF headings and cells in that language; a CSV is always the column **keys**, so a spreadsheet pointed at the URL never changes |
 | **Streaming** | The workbook is written row by row and the PDF page by page, each yielding to the event loop, so the Master keeps answering its panels while a capped export is built |
 | **Audit** | `recordActivity(entry, actor, trx)`, `report` / `exported`, with `{ report, from, to, rowCount, format }` |
 
@@ -1258,9 +1257,6 @@ permission rule settles it: rate redaction is decided from the `ActorContext`, t
 *and* `activity_log` in one transaction. A client-side renderer can do none of that and could not be
 trusted with the first.
 
-Devanagari support is a **hard requirement** — party names, addresses and terms in Hindi are otherwise
-unrenderable — which eliminates the PDF libraries that ship WinAnsi encoding only.
-
 The rate-redaction key is **`field.saleRate.view`**. `products.rate.view` does not exist in the
 catalogue.
 
@@ -1634,18 +1630,15 @@ honestly-labelled stale one, which is the better of the two failures.
 ## 8. i18n — three changed endpoints
 
 The i18n layer adds **no new endpoint**. It is the only one of the six modules that needs nothing
-from the Master at runtime: both catalogues are compiled into each panel's bundle before it ever
-contacts one. Three existing endpoints change shape.
+from the Master at runtime: the catalogue is compiled into each panel's bundle before it ever
+contacts one. One existing endpoint changes shape.
 
 | Method | Path | Change | Permission |
 |---|---|---|---|
 | GET | `/api/access/permission-catalogue` | Payload gains a `labelToken` on each entry of the new `actions` array, alongside the module and capability tokens it already carries | **Unchanged**: `requireAuth` only. One of the two deliberately ungated handlers on `accessRoutes`, and `credential-invariants.test.ts:73-89` counts on it staying that way |
-| GET | `/api/auth/me` | Additionally returns `defaultLocale`, so a fresh browser profile on a Hindi-deployed machine starts in Hindi | `requireAuth` |
-| GET | `/api/session` (Office) | Additionally returns `defaultLocale`. Answered from local state, never forwarded, so it works with the Master switched off | **None** — registered *before* the `app.use('/api', requireUser)` gate at `office/src/http/app.ts:133`, as it must be for the sign-in screen to render in the right language |
 
 The server never renders a user-facing sentence. It returns a stable `messageKey` plus named params
-and the client renders. This is forced rather than chosen: locale is per-machine and never synced, so
-one Master serving several panels has no recipient locale to render for.
+and the client renders.
 
 `AppError` gains `messageKey` and `params`, and the HTTP envelope and the socket ack carry both. On
 the envelope this is purely additive on top of the `code` / `details` contract that already exists.
@@ -2173,14 +2166,7 @@ carries a completion sentinel the client checks, or the download is left to fail
 open**, and promoted to `README.md` §8 and `11-BUILD-SEQUENCE.md` §2 so it is not decided by whoever
 happens to write the streamer.
 
-**O-5 — What does the renderer do when the Devanagari face has no glyph?** §6 makes Devanagari a hard
-requirement, and the vendored SIL OFL face covers ordinary Hindi. It does not cover every conjunct a
-party name might carry, and PDFKit's silent behaviour for a missing glyph is a blank box in a document
-that may be sent to a customer. The choices are a declared fallback chain, a pre-render glyph-coverage
-check that refuses with a 400 naming the character, or accepting the box. **Open**; promoted to
-`README.md` §8.
-
-**O-6 — Should the Logs screen also surface `timeline_entries`?** `activity_log` is the hash-chained
+**O-5 — Should the Logs screen also surface `timeline_entries`?** `activity_log` is the hash-chained
 audit trail; `timeline_entries` (`20260302:214-225`) is the per-record narrative a user writes and
 reads on a lead or an order. They answer different questions and only one of them is tamper-evident,
 which argues for keeping them apart — but "show me everything that happened to this order" is a

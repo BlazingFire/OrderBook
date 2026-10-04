@@ -52,7 +52,7 @@ CREATE TRIGGER activity_log_no_delete BEFORE DELETE ON activity_log
 
 **What catalogue v2 records** (2026-09-29, `docs/catalogue/CATALOGUE_MODEL.md` §9). No new
 column: these are new `(entity_type, action)` pairs, each with an `activity.<entity>.<action>`
-template in both catalogues and in `shared/tests/activity-tokens.lock.json`.
+template in the catalogue and in `shared/tests/activity-tokens.lock.json`.
 
 | `entity_type` | Actions | `details` |
 |---|---|---|

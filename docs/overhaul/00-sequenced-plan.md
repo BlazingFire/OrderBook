@@ -125,10 +125,9 @@ The structural blocker. 26 of 41 `ui/` entries are byte-identical; four are **fo
 **3a. Fold the two dictionaries into `shared/src/i18n/en.ts` (1029 + 501 keys → 1401 union).**
 1. Namespace the **13** conflicting keys as `master.*`/`office.*`. Two differ in *placeholder set* (`sync.offlinePending`, `sync.offline`) — a naive merge corrupts a status line.
 2. Drop the four keys already in shared with identical values (`fieldSet.lead.sourcePlatform`, `fieldSet.stock.colour`, `fieldSet.product.productType`, `fieldSet.line.packaging`) — a duplicate literal key trips `no-dupe-keys`.
-3. Fix `tools/i18n-sync.mjs`'s `KEY_LINE` (misses 119 entries) **and its value parser** (multi-line, both quote styles). **Keep emitting the English text under the `TODO(i18n-hi)` marker** — emitting `'<key>': '<key>'` strips placeholders and turns ~141 assertions in `shared/tests/i18n-coverage.test.ts` red. Also fix the double-quoted-stub re-append that produces TS1117 on a second run.
-4. Parameterise the four strings carrying 3+ digit runs (`avatar.hint` `{px}`, `documents.editor.termsHint` `{max}`, `fields.values.field.hexHint`/`hexInvalid` `{example}`). Do **not** widen the digit rule — it guards the server's error catalogue too.
-5. Add `tDynamic(key: string)` and repoint the **15** template-literal call sites (enumerated in the B design).
-6. Five call sites already reference keys missing from their own dictionary and render the raw key today (`PanelDetailScreen` `common.save`/`common.cancel` ×2, `ColourQuantityGrid` `lead.add.products.freeToSell`/`short`) — all five resolve at the fold. That is the fork bug, live.
+3. Parameterise the four strings carrying 3+ digit runs (`avatar.hint` `{px}`, `documents.editor.termsHint` `{max}`, `fields.values.field.hexHint`/`hexInvalid` `{example}`). Do **not** widen the digit rule — it guards the server's error catalogue too.
+4. Add `tDynamic(key: string)` and repoint the **15** template-literal call sites (enumerated in the B design).
+5. Five call sites already reference keys missing from their own dictionary and render the raw key today (`PanelDetailScreen` `common.save`/`common.cancel` ×2, `ColourQuantityGrid` `lead.add.products.freeToSell`/`short`) — all five resolve at the fold. That is the fork bug, live.
 
 **3b. Create `ui/` as a source-only workspace.** `exports` → `./src/index.ts`; `optimizeDeps: { exclude: ['@orderbook/ui'] }` in both vite configs (Vite does not pre-bundle symlinked workspace packages, which is what lets `assetsInlineLimit: 0` own font emission). Add `"ui"` to root `workspaces` **before** `"master"`, to `eslint.config.js`'s JSX block, and — easily missed — to `setVersion()`'s hard-coded file list at `tools/release.mjs:83-91`, which stamps one version across every package because the panels compare versions with each other.
 
@@ -145,7 +144,7 @@ Gate Stage 5 on `!!require('react').Activity` after the upgrade.
 
 **Test infrastructure, first time in this repo:** `jsdom` + `@testing-library/react` as devDeps, `environmentMatchGlobs: [['ui/tests/**','jsdom']]` (**Vitest 2.1.9 has no `test.projects` — that is Vitest 3**), include extended to `ui/tests/**/*.test.tsx`, and a dedicated `ui/tests/tsconfig.json` with `jsx: react-jsx` rather than widening `tsconfig.test.json` and handing DOM globals to the server suites.
 
-**Cost to state:** `translate.ts` imports both catalogues unconditionally, so after the fold each panel bundle and each Express server carries 1401 EN + 1401 HI strings, including the other panel's vocabulary.
+**Cost to state:** `translate.ts` imports the catalogue unconditionally, so after the fold each panel bundle and each Express server carries 1401 strings, including the other panel's vocabulary.
 
 **Done when:** `npm run verify` green *including* the two new web `typecheck` scripts; `no-duplicate-ui.test.ts` asserts neither `web/src/ui` exists and no `./ui/` relative import survives; the parity test passes; both panels build and run visually unchanged.
 
@@ -323,7 +322,7 @@ Two kinds only: `product`, `party`. `'lead'|'order'` are served by existing list
 
 **Report exports.** `REPORT_COLUMNS` in `shared/src/domain/reports.ts`. **Redaction rule: the money column stays, its cells go empty** — `master/src/lib/csv.ts`'s header states it ("a redacted money column is an empty cell, never `0`") and `master/tests/reports.integration.test.ts:196-199` pins the header row for a rate-blind actor. Absent-key is the JSON wire rule, not the tabular one. csv `''`, xlsx blank, pdf em dash. `?format=&columns=&groupBy=&totals=&paperSize=&orientation=` defaulting to today's output byte-for-byte. **Office must be widened or the export is corrupt**: `forwardCsv` casts the ack to `{csv:string}` and always sets `text/csv` with `${report}.csv`; widen the ack to a discriminated union and route non-csv through `forwardFile`. PDF via a new `pdf/table-renderer.ts` reusing the existing primitives — **not** through `renderPdf`, whose closed eight-member `DocumentColumnKey` is what keeps a rate column out of a rate-blind PDF. **`exceljs` ships last**, behind csv and pdf and behind the office binary fix; Excel opens CSV, so it buys number formats and a frozen header row. SheetJS is rejected (npm `xlsx` frozen at 0.18.5 with two CVEs).
 
-**Every new string is a multi-file change:** two `MessageKey`s in `en.ts` **and** `hi.ts`, ~12 picker/grid UI keys, and every report column label. After Stage 3 this is one catalogue instead of three, which is the whole reason Stage 3 comes first.
+**Every new string is a multi-file change:** two `MessageKey`s in `en.ts`, ~12 picker/grid UI keys, and every report column label. After Stage 3 this is one catalogue instead of three, which is the whole reason Stage 3 comes first.
 
 **Size:** very large — ~10 new files, ~35 modified.
 
@@ -440,7 +439,7 @@ All provider calls originate in the Master process. One OpenAI-compatible stream
 | `master/src/index.ts` | **S2** — the module-scope `shutdown(reason)` collapse and the `disposables` seam | S4, S11, S12 each register **one** disposable. None re-shapes the function. |
 | `auth.service.ts#purgeExpiredSessions` | **S4** adds the re-auth loop; **S7** adds the `failures` loop | Neither deletes the other's |
 | `shared/src/protocol/socket.ts` | Strictly sequential: **S7** (`seq`, `sync:delta`) → **S9** (`pick:query`, `report:export` union) → **S12** (`ai:*`) | Each appends. `socket-contract.test.ts` parses only `ServerToClientEvents`. |
-| `shared/src/i18n/en.ts` + `hi.ts` | **S3** owns the 1401-key fold | S1, S4, S8, S9, S11, S12 append. **S10's "no new keys in shared" is void after S3** — there are no panel dictionaries left. |
+| `shared/src/i18n/en.ts` | **S3** owns the 1401-key fold | S1, S4, S8, S9, S11, S12 append. **S10's "no new keys in shared" is void after S3** — there are no panel dictionaries left. |
 | `SettingsScreen.tsx` | **S4** establishes the server-backed card pattern | S6 (Scale), S10 (Keyboard), S12 (AI) each append one card |
 | `electron/main.ts` (→ `electron/shell.ts`) | **S2** exclusively, including S10's menu items and S6's `minWidth: 1024` | S10 adds only the renderer-side `onMenuCommand` listener |
 | `roles.permissions` JSONB grants | S8, S11, S12 each rewrite it | All three use `[...new Set([...stored, key])].sort()` and **inline their literals** |
@@ -517,7 +516,6 @@ Three workstreams independently claimed `20260314000000`. Allocated by stage ord
 |---|---|---|
 | B-1 | `party-access-screen-parity.test.ts` pins two screens byte-identical | S3: one identical repoint + identical header rewrite keeping the literal `byte-identical`; test kept, docstring updated |
 | B-2 | Three real React 19 breakages (`Tooltip.tsx:13`, `useOverlay.ts:23`, `Combobox.tsx:32`) | S3: one edit each, after the move, so once not twice |
-| B-3 | `i18n-sync` stub change strips placeholders → ~141 assertions red | S3: fix `readKeys`' value parser; keep emitting the English text under the TODO marker |
 | B-4 | `useSubNav`'s teardown deletes the sidebar entry `<Activity>` was meant to preserve | S5: `SubNavProvider` keeps a ref `Map`; no clear on teardown; cleared by close action or `resetNonce` |
 | B-5 | Office `App.tsx:665-750` is not a switch; `updates`/`settings` sit above the `!view` gate | S5: two-tier `ScreenSpec[]`; `waitingFirstSync` in ScreenHost's place until first snapshot |
 | B-6 | `useOverlay`'s "last dialog" picks a hidden pane's Drawer | S5: filter by `d.checkVisibility()`; same guard on focus-restore |
@@ -538,7 +536,7 @@ Three workstreams independently claimed `20260314000000`. Allocated by stage ord
 | D-1 | Parity test forces byte-identical edits to both `PartyAccessScreen.tsx` | **Dissolved by S3**: `Picker` lives in `@orderbook/ui`, `Combobox` is deleted from one place, and the screen's only edit is S3's identical repoint |
 | D-2 | Office offline pick uses raw `getView()` → leaks restricted parties and `rate` | `forCurrentUser(await localStore.getView())` + `sessionPermissions()` gating |
 | D-3 | `maskParty` does not exist | Drop the claim; parties carry no money field; only `partyScopeSql` |
-| D-4 | Every new string is a multi-file change across three dictionaries | **Reduced to one catalogue by S3**; enumerate the two `MessageKey`s (`en.ts` **and** `hi.ts`) and the ~12 UI keys |
+| D-4 | Every new string is a multi-file change across three dictionaries | **Reduced to one catalogue by S3**; enumerate the two `MessageKey`s (`en.ts`) and the ~12 UI keys |
 | D-5 | Dropping money columns breaks `reports.integration.test.ts:196-199` and `csv.ts`'s stated rule | Keep the header, empty the cell — csv `''`, xlsx blank, pdf em dash |
 | D-6 | Deleting the office drawers breaks four screens and has no possible replacement | Keep both drawers, convert in place to `FieldGrid` inside `Modal`, widen the field sets (8→22, 5→14) |
 
@@ -628,7 +626,7 @@ Three workstreams independently claimed `20260314000000`. Allocated by stage ord
 | `migration-registry.test.ts` | A migration file with no array entry; a deleted SHIPPED name; a broken array order |
 | `credential-invariants.test.ts` | Stage 4 leaking `password_hash` into a list query or onto `User` |
 | `party-access-screen-parity.test.ts` | Stage 3/9 editing one panel's copy and not the other |
-| `i18n-coverage.test.ts` | Stage 3's fold losing a placeholder; any stage adding an EN key without HI, or a 3+ digit run, or `₹` |
+| `i18n-coverage.test.ts` | Stage 3's fold losing a placeholder; any stage adding a 3+ digit run, or `₹` |
 | `i18n-tokens.test.ts` | Stages 4/11/12 recording an `(entityType, action)` pair with no catalogue token, on an append-only table |
 | `socket-contract.test.ts` | Stages 7/9/12 breaking `ServerToClientEvents` |
 | `snapshot-masking.test.ts` + `SNAPSHOT_POLICY`'s `Record<keyof SyncSnapshot, …>` | Any stage adding a collection without a masking decision — **no stage does; that is deliberate** |

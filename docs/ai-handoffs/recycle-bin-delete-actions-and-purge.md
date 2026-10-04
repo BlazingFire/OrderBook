@@ -46,8 +46,7 @@ Handle the documented 409: catch `ApiError.isConflict` and render
 `caught.blockedBy` (reasons `live_reference` | `stock_on_hand` | `dispatched`)
 in the same shape `RecycleBinScreen.tsx:483` already uses.
 
-New mirrored i18n keys per entity on the existing pattern, in **both**
-`en.ts` and `hi.ts`: e.g. `leads.deleteConfirmTitle`, `leads.deleteConfirmBody`
+New i18n keys per entity on the existing pattern, in `en.ts`: e.g. `leads.deleteConfirmTitle`, `leads.deleteConfirmBody`
 ("It goes to the Recycle Bin and can be restored."), `leads.deleteFailed`,
 `leads.deleted`.
 

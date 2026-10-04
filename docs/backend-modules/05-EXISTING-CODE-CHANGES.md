@@ -35,9 +35,9 @@ scheduling is wrong and the file belongs to the UI phase.
 | The `visibleTabs` table at `office/web/src/App.tsx:163` and the `Tab` union at `:27` | Same reason. A tab entry is a screen entry |
 | `master/web/src/components/PermissionGrid.tsx` | Token rendering is the UI phase's half of i18n |
 | `master/web/src/screens/AccessScreen.tsx` (incl. `function RecycleBin`, ~line 963) | Replacing the inline roles/users Bin with a link into the unified Bin is a screen edit |
-| `{master,office}/web/src/main.tsx`, `format.ts`, `styles.css` | `LocaleProvider`, the `en-IN` pinning and the Devanagari font stack are all renderer work |
+| `{master,office}/web/src/main.tsx`, `format.ts`, `styles.css` | `LocaleProvider` and the `en-IN` pinning are renderer work |
 | **`{master,office}/web/src/i18n/*`** — every file, including `storage.ts`, `LocaleContext.tsx` and `useErrorMessage.ts` | The client half of i18n is a renderer concern. Deferred to the UI phase |
-| **`{master,office}/web/src/components/LocalePicker.tsx`, `Untranslated.tsx`** | Two new components with no screen to sit on. UI phase |
+| **`{master,office}/web/src/components/Untranslated.tsx`** | A new component with no screen to sit on. UI phase |
 
 **The one exception**, and the only two web files this batch touches: the typed API client wrappers in
 `master/web/src/api.ts` and `office/web/src/api.ts` (§7). They are functions with no UI attached, and
@@ -45,7 +45,7 @@ they are how the new endpoints get exercised before any screen exists.
 
 **`shared/src/i18n/` is fully in scope, and the deferral does not leave i18n unverified.** The token
 catalogue, `MessageKey`, `t()`, the locale list and the interpolator all live in `shared/src/i18n/`,
-and every one of them is exercised end-to-end from `shared/tests/` — coverage, totality of `hi.ts`,
+and every one of them is exercised end-to-end from `shared/tests/` — coverage,
 interpolation, and `AppError.message === t('en', messageKey, params)` — **without a single web file
 existing**. What is deferred is the *rendering* of tokens, not the tokens. See `10-TESTING.md` for
 the register of the `shared/tests/` suites that prove it, and `09-I18N.md` for the layer itself.
@@ -80,7 +80,7 @@ difficulty of making it.
 
 | File | Change | Risk |
 |---|---|---|
-| `master/src/config/index.ts` | `locale: { timeZone, defaultLocale }`, `documents: {…}` | **High** — a bad zone silently shifts every report bucket |
+| `master/src/config/index.ts` | `locale: { timeZone }`, `documents: {…}` | **High** — a bad zone silently shifts every report bucket |
 | `master/src/index.ts` | Timezone validation, document directories, font assertion | Med — a wrong order means migrations run before config is proven |
 | `master/src/db/migrations/index.ts` | Five new entries appended | **High** — a file written but not imported is a silent no-op |
 | `master/src/http/app.ts` | Five new routers, mounted **above** line 41 | **High** — see §3.4 |
@@ -121,7 +121,6 @@ difficulty of making it.
 |---|---|---|
 | `office/src/http/app.ts` | **~46** `forward()` routes; `forCurrentUser` extended | **High** — placement relative to line 133 |
 | `office/src/realtime/master-connection.ts` | `details` on the error; **`applyChange` must honour `action`** | **High** — see §6.2, a live defect this batch exposes |
-| `office/src/config/index.ts` | `locale.defaultLocale` | Low |
 
 ### Tooling
 
@@ -340,8 +339,7 @@ Five edits where the failure mode is quiet. Read all five before starting.
 >
 > **The number that measures the work is 68, not 129.** The remaining 61 derive their token from the
 > class plus its one argument, so they cost nothing to translate. Each of the 68 needs an English
-> string and a Hindi string, because `hi.ts` is typed `Record<MessageKey, string>` and is **total,
-> not partial**. Anywhere this batch is sized, size it at 68.
+> string. Anywhere this batch is sized, size it at 68.
 >
 > **Option A — required.** `messageKey` is a required constructor parameter; `message` is *derived*
 > from the English catalogue so existing assertions stay byte-identical.
@@ -732,9 +730,6 @@ Write that condition into a comment beside the field.
 locale: {
   /** Business timezone. Every calendar boundary in Reports is computed against this. */
   timeZone: process.env.ORDERBOOK_TIMEZONE ?? 'Asia/Kolkata',
-  defaultLocale: isLocale(process.env.ORDERBOOK_DEFAULT_LOCALE)
-    ? process.env.ORDERBOOK_DEFAULT_LOCALE
-    : 'en',
 },
 
 documents: {
@@ -752,12 +747,10 @@ documents: {
 **Why one key and not two.** The Logs/Reports design proposed `config.reporting.timeZone`; the
 PDF/Dashboard design proposed `config.locale.timeZone`. Same environment variable, two config paths,
 neither noticing the other. `locale` wins because the key also serves i18n date formatting later.
-`defaultLocale` goes under `locale` too — one of the module designs put it at `config.ui.defaultLocale`,
-which would put the locale and the timezone in different places for no reason.
 
 **Why the fonts live under `packageRoot`.** `dataDir` is runtime state the operator can delete;
 `assets/fonts/` is code that ships with the build. A font under `dataDir` is a font that vanishes when
-somebody clears the data directory, and Devanagari support is a hard requirement.
+somebody clears the data directory.
 
 **Blast radius.** `config` is imported by 12 files across `master/src` and is typed `as const`, so
 `Config = typeof config` widens automatically. Additive; nothing existing changes shape.
@@ -1646,20 +1639,6 @@ re-masks `field.saleRate.view` across leads, orders, products and variants, and 
 > final; only silence falls back"* is pinned by a test, and `HANDOFF.md` calls it *"the single
 > easiest thing to get backwards here."*
 
-### 6.3 `office/src/config/index.ts`
-
-**Change.** Add a `locale: { defaultLocale }` block, matching the Master's key path and precedence
-convention. **No timezone** — the Office has no database and computes no date buckets.
-
-**Why the same key path.** One of the module designs put it at `config.ui.defaultLocale` on both
-sides. Two panels with the same setting under two names is how they drift.
-
-**Risk.** Low. Note the file's existing precedence rule (`:16-17`): the package-level `.env` is read
-first and wins over the repo-root one, and a real environment variable beats both. A locale set at the
-repo root configures both panels; a panel can still override.
-
----
-
 ## 7. The two web API clients
 
 The only two files under `web/` this batch touches. Typed functions, no UI.
@@ -1766,18 +1745,13 @@ and two rules. The `varsIgnorePattern: '^_'` at `:14-16` is load-bearing —
 `const { rate: _rate, ...rest } = record` is how a key is dropped from an object, which is the
 redaction pattern the whole product depends on. **Do not narrow it.**
 
-### 8.2 `package.json` (root)
-
-**Change.** One script: `"i18n:sync": "node tools/i18n-sync.mjs"` — appends missing Hindi keys with
-the English text and a `TODO` marker.
-
 **Do not touch** `prepare`, `predev:*`, `prestart:*` or `pretest`. `HANDOFF.md` lists them under
 Traps: *"`shared/` is consumed as compiled output, not source. Anything importing `@orderbook/shared`
 fails on a clean checkout until `tsc` has run, which is why `prepare` and the `pre*` scripts exist.
 Do not remove them."* The same applies to the `web/dist` builds.
 
-`npm run verify` is currently **333 tests across 21 files**. This batch adds 23 suites (15 pure, 8
-integration) plus one committed fixture, taking it to **44 files, ≈584 cases** — `10-TESTING.md` §8
+`npm run verify` is currently **333 tests across 21 files**. This batch adds 22 suites (14 pure, 8
+integration) plus one committed fixture, taking it to **43 files, ≈577 cases** — `10-TESTING.md` §8
 is the sole register; do not restate the count here again. Update the number in `HANDOFF.md` when it
 lands, and **check the suites actually ran** — `HANDOFF.md`: *"A skipped test suite looks exactly
 like a passing one."*
@@ -1786,9 +1760,8 @@ like a passing one."*
 
 **Change.** `dependencies` gain `pdfkit` and `fontkit`; `devDependencies` gain `@types/pdfkit`.
 
-**Why these two and not a smaller library.** Devanagari is a **hard requirement** — party names,
-addresses and terms in Hindi are unrenderable without it, and that eliminates the several popular PDF
-libraries that ship WinAnsi encoding only. All four vendored faces are SIL OFL 1.1, which explicitly
+**Why these two and not a smaller library.** PDFKit is the server-side renderer, and fontkit
+subsets the vendored faces. All three vendored faces are SIL OFL 1.1, which explicitly
 permits PDF embedding; `master/assets/fonts/LICENSES.md` ships alongside so the vendored binaries are
 auditable with no network access.
 
@@ -1801,8 +1774,6 @@ auditable with no network access.
   pure JavaScript with no native build step, so `npm 12`'s blocked install scripts are not a factor
   here — unlike the `@embedded-postgres/*` optional dependencies already in this file, which fetch
   binaries in a postinstall and fail silently. Do not follow that pattern.
-- `master/tests/document-fonts.test.ts` runs fontkit's `layout()` against the vendored face directly.
-  It is a **pure** suite so the Devanagari gate cannot silently skip. That is the point of it.
 
 ---
 
@@ -1900,7 +1871,7 @@ do not.
 | `master/src/http/routes/access.routes.ts` beyond one argument | §3.3 |
 | `GET /api/pipelines`, `/option-lists`, `/custom-fields` | §3.5 |
 | `office/src/services/user-session.service.ts`, `sign-in-attempts.store.ts` | Offline sign-in semantics. *"A rejection is final; only silence falls back"* |
-| Every screen file, both `App.tsx` files, `PermissionGrid.tsx`, `AccessScreen.tsx`, `main.tsx`, `format.ts`, `styles.css`, all of `{master,office}/web/src/i18n/`, `LocalePicker.tsx`, `Untranslated.tsx` | §0. The only web files this batch touches are the two `api.ts` clients |
+| Every screen file, both `App.tsx` files, `PermissionGrid.tsx`, `AccessScreen.tsx`, `main.tsx`, `format.ts`, `styles.css`, all of `{master,office}/web/src/i18n/`, `Untranslated.tsx` | §0. The only web files this batch touches are the two `api.ts` clients |
 
 ---
 
@@ -1942,9 +1913,9 @@ them from here:
 | Deleting a lead that has been converted to an order | **Decided.** Refused, 409 — a converted lead is an order's history. `04-API-CONTRACT.md` holds the per-entity DELETE policy table |
 | The top-parties report's date anchor | **Decided.** `orders.dispatched_at` — dispatched value in the period, not business won. See `03-DATABASE.md` |
 
-**Three more are open but belong to other documents**, listed only so this one is not read as the
+**Two more are open but belong to other documents**, listed only so this one is not read as the
 place they were dropped: mid-stream CSV failure semantics (an export that dies at row 180,000 has
-already streamed 180,000 rows under a `200`); `QUIET_AFTER_DAYS = 30`, a placeholder needing the
-owner's real number; and the Devanagari font fallback when a vendored face lacks a glyph. All three,
+already streamed 180,000 rows under a `200`); and `QUIET_AFTER_DAYS = 30`, a placeholder needing the
+owner's real number. Both,
 and the six above, are carried in `README.md` §8 and `11-BUILD-SEQUENCE.md` §2 alongside the document
 that holds the detail.

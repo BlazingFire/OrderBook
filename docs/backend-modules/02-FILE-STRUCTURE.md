@@ -24,7 +24,7 @@ oversights.
 `shared/src/i18n/` **is** in scope, and its deferral-free half is the whole of it: the catalogues,
 the key machinery, `t()`/`tCount()`, the activity tokens and the pseudo-locale are all pure modules
 under `shared/src/`, fully exercised by `shared/tests/` with no web file present. The web renderer
-half (`{master,office}/web/src/i18n/*`, `LocalePicker.tsx`, `Untranslated.tsx`) is deferred; the
+half (`{master,office}/web/src/i18n/*`, `Untranslated.tsx`) is deferred; the
 translation layer is **not** left unverified by that deferral.
 
 This document is the sole authority for the FILE manifest and the scope boundary. It is **not** the
@@ -161,9 +161,9 @@ Within those three directories the naming split is binding:
 
 This matters more here than it reads. *"A skipped test suite looks exactly like a passing one"*
 (`HANDOFF.md`, "Traps worth knowing") — the Windows Postgres lookup was broken for months and every
-integration gate silently did nothing. Thirteen of this batch's twenty new suites are therefore pure,
+integration gate silently did nothing. Twelve of this batch's nineteen new suites are therefore pure,
 and they cover the highest-risk logic deliberately: the cursor codec, the date arithmetic, the
-Devanagari shaping, the redaction masking, the permission-enforcement sweep, and the migration
+redaction masking, the permission-enforcement sweep, and the migration
 registry itself. The suite names, kinds and case counts are `10-TESTING.md` §8's register — this
 document counts files, it does not maintain a second list.
 
@@ -186,8 +186,7 @@ shared/
 │   │   └── reports.ts             Report wire types — every money field OPTIONAL
 │   └── i18n/                                                                              ** new **
 │       ├── en.ts                  THE source of truth. EN_MESSAGES = {...} as const
-│       ├── hi.ts                  Devanagari. Record<MessageKey, string> — TOTAL, not Partial
-│       ├── keys.ts                MessageKey, Placeholders<S>, ParamsFor<K>
+│       │       ├── keys.ts                MessageKey, Placeholders<S>, ParamsFor<K>
 │       ├── locales.ts             LOCALES / Locale / isLocale / LOCALE_LABELS
 │       ├── translate.ts           t(), tCount(), createTranslator(locale). NO number formatting
 │       ├── activity.ts            activityMessageKey(entityType, action); ACTIVITY_TOKENS
@@ -213,14 +212,13 @@ master/
 │       ├── Inter-Regular.ttf              SIL OFL 1.1, ~310KB
 │       ├── Inter-SemiBold.ttf             SIL OFL 1.1, ~310KB
 │       ├── IBMPlexMono-Regular.ttf        SIL OFL 1.1, ~130KB
-│       ├── NotoSansDevanagari-Regular.ttf SIL OFL 1.1, ~230KB — the hard requirement
-│       └── LICENSES.md                    three OFL texts + upstream versions, auditable offline
+│       ├── │       └── LICENSES.md                    three OFL texts + upstream versions, auditable offline
 ├── src/
 │   ├── domain/
 │   │   ├── cursor.ts              THE one opaque base64url codec. All module cursors build on it
 │   │   ├── document-model.ts      masked record + template -> pure DocumentModel (the seam)
 │   │   ├── document-template.ts   assertTemplateValid, assertDefaultSwap
-│   │   ├── document-text.ts       splitByScript(), formatDateForDocument(), formatMinorUnits()
+│   │   ├── document-text.ts       formatDateForDocument(), formatMinorUnits()
 │   │   ├── field-values.ts        normaliseOptionValue (no case-fold), assertCompleteReorder
 │   │   ├── i18n-tokens.ts         assertActivityTokenExists — the audited-action invariant
 │   │   ├── lead-outcome.ts        classifyLeadOutcome — the "went quiet" rule
@@ -231,8 +229,8 @@ master/
 │   │   ├── csv.ts                 dependency-free CSV writer, shared by Logs and Reports
 │   │   └── document-files.ts      disk I/O for PDFs: temp -> fsync -> rename; sweepOrphanTemporaries
 │   ├── pdf/                                                                               ** new **
-│   │   ├── fonts.ts               registers the four vendored faces with PDFKit once per process
-│   │   ├── primitives.ts          table(), colourChip(), watermark(), runText()
+│   │   ├── fonts.ts               registers the three vendored faces with PDFKit once per process
+│   │   ├── primitives.ts          table(), colourChip(), watermark()
 │   │   └── renderer.ts            DocumentModel -> Buffer. No business rule, no permission check
 │   ├── repositories/
 │   │   ├── dashboard.repository.ts        leadCountsByStage, dispatchedBetween, countRecentMutations
@@ -269,8 +267,7 @@ master/
     ├── recycle-bin-domain.test.ts          PURE
     ├── field-values-domain.test.ts         PURE
     ├── report-range.test.ts                PURE — first coverage toIsoDate has ever had
-    ├── document-fonts.test.ts              PURE — THE Devanagari gate
-    ├── document-model.test.ts              PURE — rate columns ABSENT, not zero, not null
+    ├──     ├── document-model.test.ts              PURE — rate columns ABSENT, not zero, not null
     ├── permission-enforcement.test.ts      PURE — source-reading; every key enforces something
     ├── recycle-bin.integration.test.ts
     ├── fields.integration.test.ts
@@ -332,8 +329,6 @@ appear in the touched manifest (§6) rather than here.
 
 ```
 tools/                                                                                    ** new **
-├── i18n-sync.mjs      appends every MessageKey missing from HI_MESSAGES with the English
-│                      text and a // TODO(i18n-hi) marker. Wired as `npm run i18n:sync`
 └── eslint-rules/                                                                         ** new **
     ├── no-untranslated-jsx-text.js   flags a JSX text node not wrapped in t() or <Untranslated>
     └── index.js                      flat-config plugin entry point
@@ -361,9 +356,9 @@ written list.
 
 | Deferred file | Why it waits |
 |---|---|
-| `master/web/src/i18n/{LocaleProvider.tsx,storage.ts,useErrorMessage.ts}` | The renderer half of i18n. There is no screen to host a locale picker yet. |
+| `master/web/src/i18n/{LocaleProvider.tsx,storage.ts,useErrorMessage.ts}` | The renderer half of i18n. There is no screen to host it yet. |
 | `office/web/src/i18n/{LocaleProvider.tsx,storage.ts,useErrorMessage.ts}` | Same. |
-| `{master,office}/web/src/components/{LocalePicker.tsx,Untranslated.tsx}` | Same. |
+| `{master,office}/web/src/components/Untranslated.tsx` | Same. |
 | `master/web/src/screens/DocumentsScreen.tsx` | UI phase (`docs/UI_REDESIGN.md` §8). |
 | `office/web/src/screens/{DashboardScreen,DocumentsScreen}.tsx` | UI phase. |
 | Master + Office screens for Logs, Reports, Recycle Bin, Fields (8 files) | UI phase. |
@@ -438,20 +433,18 @@ test it (§2.6).
 | Path | Layer | Purpose | Key exports | Depends on |
 |---|---|---|---|---|
 | `shared/src/i18n/en.ts` | shared (pure) | The source of truth. One flat object, dotted keys, NAMED `{placeholders}`, never concatenation. `as const` so every value keeps its literal type. Namespaces: `permission.*`, `module.*`, `action.*`, `capabilityGroup.*`, `roleTemplate.*`, `error.*`, `validation.*`, `activity.*`, `common.*`. | `EN_MESSAGES` | none |
-| `shared/src/i18n/hi.ts` | shared (pure) | Devanagari, typed `Record<MessageKey, string>` — **total, not partial**, so adding an English key turns the build red until Hindi exists. | `HI_MESSAGES` | `keys.ts` |
 | `shared/src/i18n/keys.ts` | shared (pure) | The type machinery that makes a missing or misspelt key a compile error. `Placeholders<S>` is a recursive template-literal type; `ParamsFor<K>` resolves to `[]` for a no-placeholder message. | `MessageKey`, `MessageParams`, `Placeholders`, `ParamsFor` | `en.ts` |
 | `shared/src/i18n/locales.ts` | shared (pure) | `LOCALES`/`Locale`/`isLocale` in the house `as const` + guard style; `LOCALE_LABELS` names each language in its **own** script and is deliberately not translatable. | `LOCALES`, `Locale`, `isLocale`, `LOCALE_LABELS` | none |
-| `shared/src/i18n/translate.ts` | shared (pure) | `t()` substitutes named placeholders with `String(value)` and applies **no** number formatting — the rule that numbers, IDs and fingerprints are never localised is enforced by `t()` simply not having the capability. `tCount()` uses `Intl.PluralRules` to pick a `.one`/`.other` sub-key so a count never concatenates. A missing key returns a readable fallback and never throws or renders blank. | `t`, `tCount`, `createTranslator`, `Translator` | `keys.ts`, `en.ts`, `hi.ts` |
+| `shared/src/i18n/translate.ts` | shared (pure) | `t()` substitutes named placeholders with `String(value)` and applies **no** number formatting — the rule that numbers, IDs and fingerprints are never localised is enforced by `t()` simply not having the capability. `tCount()` uses `Intl.PluralRules` to pick a `.one`/`.other` sub-key so a count never concatenates. A missing key returns a readable fallback and never throws or renders blank. | `t`, `tCount`, `createTranslator`, `Translator` | `keys.ts`, `en.ts` |
 | `shared/src/i18n/activity.ts` | shared (pure) | The contract the Logs module renders against. Returns `activity.<entityType>.<action>` when the catalogue holds it, otherwise `null` so the caller renders the raw pair honestly. `ACTIVITY_TOKENS` is frozen and **append-only**, mirroring the table: `activity_log` refuses UPDATE and DELETE by trigger, so a retired token would orphan permanent rows. | `activityMessageKey`, `ACTIVITY_TOKENS` | `keys.ts` |
 | `shared/src/i18n/errors.ts` | shared (pure) | One wire shape for the HTTP envelope **and** the socket ack, so the two cannot drift again. | `ErrorPayload`, `errorMessageKey` | `keys.ts` |
 | `shared/src/i18n/pseudo.ts` | shared (pure) | Dev-only `en-XA`: pads every string to 1.4x and brackets it, making the design spec's "survive 1.4x expansion" testable rather than aspirational. Excluded from production bundles by a build-time guard. | `PSEUDO_MESSAGES`, `pseudoLocalise` | `en.ts` |
 | `shared/src/i18n/index.ts` | shared (barrel) | Re-exports the eight modules above with explicit `.js` specifiers. | — | all of the above |
 | `master/src/domain/i18n-tokens.ts` | domain (pure) | Holds the invariant that every `(entityType, action)` pair any service writes to `activity_log` has a catalogue token. In `domain/` per decision 12, not inline in a service. | `assertActivityTokenExists` | `@orderbook/shared` i18n |
-| `tools/i18n-sync.mjs` | tool | Keeps `hi.ts` a total `Record` without making mid-development builds unworkable: appends missing keys with the English text and a `// TODO(i18n-hi)` marker. | — | reads `en.ts`/`hi.ts` |
 | `tools/eslint-rules/no-untranslated-jsx-text.js` | tool | Flags a JSX text node not wrapped in `t()` or `<Untranslated>`. Registered at severity **`'off'`** in this batch and promoted to `'error'` in the UI phase — `lint` is the first step of `verify` and ~4,000 JSX lines are unswept (`05-EXISTING-CODE-CHANGES.md` §8.1). | the rule object | none |
 | `tools/eslint-rules/index.js` | tool | Flat-config plugin entry point, so `eslint.config.js` registers one plugin rather than a path. | plugin | the rule file |
 | `shared/tests/i18n.test.ts` | test (PURE) | The **renderer** suite — `t()`/`tCount()` themselves, not the catalogue: named-placeholder substitution, `Intl.PluralRules` plural selection, the readable missing-key fallback, and that a record id or a hash passed as a param survives untouched (never reformatted, never localised). | — | `translate.ts` |
-| `shared/tests/i18n-coverage.test.ts` | test (PURE) | The **catalogue-contract** suite, and the gate that makes the existing `labelToken` contract load-bearing rather than decorative: every `PERMISSIONS` key has a `permission.<key>` token; every module, action, capability group and role template has its token; HI covers every EN key **with an identical placeholder set per key** (the translator-dropped-a-`{name}` case the compiler cannot catch); no EN string carries a pre-formatted number or a `₹`. Two files, not one — the renderer and the catalogue fail for different reasons and a broken renderer should not hide a missing key. | — | catalogue + i18n |
+| `shared/tests/i18n-coverage.test.ts` | test (PURE) | The **catalogue-contract** suite, and the gate that makes the existing `labelToken` contract load-bearing rather than decorative: every `PERMISSIONS` key has a `permission.<key>` token; every module, action, capability group and role template has its token; no EN string carries a pre-formatted number or a `₹`. Two files, not one — the renderer and the catalogue fail for different reasons and a broken renderer should not hide a missing key. | — | catalogue + i18n |
 | `shared/tests/activity-tokens.lock.json` | fixture | Committed snapshot of the `activity.*` surface, read by `readFileSync` and never imported — so it cannot be caught by the "tsc does not copy JSON" trap. Removing a token fails the test; adding one requires updating the lockfile deliberately. | — | — |
 | `master/tests/i18n-tokens.test.ts` | test (PURE) | Source-reading invariant in the established `credential-invariants.test.ts` style: scans `master/src/services/*.ts` for `recordActivity` call sites, extracts every literal `entityType`/`action` pair, and asserts each has a catalogue token. This is what stops the sibling modules shipping audited actions that render blank. | — | reads source |
 
@@ -577,22 +570,21 @@ The largest module, and the one previously deferred on purpose (`docs/LEAD_GENER
 | `shared/src/domain/documents.ts` | shared (pure) | Wire types for the whole module plus `TEMPLATE_DEFAULTS` — the value the designer prefills with and the in-memory fallback used when a tenant has no template. Deliberately a constant, not a seeded row, for the same reason `ROLE_TEMPLATES` are templates rather than seeded roles. Member lists are `04-API-CONTRACT.md`'s and must match the CHECKs in `03-DATABASE.md`: `DocumentType` has **three** members (no `'invoice'`), `PaperSize` is `'A4' | 'A5' | 'Letter'`. `DocumentLayout` carries **only** block order and per-block options — the eight visibility toggles are typed BOOLEAN columns on `document_templates`, not JSONB. | `DocumentType`, `PaperSize`, `PageOrientation`, `DocumentBlockKind`, `DocumentBlock`, `DocumentLayout`, `DocumentTemplate`, `DocumentAsset`, `DocumentExport`, `DocumentRenderResult`, `TEMPLATE_DEFAULTS` | none |
 | `master/src/domain/document-template.ts` | domain (pure) | Template invariants: name non-empty; paper size and orientation known; margins 5–50mm with top+bottom leaving >100mm of body; `accentColour` matches `#RRGGBB` (the `pipeline_stages.colour` convention); watermark text required when the watermark is on. It also owns the `layout` **block grammar**: every `kind` at most once, `lines` mandatory, `header` first if present, `signature` last if present, `terms.text` at most 500 characters — a violation is a 400 carrying `{ field: 'layout', block: n, reason }`. `assertDefaultSwap` enforces that promoting a template names the one being demoted, so the partial unique index cannot be hit mid-statement. | `assertTemplateValid`, `assertDefaultSwap` | `lib/errors.ts` |
 | `master/src/domain/document-model.ts` | domain (pure) | **The architectural seam.** An already-masked Lead or Order plus a template plus the `MasterIdentity` becomes a pure `DocumentModel`. This is where rate redaction becomes a *layout* fact: when `ratesIncluded` is false the rate and line-total **columns are omitted from `model.columns`** and the totals block is omitted entirely, rather than rendered as 0. No PDF library in scope. | `buildDocumentModel`, `DocumentModel` | `document-text.ts` |
-| `master/src/domain/document-text.ts` | domain (pure) | `splitByScript(text)` tags runs `'body' \| 'devanagari' \| 'mono'` by codepoint range so a mixed line can switch face mid-line — PDFKit binds one font per `text()` call, so the split must happen before the ink. `formatDateForDocument` takes an ISO date STRING and formats from its components with no `Date` arithmetic, which structurally cannot reproduce the IST defect. | `splitByScript`, `ScriptRun`, `formatDateForDocument`, `formatMinorUnits` | none |
+| `master/src/domain/document-text.ts` | domain (pure) | `formatDateForDocument` takes an ISO date STRING and formats from its components with no `Date` arithmetic, which structurally cannot reproduce the IST defect. | `formatDateForDocument`, `formatMinorUnits` | none |
 | `master/src/repositories/document-template.repository.ts` | repository | The only SQL for `document_templates`. Keyset-paginated on `(lower(name), id)`; `findTemplateById` takes `{ includeDeleted }` in the `findRoleById` position; `defaultTemplateFor` is the render path's lookup. Every write takes a required `TransactionContext`; every read leads with `tenant_id`. | `listTemplates`, `findTemplateById`, `defaultTemplateFor`, `clearDefaultFor`, `insertTemplate`, `updateTemplate`, `softDeleteTemplate`, `restoreTemplate` | `transaction.ts`, `domain/cursor.ts` |
 | `master/src/repositories/document-export.repository.ts` | repository | The only SQL for `document_exports`. Keyset on `id DESC` (BIGSERIAL — an append-mostly feed wants `WHERE id < :cursor`; an offset pager over a DESC feed shifts under every new row). `insertExport` takes a required `TransactionContext` so the row commits with its audit entry. It also **writes `superseded_by`**: `markSuperseded` finds the most recent non-superseded export for `(subjectKind, subjectId, documentType)` and stamps it in the same transaction as the new row — a column nothing writes is the same defect as a permission nothing enforces. Reads accept a permitted-subject-kinds list so the service can filter rather than refuse. | `listExports`, `findExportById`, `insertExport`, `markSuperseded` | `transaction.ts`, `domain/cursor.ts` |
 | `master/src/repositories/document-asset.repository.ts` | repository | Logo and signature images. Stores **metadata only** (mime, byte size, sha256, storage path); the bytes live on disk under `config.documents.assetsDir`, never in the database and never under `uploadsDir` — `/uploads` is unauthenticated static (`master/src/http/app.ts:44`). | `insertAsset`, `findAssetById`, `listAssets`, `deleteAsset` | `transaction.ts` |
 | `master/src/services/document.service.ts` | service | Template CRUD. Permission, then domain assertions, then one transaction threading `trx` into the repository write plus `recordActivity` — atomic, following the `role.service.ts` precedent. `updateTemplate`/`deleteTemplate` take a **mandatory** `expectedVersion` through `assertVersionMatches` (`master/src/domain/access.ts:183-192`). Promoting a default clears the previous one in the same transaction. | `listTemplates`, `getTemplate`, `createTemplate`, `updateTemplate`, `deleteTemplate` | template repository, `document-template.ts` |
 | `master/src/services/document-render.service.ts` | service | The render use case, separate from CRUD because it orchestrates different collaborators and is the **only importer of `pdf/`**. `documents.render` → the subject's own view key (`leads.view` / `orders.view`) → read the subject through the existing service so it arrives already masked → resolve template → `ratesIncluded = template.showRates && canSeeRates(actor)` → `buildDocumentModel` → `renderPdf` → write `.tmp` and fsync → one transaction `{ markSuperseded, insertExport, recordActivity }` → commit → rename → `publishChange`. `previewDocument` runs the identical path with `persist:false`, so a preview can never diverge from the real document. | `renderDocument`, `previewDocument`, `listExports`, `fetchExportFile` | `pdf/renderer.ts`, `lib/document-files.ts`, export repository |
 | `master/src/pdf/renderer.ts` | pdf (infrastructure) | `DocumentModel` → `Buffer`. Owns page setup, the line-item table, colour chips, watermark, page numbers, logo and signature placement. **No business rule and no permission check**: if a column is not in `model.columns` it is not drawn, full stop. | `renderPdf` | PDFKit, `pdf/fonts.ts`, `pdf/primitives.ts` |
-| `master/src/pdf/fonts.ts` | pdf (infrastructure) | Registers the four vendored OFL faces with PDFKit once per process and maps a `ScriptRun` tag to a face. Resolves them from `config.documents.fontsDir`. Fails loudly at startup if a face is absent rather than silently substituting Helvetica, which would render Devanagari as blank boxes. | `registerFonts`, `assertFontsPresent`, `faceFor` | PDFKit, fontkit, config |
-| `master/src/pdf/primitives.ts` | pdf (infrastructure) | `table()`, `colourChip()` (14px swatch with the two-letter ring fallback when a colour has no hex — Fields owns the hex, this reads it), `watermark()`, `pageFooter()`, `keyValueBlock()`, and `runText()` which walks a `ScriptRun[]` switching faces so a mixed-script line stays on one baseline. | as listed | PDFKit, `pdf/fonts.ts` |
+| `master/src/pdf/fonts.ts` | pdf (infrastructure) | Registers the three vendored OFL faces with PDFKit once per process. Resolves them from `config.documents.fontsDir`. Fails loudly at startup if a face is absent rather than silently substituting Helvetica. | `registerFonts`, `assertFontsPresent` | PDFKit, fontkit, config |
+| `master/src/pdf/primitives.ts` | pdf (infrastructure) | `table()`, `colourChip()` (14px swatch with the two-letter ring fallback when a colour has no hex — Fields owns the hex, this reads it), `watermark()`, `pageFooter()`, `keyValueBlock()`. | as listed | PDFKit, `pdf/fonts.ts` |
 | `master/src/lib/document-files.ts` | lib | Disk I/O, outside `repositories/` because that layer's rule is about Knex and this touches no database. Temp → fsync → rename, mirroring the Office outbox's durability convention. `sweepOrphanTemporaries()` runs at startup to delete `.tmp` files left by a crash between the write and the commit. Paths derive from config, never from client input, so a subject id can never traverse out of the export directory. | `writeExportFile`, `readExportFile`, `sweepOrphanTemporaries` | `node:fs`, config |
 | `master/src/http/routes/document.routes.ts` | routes | `/api/documents`. Copies `access.routes.ts` exactly, with **zero** guard exemptions. | `documentRoutes` | both document services |
 | `master/src/db/migrations/20260308000000_document_templates_and_exports.ts` | migration | DDL only: `document_templates`, `document_assets`, `document_exports` with indexes and CHECK constraints — including the eight typed BOOLEAN toggle columns, the `layout` JSONB, and the ninth and last partial Bin index, on `document_templates`. Seeds **nothing** — no default template row, so `master/tests/helpers/fixtures.ts` needs no seeded-id bookkeeping and the first render works off `TEMPLATE_DEFAULTS`. `down()` is real: it drops the three tables, which resurrects nothing. DDL per `03-DATABASE.md`. | `up`, `down` | none |
-| `master/assets/fonts/*.ttf` (4 files) | asset | See §5. | — | — |
+| `master/assets/fonts/*.ttf` (3 files) | asset | See §5. | — | — |
 | `master/assets/fonts/LICENSES.md` | asset | See §5. | — | — |
-| `master/tests/document-fonts.test.ts` | test (PURE) | **The Devanagari gate.** Runs fontkit's `layout()` directly against the vendored face and asserts real shaping happened: a conjunct must produce fewer glyphs than codepoints, and an i-matra must be positioned before its consonant. A library that only maps codepoints in order fails both — which is precisely how a WinAnsi-only or shaping-free renderer gets caught before it ships. | — | fontkit, the vendored font |
-| `master/tests/document-model.test.ts` | test (PURE) | Rate and line-total columns **absent** (not present-and-zero, not present-and-null) when `ratesIncluded` is false; totals block omitted with them; `splitByScript` segments a mixed line correctly; `formatDateForDocument` returns the same day for an input `toISOString()` would shift. | — | `document-model.ts` |
+| `master/tests/document-model.test.ts` | test (PURE) | Rate and line-total columns **absent** (not present-and-zero, not present-and-null) when `ratesIncluded` is false; totals block omitted with them; `formatDateForDocument` returns the same day for an input `toISOString()` would shift. | — | `document-model.ts` |
 | `master/tests/document-template.integration.test.ts` | test | Duplicate name is 409 with details; `expectedVersion` mandatory and a stale one refused with `storedVersion`; promoting a second default demotes the first in one transaction; a soft-deleted template frees its name; row and audit entry commit or roll back together. | — | `helpers/db.ts` |
 | `master/tests/document-render.integration.test.ts` | test | An actor without `field.saleRate.view` gets a PDF whose extracted text contains no rate and no total; a preview writes neither file nor export row; export row and audit entry are atomic; another tenant's export id is a 404, not a 403; a render for a subject the actor may not view is refused before any file is written. | — | `helpers/db.ts` |
 
@@ -684,15 +676,12 @@ for each migration's `down()` policy and this table only records which is which.
 | `master/assets/fonts/Inter-Regular.ttf` | Body | SIL OFL 1.1 | ~310 KB |
 | `master/assets/fonts/Inter-SemiBold.ttf` | Headings / emphasis | SIL OFL 1.1 | ~310 KB |
 | `master/assets/fonts/IBMPlexMono-Regular.ttf` | Codes, ids, quantities | SIL OFL 1.1 | ~130 KB |
-| `master/assets/fonts/NotoSansDevanagari-Regular.ttf` | Devanagari | SIL OFL 1.1 | ~230 KB |
 | `master/assets/fonts/LICENSES.md` | — | — | the three OFL texts, each font's copyright line and upstream version |
 
-All four are SIL OFL 1.1, which explicitly permits embedding in a document. `LICENSES.md` ships
+All three are SIL OFL 1.1, which explicitly permits embedding in a document. `LICENSES.md` ships
 alongside so the vendored binaries are auditable with **no network access** — which is the whole
 point, since this product never touches the internet.
 
-Devanagari support is a hard requirement and it eliminates several popular PDF libraries that ship
-WinAnsi encoding only. Party names, addresses and terms in Hindi are unrenderable without it.
 fontkit subsets each face per document, so the embedded copy is a fraction of the file size above.
 
 ---
@@ -714,13 +703,13 @@ Files marked ● are edited by **three or more** modules and are the coordinatio
 | 3 | ● `shared/src/domain/permissions.ts` | New `logs` and `documents` modules and their actions; `logs.verifyChain`, `recycleBin.view`, `recycleBin.viewAll`, `fields.view` capabilities; `MINIMUM_TIER` gains `recycleBin.viewAll` and `documents.delete` at `management`; **`fields.manage` lowered `admin` → `management`**; `labelToken` narrowed from `string` to `MessageKey`. |
 | 4 | `shared/src/domain/entities.ts` | `DashboardSummary` counters become optional + three new figures + `asOf`, with `openConflictCount`/`pendingSyncCount` gated on `sync.resolveConflicts` and `pipelineBreakdown` elements shaped `{ stageId, stageName, sequence, colourHex, leadCount }` (`04-API-CONTRACT.md` owns the type); `OptionListItem` gains `hex`/`deletedAt`/`createdAt`/`updatedAt`; `CustomFieldDefinition` gains `deletedAt`; `PipelineStage` gains `isArchived`; `Role`/`User` gain `deletedBy`. |
 | 5 | ● `shared/src/protocol/socket.ts` | **Prerequisite:** `details`, `messageKey`, `params` on the `{ ok: false }` arm of `CommandResult<T>` (`socket.ts:142-159`). Then `'restored'` on `ChangeAction` (`socket.ts:180`); `document_template`/`document_export` on `ChangedEntity`; `dashboard` on `SyncSnapshot`; **46** new `ClientToServerEvents` commands — the itemised list is `04-API-CONTRACT.md`'s, which is also where the `fields:` / `logs:` / `bin:` event names are fixed. |
-| 6 | `shared/package.json` | Add `"sideEffects": false` so the web bundlers can tree-shake the two catalogues. |
+| 6 | `shared/package.json` | Add `"sideEffects": false` so the web bundlers can tree-shake the catalogue. |
 
 ### 6.2 `master/src/`
 
 | # | Path | Nature of change |
 |---|---|---|
-| 7 | ● `master/src/config/index.ts` | One `locale` block: `timeZone` from `ORDERBOOK_TIMEZONE` (default `'Asia/Kolkata'`) and `defaultLocale`. Plus the `documents` block (dirs, size caps, `fontsDir` under `packageRoot/assets/fonts`). One timezone key, not two. |
+| 7 | ● `master/src/config/index.ts` | One `locale` block: `timeZone` from `ORDERBOOK_TIMEZONE` (default `'Asia/Kolkata'`). Plus the `documents` block (dirs, size caps, `fontsDir` under `packageRoot/assets/fonts`). One timezone key, not two. |
 | 8 | `master/src/index.ts` | After `runMigrations()`, validate the zone once with `SELECT now() AT TIME ZONE $1` and abort naming `ORDERBOOK_TIMEZONE` on `invalid_time_zone`; `mkdir` the export and asset dirs beside the existing `uploadsDir` mkdir (`index.ts:28`); call `assertFontsPresent()` and `sweepOrphanTemporaries()` before `listen`. |
 | 9 | `master/src/lib/errors.ts` | `AppError` gains `messageKey` and `params`; `message` becomes derived from the EN catalogue at throw time so existing tests asserting English text stay byte-identical. |
 | 10 | `master/src/http/middleware/error-handler.ts` | Emit `messageKey` and `params` alongside the `details` it already spreads (`error-handler.ts:28-32`). |
@@ -728,7 +717,6 @@ Files marked ● are edited by **three or more** modules and are the coordinatio
 | 12 | `master/src/http/app.ts` | Five `app.use` lines between `/api/access` (line 40) and `app.use('/api', dataRoutes)` (line 41). Below the bare `/api` mount they are shadowed. |
 | 13 | `master/src/http/routes/access.routes.ts` | The four deleted-roles/deleted-users/restore bodies delegate to `recycleBinService`. Paths, handler count and `needs(...)` guard per handler all preserved — `credential-invariants.test.ts:73-89` asserts the identity. |
 | 14 | `master/src/http/routes/data.routes.ts` | `DELETE /leads/:id`, `/orders/:id`, `/parties/:id`, `/products/:id`, each with a locally aliased `needs('<module>.delete')` guard — the **first enforcement sites** those four frozen keys have ever had. Re-point the three catalogue reads at the unguarded `fieldsService` exports. |
-| 15 | `master/src/http/routes/auth.routes.ts` | `GET /me` additionally returns `defaultLocale`. |
 | 16 | ● `master/src/realtime/hub.ts` | `respond()` (`hub.ts:391`) sets `code`, `details`, `messageKey`, `params` for any `AppError`, not only `ForbiddenError`. **46** `socket.on` lines inside `registerCommands()` (`hub.ts:204`), one per command in `04-API-CONTRACT.md`'s itemised list, each using the existing `run(ack, actor => …)` shape with `actorFor()` resolved **per command**. `DIRECTORY_ENTITIES` (`hub.ts:114`) gains `document_export`. `broadcastDashboard` re-derives per socket. |
 | 17 | `master/src/domain/actor.ts` | `ActorContext` gains `actorName: string | null`; `systemActor` supplies `null`. |
 | 18 | `master/src/domain/access.ts` | Guards pass a `messageKey` + params instead of composing an English sentence. The 409/`{field,value}` and mandatory-`expectedVersion` behaviour (`access.ts:160-169`, `183-192`) is already correct and is **not** re-done. |
@@ -768,8 +756,7 @@ Files marked ● are edited by **three or more** modules and are the coordinatio
 
 | # | Path | Nature of change |
 |---|---|---|
-| 45 | `office/src/config/index.ts` | Additive `ui.defaultLocale`, matching the Master's precedence convention. |
-| 46 | ● `office/src/http/app.ts` | **Prerequisite:** `forward()` (`app.ts:438-462`) passes `details`, `messageKey` and `params` through beside the permission it already forwards. Then ~46 `forward(res, '<event>', payload)` routes — one per socket command, minus the handful with no Office surface, every one registered **after** `app.use('/api', requireUser)` (`app.ts:133`) and every one forward-only — nothing queued. `GET /api/session` returns `defaultLocale`. `forCurrentUser()` (`app.ts:395-407`) strips dashboard figures the current session lacks. |
+| 46 | ● `office/src/http/app.ts` | **Prerequisite:** `forward()` (`app.ts:438-462`) passes `details`, `messageKey` and `params` through beside the permission it already forwards. Then ~46 `forward(res, '<event>', payload)` routes — one per socket command, minus the handful with no Office surface, every one registered **after** `app.use('/api', requireUser)` (`app.ts:133`) and every one forward-only — nothing queued. `forCurrentUser()` (`app.ts:395-407`) strips dashboard figures the current session lacks. |
 | 47 | `office/src/realtime/master-connection.ts` | `MasterCommandError` carries `details`, `messageKey`, `params`; the ack unwrapper copies them off `CommandResult`. `applyChange` treats `'restored'` as an upsert and requests a fresh snapshot for `option_list`/`custom_field`/`pipeline` rather than patching in place. |
 
 ### 6.5 Web API clients and repo root
@@ -780,14 +767,13 @@ Files marked ● are edited by **three or more** modules and are the coordinatio
 | 49 | `office/web/src/api.ts` | The same additive error fields and the typed wrappers for the Office's forwarded routes; documents that render/preview return a `Blob`, not JSON. |
 | 50 | `master/web/package.json` | `"prebuild": "npm run build --workspace @orderbook/shared"` — the api.ts wrappers consume new shared types, and `shared/` is consumed as compiled output. |
 | 51 | `office/web/package.json` | Same `prebuild` script. |
-| 52 | `package.json` (root) | `"i18n:sync": "node tools/i18n-sync.mjs"`. |
 | 53 | `eslint.config.js` | Register the in-repo flat-config plugin from `tools/eslint-rules/` and add `no-untranslated-jsx-text` **as `'off'`**, scoped to `['{master,office}/web/src/**/*.tsx']`; promoted to `'error'` in the UI phase. Do not narrow the existing `varsIgnorePattern: '^_'` — it is how redaction drops a key. |
 
 ### 6.6 Documentation
 
 | # | Path | Nature of change |
 |---|---|---|
-| 54 | `HANDOFF.md` | Record: the `20260303` `allPermissions()` decision; server-side PDF rendering and why Devanagari eliminated the alternatives; the snapshot-carried Dashboard; the new trap *"`/uploads` is unauthenticated static — never put permission-gated files there"*. |
+| 54 | `HANDOFF.md` | Record: the `20260303` `allPermissions()` decision; server-side PDF rendering; the snapshot-carried Dashboard; the new trap *"`/uploads` is unauthenticated static — never put permission-gated files there"*. |
 | 55 | `docs/UI_REDESIGN.md` | Reconcile §4.1/§5/§9, which still scope all five modules as `master/web` admin-only, with the owner's both-panels decision and the tier ceilings these modules mint. |
 | 56 | `docs/LEAD_GENERATION_FLOW.md` | Amend §11: the PDF Designer and `Order.exports[]` move from "Not built" to built, noting exports are cross-entity (`document_exports` over leads and orders) rather than an array embedded on the order. |
 
@@ -804,23 +790,23 @@ kinds and case counts are `10-TESTING.md` §8's.
 |---|---:|---:|---:|---:|---:|
 | Stage 0 — socket ack `details` | 0 | 0 | 0 | 1 | **1** |
 | Stage 1 — cross-module foundation | 1 | 0 | 0 | 2 | **3** |
-| Stage 1 — i18n / translation layer | 13 | 0 | 0 | 4 | **17** |
+| Stage 1 — i18n / translation layer | 11 | 0 | 0 | 4 | **15** |
 | Stage 2 — Recycle Bin | 5 | 1 | 0 | 2 | **8** |
 | Stage 3 — Fields | 5 | 1 | 0 | 2 | **8** |
 | Stage 4 — Logs | 5 | 1 | 0 | 1 | **7** |
 | Stage 5 — Reports | 6 | 0 | 0 | 2 | **8** |
-| Stage 6 — PDF Designer | 14 | 1 | 5 | 4 | **24** |
+| Stage 6 — PDF Designer | 14 | 1 | 4 | 3 | **22** |
 | Stage 7 — shared permission grant | 0 | 1 | 0 | 3 | **4** |
 | Stage 8 — Office Dashboard | 1 | 0 | 0 | 3 | **4** |
-| **Total** | **50** | **5** | **5** | **24** | **84** |
+| **Total** | **48** | **5** | **4** | **23** | **80** |
 
-The i18n "source" count includes all three files under `tools/` — `i18n-sync.mjs` and the two
-eslint-rule files, which ship registered at `'off'` (§2.5). Of the 24 test-directory files, 23 are
+The i18n "source" count includes both files under `tools/` — the two
+eslint-rule files, which ship registered at `'off'` (§2.5). Of the 23 test-directory files, 22 are
 suites and one (`shared/tests/activity-tokens.lock.json`) is a committed fixture.
 
-By package: `shared/` 14 source (5 domain + 9 i18n) + 4 test-directory files = **18**; `master/`
-33 source + 5 migrations + 5 assets + 17 tests = **60**; `office/` 0 source + 3 tests = **3**;
-`tools/` **3**. 18 + 60 + 3 + 3 = 84.
+By package: `shared/` 13 source (5 domain + 8 i18n) + 4 test-directory files = **17**; `master/`
+33 source + 5 migrations + 4 assets + 16 tests = **58**; `office/` 0 source + 3 tests = **3**;
+`tools/` **2**. 17 + 58 + 3 + 2 = 80.
 
 ### 7.2 New test suites — see `10-TESTING.md` §8
 
@@ -830,20 +816,20 @@ list; it keeps the count, because the count is a file count.
 
 | | Pure (cannot silently skip) | Integration (`describe.skipIf`) | Total |
 |---|---:|---:|---:|
-| Count | 15 | 8 | **23** |
+| Count | 14 | 8 | **22** |
 
-Fifteen pure of twenty-three is deliberate — the highest-risk logic in the batch is the cursor codec,
-the date arithmetic, the Devanagari shaping, the redaction masking, the i18n renderer and catalogue,
+Fourteen pure of twenty-two is deliberate — the highest-risk logic in the batch is the cursor codec,
+the date arithmetic, the redaction masking, the i18n renderer and catalogue,
 the permission-enforcement sweep and the migration registry, and none of those may be allowed to skip
 silently (§1.7). The two Dashboard gates that genuinely need a real cluster — the timezone boundary
 and the converted-lead exclusion — are the one integration file in Stage 8; the module-filtering
 snapshot guard and the offline-staleness rendering do not, and stay pure.
 
-> `BACKEND_MODULES.md` §9 estimates "roughly 12 files, of which 7 are pure". The real figure is 23,
-> of which 15 are pure — the estimate predates the cursor codec suite, the migration registry guard,
+> `BACKEND_MODULES.md` §9 estimates "roughly 12 files, of which 7 are pure". The real figure is 22,
+> of which 14 are pure — the estimate predates the cursor codec suite, the migration registry guard,
 > the `SyncSnapshot` key-accounting guard, the Office forwarding suite and the three permission
 > suites `08-PERMISSIONS.md` proposes. `npm run verify` is **333 tests across 21 files** today
-> (`HANDOFF.md`); 21 existing + 23 new = this batch takes it to **44 files**, ≈584 cases.
+> (`HANDOFF.md`); 21 existing + 22 new = this batch takes it to **43 files**.
 > `10-TESTING.md` §8 carries the case-count projection and is the sole authority on both figures.
 
 ### 7.3 Existing files touched
@@ -910,5 +896,5 @@ so the deferral costs no verification.
 Known-open and explicitly **not** addressed by any file above: `applied_mutations` atomicity;
 `panel:revoked` never being emitted; the audit trail's 14 best-effort call sites across six existing
 services; module-level filtering of the Office cached snapshot; retention/pruning for `activity_log`
-and `document_exports`; `QUIET_AFTER_DAYS = 30`, which needs a number from the owner rather than a
-default; and the Devanagari font fallback question. All are in the `README.md` §8 register.
+and `document_exports`; and `QUIET_AFTER_DAYS = 30`, which needs a number from the owner rather than a
+default. All are in the `README.md` §8 register.

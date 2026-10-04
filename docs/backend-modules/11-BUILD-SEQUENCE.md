@@ -116,7 +116,7 @@ not later than the row says.
 
 ### 2.1 Promoted from the module documents — decided, and still open
 
-The reconciliation pass found eight questions raised inside a single document and visible nowhere
+The reconciliation pass found seven questions raised inside a single document and visible nowhere
 else. They are promoted here (and into `README.md` §8) so that a stage cannot start without seeing
 them. Each names the document that holds the detail; **this table is an index, not the ruling.**
 
@@ -127,7 +127,6 @@ them. Each names the document that holds the detail; **this table is an index, n
 | **The top-parties date anchor** — `orders.created_at` or `orders.dispatched_at`? | **DECIDED.** `orders.dispatched_at`: the report is "dispatched value in the selected period" — goods that left, not business won. Confirm `idx_orders_party` serves it, or specify the index that does. | `03-DATABASE.md` (index), `04-API-CONTRACT.md` (shape) | Stage 5 |
 | **Mid-stream CSV failure semantics** — a row that fails to serialise after 40,000 rows are already on the wire. Truncate with a trailing error row, abort the response, or buffer whole and risk the memory? | **OPEN.** Whatever is chosen must be one answer covering `logs.export`, `reports.export` and `document.render`, and it is bound up with open question 3 above. | `04-API-CONTRACT.md` | Stages 4, 5, 6 |
 | **`QUIET_AFTER_DAYS = 30`** — what counts as a lead going quiet in this business? | **OPEN, and it is the owner's number, not a designer's.** Cheap to change before the report ships and awkward afterwards. | `02-FILE-STRUCTURE.md` (`master/src/domain/lead-outcome.ts`), `06-WORKFLOWS.md` | Stage 5 |
-| **Devanagari font fallback** — embed a face as a base64 data URI (~200–400 KB per bundle), or depend on Windows' `Nirmala UI` until the UI phase self-hosts `.woff2`? | **OPEN.** A deployment-environment question the code cannot answer. Distinct from the *server-side* PDF face, which is vendored under `master/assets/fonts/` and is not in question. | `09-I18N.md` §10.1 | Stage 1 (web), Stage 6 (PDF is unaffected) |
 | **Should `party_product_variants` be soft-deletable?** | **OPEN.** They carry a negotiated rate, so deleting one silently changes what a future line quotes. Not a tenth Bin branch by default — but not obviously *not* one either. | `03-DATABASE.md` | Stage 2 (if yes) |
 | **Should Logs also surface `timeline_entries`?** | **OPEN.** `activity_log` is the tamper-evident trail; `timeline_entries` is the human narrative on a lead. Merging the two feeds is a product decision, and doing it accidentally would make the hash-chain claim mean less than it says. | `03-DATABASE.md` | Stage 4 |
 
@@ -139,7 +138,6 @@ choose anything; they need somebody to run a command and write down the answer.
 | Measurement | Why it matters | Blocks |
 |---|---|---|
 | `SHOW TimeZone;` against the owner's `order_book` database | The plan defaults `config.locale.timeZone` to `'Asia/Kolkata'` by inference from the owner's machine being IST. If the server is already pinned to something else, every month bucket in Reports shifts. | Stage 1 |
-| A fontkit `layout()` spike against the vendored Noto Sans Devanagari — does `'हिन्दी'` return fewer glyphs than codepoints, and does `'कि'` place the i-matra before its consonant? | Devanagari is a hard requirement and eliminates several popular PDF libraries. "fontkit has an Indic shaper" and "renders शर्मा टाइल्स correctly at 9pt" are different claims, and only one of them has been checked. If the spike fails, the whole PDF module needs a different renderer before a line of it is written. | Stage 6 |
 | An `EXPLAIN` of the **six**-branch Bin `UNION ALL` on real data after `20260305` lands, and again at **eight** after `20260306` and at **nine** after `20260308` | The plan is Append/MergeAppend over Index Scans. A plan that is fine on an empty test cluster is not evidence, and a plan that is fine at six branches is not evidence about nine. | Stage 2 gate, re-run at Stages 3 and 6 |
 | A count of rows in `stock_movements` on the owner's database | The Fields colour usage scan is the one query in the batch with no index to lead on. The count decides whether the mitigation is sufficient or merely plausible. | Stage 3 |
 
@@ -215,7 +213,7 @@ optional, not by design.
 
 **What is built**
 
-- `shared/src/i18n/` — `en.ts` (the source of truth), `hi.ts` (total `Record<MessageKey, string>`),
+- `shared/src/i18n/` — `en.ts` (the source of truth),
   `keys.ts`, `locales.ts`, `translate.ts`, `activity.ts`, `errors.ts`, `pseudo.ts`, `index.ts`.
 - `master/src/domain/i18n-tokens.ts` — the pure invariant that every `(entityType, action)` pair
   written to `activity_log` has a catalogue entry.
@@ -230,22 +228,21 @@ optional, not by design.
   not exist until `20260307` — which is precisely why it is cheap now: Stages 2 and 3 are written
   once against the final signature rather than swept when Logs lands. `recordDetachedActivity`
   remains forbidden in new modules.
-- `tools/eslint-rules/no-untranslated-jsx-text.js` (in-repo flat-config rule, no new dependency) and
-  `tools/i18n-sync.mjs`. **The rule is registered as `'off'` in this batch** and promoted in the UI
+- `tools/eslint-rules/no-untranslated-jsx-text.js` (in-repo flat-config rule, no new dependency).
+  **The rule is registered as `'off'` in this batch** and promoted in the UI
   phase: `lint` is the first step of `verify`, and there are ~4,000 unswept lines of JSX behind it.
   See `05-EXISTING-CODE-CHANGES.md`.
 - **The shared primitives from §1.3**: `CursorPage<T>` / `CursorQuery`, `master/src/domain/cursor.ts`,
   `config.locale`, and the startup timezone validation.
 
 **What is NOT built here — the web i18n files are DEFERRED to the UI phase.**
-`{master,office}/web/src/i18n/*`, `components/LocalePicker.tsx`, `components/Untranslated.tsx`,
+`{master,office}/web/src/i18n/*`, `components/Untranslated.tsx`,
 `main.tsx`, `styles.css`, `format.ts`, `PermissionGrid.tsx` and `AccessScreen.tsx` are **all out of
 scope for this batch**. The only web files in this batch remain `master/web/src/api.ts` and
 `office/web/src/api.ts`, per `02-FILE-STRUCTURE.md`.
 
 That deferral does **not** leave the translation layer unverifiable. `shared/src/i18n/` **is** in
-scope and is **fully testable through `shared/tests/`** with no web file involved: catalogue
-totality, placeholder-set parity between EN and HI, plural selection, byte-identical passthrough of
+scope and is **fully testable through `shared/tests/`** with no web file involved: plural selection, byte-identical passthrough of
 ids and hashes, and the `permission.*`/`module.*`/`action.*` coverage contract are all pure
 assertions over compiled TypeScript. See `10-TESTING.md` §6.2 — every i18n gate there runs without a
 browser, a DOM or a database.
@@ -254,7 +251,7 @@ Files: `02-FILE-STRUCTURE.md` §"i18n" and §"Shared primitives". **No migration
 adds no table, and `activity_log` needs no change to what it stores, because
 `(entity_type, action, details)` is already token-plus-params. The chain input is
 `prev_hash|sequence|entity_type|entity_id|action|actor_type|actor_id|details`; rendering stays
-outside it, so an entry written today renders in Hindi tomorrow with no schema change and no chain
+outside it, so an entry's wording can change with no schema change and no chain
 rewrite.
 
 **Gates** (`10-TESTING.md`), all **pure** suites with no `describe.skipIf`:
@@ -262,8 +259,6 @@ rewrite.
 - Every key in `PERMISSIONS` has a `permission.<key>` token; every module, capability group and role
   template has its token. This is what makes the existing `labelToken` contract load-bearing rather
   than decorative.
-- `hi.ts` is total, and covers every EN key with an **identical placeholder set per key** — a
-  translator dropping `{name}` is something the compiler cannot catch.
 - `t()` leaves a record id, a device code and a chain hash byte-identical. Numbers and IDs are never
   localised.
 - `AppError.message` equals `t(messageKey, params)` against EN for every subclass — proves the
@@ -620,16 +615,12 @@ before the report ships and awkward afterwards. It is on the promoted list in §
 
 **Size: large.** The largest module in the batch, and the one previously deferred on purpose.
 
-**Do not start this stage until the fontkit spike from §2.2 has passed.** If Devanagari shaping does
-not work against the vendored face, the renderer changes and everything below it changes with it.
-
 **What is built**
 
 - `shared/src/domain/documents.ts`.
 - `master/src/domain/document-template.ts` (`assertTemplateValid`),
   `master/src/domain/document-model.ts` (**the seam**: masked record + template → pure
-  `DocumentModel`), `master/src/domain/document-text.ts` (`splitByScript()` →
-  `'body' | 'devanagari' | 'mono'` runs).
+  `DocumentModel`), `master/src/domain/document-text.ts`.
 - Three repositories: `document-template`, `document-export`, `document-asset`.
 - `master/src/services/document.service.ts` (template CRUD) and
   `master/src/services/document-render.service.ts` — **the only importer of `pdf/`**.
@@ -637,7 +628,7 @@ not work against the vendored face, the renderer changes and everything below it
   `realtime/`, framework import and no business rule.
 - `master/src/lib/document-files.ts` — disk I/O, no Knex, so deliberately outside `repositories/`.
 - `master/assets/fonts/` — Inter-Regular, Inter-SemiBold, IBMPlexMono-Regular,
-  NotoSansDevanagari-Regular, plus `LICENSES.md`. All four are SIL OFL 1.1, which explicitly permits
+  plus `LICENSES.md`. All three are SIL OFL 1.1, which explicitly permits
   PDF embedding; the licence file ships alongside so the vendored binaries are auditable with no
   network access.
 - `master/src/http/routes/document.routes.ts` at `/api/documents`.
@@ -655,12 +646,8 @@ catalogue. Rendering additionally requires the subject's own view key (`leads.vi
 so document access can never exceed record access. `reports.export` is deliberately **not** reused —
 overloading it would make unticking one silently disable the other.
 
-**Gates** (`10-TESTING.md`), the first four pure:
+**Gates** (`10-TESTING.md`), the first two pure:
 
-- fontkit `layout()` of `'हिन्दी'` returns fewer glyphs than codepoints — conjunct formation, i.e.
-  real shaping rather than codepoint-order mapping.
-- fontkit `layout()` of `'कि'` places the i-matra glyph **before** its consonant — reordering, the
-  second half of the Devanagari requirement.
 - The rate column is **absent** from `DocumentModel.columns`, not present-and-zero, when the template
   asks for rates but the actor may not see them.
 - A template with `showRates=false` produces no rate column even for an actor who holds the key.
@@ -916,7 +903,7 @@ A module is done when **all** of these are true. This is a checklist to be walke
 | 2 | every module | The Office path is one socket event, one `registerCommands()` line, one `forward()` route registered **after** the `requireUser` gate — answering 503 `{ error: 'unavailable' }` when the Master is unreachable, and **enqueuing nothing**. A test asserts the 503 and asserts the outbox is empty afterwards. |
 | 3 | modules with a migration | The file exists, is in the registry array, the registry guard test passes, `--status` lists it as applied, and its `down()` either reverses the change or carries a comment saying why it deliberately does not. |
 | 4 | every module | Every write goes through `recordActivity(entry, actor, trx)` inside the transaction. No new call to `recordDetachedActivity` anywhere. |
-| 5 | every module | Every new permission key has a `permission.<key>` token in `en.ts` **and** `hi.ts`, and the Stage 1 coverage gate is still green. |
+| 5 | every module | Every new permission key has a `permission.<key>` token in `en.ts`, and the Stage 1 coverage gate is still green. |
 | 6 | every module | Every new `(entityType, action)` pair written to `activity_log` has a catalogue entry, and `master/tests/i18n-tokens.test.ts` proves it by reading the source. |
 | 7 | modules returning money | A caller without `field.saleRate.view` gets the key **absent**, asserted as `'key' in obj === false`. Not null. Not zero. |
 | 8 | modules returning dates | No value derived from a `DATE` or `timestamptz` reaches JS as a `Date` that could be `toISOString()`-ed. Month buckets are `'YYYY-MM'` TEXT from SQL. |
@@ -1044,7 +1031,6 @@ so the decision rests on the owner's data rather than on a projection.
 
 | Risk | Mitigation |
 |---|---|
-| **PDFKit's Devanagari shaping is unverified.** "fontkit has an Indic shaper" and "renders शर्मा टाइल्स correctly at 9pt" are different claims, and nobody has rendered one. | The §2.2 spike, run **before** Stage 6 starts. If it fails, the fallback ladder is pre-shaping with a bundled HarfBuzz WASM build drawn through pdf-lib — not headless Chromium, which means a large postinstall download, and the silent-postinstall-failure trap has bitten this project once already. |
 | **`buildSnapshot` is all-or-nothing.** It is a `Promise.all` over services that each call `requirePermission`, so one missing key produces **no snapshot at all**, swallowed into a log line. | Stage 3 keeps `GET /api/pipelines`, `/api/option-lists` and `/api/custom-fields` on the repository path deliberately. A reviewer "tidying" that into a `fields.view`-checking service is the single most likely way to break the panel for every user, and it belongs in a file-header comment, not only here. |
 | **The Office cached snapshot is not module-filtered.** `forCurrentUser()` re-masks `field.saleRate.view` and replaces `permissions`; it filters nothing by module. The tab is hidden, the rows are not. | Out of scope by open question 6. This batch must not **widen** it, and Stage 8 adds the test asserting every `SyncSnapshot` key is accounted for — there is none today, so a newly added collection is a silent leak. Closing it properly needs its own owner. |
 

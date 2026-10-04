@@ -246,7 +246,7 @@ was verified, so the next agent can trust the state without re-auditing.
   4,171 tests passed), `smoke:legacy`, each 0. `96d0b7f` was not separately gated at the
   time of writing. No lint-only docs change touches code.
 - **Not verified.** Anything on a real PC, Electron shell, printer or Windows 7; the held
-  arrow key in a real browser; dark and Hindi at 1920x1080 for Add several and Copy.
+  arrow key in a real browser; dark at 1920x1080 for Add several and Copy.
 - **Lessons.** Two scratch servers reached the real releases repository or folder because
   PowerShell deletes a variable set to an empty string: set the poll to 0 and the releases
   folder to a scratch path instead. A kit change (`.ob-tablewrap { overflow: clip }`) fixed
@@ -281,7 +281,7 @@ was verified, so the next agent can trust the state without re-auditing.
   files passed + 1 skipped, 3,950 tests passed + 17 skipped), `smoke:legacy` 0. Browser
   passes on scratch databases only. **Not verified anywhere:** the installer and the
   scheduled task on a real Windows PC, a real printer and the print-station claim, Windows
-  7, a Hindi native review. The list is in HANDOFF "1.4 batch", "Owed by the owner".
+  7. The list is in HANDOFF "1.4 batch", "Owed by the owner".
 - **Process lessons** (also in HANDOFF "Traps found in this batch"): build `shared` before
   typecheck; source-reading tests must tolerate CRLF checkouts; stop only your own PIDs;
   give every session its own `TEMP` and PostgreSQL port.
@@ -382,8 +382,7 @@ four slices in one working tree: archive core; export and restore; scheduler and
   Both new components are in the strict-i18n lint list.
 - **i18n:** `backupAll.*` (with `backupAll.phase.*` as an explicit key map in `useBackupJob.ts`), `autoBackup.*`,
   `magicRestore.*`, `firstRun.choose.magicRestore`, `settings.tab.storageBackup`, `activity.backup.failed` and
-  `activity.backup.restore_failed` (with `logs.action.restore_failed`, appended to the lock file), all with real
-  Hindi; `firstRun.choose.restore` relabelled in both.
+  `activity.backup.restore_failed` (with `logs.action.restore_failed`, appended to the lock file), ; `firstRun.choose.restore` relabelled.
 - **Tests:** new `master/tests/archive-domain`, `backup-scheduler`, `maintenance-gate`,
   `archive-roundtrip.integration`, `archive-replay.integration`, `archive-first-run.integration`,
   `archive-export-paging.integration`, `migration-backup-all-grant.integration`, `electron/tests/dialog-options`
@@ -584,7 +583,7 @@ link; Electron, ui, web and docs.
   so at 5 every panel was re-snapshotted. The loose cast on `socket.data.protocol` in `hub.ts` is gone. New
   `panel-push` case: a panel at the minimum gets the event itself.
 - Office nav: Reports (Work, after Conflicts, no chord) and Logs (System, no chord) both stay; `keys.test.ts`
-  now expects 12 Office rows. `logs.entity.party_list` added (en, hi), which Phase 2's Logs coverage test needs
+  now expects 12 Office rows. `logs.entity.party_list` added (en), which Phase 2's Logs coverage test needs
   for H1's `party_list` activity rows.
 - Not done: a browser or Electron walk of the merged panels.
 - Verified: lint 0, typecheck 0, test 0 (214 files passed, 1 skipped; 3025 tests passed, 17 skipped;
@@ -800,7 +799,7 @@ network), `tools/`, `eslint.config.js`, both workflows, tests, docs (`WINDOWS7.m
 ### 2026-10-01 - Catalogue import/export, server side (Claude)
 
 `master/src` (domain, service, `lib/spreadsheet.ts`, `panel-catalog.routes.ts`), `office/src/http/app.ts`,
-`shared/` (`MAX_PRODUCT_IMPORT_ROWS`, `ProductImportResult.unchanged`, 3 keys en + hi), tests, `CATALOGUE_MODEL.md` §5.
+`shared/` (`MAX_PRODUCT_IMPORT_ROWS`, `ProductImportResult.unchanged`, 3 keys), tests, `CATALOGUE_MODEL.md` §5.
 - **Header drift settled:** the true format is the owner's labels (`IMPORT_HEADERS`: Brand, Main product code,
   Main product, Sub product, Size, Colour rule, Colour, Code, Weight (kg), Alias); the template, the export and
   the import already agreed — the three CSV-template tests still expected the old `categoryName,name,variant,...`.
@@ -835,7 +834,7 @@ network), `tools/`, `eslint.config.js`, both workflows, tests, docs (`WINDOWS7.m
   confirm button takes focus so Enter imports.
 - **Success toast** after an import on both panels; Office export failures say the Master is off
   (`exportFailureText`) instead of a bare error.
-- Keys added (en + hi): `import.report.download`, `import.report.fileName`, `import.preview.partial`.
+- Keys added (en): `import.report.download`, `import.report.fileName`, `import.preview.partial`.
 - **Not done:** an `update`-only mode (`ProductImportMode` is `create | upsert`, shared/server-owned).
 - Verified: targeted vitest 62 files / 761 tests pass (4 new in `ui/tests/master-catalogue.test.tsx`);
   `npm run lint` and `npm run typecheck` exit 0.
@@ -852,7 +851,7 @@ Master web/server, `shared/` (i18n text only), docs; nothing under `office/`, no
 - **Moved:** `fontkit` to `master` devDependencies (only `pdf-fonts.test.ts` imports it), lockfile refreshed
   with `--package-lock-only --ignore-scripts`.
 - **Reworded:** stale "Developer tab" comments to "the /api/developer/load-catalogue route (no screen since
-  5a32106)"; the uninstaller sentence dropped from `setting.security.developerModeEnabled.help` (en, hi).
+  5a32106)"; the uninstaller sentence dropped from `setting.security.developerModeEnabled.help` (en).
 - **Docs:** HANDOFF, TESTING_PLAN, ROLES_AND_USERS, DEVELOPER_MODE, uninstall README, PRODUCTION_READINESS
   (loading the catalogue is now a stated go-live gap: no screen, route behind the developer token),
   CATALOGUE_MODEL, `.env.example`.
@@ -861,7 +860,7 @@ Master web/server, `shared/` (i18n text only), docs; nothing under `office/`, no
 
 ### 2026-10-01 - Master parity plan, P6: admin record details become sub-screens (Claude)
 
-Master web, `shared/` (six new `panels.detail.*` keys, en and hi), tests; nothing under `office/`, no `ui/src` edit.
+Master web, `shared/` (six new `panels.detail.*` keys), tests; nothing under `office/`, no `ui/src` edit.
 - **Panels:** the detail modal is an `EditorScreen` (sub-nav `panels.detail`, back button). It reads
   `api.panel(id)` for the role the panel acts under (with the Office-default fallback), tier and
   permission count, and its work counts (pending orders, final orders, last action); the list row fills in until
@@ -920,7 +919,7 @@ and tests; nothing under `office/`, no migration.
   session (`GET /api/products/import/template.:format`, `POST /api/products/import`; the
   service checks `products.bulk`). `app.ts` mounts `imageFilesRoutes` at `/uploads/images`
   (same session check, same 404), before the SPA catch-all. `images.routes.ts`: no file →
-  `ValidationError('validation.image.fileRequired')` (the key already existed, en + hi).
+  `ValidationError('validation.image.fileRequired')` (the key already existed).
   P3 gap: `buildLeadEntryView` carries `products` (the snapshot's catalogue page, scoped by
   the service) only with `products.view`, so the edit form keeps a multicolour line's colour rule.
 - **ui/:** `catalogueSummary.ts` (the summaries verbatim + `CatalogueView`, `CatalogueTransport`),
@@ -928,7 +927,7 @@ and tests; nothing under `office/`, no migration.
   `MainProductsScreen` (with `BrandsScreen`) — ports with "keep in step" headers; transport read
   through `transportRef`; controls absent without `products.create/edit/bulk`; Master wording
   keys `catalog.products.savedOnline`, `catalog.products.empty.descriptionOnline`,
-  `product.saveHintOnline` (en + hi); `ui/src/ProductImages.tsx` added to the strict-i18n lint list.
+  `product.saveHintOnline` ; `ui/src/ProductImages.tsx` added to the strict-i18n lint list.
 - **Master web:** `screens/ProductsScreen.tsx` (view loaded on `catalogue`, `catalogueStock`,
   `catalogueLists` revisions; stock only with `inventory.view`; three pages in `<Activity>`),
   `transports.catalogueTransport`; `api.ts` gains `listProducts`, `updateProduct`, `createCategory`,
@@ -967,8 +966,8 @@ and tests; nothing under `office/`, no migration.
   sub-page, topbar button, `record.new`, `SCREEN_ENTITIES.leadEntry`; `LeadsScreen`:
   Edit pending order (`leads.edit`, not converted) in an `EditorScreen`, New pending
   order on the empty state.
-- **shared:** `record.new` is `panel: 'both'` (Office list unchanged); four keys,
-  en + hi (`lead.add.savingHintOnline`, `savedOnline`, `draft.packagingEmptyFields`,
+- **shared:** `record.new` is `panel: 'both'` (Office list unchanged); four keys
+  (`lead.add.savingHintOnline`, `savedOnline`, `draft.packagingEmptyFields`,
   `draft.gradeEmptyFields`).
 - **Tests:** `ui/tests/lead-entry-screen.test.tsx` (the `add-lead-flow` cases over a
   fake transport, plus view-only party, Create party gating, edit sends the whole line
@@ -1128,7 +1127,7 @@ still showed Carton / Pallet / Shrink wrap.
 - **Grid** reworked to fit the card at the 1024-wide floor (the grade box ran
   past the card edge in the browser): packaging and grade `minmax(72, 96)`,
   variant `minmax(48, 1fr)`, weight 60, qty 56.
-- `pickedHint` (en, hi) now describes the walk to Add product.
+- `pickedHint` now describes the walk to Add product.
 - **Owner's database** (with the owner's say-so): Carton, Pallet and Shrink
   wrap soft-deleted in `option_lists` (restorable from the Recycle bin; no
   line used them); Master and Office stopped, rebuilt and restarted, which ran
@@ -1387,7 +1386,7 @@ still did.
   `BP_TIGHT`/`BP_SHORT`, `deviceCodeOf`, `entityOfPermanentId`,
   `defaultBindings` (and its test); seven file-internal helpers unexported.
 - `cbf116b`: with one sign-in attempt left the Master says "1 attempt left"
-  (`auth.service.ts`, with a test); 57 unused keys out of `en.ts` and `hi.ts`
+  (`auth.service.ts`, with a test); 57 unused keys out of `en.ts`
   (all `picker.*`, `lead.detail.total`, …); the panels' dead CSS rules and
   `:root` alias tokens, and `.ok` in the clean-install page.
 - Uncommitted on top: sample-data remarks and a party note that talked about
@@ -1405,8 +1404,8 @@ still did.
   `docs/overhaul/` only `README.md` and `workstream-F.md`); the finished
   briefs `product-model-variants.md` and `product-master-trim.md` deleted,
   their owner decisions folded into `HANDOFF.md` Key decisions 14 and 15 and
-  every link repointed; counts updated (2088 keys, 1245 `TODO(i18n-hi)`,
-  1349 identical to English, 160 files / 2015 tests); `HANDOFF.md` Owed work
+  every link repointed; counts updated (2088 keys,
+  160 files / 2015 tests); `HANDOFF.md` Owed work
   17–21 added.
 
 Verified: `npx eslint .` 0; `npm run typecheck` 0; `npx vitest run ui shared
@@ -1470,8 +1469,7 @@ watched failing against the old code):
 - `fix/shared-contract`: Parties joins `MASTER_NAV`, so the Master's Alt+3 is
   Parties and Inventory…Party access move to Alt+4…9 (`keys-nav-order.test.ts`
   holds both lists to the sidebars); the "Stock" setting group; a row with no
-  actor reads `logs.actor.unknown`, and the 11 Hindi activity templates still
-  in English are translated; a price-word guard over both catalogues.
+  actor reads `logs.actor.unknown`, and a price-word guard over the catalogue.
 - `fix/ui-kit`: command priority by mount order (a dialog keeps Ctrl+S over its
   screen); palette rows reach the palette and help commands; the sidebar toggle
   works; `copyText` copies over plain HTTP; the kit's English literals go
@@ -1634,7 +1632,7 @@ session's git access; the branches to delete are listed in `HANDOFF.md`.
 `FingerprintField`, `Radio`, `Tooltip`), `shared/src/i18n/pseudo.ts`,
 `forgetPreparedInstaller`, the api-client members the reachability guard found,
 203 i18n keys no source references (old lead flow, `panel.*`, `startup.*`,
-product-detail stock, rates) from both catalogues, 22 dead CSS rules, the
+product-detail stock, rates) from the catalogue, 22 dead CSS rules, the
 pricing column in the design gallery, the stale image-service masking, and the
 tests for removed features. Kept deliberately: `master/src/domain/lead-outcome.ts`
 (the TypeScript twin two report tests check the SQL against), the breakpoint
@@ -1729,7 +1727,7 @@ releases folder, not this work. Not verified in a browser or Electron.
 (+4 cases), `office/web/src/components/ProductDrawer.tsx`,
 `office/web/src/screens/AddLeadScreen.tsx` · `LeadDetail.tsx` ·
 `OrderBoardScreen.tsx`, `master/web/src/screens/LeadsOrdersScreen.tsx`,
-`shared/src/domain/{fields,entities,inputs}.ts`, `shared/src/i18n/en.ts` + `hi.ts`
+`shared/src/domain/{fields,entities,inputs}.ts`, `shared/src/i18n/en.ts`
 (7 keys), `master/src/domain/{line-items,sample-data}.ts`,
 `master/src/repositories/{line-item,mappers,field-usage}*.ts`,
 `master/src/db/migrations/20260325000000_line_item_grade.ts` (new) + `index.ts`,
@@ -1752,8 +1750,7 @@ New: `electron/lib/standalone.ts` (+ `electron/tests/standalone.test.ts`),
 both `web/package.json` point at it).
 Changed: both `electron-builder.yml` (portable target), `electron/shell.ts`,
 `electron/preload.cts`, `shared/src/protocol/desktop.ts`, both
-`UpdatesScreen.tsx`, `shared/src/i18n/en.ts` + `hi.ts` (one key, via
-`i18n:sync`), `master/src/index.ts`, `tools/release.mjs`,
+`UpdatesScreen.tsx`, `shared/src/i18n/en.ts` (one key), `master/src/index.ts`, `tools/release.mjs`,
 `.github/workflows/release.yml`, `master/tests/updates.test.ts`,
 `master/tests/github-releases.test.ts`, `docs/UPDATES.md`, `README.md`,
 `AGENTS.md`, `HANDOFF.md`, `.env.example`.
@@ -1811,7 +1808,7 @@ instruction was about product photos; sharing the helper would mean lifting it
 into `ui/`.
 
 **Files modified:** `ui/src/ImageCropModal.tsx`,
-`office/web/src/components/ProductImages.tsx`, `shared/src/i18n/en.ts` + `hi.ts`
+`office/web/src/components/ProductImages.tsx`, `shared/src/i18n/en.ts`
 (2 keys added: `photo.editor.rotate`, `photo.editor.failed`).
 
 **Verified.** Lint and typecheck exit 0; `npm test` 818 passed with the same 13
@@ -1917,7 +1914,7 @@ list; and drop the category and missing-weight filter chips exactly as drawn.
 `office/web/src/screens/ProductDetail.tsx`,
 `office/web/src/components/ProductDrawer.tsx`,
 `office/web/src/components/ProductImages.tsx`, `ui/src/EditorScreen.tsx`,
-`shared/src/i18n/en.ts` + `hi.ts` (7 keys added, none removed).
+`shared/src/i18n/en.ts` (7 keys added, none removed).
 New: `office/web/src/productSummary.ts`.
 Deleted: `office/web/src/components/StockCell.tsx`.
 
@@ -1983,13 +1980,13 @@ removals stand.
 
 **Files touched.** 67 conflicted files resolved by hand (shared contract,
 migrations registry, Master repositories/services, Office server, both web
-shells and every product/lead/order screen, both catalogues, HANDOFF and
+shells and every product/lead/order screen, the catalogue, HANDOFF and
 the docs); the v1.1.0 `NewLeadScreen` (ui + Master adapter) and
 `documentBlocks.ts` deleted; `catalog-reload-cli.ts` moved onto
 `seedCatalogue`; `free-to-sell` and `product-hierarchy` suites rewritten
 onto variants; `keys.test.ts` and `outbox.test.ts` adjusted. Ten lead-screen
-rate keys the auto-merge had dropped were restored to both catalogues; four
-v1.1.0 keys the merged screens use were carried over with their Hindi.
+rate keys the auto-merge had dropped were restored to the catalogue; four
+v1.1.0 keys the merged screens use were carried over.
 
 **Verified.** `npm run verify` on the merged tree, run 2026-09-21 before the
 merge commit: `lint` 0, `typecheck` 0, `vitest run` 117 files / 1427 tests
@@ -2009,8 +2006,8 @@ same date has the summary.
 
 **Files touched.** Migration `20260323000000_product_variants` (+ registry);
 `shared/src` contract (`ids`, `entities`, `inputs`, `pick`, `columns`,
-`product-validation`, `fields`, `developer`, `apply-change`, `socket`, both
-catalogues — new keys with Hindi, sixty dead keys removed); Master
+`product-validation`, `fields`, `developer`, `apply-change`, `socket`, the
+catalogue — new keys, sixty dead keys removed); Master
 repositories, domain, services, routes, public API, connectors, import, sample
 data, the new `product-variant.repository.ts`, `swisware-catalogue.ts`,
 `catalogue-seed.service.ts`, `seed-catalogue-cli.ts`; Office server (`app.ts`,
@@ -2098,7 +2095,7 @@ it touches the users.
 `master/src/services/sample-data.service.ts`, `master/src/lib/tile-swatch.ts`,
 `master/src/db/seed-sample-data-cli.ts`,
 `master/tests/{sample-data.integration,tile-swatch}.test.ts`. Modified:
-`shared/src/domain/developer.ts`, `shared/src/i18n/{en,hi}.ts`,
+`shared/src/domain/developer.ts`, `shared/src/i18n/en.ts`,
 `master/src/http/routes/developer.routes.ts`, `master/web/src/api.ts`,
 `master/web/src/screens/SettingsScreen.tsx`, `package.json`,
 `master/package.json`, `docs/DEVELOPER_MODE.md`, `HANDOFF.md`.
@@ -2250,13 +2247,6 @@ per row; the vault hint no longer replaces the help text it was meant to sit
 under; `.ob-tabs` scrolls (the tabs were unreachable at 157% on a 1366px
 screen); the Master lands on Company rather than Appearance.
 
-**The language picker** — the largest gap the survey found, and not a setting.
-`ob.locale` was read on every render and written nowhere in the tree, and both
-panels' boot endpoints had served `defaultLocale` since the config was written
-with no reader at all. A complete Hindi catalogue shipped that no installation
-could reach. There is a picker in Appearance now, and a fresh browser profile
-adopts `ORDERBOOK_DEFAULT_LOCALE` once, behind the splash.
-
 **One security fix alongside:** `createUser` and `resetPassword` hashed whatever
 password arrived with no length check, while `changeOwnPassword` had enforced
 eight characters since it was written — so the weaker of the two paths was the
@@ -2406,7 +2396,7 @@ ProductDetail facts read Brand → Main product → Code → Type → Size → C
 lead with brand → main → code → dimensions → colour, preview gains
 Brand/Main/Colour sample columns, and `swisware-2026.csv` is regenerated to
 the new header order (548 lines / 547 rows). New key
-`catalog.products.column.brand` in en + real hi; header assertions in
+`catalog.products.column.brand` in en; header assertions in
 `panel-catalog-route` and `product-import` updated.
 
 Verified: `npm run lint` + `npm run typecheck` exit 0; affected suites green
@@ -2436,7 +2426,7 @@ A4/A5 with Letter/orientation/accent/default/margins/texts kept under a More
 settings disclosure. Enabling the watermark with empty text seeds DRAFT (the
 save would otherwise refuse). Preview keeps the popup-safe flow against a real
 lead/order; `EditorScreen` gains an optional `actions` slot; new
-`documents.designer.*` i18n keys (Hindi via `npm run i18n:sync`).
+`documents.designer.*` i18n keys ..
 
 **Untouched.** Renderer, bindings, redaction order (`field.saleRate.view`),
 routes, settings keys, template columns, starters, both panel adapters.
@@ -2465,8 +2455,7 @@ own timelines (system entries for moves/conversions/dispatches, typed remarks
 with the actor named, offline leads flagged), and follow-up rows that open
 the lead. Conversion renders "Order OR… created from LD…", dispatch renders
 "Order OR… marked {stage}" with the real stage name, offline reads "Lead
-saved offline on Panel {device}". 13 new `dashboard.*` keys in en + hi
-(`npm run i18n:sync`).
+saved offline on Panel {device}". 13 new `dashboard.*` keys in en.
 
 Verified: shared + i18n call-site suites green (34 tests), eslint clean on
 all four touched files. Repo-wide `npm run verify` NOT green — pre-existing
@@ -2591,7 +2580,7 @@ decision `HANDOFF.md` had deferred.
 
 **Files touched.** `master/package.json`, `package-lock.json`;
 `shared/src/domain/{inputs,product-import}.ts`, `shared/src/index.ts`,
-`shared/src/protocol/socket.ts`, `shared/src/i18n/{en,hi}.ts`,
+`shared/src/protocol/socket.ts`, `shared/src/i18n/en.ts`,
 `shared/tests/activity-tokens.lock.json`; `master/src/lib/spreadsheet.ts`,
 `master/src/domain/product-import.ts`,
 `master/src/services/{product-import,catalog}.service.ts`,
@@ -2689,7 +2678,7 @@ fail against that code before being accepted.
 `master/src/pdf/primitives.ts`, `master/src/pdf/elements.ts`,
 `shared/src/domain/ai.ts`, `shared/src/protocol/desktop.ts`,
 `shared/src/keys/commands.ts`, `shared/src/domain/document-starters.ts`,
-`shared/src/i18n/en.ts`, `shared/src/i18n/hi.ts`, `ui/src/AiSupportScreen.tsx`,
+`shared/src/i18n/en.ts`, `ui/src/AiSupportScreen.tsx`,
 `ui/src/AssistantScreen.tsx`, `ui/src/DocumentsScreen.tsx`,
 `ui/src/KeyboardProvider.tsx`, `ui/src/ImageCropModal.tsx`,
 `ui/src/PageDesigner.tsx`, `ui/src/PageDesignerCanvas.tsx`,

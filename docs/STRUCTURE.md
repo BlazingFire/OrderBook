@@ -370,7 +370,7 @@ not counted here.
 | `master/` | 348 | Master server and frontend: `master/src/` 199, `master/tests/` 107, `master/web/` 30, `master/assets/fonts/` 5, `master/installer/` 3, plus `master/package.json`, `master/tsconfig.json`, `master/electron-builder.yml` and `master/Launch Master Panel.bat`. |
 | `office/` | 87 | Office server and frontend: `office/src/` 33, `office/tests/` 14, `office/web/` 31, `office/installer/` 4, plus `office/package.json`, `office/tsconfig.json`, `office/electron-builder.yml`, `office/electron-builder.legacy.yml` (the Windows 7 build) and `office/Launch Office Panel.bat`. |
 | `shared/` | 71 | Types, protocol, sync and i18n: `shared/src/` 47, `shared/tests/` 22, `shared/package.json`, `shared/tsconfig.json`. §3. |
-| `tools/` | 13 | Node scripts (`tools/build-web.mjs`, `tools/copy-shell.mjs`, `tools/i18n-sync.mjs`, `tools/legacy-electron.mjs`, `tools/legacy-smoke.mjs`, `tools/make-icons.mjs`, `tools/make-release-key.mjs`, `tools/release.mjs`), `tools/eslint-rules/` (2), `tools/uninstall/` (3). **Not a workspace.** |
+| `tools/` | 12 | Node scripts (`tools/build-web.mjs`, `tools/copy-shell.mjs`, `tools/legacy-electron.mjs`, `tools/legacy-smoke.mjs`, `tools/make-icons.mjs`, `tools/make-release-key.mjs`, `tools/release.mjs`), `tools/eslint-rules/` (2), `tools/uninstall/` (3). **Not a workspace.** |
 | `ui/` | 95 | The shared React kit and screens: `ui/src/` 73 (67 modules/CSS + 6 fonts), `ui/tests/` 20 (18 tests, the `ui/tests/panel-harness.ts` helper, `ui/tests/tsconfig.json`), `ui/package.json`, `ui/tsconfig.json`. §4. |
 | `.editorconfig` | 1 | UTF-8, LF, 2-space indent, final newline, trim trailing whitespace (except `*.md`). |
 | `.env.example` | 1 | Documents the optional runtime environment variables (§2.10). |
@@ -504,7 +504,6 @@ is `>=20`**; both CI workflows use Node 22. **Workspaces:** `shared`, `ui`,
 | `seed:catalogue` | build shared, then `tsx src/db/seed-catalogue-cli.ts` |
 | `typecheck` | (1) `npm run typecheck --workspaces --if-present` — shared, ui, master, office run `tsc --noEmit`; master-web, office-web run `tsc -b`; cleaner has none; (2) `tsc -p tsconfig.test.json`; (3) `tsc -p ui/tests/tsconfig.json`; (4) `tsc -p electron/tsconfig.json --noEmit`; (5) `tsc -p electron/tsconfig.legacy.json --noEmit` (the shell as CommonJS, §2.6) |
 | `lint` | `eslint .` |
-| `i18n:sync` | `node tools/i18n-sync.mjs` — appends every `EN_MESSAGES` key missing from `HI_MESSAGES` with the English text and `// TODO(i18n-hi)`. `shared/src/i18n/hi.ts` has 1245 such lines. |
 | `format` | `prettier --write .` — not part of `verify`; no check-only variant |
 | `pretest` / `test` | build shared, then `vitest run` |
 | `test:watch` | `vitest` |
@@ -986,21 +985,15 @@ the Office four screens — `office/web/src/screens/AddLeadScreen.tsx`,
 | File | Purpose / exports |
 |---|---|
 | `shared/src/i18n/en.ts` | `EN_MESSAGES`, **the source of truth**: one flat `as const` object, **2088 keys**. Flat dotted keys; named `{placeholders}` only; no pre-formatted numbers or currency symbols; plurals as `.one`/`.other`. Largest families: `lead.` 173, `access.` 158, `validation.` 146, `fields.` 115, `developer.` 84, `integrations.` 83, `activity.` 79, `error.` 68. |
-| `shared/src/i18n/hi.ts` | `HI_MESSAGES: Record<MessageKey, string>`, a **total** record: a new English key turns the build red until Hindi has it. 2088 keys; 1245 `// TODO(i18n-hi)` markers; 1349 values byte-identical to English. |
 | `shared/src/i18n/keys.ts` | Type machinery. `MessageKey = keyof typeof EN_MESSAGES`; `Placeholders<S>`; `ParamsFor<K>` (`[]` with no placeholders, else a required record — a missing, extra or invented param is a compile error); `CountKey` (stems with `.one` and `.other`: `error.unauthorized.signInFailedRemaining`, `validation.permissions.unknown`, `count.leads`, `count.rows`, `sync.changesRefused`); `MessageParams`; `LocaleCatalogue`. |
 | `shared/src/i18n/translate.ts` | `t(locale, key, params?)` fills placeholders with `String(value)` only (no number formatting). Fallback: requested locale → English → the raw key. `tCount(locale, stem, count)` uses `Intl.PluralRules` and injects `{count}`. Also `createTranslator(locale)` → `Translator`, `resolveCatalogue`. |
-| `shared/src/i18n/locales.ts` | `LOCALES = ['en','hi']`, `Locale`, `DEFAULT_LOCALE = 'en'`, `isLocale`, `LOCALE_LABELS`. The locale is per machine, never synced. |
+| `shared/src/i18n/locales.ts` | `LOCALES = ['en']`, `Locale` (`'en'`), `DEFAULT_LOCALE = 'en'`, `isLocale`, `LOCALE_LABELS`. |
 | `shared/src/i18n/panel-scoped.ts` | `PANEL_SCOPED_KEYS`: 12 keys (`app.panel`, `backup.export.title`, `backup.restore.confirmWipe`, `settings.storage.title`, `settings.subtitle`, `sync.conflictReview`, `sync.offline`, `sync.offlinePending`, `sync.pendingChanges`, `sync.popoverTitle.offline`/`offlinePending`/`synced`). Each is stored twice in `en.ts` as `master.<key>` and `office.<key>`; the bare key does not exist. `ui/src/i18n.ts` rewrites a bare key to `${uiConfig().panel}.${key}`; `master/tests/i18n-call-sites.test.ts` reads the same list. |
 | `shared/src/i18n/errors.ts` | `ErrorPayload` (`error`, `message`, `messageKey?`, `params?`, `details?`) describes the HTTP error envelope (`error` = stable code, `message` = English). **Nothing imports it**, and the file header's "one shape for HTTP errors and socket acks" is not what the code does: socket acks use `CommandResult` from `socket.ts`, where `error` is the English message and `code` is the stable code (`hub.ts#respond`), so the two shapes put the code in different fields. `errorMessageKey(code)` looks the code up in the private `CODE_TOKENS` map — 22 stable codes (`validation_error`, `forbidden` → `error.generic.forbidden`, `not_found`, `locked_out`, `offline_disabled`, …) — and returns `error.unknown` for any other code; it does not build `error.<code>`. Consumed by `ui/src/errorText.ts`. |
-| `shared/src/i18n/activity.ts` | `ACTIVITY_TOKENS`, derived from every `activity.<entityType>.<action>` key (79 pairs; the 2026-09-25 audit round added `activity.stock.levels_changed` (kept in 1.4: the `activity.stock.*` tokens and `logs.entity.stock` / `logs.action.adjusted|inbound|levels_changed` stay so old log rows still render), `activity.party.variant_saved` and `activity.order.stage_changed`). **Append-only**, because `activity_log` rows can never be updated; `activity.ai_run.*` and `activity.document_template.*` are kept for old rows. `activityMessageKey()` (null for an unknown pair) and `renderActivity(t, input)` (falls back to `"<entityType> · <action>"`, and to `logs.actor.unknown` — en "Somebody", hi `'किसी'`, the oblique form every Hindi `{actor} ने …` template needs — when there is no actor name). |
+| `shared/src/i18n/activity.ts` | `ACTIVITY_TOKENS`, derived from every `activity.<entityType>.<action>` key (79 pairs; the 2026-09-25 audit round added `activity.stock.levels_changed` (kept in 1.4: the `activity.stock.*` tokens and `logs.entity.stock` / `logs.action.adjusted|inbound|levels_changed` stay so old log rows still render), `activity.party.variant_saved` and `activity.order.stage_changed`). **Append-only**, because `activity_log` rows can never be updated; `activity.ai_run.*` and `activity.document_template.*` are kept for old rows. `activityMessageKey()` (null for an unknown pair) and `renderActivity(t, input)` (falls back to `"<entityType> · <action>"`, and to `logs.actor.unknown` ("Somebody") when there is no actor name). |
 | `shared/src/i18n/index.ts` | Sub-barrel re-exporting the other 8. |
 
-`tools/i18n-sync.mjs` has no dependencies: it finds each object literal by scanning
-braces (skipping strings and comments), evaluates it with `new Function`, and
-appends every missing key just before the final `};` with its English text and a
-`// TODO(i18n-hi)` marker. It never removes extra keys;
-`shared/tests/i18n-coverage.test.ts` catches those. The locale lives in
-`localStorage['ob.locale']` (§4.8). Flow: §11.9.
+Flow: §11.9.
 
 ### 3.8 `keys/` — keyboard commands (3 files)
 
@@ -1187,11 +1180,11 @@ and the one it added show their `it(` count instead, marked `it(`.
 | `shared/tests/keys.test.ts` | 26 | chord parsing and the three matching rules |
 | `shared/tests/sync.test.ts` | 18 | HLC tick/observe, id formats and assignment order, field-level merge |
 | `shared/tests/discovery.test.ts` | 16 | DISCOVER/HELLO round trip; foreign traffic rejected |
-| `shared/tests/i18n-coverage.test.ts` | 17 `it(` | every permission/module/action/group/template has a token; `hi.ts` has no missing or extra keys and identical placeholders; no English string has a 3+ digit run or `₹`; no price word in either catalogue (Hindi stems with their vowel signs, matched on letter boundaries so `'गोदाम'` passes); every Hindi activity template has a postposition after `{actor}`; the activity lock holds; plural stems complete |
+| `shared/tests/i18n-coverage.test.ts` | 17 `it(` | every permission/module/action/group/template has a token; no English string has a 3+ digit run or `₹`; no price word in the catalogue; the activity lock holds; plural stems complete |
 | `shared/tests/i18n.test.ts` | 16 `it(` | `t`, `tCount`, `createTranslator`, `renderActivity`'s `logs.actor.unknown` stand-in |
 | `shared/tests/keys-nav-order.test.ts` | 2 `it(` | reads both `App.tsx` sidebars and holds `MASTER_NAV` and `OFFICE_NAV` to their order (added 2026-09-25) |
 | `shared/tests/pick-score.test.ts` | 8 | picker tiers and tie-breaks |
-| `shared/tests/stock-retired.test.ts` | 3 `it(` | 1.4 (R15): no `inventory.*` setting, `inventory` module, `stock.adjust` capability or `stock.*` mutation kind; no inventory or stock-permission i18n keys in EN or HI; an old cached snapshot and old `CompanyFeatures` are tolerated. Keeps the append-only `activity.stock.*` tokens and the colour list `fieldSet.stock.colour` legitimate |
+| `shared/tests/stock-retired.test.ts` | 3 `it(` | 1.4 (R15): no `inventory.*` setting, `inventory` module, `stock.adjust` capability or `stock.*` mutation kind; no inventory or stock-permission i18n keys; an old cached snapshot and old `CompanyFeatures` are tolerated. Keeps the append-only `activity.stock.*` tokens and the colour list `fieldSet.stock.colour` legitimate |
 | `shared/tests/order-note.test.ts` | 48 | `buildOrderNote` (merge, named/coded, sort, weight) and `paginateOrderNote` for both notes: every line once, quantities add up, last-page-only signature, wide halves, group headers; 1.3 H3: a lead as the source (same model as the equivalent order), `noteHeader` / `noteDocument`, `clampNoteCopies`, `cleanVehicleNumber` |
 | `shared/tests/wire-optionality.test.ts` | 4 `it(` | reads the source: `SyncSnapshot` fields beyond the 1.0.2 core (`stock` is the deprecated optional one) and every `CompanyFeatures` field are optional |
 | `shared/tests/version.test.ts` | 6 | `compareVersions` etc.; 7 `package.json` versions equal (`cleaner/package.json` is not in its list) |
@@ -1213,7 +1206,7 @@ and the one it added show their `it(` count instead, marked `it(`.
   `apply-change.ts`, `merge.ts`, `product-import.ts` and `settings.ts`, and in the
   "quoted at" idioms of `entities.ts` and `inputs.ts`.
 - **Fixed 2026-09-25 — user-visible:** the settings group heading read "Stock and prices";
-  `shared/tests/i18n-coverage.test.ts` now keeps price words out of both catalogues. (The
+  `shared/tests/i18n-coverage.test.ts` now keeps price words out of the catalogue. (The
   group itself was renamed `products` in 1.4 along with the removal of stock.)
 - **Fixed 2026-09-25 — wrong counts in comments** (`permissions.ts` tokens,
   `commands.ts` "Thirteen screens", `settings.ts` "fifteen settings") and the
@@ -1235,9 +1228,7 @@ and the one it added show their `it(` count instead, marked `it(`.
   port on localhost). `TRUSTED_RELEASE_KEYS` is empty, so no signed manifest verifies
   until `npm run release:keygen` has run.
 - **Fixed 2026-09-25 — hard-coded English:** `renderActivity` filled `{actor}` with
-  `'Somebody'`; it reads `logs.actor.unknown`, and the 11 Hindi `activity.*`
-  templates that were still English are translated.
-- **Hindi** is complete by type only: 1245 `TODO(i18n-hi)` placeholders.
+  `'Somebody'`; it reads `logs.actor.unknown`.
 - **22 of the 84 client→server events have no caller in `office/src`** (a grep for
   each literal event name finds none; `category:list` gained one with catalogue v2):
   `party:list`/`create`/`update`, `product:create`/`update`, `partyVariant:list`/`upsert`,
@@ -1379,7 +1370,7 @@ removed on 2026-09-25.
 | `ui/src/Modal.tsx` | `ModalSize`, `Modal` | centred `aria-modal` dialog, `sm`/`md`/`lg`/`xl`, `expanded` + `onToggleExpand` |
 | `ui/src/Popover.tsx` | `Popover` | anchored surface; closes on outside `mousedown` or Escape; does **not** use `useOverlay` |
 | `ui/src/ConfirmDialog.tsx` | `ConfirmRequest`, `ConfirmDialog`, `ConfirmProvider`, `useConfirm` | the single confirmation dialog; outside a provider `useConfirm()` resolves `false`; a second request resolves the first `false` |
-| `ui/src/Toast.tsx` | `ToastTone`, `useToast`, `ToastProvider` | bottom-left, ≤ 3, 4000 ms each; `push(message, { tone, action })`; API object memoised on purpose; the dismiss label is `toast.dismiss` (Hindi `बंद करें`) |
+| `ui/src/Toast.tsx` | `ToastTone`, `useToast`, `ToastProvider` | bottom-left, ≤ 3, 4000 ms each; `push(message, { tone, action })`; API object memoised on purpose; the dismiss label is `toast.dismiss` |
 | `ui/src/ImageCropModal.tsx` | `CropResult`, `ImageCropModal` | non-destructive crop/rotate on a canvas; `onSave` gets numbers only — the server does the real crop. Office only. |
 
 ### 4.7 Screens shared by both panels (each takes a narrow transport prop)
@@ -1387,7 +1378,7 @@ removed on 2026-09-25.
 | File | Exports | Used by |
 |---|---|---|
 | `ui/src/PartyFormModal.tsx` | `CreatedParty`, `PartyFormTransport`, `PartyFormModal` | Full party create/edit form (11 text fields); registers `useEnterToAdvance` and `useCommand('record.save')`. Transport `{ createParty(input) → {id}, updateParty(id, input & { baseFieldHlc? }) }` implemented by `master/web/src/partyFormTransport.ts` and `office/web/src/partyFormTransport.ts`. Mounted by `master/web/src/screens/PartiesScreen.tsx`, `office/web/src/screens/AddLeadScreen.tsx`, `office/web/src/screens/CatalogScreen.tsx`. |
-| `ui/src/SettingsLayout.tsx` | `SettingsTab`, `SettingsPage`, `requestSettingsTab`, `useSettingsTab`, `SettingsSection`, `SettingRow`, `NumberSetting` (moved here from the Master's Settings screen for catalogue v2, so the Office Leads tab can use it: `{ control, value, label, saving, onSave(value) }`), `AppearanceSettings`, `DeveloperTransport`, `useDeveloperSession`, `DeveloperTool`, `DeveloperPanel`, `useUninstallTool`, `UninstallBridge` | Both panels' `screens/SettingsScreen.tsx`. `useSettingsTab` stores the tab under `ob.settings.tab.master`/`.office`. `AppearanceSettings`: language (`setLocale` then `window.location.reload()`), theme, scale slider, density, motion. Developer tab: password unlock, token only in React state; `confirmWord` gates destructive tools; `useUninstallTool(bridge)` shows "unavailable" in a plain browser. |
+| `ui/src/SettingsLayout.tsx` | `SettingsTab`, `SettingsPage`, `requestSettingsTab`, `useSettingsTab`, `SettingsSection`, `SettingRow`, `NumberSetting` (moved here from the Master's Settings screen for catalogue v2, so the Office Leads tab can use it: `{ control, value, label, saving, onSave(value) }`), `AppearanceSettings`, `DeveloperTransport`, `useDeveloperSession`, `DeveloperTool`, `DeveloperPanel`, `useUninstallTool`, `UninstallBridge` | Both panels' `screens/SettingsScreen.tsx`. `useSettingsTab` stores the tab under `ob.settings.tab.master`/`.office`. `AppearanceSettings`: theme, scale slider, density, motion. Developer tab: password unlock, token only in React state; `confirmWord` gates destructive tools; `useUninstallTool(bridge)` shows "unavailable" in a plain browser. |
 | `ui/src/OrderNoteScreen.tsx`, `ui/src/OrderNote.tsx`, `ui/src/order-note.css` | 2026-09-30: the order's Filling / Dispatch note. `OrderNoteScreen` is the preview sub-screen (`EditorScreen`): note switch (also Alt+F / Alt+D), Dispatch-only Vehicle no. field saved on blur/Enter via `onSaveVehicle`, printer picker (desktop only, remembered in `localStorage['ob.note.printer']`), Print (also Ctrl+P) → `desktop.printPage` else `window.print()`. `OrderNote` draws the sheets (794 × 1123 px, heights from `NOTE_LAYOUT` as CSS custom properties); a second copy is portalled to `<body>` and is all `@media print` shows. Paper colours are the sheet's own, not theme tokens. **1.3 H3:** `OrderNoteScreen` takes `record` (an `Order` or a `Lead`) plus `source`; `OrderNote` takes `header: NoteHeader` ("Pending Order No." for a lead, "Final Order No." for an order). A **Copies** field (1..50, clamped on blur) goes to `printPage({deviceName, copies})`; **Save PDF** shows only when the shell has `savePdf`, named `<number>-<filling\|dispatch>.pdf`. A pending order's vehicle number is print-only (never saved, whatever `onSaveVehicle` is). Print and Save PDF both run inside `printOnly(portalRef.current, ...)` (`ui/src/printPortal.ts`): it puts `ob-note-print-portal--active` on this screen's portal and `ob-printing` on `<body>` for the job, and `order-note.css` hides every other `.ob-note-print-portal` meanwhile, so a hidden kept-alive note screen never prints beneath the visible one. Held by `ui/tests/order-note-screen.test.tsx`. | `OrderBoardScreen` (Office), `OrdersScreen` (Master), and for pending orders `LeadBoardScreen` (Office), `LeadsScreen` (Master) |
 | `ui/src/printPortal.ts` | 1.3 H3: `printOnly(portal, run)` — marks the one note portal meant for the paper (`ob-note-print-portal--active` on it, `ob-printing` on `<body>`) for as long as `run` (a print or a Save PDF) takes, and restores the page in a `finally` whatever `run` does; with no portal it runs `run` as it is, because marking nothing would hide every note. The CSS half is one rule in `order-note.css` (`body.ob-printing .ob-note-print-portal:not(.ob-note-print-portal--active) { display: none !important }`), which jsdom cannot see: the real-printer check is owed (HANDOFF) | `OrderNoteScreen` |
 | `ui/src/LeadEntryScreen.tsx` | 2026-10-01 (P3): the New / Edit pending order form, a port of `office/web/src/screens/AddLeadScreen.tsx` — keep in step; the Office still has its own copy (HANDOFF owed work). `LeadEntryView` (`optionLists`, `partyVariants`, `partyGrants`, `features`, optional `products`), `LeadEntryTransport extends PartyFormTransport { pick, createLead, updateLead }` read through `transportRef`. Differences: Master wording keys (`lead.add.savingHintOnline`, `…draft.packagingEmptyFields`/`gradeEmptyFields`), `canCreateParty` hides Create party, `onSaved(id, saved?)`, errors through `apiErrorText`, edit seeds the picker with the lead's own party. Since 1.3 Phase 4 (both copies): an edit sends only what changed plus `baseFieldHlc` and shows `StaleEditNotice` (`remoteChange` prop); Reload theirs remounts the form from the newest lead (the exported component is a thin wrapper keyed on it). This copy only: an **Owner** picker when `view.owners` is present (`record.reassignOwner`; a Server Master is marked in the list), `ownerId` sent on create, or on edit when changed; `createLead` answers `{id, poNumber?}`, and `onSaved(id, created)` hands the created lead on when it has a number. | `LeadEntry` (Master) |
@@ -1423,10 +1414,10 @@ removed on 2026-09-25.
 | `ui/src/clipboard.ts` | `copyText` | added 2026-09-25: `navigator.clipboard.writeText` where the browser offers and allows it, else a selected off-screen textarea and `document.execCommand('copy')`; resolves to whether the text was copied, never throws. `navigator.clipboard` is `undefined` outside a secure context, so the Master opened by LAN address over plain HTTP could not copy before. Used by `IdField`, the crash screen, and the Master's one-time password (`AccessScreen`) and API token (`IntegrationsScreen`) dialogs |
 | `ui/src/config.ts` | `PanelKind`, `Theme`, `UiConfig`, `configureUi`, `uiConfig` | default is the Master's config. **No module may read `uiConfig()` at top level** (the barrel evaluates before `configureUi`); only `i18n.ts` and `theme.ts` read it, inside functions. |
 | `ui/src/theme.ts` | `Theme`, `Density`, `SidebarMode`, `SCALE_MIN` (11), `SCALE_MAX` (22), `SCALE_STEP` (0.5), `SCALE_DEFAULT` (14), `read`, `store`, `loadTheme`, `loadDensity`, `loadScale`, `applyScale`, `loadSidebarMode`, `storeSidebarMode`, `motionDisabled`, `applyTheme`, `applyDensity`, `applyMotion`, `initAppearance` | appearance lives on `<html>`: `data-theme`, `data-density`, `data-motion`, `style="--root-size: Npx"`, and `color-scheme` |
-| `ui/src/i18n.ts` | `locale`, `setLocale`, `adoptDefaultLocale`, `translator`, `t` | `t(key, params?)` reads `ob.locale` on **every call** (no provider — changing language reloads the page); rewrites `PANEL_SCOPED_KEYS` to `${panel}.${key}`; `adoptDefaultLocale` writes the deployment default only if nothing was stored. 166 literal `t('…')` call sites in 22 `ui/src` files. |
+| `ui/src/i18n.ts` | `translator`, `t` | `t(key, params?)` looks the key up in `en.ts` through the shared translator (no provider); rewrites `PANEL_SCOPED_KEYS` to `${panel}.${key}`. 166 literal `t('…')` call sites in 22 `ui/src` files. |
 
 Per-machine `localStorage` keys owned by the kit (every access wrapped in
-try/catch): `ob.locale` (`i18n.ts`); `ob.theme.v3` / `ob.theme` (`theme.ts` via
+try/catch): `ob.theme.v3` / `ob.theme` (`theme.ts` via
 `configureUi`); `ob.density`, `ob.motion`, `ob.scale`, `ob.sidebar`;
 `ob.keys.v1[:userId]` (`KeyboardProvider.tsx`); `ob.settings.tab.<panel>`
 (`useSettingsTab`).
@@ -1436,13 +1427,12 @@ try/catch): `ob.locale` (`i18n.ts`); `ob.theme.v3` / `ob.theme` (`theme.ts` via
 `ui/src/styles.css` only `@import`s, in order: `ui/src/fonts.css` →
 `ui/src/tokens.css` → `ui/src/reset.css` → `ui/src/base.css`.
 
-- **`fonts.css`:** six `@font-face` rules, all `font-display: block`, loading from
-  `./fonts/`: Inter variable (latin + symbols), IBM Plex Mono 400/500/600, Noto Sans
-  Devanagari variable.
+- **`fonts.css`:** five `@font-face` rules, all `font-display: block`, loading from
+  `./fonts/`: Inter variable (latin + symbols), IBM Plex Mono 400/500/600.
 - **`tokens.css`:** 108 custom properties on `:root` — colour ramps
   (`--porcelain-*`, `--glaze-*`, `--kiln-*`); semantic colours (`--bg-*`, `--fg-*`,
   `--line*`, `--accent*`, `--scrollbar-*`, `--state-*`); elevation and scrims; font
-  stacks (`--font-ui`, `--font-mono`, `--font-deva`) and type roles; space
+  stacks (`--font-ui`, `--font-mono`) and type roles; space
   `--s-2`…`--s-56` in rem; radius `--r-sm`/`--r-md`/`--r-lg`/`--r-xl` (12px, added
   for Basic Home's tiles) in px; the `--tile-*` set (1.3 Phase 1): the face's sheen,
   gloss, shade and rim layers, the glyph inks, and an `a`/`b` gradient pair for each
@@ -1451,8 +1441,7 @@ try/catch): `ob.locale` (`i18n.ts`); `ob.theme.v3` / `ob.theme` (`theme.ts` via
   deeper variants under `[data-theme='dark']`; motion `--d-*`,
   `--e-*`; shell dimensions; layering `--z-popover` 40 … `--z-splash` 100;
   `--root-size: 14px`, `--row-h`, `--ctl-h-*`. `[data-theme='dark']` overrides the
-  ramps; `[data-density='compact'|'large']` only row and control heights;
-  `:lang(hi)` switches to the Devanagari stack. **The one place for colours and
+  ramps; `[data-density='compact'|'large']` only row and control heights. **The one place for colours and
   sizes.**
 - **`reset.css`:** box-sizing/margins, full-height roots, form controls inherit the
   font, a `:focus-visible` outline never removed, both motion kill switches
@@ -1483,7 +1472,6 @@ try/catch): `ob.locale` (`i18n.ts`); `ob.theme.v3` / `ob.theme` (`theme.ts` via
 | `ui/src/fonts/IBMPlexMono-400-latin.woff2` | 14,708 |
 | `ui/src/fonts/IBMPlexMono-500-latin.woff2` | 14,888 |
 | `ui/src/fonts/IBMPlexMono-600-latin.woff2` | 15,620 |
-| `ui/src/fonts/NotoSansDevanagari-var-devanagari.woff2` | 121,192 |
 
 No other binary assets: icons, logo and busy mark are inline SVG.
 
@@ -1506,7 +1494,7 @@ and `PartyAccessEditor.tsx` are therefore kept as byte-identical copies** (`mast
 
 ### 4.11 Tests that guard the kit
 
-**1.4.0 Party Access batch**, in `ui/tests/`: `party-access-editor.test.tsx` (the editor on both panels: header, rows, inactive holders, add, bulk, copy, save, conflict, discard, focus, read-only, Hindi), `party-access-screen.test.tsx` (the list on both panels), `combobox.test.tsx` and `combobox-placement.test.ts` (keyboard, empty/loading, placement), `multi-picker.test.tsx`, `segmented.test.tsx`, `avatar-initials.test.tsx`, `datatable-selected.test.tsx` (row role and `aria-selected`), `tablewrap-scroll.test.ts` (`.ob-tablewrap` is `overflow: clip`; the permission grid scrolls in `.ob-permwrap`; the flat table `.ob-table--flat` keeps its own scroll), `topbar-fit.test.tsx` (title and button priorities at 157 %). Server side: `master/tests/party-access.integration.test.ts` (PAR-1…PAR-11), `office/tests/party-access-route.test.ts`, the `/summary` and `/people` cases in `master/tests/http-api.integration.test.ts`, and `shared/tests/update-behind-text.test.ts`.
+**1.4.0 Party Access batch**, in `ui/tests/`: `party-access-editor.test.tsx` (the editor on both panels: header, rows, inactive holders, add, bulk, copy, save, conflict, discard, focus, read-only), `party-access-screen.test.tsx` (the list on both panels), `combobox.test.tsx` and `combobox-placement.test.ts` (keyboard, empty/loading, placement), `multi-picker.test.tsx`, `segmented.test.tsx`, `avatar-initials.test.tsx`, `datatable-selected.test.tsx` (row role and `aria-selected`), `tablewrap-scroll.test.ts` (`.ob-tablewrap` is `overflow: clip`; the permission grid scrolls in `.ob-permwrap`; the flat table `.ob-table--flat` keeps its own scroll), `topbar-fit.test.tsx` (title and button priorities at 157 %). Server side: `master/tests/party-access.integration.test.ts` (PAR-1…PAR-11), `office/tests/party-access-route.test.ts`, the `/summary` and `/people` cases in `master/tests/http-api.integration.test.ts`, and `shared/tests/update-behind-text.test.ts`.
 
 `ui/tests/` (jsdom; the counts in brackets are tests passed at `43fd5b0`; 1.3 Phase 3
 added `ui/tests/notification-bell.test.tsx` and the link and bell cases in both shell
@@ -1535,8 +1523,8 @@ Added 2026-09-25:
   ignores a second abort once settled, and carries a timeout's `TimeoutError`.
 - `ui/tests/clipboard.test.tsx` — `copyText` with and without `navigator.clipboard`
   (jsdom has none, like a plain-HTTP tab).
-- `ui/tests/kit-i18n.test.tsx` — the kit's chrome renders its Hindi from the
-  catalogue; its `hi()` helper fails on a key whose Hindi is still English.
+- `ui/tests/kit-i18n.test.tsx` — the kit's chrome renders its text from the
+  catalogue.
 - `ui/tests/permission-labels.test.tsx` — the grid's names come from the
   catalogue's tokens.
 - `ui/tests/master-shell.test.tsx` and `ui/tests/office-shell.test.tsx` — each boots
@@ -1643,14 +1631,14 @@ is off.
 - **Fixed 2026-09-25 — hard-coded English in the kit's chrome** (sidebar name and
   collapse control, `Modal`'s Close/Shrink/expand, the toast's Dismiss, the pagers,
   the busy mark, Copy, the redacted cell, the empty combobox, the sync rail,
-  `ErrorState`'s retry) goes through `t()`, with Hindi. What is left: the
+  `ErrorState`'s retry) goes through `t()`. What is left: the
   `OrderBook` wordmark in `Logo.tsx` and most of `GalleryScreen.tsx`.
-- **Fixed 2026-09-25 — the permission grid stayed English in Hindi:**
+- **Fixed 2026-09-25 — the permission grid's hard-coded names:**
   `permissionLabels.ts` now reads the `module.*`, `action.*`, `permission.*` and
   `capabilityGroup.*` tokens (§4.5).
 - **Exports no panel imports** (`git grep -lw <name> -- master/web/src office/web/src`
   finds 0 files): `HelperText`, `Label`, `Slider`, `PresenceRail`,
-  `useKeyboard`, `uiConfig`, `setLocale`, `motionDisabled`,
+  `useKeyboard`, `uiConfig`, `motionDisabled`,
   `store`, `loadTheme`, `loadDensity`, `loadScale`, `applyScale`, `applyTheme`,
   `applyDensity`, `applyMotion`, `SCALE_MIN`/`SCALE_MAX`/`SCALE_STEP`/`SCALE_DEFAULT`,
   `columnWidthPx` (used only by `master/tests/datatable-fit.test.ts`),
@@ -2005,8 +1993,8 @@ primaryLanAddress() ?? '127.0.0.1', httpPort: config.http.port, acceptingPairing
 
 | File | Lines | Purpose |
 |---|---|---|
-| `master/src/pdf/fonts.ts` | 98 | `FACE_FILES` maps `body`, `bodyBold`, `devanagari`, `mono` to the four TTFs in `master/assets/fonts/`; `assertFontsPresent()`, `registerFonts(doc)`, `faceFor(script, bold)`. `mono` is Source Code Pro. |
-| `master/src/pdf/text.ts` | 78 | `splitByScript()` — Devanagari/body/mono runs (PDFKit binds one font per `text()` call) |
+| `master/src/pdf/fonts.ts` | 98 | `FACE_FILES` maps `body`, `bodyBold`, `mono` to the TTFs in `master/assets/fonts/` (Inter and a mono face); `assertFontsPresent()`, `registerFonts(doc)`, `faceFor(bold)`. `mono` is Source Code Pro. |
+| `master/src/pdf/text.ts` | 78 | Text-run helpers for the PDF renderer (PDFKit binds one font per `text()` call) |
 | `master/src/pdf/primitives.ts` | 117 | `MM_TO_PT`, `mm()`, `measureRuns`, `runText`, `truncateToWidth`, `runTextRight`, `horizontalRule` |
 | `master/src/pdf/table-renderer.ts` | 165 | `renderReportPdf(table: ReportTablePdf)` — paginated header, rows, optional totals, A4 or Letter |
 
@@ -2344,7 +2332,7 @@ exercised only through service integration tests.
   colours and cities), `reportOptions(actor)` the kinds on offer, whom the person may pick and
   whether to offer a file, and `exportReport` writes CSV (the column keys, byte-identical for
   the legacy three), Excel (`lib/spreadsheet.ts#streamXlsxTable`, row by row) or PDF
-  (`pdf/table-renderer.ts`, yielding between pages), in `en` or `hi`, capped at 100,000 / 100,000
+  (`pdf/table-renderer.ts`, yielding between pages), capped at 100,000 / 100,000
   / 10,000 rows. **Who may ask is decided only here** (`contextFor`): the permission, then
   `assertReportsVisible` (the company switch for the caller's tier; an administrator is never
   switched off), then `resolveSubject` — the Office and Management tiers are always themselves
@@ -2722,7 +2710,7 @@ the service checks.
 - `master/src/http/routes/report.routes.ts` (6): `GET /dispatches`,
   `/lead-outcomes`, `/top-parties` (`reports.view`, frozen for older Offices); `GET /options`
   and `GET /table/:report` (`reports.view`, 1.3 H2); `GET /:report/export` (`reports.view` + `reports.export`;
-  `format=csv|xlsx|pdf`, `lang=en|hi`, `subjectId`, `columns`, `totals`, `paperSize`,
+  `format=csv|xlsx|pdf`, `subjectId`, `columns`, `totals`, `paperSize`,
   `orientation`); `GET /:report/pdf` (1.3 H3, the same two keys; `exportReport` with the format forced to `pdf`,
   answered `application/pdf` with `Content-Disposition: inline`, so Preview PDF shows it; the
   same subject rule, Party Access, caps and audit row as the file; `exportOptionsOf` reads the query for both). Contract: `docs/backend-modules/04-API-CONTRACT.md` §3.6–§3.9.
@@ -2881,8 +2869,7 @@ the service checks.
   `seed:catalogue`, `seed:demo-parties` (catalogue v2), `typecheck`.
 - `master/tsconfig.json` — extends base, `src` → `dist`.
 - `master/assets/fonts/Inter-Regular.ttf`, `master/assets/fonts/Inter-SemiBold.ttf`,
-  `master/assets/fonts/NotoSansDevanagari-Regular.ttf`,
-  `master/assets/fonts/SourceCodePro-Regular.ttf` — the four SIL OFL faces for PDF
+  `master/assets/fonts/SourceCodePro-Regular.ttf` — the three SIL OFL faces for PDF
   export (checked at boot); `master/assets/fonts/LICENSES.md`.
 - `master/assets/catalogue/swisware-plus-2026.md` — catalogue v2 (2026-09-29): the
   SWISWARE 2026 catalogue as Markdown data (1 brand, the 21-colour range with hex,
@@ -4711,7 +4698,7 @@ Still true:
 | `master/installer/`, `office/installer/` | 3, 4 | NSIS hook, macOS entitlements, 1024 px icon; the Office also `installer-legacy.nsh` |
 | `master/electron-builder.yml`, `office/electron-builder.yml` | 1 each | packaging for Windows, macOS and Linux |
 | `office/electron-builder.legacy.yml` | 1 | the Windows 7 Office build (Electron 22, x64 + ia32) |
-| `tools/` | 13 | release pipeline, build scripts, the legacy Electron pin and smoke, uninstall scripts, ESLint rule |
+| `tools/` | 12 | release pipeline, build scripts, the legacy Electron pin and smoke, uninstall scripts, ESLint rule |
 | `.github/workflows/` | 2 | `ci.yml` and `release.yml` |
 
 Toolchain: Electron 33.4.11 (declared `^33.2.1` in the root devDependencies; the
@@ -4993,7 +4980,7 @@ targets equal to what `release.mjs` picks up.
   `allow-dyld-environment-variables`, `network.server`, `network.client`.
 - `master/installer/icon.png` (`#111318`), `office/installer/icon.png` (`#1c2230`).
 
-### 10.5 `tools/` (13 files)
+### 10.5 `tools/` (12 files)
 
 | File | Lines | Purpose |
 |---|---|---|
@@ -5002,7 +4989,6 @@ targets equal to what `release.mjs` picks up.
 | `tools/copy-shell.mjs` | 38 | copies `electron/dist` into `master/electron/dist` and `office/electron/dist`; `--legacy` copies `build/shell-legacy` into `office/electron/dist` only and writes the `{"type":"commonjs"}` marker |
 | `tools/legacy-electron.mjs` | 19 | `LEGACY_ELECTRON = '22.3.27'` and `LEGACY_NODE = '16.17.1'`, the one pin for the Windows 7 build. Not an npm dependency: an `electron` alias would put the 22 binary behind `npx electron` and add a 100 MB download to every `npm ci` |
 | `tools/legacy-smoke.mjs` | 623 | `npm run smoke:legacy`: builds shared, `office/dist` and the CommonJS shell stage; downloads Node 16.17.1 (checked against nodejs.org's SHASUMS256) and Electron 22.3.27 (`@electron/get`, checked the same way) into `.tmp/legacy-runtime`; runs `office/dist` on each against a stub Master on loopback — pairing, a product CSV upload passed on as multipart, an update download on the runtime's channel (`win32` on plain Node, `win7` on Electron 22 on Windows), `/api/connection`, the event stream, `/api/storage/path`'s free space, a shutdown with the stream open; then launches the Electron 22 main process on `office.main.js` through a wrapper app with a scratch `appData`/`userData` and `--in-process-gpu`, checks the marker and Chromium 108, and waits for the shell's server. Puts the ESM shell back afterwards when that is what it found |
-| `tools/i18n-sync.mjs` | 129 | §3.7 |
 | `tools/make-icons.mjs` | 71 | renders the three `installer/icon.png` files; run as `npm run icons` (root script) |
 | `tools/make-release-key.mjs` | 104 | Ed25519 pair; private PEM (0600) to `ORDERBOOK_RELEASE_KEY_DIR` (refuses the repo); public key (base64 DER SPKI) appended to `TRUSTED_RELEASE_KEYS` |
 | `tools/uninstall/uninstall-orderbook.ps1` | 491 | Windows sweep: `-Panel master\|office\|all`, `-KeepData`, `-Yes`, `-LeftoversOnly`, `-DryRun`, `-Elevated`; self-elevates unless dry-run; stops processes by path, never by name; removes install folders, profiles, caches, shortcuts, registry entries, firewall rules and (without `-KeepData`) data folders and the releases drop box. **PowerShell 2.0** since Phase 0 (Windows 7 ships it): the pointer is read with `JavaScriptSerializer`, sets are hashtables, folders are picked by `PSIsContainer`, the script path is `$MyInvocation.MyCommand.Path`; a shortcut root it may not read (another user's, during a non-elevated dry run) is skipped with a `[skip]` line instead of ending the run |
@@ -5993,21 +5979,16 @@ Printroom blocks of `master-shell.test.tsx` and `office-shell.test.tsx`.
 
 ### 11.9 Internationalisation (i18n)
 
-1. **Catalogue:** add English to `EN_MESSAGES` (`shared/src/i18n/en.ts`); `npm run
-   i18n:sync` appends the key to `HI_MESSAGES` (`shared/src/i18n/hi.ts`) with a
-   `// TODO(i18n-hi)` marker; translate it. `MessageKey`/`ParamsFor`
+1. **Catalogue:** add the string to `EN_MESSAGES` (`shared/src/i18n/en.ts`). `MessageKey`/`ParamsFor`
    (`shared/src/i18n/keys.ts`) type the shared translator and `AppError`
    (`master/src/lib/errors.ts`, `readonly messageKey: MessageKey`), so wrong keys and
    params there are compile errors. **The kit's `t()` takes `key: string`
    deliberately** (`ui/src/i18n.ts`), so a wrong literal key in a screen compiles;
    `master/tests/i18n-call-sites.test.ts` is what catches it.
-2. **Screens:** `t(key, params)` from `ui/src/i18n.ts` reads `ob.locale` on every call,
+2. **Screens:** `t(key, params)` from `ui/src/i18n.ts` looks the key up in `en.ts`,
    rewrites panel-scoped keys (`PANEL_SCOPED_KEYS`) to `master.`/`office.`, and calls
    the shared translator (`createTranslator`, `shared/src/i18n/translate.ts`:
-   requested locale → English → raw key). Language changes go through
-   `AppearanceSettings` → `setLocale` → reload. On first load `adoptDefaultLocale`
-   takes `ORDERBOOK_DEFAULT_LOCALE` from `/api/auth/me` (Master) or `/api/session`
-   (Office).
+   key → English string → raw key).
 3. **Errors:** services throw `AppError(messageKey, params)`
    (`master/src/lib/errors.ts`; `message` rendered from English) →
    `error-handler.ts` or `hub.ts#respond` send `messageKey` and `params` → the Office
@@ -6018,20 +5999,13 @@ Printroom blocks of `master-shell.test.tsx` and `office-shell.test.tsx`.
 4. **Audit log:** `recordActivity(entityType, action)` → `ACTIVITY_TOKENS`
    (`shared/src/i18n/activity.ts`) → `renderActivity` in the Logs screen, with
    `logs.actor.unknown` for a row with no actor. Tokens are append-only
-   (`shared/tests/activity-tokens.lock.json`), and every Hindi template needs a
-   postposition after `{actor}` so that stand-in (`'किसी'`) reads. The Logs screen
+   (`shared/tests/activity-tokens.lock.json`). The Logs screen
    still renders English (`createTranslator('en')`, §7.4).
-5. **PDFs:** `master/src/pdf/text.ts#splitByScript` switches Devanagari runs to Noto
-   Sans Devanagari (`master/assets/fonts/`); `master/tests/pdf-fonts.test.ts` gates the
-   shaping.
-6. **CSS:** `:lang(hi)` switches the UI to the Devanagari font stack
-   (`ui/src/tokens.css`).
-7. Guards: `shared/tests/i18n-coverage.test.ts` (including no price words in either
+5. Guards: `shared/tests/i18n-coverage.test.ts` (including no price words in the
    catalogue), `shared/tests/i18n.test.ts`, `master/tests/i18n-call-sites.test.ts`,
    `master/tests/i18n-tokens.test.ts`, `master/tests/errors-i18n.test.ts`,
    `master/tests/web-catalogue-text.test.ts` (the web apps' error fallbacks),
-   `ui/tests/locale.test.ts`, `ui/tests/kit-i18n.test.tsx` (the kit's chrome in
-   Hindi), `ui/tests/permission-labels.test.tsx`, and the ESLint rule for the swept
+   `ui/tests/locale.test.ts`, `ui/tests/kit-i18n.test.tsx` (the kit's chrome), `ui/tests/permission-labels.test.tsx`, and the ESLint rule for the swept
    files.
 
 ---
@@ -6159,8 +6133,7 @@ They read files and assert on the text; they need no database and cannot skip.
   and nothing else).
 - **Libraries and infrastructure (13):** `backup-crypto`, `change-ring`, `network`
   (mocks), `spreadsheet` (exceljs), `tile-swatch` (sharp), `cluster-snapshot` and
-  `env-file` (temp dirs), `pdf-fonts` (Devanagari shaping with fontkit over the
-  vendored fonts), `pdf-primitives`, `boot-status` (supertest on `createBootApp`),
+  `env-file` (temp dirs), `pdf-fonts` (the vendored fonts load and shape with fontkit), `pdf-primitives`, `boot-status` (supertest on `createBootApp`),
   `developer-service`, `migration-status` (the `--status` formatter against Knex's
   real `list()` shape) and `socket-origin` (the handshake check on both transports,
   against the real hub on a throwaway HTTP server).
@@ -6557,16 +6530,16 @@ also imports `masterConnection`.
 |---|---|---|
 | Add a field to a record (party, product, lead, order) | `shared/src/domain/entities.ts`, `shared/src/domain/inputs.ts`, `shared/src/domain/columns.ts` (`*_COLUMNS`; `MERGEABLE_COLUMNS` if offline edits may merge it); a new additive migration + `master/src/db/migrations/index.ts`; `master/src/repositories/mappers.ts` and the entity repository; the service; the form (`ui/src/PartyFormModal.tsx` or the panel screen); `docs/schema/`. A field that crosses the wire must be optional. | `shared/tests/wire-optionality.test.ts`, `master/tests/migration-registry.test.ts`, `master/tests/migration-data-safety.test.ts`, `master/tests/partial-patch.integration.test.ts`, `master/tests/mappers.test.ts` |
 | Add a migration | a new `master/src/db/migrations/<14-digit>_<name>.ts` (additive only; no live constants) and its import + array entry in `master/src/db/migrations/index.ts`, **before the pinned entries** — or, when it must run after the trim, appended and added to the end of `DELIBERATELY_LAST` (as `20260326` was); add it to `SHIPPED` once it reaches a real installation. **Never delete or rewrite one.** | `master/tests/migration-registry.test.ts`, `master/tests/migration-data-safety.test.ts` |
-| Add a permission | `shared/src/domain/permissions.ts` (`MODULE_ACTIONS` or `CAPABILITIES`, and `MINIMUM_TIER`); tokens in `shared/src/i18n/en.ts` + `hi.ts`; a grant migration with a frozen key list if existing roles need it; **wire it** — `requirePermission` in the service and `needs()` on the route (an unenforced permission is worse than a missing one); the UI gate | `shared/tests/i18n-coverage.test.ts`, `master/tests/credential-invariants.test.ts`, `master/tests/permissions.integration.test.ts`, `master/tests/migration-grant.integration.test.ts` |
-| Add a screen | the panel's `App.tsx` (`Tab` union, nav items, `ScreenSpec` array); `nav.*` keys in both catalogues; a `MASTER_NAV`/`OFFICE_NAV` entry in `shared/src/keys/commands.ts` **at the sidebar's position** (it sets Alt+N); navigation and the palette follow the sidebar through `offered()`, so a screen reachable any other way needs a deliberate path like the Master's `openScreen` | `master/tests/screen-reachability.test.ts`, `master/tests/web-reachability.test.ts`, `master/tests/i18n-call-sites.test.ts`, `shared/tests/keys-implemented.test.ts`, `shared/tests/keys-nav-order.test.ts`, `ui/tests/master-shell.test.tsx` / `ui/tests/office-shell.test.tsx` (Alt+N), `ui/tests/keyboard-provider.test.tsx` (the palette's filter, with a stub test) |
+| Add a permission | `shared/src/domain/permissions.ts` (`MODULE_ACTIONS` or `CAPABILITIES`, and `MINIMUM_TIER`); tokens in `shared/src/i18n/en.ts`; a grant migration with a frozen key list if existing roles need it; **wire it** — `requirePermission` in the service and `needs()` on the route (an unenforced permission is worse than a missing one); the UI gate | `shared/tests/i18n-coverage.test.ts`, `master/tests/credential-invariants.test.ts`, `master/tests/permissions.integration.test.ts`, `master/tests/migration-grant.integration.test.ts` |
+| Add a screen | the panel's `App.tsx` (`Tab` union, nav items, `ScreenSpec` array); `nav.*` keys in the catalogue; a `MASTER_NAV`/`OFFICE_NAV` entry in `shared/src/keys/commands.ts` **at the sidebar's position** (it sets Alt+N); navigation and the palette follow the sidebar through `offered()`, so a screen reachable any other way needs a deliberate path like the Master's `openScreen` | `master/tests/screen-reachability.test.ts`, `master/tests/web-reachability.test.ts`, `master/tests/i18n-call-sites.test.ts`, `shared/tests/keys-implemented.test.ts`, `shared/tests/keys-nav-order.test.ts`, `ui/tests/master-shell.test.tsx` / `ui/tests/office-shell.test.tsx` (Alt+N), `ui/tests/keyboard-provider.test.tsx` (the palette's filter, with a stub test) |
 | Add a socket command (Office → Master) | `shared/src/protocol/socket.ts` (`ClientToServerEvents`), `master/src/realtime/hub.ts#registerCommands` (resolve the actor, call the service inside `respond`), the Office caller (`forward()` in `office/src/http/app.ts`) and an `office/web/src/api.ts` member | `office/tests/module-forwarding.test.ts`, `master/tests/web-reachability.test.ts` |
 | Add a push event (Master → Office) | `ServerToClientEvents` in `shared/src/protocol/socket.ts`, emit in `master/src/realtime/hub.ts`, handle in `office/src/realtime/master-connection.ts` | `master/tests/socket-contract.test.ts` |
 | Add an offline-able write | `shared/src/sync/mutations.ts` (`MUTATION_KINDS` + `MUTATION_PERMISSIONS`), `office/src/http/app.ts` (`queue()` it; a shape check goes in its `validate` step, which runs after the permission check), `office/src/sync/local-store.ts` (overlay, if it should show before the Master answers), `master/src/services/sync.service.ts` (`route()`), the service | `master/tests/sync.integration.test.ts`, `office/tests/outbox.test.ts`, `office/tests/lead-route.test.ts` |
 | Add an entity to change events | `ChangedEntity` in `shared/src/protocol/socket.ts` and exactly one of `REPLAYABLE_ENTITIES` / `SNAPSHOT_FORCING_ENTITIES` / `PANEL_IRRELEVANT_ENTITIES`; `shared/src/sync/apply-change.ts`; `master/src/realtime/fan-out.ts` (`REQUIRED_PERMISSION`, `PARTY_SCOPED_ENTITIES`); the Master web `SCREEN_ENTITIES` | `master/tests/sync-delta.integration.test.ts`, `shared/tests/apply-setting-change.test.ts` |
 | Add a snapshot field | `SyncSnapshot` (optional), `master/src/services/snapshot.service.ts`, `SNAPSHOT_POLICY` in `office/src/http/app.ts` (compile error until decided) | `shared/tests/wire-optionality.test.ts`, `office/tests/snapshot-for-user.test.ts` |
-| Change a string | `shared/src/i18n/en.ts`, then `npm run i18n:sync`, then translate `shared/src/i18n/hi.ts`; no price words in either catalogue; a web app's error fallback is a catalogue key too | `shared/tests/i18n-coverage.test.ts`, `master/tests/i18n-call-sites.test.ts`, `shared/tests/i18n.test.ts`, `master/tests/web-catalogue-text.test.ts`, `ui/tests/kit-i18n.test.tsx` |
+| Change a string | `shared/src/i18n/en.ts`; no price words in the catalogue; a web app's error fallback is a catalogue key too | `shared/tests/i18n-coverage.test.ts`, `master/tests/i18n-call-sites.test.ts`, `shared/tests/i18n.test.ts`, `master/tests/web-catalogue-text.test.ts`, `ui/tests/kit-i18n.test.tsx` |
 | Add a panel-scoped string | `shared/src/i18n/panel-scoped.ts` + both `master.<key>` and `office.<key>` in the catalogues (never a second list) | `master/tests/i18n-call-sites.test.ts` |
-| Add an audited action | `recordActivity(entry, actor, trx)` as the **last statement of the write's own transaction**, after every row lock (`recordDetachedActivity` only for what has no Master transaction to join — an attempt, a multi-transaction run, a change already made on a panel; §5.1); `activity.<entity>.<action>` in both catalogues, the Hindi with a postposition after `{actor}`; never remove a token | `master/tests/i18n-tokens.test.ts`, `shared/tests/i18n-coverage.test.ts` (`activity-tokens.lock.json`), `master/tests/audit-trail.integration.test.ts`, `master/tests/audit-atomicity.integration.test.ts` |
+| Add an audited action | `recordActivity(entry, actor, trx)` as the **last statement of the write's own transaction**, after every row lock (`recordDetachedActivity` only for what has no Master transaction to join — an attempt, a multi-transaction run, a change already made on a panel; §5.1); `activity.<entity>.<action>` in `en.ts`; never remove a token | `master/tests/i18n-tokens.test.ts`, `shared/tests/i18n-coverage.test.ts` (`activity-tokens.lock.json`), `master/tests/audit-trail.integration.test.ts`, `master/tests/audit-atomicity.integration.test.ts` |
 | Add a company setting | one entry in `shared/src/domain/settings.ts` (group, control, fallback, parser) and its two i18n tokens — no migration, no column. **If a screen or offline panel must read it:** `CompanyFeatures` (optional) in `entities.ts`, `master/src/services/company-features.ts`, `resolveCompanyFeatures` in `shared/src/domain/company-features.ts` | `shared/tests/settings.test.ts`, `master/tests/company-features-complete.test.ts`, `shared/tests/company-features-resolve.test.ts`, `shared/tests/wire-optionality.test.ts`, `master/tests/company-settings.integration.test.ts` |
 | Add a party-scoped read | `applyPartyScope`/`partyScopeSql` in the repository (`grep applyPartyScope` first); `PARTY_SCOPED_ENTITIES` in `fan-out.ts` for its pushes | `master/tests/party-access.integration.test.ts` |
 | Add a Master HTTP route | the route file with `needs(...)`, the service's `requirePermission`; mount in `master/src/http/app.ts` (order matters — see §5.8.5); a `master/web/src/api.ts` member | `master/tests/credential-invariants.test.ts`, `master/tests/http-api.integration.test.ts`, `master/tests/web-reachability.test.ts` |
@@ -6669,11 +6642,11 @@ stock and inventory code (R15; the tables stay), see the notes in sections 3-9.
 | `ui/src/ListFilters.tsx` | R17. `useStoredSort` (kept per machine in localStorage under `ob.listSort.<table>`), `ProductFilterRow` (size, photo), `PartyFilterRow` (city, state, GST); both take `extraActive` and `onClearAll` so Clear filters clears the search and chips too |
 | `ui/src/ProductShare.tsx` | R16. The "N selected - Create product share" bar and the Save PDF / Print dialog; `printPdfBlob`. The tick boxes are `selectedIds` / `onSelectionChange` on `DataTable` |
 | `master/src/domain/product-share.ts` | R16. Pure: `chunkPages` (4 per page), `shareCard` (every product field but money; never the main-product code), `shareText(locale)` (the fixed words from `productShare.pdf.*`), `SHARE_MAX_PRODUCTS` = 400 |
-| `master/src/pdf/product-share-renderer.ts` | R16. A4 portrait, header with date and "Page n of m", 2x2 cards of photo over fields (a grey box without a photo); Devanagari through `master/src/pdf/fonts.ts` |
+| `master/src/pdf/product-share-renderer.ts` | R16. A4 portrait, header with date and "Page n of m", 2x2 cards of photo over fields (a grey box without a photo); fonts through `master/src/pdf/fonts.ts` |
 | `master/src/services/product-share.service.ts` | R16. `productSharePdf(ids, actor)` (`products.view` only; photos converted to JPEG with `sharp`; custom fields by the company's label via `customFieldLabeler`; the deployment's language). Reached by `POST /api/products/share.pdf` (Master), the `product:sharePdf` command (protocol 7) and the Office proxy, which waits 120 s |
 | `master/tests/catalog-lists.integration.test.ts` | R5. The three lists under `catalog.lists.manage`, every other list under `fields.manage`; everyone reads the three; the Recycle Bin offers each key only what it can restore; the grant migration |
 | `master/tests/list-sort-filter.integration.test.ts` | R17. Server-side sort and filters on parties and products; an unknown sort key keeps the old order |
-| `master/tests/product-share.test.ts`, `product-share.integration.test.ts` | R16. 9 products make 3 pages; photos, a Hindi sheet, no money, custom field labels, permission, the 400 cap |
+| `master/tests/product-share.test.ts`, `product-share.integration.test.ts` | R16. 9 products make 3 pages; photos, no money, custom field labels, permission, the 400 cap |
 | `master/tests/no-category-code-in-display.test.ts` | R14. Reads every source folder and refuses six shapes of joining a category code into display text |
 | `ui/tests/catalog-lists-screen.test.tsx`, `list-filters.test.tsx`, `product-share-bar.test.tsx` | R3-R5, R17, R16. The Lists screen's read-only and write states; sorting, tick boxes and Clear filters; the share bar, including the hidden-`<Activity>` case |
 

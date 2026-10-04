@@ -79,8 +79,7 @@ parallel backend session was actively editing:
    Functionally identical (bundled, hashed, `font-display: block`, zero runtime requests) and
    it skips the public-dir + copy step. Subsets were trimmed to stay under the §11 budget:
    Inter variable latin (~48 KB) + a symbols slice carrying ₹/dashes/quotes (~8 KB),
-   IBM Plex Mono 400/500/600 latin, Noto Sans Devanagari variable devanagari-only — **218 KB
-   total against the 250 KB budget**.
+   IBM Plex Mono 400/500/600 latin.
 3. **i18n: a minimal local module (`office/web/src/i18n/strings.ts`) serves new shell code.**
    §4.4's "keep t() out of scope" still holds for the existing ~4,000 lines of screens. A
    shared i18n module is being built on the backend side; when it lands, this dictionary moves
@@ -149,7 +148,7 @@ OrderBook, so there's no conflict to resolve, only implementation:
 - **No network at runtime, fonts and icons included.** OrderBook is LAN-only by design (`HANDOFF.md`);
   both `vite.config.ts` files already forbid reaching a CDN. The mockups' `<link
   href="https://fonts.googleapis.com/...">` tags are a Claude Design preview convenience, not part
-  of the deliverable — the real build self-hosts Inter, IBM Plex Mono and Noto Sans Devanagari as
+  of the deliverable — the real build self-hosts Inter and IBM Plex Mono as
   local `.woff2` files with local `@font-face`, and the CI gate (§8 below) asserts a cold run makes
   zero requests.
 - **Plain CSS + custom properties, no CSS-in-JS, no animation library.** Matches current
@@ -328,7 +327,7 @@ skipping the `prepare`/`pre*` trap `shared/` has (`HANDOFF.md`: "consumed as com
 source"). Each app's `vite.config.ts` gets a path alias/workspace reference to `ui/src`; no new
 `tsc -b` project reference needed unless the type-check step wants one for editor support.
 
-**Fonts.** Inter (variable), IBM Plex Mono, Noto Sans Devanagari (variable) — all OFL-licensed,
+**Fonts.** Inter (variable) and IBM Plex Mono — both OFL-licensed,
 sourced from their official repositories at implementation time and checked into
 `ui/assets/fonts/`, then copied into each app's `public/fonts/` (neither app has a `public/`
 directory today; both need one) so they load from disk with `font-display: block`, per §4 of the

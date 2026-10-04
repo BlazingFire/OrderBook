@@ -44,7 +44,7 @@ built". In fact `shared/src/domain/permissions.ts` already emits a `labelToken` 
 entry (`permission.lead.convert`, `module.leads`, `capabilityGroup.workflow`, `roleTemplate.sales`)
 with an explicit comment that "the renderer never hard-codes the English", and `activity_log`
 already stores `(entity_type, action, details JSONB)` rather than English sentences. The token
-contract is real and load-bearing; what is missing is the catalogue, `t()`, and a locale picker.
+contract is real and load-bearing; what is missing is the catalogue and `t()`.
 
 ---
 
@@ -210,30 +210,28 @@ It pays off three times:
 
 - **`activity_log` needs no change to what it stores.** `(entity_type, action, details)` is already
   token-plus-params, so the hash chain covers permanent, language-free facts and rendering stays
-  outside the chain. An entry written today renders in Hindi tomorrow with no schema change and no
+  outside the chain. An entry's rendering can change tomorrow with no schema change and no
   chain rewrite. *(This resolves the sharpest cross-design contradiction: the i18n and Logs designs
   gave opposite answers about the log until it was noticed that they were answering different
   questions — what the chain **covers** versus what the table **carries**. The chain input is
   `prev_hash|sequence|entity_type|entity_id|action|actor_type|actor_id|details`; the `actor_name`
   column Logs adds sits outside it and is therefore safe.)*
 - **The error envelope needs only additive fields** on top of the `code`/`details` contract it already has.
-- **It degrades not at all offline** — both catalogues are compiled into the panel's bundle before it
+- **It degrades not at all offline** — the catalogue is compiled into the panel's bundle before it
   ever contacts a Master. This is the only one of the six modules that is fully functional offline.
 
 ### 4.2 Catalogues are compiled TypeScript, not a database table
 
 A key exists only because code references it. A `.ts` catalogue makes a missing or misspelt key a
-**compile error**; a table cannot. `hi.ts` is typed `Record<MessageKey, string>` — **total, not
-partial** — so adding an English key turns the build red until Hindi exists.
+**compile error**; a table cannot. strings live in `en.ts` only and are looked up through `t()`.
 
 ### 4.3 Files
 
 ```
 shared/src/i18n/
   en.ts          THE source of truth. `EN_MESSAGES = {...} as const`; dotted keys, NAMED {placeholders}
-  hi.ts          Devanagari. Record<MessageKey, string>, total
   keys.ts        MessageKey = keyof typeof EN_MESSAGES; Placeholders<S> recursive template-literal type
-  locales.ts     LOCALES/Locale/isLocale/LOCALE_LABELS (each label in its own script)
+  locales.ts     LOCALES/Locale/isLocale/LOCALE_LABELS
   translate.ts   t(), tCount(), createTranslator(locale). NO number formatting — spec §10
   activity.ts    activityMessageKey(entityType, action) — the contract Logs renders against
   errors.ts      ErrorPayload/TranslatableError — one wire shape for the HTTP envelope AND the socket ack
@@ -244,11 +242,10 @@ shared/src/i18n/
 master/src/domain/i18n-tokens.ts   pure invariant: every (entityType, action) written to
                                    activity_log has a catalogue entry
 
-{master,office}/web/src/i18n/      LocaleProvider.tsx, storage.ts, useErrorMessage.ts
-{master,office}/web/src/components/ LocalePicker.tsx, Untranslated.tsx
+{master,office}/web/src/i18n/      useErrorMessage.ts
+{master,office}/web/src/components/ Untranslated.tsx
 
 tools/eslint-rules/no-untranslated-jsx-text.js   in-repo flat-config rule, no new dependency
-tools/i18n-sync.mjs                              appends missing HI keys with EN text + a TODO marker
 ```
 
 `<Untranslated>{order.id}</Untranslated>` is the semantic suppression affordance — it *documents*
@@ -260,7 +257,7 @@ or reformatting numbers, IDs and fingerprints.
 `AppError` gains `messageKey` and `params`. Making `messageKey` **required** is the only thing that
 makes an untranslated error impossible — but there are **126** throw sites across `master/src` and
 `office/src` (`domain/access.ts` 12, `lead.service.ts` 16, `order.service.ts` 14, `user.service.ts`
-14, `catalog.service.ts` 11, …), each needing a token and each token needing an EN and a HI string.
+14, `catalog.service.ts` 11, …), each needing a token and an `en.ts` string.
 
 **Recommendation: required**, with `message` *derived* from the EN catalogue so existing tests that
 assert on English message text keep passing byte-identical (`access.integration.test.ts` and
@@ -272,7 +269,7 @@ This is the single largest scoping item in the batch. Flagging it rather than as
 ### 4.5 Gates
 
 - `shared/tests/i18n-coverage.test.ts` — every key in `PERMISSIONS` has a `permission.<key>` token;
-  every module, capability group and role template has its token; `hi.ts` is total. **This is what
+  every module, capability group and role template has its token. **This is what
   makes the existing `labelToken` contract load-bearing rather than decorative.**
 - `master/tests/i18n-tokens.test.ts` — source-reading invariant in the established
   `credential-invariants.test.ts` style: scans services for `recordActivity` call sites and asserts
@@ -475,7 +472,7 @@ The largest module, and the one previously deferred on purpose (`docs/LEAD_GENER
 shared/src/domain/documents.ts
 master/src/domain/document-template.ts    assertTemplateValid (margins, paper, orientation)
 master/src/domain/document-model.ts       THE seam: masked record + template → pure DocumentModel
-master/src/domain/document-text.ts        splitByScript() → 'body' | 'devanagari' | 'mono' runs
+master/src/domain/document-text.ts        text runs for the renderer
 master/src/repositories/document-template.repository.ts
 master/src/repositories/document-export.repository.ts
 master/src/repositories/document-asset.repository.ts
@@ -486,10 +483,8 @@ master/src/pdf/fonts.ts                   registers the vendored faces with PDFK
 master/src/pdf/primitives.ts              table(), colourChip() with the two-letter ring fallback
 master/src/lib/document-files.ts          disk I/O (no Knex, so deliberately outside repositories/)
 master/src/http/routes/document.routes.ts mounted /api/documents
-master/assets/fonts/                      Inter-Regular, Inter-SemiBold, IBMPlexMono-Regular,
-                                          NotoSansDevanagari-Regular (+ LICENSES.md)
+master/assets/fonts/                      Inter-Regular, Inter-SemiBold, IBMPlexMono-Regular (+ LICENSES.md)
 master/src/db/migrations/20260308000000_document_templates_and_exports.ts
-master/tests/document-fonts.test.ts       PURE — THE Devanagari gate
 master/tests/document-model.test.ts       PURE — rate columns ABSENT, not zero, not null
 master/tests/document-{template,render}.integration.test.ts
 ```
@@ -500,10 +495,7 @@ rate column must be **absent from the document** rather than zeroed, and the exp
 in `document_exports` **and** `activity_log` in one transaction — none of which a client-side
 renderer can be trusted with or is even able to do.
 
-**Devanagari support is a hard requirement and eliminates several popular PDF libraries** that ship
-WinAnsi encoding only. Party names, addresses and terms in Hindi are unrenderable without it.
-`master/tests/document-fonts.test.ts` runs fontkit's `layout()` against the vendored face directly —
-a pure suite, so the gate cannot silently skip. All four faces are SIL OFL 1.1, which explicitly
+The vendored faces are SIL OFL 1.1, which explicitly
 permits PDF embedding; `LICENSES.md` ships alongside so the vendored binaries are auditable with no
 network access.
 

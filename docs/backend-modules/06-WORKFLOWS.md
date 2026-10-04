@@ -14,7 +14,7 @@ thing that makes a request and receives a response; no screen is specified in th
 web files in scope are the typed API client wrappers `master/web/src/api.ts` and
 `office/web/src/api.ts` — `02-FILE-STRUCTURE.md` owns that boundary and `05-EXISTING-CODE-CHANGES.md`
 §0 restates it for existing code. Everything under `{master,office}/web/src/i18n/`, plus
-`LocalePicker.tsx`, `Untranslated.tsx`, `main.tsx`, `format.ts`, `styles.css`, `PermissionGrid.tsx`
+`Untranslated.tsx`, `main.tsx`, `format.ts`, `styles.css`, `PermissionGrid.tsx`
 and `AccessScreen.tsx`, is **deferred to the UI phase**. `shared/src/i18n/` is in scope and is proven
 end-to-end from `shared/tests/` with no web file involved — see §5.0, where the deferred half of the
 token flow is drawn as a dashed hop rather than left implicit.
@@ -267,7 +267,7 @@ this batch may treat an Office-side check as the enforcement point.
 ## 4. The offline path
 
 **Every module in this batch fails hard when the Master is unreachable. Nothing is queued.** The one
-exception is i18n, which needs nothing from the Master: both catalogues are compiled into the panel's
+exception is i18n, which needs nothing from the Master: the catalogue is compiled into the panel's
 bundle before it ever contacts one.
 
 ```mermaid
@@ -394,11 +394,10 @@ Read the hops as one rule each:
 | **3** | `err.message` — the server's English, printed as-is | An unrecognised code from a Master newer than this browser bundle |
 
 Tier 3 is the reason `message` stays on the wire at all. Deleting it as redundant would make the one
-case the fallback exists for render **blank**. English on a Hindi screen is bad; nothing on a Hindi
-screen is worse, because the person cannot even report what they saw.
+case the fallback exists for render **blank**. Nothing on screen is worse than English, because the person cannot even report what they saw.
 
 **Where this batch stops, stated plainly.** The dashed hop is real: after this batch every error on
-both transports carries a token and both catalogues exist and are total — and **no browser calls
+both transports carries a token and the catalogue exists and is total — and **no browser calls
 `t()`**, because `{master,office}/web/src/i18n/` is deferred to the UI phase — see the scope
 reminder at the head of this document. The
 server half is nonetheless verified end to end without a single web file: `shared/src/i18n/` is in
@@ -771,7 +770,7 @@ sequenceDiagram
     Note over D: when ratesIncluded is false the rate and lineTotal<br/>COLUMNS are absent and the totals block is omitted
     D-->>S: pure DocumentModel
     S->>PDF: renderPdf(model) → Buffer
-    PDF->>PDF: fonts registered once per process; splitByScript → body / devanagari / mono runs
+    PDF->>PDF: fonts registered once per process
     S->>F: write <storageKey>.pdf.tmp, fsync
     S->>P: db().transaction(trx)
     P->>P: INSERT document_exports (…, rates_included) RETURNING id
@@ -819,13 +818,6 @@ The ordering is the design. Seven points, each load-bearing:
 
 **Preview** runs the identical path with `persist: false` — no file, no export row, no activity
 entry, `PREVIEW` watermark forced on — so a preview can never diverge from the real document.
-
-**Devanagari is a hard requirement**, and it is the reason rendering is server-side with PDFKit +
-fontkit and vendored SIL OFL faces rather than any library shipping WinAnsi encoding only. Party
-names, addresses and terms in Hindi are otherwise unrenderable. `master/tests/document-fonts.test.ts`
-is pure and runs fontkit's `layout()` against the vendored face directly: `हिन्दी` must produce fewer
-glyphs than codepoints (conjunct formation), and in `कि` the i-matra must be positioned before its
-consonant (reordering). A renderer that only maps codepoints in order fails both.
 
 **Export history listing** filters rows whose subject kind the caller may not view rather than
 refusing the request — a dispatch clerk with `orders.view` and no `leads.view` sees a coherent list,
@@ -1010,9 +1002,8 @@ means a typo in `.env` on the shop PC is a startup failure with a clear message,
 silently buckets by UTC six weeks later. One key, `locale` rather than `reporting`, because it also
 serves i18n date formatting.
 
-**Font presence.** `master/src/pdf/fonts.ts` asserts all four vendored faces exist and registers them
-with PDFKit once per process. Failing loudly beats silently substituting Helvetica, which renders
-Devanagari as blank boxes — a defect nobody notices until a customer receives the quotation. The
+**Font presence.** `master/src/pdf/fonts.ts` asserts all three vendored faces exist and registers them
+with PDFKit once per process. Failing loudly beats silently substituting Helvetica. The
 faces live in `master/assets/fonts/`, **not** under `src/`: `tsc` does not copy non-TS files into
 `dist`, so a font under `src/` typechecks and is then missing at runtime on the shop PC.
 
@@ -1080,8 +1071,8 @@ re-argued from a diagram above: deleting a converted lead is **refused** (§5.2,
 `04-API-CONTRACT.md`); the Fields `PUT`s take a **mandatory `expectedVersion`** and refuse a stale
 save with 409 (§5.1, `03-DATABASE.md` for the column); and the top-parties report anchors on
 `orders.dispatched_at` (§5.4, `03-DATABASE.md`). `README.md` §8 and `11-BUILD-SEQUENCE.md` §2 carry
-the full open-question register, including two that are not flow-shaped and so are not repeated here
-— `QUIET_AFTER_DAYS = 30` needing the owner's real number, and the Devanagari font fallback.
+the full open-question register, including one that is not flow-shaped and so is not repeated here
+— `QUIET_AFTER_DAYS = 30` needing the owner's real number.
 
 Two things that appear in these flows and are **known-open, not in scope for this batch** — listed so
 they are not mistaken for oversights: `applied_mutations` is still not atomic with the effect it

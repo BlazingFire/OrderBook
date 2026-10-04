@@ -75,7 +75,7 @@ What the owner gets: a Printroom in both panels. It is a shared print queue wher
 - print.send: CAPABILITIES entry {key:'print.send', group:'workflow', labelToken:'permission.print.send'}. No MINIMUM_TIER entry, so office tier. Granted to admin and server_master by migration 20261008000000_printroom; management and office roles get it from an admin in the grid. Added to the ROLE_TEMPLATES 'sales' and 'dispatch' templates (templates only, not seeded rows).
 - print.station: CAPABILITIES entry {key:'print.station', group:'workflow', labelToken:'permission.print.station'}. Office tier, so an unattended printer PC's panel role can hold it. Same grant migration, and added to the ROLE_TEMPLATES 'dispatch' template.
 - Existing keys reused: leads.export (pending-order notes, and sending a lead note), orders.export (final-order notes, and sending an order note), reports.export (the new /api/reports/:report/pdf preview route).
-- i18n: permission.print.send / permission.print.station in shared/src/i18n/en.ts and real Hindi in hi.ts (the i18n-coverage permission-token check).
+- i18n: permission.print.send / permission.print.station in shared/src/i18n/en.ts (the i18n-coverage permission-token check).
 
 ## interfaces
 
@@ -134,9 +134,9 @@ Files: `C:\Users\Z\Desktop\OrderBook\shared\src\domain\printroom.ts`, `C:\Users\
 
 Create printroom.ts with the types and constants above, and export it. Add the CAPABILITIES print.send and print.station (group 'workflow') and the ROLE_TEMPLATES additions. In socket.ts, add the eight print:* ClientToServer commands with typed acks and ServerToClient 'print:changed'. Widen DesktopBridge.printPage options with copies? and add savePdf?. No SyncSnapshot, CompanyFeatures or ChangedEntity changes, so wire-optionality and change-ring EVERY_ENTITY are untouched.
 
-### 3. i18n keys (en + real Hindi)
+### 3. i18n keys in en.ts
 
-Files: `C:\Users\Z\Desktop\OrderBook\shared\src\i18n\en.ts`, `C:\Users\Z\Desktop\OrderBook\shared\src\i18n\hi.ts`
+Files: `C:\Users\Z\Desktop\OrderBook\shared\src\i18n\en.ts`
 
 Add:
 - nav.printroom, permission.print.send, permission.print.station;
@@ -144,7 +144,7 @@ Add:
 - printroom.title/filter.queued|printed|cancelled|all|mine/column.*/group.sender/action.print|markPrinted|markNotPrinted|cancel|open/status.*/station.thisPc|printer|autoPrint|autoPrintNeedsPrinter|online|offline|anyStation|name/dialog.title|kind|copies|target|vehicle|note|send|sent/copiesHint ('Set {n} copies in the print dialog')/payloadExpired/empty/error.offline/notify.printed/notify.autoPrintFailed;
 - validation keys validation.print.copies|kind|source|note|station|requestId|notQueued|stationNeedsDesktop.
 
-Run `npm run i18n:sync`, then replace the TODO stubs with real Hindi. No digits of 3 or more and no price words: the copies range is spelled with {max} placeholders. There are no activity.* tokens, so the lockfile and postposition rules are unaffected.
+No digits of 3 or more and no price words: the copies range is spelled with {max} placeholders. There are no activity.* tokens, so the lockfile is unaffected.
 
 ### 4. Migration: print_stations, print_jobs, grant
 
@@ -362,7 +362,7 @@ Update these docs:
 - the heartbeat calls saveStation every 60 s;
 - the runner unmounts its portal after each job;
 - nothing runs without a printer or without autoPrint.
-- i18n: shared/tests/i18n-coverage.test.ts and master/tests/i18n-call-sites.test.ts must pass with every new key in en and hi (real Hindi, no 3+ digit runs; copies limits use placeholders). master/tests/tooling-config.test.ts must pass with the new swept ESLint paths.
+- i18n: shared/tests/i18n-coverage.test.ts and master/tests/i18n-call-sites.test.ts must pass with every new key (no 3+ digit runs; copies limits use placeholders). master/tests/tooling-config.test.ts must pass with the new swept ESLint paths.
 - If the UI-shell domain changes MASTER_NAV/OFFICE_NAV for printroom, shared/tests/keys-nav-order.test.ts and the Alt-digit assertions in the shell tests change in that coordinated nav commit, not here.
 
 ## docs
@@ -386,7 +386,7 @@ Update these docs:
 - The PDF window has never been verified in real Electron (HANDOFF:77). The allowlist widening is regex-tested, but the viewer still needs a manual check, including how a 503 JSON error displays when the Office is offline (today's lead-PDF behaviour, shown as text).
 - Station operators see sheets for parties they may lack access to. This is intended, because the sender addressed the printroom; record it in the permissions doc so admins grant print.station knowingly.
 - Payload stripping after 30 days makes old jobs unprintable from the Printroom (the sub-screen shows payloadExpired). The record itself remains printable from its own screen.
-- Copies ranges and numbers in Hindi strings: the i18n test bans 3+ digit runs, so use placeholders.
+- Copies ranges and numbers in strings: the i18n test bans 3+ digit runs, so use placeholders.
 - Windows 7 legacy (Electron 22 / Chromium 108 / Node 16 Office): avoid crypto.randomUUID (getRandomValues is used), AbortSignal.any (the Platform domain owns the polyfill) and any API newer than Chromium 108 in the new ui files. printToPDF uses the Electron 21+ API shape only.
 
 ## dependsOn
@@ -408,4 +408,4 @@ Update these docs:
 
 ## effort
 
-About 34 files touched: 12 new and 22 modified. New: migration, repository, service, routes, shared printroom.ts, 3 ui components, printPortal.ts, 2 transports, 3-4 test files. Roughly 2,300 new LOC, of which about 900 are tests and about 350 are en+hi i18n lines. Budget 2 to 3 focused sessions, plus one manual verification pass in packaged Electron on a PC with a real printer: copies, silent auto-print while minimised, the PDF window and savePdf.
+About 34 files touched: 12 new and 22 modified. New: migration, repository, service, routes, shared printroom.ts, 3 ui components, printPortal.ts, 2 transports, 3-4 test files. Roughly 2,300 new LOC, of which about 900 are tests and about 350 are i18n lines. Budget 2 to 3 focused sessions, plus one manual verification pass in packaged Electron on a PC with a real printer: copies, silent auto-print while minimised, the PDF window and savePdf.

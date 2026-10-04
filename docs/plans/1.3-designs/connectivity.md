@@ -433,9 +433,9 @@ PanelsScreen: Offline-for chip (isLongOffline + formatElapsed) and an Update-nee
 
 ### 12. i18n
 
-Files: `shared/src/i18n/en.ts`, `shared/src/i18n/hi.ts`, `shared/src/i18n/panel-scoped.ts`
+Files: `shared/src/i18n/en.ts`, `shared/src/i18n/panel-scoped.ts`
 
-Add these keys with real Hindi (no TODO stubs; no 3+ digit runs; no price words):
+Add these keys (no TODO stubs; no 3+ digit runs; no price words):
 - Sync labels: sync.catchingUp; office.sync.offlineSince {time}; office.sync.offlineFor {duration}; office.link.offlineLong {duration}; office.link.offlineLongTitle; office.link.clockSkew {minutes}; office.link.rediscovered {host}; master.sync.serverUnreachable
 - Errors: error.updateNeeded.master; error.updateNeeded.office
 - Panels: panels.offlineFor {duration}; panels.updateNeeded
@@ -444,7 +444,7 @@ Add these keys with real Hindi (no TODO stubs; no 3+ digit runs; no price words)
 - Units: time.hours.short {count}, time.minutes.short {count}
 - Popover: sync.popover.offlineSince, sync.popover.clockSkew
 
-If sync.catchingUp and sync.offlineSince differ per panel, add them to PANEL_SCOPED_KEYS as pairs. Run npm run i18n:sync, then translate.
+If sync.catchingUp and sync.offlineSince differ per panel, add them to PANEL_SCOPED_KEYS as pairs.
 
 ### 13. Tests and guards
 
@@ -523,7 +523,7 @@ See the 'docs' list.
 - Unchanged guards that must stay green:
 - migration-data-safety (no DELETE/DROP in up())
 - change-ring.test (no new ChangedEntity)
-- i18n-coverage (real Hindi, no digit runs)
+- i18n-coverage (no digit runs)
 - no-transport-dep
 - no-duplicate-ui (barrel export)
 - tooling-config (swept-list path exists)
@@ -580,4 +580,4 @@ See the 'docs' list.
 
 ## effort
 
-About 38 files touched, 6 of them new source files (sync-lane.ts, notifications.ts, notification.repository.ts, notification.service.ts, NotificationBell.tsx, attention.ts), plus 1 migration and 6 new test files. Roughly 1,300 new or changed source LOC and 900 test LOC, plus about 60 i18n keys in English and Hindi. 2 focused sessions: (1) shared contracts, hub, sync lane, stage HLC and the Office link; (2) notifications end to end, Electron IPC, both shells' UI, tests and docs.
+About 38 files touched, 6 of them new source files (sync-lane.ts, notifications.ts, notification.repository.ts, notification.service.ts, NotificationBell.tsx, attention.ts), plus 1 migration and 6 new test files. Roughly 1,300 new or changed source LOC and 900 test LOC, plus about 60 i18n keys. 2 focused sessions: (1) shared contracts, hub, sync lane, stage HLC and the Office link; (2) notifications end to end, Electron IPC, both shells' UI, tests and docs.
