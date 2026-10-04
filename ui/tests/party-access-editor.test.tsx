@@ -160,6 +160,13 @@ describe.each(['master', 'office'] as const)('the Party Access editor on the %s 
       expect(within(asha).getByRole('button', { name: t('partyAccess.editor.removeFor', { name: 'Asha Rao' }) })).toBeTruthy();
     });
 
+    it('puts the keyboard on the add field, list closed, when the last row is removed', async () => {
+      await mount(panel, { party: party([grant('u1', 'view')]) });
+      fireEvent.click(screen.getByRole('button', { name: t('partyAccess.editor.removeFor', { name: 'Asha Rao' }) }));
+      await waitFor(() => expect(document.activeElement).toBe(addField()));
+      expect(screen.queryAllByRole('option')).toHaveLength(0);
+    });
+
     it('changes a level from the switch, and removes a row', async () => {
       await mount(panel, { party: party([grant('u1', 'view'), grant('u2', 'view')]) });
       const bela = rowOf('Bela Shah');
@@ -174,17 +181,17 @@ describe.each(['master', 'office'] as const)('the Party Access editor on the %s 
 
     it('marks an inactive user, keeps them below the live people, and lets Remove clear them (CH1 audit item 1)', async () => {
       await mount(panel, {
-        party: party([grant('u2', 'view', { isActive: false }), grant('u1', 'view'), grant('u9', 'manage', { displayName: 'Zed Gone', roleName: 'Office', isActive: false })]),
+        party: party([grant('u2', 'view', { isActive: false }), grant('u1', 'view'), grant('u9', 'manage', { displayName: 'Aaron Gone', roleName: 'Office', isActive: false })]),
       });
       // Live people first, then the inactive ones by name.
-      expect(names()).toEqual(['Asha Rao', 'Bela Shah', 'Zed Gone']);
+      expect(names()).toEqual(['Asha Rao', 'Aaron Gone', 'Bela Shah']);
       expect(within(rowOf('Bela Shah')).getByText(t('partyAccess.editor.deactivated'))).toBeTruthy();
       expect(within(rowOf('Asha Rao')).queryByText(t('partyAccess.editor.deactivated'))).toBeNull();
       expect(screen.getByText(t('partyAccess.editor.deactivatedHelp'))).toBeTruthy();
       // The header still counts them: the party is restricted to three, and a reader saw "Restricted" on the list.
       expect(screen.getByText(t('partyAccess.editor.stateRestricted.other', { count: 3 }))).toBeTruthy();
 
-      fireEvent.click(within(rowOf('Zed Gone')).getByRole('button', { name: t('partyAccess.editor.removeFor', { name: 'Zed Gone' }) }));
+      fireEvent.click(within(rowOf('Aaron Gone')).getByRole('button', { name: t('partyAccess.editor.removeFor', { name: 'Aaron Gone' }) }));
       expect(names()).toEqual(['Asha Rao', 'Bela Shah']);
     });
 
