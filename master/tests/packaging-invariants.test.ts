@@ -14,9 +14,8 @@
  *   an `AppImage` filename, while neither panel's yml had a `linux:` block at
  *   all. The build fails, but only for whoever runs `--os linux`, which on a
  *   Windows-only CI is nobody.
- * - The ymls built a macOS `.zip` and a Linux `.deb` that `release.mjs` never
- *   picked up, while comments on both sides said the `.zip` was what the
- *   update path downloaded and that the `.deb` was published.
+ * - The ymls built a macOS `.zip` that `release.mjs` never picked up, while
+ *   comments on both sides said it was what the update path downloaded.
  * - `TARGETS.linux` vendored the *build host's* PostgreSQL architecture into
  *   an app the ymls build for x64 only.
  *
@@ -84,8 +83,6 @@ interface DeclaredTarget {
   /** The one architecture a single-arch target builds, or null. */
   arch: string | null;
   universal: boolean;
-  /** Filename tails published beside the setup file. */
-  besides: string[];
   /** Every architecture the yml builds, where that is more than `arch` (`win7`). */
   archs: string[] | null;
   /** The panels it builds, where that is not all of them (`win7`: the Office). */
@@ -164,9 +161,6 @@ function declaredTargets(): Record<string, DeclaredTarget> {
       postgres: postgresEntries.map(literal).filter((pkg): pkg is string => pkg !== null),
       arch: /\barch: '(\w+)'/.exec(body)?.[1] ?? null,
       universal: /universal: true/.test(body),
-      besides: arrayEntries(/besides: \[([^\]]*)\]/.exec(body)?.[1])
-        .map(literal)
-        .filter((tail): tail is string => tail !== null),
       archs: listed(/archs: \[([^\]]*)\]/.exec(body)?.[1]),
       panels: listed(/panels: \[([^\]]*)\]/.exec(body)?.[1]),
       config: /config: '([^']+)'/.exec(body)?.[1] ?? null,
@@ -507,24 +501,33 @@ describe('release targets', () => {
     );
   });
 
-  it('publishes the files built beside the setup file, and keeps them out of the manifest', () => {
-    // `build()` insists each one exists, so a yml that stops building one
-    // fails the release by name rather than publishing without it.
-    expect(bodyOf('async function build(')).toMatch(/RELEASE_TARGET\.besides/);
+  it('publishes the setup file and nothing beside it', () => {
+    // 1.4.1 (owner): setups only. No Standalone `.exe`, no `.deb`, no `.sha256`
+    // files next to them, and no `--fast` mode that built only the Standalone.
+    const code_ = code(RELEASE).join('\n');
+    expect(code_).not.toMatch(/besides|publishBeside|Standalone|portable|--fast/);
 
     const publish = bodyOf('async function publish(');
-    expect(publish).toMatch(
-      /for \(const \w+ of built\.besides\) await publishBeside\(target, \w+\);/,
-    );
+    expect(publish).not.toMatch(/beside/i);
 
-    // The manifest names the one file the update path installs. A standalone
-    // `.exe` or a `.deb` in it would be downloaded, verified and then refused
-    // by the shell, or installed by nothing.
+    // The manifest names the one file the update path installs.
     const signAt = publish.indexOf('sign({');
     expect(signAt).toBeGreaterThanOrEqual(0);
     const manifest = publish.slice(signAt, publish.indexOf('});', signAt));
     expect(manifest).toContain('sha256: await sha256(setupPath)');
-    expect(manifest).not.toContain('besides');
+  });
+
+  it('asks electron-builder for no Standalone (portable) or deb target in any yml', () => {
+    for (const thing of [...PANELS, 'cleaner'] as const) {
+      for (const config of ['electron-builder.yml', 'electron-builder.legacy.yml']) {
+        if (!existsSync(path.join(ROOT, thing, config))) continue;
+        const yml = readText(thing, config)
+          .split('\n')
+          .filter((line) => !line.trim().startsWith('#'))
+          .join('\n');
+        expect(yml, `${thing}/${config}`).not.toMatch(/portable|Standalone|target: deb|^deb:/m);
+      }
+    }
   });
 });
 
@@ -534,11 +537,9 @@ const PACKAGER_BLOCK: Record<string, string> = { AppImage: 'appImage' };
 /** What `${ext}` becomes in each target's artifact name. */
 const TARGET_EXT: Record<string, string> = {
   nsis: 'exe',
-  portable: 'exe',
   dmg: 'dmg',
   zip: 'zip',
   AppImage: 'AppImage',
-  deb: 'deb',
 };
 
 /** One top-level block of a yml with its comment lines dropped, or null when absent. */
@@ -710,10 +711,8 @@ describe('what electron-builder builds is what release.mjs picks up', () => {
       it(`${thing} builds exactly the ${name} files release.mjs looks for`, () => {
         const built = ymlTargets(yml, key).map(({ target: kind }) => builtFile(yml, key, kind));
 
-        // `build()` looks for the setup file, plus — on what it publishes —
-        // each `besides` file. The cleaner is never published and builds one
-        // setup file per OS.
-        const tails = [`Setup.${target.ext}`, ...(thing === 'cleaner' ? [] : target.besides)];
+        // `build()` looks for the setup file, and only that.
+        const tails = [`Setup.${target.ext}`];
         const expected = tails.map((tail) => fileName(thing, target, tail));
 
         expect(built.sort()).toEqual(expected.sort());
@@ -748,9 +747,9 @@ describe('electron-builder configuration', () => {
    */
   const NAMED_BY: Record<string, string[]> = {
     win: ['win', 'nsis'],
-    win7: ['win', 'nsis', 'portable'],
+    win7: ['win', 'nsis'],
     mac: ['mac', 'dmg'],
-    linux: ['linux', 'deb', 'appImage'],
+    linux: ['linux', 'appImage'],
   };
 
   for (const panel of PANELS) {

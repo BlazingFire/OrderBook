@@ -415,33 +415,23 @@ build that is one installed from the `.deb`, whose files belong to the package
 manager: the Updates screen says to install the new `.deb` the same way instead
 of offering a button, and the shell refuses if asked anyway.
 
-## The standalone build
+## Setup files only (1.4.1)
 
-Beside each `-Setup.exe` the release makes an `OrderBook-<Panel>-<version>-
-Standalone.exe`: the same panel as one file that runs without being installed
-(electron-builder's `portable` target). It unpacks under `%TEMP%` on each
-launch, needs no administrator rights, and keeps its data in exactly the same
-directory as the installed build — so a customer can start on the standalone
-file and move to the installer later, or replace one standalone file with a
-newer one, without touching a record.
-
-What it cannot do is install an update over itself: there is no installer to
-hand the setup file to, and running one would leave two copies sharing one
-database. The Updates screen says to replace the file instead, and the shell
-refuses to launch an installer from a standalone build. Windows asks about the
-firewall on its first run, since no installer added the rules.
-
-The standalone file is not in `latest.json` — the manifest describes what the
-update path installs — but it is published with a `.sha256` beside it so a
-copy that crossed a USB stick can be checked (`certutil -hashfile <file>
-SHA256`). The Master's releases-folder sweep leaves standalone files alone;
-old ones are the operator's to delete.
+A release is the setup file and its signed manifest, nothing else: `-Setup.exe`
+on Windows, `-Setup.AppImage` on Linux, `-Setup.dmg` on macOS. There is no
+Standalone `.exe` (electron-builder's `portable` target), no Linux `.deb`, and
+no `.sha256` file beside the setup (the manifest carries the SHA-256). Releases
+up to 1.4.0 did publish those; copies of them in a releases folder that is
+already in the field are left alone by the Master's sweep (an operator's to
+delete), and a Standalone copy somebody still runs keeps refusing to install an
+update over itself and says to get the setup instead (`electron/lib/standalone.ts`).
+Install the setup file over it: both keep their data in the same place.
 
 ## The Windows 7 Office build
 
 The Office Panel has a second Windows build for Windows 7, 8 and 8.1
 ([`WINDOWS7.md`](WINDOWS7.md)): `OrderBook-Office-Win7-<version>-Setup.exe`
-and `-Standalone.exe`, on Electron 22, for x64 and ia32 in one file. It has its
+on Electron 22, for x64 and ia32 in one file. It has its
 own update channel, `win7`, beside `win32`, `darwin` and `linux`:
 
 - In the releases folder its manifest is `office-panel/latest-win7.json`. No
@@ -465,30 +455,6 @@ Master is updated.
 A release by hand needs both builds: `npm run release -- --os win` and
 `npm run release -- --os win7`, on Windows, into the same releases folder. The
 second builds the Office only.
-
-## The Linux `.deb`
-
-Beside each `-Setup.AppImage` the release makes an
-`OrderBook-<Panel>-<version>-Setup.deb`, x64 like the AppImage. The AppImage
-runs from wherever it is put with nothing installed; the `.deb` installs into
-`/opt/OrderBook <Panel> Panel` with a desktop entry (`sudo apt install
-./<file>`), which is what a shop PC that should come up running OrderBook
-wants.
-
-It is handled exactly like the standalone `.exe`: published with a `.sha256`
-beside it (`sha256sum -c <file>.sha256`), named in no manifest — the Linux
-manifest names the AppImage — and never removed by the Master's releases-folder
-sweep. Old ones are the operator's to delete.
-
-A panel installed from the `.deb` is updated the way it was installed: by
-installing the newer `.deb` by hand (`sudo apt install ./<newer file>`), which
-replaces the program under `/opt` and leaves the data under
-`~/.config/OrderBook` where it was. Not from the Updates screen: the file the
-manifest names is the AppImage, which would run on its own rather than replace
-the `/opt` install. The shell sees that a `.deb` copy was not started from an
-AppImage (`updateMethod()` in `electron/lib/installer.ts`), so, as with the
-standalone build, the screen says to install the new package instead of
-offering a button, and the shell refuses if asked anyway.
 
 ## What stops a bad update
 
@@ -552,8 +518,8 @@ build counts as an OS of its own here: its files carry `Win7` in the name
 more than one OS keeps one build per OS in the same folder — its own OS's comes
 with the background poll, and another OS's first build when a panel on that OS
 asks, its later ones with the poll too (see *When a new build shows up*) — and
-neither sweep touches the other's files. Notes, subfolders, the standalone
-`.exe` and the Linux `.deb`, and anything else an operator puts in the releases
+neither sweep touches the other's files. Notes, subfolders, old standalone
+`.exe` and `.deb` copies (releases up to 1.4.0), and anything else an operator puts in the releases
 folder are left alone. An installer that is part-way through being applied is
 protected too, so a new release landing between the Update button appearing and
 somebody pressing it cannot delete the file out from under the click.

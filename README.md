@@ -100,11 +100,8 @@ npm run release -- --os linux   # or mac; a build only runs on its own OS
 npm run release -- --os win7    # the Windows 7 Office build (docs/WINDOWS7.md)
 ```
 
-Each panel comes out twice: `OrderBook-<Panel>-<version>-Setup.exe` installs
-it, and `OrderBook-<Panel>-<version>-Standalone.exe` simply runs it — no
-installation, no administrator rights, nothing written to Program Files. Both
-keep their data in the same place, so a standalone copy can later be replaced
-by the installer (or by a newer standalone file) without losing a record.
+Each panel comes out as one file: `OrderBook-<Panel>-<version>-Setup.exe` installs it
+(there is no Standalone build since 1.4.1).
 
 They land in `C:\OrderBook-Releases\{master-panel,office-panel}\` alongside a
 `latest.json` carrying a SHA-256 for the setup file and a `.sha256` beside the

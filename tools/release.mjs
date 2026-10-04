@@ -6,10 +6,8 @@
  *   npm run release              -- current version, both panels, this OS
  *   npm run release -- 1.1.0     -- bump every package.json first
  *   npm run release -- --panel office
- *   npm run release -- --fast    -- Windows only: the Standalone .exe alone, uncompressed — a
- *                                   quick build to try a change; no Setup file, no manifest
  *   npm run release -- --os mac  -- macOS .dmg (only runs on a Mac)
- *   npm run release -- --os linux -- x64 AppImage and .deb (the Master only on x64 Linux)
+ *   npm run release -- --os linux -- x64 AppImage (the Master only on x64 Linux)
  *   npm run release -- --os win7 -- the Windows 7 Office Panel (Electron 22, x64 + ia32);
  *                                   Office only, on Windows (docs/WINDOWS7.md)
  *
@@ -22,14 +20,10 @@
  * file it names, into that folder itself (`docs/UPDATES.md`). A site with no
  * internet copies the folder by hand.
  *
- * On Windows and Linux each panel comes out twice. Windows makes the
- * `-Setup.exe` that installs and the `-Standalone.exe` that simply runs
- * (electron-builder's `portable` target); Linux makes the `-Setup.AppImage`
- * and a `-Setup.deb` that installs into `/opt` with a desktop entry. Both are
- * configured in each panel's `electron-builder.yml`. The first file of each
- * pair is what the update path knows about and what the manifest names; the
- * second is published beside it with a `.sha256` and installed or replaced by
- * hand (`TARGETS[*].besides`, `publishBeside()`).
+ * Each panel comes out as one setup file and nothing else: the `-Setup.exe`
+ * on Windows, the `-Setup.AppImage` on Linux, the `-Setup.dmg` on macOS. There
+ * is no Standalone `.exe` and no `.deb` (owner's decision, 2026-10-04): the
+ * update path knows the setup file, and the manifest names it.
  *
  * Three things here are not obvious and are the reason this is a script rather
  * than a line in `package.json`:
@@ -120,7 +114,6 @@ const PANELS = {
 
 const args = process.argv.slice(2);
 const only = args.includes('--panel') ? args[args.indexOf('--panel') + 1] : null;
-const fast = args.includes('--fast');
 const requestedVersion = args.find((arg) => /^\d+\.\d+\.\d+$/.test(arg)) ?? null;
 
 /**
@@ -149,15 +142,6 @@ const requestedVersion = args.find((arg) => /^\d+\.\d+\.\d+$/.test(arg)) ?? null
  * carry nothing native and build their x64 files on any machine. The macOS
  * target builds `universal` instead and fetches the other half itself.
  *
- * `besides` lists the other files electron-builder makes for a target, by the
- * tail of their name after `OrderBook-<Panel>-<version>-`. They are published
- * next to the setup file with a `.sha256` and named by no manifest — the update
- * path installs `ext` and nothing else. They reach a Master's releases folder
- * only by an operator copying this script's output in, and nothing on the
- * Master writes one, so its superseded-build sweep (`github-releases.ts`) must
- * never take one; `master/tests/release-folder-besides.test.ts` holds it to
- * that.
- *
  * The Windows 7 build, `win7`, is the one target that is not an OS of its own,
  * and the optional fields are its. `panels` limits what it builds (the Office
  * only: the Master needs Windows 10, because PostgreSQL 17 does not run on
@@ -176,9 +160,6 @@ const TARGETS = {
     arch: 'x64',
     postgres: ['windows-x64'],
     buildsOn: ['win32'],
-    // electron-builder's `portable` target: the panel as one `.exe` that runs
-    // without being installed, and cannot take an in-app update.
-    besides: ['Standalone.exe'],
   },
   mac: {
     builderFlag: '--mac',
@@ -191,7 +172,6 @@ const TARGETS = {
     ext: 'dmg',
     postgres: ['darwin-x64', 'darwin-arm64'],
     buildsOn: ['darwin'],
-    besides: [],
     /**
      * Both architectures of every native package ship, not just the build
      * machine's — see `ensureUniversalPackages()`. electron-builder packs the
@@ -208,10 +188,6 @@ const TARGETS = {
     arch: 'x64',
     postgres: ['linux-x64'],
     buildsOn: ['linux'],
-    // The `deb` target: installs into `/opt/<productName>` with a desktop
-    // entry, which is what a shop PC that should come up running OrderBook
-    // needs. The AppImage stays the file the manifest names.
-    besides: ['Setup.deb'],
   },
   win7: {
     builderFlag: '--win',
@@ -226,7 +202,6 @@ const TARGETS = {
     archs: ['x64', 'ia32'],
     postgres: [],
     buildsOn: ['win32'],
-    besides: ['Standalone.exe'],
     panels: ['office'],
     config: 'electron-builder.legacy.yml',
     electron: LEGACY_ELECTRON,
@@ -773,17 +748,6 @@ async function build(panel, version) {
     [
       'electron-builder',
       RELEASE_TARGET.builderFlag,
-      // `--fast`: only the portable target (no NSIS installer, no uninstaller
-      // pass, no block map) and no compression — most of a build's minutes.
-      // Naming a target on the command line drops the yml's `arch` list, so a
-      // target that builds more than x64 (`win7`) names its archs again.
-      ...(fast
-        ? [
-            'portable',
-            ...(RELEASE_TARGET.archs ?? []).map((arch) => `--${arch}`),
-            '--config.compression=store',
-          ]
-        : []),
       '--config',
       RELEASE_TARGET.config ?? 'electron-builder.yml',
       `--config.electronVersion=${electronVersion}`,
@@ -807,53 +771,16 @@ async function build(panel, version) {
   // The Windows 7 build adds its `tag` after the panel: `Office-Win7`.
   const name = [config.artifact ?? config.label, RELEASE_TARGET.tag].filter(Boolean).join('-');
   const expected = `OrderBook-${name}-${version}-Setup.${RELEASE_TARGET.ext}`;
-  const wantedSetup = fast ? [] : [expected];
-  // The files built beside the setup file (`TARGETS[*].besides`) — the Windows
-  // standalone `.exe`, the Linux `.deb` — all out of the one electron-builder
-  // run above. Only on what gets published: the clean-install tool builds one
-  // setup file per OS and none of these.
-  const besides =
-    config.publish === false
-      ? []
-      : RELEASE_TARGET.besides.map((tail) => `OrderBook-${name}-${version}-${tail}`);
   const files = await readdir(outDir);
 
-  for (const wanted of [...wantedSetup, ...besides]) {
-    if (!files.includes(wanted)) {
-      throw new Error(
-        `electron-builder did not produce ${wanted} in ${outDir}.
+  if (!files.includes(expected)) {
+    throw new Error(
+      `electron-builder did not produce ${expected} in ${outDir}.
 It built: ${files.join(', ')}`,
-      );
-    }
+    );
   }
 
-  return {
-    setup: fast ? null : path.join(outDir, expected),
-    besides: besides.map((file) => path.join(outDir, file)),
-  };
-}
-
-/**
- * Publish one file built beside the setup file: the standalone `.exe`, or the
- * `.deb`.
- *
- * Not in the manifest, on purpose: `latest.json` describes the file the update
- * path installs, and neither of these is installed by anything but a person —
- * the standalone file is copied where somebody wants it and double-clicked,
- * the `.deb` goes through `apt install ./<file>`. What each gets instead is a
- * `.sha256` beside it, in the format `sha256sum -c` reads, so a 150 MB file
- * that crossed a USB stick can be checked by hand (`certutil -hashfile <file>
- * SHA256` on Windows) before it is handed to a customer.
- */
-async function publishBeside(target, besidePath) {
-  const file = path.basename(besidePath);
-  await cp(besidePath, path.join(target, file));
-
-  const digest = await sha256(besidePath);
-  await writeFile(path.join(target, `${file}.sha256`), `${digest}  ${file}\n`);
-
-  const { size } = await stat(besidePath);
-  console.log(`  published ${file} (${(size / 1024 / 1024).toFixed(0)} MB) to ${target}`);
+  return { setup: path.join(outDir, expected) };
 }
 
 async function publish(panel, version, built, notes) {
@@ -861,17 +788,9 @@ async function publish(panel, version, built, notes) {
   const target = path.join(RELEASES_DIR, config.folder);
   await mkdir(target, { recursive: true });
 
-  // A fast build is a try-out, not a release: the Standalone goes in the folder
-  // and the manifest stays on the last real release.
-  if (!built.setup) {
-    for (const beside of built.besides) await publishBeside(target, beside);
-    return;
-  }
-
   const setupPath = built.setup;
   const file = path.basename(setupPath);
   await cp(setupPath, path.join(target, file));
-  for (const beside of built.besides) await publishBeside(target, beside);
 
   const { size } = await stat(setupPath);
   const manifest = sign({
@@ -941,9 +860,6 @@ async function main() {
     }
   }
   assertHostArch(panels);
-  if (fast && RELEASE_TARGET.builderFlag !== '--win') {
-    throw new Error('--fast is Windows only (it builds the portable .exe).');
-  }
 
   console.log(`Releasing ${version} to ${RELEASES_DIR}`);
   run('npm', ['run', 'build:shared']);

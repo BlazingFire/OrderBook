@@ -60,8 +60,7 @@ is true.
    `main` makes `.github/workflows/release.yml` build every file on GitHub's
    Windows runner; `npm run release` does the same on a PC where
    electron-builder runs (it hung on the owner's PC — a machine problem, see
-   `HANDOFF.md`). Ten files come out: a `-Setup.exe` and a
-   `-Standalone.exe` for each panel, a `.sha256` beside each standalone file,
+   `HANDOFF.md`). Six files come out (from 1.4.1): a `-Setup.exe` for each panel
    and two manifests per panel — `latest-win32.json`, and `latest.json`, the
    one name panels older than the platform-named manifests read.
 4. **Rehearse the update on a clean Windows PC or VM**, with the real
@@ -144,14 +143,8 @@ is true.
 - **Installed Office (`-Setup.exe`).** Asks its Master for the office build,
   downloads it over the LAN, verifies it, and installs the same way. Its
   outbox and cache survive; queued leads go out after the restart.
-- **Standalone (`-Standalone.exe`, either panel).** Runs without being
-  installed and keeps its data in exactly the same place as the installed
-  build, so the two are interchangeable. It cannot install an update over
-  itself: the Updates screen says to replace the file, and the shell refuses
-  to launch an installer. Replace the `.exe`, start it, and the same
-  first-boot copy and migrations run. Windows asks about the firewall on the
-  first run because there is no installer to add the rules; the unpack
-  folder is fixed so the answer is remembered.
+- **Standalone (`-Standalone.exe`)** exists only up to 1.4.0; 1.4.1 and later publish setup files only. A
+  Standalone copy still in use cannot update itself: install the setup file over it (same data location).
 - **Linux AppImage (either panel).** Takes the build the Linux manifest
   names, verifies it like a setup file, writes it beside the running
   AppImage and renames it over it, then starts it again (with
