@@ -40,9 +40,14 @@ export function hasNetworkLink(): boolean {
  * Some drivers and switch configurations drop one form but pass the other, so
  * discovery sends to all of them rather than guessing which will work.
  */
-export function broadcastTargets(): string[] {
+export function broadcastTargets(interfaces: readonly LanInterface[] = listLanInterfaces()): string[] {
   const targets = new Set<string>(['255.255.255.255']);
-  for (const entry of listLanInterfaces()) targets.add(entry.broadcastAddress);
+  for (const entry of interfaces) {
+    // A /32 (a VPN's point-to-point address) has no neighbours: its "broadcast"
+    // is the adapter's own address, which only makes this PC talk to itself.
+    if (entry.broadcastAddress === entry.address) continue;
+    targets.add(entry.broadcastAddress);
+  }
   return [...targets];
 }
 

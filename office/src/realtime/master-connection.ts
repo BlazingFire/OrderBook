@@ -54,6 +54,7 @@ import {
   saveCredentials,
   type StoredCredentials,
 } from '../services/credentials.store.js';
+import { noteCacheMaster, recordRemoved } from '../services/master-binding.js';
 import * as offlineAuthEvents from '../services/offline-auth-events.store.js';
 import { buildReport, moveStorage } from '../services/panel-report.service.js';
 import { observe } from '../sync/clock.js';
@@ -274,6 +275,10 @@ class MasterConnection extends EventEmitter {
     this.disconnect();
     this.revoked = false;
     this.serverCloses = 0;
+    // The cached data below is this Master's; say so if nothing yet does.
+    await noteCacheMaster(credentials.masterUniqueId).catch((error: unknown) =>
+      log.warn(`Could not note whose data is cached: ${describeError(error)}`),
+    );
 
     const target = this.candidate ?? {
       host: credentials.masterHost,
@@ -613,7 +618,12 @@ class MasterConnection extends EventEmitter {
     this.candidate = null;
     this.disconnect();
     log.warn('This panel was removed by the Master');
-    void clearCredentials()
+    // Remember why before the pairing goes: the screen that replaces this one has
+    // to be able to say it, now and after a restart.
+    void loadCredentials()
+      .then((saved) => recordRemoved(saved))
+      .catch((error: unknown) => log.warn(`Could not note the removal: ${describeError(error)}`))
+      .then(() => clearCredentials())
       .catch((error: unknown) => log.warn(`Could not clear the pairing: ${describeError(error)}`))
       .then(() => this.setState('unpaired'));
   }
@@ -709,17 +719,27 @@ class MasterConnection extends EventEmitter {
       const master = found.find((entry) => entry.masterUniqueId === credentials.masterUniqueId);
       if (!master) return;
 
-      const address = `${master.lanIp}:${master.httpPort}`;
+      // Where it answered from comes before where it says it is: a PC with several
+      // adapters can advertise one this panel cannot reach.
+      const candidates = master.addresses.length > 0 ? master.addresses : [master.lanIp];
+      const address = `${candidates[0]}:${master.httpPort}`;
       if (master.conflictingAddress) {
         log.warn(`More than one address answered as this panel's Master; staying with ${current}`);
         this.refuseRediscovery(address);
         return;
       }
-      if (address === current) return;
-
       // Back at the saved address needs no proof: the secret already goes there.
-      const saved = master.lanIp === credentials.masterHost && master.httpPort === credentials.masterPort;
-      if (!saved && !(await masterProves(master.lanIp, master.httpPort, credentials))) {
+      const saved = candidates.includes(credentials.masterHost) && master.httpPort === credentials.masterPort;
+      if (saved) return;
+
+      let chosen: string | null = null;
+      for (const candidate of candidates) {
+        if (await masterProves(candidate, master.httpPort, credentials)) {
+          chosen = candidate;
+          break;
+        }
+      }
+      if (!chosen) {
         log.warn(`The Master found at ${address} could not prove it is this panel's Master; staying with ${current}`);
         this.refuseRediscovery(address);
         return;
@@ -728,8 +748,8 @@ class MasterConnection extends EventEmitter {
       // Connected or stopped while the search ran: nothing to move.
       if (this.state === 'connected' || this.revoked || !this.socket) return;
 
-      log.info(`Trying the Master at ${address}`);
-      this.candidate = saved ? null : { host: master.lanIp, port: master.httpPort };
+      log.info(`Trying the Master at ${chosen}:${master.httpPort}`);
+      this.candidate = { host: chosen, port: master.httpPort };
       await this.open();
     } catch (error) {
       log.warn(`Could not look for the Master on the network: ${describeError(error)}`);
@@ -809,6 +829,24 @@ class MasterConnection extends EventEmitter {
     this.emitStatus();
     // The cable is back: no reason to wait out the backoff.
     if (link) this.retryNow();
+  }
+
+  /**
+   * This PC was unpaired here (the other way a pairing ends is `forgetPairing`, when
+   * the Master removes it). Called after `disconnect()` and after the credentials are
+   * gone: only the state and the flags a connection screen reads change.
+   */
+  markUnpaired(): void {
+    this.revoked = true;
+    this.candidate = null;
+    this.connectFailures = 0;
+    this.refusals = 0;
+    this.notRecognised = false;
+    this.rediscoveryRefused = null;
+    this.rediscoveredFrom = null;
+    this.lastError = null;
+    this.masterProtocol = null;
+    this.setState('unpaired');
   }
 
   disconnect(): void {

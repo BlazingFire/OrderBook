@@ -44,6 +44,7 @@ import {
   api,
   desktopBridge,
   type ConnectionInfo,
+  type PairResult,
   type LocalView,
   type PanelSession,
 } from './api';
@@ -122,7 +123,9 @@ import { AddLeadScreen } from './screens/AddLeadScreen';
 import { CatalogScreen } from './screens/CatalogScreen';
 import { BrandsScreen, MainProductsScreen } from './screens/MainProductsScreen';
 import { optionListTransport } from './optionListTransport';
+import { ConnectionUnpair } from './components/ConnectionUnpair';
 import { ConnectionScreen } from './screens/ConnectionScreen';
+import { SetupScreen } from './screens/SetupScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
 import { LeadBoardScreen } from './screens/LeadBoardScreen';
 import { OrderBoardScreen } from './screens/OrderBoardScreen';
@@ -240,6 +243,8 @@ function OfficePanel() {
   /** Why this window is at the sign-in screen, when it did not sign out itself. */
   const [signInNotice, setSignInNotice] = useState<MessageKey | null>(null);
   const [sessionChecked, setSessionChecked] = useState(false);
+  /** Just paired: the first-sync screen shows until the data is in (or the person carries on). */
+  const [setup, setSetup] = useState<{ result: PairResult | null } | null>(null);
   const [view, setView] = useState<LocalView | null>(null);
   const [rejections, setRejections] = useState<MutationResult[]>([]);
   // An option-list change forces a snapshot, so a new `optionLists` array is
@@ -572,6 +577,21 @@ function OfficePanel() {
     void refreshSyncState();
   }, [signedIn, refreshSyncState]);
 
+  /*
+   * The link's state while nobody is signed in: the sign-in screen, the first-sync
+   * screen and the pairing screen all show it, and the event stream below only
+   * opens for a signed-in session. Without this the sign-in screen kept a stale
+   * "Master not reachable" after a successful pairing, and a Master that removed
+   * this PC went unnoticed until a reload. Read from this panel's own server, so
+   * cheap; the stream takes over once somebody signs in.
+   */
+  const linkKnown = connection !== null;
+  useEffect(() => {
+    if (signedIn || !linkKnown) return;
+    const timer = window.setInterval(() => void refreshConnection(), 1500);
+    return () => window.clearInterval(timer);
+  }, [signedIn, linkKnown, refreshConnection]);
+
   // One event stream per signed-in session.
   useEffect(() => {
     if (!signedIn) return;
@@ -600,6 +620,8 @@ function OfficePanel() {
     source.addEventListener('status', (event) => {
       const status = JSON.parse((event as MessageEvent).data) as Partial<ConnectionInfo>;
       setConnection((current) => (current ? { ...current, ...status } : current));
+      // The Master removed this PC: ask who it is now (the pairing is gone and the reason is saved).
+      if (status.state === 'unpaired') void refreshConnection();
       if (status.state === 'connected' && lastState !== 'connected') catchUp();
       // Off the Master, who is on a record is no longer known.
       if (status.state && status.state !== 'connected') presenceChannel.reset();
@@ -831,7 +853,23 @@ function OfficePanel() {
     return (
       <ConnectionScreen
         connection={connection}
-        onConnected={() => {
+        onConnected={(result) => {
+          setSetup({ result: result ?? null });
+          void refreshConnection();
+        }}
+      />
+    );
+  }
+
+  // Paired a moment ago: show the first sync, then the sign-in screen.
+  if (setup && !session) {
+    return (
+      <SetupScreen
+        connection={connection}
+        result={setup.result}
+        onContinue={() => setSetup(null)}
+        onLeft={() => {
+          setSetup(null);
           void refreshConnection();
         }}
       />
@@ -845,6 +883,7 @@ function OfficePanel() {
       <SignInScreen
         connection={connection}
         notice={signInNotice}
+        onLeft={() => void refreshConnection()}
         onSignedIn={(next) => {
           setSignInNotice(null);
           setSession(next);
@@ -1310,7 +1349,16 @@ function OfficePanel() {
     connection.notRecognised && connection.state !== 'connected' ? (
       <div key="notRecognised" className="ob-banner ob-banner--conflict" role="alert">
         <Icon name="warning" />
-        <span>{t('office.link.notRecognised', { host: connection.masterHost ?? '—' })}</span>
+        <span style={{ flex: 1 }}>
+          {t('office.link.notRecognised', { host: connection.masterHost ?? '—' })}
+        </span>
+        {/* The way out: this Master is not the one for this PC. Somebody who manages panels only. */}
+        {can('panels.manage') ? (
+          <ConnectionUnpair
+            company={connection.companyName}
+            onDone={() => void refreshConnection()}
+          />
+        ) : null}
       </div>
     ) : null,
     connection.rediscoveryRefused && connection.state !== 'connected' ? (
@@ -1675,6 +1723,7 @@ function OfficePanel() {
           onTabChange={setSettingsTab}
           followUpDays={view ? resolveCompanyFeatures(view.features).followUpDefaultDays : null}
           sourcesRevision={optionListsRevision}
+          onLeft={() => void refreshConnection()}
         />
       ),
     },

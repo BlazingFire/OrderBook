@@ -51,6 +51,15 @@ export interface DiscoveredMaster {
   /** Echoed back to the Master during pairing to tie the request to this search. */
   nonce: string;
   /**
+   * Every address worth trying, best first: the addresses the replies actually
+   * came from, then the one the Master says it has.
+   *
+   * The advertised `lanIp` is what the Master believes about itself. On a PC with
+   * several adapters (Hyper-V, WSL, a VPN) that can be one this panel cannot
+   * reach, while the reply itself, which did arrive, names one it can.
+   */
+  addresses: string[];
+  /**
    * True when a second reply for the same `masterUniqueId` came from a
    * different address. The id is announced in the clear, so anything on the
    * LAN can repeat it; a panel looking for its Master at a new address must not
@@ -63,6 +72,11 @@ export interface DiscoverOptions {
   timeoutMs?: number;
   /** Stop as soon as a Master that is ready to pair answers. */
   requireAcceptingPairing?: boolean;
+  /** Stop searching now and return what has answered so far (the Cancel button). */
+  signal?: AbortSignal;
+  /** The Master's discovery port, and where to broadcast: only a test changes these. */
+  port?: number;
+  targets?: readonly string[];
 }
 
 /**
@@ -102,7 +116,7 @@ export async function discoverMasters(options: DiscoverOptions = {}): Promise<Di
       reject(error);
     });
 
-    socket.on('message', (buffer) => {
+    socket.on('message', (buffer, remote) => {
       const message = decodeDiscoveryMessage(buffer);
       if (!message || message.type !== 'HELLO') return;
 
@@ -114,6 +128,13 @@ export async function discoverMasters(options: DiscoverOptions = {}): Promise<Di
       // still update the entry (pairing may have opened since). A reply from a
       // different address only marks the first one as contested.
       const earlier = found.get(hello.masterUniqueId);
+      // Source addresses first, in the order they were heard; the advertised one last.
+      const addresses = [...(earlier?.addresses ?? [])].filter(
+        (address) => address !== hello.lanIp,
+      );
+      if (remote.address && !addresses.includes(remote.address)) addresses.push(remote.address);
+      if (!addresses.includes(hello.lanIp)) addresses.push(hello.lanIp);
+
       if (earlier && (earlier.lanIp !== hello.lanIp || earlier.httpPort !== hello.httpPort)) {
         earlier.conflictingAddress = true;
         log.warn(
@@ -130,6 +151,7 @@ export async function discoverMasters(options: DiscoverOptions = {}): Promise<Di
         httpPort: hello.httpPort,
         acceptingPairing: hello.acceptingPairing,
         nonce,
+        addresses,
         ...(earlier?.conflictingAddress ? { conflictingAddress: true } : {}),
       });
 
@@ -147,12 +169,14 @@ export async function discoverMasters(options: DiscoverOptions = {}): Promise<Di
     // Port 0: the OS picks a free source port, so several panels can search at
     // once without fighting over a fixed one.
     socket.bind(0, () => {
+      // Cancelled before the socket was ready: there is nothing to send.
+      if (settled) return;
       socket.setBroadcast(true);
       const payload = encodeDiscoveryMessage(createDiscoverMessage(nonce, config.hostname));
 
       const sendBroadcast = (): void => {
-        for (const target of broadcastTargets()) {
-          socket.send(payload, DISCOVERY_PORT, target, (error) => {
+        for (const target of options.targets ?? broadcastTargets()) {
+          socket.send(payload, options.port ?? DISCOVERY_PORT, target, (error) => {
             if (error) log.debug(`Broadcast to ${target} failed: ${error.message}`);
           });
         }
@@ -162,5 +186,10 @@ export async function discoverMasters(options: DiscoverOptions = {}): Promise<Di
       broadcastTimer = setInterval(sendBroadcast, DISCOVERY_BROADCAST_INTERVAL_MS);
       timeoutTimer = setTimeout(finish, timeoutMs);
     });
+
+    // Cancel: stop at once with whatever has answered. Asked before the socket is
+    // bound too, in which case `finish` still closes it.
+    if (options.signal?.aborted) finish();
+    else options.signal?.addEventListener('abort', finish, { once: true });
   });
 }

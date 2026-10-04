@@ -119,6 +119,19 @@ vi.mock('../src/services/credentials.store.js', () => ({
   },
 }));
 
+/** Whose cache this is, and why a pairing was lost: what the link tells `master-binding`. */
+const binding = { removed: [] as unknown[], cacheOf: [] as string[] };
+vi.mock('../src/services/master-binding.js', () => ({
+  recordRemoved: (saved: unknown) => {
+    binding.removed.push(saved);
+    return Promise.resolve();
+  },
+  noteCacheMaster: (id: string) => {
+    binding.cacheOf.push(id);
+    return Promise.resolve();
+  },
+}));
+
 const network = { up: true };
 vi.mock('../src/lib/network.js', () => ({ hasNetworkLink: () => network.up }));
 
@@ -417,6 +430,23 @@ describe('reconnecting without a restart', () => {
     expect(credentials.cleared).toBe(1);
   });
 
+  it('remembers that the Master removed this PC, with whose pairing it was, before the pairing is cleared', async () => {
+    const link = await connected();
+    binding.removed.length = 0;
+
+    link.emit('panel:revoked');
+
+    await vi.waitFor(() => expect(masterConnection.getStatus().state).toBe('unpaired'));
+    expect(binding.removed).toEqual([PAIRED]);
+    expect(credentials.cleared).toBe(1);
+  });
+
+  it('notes whose data the cache holds each time it opens a connection', async () => {
+    binding.cacheOf.length = 0;
+    await connected();
+    expect(binding.cacheOf).toEqual([MASTER_ID]);
+  });
+
   it('backs off when the Master keeps closing the socket, as when two PCs share a pairing', async () => {
     const link = await connected();
 
@@ -596,6 +626,7 @@ describe('finding a Master that moved', () => {
     masterUniqueId: MASTER_ID,
     companyName: 'Acme Ceramics',
     lanIp: '192.168.1.20',
+    addresses: ['192.168.1.20'],
     httpPort: 4000,
     acceptingPairing: false,
     nonce: 'n',
@@ -716,6 +747,35 @@ describe('finding a Master that moved', () => {
     expect(opened).toBe(before + 1);
     expect(credentials.saved).toEqual([]);
     expect(masterConnection.getStatus().rediscoveryRefused).toBe('192.168.1.20:4000');
+  });
+
+  it('proves and connects to the address the Master answered from, not the one it claims', async () => {
+    // It claims .99 (an adapter this PC cannot reach) but answered from .20.
+    discoverMasters.mockResolvedValue([{ ...MOVED, lanIp: '192.168.1.99', addresses: ['192.168.1.20', '192.168.1.99'] }]);
+    const fetchSpy = prover(genuine);
+    const before = opened;
+
+    await failThrice();
+    await vi.waitFor(() => expect(opened).toBe(before + 2));
+
+    expect((fetchSpy.mock.calls[0] as unknown as [string])[0]).toBe('http://192.168.1.20:4000/api/panel/prove');
+    expect(socket.url).toBe('http://192.168.1.20:4000');
+  });
+
+  it('tries the next address when the first one cannot prove it', async () => {
+    discoverMasters.mockResolvedValue([{ ...MOVED, lanIp: '192.168.1.20', addresses: ['192.168.1.30', '192.168.1.20'] }]);
+    // Only .20 holds the key.
+    const fetchSpy = prover(genuine);
+    const before = opened;
+
+    await failThrice();
+    await vi.waitFor(() => expect(opened).toBe(before + 2));
+
+    expect(fetchSpy.mock.calls.map((call) => (call as unknown as [string])[0])).toEqual([
+      'http://192.168.1.30:4000/api/panel/prove',
+      'http://192.168.1.20:4000/api/panel/prove',
+    ]);
+    expect(socket.url).toBe('http://192.168.1.20:4000');
   });
 
   it('connects to a proven new address, and saves it only once that connection authenticates', async () => {

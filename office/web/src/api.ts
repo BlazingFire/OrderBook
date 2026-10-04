@@ -185,6 +185,23 @@ export interface ConnectionInfo {
   notRecognised?: boolean;
   /** An address that answered as this panel's Master and could not prove it. */
   rediscoveryRefused?: string | null;
+  /**
+   * Why this PC is not paired, when the Master removed it. Kept on disk, so it is
+   * still here after a restart, until the PC is paired again.
+   */
+  removedByMaster?: RemovedByMaster | null;
+  /** Unsent changes set aside when this PC joined a different Master. */
+  parkedChanges?: number;
+  /** Changes made on this PC that the Master has not received yet. */
+  unsentChanges?: number;
+}
+
+export interface RemovedByMaster {
+  at: string;
+  companyName: string | null;
+  masterUniqueId: string;
+  host: string;
+  port: number;
 }
 
 export interface DiscoveredMaster {
@@ -193,6 +210,37 @@ export interface DiscoveredMaster {
   lanIp: string;
   httpPort: number;
   acceptingPairing: boolean;
+  /** Every address worth trying, best first. Absent from an Office server older than 1.4.1. */
+  addresses?: string[];
+}
+
+/** What the Master answered when this PC joined it. */
+export interface PairResult {
+  ok: true;
+  companyName: string | null;
+  /** This PC was joined to a different Master than its cached data came from; that was cleared. */
+  newMaster?: boolean;
+  /** Unsent changes from the other Master that were set aside. */
+  parkedChanges?: number;
+}
+
+/** "Test connection": what is at an address, and how its version compares with this PC. */
+export interface ConnectionTest {
+  host: string;
+  port: number;
+  version: string;
+  status: 'ok' | 'starting';
+  mine: string;
+  /** This PC compared with the Master: `behind` means this PC is older. */
+  standing: 'same' | 'behind' | 'ahead' | 'unknown';
+}
+
+export interface UnpairResult {
+  ok: true;
+  /** The Master was told this PC left (older Masters cannot be; the PC leaves locally either way). */
+  notifiedMaster?: boolean;
+  keptChanges: number;
+  discardedChanges: number;
 }
 
 /** The panel's view: the Master's snapshot plus anything still queued here. */
@@ -501,16 +549,39 @@ export function desktopBridge(): DesktopBridge | null {
 
 export const api = {
   connection: () => request<ConnectionInfo>('/api/connection'),
-  scan: () => post<{ masters: DiscoveredMaster[] }>('/api/connection/scan'),
-  pairAuto: (panelName?: string) =>
-    post<{ ok: true; companyName: string | null }>('/api/connection/pair/auto', { panelName }),
+  scan: (signal?: AbortSignal) =>
+    request<{ masters: DiscoveredMaster[] }>('/api/connection/scan', { method: 'POST', body: '{}', signal }),
+  /** `masterUniqueId` picks one when several Masters answered; `signal` is the Stop button. */
+  pairAuto: (input: { panelName?: string; masterUniqueId?: string; signal?: AbortSignal } = {}) =>
+    request<PairResult>('/api/connection/pair/auto', {
+      method: 'POST',
+      body: JSON.stringify({ panelName: input.panelName, masterUniqueId: input.masterUniqueId }),
+      signal: input.signal,
+    }),
+  /** The address and port go as typed: the Office server reads and checks them (`parseMasterAddress`). */
   pairManual: (input: {
     host: string;
-    port: number;
+    port: string;
     pairingPassword: string;
     masterUniqueId?: string;
     panelName?: string;
-  }) => post<{ ok: true; companyName: string | null }>('/api/connection/pair/manual', input),
+    signal?: AbortSignal;
+  }) => {
+    const { signal, ...body } = input;
+    return request<PairResult>('/api/connection/pair/manual', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      signal,
+    });
+  },
+  testConnection: (input: { host: string; port: string; signal?: AbortSignal }) =>
+    request<ConnectionTest>('/api/connection/test', {
+      method: 'POST',
+      body: JSON.stringify({ host: input.host, port: input.port }),
+      signal: input.signal,
+    }),
+  /** Leave the Master. `pending` is the answer to "there is unsent work": keep it on this PC, or discard it. */
+  unpair: (pending?: 'keep' | 'discard') => post<UnpairResult>('/api/connection/unpair', { pending }),
 
   previewRestoreConnection: (file: File) => {
     const form = new FormData();
