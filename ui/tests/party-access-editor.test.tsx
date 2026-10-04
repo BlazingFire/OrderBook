@@ -419,7 +419,7 @@ describe.each(['master', 'office'] as const)('the Party Access editor on the %s 
       await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: t('partyAccess.editor.keepEditing') })));
     });
 
-    it('keeps the footer one row of the same minimum height with or without the question, so the dialog does not move', async () => {
+    it('keeps the same two-line minimum footer height with or without the question, which may wrap, so the dialog does not move', async () => {
       await mount(panel);
       addByTyping('asha');
       const foot = () => document.querySelector('.ob-modal-foot > div') as HTMLElement;
@@ -427,8 +427,11 @@ describe.each(['master', 'office'] as const)('the Party Access editor on the %s 
       fireEvent.click(cancel());
       const after = { minHeight: foot().style.minHeight, wrap: foot().style.flexWrap };
       expect(before.minHeight).not.toBe('');
-      expect(after).toEqual({ minHeight: before.minHeight, wrap: 'nowrap' });
-      expect(before.wrap).not.toBe('wrap');
+      expect(after).toEqual({ minHeight: before.minHeight, wrap: 'wrap' });
+      expect(before.minHeight).toBe('3.4286rem');
+      const text = screen.getByText(t('partyAccess.editor.discardTitle')).parentElement as HTMLElement;
+      expect(text.style.whiteSpace).not.toBe('nowrap');
+      expect(text.style.textOverflow).toBe('');
     });
 
     it('Discard closes without saving; Escape while asked means keep editing', async () => {
