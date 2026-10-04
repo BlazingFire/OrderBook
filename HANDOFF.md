@@ -52,9 +52,116 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
+## Add-connection audit, Setup-only builds + 1.4.1 (2026-10-04)
+
+**State: released.** `main` @ `2a7649a` is the 1.4.1 version bump and is pushed. GitHub
+release **v1.4.1** is Latest on `BlazingFire/OrderBook-Releases` and holds only the three
+Setup files and the five `latest-*.json` manifests. Protocol is **9**. The release notes are
+`docs/releases/1.4.1.md`; the API changes are in `docs/backend-modules/04-API-CONTRACT.md` §18;
+the flow is in `docs/STRUCTURE.md` §8.7 and §11.1.
+
+**Gate on the merged tree (`7fc7deb`, then only the version bump):** lint 0, build 0,
+typecheck 0, test 0 (307 files passed + 1 skipped; 4,335 tests passed + 17 skipped),
+`smoke:legacy` 0.
+
+Plan and evidence: `CLAUDE_HELPER_CONN.md` (requirements C1–C7, the §2 audit list, every CH1
+verdict) and the `## Connection (2026-10-04)` sections of `CLAUDE_HELPER_D1.md` … `D5.md`.
+These are untracked coordination files in the main checkout.
+
+| Session | Work |
+|---|---|
+| D1 | Office side |
+| D2 | Master side |
+| D3 | Setup-only builds, then the Win7 build |
+| D4 | Live baseline of 1.4.0, then an independent audit and live re-test of every D commit, then the release check |
+| D5 | Merges and the final two-process pass (22 paths) |
+| CH1 | Plan, verdicts, the release |
+
+### What the owner asked, and where it landed
+
+| ID | Owner said | Result |
+|---|---|---|
+| C1–C3 | Make sure the Office and Master "add connection" works perfectly; audit it and improve it | D4's live baseline found 6 problems (B1–B6). D1 and D2 found about 30 more by reading the code. All are fixed with tests that fail without the fix. D5's live pass: 22 of 22 paths after F1–F5 were fixed. |
+| C4, C7 | Push a new build, 1.4.1 | `2a7649a`, signed Setups (Master, Office, Win7 Office), release v1.4.1 published. D4 verified it from GitHub: signatures, SHA-256 and sizes for all 8 assets; a 1.4.0 Master fetched both Setups by itself and notified everyone; a 1.4.0 Office was offered 1.4.1 and downloaded it. |
+| C5 | Delete the GitHub release page details, keep only the setups | v1.3.0 and v1.4.0: release bodies emptied; every Standalone `.exe` and `.sha256` deleted. The manifests stay, because auto-update reads them. GitHub always shows two "Source code" archives; they cannot be removed, and here they hold only the releases repo's README. |
+| C6 | No Standalone builds from now on | D3 `92c5a90`, `dfd0f19`: no `portable` target and no `.deb` in any electron-builder yml; `tools/release.mjs` has no besides, `publishBeside()` or `--fast`; the workflow uploads Setups and manifests only. `packaging-invariants` fails if any of them comes back. `electron/lib/standalone.ts` is kept on purpose, so a 1.4.0 Standalone still in use is told to install the Setup. |
+
+### What changed in the flow
+
+**Master (D2):**
+- **Discovery:**
+  - a UDP bind failure no longer stops boot (it retries every 30 s, and the screen says why automatic search is off);
+  - the reply carries the address on the asker's subnet, with physical adapters ranked above virtual, VPN and link-local ones.
+- **The Add Office Panel card:**
+  - a countdown from the server's `closesAt`, and a "window closed" state;
+  - an "automatic joining is off" notice shown before the card is pressed;
+  - the Master's addresses and port, for manual pairing;
+  - the wait ends when `GET /pairing-window` says the window is closed, not when the row count grows, so a revived row ends it too.
+- **Rows:**
+  - unique panel names;
+  - re-pairing revives the PC's own row in a strict order (§18.1 of the API contract);
+  - a revived row keeps its name;
+  - a "Show removed" toggle;
+  - the "N offline" count covers active panels only;
+  - "No active office panels" when only removed rows are left;
+  - "Reissue secret" for a connected panel.
+- **Pairing and logging:**
+  - `rate_limited` 429 with `retryAfterSeconds`;
+  - the logger redacts credential-named properties.
+- **Socket:** `panel:leave` (protocol 9).
+- **Installer:** the firewall rules are deleted and then re-added, `profile=any`, so updates do not pile up duplicates.
+- **Hindi:** real Hindi for about 90 keys.
+
+**Office (D1):**
+- **Messages:** every refusal is coded and translated, with a next step and the Master's name.
+- **Searching:** it shows progress, can be cancelled, and pairs to the address the reply came from.
+- **Manual mode:**
+  - the address and port are validated first;
+  - **Test connection** (`/api/health`);
+  - the last address is remembered;
+  - a first-sync progress screen.
+- **Removed by the Master:** "This PC was removed by the Master Panel" appears at once, with no reload, and survives restarts.
+- **Unpairing:**
+  - unpair sends `panel:leave`;
+  - `unpairAllowed()` limits unpairing without sign-in, and discarding unsent work always needs `panels.manage`;
+  - re-pairing to a different Master starts from a clean cache.
+- **The previous id and secret:** both are kept in `master-binding.json` until the next pairing. They are sent only to the Master whose id was stored, and the secret only after `/api/panel/prove`; D4 proved this with a throwaway listener.
+- **A non-Master reply:** any reply without a `messageKey` is "not a Master Panel".
+
+### Decisions taken (the owner can overrule)
+
+- **Pairing-password reset** stays behind the Server Master + master key, as the 1.3 owner rule says. The pairing password cannot be viewed (it is stored hashed); the Add card and the Office hint say where to reset it.
+- **"Reissue secret"** is a button for connected panels only, behind a confirmation.
+- **Re-pairing** revives only a removed row, or an active row whose secret the PC proves. A hostname alone grants nothing.
+- **`GET /api/panels/pairing-window`** needs `panels.manage`. There is no `panels.view` key.
+
+### Traps found in this batch
+
+- **A helper session detached HEAD in the main checkout** (`git checkout <hash>` during an audit). The 1.4.1 bump was committed to the detached HEAD, and `git push origin main` pushed the stale `main`. CH1 caught it and fixed it: `main` was moved to `2a7649a` and pushed again. Rules now:
+  - helpers check out only inside their own worktree;
+  - before a release commit, check `git symbolic-ref --short HEAD`;
+  - after every push, compare `origin/main` with the commit you expected.
+- **One PC cannot host two Masters.** Only one process can hold UDP 45789, so sessions took turns on the port through CH1.
+- **On Windows the Office ignores `PORT`;** use `OFFICE_PORT`. In PowerShell, setting an environment variable to `''` deletes it. Scratch servers therefore also need `ORDERBOOK_RELEASES_POLL_MINUTES=0` and a scratch `ORDERBOOK_RELEASES_DIR`.
+- **`master-binding.json`'s 0600 mode means nothing on Windows;** the NTFS ACL of the data folder applies.
+
+### Owed
+
+- **Real-PC checks:**
+  - installing a Setup over an existing install;
+  - the 5-minute window running out;
+  - two Masters on one LAN;
+  - the Master's IP changing;
+  - Rename;
+  - the installer actually creating the firewall rules;
+  - a Win7 Office;
+  - the real Electron shell.
+- **Owner:** delete the 14 old `claude/*` branches and `dev` on GitHub. The permission check blocks the agent from doing it. The command is:
+  `git push origin --delete dev $(git branch -r | grep "origin/claude/" | sed 's#origin/##')`
+
 ## Party Access redesign + 1.4.0 (2026-10-04)
 
-**State: everything below is on the integration branch `d5/1.4` @ `96d0b7f`, not yet on `main`, not pushed.** `main` is at `6372234` (Assigned-to full names, modal minimum height). CH1 merges the two docs branches (D2's STRUCTURE and API contract, D3's HANDOFF/NEXT_PHASE/AI_COLLABORATION/release notes), bumps the version from 1.3.0 to **1.4.0**, and builds. Protocol is now **8** (`PANEL_PROTOCOL_VERSION`; 7 came from R16/R22 in the batch above, 8 adds the Party Access summary socket command `partyAccess:summary`).
+**State: released as 1.4.0** (`main` @ `543f965`, GitHub release v1.4.0, its page cleaned to Setups only in 1.4.1). The paragraphs below were written before the merge and keep that wording. CH1 merged the two docs branches (D2's STRUCTURE and API contract, D3's HANDOFF/NEXT_PHASE/AI_COLLABORATION/release notes), bumped the version from 1.3.0 to **1.4.0**, and built. Protocol is now **8** (`PANEL_PROTOCOL_VERSION`; 7 came from R16/R22 in the batch above, 8 adds the Party Access summary socket command `partyAccess:summary`).
 
 Last full gate, each step separate, on `59a71c4`: lint 0, build 0, typecheck 0, test 0 (294 files passed + 1 skipped, 4,171 tests passed + 17 skipped), `smoke:legacy` 0. The branch head `96d0b7f` adds one more D2 merge (`480d270`, the discard question wraps and the footer reserves its height); that commit had its own tests run by D2 but **no recorded full gate**. CH1 gates the version bump anyway.
 

@@ -43,6 +43,7 @@ this batch; the web i18n layer is deferred to the UI phase (`02-FILE-STRUCTURE.m
 | 13 | Server Master, master key and the panel protocol (1.3 Phase 2) |
 | 14 | Pending order numbers, presence and stale edits (1.3 Phase 4) |
 | 17 | Party Access: list, summary and people (1.4.0) |
+| 18 | Adding an Office panel: pairing, leaving, the window (1.4.1) |
 
 ---
 
@@ -2668,6 +2669,79 @@ Allowed with `party.assign` **or** `party.accessAll` (no route guard; `requireCa
 fields: `id, displayName, username, roleName, roleTier, avatar`. A caller with neither key gets 403.
 
 ---
+
+## 18. Adding an Office panel: pairing, leaving, the window (1.4.1)
+
+The 1.4.1 audit of the add-connection flow (`CLAUDE_HELPER_CONN.md`). The flow end to end
+is `docs/STRUCTURE.md` §11.1 and §8.7. `PANEL_PROTOCOL_VERSION` is **9**
+(`shared/src/protocol/socket.ts`).
+
+### 18.1 `POST /api/pairing/request` (`PAIRING_ENDPOINT`), unauthenticated, rate-limited
+
+`PairingRequest` (`shared/src/protocol/pairing.ts`) gains two optional fields:
+
+| Field | Meaning |
+|---|---|
+| `previousPanelId` | The panel id this PC held before it was removed or unpaired. The Office sends it only to the Master whose `masterUniqueId` it stored. |
+| `previousPanelSecret` | That panel's secret. The Office sends it only to a host that has just passed the `POST /api/panel/prove` HMAC challenge, which proves the host holds the secret without the secret being sent. The Master never logs or stores it, and the logger redacts credential-named properties. |
+
+**Which row a pairing gets.** Every case below still needs the request to be admitted first,
+either by an open window or by the pairing password. `pairPanel`
+(`master/src/services/panel.service.ts`) resolves the row in this order:
+
+1. A verified `previousPanelId` plus `previousPanelSecret` (bcrypt) for an **active** row: the
+   same PC takes its own row back, and the old socket of that row is dropped.
+2. The removed row named by `previousPanelId`.
+3. The newest removed row with the same `hostname`.
+4. Otherwise a new row.
+
+An active row is never taken over by hostname alone. A revived row keeps its earlier name; if
+another panel took that name meanwhile, it gets a numbered name. The activity row is
+`re_paired`.
+
+**Refusals.** Every Master refusal carries a `messageKey`. The Office treats any non-OK reply
+without one as `not_a_master`; the one exception is a 429, which is always a rate limit.
+
+| Status | `error` | `messageKey` / details |
+|---|---|---|
+| 401 | `unauthorized` | `error.unauthorized.incorrectPairingPassword` |
+| 401 | `unauthorized` | `error.unauthorized.pairingAutoOff`: the window is open but automatic joining is off, so only the pairing password works |
+| 401 | `unauthorized` | `error.unauthorized.pairingNotAccepting`: no window is open |
+| 429 | `rate_limited` | details `{ seconds, retryAfterSeconds }`, header `Retry-After`; 10 manual attempts per IP per minute |
+
+### 18.2 `panel:leave` (socket command, protocol 9)
+
+The Office sends it on its own authenticated panel socket when the person unpairs that PC.
+- **Payload:** none. **Ack:** `CommandAck<null>`.
+- **Effect:** the row is marked removed (`revoked`, reason "left"), and an activity entry
+  says the panel unpaired itself.
+- **Socket:** it closes about 100 ms after the ack, and no `panel:revoked` is echoed back.
+- **Repeats:** a second call does nothing.
+- **Older Master:** `COMMAND_MIN_PROTOCOL['panel:leave'] = 9`, so an older Master answers
+  `updateNeeded`, and the Office then just unpairs locally.
+
+### 18.3 The Master's pairing window
+
+| Route | Gate | Notes |
+|---|---|---|
+| `GET /api/panels/pairing-window` | `panels.manage` (was any signed-in user) | `PairingWindowState`: `open`, `closesAt` (epoch ms or null), `autoPairingEnabled`, `accepting`, `port`, `addresses[]`, `discovery { listening, port, reason }` |
+| `POST /api/panels/pairing-window/open`, `/close` | `panels.manage` | 5 minutes, in memory; a successful auto pairing closes it |
+| `POST /api/panels/:id/rotate-secret` | `panels.manage` | Now has a "Reissue secret" button, shown only for a connected panel |
+
+**Discovery.** The discovery responder replies with the address of the interface whose subnet
+contains the asker. Failing that, it uses the best-ranked address: physical adapters come
+above virtual, VPN and link-local ones. A UDP bind failure no longer stops the Master from
+starting; the responder retries every 30 s.
+
+### 18.4 The Office's connection routes (local to the Office, `office/src/http/app.ts`)
+
+| Route | Purpose |
+|---|---|
+| `GET /api/connection` | The link state, the reason a pairing ended ("removed by the Master" or "left"), and the last address |
+| `POST /api/connection/scan`, `/pair/auto` | Discovery and auto pairing. Can be cancelled. Coded refusals (`PairingErrorCode`) |
+| `POST /api/connection/test` | Probes an address with the Master's unauthenticated `/api/health`: the company name, the version, and whether it is the same version as this Office |
+| `POST /api/connection/pair/manual` | Pairs with an address and the pairing password. The address is validated first |
+| `POST /api/connection/unpair` | `unpairAllowed()`: no sign-in is needed only when this PC is not recognised or the Master cannot be reached; otherwise it needs `panels.manage`. Discarding unsent work always needs that right. It sends `panel:leave` when connected |
 
 ## Appendix — new permission keys
 

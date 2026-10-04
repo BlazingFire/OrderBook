@@ -190,6 +190,38 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-04 - Add-connection audit, Setup-only builds, 1.4.1: CH1 and five Sonnet sessions (Claude, Opus + Sonnet)
+
+- **Who did what.**
+  - **D4** first ran a live baseline of 1.4.0 (B1–B6), then independently audited and
+    re-tested every D commit, then verified the published release.
+  - **D2** built the Master side.
+  - **D1** built the Office side.
+  - **D3** made builds Setup-only and built the Win7 Office.
+  - **D5** merged everything and ran the final two-process pass (22 paths).
+  - **CH1** wrote `CLAUDE_HELPER_CONN.md` (C1–C7 and the §2 audit list), gave the
+    verdicts, cleaned the release pages and released 1.4.1.
+- **The loop.** Each defect went back to the session that owned the code. D4 broke every new
+  guard once, and found two blockers live:
+  - **a secret leak:** the old secret was sent to any address. Fixed: it is bound to the
+    Master's identity and sent only after `/api/panel/prove`;
+  - **a wrong revive order:** a hostname match on a removed row beat a PC's own proven
+    row. Fixed: a verified id plus secret wins.
+  D5's final pass found F1–F5, which were fixed and re-checked live.
+- **The trap.** A helper detached HEAD in the main checkout. The 1.4.1 bump landed on the
+  detached HEAD, and the first push sent the stale `main`. CH1 caught it and re-pushed. The
+  rule is now: helpers check out only in their own worktree, and CH1 checks the branch before
+  each release commit and `origin/main` after each push.
+- **What changed on the repo.** Merged to `main` and pushed as `2a7649a`. This entry, the
+  HANDOFF section, the NEXT_PHASE top block, the release notes `docs/releases/1.4.1.md` and
+  the API contract §18 are documentation only.
+- **Verified.**
+  - The gate on `7fc7deb`: lint, build, typecheck, test (307 files, 4,335 tests),
+    `smoke:legacy`, each 0.
+  - The live two-process pass.
+  - D4's check of the v1.4.1 release from GitHub.
+  - Not run: real PCs, Win7 and an installer run.
+
 ### 2026-10-04 - Party Access redesign for 1.4.0: CH1 and five Sonnet sessions, audit loop again (Claude, Opus + Sonnet)
 
 - **Who.** **CH1** (Opus) wrote the plan and the numbered rows (`CLAUDE_HELPER_PA.md`:

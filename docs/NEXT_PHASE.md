@@ -10,7 +10,34 @@ This file assumes both.
 
 ---
 
-## First: 1.4.0 is built; what comes next (2026-10-04)
+## First: 1.4.1 is released; what comes next (2026-10-04)
+
+1.4.1 is on `main` @ `2a7649a`, pushed, and published as release v1.4.1, which holds Setups and
+manifests only. What landed, the decisions, the traps and what is owed are in `HANDOFF.md`
+under **"Add-connection audit, Setup-only builds + 1.4.1"**. The notes for the owner are in
+`docs/releases/1.4.1.md`.
+
+In order:
+
+1. **The owner installs 1.4.1:** the Master first, by hand over the existing install, then
+   each Office. That is also the first real-PC pass.
+2. **The real-PC checklist** in that HANDOFF section:
+   - a Setup installed over the top;
+   - the pairing window expiring;
+   - two Masters;
+   - the IP changing;
+   - the firewall rules;
+   - Win7;
+   - the 11 pm update.
+3. **Build every future release with `node tools/release.mjs`.** It produces Setup files
+   only. Publish only the Setups and the `latest-*.json` manifests, and leave the release
+   body empty, as the owner asked.
+4. **The owner deletes the old remote branches** (the command is in HANDOFF).
+5. **The backlog** below, unchanged.
+
+The 1.4.0 block that follows is history.
+
+## Before that: 1.4.0 is built; what comes next (2026-10-04)
 
 The Party Access redesign (list screen, shared editor, summary endpoint, kit fixes) is
 merged on `d5/1.4` @ `96d0b7f`; CH1 merges the docs, bumps the version to **1.4.0** and
