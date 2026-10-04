@@ -3041,9 +3041,8 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'updates.officeReady':
     'Office build {version} is ready on this Master. Each panel can install it from its own App update screen.',
-  // TODO(i18n-hi)
   'updates.panel.behindBody':
-    'The Master is on {version} and this panel is on an older build. Nothing is wrong — it keeps working and syncing exactly as it does now. When a matching build is published on the Master it will appear here to install.',
+    'मास्टर संस्करण {version} पर है और यह पीसी पुराने बिल्ड पर है, इसलिए जारी रखने के लिए इस पीसी को अपडेट इंस्टॉल करना होगा। इस पीसी पर सहेजा गया आपका सारा काम सुरक्षित है और अपडेट पूरा होने पर मास्टर से सिंक हो जाएगा।',
   // TODO(i18n-hi)
   'updates.panel.matchBody': 'This panel is on the same version as the Master. Nothing to do.',
   // TODO(i18n-hi)
