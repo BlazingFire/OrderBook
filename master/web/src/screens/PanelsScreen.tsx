@@ -39,6 +39,8 @@ import {
 interface Props {
   panels: OfficePanelWithPresence[];
   onRefresh: () => void;
+  /** Opens the Settings tab that holds the setting; absent for somebody who cannot change settings. */
+  onOpenSettings?: () => void;
 }
 
 /**
@@ -89,7 +91,7 @@ function countdown(ms: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
-export function PanelsScreen({ panels, onRefresh }: Props) {
+export function PanelsScreen({ panels, onRefresh, onOpenSettings }: Props) {
   const toast = useToast();
   const [waiting, setWaiting] = useState(false);
   /** What the Master says about the window, the setting, its addresses and the UDP search. */
@@ -576,6 +578,16 @@ export function PanelsScreen({ panels, onRefresh }: Props) {
           <div role="status" style={{ marginBottom: 'var(--s-12)' }}>
             <span className="ob-body-strong">{t('panels.add.expiredTitle')}</span>{' '}
             <span className="ob-small">{t('panels.add.expiredBody')}</span>
+          </div>
+        )}
+        {windowState && !windowState.autoPairingEnabled && !waiting && (
+          <div role="status" className="ob-small" style={{ marginBottom: 'var(--s-12)' }}>
+            {t('panels.add.autoOffNotice')}{' '}
+            {onOpenSettings && (
+              <Button variant="ghost" size="sm" onClick={onOpenSettings}>
+                {t('panels.add.autoOffLink')}
+              </Button>
+            )}
           </div>
         )}
         {windowState && !windowState.discovery.listening && (

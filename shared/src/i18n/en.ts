@@ -3361,4 +3361,6 @@ export const EN_MESSAGES = {
   'logs.action.left': 'Left',
   'panels.empty.noActive': 'No active office panels',
   'panels.empty.noActiveBody': 'Every panel that was paired has been removed. Use Show removed to see them, or add a panel again.',
+  'panels.add.autoOffNotice': 'Automatic joining is switched off — Offices must use the pairing password.',
+  'panels.add.autoOffLink': 'Change this in Settings',
 } as const;

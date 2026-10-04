@@ -4304,4 +4304,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'logs.action.left': 'अलग हुआ',
   'panels.empty.noActive': 'कोई सक्रिय ऑफ़िस पैनल नहीं',
   'panels.empty.noActiveBody': 'जो भी पैनल पेयर हुए थे सब हटाए जा चुके हैं। उन्हें देखने के लिए "हटाए गए दिखाएँ" दबाएँ, या नया पैनल जोड़ें।',
+  'panels.add.autoOffNotice': 'अपने-आप जुड़ना बंद है — ऑफ़िस को पेयरिंग पासवर्ड इस्तेमाल करना होगा।',
+  'panels.add.autoOffLink': 'इसे सेटिंग्स में बदलें',
 };
