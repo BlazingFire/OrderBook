@@ -280,6 +280,9 @@ export function PartyAccessScreen({
         // share is assumed to need only 120 px, which left the name three letters wide.
         width: '16rem',
         sortable: true,
+        // Rows open their record (the convention `ui-conventions.test.ts` holds a table
+        // to before it may drop columns), but not through the table's `onRowOpen`: that
+        // makes the row itself a button, and the Edit button would sit inside it.
         // The one control in the row that opens it, so a row is not a button with a
         // button inside it: Tab reaches it, Enter opens it, and a click anywhere else
         // in the row is handled once, on the table (`onTableClick`).
