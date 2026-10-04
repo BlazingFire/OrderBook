@@ -716,9 +716,39 @@ export interface AssignablePerson {
   avatar?: UserAvatar | null;
 }
 
+/** The columns the Party Access list can be ordered by (1.4 Party Access redesign). */
+export const PARTY_ACCESS_SORTS = ['code', 'name', 'city', 'access'] as const;
+export type PartyAccessSort = (typeof PARTY_ACCESS_SORTS)[number];
+export type PartyAccessSortDir = 'asc' | 'desc';
+
+/**
+ * `search` matches the party's code, name, city and phone **and the display name or
+ * username of anybody assigned to it**; a term is plain text (`%` and `_` are not wildcards).
+ *
+ * "Nobody / open" in a person filter is `restriction: 'open'`, not a sentinel user id:
+ * `userId` is always a real user id. Both together match nothing (an open party has no
+ * assignee to be that user).
+ *
+ * `sort` is allowlisted; an unknown `sort` falls back to the old order (name, ascending) and
+ * an unknown `dir` to `asc`. `access` orders by the number of people assigned, so `asc`
+ * puts open parties first and `desc` puts the most closely held first. Ties break on name,
+ * then id, so a page boundary never repeats or drops a row.
+ */
 export interface PartyAccessQuery extends ListQuery {
   /** Only parties this person is assigned to. */
   userId?: RecordId;
   /** `open` — nobody is assigned; `restricted` — somebody is. */
   restriction?: 'open' | 'restricted';
+  sort?: PartyAccessSort;
+  dir?: PartyAccessSortDir;
+}
+
+/**
+ * Company-wide counts for the Party Access summary strip: every live party, whatever the
+ * search or filter on the list. `total === restricted + open`.
+ */
+export interface PartyAccessSummary {
+  total: number;
+  restricted: number;
+  open: number;
 }

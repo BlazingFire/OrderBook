@@ -14,6 +14,7 @@
  * (`docs/ROLES_AND_USERS.md` §5).
  */
 
+import { PARTY_ACCESS_SORTS } from '@orderbook/shared';
 import type {
   AssignablePerson,
   Paginated,
@@ -22,6 +23,7 @@ import type {
   PartyAccessLevel,
   PartyAccessQuery,
   PartyAccessRow,
+  PartyAccessSummary,
 } from '@orderbook/shared';
 
 import { assertVersionMatches } from '../domain/access.js';
@@ -66,6 +68,9 @@ export async function listAssignments(
     search: query.search,
     userId: query.userId,
     restriction: query.restriction,
+    // Allowlisted here as well as on the route: the socket reaches this function directly.
+    sort: PARTY_ACCESS_SORTS.find((column) => column === query.sort),
+    dir: query.dir === 'desc' ? 'desc' : 'asc',
     ...clampPaging(query, PAGING),
   });
 
@@ -89,6 +94,17 @@ export async function listAssignments(
       };
     }),
   };
+}
+
+/**
+ * Company-wide counts for the summary strip: every live party, whatever the search or the
+ * filter on the list, so the strip never answers a question about the page it sits above.
+ */
+export async function summary(actor: ActorContext): Promise<PartyAccessSummary> {
+  requireCanRead(actor);
+
+  const { total, restricted } = await partyRepo.partyAccessCounts(actor.tenantId);
+  return { total, restricted, open: total - restricted };
 }
 
 export async function assignmentsForParty(
@@ -300,7 +316,10 @@ export async function exportRows(
  * cannot sign in produces a grant nobody can exercise.
  */
 export async function assignablePeople(actor: ActorContext): Promise<AssignablePerson[]> {
-  requirePermission(actor, 'party.assign');
+  // `party.assign` (the editor's picker) or `party.accessAll` (the list's "Assigned to" filter):
+  // a reader already sees every assignee's name in the table, so the names reveal nothing new.
+  // Same narrow shape for both; no phone, e-mail or permission lists.
+  requireCanRead(actor);
 
   const users = await userRepo.listUsers(actor.tenantId);
 
