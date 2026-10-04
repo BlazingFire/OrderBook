@@ -183,10 +183,14 @@ export function describeRefusal(
   return new PairingError('refused', 'connection.error.refused');
 }
 
-/** A Master's refusal always carries an `error` or a `messageKey`; any other JSON is some other server's. */
-function looksLikeMasterReply(body: unknown): boolean {
-  const reply = body as { error?: unknown; messageKey?: unknown } | null;
-  return typeof reply?.error === 'string' || typeof reply?.messageKey === 'string';
+/**
+ * A Master's refusal always carries a `messageKey` (the rate limiter may answer 429
+ * before it has one). Any other JSON is some other server's: an Office answers this
+ * route with `{"error":"not_signed_in", ...}`, which is not a Master saying no.
+ */
+function looksLikeMasterReply(status: number, body: unknown): boolean {
+  const reply = body as { messageKey?: unknown } | null;
+  return typeof reply?.messageKey === 'string' || status === 429;
 }
 
 /** One AbortSignal for the caller's Cancel and this request's own timer, and which fired. */
@@ -510,7 +514,7 @@ async function requestPairingAt(
 
   if (!response.ok) {
     // No pairing route, or not JSON: another web server is answering on that port.
-    if (body === null || response.status === 404 || !looksLikeMasterReply(body))
+    if (body === null || response.status === 404 || !looksLikeMasterReply(response.status, body))
       throw new PairingError('not_a_master', 'connection.error.notAMaster', {
         address: `${host}:${port}`,
       });

@@ -287,7 +287,11 @@ describe('manual pairing: what the Master said is recognised, not passed through
   });
 
   it('anything else the Master refuses is a plain refusal with a key of ours', async () => {
-    handler = refuse(403, { error: 'forbidden', message: 'whatever the Master said' });
+    handler = refuse(403, {
+      error: 'forbidden',
+      message: 'whatever the Master said',
+      messageKey: 'error.forbidden.something',
+    });
     const error = await failure(manual());
     expect(error).toMatchObject({ code: 'refused', messageKey: 'connection.error.refused' });
     expect(error.message).not.toContain('whatever');
@@ -316,8 +320,16 @@ describe('manual pairing: what the Master said is recognised, not passed through
     handler = refuse(403, ['nope']);
     expect((await failure(manual())).code).toBe('not_a_master');
 
-    // A Master that says no in its own words stays a refusal.
-    handler = refuse(403, { error: 'forbidden', message: 'Not allowed' });
+    // An Office panel on that port answers the pairing route with its own sign-in refusal.
+    handler = refuse(401, { error: 'not_signed_in', message: 'Sign in to use this panel' });
+    expect((await failure(manual())).code).toBe('not_a_master');
+
+    // A Master that says no, with its key, stays a refusal.
+    handler = refuse(403, {
+      error: 'forbidden',
+      message: 'Not allowed',
+      messageKey: 'error.forbidden.something',
+    });
     expect((await failure(manual())).code).toBe('refused');
   });
 
