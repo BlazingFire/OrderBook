@@ -59,7 +59,7 @@ function needsUpdate(panel: OfficePanelWithPresence): boolean {
 function StatusChips({ panel }: { panel: OfficePanelWithPresence }) {
   const now = Date.now();
   return (
-    <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 'var(--s-4)' }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-4)' }}>
       {panel.status === 'revoked' ? (
         <StatusPill tone="default">{t('panels.status.removed')}</StatusPill>
       ) : panel.isConnected ? (
@@ -252,7 +252,7 @@ export function PanelsScreen({ panels, onRefresh, onOpenSettings }: Props) {
     {
       key: 'status',
       header: t('panels.table.status'),
-      width: rem(180),
+      width: rem(240),
       render: (panel) => <StatusChips panel={panel} />,
     },
     {
@@ -279,13 +279,13 @@ export function PanelsScreen({ panels, onRefresh, onOpenSettings }: Props) {
       key: 'paired',
       header: t('panels.table.paired'),
       priority: 3,
-      width: rem(150),
+      width: rem(180),
       render: (panel) => <span className="ob-small">{formatDateTime(panel.pairedAt)}</span>,
     },
     {
       key: 'lastSeen',
       header: t('panels.table.lastSeen'),
-      width: rem(150),
+      width: rem(180),
       render: (panel) => <span className="ob-small">{formatDateTime(panel.lastSeenAt)}</span>,
     },
     {

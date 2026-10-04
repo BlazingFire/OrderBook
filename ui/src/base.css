@@ -1591,13 +1591,16 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   padding: var(--s-8) var(--s-20);
   background: var(--bg-surface);
   border-bottom: 1px solid var(--line);
-  /* At the 1024x768 floor a full row of stage chips can outgrow the strip;
-   * scroll horizontally inside the band rather than breaking the shell
-   * (whose own overflow is hidden) or clipping chips vertically. */
-  overflow-x: auto;
-  overflow-y: hidden;
-  /* No `scrollbar-width` here: it would switch this one strip to the platform
-   * bar and drop the custom one `reset.css` gives everything else. */
+  /* At the 1024x768 floor a full row of chips can outgrow the strip; wrap to a
+   * second row rather than scroll. A scrolling strip clips the dropdown lists
+   * (`.ob-suggest` is absolutely positioned inside it) and its
+   * `scrollIntoView` on the highlighted option scrolled the strip itself
+   * upward, which hid the search box and filters. */
+  flex-wrap: wrap;
+  overflow: visible;
+  /* Above the content pane so an open list is not painted under it. */
+  position: relative;
+  z-index: 2;
 }
 .ob-filterbar > * {
   flex: none;
