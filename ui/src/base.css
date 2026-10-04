@@ -4669,3 +4669,56 @@ button.ob-chat-chip-open:not(:disabled):hover {
   color: var(--fg-secondary);
   font-weight: 600;
 }
+
+/* Long names, codes and cities end in an ellipsis (the whole text is the title)
+   instead of being cut mid-word. */
+.ob-pa-ellipsis,
+.ob-pa-open {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The party name is the row's one button: it looks like text, opens the editor. */
+.ob-pa-open {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ob-pa-table tbody tr[data-row] {
+  cursor: pointer;
+}
+/* A refetch (filter, sort, live update) dims the rows still on screen. */
+.ob-pa-table[data-fetching] {
+  opacity: 0.55;
+  transition: opacity 120ms;
+}
+/* A grant held by somebody no longer active: still counted, shown muted. */
+.ob-pa-inactive {
+  color: var(--fg-tertiary);
+  font-style: italic;
+}
+.ob-pa-inactive-tag {
+  font-style: normal;
+}
+
+/* Narrow strip (a small window, or 157 % scale): one line per count, the hint is
+   the tooltip, so the rows below get the room. Container query, so it follows the
+   strip's own width in rem and not the viewport. */
+.ob-pa-strip {
+  container: pa-strip / inline-size;
+}
+@container pa-strip (max-width: 44rem) {
+  .ob-pa-stat {
+    grid-template-areas: 'label count';
+    padding: var(--s-6) var(--s-12);
+  }
+  .ob-pa-stat-hint {
+    display: none;
+  }
+}

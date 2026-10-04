@@ -4241,4 +4241,5 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'partyAccess.empty.clear': 'फ़िल्टर हटाएँ',
   'partyAccess.empty.none': 'अभी कोई पार्टी नहीं है',
   'partyAccess.action.edit': 'एक्सेस बदलें',
+  'partyAccess.assignee.inactive': 'निष्क्रिय',
 };

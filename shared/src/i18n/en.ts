@@ -3284,4 +3284,5 @@ export const EN_MESSAGES = {
   'partyAccess.empty.clear': 'Clear filters',
   'partyAccess.empty.none': 'There are no parties yet',
   'partyAccess.action.edit': 'Edit access',
+  'partyAccess.assignee.inactive': 'Inactive',
 } as const;
