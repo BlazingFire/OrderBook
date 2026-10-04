@@ -158,7 +158,9 @@ export async function grantsForParties(
       'pac.access_level',
       'u.display_name',
       'u.username',
-      'u.is_active',
+      // Inactive means "cannot sign in": deactivated or in the Recycle Bin. A deleted user's
+      // account keeps `is_active` as it was, so the deletion has to be folded in here.
+      db().raw('(u.is_active AND u.deleted_at IS NULL) AS is_active'),
       'u.avatar_id',
       'u.avatar_blurhash',
       'u.avatar_size',

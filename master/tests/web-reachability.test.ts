@@ -163,8 +163,6 @@ const ALLOWED_UNCALLED: Record<'master' | 'office', Record<string, string>> = {
     reorderFieldStages: 'as fieldsCatalogue',
     archiveFieldStage: 'as fieldsCatalogue',
     restoreFieldStage: 'as fieldsCatalogue',
-    partyAccessFor:
-      'PartyAccessScreen edits a party out of the assignment list it loaded; nothing reads one party alone',
     upsertVariant:
       'no screen edits a party’s own product records — PartyDetail and New lead only read view.partyVariants',
 

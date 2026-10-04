@@ -587,7 +587,7 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
       await screen.findByText('Party 7');
 
       const row = screen.getByText('Party 7').closest('tr')!;
-      const tag = within(row).getByText(t('partyAccess.assignee.inactive'));
+      const tag = within(row).getByText(t('partyAccess.editor.deactivated'));
       expect(tag.closest('.ob-pa-inactive')?.textContent).toContain('Vikram Shah');
       // The active one is not tagged.
       expect(
@@ -595,13 +595,13 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
           .getByText(/Anita Rao/)
           .closest('.ob-pa-inactive'),
       ).toBeNull();
-      expect(within(row).getAllByText(t('partyAccess.assignee.inactive')).length).toBe(1);
+      expect(within(row).getAllByText(t('partyAccess.editor.deactivated')).length).toBe(1);
       expect(
         within(row)
           .getByText(t('partyAccess.level.manage'))
           .closest('.ob-pa-assignees')
           ?.getAttribute('title'),
-      ).toContain(`Vikram Shah (View) — ${t('partyAccess.assignee.inactive')}`);
+      ).toContain(`Vikram Shah (View) — ${t('partyAccess.editor.deactivated')}`);
     });
 
     it('dims the rows while a filter is being fetched, and stops when it arrives', async () => {
@@ -708,7 +708,11 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
 
       fireEvent.click(screen.getByText('Party 1'));
       const dialog = await screen.findByRole('dialog');
-      fireEvent.click(within(dialog).getByRole('button', { name: t('partyAccess.remove') }));
+      fireEvent.click(
+        within(dialog).getByRole('button', {
+          name: t('partyAccess.editor.removeFor', { name: 'Anita Rao' }),
+        }),
+      );
       fireEvent.click(within(dialog).getByRole('button', { name: t('partyAccess.action.save') }));
 
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());

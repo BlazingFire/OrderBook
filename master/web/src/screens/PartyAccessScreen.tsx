@@ -642,7 +642,7 @@ function AssigneeList({ assignees }: { assignees: PartyAccessAssignee[] }) {
     .map(
       (person) =>
         `${person.displayName} (${levelLabel(person.level)})${
-          person.isActive === false ? ` — ${t('partyAccess.assignee.inactive')}` : ''
+          person.isActive === false ? ` — ${t('partyAccess.editor.deactivated')}` : ''
         }`,
     )
     .join(', ');
@@ -662,7 +662,7 @@ function AssigneeList({ assignees }: { assignees: PartyAccessAssignee[] }) {
             <span className="ob-pa-level">{levelLabel(person.level)}</span>
             {inactive ? (
               <span className="ob-pa-level ob-pa-inactive-tag">
-                {t('partyAccess.assignee.inactive')}
+                {t('partyAccess.editor.deactivated')}
               </span>
             ) : null}
             {index < shown.length - 1 || hidden > 0 ? ', ' : ''}

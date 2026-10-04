@@ -99,9 +99,9 @@ export function Avatar({
   );
 }
 
-/** First letters of the first and last words — "Akshit Verma" reads as AV. */
+/** First letters of the first and last words — "Akshit Verma" reads as AV; a word that starts with punctuation is skipped, so "Admin (test)" is A, not A(. */
 function initialsOf(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
+  const words = name.trim().split(/\s+/).filter((word) => /^[\p{L}\p{N}]/u.test(word));
   if (words.length === 0) return '?';
   const first = words[0] ?? '';
   const last = words.length > 1 ? (words[words.length - 1] ?? '') : '';

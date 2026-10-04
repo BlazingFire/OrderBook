@@ -147,7 +147,17 @@ export async function replaceAssignments(
   requirePermission(actor, 'party.assign');
 
   const entries = normaliseEntries(input.entries);
-  await assertUsersAreLive(actor, entries);
+  // A person already holding access stays on the party even if they have since been deactivated
+  // or deleted: the grant is kept so they come back holding their parties (`party_access` has no
+  // foreign key for that reason), and an administrator should not have to strip it to change
+  // somebody else's level. Only a *new* grant must name a live account.
+  const alreadyGranted = new Set(
+    (await partyAccessRepo.grantsForParty(actor.tenantId, partyId)).map((grant) => grant.userId),
+  );
+  await assertUsersAreLive(
+    actor,
+    entries.filter((entry) => !alreadyGranted.has(entry.userId)),
+  );
 
   await db().transaction(async (trx) => {
     // Stamped before the party's row lock, never after it: every other write
