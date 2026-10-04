@@ -112,11 +112,11 @@ describe('the shared Logs screen', () => {
     );
   });
 
-  it('asks for the CSV in the reader’s language', async () => {
+  it('asks for the CSV with the filters on screen and no language parameter', async () => {
     const fake = await mount();
 
     await act(async () => undefined);
-    expect(fake.exportQueries.at(-1)).toMatchObject({ locale: 'en' });
+    expect(fake.exportQueries.at(-1)).not.toHaveProperty('locale');
   });
 
   it('reads nothing without logs.view', async () => {

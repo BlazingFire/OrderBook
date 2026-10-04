@@ -1,6 +1,5 @@
 /**
- * Turn whatever a failed api call threw into a sentence in the reader's own
- * language.
+ * Turn whatever a failed api call threw into a sentence for the reader.
  *
  * The three-tier error pipeline — a specific `messageKey`, failing that the
  * coarse `error.<code>` token, failing that English — was built end to end on
@@ -8,8 +7,8 @@
  * either front end found only the two assignments that create it, the two
  * server-side serialisers, and the type definitions. Every screen did
  * `caught instanceof Error ? caught.message : …`, which renders the server's
- * *English* `message` and throws the key away. On a Hindi panel every failure
- * was in English, including every sign-in failure.
+ * `message` the server composed and throws the key away, so no screen could
+ * word a failure for itself.
  *
  * Structurally typed rather than taking each panel's own `ApiError` class:
  * `ui/` cannot import from either panel, and the two classes are the same

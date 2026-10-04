@@ -152,7 +152,6 @@
   /* ---- Typography roles (§4.1), sized at the Comfortable root of 14px --- */
   --font-ui: 'Inter', 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
-  --font-deva: 'Noto Sans Devanagari', 'Inter', system-ui, sans-serif;
 
   --t-display-size: 1.7143rem; /* 24px */
   --t-display-line: 2rem; /* 28px */
@@ -319,8 +318,3 @@ html {
   font-size: var(--root-size);
 }
 
-/* Devanagari matches Inter's x-height and gains +2px of line height (§10). */
-:lang(hi) {
-  font-family: var(--font-deva);
-  line-height: calc(1em + 2px);
-}

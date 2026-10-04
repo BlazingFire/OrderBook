@@ -6,9 +6,7 @@
  * An entry is a token, not a sentence: the row carries `entityType`, `action`
  * and a `details` bag, and the shared `activity.*` catalogue is what turns that
  * triple into prose. Rendering goes through `renderActivity` rather than
- * concatenating here, so the day a locale switch lands the same stored row
- * reads as Hindi — an English sentence assembled in this file would be frozen
- * as English forever.
+ * concatenating here, so every sentence for an entry comes from one catalogue.
  *
  * Both panels mount this screen with their own transport: the Master answers
  * from its database, the Office forwards to the Master. A Server Master's
@@ -30,6 +28,7 @@ import type {
 } from '@orderbook/shared';
 import {
   createTranslator,
+  DEFAULT_LOCALE,
   logsActionLabelKey,
   logsEntityLabelKey,
   renderActivity,
@@ -45,7 +44,7 @@ import { EditorScreen } from './EditorScreen.js';
 import { useFilterBar } from './FilterBarSlot.js';
 import { DateField, Input } from './Form.js';
 import { formatDateTime } from './format.js';
-import { locale, t } from './i18n.js';
+import { t } from './i18n.js';
 import { Modal } from './Modal.js';
 import { rem } from './rem.js';
 import { ConflictBanner, EmptyState, ErrorState, SkeletonTable } from './States.js';
@@ -70,11 +69,8 @@ interface Props {
   transport: LogsTransport;
 }
 
-/**
- * Picking a language reloads the page (see `setLocale`), so reading it once at
- * module load is enough.
- */
-const translator = createTranslator(locale());
+/** The interface is English only, so one translator for the module's life is enough. */
+const translator = createTranslator(DEFAULT_LOCALE);
 
 interface Filters {
   q: string;
@@ -575,7 +571,7 @@ export function LogsScreen({ permissions, transport }: Props) {
             )}
             {canExport && (
               <ButtonLink
-                href={transport.logsExportUrl({ ...query, locale: locale() })}
+                href={transport.logsExportUrl(query)}
                 variant="secondary"
                 size="sm"
               >

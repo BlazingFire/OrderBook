@@ -5,7 +5,7 @@
  *
  *  · It rendered `caught.message` — the server's **English** sentence — and
  *    discarded the `messageKey` the transport carries, so every sign-in failure
- *    was in English on a Hindi panel. `apiErrorText` is the client the
+ *    used the server's wording. `apiErrorText` is the client the
  *    three-tier pipeline never had.
  *  · There was no way to say why the window arrived back here. A session that
  *    ends mid-use (most often: this person just changed their own password,

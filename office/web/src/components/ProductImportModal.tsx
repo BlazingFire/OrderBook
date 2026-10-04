@@ -77,7 +77,7 @@ function describe(error: unknown): string {
   return t('import.failed');
 }
 
-/** The row-numbered problems as a CSV (BOM so Excel reads Hindi), for fixing the file. */
+/** The row-numbered problems as a CSV (BOM so Excel reads accented text), for fixing the file. */
 function issuesCsv(issues: ProductImportIssue[]): Blob {
   const cell = (value: string | number): string => `"${String(value).replace(/"/g, '""')}"`;
   const line = (cells: Array<string | number>): string => cells.map(cell).join(',');

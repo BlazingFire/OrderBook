@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { OfficePanelWithPresence, PairingWindowState } from '@orderbook/shared';
 
 import { configureUi } from '../src/config.js';
-import { setLocale, t } from '../src/i18n.js';
+import { t } from '../src/i18n.js';
 import { installBrowserStubs, json, routeFetch, type Call } from './panel-harness.js';
 
 interface Props {
@@ -58,7 +58,6 @@ function state(over: Partial<PairingWindowState> = {}): PairingWindowState {
 
 beforeEach(() => {
   installBrowserStubs();
-  setLocale('en');
 });
 afterEach(cleanup);
 

@@ -11,7 +11,6 @@
 
 import { anySignal, publishSessionEnded, t, trackLoad } from '@orderbook/ui';
 import type {
-  Locale,
   PickKind,
   ChatAccessCapability,
   PrintJob,
@@ -98,7 +97,6 @@ import type {
   RecycleBinQuery,
   ReportFormat,
   ReportKind,
-  ReportLocale,
   ReportOptions,
   ReportQuery,
   ReportTable,
@@ -113,8 +111,7 @@ import type {
 import { reportQueryParams } from '@orderbook/shared';
 
 /**
- * Mirrors `master/web/src/api.ts`'s `ApiError` — the Office is the primary
- * Hindi consumer, so it needs the same `code`/`details`/`messageKey`/`params`
+ * Mirrors `master/web/src/api.ts`'s `ApiError` — the Office needs the same `code`/`details`/`messageKey`/`params`
  * a screen can act on, not a bare `Error` whose only content is an English
  * sentence the Master or this panel's own server happened to compose.
  */
@@ -597,7 +594,7 @@ export const api = {
   },
 
   session: () =>
-    request<{ session: PanelSession | null; defaultLocale: Locale }>('/api/session'),
+    request<{ session: PanelSession | null }>('/api/session'),
   signIn: (username: string, password: string) =>
     post<{ session: PanelSession }>('/api/auth/sign-in', { username, password }),
   signOut: () => post<{ ok: true }>('/api/auth/sign-out'),
@@ -1094,8 +1091,6 @@ export const api = {
     if (query.from) params.set('from', query.from);
     if (query.to) params.set('to', query.to);
     if (query.q) params.set('q', query.q);
-    // The CSV's sentence column is rendered in this language.
-    if (query.locale) params.set('locale', query.locale);
     const qs = params.toString();
     return `/api/logs/export${qs ? `?${qs}` : ''}`;
   },
@@ -1112,10 +1107,9 @@ export const api = {
     const qs = reportQueryParams(query).toString();
     return request<ReportTable>(`/api/reports/table/${kind}${qs ? `?${qs}` : ''}`, signal ? { signal } : undefined);
   },
-  reportExport: (kind: ReportKind, query: ReportQuery & { format: ReportFormat; lang?: ReportLocale }) => {
+  reportExport: (kind: ReportKind, query: ReportQuery & { format: ReportFormat }) => {
     const params = reportQueryParams(query);
     params.set('format', query.format);
-    if (query.lang) params.set('lang', query.lang);
     return fetchBlob(`/api/reports/${kind}/export?${params}`, undefined, `${kind}.${query.format}`);
   },
 
