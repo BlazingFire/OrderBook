@@ -155,7 +155,6 @@ a timezone today — `buildKnexConfig` passes no `SET TIME ZONE`.
 // master/src/config/index.ts
 locale: {
   timeZone: process.env.ORDERBOOK_TIMEZONE ?? 'Asia/Kolkata',
-  defaultLocale: isLocale(process.env.ORDERBOOK_DEFAULT_LOCALE) ? … : 'en',
 }
 ```
 
@@ -231,7 +230,7 @@ A key exists only because code references it. A `.ts` catalogue makes a missing 
 shared/src/i18n/
   en.ts          THE source of truth. `EN_MESSAGES = {...} as const`; dotted keys, NAMED {placeholders}
   keys.ts        MessageKey = keyof typeof EN_MESSAGES; Placeholders<S> recursive template-literal type
-  locales.ts     LOCALES/Locale/isLocale/LOCALE_LABELS
+  locales.ts     LOCALES = ['en'], Locale, DEFAULT_LOCALE, isLocale, LOCALE_LABELS (English only)
   translate.ts   t(), tCount(), createTranslator(locale). NO number formatting — spec §10
   activity.ts    activityMessageKey(entityType, action) — the contract Logs renders against
   errors.ts      ErrorPayload/TranslatableError — one wire shape for the HTTP envelope AND the socket ack

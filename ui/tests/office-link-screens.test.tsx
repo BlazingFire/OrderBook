@@ -63,7 +63,7 @@ async function boot(route?: (call: Call) => Response | undefined): Promise<Call[
     if (answer) return answer;
     const path = call.url.split('?')[0] ?? call.url;
     if (path === '/api/connection') return json(link);
-    if (path === '/api/session') return json({ session: null, defaultLocale: 'en' });
+    if (path === '/api/session') return json({ session: null });
     if (path === '/api/profiles') return json([]);
     if (path === '/api/storage/path') return json({ dataDir: 'C:\\data', freeBytes: 1e9 });
     return undefined;

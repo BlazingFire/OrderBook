@@ -5,8 +5,8 @@
  * fields are decided here; `pdf/product-share-renderer.ts` only draws them and
  * `services/product-share.service.ts` reads the products and photographs.
  *
- * The field labels and the page line are in the company's language (`shareText`), because
- * the sheet goes to its customers. The product's own words (its name, colours, custom
+ * The field labels and the page line come from the catalogue (`shareText`), in English; the
+ * sheet goes to the company's customers. The product's own words (its name, colours, custom
  * field values) are printed as the company wrote them.
  *
  * A card never prints the main product's software code (`OPT`): it is a column and a

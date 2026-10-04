@@ -55,7 +55,7 @@ const log = createLogger('user-session');
  * a key, its placeholders and a code (`master/src/realtime/hub.ts`'s own doc
  * comment exists to stop that being lost). This class used to take the English
  * `message` alone, so all four collapsed into one sentence and one code, and
- * every sign-in failure on a Hindi panel rendered in English.
+ * the screen could not word any of them for itself.
  */
 export class SignInError extends Error {
   constructor(

@@ -310,7 +310,7 @@ export function assertArchiveFits(target: {
 /**
  * The company name as it goes into a file name: ASCII letters and digits,
  * dashes between words, at most 40 characters, `company` when nothing is left
- * (a name written only in Hindi, say).
+ * (a name written only in non-Latin letters, say).
  */
 export function companySlug(name: string | null | undefined): string {
   const slug = (name ?? '')

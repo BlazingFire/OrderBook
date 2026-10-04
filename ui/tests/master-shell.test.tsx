@@ -141,7 +141,7 @@ async function boot(
     const path = url.split('?')[0] ?? url;
     if (path === '/api/setup/status') return json({ setupComplete: true });
     if (path === '/api/auth/me') {
-      return json({ user: user(permissions), sessionToken: 'session-1', defaultLocale: 'en' });
+      return json({ user: user(permissions), sessionToken: 'session-1' });
     }
     if (path === '/api/access/users' || path === '/api/access/roles') return json([]);
     if (path === '/api/access/permission-catalogue') {
@@ -416,7 +416,7 @@ describe('Reports', () => {
     return boot(permissions, ({ url }) => {
       const path = url.split('?')[0] ?? url;
       if (path === '/api/auth/me') {
-        return json({ user: { ...user(permissions, tier), features }, sessionToken: 'session-1', defaultLocale: 'en' });
+        return json({ user: { ...user(permissions, tier), features }, sessionToken: 'session-1' });
       }
       if (path === '/api/reports/options') return json(REPORT_OPTIONS);
       if (path.startsWith('/api/reports/table/')) return json(REPORT_TABLE);
@@ -468,7 +468,7 @@ describe('Basic Home and the landing screen', () => {
   function bootAs(tier: string, permissions: string[]): Promise<Call[]> {
     return boot(permissions, ({ url }) =>
       url === '/api/auth/me'
-        ? json({ user: user(permissions, tier), sessionToken: 'session-1', defaultLocale: 'en' })
+        ? json({ user: user(permissions, tier), sessionToken: 'session-1' })
         : undefined,
     );
   }
@@ -506,7 +506,7 @@ describe('Basic Home and the landing screen', () => {
     await boot(permissions, ({ url }) => {
       const path = url.split('?')[0];
       if (url === '/api/auth/me') {
-        return json({ user: user(permissions, 'management'), sessionToken: 'session-1', defaultLocale: 'en' });
+        return json({ user: user(permissions, 'management'), sessionToken: 'session-1' });
       }
       if (path === '/api/chat/rooms' || path === '/api/chat/tasks') return json([]);
       if (path === '/api/print-jobs') return json({ jobs: [], nextCursor: null, waitingCount: 0 });
@@ -809,7 +809,7 @@ describe('a role edit reaches a window that has it open', () => {
     let permissions = ADMIN;
     const calls = await boot(ADMIN, ({ url }) =>
       url === '/api/auth/me'
-        ? json({ user: user(permissions), sessionToken: 'session-1', defaultLocale: 'en' })
+        ? json({ user: user(permissions), sessionToken: 'session-1' })
         : undefined,
     );
     await open(t('nav.master.panels'));
@@ -1838,7 +1838,7 @@ describe('Server Masters at first run and sign-in (1.3)', () => {
   it('badges a signed-in Server Master in the footer', async () => {
     await boot(ADMIN, ({ url }) =>
       url === '/api/auth/me'
-        ? json({ user: user(ADMIN, 'server_master'), sessionToken: 'session-1', defaultLocale: 'en' })
+        ? json({ user: user(ADMIN, 'server_master'), sessionToken: 'session-1' })
         : undefined,
     );
 

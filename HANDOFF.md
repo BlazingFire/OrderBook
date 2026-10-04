@@ -298,7 +298,7 @@ permissions; nothing else touched). New permission key: `catalog.lists.manage`.
 - **A screen kept alive in a hidden `<Activity>` runs its effect cleanups when hidden and its setups when shown.** A "mounted" flag that only ever goes to false swallows every later answer (the share dialog never opened); set it in the setup too (`ui/src/ProductShare.tsx`).
 - **A fresh install gives Office and Management no `fields.view`.** The three catalogue lists are therefore readable by everyone on purpose, and `fields.routes.ts`'s value routes carry no middleware gate: the service decides (`requireListRead` / `requireListWrite`); `credential-invariants` names the four routes. `catalog.lists.manage` cannot be given to an office-tier role (management ceiling).
 - **The Recycle Bin offers a person only what they can restore.** `fields.manage` alone sees every list except brands, packaging and grades; `catalog.lists.manage` alone sees only those three (`optionScopeFor` in `recycle-bin.service.ts`).
-- **The share PDF speaks the deployment's language** (`ORDERBOOK_DEFAULT_LOCALE`), not the signed-in person's.
+- **The share PDF is in English**, like the rest of the UI.
 - **`ORDERBOOK_TEST_PG_*` and the preview servers:** a preview needs a scratch database and ports of its own; the owner's `order_book` is never used.
 
 ### Owed by the owner (an agent cannot do these)

@@ -24,7 +24,6 @@ import type {
   DispatchMonthBucket,
   LeadOutcome,
   LeadOutcomesReport,
-  Locale,
   MessageKey,
   ReportColumn,
   ReportExportOptions,
@@ -314,7 +313,7 @@ export async function topPartiesReport(
  * is what keeps that true.
  */
 function label(key: MessageKey, params?: Record<string, string | number>): string {
-  return (t as (locale: Locale, key: MessageKey, params?: Record<string, string | number>) => string)('en', key, params);
+  return (t as (locale: string, key: MessageKey, params?: Record<string, string | number>) => string)('en', key, params);
 }
 
 /** The units the three legacy kinds' export columns never declared, by key. */
@@ -530,7 +529,7 @@ function sheetNameOf(title: string): string {
   return (cleaned || 'Report').slice(0, 31);
 }
 
-type NormalizedExportOptions = Required<Omit<ReportExportOptions, 'columns' | 'lang'>> & Pick<ReportExportOptions, 'columns'>;
+type NormalizedExportOptions = Required<Omit<ReportExportOptions, 'columns'>> & Pick<ReportExportOptions, 'columns'>;
 
 /**
  * What an export asked for, read defensively. The socket and the REST route both

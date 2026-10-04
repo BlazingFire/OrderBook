@@ -157,7 +157,7 @@ async function boot({ permissions, view = {}, refusals = [], route }: Boot): Pro
     const path = url.split('?')[0] ?? url;
     if (path === '/api/connection') return json(CONNECTION);
     if (path === '/api/session') {
-      return json({ session: panelSession(permissions), defaultLocale: 'en' });
+      return json({ session: panelSession(permissions) });
     }
     if (path === '/api/sync') return json({ ...CONNECTION, pendingCount: 0, rejections: held });
     // Answered for every test: `api.ts` shares one in-flight GET per path across
@@ -486,7 +486,7 @@ describe('where a person lands', () => {
       const path = url.split('?')[0] ?? url;
       if (path === '/api/connection') return json(CONNECTION);
       if (path === '/api/session') {
-        return json({ session: panelSession(['leads.view']), defaultLocale: 'en' });
+        return json({ session: panelSession(['leads.view']) });
       }
       if (path === '/api/sync') return json({ ...CONNECTION, pendingCount: 0, rejections: [] });
       return undefined;
@@ -510,7 +510,7 @@ describe('where a person lands', () => {
     routeFetch(({ url }) => {
       const path = url.split('?')[0] ?? url;
       if (path === '/api/connection') return json(CONNECTION);
-      if (path === '/api/session') return json({ session: panelSession(permissions), defaultLocale: 'en' });
+      if (path === '/api/session') return json({ session: panelSession(permissions) });
       if (path === '/api/sync') return json({ ...CONNECTION, pendingCount: 0, rejections: [] });
       if (path === '/api/chat/rooms' || path === '/api/chat/tasks') return json([]);
       if (path === '/api/print-jobs') return json({ jobs: [], nextCursor: null, waitingCount: 0 });
@@ -537,7 +537,6 @@ describe('where a person lands', () => {
         url.split('?')[0] === '/api/session'
           ? json({
               session: { ...panelSession(['leads.view']), roleTier: 'admin' },
-              defaultLocale: 'en',
             })
           : undefined,
     });
@@ -551,7 +550,7 @@ describe('the sign-in screen', () => {
     routeFetch(({ url }) => {
       const path = url.split('?')[0] ?? url;
       if (path === '/api/connection') return json({ ...CONNECTION, deviceCode: 'K7Q' });
-      if (path === '/api/session') return json({ session: null, defaultLocale: 'en' });
+      if (path === '/api/session') return json({ session: null });
       return undefined;
     });
     const App = await loadApp('office');
@@ -2132,7 +2131,7 @@ describe('an Office on another version than its Master (1.4 R7e)', () => {
       const path = url.split('?')[0] ?? url;
       if (path === '/api/connection') return json({ ...CONNECTION, masterVersion });
       if (path === '/api/session') {
-        return json({ session: panelSession(permissions), defaultLocale: 'en' });
+        return json({ session: panelSession(permissions) });
       }
       if (path === '/api/sync') return json({ ...CONNECTION, masterVersion, pendingCount: 0, rejections: [] });
       if (path === '/api/notifications') return json({ items: [], unreadCount: 0 });

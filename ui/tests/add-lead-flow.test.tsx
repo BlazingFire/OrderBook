@@ -206,7 +206,6 @@ async function openForm(view: Record<string, unknown> = {}): Promise<Call[]> {
           offline: false,
           signedInAt: '2026-09-29T00:00:00.000Z',
         },
-        defaultLocale: 'en',
       });
     }
     if (path === '/api/sync') return json({ ...CONNECTION, pendingCount: 0, rejections: [] });
