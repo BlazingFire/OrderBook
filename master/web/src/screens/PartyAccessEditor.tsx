@@ -75,6 +75,8 @@ interface Known {
 
 type Panel = 'bulk' | 'copy' | null;
 
+/** The footer keeps this height whether it shows Save or the discard question, so the dialog does not jump. */
+const FOOT_MIN = rem(44);
 const ROW = { display: 'flex', alignItems: 'center', gap: 'var(--s-8)' } as const;
 /** How many parties the copy picker asks for at a time; it narrows as the person types. */
 const COPY_PAGE = 20;
@@ -182,7 +184,13 @@ export function PartyAccessEditor({ party, people, canEdit, onClose, onSaved }: 
     window.requestAnimationFrame(() => {
       const buttons = listRef.current?.querySelectorAll<HTMLElement>('[data-remove]');
       const next = buttons?.[Math.min(at, (buttons?.length ?? 1) - 1)];
-      (next ?? addRef.current)?.focus();
+      if (next) next.focus();
+      else {
+        // The last row went: the keyboard goes to the add field, which must not pop its list open.
+        quietFocus.current = document.activeElement !== addRef.current;
+        addRef.current?.focus();
+        quietFocus.current = false;
+      }
     });
   };
 
@@ -279,7 +287,7 @@ export function PartyAccessEditor({ party, people, canEdit, onClose, onSaved }: 
           <div
             role="alertdialog"
             aria-label={t('partyAccess.editor.discardTitle')}
-            style={{ ...ROW, justifyContent: 'space-between', width: '100%', flexWrap: 'wrap' }}
+            style={{ ...ROW, justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', minHeight: FOOT_MIN }}
           >
             <span style={{ minWidth: 0 }}>
               <strong>{t('partyAccess.editor.discardTitle')}</strong>{' '}
@@ -295,7 +303,7 @@ export function PartyAccessEditor({ party, people, canEdit, onClose, onSaved }: 
             </span>
           </div>
         ) : canEdit ? (
-          <div style={{ ...ROW, justifyContent: 'space-between', width: '100%' }}>
+          <div style={{ ...ROW, justifyContent: 'space-between', width: '100%', minHeight: FOOT_MIN }}>
             <span
               className="ob-small"
               role="status"

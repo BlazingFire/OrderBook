@@ -160,6 +160,13 @@ describe.each(['master', 'office'] as const)('the Party Access editor on the %s 
       expect(within(asha).getByRole('button', { name: t('partyAccess.editor.removeFor', { name: 'Asha Rao' }) })).toBeTruthy();
     });
 
+    it('puts the keyboard on the add field, list closed, when the last row is removed', async () => {
+      await mount(panel, { party: party([grant('u1', 'view')]) });
+      fireEvent.click(screen.getByRole('button', { name: t('partyAccess.editor.removeFor', { name: 'Asha Rao' }) }));
+      await waitFor(() => expect(document.activeElement).toBe(addField()));
+      expect(screen.queryAllByRole('option')).toHaveLength(0);
+    });
+
     it('changes a level from the switch, and removes a row', async () => {
       await mount(panel, { party: party([grant('u1', 'view'), grant('u2', 'view')]) });
       const bela = rowOf('Bela Shah');

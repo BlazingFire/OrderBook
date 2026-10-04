@@ -2494,7 +2494,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'partyAccess.action.export': 'Export',
   'partyAccess.action.save': 'सहेजें',
-  'partyAccess.addPerson': 'व्यक्ति जोड़ें',
   // TODO(i18n-hi)
   'partyAccess.column.access': 'Access',
   // TODO(i18n-hi)
@@ -4277,7 +4276,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'partyAccess.editor.copyLeftOut.one': '1 निष्क्रिय खाता छोड़ा गया।',
   'partyAccess.editor.copyLeftOut.other': '{count} निष्क्रिय खाते छोड़े गए।',
   'partyAccess.editor.copyError': 'पार्टियाँ लोड नहीं हो सकीं',
-  'partyAccess.editor.done': 'हो गया',
   'partyAccess.editor.discardTitle': 'बदलाव छोड़ दें?',
   'partyAccess.editor.discardBody': '{name} को कौन देख सकता है, इसमें किए बदलाव सहेजे नहीं गए हैं।',
   'partyAccess.editor.keepEditing': 'संपादन जारी रखें',

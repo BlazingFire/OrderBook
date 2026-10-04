@@ -82,6 +82,22 @@ describe('Combobox: the keyboard', () => {
     expect(picked).toEqual(['b']);
   });
 
+  it('ArrowUp moves the highlight up and stops at the first row; PageUp jumps a page and stops there', () => {
+    setup({
+      options: Array.from({ length: 30 }, (_, at) => ({ key: `k${at}`, label: `Person ${at}`, value: `${at}` })),
+    });
+    fireEvent.focus(field());
+    fireEvent.keyDown(field(), { key: 'End' });
+    fireEvent.keyDown(field(), { key: 'ArrowUp' });
+    expect(rows()[28]!.getAttribute('data-active')).toBe('true');
+    fireEvent.keyDown(field(), { key: 'PageUp' });
+    expect(rows()[20]!.getAttribute('data-active')).toBe('true');
+    fireEvent.keyDown(field(), { key: 'Home' });
+    fireEvent.keyDown(field(), { key: 'ArrowUp' });
+    fireEvent.keyDown(field(), { key: 'PageUp' });
+    expect(rows()[0]!.getAttribute('data-active')).toBe('true');
+  });
+
   it('keeps aria-activedescendant on the highlighted row', () => {
     setup();
     fireEvent.focus(field());

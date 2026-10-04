@@ -39,6 +39,12 @@ describe('placeListbox', () => {
     expect(placed.room).toBe(96);
   });
 
+  it('lifts the above side to the floor too when it is the roomier of two tight sides', () => {
+    // below 110 - 96 - 8 = 6, above 60 - 0 - 8 = 52: above wins, and 52 is lifted to 96.
+    const placed = placeListbox({ top: 60, bottom: 96 }, { top: 0, bottom: 110 }, WANTED);
+    expect(placed).toEqual({ side: 'above', room: 96 });
+  });
+
   it('never goes under the floor, even with no room on either side', () => {
     expect(placeListbox({ top: 0, bottom: 36 }, { top: 0, bottom: 40 }, WANTED).room).toBe(96);
   });
