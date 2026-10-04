@@ -237,6 +237,8 @@ export interface ConnectionTest {
 
 export interface UnpairResult {
   ok: true;
+  /** The Master was told this PC left (older Masters cannot be; the PC leaves locally either way). */
+  notifiedMaster?: boolean;
   keptChanges: number;
   discardedChanges: number;
 }

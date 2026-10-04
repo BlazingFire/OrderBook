@@ -46,6 +46,13 @@ interface Binding {
   removed: RemovedNote | null;
   /** The panel id this PC had before its pairing ended, sent with the next pairing. */
   lastPanelId: string | null;
+  /**
+   * The secret that went with it. With the id it lets the Master recognise the same PC
+   * and give it its row back even when the Master never learned this PC had left
+   * (an unpair while the Master was off). Kept in this 0600 file until the next
+   * successful pairing, then wiped; never logged, never exported in a backup.
+   */
+  lastPanelSecret: string | null;
 }
 
 interface ParkedBatch {
@@ -67,9 +74,10 @@ async function load(): Promise<Binding> {
       cacheMaster: typeof parsed.cacheMaster === 'string' ? parsed.cacheMaster : null,
       removed: parsed.removed ?? null,
       lastPanelId: typeof parsed.lastPanelId === 'string' ? parsed.lastPanelId : null,
+      lastPanelSecret: typeof parsed.lastPanelSecret === 'string' ? parsed.lastPanelSecret : null,
     };
   } catch {
-    cache = { cacheMaster: null, removed: null, lastPanelId: null };
+    cache = { cacheMaster: null, removed: null, lastPanelId: null, lastPanelSecret: null };
   }
   return cache;
 }
@@ -104,7 +112,12 @@ export async function adoptMaster(credentials: StoredCredentials): Promise<Adopt
   const same = binding.cacheMaster === null || binding.cacheMaster === credentials.masterUniqueId;
 
   if (same) {
-    await save({ cacheMaster: credentials.masterUniqueId, removed: null, lastPanelId: null });
+    await save({
+      cacheMaster: credentials.masterUniqueId,
+      removed: null,
+      lastPanelId: null,
+      lastPanelSecret: null,
+    });
     return { newMaster: false, parkedChanges: 0 };
   }
 
@@ -124,7 +137,12 @@ export async function adoptMaster(credentials: StoredCredentials): Promise<Adopt
   }
 
   await dropCachedData();
-  await save({ cacheMaster: credentials.masterUniqueId, removed: null, lastPanelId: null });
+  await save({
+    cacheMaster: credentials.masterUniqueId,
+    removed: null,
+    lastPanelId: null,
+    lastPanelSecret: null,
+  });
   log.info(
     `Paired with a different Master than the cached data came from; started from a clean cache`,
   );
@@ -171,6 +189,7 @@ export async function recordRemoved(credentials: StoredCredentials | null): Prom
   await save({
     cacheMaster: binding.cacheMaster ?? credentials.masterUniqueId,
     lastPanelId: credentials.panelId,
+    lastPanelSecret: credentials.panelSecret,
     removed: {
       at: new Date().toISOString(),
       companyName: credentials.companyName,
@@ -196,13 +215,17 @@ export async function recordCacheOwner(masterUniqueId: string | null): Promise<v
   await save({ ...binding, cacheMaster: masterUniqueId });
 }
 
-/** This PC left on purpose: remember its id so the same PC can get its row back. */
-export async function rememberLastPanel(panelId: string): Promise<void> {
+/** This PC left on purpose: remember its id and secret so the same PC can get its row back. */
+export async function rememberLastPanel(
+  panelId: string,
+  panelSecret: string | null,
+): Promise<void> {
   const binding = await load();
-  await save({ ...binding, lastPanelId: panelId });
+  await save({ ...binding, lastPanelId: panelId, lastPanelSecret: panelSecret });
 }
 
-/** The id to send as `previousPanelId` with the next pairing, if this PC had one. */
-export async function previousPanelId(): Promise<string | null> {
-  return (await load()).lastPanelId;
+/** What to send as `previousPanelId` / `previousPanelSecret` with the next pairing, if this PC had a pairing before. */
+export async function previousPanel(): Promise<{ id: string; secret: string | null } | null> {
+  const binding = await load();
+  return binding.lastPanelId ? { id: binding.lastPanelId, secret: binding.lastPanelSecret } : null;
 }

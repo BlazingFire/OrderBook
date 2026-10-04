@@ -34,7 +34,7 @@ import { createLogger } from '../lib/logger.js';
 import { hasNetworkLink } from '../lib/network.js';
 import { discoverMasters, type DiscoveredMaster } from '../discovery/client.js';
 import { saveCredentials, type StoredCredentials } from './credentials.store.js';
-import { previousPanelId } from './master-binding.js';
+import { previousPanel } from './master-binding.js';
 
 const log = createLogger('pairing');
 
@@ -442,7 +442,7 @@ async function requestPairingAt(
   const url = `http://${host}:${port}${PAIRING_ENDPOINT}`;
   const guard = withTimeout(timeoutMs, cancel);
   // The same PC coming back gets its old row (and history) from the Master, not a second one.
-  const previous = await previousPanelId().catch(() => null);
+  const previous = await previousPanel().catch(() => null);
 
   let response: Response;
   let text: string;
@@ -450,7 +450,15 @@ async function requestPairingAt(
     response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(previous ? { ...request, previousPanelId: previous } : request),
+      body: JSON.stringify(
+        previous
+          ? {
+              ...request,
+              previousPanelId: previous.id,
+              ...(previous.secret ? { previousPanelSecret: previous.secret } : {}),
+            }
+          : request,
+      ),
       signal: guard.signal,
     });
     text = await response.text();

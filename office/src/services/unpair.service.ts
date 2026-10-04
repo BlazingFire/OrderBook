@@ -37,8 +37,13 @@ export class UnpairError extends Error {
   }
 }
 
+/** How long to wait for the Master to acknowledge `panel:leave`: this is a courtesy, never a reason to hang. */
+const LEAVE_ACK_MS = 3_000;
+
 export interface UnpairResult {
   ok: true;
+  /** The Master was told this PC is leaving (it marks the row removed, so nothing stale is left behind). */
+  notifiedMaster: boolean;
   /** Unsent changes left on this PC for the next pairing. */
   keptChanges: number;
   discardedChanges: number;
@@ -53,13 +58,31 @@ export async function unpair(
   const waiting = await pendingCount();
   if (waiting > 0 && !options.pending) throw new UnpairError('pending_changes', waiting);
 
+  /*
+   * Tell the Master first, while the link is up and this panel's own socket has
+   * proven who it is: it marks the row removed ("left") instead of leaving an active
+   * row that is merely offline, and pairing this PC again then reuses the row. Only a
+   * courtesy: not connected, a Master older than protocol 9 (`updateNeeded`), no
+   * answer in a few seconds, or a refusal all just mean "leave locally", and the
+   * saved id and secret still let the Master recognise this PC next time.
+   */
+  let notified = false;
+  try {
+    await masterConnection.commandWithin(LEAVE_ACK_MS)('panel:leave');
+    notified = true;
+  } catch (error) {
+    log.info(
+      `The Master was not told this PC is leaving (${error instanceof Error ? error.message : 'no answer'})`,
+    );
+  }
+
   // The in-memory snapshot goes first: closing the link flushes a pending write of it.
   userSession.resetSession();
   resetLocalStore();
   masterConnection.disconnect();
 
   await clearCredentials();
-  await rememberLastPanel(credentials.panelId);
+  await rememberLastPanel(credentials.panelId, credentials.panelSecret);
   await dropCachedData();
 
   let discarded = 0;
@@ -76,5 +99,5 @@ export async function unpair(
   log.warn(
     `Unpaired from Master ${credentials.masterUniqueId}: ${kept} unsent change(s) kept, ${discarded} discarded`,
   );
-  return { ok: true, keptChanges: kept, discardedChanges: discarded };
+  return { ok: true, notifiedMaster: notified, keptChanges: kept, discardedChanges: discarded };
 }

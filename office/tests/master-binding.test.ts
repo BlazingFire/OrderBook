@@ -13,7 +13,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 let dataDir: string;
 
-const link = { disconnect: vi.fn(), markUnpaired: vi.fn() };
+/** What `panel:leave` does: the test says. `commandWithin(ms)` is the link's own way to send a command. */
+const leave = vi.fn(async (_event: string) => null);
+const link = {
+  disconnect: vi.fn(),
+  markUnpaired: vi.fn(),
+  commandWithin: vi.fn((_ms: number) => leave),
+};
 
 vi.mock('../src/realtime/master-connection.js', () => ({ masterConnection: link }));
 
@@ -22,6 +28,9 @@ beforeEach(async () => {
   process.env.ORDERBOOK_OFFICE_DATA_DIR = dataDir;
   link.disconnect.mockReset();
   link.markUnpaired.mockReset();
+  link.commandWithin.mockClear();
+  leave.mockReset();
+  leave.mockResolvedValue(null);
   vi.resetModules();
 });
 
@@ -127,6 +136,20 @@ describe('adopting a Master after pairing', () => {
     expect(await binding.parkedChangeCount()).toBe(2);
   });
 
+  it('pairing with a different Master wipes the old id and secret too', async () => {
+    const { binding } = await load();
+    await binding.recordRemoved(pairedWith('master-A'));
+    expect((await binding.previousPanel())?.secret).toBe('secret');
+
+    await binding.adoptMaster({
+      ...pairedWith('master-B'),
+      panelId: '33333333-3333-4333-8333-333333333333',
+    });
+
+    expect(await binding.previousPanel()).toBeNull();
+    expect(await read('master-binding.json')).toMatchObject({ lastPanelSecret: null });
+  });
+
   it('after that, the new Master is the one the cache belongs to', async () => {
     const { binding, outbox } = await load();
     await binding.noteCacheMaster('master-A');
@@ -170,17 +193,25 @@ describe('remembering that the Master removed this PC', () => {
 
   it('keeps this PC’s last id with the reason, until it is paired again', async () => {
     const { binding } = await load();
-    expect(await binding.previousPanelId()).toBeNull();
+    expect(await binding.previousPanel()).toBeNull();
 
     await binding.recordRemoved(pairedWith('master-A'));
     binding.resetBindingCache();
-    expect(await binding.previousPanelId()).toBe('11111111-1111-4111-8111-111111111111');
+    expect(await binding.previousPanel()).toEqual({
+      id: '11111111-1111-4111-8111-111111111111',
+      secret: 'secret',
+    });
 
     await binding.adoptMaster({
       ...pairedWith('master-A'),
       panelId: '22222222-2222-4222-8222-222222222222',
     });
-    expect(await binding.previousPanelId()).toBeNull();
+    // Wiped once pairing has worked: the old secret is not kept a day longer than it is useful.
+    expect(await binding.previousPanel()).toBeNull();
+    expect(await read('master-binding.json')).toMatchObject({
+      lastPanelId: null,
+      lastPanelSecret: null,
+    });
   });
 
   it('does nothing when there was no pairing to remember', async () => {
@@ -203,7 +234,73 @@ describe('leaving a Master on purpose', () => {
     const { unpairService, binding } = await paired();
     await unpairService.unpair();
     binding.resetBindingCache();
-    expect(await binding.previousPanelId()).toBe('11111111-1111-4111-8111-111111111111');
+    expect(await binding.previousPanel()).toEqual({
+      id: '11111111-1111-4111-8111-111111111111',
+      secret: 'secret',
+    });
+  });
+
+  it('keeps the id and secret in a file only its owner can read', async () => {
+    const { unpairService } = await paired();
+    await unpairService.unpair();
+    if (process.platform !== 'win32') {
+      const mode = (await fs.stat(path.join(dataDir, 'master-binding.json'))).mode & 0o777;
+      expect(mode).toBe(0o600);
+    }
+    // And it is not one of the files a backup carries.
+    const { readFileSync } = await import('node:fs');
+    const backup = readFileSync(
+      path.join(__dirname, '..', 'src', 'services', 'backup-export.service.ts'),
+      'utf8',
+    );
+    expect(backup).not.toContain('masterBindingFile');
+  });
+
+  it('tells the Master this PC is leaving, when connected, and waits only a few seconds for the answer', async () => {
+    const { unpairService } = await paired();
+
+    const result = await unpairService.unpair();
+
+    expect(result.notifiedMaster).toBe(true);
+    expect(leave).toHaveBeenCalledWith('panel:leave');
+    const waited = link.commandWithin.mock.calls[0]?.[0] ?? 0;
+    expect(waited).toBeGreaterThan(0);
+    expect(waited).toBeLessThanOrEqual(5000);
+    // Before the link is closed: a closed one cannot carry it.
+    expect(leave.mock.invocationCallOrder[0]!).toBeLessThan(
+      link.disconnect.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('leaves locally all the same when the Master is off, too old, silent or refuses', async () => {
+    for (const failure of [
+      Object.assign(new Error('Not connected to the Master Panel'), { unreachable: true }),
+      Object.assign(new Error('The Master Panel needs an update before it can do this'), {
+        code: 'updateNeeded',
+      }),
+      new Error('The Master Panel did not respond'),
+    ]) {
+      leave.mockRejectedValueOnce(failure);
+      const { unpairService, credentials, binding } = await paired();
+
+      const result = await unpairService.unpair();
+
+      expect(result).toMatchObject({ ok: true, notifiedMaster: false });
+      expect(await credentials.loadCredentials()).toBeNull();
+      // Not told, so the id and secret are what lets the Master recognise this PC later.
+      expect(await binding.previousPanel()).toMatchObject({ secret: 'secret' });
+      binding.resetBindingCache();
+      await fs.rm(path.join(dataDir, 'master-binding.json'), { force: true });
+    }
+  });
+
+  it('does not tell the Master anything when it refuses for unsent work', async () => {
+    const { unpairService, outbox } = await paired();
+    await queueWork(outbox);
+
+    await expect(unpairService.unpair()).rejects.toMatchObject({ code: 'pending_changes' });
+
+    expect(leave).not.toHaveBeenCalled();
   });
 
   it('refuses while this PC is not paired', async () => {
@@ -214,7 +311,12 @@ describe('leaving a Master on purpose', () => {
   it('clears the pairing and the cache, and tells the link', async () => {
     const { unpairService, credentials } = await paired();
 
-    expect(await unpairService.unpair()).toEqual({ ok: true, keptChanges: 0, discardedChanges: 0 });
+    expect(await unpairService.unpair()).toEqual({
+      ok: true,
+      notifiedMaster: true,
+      keptChanges: 0,
+      discardedChanges: 0,
+    });
 
     expect(await credentials.loadCredentials()).toBeNull();
     for (const file of ['snapshot.json', 'users.json', 'pairing.json'])
@@ -244,6 +346,7 @@ describe('leaving a Master on purpose', () => {
 
     expect(await unpairService.unpair({ pending: 'keep' })).toEqual({
       ok: true,
+      notifiedMaster: true,
       keptChanges: 2,
       discardedChanges: 0,
     });
@@ -269,6 +372,7 @@ describe('leaving a Master on purpose', () => {
 
     expect(await unpairService.unpair({ pending: 'discard' })).toEqual({
       ok: true,
+      notifiedMaster: true,
       keptChanges: 0,
       discardedChanges: 2,
     });

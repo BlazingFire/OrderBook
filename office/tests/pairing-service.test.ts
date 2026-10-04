@@ -16,6 +16,7 @@ const saved: unknown[] = [];
 const discover = vi.fn();
 /** The id this PC had before its pairing ended, if any (`master-binding.ts`). */
 let previous: string | null = null;
+let previousSecret: string | null = null;
 let network = true;
 
 vi.mock('../src/config/index.js', () => ({
@@ -35,7 +36,7 @@ vi.mock('../src/lib/network.js', () => ({
 }));
 vi.mock('../src/lib/app-version.js', () => ({ appVersion: () => '1.4.1' }));
 vi.mock('../src/services/master-binding.js', () => ({
-  previousPanelId: async () => previous,
+  previousPanel: async () => (previous ? { id: previous, secret: previousSecret } : null),
 }));
 vi.mock('../src/services/credentials.store.js', () => ({
   saveCredentials: async (credentials: unknown) => {
@@ -54,6 +55,7 @@ let handler: Handler;
 
 beforeEach(async () => {
   previous = null;
+  previousSecret = null;
   saved.length = 0;
   discover.mockReset();
   network = true;
@@ -139,10 +141,34 @@ describe('manual pairing: what the Master said is recognised, not passed through
     await manual();
     expect(lastBody).toMatchObject({ previousPanelId: '99999999-9999-4999-8999-999999999999' });
 
+    // No secret was kept (a revoke): the id goes alone.
+    expect(lastBody).not.toHaveProperty('previousPanelSecret');
+
     // A PC that was never paired sends none.
     previous = null;
     await manual();
     expect(lastBody).not.toHaveProperty('previousPanelId');
+  });
+
+  it('sends the secret with it, so an active row can be recognised as this PC’s', async () => {
+    handler = accept;
+    previous = '99999999-9999-4999-8999-999999999999';
+    previousSecret = 'the-old-secret';
+    await manual();
+    expect(lastBody).toMatchObject({
+      previousPanelId: '99999999-9999-4999-8999-999999999999',
+      previousPanelSecret: 'the-old-secret',
+    });
+  });
+
+  it('does not put the old secret in the log or in an error', async () => {
+    previous = '99999999-9999-4999-8999-999999999999';
+    previousSecret = 'the-old-secret';
+    handler = refuse(401, { messageKey: 'error.unauthorized.incorrectPairingPassword' });
+    const error = await failure(manual());
+    expect(
+      JSON.stringify({ message: error.message, params: error.params, key: error.messageKey }),
+    ).not.toContain('the-old-secret');
   });
 
   it('sends it in auto mode too', async () => {
