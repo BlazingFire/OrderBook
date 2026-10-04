@@ -2492,73 +2492,50 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'party.updated': '{name} updated',
   // TODO(i18n-hi)
   'partyAccess.action.cancel': 'Cancel',
-  // TODO(i18n-hi)
-  'partyAccess.action.export': 'Export',
+  'partyAccess.action.export': 'एक्सपोर्ट',
   // TODO(i18n-hi)
   'partyAccess.action.save': 'Save',
   // TODO(i18n-hi)
   'partyAccess.addPerson': 'Add a person',
-  // TODO(i18n-hi)
-  'partyAccess.column.access': 'Access',
-  // TODO(i18n-hi)
-  'partyAccess.column.assignedTo': 'Assigned to',
-  // TODO(i18n-hi)
-  'partyAccess.column.city': 'City',
-  // TODO(i18n-hi)
-  'partyAccess.column.code': 'Code',
-  // TODO(i18n-hi)
-  'partyAccess.column.party': 'Party',
-  // TODO(i18n-hi)
-  'partyAccess.empty': 'No parties match this filter',
-  // TODO(i18n-hi)
-  'partyAccess.error.load': 'Could not load party access',
+  'partyAccess.column.access': 'एक्सेस',
+  'partyAccess.column.assignedTo': 'किसे सौंपा',
+  'partyAccess.column.city': 'शहर',
+  'partyAccess.column.code': 'कोड',
+  'partyAccess.column.party': 'पार्टी',
+  'partyAccess.empty': 'इस फ़िल्टर से कोई पार्टी मेल नहीं खाती',
+  'partyAccess.error.load': 'पार्टी एक्सेस लोड नहीं हो सका',
   // TODO(i18n-hi)
   'partyAccess.error.save': 'Could not save the assignments',
-  // TODO(i18n-hi)
-  'partyAccess.everyone': 'Everyone',
+  'partyAccess.everyone': 'सभी',
   // TODO(i18n-hi)
   'partyAccess.explainOpen':
     'Nobody is assigned, so everyone with the right role can see and work this party.',
   // TODO(i18n-hi)
   'partyAccess.explainRestricted':
     'Only the people below can see this party and its pending orders and final orders. View can read; manage can also create and edit.',
-  // TODO(i18n-hi)
-  'partyAccess.filter.all': 'All',
-  // TODO(i18n-hi)
-  'partyAccess.filter.open': 'Open',
-  // TODO(i18n-hi)
-  'partyAccess.filter.restricted': 'Restricted',
-  // TODO(i18n-hi)
-  'partyAccess.intro':
-    'A party nobody is assigned to is open to everyone. Assign someone and only they can reach it.',
-  // TODO(i18n-hi)
-  'partyAccess.level.manage': 'Manage',
-  // TODO(i18n-hi)
-  'partyAccess.level.view': 'View',
-  // TODO(i18n-hi)
-  'partyAccess.more': '+{count} more',
+  'partyAccess.filter.all': 'सभी',
+  'partyAccess.filter.open': 'खुली',
+  'partyAccess.filter.restricted': 'सीमित',
+  'partyAccess.intro': 'जिस पार्टी में किसी को नहीं सौंपा गया, वह सबके लिए खुली है। किसी को सौंपते ही केवल वही उसे देख सकता है।',
+  'partyAccess.level.manage': 'संभालना',
+  'partyAccess.level.view': 'देखना',
+  'partyAccess.more': '+{count} और',
   // TODO(i18n-hi)
   'partyAccess.noAssignees': 'Nobody is assigned',
-  // TODO(i18n-hi)
-  'partyAccess.open': 'Open',
+  'partyAccess.open': 'खुली',
   // TODO(i18n-hi)
   'partyAccess.reload': 'Reload',
   // TODO(i18n-hi)
   'partyAccess.remove': 'Remove',
-  // TODO(i18n-hi)
-  'partyAccess.restricted': 'Restricted',
+  'partyAccess.restricted': 'सीमित',
   // TODO(i18n-hi)
   'partyAccess.scope.all': 'All parties',
   // TODO(i18n-hi)
   'partyAccess.scope.assigned': 'My parties',
-  // TODO(i18n-hi)
-  'partyAccess.searchPlaceholder': 'Search parties',
+  'partyAccess.searchPlaceholder': 'पार्टी खोजें',
   // TODO(i18n-hi)
   'partyAccess.staleSave': 'Somebody else changed this party’s access first. Reload to see it.',
-  // TODO(i18n-hi)
-  'partyAccess.summary': '{restricted} of {total} parties are restricted.',
-  // TODO(i18n-hi)
-  'partyAccess.title': 'Party access',
+  'partyAccess.title': 'पार्टी एक्सेस',
   'product.createFailed': 'उप-उत्पाद नहीं बनाया जा सका',
   'product.detail.editAction': 'उप-उत्पाद संपादित करें',
   // TODO(i18n-hi)
@@ -3596,7 +3573,6 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'table.sortBy': '{column} से क्रमबद्ध करें',
   'table.redacted': 'छिपा हुआ',
   'settings.appearance.resetAll': 'दिखावट रीसेट करें',
-  'partyAccess.showing': 'अब तक {shown} दिख रहे हैं।',
   'settingGroup.access': 'कौन अंदर आ सकता है',
   'settingGroup.products': 'प्रोडक्ट',
   'settingGroup.leads': 'पेंडिंग ऑर्डर और फ़ॉलो-अप',
@@ -4247,4 +4223,22 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'updates.waiting.body': 'यह ऑफ़िस पैनल संस्करण {mine} पर है, जो मास्टर पैनल ({master}) से नया है। मास्टर के उसी संस्करण पर अपडेट होने पर यह खुलेगा। यह स्क्रीन अपने आप फिर जाँच करती रहती है।',
   'updates.saveAll.vehicle': 'वाहन नंबर {number}',
   'updates.saveAll.stationName': 'प्रिंटरूम स्टेशन का नाम {name}',
+  // Party Access D1: list screen (summary strip, toolbar, row action, empty states)
+  'partyAccess.strip.label': 'पार्टी एक्सेस सारांश',
+  'partyAccess.strip.total': 'सभी पार्टियाँ',
+  'partyAccess.strip.totalHint': 'कंपनी की हर पार्टी',
+  'partyAccess.strip.restricted': 'सीमित',
+  'partyAccess.strip.restrictedHint': 'केवल जिन्हें सौंपा गया है वही देख सकते हैं',
+  'partyAccess.strip.open': 'खुली',
+  'partyAccess.strip.openHint': 'किसी को नहीं सौंपा, इसलिए सबको दिखती है',
+  'partyAccess.search.clear': 'खोज साफ़ करें',
+  'partyAccess.filter.person': 'किसे सौंपा',
+  'partyAccess.filter.personPlaceholder': 'व्यक्ति के अनुसार छाँटें',
+  'partyAccess.filter.nobody': 'कोई नहीं (खुली पार्टियाँ)',
+  'partyAccess.filter.personClear': '{name} का फ़िल्टर हटाएँ',
+  'partyAccess.count': '{total} में से {shown} पार्टियाँ दिख रही हैं',
+  'partyAccess.empty.search': '“{term}” से मेल खाती कोई पार्टी नहीं है',
+  'partyAccess.empty.clear': 'फ़िल्टर हटाएँ',
+  'partyAccess.empty.none': 'अभी कोई पार्टी नहीं है',
+  'partyAccess.action.edit': 'एक्सेस बदलें',
 };
