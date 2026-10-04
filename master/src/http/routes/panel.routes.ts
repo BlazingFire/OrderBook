@@ -2,6 +2,11 @@ import { Router } from 'express';
 import type { MasterProofRequest, OfficePanelUpdateInput, PairingRequest } from '@orderbook/shared';
 
 import { ValidationError } from '../../lib/errors.js';
+import type { PairingWindowState } from '@orderbook/shared';
+
+import { discoveryStatus } from '../../discovery/responder.js';
+import { config } from '../../config/index.js';
+import { listLanInterfaces } from '../../lib/network.js';
 import * as panelService from '../../services/panel.service.js';
 import { asyncHandler } from '../async-handler.js';
 import { consume } from '../middleware/api-key-rate-limit.js';
@@ -57,6 +62,7 @@ pairingRoutes.post(
         nonce: body.nonce,
         pairingPassword: body.pairingPassword,
         masterUniqueId: body.masterUniqueId,
+        previousPanelId: typeof body.previousPanelId === 'string' ? body.previousPanelId : undefined,
       },
       normalizeIp(req.ip),
     );
@@ -110,6 +116,15 @@ panelProofRoutes.post(
  */
 export const panelRoutes: Router = Router();
 
+async function pairingWindowState(tenantId: string): Promise<PairingWindowState> {
+  return {
+    ...(await panelService.pairingWindowSnapshot(tenantId)),
+    port: config.http.port,
+    addresses: listLanInterfaces().map(({ name, address }) => ({ name, address })),
+    discovery: discoveryStatus(),
+  };
+}
+
 panelRoutes.use(requireAuth);
 
 const needs = requirePermissionMiddleware;
@@ -126,7 +141,9 @@ panelRoutes.post(
   '/pairing-window/open',
   needs('panels.manage'),
   asyncHandler(async (req, res) => {
-    res.json(await panelService.openPairingWindowBy(actorFromRequest(req)));
+    const actor = actorFromRequest(req);
+    await panelService.openPairingWindowBy(actor);
+    res.json(await pairingWindowState(actor.tenantId));
   }),
 );
 
@@ -141,12 +158,13 @@ panelRoutes.post(
 
 panelRoutes.get(
   '/pairing-window',
+  // It lists this PC's addresses, so it is for the people who administer panels; the screen that reads it is theirs.
+  needs('panels.manage'),
   asyncHandler(async (req, res) => {
-    // The same question the pairing route and the discovery reply ask. The
+    // `accepting` is the same question the pairing route and the discovery reply ask. The
     // Master's own screen reads this, so answering on the window alone would
     // show "waiting for a panel" for a panel that will be refused on arrival.
-    const actor = actorFromRequest(req);
-    res.json({ accepting: await panelService.isAutoPairingOpen(actor.tenantId) });
+    res.json(await pairingWindowState(actorFromRequest(req).tenantId));
   }),
 );
 

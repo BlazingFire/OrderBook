@@ -46,6 +46,7 @@ const TEST_TIMEOUT_MS = 5_000;
 export type PairingErrorCode =
   | 'no_master_found'
   | 'not_accepting'
+  | 'auto_pairing_off'
   | 'multiple_masters'
   | 'network_unavailable'
   | 'cancelled'
@@ -166,6 +167,8 @@ export function describeRefusal(
       return new PairingError('wrong_password', 'connection.error.wrongPassword');
     case 'error.unauthorized.differentMaster':
       return new PairingError('different_master', 'connection.error.differentMaster');
+    case 'error.unauthorized.pairingAutoOff':
+      return new PairingError('auto_pairing_off', 'connection.error.autoPairingOff');
     case 'error.unauthorized.pairingNotAccepting':
       return new PairingError('not_accepting', 'connection.error.notAccepting');
     case 'validation.panel.setupIncomplete':

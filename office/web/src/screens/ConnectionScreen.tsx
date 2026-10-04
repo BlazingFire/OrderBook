@@ -15,7 +15,11 @@
  */
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { ADDRESS_MESSAGE_PARAMS, parseMasterAddress, type MasterAddressProblem } from '@orderbook/shared';
+import {
+  ADDRESS_MESSAGE_PARAMS,
+  parseMasterAddress,
+  type MasterAddressProblem,
+} from '@orderbook/shared';
 import type { BackupRestorePreview } from '@orderbook/shared';
 
 import {
@@ -379,9 +383,13 @@ export function ConnectionScreen({ connection, onConnected }: Props) {
   const actions = failure ? (
     <span style={{ display: 'flex', gap: 'var(--s-8)' }}>
       {mode === 'auto' &&
-      ['no_master_found', 'not_accepting', 'network_unavailable', 'multiple_masters'].includes(
-        failure.code,
-      ) ? (
+      [
+        'no_master_found',
+        'not_accepting',
+        'auto_pairing_off',
+        'network_unavailable',
+        'multiple_masters',
+      ].includes(failure.code) ? (
         <>
           <Button
             size="sm"

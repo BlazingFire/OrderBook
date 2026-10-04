@@ -176,6 +176,13 @@ describe('manual pairing: what the Master said is recognised, not passed through
     expect(saved).toEqual([]);
   });
 
+  it('a Master that is open but only with the password says so, apart from one whose window is closed', async () => {
+    handler = refuse(401, { messageKey: 'error.unauthorized.pairingAutoOff' });
+    const error = await failure(manual());
+    expect(error.code).toBe('auto_pairing_off');
+    expect(error.messageKey).toBe('connection.error.autoPairingOff');
+  });
+
   it('the rate limit says how long to wait', async () => {
     handler = refuse(429, {
       error: 'rate_limited',

@@ -428,6 +428,20 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
         expect(refused.body).toMatchObject({ error: 'forbidden' });
       });
 
+      it('shows the pairing window state (addresses, port, search status) only to panels.manage (Connection audit)', async () => {
+        const { password } = await initialize();
+        const admin = await signedInAgent(password);
+        const stranger = await agentWith(['parties.view'], 'stranger');
+
+        const state = await admin.get('/api/panels/pairing-window').expect(200);
+        expect(state.body).toMatchObject({ open: false, accepting: false, autoPairingEnabled: true });
+        expect(Array.isArray(state.body.addresses)).toBe(true);
+        expect(typeof state.body.port).toBe('number');
+        expect(state.body.discovery).toHaveProperty('listening');
+
+        await stranger.get('/api/panels/pairing-window').expect(403);
+      });
+
       it('serves the Party Access summary before :partyId, and a sorted list that survives a bad sort', async () => {
         const { password } = await initialize();
         const admin = await signedInAgent(password);

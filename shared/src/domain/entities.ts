@@ -263,6 +263,29 @@ export interface OfficePanelRuntime {
   protocol?: number;
 }
 
+/**
+ * What the Master's Add Office Panel screen needs to say, in one answer: whether
+ * the window is open and until when, whether the setting lets an open window admit
+ * a panel without the password, where a panel can reach this Master by hand, and
+ * whether the automatic search is running at all.
+ */
+export interface PairingWindowState {
+  /** The window is open right now (it may still not admit anybody: see `autoPairingEnabled`). */
+  open: boolean;
+  /** Epoch ms the window closes; null when it is closed. */
+  closesAt: number | null;
+  /** `panels.autoPairingEnabled`. Off means a panel needs the pairing password even in an open window. */
+  autoPairingEnabled: boolean;
+  /** A panel could join with no password this second: open and enabled. */
+  accepting: boolean;
+  /** The HTTP port a panel types after the address. */
+  port: number;
+  /** This PC's network addresses, most likely first. */
+  addresses: { name: string; address: string }[];
+  /** Whether the UDP search that lets panels find this Master is running, and why not if it is not. */
+  discovery: { listening: boolean; port: number; reason: string | null };
+}
+
 /** Live connection state, derived at runtime — not a database column. */
 export interface OfficePanelWithPresence extends OfficePanel {
   isConnected: boolean;

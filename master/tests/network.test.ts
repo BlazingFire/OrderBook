@@ -14,7 +14,7 @@ vi.mock('node:os', () => ({
   hostname: () => 'test-host',
 }));
 
-const { hasNetworkLink, isLoopbackAddress, listLanInterfaces, primaryLanAddress } = await import(
+const { addressForPeer, hasNetworkLink, isLoopbackAddress, listLanInterfaces, primaryLanAddress } = await import(
   '../src/lib/network.js'
 );
 
@@ -125,5 +125,47 @@ describe('isLoopbackAddress', () => {
     expect(isLoopbackAddress('127.0.0.1.evil')).toBe(false);
     expect(isLoopbackAddress(undefined)).toBe(false);
     expect(isLoopbackAddress(null)).toBe(false);
+  });
+});
+
+describe('which address the Master advertises (Connection audit M6)', () => {
+  it('ranks a physical adapter above Hyper-V, WSL, VPN and mesh adapters, and a link-local address last', () => {
+    mockInterfaces([
+      iface('vEthernet (Default Switch)', '172.20.16.1', '255.255.240.0'),
+      iface('vEthernet (WSL)', '192.168.50.1', '255.255.255.0'),
+      iface('Tailscale', '100.64.0.7', '255.255.255.255'),
+      iface('Ethernet 2', '169.254.10.20', '255.255.0.0'),
+      iface('Wi-Fi', '10.0.0.15', '255.255.255.0'),
+    ]);
+    expect(listLanInterfaces().map((entry) => entry.name)[0]).toBe('Wi-Fi');
+    expect(listLanInterfaces().at(-1)!.name).toBe('Ethernet 2');
+    expect(primaryLanAddress()).toBe('10.0.0.15');
+  });
+
+  it('answers each asker with the address on the subnet that asker is on', () => {
+    mockInterfaces([
+      iface('Ethernet', '192.168.1.10', '255.255.255.0'),
+      iface('Ethernet 3', '10.20.0.5', '255.255.0.0'),
+    ]);
+    expect(addressForPeer('192.168.1.77')).toBe('192.168.1.10');
+    expect(addressForPeer('10.20.4.9')).toBe('10.20.0.5');
+    expect(addressForPeer('::ffff:10.20.4.9')).toBe('10.20.0.5');
+  });
+
+  it('prefers the narrower subnet when two interfaces both contain the asker', () => {
+    mockInterfaces([
+      iface('Ethernet', '10.0.0.5', '255.0.0.0'),
+      iface('Ethernet 2', '10.1.2.3', '255.255.255.0'),
+    ]);
+    expect(addressForPeer('10.1.2.99')).toBe('10.1.2.3');
+  });
+
+  it('falls back to the best-ranked address for a routed or unparsable asker, and to null with no interface', () => {
+    mockInterfaces([iface('Ethernet', '192.168.1.10', '255.255.255.0')]);
+    expect(addressForPeer('172.16.9.9')).toBe('192.168.1.10');
+    expect(addressForPeer('fe80::1')).toBe('192.168.1.10');
+    expect(addressForPeer(undefined)).toBe('192.168.1.10');
+    mockInterfaces([]);
+    expect(addressForPeer('192.168.1.77')).toBeNull();
   });
 });
