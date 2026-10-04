@@ -1,7 +1,7 @@
 /**
  * The English catalogue — THE source of truth. Every `MessageKey` in the
  * product is a key of this object (`keys.ts`), so a key that exists only in
- * `hi.ts` or only in a throw site is a compile error, not a runtime gap.
+ * a throw site is a compile error, not a runtime gap.
  *
  * Rules, each enforced by `shared/tests/i18n-coverage.test.ts`:
  *  - Flat, dotted keys — not nested objects — so `keyof typeof` is a usable

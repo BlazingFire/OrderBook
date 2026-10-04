@@ -1,8 +1,7 @@
 /**
  * The catalogue-CONTRACT suite — not the renderer (`i18n.test.ts` owns that).
  * This is what makes the `labelToken` contract on `permissions.ts` load-bearing
- * rather than decorative: every key it promises a token for actually has one,
- * and Hindi actually covers what English defines.
+ * rather than decorative: every key it promises a token for actually has one.
  *
  * Pure. No `describe.skipIf` anywhere in this file.
  */
@@ -18,7 +17,6 @@ import {
   CAPABILITIES,
   CAPABILITY_GROUPS,
   EN_MESSAGES,
-  HI_MESSAGES,
   MODULES,
   MODULE_ACTIONS,
   PERMISSIONS,
@@ -31,10 +29,6 @@ import {
 
 const EN_KEYS = new Set(Object.keys(EN_MESSAGES));
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
-
-function placeholders(template: string): string[] {
-  return [...template.matchAll(/\{(\w+)\}/g)].map((m) => m[1] as string).sort();
-}
 
 describe('the EN catalogue is complete over the permission surface', () => {
   it('has a permission.<key> token for every capability', () => {
@@ -73,30 +67,6 @@ describe('the EN catalogue is complete over the permission surface', () => {
   });
 });
 
-describe('hi.ts is total and placeholder-identical to en.ts', () => {
-  it('has no key missing relative to en.ts', () => {
-    const missing = Object.keys(EN_MESSAGES).filter((key) => !(key in HI_MESSAGES));
-    expect(missing).toEqual([]);
-  });
-
-  it('has no key extra relative to en.ts', () => {
-    const extra = Object.keys(HI_MESSAGES).filter((key) => !(key in EN_MESSAGES));
-    expect(extra).toEqual([]);
-  });
-
-  it('carries an identical placeholder set per key — the case the compiler cannot catch', () => {
-    const mismatched: string[] = [];
-
-    for (const key of Object.keys(EN_MESSAGES)) {
-      const enPlaceholders = placeholders((EN_MESSAGES as Record<string, string>)[key] ?? '');
-      const hiPlaceholders = placeholders((HI_MESSAGES as Record<string, string>)[key] ?? '');
-      if (JSON.stringify(enPlaceholders) !== JSON.stringify(hiPlaceholders)) mismatched.push(key);
-    }
-
-    expect(mismatched).toEqual([]);
-  });
-});
-
 describe('no EN string carries a pre-formatted number, separator or currency symbol', () => {
   it('contains no digit sequence of three or more (a thousands-separated or raw number)', () => {
     const offenders = Object.entries(EN_MESSAGES)
@@ -115,77 +85,26 @@ describe('no EN string carries a pre-formatted number, separator or currency sym
   });
 });
 
-describe('neither catalogue talks about prices', () => {
+describe('the catalogue does not talk about prices', () => {
   // The software carries no money at all — pricing was removed on 2026-09-21 —
   // so a word for a price on screen points at a feature that does not exist.
-  // The Products settings group went on reading "Stock and prices" (`स्टॉक और दाम`)
-  // after the last price had gone.
-  //
-  // Both patterns run over both catalogues, because an untranslated Hindi
-  // entry is English text. The Hindi one is bounded by letters and marks
-  // rather than `\b`, which knows only ASCII: `दाम` is price, and it is also
-  // the tail of `गोदाम`, a warehouse. Each Hindi word is a stem that may carry
-  // vowel signs and nasalisation after it, which is how Hindi inflects —
-  // `दामों`, `कीमतें`, `रुपयों`, `पैसा` — but no further letter, so `रेटिंग`
-  // (rating) and `मूल्यांकन` (evaluation) pass. A plural that adds a letter,
-  // `राशियाँ`, is a stem of its own. `मूल्य` also means "value", but this
-  // catalogue's word for a value is `मान` (`validation.fields.valueRequired`),
-  // so here it can only be a price.
   const ENGLISH = /\b(prices?|priced|pricing|rates?|amounts?|discounts?|rupees?|paise)\b/i;
-  const HINDI_STEMS = [
-    'दाम',
-    'कीमत',
-    'क\u093Cीमत', // क + nukta, and the precomposed letter below
-    '\u0958ीमत',
-    'मूल्य',
-    'रुपय',
-    'रुपए',
-    'पैस',
-    'राशि',
-    'राशिय',
-    'रेट',
-  ];
-  const HINDI = new RegExp(
-    `(?<![\\p{L}\\p{M}])(${HINDI_STEMS.join('|')})\\p{M}*(?![\\p{L}\\p{M}])`,
-    'u',
-  );
-  const talksAboutPrice = (value: string): boolean => ENGLISH.test(value) || HINDI.test(value);
 
-  it.each([
-    ['en', EN_MESSAGES],
-    ['hi', HI_MESSAGES],
-  ] as const)('%s', (_locale, catalogue) => {
-    const offenders = Object.entries(catalogue as Record<string, string>)
-      .filter(([, value]) => talksAboutPrice(value))
+  it('en', () => {
+    const offenders = Object.entries(EN_MESSAGES as Record<string, string>)
+      .filter(([, value]) => ENGLISH.test(value))
       .map(([key]) => key);
 
     expect(offenders).toEqual([]);
   });
 
-  // The words above as a translator writes them, plural and oblique included,
-  // with `क़ीमत` spelt both ways.
-  it.each([
-    'दामों की सूची',
-    'कीमतें',
-    'कीमतों में',
-    'क\u093Cीमतों',
-    '\u0958ीमत',
-    'रुपयों',
-    'मूल्यों',
-    'पैसा',
-    'पैसों',
-    'राशियाँ',
-    'रेटों',
-  ])('catches %s', (phrase) => {
-    expect(talksAboutPrice(phrase)).toBe(true);
+  it.each(['the price list', 'Rates', 'amount due', 'a discount'])('catches %s', (phrase) => {
+    expect(ENGLISH.test(phrase)).toBe(true);
   });
 
-  it.each(['{onFloor} गोदाम में', 'गोदामों', 'रेटिंग', 'मूल्यांकन', 'पैसेंजर', 'separate'])(
-    'leaves %s alone',
-    (phrase) => {
-      expect(talksAboutPrice(phrase)).toBe(false);
-    },
-  );
+  it.each(['separate', 'a rating', 'on the floor'])('leaves %s alone', (phrase) => {
+    expect(ENGLISH.test(phrase)).toBe(false);
+  });
 });
 
 describe('the activity.* surface is append-only', () => {
@@ -204,31 +123,6 @@ describe('the activity.* surface is append-only', () => {
   it('the lockfile itself has no entry that is not also a real EN token', () => {
     const orphaned = lockedPairs.filter((token) => !EN_KEYS.has(token));
     expect(orphaned).toEqual([]);
-  });
-});
-
-describe('every Hindi activity.* sentence can take the unknown actor', () => {
-  // `renderActivity` fills `{actor}` with `logs.actor.unknown` when a row
-  // recorded no name, and in Hindi that is `किसी` — the oblique form, which is
-  // only a sentence with a postposition after it (`किसी ने …`). There is one
-  // stand-in for every template, so every template has to be built that way.
-  // An English stub is not: it rendered "किसी issued the API key …". That
-  // includes the stub `npm run i18n:sync` writes for a new activity key — it
-  // fails here until somebody translates it.
-  const POSTPOSITION = /^ (ने|को|से|का|की|के|में|पर|द्वारा)(?![\p{L}\p{M}])/u;
-
-  it('puts a postposition after every {actor}, in activity.* and activityDetail.* alike', () => {
-    const offenders = Object.entries(HI_MESSAGES as Record<string, string>)
-      .filter(([key]) => key.startsWith('activity.') || key.startsWith('activityDetail.'))
-      .filter(([, value]) =>
-        value
-          .split('{actor}')
-          .slice(1)
-          .some((rest) => !POSTPOSITION.test(rest)),
-      )
-      .map(([key]) => key);
-
-    expect(offenders).toEqual([]);
   });
 });
 

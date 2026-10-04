@@ -11,7 +11,6 @@ import {
   COMMAND_MIN_PROTOCOL,
   ENTITY_PREFIX,
   EN_MESSAGES,
-  HI_MESSAGES,
   CHAT_SYSTEM_KEYS,
   MUTATION_PERMISSIONS,
   PANEL_PROTOCOL_VERSION,
@@ -126,10 +125,9 @@ describe('the Chatroom\'s wiring in shared', () => {
     expect(PANEL_PROTOCOL_VERSION).toBeGreaterThanOrEqual(CHAT_MIN_PROTOCOL);
   });
 
-  it('has an English and a Hindi sentence for every system line', () => {
+  it('has an English sentence for every system line', () => {
     for (const key of Object.values(CHAT_SYSTEM_KEYS)) {
       expect(EN_MESSAGES).toHaveProperty(key);
-      expect(HI_MESSAGES).toHaveProperty(key);
     }
   });
 });

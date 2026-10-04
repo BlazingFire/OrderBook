@@ -21,7 +21,7 @@ function looksTranslatable(raw) {
   if (text.length === 0) return false;
   // A lone punctuation/number run — "—", "1", "#42" — is not a sentence a
   // translator would touch. `\p{L}` matches a letter in any script, so this
-  // does not privilege Latin over Devanagari.
+  // does not privilege Latin letters.
   if (!/\p{L}/u.test(text)) return false;
   return true;
 }

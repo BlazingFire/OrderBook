@@ -10,7 +10,6 @@ import {
   CAPABILITIES,
   COMMAND_MIN_PROTOCOL,
   EN_MESSAGES,
-  HI_MESSAGES,
   MAX_PRINT_COPIES,
   NOTIFICATION_KINDS,
   PANEL_PROTOCOL_VERSION,
@@ -141,7 +140,6 @@ describe('statuses and keys', () => {
       expect(CAPABILITIES.find((capability) => capability.key === key)).toMatchObject({ group: 'workflow' });
       expect(minimumTierFor(key)).toBe('office');
       expect(EN_MESSAGES).toHaveProperty(`permission.${key}`);
-      expect(HI_MESSAGES).toHaveProperty(`permission.${key}`);
     }
     // The label says what the grant means.
     expect(EN_MESSAGES['permission.print.station']).toMatch(/every party/i);
@@ -172,9 +170,8 @@ describe('the wire', () => {
     expect(PANEL_PROTOCOL_VERSION).toBeGreaterThanOrEqual(PRINTROOM_MIN_PROTOCOL);
   });
 
-  it('adds the bell kind with its English and Hindi sentences', () => {
+  it('adds the bell kind with its English sentence', () => {
     expect(NOTIFICATION_KINDS).toContain('print.printed');
     expect(EN_MESSAGES['notification.print.printed']).toContain('{party}');
-    expect(HI_MESSAGES['notification.print.printed']).toContain('{party}');
   });
 });

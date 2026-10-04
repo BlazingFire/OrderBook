@@ -114,7 +114,7 @@ function asBoundedInt(min: number, max: number) {
 
 /**
  * Every setting the product has. Adding one is this entry, its two catalogue
- * tokens in `en.ts` and `hi.ts`, and a third only if it opens a new group — no
+ * tokens in `en.ts`, and a third only if it opens a new group — no
  * migration, no column, and no renderer change, because the entry declares the
  * control the screen should draw.
  */

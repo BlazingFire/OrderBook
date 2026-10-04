@@ -7,7 +7,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
   EN_MESSAGES,
-  HI_MESSAGES,
   LONG_OFFLINE_MS,
   NOTIFICATION_KINDS,
   isLongOffline,
@@ -27,12 +26,11 @@ function panel(overrides: Partial<OfficePanelWithPresence>): OfficePanelWithPres
 }
 
 describe('notification kinds', () => {
-  it('each has an English and a Hindi message, and a shape the table accepts', () => {
+  it('each has an English message, and a shape the table accepts', () => {
     for (const kind of NOTIFICATION_KINDS) {
       // The `user_notifications.kind` CHECK constraint.
       expect(kind).toMatch(/^[a-z]+[.][a-zA-Z]+$/);
       expect(EN_MESSAGES).toHaveProperty(`notification.${kind}`);
-      expect(HI_MESSAGES).toHaveProperty(`notification.${kind}`);
     }
   });
 

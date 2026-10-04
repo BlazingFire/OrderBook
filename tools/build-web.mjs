@@ -22,7 +22,7 @@
  * CI runner can build this project.
  *
  * Node runs the same everywhere, `tools/` is where this repo already puts that
- * kind of thing (`copy-shell.mjs`, `i18n-sync.mjs`), and setting an environment
+ * kind of thing (`copy-shell.mjs`), and setting an environment
  * variable for a child process needs no shell at all.
  */
 
