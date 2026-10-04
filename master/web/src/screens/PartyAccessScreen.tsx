@@ -375,38 +375,76 @@ export function PartyAccessScreen({
 
   /**
    * Up / Down move between rows. The table renders only a window of a long list, so
-   * a row beyond it is not in the page yet: scroll that way until it is, then focus it.
+   * a row beyond it is not in the page yet.
+   *
+   * A held key repeats faster than the table catches up, so a key does not move the
+   * focus to a row that may not exist yet: it moves a *target*, and a walk scrolls
+   * towards it one row at a time. While it does, the focus rides on the table's edge
+   * row nearest the target, which is always mounted — a focused row that falls out of
+   * the window is gone, and the browser then gives the focus to <body>, where every
+   * later key is lost.
    */
-  const onTableKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-    const current = (event.target as HTMLElement).closest('tr[data-row]');
-    const id = current?.querySelector<HTMLElement>('[data-party-id]')?.dataset.partyId;
-    const index = rows.findIndex((item) => item.partyId === id);
-    const next = rows[index + (event.key === 'ArrowDown' ? 1 : -1)];
-    if (index < 0 || !next) return;
-    event.preventDefault();
+  const walk = useRef<{ index: number; timer: number | null } | null>(null);
+  useEffect(
+    () => () => {
+      if (walk.current?.timer) window.clearTimeout(walk.current.timer);
+    },
+    [],
+  );
 
-    const here = control(next.partyId);
-    if (here) {
-      here.focus();
+  const stepWalk = (): void => {
+    const current = walk.current;
+    if (!current) return;
+    const list = rowsRef.current;
+    const goal = list[current.index];
+    const found = goal ? control(goal.partyId) : undefined;
+    if (found) {
+      found.focus();
+      walk.current = null;
       return;
     }
     const pane = tableRef.current?.closest('.ob-pane');
-    if (!pane) return;
-    const step = ((current as HTMLElement).offsetHeight || ROW_PX) * 4;
-    let tries = 0;
-    const tick = (): void => {
-      const found = control(next.partyId);
-      if (found) {
-        found.focus();
-        return;
-      }
-      tries += 1;
-      if (tries > 80) return;
-      pane.scrollTop += event.key === 'ArrowDown' ? step : -step;
-      window.setTimeout(tick, 16);
-    };
-    tick();
+    const rendered = Array.from(
+      tableRef.current?.querySelectorAll<HTMLElement>('[data-party-id]') ?? [],
+    );
+    const edgeIndex = list.findIndex(
+      (item) => item.partyId === rendered[rendered.length - 1]?.dataset.partyId,
+    );
+    const down = current.index > edgeIndex;
+    const edge = down ? rendered[rendered.length - 1] : rendered[0];
+    if (!pane || !edge) {
+      walk.current = null;
+      return;
+    }
+    edge.focus({ preventScroll: true });
+    pane.scrollTop +=
+      (down ? 1 : -1) * ((edge.closest('tr') as HTMLElement).offsetHeight || ROW_PX);
+    current.timer = window.setTimeout(stepWalk, 16);
+  };
+
+  const onTableKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    const row = (event.target as HTMLElement).closest('tr[data-row]');
+    const id = row?.querySelector<HTMLElement>('[data-party-id]')?.dataset.partyId;
+    const focused = rows.findIndex((item) => item.partyId === id);
+    const from = walk.current ? walk.current.index : focused;
+    const to = from + (event.key === 'ArrowDown' ? 1 : -1);
+    if (from < 0 || to < 0 || to >= rows.length) return;
+    event.preventDefault();
+
+    const here = control(rows[to]!.partyId);
+    if (here) {
+      if (walk.current?.timer) window.clearTimeout(walk.current.timer);
+      walk.current = null;
+      here.focus();
+      return;
+    }
+    if (walk.current) {
+      walk.current.index = to;
+      return;
+    }
+    walk.current = { index: to, timer: null };
+    stepWalk();
   };
 
   const stat = (value: Restriction, label: string, hint: string, count: number | undefined) => (

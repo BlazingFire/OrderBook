@@ -665,6 +665,61 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
       expect(document.querySelector('.ob-pa-table .ob-tablewrap[aria-hidden="true"]')).toBeNull();
     });
 
+    it('keeps the focus on a row while an arrow key is held down past the rendered window', async () => {
+      const page = () =>
+        json({
+          items: Array.from({ length: 200 }, (_, i) => party(i + 1)),
+          total: 200,
+          limit: 200,
+          offset: 0,
+        });
+      await mount(WRITE, { list: () => page() });
+      await loaded();
+
+      const pane = document.querySelector('.ob-pane') as HTMLElement;
+      let top = 0;
+      Object.defineProperty(pane, 'clientHeight', { configurable: true, get: () => 320 });
+      Object.defineProperty(pane, 'scrollTop', {
+        configurable: true,
+        get: () => top,
+        set: (value: number) => {
+          top = value;
+          pane.dispatchEvent(new Event('scroll'));
+        },
+      });
+      await act(async () => {
+        pane.dispatchEvent(new Event('scroll'));
+      });
+
+      const first = await screen.findByRole('button', { name: 'Party 1' });
+      first.focus();
+
+      // The focused row unmounts when the window moves on; the browser then hands the
+      // focus to <body> and every later key goes nowhere. Sampled between the keys.
+      let lost = 0;
+      const sampler = window.setInterval(() => {
+        if (document.activeElement === document.body) lost += 1;
+      }, 2);
+
+      try {
+        // A held key repeats about every 36 ms: far more presses than the window holds
+        // rows, each one arriving before the table has caught up with the last.
+        for (let press = 0; press < 70; press += 1) {
+          const target = document.activeElement as HTMLElement;
+          fireEvent.keyDown(target.isConnected ? target : document.body, { key: 'ArrowDown' });
+          await act(async () => {
+            await wait(3);
+          });
+        }
+        await waitFor(() => expect(document.activeElement?.textContent).toBe('Party 71'));
+      } finally {
+        window.clearInterval(sampler);
+      }
+
+      expect(lost).toBe(0);
+      expect(document.activeElement?.tagName).toBe('BUTTON');
+    });
+
     it('moves on to a row beyond the rendered window with Down, scrolling to it first', async () => {
       const page = () =>
         json({
