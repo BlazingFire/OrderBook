@@ -40,6 +40,10 @@ export interface PanelPaths {
   signInAttemptsFile: string;
   /** Sign-ins checked offline, waiting to be uploaded to the Master's audit trail. */
   offlineAuthEventsFile: string;
+  /** Which Master the cached data belongs to, and why this PC last lost its pairing. */
+  masterBindingFile: string;
+  /** Unsent changes set aside when this PC was paired to a different Master. */
+  parkedOutboxFile: string;
   imagesDir: string;
   /** Cached profile pictures, so the sign-in screen has faces while offline. */
   avatarsDir: string;
@@ -56,6 +60,8 @@ const FILE_NAMES = {
   usersFile: 'users.json',
   signInAttemptsFile: 'sign-in-attempts.json',
   offlineAuthEventsFile: 'offline-auth-events.json',
+  masterBindingFile: 'master-binding.json',
+  parkedOutboxFile: 'parked-outbox.json',
 } as const;
 
 /**
@@ -104,6 +110,8 @@ export function paths(): PanelPaths {
     usersFile: path.join(dataDir, FILE_NAMES.usersFile),
     signInAttemptsFile: path.join(dataDir, FILE_NAMES.signInAttemptsFile),
     offlineAuthEventsFile: path.join(dataDir, FILE_NAMES.offlineAuthEventsFile),
+    masterBindingFile: path.join(dataDir, FILE_NAMES.masterBindingFile),
+    parkedOutboxFile: path.join(dataDir, FILE_NAMES.parkedOutboxFile),
     imagesDir: path.join(dataDir, 'images'),
     avatarsDir: path.join(dataDir, 'avatars'),
   };

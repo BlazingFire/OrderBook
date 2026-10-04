@@ -25,6 +25,7 @@ import { useState } from 'react';
 import { SETTINGS } from '@orderbook/shared';
 
 import type { ConnectionInfo, PanelSession } from '../api';
+import { ConnectionUnpair } from '../components/ConnectionUnpair';
 import { api } from '../api';
 import { optionListTransport } from '../optionListTransport';
 import { StorageBackupActions } from '../components/StorageBackup';
@@ -62,6 +63,8 @@ interface Props {
   followUpDays: number | null;
   /** Moves whenever the synced option lists do; the sources list reloads on it. */
   sourcesRevision: number;
+  /** This PC left its Master from here: the app asks the server who it is now. */
+  onLeft: () => void;
 }
 
 const CONNECTION_STATE_KEY: Record<ConnectionInfo['state'], string> = {
@@ -80,6 +83,7 @@ export function SettingsScreen({
   onTabChange,
   followUpDays,
   sourcesRevision,
+  onLeft,
 }: Props) {
   const machineItems = [
     { label: t('settings.machine.panel'), value: connection.panelName },
@@ -167,6 +171,17 @@ export function SettingsScreen({
         <>
           <SettingsSection title={t('settings.machine.title')}>
             <KeyValueList items={machineItems} />
+            {/* Somebody who manages panels only; the server checks the same. */}
+            {session.permissions.includes('panels.manage') ? (
+              <div style={{ marginTop: 'var(--s-12)' }}>
+                <ConnectionUnpair
+                  company={connection.companyName}
+                  variant="secondary"
+                  size="md"
+                  onDone={onLeft}
+                />
+              </div>
+            ) : null}
           </SettingsSection>
           <SettingsSection title={t('settings.sync.title')}>
             <KeyValueList items={syncItems} />

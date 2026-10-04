@@ -55,7 +55,7 @@ import * as backupRestoreService from '../services/backup-restore.service.js';
 import { RestoreError } from '../services/backup-restore.service.js';
 import * as developerService from '../services/developer.service.js';
 import { DeveloperError } from '../services/developer.service.js';
-import { loadCredentials } from '../services/credentials.store.js';
+import { loadCredentials, type StoredCredentials } from '../services/credentials.store.js';
 import { masterFetch } from '../lib/master-fetch.js';
 import { avatarFile, forgetAvatar, isCached } from '../services/avatar-cache.js';
 import { moveStorage } from '../services/panel-report.service.js';
@@ -66,12 +66,15 @@ import {
   listProductsFromView,
   pickFromView,
 } from '../services/offline-pick.js';
+import { adoptMaster, parkedChangeCount, removedNote } from '../services/master-binding.js';
 import {
   PairingError,
   pairAutomatically,
   pairManually,
   scanForMasters,
+  testConnection,
 } from '../services/pairing.service.js';
+import { UnpairError, unpair } from '../services/unpair.service.js';
 import * as updateService from '../services/update.service.js';
 import { UpdateError } from '../services/update.service.js';
 import * as userSession from '../services/user-session.service.js';
@@ -107,7 +110,6 @@ const partyImportUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_PARTY_IMPORT_BYTES },
 });
-
 
 export function createApp(): Express {
   const app = express();
@@ -171,27 +173,97 @@ export function createApp(): Express {
       // hostname and changes once paired; a failed read leaves it out rather
       // than failing the whole status.
       deviceCode: await deviceCode().catch(() => undefined),
+      // Why this PC is not paired, when the Master is the reason (kept across restarts),
+      // and what is waiting that was set aside when it joined a different Master.
+      removedByMaster: await removedNote().catch(() => null),
+      parkedChanges: await parkedChangeCount().catch(() => 0),
+      unsentChanges: await outbox.pendingCount().catch(() => 0),
       ...masterConnection.getStatus(),
     });
   });
 
   app.post('/api/connection/scan', async (_req, res) => {
     try {
-      res.json({ masters: await scanForMasters() });
+      res.json({ masters: await scanForMasters(cancelWhenClosed(res)) });
     } catch (error) {
-      log.warn('Scan failed', error);
-      res.status(500).json({ error: 'scan_failed', message: 'Could not search the network' });
+      respondToPairingError(res, error);
+    }
+  });
+
+  /** Is there a Master at this address, and is it this PC's version? Pairs nothing. */
+  app.post('/api/connection/test', async (req, res) => {
+    const { host, port } = req.body ?? {};
+    try {
+      res.json(
+        await testConnection({
+          host: typeof host === 'string' ? host : '',
+          port: typeof port === 'string' || typeof port === 'number' ? port : '',
+          signal: cancelWhenClosed(res),
+        }),
+      );
+    } catch (error) {
+      respondToPairingError(res, error);
     }
   });
 
   app.post('/api/connection/pair/auto', async (req, res) => {
     try {
-      const credentials = await pairAutomatically(req.body?.panelName);
-      await refreshAfterPairing();
-      await masterConnection.connect();
-      res.status(201).json({ ok: true, companyName: credentials.companyName });
+      const credentials = await pairAutomatically({
+        panelName: typeof req.body?.panelName === 'string' ? req.body.panelName : undefined,
+        masterUniqueId:
+          typeof req.body?.masterUniqueId === 'string' && req.body.masterUniqueId
+            ? req.body.masterUniqueId
+            : undefined,
+        signal: cancelWhenClosed(res),
+      });
+      res.status(201).json(await finishPairing(credentials));
     } catch (error) {
       respondToPairingError(res, error);
+    }
+  });
+
+  /**
+   * Leave this Master (the Master is gone, wrong, or has been replaced). Open before
+   * anyone has signed in, since the connection screen is where it is wanted; once
+   * somebody is signed in it needs `panels.manage`.
+   */
+  app.post('/api/connection/unpair', async (req, res) => {
+    if (userSession.currentSession() && !userSession.can('panels.manage')) {
+      res.status(403).json({
+        error: 'forbidden',
+        message: 'Only somebody who manages panels may unpair this PC',
+        messageKey: 'connection.unpair.forbidden',
+      });
+      return;
+    }
+
+    try {
+      const choice = req.body?.pending;
+      res.json(
+        await unpair({ pending: choice === 'keep' || choice === 'discard' ? choice : undefined }),
+      );
+    } catch (error) {
+      if (error instanceof UnpairError) {
+        res.status(error.code === 'pending_changes' ? 409 : 400).json({
+          error: error.code,
+          message: error.message,
+          messageKey:
+            error.code === 'pending_changes'
+              ? 'connection.unpair.pendingBlocked'
+              : 'connection.unpair.notPaired',
+          params: { count: error.count },
+          details: { count: error.count },
+        });
+        return;
+      }
+      log.error('Unpair failed', error);
+      res
+        .status(500)
+        .json({
+          error: 'unpair_failed',
+          message: 'Could not unpair',
+          messageKey: 'error.generic.internal',
+        });
     }
   });
 
@@ -238,31 +310,28 @@ export function createApp(): Express {
   app.post('/api/connection/pair/manual', async (req, res) => {
     const { host, port, pairingPassword, masterUniqueId, panelName } = req.body ?? {};
 
-    if (
-      typeof host !== 'string' ||
-      !host ||
-      typeof pairingPassword !== 'string' ||
-      !pairingPassword
-    ) {
+    if (typeof pairingPassword !== 'string' || !pairingPassword.trim()) {
       res.status(400).json({
         error: 'invalid_request',
-        message: 'Enter the Master address and pairing password',
+        message: 'Enter the pairing password',
+        messageKey: 'connection.error.passwordMissing',
       });
       return;
     }
 
     try {
+      // The address and port are checked (and read out of "host:port") by the pairing
+      // service itself; nothing is guessed here.
       const credentials = await pairManually({
-        host,
-        port: Number(port) || 4100,
+        host: typeof host === 'string' ? host : '',
+        port: typeof port === 'string' || typeof port === 'number' ? port : '',
         pairingPassword,
         masterUniqueId:
           typeof masterUniqueId === 'string' && masterUniqueId ? masterUniqueId : undefined,
         panelName: typeof panelName === 'string' && panelName ? panelName : undefined,
+        signal: cancelWhenClosed(res),
       });
-      await refreshAfterPairing();
-      await masterConnection.connect();
-      res.status(201).json({ ok: true, companyName: credentials.companyName });
+      res.status(201).json(await finishPairing(credentials));
     } catch (error) {
       respondToPairingError(res, error);
     }
@@ -562,11 +631,14 @@ export function createApp(): Express {
     // The latest page carries this person's still-queued posts after it; an older page does not.
     const pending = Number.isFinite(beforeSeq) ? [] : await pendingChatPosts(req.params.id);
     try {
-      const messages = await masterConnection.command<'chat:messages', ChatMessage[]>('chat:messages', {
-        roomId: req.params.id,
-        ...(Number.isFinite(beforeSeq) ? { beforeSeq } : {}),
-        ...(Number.isFinite(limit) ? { limit } : {}),
-      });
+      const messages = await masterConnection.command<'chat:messages', ChatMessage[]>(
+        'chat:messages',
+        {
+          roomId: req.params.id,
+          ...(Number.isFinite(beforeSeq) ? { beforeSeq } : {}),
+          ...(Number.isFinite(limit) ? { limit } : {}),
+        },
+      );
       // A post the Master already has but the outbox has not yet settled is shown once.
       const known = new Set(messages.map((message) => message.clientId));
       res.json([...messages, ...pending.filter((message) => !known.has(message.clientId))]);
@@ -600,7 +672,9 @@ export function createApp(): Express {
   app.post('/api/chat/rooms/:id/mute', (req, res) =>
     forward(res, 'chat:mute', { roomId: req.params.id, muted: req.body?.muted === true }),
   );
-  app.post('/api/chat/direct', (req, res) => forward(res, 'chat:direct', { userId: req.body?.userId }));
+  app.post('/api/chat/direct', (req, res) =>
+    forward(res, 'chat:direct', { userId: req.body?.userId }),
+  );
   app.put('/api/chat/messages/:id', (req, res) =>
     forward(res, 'chat:edit', {
       messageId: req.params.id,
@@ -678,7 +752,9 @@ export function createApp(): Express {
    */
   app.get('/api/leads/:id', async (req, res) => {
     const view = await localStore.getView();
-    const local = view ? forCurrentUser(view).leads.find((lead) => lead.id === req.params.id) : undefined;
+    const local = view
+      ? forCurrentUser(view).leads.find((lead) => lead.id === req.params.id)
+      : undefined;
     if (local) {
       res.json(local);
       return;
@@ -687,7 +763,9 @@ export function createApp(): Express {
   });
   app.get('/api/orders/:id', async (req, res) => {
     const view = await localStore.getView();
-    const local = view ? forCurrentUser(view).orders.find((order) => order.id === req.params.id) : undefined;
+    const local = view
+      ? forCurrentUser(view).orders.find((order) => order.id === req.params.id)
+      : undefined;
     if (local) {
       res.json(local);
       return;
@@ -751,7 +829,11 @@ export function createApp(): Express {
       missingWeight: req.query.missingWeight === 'true' ? true : undefined,
       sort: typeof req.query.sort === 'string' && req.query.sort ? req.query.sort : undefined,
       dir:
-        req.query.dir === 'desc' ? ('desc' as const) : req.query.dir === 'asc' ? ('asc' as const) : undefined,
+        req.query.dir === 'desc'
+          ? ('desc' as const)
+          : req.query.dir === 'asc'
+            ? ('asc' as const)
+            : undefined,
       size: typeof req.query.size === 'string' && req.query.size ? req.query.size : undefined,
       hasPhoto:
         req.query.hasPhoto === 'true' ? true : req.query.hasPhoto === 'false' ? false : undefined,
@@ -877,7 +959,10 @@ export function createApp(): Express {
             return;
           }
 
-          res.setHeader('Content-Type', response.headers.get('content-type') ?? 'application/octet-stream');
+          res.setHeader(
+            'Content-Type',
+            response.headers.get('content-type') ?? 'application/octet-stream',
+          );
           res.setHeader(
             'Content-Disposition',
             response.headers.get('content-disposition') ?? `attachment; filename="${fallbackName}"`,
@@ -948,7 +1033,10 @@ export function createApp(): Express {
     ),
   );
 
-  app.get(['/api/parties/import/template.:format', '/api/parties/export.:format'], proxyDownload('parties-template'));
+  app.get(
+    ['/api/parties/import/template.:format', '/api/parties/export.:format'],
+    proxyDownload('parties-template'),
+  );
   app.post(
     '/api/parties/import',
     ...proxyImport(partyImportUpload, '/api/panel/parties/import', 'parties.csv', (mode) =>
@@ -1415,7 +1503,8 @@ export function createApp(): Express {
     // Behind the Master, anyone signed in may update: the "Update needed" screen
     // (1.4 R7e) blocks everything else, so it would be a dead end otherwise. (Ahead
     // of the Master there is nothing to install: that screen only waits.)
-    const mandatory = standing(appVersion(), masterConnection.getStatus().masterVersion) === 'behind';
+    const mandatory =
+      standing(appVersion(), masterConnection.getStatus().masterVersion) === 'behind';
     if (!mandatory && !userSession.can('settings.manage')) {
       res.status(403).json({
         error: 'forbidden',
@@ -1547,7 +1636,12 @@ export function createApp(): Express {
     const to = typeof req.query.to === 'string' ? req.query.to : 'all';
     // The CSV's `sentence` column is rendered on the Master, in this language.
     const locale = isLocale(req.query.locale) ? req.query.locale : undefined;
-    return forwardCsv(res, 'log:export', { ...parseLogQuery(req.query), locale }, `logs-${from}-${to}.csv`);
+    return forwardCsv(
+      res,
+      'log:export',
+      { ...parseLogQuery(req.query), locale },
+      `logs-${from}-${to}.csv`,
+    );
   });
 
   // Reports (docs/backend-modules/04-API-CONTRACT.md §3). Forwarded live and
@@ -1600,13 +1694,21 @@ export function createApp(): Express {
         const exported = await masterConnection.command<
           'report:export',
           | { format: 'csv'; csv: string; rowCount: number }
-          | { format: 'pdf' | 'xlsx'; fileName: string; contentType: string; bytes: Uint8Array; rowCount: number }
+          | {
+              format: 'pdf' | 'xlsx';
+              fileName: string;
+              contentType: string;
+              bytes: Uint8Array;
+              rowCount: number;
+            }
         >('report:export', {
           report: req.params.report as ReportKind,
           query: { ...reportExportQuery(req.query), format: 'pdf' },
         });
         if (exported.format !== 'pdf') {
-          res.status(502).json({ error: 'unavailable', message: 'The Master did not answer with a PDF' });
+          res
+            .status(502)
+            .json({ error: 'unavailable', message: 'The Master did not answer with a PDF' });
           return;
         }
         res.setHeader('Content-Type', 'application/pdf');
@@ -1980,7 +2082,10 @@ async function queue(
   try {
     // The edit's field clocks travel on the mutation, never inside its payload:
     // left there, `baseFieldHlc` became one of the fields the edit claimed to set.
-    const { baseFieldHlc: _clocks, ...payload } = (request.payload ?? {}) as Record<string, unknown>;
+    const { baseFieldHlc: _clocks, ...payload } = (request.payload ?? {}) as Record<
+      string,
+      unknown
+    >;
     const entityId = request.entityId ?? (await nextTemporaryId());
 
     const mutation = await sync.submit({
@@ -2058,7 +2163,9 @@ function presenceBeat(body: unknown): PresenceBeat {
   const raw = (typeof body === 'object' && body !== null ? body : {}) as Record<string, unknown>;
   return {
     tabId: typeof raw.tabId === 'string' ? raw.tabId : '',
-    ...(raw.recordKind === 'lead' || raw.recordKind === 'order' ? { recordKind: raw.recordKind } : {}),
+    ...(raw.recordKind === 'lead' || raw.recordKind === 'order'
+      ? { recordKind: raw.recordKind }
+      : {}),
     ...(typeof raw.recordId === 'string' ? { recordId: raw.recordId } : {}),
     ...(typeof raw.editing === 'boolean' ? { editing: raw.editing } : {}),
   };
@@ -2413,7 +2520,12 @@ async function pendingChatPosts(roomId: string): Promise<ChatMessage[]> {
           tier: session.roleTier,
         },
         body: payload.body ?? '',
-        refs: (payload.refs ?? []).map((chip) => ({ ...chip, label: chip.id, partyName: null, restricted: false })),
+        refs: (payload.refs ?? []).map((chip) => ({
+          ...chip,
+          label: chip.id,
+          partyName: null,
+          restricted: false,
+        })),
         mentions: payload.mentions ?? [],
         system: null,
         createdAt: mutation.createdAt,
@@ -2422,7 +2534,12 @@ async function pendingChatPosts(roomId: string): Promise<ChatMessage[]> {
         pinnedAt: null,
         pinnedBy: null,
         task: payload.task
-          ? { assignees: payload.task.assignees.map(person), dueOn: payload.task.dueOn, doneAt: null, doneBy: null }
+          ? {
+              assignees: payload.task.assignees.map(person),
+              dueOn: payload.task.dueOn,
+              doneAt: null,
+              doneBy: null,
+            }
           : null,
         clientId: mutation.mutationId,
         pending: true,
@@ -2430,13 +2547,50 @@ async function pendingChatPosts(roomId: string): Promise<ChatMessage[]> {
     });
 }
 
+/**
+ * What follows a pairing that the Master accepted: keep or drop the cache by whose it
+ * is, re-derive the device code, open the link. The answer says whether this PC has
+ * joined a different Master than its cached data came from (and set unsent changes
+ * aside), so the screen can tell the person.
+ */
+async function finishPairing(credentials: StoredCredentials): Promise<{
+  ok: true;
+  companyName: string | null;
+  newMaster: boolean;
+  parkedChanges: number;
+}> {
+  const adopted = await adoptMaster(credentials);
+  await refreshAfterPairing();
+  await masterConnection.connect();
+  return { ok: true, companyName: credentials.companyName, ...adopted };
+}
+
+/** An AbortSignal that fires when the browser gives up on this request (Cancel, or the page closing). */
+function cancelWhenClosed(res: Response): AbortSignal {
+  const controller = new AbortController();
+  res.on('close', () => {
+    if (!res.writableFinished) controller.abort();
+  });
+  return controller.signal;
+}
+
 function respondToPairingError(res: Response, error: unknown): void {
   if (error instanceof PairingError) {
-    res.status(400).json({ error: error.code, message: error.message });
+    res.status(error.code === 'rate_limited' ? 429 : 400).json({
+      error: error.code,
+      message: error.message,
+      messageKey: error.messageKey,
+      params: error.params,
+      ...(error.found.length > 0 ? { details: { found: error.found } } : {}),
+    });
     return;
   }
   log.error('Pairing failed', error);
-  res.status(500).json({ error: 'pairing_failed', message: 'Pairing failed unexpectedly' });
+  res.status(500).json({
+    error: 'pairing_failed',
+    message: 'Pairing failed unexpectedly',
+    messageKey: 'connection.error.unexpected',
+  });
 }
 
 const RESTORE_ERROR_STATUS: Record<string, number> = {
@@ -2640,7 +2794,8 @@ sync.onSyncEvent(schedulePushView);
 // the number (and so the toast) only reaches the person who saved the lead: on a
 // shared PC a queued save can land after its author has signed out.
 sync.onNumbered(({ poNumber, ...event }) => {
-  const isAuthor = event.forUserId !== null && event.forUserId === userSession.currentSession()?.userId;
+  const isAuthor =
+    event.forUserId !== null && event.forUserId === userSession.currentSession()?.userId;
   broadcast('numbered', isAuthor && poNumber ? { ...event, poNumber } : event);
 });
 

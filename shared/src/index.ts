@@ -24,6 +24,7 @@ export * from './domain/report-access.js';
 export * from './domain/reports.js';
 export * from './domain/order-note.js';
 export * from './domain/settings.js';
+export * from './domain/master-address.js';
 export * from './domain/version.js';
 export * from './domain/developer.js';
 export * from './domain/master-key.js';

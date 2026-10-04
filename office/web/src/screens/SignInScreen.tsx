@@ -43,6 +43,7 @@ import {
   PasswordInput,
 } from '@orderbook/ui';
 
+import { ConnectionUnpair } from '../components/ConnectionUnpair';
 import { StoragePathCard } from '../components/StoragePathCard';
 
 interface Props {
@@ -50,9 +51,11 @@ interface Props {
   onSignedIn: (session: PanelSession) => void;
   /** Why the window is back here, when it did not get here by signing out. */
   notice?: MessageKey | null;
+  /** This PC left its Master from here: the app asks the server who it is now. */
+  onLeft: () => void;
 }
 
-export function SignInScreen({ connection, onSignedIn, notice }: Props) {
+export function SignInScreen({ connection, onSignedIn, notice, onLeft }: Props) {
   const confirm = useConfirm();
   const [profiles, setProfiles] = useState<PanelProfile[]>([]);
   /** The face somebody picked. `null` means the plain username form. */
@@ -62,7 +65,10 @@ export function SignInScreen({ connection, onSignedIn, notice }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const offline = connection.state !== 'connected';
+  // "Not reachable" only once the link has actually failed. While it is still being
+  // made (the first seconds after pairing) the old line said the Master was down.
+  const offline = connection.state === 'disconnected';
+  const connecting = connection.state === 'connecting';
 
   useEffect(() => {
     // A panel nobody has used yet simply has none, and the screen is then
@@ -167,6 +173,18 @@ export function SignInScreen({ connection, onSignedIn, notice }: Props) {
           through a refusal reads as "my password is wrong".
         */}
         {offline && <OfflineBanner>{t('signin.offlineNotice')}</OfflineBanner>}
+        {connecting && (
+          <p className="ob-small" role="status">
+            {t('connection.setup.connecting', {
+              company: connection.companyName ?? t('connection.scan.defaultName'),
+            })}
+          </p>
+        )}
+        {connection.notRecognised && connection.state !== 'connected' ? (
+          <div className="ob-banner ob-banner--conflict" role="alert">
+            <span>{t('office.link.notRecognised', { host: connection.masterHost ?? '—' })}</span>
+          </div>
+        ) : null}
 
         {profiles.length > 0 && !chosen && (
           <Card>
@@ -294,6 +312,14 @@ export function SignInScreen({ connection, onSignedIn, notice }: Props) {
           Master, over the socket — no help while standing at the new machine.
         */}
         <StoragePathCard />
+
+        {/*
+          The way out of a Master that is gone, replaced or wrong. Here, before anybody
+          has signed in, because that is when it is needed; the Master cannot be asked.
+        */}
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 'var(--s-16)' }}>
+          <ConnectionUnpair company={connection.companyName} onDone={onLeft} />
+        </div>
       </div>
     </div>
   );

@@ -1094,74 +1094,38 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'conflicts.resolveErrorFallback': 'Could not resolve the conflict',
   // TODO(i18n-hi)
   'conflicts.reviewedAt': 'Reviewed {when}',
-  // TODO(i18n-hi)
-  'connection.auto.connect': 'Proceed with Auto Connection',
-  // TODO(i18n-hi)
-  'connection.auto.connecting': 'Searching…',
-  // TODO(i18n-hi)
-  'connection.auto.scanOnly': 'Search only',
-  // TODO(i18n-hi)
-  'connection.auto.step1':
-    'On the Master Panel PC, open “Office Panels” and press “Add Office Panel”.',
-  // TODO(i18n-hi)
-  'connection.auto.step2': 'It will say “Waiting for office panel…”.',
-  // TODO(i18n-hi)
-  'connection.auto.step3': 'Press the button below. The two will find each other automatically.',
-  // TODO(i18n-hi)
-  'connection.auto.title': 'Auto connection (recommended)',
-  // TODO(i18n-hi)
-  'connection.errorFallback': 'Connection failed',
-  // TODO(i18n-hi)
-  'connection.manual.address': 'Master address',
-  // TODO(i18n-hi)
-  'connection.manual.connect': 'Connect',
-  // TODO(i18n-hi)
-  'connection.manual.connecting': 'Connecting…',
-  // TODO(i18n-hi)
-  'connection.manual.hint':
-    'Use the address and pairing password shown on the Master Panel’s setup screen.',
-  // TODO(i18n-hi)
-  'connection.manual.password': 'Pairing password',
-  // TODO(i18n-hi)
-  'connection.manual.port': 'Port',
-  // TODO(i18n-hi)
-  'connection.manual.title': 'Manual connection',
-  // TODO(i18n-hi)
-  'connection.mode.auto': 'Auto connection',
-  // TODO(i18n-hi)
-  'connection.mode.manual': 'Manual connection',
-  // TODO(i18n-hi)
-  'connection.panelName': 'Name for this PC',
-  // TODO(i18n-hi)
-  'connection.scan.acceptingNo': 'Not right now',
-  // TODO(i18n-hi)
-  'connection.scan.acceptingYes': 'Yes',
-  // TODO(i18n-hi)
-  'connection.scan.col.accepting': 'Accepting',
-  // TODO(i18n-hi)
-  'connection.scan.col.address': 'Address',
-  // TODO(i18n-hi)
-  'connection.scan.col.master': 'Master',
-  // TODO(i18n-hi)
-  'connection.scan.defaultName': 'Master Panel',
-  // TODO(i18n-hi)
-  'connection.scan.none.description':
-    'Check that the Master PC is switched on and on the same network.',
-  // TODO(i18n-hi)
-  'connection.scan.none.title': 'No Master Panel answered',
-  // TODO(i18n-hi)
-  'connection.scanErrorFallback': 'Could not search the network',
-  // TODO(i18n-hi)
-  'connection.status.connected': 'Connected to network',
-  // TODO(i18n-hi)
-  'connection.status.disconnected': 'Not connected to any network',
-  // TODO(i18n-hi)
-  'connection.status.hint':
-    'Plug in the LAN cable or join the shop WiFi, then this screen will update.',
-  // TODO(i18n-hi)
-  'connection.status.thisPc': 'This PC: {addresses}',
-  // TODO(i18n-hi)
-  'connection.title': 'Connect to Master Panel',
+  'connection.auto.connect': 'ऑटो कनेक्शन शुरू करें',
+  'connection.auto.connecting': 'खोज रहे हैं…',
+  'connection.auto.scanOnly': 'सिर्फ़ खोजें',
+  'connection.auto.step1': 'मास्टर पैनल वाले PC पर “ऑफ़िस पैनल” खोलकर “ऑफ़िस पैनल जोड़ें” दबाएँ।',
+  'connection.auto.step2': 'उस पर “ऑफ़िस पैनल का इंतज़ार…” लिखा दिखेगा।',
+  'connection.auto.step3': 'नीचे का बटन 5 मिनट के भीतर दबाएँ। दोनों अपने आप एक-दूसरे को ढूँढ लेंगे।',
+  'connection.auto.title': 'ऑटो कनेक्शन (सुझाया गया)',
+  'connection.errorFallback': 'कनेक्शन विफल रहा',
+  'connection.manual.address': 'मास्टर का पता',
+  'connection.manual.connect': 'कनेक्ट करें',
+  'connection.manual.connecting': 'कनेक्ट हो रहा है…',
+  'connection.manual.hint': 'पेयरिंग पासवर्ड मास्टर के सेटअप के समय एक बार दिखाया गया था। खो जाए तो मास्टर PC चलाने वाला व्यक्ति मास्टर की सेटिंग में, कनेक्शन टैब पर, मास्टर कुंजी से नया पासवर्ड बना सकता है।',
+  'connection.manual.password': 'पेयरिंग पासवर्ड',
+  'connection.manual.port': 'पोर्ट',
+  'connection.manual.title': 'मैनुअल कनेक्शन',
+  'connection.mode.auto': 'ऑटो कनेक्शन',
+  'connection.mode.manual': 'मैनुअल कनेक्शन',
+  'connection.panelName': 'इस PC का नाम',
+  'connection.scan.acceptingNo': 'अभी नहीं',
+  'connection.scan.acceptingYes': 'हाँ',
+  'connection.scan.col.accepting': 'जोड़ रहा है',
+  'connection.scan.col.address': 'पता',
+  'connection.scan.col.master': 'मास्टर',
+  'connection.scan.defaultName': 'मास्टर पैनल',
+  'connection.scan.none.description': 'जाँचें कि मास्टर PC चालू है और उसी नेटवर्क पर है।',
+  'connection.scan.none.title': 'किसी मास्टर पैनल ने जवाब नहीं दिया',
+  'connection.scanErrorFallback': 'नेटवर्क में खोज नहीं हो सकी',
+  'connection.status.connected': 'नेटवर्क से जुड़ा है',
+  'connection.status.disconnected': 'किसी नेटवर्क से जुड़ा नहीं है',
+  'connection.status.hint': 'LAN केबल लगाएँ या दुकान के Wi-Fi से जुड़ें, फिर यह स्क्रीन अपने आप बदल जाएगी।',
+  'connection.status.thisPc': 'यह PC: {addresses}',
+  'connection.title': 'मास्टर पैनल से जुड़ें',
   // TODO(i18n-hi)
   'crash.body':
     'The panel stopped rather than showing something wrong. Reloading usually gets you back to where you were.',
@@ -2916,9 +2880,7 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'signIn.subtitle': 'Enter the ID and password generated during setup.',
   // TODO(i18n-hi)
   'signin.errorFallback': 'Sign-in failed',
-  // TODO(i18n-hi)
-  'signin.offlineNotice':
-    'The Master Panel is not reachable right now. You can still sign in if you have used this panel before — your work will be saved here and sent when the Master returns.',
+  'signin.offlineNotice': 'मास्टर पैनल अभी पहुँच में नहीं है। अगर आप इस पैनल पर पहले साइन-इन कर चुके हैं तो अब भी कर सकते हैं — आपका काम यहीं सहेजा जाएगा और मास्टर लौटने पर भेज दिया जाएगा।',
   // TODO(i18n-hi)
   'signin.password': 'Password',
   // TODO(i18n-hi)
@@ -4281,4 +4243,67 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'partyAccess.editor.reloaded': 'ताज़ा एक्सेस लोड किया गया।',
   'partyAccess.editor.readOnlyOpen': 'हर कोई इस पार्टी को देख सकता है और इस पर काम कर सकता है।',
   'partyAccess.editor.readOnlyRestricted': 'केवल नीचे दिए लोग ही इस पार्टी को देख सकते हैं।',
+  // Connection D1: add-connection on the Office side (errors, test, set-up, removal, unpair)
+  'connection.error.noMaster': 'किसी मास्टर पैनल ने जवाब नहीं दिया। जाँचें कि मास्टर PC चालू है और इस PC वाले ही Wi-Fi या नेटवर्क पर है। किसी भी PC का फ़ायरवॉल या VPN भी खोज रोक सकता है। फिर कोशिश करें, या मास्टर का पता खुद डालें।',
+  'connection.error.notAccepting': 'एक मास्टर पैनल ने जवाब दिया, पर वह अभी नए पैनल नहीं जोड़ रहा। मास्टर पर ऑफ़िस पैनल खोलकर “ऑफ़िस पैनल जोड़ें” दबाएँ (और जाँचें कि ऑटो पेयरिंग चालू है), फिर कोशिश करें।',
+  'connection.error.multipleMasters': 'एक से ज़्यादा मास्टर पैनल ने जवाब दिया। जिससे यह PC जुड़े, उसे चुनें।',
+  'connection.error.networkUnavailable': 'यह PC किसी नेटवर्क से जुड़ा नहीं है। दुकान के Wi-Fi या केबल से जुड़ें, फिर कोशिश करें।',
+  'connection.error.cancelled': 'रोक दिया गया।',
+  'connection.error.invalidAddress': 'मास्टर का पता 192.168.1.10 जैसे अंकों में, या उसके PC के नाम से डालें।',
+  'connection.error.emptyAddress': 'मास्टर का पता डालें।',
+  'connection.error.invalidPort': 'पोर्ट 1 से 65535 के बीच की पूरी संख्या होनी चाहिए (मास्टर आम तौर पर 4100 इस्तेमाल करता है)।',
+  'connection.error.passwordMissing': 'पेयरिंग पासवर्ड डालें।',
+  'connection.error.timeout': '{address} से {seconds} सेकंड में कोई जवाब नहीं मिला। पता जाँचें, और यह भी कि मास्टर PC चालू है और उसी नेटवर्क पर है।',
+  'connection.error.unreachable': '{address} तक पहुँचा नहीं जा सका। पता जाँचें और यह भी कि दोनों PC एक ही नेटवर्क पर हैं।',
+  'connection.error.connectionRefused': '{address} तक पहुँच हो गई, पर पोर्ट {port} पर कुछ चालू नहीं है। पोर्ट जाँचें और यह भी कि मास्टर पैनल चल रहा है।',
+  'connection.error.hostNotFound': '{host} नाम का कोई PC नहीं मिला। नाम जाँचें, या उसका पता इस्तेमाल करें।',
+  'connection.error.notAMaster': '{address} पर कुछ जवाब तो आया, पर वह मास्टर पैनल नहीं है। पता और पोर्ट जाँचें।',
+  'connection.error.wrongPassword': 'यह पेयरिंग पासवर्ड सही नहीं है। जाँचकर फिर कोशिश करें। खो गया हो तो मास्टर PC चलाने वाला व्यक्ति मास्टर पैनल की सेटिंग में नया बना सकता है।',
+  'connection.error.rateLimited': 'इस PC से बहुत ज़्यादा कोशिशें हो गईं। {seconds} सेकंड रुककर फिर कोशिश करें।',
+  'connection.error.differentMaster': 'उस पते का मास्टर वह नहीं है जो आप चाहते थे। पता जाँचें।',
+  'connection.error.setupIncomplete': 'उस मास्टर पैनल का पहली बार का सेटअप अभी पूरा नहीं हुआ है।',
+  'connection.error.refused': 'मास्टर पैनल ने यह पेयरिंग अनुरोध नहीं माना।',
+  'connection.error.unexpected': 'पेयरिंग अनपेक्षित रूप से विफल हुई। फिर कोशिश करें।',
+  'connection.action.tryAgain': 'फिर कोशिश करें',
+  'connection.action.enterManually': 'पता खुद डालें',
+  'connection.action.stop': 'रोकें',
+  'connection.search.progress': 'नेटवर्क में खोज रहे हैं… {seconds} से.',
+  'connection.pick.title': 'मास्टर चुनें',
+  'connection.pick.connect': 'जुड़ें',
+  'connection.pick.notAccepting': 'अभी नए पैनल नहीं जोड़ रहा',
+  'connection.manual.test': 'कनेक्शन जाँचें',
+  'connection.manual.testing': 'जाँच रहे हैं…',
+  'connection.manual.lastUsed': 'पिछली बार: {address}',
+  'connection.manual.useLast': 'यही इस्तेमाल करें',
+  'connection.test.ok': '{address} पर मास्टर पैनल मिला (संस्करण {version})।',
+  'connection.test.starting': 'वह अभी शुरू हो रहा है। एक मिनट रुककर फिर जाँचें।',
+  'connection.test.same': 'इस PC के जैसा ही संस्करण।',
+  'connection.test.masterOlder': 'मास्टर संस्करण {master} पर है और यह PC {mine} पर। यह PC नया है, इसलिए जुड़ने के बाद यह मास्टर के अपडेट होने तक इंतज़ार करेगा।',
+  'connection.test.masterNewer': 'मास्टर संस्करण {master} पर है और यह PC {mine} पर। जुड़ने के बाद यह PC मास्टर के बराबर अपडेट करने को कहेगा।',
+  'connection.test.unknown': 'संस्करणों की तुलना नहीं हो सकी।',
+  'connection.setup.title': 'इस PC को तैयार कर रहे हैं',
+  'connection.setup.connecting': '{company} से जुड़ रहे हैं…',
+  'connection.setup.receiving': '{company} का डेटा ले रहे हैं…',
+  'connection.setup.ready': '{company} से जुड़ गया।',
+  'connection.setup.continue': 'आगे बढ़ें',
+  'connection.setup.slow': 'इसमें सामान्य से ज़्यादा समय लग रहा है। मास्टर व्यस्त हो सकता है। आप इंतज़ार कर सकते हैं, या आगे बढ़ें और इसे पृष्ठभूमि में पूरा होने दें।',
+  'connection.setup.failed': 'मास्टर तक नहीं पहुँचा जा सका: {reason}',
+  'connection.setup.newMaster': 'यह PC पहले किसी दूसरे मास्टर से जुड़ा था। उस कंपनी का सहेजा हुआ डेटा हटा दिया गया।',
+  'connection.setup.parked': 'दूसरे मास्टर के {count} न भेजे गए बदलाव अलग रख दिए गए, भेजे नहीं गए।',
+  'connection.removed.title': 'इस PC को मास्टर पैनल ने हटा दिया है',
+  'connection.removed.body': '{company} ने {when} को इस PC को हटा दिया। आगे चलने के लिए इसे मास्टर से फिर जोड़ें।',
+  'connection.removed.unsent.one': 'यहाँ किया गया {count} बदलाव कभी भेजा नहीं गया। उसी मास्टर से फिर जुड़ने पर वह भेजा जाएगा; किसी दूसरे से जुड़ने पर वह अलग रख दिया जाएगा।',
+  'connection.removed.unsent.other': 'यहाँ किए गए {count} बदलाव कभी भेजे नहीं गए। उसी मास्टर से फिर जुड़ने पर वे भेजे जाएँगे; किसी दूसरे से जुड़ने पर वे अलग रख दिए जाएँगे।',
+  'connection.unpair.action': 'किसी दूसरे मास्टर से जुड़ें',
+  'connection.unpair.title': 'इस मास्टर को छोड़ें?',
+  'connection.unpair.body': 'यह PC {company} का उपयोग बंद कर देगा, और उसका सहेजा हुआ डेटा तथा ऑफ़लाइन साइन-इन वाले लोगों की सूची भूल जाएगा। बाद में इसे फिर जोड़ा जा सकता है। मास्टर पर यह तब तक ऑफ़लाइन दिखेगा जब तक कोई इसे सूची से हटा न दे।',
+  'connection.unpair.confirm': 'इस मास्टर को छोड़ें',
+  'connection.unpair.pendingTitle': 'जो बदलाव कभी भेजे नहीं गए',
+  'connection.unpair.pendingBody': 'इस PC पर किए गए {count} बदलाव मास्टर तक नहीं पहुँचे हैं। अभी छोड़ने पर वे इसी PC पर रहेंगे: उसी मास्टर से फिर जुड़ने पर भेजे जाएँगे, किसी दूसरे को कभी नहीं। या उन्हें अभी हटा दें।',
+  'connection.unpair.pendingBlocked': 'इस PC पर किए गए {count} बदलाव मास्टर को कभी भेजे नहीं गए।',
+  'connection.unpair.keep': 'रखें और छोड़ें',
+  'connection.unpair.discard': 'हटाएँ और छोड़ें',
+  'connection.unpair.forbidden': 'केवल पैनल सँभालने वाला व्यक्ति ही इस मास्टर को छोड़ सकता है।',
+  'connection.unpair.notPaired': 'यह PC जुड़ा हुआ नहीं है।',
+  'connection.unpair.done': 'इस PC ने मास्टर को छोड़ दिया।',
 };
