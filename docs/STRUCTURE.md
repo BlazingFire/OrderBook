@@ -4161,15 +4161,20 @@ Singleton `masterConnection` (an `EventEmitter`).
 - `office/src/services/master-binding.ts` (`master-binding.json`) — whose Master the cached
   snapshot/people/offline records belong to (`cacheMaster`), why a pairing was lost
   (`removed`, written by `forgetPairing` before the credentials go and shown on the connection
-  screen across restarts) and the PC's last panel id and secret (`lastPanelId`,
-  `lastPanelSecret`, sent as `previousPanelId` / `previousPanelSecret`, wiped after the next
-  pairing, never in a backup) so the Master can give the same PC its old row back. `adoptMaster()` runs after every pairing: the same
+  screen across restarts) and the PC's last panel id, the Master it belonged to and, only
+  when that Master was never told it left, its secret (`lastPanelId`, `lastMasterUniqueId`,
+  `lastPanelSecret`; wiped after the next pairing, never in a backup; on Windows the NTFS
+  permissions of the data folder protect the file, the 0600 mode does nothing). Pairing sends
+  `previousPanelId` only to that same Master (by the identity it announced or the person
+  entered) and `previousPanelSecret` only to a host that first proved it holds the secret
+  (`masterProves`, the `/api/panel/prove` HMAC), so the Master can give the same PC its old
+  row back and nobody else learns anything. `adoptMaster()` runs after every pairing: the same
   Master keeps cache and outbox; a different one drops the cache and **sets unsent changes
   aside** in `parked-outbox.json` (not deleted, not sent there).
 - `office/src/services/unpair.service.ts` — leave the Master on purpose (when connected it first
   sends `panel:leave`, protocol 9, with a 3 s ack, so the Master marks the row removed; an older
   or silent Master just means "leave locally")
-  (`POST /api/connection/unpair`, open before sign-in, `panels.manage` after): clears the
+  (`POST /api/connection/unpair`; `unpairAllowed()`: no sign-in only when this PC is not recognised or the Master cannot be reached, otherwise `panels.manage`, and discarding unsent work always needs that right): clears the
   pairing, cache and cursor; refuses with `pending_changes` and the count while unsent work
   exists until the caller says `keep` or `discard`.
 - `office/web/src/screens/SetupScreen.tsx` (the first sync after pairing, three steps, warns on a

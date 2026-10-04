@@ -40,6 +40,31 @@ export class UnpairError extends Error {
 /** How long to wait for the Master to acknowledge `panel:leave`: this is a courtesy, never a reason to hang. */
 const LEAVE_ACK_MS = 3_000;
 
+/**
+ * Who may make this PC leave its Master.
+ *
+ * Nobody is signed in when the Master is gone, replaced or not recognising this PC, and
+ * that is when a way out is needed, so those three cases need no sign-in. In every other
+ * case (connected, recognised) leaving is somebody's decision: a signed-in person with
+ * `panels.manage`. Discarding unsent work is never open: it destroys what somebody else
+ * made here, so it always needs that right, whatever the state.
+ */
+export function unpairAllowed(input: {
+  signedIn: boolean;
+  canManage: boolean;
+  state: 'unpaired' | 'connecting' | 'connected' | 'disconnected';
+  notRecognised: boolean;
+  discard: boolean;
+}): { ok: true } | { ok: false; messageKey: string } {
+  if (input.signedIn)
+    return input.canManage
+      ? { ok: true }
+      : { ok: false, messageKey: 'connection.unpair.forbidden' };
+  if (input.discard) return { ok: false, messageKey: 'connection.unpair.discardNeedsSignIn' };
+  if (input.notRecognised || input.state !== 'connected') return { ok: true };
+  return { ok: false, messageKey: 'connection.unpair.signInRequired' };
+}
+
 export interface UnpairResult {
   ok: true;
   /** The Master was told this PC is leaving (it marks the row removed, so nothing stale is left behind). */
@@ -82,7 +107,12 @@ export async function unpair(
   masterConnection.disconnect();
 
   await clearCredentials();
-  await rememberLastPanel(credentials.panelId, credentials.panelSecret);
+  // The secret only if the Master never heard: an acknowledged leave made the row dead.
+  await rememberLastPanel(
+    credentials.panelId,
+    notified ? null : credentials.panelSecret,
+    credentials.masterUniqueId,
+  );
   await dropCachedData();
 
   let discarded = 0;

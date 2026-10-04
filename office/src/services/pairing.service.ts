@@ -34,6 +34,7 @@ import { createLogger } from '../lib/logger.js';
 import { hasNetworkLink } from '../lib/network.js';
 import { discoverMasters, type DiscoveredMaster } from '../discovery/client.js';
 import { saveCredentials, type StoredCredentials } from './credentials.store.js';
+import { masterProves } from '../realtime/master-connection.js';
 import { previousPanel } from './master-binding.js';
 
 const log = createLogger('pairing');
@@ -266,6 +267,7 @@ export async function pairAutomatically(
     },
     options.signal,
     options.timeoutMs,
+    chosen.masterUniqueId,
   );
 }
 
@@ -291,6 +293,7 @@ export async function pairManually(input: {
     },
     input.signal,
     input.timeoutMs,
+    input.masterUniqueId,
   );
 }
 
@@ -409,12 +412,13 @@ async function requestPairing(
   request: PairingRequest,
   cancel?: AbortSignal,
   timeoutMs: number = PAIRING_TIMEOUT_MS,
+  targetMasterId?: string,
 ): Promise<StoredCredentials> {
   let firstFailure: PairingError | null = null;
 
   for (const host of hosts) {
     try {
-      return await requestPairingAt(host, port, request, cancel, timeoutMs);
+      return await requestPairingAt(host, port, request, cancel, timeoutMs, targetMasterId);
     } catch (error) {
       if (!(error instanceof PairingError) || !TRY_NEXT.has(error.code)) throw error;
       firstFailure ??= error;
@@ -432,17 +436,46 @@ async function requestPairing(
   );
 }
 
+/**
+ * What to say about this PC's earlier row, so the same PC coming back gets it (and its
+ * history) from the Master instead of a second one. The request travels over plain HTTP
+ * to whoever answered, so nothing is sent to a Master this PC has no reason to trust:
+ *  - the secret only after that host has **proved** it holds this PC's old secret (the
+ *    `/api/panel/prove` challenge: only the Master that issued it can answer); and
+ *  - the id only when the Master's own identity (from its announcement, or as the person
+ *    entered it) is the one the id belonged to.
+ * Anything else sends neither.
+ */
+async function previousPanelFields(
+  host: string,
+  port: number,
+  targetMasterId: string | undefined,
+): Promise<{ previousPanelId?: string; previousPanelSecret?: string }> {
+  const previous = await previousPanel().catch(() => null);
+  if (!previous) return {};
+
+  if (
+    previous.secret &&
+    (await masterProves(host, port, { panelId: previous.id, panelSecret: previous.secret }))
+  )
+    return { previousPanelId: previous.id, previousPanelSecret: previous.secret };
+
+  if (previous.masterUniqueId && targetMasterId === previous.masterUniqueId)
+    return { previousPanelId: previous.id };
+  return {};
+}
+
 async function requestPairingAt(
   host: string,
   port: number,
   request: PairingRequest,
   cancel: AbortSignal | undefined,
   timeoutMs: number,
+  targetMasterId: string | undefined,
 ): Promise<StoredCredentials> {
   const url = `http://${host}:${port}${PAIRING_ENDPOINT}`;
   const guard = withTimeout(timeoutMs, cancel);
-  // The same PC coming back gets its old row (and history) from the Master, not a second one.
-  const previous = await previousPanel().catch(() => null);
+  const previousFields = await previousPanelFields(host, port, targetMasterId);
 
   let response: Response;
   let text: string;
@@ -450,15 +483,7 @@ async function requestPairingAt(
     response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(
-        previous
-          ? {
-              ...request,
-              previousPanelId: previous.id,
-              ...(previous.secret ? { previousPanelSecret: previous.secret } : {}),
-            }
-          : request,
-      ),
+      body: JSON.stringify({ ...request, ...previousFields }),
       signal: guard.signal,
     });
     text = await response.text();

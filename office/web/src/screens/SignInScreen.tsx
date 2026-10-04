@@ -162,7 +162,10 @@ export function SignInScreen({ connection, onSignedIn, notice, onLeft }: Props) 
         {/* Above the card: it explains why this screen is here, which is not
             about the fields below. */}
         {notice && (
-          <p className="ob-small" style={{ textAlign: 'center', margin: 0, color: 'var(--accent)' }}>
+          <p
+            className="ob-small"
+            style={{ textAlign: 'center', margin: 0, color: 'var(--accent)' }}
+          >
             {t(notice)}
           </p>
         )}
@@ -316,10 +319,14 @@ export function SignInScreen({ connection, onSignedIn, notice, onLeft }: Props) 
         {/*
           The way out of a Master that is gone, replaced or wrong. Here, before anybody
           has signed in, because that is when it is needed; the Master cannot be asked.
+          Only then: while connected and recognised, leaving needs somebody signed in who
+          manages panels (Settings), and the server refuses it otherwise.
         */}
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 'var(--s-16)' }}>
-          <ConnectionUnpair company={connection.companyName} onDone={onLeft} />
-        </div>
+        {connection.state !== 'connected' || connection.notRecognised ? (
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 'var(--s-16)' }}>
+            <ConnectionUnpair company={connection.companyName} onDone={onLeft} canDiscard={false} />
+          </div>
+        ) : null}
       </div>
     </div>
   );

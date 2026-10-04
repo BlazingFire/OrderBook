@@ -123,7 +123,9 @@ describe('the link state on the sign-in screen', () => {
 describe('the Master removed this PC', () => {
   it('shows the pairing screen at once with the reason, not after a reload', async () => {
     await boot();
-    await screen.findByRole('button', { name: t('connection.unpair.action') }, { timeout: 10_000 });
+    // Connected and recognised: the sign-in screen, and no way out (that needs somebody who manages panels).
+    await screen.findByRole('button', { name: t('signin.submit') }, { timeout: 10_000 });
+    expect(screen.queryByRole('button', { name: t('connection.unpair.action') })).toBeNull();
 
     link = {
       ...UNPAIRED,

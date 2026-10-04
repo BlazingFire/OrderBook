@@ -313,12 +313,16 @@ describe('the connection screen', () => {
       type(address(), 'not an address');
       type(passwordBox(), 'pw');
       connect();
-      expect(await screen.findByText(t('connection.error.invalidAddress', ADDRESS_MESSAGE_PARAMS))).toBeTruthy();
+      expect(
+        await screen.findByText(t('connection.error.invalidAddress', ADDRESS_MESSAGE_PARAMS)),
+      ).toBeTruthy();
 
       type(address(), '192.168.1.10');
       type(portBox(), '70000');
       connect();
-      expect(await screen.findByText(t('connection.error.invalidPort', ADDRESS_MESSAGE_PARAMS))).toBeTruthy();
+      expect(
+        await screen.findByText(t('connection.error.invalidPort', ADDRESS_MESSAGE_PARAMS)),
+      ).toBeTruthy();
 
       type(portBox(), '');
       type(address(), '');
@@ -390,9 +394,20 @@ describe('the connection screen', () => {
         name: t('connection.manual.connect'),
       }) as HTMLButtonElement;
       expect(button.disabled).toBe(true);
+      // Said once, not twice (the banner is the only place), and it counts down.
+      expect(screen.getAllByText(t('connection.error.rateLimited', { seconds: 30 }))).toHaveLength(
+        1,
+      );
       expect(
-        screen.getAllByText(t('connection.error.rateLimited', { seconds: 30 })).length,
-      ).toBeGreaterThan(0);
+        await screen.findByText(
+          t('connection.error.rateLimited', { seconds: 29 }),
+          {},
+          { timeout: 3000 },
+        ),
+      ).toBeTruthy();
+      expect(screen.getByRole('alert').textContent).toContain(
+        t('connection.error.rateLimited', { seconds: 29 }),
+      );
     });
 
     it('shows progress while connecting and can be cancelled', async () => {
@@ -698,9 +713,13 @@ describe('leaving a Master from the screen', () => {
   interface Props {
     company: string | null;
     onDone: () => void;
+    canDiscard?: boolean;
   }
 
-  async function mount(route: (call: Call) => Response | undefined) {
+  async function mount(
+    route: (call: Call) => Response | undefined,
+    props: { canDiscard?: boolean } = {},
+  ) {
     const ConnectionUnpair = await loadScreen<Props>(
       'components/ConnectionUnpair.tsx',
       'ConnectionUnpair',
@@ -709,7 +728,7 @@ describe('leaving a Master from the screen', () => {
     const onDone = vi.fn();
     render(
       <Shell>
-        <ConnectionUnpair company="Shree Ceramics" onDone={onDone} />
+        <ConnectionUnpair company="Shree Ceramics" onDone={onDone} {...props} />
       </Shell>,
     );
     return { calls, onDone };
@@ -806,6 +825,30 @@ describe('leaving a Master from the screen', () => {
 
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     expect(body(posts(calls, '/api/connection/unpair').at(-1)!).pending).toBe('discard');
+  });
+
+  it('offers no discard where nobody is signed in', async () => {
+    await mount(
+      () =>
+        refusal(
+          'pending_changes',
+          'connection.unpair.pendingBlocked',
+          { count: 2 },
+          { count: 2 },
+          409,
+        ),
+      { canDiscard: false },
+    );
+
+    start();
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: t('connection.unpair.confirm'),
+      }),
+    );
+    await screen.findByText(t('connection.unpair.pendingBody', { count: 2 }));
+    expect(screen.getByRole('button', { name: t('connection.unpair.keep') })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: t('connection.unpair.discard') })).toBeNull();
   });
 
   it('cancelling the second question leaves nothing changed', async () => {

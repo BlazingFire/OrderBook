@@ -24,9 +24,17 @@ interface Props {
   onDone: () => void;
   variant?: ButtonVariant;
   size?: 'sm' | 'md';
+  /** False where nobody is signed in: discarding unsent work then is not offered (the server refuses it too). */
+  canDiscard?: boolean;
 }
 
-export function ConnectionUnpair({ company, onDone, variant = 'ghost', size = 'sm' }: Props) {
+export function ConnectionUnpair({
+  company,
+  onDone,
+  variant = 'ghost',
+  size = 'sm',
+  canDiscard = true,
+}: Props) {
   const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
   const [unsent, setUnsent] = useState<number | null>(null);
@@ -87,9 +95,11 @@ export function ConnectionUnpair({ company, onDone, variant = 'ghost', size = 's
             <Button variant="ghost" onClick={() => setUnsent(null)}>
               {t('action.cancel')}
             </Button>
-            <Button variant="danger" busy={busy} onClick={() => void leave('discard')}>
-              {t('connection.unpair.discard')}
-            </Button>
+            {canDiscard ? (
+              <Button variant="danger" busy={busy} onClick={() => void leave('discard')}>
+                {t('connection.unpair.discard')}
+              </Button>
+            ) : null}
             <Button variant="primary" busy={busy} onClick={() => void leave('keep')}>
               {t('connection.unpair.keep')}
             </Button>

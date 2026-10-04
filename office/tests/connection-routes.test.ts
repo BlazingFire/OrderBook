@@ -12,6 +12,8 @@ const state = {
   permissions: [] as string[],
   removed: null as unknown,
   pending: 0,
+  /** What the link to the Master says: the unpair rule reads it. */
+  link: { state: 'unpaired', notRecognised: false },
 };
 
 const pairAutomatically = vi.fn();
@@ -26,7 +28,7 @@ vi.mock('../src/realtime/master-connection.js', () => ({
     off: vi.fn(),
     isConnected: () => false,
     send: vi.fn(),
-    getStatus: () => ({ state: 'unpaired', hasNetworkLink: true }),
+    getStatus: () => ({ ...state.link, hasNetworkLink: true }),
     connect: vi.fn(async () => {
       order.push('connect');
     }),
@@ -92,6 +94,7 @@ beforeEach(() => {
   state.permissions = [];
   state.removed = null;
   state.pending = 0;
+  state.link = { state: 'unpaired', notRecognised: false };
   for (const mock of [pairAutomatically, pairManually, testConnection, unpair, adoptMaster])
     mock.mockReset();
   adoptMaster.mockImplementation(async () => {
@@ -250,25 +253,68 @@ describe('POST /api/connection/test', () => {
 });
 
 describe('POST /api/connection/unpair', () => {
-  it('is open before anybody has signed in: the Master may be gone', async () => {
-    unpair.mockResolvedValue({ ok: true, keptChanges: 0, discardedChanges: 0 });
+  const post = (body: Record<string, unknown> = {}) =>
+    request(createApp()).post('/api/connection/unpair').send(body);
+  const ok = () => unpair.mockResolvedValue({ ok: true, keptChanges: 0, discardedChanges: 0 });
 
-    const response = await request(createApp()).post('/api/connection/unpair').send({});
+  it('is open without a sign-in when the Master cannot be reached', async () => {
+    ok();
+    state.link = { state: 'disconnected', notRecognised: false };
 
-    expect(response.status).toBe(200);
+    expect((await post()).status).toBe(200);
     expect(unpair).toHaveBeenCalledWith({ pending: undefined });
   });
 
-  it('needs panels.manage once somebody is signed in', async () => {
-    state.session = { userId: 'u1' };
+  it('is open without a sign-in when the Master does not recognise this PC', async () => {
+    ok();
+    state.link = { state: 'connected', notRecognised: true };
 
-    const refused = await request(createApp()).post('/api/connection/unpair').send({});
-    expect(refused.status).toBe(403);
+    expect((await post()).status).toBe(200);
+  });
+
+  it('needs a signed-in person who manages panels while connected and recognised', async () => {
+    state.link = { state: 'connected', notRecognised: false };
+
+    const anonymous = await post();
+    expect(anonymous.status).toBe(403);
+    expect(anonymous.body.messageKey).toBe('connection.unpair.signInRequired');
+    expect(unpair).not.toHaveBeenCalled();
+
+    state.session = { userId: 'u1' };
+    const without = await post();
+    expect(without.status).toBe(403);
+    expect(without.body.messageKey).toBe('connection.unpair.forbidden');
     expect(unpair).not.toHaveBeenCalled();
 
     state.permissions = ['panels.manage'];
-    unpair.mockResolvedValue({ ok: true, keptChanges: 0, discardedChanges: 0 });
-    expect((await request(createApp()).post('/api/connection/unpair').send({})).status).toBe(200);
+    ok();
+    expect((await post()).status).toBe(200);
+  });
+
+  it('needs panels.manage once somebody is signed in, whatever the link says', async () => {
+    state.link = { state: 'disconnected', notRecognised: true };
+    state.session = { userId: 'u1' };
+
+    expect((await post()).status).toBe(403);
+    expect(unpair).not.toHaveBeenCalled();
+  });
+
+  it('never discards unsent work without a signed-in person who manages panels', async () => {
+    ok();
+    // Nobody signed in, Master gone: leaving is open, discarding is not.
+    state.link = { state: 'disconnected', notRecognised: true };
+    const refused = await post({ pending: 'discard' });
+    expect(refused.status).toBe(403);
+    expect(refused.body.messageKey).toBe('connection.unpair.discardNeedsSignIn');
+    expect(unpair).not.toHaveBeenCalled();
+
+    // Keep is fine.
+    expect((await post({ pending: 'keep' })).status).toBe(200);
+
+    state.session = { userId: 'u1' };
+    state.permissions = ['panels.manage'];
+    expect((await post({ pending: 'discard' })).status).toBe(200);
+    expect(unpair).toHaveBeenLastCalledWith({ pending: 'discard' });
   });
 
   it('refuses with the count while work is unsent, and passes keep or discard through', async () => {

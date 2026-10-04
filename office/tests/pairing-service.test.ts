@@ -17,6 +17,10 @@ const discover = vi.fn();
 /** The id this PC had before its pairing ended, if any (`master-binding.ts`). */
 let previous: string | null = null;
 let previousSecret: string | null = null;
+let previousMaster: string | null = null;
+/** Whether the host being paired with can answer the proof challenge for the old secret. */
+let proves = false;
+const proveCalls: unknown[][] = [];
 let network = true;
 
 vi.mock('../src/config/index.js', () => ({
@@ -36,7 +40,14 @@ vi.mock('../src/lib/network.js', () => ({
 }));
 vi.mock('../src/lib/app-version.js', () => ({ appVersion: () => '1.4.1' }));
 vi.mock('../src/services/master-binding.js', () => ({
-  previousPanel: async () => (previous ? { id: previous, secret: previousSecret } : null),
+  previousPanel: async () =>
+    previous ? { id: previous, secret: previousSecret, masterUniqueId: previousMaster } : null,
+}));
+vi.mock('../src/realtime/master-connection.js', () => ({
+  masterProves: async (...args: unknown[]) => {
+    proveCalls.push(args);
+    return proves;
+  },
 }));
 vi.mock('../src/services/credentials.store.js', () => ({
   saveCredentials: async (credentials: unknown) => {
@@ -56,6 +67,9 @@ let handler: Handler;
 beforeEach(async () => {
   previous = null;
   previousSecret = null;
+  previousMaster = null;
+  proves = false;
+  proveCalls.length = 0;
   saved.length = 0;
   discover.mockReset();
   network = true;
@@ -135,35 +149,63 @@ describe('manual pairing: what the Master said is recognised, not passed through
     });
   });
 
-  it('sends the id this PC had before, so the Master can give the same PC its row back', async () => {
+  it('sends the old id only to the Master it belonged to', async () => {
     handler = accept;
     previous = '99999999-9999-4999-8999-999999999999';
-    await manual();
-    expect(lastBody).toMatchObject({ previousPanelId: '99999999-9999-4999-8999-999999999999' });
+    previousMaster = 'master-1';
 
-    // No secret was kept (a revoke): the id goes alone.
+    // Manual entry says which Master the person means: the same one, so the id goes (no secret kept).
+    await manual({ masterUniqueId: 'master-1' });
+    expect(lastBody).toMatchObject({ previousPanelId: previous });
     expect(lastBody).not.toHaveProperty('previousPanelSecret');
+
+    // A different Master, or one that did not say who it is: neither field.
+    await manual({ masterUniqueId: 'master-2' });
+    expect(lastBody).not.toHaveProperty('previousPanelId');
+    await manual();
+    expect(lastBody).not.toHaveProperty('previousPanelId');
 
     // A PC that was never paired sends none.
     previous = null;
-    await manual();
+    await manual({ masterUniqueId: 'master-1' });
     expect(lastBody).not.toHaveProperty('previousPanelId');
   });
 
-  it('sends the secret with it, so an active row can be recognised as this PC’s', async () => {
+  it('sends the secret only to a host that proves it holds it', async () => {
     handler = accept;
     previous = '99999999-9999-4999-8999-999999999999';
     previousSecret = 'the-old-secret';
+    previousMaster = 'master-1';
+
+    proves = true;
     await manual();
     expect(lastBody).toMatchObject({
-      previousPanelId: '99999999-9999-4999-8999-999999999999',
+      previousPanelId: previous,
       previousPanelSecret: 'the-old-secret',
     });
+    expect(proveCalls[0]).toEqual([
+      '127.0.0.1',
+      port,
+      { panelId: previous, panelSecret: 'the-old-secret' },
+    ]);
+
+    // A host that cannot prove it, claiming a different Master: nothing, not even the id.
+    proves = false;
+    await manual({ masterUniqueId: 'someone-else' });
+    expect(lastBody).not.toHaveProperty('previousPanelId');
+    expect(lastBody).not.toHaveProperty('previousPanelSecret');
+    expect(JSON.stringify(lastBody)).not.toContain('the-old-secret');
+
+    // Claiming the same identity is not proof: the id may go, the secret never.
+    await manual({ masterUniqueId: 'master-1' });
+    expect(lastBody).toMatchObject({ previousPanelId: previous });
+    expect(lastBody).not.toHaveProperty('previousPanelSecret');
   });
 
   it('does not put the old secret in the log or in an error', async () => {
     previous = '99999999-9999-4999-8999-999999999999';
     previousSecret = 'the-old-secret';
+    proves = true;
     handler = refuse(401, { messageKey: 'error.unauthorized.incorrectPairingPassword' });
     const error = await failure(manual());
     expect(
@@ -171,12 +213,13 @@ describe('manual pairing: what the Master said is recognised, not passed through
     ).not.toContain('the-old-secret');
   });
 
-  it('sends it in auto mode too', async () => {
+  it('applies the same rule in auto mode, by the identity the Master announced', async () => {
     handler = accept;
     previous = 'old-panel';
-    discover.mockResolvedValue([
+    previousMaster = 'm';
+    const found = (id: string) => [
       {
-        masterUniqueId: 'm',
+        masterUniqueId: id,
         companyName: 'X',
         lanIp: '127.0.0.1',
         addresses: ['127.0.0.1'],
@@ -184,9 +227,14 @@ describe('manual pairing: what the Master said is recognised, not passed through
         acceptingPairing: true,
         nonce: 'n',
       },
-    ]);
+    ];
+    discover.mockResolvedValue(found('m'));
     await pairing.pairAutomatically();
     expect(lastBody).toMatchObject({ mode: 'auto', previousPanelId: 'old-panel' });
+
+    discover.mockResolvedValue(found('another'));
+    await pairing.pairAutomatically();
+    expect(lastBody).not.toHaveProperty('previousPanelId');
   });
 
   it('a wrong password is its own code, with a key to translate (not the Master’s English)', async () => {

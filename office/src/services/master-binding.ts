@@ -47,12 +47,17 @@ interface Binding {
   /** The panel id this PC had before its pairing ended, sent with the next pairing. */
   lastPanelId: string | null;
   /**
-   * The secret that went with it. With the id it lets the Master recognise the same PC
-   * and give it its row back even when the Master never learned this PC had left
-   * (an unpair while the Master was off). Kept in this 0600 file until the next
-   * successful pairing, then wiped; never logged, never exported in a backup.
+   * The secret that went with it, kept **only** when this PC left on its own and the
+   * Master could not be told (it was off, or too old): the row there is still active, and
+   * id plus secret is what lets the Master recognise the same PC and give it the row
+   * back. After a removal by the Master, or a leave the Master acknowledged, the row is
+   * dead and the secret is dropped. Wiped after the next successful pairing; never
+   * logged, never in a backup. (The file is created owner-only, but on Windows that
+   * mode does nothing: the NTFS permissions of the data folder are what protect it.)
    */
   lastPanelSecret: string | null;
+  /** The Master that id belonged to: nothing about it is sent to any other Master. */
+  lastMasterUniqueId: string | null;
 }
 
 interface ParkedBatch {
@@ -75,9 +80,17 @@ async function load(): Promise<Binding> {
       removed: parsed.removed ?? null,
       lastPanelId: typeof parsed.lastPanelId === 'string' ? parsed.lastPanelId : null,
       lastPanelSecret: typeof parsed.lastPanelSecret === 'string' ? parsed.lastPanelSecret : null,
+      lastMasterUniqueId:
+        typeof parsed.lastMasterUniqueId === 'string' ? parsed.lastMasterUniqueId : null,
     };
   } catch {
-    cache = { cacheMaster: null, removed: null, lastPanelId: null, lastPanelSecret: null };
+    cache = {
+      cacheMaster: null,
+      removed: null,
+      lastPanelId: null,
+      lastPanelSecret: null,
+      lastMasterUniqueId: null,
+    };
   }
   return cache;
 }
@@ -117,6 +130,7 @@ export async function adoptMaster(credentials: StoredCredentials): Promise<Adopt
       removed: null,
       lastPanelId: null,
       lastPanelSecret: null,
+      lastMasterUniqueId: null,
     });
     return { newMaster: false, parkedChanges: 0 };
   }
@@ -142,6 +156,7 @@ export async function adoptMaster(credentials: StoredCredentials): Promise<Adopt
     removed: null,
     lastPanelId: null,
     lastPanelSecret: null,
+    lastMasterUniqueId: null,
   });
   log.info(
     `Paired with a different Master than the cached data came from; started from a clean cache`,
@@ -189,7 +204,9 @@ export async function recordRemoved(credentials: StoredCredentials | null): Prom
   await save({
     cacheMaster: binding.cacheMaster ?? credentials.masterUniqueId,
     lastPanelId: credentials.panelId,
-    lastPanelSecret: credentials.panelSecret,
+    // The Master removed this PC: the row is dead, and so is the secret. Nothing to keep.
+    lastPanelSecret: null,
+    lastMasterUniqueId: credentials.masterUniqueId,
     removed: {
       at: new Date().toISOString(),
       companyName: credentials.companyName,
@@ -215,17 +232,36 @@ export async function recordCacheOwner(masterUniqueId: string | null): Promise<v
   await save({ ...binding, cacheMaster: masterUniqueId });
 }
 
-/** This PC left on purpose: remember its id and secret so the same PC can get its row back. */
+/**
+ * This PC left on purpose: remember its id (and which Master it was for) so the same PC
+ * can get its row back. The secret is passed only when the Master did not hear about it.
+ */
 export async function rememberLastPanel(
   panelId: string,
   panelSecret: string | null,
+  masterUniqueId: string,
 ): Promise<void> {
   const binding = await load();
-  await save({ ...binding, lastPanelId: panelId, lastPanelSecret: panelSecret });
+  await save({
+    ...binding,
+    lastPanelId: panelId,
+    lastPanelSecret: panelSecret,
+    lastMasterUniqueId: masterUniqueId,
+  });
 }
 
-/** What to send as `previousPanelId` / `previousPanelSecret` with the next pairing, if this PC had a pairing before. */
-export async function previousPanel(): Promise<{ id: string; secret: string | null } | null> {
+/** What may be sent with the next pairing, and to which Master only. */
+export async function previousPanel(): Promise<{
+  id: string;
+  secret: string | null;
+  masterUniqueId: string | null;
+} | null> {
   const binding = await load();
-  return binding.lastPanelId ? { id: binding.lastPanelId, secret: binding.lastPanelSecret } : null;
+  return binding.lastPanelId
+    ? {
+        id: binding.lastPanelId,
+        secret: binding.lastPanelSecret,
+        masterUniqueId: binding.lastMasterUniqueId,
+      }
+    : null;
 }

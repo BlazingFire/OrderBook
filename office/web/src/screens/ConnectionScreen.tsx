@@ -330,6 +330,11 @@ export function ConnectionScreen({ connection, onConnected }: Props) {
   }
 
   const waitSeconds = Math.max(0, Math.ceil((waitUntil - now) / 1000));
+  // The rate limit is said once, in the banner, counting down; it goes when the wait is over.
+  const rateLimited = failure?.code === 'rate_limited';
+  useEffect(() => {
+    if (rateLimited && waitSeconds === 0) setFailure(null);
+  }, [rateLimited, waitSeconds]);
   const searching = busy === 'auto' || busy === 'scan';
 
   const masterColumns: DataTableColumn<DiscoveredMaster>[] = [
@@ -466,7 +471,11 @@ export function ConnectionScreen({ connection, onConnected }: Props) {
 
       {failure ? (
         <div style={{ marginBottom: 'var(--s-16)' }}>
-          <ConflictBanner action={actions}>{failure.text}</ConflictBanner>
+          <ConflictBanner action={actions}>
+            {rateLimited
+              ? t('connection.error.rateLimited', { seconds: waitSeconds })
+              : failure.text}
+          </ConflictBanner>
           {failure.found.length > 0 ? (
             <ul
               className="ob-small"
@@ -825,11 +834,6 @@ export function ConnectionScreen({ connection, onConnected }: Props) {
                 </Button>
               ) : null}
             </div>
-            {waitSeconds > 0 ? (
-              <p className="ob-small" role="status" style={{ marginTop: 'var(--s-8)' }}>
-                {t('connection.error.rateLimited', { seconds: waitSeconds })}
-              </p>
-            ) : null}
           </form>
         </Card>
       )}

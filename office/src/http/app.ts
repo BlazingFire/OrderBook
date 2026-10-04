@@ -74,7 +74,7 @@ import {
   scanForMasters,
   testConnection,
 } from '../services/pairing.service.js';
-import { UnpairError, unpair } from '../services/unpair.service.js';
+import { UnpairError, unpair, unpairAllowed } from '../services/unpair.service.js';
 import * as updateService from '../services/update.service.js';
 import { UpdateError } from '../services/update.service.js';
 import * as userSession from '../services/user-session.service.js';
@@ -223,16 +223,24 @@ export function createApp(): Express {
   });
 
   /**
-   * Leave this Master (the Master is gone, wrong, or has been replaced). Open before
-   * anyone has signed in, since the connection screen is where it is wanted; once
-   * somebody is signed in it needs `panels.manage`.
+   * Leave this Master (the Master is gone, wrong, or has been replaced). Without a
+   * sign-in only when this PC is not recognised or the Master cannot be reached, and
+   * never to discard unsent work; otherwise `panels.manage` (see `unpairAllowed`).
    */
   app.post('/api/connection/unpair', async (req, res) => {
-    if (userSession.currentSession() && !userSession.can('panels.manage')) {
+    const status = masterConnection.getStatus();
+    const allowed = unpairAllowed({
+      signedIn: userSession.currentSession() !== null,
+      canManage: userSession.can('panels.manage'),
+      state: status.state,
+      notRecognised: status.notRecognised,
+      discard: req.body?.pending === 'discard',
+    });
+    if (!allowed.ok) {
       res.status(403).json({
         error: 'forbidden',
-        message: 'Only somebody who manages panels may unpair this PC',
-        messageKey: 'connection.unpair.forbidden',
+        message: 'This PC may not be unpaired from here right now',
+        messageKey: allowed.messageKey,
       });
       return;
     }
@@ -257,13 +265,11 @@ export function createApp(): Express {
         return;
       }
       log.error('Unpair failed', error);
-      res
-        .status(500)
-        .json({
-          error: 'unpair_failed',
-          message: 'Could not unpair',
-          messageKey: 'error.generic.internal',
-        });
+      res.status(500).json({
+        error: 'unpair_failed',
+        message: 'Could not unpair',
+        messageKey: 'error.generic.internal',
+      });
     }
   });
 

@@ -128,7 +128,10 @@ export function SetupScreen({ connection, result, onContinue, onLeft }: Props) {
           <Button variant="primary" onClick={onContinue}>
             {t('connection.setup.continue')}
           </Button>
-          <ConnectionUnpair company={company} onDone={onLeft} />
+          {/* Nobody is signed in here: the server allows leaving only when the Master cannot be reached. */}
+          {connection.state !== 'connected' || connection.notRecognised ? (
+            <ConnectionUnpair company={company} onDone={onLeft} canDiscard={false} />
+          ) : null}
         </div>
       </Card>
     </div>

@@ -138,7 +138,8 @@ describe('adopting a Master after pairing', () => {
 
   it('pairing with a different Master wipes the old id and secret too', async () => {
     const { binding } = await load();
-    await binding.recordRemoved(pairedWith('master-A'));
+    // The PC left on its own and the Master was never told: the secret is kept.
+    await binding.rememberLastPanel('11111111-1111-4111-8111-111111111111', 'secret', 'master-A');
     expect((await binding.previousPanel())?.secret).toBe('secret');
 
     await binding.adoptMaster({
@@ -197,9 +198,11 @@ describe('remembering that the Master removed this PC', () => {
 
     await binding.recordRemoved(pairedWith('master-A'));
     binding.resetBindingCache();
+    // A removal by the Master, or a leave it acknowledged: the row is dead, so is the secret.
     expect(await binding.previousPanel()).toEqual({
       id: '11111111-1111-4111-8111-111111111111',
-      secret: 'secret',
+      secret: null,
+      masterUniqueId: 'master-A',
     });
 
     await binding.adoptMaster({
@@ -234,9 +237,11 @@ describe('leaving a Master on purpose', () => {
     const { unpairService, binding } = await paired();
     await unpairService.unpair();
     binding.resetBindingCache();
+    // A removal by the Master, or a leave it acknowledged: the row is dead, so is the secret.
     expect(await binding.previousPanel()).toEqual({
       id: '11111111-1111-4111-8111-111111111111',
-      secret: 'secret',
+      secret: null,
+      masterUniqueId: 'master-A',
     });
   });
 
@@ -288,7 +293,10 @@ describe('leaving a Master on purpose', () => {
       expect(result).toMatchObject({ ok: true, notifiedMaster: false });
       expect(await credentials.loadCredentials()).toBeNull();
       // Not told, so the id and secret are what lets the Master recognise this PC later.
-      expect(await binding.previousPanel()).toMatchObject({ secret: 'secret' });
+      expect(await binding.previousPanel()).toMatchObject({
+        secret: 'secret',
+        masterUniqueId: 'master-A',
+      });
       binding.resetBindingCache();
       await fs.rm(path.join(dataDir, 'master-binding.json'), { force: true });
     }
