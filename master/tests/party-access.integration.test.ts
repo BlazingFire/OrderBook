@@ -803,6 +803,87 @@ describe.skipIf(!canRunIntegrationTests)('party access (integration)', () => {
       expect(failure).toBeInstanceOf(ForbiddenError);
     });
 
+    it('PAR-10: a grant held by a deactivated or deleted user is listed as inactive and survives a save', async () => {
+      const keep = await makePerson('keep.k');
+      const gone = await makePerson('gone.g');
+      const away = await makePerson('away.a');
+      const party = await catalog.createParty({ name: 'Held Traders' }, admin);
+      const held = await partyAccess.replaceAssignments(
+        party.id,
+        {
+          entries: [keep, gone, away].map((userId) => ({ userId, level: 'view' as const })),
+          expectedVersion: party.sync.version,
+        },
+        admin,
+      );
+      expect(held.assignees.every((person) => person.isActive)).toBe(true);
+
+      // One deactivated, one deleted: neither can sign in, so neither is "active", but the grant stays
+      // (and the party stays restricted: a restored user comes back holding their parties).
+      await db()('users').where({ id: away }).update({ is_active: false });
+      await db()('users').where({ id: gone }).update({ deleted_at: new Date() });
+
+      const row = await partyAccess.assignmentsForParty(party.id, admin);
+      expect(row.isRestricted).toBe(true);
+      expect(Object.fromEntries(row.assignees.map((person) => [person.userId, person.isActive]))).toEqual({
+        [keep]: true,
+        [gone]: false,
+        [away]: false,
+      });
+
+      // Changing the live person's level does not make the administrator strip the inactive ones first.
+      const saved = await partyAccess.replaceAssignments(
+        party.id,
+        {
+          entries: [
+            { userId: keep, level: 'manage' },
+            { userId: gone, level: 'view' },
+            { userId: away, level: 'view' },
+          ],
+          expectedVersion: row.version,
+        },
+        admin,
+      );
+      expect(saved.assignees).toHaveLength(3);
+      expect(saved.assignees.find((person) => person.userId === keep)?.level).toBe('manage');
+
+      // Removing them is a normal edit...
+      const trimmed = await partyAccess.replaceAssignments(
+        party.id,
+        { entries: [{ userId: keep, level: 'manage' }], expectedVersion: saved.version },
+        admin,
+      );
+      expect(trimmed.assignees.map((person) => person.userId)).toEqual([keep]);
+
+      // ...but a NEW grant to an inactive user is still refused.
+      const failure = await partyAccess
+        .replaceAssignments(
+          party.id,
+          {
+            entries: [
+              { userId: keep, level: 'manage' },
+              { userId: away, level: 'view' },
+            ],
+            expectedVersion: trimmed.version,
+          },
+          admin,
+        )
+        .catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(ValidationError);
+    });
+
+    it('PAR-11: a backslash in the search is the character, not an escape', async () => {
+      const slashed = await catalog.createParty({ name: 'Left\\Right Traders' }, admin);
+      await catalog.createParty({ name: 'LeftRight Traders' }, admin);
+      await catalog.createParty({ name: 'Left Right Traders' }, admin);
+
+      // Unescaped, `Left\R` would read `\R` as a plain `R` and also match "LeftRight".
+      expect(names(await partyAccess.listAssignments({ search: 'Left\\Right' }, admin))).toEqual([slashed.name]);
+      // A lone trailing backslash is a valid search, not a malformed pattern.
+      expect(names(await partyAccess.listAssignments({ search: 'Left\\' }, admin))).toEqual([slashed.name]);
+      expect(names(await partyAccess.listAssignments({ search: '\\' }, admin))).toEqual([slashed.name]);
+    });
+
     it('PAR-8: the summary is readable with party.accessAll alone, and refused without either key', async () => {
       await seedBook();
 

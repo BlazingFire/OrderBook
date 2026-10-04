@@ -59,18 +59,24 @@ export function Segmented<T extends string>({
   options,
   value,
   onChange,
+  label,
+  disabled,
 }: {
   options: { value: T; label: string }[];
   value: T;
   onChange: (value: T) => void;
+  /** The group's accessible name ("Access level for Ravi"); without it a screen reader hears only "group". */
+  label?: string;
+  disabled?: boolean;
 }) {
   return (
-    <div className="ob-seg" role="group">
+    <div className="ob-seg" role="group" aria-label={label}>
       {options.map((opt) => (
         <button
           key={opt.value}
           type="button"
           aria-pressed={value === opt.value}
+          disabled={disabled}
           onClick={() => onChange(opt.value)}
         >
           {opt.label}

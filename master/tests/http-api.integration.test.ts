@@ -397,6 +397,37 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
         expect(list.body.items).toMatchObject([{ id: party.id, recordCount: 1, myAccess: 'manage' }]);
       });
 
+      it('serves the people list to a party.accessAll reader with the narrow shape, and refuses a user with neither key (403)', async () => {
+        await initialize();
+        // These two keys sit above the office and management ceilings, so the roles are admin tier.
+        const adminWith = async (permissions: string[], username: string) => {
+          const owner = await testActor();
+          const role = await roles.createRole({ name: `Role ${username}`, tier: 'admin', permissions }, owner);
+          await users.createUser(
+            { username, displayName: username, roleId: role.id, password: 'correct-horse' },
+            owner,
+          );
+          const agent = request.agent(app);
+          await agent.post('/api/auth/sign-in').send({ username, password: 'correct-horse' }).expect(200);
+          return agent;
+        };
+        const reader = await adminWith(['party.accessAll'], 'reader');
+        const editor = await adminWith(['party.assign'], 'editor');
+        const stranger = await agentWith(['parties.view'], 'stranger');
+
+        const forReader = await reader.get('/api/party-access/people').expect(200);
+        expect(forReader.body.length).toBeGreaterThan(0);
+        for (const person of forReader.body as Array<Record<string, unknown>>) {
+          expect(Object.keys(person).sort()).toEqual(
+            ['avatar', 'displayName', 'id', 'roleName', 'roleTier', 'username'].sort(),
+          );
+        }
+        expect((await editor.get('/api/party-access/people').expect(200)).body).toEqual(forReader.body);
+
+        const refused = await stranger.get('/api/party-access/people').expect(403);
+        expect(refused.body).toMatchObject({ error: 'forbidden' });
+      });
+
       it('serves the Party Access summary before :partyId, and a sorted list that survives a bad sort', async () => {
         const { password } = await initialize();
         const admin = await signedInAgent(password);
