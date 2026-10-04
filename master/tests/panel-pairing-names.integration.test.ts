@@ -129,6 +129,34 @@ describe.skipIf(!canRunIntegrationTests)('pairing again (integration)', () => {
     expect((await db()('office_panels').where({ id: removedOne.panelId }).first()).status).toBe('revoked');
   });
 
+  it('numbers a the name of a revived row when another panel in use took it while the row was removed', async () => {
+    const first = await pairAs('Counter', 'COUNTER-PC');
+    await panels.revokePanel(first.panelId, await testActor());
+    expect((await pairAs('Counter', 'NEW-PC')).panelId).not.toBe(first.panelId);
+
+    const again = await pairAs('Counter', 'COUNTER-PC');
+
+    expect(again.panelId).toBe(first.panelId);
+    const names = (await rows()).map((row) => String(row.name)).sort();
+    expect(names).toEqual(['Counter', 'Counter 2']);
+    expect((await db()('office_panels').where({ id: first.panelId }).first()).name).toBe('Counter 2');
+  });
+
+  it('prefers a verified active row, then the removed row it names, then a removed row with its machine name', async () => {
+    const byHost = await pairAs('Host match', 'SHARED-PC');
+    await panels.revokePanel(byHost.panelId, await testActor());
+    const named = await pairAs('Named', 'OTHER-PC');
+    await panels.revokePanel(named.panelId, await testActor());
+
+    // Both removed rows could match; the one it names wins over the machine name.
+    panels.openPairingWindow();
+    const result = await panels.pairPanel(
+      { mode: 'auto', panelName: 'x', hostname: 'SHARED-PC', previousPanelId: named.panelId },
+      null,
+    );
+    expect(result.panelId).toBe(named.panelId);
+  });
+
   it('never takes over a row that is not removed: a reinstalled PC with its old row still active joins as a new panel', async () => {
     const first = await pairAs('Counter', 'COUNTER-PC');
     const second = await pairAs('Counter', 'COUNTER-PC');

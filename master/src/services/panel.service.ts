@@ -223,7 +223,8 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
           secret_hash: secretHash,
           master_proof_key: masterProofKey(panelSecret),
           lan_ip: remoteIp,
-          name: asked && !nameIsTaken(asked, others) ? asked : returning.name,
+          // The name it asked for, else the one it had; numbered if a panel in use took it while this one was away.
+          name: uniquePanelName(asked || returning.name, others),
         },
         trx,
       );
