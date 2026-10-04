@@ -167,13 +167,13 @@ Specifically:
   folder is taken and is still the one in use after the app is restarted.
 - **An AppImage update end to end on a real Linux PC**: download, verify,
   replace, relaunch, including a copy started with `--appimage-extract-and-run`;
-  and a `.deb` install shows the "install the new package" text instead of a
-  button. Only unit tests have run it so far.
+  and (for a `.deb` installed from a release up to 1.4.0; none is built now) the
+  "install the new package" text instead of a button. Only unit tests have run it so far.
 
 ### 4. A Windows install / update / uninstall rehearsal
 
 `docs/PRODUCTION_READINESS.md` §2 item 4: install 1.2.0, update over it, run
-the standalone `.exe`, uninstall, and run the clean-install tool — on a real
+uninstall, and run the clean-install tool — on a real
 Windows PC. None of it can be done from a Linux container.
 
 ---
@@ -247,8 +247,8 @@ work" has the same list with file names.
     the build for a panel's OS, the panel is told there is nothing new yet
     (`docs/UPDATES.md`, "When a new build shows up").
 13. **Clean Install's handling of a `.deb` is unsettled.** It lists `.deb` among
-    Linux setup files (`electron/lib/cleaner/setup-file.ts`), while the release
-    names a `.deb` in no manifest.
+    Linux setup files (`electron/lib/cleaner/setup-file.ts`), while no release
+    names a `.deb` in a manifest (and since 1.4.1 none is built).
 
 **Master UI.**
 
@@ -289,7 +289,7 @@ block in a YAML file nobody built from.
    server binary), and verifies after copying that `initdb`, `pg_ctl` and
    `postgres` exist, are executable and have a non-empty `share/`.
 2. **Neither panel's `electron-builder.yml` had a `linux:` block.** Both now
-   build an AppImage **and** a `.deb`, with the `executableName` that stops the
+   build an AppImage (and, until 1.4.0, a `.deb`), with the `executableName` that stops the
    binary shipping as `@orderbookmaster`.
 
 Three things followed from those:
@@ -309,7 +309,7 @@ Three things followed from those:
 
 ### What was actually run, and what was not
 
-On this Linux container, for real: both panels built to AppImage and `.deb`;
+On this Linux container, for real: both panels built to AppImage and `.deb` (the `.deb` is no longer built, 1.4.1);
 `initdb`/`pg_ctl`/`postgres` inside the packaged Master execute and report
 17.10; the 14 `lib/` symlinks are present; the packaged Master, launched under
 `xvfb-run` as a non-root account, **created its own cluster and database** and

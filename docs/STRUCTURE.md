@@ -1167,7 +1167,7 @@ eight methods are optional because older shells lack them (1.3 H3 widens `printP
 (1.3 Phase 8, a backup zip for Magic restore),
 `getDataDir`, `setDataDir`, `getShellSettings` (incl. `standalone?` and, since
 2026-09-25, `systemPackage?` — a Linux copy not started from an AppImage, in a
-shipped build the `.deb`, which `applyUpdate` refuses), `setShellSettings`,
+shipped build a `.deb` from a release up to 1.4.0, which `applyUpdate` refuses), `setShellSettings`,
 `openLogFolder`, `uninstall({keepData})`, `onMenuCommand`, and later `listPrinters`,
 `printPage` (2026-09-30) and `notify({title, body})` (1.3 Phase 3: a system
 notification plus a taskbar flash, `false` when the shell could not show it).
