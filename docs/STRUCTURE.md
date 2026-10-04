@@ -1167,7 +1167,7 @@ eight methods are optional because older shells lack them (1.3 H3 widens `printP
 (1.3 Phase 8, a backup zip for Magic restore),
 `getDataDir`, `setDataDir`, `getShellSettings` (incl. `standalone?` and, since
 2026-09-25, `systemPackage?` — a Linux copy not started from an AppImage, in a
-shipped build the `.deb`, which `applyUpdate` refuses), `setShellSettings`,
+shipped build a `.deb` from a release up to 1.4.0, which `applyUpdate` refuses), `setShellSettings`,
 `openLogFolder`, `uninstall({keepData})`, `onMenuCommand`, and later `listPrinters`,
 `printPage` (2026-09-30) and `notify({title, body})` (1.3 Phase 3: a system
 notification plus a taskbar flash, `false` when the shell could not show it).
@@ -4686,9 +4686,8 @@ npm run release -- --os <win|mac|linux|win7>     (tools/release.mjs, on the matc
      ([win7] tsc -p electron/tsconfig.legacy.json -> copy build/shell-legacy + {"type":"commonjs"})
   -> [mac] fetch the other CPU's native packages -> [master] vendor PostgreSQL
   -> stage <panel>/staging -> electron-builder -> build/<panel>/OrderBook-<Panel>-<v>-Setup.<ext>
-     (+ -Standalone.exe on Windows, -Setup.deb on Linux)
-  -> publish to <RELEASES_DIR>/<panel>-panel/: the setup file, each file built
-     beside it with a .sha256, then latest-<platform>.json (optionally signed;
+     
+  -> publish to <RELEASES_DIR>/<panel>-panel/: the setup file, then latest-<platform>.json (optionally signed;
      + latest.json on Windows)
 
 Installed app:  resources/app.asar  = electron/dist (the shell only)
@@ -4901,8 +4900,8 @@ dev:master` / `npm run dev:office` with a browser, or the `.bat` launchers (§5.
 `npm run … --workspaces --if-present` skips it. `release.mjs` builds the cleaner
 only with `--panel cleaner` and never publishes it. **CI never builds it.**
 
-**Known, not changed — the tool and a `.deb`.** Now that the panels ship a `.deb`
-(§10.4), the tool's install step does not fit it: `verifySetupFile` accepts `.deb` as
+**Known, not changed — the tool and a `.deb`.** Releases up to 1.4.0 shipped a `.deb`
+(§10.4; none since 1.4.1), but if somebody holds one, the tool's install step does not fit it: `verifySetupFile` accepts `.deb` as
 a Linux setup file (`EXTENSIONS.linux` in `electron/lib/cleaner/setup-file.ts`), but
 no manifest ever names a `.deb`, and `cleaner:install` then `spawn`s it as it would an
 AppImage, which does not install a package (that takes `apt install ./<file>`).
@@ -4911,7 +4910,7 @@ AppImage, which does not install a package (that takes `apt install ./<file>`).
 
 The two ymls differ only in names (`appId`, `productName`, Linux `executableName`
 and `synopsis`), the output folder (`../build/master` vs `../build/office`), the
-portable `unpackDirName`, every `artifactName`, and comments. Neither contains a
+every `artifactName`, and comments. Neither contains a
 port. Every file they configure is one `release.mjs` publishes:
 `master/tests/packaging-invariants.test.ts` reads every shape a yml target can take
 (inline, listed or absent `arch`; `- zip`, `target: [dmg, zip]`) and holds the
@@ -4928,9 +4927,9 @@ targets equal to what `release.mjs` picks up.
 
 | OS | Targets | Artifacts | Notes |
 |---|---|---|---|
-| Windows | `nsis` x64 + `portable` x64 | `OrderBook-<Panel>-${version}-Setup.exe`, `…-Standalone.exe` | unsigned (`signAndEditExecutable: false`); NSIS `oneClick: false`, `perMachine: true`, `deleteAppDataOnUninstall: false`, `include: installer/installer.nsh`; portable `requestExecutionLevel: user`, `unpackDirName: OrderBook-Master`/`OrderBook-Office` |
+| Windows | `nsis` x64 | `OrderBook-<Panel>-${version}-Setup.exe` | unsigned (`signAndEditExecutable: false`); NSIS `oneClick: false`, `perMachine: true`, `deleteAppDataOnUninstall: false`, `include: installer/installer.nsh`; no `portable` target (removed 1.4.1: setups only) |
 | macOS | `dmg` universal (the `.zip` target was dropped on 2026-09-25: nothing read it) | `…-Setup.dmg` | **`x64ArchFiles: Contents/Resources/panel/**`** (the staged panel is identical in both halves and left out of the lipo merge; Electron binaries are still merged); `hardenedRuntime: true`, `notarize: false`, entitlements from `installer/entitlements.mac.plist`, `NSLocalNetworkUsageDescription` (LAN discovery on macOS 14+); signs only if an identity is in the keychain (electron-builder 25 has no ad-hoc fallback); drag-to-Applications dmg layout |
-| Linux | `AppImage` x64 + `deb` x64 | `…-Setup.AppImage`, `…-Setup.deb` | both published since 2026-09-25: the AppImage is the setup file the manifest names and the in-app update replaces; the `.deb` (installs into `/opt/<productName>` with a desktop entry) is published beside it with a `.sha256` and named by no manifest; `executableName: orderbook-master`/`orderbook-office`; `publish: null`; maintainer `OrderBook <releases@orderbook.local>`; modern Electron `deb.depends`. x64 only: `assertHostArch()` refuses the Master's build off x64 (it stages the build machine's `sharp` and PostgreSQL); the Office's builds anywhere |
+| Linux | `AppImage` x64 | `…-Setup.AppImage` | the setup file the manifest names and the in-app update replaces. The `.deb` target (published beside the AppImage 2026-09-25 to 1.4.0) was removed in 1.4.1: setups only; `executableName: orderbook-master`/`orderbook-office`; `publish: null`; maintainer `OrderBook <releases@orderbook.local>`. x64 only: `assertHostArch()` refuses the Master's build off x64 (it stages the build machine's `sharp` and PostgreSQL); the Office's builds anywhere |
 
 - `master/installer/installer.nsh` — `customInstall` adds firewall rules (TCP 4100,
   UDP 45789); `customUnInit` copies `uninstall-orderbook.ps1` to
@@ -4943,9 +4942,8 @@ targets equal to what `release.mjs` picks up.
 - `office/electron-builder.legacy.yml` — **the Windows 7 Office build.** Written out
   in full (not an `extends`, so the invariants test can read it): the same `appId`,
   `productName`, `directories`, `files`, `extraResources`, icon and NSIS settings as
-  `office/electron-builder.yml`; `win` only, `nsis` and `portable` each for
-  `[x64, ia32]` in one file; artifacts `OrderBook-Office-Win7-${version}-Setup.exe`
-  and `…-Standalone.exe`; `include: installer/installer-legacy.nsh`. Electron 22.3.27
+  `office/electron-builder.yml`; `win` only, `nsis` for
+  `[x64, ia32]` in one file; artifact `OrderBook-Office-Win7-${version}-Setup.exe`; `include: installer/installer-legacy.nsh`. Electron 22.3.27
   comes from `release.mjs` (`tools/legacy-electron.mjs`), not the yml.
 - `office/installer/installer-legacy.nsh` — `!include "${__FILEDIR__}\installer.nsh"`
   (by its own folder: electron-builder's template folder has an `installer.nsh` too),
@@ -4985,12 +4983,12 @@ win|mac|linux|win7]`. `RELEASES_DIR` = `ORDERBOOK_RELEASES_DIR` or
 architecture), `office`, `cleaner` (`serverless`, `publish: false`,
 `artifact: 'CleanInstall'`).
 
-| `--os` | `builderFlag` | `platform` | `ext` | `arch` | `postgres` packages | Builds on | `besides` (published next to the setup file) |
-|---|---|---|---|---|---|---|---|
-| `win` | `--win` | `win32` | `exe` | `x64` | `windows-x64` | win32 | `Standalone.exe` |
-| `mac` | `--mac` | `darwin` | `dmg` | — (`universal: true`) | `darwin-x64`, `darwin-arm64` | darwin | — |
-| `linux` | `--linux` | `linux` | `AppImage` | `x64` | `linux-x64` (until 2026-09-25, the build host's arch) | linux | `Setup.deb` |
-| `win7` | `--win` | `win7` | `exe` | `x64` (`archs: ['x64','ia32']`) | — | win32 | `Standalone.exe` |
+| `--os` | `builderFlag` | `platform` | `ext` | `arch` | `postgres` packages | Builds on |
+|---|---|---|---|---|---|---|
+| `win` | `--win` | `win32` | `exe` | `x64` | `windows-x64` | win32 |
+| `mac` | `--mac` | `darwin` | `dmg` | — (`universal: true`) | `darwin-x64`, `darwin-arm64` | darwin |
+| `linux` | `--linux` | `linux` | `AppImage` | `x64` | `linux-x64` (until 2026-09-25, the build host's arch) | linux |
+| `win7` | `--win` | `win7` | `exe` | `x64` (`archs: ['x64','ia32']`) | — | win32 |
 
 `win7` is the Windows 7 Office build and carries the optional fields: `panels:
 ['office']` (the default panel list for the target; `--panel master` or `cleaner` is
@@ -5000,9 +4998,7 @@ refused, naming Windows 10 and PostgreSQL 17), `config:
 33), `legacyShell: true` (step 6.2 compiles `electron/tsconfig.legacy.json` into a
 fresh `build/shell-legacy`, copies it into `office/electron/dist` and writes
 `{"type":"commonjs"}` beside it) and `tag: 'Win7'` (every file name becomes
-`OrderBook-Office-Win7-<v>-…`). `--fast` is allowed for any `--win` target and, for
-one with `archs`, names them again (`--x64 --ia32`), because a target given on the
-command line drops the yml's arch list. Its manifest is `latest-win7.json`; no
+`OrderBook-Office-Win7-<v>-…`). There is no `--fast` (removed 1.4.1: it built the Standalone only). Its manifest is `latest-win7.json`; no
 `latest.json` shim.
 
 1. **`assertTarget()`** refuses an unknown `--os` or a target not buildable on this
@@ -5047,13 +5043,9 @@ command line drops the yml's arch list. Its manifest is `latest-win7.json`; no
    6. `npx electron-builder <builderFlag> --config electron-builder.yml
       --config.electronVersion=<installed>` from the panel's directory.
    7. Requires the exact `OrderBook-<label>-<version>-Setup.<ext>` in
-      `build/<panel>/`, plus, for a published panel, each `besides` file
-      (`-Standalone.exe` on Windows, `-Setup.deb` on Linux); otherwise throws listing
-      what was built.
+      `build/<panel>/`; otherwise throws listing what was built.
 7. **`publish()`** (skips the cleaner): copies the setup file to
-   `RELEASES_DIR/<panel>-panel/`; `publishBeside()` copies each `besides` file and
-   writes `<file>.sha256` in `sha256sum -c` format — neither is named by a manifest,
-   both are installed or replaced by hand; builds `{panel, platform, version, file,
+   `RELEASES_DIR/<panel>-panel/` (no Standalone, `.deb` or `.sha256` since 1.4.1); builds `{panel, platform, version, file,
    sizeBytes, sha256, releasedAt, notes?}` and **`sign()`**s it (Ed25519 over the
    `SIGNED_FIELDS` lines with the PEM at `ORDERBOOK_RELEASE_KEY` and id
    `ORDERBOOK_RELEASE_KEY_ID`; no key → warn and publish unsigned; key without id →
@@ -5109,9 +5101,7 @@ packages nothing; the Release workflow runs no tests.
   `ORDERBOOK_RELEASE_KEY_ID=${{ vars.RELEASE_KEY_ID }}`, `ORDERBOOK_RELEASE_NOTES`;
   collect each `<panel>-panel/latest-<platform>.json` as
   `latest-<panel>-<platform>.json`, the Windows `latest.json` as
-  `latest-<panel>.json`, and every non-JSON `OrderBook-*` file — the setup file and
-  what `publishBeside()` put next to it (the standalone `.exe`, the `.deb`, each with
-  its `.sha256`); `gh release upload <tag> … --clobber`.
+  `latest-<panel>.json`, and every `OrderBook-*-Setup.*` file (the setup file alone); `gh release upload <tag> … --clobber`.
 
 ### 10.8 How updates reach panels
 
@@ -5154,8 +5144,8 @@ packages nothing; the Release workflow runs no tests.
      in-flight key `${panel}:${platform}`) and is told "nothing new yet" until it
      lands. **Known, not changed:** the Updates screens have no "fetching" reason to
      show meanwhile. Tests UPD-48…63 in `master/tests/github-releases.test.ts`;
-     `master/tests/release-folder-besides.test.ts` holds the sweep off the `.deb` and
-     the standalone `.exe`.
+     `master/tests/release-folder-besides.test.ts` holds the sweep off hand-copied `.deb` and
+     standalone `.exe` files from releases up to 1.4.0.
 2. **Reading the folder:** `readManifest(panel, platform)` tries
    `latest-<platform>.json`, then `latest.json`, and uses the **first readable one**
    (no fall-through if it later fails a check). Only `ENOENT` moves on to the next
@@ -5240,9 +5230,8 @@ packages nothing; the Release workflow runs no tests.
    `package.json` `workspaces`, so no workspace can be left out (the test was seen
    failing on a mismatched `cleaner/package.json`).
 2. **Fixed 2026-09-25 — the `.zip` and `.deb` were built and never published.** The
-   mac `.zip` target is gone (nothing read it); the `.deb` is published beside the
-   AppImage with a `.sha256` (`TARGETS.linux.besides`, `publishBeside()`), and the
-   yml and `release.yml` comments say so.
+   mac `.zip` target is gone (nothing read it); the `.deb` was published beside the
+   AppImage until 1.4.0 and is no longer built (1.4.1, setups only).
 3. **Fixed 2026-09-25 — a GitHub sync wrote only `latest.json`**, so a stale
    `latest-<platform>.json` left by `release.mjs` shadowed it and the panel saw "no
    update" with the new build on disk. The sync now writes the names `release.mjs`
@@ -5706,8 +5695,8 @@ manages panels.
 
 1. **Build:** `npm run release -- --os <os>` on the matching OS, locally or in
    `.github/workflows/release.yml` (§10.6–§10.7; only `main` publishes a real
-   release), producing setup files, the Windows standalone `.exe` and the Linux
-   `.deb` beside them with a `.sha256` each, and `latest-<platform>.json` (optionally
+   release), producing setup files only (since 1.4.1; before that also the Windows standalone `.exe` and the Linux
+   `.deb` with a `.sha256` each), and `latest-<platform>.json` (optionally
    signed with the key from `npm run release:keygen`).
 2. **Deliver to the Master:** copy the output into `config.releasesDir` by hand, or
    let `syncFromGitHub()` fetch it when `ORDERBOOK_RELEASES_GITHUB_REPO` is set.
@@ -6140,7 +6129,7 @@ They read files and assert on the text; they need no database and cannot skip.
   platform-named manifest, per-OS sweeps, the AppImage sweep and the running one
   spared, download timing with a real local server and a fake clock, pinning while
   verifying, polling every OS asked for), `release-signature`, `updates`,
-  `release-folder-besides` (the sweep leaves the `.deb`, the standalone `.exe` and
+  `release-folder-besides` (the sweep leaves hand-copied `.deb` and standalone `.exe` files, and
   their `.sha256` alone) and `release-workflow` (the Release workflow's `check` step
   lifted out of the yml and run under bash with `gh` and `git` stubbed; skipped on
   Windows).
@@ -6562,7 +6551,7 @@ also imports `masterConnection`.
 | Change sync merge rules | `shared/src/sync/merge.ts`, `MERGEABLE_COLUMNS` in `shared/src/domain/columns.ts`, `sync.service.ts#mergeUpdate` | `shared/tests/sync.test.ts`, `master/tests/sync.integration.test.ts` |
 | Change the backup format | `shared/src/protocol/backup.ts`, **both** `master/src/lib/backup-crypto.ts` and `office/src/lib/backup-crypto.ts`, `master/src/repositories/backup.repository.ts` | `master/tests/backup-crypto.test.ts`, `master/tests/backup-domain.test.ts`, `master/tests/backup-chain.integration.test.ts`, `master/tests/backup-sequences.integration.test.ts`, `master/tests/password-vault-invariants.test.ts` |
 | Change how PostgreSQL is found or started | `master/src/db/postgres-server.ts` (`candidateBinDirs`), and `vendorPostgres()` in `tools/release.mjs` for the vendor layout | `master/tests/postgres-launcher.test.ts`, `master/tests/packaging-invariants.test.ts` |
-| Change the release pipeline, packaging or the mac build | `tools/release.mjs` (`TARGETS`, `besides`, `native`), `master/electron-builder.yml`, `office/electron-builder.yml`, `office/electron-builder.legacy.yml` (the Windows 7 build, kept in step with the main Office yml), `cleaner/electron-builder.yml`, `.github/workflows/release.yml`, root `allowScripts`; every yml target must be one `release.mjs` publishes | `master/tests/packaging-invariants.test.ts`, `master/tests/release-signed-fields.test.ts`, `master/tests/release-workflow.test.ts`, `master/tests/release-folder-besides.test.ts` |
+| Change the release pipeline, packaging or the mac build | `tools/release.mjs` (`TARGETS`, `native`), `master/electron-builder.yml`, `office/electron-builder.yml`, `office/electron-builder.legacy.yml` (the Windows 7 build, kept in step with the main Office yml), `cleaner/electron-builder.yml`, `.github/workflows/release.yml`, root `allowScripts`; every yml target must be one `release.mjs` publishes | `master/tests/packaging-invariants.test.ts`, `master/tests/release-signed-fields.test.ts`, `master/tests/release-workflow.test.ts`, `master/tests/release-folder-besides.test.ts` |
 | Change which fields a release signature covers | `SIGNED_MANIFEST_FIELDS` in `shared/src/domain/release-signature.ts` **and** `SIGNED_FIELDS` in `tools/release.mjs` together; the verifier is duplicated byte for byte in `master/src/lib/release-signature.ts` and `office/src/lib/release-signature.ts` — change both | `master/tests/release-signed-fields.test.ts`, `master/tests/release-signature.test.ts` (Master copy only; nothing pins the two copies equal) |
 | Change what an uninstall removes | `tools/uninstall/uninstall-orderbook.ps1` (PowerShell 2.0 only: Windows 7 runs it) and `tools/uninstall/uninstall-orderbook.sh` — one copy, four callers; if you touch a flag, also `electron/lib/uninstall.ts` and both `installer/installer.nsh` | `electron/tests/uninstall.test.ts` (pins the spelling in five places), `master/tests/packaging-invariants.test.ts`, `electron/tests/cleaner-detect.test.ts` |
 | Change the desktop shell | `electron/shell.ts` and the pure helpers in `electron/lib/` (keep logic there so it stays testable); a server's environment in its entrypoint or `electron/lib/office-env.ts`, and only variables that server reads; anything that names the log uses `openLogPath()` | `electron/tests/*` (`health`, `supervisor`, `installer`, `appimage`, `standalone`, `uninstall`, `office-env`, `server-env`, `shell-log`) |

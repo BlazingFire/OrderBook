@@ -1,15 +1,16 @@
 /**
  * The files published beside a setup file survive the Master's releases folder.
  *
- * `tools/release.mjs` publishes two kinds of file that no manifest names: the
- * Windows `-Standalone.exe` and the Linux `-Setup.deb`, each with a `.sha256`.
- * Both reach a Master's releases folder only by an operator copying a release
- * folder in, and nothing on the Master ever writes one — so the sweep that
- * clears superseded builds after a GitHub sync must never take one, and the
- * reader must go on answering with the file the manifest names.
+ * Releases up to 1.4.0 published two kinds of file that no manifest names: the
+ * Windows `-Standalone.exe` and the Linux `-Setup.deb`, each with a `.sha256`
+ * (1.4.1 stopped: `tools/release.mjs` publishes setup files only). Copies of
+ * them stay in releases folders already in the field, put there by an operator
+ * copying a release folder in, and nothing on the Master ever writes one — so
+ * the sweep that clears superseded builds after a GitHub sync must never take
+ * one, and the reader must go on answering with the file the manifest names.
  *
  * `github-releases.test.ts` covers the sweep's own rules. This pins the two
- * names the release script publishes against it, so that widening the sweep's
+ * names the old releases published against it, so that widening the sweep's
  * pattern (to take old AppImages, say) cannot quietly start deleting a `.deb`
  * somebody put there to install by hand.
  */

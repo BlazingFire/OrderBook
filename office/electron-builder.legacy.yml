@@ -51,14 +51,7 @@ win:
   target:
     - target: nsis
       arch: [x64, ia32]
-    - target: portable
-      arch: [x64, ia32]
   signAndEditExecutable: false
-
-portable:
-  requestExecutionLevel: user
-  unpackDirName: OrderBook-Office
-  artifactName: OrderBook-Office-Win7-${version}-Standalone.${ext}
 
 nsis:
   oneClick: false

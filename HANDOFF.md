@@ -358,10 +358,11 @@ committed to local `main` after its gate passed: lint 0, typecheck 0, build 0,
   (resolves `tsc`/`vite` from `node_modules/.bin` by path, points
   `TEMP`/`TMP` at a gitignored `.tmp/` for the Windows esbuild/Defender lock).
 - **Releases:** `.github/workflows/release.yml` builds on a three-OS matrix
-  (Windows setup + standalone `.exe`, macOS universal `.dmg`, Linux
-  AppImage + `.deb`). The standalone `.exe` and the `.deb` are published
-  beside the setup files with a `.sha256` each (`TARGETS[*].besides` in
-  `tools/release.mjs`) and are named by no manifest; the mac `.zip` is no
+  (Windows setup, macOS universal `.dmg`, Linux AppImage). **Since 1.4.1 setup
+  files only**: the standalone `.exe`, the `.deb` and the `.sha256` files, and
+  `TARGETS[*].besides`/`publishBeside()`/`--fast` in `tools/release.mjs`, are gone
+  (batch C6); before that the standalone `.exe` and `.deb` were published
+  beside the setup files and named by no manifest; the mac `.zip` is no
   longer built (nothing read it). **All three legs were green on 2026-09-25**
   (build-only run #37 on `dev` at `7d6ae68`, draft pre-release
   `build-1.2.0-7d6ae68`), so this round's release changes have built on
@@ -901,8 +902,8 @@ branch deletion and tag pushes (HTTP 403), and the last needs real Macs:
 4. **Windows 7 acceptance on real PCs** (1.3 Phase 0, `docs/WINDOWS7.md`).
    On a 64-bit and a 32-bit Windows 7 SP1 PC: install the Win7 Setup, pair
    with a Windows 10 Master, create a pending order online and offline,
-   print an order note, update over the LAN to the next build, run the
-   Standalone file, uninstall with and without keeping data, and open the
+   print an order note, update over the LAN to the next build, uninstall with
+   and without keeping data, and open the
    Master UI in Chrome 109. That uninstall is also the first run of
    `tools/uninstall/uninstall-orderbook.ps1` on PowerShell 2.0 (only its
    constructs are tested here). The `wmic` free-disk fallback in

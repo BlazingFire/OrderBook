@@ -9,7 +9,6 @@ PostgreSQL 17 it carries does not run on Windows 7.
 | File | What it is |
 |---|---|
 | `OrderBook-Office-Win7-<version>-Setup.exe` | The installer. One file for 64-bit and 32-bit Windows. |
-| `OrderBook-Office-Win7-<version>-Standalone.exe` | The same panel as one file that runs without installing. |
 
 Both sit in the releases folder's `office-panel` folder (and on the GitHub
 release) beside the normal Office files. Install either on the Windows 7 PC
@@ -77,7 +76,6 @@ Windows 7 build, and keeps taking Windows 7 updates.
 
 ```bash
 npm run release -- --os win7          # on Windows: the Office only, x64 and ia32
-npm run release -- --os win7 --fast   # just the Standalone .exe, uncompressed
 ```
 
 The GitHub Release workflow builds it on its own leg. A build by hand needs
@@ -118,6 +116,5 @@ CommonJS shell. The `legacy-runtime` CI job runs it on Windows.
 What only a real Windows 7 PC proves, and is still owed: install the Setup
 file on a 64-bit and a 32-bit Windows 7 SP1 PC (and 8.1 if a shop runs it),
 pair with a Windows 10 Master, create a pending order online and offline,
-print an order note, update from the Master to the next build, run the
-Standalone file, uninstall with and without keeping data, and open the Master
+print an order note, update from the Master to the next build, uninstall with and without keeping data, and open the Master
 in Chrome 109 on the Windows 7 PC.

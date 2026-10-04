@@ -9,11 +9,10 @@ name: Release
 # makes `npm version` (or editing that one field) the publish gesture.
 #
 #   1. Bump the version and push to main.
-#   2. This builds both panels on all three operating systems (plus the two
-#      standalone `.exe`s on Windows and the two `.deb`s on Linux, published
-#      for installing by hand and named by no manifest), and the Windows 7
+#   2. This builds both panels on all three operating systems and the Windows 7
 #      Office build on a fourth leg, signs each manifest, and publishes one
-#      GitHub Release holding every artefact.
+#      GitHub Release holding the setup files and the manifests, nothing else
+#      (no standalone `.exe`, no `.deb`, no `.sha256`).
 #   3. Each Master polls that release, verifies the signature, downloads into
 #      its releases folder, and serves the office build to its panels over the
 #      LAN exactly as it does for a USB stick today.
@@ -309,16 +308,10 @@ jobs:
               cp "$dir/latest.json" "$upload/latest-$panel.json"
             fi
 
-            # Every file `tools/release.mjs` published for this platform, whatever
-            # its extension — the setup file (.exe, .dmg or .AppImage) and what
-            # `publishBeside()` puts next to it: the Windows standalone .exe and
-            # the Linux .deb, each with its .sha256. The list is built from what
-            # exists rather than from hardcoded paths. Only the manifests above
-            # name a file, and they name the setup file alone.
-            for setup in "$dir"/OrderBook-*; do
-              case "$setup" in
-                *.json) continue ;;
-              esac
+            # The setup file `tools/release.mjs` published for this platform
+            # (.exe, .dmg or .AppImage) and nothing else. The manifests above
+            # name it; there is no standalone file or checksum file to upload.
+            for setup in "$dir"/OrderBook-*-Setup.*; do
               cp "$setup" "$upload/"
             done
           done

@@ -87,38 +87,9 @@ win:
   target:
     - target: nsis
       arch: [x64]
-    # The standalone build: the same panel, packaged as one `.exe` that runs
-    # without being installed. See `portable:` below.
-    - target: portable
-      arch: [x64]
   # Unsigned. Windows SmartScreen will warn until a certificate is bought and
   # the build is signed with it — a purchase, not a code change.
   signAndEditExecutable: false
-
-# The standalone `.exe`. Double-click it and the panel runs; nothing is written
-# to Program Files, the Start Menu or the registry, and there is no
-# uninstaller. It unpacks itself under `%TEMP%\<unpackDirName>` on every
-# launch (100–200 MB, so the first window takes a few seconds longer than the
-# installed build) and removes that folder when the panel quits.
-#
-# Data is **not** kept beside the `.exe`: the shell puts it under
-# `%APPDATA%\OrderBook`, exactly where the installed build keeps it, so the
-# two builds share one database and a person can move from the standalone
-# file to the installer — or replace one standalone file with a newer one —
-# without touching a single record.
-#
-# Two consequences of having no installer, both handled elsewhere:
-#  - No firewall rules are added (`installer/installer.nsh` never runs), so
-#    Windows asks on first run. `unpackDirName` is fixed rather than random so
-#    the answer is remembered for the same path next time.
-#  - The in-app update cannot install over this build; `electron/shell.ts`
-#    refuses it and the Updates screen says to replace the file by hand.
-portable:
-  # `user`, never `admin`: PostgreSQL refuses to start under an elevated
-  # account, and the installed build runs unelevated for the same reason.
-  requestExecutionLevel: user
-  unpackDirName: OrderBook-Master
-  artifactName: OrderBook-Master-${version}-Standalone.${ext}
 
 nsis:
   oneClick: false
@@ -137,14 +108,9 @@ nsis:
   include: installer/installer.nsh
   artifactName: OrderBook-Master-${version}-Setup.${ext}
 
-# Linux. Two artefacts from one build, because they answer different questions,
-# and `tools/release.mjs` publishes both. The AppImage is the setup file the
-# manifest names and what somebody runs off a USB stick with nothing installed;
-# the .deb is published beside it with a `.sha256` and named by no manifest
-# (`TARGETS.linux.besides`), and is what installs into
-# `/opt/OrderBook Master Panel` with a desktop entry — what a shop PC that
-# should come up running OrderBook actually needs, and what the Linux branch of
-# `tools/uninstall/uninstall-orderbook.sh` already knows how to sweep.
+# Linux. One artefact, the AppImage: the setup file the manifest names and what
+# somebody runs off a USB stick with nothing installed. There is no .deb (1.4.1:
+# it was only ever published beside the setup file, which is no longer done).
 #
 # x64 only, and `TARGETS.linux.arch` says the same: the release script refuses
 # to build this on any other architecture (`assertHostArch()`), because staging
@@ -153,8 +119,6 @@ nsis:
 linux:
   target:
     - target: AppImage
-      arch: [x64]
-    - target: deb
       arch: [x64]
   category: Office
   # Without this the binary is named from the npm package and ships as
@@ -168,7 +132,7 @@ linux:
   # tools/release.mjs writes the releases folder itself — so saying so outright
   # is both true and what keeps the build alive.
   publish: null
-  # fpm refuses to build a .deb without a homepage and a maintainer, and reads
+  # electron-builder's Linux packaging wants a homepage and a maintainer, and reads
   # both from package.json, which has neither — this is a private monorepo, not
   # a published npm package. Declaring them here keeps that true.
   #
@@ -176,21 +140,6 @@ linux:
   # the internet at runtime, and a real-looking address on a package nobody can
   # write to would be worse than an obviously internal one.
   maintainer: OrderBook <releases@orderbook.local>
-  artifactName: OrderBook-Master-${version}-Setup.${ext}
-
-deb:
-  # `depends` defaults include gconf2/gconf-service, which no longer exist on
-  # Debian 11+ or Ubuntu 22.04+ and make the package uninstallable there. This
-  # is the modern Electron set.
-  depends:
-    - libgtk-3-0
-    - libnotify4
-    - libnss3
-    - libxss1
-    - libxtst6
-    - xdg-utils
-    - libatspi2.0-0
-    - libsecret-1-0
   artifactName: OrderBook-Master-${version}-Setup.${ext}
 
 # macOS. Built only on a Mac — electron-builder refuses the target anywhere
