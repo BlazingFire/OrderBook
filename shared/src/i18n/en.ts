@@ -3418,7 +3418,9 @@ export const EN_MESSAGES = {
   'panels.rotate.failed': 'Could not reissue the secret',
   'panels.list.showRemoved': 'Show removed ({count})',
   'panels.list.hideRemoved': 'Hide removed',
-  'activity.office_panel.re_paired': '{actor} paired the office panel {name} again, replacing its earlier pairing ({previousStatus})',
+  'activity.office_panel.re_paired': '{actor} paired the office panel {name} again, replacing its earlier pairing',
   'logs.action.re_paired': 'Paired again',
   'error.unauthorized.pairingAutoOff': 'This Master Panel is open for new panels, but only with the pairing password. On the office PC choose manual connection and enter the Master address and the pairing password.',
+  'activity.office_panel.left': 'The office panel {name} unpaired itself from this Master',
+  'logs.action.left': 'Left',
 } as const;

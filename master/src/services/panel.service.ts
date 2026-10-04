@@ -207,7 +207,11 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
       identity.tenantId,
       request.hostname && request.hostname !== 'unknown' ? request.hostname : null,
       request.previousPanelId ?? null,
-    )) ?? undefined;
+    )) ??
+    // An ACTIVE row is replaced only by the PC that proves it owns it: the id and the secret it held.
+    // That is a PC that unpaired itself while the Master could not be told.
+    (await ownedActivePanel(identity.tenantId, request.previousPanelId, request.previousPanelSecret)) ??
+    undefined;
 
   const panel = await db().transaction(async (trx) => {
     if (returning) {
@@ -237,7 +241,7 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
             hostname: request.hostname,
             previousPanelId: returning.id,
             previousName: returning.name,
-            previousStatus: 'removed',
+            previousStatus: returning.status === 'revoked' ? 'removed' : 'active',
           },
         },
         systemActor(identity.tenantId),
@@ -284,6 +288,9 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
   // pairs, so leaving the screen open does not silently admit others.
   if (request.mode === 'auto') closePairingWindow();
 
+  // The old pairing's socket (an active row that was replaced) must not outlive its secret.
+  if (returning && returning.status !== 'revoked') disconnectPanel(returning.id);
+
   publishChange({
     entity: 'office_panel',
     action: returning ? 'updated' : 'created',
@@ -299,6 +306,53 @@ export async function pairPanel(request: PairingRequest, remoteIp: string | null
     masterUniqueId: identity.masterUniqueId,
     companyName: identity.companyName,
   };
+}
+
+/** The active panel this id and secret belong to, else null. Never throws, never says which part was wrong. */
+async function ownedActivePanel(
+  tenantId: string,
+  panelId: string | undefined,
+  panelSecret: string | undefined,
+): Promise<OfficePanel | null> {
+  if (!panelId || !panelSecret) return null;
+  try {
+    const panel = await authenticatePanel(panelId, panelSecret);
+    return panel.tenantId === tenantId && panel.status === 'active' ? panel : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A panel unpairing itself (`panel:leave`): its row is marked removed, reason "left", so a PC that
+ * pairs again finds a removed row instead of leaving an active, offline one behind.
+ */
+export async function leavePanel(panelId: string): Promise<void> {
+  const existing = await panelRepo.findPanelById(panelId);
+  if (!existing || existing.status === 'revoked') return;
+
+  const panel = await db().transaction(async (trx) => {
+    const row = await panelRepo.updatePanelStatus(panelId, 'revoked', trx);
+    if (!row) throw new NotFoundError('Panel');
+    await activityLog.recordActivity(
+      {
+        tenantId: row.tenantId,
+        entityType: 'office_panel',
+        entityId: row.id,
+        action: 'left',
+        actorType: 'system',
+        actorId: null,
+        details: { name: row.name, reason: 'left' },
+      },
+      systemActor(row.tenantId),
+      trx,
+    );
+    return row;
+  });
+
+  forgetPanelConnection(panelId);
+  publishChange({ entity: 'office_panel', action: 'updated', id: panelId, payload: panel });
+  log.info(`Office panel "${panel.name}" (${panelId}) left of its own accord`);
 }
 
 /**

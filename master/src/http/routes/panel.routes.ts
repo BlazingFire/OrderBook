@@ -63,6 +63,7 @@ pairingRoutes.post(
         pairingPassword: body.pairingPassword,
         masterUniqueId: body.masterUniqueId,
         previousPanelId: typeof body.previousPanelId === 'string' ? body.previousPanelId : undefined,
+        previousPanelSecret: typeof body.previousPanelSecret === 'string' ? body.previousPanelSecret : undefined,
       },
       normalizeIp(req.ip),
     );
@@ -109,10 +110,9 @@ panelProofRoutes.post(
  * Admitting a panel, revoking one and renaming one are `panels.manage`: opening
  * the pairing window admits any panel that can find the Master over UDP, and a
  * revoke locks a working panel out until somebody re-pairs it by hand. The two
- * reads stay on `requireAuth` alone: the shell's presence rail asks for the
- * panel list on every signed-in session, whatever that session may administer,
- * and the pairing window reports this Master's own transient state rather than
- * anything belonging to the company.
+ * read stays on `requireAuth` alone: the shell's presence rail asks for the
+ * panel list on every signed-in session, whatever that session may administer.
+ * (The pairing window's state lists this PC's addresses and is `panels.manage`.)
  */
 export const panelRoutes: Router = Router();
 

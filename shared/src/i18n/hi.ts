@@ -4323,7 +4323,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'panels.rotate.failed': 'सीक्रेट दोबारा जारी नहीं किया जा सका',
   'panels.list.showRemoved': 'हटाए गए दिखाएँ ({count})',
   'panels.list.hideRemoved': 'हटाए गए छिपाएँ',
-  'activity.office_panel.re_paired': '{actor} ने ऑफ़िस पैनल {name} को दोबारा पेयर किया, उसकी पिछली पेयरिंग ({previousStatus}) की जगह',
+  'activity.office_panel.re_paired': '{actor} ने ऑफ़िस पैनल {name} को दोबारा पेयर किया, उसकी पिछली पेयरिंग की जगह',
   'logs.action.re_paired': 'दोबारा पेयर किया गया',
   'error.unauthorized.pairingAutoOff': 'यह मास्टर पैनल नए पैनल के लिए खुला है, लेकिन केवल पेयरिंग पासवर्ड के साथ। ऑफ़िस PC पर मैन्युअल कनेक्शन चुनें और मास्टर का पता व पेयरिंग पासवर्ड डालें।',
+  'activity.office_panel.left': 'ऑफ़िस पैनल {name} ने खुद को इस मास्टर से अलग कर लिया',
+  'logs.action.left': 'अलग हुआ',
 };

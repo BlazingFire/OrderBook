@@ -238,11 +238,11 @@ describe('the two-layer permission check', () => {
       .split('\n')
       .filter((line) => !line.trim().startsWith('*') && line.includes('needs('));
 
-    // Two exemptions, both read-only and both documented at the router's own
-    // header: `GET /` (the shell's presence rail, for every signed-in session
-    // regardless of what it administers) and `GET /pairing-window` (this
-    // Master's own transient state, not company data).
-    expect(guards.length).toBe(handlers.length - 2);
+    // One exemption, read-only and documented at the router's own header: `GET /`
+    // (the shell's presence rail, for every signed-in session regardless of what it
+    // administers). `GET /pairing-window` used to be the second; it now lists this
+    // PC's addresses and is `panels.manage` like the screen that reads it.
+    expect(guards.length).toBe(handlers.length - 1);
   });
 
   /*
