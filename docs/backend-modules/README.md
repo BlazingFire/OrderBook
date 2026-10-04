@@ -42,12 +42,12 @@ owner decision (§3), not an implementation convenience.
 
 | Module | What it does | Backend today | Migration | Permission keys |
 |---|---|---|---|---|
-| **i18n / `t()`** | Server returns a stable `messageKey` + named params; the panel renders the sentence. Catalogues are compiled TypeScript, not a table | The `labelToken` contract exists on every catalogue entry (`shared/src/domain/permissions.ts:86`); no catalogue, no `t()`, no locale picker | none | none |
+| **i18n / `t()`** | Server returns a stable `messageKey` + named params; the panel renders the sentence. Catalogues are compiled TypeScript, not a table | The `labelToken` contract exists on every catalogue entry (`shared/src/domain/permissions.ts:86`); no catalogue, no `t()` | none | none |
 | **Recycle Bin** | Cross-entity soft delete and restore. `RECYCLE_BIN_ENTITIES` **grows across stages**: six at Stage 2 (`lead`, `order`, `party`, `product`, `role`, `user`), plus `option_list_item` and `custom_field_definition` at Stage 3, plus `document_template` at Stage 6 — nine in the end. See `04-API-CONTRACT.md` for the union type and `11-BUILD-SEQUENCE.md` for the staging | Roles and users carry `deleted_at` and have restore services; leads/orders/parties/products have **no delete path at all** | `20260305000000_soft_delete_columns` | new `recycleBin.view`, `recycleBin.viewAll`; reuses `leads.delete`, `orders.delete`, `parties.delete`, `products.delete`, `roles.delete`, `users.manage` |
 | **Fields** | Managed pipelines, stages, option lists (incl. colour hex) and custom-field definitions | Three ungated reads exist — `GET /api/pipelines`, `/api/option-lists`, `/api/custom-fields` (`master/src/http/routes/data.routes.ts:66,73,80`) — and no write surface | `20260306000000_field_values_and_stage_ordering` | new `fields.view` (no ceiling); `fields.manage` **lowered** `admin` → `management` |
 | **Logs** | Read API over the hash-chained audit trail: keyset feed, facets, chain verification, CSV export | `master/src/repositories/activity-log.repository.ts` exists with write functions only (`recordActivity:51`); no HTTP route anywhere | `20260307000000_activity_log_actor_name` (also carries the report indexes) | new `logs.view`, `logs.export`, `logs.verifyChain` |
 | **Reports** | Dispatches by month, lead outcomes, top parties, and their CSV exports | Nothing. `reports.view` / `reports.export` are in the frozen catalogue and enforce nothing anywhere | none of its own — indexes fold into `20260307000000` | reuses `reports.view`, `reports.export`; redaction on `field.saleRate.view` |
-| **PDF Designer** | Stored document templates; server-side PDF rendering with Devanagari support; recorded exports | Nothing, deliberately (`docs/LEAD_GENERATION_FLOW.md` §11 defers it) | `20260308000000_document_templates_and_exports` | new `documents.view/create/edit`, `documents.delete` (management), `documents.render`; redaction on `field.saleRate.view` |
+| **PDF Designer** | Stored document templates; server-side PDF rendering; recorded exports | Nothing, deliberately (`docs/LEAD_GENERATION_FLOW.md` §11 defers it) | `20260308000000_document_templates_and_exports` | new `documents.view/create/edit`, `documents.delete` (management), `documents.render`; redaction on `field.saleRate.view` |
 | **Office Dashboard** | The Office Panel's own aggregate figures, per-figure gated, carried in the snapshot | The Master's `DashboardSummary` / `dashboard.service` / `dashboard:changed` triple exists; the Office has no dashboard | none | no new keys — each figure is gated by the module `*.view` key that already governs its data |
 
 One further migration is shared: `20260309000000_new_module_permission_grant`, **last**, granting
@@ -68,13 +68,12 @@ The single exception is **typed API client wrappers** in `master/web/src/api.ts`
 before a screen exists. **Those two files are the only web files in this batch.**
 
 **The web i18n files are deferred with the screens.** `{master,office}/web/src/i18n/*`,
-`components/LocalePicker.tsx`, `components/Untranslated.tsx`, `main.tsx`, `styles.css`, `format.ts`,
+`components/Untranslated.tsx`, `main.tsx`, `styles.css`, `format.ts`,
 `PermissionGrid.tsx` and `AccessScreen.tsx` all belong to the UI phase, not here. This is a
 deferral of the *renderer*, not of i18n: **`shared/src/i18n/` is fully in scope** — the catalogues,
 the key type, `t()` and the parameter interpolation — and it is fully testable through
-`shared/tests/` without a single web file existing. A missing key, a catalogue that has drifted
-between EN and HI, and a parameter the template never spends are all caught by a pure suite. What
-the deferral postpones is a person choosing a language in a browser.
+`shared/tests/` without a single web file existing. A missing key and a parameter the template never spends are both caught by a pure suite. What
+the deferral postpones is the renderer in a browser.
 
 One consequence of that deferral is worth stating plainly, because it looks like a gap: the eslint
 rule `no-untranslated-jsx-text` is **registered as `'off'` in this batch** and promoted in the UI
@@ -130,7 +129,7 @@ than a decision: the i18n layer was sized in `docs/UI_REDESIGN.md` §4.4 as a sw
 `shared/src/domain/permissions.ts` emits a `labelToken` on every catalogue entry with an explicit
 comment that the renderer never hard-codes the English, and `activity_log` stores
 `(entity_type, action, details JSONB)` rather than English sentences. What is missing is the
-catalogue, `t()` and a locale picker. The genuinely large part is separate and is §8's first open
+catalogue and `t()`. The genuinely large part is separate and is §8's first open
 question.
 
 ---
@@ -153,7 +152,7 @@ should be deleted rather than followed. Twelve documents, and this is all of the
 | `06-WORKFLOWS.md` | What happens step by step for each operation — delete, restore, render, export, verify — including the transaction boundaries | — | The implementer of each module |
 | `07-UI-SPEC.md` | What the screens will need from these endpoints, so the backend does not have to be re-shaped later | — | The UI phase; read here only to check an endpoint serves its screen |
 | `08-PERMISSIONS.md` | Every new key with its kind and tier, what each gates, and how the grant migration converges | **Permission keys**, tiers, the grant-migration algorithm | Everyone before gating anything |
-| `09-I18N.md` | How a message gets from a `throw` on the Master to a Hindi sentence, and what `AppError` looks like afterwards | — | Whoever builds Stage 1; every stage after depends on the constructor signature |
+| `09-I18N.md` | How a message gets from a `throw` on the Master to a rendered sentence, and what `AppError` looks like afterwards | — | Whoever builds Stage 1; every stage after depends on the constructor signature |
 | `10-TESTING.md` | Which suites exist, what each pins, which are pure and cannot skip, and what must be green before a stage is done | The **TEST register** (`02` cites it rather than keeping its own list) | Everyone; the owner, to know what "finished" means |
 | `11-BUILD-SEQUENCE.md` | In what order the work lands, Stage 0 through Stage 8, and what gates each stage | **Stage ordering and numbering** | Everyone; the owner, to sequence the batch |
 
@@ -184,7 +183,7 @@ there, not because it is thin.
 | 7 | **`fields.manage` lowered `admin` → `management`.** Fields *reading* is ungated (`fields.view`, no ceiling); Fields *editing* is management+. Lowering a ceiling never strips a stored key, so no repair migration is needed |
 | 8 | **Soft-deleting a syncable entity stamps `hlc` and `field_hlc.deleted_at`**, not just `version`. No delete/restore `MutationKind`s: deletes are Master-online-only, and propagation to panels uses the existing `publishChange` / `ChangedEntity` path with a new `'restored'` `ChangeAction` (`shared/src/protocol/socket.ts:180`) |
 | 9 | **`recordActivity` becomes `recordActivity(entry, actor, trx)`, and that change lands in Stage 1 (foundation)** — not at the Logs stage (`activity-log.repository.ts:51`). The `actor` argument is harmless before `activity_log.actor_name` exists: it is simply not persisted yet, and `20260307` adds the column and starts persisting it. Taking it early means Recycle Bin and Fields are written once against the final signature instead of being swept later. New modules **never** use `recordDetachedActivity` (`:76`) — the detached variant swallows failures into a warning and exists for recording a *failed* operation that has no transaction to belong to |
-| 10 | **PDF rendering is server-side in the Master**, PDFKit + fontkit, vendored SIL OFL fonts. **Devanagari support is a hard requirement.** The rate-redaction key is `field.saleRate.view` — `products.rate.view` does not exist |
+| 10 | **PDF rendering is server-side in the Master**, PDFKit + fontkit, vendored SIL OFL fonts. The rate-redaction key is `field.saleRate.view` — `products.rate.view` does not exist |
 | 11 | **Redacted fields are ABSENT (`undefined`)** — never `null`, never `0`. A null says "this line has no rate", which is a different and wrong statement, and one a client will happily total to zero |
 | 12 | **Date safety**: never `toISOString()` on a `DATE`-derived value. Month buckets are computed in SQL against the configured timezone and returned as `'YYYY-MM'` TEXT |
 | 13 | **The Office path for all modules is forwarded live and FAILS HARD offline** with 503 `{error:'unavailable'}`. Nothing is queued into the outbox. i18n is the sole exception — it needs nothing from the Master |
@@ -285,12 +284,11 @@ document named beside it.
 | 3 | How should large CSV and PDF exports reach the Office Panel through a 15-second ack? | Cap, chunk, or declare export Master-only. **Needs a decision before the export endpoints ship** | `11-BUILD-SEQUENCE.md` §7 risk 6 |
 | 4 | **What does a mid-stream CSV failure look like?** The export endpoints stream; a failure after the first byte cannot become a JSON error envelope, and a truncated file that opens cleanly in Excel is the worst outcome available | Owner's call between a trailing sentinel row, an abort that leaves the transfer visibly incomplete, and buffering small exports whole | `04-API-CONTRACT.md` §O-4 |
 | 5 | `QUIET_AFTER_DAYS = 30` is a designer's number, not the owner's. It decides which leads the outcome report calls "went quiet" | Needs the owner's number before Stage 5 ships; the rule itself is already a pure classifier so changing it is a one-line edit and a test | `02-FILE-STRUCTURE.md` (`master/src/domain/lead-outcome.ts`), `11-BUILD-SEQUENCE.md` Stage 5 |
-| 6 | **The Devanagari font fallback.** The vendored face is registered and asserted present at startup; what should happen to a codepoint it has no glyph for is not settled — silent blank boxes are the default and the worst answer | Decide before Stage 6 renders anything customer-facing | `02-FILE-STRUCTURE.md` (`master/src/pdf/fonts.ts`, `master/tests/document-fonts.test.ts`) |
-| 7 | Should `party_product_variants` be **soft-deletable**? They are listed as read-but-untouched, yet each carries a negotiated rate, so deleting one silently changes what a future line quotes | **Open.** Not closed by this batch; it wants its own owner because the consequence is a price, not a row | `03-DATABASE.md` §1 |
-| 8 | Should the Logs feed also surface `timeline_entries`? They are a per-record narrative (`20260302:214-225`) and are not part of the hash chain, so including them means two sources with different guarantees behind one screen | Owner's call; excluded by default | `03-DATABASE.md` |
-| 9 | Confirm Fields *editing* is management+ rather than genuinely every user | Management+ — letting any office user rename a pipeline stage reorders every board in the company | `08-PERMISSIONS.md` |
-| 10 | Is the PDF Designer still wanted, now that it is scoped? It was deferred once on purpose | Owner's call; it is the largest single item here | `11-BUILD-SEQUENCE.md` Stage 6 |
-| 11 | Should Office snapshot module-filtering be pulled into this batch rather than left open? | Left open, with a test added here asserting every `SyncSnapshot` key is accounted for in `forCurrentUser` — there is none today, so a newly added collection is a silent leak | `10-TESTING.md` §6.8 |
+| 6 | Should `party_product_variants` be **soft-deletable**? They are listed as read-but-untouched, yet each carries a negotiated rate, so deleting one silently changes what a future line quotes | **Open.** Not closed by this batch; it wants its own owner because the consequence is a price, not a row | `03-DATABASE.md` §1 |
+| 7 | Should the Logs feed also surface `timeline_entries`? They are a per-record narrative (`20260302:214-225`) and are not part of the hash chain, so including them means two sources with different guarantees behind one screen | Owner's call; excluded by default | `03-DATABASE.md` |
+| 8 | Confirm Fields *editing* is management+ rather than genuinely every user | Management+ — letting any office user rename a pipeline stage reorders every board in the company | `08-PERMISSIONS.md` |
+| 9 | Is the PDF Designer still wanted, now that it is scoped? It was deferred once on purpose | Owner's call; it is the largest single item here | `11-BUILD-SEQUENCE.md` Stage 6 |
+| 10 | Should Office snapshot module-filtering be pulled into this batch rather than left open? | Left open, with a test added here asserting every `SyncSnapshot` key is accounted for in `forCurrentUser` — there is none today, so a newly added collection is a silent leak | `10-TESTING.md` §6.8 |
 
 ### 8.2 Decided during reconciliation — recorded so they are not re-opened
 

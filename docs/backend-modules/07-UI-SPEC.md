@@ -47,7 +47,7 @@ screen. The six new modules extend the same table — they do not invent a secon
 | Admin | Fields | Master + Office | `fields.view` |
 | Admin | Recycle Bin | Master + Office | `recycleBin.view` |
 | Admin | Logs | Master + Office | `logs.view` |
-| Admin | Settings | Master + Office | always (the LocalePicker is ungated — §10.2) |
+| Admin | Settings | Master + Office | always |
 
 Three consequences worth stating plainly, because each is a place somebody will otherwise "fix" the
 behaviour back into a bug:
@@ -172,8 +172,8 @@ normalised for display, and never re-keyed.
 ### 1.7 The Office failure contract
 
 Every one of the six modules on the Office Panel is **forwarded live to the Master and fails hard
-when the Master is unreachable**. Nothing is queued into the outbox. i18n is the sole exception: both
-catalogues are compiled into the panel's bundle, so language switching and every rendered string keep
+when the Master is unreachable**. Nothing is queued into the outbox. i18n is the sole exception: the
+catalogue is compiled into the panel's bundle, so every rendered string keeps
 working with the Master switched off.
 
 The mechanism already exists and invents nothing. `forward()` (`office/src/http/app.ts:438-462`)
@@ -279,7 +279,7 @@ Source type: `ActivityLogEntry` from `shared/src/domain/activity.ts`.
 |---|---|---|---|---|
 | When | `createdAt` | `IsoTimestamp` | `dd MMM HH:mm` in `config.locale.timeZone`; full timestamp in a Tooltip | left |
 | Actor | `actor.name`, `actor.type`, `actor.id` | `ActivityActor` | `name`; when `name` is null, the `actor.type` token — *Office Panel* or *System* — as a `StatusPill`, never the raw id | left |
-| Action | `action` | `string` | `t('log.action.' + action)`, falling back to the raw string (§10.3) | left |
+| Action | `action` | `string` | `t('log.action.' + action)`, falling back to the raw string (§10.2) | left |
 | Record | `entityType`, `entityId` | `string`, `string` | `t('log.entity.' + entityType)` then the id in an `IdField` | left |
 | Entry hash | `hash` | `string \| null` | `FingerprintField`, first 12 chars, grouped in fours. Null when `chained` is false | left, mono |
 
@@ -901,7 +901,7 @@ loaded.
 
 The live approximation is labelled **"Approximate — fonts, rates and totals come from the Master"** in
 `--t-small` at the top of the preview pane. Without that label the mockup implies WYSIWYG, and it is
-not: Devanagari shaping, real line data and rate redaction all happen on the Master.
+not: real line data and rate redaction all happen on the Master.
 
 The real preview forces the **PREVIEW** watermark on, writes no file, creates no `document_exports`
 row and writes no activity entry. It is rendered from the returned bytes via an object URL in an
@@ -1182,22 +1182,20 @@ The server never renders a user-facing sentence. It returns a stable `messageKey
 the client renders. That is forced rather than chosen — locale is per-machine and never synced, so a
 Master serving several panels has no recipient locale to render for.
 
-Both catalogues are compiled TypeScript, bundled into each panel before it ever contacts a Master.
-`hi.ts` is typed `Record<MessageKey, string>` — **total, not partial** — so **every token listed below
-turns the build red until Hindi exists**. That interlock is the point, and it is why the tokens are
-enumerated here rather than discovered screen by screen during Phase 3.
+The catalogue is compiled TypeScript, bundled into each panel before it ever contacts a Master. That
+is why the tokens are enumerated here rather than discovered screen by screen during Phase 3.
 
 **Where the i18n work actually lands in this batch.** `shared/src/i18n/` — the `MessageKey` union, the
-`en` and `hi` catalogues, `activityMessageKey()` and the `en-XA` pseudo-locale — **is in scope**, and
-it is **fully testable through `shared/tests/` without a single web file**: the catalogues are plain
-compiled TypeScript, so totality, key coverage and the `activityMessageKey` contract are all pure
+`en` catalogue, `activityMessageKey()` and the `en-XA` pseudo-locale — **is in scope**, and
+it is **fully testable through `shared/tests/` without a single web file**: the catalogue is plain
+compiled TypeScript, so key coverage and the `activityMessageKey` contract are all pure
 assertions. Nothing about the deferral below leaves i18n unverified.
 
 What is **deferred to the UI phase** is the wiring, not the catalogue: `master/web/src/i18n/*`,
-`office/web/src/i18n/*`, `components/LocalePicker.tsx`, `components/Untranslated.tsx`, `main.tsx`,
+`office/web/src/i18n/*`, `components/Untranslated.tsx`, `main.tsx`,
 `styles.css` and `format.ts` are all UI-phase files. The only two web files in this batch remain
-`master/web/src/api.ts` and `office/web/src/api.ts`. §10.2 and §10.3 therefore specify behaviour the
-UI phase must implement; they do not describe files this batch writes.
+`master/web/src/api.ts` and `office/web/src/api.ts`. §10.2 therefore specifies behaviour the
+UI phase must implement; it does not describe files this batch writes.
 
 ### 10.1 Namespaces per screen
 
@@ -1237,31 +1235,7 @@ one at the PDF stage — see `11-BUILD-SEQUENCE.md`. The coverage assertion is t
 member of today's `RECYCLE_BIN_ENTITIES`", which stays true at every stage, rather than a hard count
 of nine.
 
-### 10.2 The LocalePicker
-
-`components/LocalePicker.tsx` is a **UI-phase file**, on both panels, and is not written in this
-batch. What follows is the contract it must satisfy — including the ungated ruling, which is a
-permission decision and therefore settled now (`08-PERMISSIONS.md` §3.2) rather than at render time.
-
-Lives in **Settings → Appearance**, beside Theme and Density, on **both** panels. Per-machine, never
-synced — exactly like theme and density.
-
-- A `Select`, not a `Switch` — a switch implies two options forever and the third will arrive.
-- Each label is written **in its own script**: `English`, `हिन्दी`. That comes from
-  `LOCALE_LABELS` and is never translated into the current locale.
-- **Ungated.** No permission key. Gating it behind `settings.manage` (tier `admin`) would stop an
-  office-tier user reading their own screen in Hindi, which inverts the module's purpose. This is the
-  one surface in the batch that is correctly ungated, and that is a decision, not an omission.
-- Changing it re-renders immediately: no reload, no server call, and **it works with the Master
-  switched off**, because both catalogues are already in the bundle.
-- It sets `lang` on `<html>` so `:lang(hi)`'s `+2px` line-height applies at every scale step, and
-  persists to `localStorage`.
-- The initial value comes from `defaultLocale` on `/api/auth/me` (Master) and `/api/session`
-  (Office), so a fresh browser profile on a Hindi-deployed machine starts in Hindi. The Office's
-  `/api/session` is registered **before** the `requireUser` gate at `office/src/http/app.ts:133`, so
-  the sign-in screen renders in the right language before anyone has signed in.
-
-### 10.3 Rules the screens must not break
+### 10.2 Rules the screens must not break
 
 - **No string concatenation.** Every message is one keyed template with named placeholders. *"2 due
   for follow-up today"* is one key with `{count}`, not two spans.

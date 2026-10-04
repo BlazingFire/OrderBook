@@ -75,8 +75,6 @@ Access screen uses. That is the smallest change that answers the report.
 - **Lead ownership** (`record.reassignOwner`) has no UI on either panel — worth
   noting because it is the other reasonable reading of "assign party", and it is
   genuinely absent.
-- Party Access and half the new-party modal render **in English on a Hindi
-  panel**, and the TODO markers in those files are stale.
 - Stale comments describe the party detail and party form as **drawers**; both
   are modals.
 

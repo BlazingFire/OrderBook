@@ -451,8 +451,7 @@ route registered **after** the positional `app.use('/api', requireUser)` gate at
 quotation hours later against a lead whose lines had since changed; a queued delete or field edit has
 the same character. This matches the roles/users precedent, where no mutation kind exists either.
 
-i18n is the sole exception, and only because it needs nothing from the Master: both catalogues are
-compiled into the panel's bundle before it ever contacts one.
+i18n is the sole exception, and only because it needs nothing from the Master: the catalogue is compiled into the panel's bundle before it ever contacts one.
 
 ---
 

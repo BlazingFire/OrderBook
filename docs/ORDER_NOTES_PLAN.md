@@ -291,7 +291,7 @@ export function paginateOrderNote(model: OrderNoteModel, kind: NoteKind, codeCol
   the orders' actions column (same gate), opening the same preview sub-screen,
   fed by `api.order(id)` and the party. When the Master gains an order detail
   screen, move the buttons there.
-- i18n (`shared/src/i18n/en.ts` and `hi.ts`): `orderNote.filling`,
+- i18n (`shared/src/i18n/en.ts`): `orderNote.filling`,
   `orderNote.dispatch`, `orderNote.print`, `orderNote.printer`,
   `orderNote.printerDialog` ("Ask each time"), `orderNote.columns`,
   `orderNote.vehicleNo`, `orderNote.productLines`, `orderNote.codedProducts`,
@@ -322,7 +322,7 @@ export function paginateOrderNote(model: OrderNoteModel, kind: NoteKind, codeCol
   3–6 columns, at 100 % and 157 % UI scale, and at the 1024 × 768 floor.
 - Electron pass on the owner's PC: *Microsoft Print to PDF* as the printer,
   then a real printer. Check: one sheet per page, no browser header/footer,
-  no clipped right edge, grey rules and chips printed, Hindi text renders.
+  no clipped right edge, grey rules and chips printed.
   Unplug or rename the remembered printer — the dialog must come back.
 
 ## 7. Traps

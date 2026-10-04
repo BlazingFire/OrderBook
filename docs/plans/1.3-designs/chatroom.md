@@ -139,9 +139,9 @@ The same api members as the Master plus lead(id) and order(id). chatTransport.ts
 
 ### 10. i18n, activity tokens, docs
 
-Files: `shared/src/i18n/en.ts`, `shared/src/i18n/hi.ts`, `shared/tests/activity-tokens.lock.json`, `docs/STRUCTURE.md`, `docs/schema/00-overview.md`, `docs/schema/01-identity-and-network.md`, `docs/ROLES_AND_USERS.md`, `docs/backend-modules/04-API-CONTRACT.md`, `HANDOFF.md`, `docs/AI_COLLABORATION.md`
+Files: `shared/src/i18n/en.ts`, `shared/tests/activity-tokens.lock.json`, `docs/STRUCTURE.md`, `docs/schema/00-overview.md`, `docs/schema/01-identity-and-network.md`, `docs/ROLES_AND_USERS.md`, `docs/backend-modules/04-API-CONTRACT.md`, `HANDOFF.md`, `docs/AI_COLLABORATION.md`
 
-About 95 keys: nav.chat, chat.sub.*, chat.rooms.*, chat.room.*, chat.pinned.*, chat.composer.*, chat.message.*, chat.day.*, chat.task.* (seenBy as tCount .one/.other), chat.tasks.*, chat.ref.*, chat.search.*, chat.offline, chat.group.*, chat.system.{created,memberAdded,memberRemoved,renamed,announceOn,announceOff,archived,unarchived}, permission.chat.* (6), capabilityGroup.chat, validation.chat.{bodyRequired,bodyTooLong,tooManyRefs,refNotFound,roomArchived,announceOnly,editWindow,notTask,assigneeNotMember,notMember,wrongAuthor,directSelf}, conflict.chat.roomName, activity.chat_room.{created,updated,archived,restored,memberAdded,memberRemoved,roleChanged}, activity.chat_message.{removed,pinned,unpinned}. Real Hindi for all of them, with activity.* written '{actor} ने …'. No 3+ digit runs and no price words. Append the activity tokens to the lock file. Docs: a new STRUCTURE section for Chatroom (schema §6 table entries and migration count fix, §3.10 contract counts (+16 C→S, +1 S→C), §15 'where a change goes' row); schema docs table definitions; ROLES_AND_USERS §5 catalogue; API contract; a dated HANDOFF entry; an AI_COLLABORATION change-log entry.
+About 95 keys: nav.chat, chat.sub.*, chat.rooms.*, chat.room.*, chat.pinned.*, chat.composer.*, chat.message.*, chat.day.*, chat.task.* (seenBy as tCount .one/.other), chat.tasks.*, chat.ref.*, chat.search.*, chat.offline, chat.group.*, chat.system.{created,memberAdded,memberRemoved,renamed,announceOn,announceOff,archived,unarchived}, permission.chat.* (6), capabilityGroup.chat, validation.chat.{bodyRequired,bodyTooLong,tooManyRefs,refNotFound,roomArchived,announceOnly,editWindow,notTask,assigneeNotMember,notMember,wrongAuthor,directSelf}, conflict.chat.roomName, activity.chat_room.{created,updated,archived,restored,memberAdded,memberRemoved,roleChanged}, activity.chat_message.{removed,pinned,unpinned}. No 3+ digit runs and no price words. Append the activity tokens to the lock file. Docs: a new STRUCTURE section for Chatroom (schema §6 table entries and migration count fix, §3.10 contract counts (+16 C→S, +1 S→C), §15 'where a change goes' row); schema docs table definitions; ROLES_AND_USERS §5 catalogue; API contract; a dated HANDOFF entry; an AI_COLLABORATION change-log entry.
 
 ## tests
 
@@ -155,7 +155,7 @@ About 95 keys: nav.chat, chat.sub.*, chat.rooms.*, chat.room.*, chat.pinned.*, c
 - master/tests/socket-contract.test.ts: unchanged code. 'chat:event' must appear quoted in master/src (hub.ts emit) and office/src (master-connection.ts handler), which the steps ensure.
 - master/tests/change-ring.test.ts: unchanged. No new ChangedEntity, by design.
 - master/tests/web-reachability.test.ts: no ALLOWED_UNCALLED entries needed, because every new api member is called from chatTransport.ts. Office lead()/order() are called by the board screens and chatTransport.
-- master/tests/i18n-call-sites.test.ts, master/tests/i18n-tokens.test.ts, shared/tests/i18n-coverage.test.ts: must pass with the new en/hi keys, the activity lock entries and the capabilityGroup.chat/permission.chat.* tokens.
+- master/tests/i18n-call-sites.test.ts, master/tests/i18n-tokens.test.ts, shared/tests/i18n-coverage.test.ts: must pass with the new keys, the activity lock entries and the capabilityGroup.chat/permission.chat.* tokens.
 - master/tests/tooling-config.test.ts: passes because the three swept ui files exist.
 - NEW office/tests/chat-forwarding.test.ts in the style of module-forwarding.test.ts: GET rooms forwards 'chat:rooms'; unreachable → 503 error.unavailable; a forbidden → 403 passes details.permission through; POST messages queues kind 'chat.post' / entity 'chat_message' with roomId in the payload and answers 202 with mutationId; no chat.use → 403 before validation; an over-long body → 400; GET messages appends queued pending entries for that room only (also on 503); GET /api/leads/:id serves the local view first and forwards 'lead:get' when absent; a 'chat' emission on masterConnection reaches an open SSE stream as 'event: chat'.
 - NEW shared/tests/chat.test.ts: cleanChatPost limits, trimming, control-char stripping, refs/mentions dedupe and caps, withinEditWindow boundaries; ENTITY_PREFIX values stay unique with 'CM' (if an existing ids test asserts uniqueness, it covers this).
@@ -183,7 +183,7 @@ About 95 keys: nav.chat, chat.sub.*, chat.rooms.*, chat.room.*, chat.pinned.*, c
 - SSE has no replay. Pushes during an Office server restart or a tab reconnect are lost, mitigated by resync on 'open'/'connected'. A missed 'read' push only leaves receipts stale until the next re-fetch.
 - Win7 legacy build (Chromium 108 / Node 16): avoid post-108 JS/CSS (toSorted, Object.groupBy, CSS nesting, :has is fine) in the ui chat files. Node 16 on the Office server is unaffected by the trivial forwarding code.
 - Nav churn: adding 'chat' to MASTER_NAV/OFFICE_NAV collides with the Basic Home, Printroom and Inventory-removal nav changes. It must land in the same coordinated change as the shells domain or keys-nav-order and the shell tests break.
-- i18n volume: about 95 keys need real Hindi before i18n-coverage passes. The activity token lock is append-only, so token names must be final before the first commit.
+- i18n volume: about 95 new keys. The activity token lock is append-only, so token names must be final before the first commit.
 - Lock ordering: postMessage takes the chat_rooms row lock and then the id_sequences 'chat_message' row lock. No other path takes them in reverse; keep it that way in future edits.
 
 ## dependsOn
@@ -195,11 +195,11 @@ About 95 keys: nav.chat, chat.sub.*, chat.rooms.*, chat.room.*, chat.pinned.*, c
 - Printroom domain: shares the 'per-user push outside the change ring' pattern. If Printroom lands first, reuse its emitTo-members helper in hub.ts rather than writing a second one, and vice versa (chat's emitChatToMembers could be generalised to emitToUsers(event, payload)).
 - Audit log domain: chat governance actions use the standard recordActivity; no special scoping needed. Chat posts are deliberately not logged.
 - Backup-all / magic restore domain: the chat tables are included automatically (tenant_id present, information_schema dump). No vault material is involved.
-- Shared files touched by several domains: master/src/db/migrations/index.ts plus DELIBERATELY_LAST (timestamp coordination), shared/src/domain/permissions.ts, shared/src/protocol/socket.ts, both App.tsx shells, office/src/http/app.ts, master/src/realtime/hub.ts, master/tests/helpers/fixtures.ts, en.ts/hi.ts.
+- Shared files touched by several domains: master/src/db/migrations/index.ts plus DELIBERATELY_LAST (timestamp coordination), shared/src/domain/permissions.ts, shared/src/protocol/socket.ts, both App.tsx shells, office/src/http/app.ts, master/src/realtime/hub.ts, master/tests/helpers/fixtures.ts, en.ts.
 
 ## openQuestions
 
 
 ## effort
 
-About 40 files touched: 14 new (2 migrations, chat.repository, chat.service, chat.routes, shared chat.ts, 4 ui files, 2 chatTransport adapters, 4 test files) and 26 modified. Roughly 2,900 new LOC of product code (ui ≈1,300, Master ≈1,000, Office ≈200, shared ≈250, shells ≈150), ≈1,100 LOC of tests and ≈190 i18n lines (en+hi). That is 3-4 focused sessions: (1) contract, migrations, repository and service with integration tests; (2) hub, REST, Office relay and outbox route with forwarding tests; (3) ui screens and both shells; (4) i18n Hindi, docs and the coordinated nav and test sweep.
+About 40 files touched: 14 new (2 migrations, chat.repository, chat.service, chat.routes, shared chat.ts, 4 ui files, 2 chatTransport adapters, 4 test files) and 26 modified. Roughly 2,900 new LOC of product code (ui ≈1,300, Master ≈1,000, Office ≈200, shared ≈250, shells ≈150), ≈1,100 LOC of tests and ≈190 i18n lines. That is 3-4 focused sessions: (1) contract, migrations, repository and service with integration tests; (2) hub, REST, Office relay and outbox route with forwarding tests; (3) ui screens and both shells; (4) i18n, docs and the coordinated nav and test sweep.

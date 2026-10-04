@@ -31,6 +31,6 @@ bypasses the kit, is a defect even when it renders.
 ## Strings
 
 - Every user-facing string goes through the i18n catalogue
-  (`shared/src/i18n/en.ts`, `hi.ts`). A bare string in JSX is a defect;
-  `master/tests/i18n-call-sites.test.ts` checks call sites. Add the `en` key
-  and the real `hi` translation together; run `npm run i18n:sync` after.
+  (`shared/src/i18n/en.ts`, looked up through `t()`). The UI is English-only: add
+  the key to `en.ts` and nothing else, with no sync step. A bare string in JSX is a
+  defect; `master/tests/i18n-call-sites.test.ts` checks call sites.

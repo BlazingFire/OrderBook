@@ -176,7 +176,7 @@ Never edit a shipped migration.
     brand and, on a real import, is added to the Brands list in the same transaction.
   - *Limits and errors.* 50 MB (`validation.import.tooLarge`, 400, both panels) and 20,000 data rows
     (`validation.import.tooManyRows`); the issue list is cut at 1,000 (`issuesTruncated`). Every issue
-    carries the spreadsheet row, the header as written and a `messageKey` (en + hi). Two models of one file
+    carries the spreadsheet row, the header as written and a `messageKey`. Two models of one file
     resolving to one existing product → the later is refused (`validation.import.sameProduct`).
   - *Atomicity.* A bad row never half-imports: rows are validated first, a model (all its rows) is
     inserted or not at all, in chunks of 500 products per transaction; a chunk that fails is replayed
@@ -188,7 +188,7 @@ Never edit a shipped migration.
     when an acting token is presented, else as the panel's own role.
   - *Files.* Export names are dated: `products-YYYY-MM-DD.csv|xlsx`, `main-products-YYYY-MM-DD.csv|xlsx`
     (the PC's date); the template stays `products-template.csv|xlsx`. CSV exports start with a BOM so
-    Excel opens Hindi names correctly.
+    Excel opens non-ASCII names correctly.
 - Snapshot and list caps rise so 549+ sub products reach
   panels complete.
 - Settings: main's existing `leads.followUpDefaultDays` — **fallback 3**

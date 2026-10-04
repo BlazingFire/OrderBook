@@ -41,7 +41,7 @@ Low RAM:
 - Chord choice: Alt+C / Alt+P instead of Ctrl+Shift+M/P. Ctrl+Shift+M (profile switcher) and Ctrl+Shift+P (system print dialog) are browser-level chords that a LAN browser opening the Master UI may refuse to yield. Alt+C/P collide with no Electron menu mnemonic (&File/&Edit/&View/&Help) and no existing COMMANDS entry. findConflicts and the 'fired by an actual keypress' test cover letters. No darwin override: chord matching falls back to the physical code when Alt is held.
 - MASTER_NAV/OFFICE_NAV entries become [id, token, chord?]: undefined = next free Alt digit (counted only over undefined entries, still capped at 9), a string = explicit chord, null = no chord. navOrder stays the sidebar index, so keys-nav-order keeps proving that the declared order equals the sidebar order. One optional tuple slot, no new abstraction.
 - Master sidebar is rewritten in the Office's exact shape (`const groups: NavGroup[] = [ {label, items: [...]}, ... ].map((group) => ({ ...group, items: nest(group.items) }))`). keys-nav-order.test.ts then slices both panels with the same markers and the workItems/adminItems markers die. Party access moves from Admin to Catalogue on the Master to mirror the Office mockup.
-- Group labels: nav.work, nav.catalogue, nav.master.admin, nav.system on the Master (the Office tokens are reused). nav.master.work, nav.master.inventory and nav.master.reports are deleted from en+hi; Reports uses a new neutral nav.reports on both panels.
+- Group labels: nav.work, nav.catalogue, nav.master.admin, nav.system on the Master (the Office tokens are reused). nav.master.work, nav.master.inventory and nav.master.reports are deleted from en.ts; Reports uses a new neutral nav.reports on both panels.
 - Master light theme default: configureUi({panel:'master', defaultTheme:'light', themeStorageKey:'ob.theme.v3'}), index.html data-theme='light' with no inline color-scheme. The key bump is required because initAppearance() persists whatever it loads, so 'persisted choice wins' would otherwise keep every existing Master dark. Cost: an owner who deliberately chose dark picks it once more (one line in the release notes). BrowserWindow backgroundColor becomes #f2f4f5.
 - Since the Master is no longer told apart by dark chrome, the Server Master badge (roles domain) plus the Admin nav group serve as its 'unmistakable' cue. No extra 'Master' wordmark is added.
 - No new PageHeader component inside content. The topbar already is the page header on every screen. A shared TopbarTitle (module icon + group eyebrow + h1 label, computed from groups+activeId) replaces both shells' bare <h1>, and tests that read '.ob-topbar h1' keep working.
@@ -131,7 +131,7 @@ Export displayChord from CommandPalette. BasicHome renders sections from props.g
 
 Files: `ui/src/AppShell.tsx`
 
-Add the homeId?: string prop (default 'dashboard'); the brand button calls onNavigate(homeId). Render <TopProgress/> first inside .ob-main. Add TopbarTitle({groups, activeId, fallback}): find the top-level item containing activeId and its group, then render span.ob-topbar-title containing Icon, eyebrow group label and <h1 className='ob-title'>{label of the flattened item with activeId, else fallback}</h1>. Change en nav.home to 'Go to your home screen' (hi translated).
+Add the homeId?: string prop (default 'dashboard'); the brand button calls onNavigate(homeId). Render <TopProgress/> first inside .ob-main. Add TopbarTitle({groups, activeId, fallback}): find the top-level item containing activeId and its group, then render span.ob-topbar-title containing Icon, eyebrow group label and <h1 className='ob-title'>{label of the flattened item with activeId, else fallback}</h1>. Change en nav.home to 'Go to your home screen'.
 
 ### 6. Nav catalogue with explicit chords
 
@@ -169,11 +169,11 @@ Files: `electron/lib/memory.ts`, `electron/shell.ts`, `electron/lib/log-file.ts`
 
 memory.ts: serverHeapMb(totalMb, panel) = clamp(round(cap*0.7), floor, 4096) with cap = total*(office 0.4 | master 0.6) and floor = panel === 'office' && totalMb <= 4608 ? 1024 : 2048; rendererHeapFlag(totalMb) = totalMb <= 4608 ? '--max-old-space-size=1024' : null. shell.ts: use serverHeapMb in startServer; before app.whenReady, `const flag = rendererHeapFlag(...); if (flag) app.commandLine.appendSwitch('js-flags', flag)`; render-process-gone allows a reload when the last reload was more than 5 minutes ago (timestamp instead of a boolean); BrowserWindow backgroundColor '#f2f4f5'. log-file.ts: count bytes written; past MAX_BYTES, end the stream, rotate(file), reopen (try/catch, never throws). postgres-server.ts: export pgMemoryOptions(totalMb) and push its -c flags into serverOptions; before spawning pg_ctl, rename postgres.log to postgres.log.1 if it is over 5 MB (try/catch). master/office index.ts: process.on('unhandledRejection', (reason) => log.error('Unhandled rejection', reason)). hub.ts: correct the comment at ~1090.
 
-### 12. i18n en + real Hindi
+### 12. i18n strings in en.ts
 
-Files: `shared/src/i18n/en.ts`, `shared/src/i18n/hi.ts`
+Files: `shared/src/i18n/en.ts`
 
-Add nav.basicHome 'Basic Home', nav.chatroom 'Chatroom', nav.printroom 'Printroom', nav.reports 'Reports', common.loading 'Loading…', basicHome.newLead 'New pending order', signin.deviceCode 'Device code', connection.deviceCodeProvisional 'Provisional — the Master assigns the final code when this PC pairs', dashboard.stat.convertedToday, dashboard.stat.dispatchedToday, dashboard.stat.followUpsDue, dashboard.stat.panelsStale ('Offline over an hour'), dashboard.stat.printPending, dashboard.stat.chatUnread (with .one/.other notes where counted), kanban.showMore '{count} more'. Change nav.home to 'Go to your home screen'. Delete nav.master.work, nav.master.inventory and nav.master.reports from both catalogues. Translate every key into real Hindi: no TODO stubs, no 3+ digit runs, no price words.
+Add nav.basicHome 'Basic Home', nav.chatroom 'Chatroom', nav.printroom 'Printroom', nav.reports 'Reports', common.loading 'Loading…', basicHome.newLead 'New pending order', signin.deviceCode 'Device code', connection.deviceCodeProvisional 'Provisional — the Master assigns the final code when this PC pairs', dashboard.stat.convertedToday, dashboard.stat.dispatchedToday, dashboard.stat.followUpsDue, dashboard.stat.panelsStale ('Offline over an hour'), dashboard.stat.printPending, dashboard.stat.chatUnread (with .one/.other notes where counted), kanban.showMore '{count} more'. Change nav.home to 'Go to your home screen'. Delete nav.master.work, nav.master.inventory and nav.master.reports from en.ts. No TODO stubs, no 3+ digit runs, no price words.
 
 ### 13. Tests and guards
 
@@ -204,7 +204,7 @@ STRUCTURE §3.8: new COMMANDS count, the chord map table and the explicit-chord 
 - New master/tests/postgres-memory.test.ts: pgMemoryOptions small/large outputs, and max_connections >= the knex pool max (10) + 10.
 - master/tests/dashboard.integration.test.ts: add convertedTodayCount/dispatchedTodayCount figures and their party scope. office/tests/dashboard-staleness.test.ts should stay green, plus a filter case for the two new keys.
 - ui/tests/office-shell.test.tsx and ui/tests/master-shell.test.tsx: printPage expectations are untouched (printing is another domain).
-- Guards that must stay green and are respected by this design: ui-conventions (rem, no raw px > 3 in JSX styles), no-duplicate-ui (barrel lines for BasicHome, TopProgress, StatTile), no-transport-dep (BasicHome takes no transport), keys-implemented (every nav command has a `tab`), i18n-coverage (hi parity, digits/price bans), i18n-call-sites, tooling-config (the swept eslint list names real files), wire-optionality (all new wire fields optional), web-catalogue-text (no literal English).
+- Guards that must stay green and are respected by this design: ui-conventions (rem, no raw px > 3 in JSX styles), no-duplicate-ui (barrel lines for BasicHome, TopProgress, StatTile), no-transport-dep (BasicHome takes no transport), keys-implemented (every nav command has a `tab`), i18n-coverage (digits/price bans), i18n-call-sites, tooling-config (the swept eslint list names real files), wire-optionality (all new wire fields optional), web-catalogue-text (no literal English).
 
 ## docs
 
@@ -236,7 +236,7 @@ STRUCTURE §3.8: new COMMANDS count, the chord map table and the explicit-chord 
 - Backup/import-export domains: use ProgressBar (determinate) and trackLoad for long operations; backup restore memory, since the Master server heap floor stays 2048 MB because restore buffers in memory.
 - Sync/notifications domain: the 'offline > 1 h' notification is theirs; this domain only shows the Dashboard tile computed from panels.lastSeenAt.
 - Windows 7 legacy Office build: everything here uses Chromium-108-safe APIs (useSyncExternalStore, React.lazy, navigator.deviceMemory, CSS without :has). app.commandLine.appendSwitch and the memory helpers run on Electron 22 / Node 16. The AbortSignal.any fix in api.ts is that domain's; trackLoad wraps request() and does not touch it.
-- Shared files touched by several domains: master/web/src/App.tsx, office/web/src/App.tsx, shared/src/keys/commands.ts, shared/src/i18n/en.ts + hi.ts, ui/src/index.ts, ui/src/icons.tsx, docs/STRUCTURE.md, HANDOFF.md.
+- Shared files touched by several domains: master/web/src/App.tsx, office/web/src/App.tsx, shared/src/keys/commands.ts, shared/src/i18n/en.ts, ui/src/index.ts, ui/src/icons.tsx, docs/STRUCTURE.md, HANDOFF.md.
 
 ## openQuestions
 
@@ -245,4 +245,4 @@ STRUCTURE §3.8: new COMMANDS count, the chord map table and the explicit-chord 
 
 ## effort
 
-About 40 files touched, plus 5 new modules (ui BasicHome, TopProgress, StatTile; electron/lib/memory.ts; new tests). Roughly +1,400 LOC new or changed, and about -1,600 LOC deleted (InventoryScreen.tsx at 1,255 lines plus its two tests and three StatCard copies). About 160 new i18n keys across en and hi with real Hindi. Two to three implementation sessions, plus one real-Electron verification pass on both panels (1024x768 and 4K, 79% and 157% scale, light and dark).
+About 40 files touched, plus 5 new modules (ui BasicHome, TopProgress, StatTile; electron/lib/memory.ts; new tests). Roughly +1,400 LOC new or changed, and about -1,600 LOC deleted (InventoryScreen.tsx at 1,255 lines plus its two tests and three StatCard copies). About 160 new i18n keys in en.ts. Two to three implementation sessions, plus one real-Electron verification pass on both panels (1024x768 and 4K, 79% and 157% scale, light and dark).

@@ -159,9 +159,9 @@ npm run verify   # npm run lint && npm run typecheck && npm run test
 over the three `tests/` trees — which is why a type-level gate (a total `Record<...>`, an exhaustive
 fixture) counts as a real gate here: `npm run verify` fails on it without any test running.
 
-**Authorising a module requires `npm run verify`, not `npm test`.** Two of this batch's gates
-(`i18n-coverage`'s totality of `hi.ts`, the snapshot-policy map in §6.8) are enforced by the
-compiler, and `npm test` alone would not notice them.
+**Authorising a module requires `npm run verify`, not `npm test`.** One of this batch's gates
+(the snapshot-policy map in §6.8) is enforced by the
+compiler, and `npm test` alone would not notice it.
 
 ### 2.5 Windows: `ORDERBOOK_PG_BIN`, and the `win32`/`windows` trap
 
@@ -363,13 +363,12 @@ with **no `describe.skipIf`**, which therefore runs in every checkout on every m
 |---|---|---|
 | Stage 0–1 prerequisites | `master/tests/cursor.test.ts` | The one opaque base64url codec: round-trip, tamper rejection, precision |
 | Stage 1 — i18n | `shared/tests/i18n.test.ts` | The renderer: substitution, plurals, missing-key fallback, ids byte-identical |
-| Stage 1 — i18n | `shared/tests/i18n-coverage.test.ts` | `hi.ts` totality; every catalogue key has a token; placeholder-set parity |
+| Stage 1 — i18n | `shared/tests/i18n-coverage.test.ts` | every catalogue key has a token |
 | Stage 1 — i18n | `master/tests/i18n-tokens.test.ts` | Every `recordActivity` `(entityType, action)` pair has a token |
 | Stage 2 — Recycle Bin | `master/tests/recycle-bin-domain.test.ts` | Cursor precision, parent graph, name escalation |
 | Stage 3 — Fields | `master/tests/field-values-domain.test.ts` | Value normalisation, permutation validation, hex |
 | Stage 5 — Reports | `master/tests/report-range.test.ts` | Every calendar boundary. **The IST day-shift gate** |
 | Stage 6 — PDF Designer | `master/tests/document-model.test.ts` | **Rate columns absent, not zero, not null** |
-| Stage 6 — PDF Designer | `master/tests/document-fonts.test.ts` | **Devanagari shaping. The hard requirement** |
 | Stage 7 — permissions | `shared/tests/permissions.test.ts` | The eleven new keys and their tiers. **A NEW file** — `shared/tests/` holds only `discovery.test.ts` and `sync.test.ts` today |
 | Stage 7 — permissions | `master/tests/permission-enforcement.test.ts` | Every catalogue key is enforced somewhere, or is on an explicit allow-list |
 | Cross-cutting | `master/tests/migration-registry.test.ts` | Every migration file is registered; every new table is truncatable |
@@ -377,15 +376,15 @@ with **no `describe.skipIf`**, which therefore runs in every checkout on every m
 | Stage 8 — Office | `office/tests/dashboard-staleness.test.ts` | The cached dashboard, staleness labelling, per-figure stripping |
 | Office (all six modules) | `office/tests/module-forwarding.test.ts` | 503 offline, `details` passthrough, nothing queued |
 
-**Fifteen pure suites**, all of which fail loudly on a machine that has never seen PostgreSQL. The
+**Fourteen pure suites**, all of which fail loudly on a machine that has never seen PostgreSQL. The
 integration suites prove the SQL; these prove the rules.
 
-**Three of the fifteen are the i18n layer, and that is the point of §5's scope ruling.** The web
-i18n files — `{master,office}/web/src/i18n/*`, `LocalePicker.tsx`, `Untranslated.tsx`, `main.tsx`,
+**Three of the fourteen are the i18n layer, and that is the point of §5's scope ruling.** The web
+i18n files — `{master,office}/web/src/i18n/*`, `Untranslated.tsx`, `main.tsx`,
 `styles.css`, `format.ts`, `PermissionGrid.tsx`, `AccessScreen.tsx` — are **deferred to the UI
 phase** and are not in this batch. `shared/src/i18n/` **is** in scope, and `shared/tests/i18n.test.ts`
 and `shared/tests/i18n-coverage.test.ts` verify it **completely, with no web file involved**:
-catalogue totality, EN/HI placeholder parity, plural selection, missing-key fallback, and byte-identical
+plural selection, missing-key fallback, and byte-identical
 passthrough of ids and hashes are all pure assertions over compiled TypeScript. The deferral costs
 this batch no i18n coverage. What it defers is the screen that displays the strings, not the strings.
 
@@ -421,7 +420,7 @@ rose by 6 and a test count that rose by 89 means an integration file collected n
 **Do not attempt to force a skip by pointing `ORDERBOOK_PG_BIN` at a bogus directory.** Today that
 makes `canRunIntegrationTests` *true* and fails mid-hook (§3.2); after §3.2 it throws at import. In
 neither case does it demonstrate the skip path. The skip path is verified once, on a machine with no
-PostgreSQL at all, and its only correct outcome is that the fifteen pure suites still run and still
+PostgreSQL at all, and its only correct outcome is that the fourteen pure suites still run and still
 pass.
 
 ---
@@ -472,8 +471,7 @@ decision attached, rather than pretending a source grep closes it.
 The foundation, and the module whose gates are almost entirely compile-time.
 
 **Scope note, because it decides what these gates can be.** The web i18n files are **deferred to the
-UI phase** (`09-I18N.md` §5, §5.6): `{master,office}/web/src/i18n/*`, `LocalePicker.tsx`,
-`Untranslated.tsx`, `main.tsx`, `styles.css`, `format.ts`, `PermissionGrid.tsx` and
+UI phase** (`09-I18N.md` §5, §5.6): `{master,office}/web/src/i18n/*`, `Untranslated.tsx`, `main.tsx`, `styles.css`, `format.ts`, `PermissionGrid.tsx` and
 `AccessScreen.tsx` are all out of this batch, and the only web files in it are
 `master/web/src/api.ts` and `office/web/src/api.ts`. **`shared/src/i18n/` is in scope and is fully
 testable through `shared/tests/`** — every gate below runs with no browser, no DOM and no database,
@@ -489,16 +487,14 @@ a rendered screen.
 | `I18N-5` | No EN string contains a pre-formatted number, a thousands separator or `₹`. Numbers arrive as params, always |
 | `I18N-6` | `t()` leaves a record id, a device code and a chain hash **byte-identical** — identifiers are never localised or reformatted |
 | `I18N-7` | A `MessageKey` absent from a catalogue at runtime renders a readable fallback derived from the key, and does not throw or return empty |
-| `I18N-8` | `tCount()` selects one/other for both `en` and `hi`, and never concatenates a number onto a sentence |
+| `I18N-8` | `tCount()` selects one/other, and never concatenates a number onto a sentence |
 
 **`shared/tests/i18n-coverage.test.ts` — pure. The contract.**
 
 | Gate | Proves |
 |---|---|
-| `I18N-1` | **`hi.ts` is total.** Typed `Record<MessageKey, string>`, so a missing key is a `tsc` failure — the test additionally asserts key-set equality so the failure is legible when it happens |
 | `I18N-2` | Every key in `PERMISSIONS` has a `permission.<key>` token. *This is what makes the existing `labelToken` contract load-bearing rather than decorative* |
 | `I18N-3` | Every `MODULES`, `ACTIONS`, `CAPABILITY_GROUPS` and `ROLE_TEMPLATES` entry has its token |
-| `I18N-4` | Every EN key and its HI translation carry an **identical placeholder set**. A translator dropping `{name}` is invisible to the compiler and renders a sentence with a hole in it |
 
 `shared/tests/activity-tokens.lock.json` is the committed fixture `I18N-10` reads. It is a **fixture,
 not a suite** — read with `readFileSync` and never imported, because `tsc` does not copy JSON into
@@ -693,26 +689,12 @@ detail in the batch.**
 
 ### 6.7 Stage 6 — PDF Designer
 
-**`master/tests/document-fonts.test.ts` — pure. THE Devanagari gate.**
-
-Devanagari support is a hard requirement — party names, addresses and terms in Hindi are otherwise
-unrenderable — and it is what eliminates the popular PDF libraries that ship WinAnsi encoding only.
-The gate runs fontkit's `layout()` against the vendored face **directly**, with no PDF, no database
-and no `skipIf`, so it cannot silently skip.
+**Vendored fonts — startup gate.**
 
 | Gate | Proves |
 |---|---|
-| `PDF-1` | `layout('हिन्दी')` returns **fewer glyphs than codepoints** — six codepoints, fewer glyphs — proving conjunct formation, i.e. real shaping rather than codepoint-order mapping |
-| `PDF-2` | `layout('कि')` places the i-matra **before** its consonant: `run.glyphs[0].codePoints` contains `0x093F`. That is reordering, the second half of the requirement, and a font loaded without shaping fails it while passing `PDF-1` |
-| `PDF-3` | All four faces (Inter Regular, Inter SemiBold, IBM Plex Mono, Noto Sans Devanagari) resolve under `master/assets/fonts/` from disk, with no network access of any kind |
 | `PDF-4` | The renderer fails **at startup**, not at first print, when a vendored font file is missing |
-| `PDF-5` | `master/assets/fonts/LICENSES.md` exists and names every vendored binary. All four are SIL OFL 1.1, which explicitly permits PDF embedding — the licence has to be auditable on a machine with no internet |
-
-Pin the exact glyph-id expectations against the face as vendored, and record the observed ids in a
-comment: glyph ids are face-specific, and an assertion written from memory will be wrong. Declare
-`fontkit` explicitly in `master/package.json` rather than relying on it being hoisted as a PDFKit
-transitive dependency — a test that depends on hoisting is a test that breaks on someone else's
-`npm install`.
+| `PDF-5` | `master/assets/fonts/LICENSES.md` exists and names every vendored binary. All three are SIL OFL 1.1, which explicitly permits PDF embedding — the licence has to be auditable on a machine with no internet |
 
 **`master/tests/document-model.test.ts` — pure. The redaction gate.**
 
@@ -721,7 +703,6 @@ transitive dependency — a test that depends on hoisting is a test that breaks 
 | `PDF-6` | **The `rate` and `lineTotal` columns are ABSENT from `DocumentModel.columns`** when the template asks for rates and the actor lacks `field.saleRate.view`. `expect('rate' in column).toBe(false)`. Not present-and-zero. Not present-and-null |
 | `PDF-7` | A template with `showRates: false` produces no rate column **even for** an actor who holds `field.saleRate.view` |
 | `PDF-8` | `buildDocumentModel` is pure: given a masked record and a template it imports no PDF library, touches no disk and reads no config |
-| `PDF-9` | `splitByScript()` partitions a mixed Hindi/Latin/numeric string into `body`/`devanagari`/`mono` runs without reordering or dropping a character |
 | `PDF-10` | An `expectedDispatchDate` of the 1st renders as the 1st on an IST machine — the `toISOString` regression gate, at the document layer |
 | `PDF-24` | **`assertTemplateValid` enforces the `DocumentLayout` grammar**, one case per rule: a `kind` appearing twice is rejected; a layout with no `lines` block is rejected; a `header` that is not first is rejected; a `signature` that is not last is rejected; `terms.text` at 501 characters is rejected and at 500 accepted. Every violation is a **400** carrying `{ field: 'layout', block: n, reason }` — assert `block` is the *index of the offending block*, because a grammar error that cannot point at a block is a form the person cannot fix |
 | `PDF-25` | **The eight toggles are COLUMNS, not `layout`.** `show_rates`, `show_colour_chips`, `show_terms`, `show_logo`, `show_signature`, `show_page_numbers`, `show_watermark` and `show_party_block` are typed BOOLEAN columns on `document_templates` (`03-DATABASE.md`); `layout` JSONB holds **only** block order and per-block options. Assert that a template saved with every toggle off round-trips with `layout.blocks` unchanged, and that writing a toggle name into `layout` does not turn anything off. `07-UI-SPEC.md` is wrong where it says the nine toggles write into `layout`, and this gate is what would have caught it |
@@ -823,7 +804,7 @@ reproduced faithfully because mocking the module replaces every export).
 | `OFF-2` | **None of them enqueues a mutation.** The outbox is asserted empty after every offline refusal. A queued render would emit a legally-shaped quotation hours later against a lead whose lines had since changed |
 | `OFF-3` | A refusal the Master *sent* surfaces as 403 with `error: 'forbidden'` and `details.permission`, not as 503 — refused is not silent |
 | `OFF-4` | Structured conflict data (`blockedBy`, the rename `suggestion`, `storedVersion`) survives the hop into the response body (with `PRE-8`) |
-| `OFF-5` | i18n is the sole module with no Master round-trip: the locale picker and `t()` work with the link down, because both catalogues are compiled into the bundle |
+| `OFF-5` | i18n is the sole module with no Master round-trip: `t()` works with the link down, because the catalogue is compiled into the bundle |
 
 ### 6.9 Cross-cutting guards
 
@@ -918,10 +899,8 @@ stale and this scheme wins.
 - [ ] `PRE-1`…`PRE-6` cursor codec: round-trip, microsecond precision, BIGINT-as-string, tamper rejection, base64url, opacity
 - [ ] `PRE-7` `respond()` passes `code` and `details` for any `AppError`, not only `ForbiddenError`
 - [ ] `PRE-8` `forward()` surfaces `details` into the response body
-- [ ] `I18N-1` `hi.ts` is total (fails `npm run typecheck`, not just `npm test`)
 - [ ] `I18N-2` every `PERMISSIONS` key has a token
 - [ ] `I18N-3` every module, capability group, action and role template has a token
-- [ ] `I18N-4` placeholder sets are identical per key across EN and HI
 - [ ] `I18N-5`…`I18N-8` no formatted numbers in strings; ids byte-identical; missing-key fallback; plural selection
 - [ ] `I18N-9` every `recordActivity` `(entityType, action)` pair has a token — source-reading
 - [ ] `I18N-10` `ACTIVITY_TOKENS` never retires a token
@@ -970,11 +949,9 @@ stale and this scheme wins.
 
 ### Stage 6 — PDF Designer (`20260308000000`)
 
-- [ ] `PDF-1` **conjunct formation** — fewer glyphs than codepoints
-- [ ] `PDF-2` **matra reordering** — the i-matra precedes its consonant
-- [ ] `PDF-3`…`PDF-5` four faces load from disk with no network; missing font fails at startup; `LICENSES.md` covers every binary
+- [ ] `PDF-4`, `PDF-5` missing font fails at startup; `LICENSES.md` covers every binary
 - [ ] `PDF-6` **rate and lineTotal columns ABSENT** — not zero, not null
-- [ ] `PDF-7`…`PDF-10` `showRates: false` wins; model purity; script splitting; IST date at the document layer
+- [ ] `PDF-7`, `PDF-8`, `PDF-10` `showRates: false` wins; model purity; IST date at the document layer
 - [ ] `PDF-11`…`PDF-15` 409 on duplicate name; `expectedVersion` semantics; default promotion; name freeing; permission refusals
 - [ ] `PDF-16`…`PDF-23` redaction end to end; atomic export+audit; crash/tmp sweep; preview writes nothing; storage reachability and 404-not-403; pre-flight subject check; filtered history; concurrent cursor
 - [ ] `PDF-24`, `PDF-25` the `DocumentLayout` block grammar (400 with `{ field, block, reason }`); **the eight toggles are COLUMNS, not `layout`**
@@ -1010,7 +987,7 @@ untracked, so a fresh clone of `dev` runs 20 (§2.6, §3.3).
 places these files in the manifest and must use exactly the names below; `11-BUILD-SEQUENCE.md` §5.2
 cites the counts rather than restating them.
 
-This batch adds **23 suites — 15 pure and 8 integration — plus one committed fixture**, and cases
+This batch adds **22 suites — 14 pure and 8 integration — plus one committed fixture**, and cases
 inside five existing files.
 
 | File | Kind | Stage | Cases (projected) |
@@ -1028,7 +1005,6 @@ inside five existing files.
 | `master/tests/logs.integration.test.ts` | integration | 4 — Logs | 20 |
 | `master/tests/report-range.test.ts` | pure | 5 — Reports | 11 |
 | `master/tests/reports.integration.test.ts` | integration | 5 — Reports | 17 |
-| `master/tests/document-fonts.test.ts` | pure | 6 — PDF | 6 |
 | `master/tests/document-model.test.ts` | pure | 6 — PDF | 9 |
 | `master/tests/document-template.integration.test.ts` | integration | 6 — PDF | 16 |
 | `master/tests/document-render.integration.test.ts` | integration | 6 — PDF | 13 |
@@ -1045,7 +1021,7 @@ inside five existing files.
 | *(extension)* `master/tests/access.integration.test.ts` | integration | 3 / 7 — the `fields.manage` tier change | +2 |
 | *(extension)* `master/tests/permissions.integration.test.ts` | integration | 7 — per-endpoint refusals | +5 |
 
-**Projected: ≈ 251 new cases, taking the suite to ≈ 584 across 44 files.** Both figures are planning
+**Projected: ≈ 244 new cases, taking the suite to ≈ 577 across 43 files.** Both figures are planning
 estimates derived by counting the gates in §6, not measurements — the file count is exact, the case
 count will move as gates split or merge. Use the file count as the hard check in §5 and the case
 count as a sanity check.
@@ -1090,7 +1066,7 @@ Stated so they are not mistaken for oversights.
    ten screens belong to `docs/UI_REDESIGN.md`. The typed API client wrappers in
    `master/web/src/api.ts` and `office/web/src/api.ts` are exercised only by `tsc`, and they are the
    **only** web files in the batch: the web i18n layer (`{master,office}/web/src/i18n/*`,
-   `LocalePicker.tsx`, `Untranslated.tsx`, `main.tsx`, `styles.css`, `format.ts`,
+   `Untranslated.tsx`, `main.tsx`, `styles.css`, `format.ts`,
    `PermissionGrid.tsx`, `AccessScreen.tsx`) is deferred with the screens. The mechanical reason a
    component test could not be written even if the files were here: `vitest.config.ts:7` includes
    `**/*.test.ts` — **`.ts`, not `.tsx`** — and there is no DOM environment configured. **None of

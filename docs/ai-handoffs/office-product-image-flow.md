@@ -79,15 +79,12 @@ image' (`:184`), '+ Add photo' (`:208`), and more. `ui/src/ImageCropModal.tsx` i
 the same: 'Edit image' (`:281`), 'Cancel'/'Save', 'Loading…', 'Free crop',
 'Rotate left', 'Straighten'.
 
-**Fix:** add a `product.image.*` block to `en.ts` and mirror it in `hi.ts`
+**Fix:** add a `product.image.*` block to `en.ts`
 (setPrimary, primary, moveEarlier, moveLater, remove, add, notAnImage,
 tooLarge `{max}`, saveFailed, updateFailed, removeFailed, reorderFailed) plus
 `image.crop.*` (title, save, cancel, loading, aspect.free, aspect.original,
 rotateLeft, rotateRight, straighten). `ImageCropModal` sits in `ui/`, which
-already imports `t` from `./i18n.js`. While there, fix `hi.ts:3346`
-`'product.field.images': 'Photos'` — an untranslated English value the parity
-test cannot catch.
-
+already imports `t` from `./i18n.js`. 
 **Root cause worth knowing:** `eslint.config.js:63-67` registers
 `orderbook-i18n/no-untranslated-jsx-text` over both panels' and `ui/`'s `.tsx`
 and sets it to `'off'` — the comment at `:57-62` says ~4,000 lines of JSX are
@@ -137,8 +134,7 @@ multipart caller, not just images.
 - `npx vitest run master/tests/i18n-tokens.test.ts shared/tests/i18n-coverage.test.ts` pass.
 - `npm run verify` green.
 - **Manually verified:** images render in the packaged panel *and* through the
-  dev server; a photo can be viewed large from the product detail modal; the UI
-  is Hindi on a Hindi panel; an upload attempted while the Master is unreachable
+  dev server; a photo can be viewed large from the product detail modal; an upload attempted while the Master is unreachable
   gives a translated message.
 
 ## Constraints
