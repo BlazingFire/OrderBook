@@ -502,14 +502,14 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
       expect(await screen.findByRole('dialog')).toBeTruthy();
     });
 
-    it('gives a reader the same table and nothing to edit with: no button, no person filter, no Save', async () => {
+    it('gives a reader the same table and the filters, and nothing to edit with: no button, no Save', async () => {
       const { calls } = await mount(['party.accessAll']);
       await loaded();
 
       expect(screen.queryByRole('button', { name: new RegExp(`^${t('partyAccess.action.edit')}:`) })).toBeNull();
-      expect(screen.queryByPlaceholderText(t('partyAccess.filter.personPlaceholder'))).toBeNull();
-      // The people list is for assigning; a reader never asks for it.
-      expect(calls.some((call) => path(call) === '/api/party-access/people')).toBe(false);
+      // The person filter is a reading control: a reader has it, fed by the same people list.
+      expect(screen.getByPlaceholderText(t('partyAccess.filter.personPlaceholder'))).toBeTruthy();
+      expect(calls.some((call) => path(call) === '/api/party-access/people')).toBe(true);
 
       fireEvent.click(screen.getByText('Party 1'));
       const dialog = await screen.findByRole('dialog');

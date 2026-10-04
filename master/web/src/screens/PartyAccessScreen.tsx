@@ -105,9 +105,11 @@ export function PartyAccessScreen({
   /** What the Master says the filtered query matches, company-wide — not the page. */
   const [total, setTotal] = useState(0);
   /** The strip's numbers: the whole company's, whatever the search or filter says. */
-  const [summary, setSummary] = useState<{ total: number; restricted: number; open: number } | null>(
-    null,
-  );
+  const [summary, setSummary] = useState<{
+    total: number;
+    restricted: number;
+    open: number;
+  } | null>(null);
   const [people, setPeople] = useState<AssignablePerson[]>([]);
   const [search, setSearch] = useState('');
   /** `null` — anybody; otherwise only parties this person is assigned to. */
@@ -198,14 +200,14 @@ export function PartyAccessScreen({
   }, [revision]);
 
   // Fetched once rather than with every filter change: it feeds the editor's
-  // picker and the toolbar's person filter. A failure is not fatal.
+  // picker and the toolbar's person filter, which a reader has too (the Master
+  // serves names and roles to `party.accessAll` as well). A failure is not fatal.
   useEffect(() => {
-    if (!canAssign) return;
     void api
       .partyAccessPeople()
       .then(setPeople)
       .catch(() => setPeople([]));
-  }, [canAssign]);
+  }, []);
 
   const filtered = restriction !== 'all' || personId !== undefined || term !== '';
 
@@ -343,7 +345,12 @@ export function PartyAccessScreen({
       </div>
 
       <div className="ob-pa-strip" role="group" aria-label={t('partyAccess.strip.label')}>
-        {stat('all', t('partyAccess.strip.total'), t('partyAccess.strip.totalHint'), summary?.total)}
+        {stat(
+          'all',
+          t('partyAccess.strip.total'),
+          t('partyAccess.strip.totalHint'),
+          summary?.total,
+        )}
         {stat(
           'restricted',
           t('partyAccess.strip.restricted'),
@@ -394,38 +401,36 @@ export function PartyAccessScreen({
           ]}
         />
 
-        {canAssign ? (
-          person ? (
-            <span className="ob-pa-chip">
-              <span>
-                {t('partyAccess.filter.person')}: {person.displayName}
-              </span>
-              <button
-                type="button"
-                aria-label={t('partyAccess.filter.personClear', { name: person.displayName })}
-                onClick={() => setPerson(null)}
-              >
-                ×
-              </button>
+        {person ? (
+          <span className="ob-pa-chip">
+            <span>
+              {t('partyAccess.filter.person')}: {person.displayName}
             </span>
-          ) : (
-            <div className="ob-pa-person">
-              <Combobox
-                options={personOptions}
-                placeholder={t('partyAccess.filter.personPlaceholder')}
-                onSelect={(option) => {
-                  if (option.value === null) {
-                    onRestrictionChange('open');
-                    return;
-                  }
-                  setPerson(option.value);
-                  // Somebody's parties are restricted ones by definition.
-                  if (restriction === 'open') onRestrictionChange('all');
-                }}
-              />
-            </div>
-          )
-        ) : null}
+            <button
+              type="button"
+              aria-label={t('partyAccess.filter.personClear', { name: person.displayName })}
+              onClick={() => setPerson(null)}
+            >
+              ×
+            </button>
+          </span>
+        ) : (
+          <div className="ob-pa-person">
+            <Combobox
+              options={personOptions}
+              placeholder={t('partyAccess.filter.personPlaceholder')}
+              onSelect={(option) => {
+                if (option.value === null) {
+                  onRestrictionChange('open');
+                  return;
+                }
+                setPerson(option.value);
+                // Somebody's parties are restricted ones by definition.
+                if (restriction === 'open') onRestrictionChange('all');
+              }}
+            />
+          </div>
+        )}
 
         <span style={{ flex: 1 }} />
         {!loading && !failure ? (
