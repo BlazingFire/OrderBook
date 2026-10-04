@@ -135,9 +135,9 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'validation.request.bodyRequired': 'That request needs a JSON body',
   'validation.apiKey.labelRequired': 'Give the key a label so it can be recognised later',
   'validation.apiKey.scopesRequired': 'Choose at least one permission for this key',
-  'error.rateLimited': 'Too many requests. Try again in {seconds} seconds.',
-  'error.unauthorized.apiKeyInvalid': 'That API key is not valid',
-  'error.unauthorized.apiKeyExpired': 'That API key has expired or been revoked',
+  'error.rateLimited': 'बहुत ज़्यादा अनुरोध हुए। {seconds} सेकंड बाद फिर कोशिश करें।',
+  'error.unauthorized.apiKeyInvalid': 'यह एपीआई कुंजी मान्य नहीं है',
+  'error.unauthorized.apiKeyExpired': 'यह एपीआई कुंजी समाप्त हो गई है या रद्द कर दी गई है',
   'error.unauthorized': 'साइन इन नहीं है',
   'error.unauthorized.signInFailed': 'साइन-इन विफल',
   'error.unauthorized.accountDeactivated': 'यह खाता निष्क्रिय कर दिया गया है',
@@ -147,15 +147,15 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'error.unauthorized.tooManyAttempts': 'बहुत अधिक विफल प्रयास। {seconds} सेकंड में फिर कोशिश करें।',
   'error.unauthorized.pairingNotAccepting':
     'मास्टर पैनल अभी नए पैनल स्वीकार नहीं कर रहा है। मास्टर पर "ऑफ़िस पैनल जोड़ें" खोलकर फिर कोशिश करें।',
-  'error.unauthorized.incorrectPairingPassword': 'जोड़ी पासवर्ड गलत है',
+  'error.unauthorized.incorrectPairingPassword': 'पेयरिंग पासवर्ड गलत है। जाँचकर फिर कोशिश करें। अगर वह खो गया है तो प्रशासक मास्टर पैनल की सेटिंग्स में नया पासवर्ड बना सकते हैं।',
   'error.unauthorized.differentMaster': 'यह उस मास्टर पैनल से अलग है जिसे आपने दर्ज किया था',
   'error.unauthorized.panelNotPaired': 'यह पैनल जोड़ा नहीं गया है',
   'error.unauthorized.panelCredentialsInvalid': 'पैनल क्रेडेंशियल मान्य नहीं हैं',
   'error.unauthorized.panelRevoked': 'इस पैनल की जोड़ी रद्द कर दी गई है',
   // TODO(i18n-hi)
-  'error.unauthorized.developerPassword': 'That is not the developer password',
+  'error.unauthorized.developerPassword': 'यह डेवलपर पासवर्ड नहीं है',
   // TODO(i18n-hi)
-  'error.unauthorized.developerMode': 'Developer mode is not unlocked',
+  'error.unauthorized.developerMode': 'डेवलपर मोड अनलॉक नहीं है',
   'error.forbidden.partyNotAssigned': 'वह पार्टी आपको नहीं सौंपी गई है',
   'error.forbidden.partyViewOnly': 'आप वह पार्टी देख सकते हैं, पर उसके रिकॉर्ड बदल नहीं सकते',
   'error.tenantViolation': '{what} इस कंपनी से संबंधित नहीं है',
@@ -1198,18 +1198,17 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'dashboard.orders.title': 'Open final orders',
   // TODO(i18n-hi)
-  'dashboard.panels.addressUnknown': 'Unknown address',
+  'dashboard.panels.addressUnknown': 'पता अज्ञात',
   // TODO(i18n-hi)
-  'dashboard.panels.deviceLabel': 'device {code}',
+  'dashboard.panels.deviceLabel': 'डिवाइस {code}',
   // TODO(i18n-hi)
-  'dashboard.panels.empty.description': 'Panels you add appear here, online or off.',
+  'dashboard.panels.empty.description': 'आप जो पैनल जोड़ेंगे वे यहाँ दिखेंगे, ऑनलाइन हों या ऑफ़लाइन।',
   // TODO(i18n-hi)
-  'dashboard.panels.empty.title': 'No office panels yet',
+  'dashboard.panels.empty.title': 'अभी कोई ऑफ़िस पैनल नहीं',
   // TODO(i18n-hi)
-  'dashboard.panels.footerNote':
-    'A panel that is offline is still taking pending orders — they arrive here when it reconnects.',
+  'dashboard.panels.footerNote': 'ऑफ़लाइन पैनल भी पेंडिंग ऑर्डर ले रहा है — दोबारा जुड़ते ही वे यहाँ आ जाते हैं।',
   // TODO(i18n-hi)
-  'dashboard.panels.subtitle': '{connected} of {total} online',
+  'dashboard.panels.subtitle': '{total} में से {connected} ऑनलाइन',
   // TODO(i18n-hi)
   'dashboard.stat.conflicts': 'Conflicts to review',
   // TODO(i18n-hi)
@@ -2245,115 +2244,112 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   // TODO(i18n-hi)
   'orders.waitingPipeline': 'Waiting for the pipeline configuration from the Master Panel…',
   // TODO(i18n-hi)
-  'panels.action.open': 'Open',
+  'panels.action.open': 'खोलें',
   // TODO(i18n-hi)
-  'panels.action.remove': 'Remove',
+  'panels.action.remove': 'हटाएँ',
   // TODO(i18n-hi)
-  'panels.action.rename': 'Rename',
+  'panels.action.rename': 'नाम बदलें',
   // TODO(i18n-hi)
-  'panels.add.action': 'Add Office Panel',
+  'panels.add.action': 'ऑफ़िस पैनल जोड़ें',
   // TODO(i18n-hi)
-  'panels.add.cancel': 'Cancel',
+  'panels.add.cancel': 'रद्द करें',
   // TODO(i18n-hi)
-  'panels.add.description':
-    'Press this, then start automatic connection on the office PC. This Master only accepts new panels while you are waiting here.',
+  'panels.add.description': 'इसे दबाएँ, फिर ऑफ़िस PC पर ऑटो कनेक्शन शुरू करें। यह मास्टर बिना पासवर्ड के नया पैनल तभी स्वीकार करता है जब आप यहाँ प्रतीक्षा कर रहे हों।',
   // TODO(i18n-hi)
-  'panels.add.startFailed': 'Could not start pairing',
+  'panels.add.startFailed': 'जोड़ना शुरू नहीं हो सका',
   // TODO(i18n-hi)
-  'panels.add.title': 'Add Office Panel',
+  'panels.add.title': 'ऑफ़िस पैनल जोड़ें',
   // TODO(i18n-hi)
-  'panels.add.waitingBody':
-    'On the office PC, open the Office Panel and press "Proceed with Auto Connection". It will find this Master automatically.',
+  'panels.add.waitingBody': 'ऑफ़िस PC पर ऑफ़िस पैनल खोलें और ऑटो कनेक्शन आगे बढ़ाएँ। वह इस मास्टर को अपने-आप ढूँढ लेगा।',
   // TODO(i18n-hi)
-  'panels.add.waitingTitle': 'Waiting for office panel…',
+  'panels.add.waitingTitle': 'ऑफ़िस पैनल की प्रतीक्षा…',
   // TODO(i18n-hi)
-  'panels.detail.connection': 'Live connection',
+  'panels.detail.connection': 'लाइव कनेक्शन',
   // TODO(i18n-hi)
-  'panels.detail.connectionDown': 'Not connected',
+  'panels.detail.connectionDown': 'जुड़ा नहीं है',
   // TODO(i18n-hi)
-  'panels.detail.connectionLive': 'Connected now',
+  'panels.detail.connectionLive': 'अभी जुड़ा है',
   // TODO(i18n-hi)
-  'panels.detail.created': 'First seen',
+  'panels.detail.created': 'पहली बार दिखा',
   // TODO(i18n-hi)
-  'panels.detail.history': 'History',
+  'panels.detail.history': 'इतिहास',
   // TODO(i18n-hi)
-  'panels.detail.id': 'Panel ID',
+  'panels.detail.id': 'पैनल आईडी',
   // TODO(i18n-hi)
-  'panels.detail.identity': 'Identity',
+  'panels.detail.identity': 'पहचान',
   // TODO(i18n-hi)
   // TODO(i18n-hi)
-  'panels.detail.network': 'Network',
+  'panels.detail.network': 'नेटवर्क',
   // TODO(i18n-hi)
-  'panels.detail.revokedNote':
-    'This panel was removed. It has to pair again before it can connect.',
+  'panels.detail.revokedNote': 'यह पैनल हटा दिया गया था। जुड़ने से पहले इसे दोबारा पेयर करना होगा।',
   // TODO(i18n-hi)
-  'panels.detail.role': 'Acts under role',
+  'panels.detail.role': 'इस भूमिका में काम करता है',
   // TODO(i18n-hi)
-  'panels.detail.roleDefault': 'Office (default)',
+  'panels.detail.roleDefault': 'ऑफ़िस (डिफ़ॉल्ट)',
   // TODO(i18n-hi)
-  'panels.detail.status.active': 'Paired',
+  'panels.detail.status.active': 'पेयर किया हुआ',
   // TODO(i18n-hi)
-  'panels.detail.status.pending': 'Waiting to pair',
+  'panels.detail.status.pending': 'पेयर होने की प्रतीक्षा',
   // TODO(i18n-hi)
-  'panels.detail.status.revoked': 'Removed',
+  'panels.detail.status.revoked': 'हटाया गया',
   // TODO(i18n-hi)
-  'panels.detail.statusLabel': 'Pairing',
+  'panels.detail.statusLabel': 'पेयरिंग',
   // TODO(i18n-hi)
-  'panels.detail.updated': 'Last changed',
+  'panels.detail.updated': 'आख़िरी बदलाव',
   // TODO(i18n-hi)
-  'panels.detail.roleSummary': '{tier} tier, {count} permissions',
+  'panels.detail.roleSummary': '{tier} स्तर, {count} अनुमतियाँ',
   // TODO(i18n-hi)
-  'panels.detail.work': 'Work from this panel',
+  'panels.detail.work': 'इस पैनल से किया गया काम',
   // TODO(i18n-hi)
-  'panels.detail.workLast': 'Last action',
+  'panels.detail.workLast': 'आख़िरी कार्रवाई',
   // TODO(i18n-hi)
-  'panels.detail.workLeads': 'Pending orders',
+  'panels.detail.workLeads': 'पेंडिंग ऑर्डर',
   // TODO(i18n-hi)
-  'panels.detail.workNone': 'None yet',
+  'panels.detail.workNone': 'अभी तक कुछ नहीं',
   // TODO(i18n-hi)
-  'panels.detail.workOrders': 'Final orders',
+  'panels.detail.workOrders': 'फ़ाइनल ऑर्डर',
   // TODO(i18n-hi)
-  'panels.empty.description': 'Panels you pair appear here, online or off.',
+  'panels.empty.description': 'आप जो पैनल पेयर करेंगे वे यहाँ दिखेंगे, ऑनलाइन हों या ऑफ़लाइन।',
   // TODO(i18n-hi)
-  'panels.empty.title': 'No office panels yet',
+  'panels.empty.title': 'अभी कोई ऑफ़िस पैनल नहीं',
   // TODO(i18n-hi)
-  'panels.list.title': 'Connected Office Panels',
+  'panels.list.title': 'जुड़े हुए ऑफ़िस पैनल',
   // TODO(i18n-hi)
-  'panels.rename.cancel': 'Cancel',
+  'panels.rename.cancel': 'रद्द करें',
   // TODO(i18n-hi)
-  'panels.rename.failed': 'Could not rename the panel',
+  'panels.rename.failed': 'पैनल का नाम नहीं बदला जा सका',
   // TODO(i18n-hi)
-  'panels.rename.label': 'Name for this office panel',
+  'panels.rename.label': 'इस ऑफ़िस पैनल का नाम',
   // TODO(i18n-hi)
-  'panels.rename.save': 'Save',
+  'panels.rename.save': 'सहेजें',
   // TODO(i18n-hi)
-  'panels.rename.title': 'Rename "{name}"',
+  'panels.rename.title': '"{name}" का नाम बदलें',
   // TODO(i18n-hi)
-  'panels.revoke.body': 'That PC will have to connect again.',
+  'panels.revoke.body': 'वह PC तुरंत डिस्कनेक्ट हो जाता है और अपनी कनेक्शन स्क्रीन पर लौट जाता है। उसे दोबारा इस्तेमाल करने के लिए फिर से पेयर करना होगा; तब उसे यही पंक्ति वापस मिलती है।',
   // TODO(i18n-hi)
-  'panels.revoke.cancel': 'Cancel',
+  'panels.revoke.cancel': 'रद्द करें',
   // TODO(i18n-hi)
-  'panels.revoke.failed': 'Could not remove the panel',
+  'panels.revoke.failed': 'पैनल हटाया नहीं जा सका',
   // TODO(i18n-hi)
-  'panels.revoke.title': 'Remove "{name}"?',
+  'panels.revoke.title': '"{name}" हटाएँ?',
   // TODO(i18n-hi)
-  'panels.status.connected': 'Connected',
+  'panels.status.connected': 'जुड़ा है',
   // TODO(i18n-hi)
-  'panels.status.offline': 'Offline',
+  'panels.status.offline': 'ऑफ़लाइन',
   // TODO(i18n-hi)
-  'panels.status.removed': 'Removed',
+  'panels.status.removed': 'हटाया गया',
   // TODO(i18n-hi)
-  'panels.table.address': 'Address',
+  'panels.table.address': 'पता',
   // TODO(i18n-hi)
-  'panels.table.deviceCode': 'Device code',
+  'panels.table.deviceCode': 'डिवाइस कोड',
   // TODO(i18n-hi)
-  'panels.table.lastSeen': 'Last seen',
+  'panels.table.lastSeen': 'आख़िरी बार दिखा',
   // TODO(i18n-hi)
-  'panels.table.name': 'Name',
+  'panels.table.name': 'नाम',
   // TODO(i18n-hi)
-  'panels.table.paired': 'Paired',
+  'panels.table.paired': 'पेयर किया',
   // TODO(i18n-hi)
-  'panels.table.status': 'Status',
+  'panels.table.status': 'स्थिति',
   // TODO(i18n-hi)
   'party.createFailed': 'Could not create the party',
   // TODO(i18n-hi)
@@ -4281,4 +4277,24 @@ export const HI_MESSAGES: Record<MessageKey, string> = {
   'partyAccess.editor.reloaded': 'ताज़ा एक्सेस लोड किया गया।',
   'partyAccess.editor.readOnlyOpen': 'हर कोई इस पार्टी को देख सकता है और इस पर काम कर सकता है।',
   'partyAccess.editor.readOnlyRestricted': 'केवल नीचे दिए लोग ही इस पार्टी को देख सकते हैं।',
+  // Connection audit (D2)
+  'validation.panel.nameTaken': '"{name}" नाम का एक और ऑफ़िस पैनल पहले से है। कोई दूसरा नाम चुनें।',
+  'panels.add.timeLeft': 'यह मास्टर अभी {time} और नया पैनल स्वीकार करेगा।',
+  'panels.add.expiredTitle': 'समय पूरा हो गया।',
+  'panels.add.expiredBody': '5 मिनट में कोई पैनल नहीं जुड़ा, इसलिए यह मास्टर नए पैनल लेना बंद कर चुका है। दोबारा खोलने के लिए ऑफ़िस पैनल जोड़ें दबाएँ।',
+  'panels.add.autoOffTitle': 'बिना पासवर्ड के जुड़ना बंद है',
+  'panels.add.autoOffBody': 'नए ऑफ़िस पैनल को मैन्युअल कनेक्शन और पेयरिंग पासवर्ड इस्तेमाल करना होगा। स्वचालित रूप से जुड़ना सेटिंग्स में दोबारा चालू किया जा सकता है।',
+  'panels.add.manualTitle': 'इसके बजाय पते से जोड़ने के लिए',
+  'panels.add.manualBody': 'ऑफ़िस PC पर मैन्युअल कनेक्शन चुनें और इनमें से कोई एक पता और पेयरिंग पासवर्ड डालें। पासवर्ड इस मास्टर के सेटअप के समय एक बार दिखाया गया था। खो गया हो तो मास्टर PC चलाने वाला व्यक्ति सेटिंग्स के कनेक्शन टैब में मास्टर कुंजी से नया बना सकता है।',
+  'panels.add.discoveryDown': 'स्वचालित खोज चालू नहीं है ({reason}), इसलिए पैनल इस मास्टर को अपने-आप नहीं ढूँढ सकते। नीचे दिया गया पता इस्तेमाल करें। यह मास्टर हर 30 सेकंड में फिर कोशिश करता है।',
+  'panels.add.reinstallNote': 'दोबारा इंस्टॉल किया गया PC नए पैनल के रूप में जुड़ता है। नया दिखते ही सूची से उसकी पुरानी पंक्ति हटा दें।',
+  'panels.rotate.action': 'सीक्रेट दोबारा जारी करें',
+  'panels.rotate.title': '"{name}" का सीक्रेट दोबारा जारी करें?',
+  'panels.rotate.body': 'इस पैनल को उसके चालू कनेक्शन से नया सीक्रेट मिलता है और वह काम करता रहता है। कुछ टाइप नहीं करना पड़ता। अगर इस दौरान पैनल बंद हो गया तो उसे दोबारा पेयर करना होगा, इसलिए यह तभी करें जब पैनल "जुड़ा है" दिखा रहा हो।',
+  'panels.rotate.confirm': 'दोबारा जारी करें',
+  'panels.rotate.done': '"{name}" को नया सीक्रेट मिल गया।',
+  'panels.rotate.notDelivered': '"{name}" तक नहीं पहुँचा जा सका, इसलिए उसे दोबारा पेयर करना होगा।',
+  'panels.rotate.failed': 'सीक्रेट दोबारा जारी नहीं किया जा सका',
+  'panels.list.showRemoved': 'हटाए गए दिखाएँ ({count})',
+  'panels.list.hideRemoved': 'हटाए गए छिपाएँ',
 };

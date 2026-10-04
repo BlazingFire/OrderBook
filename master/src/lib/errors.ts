@@ -120,7 +120,8 @@ export class ConflictError extends AppError {
  */
 export class TooManyRequestsError extends AppError {
   constructor(readonly seconds: number) {
-    super('error.rateLimited', { seconds }, 429, 'rate_limited', { seconds });
+    // `retryAfterSeconds` is the same figure under the name a client reads it by, as `Retry-After` carries it.
+    super('error.rateLimited', { seconds }, 429, 'rate_limited', { seconds, retryAfterSeconds: seconds });
   }
 }
 

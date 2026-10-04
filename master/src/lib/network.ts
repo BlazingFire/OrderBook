@@ -45,6 +45,43 @@ export function primaryLanAddress(): string | null {
   return listLanInterfaces()[0]?.address ?? null;
 }
 
+function toInt(address: string): number | null {
+  const octets = address.split('.').map(Number);
+  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+    return null;
+  }
+  return ((octets[0]! << 24) | (octets[1]! << 16) | (octets[2]! << 8) | octets[3]!) >>> 0;
+}
+
+/**
+ * The address of this PC that the asker can reach: the one on the interface whose
+ * subnet contains the asker's address. A Master on two networks (office LAN and a
+ * second adapter) used to answer everybody with its single top-ranked address, so
+ * a panel on the other network was told an address it could not reach. Falls back
+ * to the best-ranked address when no interface shares a subnet (a routed asker,
+ * or an address that is not IPv4), and to null when there is no interface at all.
+ */
+export function addressForPeer(
+  peerAddress: string | null | undefined,
+  interfaces: readonly LanInterface[] = listLanInterfaces(),
+): string | null {
+  const peer = peerAddress ? toInt(peerAddress.replace(/^::ffff:/, '')) : null;
+  if (peer !== null) {
+    // Most specific subnet first, so a /24 inside a /16 wins; ties keep the ranked order.
+    let best: { entry: LanInterface; bits: number } | null = null;
+    for (const entry of interfaces) {
+      const address = toInt(entry.address);
+      const mask = toInt(entry.netmask);
+      if (address === null || mask === null || mask === 0) continue;
+      if (((address & mask) >>> 0) !== ((peer & mask) >>> 0)) continue;
+      const bits = mask.toString(2).split('1').length - 1;
+      if (!best || bits > best.bits) best = { entry, bits };
+    }
+    if (best) return best.entry.address;
+  }
+  return interfaces[0]?.address ?? null;
+}
+
 /**
  * Whether a socket's remote address is this PC itself.
  *
@@ -125,10 +162,14 @@ function computeBroadcastAddress(address: string, netmask: string): string {
  * Prefer real private LAN ranges over virtual adapters (Docker, WSL, VPN),
  * which otherwise shadow the interface the router actually reaches.
  */
+/** Adapter names that are a virtual switch, a tunnel or a container bridge, not the shop's network. */
+const VIRTUAL_ADAPTER = /docker|veth|br-|vethernet|hyper-v|default switch|wsl|vbox|virtualbox|vmnet|vmware|vpn|tailscale|zerotier|hamachi|tap-|tap |tun|wireguard|npcap|loopback|bluetooth|teredo|isatap/;
+
 function rankInterface(entry: LanInterface): number {
   const name = entry.name.toLowerCase();
-  if (name.includes('docker') || name.includes('veth') || name.includes('br-')) return 100;
-  if (name.startsWith('vbox') || name.includes('vmnet') || name.includes('vpn')) return 90;
+  // 169.254.x.x is what Windows gives an adapter that found no DHCP server: nobody can reach it.
+  if (entry.address.startsWith('169.254.')) return 200;
+  if (VIRTUAL_ADAPTER.test(name)) return 100;
   if (entry.address.startsWith('192.168.')) return 10;
   if (entry.address.startsWith('10.')) return 20;
   if (entry.address.startsWith('172.')) return 30;

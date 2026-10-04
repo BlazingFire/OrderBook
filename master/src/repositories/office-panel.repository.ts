@@ -230,6 +230,45 @@ export async function panelNamesMatching(tenantId: string, prefix: string): Prom
   return rows.map((row) => String((row as { name: unknown }).name));
 }
 
+/**
+ * Panels that reported this machine name and are not in use right now: removed, or
+ * switched off. The candidates for a PC that pairs again after a reinstall or a removal.
+ * The caller skips the ones that are connected, which this table cannot know.
+ */
+export async function findByHostname(tenantId: string, hostname: string): Promise<OfficePanel[]> {
+  const rows = await db()(TABLE)
+    .where({ tenant_id: tenantId })
+    .whereRaw('lower(hostname) = lower(?)', [hostname])
+    .orderBy('last_seen_at', 'desc');
+  return rows.map(mapOfficePanel);
+}
+
+/** Pairing again: a new secret and an active row, keeping the id, the name, the device code and the history. */
+export async function reviveForPairing(
+  id: string,
+  values: { secret_hash: string; master_proof_key: string; lan_ip: string | null; name: string },
+  runner: Runner = db(),
+): Promise<OfficePanel> {
+  const [row] = await runner(TABLE)
+    .where({ id })
+    .update({
+      ...values,
+      status: 'active',
+      paired_at: runner.fn.now(),
+      secret_rotated_at: null,
+      updated_at: runner.fn.now(),
+    })
+    .returning('*');
+  return mapOfficePanel(row);
+}
+
+/** Names of the panels that are still in use (not removed), for telling two apart on a list. */
+export async function liveNames(tenantId: string, exceptId?: string): Promise<string[]> {
+  const query = db()(TABLE).select('name').where({ tenant_id: tenantId }).whereNot({ status: 'revoked' });
+  if (exceptId) query.whereNot({ id: exceptId });
+  return (await query).map((row) => String((row as { name: unknown }).name));
+}
+
 /** Which role a panel's commands act under. Null means the seeded Office role. */
 export async function findPanelRoleId(id: string): Promise<string | null> {
   const row = await db()(TABLE).select('role_id').where({ id }).first();

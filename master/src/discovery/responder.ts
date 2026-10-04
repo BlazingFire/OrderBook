@@ -18,7 +18,8 @@ import {
 
 import { config } from '../config/index.js';
 import { createLogger } from '../lib/logger.js';
-import { primaryLanAddress } from '../lib/network.js';
+import { addressForPeer } from '../lib/network.js';
+import { toErrorMessage } from '../lib/errors.js';
 import { isAutoPairingOpen } from '../services/panel.service.js';
 import { getIdentity } from '../services/setup.service.js';
 
@@ -28,31 +29,87 @@ export interface DiscoveryResponder {
   stop(): Promise<void>;
 }
 
-export async function startDiscoveryResponder(): Promise<DiscoveryResponder> {
-  const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+/** Whether panels can find this Master on their own right now, and if not, why. */
+export interface DiscoveryStatus {
+  listening: boolean;
+  port: number;
+  /** The socket error that stopped it, in the system's words; null while listening. */
+  reason: string | null;
+}
 
+let status: DiscoveryStatus = { listening: false, port: DISCOVERY_PORT, reason: null };
+
+export function discoveryStatus(): DiscoveryStatus {
+  return status;
+}
+
+/** How long to wait before trying the port again after it could not be bound. */
+const RETRY_MS = 30_000;
+
+function bindOnce(): Promise<dgram.Socket> {
+  const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
   socket.on('message', (buffer, remote) => {
     void handleMessage(socket, buffer, remote);
   });
-
-  socket.on('error', (error) => {
-    log.error('Discovery socket error', error);
-  });
-
-  await new Promise<void>((resolve, reject) => {
-    socket.once('error', reject);
+  return new Promise<dgram.Socket>((resolve, reject) => {
+    socket.once('error', (error) => {
+      socket.close();
+      reject(error);
+    });
     socket.bind(DISCOVERY_PORT, () => {
       socket.setBroadcast(true);
-      socket.off('error', reject);
-      resolve();
+      socket.removeAllListeners('error');
+      socket.on('error', (error) => {
+        log.error('Discovery socket error', error);
+        status = { listening: false, port: DISCOVERY_PORT, reason: toErrorMessage(error) };
+      });
+      resolve(socket);
     });
   });
+}
 
-  log.info(`Listening for office panels on UDP ${DISCOVERY_PORT}`);
+/**
+ * Starts answering discovery broadcasts. **Never rejects**: the UDP port being taken
+ * (another program, a second Master, a Windows-reserved range) used to abort the whole
+ * Master's boot, although discovery is only a convenience and pairing by address and
+ * password works without it. The Master now starts, says so in `discoveryStatus()`
+ * (the Add Office Panel screen shows it), and tries the port again every 30 seconds.
+ */
+export async function startDiscoveryResponder(): Promise<DiscoveryResponder> {
+  let socket: dgram.Socket | null = null;
+  let timer: NodeJS.Timeout | null = null;
+  let stopped = false;
+
+  const attempt = async (): Promise<void> => {
+    try {
+      socket = await bindOnce();
+      if (stopped) {
+        socket.close();
+        socket = null;
+        return;
+      }
+      status = { listening: true, port: DISCOVERY_PORT, reason: null };
+      log.info(`Listening for office panels on UDP ${DISCOVERY_PORT}`);
+    } catch (error) {
+      status = { listening: false, port: DISCOVERY_PORT, reason: toErrorMessage(error) };
+      log.warn(
+        `Cannot listen on UDP ${DISCOVERY_PORT} (${status.reason}); panels must be paired by address until it is free. Trying again in ${RETRY_MS / 1000} s.`,
+      );
+      if (!stopped) {
+        timer = setTimeout(() => void attempt(), RETRY_MS);
+        timer.unref?.();
+      }
+    }
+  };
+  await attempt();
 
   return {
     stop: () =>
       new Promise<void>((resolve) => {
+        stopped = true;
+        if (timer) clearTimeout(timer);
+        status = { listening: false, port: DISCOVERY_PORT, reason: null };
+        if (!socket) return resolve();
         socket.close(() => resolve());
       }),
   };
@@ -79,7 +136,8 @@ async function handleMessage(
     nonce: message.nonce,
     masterUniqueId: identity.masterUniqueId,
     companyName: identity.companyName,
-    lanIp: primaryLanAddress() ?? '127.0.0.1',
+    // The address on the network the asker is on, not one address for everybody.
+    lanIp: addressForPeer(remote.address) ?? '127.0.0.1',
     httpPort: config.http.port,
     // The same question `pairPanel` will ask, not just the window — advertising
     // `true` while the setting is off would have a panel select this Master and

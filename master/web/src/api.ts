@@ -68,6 +68,8 @@ import type {
   RecordPresence,
   OfficePanelDetail,
   OfficePanelWithPresence,
+  PairingWindowState,
+  PanelSecretRotation,
   OptionListItem,
   OptionListItemInput,
   OptionListItemUpdateInput,
@@ -699,9 +701,11 @@ export const api = {
   search: (term: string) => request<SearchHit[]>(`/api/search?q=${encodeURIComponent(term)}`),
 
   panels: () => request<{ panels: OfficePanelWithPresence[] }>('/api/panels'),
-  openPairingWindow: () => post<{ closesAt: number }>('/api/panels/pairing-window/open'),
+  openPairingWindow: () => post<PairingWindowState>('/api/panels/pairing-window/open'),
+  pairingWindow: () => request<PairingWindowState>('/api/panels/pairing-window'),
   closePairingWindow: () => post<void>('/api/panels/pairing-window/close'),
   revokePanel: (id: string) => post<void>(`/api/panels/${id}/revoke`),
+  rotatePanelSecret: (id: string) => post<PanelSecretRotation>(`/api/panels/${id}/rotate-secret`),
   renamePanel: (id: string, name: string) =>
     request<void>(`/api/panels/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
 
