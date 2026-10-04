@@ -42,6 +42,7 @@ this batch; the web i18n layer is deferred to the UI phase (`02-FILE-STRUCTURE.m
 | 12 | Open questions |
 | 13 | Server Master, master key and the panel protocol (1.3 Phase 2) |
 | 14 | Pending order numbers, presence and stale edits (1.3 Phase 4) |
+| 17 | Party Access: list, summary and people (1.4.0) |
 
 ---
 
@@ -2629,6 +2630,42 @@ heartbeats are not audited. The sentences are `activity.print_job.*`.
 printer PC keeps printing. Silent printing is unchanged: `printPage` prints without a dialog only to a
 printer Windows lists, and the station runner treats an unlisted printer as a failure rather than letting
 a dialog open on an unattended PC.
+
+---
+
+## 17. Party Access: list, summary and people (1.4.0)
+
+The redesign changed three reads. Writes (`PUT /api/party-access/:partyId`, whole-set replace guarded by
+`expectedVersion`) and the CSV export are unchanged. Types: `shared/src/domain/inputs.ts`
+(`PartyAccessQuery`, `PARTY_ACCESS_SORTS`, `PartyAccessSort`, `PartyAccessSortDir`, `PartyAccessSummary`).
+
+### 17.1 `GET /api/party-access`
+
+`?search&userId&restriction&sort&dir&limit&offset` → `Paginated<PartyAccessRow>`.
+
+- `search` is plain text (`\`, `%` and `_` are escaped, never wildcards) matched against party **code, name, city,
+  phone** and the **display name or username of anybody assigned**.
+- `restriction` ∈ `all | open | restricted`. "Nobody" is `restriction=open`; `userId` is always a real id, and
+  `userId` with `restriction=open` matches nothing.
+- `sort` ∈ `code | name | city | access` and `dir` ∈ `asc | desc`. `access` is the number of assignees (ascending =
+  open parties first). Allow-listed in the Office route, the Master route, the service and the repository;
+  anything else falls back to name ascending. Ties break on name, then id.
+- A holder whose account is inactive or deleted keeps the grant and is returned with `isActive: false`
+  (`isActive` folds in `deleted_at IS NULL`). A save keeps such existing grants; only **new** grants must be live.
+
+### 17.2 `GET /api/party-access/summary`
+
+→ `PartyAccessSummary { total, restricted, open }`: every live party company-wide, unaffected by search or filter.
+Needs `party.assign` or `party.accessAll`. Registered **before** `/:partyId`. Socket command
+`partyAccess:summary` (ack `CommandAck<PartyAccessSummary>`), minimum protocol **8**
+(`COMMAND_MIN_PROTOCOL`, `PANEL_PROTOCOL_VERSION = 8`). An Office on a Master that predates it gets the usual
+"update needed" failure; an old Master ignores `sort`/`dir`/city/assignee search. Office offline: 503, like the whole screen
+(Party Access is never queued).
+
+### 17.3 `GET /api/party-access/people`
+
+Allowed with `party.assign` **or** `party.accessAll` (no route guard; `requireCanRead` in the service), same narrow
+fields: `id, displayName, username, roleName, roleTier, avatar`. A caller with neither key gets 403.
 
 ---
 
