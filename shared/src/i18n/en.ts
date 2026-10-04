@@ -3363,4 +3363,5 @@ export const EN_MESSAGES = {
   'panels.empty.noActiveBody': 'Every panel that was paired has been removed. Use Show removed to see them, or add a panel again.',
   'panels.add.autoOffNotice': 'Automatic joining is switched off — Offices must use the pairing password.',
   'panels.add.autoOffLink': 'Change this in Settings',
+  'panels.add.descriptionAutoOff': 'Press this to open a 5-minute window. A new office PC then joins with manual connection, the Master address below and the pairing password.',
 } as const;
