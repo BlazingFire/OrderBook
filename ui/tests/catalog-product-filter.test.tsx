@@ -3,10 +3,9 @@
  * CATALOGUE_MODEL.md §1, §2), against a mocked api:
  *
  * - its Product filter opens a list below itself, so it must not sit in the
- *   shell's filter strip: `.ob-filterbar` scrolls sideways and clips
- *   vertically at its band, and a list opened inside it can never be seen
- *   (the Master's Products screen moved its product Picker out for the
- *   same reason). This pins where it renders, and that choosing from it filters;
+ *   shell's filter strip (it used to scroll sideways and clip a list opened
+ *   inside it; it now wraps, but the Picker stays out, as on the Master's
+ *   Products screen). This pins where it renders, and that choosing from it filters;
  * - a brand chip asks the Master for that brand and clears a product of
  *   another brand;
  * - each row reads as the catalogue does — `One Piece Toilet`, the
