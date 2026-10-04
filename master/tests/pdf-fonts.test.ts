@@ -1,25 +1,10 @@
 /**
- * **The Devanagari gate** (`docs/backend-modules/11-BUILD-SEQUENCE.md` §2.2,
- * `10-TESTING.md` §6.7). Pure — it reads the vendored font files and drives
- * fontkit directly, so it needs no cluster and cannot silently skip.
+ * The vendored PDF fonts. Pure — it reads the font files and drives fontkit
+ * directly, so it needs no cluster and cannot silently skip.
  *
- * The claim being tested is narrower than "the font loaded". A renderer that
- * maps codepoints to glyphs in order — no Indic shaper at all — loads the font
- * perfectly happily and produces text that is wrong in a way an English
- * reviewer cannot see. The two assertions below are the ones such a renderer
- * fails:
- *
- *   1. **Conjunct formation** — `'हिन्दी'` must shape to FEWER glyphs than it
- *      has codepoints, because न + ् + द becomes one conjunct form.
- *   2. **Reordering** — in `'कि'` the i-matra is stored *after* its consonant
- *      but must be drawn *before* it.
- *
- * A note for anybody extending this suite: comparing a shaped glyph's **id**
- * against the same character shaped in isolation is not a valid test. The
- * i-matra is contextual — it takes a different glyph id depending on the
- * preceding consonant's width — so an isolated shaping yields a different
- * variant and the comparison reports a false failure. Compare glyph *names*,
- * whose `uniXXXX` prefix is stable across the variants.
+ * A face that loads is not a face that works: the checks below are the ones a
+ * bad font swap fails (a missing file, a space glyph PDFKit cannot subset, a
+ * mono face without the rupee sign).
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -32,7 +17,6 @@ import { config } from '../src/config/index.js';
 const VENDORED = [
   'Inter-Regular.ttf',
   'Inter-SemiBold.ttf',
-  'NotoSansDevanagari-Regular.ttf',
   'SourceCodePro-Regular.ttf',
 ];
 
@@ -48,32 +32,16 @@ describe('vendored PDF fonts', () => {
     }
   });
 
-  it('PDF-2: Devanagari conjuncts form — "हिन्दी" shapes to fewer glyphs than codepoints', () => {
-    const font = open('NotoSansDevanagari-Regular.ttf');
-    const text = 'हिन्दी';
-
-    const codepoints = Array.from(text).length;
-    const glyphs = font.layout(text).glyphs.length;
-
-    expect(codepoints).toBe(6);
-    // A shaper-free renderer returns exactly 6 here. The conjunct न्द collapses
-    // three codepoints into one glyph, so a real shaper returns 5.
-    expect(glyphs).toBeLessThan(codepoints);
+  it('PDF-2: the Latin faces shape plain English text to one glyph per letter', () => {
+    for (const file of ['Inter-Regular.ttf', 'Inter-SemiBold.ttf']) {
+      const glyphs = open(file).layout('Sharma Tiles').glyphs;
+      expect(glyphs.length, file).toBeGreaterThanOrEqual('Sharma Tiles'.length - 2);
+      expect(glyphs.every((glyph) => glyph.id > 0), `${file} has a missing glyph`).toBe(true);
+    }
   });
 
-  it('PDF-3: the i-matra reorders — "कि" draws the vowel sign before its consonant', () => {
-    const font = open('NotoSansDevanagari-Regular.ttf');
-
-    // Stored order is consonant (U+0915 क) then vowel sign (U+093F ि).
-    const names = font.layout('कि').glyphs.map((glyph) => glyph.name ?? '');
-
-    const matra = names.findIndex((name) => name.startsWith('uni093F'));
-    const consonant = names.findIndex((name) => name.startsWith('uni0915'));
-
-    expect(matra).toBeGreaterThanOrEqual(0);
-    expect(consonant).toBeGreaterThanOrEqual(0);
-    // Drawn order must be the reverse of stored order.
-    expect(matra).toBeLessThan(consonant);
+  it('PDF-3: no Devanagari face is vendored any more', () => {
+    expect(existsSync(path.join(config.pdf.fontsDir, 'NotoSansDevanagari-Regular.ttf'))).toBe(false);
   });
 
   it('PDF-4: every face can shape a space — the glyph PDFKit subsets on every page', () => {
@@ -91,7 +59,7 @@ describe('vendored PDF fonts', () => {
     }
   });
 
-  it('PDF-5: the mono face covers the rupee sign, which the text splitter treats as script-neutral', () => {
+  it('PDF-5: the mono face covers the rupee sign', () => {
     const font = open('SourceCodePro-Regular.ttf');
     expect(font.hasGlyphForCodePoint('₹'.codePointAt(0)!)).toBe(true);
   });

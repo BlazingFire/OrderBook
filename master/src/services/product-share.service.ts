@@ -15,7 +15,6 @@
 import sharp from 'sharp';
 import type { Product } from '@orderbook/shared';
 
-import { config } from '../config/index.js';
 import { requirePermission, type ActorContext } from '../domain/actor.js';
 import {
   SHARE_MAX_PRODUCTS,

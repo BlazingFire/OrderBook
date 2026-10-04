@@ -73,26 +73,18 @@ describe('shareCard', () => {
   });
 
   it('never prints the main-product code (OPT) anywhere on a card (R14)', () => {
-    for (const locale of ['en', 'hi'] as const) {
-      const card = shareCard(product(), undefined, shareText(locale));
-      const everything = [card.title, card.subtitle, ...card.fields.flatMap((field) => [field.label, field.value])].join('|');
-      expect(everything).not.toMatch(/OPT/);
-    }
+    const card = shareCard(product(), undefined, shareText());
+    const everything = [card.title, card.subtitle, ...card.fields.flatMap((field) => [field.label, field.value])].join('|');
+    expect(everything).not.toMatch(/OPT/);
   });
 
-  it('speaks the company language: Hindi labels, and a Hindi page line', () => {
-    const hi = shareText('hi');
-    const card = shareCard(
-      product({ alias: 'घंटी', multiColour: true } as Partial<Product>),
-      undefined,
-      hi,
-    );
+  it('prints the sheet words from the text it is given, and a page line', () => {
+    const text = shareText();
+    const card = shareCard(product({ alias: 'Bell', multiColour: true } as Partial<Product>), undefined, text);
     const labels = card.fields.map((field) => field.label);
-    expect(labels).toEqual(expect.arrayContaining([hi.alias, hi.size, hi.code, hi.colours, hi.colour, hi.weight]));
-    expect(hi.alias).not.toBe(shareText('en').alias);
-    expect(hi.page(2, 5)).toBe('पृष्ठ 2 / 5');
-    expect(shareText('en').page(2, 5)).toBe('Page 2 of 5');
-    expect(card.fields).toContainEqual({ label: hi.colour, value: hi.anyColour });
+    expect(labels).toEqual(expect.arrayContaining([text.alias, text.size, text.code, text.colours, text.colour, text.weight]));
+    expect(text.page(2, 5)).toBe('Page 2 of 5');
+    expect(card.fields).toContainEqual({ label: text.colour, value: text.anyColour });
   });
 
   it('prints a custom field by the company label, and by its key when it has none (1.4 rework)', () => {
@@ -134,17 +126,18 @@ function pageCount(pdf: Buffer): number {
 }
 
 describe('renderProductShare', () => {
-  it('draws a Hindi sheet (Devanagari labels, page line and name) without failing', async () => {
-    const text = shareText('hi');
+  it('draws a sheet of Latin text and embeds the Inter face it was measured in', async () => {
+    const text = shareText();
     const pdf = await renderProductShare({
-      company: 'शुभ सिरेमिक्स',
+      company: 'Shubh Ceramics',
       caption: '2026-10-03',
       text,
-      entries: [{ card: shareCard(product({ name: 'डमरू', alias: 'घंटी' } as Partial<Product>), undefined, text), photo: null }],
+      entries: [{ card: shareCard(product({ name: 'Damru', alias: 'Bell' } as Partial<Product>), undefined, text), photo: null }],
     });
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
-    // The Devanagari face is embedded: without it every label would be blank boxes.
-    expect(pdf.toString('latin1')).toMatch(/NotoSansDevanagari/);
+    // Embedded, so the Latin words print as glyphs and not as Helvetica or boxes.
+    expect(pdf.toString('latin1')).toMatch(/Inter/);
+    expect(pdf.toString('latin1')).not.toMatch(/Devanagari/);
   });
 
   it('draws 9 products on 3 A4 pages', async () => {

@@ -25,7 +25,7 @@ describe('which URL may open a PDF window', () => {
     expect(
       isPdfWindowUrl(
         ORIGIN,
-        `${ORIGIN}/api/reports/by-user/pdf?period=customDates&fromDate=2026-04-01&toDate=2026-06-30&subjectId=u-1&columns=party%2Cqty&totals=true&paperSize=letter&orientation=portrait&lang=hi&limit=20`,
+        `${ORIGIN}/api/reports/by-user/pdf?period=customDates&fromDate=2026-04-01&toDate=2026-06-30&subjectId=u-1&columns=party%2Cqty&totals=true&paperSize=letter&orientation=portrait&limit=20`,
       ),
     ).toBe(true);
   });
@@ -64,7 +64,7 @@ describe('which URL may open a PDF window', () => {
     ['the format key', `${ORIGIN}/api/reports/dispatches/pdf?format=csv`],
     ['a script in a value', `${ORIGIN}/api/reports/dispatches/pdf?columns=<script>`],
     ['an encoded script', `${ORIGIN}/api/reports/dispatches/pdf?columns=%3Cscript%3E`],
-    ['a repeated key', `${ORIGIN}/api/reports/dispatches/pdf?lang=en&lang=hi`],
+    ['a repeated key', `${ORIGIN}/api/reports/dispatches/pdf?period=month&period=week`],
     ['an encoded slash in a value', `${ORIGIN}/api/reports/dispatches/pdf?subjectId=..%2F..`],
     ['an unknown key beside a good one', `${ORIGIN}/api/reports/dispatches/pdf?period=month&x=1`],
     ['an encoded path', `${ORIGIN}/api/reports/dispatches%2Fpdf`],
@@ -75,7 +75,7 @@ describe('which URL may open a PDF window', () => {
   it('keeps the query allowlist to the keys a report PDF is asked with', () => {
     expect([...PDF_QUERY_KEYS].sort()).toEqual(
       [
-        'columns', 'fromDate', 'fromMonth', 'lang', 'limit', 'orientation', 'paperSize',
+        'columns', 'fromDate', 'fromMonth', 'limit', 'orientation', 'paperSize',
         'period', 'subjectId', 'toDate', 'toMonth', 'totals',
       ].sort(),
     );

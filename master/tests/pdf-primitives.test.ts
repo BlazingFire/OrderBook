@@ -1,16 +1,12 @@
 /**
- * The measuring half of the PDF primitives, and the script splitter under
- * them.
+ * The measuring half of the PDF primitives.
  *
  * Pure in the sense that matters here: it drives a real `PDFDocument` with the
  * real vendored faces, but writes nothing and needs no cluster. Measurement is
  * the thing being tested, and a stub would measure nothing.
  *
- * The claim under test is narrow and worth stating, because it is the defect
- * these functions exist to prevent: **a mixed-script string must be measured
- * and drawn face by face.** Measuring "शर्मा टाइल्स (Sharma Tiles)" under one
- * font reports a width for glyphs that face does not have, and the symptom is
- * a report column overlapping its neighbour rather than an error.
+ * The claim under test: a string is measured in the very face it is drawn in
+ * (body, bold or mono), so a column never overlaps its neighbour.
  */
 
 import PDFDocument from 'pdfkit';
@@ -25,7 +21,6 @@ import {
   wrapLines,
   type TextStyle,
 } from '../src/pdf/primitives.js';
-import { splitByScript } from '../src/pdf/text.js';
 
 const STYLE: TextStyle = { size: 10 };
 
@@ -36,45 +31,24 @@ function measuringDoc(): typeof PDFDocument.prototype {
   return doc;
 }
 
-describe('pdf text — script splitting', () => {
-  it('PDF-13: a mixed line splits into runs so each can be drawn in its own face', () => {
-    const runs = splitByScript('शर्मा टाइल्स (Sharma Tiles)');
-
-    expect(runs.length).toBeGreaterThan(1);
-    expect(runs[0]!.script).toBe('devanagari');
-    expect(runs.some((run) => run.script === 'body')).toBe(true);
-    // Nothing is lost or duplicated in the split.
-    expect(runs.map((run) => run.text).join('')).toBe('शर्मा टाइल्स (Sharma Tiles)');
-  });
-
-  it('PDF-14: a space between two Devanagari words does not start a Latin run', () => {
-    const runs = splitByScript('शर्मा टाइल्स');
-
-    expect(runs).toHaveLength(1);
-    expect(runs[0]!.script).toBe('devanagari');
-  });
-
-  it('PDF-15: a pure-Latin string in a mono column stays one mono run', () => {
-    const runs = splitByScript('LD0000000042', 'mono');
-
-    expect(runs).toHaveLength(1);
-    expect(runs[0]!.script).toBe('mono');
-  });
-});
-
 describe('pdf primitives', () => {
-  it('PDF-80: Devanagari is measured in its own face, not the Latin one', () => {
+  it('PDF-80: a string is measured in the face its style names: bold is wider, mono differs', () => {
     const doc = measuringDoc();
+    const text = 'Sharma Tiles (Morbi)';
 
-    const mixed = measureRuns(doc, 'शर्मा टाइल्स (Sharma Tiles)', STYLE);
+    const regular = measureRuns(doc, text, STYLE);
+    const bold = measureRuns(doc, text, { ...STYLE, bold: true });
+    const mono = measureRuns(doc, text, { ...STYLE, script: 'mono' });
 
-    expect(mixed).toBeGreaterThan(0);
-    expect(Number.isFinite(mixed)).toBe(true);
+    expect(regular).toBeGreaterThan(0);
+    expect(Number.isFinite(regular)).toBe(true);
+    expect(bold).toBeGreaterThan(regular);
+    expect(mono).not.toBe(regular);
   });
 
-  it('PDF-80: truncateToWidth keeps what fits and ends in an ellipsis, script-correctly', () => {
+  it('PDF-80: truncateToWidth keeps what fits and ends in an ellipsis, ', () => {
     const doc = measuringDoc();
-    const text = 'शर्मा टाइल्स (Sharma Tiles) — Morbi, Gujarat';
+    const text = 'Sharma Tiles (Sharma Tiles) — Morbi, Gujarat';
     const width = mm(25);
 
     const truncated = truncateToWidth(doc, text, width, STYLE);
@@ -90,7 +64,7 @@ describe('pdf primitives', () => {
 
   it('PDF-81: wrapLines breaks between words so every line fits, and keeps a typed newline', () => {
     const doc = measuringDoc();
-    const text = 'शर्मा टाइल्स (Sharma Tiles) Station Road, Morbi, Gujarat';
+    const text = 'Sharma Tiles (Sharma Tiles) Station Road, Morbi, Gujarat';
     const width = mm(25);
 
     const lines = wrapLines(doc, text, width, STYLE);

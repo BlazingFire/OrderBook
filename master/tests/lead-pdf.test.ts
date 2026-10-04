@@ -112,7 +112,7 @@ function lead(items: LineItem[]): Lead {
 }
 
 const PARTY = {
-  name: 'शर्मा टाइल्स (Sharma Tiles)',
+  name: 'Sharma Tiles',
   addressLine1: '12 Station Road',
   addressLine2: null,
   city: 'Morbi',
@@ -217,7 +217,7 @@ describe('lead PDF — the table', () => {
     expect(table.title).toBe('Swisware Ceramics');
     expect(table.subtitle).toBe('Pending order LD0000000042 · 2026-09-29');
     expect(table.preamble).toEqual([
-      'शर्मा टाइल्स (Sharma Tiles)',
+      'Sharma Tiles',
       '12 Station Road',
       'Morbi Gujarat 363641',
       '9800000000',
@@ -235,7 +235,7 @@ describe('lead PDF — the table', () => {
 });
 
 describe('lead PDF — rendering', () => {
-  it('renders a PDF, wrapped cells, Devanagari and all', async () => {
+  it('renders a PDF with wrapped cells', async () => {
     const colours = ['White', 'Ivory', 'Pink', 'Black', 'Rustic Coffee Brown', 'Sky Blue'];
     const { table } = build(
       colours.map((colour, index) =>
@@ -246,6 +246,8 @@ describe('lead PDF — rendering', () => {
     const bytes = await renderReportPdf(table);
 
     expect(bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    // The Latin face is embedded, so every word prints as glyphs.
+    expect(bytes.toString('latin1')).toMatch(/Inter/);
   });
 
   it('prints every line of a wrapped cell, and the party block once however many pages', async () => {
