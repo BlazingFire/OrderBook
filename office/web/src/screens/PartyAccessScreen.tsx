@@ -265,7 +265,7 @@ export function PartyAccessScreen({
       {
         key: 'code',
         header: t('partyAccess.column.code'),
-        width: '6.5rem',
+        width: '6rem',
         sortable: true,
         render: (row) => (
           <span className="ob-mono ob-pa-ellipsis" title={row.partyCode}>
@@ -276,7 +276,9 @@ export function PartyAccessScreen({
       {
         key: 'name',
         header: t('partyAccess.column.party'),
-        width: '1.6fr',
+        // A rem width, not a share: the table decides what fits from rem widths, and a
+        // share is assumed to need only 120 px, which left the name three letters wide.
+        width: '16rem',
         sortable: true,
         // The one control in the row that opens it, so a row is not a button with a
         // button inside it: Tab reaches it, Enter opens it, and a click anywhere else
@@ -307,7 +309,7 @@ export function PartyAccessScreen({
       {
         key: 'access',
         header: t('partyAccess.column.access'),
-        width: '7rem',
+        width: '7.5rem',
         sortable: true,
         render: (row) =>
           row.isRestricted ? (
@@ -319,8 +321,8 @@ export function PartyAccessScreen({
       {
         key: 'assignees',
         header: t('partyAccess.column.assignedTo'),
-        // The column with the most to say.
-        width: '2fr',
+        // The column with the most to say: it takes whatever the others leave.
+        width: '1fr',
         render: (row) => <AssigneeList assignees={row.assignees} />,
       },
       // Absent for a reader: a button nobody may use is not a control to grey.
@@ -329,7 +331,10 @@ export function PartyAccessScreen({
             {
               key: 'edit',
               header: '',
-              width: '7rem',
+              width: '6.5rem',
+              // Dropped before the access column on a narrow screen: a click on the row
+              // opens the same editor.
+              priority: 2 as const,
               align: 'right' as const,
               render: (row: PartyAccessRow) => (
                 <Button
@@ -428,13 +433,13 @@ export function PartyAccessScreen({
   );
 
   return (
-    <div style={STACK}>
+    <div style={STACK} className="ob-pa-root">
       <div style={{ ...ROW, justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
           <h1 className="ob-title" style={{ margin: 0 }}>
             {t('partyAccess.title')}
           </h1>
-          <p className="ob-small" style={{ margin: 0, maxWidth: rem(640) }}>
+          <p className="ob-small ob-pa-intro" style={{ margin: 0, maxWidth: rem(640) }}>
             {t('partyAccess.intro')}
           </p>
         </div>
