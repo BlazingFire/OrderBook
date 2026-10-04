@@ -10,7 +10,17 @@ This file assumes both.
 
 ---
 
-## First: 1.4.1 is released; what comes next (2026-10-04)
+## First: 1.4.2 is released; what comes next (2026-10-05)
+
+1.4.2 is on `main` @ `dbd04c7` and published as v1.4.2 (Setups and manifests only). It is
+English-only, and it carries the filter-strip and Panels-table fixes. The details are in
+`HANDOFF.md`, under "English only, filter strip + 1.4.2". Next steps, in order:
+
+1. The owner installs 1.4.2: the Master first, then the Offices.
+2. The real-PC checklist from the 1.4.1 block below.
+3. The backlog.
+
+## Before that: 1.4.1 is released (2026-10-04)
 
 1.4.1 is on `main` @ `2a7649a`, pushed, and published as release v1.4.1, which holds Setups and
 manifests only. What landed, the decisions, the traps and what is owed are in `HANDOFF.md`

@@ -190,6 +190,26 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-05 - English only and the filter strip, 1.4.2: CH1 and five Sonnet sessions (Claude, Opus + Sonnet)
+
+- **Who did what.**
+  - **D1:** the shared core. Its first commit was a contract (`Locale = 'en'`) so the others
+    could work in parallel; its last was the final cleanup.
+  - **D2:** the UI, plus the filter-strip widths fix.
+  - **D3:** the server and the PDF.
+  - **D4:** every doc, history included.
+  - **D5:** the merges, the greps, the browser pass, and a live check that a 1.4.1 Office's
+    `lang=` is ignored.
+  - **CH1:** the plan (`CLAUDE_HELPER_NOHI.md`, N1–N8). The owner settled two scope
+    questions: the PDF font goes too, and the history docs are scrubbed too. CH1 also
+    folded in another session's unverified filter-strip work on a branch, so it went
+    through the same gate, and made the release.
+- **Verified.** The gate on `d83b83e`: lint, build, typecheck, test (308 files, 4,316 tests),
+  `smoke:legacy`, each 0. The greps are clean apart from the absence assertions and the
+  fallback test.
+- **Release.** CH1 checked `git symbolic-ref` before committing the bump and compared
+  `origin/main` after the push. Both matched (`dbd04c7`).
+
 ### 2026-10-04 - Add-connection audit, Setup-only builds, 1.4.1: CH1 and five Sonnet sessions (Claude, Opus + Sonnet)
 
 - **Who did what.**

@@ -52,6 +52,41 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
+## English only, filter strip + 1.4.2 (2026-10-05)
+
+**State:** released. `main` @ `dbd04c7` (the 1.4.2 bump) is pushed. GitHub release **v1.4.2**
+contains only the Setups and the manifests. The notes are in `docs/releases/1.4.2.md`. Plan and
+evidence are in `CLAUDE_HELPER_NOHI.md` (requirements N1–N8) and the 2026-10-04 sections of the D logs, which are untracked coordination files.
+
+**Gate on the merged tree `d83b83e`:** lint 0, build 0, typecheck 0, test 0 (308 files
+passed + 1 skipped; 4,316 tests passed + 17 skipped), `smoke:legacy` 0.
+
+**What landed:**
+- **One language (owner, 2026-10-04: "no second-language requirement"; full removal, PDF font
+  and history docs included).**
+  - `Locale` is `'en'` only. The second catalogue file, the locale switch, the language
+    persistence (`ob.locale`), the server `defaultLocale`, `ORDERBOOK_DEFAULT_LOCALE`, report
+    `lang` and log `locale`, the second-script web font and the PDF font, and the PDF
+    script-run shaping (`master/src/pdf/text.ts`) are all gone. So are `tools/i18n-sync.mjs`
+    and the `i18n:sync` script.
+  - `t()` and `en.ts` stay; every string lives there. The `no-untranslated-jsx-text` lint
+    rule stays and is English-only.
+  - A saved non-English preference falls back to English (`ui/tests/locale.test.ts`).
+    Stored data is untouched: no migration.
+  - A 1.4.1 Office's `lang=` on report PDFs is ignored with a 200 response (checked live).
+  - Who did what: D1 the shared core and the final cleanup, D2 the UI, D3 the server and
+    PDF, D4 every doc (history included), D5 the merges, greps and browser pass.
+- **Filter strip** (from the "Searchbar/filterbar layout with roles" session, verified by
+  D5 and D2):
+  - `.ob-filterbar` wraps instead of scrolling, so a dropdown inside it is no longer
+    clipped and no longer scrolls the strip up.
+  - Inputs and selects in the strip size to their content; date inputs are 150 px (D2
+    `f76052d`, pinned by `ui/tests/filterbar-widths.test.ts`).
+- **Office panels table:** the status chips sit on one row, and the Paired and Last seen
+  columns are wider.
+
+**Not verified:** dark theme on the filter strip, the Electron shell, real PCs (as in 1.4.1).
+
 ## Add-connection audit, Setup-only builds + 1.4.1 (2026-10-04)
 
 **State: released.** `main` @ `2a7649a` is the 1.4.1 version bump and is pushed. GitHub
