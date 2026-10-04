@@ -10,6 +10,36 @@ This file assumes both.
 
 ---
 
+## First: 1.4.0 is built; what comes next (2026-10-04)
+
+The Party Access redesign (list screen, shared editor, summary endpoint, kit fixes) is
+merged on `d5/1.4` @ `96d0b7f`; CH1 merges the docs, bumps the version to **1.4.0** and
+builds the Windows Master and Office and the Win7 Office. What landed, the decisions, the
+traps and what the owner owes are in `HANDOFF.md` under **"Party Access redesign + 1.4.0
+(2026-10-04)"**. The release notes for the owner and the shops are `docs/releases/1.4.0.md`.
+
+In order:
+
+1. **Publish and verify 1.4.0** (CH1, then D4): `node tools/release.mjs` for each build
+   (run the script directly: `npm run release --` drops arguments in PowerShell), signing
+   key `%USERPROFILE%\.orderbook\release-2026-10-01.private.pem` with
+   `ORDERBOOK_RELEASE_KEY_ID=release-2026-10-01`. Then check the published assets: the
+   Ed25519 signature against `shared/src/domain/release-keys.ts`, SHA-256 and size, and the
+   update flow from a 1.3.0 checkout (`7d8a731`). Never run a scratch server against the
+   real releases folder or repository: set `ORDERBOOK_RELEASES_DIR` to a scratch folder and
+   `ORDERBOOK_RELEASES_POLL_MINUTES=0` (see the PowerShell empty-variable trap in HANDOFF).
+2. **The owner installs 1.4.0**, Master first, then each Office, by hand over the existing
+   install (steps in the release notes). This is also the first real-PC pass.
+3. **The real-PC pass.** The checklist in `HANDOFF.md` "1.4 batch" "Owed by the owner",
+   plus the Party Access keyboard pass and the 11 pm update, which nothing has run for real.
+4. **Branch and push decisions** (owner): `main` is not pushed; retire the merged branches
+   and worktrees.
+5. **The backlog** from the block below, unchanged.
+
+The "1.4 batch is done" block that follows is history; its backlog list is still current.
+
+---
+
 ## First: the 1.4 batch is done; what comes next (2026-10-03)
 
 The 1.3 batch and the owner's 1.4 requests (R0-R22) are all on `main` @ `4caa3a4`
