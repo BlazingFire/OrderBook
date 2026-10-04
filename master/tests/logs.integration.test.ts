@@ -220,7 +220,7 @@ describe.skipIf(!canRunIntegrationTests)('Logs (integration)', () => {
 
     it('LOG-12: verification runs in SQL — a row with unicode and key-ordering JSON still verifies', async () => {
       await fieldsService.createValue(
-        { listKey: 'stock.colour', value: 'नीला', label: 'नीला (Blue)' },
+        { listKey: 'stock.colour', value: 'Bleu éclatant', label: 'Bleu éclatant (Blue)' },
         actor,
       );
       const result = await logService.verifyLogChain({}, actor);

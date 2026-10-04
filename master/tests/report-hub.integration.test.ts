@@ -116,7 +116,7 @@ describe.skipIf(!canRunIntegrationTests)('report commands over the socket (integ
 
     const exported = await ask('report:export', {
       report: 'by-city',
-      query: { period: 'someday', fromMonth: 3, format: 'docx', columns: 'city', paperSize: 9, lang: 'fr' },
+      query: { period: 'someday', fromMonth: 3, format: 'docx', columns: 'city', paperSize: 9 },
     });
 
     expect(exported.ok, JSON.stringify(exported)).toBe(true);

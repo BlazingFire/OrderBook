@@ -45,8 +45,8 @@ describe('CSV reading', () => {
     expect(parseCsv('Code,Size,Date\n0012,18x12,3/4/2026\n')[1]).toEqual(['0012', '18x12', '3/4/2026']);
   });
 
-  it('decodes UTF-8 Hindi, UTF-16 "Unicode Text" and Windows-1252 saves', () => {
-    expect(decodeCsv(bytes('नमस्ते,Café'))).toBe('नमस्ते,Café');
+  it('decodes UTF-8 accents, UTF-16 "Unicode Text" and Windows-1252 saves', () => {
+    expect(decodeCsv(bytes('Zoë,Café'))).toBe('Zoë,Café');
     expect(decodeCsv(Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('Code,Café', 'utf16le')]))).toBe(
       'Code,Café',
     );

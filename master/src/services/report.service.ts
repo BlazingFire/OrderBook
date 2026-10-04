@@ -313,8 +313,8 @@ export async function topPartiesReport(
  * or report label with no placeholders — `shared/tests/i18n-coverage.test.ts`
  * is what keeps that true.
  */
-function label(key: MessageKey, lang: Locale = 'en', params?: Record<string, string | number>): string {
-  return (t as (locale: Locale, key: MessageKey, params?: Record<string, string | number>) => string)(lang, key, params);
+function label(key: MessageKey, params?: Record<string, string | number>): string {
+  return (t as (locale: Locale, key: MessageKey, params?: Record<string, string | number>) => string)('en', key, params);
 }
 
 /** The units the three legacy kinds' export columns never declared, by key. */
@@ -530,7 +530,7 @@ function sheetNameOf(title: string): string {
   return (cleaned || 'Report').slice(0, 31);
 }
 
-type NormalizedExportOptions = Required<Omit<ReportExportOptions, 'columns'>> & Pick<ReportExportOptions, 'columns'>;
+type NormalizedExportOptions = Required<Omit<ReportExportOptions, 'columns' | 'lang'>> & Pick<ReportExportOptions, 'columns'>;
 
 /**
  * What an export asked for, read defensively. The socket and the REST route both
@@ -546,7 +546,6 @@ export function normalizeExportOptions(raw: unknown): NormalizedExportOptions {
     totals: src.totals === true,
     paperSize: src.paperSize === 'letter' ? 'letter' : 'a4',
     orientation: src.orientation === 'portrait' ? 'portrait' : 'landscape',
-    lang: src.lang === 'hi' ? 'hi' : 'en',
   };
 }
 
@@ -596,7 +595,7 @@ export async function exportReport(
     const labelIndex = columns.findIndex((column) => !sums(column));
 
     totals = columns.map((column, index) => {
-      if (index === labelIndex) return label('reports.export.totals', input.lang);
+      if (index === labelIndex) return label('reports.export.totals');
       if (!sums(column)) return '';
 
       const sum = rows.reduce((running, row) => {
@@ -645,13 +644,12 @@ export async function exportReport(
     return { format: 'csv', csv: isLegacyReportKind(kind) ? csv : `\uFEFF${csv}`, rowCount: rows.length };
   }
 
-  const lang: Locale = input.lang ?? 'en';
-  const title = label(REPORT_META[kind].titleToken, lang);
+  const title = label(REPORT_META[kind].titleToken);
 
   if (format === 'xlsx') {
     const bytes = await streamXlsxTable({
       sheetName: sheetNameOf(title),
-      columns: columns.map((column) => ({ header: label(column.labelToken, lang), width: column.unit === 'text' ? 26 : 16 })),
+      columns: columns.map((column) => ({ header: label(column.labelToken), width: column.unit === 'text' ? 26 : 16 })),
       rows: totals ? [...body, totals] : body,
     });
     return { format: 'xlsx', fileName: `${kind}.xlsx`, contentType: XLSX_CONTENT_TYPE, bytes, rowCount: rows.length };
@@ -660,9 +658,9 @@ export async function exportReport(
   const bytes = await renderReportPdf({
     title,
     subtitle: rangeSubtitle(ctx.range.fromDate, ctx.range.toDateExclusive),
-    preamble: ctx.subject.name ? [label('reports.generatedFor', lang, { name: ctx.subject.name })] : undefined,
+    preamble: ctx.subject.name ? [label('reports.generatedFor', { name: ctx.subject.name })] : undefined,
     columns: columns.map((column) => ({
-      label: label(column.labelToken, lang),
+      label: label(column.labelToken),
       numeric: column.unit !== 'text' && column.unit !== 'date',
     })),
     rows: body.map((row) => row.map((value, index) => printed(value, columns[index] as ReportColumn))),

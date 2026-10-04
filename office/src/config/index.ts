@@ -8,7 +8,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { hostname } from 'node:os';
 
-import { isLocale, DEFAULT_LOCALE } from '@orderbook/shared';
 
 import { loadEnvFiles } from '../lib/env-file.js';
 
@@ -128,15 +127,4 @@ export const config = {
     saveNumberWaitMs: intFromEnv('OFFICE_SAVE_NUMBER_WAIT_MS', 5000),
   },
 
-  locale: {
-    /**
-     * No timezone here — the Office holds no database and computes no
-     * calendar boundary. Just the default so a fresh browser profile on this
-     * panel starts in the deployment's language, read by `GET /api/session`
-     * (answered locally, never forwarded, so it works with the Master off).
-     */
-    defaultLocale: isLocale(process.env.ORDERBOOK_DEFAULT_LOCALE)
-      ? process.env.ORDERBOOK_DEFAULT_LOCALE
-      : DEFAULT_LOCALE,
-  },
 } as const;

@@ -13,7 +13,7 @@
  * field of its own, not part of how a product reads (R14, `ui/src/catalogueSummary.ts`).
  */
 
-import { t, type Locale, type Product } from '@orderbook/shared';
+import { t, type Product } from '@orderbook/shared';
 
 /** Four products to a page, two across and two down. */
 export const SHARE_PER_PAGE = 4;
@@ -85,17 +85,17 @@ export interface ShareText {
   title: (company: string) => string;
 }
 
-export function shareText(locale: Locale): ShareText {
+export function shareText(): ShareText {
   return {
-    alias: t(locale, 'productShare.pdf.alias'),
-    size: t(locale, 'productShare.pdf.size'),
-    code: t(locale, 'productShare.pdf.code'),
-    colours: t(locale, 'productShare.pdf.colours'),
-    colour: t(locale, 'productShare.pdf.colour'),
-    anyColour: t(locale, 'productShare.pdf.anyColour'),
-    weight: t(locale, 'productShare.pdf.weight'),
-    page: (page, total) => t(locale, 'productShare.pdf.page', { page, total }),
-    title: (company) => t(locale, 'productShare.pdf.title', { company }),
+    alias: t('en', 'productShare.pdf.alias'),
+    size: t('en', 'productShare.pdf.size'),
+    code: t('en', 'productShare.pdf.code'),
+    colours: t('en', 'productShare.pdf.colours'),
+    colour: t('en', 'productShare.pdf.colour'),
+    anyColour: t('en', 'productShare.pdf.anyColour'),
+    weight: t('en', 'productShare.pdf.weight'),
+    page: (page, total) => t('en', 'productShare.pdf.page', { page, total }),
+    title: (company) => t('en', 'productShare.pdf.title', { company }),
   };
 }
 
@@ -104,7 +104,7 @@ export function shareCard(
   product: Product,
   /** The company's label for a custom field's key (the Fields screen); a key with none prints as it is. */
   labelOf: (key: string) => string = (key) => key,
-  text: ShareText = shareText('en'),
+  text: ShareText = shareText(),
 ): ShareCard {
   const variants = liveVariants(product);
   const subtitle = [product.categoryName, product.brand].filter(Boolean).join('  |  ');

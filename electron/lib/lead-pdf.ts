@@ -51,7 +51,6 @@ export const PDF_QUERY_KEYS: readonly string[] = [
   'totals',
   'paperSize',
   'orientation',
-  'lang',
 ];
 
 const LEAD_PATH = /^\/api\/leads\/[^/?#]+\/pdf$/;

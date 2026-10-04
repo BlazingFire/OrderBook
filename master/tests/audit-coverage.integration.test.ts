@@ -84,7 +84,6 @@ const TEST_KEY = 'test-master-key-for-audit-coverage';
 const PANEL = 'A3F9K2';
 const PASSPHRASE = 'a-long-enough-backup-passphrase';
 const en = createTranslator('en');
-const hi = createTranslator('hi');
 
 let actor: ActorContext;
 let testKeyHash: string;
@@ -210,7 +209,6 @@ describe.skipIf(!canRunIntegrationTests)('every audited operation leaves an entr
       expect(deleted.details).toEqual({ number, party: 'Coverage Traders' });
       expect(rendered(deleted)).toBe(`Test Actor deleted the pending order ${number} for Coverage Traders`);
       expect(rendered(restored)).toBe(`Test Actor restored the pending order ${number} for Coverage Traders`);
-      expect(rendered(deleted, hi)).toBe(`Test Actor ने Coverage Traders की पेंडिंग ऑर्डर ${number} हटाई`);
     });
 
     it('converting records lead.converted on the lead, beside order.created', async () => {
@@ -386,12 +384,12 @@ describe.skipIf(!canRunIntegrationTests)('every audited operation leaves an entr
         'Test Actor changed Allow signing in while the Master Panel is off from On to Off',
       );
 
-      const { csv } = await logs.exportLogs({ entityType: 'setting', locale: 'hi' }, actor);
+      const { csv } = await logs.exportLogs({ entityType: 'setting' }, actor);
       const [header, row] = csv.trim().split('\r\n');
       expect(header).toBe(
         'id,sequence,createdAt,actorType,actorName,entityType,entityId,action,hash,sentence,details',
       );
-      expect(row).toContain('Test Actor ने मास्टर पैनल बंद होने पर भी साइन इन करने दें को चालू से बंद किया');
+      expect(row).toContain('Test Actor changed Allow signing in while the Master Panel is off from On to Off');
       expect(row).toContain('""labelToken"":""setting.security.offlineSignInEnabled.label""');
     });
   });

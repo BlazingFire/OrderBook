@@ -23,7 +23,6 @@ import {
   DEVELOPER_RESET_CONFIRMATION,
   DEVELOPER_TOKEN_HEADER,
   IMAGE_VARIANTS,
-  isLocale,
   isPickKind,
   isReportFormat,
   MAX_IMAGE_SOURCE_BYTES,
@@ -346,7 +345,7 @@ export function createApp(): Express {
   // --- Who is using this panel ---
 
   app.get('/api/session', (_req, res) => {
-    res.json({ session: userSession.currentSession(), defaultLocale: config.locale.defaultLocale });
+    res.json({ session: userSession.currentSession() });
   });
 
   /*
@@ -1640,12 +1639,10 @@ export function createApp(): Express {
   app.get('/api/logs/export', (req, res) => {
     const from = typeof req.query.from === 'string' ? req.query.from : 'all';
     const to = typeof req.query.to === 'string' ? req.query.to : 'all';
-    // The CSV's `sentence` column is rendered on the Master, in this language.
-    const locale = isLocale(req.query.locale) ? req.query.locale : undefined;
     return forwardCsv(
       res,
       'log:export',
-      { ...parseLogQuery(req.query), locale },
+      parseLogQuery(req.query),
       `logs-${from}-${to}.csv`,
     );
   });
@@ -1683,7 +1680,6 @@ export function createApp(): Express {
       totals: query.totals === 'true',
       paperSize: query.paperSize === 'letter' ? ('letter' as const) : undefined,
       orientation: query.orientation === 'portrait' ? ('portrait' as const) : undefined,
-      lang: query.lang === 'hi' ? ('hi' as const) : undefined,
     };
   };
 

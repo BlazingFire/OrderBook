@@ -212,7 +212,7 @@ describe('the archive file name', () => {
   it('keeps ASCII words of the company name, dash-separated, and falls back to company', () => {
     expect(companySlug('Shree Ceramics & Tiles Pvt. Ltd.')).toBe('Shree-Ceramics-Tiles-Pvt-Ltd');
     expect(companySlug('  --  ')).toBe('company');
-    expect(companySlug('श्री सिरेमिक्स')).toBe('company');
+    expect(companySlug('株式会社')).toBe('company');
     expect(companySlug(null)).toBe('company');
     expect(companySlug('A'.repeat(39) + ' B')).toBe('A'.repeat(39));
   });

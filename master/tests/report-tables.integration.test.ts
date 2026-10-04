@@ -547,11 +547,11 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
 
       const csv = await reportService.exportReport('by-city', { period: 'thisMonth', totals: true }, admin);
       expect(csv.format).toBe('csv');
-      // A BOM leads the new kinds' CSV, so Excel reads a Hindi city as UTF-8.
+      // A BOM leads the new kinds' CSV, so Excel reads a non-ASCII city as UTF-8.
       expect((csv as { csv: string }).csv).toBe('﻿city,parties,orders,pieces,kg\r\nMorbi,1,1,10,25\r\nTotal,1,1,10,25\r\n');
     });
 
-    it('writes an Excel workbook whose headers are the reader’s language and whose figures are numbers', async () => {
+    it('writes an Excel workbook whose headers are words and whose figures are numbers', async () => {
       const alice = await makeUser('alice');
       const shop = await makeShop();
       await makeDispatched(await author(alice), shop, 'Shah Ceramics', 'Morbi');
@@ -566,23 +566,19 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
       expect(rows[0]).toEqual(['City', 'Parties', 'Final Orders', 'Pieces', 'Weight (kg)']);
       expect(rows[1]).toEqual(['Morbi', '1', '1', '10', '25']);
       expect(rows[2]).toEqual(['Total', '1', '1', '10', '25']);
-
-      const hi = await reportService.exportReport('by-city', { period: 'thisMonth', format: 'xlsx', lang: 'hi' }, admin);
-      const hindi = await readSheetRows((hi as { bytes: Buffer }).bytes);
-      // Literal words, not `t('hi', key)`: that would echo an English stub back and pass.
-      expect(hindi[0]).toEqual(['शहर', 'पार्टियाँ', 'फ़ाइनल ऑर्डर', 'नग', 'वज़न (किग्रा)']);
     });
 
-    it('writes a PDF in either language, saying whose figures they are', async () => {
+    it('writes a PDF saying whose figures they are', async () => {
       const alice = await makeUser('alice');
       const shop = await makeShop();
       await makeDispatched(await author(alice), shop, 'Shah Ceramics', 'Morbi');
 
-      for (const lang of ['en', 'hi'] as const) {
-        const pdf = await reportService.exportReport('by-user', { period: 'thisMonth', format: 'pdf', lang }, await viewer(alice));
-        expect(pdf.format).toBe('pdf');
-        expect((pdf as { bytes: Buffer }).bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-');
-      }
+      const pdf = await reportService.exportReport('by-user', { period: 'thisMonth', format: 'pdf' }, await viewer(alice));
+      expect(pdf.format).toBe('pdf');
+      const bytes = (pdf as { bytes: Buffer }).bytes;
+      expect(bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+      // The Latin face is embedded, so the English words print as glyphs and not as boxes.
+      expect(bytes.toString('latin1')).toMatch(/Inter/);
     });
 
     it('is one activity row per export, naming the kind and the format', async () => {
@@ -644,28 +640,27 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
       expect(lines.slice(1)).toEqual(['Light 1,0.1', 'Light 2,0.2', 'Total,0.3']);
     });
 
-    it('reads what a client sent defensively: an unknown format is CSV, an unknown language English, columns only a list of strings', async () => {
+    it('reads what a client sent defensively: an unknown format is CSV, columns only a list of strings', async () => {
       const alice = await makeUser('alice');
       await makeDispatched(await author(alice), await makeShop(), 'Shah Ceramics', 'Morbi');
 
       const odd = await reportService.exportReport(
         'by-city',
-        { format: 'docx', lang: 'fr', columns: 'city' as unknown as string[], totals: 'yes', paperSize: 'a0' } as never,
+        { format: 'docx', columns: 'city' as unknown as string[], totals: 'yes', paperSize: 'a0' } as never,
         admin,
       );
       expect(odd.format).toBe('csv');
       expect((odd as { csv: string }).csv.split('\r\n')[0]).toBe('﻿city,parties,orders,pieces,kg');
       expect((odd as { csv: string }).csv).not.toContain('Total');
 
-      expect(reportService.normalizeExportOptions({ columns: ['city', 7, null], lang: 'hi', format: 'pdf', paperSize: 'letter', orientation: 'portrait' })).toEqual({
+      expect(reportService.normalizeExportOptions({ columns: ['city', 7, null], format: 'pdf', paperSize: 'letter', orientation: 'portrait' })).toEqual({
         format: 'pdf',
         columns: ['city'],
         totals: false,
         paperSize: 'letter',
         orientation: 'portrait',
-        lang: 'hi',
       });
-      expect(reportService.normalizeExportOptions(null)).toMatchObject({ format: 'csv', lang: 'en', paperSize: 'a4', orientation: 'landscape' });
+      expect(reportService.normalizeExportOptions(null)).toMatchObject({ format: 'csv', paperSize: 'a4', orientation: 'landscape' });
     });
 
     it('refuses a report longer than the cap for its format, naming the cap, instead of writing half of it', async () => {

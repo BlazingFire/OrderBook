@@ -6,7 +6,7 @@
  * something that is not an `Error`. The fallbacks were English literals in
  * both panels ("Could not move the lead", "Export failed", "Request failed",
  * and the Office's kanban cards printed `via` in front of the source), so a
- * Hindi deployment got English exactly when something had gone wrong. So did
+ * screen showed an English literal exactly when something had gone wrong. So did
  * the api clients' own timeout and cancel failures, which a Master boot that
  * timed out put on the splash as they were. The
  * lint rule for untranslated JSX cannot see any of them: they are string
@@ -21,7 +21,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
-import { EN_MESSAGES, HI_MESSAGES } from '@orderbook/shared';
+import { EN_MESSAGES } from '@orderbook/shared';
 import { describe, expect, it } from 'vitest';
 
 const ROOT = path.resolve(__dirname, '..', '..');
@@ -80,13 +80,11 @@ describe('the keys that keep their old "rates" names', () => {
   // these keep the names they had while party records carried prices. The
   // software carries no money at all; what they say must not suggest it does.
   it.each(['lead.add.party.ownRates', 'lead.detail.partyRates'] as const)(
-    '%s names no money in either language',
+    '%s names no money',
     (key) => {
-      // English words for money, the rupee sign, and Hindi's दर (rate), मूल्य
-      // (price), कीमत/क़ीमत (price) and रुपये (rupees).
-      const money = /\b(rates?|prices?|priced|pricing|amount|cost)\b|₹|दर|मूल्य|कीमत|क़ीमत|रुपय/i;
+      // English words for money, and the rupee sign.
+      const money = /\b(rates?|prices?|priced|pricing|amount|cost)\b|₹/i;
       expect(EN_MESSAGES[key]).not.toMatch(money);
-      expect(HI_MESSAGES[key]).not.toMatch(money);
     },
   );
 });

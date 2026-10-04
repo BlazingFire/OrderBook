@@ -580,7 +580,7 @@ describe('reports', () => {
       rowCount: 1,
     } as never);
     const asXlsx = await request(createApp())
-      .get('/api/reports/by-city/export?format=xlsx&lang=hi&subjectId=US0000000007')
+      .get('/api/reports/by-city/export?format=xlsx&subjectId=US0000000007')
       .buffer(true)
       .parse((res, done) => {
         const chunks: Buffer[] = [];
@@ -594,7 +594,7 @@ describe('reports', () => {
       'report:export',
       expect.objectContaining({
         report: 'by-city',
-        query: expect.objectContaining({ format: 'xlsx', lang: 'hi', subjectId: 'US0000000007' }),
+        query: expect.objectContaining({ format: 'xlsx', subjectId: 'US0000000007' }),
       }),
     ]);
 
@@ -622,7 +622,7 @@ describe('reports', () => {
     } as never);
 
     const response = await request(createApp()).get(
-      '/api/reports/by-city/pdf?period=customDates&fromDate=2026-04-01&toDate=2026-04-30&format=csv&lang=hi&columns=city,orders&totals=true',
+      '/api/reports/by-city/pdf?period=customDates&fromDate=2026-04-01&toDate=2026-04-30&format=csv&columns=city,orders&totals=true',
     );
 
     expect(response.status).toBe(200);
@@ -637,7 +637,6 @@ describe('reports', () => {
           period: 'customDates',
           fromDate: '2026-04-01',
           toDate: '2026-04-30',
-          lang: 'hi',
           columns: ['city', 'orders'],
           totals: true,
         }),
