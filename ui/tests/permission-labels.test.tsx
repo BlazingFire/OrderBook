@@ -5,8 +5,7 @@
  * `lead.convert` read "Lead convert" — and never looked at the `permission.*`,
  * `module.*`, `action.*` and `capabilityGroup.*` tokens that
  * `shared/tests/i18n-coverage.test.ts` makes the catalogue carry for every
- * key. So the grid and the role summary stayed English in Hindi, and a
- * capability read as its key with the dots taken out.
+ * key, so a capability read as its key with the dots taken out.
  */
 
 import { cleanup, render, screen } from '@testing-library/react';
@@ -15,7 +14,6 @@ import {
   CAPABILITIES,
   CAPABILITY_GROUPS,
   EN_MESSAGES,
-  HI_MESSAGES,
   MODULES,
   PERMISSIONS,
   buildPermissionCatalogue,
@@ -26,7 +24,6 @@ import { PermissionGrid } from '../src/PermissionGrid.js';
 import { actionLabel, capabilityLabel, groupLabel, moduleLabel } from '../src/permissionLabels.js';
 
 const en = EN_MESSAGES as Record<string, string>;
-const hi = HI_MESSAGES as Record<string, string>;
 
 afterEach(() => {
   cleanup();
@@ -67,16 +64,6 @@ describe('permission labels', () => {
     }
   });
 
-  it('speaks Hindi when the panel does', () => {
-    window.localStorage.setItem('ob.locale', 'hi');
-
-    expect(moduleLabel('leads')).toBe(hi['module.leads']);
-    expect(actionLabel('view')).toBe(hi['action.view']);
-    expect(capabilityLabel('lead.convert')).toBe(hi['permission.lead.convert']);
-    expect(groupLabel('admin')).toBe(hi['capabilityGroup.admin']);
-    expect(moduleLabel('leads')).not.toBe('Pending Orders');
-  });
-
   it('still names a key this bundle’s catalogue does not know', () => {
     // A Master newer than this panel can serve a catalogue with a key the
     // panel's messages have never heard of; the raw token is worse than a
@@ -88,7 +75,6 @@ describe('permission labels', () => {
   });
 
   it('puts the names in the grid, the row toggle’s title included', () => {
-    window.localStorage.setItem('ob.locale', 'hi');
     render(
       <PermissionGrid
         catalogue={buildPermissionCatalogue()}
@@ -99,12 +85,12 @@ describe('permission labels', () => {
       />,
     );
 
-    const row = screen.getByText(hi['module.leads']!);
+    const row = screen.getByText(en['module.leads']!);
     expect(row.getAttribute('title')).toBe(
-      hi['access.permissions.toggleRow']!.replace('{module}', hi['module.leads']!),
+      en['access.permissions.toggleRow']!.replace('{module}', en['module.leads']!),
     );
-    expect(screen.getByText(hi['permission.lead.convert']!)).toBeTruthy();
-    expect(screen.getByText(hi['capabilityGroup.admin']!)).toBeTruthy();
+    expect(screen.getByText(en['permission.lead.convert']!)).toBeTruthy();
+    expect(screen.getByText(en['capabilityGroup.admin']!)).toBeTruthy();
   });
 
   it('names the tier a blocked key needs by its label, never the raw tier', () => {

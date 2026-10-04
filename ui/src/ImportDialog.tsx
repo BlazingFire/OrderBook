@@ -111,7 +111,7 @@ export function saveBlob(blob: Blob, fileName: string): void {
   URL.revokeObjectURL(url);
 }
 
-/** The row-numbered problems as a CSV (BOM so Excel reads Hindi), for fixing the file. */
+/** The row-numbered problems as a CSV (BOM so Excel reads accented text), for fixing the file. */
 function issuesCsv<Sample>(issues: Array<Issue<Sample>>): Blob {
   // A cell that begins with `=` `+` `-` `@` (or a TAB or CR in front of one) is a formula to
   // Excel. The text of a problem can echo a header the person typed, so it is guarded.

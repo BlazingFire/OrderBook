@@ -6,7 +6,6 @@
  * all fonts combined (~218 KB):
  *   - Inter variable, latin + a symbols slice (₹, dashes, quotes)
  *   - IBM Plex Mono static 400/500/600, latin
- *   - Noto Sans Devanagari variable, devanagari subset (Latin renders in Inter)
  */
 
 @font-face {
@@ -50,13 +49,4 @@
   font-weight: 600;
   font-display: block;
   src: url('./fonts/IBMPlexMono-600-latin.woff2') format('woff2');
-}
-
-@font-face {
-  font-family: 'Noto Sans Devanagari';
-  font-style: normal;
-  font-weight: 400 700;
-  font-display: block;
-  src: url('./fonts/NotoSansDevanagari-var-devanagari.woff2') format('woff2-variations');
-  unicode-range: U+0900-097f, U+1cd0-1cf9, U+200c-200d, U+20b9, U+a8e0-a8ff;
 }

@@ -90,8 +90,8 @@ export function SignInScreen({ connection, onSignedIn, notice, onLeft }: Props) 
     } catch (caught) {
       // Renders the `messageKey` the transport carries, falling back to the
       // coarse `error.<code>` token and only then to English. Every sign-in
-      // failure used to show the server's English sentence — on a Hindi panel
-      // too — because this line read `caught.message` and dropped the key.
+      // failure used to show the server's own sentence, because this line read
+      // `caught.message` and dropped the key.
       setError(apiErrorText(caught, 'signin.errorFallback'));
       setPassword('');
     } finally {

@@ -403,7 +403,7 @@ describe('files', () => {
     expect(screen.getByRole('button', { name: t('reports.export.pdf') })).toBeTruthy();
   });
 
-  it('writes the file the controls describe, in the language on screen, and stays busy until it arrives', async () => {
+  it('writes the file the controls describe, and stays busy until it arrives', async () => {
     let finish: (value: { blob: Blob; fileName: string }) => void = () => undefined;
     const transport = makeTransport({
       exportFile: vi.fn(() => new Promise<{ blob: Blob; fileName: string }>((resolve) => { finish = resolve; })),
@@ -416,7 +416,7 @@ describe('files', () => {
     await screen.findByText('Morbi');
 
     fireEvent.click(screen.getByRole('button', { name: t('reports.export.xlsx') }));
-    expect(transport.exportFile).toHaveBeenCalledWith('by-city', expect.objectContaining({ format: 'xlsx', lang: 'en', subjectId: 'US1', period: 'last6Months' }));
+    expect(transport.exportFile).toHaveBeenCalledWith('by-city', expect.objectContaining({ format: 'xlsx', subjectId: 'US1', period: 'last6Months' }));
 
     // Busy: the others are disabled, so a second click cannot start a second file.
     expect(screen.getByRole('button', { name: t('reports.export.csv') }).hasAttribute('disabled')).toBe(true);

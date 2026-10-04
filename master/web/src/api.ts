@@ -2,7 +2,6 @@
 
 import { anySignal, publishSessionEnded, t, trackLoad, type LeadEntryView } from '@orderbook/ui';
 import type {
-  Locale,
   PickKind,
   ChatAccessCapability,
   PrintJob,
@@ -112,7 +111,6 @@ import type {
   RecycleBinQuery,
   ReportFormat,
   ReportKind,
-  ReportLocale,
   ReportOptions,
   ReportQuery,
   ReportTable,
@@ -550,7 +548,7 @@ export const api = {
   // Carries the caller's own resolved permissions, so the UI renders from what
   // the trusted process granted rather than guessing from the role name.
   me: () =>
-    request<{ user: SignedInUser; sessionToken: string; defaultLocale: Locale }>('/api/auth/me'),
+    request<{ user: SignedInUser; sessionToken: string }>('/api/auth/me'),
 
   storage: () => request<StorageUsage>('/api/storage'),
 
@@ -1218,8 +1216,6 @@ export const api = {
     if (query.from) params.set('from', query.from);
     if (query.to) params.set('to', query.to);
     if (query.q) params.set('q', query.q);
-    // The CSV's sentence column is rendered in this language.
-    if (query.locale) params.set('locale', query.locale);
     const qs = params.toString();
     return `/api/logs/export${qs ? `?${qs}` : ''}`;
   },
@@ -1236,10 +1232,9 @@ export const api = {
     const qs = reportQueryParams(query).toString();
     return request<ReportTable>(`/api/reports/table/${kind}${qs ? `?${qs}` : ''}`, signal ? { signal } : undefined);
   },
-  reportExport: (kind: ReportKind, query: ReportQuery & { format: ReportFormat; lang?: ReportLocale }) => {
+  reportExport: (kind: ReportKind, query: ReportQuery & { format: ReportFormat }) => {
     const params = reportQueryParams(query);
     params.set('format', query.format);
-    if (query.lang) params.set('lang', query.lang);
     return requestFile(`/api/reports/${kind}/export?${params}`, `${kind}.${query.format}`);
   },
 

@@ -26,7 +26,6 @@ import type {
   ReportColumn,
   ReportFormat,
   ReportKind,
-  ReportLocale,
   ReportOptions,
   ReportPeriod,
   ReportQuery,
@@ -40,7 +39,7 @@ import { Card, Section } from './Card.js';
 import { DataTable, type DataTableColumn } from './DataTable.js';
 import { apiErrorText } from './errorText.js';
 import { FormField, Input } from './Form.js';
-import { locale, t } from './i18n.js';
+import { t } from './i18n.js';
 import { rem } from './rem.js';
 import { saveBlob } from './ImportDialog.js';
 import { StatTile, StatTileSkeleton } from './StatTile.js';
@@ -55,7 +54,7 @@ export interface ReportsTransport {
   table: (kind: ReportKind, query: ReportQuery, signal?: AbortSignal) => Promise<ReportTable>;
   exportFile: (
     kind: ReportKind,
-    query: ReportQuery & { format: ReportFormat; lang?: ReportLocale },
+    query: ReportQuery & { format: ReportFormat },
   ) => Promise<{ blob: Blob; fileName: string }>;
 }
 
@@ -103,7 +102,7 @@ const PERIOD_KEY = {
 } as const;
 
 function figure(value: number, unit: ReportColumn['unit']): string {
-  const text = new Intl.NumberFormat(locale() === 'hi' ? 'hi-IN' : 'en-IN', { maximumFractionDigits: 3 }).format(value);
+  const text = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 3 }).format(value);
   return unit === 'percent' ? `${text}%` : text;
 }
 
@@ -236,7 +235,7 @@ export function ReportsScreen({ transport, kind, onKindChange, revision, online 
     setExporting(format);
     try {
       const { blob, fileName } = await trackLoad(
-        transportRef.current.exportFile(kind, { ...query, format, lang: locale() === 'hi' ? 'hi' : 'en' }),
+        transportRef.current.exportFile(kind, { ...query, format }),
       );
       saveBlob(blob, fileName);
     } catch (caught) {
@@ -376,7 +375,7 @@ export function ReportsScreen({ transport, kind, onKindChange, revision, online 
                   with it. */}
               {online && (
                 <ButtonLink
-                  href={reportPdfPath(kind, query, locale() === 'hi' ? 'hi' : 'en')}
+                  href={reportPdfPath(kind, query)}
                   target="_blank"
                   variant="secondary"
                   size="sm"

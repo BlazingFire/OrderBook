@@ -50,7 +50,6 @@ import {
 } from './api';
 import {
   AppShell,
-  adoptDefaultLocale,
   BasicHome,
   BP_NARROW,
   BusyMark,
@@ -503,13 +502,8 @@ function OfficePanel() {
         setBootStep(1);
 
         try {
-          const { session: restored, defaultLocale } = await withTimeout(api.session());
+          const { session: restored } = await withTimeout(api.session());
           if (cancelled) return;
-          // Behind the splash, before the shell first renders. Unlike the
-          // Master's, this endpoint needs no session, so the sign-in screen
-          // gets the deployment's language too. Writes once — see
-          // `adoptDefaultLocale`.
-          adoptDefaultLocale(defaultLocale);
           setSession(restored);
           // Office and Management start on Basic Home, Admin on the Dashboard.
           // Only here and at sign-in: `refreshSession` runs on every reconnect

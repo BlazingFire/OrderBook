@@ -1,22 +1,16 @@
 /**
- * The kit's own chrome speaks the reader's language.
+ * The kit's own chrome comes from the message catalogue.
  *
  * Every string below used to be an English literal in `ui/src` — the sidebar's
  * name and collapse control, a dialog's Close, a toast's Dismiss, the pagers,
  * the busy mark, a Copy button, a redacted cell, an empty combobox, the sync
- * rail — so a Hindi panel read English on exactly the controls both panels
- * share. Each case renders the component under `hi` and checks it against the
- * catalogue, and the last checks English still reads as it did.
- *
- * Only against Hindi the catalogue actually has: `hi()` below fails on a key
- * whose Hindi entry still carries its English text (a `// TODO(i18n-hi)`
- * line), because an assertion on that text would pass just as well on the
- * English literal the component used to hard-code.
+ * rail. Each case renders the component and checks it against the catalogue
+ * entry, and the last checks the words read as they always did.
  */
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { EN_MESSAGES, HI_MESSAGES, type MessageKey } from '@orderbook/shared';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { EN_MESSAGES, type MessageKey } from '@orderbook/shared';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppShell } from '../src/AppShell.js';
 import { BusyMark } from '../src/BusyMark.js';
@@ -28,9 +22,9 @@ import { Modal } from '../src/Modal.js';
 import { ErrorState } from '../src/States.js';
 import { ToastProvider, useToast } from '../src/Toast.js';
 
-function hi(key: MessageKey): string {
-  const text = HI_MESSAGES[key];
-  expect(text, `${key} has no Hindi yet`).not.toBe(EN_MESSAGES[key]);
+function en(key: MessageKey): string {
+  const text = EN_MESSAGES[key];
+  expect(text, `${key} is not in the catalogue`).toBeTruthy();
   return text;
 }
 
@@ -46,7 +40,6 @@ beforeAll(() => {
   };
 });
 
-beforeEach(() => window.localStorage.setItem('ob.locale', 'hi'));
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
@@ -82,19 +75,19 @@ function ToastButton() {
   );
 }
 
-describe('the kit in Hindi', () => {
+describe('the kit reads its words from the catalogue', () => {
   it('names the sidebar, its collapse control and the sync rail', () => {
     const { rerender } = render(shell(false));
-    expect(screen.getByRole('navigation').getAttribute('aria-label')).toBe(hi('nav.modules'));
-    expect(screen.getByRole('button', { name: hi('nav.collapseSidebar') }).textContent).toContain(
-      hi('nav.collapse'),
+    expect(screen.getByRole('navigation').getAttribute('aria-label')).toBe(en('nav.modules'));
+    expect(screen.getByRole('button', { name: en('nav.collapseSidebar') }).textContent).toContain(
+      en('nav.collapse'),
     );
     expect(
-      screen.getByRole('button', { name: hi('sync.statusLabel').replace('{status}', 'Synced') }),
+      screen.getByRole('button', { name: en('sync.statusLabel').replace('{status}', 'Synced') }),
     ).toBeTruthy();
 
     rerender(shell(true));
-    expect(screen.getByRole('button', { name: hi('nav.expandSidebar') })).toBeTruthy();
+    expect(screen.getByRole('button', { name: en('nav.expandSidebar') })).toBeTruthy();
   });
 
   it('labels a dialog’s header controls', () => {
@@ -103,8 +96,8 @@ describe('the kit in Hindi', () => {
         <p>body</p>
       </Modal>,
     );
-    expect(screen.getByRole('button', { name: hi('modal.close') })).toBeTruthy();
-    expect(screen.getByRole('button', { name: hi('modal.expand') })).toBeTruthy();
+    expect(screen.getByRole('button', { name: en('modal.close') })).toBeTruthy();
+    expect(screen.getByRole('button', { name: en('modal.expand') })).toBeTruthy();
   });
 
   it('labels the shrink control of an expanded dialog', () => {
@@ -113,7 +106,7 @@ describe('the kit in Hindi', () => {
         <p>body</p>
       </Modal>,
     );
-    expect(screen.getByRole('button', { name: hi('modal.shrink') })).toBeTruthy();
+    expect(screen.getByRole('button', { name: en('modal.shrink') })).toBeTruthy();
   });
 
   it('labels a toast’s dismiss button', () => {
@@ -123,11 +116,11 @@ describe('the kit in Hindi', () => {
       </ToastProvider>,
     );
     fireEvent.click(screen.getByText('push'));
-    expect(screen.getByRole('button', { name: hi('toast.dismiss') })).toBeTruthy();
+    expect(screen.getByRole('button', { name: en('toast.dismiss') })).toBeTruthy();
     // Not the word the catalogue uses for Delete: a screen reader would
     // announce the button that only closes the toast as deleting something.
-    expect(hi('toast.dismiss')).not.toBe(hi('common.delete'));
-    expect(hi('toast.dismiss')).not.toBe(hi('action.delete'));
+    expect(en('toast.dismiss')).not.toBe(en('common.delete'));
+    expect(en('toast.dismiss')).not.toBe(en('action.delete'));
   });
 
   it('labels both pagers', () => {
@@ -137,9 +130,9 @@ describe('the kit in Hindi', () => {
         <NewerOlderPager hasNewer hasOlder onNewer={() => undefined} onOlder={() => undefined} />
       </>,
     );
-    expect(screen.getByRole('button', { name: hi('common.loadMore') })).toBeTruthy();
-    expect(screen.getByRole('button', { name: hi('common.newer') })).toBeTruthy();
-    expect(screen.getByRole('button', { name: hi('common.older') })).toBeTruthy();
+    expect(screen.getByRole('button', { name: en('common.loadMore') })).toBeTruthy();
+    expect(screen.getByRole('button', { name: en('common.newer') })).toBeTruthy();
+    expect(screen.getByRole('button', { name: en('common.older') })).toBeTruthy();
   });
 
   it('announces the busy mark, and stays silent when told to', () => {
@@ -150,7 +143,7 @@ describe('the kit in Hindi', () => {
       </>,
     );
     expect(screen.getAllByRole('status').map((node) => node.getAttribute('aria-label'))).toEqual([
-      hi('common.working'),
+      en('common.working'),
     ]);
   });
 
@@ -175,24 +168,23 @@ describe('the kit in Hindi', () => {
       </>,
     );
 
-    expect(screen.getByRole('button', { name: hi('common.copy') })).toBeTruthy();
+    expect(screen.getByRole('button', { name: en('common.copy') })).toBeTruthy();
 
     const redacted = document.querySelector('.ob-redacted');
-    expect(redacted?.getAttribute('aria-label')).toBe(hi('table.redacted'));
+    expect(redacted?.getAttribute('aria-label')).toBe(en('table.redacted'));
     expect(redacted?.getAttribute('title')).toBe(
-      hi('error.forbidden.missingPermission').replace('{permission}', 'parties.view'),
+      en('error.forbidden.missingPermission').replace('{permission}', 'parties.view'),
     );
 
     fireEvent.focus(screen.getByPlaceholderText('Party'));
-    expect(screen.getByText(hi('common.noMatches'))).toBeTruthy();
+    expect(screen.getByText(en('common.noMatches'))).toBeTruthy();
 
-    expect(screen.getByRole('button', { name: hi('action.retryNow') })).toBeTruthy();
+    expect(screen.getByRole('button', { name: en('action.retryNow') })).toBeTruthy();
   });
 });
 
-describe('the kit in English', () => {
+describe('the kit reads as it always did', () => {
   it('reads exactly as it did before the strings moved into the catalogue', () => {
-    window.localStorage.setItem('ob.locale', 'en');
     render(
       <>
         {shell(false)}

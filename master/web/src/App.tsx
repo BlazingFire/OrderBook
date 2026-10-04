@@ -45,7 +45,6 @@ import { attachPrintSocket, dispatchPrint, masterPrintroomTransport } from './pr
 import { presenceChannel } from './presence';
 import { optionListTransport, reportsTransport } from './transports';
 import {
-  adoptDefaultLocale,
   AppShell,
   Avatar,
   ServerMasterBadge,
@@ -432,11 +431,6 @@ function MasterPanel() {
           try {
             const me = await api.me();
             if (cancelled) return;
-            // Behind the splash, before the shell first renders: a fresh
-            // browser profile on a Hindi deployment paints in Hindi rather
-            // than starting English and staying there. Writes once — see
-            // `adoptDefaultLocale`.
-            adoptDefaultLocale(me.defaultLocale);
             setUser(me.user);
             setSessionToken(me.sessionToken);
             // Office and Management start on Basic Home, Admin on the Dashboard.

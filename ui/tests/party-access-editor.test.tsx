@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AssignablePerson, PartyAccessAssignee, PartyAccessRow } from '@orderbook/shared';
 
 import { configureUi } from '../src/config.js';
-import { setLocale, t } from '../src/i18n.js';
+import { t } from '../src/i18n.js';
 import { __resetUnsavedWorkForTests, listUnsavedWork } from '../src/unsavedWork.js';
 import { installBrowserStubs, json, routeFetch, wait, type Call } from './panel-harness.js';
 
@@ -77,7 +77,6 @@ const onClose = vi.fn();
 
 beforeEach(() => {
   installBrowserStubs();
-  setLocale('en');
   onSaved.mockClear();
   onClose.mockClear();
   Element.prototype.scrollIntoView = () => undefined;
@@ -666,10 +665,9 @@ describe.each(['master', 'office'] as const)('the Party Access editor on the %s 
     });
   });
 
-  describe('Hindi (D2.5)', () => {
-    it('renders the header, the rows, the footer and the pickers in Hindi, long names intact', async () => {
-      setLocale('hi');
-      const long = 'वेंकटसुब्रमण्यम रामचंद्रन अय्यर-नटराजन';
+  describe('long names (D2.5)', () => {
+    it('keeps a very long name whole in the title while the row stays on one line', async () => {
+      const long = 'Venkatasubramanian Ramachandran Iyer-Natarajan of the Coimbatore Ceramics Distribution Cooperative';
       await mount(panel, {
         party: party([grant('u1', 'view', { displayName: long })]),
         people: [...PEOPLE.slice(1)],
@@ -679,9 +677,6 @@ describe.each(['master', 'office'] as const)('the Party Access editor on the %s 
       expect(screen.getByText(t('partyAccess.explainRestricted'))).toBeTruthy();
       expect(screen.getByRole('button', { name: t('partyAccess.editor.bulkButton') })).toBeTruthy();
       expect(save().textContent).toBe(t('partyAccess.action.save'));
-      // Not English: the editor's own labels are real Hindi.
-      expect(t('partyAccess.action.save')).not.toBe('Save');
-      expect(t('partyAccess.level.view')).not.toBe('View');
     });
   });
 });
