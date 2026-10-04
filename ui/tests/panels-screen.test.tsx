@@ -138,12 +138,16 @@ describe('the Add Office Panel card', () => {
     expect(await screen.findByText(new RegExp(t('panels.add.autoOffNotice')))).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: t('panels.add.autoOffLink') }));
     expect(opened).toBe(1);
+    // The line under the heading must not tell somebody to start automatic connection in the same breath.
+    expect(screen.queryByText(t('panels.add.description'))).toBeNull();
+    expect(screen.getByText(t('panels.add.descriptionAutoOff'))).toBeTruthy();
   });
 
   it('shows no such notice while joining is on, and no link for somebody who cannot open Settings', async () => {
     await mount([], state());
     await screen.findByText(t('panels.add.manualTitle'));
     expect(screen.queryByText(new RegExp(t('panels.add.autoOffNotice')))).toBeNull();
+    expect(screen.getByText(t('panels.add.description'))).toBeTruthy();
     cleanup();
 
     await mount([], state({ autoPairingEnabled: false }));

@@ -626,7 +626,9 @@ export function PanelsScreen({ panels, onRefresh, onOpenSettings }: Props) {
         ) : (
           <>
             <p className="ob-small" style={{ marginTop: 0 }}>
-              {t('panels.add.description')}
+              {windowState && !windowState.autoPairingEnabled
+                ? t('panels.add.descriptionAutoOff')
+                : t('panels.add.description')}
             </p>
             <Button variant="primary" icon="plus" onClick={() => void startWaiting()}>
               {t('panels.add.action')}
