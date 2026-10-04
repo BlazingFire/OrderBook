@@ -18,7 +18,7 @@ import { masterConnection } from '../realtime/master-connection.js';
 import { resetLocalStore } from '../sync/local-store.js';
 import { pending, pendingCount, settle } from '../sync/outbox.store.js';
 import { clearCredentials, loadCredentials } from './credentials.store.js';
-import { dropCachedData, recordCacheOwner } from './master-binding.js';
+import { dropCachedData, recordCacheOwner, rememberLastPanel } from './master-binding.js';
 import * as userSession from './user-session.service.js';
 
 const log = createLogger('unpair');
@@ -59,6 +59,7 @@ export async function unpair(
   masterConnection.disconnect();
 
   await clearCredentials();
+  await rememberLastPanel(credentials.panelId);
   await dropCachedData();
 
   let discarded = 0;

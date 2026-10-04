@@ -44,6 +44,8 @@ export interface RemovedNote {
 interface Binding {
   cacheMaster: string | null;
   removed: RemovedNote | null;
+  /** The panel id this PC had before its pairing ended, sent with the next pairing. */
+  lastPanelId: string | null;
 }
 
 interface ParkedBatch {
@@ -64,9 +66,10 @@ async function load(): Promise<Binding> {
     cache = {
       cacheMaster: typeof parsed.cacheMaster === 'string' ? parsed.cacheMaster : null,
       removed: parsed.removed ?? null,
+      lastPanelId: typeof parsed.lastPanelId === 'string' ? parsed.lastPanelId : null,
     };
   } catch {
-    cache = { cacheMaster: null, removed: null };
+    cache = { cacheMaster: null, removed: null, lastPanelId: null };
   }
   return cache;
 }
@@ -101,7 +104,7 @@ export async function adoptMaster(credentials: StoredCredentials): Promise<Adopt
   const same = binding.cacheMaster === null || binding.cacheMaster === credentials.masterUniqueId;
 
   if (same) {
-    await save({ cacheMaster: credentials.masterUniqueId, removed: null });
+    await save({ cacheMaster: credentials.masterUniqueId, removed: null, lastPanelId: null });
     return { newMaster: false, parkedChanges: 0 };
   }
 
@@ -121,7 +124,7 @@ export async function adoptMaster(credentials: StoredCredentials): Promise<Adopt
   }
 
   await dropCachedData();
-  await save({ cacheMaster: credentials.masterUniqueId, removed: null });
+  await save({ cacheMaster: credentials.masterUniqueId, removed: null, lastPanelId: null });
   log.info(
     `Paired with a different Master than the cached data came from; started from a clean cache`,
   );
@@ -167,6 +170,7 @@ export async function recordRemoved(credentials: StoredCredentials | null): Prom
   const binding = await load();
   await save({
     cacheMaster: binding.cacheMaster ?? credentials.masterUniqueId,
+    lastPanelId: credentials.panelId,
     removed: {
       at: new Date().toISOString(),
       companyName: credentials.companyName,
@@ -190,4 +194,15 @@ export function resetBindingCache(): void {
 export async function recordCacheOwner(masterUniqueId: string | null): Promise<void> {
   const binding = await load();
   await save({ ...binding, cacheMaster: masterUniqueId });
+}
+
+/** This PC left on purpose: remember its id so the same PC can get its row back. */
+export async function rememberLastPanel(panelId: string): Promise<void> {
+  const binding = await load();
+  await save({ ...binding, lastPanelId: panelId });
+}
+
+/** The id to send as `previousPanelId` with the next pairing, if this PC had one. */
+export async function previousPanelId(): Promise<string | null> {
+  return (await load()).lastPanelId;
 }

@@ -168,6 +168,21 @@ describe('remembering that the Master removed this PC', () => {
     expect(await binding.removedNote()).toBeNull();
   });
 
+  it('keeps this PC’s last id with the reason, until it is paired again', async () => {
+    const { binding } = await load();
+    expect(await binding.previousPanelId()).toBeNull();
+
+    await binding.recordRemoved(pairedWith('master-A'));
+    binding.resetBindingCache();
+    expect(await binding.previousPanelId()).toBe('11111111-1111-4111-8111-111111111111');
+
+    await binding.adoptMaster({
+      ...pairedWith('master-A'),
+      panelId: '22222222-2222-4222-8222-222222222222',
+    });
+    expect(await binding.previousPanelId()).toBeNull();
+  });
+
   it('does nothing when there was no pairing to remember', async () => {
     const { binding } = await load();
     await binding.recordRemoved(null);
@@ -183,6 +198,13 @@ describe('leaving a Master on purpose', () => {
     await leaveCache();
     return loaded;
   }
+
+  it('remembers the id it had, to send as the previous one when it pairs again', async () => {
+    const { unpairService, binding } = await paired();
+    await unpairService.unpair();
+    binding.resetBindingCache();
+    expect(await binding.previousPanelId()).toBe('11111111-1111-4111-8111-111111111111');
+  });
 
   it('refuses while this PC is not paired', async () => {
     const { unpairService } = await load();

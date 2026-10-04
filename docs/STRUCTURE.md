@@ -4144,6 +4144,37 @@ Singleton `masterConnection` (an `EventEmitter`).
   `requestPairing` (10 s timeout), which adds the `PairingError` codes `unreachable`
   (fetch failed) and `refused` (non-2xx or no `panelId`) and ends in
   `saveCredentials()`; `scanForMasters()` (4 s discovery, no pairing).
+- **1.4.1 connection hardening (Office side).** Every way pairing can fail has a code and
+  a message key (`PairingError` in `pairing.service.ts`: `no_master_found`, `not_accepting`,
+  `multiple_masters`, `network_unavailable`, `cancelled`, `invalid_address`, `invalid_port`,
+  `timeout`, `unreachable`, `connection_refused`, `host_not_found`, `not_a_master`,
+  `wrong_password`, `rate_limited`, `different_master`, `setup_incomplete`, `refused`); the
+  Master's own refusal is recognised by its message key (never passed through as English).
+  The address typed by hand is read by `parseMasterAddress` (`shared/src/domain/master-address.ts`,
+  also used by the screen), never guessed. `discoverMasters` records every address a HELLO
+  came from (`addresses`, source first, the advertised `lanIp` last) and pairing and rediscovery
+  try them in that order; it takes an `AbortSignal` (the Stop button) and `broadcastTargets`
+  skips a /32. `testConnection()` reads the target's public `GET /api/health` (works against
+  any 1.x Master) and compares versions. Routes: `POST /api/connection/test`, `/pair/auto`
+  (`masterUniqueId` picks one of several), `/pair/manual`, `/scan` (all cancelled when the browser
+  closes the request), `/unpair`.
+- `office/src/services/master-binding.ts` (`master-binding.json`) — whose Master the cached
+  snapshot/people/offline records belong to (`cacheMaster`), why a pairing was lost
+  (`removed`, written by `forgetPairing` before the credentials go and shown on the connection
+  screen across restarts) and the PC's last panel id (`lastPanelId`, sent as `previousPanelId`
+  so the Master can revive its old row). `adoptMaster()` runs after every pairing: the same
+  Master keeps cache and outbox; a different one drops the cache and **sets unsent changes
+  aside** in `parked-outbox.json` (not deleted, not sent there).
+- `office/src/services/unpair.service.ts` — leave the Master on purpose
+  (`POST /api/connection/unpair`, open before sign-in, `panels.manage` after): clears the
+  pairing, cache and cursor; refuses with `pending_changes` and the count while unsent work
+  exists until the caller says `keep` or `discard`.
+- `office/web/src/screens/SetupScreen.tsx` (the first sync after pairing, three steps, warns on a
+  version difference or a different Master), `office/web/src/components/ConnectionUnpair.tsx`
+  (the two-question "Connect to a different Master", on the sign-in screen, the "not recognised"
+  banner and Settings), and `ConnectionScreen.tsx` (stop/progress, field validation, Test
+  connection, last address remembered in `ob.office.lastMaster`, the removed-by-Master note).
+  Before sign-in `App.tsx` polls `GET /api/connection` every 1.5 s so the link state is never stale.
 - `office/src/services/credentials.store.ts` — `loadCredentials()` (cached; missing
   or corrupt = unpaired), `saveCredentials()` (0600), `clearCredentials()`,
   `masterBaseUrl()`.

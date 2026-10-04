@@ -14,6 +14,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const saved: unknown[] = [];
 const discover = vi.fn();
+/** The id this PC had before its pairing ended, if any (`master-binding.ts`). */
+let previous: string | null = null;
 let network = true;
 
 vi.mock('../src/config/index.js', () => ({
@@ -32,6 +34,9 @@ vi.mock('../src/lib/network.js', () => ({
   hasNetworkLink: () => network,
 }));
 vi.mock('../src/lib/app-version.js', () => ({ appVersion: () => '1.4.1' }));
+vi.mock('../src/services/master-binding.js', () => ({
+  previousPanelId: async () => previous,
+}));
 vi.mock('../src/services/credentials.store.js', () => ({
   saveCredentials: async (credentials: unknown) => {
     saved.push(credentials);
@@ -48,6 +53,7 @@ let lastBody: Record<string, unknown> | null;
 let handler: Handler;
 
 beforeEach(async () => {
+  previous = null;
   saved.length = 0;
   discover.mockReset();
   network = true;
@@ -125,6 +131,36 @@ describe('manual pairing: what the Master said is recognised, not passed through
       pairingPassword: 'pw',
       panelName: 'Counter 2',
     });
+  });
+
+  it('sends the id this PC had before, so the Master can give the same PC its row back', async () => {
+    handler = accept;
+    previous = '99999999-9999-4999-8999-999999999999';
+    await manual();
+    expect(lastBody).toMatchObject({ previousPanelId: '99999999-9999-4999-8999-999999999999' });
+
+    // A PC that was never paired sends none.
+    previous = null;
+    await manual();
+    expect(lastBody).not.toHaveProperty('previousPanelId');
+  });
+
+  it('sends it in auto mode too', async () => {
+    handler = accept;
+    previous = 'old-panel';
+    discover.mockResolvedValue([
+      {
+        masterUniqueId: 'm',
+        companyName: 'X',
+        lanIp: '127.0.0.1',
+        addresses: ['127.0.0.1'],
+        httpPort: port,
+        acceptingPairing: true,
+        nonce: 'n',
+      },
+    ]);
+    await pairing.pairAutomatically();
+    expect(lastBody).toMatchObject({ mode: 'auto', previousPanelId: 'old-panel' });
   });
 
   it('a wrong password is its own code, with a key to translate (not the Master’s English)', async () => {

@@ -7,6 +7,7 @@
  */
 
 import type { ComponentType, ReactNode } from 'react';
+import { ADDRESS_MESSAGE_PARAMS } from '@orderbook/shared';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -312,12 +313,12 @@ describe('the connection screen', () => {
       type(address(), 'not an address');
       type(passwordBox(), 'pw');
       connect();
-      expect(await screen.findByText(t('connection.error.invalidAddress'))).toBeTruthy();
+      expect(await screen.findByText(t('connection.error.invalidAddress', ADDRESS_MESSAGE_PARAMS))).toBeTruthy();
 
       type(address(), '192.168.1.10');
       type(portBox(), '70000');
       connect();
-      expect(await screen.findByText(t('connection.error.invalidPort'))).toBeTruthy();
+      expect(await screen.findByText(t('connection.error.invalidPort', ADDRESS_MESSAGE_PARAMS))).toBeTruthy();
 
       type(portBox(), '');
       type(address(), '');

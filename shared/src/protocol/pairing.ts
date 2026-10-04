@@ -26,6 +26,11 @@ export interface PairingRequest {
   pairingPassword?: string;
   /** Required in manual mode: guards against pairing with the wrong Master. */
   masterUniqueId?: string;
+  /**
+   * The id this PC had before it was removed or unpaired, so the Master can give the
+   * same PC its old row (and history) back instead of making a second one.
+   */
+  previousPanelId?: string;
 }
 
 export interface PairingSuccess {

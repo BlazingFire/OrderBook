@@ -11,6 +11,16 @@
  */
 
 export const DEFAULT_MASTER_PORT = 4100;
+export const MAX_PORT = 65535;
+/** What the screens show as the shape of an address (a parameter of the messages, never typed into one). */
+export const MASTER_ADDRESS_EXAMPLE = '192.168.1.10';
+
+/** The parameters the "bad address" and "bad port" messages take. */
+export const ADDRESS_MESSAGE_PARAMS = {
+  example: MASTER_ADDRESS_EXAMPLE,
+  max: MAX_PORT,
+  port: DEFAULT_MASTER_PORT,
+} as const;
 
 export type MasterAddressProblem =
   /** Nothing typed. */

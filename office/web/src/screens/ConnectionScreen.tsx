@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { parseMasterAddress, type MasterAddressProblem } from '@orderbook/shared';
+import { ADDRESS_MESSAGE_PARAMS, parseMasterAddress, type MasterAddressProblem } from '@orderbook/shared';
 import type { BackupRestorePreview } from '@orderbook/shared';
 
 import {
@@ -263,7 +263,7 @@ export function ConnectionScreen({ connection, onConnected }: Props) {
       setPortError(null);
       return parsed;
     }
-    const message = t(ADDRESS_PROBLEM_KEY[parsed.problem]);
+    const message = t(ADDRESS_PROBLEM_KEY[parsed.problem], ADDRESS_MESSAGE_PARAMS);
     setAddressError(parsed.problem === 'invalid_port' ? null : message);
     setPortError(parsed.problem === 'invalid_port' ? message : null);
     return null;

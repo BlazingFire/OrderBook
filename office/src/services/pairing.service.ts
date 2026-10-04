@@ -16,6 +16,7 @@
  */
 
 import {
+  ADDRESS_MESSAGE_PARAMS,
   PAIRING_ENDPOINT,
   parseMasterAddress,
   standing,
@@ -33,6 +34,7 @@ import { createLogger } from '../lib/logger.js';
 import { hasNetworkLink } from '../lib/network.js';
 import { discoverMasters, type DiscoveredMaster } from '../discovery/client.js';
 import { saveCredentials, type StoredCredentials } from './credentials.store.js';
+import { previousPanelId } from './master-binding.js';
 
 const log = createLogger('pairing');
 
@@ -321,8 +323,12 @@ function readAddress(
   const parsed = parseMasterAddress(hostInput, portInput);
   if (parsed.ok) return parsed;
   throw parsed.problem === 'invalid_port'
-    ? new PairingError('invalid_port', 'connection.error.invalidPort')
-    : new PairingError('invalid_address', 'connection.error.invalidAddress');
+    ? new PairingError('invalid_port', 'connection.error.invalidPort', ADDRESS_MESSAGE_PARAMS)
+    : new PairingError(
+        'invalid_address',
+        'connection.error.invalidAddress',
+        ADDRESS_MESSAGE_PARAMS,
+      );
 }
 
 export interface ConnectionTestResult {
@@ -432,6 +438,8 @@ async function requestPairingAt(
 ): Promise<StoredCredentials> {
   const url = `http://${host}:${port}${PAIRING_ENDPOINT}`;
   const guard = withTimeout(timeoutMs, cancel);
+  // The same PC coming back gets its old row (and history) from the Master, not a second one.
+  const previous = await previousPanelId().catch(() => null);
 
   let response: Response;
   let text: string;
@@ -439,7 +447,7 @@ async function requestPairingAt(
     response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(request),
+      body: JSON.stringify(previous ? { ...request, previousPanelId: previous } : request),
       signal: guard.signal,
     });
     text = await response.text();
