@@ -30,8 +30,9 @@ import {
 
 import { api } from '../api';
 import { catalogueTransport, optionListTransport } from '../transports';
+import { DuplicatesScreen } from './DuplicatesScreen';
 
-export type ProductsPage = 'sub' | 'main' | 'brands';
+export type ProductsPage = 'sub' | 'main' | 'brands' | 'duplicates';
 
 interface Props {
   page: ProductsPage;
@@ -119,6 +120,9 @@ export function ProductsScreen({
           revision={catalogueRevision + importBump}
         />
       </Activity>
+      {page === 'duplicates' && permissions.includes('products.delete') && (
+        <DuplicatesScreen revision={catalogueRevision + importBump} />
+      )}
       <Activity mode={page === 'brands' ? 'visible' : 'hidden'}>
         <BrandsScreen
           permissions={permissions}

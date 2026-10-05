@@ -2138,6 +2138,17 @@ exercised only through service integration tests.
   `updateImageCaption`, `reorderImages`, `deleteImage` (all `products.edit`),
   `resolveImageFile`, `sweepOrphanImageVariants`, `throughRasterGate` (serialises
   decoding to bound memory). Publishes as `entity: 'product'`.
+- `master/src/services/duplicate-products.service.ts` — 1.4.3 Products → Duplicates:
+  `findDuplicates` and `resolveDuplicates` (both `products.delete`); detection is the pure
+  `master/src/domain/duplicate-products.ts` over `productRepo.listCategories` and
+  `listSubProductsForDuplicates`; a delete goes through `catalog.deleteProduct` /
+  `deleteCategory`, so the Recycle Bin and the `deleted` change events carry it to every
+  Office. Routes `GET /api/duplicates`, `POST /api/duplicates/resolve`
+  (`docs/backend-modules/04-API-CONTRACT.md` §19). Screen:
+  `master/web/src/screens/DuplicatesScreen.tsx`, the Products sidebar's "Duplicates" page
+  (only with `products.delete`). Tests: `master/tests/duplicate-products-domain.test.ts`,
+  `master/tests/duplicate-products.integration.test.ts`, "Duplicates" in
+  `ui/tests/master-shell.test.tsx`.
 - `master/src/services/product-import.service.ts` (611) — `productImportTemplate`,
   `importProducts({dryRun, mode})`; `products.bulk` + `products.create` (+
   `products.edit` for upsert); writes through repositories in chunks of

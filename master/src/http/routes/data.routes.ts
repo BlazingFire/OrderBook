@@ -25,6 +25,7 @@ import * as backupRestoreService from '../../services/backup-restore.service.js'
 import * as catalogService from '../../services/catalog.service.js';
 import * as conflictService from '../../services/conflict.service.js';
 import * as dashboardService from '../../services/dashboard.service.js';
+import * as duplicateService from '../../services/duplicate-products.service.js';
 import * as fieldsService from '../../services/fields.service.js';
 import * as productShareService from '../../services/product-share.service.js';
 import * as leadService from '../../services/lead.service.js';
@@ -511,6 +512,25 @@ dataRoutes.delete(
   needs('products.delete'),
   asyncHandler(async (req, res) => {
     res.json(await catalogService.deleteCategory(String(req.params.id), actorFromRequest(req)));
+  }),
+);
+
+// Duplicate products: the finder and the delete-extra-copies call. Both are
+// `products.delete` - a resolve is a delete, through the same soft delete.
+
+dataRoutes.get(
+  '/duplicates',
+  needs('products.delete'),
+  asyncHandler(async (req, res) => {
+    res.json(await duplicateService.findDuplicates(actorFromRequest(req)));
+  }),
+);
+
+dataRoutes.post(
+  '/duplicates/resolve',
+  needs('products.delete'),
+  asyncHandler(async (req, res) => {
+    res.json(await duplicateService.resolveDuplicates(req.body, actorFromRequest(req)));
   }),
 );
 

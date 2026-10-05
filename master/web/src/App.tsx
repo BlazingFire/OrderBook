@@ -906,6 +906,9 @@ function MasterPanel() {
       { key: 'sub', label: t('catalog.nav.subProducts'), icon: 'products' },
       { key: 'main', label: t('catalog.nav.mainProducts'), icon: 'inventory' },
       { key: 'brands', label: t('catalog.nav.brands'), icon: 'edit' },
+      ...(user.permissions.includes('products.delete')
+        ? [{ key: 'duplicates', label: t('catalog.nav.duplicates'), icon: 'trash' as const }]
+        : []),
     ],
     reports: offeredReportKinds(user.roleTier, user.features, user.permissions).map((kind) => ({
       key: kind,

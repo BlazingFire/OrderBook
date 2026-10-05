@@ -15,6 +15,7 @@ export * from './domain/pick.js';
 export * from './domain/pick-score.js';
 export * from './domain/party-import.js';
 export * from './domain/pending-order-number.js';
+export * from './domain/duplicate-products.js';
 export * from './domain/product-import.js';
 export * from './domain/company-features.js';
 export * from './domain/product-validation.js';
