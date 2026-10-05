@@ -18,6 +18,7 @@ import type {
 
 import { actorUserId, type ActorContext } from '../domain/actor.js';
 import * as changeRing from '../realtime/change-ring.js';
+import { bumpSeqCache } from '../lib/seq-cache.js';
 
 const emitter = new EventEmitter();
 const CHANGE_EVENT = 'change';
@@ -105,6 +106,8 @@ export interface AddressedChatPush {
  * the activity chain.
  */
 export function publishChat(event: AddressedChatPush): void {
+  // Chat history is cached (`lib/seq-cache.ts`); a chat push is the signal that it changed.
+  bumpSeqCache();
   emitter.emit(CHAT_EVENT, event);
 }
 

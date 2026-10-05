@@ -30,6 +30,7 @@ import {
 } from './helpers/fixtures.js';
 import { createApp } from '../src/http/app.js';
 import { closePairingWindow } from '../src/services/panel.service.js';
+import { resetRateLimits } from '../src/http/middleware/api-key-rate-limit.js';
 
 let app: Express;
 
@@ -60,6 +61,8 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
   beforeEach(async () => {
     await resetData();
     closePairingWindow();
+    // This suite signs in hundreds of times a minute from one loopback address.
+    resetRateLimits();
   });
 
   describe('health', () => {

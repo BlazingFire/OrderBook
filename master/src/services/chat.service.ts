@@ -46,10 +46,11 @@ import {
   withinEditWindow,
 } from '@orderbook/shared';
 
-import { actorCan, requirePermission, type ActorContext } from '../domain/actor.js';
+import { actorCan, actorKey, requirePermission, type ActorContext } from '../domain/actor.js';
 import { db } from '../db/knex.js';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError, toErrorMessage } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
+import { seqCached } from '../lib/seq-cache.js';
 import * as activityRepo from '../repositories/activity-log.repository.js';
 import * as chatRepo from '../repositories/chat.repository.js';
 import type { ChatMessageRow, ChatRoomListRow, ChatRoomRow } from '../repositories/chat.repository.js';
@@ -346,8 +347,13 @@ export async function listMessages(
       ? Math.min(Math.max(input.limit, 1), 100)
       : CHAT_LIMITS.pageSize;
 
-  const rows = await chatRepo.listMessages(room.id, { beforeSeq, limit });
-  return hydrate(rows, actor.tenantId, { resolveFor: actor });
+  // Membership was checked above, uncached. A post, edit, delete or pin publishes a chat push,
+  // which drops this (`lib/seq-cache.ts`); the key carries the room, page and reader.
+  return seqCached(
+    `chat:${actorKey(actor)}:${room.id}:${beforeSeq ?? '-'}:${limit}`,
+    15_000,
+    async () => hydrate(await chatRepo.listMessages(room.id, { beforeSeq, limit }), actor.tenantId, { resolveFor: actor }),
+  );
 }
 
 export async function search(

@@ -81,6 +81,7 @@ import { deviceCode, nextTemporaryId, refreshAfterPairing } from '../sync/device
 import * as localStore from '../sync/local-store.js';
 import * as outbox from '../sync/outbox.store.js';
 import * as sync from '../sync/sync.service.js';
+import { webStatic } from './web-static.js';
 
 const log = createLogger('http');
 
@@ -1922,7 +1923,7 @@ export function createApp(): Express {
   app.get('/api/events', (req, res) => streamEvents(req, res));
 
   const webDist = path.join(config.packageRoot, 'web', 'dist');
-  app.use(express.static(webDist));
+  app.use(webStatic(webDist));
   app.get(/^(?!\/api).*/, (_req, res, next) => {
     // See master/src/http/app.ts — web/dist is gitignored, so a fresh checkout
     // has no UI and would otherwise answer with a confusing JSON 404.
@@ -2450,9 +2451,49 @@ async function flushBriefly(): Promise<void> {
   }
 }
 
+/**
+ * Read-only lookups the screens re-ask on every open, answered for a few seconds from the
+ * last answer. A key is the person plus the event plus its payload. Everything is dropped
+ * when the Master reports any change, the session changes, or a new snapshot lands (listeners
+ * below, registered before the ones that tell the browser, so a refetch is never stale);
+ * the TTL covers a write that publishes no change.
+ */
+const CACHED_READS: ReadonlyMap<string, number> = new Map([
+  ['fields:catalogue', 15_000],
+  ['fields:stages', 15_000],
+  ['fields:values', 15_000],
+  ['fields:definitions', 15_000],
+  ['report:options', 30_000],
+  ['partyAccess:summary', 10_000],
+  ['partyAccess:people', 15_000],
+]);
+const readCache = new Map<string, { at: number; value: Promise<unknown> }>();
+const READ_CACHE_MAX = 200;
+
+export function clearReadCache(): void {
+  readCache.clear();
+}
+
+function commandCached(event: string, payload: unknown[]): Promise<unknown> {
+  const ttl = CACHED_READS.get(event);
+  if (!ttl) return masterConnection.command(event as never, ...payload);
+
+  const key = `${userSession.currentSession()?.userId ?? '-'}|${event}|${JSON.stringify(payload)}`;
+  const hit = readCache.get(key);
+  if (hit && Date.now() - hit.at < ttl) return hit.value;
+
+  if (readCache.size >= READ_CACHE_MAX) readCache.clear();
+  const entry = { at: Date.now(), value: masterConnection.command(event as never, ...payload) as Promise<unknown> };
+  readCache.set(key, entry);
+  entry.value.catch(() => {
+    if (readCache.get(key) === entry) readCache.delete(key);
+  });
+  return entry.value;
+}
+
 async function forward(res: Response, event: string, ...payload: unknown[]): Promise<void> {
   try {
-    const data = await masterConnection.command(event as never, ...payload);
+    const data = await commandCached(event, payload);
     res.json(data);
   } catch (error) {
     failForward(res, error);
@@ -2769,6 +2810,9 @@ async function sweepImageCache(snapshot: SyncSnapshot): Promise<void> {
 // Optional-called: the office suites mock this module with a partial object,
 // and a belt-and-braces listener cap is not worth making them all fuller.
 masterConnection.setMaxListeners?.(0);
+masterConnection.on('change', clearReadCache);
+masterConnection.on('snapshot', clearReadCache);
+masterConnection.on('session:changed', clearReadCache);
 masterConnection.on('status', (status: unknown) => broadcast('status', status));
 masterConnection.on('snapshot', schedulePushView);
 masterConnection.on('snapshot', (snapshot: SyncSnapshot) => void sweepImageCache(snapshot));

@@ -1,11 +1,9 @@
 /**
  * A fixed sixty-second window per key, in memory.
  *
- * No dependency and no sweep. The map is keyed by **key id**, so it is bounded
- * by the number of keys the company has issued — unlike `auth.service.ts`'s
- * failure map, which is keyed by every attempted username and therefore grows
- * with the attacker. A sweep here would be a timer maintaining a map of a dozen
- * entries.
+ * No dependency, no timer. The API-key windows are bounded by the number of keys the company
+ * has issued; `rate-limit.ts` also keys it by IP, username and socket, which a caller chooses,
+ * so `consume` sweeps expired windows whenever the map passes `MAX_WINDOWS`.
  *
  * Per process and reset on restart, stated rather than hidden: this is a
  * fairness control that stops one runaway integration flooding the shop's
@@ -24,11 +22,22 @@ interface Window {
 const windows = new Map<string, Window>();
 
 /**
+ * `rate-limit.ts` keys this map by IP, username and socket as well, so a caller choosing names
+ * can grow it; past this many entries an insert first drops every expired window.
+ */
+const MAX_WINDOWS = 5_000;
+
+function sweep(now: number): void {
+  for (const [key, window] of windows) if (now - window.start >= WINDOW_MS) windows.delete(key);
+}
+
+/**
  * Count this request, and throw if the key is over its limit.
  *
  * Returns the seconds left in the window so the route can set `Retry-After`.
  */
 export function consume(keyId: string, limitPerMin: number, now: number = Date.now()): void {
+  if (windows.size >= MAX_WINDOWS) sweep(now);
   const current = windows.get(keyId);
 
   if (!current || now - current.start >= WINDOW_MS) {

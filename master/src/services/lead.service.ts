@@ -19,7 +19,7 @@ import type {
 } from '@orderbook/shared';
 
 import { assertFieldsFresh } from '../domain/access.js';
-import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
+import { actorKey, actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { normalizeCustomFields } from '../domain/custom-fields.js';
 import { assertOptionValueChange } from '../domain/field-values.js';
 import { buildLineSnapshot, type LineDraft, type LineSnapshot } from '../domain/line-items.js';
@@ -37,6 +37,7 @@ import {
 import { assertParentsLive } from '../domain/recycle-bin.js';
 import { db } from '../db/knex.js';
 import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
+import { seqCached } from '../lib/seq-cache.js';
 import { renderReportPdf } from '../pdf/table-renderer.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as customFieldRepo from '../repositories/custom-field.repository.js';
@@ -60,13 +61,17 @@ export async function listLeads(
 ): Promise<Paginated<Lead>> {
   requirePermission(actor, 'leads.view');
 
-  const page = await leadRepo.listLeads(actor.tenantId, {
-    ...query,
-    ...clampPaging(query, PAGING),
-    partyScope: resolvePartyScope(actor),
-  });
+  const read = (): Promise<Paginated<Lead>> =>
+    leadRepo.listLeads(actor.tenantId, {
+      ...query,
+      ...clampPaging(query, PAGING),
+      partyScope: resolvePartyScope(actor),
+    });
 
-  return page;
+  // The Pending list, re-read on every open and reconnect. Any lead, party or stage write
+  // publishes a change and drops it (`lib/seq-cache.ts`); the key carries reader, page and filters.
+  const key = JSON.stringify(query ?? {});
+  return key.length > 300 ? read() : seqCached(`leads:${actorKey(actor)}:${key}`, 10_000, read);
 }
 
 export async function getLead(id: string, actor: ActorContext): Promise<Lead> {

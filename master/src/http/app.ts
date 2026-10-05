@@ -8,6 +8,8 @@ import { queryCountMiddleware } from '../db/query-counter.js';
 import { liveHealth } from './health.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { maintenanceGate } from './middleware/maintenance-gate.js';
+import { LIMITS, limitByBodyField, limitByIp, limitUploads } from './middleware/rate-limit.js';
+import { webStatic } from './web-static.js';
 import { attachSession } from './middleware/require-auth.js';
 import { requirePanel } from './middleware/require-panel.js';
 import { accessRoutes } from './routes/access.routes.js';
@@ -61,7 +63,26 @@ export function createApp(): Express {
    * its `requireAuth` would answer 401 to a request that carries a key and no
    * cookie.
    */
-  app.use('/api/v1', publicApiRoutes);
+  app.use('/api/v1', limitByIp('public-api', LIMITS.publicApiPerIp), publicApiRoutes);
+
+  // Flood guards (rate-limit.ts). Each is per source address, generous for a person.
+  app.post(
+    '/api/auth/sign-in',
+    limitByIp('sign-in', LIMITS.passwordPerIp),
+    limitByBodyField('sign-in', 'username', LIMITS.signInPerUsername),
+  );
+  app.use(
+    [
+      '/api/access/users/:id/reset-password',
+      '/api/access/users/:id/reveal-password',
+      '/api/access/me/password',
+      '/api/setup/pairing-password',
+      '/api/master-key',
+    ],
+    limitByIp('password', LIMITS.passwordPerIp, { writesOnly: true }),
+  );
+  app.get(['/api/reports/:report/pdf', '/api/reports/:report/export'], limitByIp('report', LIMITS.reportPerIp));
+  app.use('/api', limitUploads(LIMITS.uploadPerIp));
 
   app.use('/api/setup', setupRoutes);
   // Master-PC only, and before the `/api` catch-all: recovery runs before sign-in.
@@ -131,7 +152,7 @@ export function createApp(): Express {
   // The built Master Panel UI. Unknown non-API paths fall through to index.html
   // so client-side routes survive a browser refresh.
   const webDist = path.join(config.packageRoot, 'web', 'dist');
-  app.use(express.static(webDist));
+  app.use(webStatic(webDist));
   app.get(/^(?!\/api).*/, (_req, res, next) => {
     // web/dist is a build artefact and is gitignored, so a fresh checkout has
     // none. Without this the request falls through to the JSON 404 handler,
