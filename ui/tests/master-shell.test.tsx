@@ -1319,6 +1319,98 @@ describe('Products', () => {
 
     await waitFor(() => expect(gets(calls, '/api/products')).toBeGreaterThan(before));
   });
+
+  describe('Duplicates', () => {
+    const MEMBER = {
+      code: 'WB', size: null, productName: null, subProductCount: 0, lineCount: 0, blockedBy: null,
+    };
+    const GROUP = {
+      key: 'product:A+B', level: 'product', brand: 'Swisware+', matchedOn: ['name'],
+      members: [
+        { ...MEMBER, id: 'A', name: 'Wash Basin', createdAt: '2026-01-01T00:00:00.000Z' },
+        { ...MEMBER, id: 'B', name: 'Wash-basin', code: 'WB2', createdAt: '2026-02-01T00:00:00.000Z' },
+      ],
+    };
+
+    it('is offered only with products.delete', async () => {
+      await openProducts(['products.view']);
+      expect(screen.queryByText(t('catalog.nav.duplicates'))).toBeNull();
+    });
+
+    it('lists the groups, keeps the oldest by default and deletes the other copy after a confirm', async () => {
+      const calls = await boot(['products.view', 'products.delete'], (call) => {
+        const path = call.url.split('?')[0];
+        if (path === '/api/duplicates') return json({ groups: [GROUP] });
+        if (path === '/api/duplicates/resolve') return json({ deleted: ['B'], refused: [] });
+        return undefined;
+      });
+      await act(async () => {
+        fireEvent.click(moduleEntry());
+        await wait(0);
+      });
+      fireEvent.click(await screen.findByText(t('catalog.nav.duplicates')));
+
+      expect(await screen.findByText('Wash-basin')).toBeTruthy();
+      expect((screen.getAllByRole('radio')[0] as HTMLInputElement).checked).toBe(true);
+
+      fireEvent.click(screen.getByRole('button', { name: t('duplicates.delete') }));
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: t('duplicates.delete') }));
+
+      await waitFor(() => {
+        const post = calls.find((call) => call.url === '/api/duplicates/resolve');
+        expect(post?.method).toBe('POST');
+        expect(post?.body).toEqual({ level: 'product', keepId: 'A', deleteIds: ['B'] });
+      });
+    });
+
+    it('sends the copy chosen to keep, not the oldest', async () => {
+      const calls = await boot(['products.view', 'products.delete'], (call) => {
+        const path = call.url.split('?')[0];
+        if (path === '/api/duplicates') return json({ groups: [GROUP] });
+        if (path === '/api/duplicates/resolve') return json({ deleted: ['A'], refused: [] });
+        return undefined;
+      });
+      await act(async () => {
+        fireEvent.click(moduleEntry());
+        await wait(0);
+      });
+      fireEvent.click(await screen.findByText(t('catalog.nav.duplicates')));
+      await screen.findByText('Wash-basin');
+
+      fireEvent.click(screen.getAllByRole('radio')[1]!);
+      fireEvent.click(screen.getByRole('button', { name: t('duplicates.delete') }));
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: t('duplicates.delete') }));
+
+      await waitFor(() =>
+        expect(calls.find((call) => call.url === '/api/duplicates/resolve')?.body).toEqual({
+          level: 'product', keepId: 'B', deleteIds: ['A'],
+        }),
+      );
+    });
+
+    it('says why a copy cannot be deleted and offers nothing to delete when none can', async () => {
+      const blocked = {
+        ...GROUP,
+        members: [
+          GROUP.members[0],
+          { ...GROUP.members[1], blockedBy: 'subProducts', subProductCount: 3 },
+        ],
+      };
+      await boot(['products.view', 'products.delete'], (call) =>
+        call.url.split('?')[0] === '/api/duplicates' ? json({ groups: [blocked] }) : undefined,
+      );
+      await act(async () => {
+        fireEvent.click(moduleEntry());
+        await wait(0);
+      });
+      fireEvent.click(await screen.findByText(t('catalog.nav.duplicates')));
+
+      expect(await screen.findByText(t('duplicates.blocked.subProducts', { count: 3 }))).toBeTruthy();
+      expect((screen.getByRole('button', { name: t('duplicates.delete') }) as HTMLButtonElement).disabled).toBe(true);
+    });
+  });
 });
 
 const PARTY = {

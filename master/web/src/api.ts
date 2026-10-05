@@ -11,6 +11,9 @@ import {
 } from '@orderbook/ui';
 import type {
   PickKind,
+  DuplicateReport,
+  DuplicateResolveInput,
+  DuplicateResolveResult,
   ChatAccessCapability,
   PrintJob,
   PrintJobInput,
@@ -822,6 +825,11 @@ export const api = {
     request<ProductCategory>(`/api/categories/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   deleteCategory: (id: string) =>
     request<{ id: string; deletedAt: string }>(`/api/categories/${id}`, { method: 'DELETE' }),
+
+  /** Duplicate Products and sub products, and deleting the extra copies (`products.delete`). */
+  duplicates: () => request<DuplicateReport>('/api/duplicates'),
+  resolveDuplicates: (input: DuplicateResolveInput) =>
+    post<DuplicateResolveResult>('/api/duplicates/resolve', input),
 
   /** 1.4 D3: Create product share; the Master draws the PDF with the photographs. */
   productSharePdf: (ids: string[]) =>

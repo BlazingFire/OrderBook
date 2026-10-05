@@ -775,6 +775,59 @@ export async function nextSubProductCodes(
 }
 
 /**
+ * Every live sub product with what the duplicate finder compares: its
+ * Product and that Product's brand, its live variant codes, and how many live
+ * lead/order lines quote it (the same test `liveReferencesToProduct` makes).
+ */
+export async function listSubProductsForDuplicates(
+  tenantId: string,
+  runner: Runner = db(),
+): Promise<
+  Array<{
+    id: string;
+    name: string;
+    size: string | null;
+    createdAt: string;
+    categoryId: string | null;
+    categoryName: string | null;
+    brand: string | null;
+    codes: string[];
+    lineCount: number;
+  }>
+> {
+  const { rows } = await runner.raw<{ rows: Array<Record<string, unknown>> }>(
+    `SELECT p.id, p.name, p.size, p.created_at,
+            c.id AS category_id, c.name AS category_name, c.brand,
+            COALESCE((SELECT array_agg(v.code ORDER BY v.sequence)
+                        FROM product_variants v
+                       WHERE v.product_id = p.id AND v.deleted_at IS NULL), '{}') AS codes,
+            (SELECT count(*)
+               FROM line_items li
+              WHERE li.tenant_id = p.tenant_id AND li.product_id = p.id
+                AND ((li.parent_type = 'lead' AND EXISTS (
+                        SELECT 1 FROM leads l WHERE l.id = li.parent_id AND l.deleted_at IS NULL))
+                  OR (li.parent_type = 'order' AND EXISTS (
+                        SELECT 1 FROM orders o WHERE o.id = li.parent_id AND o.deleted_at IS NULL)))
+            )::int AS line_count
+       FROM ${TABLE} p
+       LEFT JOIN ${CATEGORY_TABLE} c ON c.id = p.category_id AND c.deleted_at IS NULL
+      WHERE p.tenant_id = ? AND p.deleted_at IS NULL`,
+    [tenantId],
+  );
+  return rows.map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    size: (row.size as string | null) ?? null,
+    createdAt: new Date(row.created_at as string | Date).toISOString(),
+    categoryId: (row.category_id as string | null) ?? null,
+    categoryName: (row.category_name as string | null) ?? null,
+    brand: (row.brand as string | null) ?? null,
+    codes: (row.codes as string[]) ?? [],
+    lineCount: Number(row.line_count),
+  }));
+}
+
+/**
  * What blocks deleting this product: a live line item (its parent lead or
  * order not itself deleted).
  */

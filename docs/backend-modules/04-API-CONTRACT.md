@@ -2729,6 +2729,17 @@ starting; the responder retries every 30 s.
 | `POST /api/connection/pair/manual` | Pairs with an address and the pairing password. The address is validated first |
 | `POST /api/connection/unpair` | `unpairAllowed()`: no sign-in is needed only when this PC is not recognised or the Master cannot be reached; otherwise it needs `panels.manage`. Discarding unsent work always needs that right. It sends `panel:leave` when connected |
 
+## 19. Duplicate products (1.4.3)
+
+Master-only REST, both behind `products.delete` (a resolve is a delete; no new key). Types in
+`shared/src/domain/duplicate-products.ts`; finder `master/src/domain/duplicate-products.ts`;
+service `master/src/services/duplicate-products.service.ts`.
+
+| Route | Purpose |
+|---|---|
+| `GET /api/duplicates` | `{ groups: DuplicateGroup[] }`. Two levels. `product` (a category): same brand and same name, or same brand and same code. `subProduct`: same Product and same name, or same brand and one same variant code. The comparison (`duplicateKey`) ignores case, spacing, punctuation and accents. Each member carries `blockedBy`: `liveReferences` (a live pending order or order quotes it) or `subProducts` (a Product still holding live sub products) |
+| `POST /api/duplicates/resolve` | `{ level, keepId, deleteIds[] }` → `{ deleted[], refused[{id, blockedBy}] }`. The groups are found again server side; `keepId` and every `deleteIds` entry must sit in one group (else 400 `validation.duplicates.selection`). Each delete is `deleteProduct` / `deleteCategory`, so it is the Recycle Bin soft delete with its activity row and its `data:changed … deleted` event, which every Office folds (`apply-change.ts`). A blocked copy is refused and left; the others still go |
+
 ## Appendix — new permission keys
 
 **`08-PERMISSIONS.md` is the authority for permission keys, tiers and the grant-migration algorithm.**
