@@ -25,6 +25,7 @@ import {
   AvatarPicker,
   Button,
   Card,
+  ConfirmDialog,
   ConflictBanner,
   DataTable,
   EditorScreen,
@@ -38,6 +39,7 @@ import {
   OfflineBanner,
   PermissionGrid,
   PermissionSummary,
+  RolePicker,
   Segmented,
   Select,
   SkeletonRows,
@@ -47,10 +49,12 @@ import {
   TierPill,
   copyText,
   formatDateTime,
+  permissionChange,
   rem,
   t,
   tierLabel,
   useFilterBar,
+  useConfirm,
   useSubNav,
   useTopbarActions,
   useUnsavedWork,
@@ -124,9 +128,9 @@ export function AccessScreen({
    * starts as a plain close and `RoleEditor` overwrites it when it mounts, so
    * both exits run the same check rather than one of them silently discarding.
    */
-  const editorCloseRef = useRef<() => boolean>(() => {
+  const editorCloseRef = useRef<() => Promise<boolean>>(() => {
     setEditing(null);
-    return true;
+    return Promise.resolve(true);
   });
 
   const can = useCallback((key: string) => permissions.includes(key), [permissions]);
@@ -394,6 +398,7 @@ export function AccessScreen({
         <UsersTab
           users={users}
           roles={roles}
+          catalogue={catalogue}
           canManage={can('users.manage')}
           canAssign={can('roles.assign')}
           canReveal={can('users.viewPassword') && vaultEnabled}
@@ -430,6 +435,7 @@ export function AccessScreen({
 function UsersTab({
   users,
   roles,
+  catalogue,
   canManage,
   canAssign,
   canReveal,
@@ -445,6 +451,8 @@ function UsersTab({
 }: {
   users: User[];
   roles: Role[];
+  /** Null until it loads: role cards then show less. */
+  catalogue: PermissionCatalogue | null;
   canManage: boolean;
   canAssign: boolean;
   /** Both the key and the company's switch — see `vaultEnabled` above. */
@@ -743,40 +751,30 @@ function UsersTab({
         <section className="ob-detail-section">
           <div className="ob-eyebrow">{t('access.users.detail.access')}</div>
           {canAssign && mayManage(user) ? (
-            <FormField label={t('access.users.colRole')} hint={t('access.users.roleHint')}>
-              {(id) => (
-                <Select
-                  id={id}
-                  value={user.roleId ?? ''}
-                  onChange={(event) => {
-                    const roleId = event.target.value;
-                    void onRun(
-                      () =>
-                        withKey((token) =>
-                          api.updateUser(
-                            user.id,
-                            {
-                              roleId,
-                              // Without this the save is last-write-wins: two
-                              // administrators reassigning the same person would
-                              // both "succeed" and one would silently lose.
-                              expectedVersion: user.sync.version,
-                            },
-                            token,
-                          ),
-                        ),
-                      t('access.users.roleChangeFailed'),
-                    );
-                  }}
-                >
-                  {assignableFor(user).map((role) => (
-                    <option key={role.id} value={role.id}>
-                      {role.name}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </FormField>
+            <UserRoleAssign
+              user={user}
+              roles={assignableFor(user)}
+              catalogue={catalogue}
+              onApply={(roleId) =>
+                onRun(
+                  () =>
+                    withKey((token) =>
+                      api.updateUser(
+                        user.id,
+                        {
+                          roleId,
+                          // Without this the save is last-write-wins: two
+                          // administrators reassigning the same person would
+                          // both "succeed" and one would silently lose.
+                          expectedVersion: user.sync.version,
+                        },
+                        token,
+                      ),
+                    ),
+                  t('access.users.roleChangeFailed'),
+                )
+              }
+            />
           ) : (
             <dl className="ob-detail-grid">
               <div>
@@ -1030,7 +1028,8 @@ function UsersTab({
       >
         <FormField label={t('access.users.newPassword')} hint={t('access.users.newPasswordHint')}>
           {(id) => (
-            <PasswordInput initiallyVisible
+            <PasswordInput
+              initiallyVisible
               id={id}
               value={passwordValue}
               onChange={(event) => setPasswordValue(event.target.value)}
@@ -1172,6 +1171,7 @@ function UsersTab({
       {adding && (
         <UserForm
           roles={roles}
+          catalogue={catalogue}
           actorTier={actorTier}
           onCancel={() => setAdding(false)}
           onCreated={(secret) => {
@@ -1206,8 +1206,98 @@ function UsersTab({
   );
 }
 
+/**
+ * Changing the role of somebody who already has one.
+ *
+ * The cards only choose; nothing is saved until "Change role" and its
+ * confirmation, which says how many permissions the person gains and loses.
+ * The old drop-down saved on the first click of an option, so a slip of the
+ * mouse re-graded a person's access with no question asked.
+ */
+function UserRoleAssign({
+  user,
+  roles,
+  catalogue,
+  onApply,
+}: {
+  user: User;
+  /** The roles this actor may hand out, plus the one the person already has. */
+  roles: Role[];
+  catalogue: PermissionCatalogue | null;
+  onApply: (roleId: string) => Promise<void>;
+}) {
+  const [picked, setPicked] = useState(user.roleId ?? '');
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  // The row can change underneath (a refresh after a save, another
+  // administrator): the picker follows the stored role, not a stale draft.
+  useEffect(() => setPicked(user.roleId ?? ''), [user.roleId]);
+
+  const from = roles.find((role) => role.id === user.roleId);
+  const to = roles.find((role) => role.id === picked);
+  const changed = picked !== (user.roleId ?? '') && Boolean(to);
+  const change = from && to ? permissionChange(from.permissions, to.permissions) : null;
+
+  return (
+    <>
+      <FormField label={t('access.users.colRole')} hint={t('access.users.roleHint')}>
+        {() => (
+          <RolePicker
+            name={`role-${user.id}`}
+            label={t('access.users.colRole')}
+            roles={roles}
+            catalogue={catalogue}
+            value={picked}
+            currentRoleId={user.roleId}
+            disabled={busy}
+            onChange={setPicked}
+          />
+        )}
+      </FormField>
+
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--s-8)',
+          marginTop: 'var(--s-12)',
+        }}
+      >
+        <Button variant="primary" disabled={!changed || busy} onClick={() => setAsking(true)}>
+          {t('access.users.roleChangeApply')}
+        </Button>
+        {!changed && <span className="ob-help">{t('access.users.roleChangeUnchanged')}</span>}
+      </div>
+
+      <ConfirmDialog
+        open={asking && Boolean(to)}
+        title={t('access.users.roleChangeTitle', { name: user.displayName })}
+        body={t('access.users.roleChangeBody', {
+          name: user.displayName,
+          from: from?.name ?? user.roleName ?? '',
+          to: to?.name ?? '',
+          gained: change?.gained ?? 0,
+          lost: change?.lost ?? 0,
+        })}
+        confirmLabel={t('access.users.roleChangeApply')}
+        busy={busy}
+        onCancel={() => setAsking(false)}
+        onConfirm={() => {
+          setBusy(true);
+          void onApply(picked).finally(() => {
+            setBusy(false);
+            setAsking(false);
+          });
+        }}
+      />
+    </>
+  );
+}
+
 function UserForm({
   roles,
+  catalogue,
   actorTier,
   onCancel,
   onCreated,
@@ -1215,6 +1305,7 @@ function UserForm({
   withKey,
 }: {
   roles: Role[];
+  catalogue: PermissionCatalogue | null;
   actorTier: RoleTier;
   onCancel: () => void;
   onCreated: (secret: OneTimeSecret) => void;
@@ -1242,7 +1333,7 @@ function UserForm({
 
   return (
     <Card className="ob-measure-form" style={{ marginBottom: 'var(--s-16)' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--s-12)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--s-12)' }}>
         <FormField label={t('access.userForm.displayName')} required>
           {(id) => (
             <Input
@@ -1263,15 +1354,19 @@ function UserForm({
             />
           )}
         </FormField>
+      </div>
+
+      <div style={{ marginTop: 'var(--s-12)' }}>
         <FormField label={t('access.userForm.role')} required>
-          {(id) => (
-            <Select id={id} value={roleId} onChange={(event) => setRoleId(event.target.value)}>
-              {assignable.map((role) => (
-                <option key={role.id} value={role.id}>
-                  {`${role.name} (${tierLabel(role.tier)})`}
-                </option>
-              ))}
-            </Select>
+          {() => (
+            <RolePicker
+              name="new-user-role"
+              label={t('access.userForm.role')}
+              roles={assignable}
+              catalogue={catalogue}
+              value={roleId}
+              onChange={setRoleId}
+            />
           )}
         </FormField>
       </div>
@@ -1670,12 +1765,14 @@ function RoleEditor({
   onError: (message: string) => void;
   /** Hands the shell this editor's dirty-checking cancel, so navigating out of
    *  the operation through the sidebar asks about an unsaved draft too. */
-  registerCancel: (fn: () => boolean) => void;
+  registerCancel: (fn: () => Promise<boolean>) => void;
 }) {
   const [name, setName] = useState(role?.name ?? '');
   const [tier, setTier] = useState<RoleTier>((role?.tier as RoleTier) ?? 'office');
   const [selected, setSelected] = useState<Set<string>>(new Set(role?.permissions ?? []));
   const [pendingTier, setPendingTier] = useState<RoleTier | null>(null);
+  const [query, setQuery] = useState('');
+  const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [conflict, setConflict] = useState<{
@@ -1698,13 +1795,19 @@ function RoleEditor({
     );
   }, [pendingTier, selected, catalogue, rank]);
 
+  const totalKeys =
+    catalogue.modules.reduce((sum, module) => sum + module.actions.length, 0) +
+    catalogue.capabilities.length;
+
   // Save stays disabled until the draft actually differs — and the array is
   // compared sorted, so a reorder is not a change.
-  const dirty =
-    !role ||
-    name !== role.name ||
-    tier !== role.tier ||
-    [...selected].sort().join(',') !== [...role.permissions].sort().join(',');
+  // A new role counts as changed only once something has been entered, so a fresh,
+  // untouched form neither shows the marker nor asks before it is closed.
+  const dirty = role
+    ? name !== role.name ||
+      tier !== role.tier ||
+      [...selected].sort().join(',') !== [...role.permissions].sort().join(',')
+    : name.trim() !== '' || tier !== 'office' || selected.size > 0;
 
   /**
    * Cancel, checking first when there is something to lose. Returns whether the
@@ -1712,11 +1815,24 @@ function RoleEditor({
    * the sidebar, navigating to another module — can stay put when the operator
    * decides to keep the draft.
    */
-  const cancel = useCallback((): boolean => {
-    if (dirty && !confirm(t('access.roleEditor.discardConfirm'))) return false;
+  const cancel = useCallback(async (): Promise<boolean> => {
+    if (
+      dirty &&
+      !(await confirm({
+        title: t('access.roleEditor.discardTitle'),
+        body: t('access.roleEditor.discardBody', {
+          name: name.trim() || role?.name || t('access.roleEditor.newRole'),
+        }),
+        confirmLabel: t('access.roleEditor.discardConfirmButton'),
+        cancelLabel: t('access.roleEditor.discardKeep'),
+        tone: 'danger',
+      }))
+    ) {
+      return false;
+    }
     onCancel();
     return true;
-  }, [dirty, onCancel]);
+  }, [confirm, dirty, name, onCancel, role]);
 
   useEffect(() => {
     registerCancel(cancel);
@@ -1916,11 +2032,32 @@ function RoleEditor({
       </Card>
 
       <Card>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--s-12)',
+            marginBottom: 'var(--s-12)',
+          }}
+        >
+          <div className="ob-search" style={{ flex: 1 }}>
+            <Input
+              aria-label={t('access.roleEditor.searchLabel')}
+              placeholder={t('access.roleEditor.searchPlaceholder')}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </div>
+          <span className="ob-help" aria-live="polite">
+            {t('access.roleEditor.heldTotal', { held: selected.size, total: totalKeys })}
+          </span>
+        </div>
         <PermissionGrid
           catalogue={catalogue}
           tier={tier}
           selected={selected}
           disabled={busy}
+          query={query}
           onToggle={toggle}
           onToggleMany={toggleMany}
         />
@@ -1934,9 +2071,17 @@ function RoleEditor({
         >
           {busy ? t('access.roleEditor.saving') : t('access.roleEditor.save')}
         </Button>
-        <Button variant="secondary" onClick={() => cancel()}>
+        <Button variant="secondary" onClick={() => void cancel()}>
           {t('access.roleEditor.cancel')}
         </Button>
+        <span
+          className="ob-help"
+          role="status"
+          data-unsaved={dirty || undefined}
+          style={{ alignSelf: 'center' }}
+        >
+          {dirty ? `● ${t('access.roleEditor.unsaved')}` : t('access.roleEditor.noChanges')}
+        </span>
       </div>
     </div>
   );

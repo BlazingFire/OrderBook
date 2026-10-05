@@ -38,6 +38,8 @@ import { StrictMode } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { buildPermissionCatalogue } from '@orderbook/shared';
+
 import { formatElapsed } from '../src/format.js';
 import { t } from '../src/i18n.js';
 import { publishSessionEnded } from '../src/sessionEnded.js';
@@ -2340,4 +2342,130 @@ describe('the faces on the Pending and Final lists (R22)', () => {
       expect(screen.queryByTitle(t('presence.viewing', { name: 'Meera' }))).toBeNull();
     });
   }
+});
+
+describe('Assigning and editing roles (1.4.3)', () => {
+  const SYNC = { version: 1, hlc: 'h', fieldHlc: {}, temporaryId: null };
+  const stamp = { createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' };
+  const ROLE_A = {
+    id: 'role-a', tenantId: 't', name: 'Packer', tier: 'office', permissions: ['leads.view'],
+    isSystem: false, userCount: 1, deletedAt: null, ...stamp, sync: SYNC,
+  };
+  const ROLE_B = {
+    id: 'role-b', tenantId: 't', name: 'Dispatcher', tier: 'management',
+    permissions: ['leads.view', 'leads.edit', 'orders.view', 'orders.edit', 'lead.convert'],
+    isSystem: false, userCount: 0, deletedAt: null, ...stamp, sync: SYNC,
+  };
+  const PERSON = {
+    id: 'user-7', tenantId: 't', username: 'meera', displayName: 'Meera', roleId: 'role-a',
+    roleName: 'Packer', roleTier: 'office', isActive: true, lastSignInAt: null, avatar: null,
+    deletedAt: null, ...stamp, sync: SYNC,
+  };
+  const PERMS = [...ADMIN, 'roles.assign', 'roles.edit', 'users.manage'];
+
+  async function openAccess(extra?: (call: Call) => Response | undefined): Promise<Call[]> {
+    const calls = await boot(PERMS, (call) => {
+      const path = call.url.split('?')[0];
+      if (path === '/api/access/users' && call.method === 'GET') return json([PERSON]);
+      if (path === '/api/access/roles' && call.method === 'GET') return json([ROLE_A, ROLE_B]);
+      if (path === '/api/access/permission-catalogue') return json(buildPermissionCatalogue());
+      if (path === '/api/access/roles/role-b') return json(ROLE_B);
+      return extra?.(call);
+    });
+    await open(t('nav.master.access'));
+    return calls;
+  }
+
+  it('shows what each role allows on its card, and changes nothing until the change is confirmed', async () => {
+    const calls = await openAccess((call) =>
+      call.method === 'PUT' && call.url === '/api/access/users/user-7'
+        ? json({ ...PERSON, roleId: 'role-b', roleName: 'Dispatcher', roleTier: 'management' })
+        : undefined,
+    );
+
+    fireEvent.click(await screen.findByTitle(t('access.tab.users')));
+    fireEvent.click((await screen.findAllByText('Meera'))[0]!);
+    const group = await screen.findByRole('radiogroup', { name: t('access.users.colRole') });
+
+    // The card for Dispatcher says how much it grants, and what it can change.
+    const card = within(group).getByText('Dispatcher').closest('label')!;
+    expect(card.textContent).toContain(t('access.rolePicker.changes'));
+    expect(card.textContent).toMatch(/Pending Orders/);
+    expect(within(group).getByText(t('access.rolePicker.current'))).toBeTruthy();
+
+    // Choosing a card saves nothing: the old drop-down saved on the first click.
+    fireEvent.click(within(card).getByRole('radio'));
+    expect(calls.some((call) => call.method === 'PUT')).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: t('access.users.roleChangeApply') }));
+    const dialog = await screen.findByRole('dialog');
+    // Four keys gained (Packer holds one of Dispatcher's five), none lost.
+    expect(dialog.textContent).toContain('Meera');
+    expect(dialog.textContent).toMatch(/4 permission\(s\) gained, 0 lost/);
+    expect(calls.some((call) => call.method === 'PUT')).toBe(false);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: t('access.users.roleChangeApply') }));
+    await waitFor(() =>
+      expect(
+        calls.find((call) => call.method === 'PUT' && call.url === '/api/access/users/user-7')?.body,
+      ).toMatchObject({ roleId: 'role-b' }),
+    );
+  });
+
+  it('offers "Change role" only for a different role', async () => {
+    await openAccess();
+    fireEvent.click(await screen.findByTitle(t('access.tab.users')));
+    fireEvent.click((await screen.findAllByText('Meera'))[0]!);
+    await screen.findByRole('radiogroup', { name: t('access.users.colRole') });
+    const apply = screen.getByRole('button', { name: t('access.users.roleChangeApply') });
+    expect((apply as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(t('access.users.roleChangeUnchanged'))).toBeTruthy();
+  });
+
+  it('role editor: search narrows the permissions, an edit shows the unsaved marker, and closing asks in a themed dialog', async () => {
+    const nativeConfirm = vi.fn(() => true);
+    vi.stubGlobal('confirm', nativeConfirm);
+    await openAccess();
+
+    fireEvent.click(await screen.findByTitle(t('access.tab.roles')));
+    fireEvent.click(await screen.findByText('Dispatcher'));
+    fireEvent.click(await screen.findByRole('button', { name: t('access.roles.edit') }));
+
+    const search = await screen.findByLabelText(t('access.roleEditor.searchLabel'));
+    expect(screen.getByText(t('access.roleEditor.noChanges'))).toBeTruthy();
+    expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(10);
+
+    fireEvent.change(search, { target: { value: 'convert' } });
+    const shown = screen.getAllByRole('checkbox');
+    expect(shown.length).toBeLessThan(10);
+    expect(screen.getByText(t('permission.lead.convert'))).toBeTruthy();
+
+    fireEvent.change(search, { target: { value: 'zzzz-nothing' } });
+    expect(screen.getByText(t('access.roleEditor.searchNone', { query: 'zzzz-nothing' }))).toBeTruthy();
+    fireEvent.change(search, { target: { value: '' } });
+
+    fireEvent.change(screen.getByLabelText(t('access.roleEditor.nameLabel')), {
+      target: { value: 'Dispatcher 2' },
+    });
+    expect(screen.getByText(`● ${t('access.roleEditor.unsaved')}`)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: t('access.roleEditor.cancel') }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.textContent).toContain(t('access.roleEditor.discardTitle'));
+    expect(nativeConfirm).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: t('access.roleEditor.discardKeep') }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.getByLabelText(t('access.roleEditor.nameLabel'))).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: t('access.roleEditor.cancel') }));
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: t('access.roleEditor.discardConfirmButton'),
+      }),
+    );
+    await waitFor(() => expect(screen.queryByLabelText(t('access.roleEditor.nameLabel'))).toBeNull());
+    expect(nativeConfirm).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
 });

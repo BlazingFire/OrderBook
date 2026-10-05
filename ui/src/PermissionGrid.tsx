@@ -22,6 +22,7 @@ import type { PermissionCatalogue, RoleTier } from '@orderbook/shared';
 
 import { t } from './i18n.js';
 import { actionLabel, capabilityLabel, groupLabel, moduleLabel } from './permissionLabels';
+import { matchesQuery } from './roleSummary.js';
 import { tierLabel } from './TierPill.js';
 
 export function PermissionGrid({
@@ -29,6 +30,7 @@ export function PermissionGrid({
   tier,
   selected,
   disabled = false,
+  query = '',
   onToggle,
   onToggleMany,
 }: {
@@ -36,6 +38,8 @@ export function PermissionGrid({
   tier: RoleTier;
   selected: Set<string>;
   disabled?: boolean;
+  /** Narrows the grid to the modules and capabilities whose name or key contains it. */
+  query?: string;
   onToggle: (key: string, next: boolean) => void;
   onToggleMany: (keys: string[], next: boolean) => void;
 }) {
@@ -51,132 +55,171 @@ export function PermissionGrid({
     module.actions.map((action) => `${module.key}.${action}`),
   );
   const moduleHeld = moduleKeys.filter((key) => selected.has(key)).length;
+  const shownModules = catalogue.modules.filter((module) =>
+    matchesQuery(query, moduleLabel(module.key), module.key),
+  );
+  // Select all acts on the rows on screen, so a search narrows what it touches.
+  const allModuleKeys = togglable(
+    shownModules.flatMap((module) => module.actions.map((action) => `${module.key}.${action}`)),
+  );
+  const allModulesOn = allModuleKeys.length > 0 && allModuleKeys.every((key) => selected.has(key));
+  const shownCapabilities = catalogue.capabilities.filter((capability) =>
+    matchesQuery(
+      query,
+      capabilityLabel(capability.key),
+      capability.key,
+      groupLabel(capability.group),
+    ),
+  );
+  const nothingShown =
+    query.trim() !== '' && shownModules.length === 0 && shownCapabilities.length === 0;
 
   return (
     <div className="ob-permsections">
-      <section className="ob-permsection">
-        <div className="ob-permsection-head">
-          <h4 className="ob-eyebrow" style={{ margin: 0 }}>
-            {t('access.permissions.modules')}
-          </h4>
-          <span className="ob-permsection-count">
-            {moduleHeld}/{moduleKeys.length}
-          </span>
-        </div>
+      {(query.trim() === '' || shownModules.length > 0) && (
+        <section className="ob-permsection">
+          <div className="ob-permsection-head">
+            <h4 className="ob-eyebrow" style={{ margin: 0 }}>
+              {t('access.permissions.modules')}
+            </h4>
+            <span className="ob-permsection-count">
+              {moduleHeld}/{moduleKeys.length}
+            </span>
+            <button
+              type="button"
+              className="ob-permtoggle"
+              aria-pressed={allModulesOn}
+              disabled={disabled || allModuleKeys.length === 0}
+              onClick={() => onToggleMany(allModuleKeys, !allModulesOn)}
+            >
+              {allModulesOn ? t('access.permissions.clearAll') : t('access.permissions.selectAll')}
+            </button>
+          </div>
 
-        <div className="ob-tablewrap ob-permwrap">
-          <table className="ob-permgrid">
-            <thead>
-              <tr>
-                <th scope="col">{t('access.permissions.module')}</th>
-                {catalogue.actions.map((action) => {
-                  const columnKeys = togglable(
-                    catalogue.modules
-                      .filter((module) => module.actions.includes(action))
-                      .map((module) => `${module.key}.${action}`),
-                  );
-                  const allOn =
-                    columnKeys.length > 0 && columnKeys.every((key) => selected.has(key));
+          <div className="ob-tablewrap ob-permwrap">
+            <table className="ob-permgrid">
+              <thead>
+                <tr>
+                  <th scope="col">{t('access.permissions.module')}</th>
+                  {catalogue.actions.map((action) => {
+                    const columnKeys = togglable(
+                      catalogue.modules
+                        .filter((module) => module.actions.includes(action))
+                        .map((module) => `${module.key}.${action}`),
+                    );
+                    const allOn =
+                      columnKeys.length > 0 && columnKeys.every((key) => selected.has(key));
+                    return (
+                      <th scope="col" key={action}>
+                        <button
+                          type="button"
+                          className="ob-permtoggle"
+                          aria-pressed={allOn}
+                          disabled={disabled || columnKeys.length === 0}
+                          title={t('access.permissions.toggleColumn', {
+                            action: actionLabel(action),
+                          })}
+                          onClick={() => onToggleMany(columnKeys, !allOn)}
+                        >
+                          {actionLabel(action)}
+                        </button>
+                      </th>
+                    );
+                  })}
+                  <th scope="col" className="ob-permgrid-tally">
+                    {t('access.permissions.tally')}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {shownModules.map((module) => {
+                  const declaredKeys = module.actions.map((action) => `${module.key}.${action}`);
+                  const rowKeys = togglable(declaredKeys);
+                  const allOn = rowKeys.length > 0 && rowKeys.every((key) => selected.has(key));
+                  const rowHeld = declaredKeys.filter((key) => selected.has(key)).length;
                   return (
-                    <th scope="col" key={action}>
-                      <button
-                        type="button"
-                        className="ob-permtoggle"
-                        aria-pressed={allOn}
-                        disabled={disabled || columnKeys.length === 0}
-                        title={t('access.permissions.toggleColumn', {
-                          action: actionLabel(action),
-                        })}
-                        onClick={() => onToggleMany(columnKeys, !allOn)}
-                      >
-                        {actionLabel(action)}
-                      </button>
-                    </th>
-                  );
-                })}
-                <th scope="col" className="ob-permgrid-tally">
-                  {t('access.permissions.tally')}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {catalogue.modules.map((module) => {
-                const declaredKeys = module.actions.map((action) => `${module.key}.${action}`);
-                const rowKeys = togglable(declaredKeys);
-                const allOn = rowKeys.length > 0 && rowKeys.every((key) => selected.has(key));
-                const rowHeld = declaredKeys.filter((key) => selected.has(key)).length;
-                return (
-                  <tr key={module.key} data-all={allOn || undefined}>
-                    <th scope="row">
-                      <button
-                        type="button"
-                        className="ob-permtoggle ob-permtoggle--row"
-                        aria-pressed={allOn}
-                        disabled={disabled || rowKeys.length === 0}
-                        title={t('access.permissions.toggleRow', {
-                          module: moduleLabel(module.key),
-                        })}
-                        onClick={() => onToggleMany(rowKeys, !allOn)}
-                      >
-                        {moduleLabel(module.key)}
-                      </button>
-                    </th>
-                    {catalogue.actions.map((action) => {
-                      const key = `${module.key}.${action}`;
-                      const declared = module.actions.includes(action);
-                      if (!declared) {
+                    <tr key={module.key} data-all={allOn || undefined}>
+                      <th scope="row">
+                        <button
+                          type="button"
+                          className="ob-permtoggle ob-permtoggle--row"
+                          aria-pressed={allOn}
+                          disabled={disabled || rowKeys.length === 0}
+                          title={t('access.permissions.toggleRow', {
+                            module: moduleLabel(module.key),
+                          })}
+                          onClick={() => onToggleMany(rowKeys, !allOn)}
+                        >
+                          {moduleLabel(module.key)}
+                        </button>
+                      </th>
+                      {catalogue.actions.map((action) => {
+                        const key = `${module.key}.${action}`;
+                        const declared = module.actions.includes(action);
+                        if (!declared) {
+                          return (
+                            <td
+                              key={action}
+                              className="ob-cell-na"
+                              title={t('access.permissions.notApplicable')}
+                              aria-label={t('access.permissions.notApplicable')}
+                            >
+                              &mdash;
+                            </td>
+                          );
+                        }
+                        const allowed = permitted(key);
+                        const reason = t('access.permissions.blocked', {
+                          tier: tierLabel(catalogue.minimumTier[key] ?? 'office'),
+                        });
                         return (
-                          <td
-                            key={action}
-                            className="ob-cell-na"
-                            title={t('access.permissions.notApplicable')}
-                            aria-label={t('access.permissions.notApplicable')}
-                          >
-                            &mdash;
+                          <td key={action} className={allowed ? undefined : 'ob-cell-blocked'}>
+                            <input
+                              type="checkbox"
+                              checked={selected.has(key)}
+                              disabled={disabled || !allowed}
+                              aria-disabled={!allowed}
+                              aria-label={`${moduleLabel(module.key)} — ${actionLabel(action)}`}
+                              aria-describedby={allowed ? undefined : `why-${key}`}
+                              title={allowed ? key : `${key} · ${reason}`}
+                              onChange={(e) => onToggle(key, e.target.checked)}
+                            />
+                            {!allowed && (
+                              <span id={`why-${key}`} className="sr-only">
+                                {reason}
+                              </span>
+                            )}
                           </td>
                         );
-                      }
-                      const allowed = permitted(key);
-                      const reason = t('access.permissions.blocked', {
-                        tier: tierLabel(catalogue.minimumTier[key] ?? 'office'),
-                      });
-                      return (
-                        <td key={action} className={allowed ? undefined : 'ob-cell-blocked'}>
-                          <input
-                            type="checkbox"
-                            checked={selected.has(key)}
-                            disabled={disabled || !allowed}
-                            aria-disabled={!allowed}
-                            aria-label={`${moduleLabel(module.key)} — ${actionLabel(action)}`}
-                            aria-describedby={allowed ? undefined : `why-${key}`}
-                            title={allowed ? key : `${key} · ${reason}`}
-                            onChange={(e) => onToggle(key, e.target.checked)}
-                          />
-                          {!allowed && (
-                            <span id={`why-${key}`} className="sr-only">
-                              {reason}
-                            </span>
-                          )}
-                        </td>
-                      );
-                    })}
-                    <td className="ob-permgrid-tally">
-                      {rowHeld}/{declaredKeys.length}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                      })}
+                      <td className="ob-permgrid-tally">
+                        {rowHeld}/{declaredKeys.length}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {nothingShown && (
+        <p className="ob-help" role="status">
+          {t('access.roleEditor.searchNone', { query: query.trim() })}
+        </p>
+      )}
 
       {catalogue.groups.map((group) => {
-        const capabilities = catalogue.capabilities.filter((c) => c.group === group.key);
+        const all = catalogue.capabilities.filter((c) => c.group === group.key);
+        const capabilities = shownCapabilities.filter((c) => c.group === group.key);
         if (capabilities.length === 0) return null;
+        // The count and the select-all follow the group in full when nothing is
+        // typed, and what is on screen when something is: "select all" must do
+        // what the person is looking at, not what they filtered out.
         const groupKeys = togglable(capabilities.map((capability) => capability.key));
         const allOn = groupKeys.length > 0 && groupKeys.every((key) => selected.has(key));
-        const held = capabilities.filter((capability) => selected.has(capability.key)).length;
+        const held = all.filter((capability) => selected.has(capability.key)).length;
         return (
           <section className="ob-permsection" key={group.key}>
             <div className="ob-permsection-head">
@@ -184,7 +227,7 @@ export function PermissionGrid({
                 {groupLabel(group.key)}
               </h4>
               <span className="ob-permsection-count">
-                {held}/{capabilities.length}
+                {held}/{all.length}
               </span>
               <button
                 type="button"
