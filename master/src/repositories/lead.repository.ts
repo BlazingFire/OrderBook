@@ -4,7 +4,7 @@
  * (docs/LEAD_GENERATION_FLOW.md §5.1).
  */
 
-import type { Lead, LeadListQuery, Paginated, PartyScopeFilter } from '@orderbook/shared';
+import type { Lead, LeadListQuery, Paginated, PartyScopeFilter, StageCounts } from '@orderbook/shared';
 import type { Knex } from 'knex';
 
 import { evaluateCompleteness } from '../domain/custom-fields.js';
@@ -110,6 +110,43 @@ export async function listLeads(
     limit: options.limit,
     offset: options.offset,
   };
+}
+
+/** Leads per stage under the list's filters, without the stage filter (what a chip shows). */
+export async function stageCounts(
+  tenantId: string,
+  options: LeadListQuery & { partyScope: PartyScope },
+): Promise<StageCounts> {
+  const base = baseQuery(tenantId, options.partyScope, db(), { filter: options.scope });
+  if (options.ownerId) base.where('l.owner_id', options.ownerId);
+  if (options.convertedOnly) base.whereNotNull('l.converted_order_id');
+  else if (!options.includeConverted) base.whereNull('l.converted_order_id');
+  if (options.partyId) base.where('l.party_id', options.partyId);
+  if (options.followUpDueOnly) {
+    base.whereNotNull('l.follow_up_date').andWhere('l.follow_up_date', '<=', db().fn.now());
+  }
+  applyRecordSearch(base, options.search, {
+    alias: 'l',
+    parentType: 'lead',
+    columns: ['l.id', 'l.po_number', 'pa.name', 'ow.display_name', 'st.name', 'l.notes', 'l.converted_order_id'],
+  });
+
+  const rows = await base
+    .clone()
+    .clearSelect()
+    .clearOrder()
+    .select('l.stage_id as stage_id')
+    .count<Array<{ stage_id: string; count: string }>>('l.id as count')
+    .groupBy('l.stage_id');
+
+  const counts: Record<string, number> = {};
+  let total = 0;
+  for (const row of rows) {
+    const n = Number(row.count);
+    counts[String(row.stage_id)] = n;
+    total += n;
+  }
+  return { total, counts };
 }
 
 export async function findLeadById(

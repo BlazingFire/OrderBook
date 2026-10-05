@@ -21,6 +21,7 @@ import type {
   NoteKind,
   OptionListItem,
   Order,
+  StageCounts,
   Party,
   PartyScopeFilter,
   PipelineStage,
@@ -138,6 +139,8 @@ export function OrdersScreen({
   /** The page the person is on, and the view it belongs to: a new search, stage or size starts at the first. */
   const [paging, setPaging] = useState<{ key: string; page: number }>({ key: '', page: 0 });
   const [fetching, setFetching] = useState(false);
+  /** Per-stage counts under the search and "my parties", whatever stage or page is showing. */
+  const [stageCounts, setStageCounts] = useState<StageCounts | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [optionLists, setOptionLists] = useState<OptionListItem[]>([]);
   /** The open order when it is not in `rows` — a search hit, or one past the loaded page. */
@@ -189,6 +192,19 @@ export function OrdersScreen({
       cancelled = true;
     };
   }, [scope, term, stageFilter, revision, loadKey, pageNumber, pageSize]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .orderStageCounts({ scope, search: term || undefined })
+      .then((counts) => {
+        if (!cancelled) setStageCounts(counts);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [scope, term, revision]);
 
   // Colour chips on the lines resolve through the option lists.
   useEffect(() => {
@@ -285,7 +301,7 @@ export function OrdersScreen({
         <FilterDivider />
         <FilterChip
           active={stageFilter === null}
-          count={rows.length}
+          count={stageCounts?.total}
           onClick={() => onStageChange(null)}
         >
           {t('orders.filter.allStages')}
@@ -294,7 +310,7 @@ export function OrdersScreen({
           <FilterChip
             key={stage.id}
             active={stageFilter === stage.id}
-            count={rows.filter((order) => order.stageId === stage.id).length}
+            count={stageCounts ? (stageCounts.counts[stage.id] ?? 0) : undefined}
             onClick={() => onStageChange(stage.id)}
           >
             {stage.name}

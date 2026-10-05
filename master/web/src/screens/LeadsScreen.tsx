@@ -20,6 +20,7 @@ import { shownColour } from '@orderbook/shared';
 import type {
   ChatRecordChip,
   Lead,
+  StageCounts,
   LineItem,
   NoteKind,
   OptionListItem,
@@ -174,6 +175,8 @@ export function LeadsScreen({
   /** The page the person is on, and the view it belongs to: a new view, search, filter or size starts at the first. */
   const [paging, setPaging] = useState<{ key: string; page: number }>({ key: '', page: 0 });
   const [fetching, setFetching] = useState(false);
+  /** Per-stage counts under the search and "my parties", whatever stage chip or page is showing. */
+  const [stageCounts, setStageCounts] = useState<StageCounts | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [optionLists, setOptionLists] = useState<OptionListItem[]>([]);
   /** The open lead when it is not in `rows` — a search hit, or one past the loaded page. */
@@ -230,6 +233,19 @@ export function LeadsScreen({
       cancelled = true;
     };
   }, [view, scope, term, stageFilter, revision, loadKey, pageNumber, pageSize]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .leadStageCounts({ scope, search: term || undefined, convertedOnly: view === 'converted' })
+      .then((counts) => {
+        if (!cancelled) setStageCounts(counts);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [view, scope, term, revision]);
 
   // Colour chips on the lines resolve through the option lists.
   useEffect(() => {
@@ -324,7 +340,7 @@ export function LeadsScreen({
             <FilterDivider />
             <FilterChip
               active={stageFilter === null}
-              count={stageFilter === null ? total : undefined}
+              count={stageCounts?.total}
               onClick={() => setStageFilter(null)}
             >
               {t('lead.board.filter.all')}
@@ -333,6 +349,7 @@ export function LeadsScreen({
               <FilterChip
                 key={stage.id}
                 active={stageFilter === stage.id}
+                count={stageCounts ? (stageCounts.counts[stage.id] ?? 0) : undefined}
                 onClick={() => setStageFilter(stage.id)}
               >
                 {stage.name}

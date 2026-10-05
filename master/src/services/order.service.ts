@@ -16,6 +16,7 @@ import type {
   OrderListQuery,
   OrderUpdateInput,
   Paginated,
+  StageCounts,
 } from '@orderbook/shared';
 
 import { assertFieldsFresh } from '../domain/access.js';
@@ -66,6 +67,17 @@ export async function listOrders(
   });
 
   return page;
+}
+
+/** Orders per stage under the list's filters, ignoring its stage filter: what the stage chips say. */
+export async function stageCounts(query: OrderListQuery, actor: ActorContext): Promise<StageCounts> {
+  requirePermission(actor, 'orders.view');
+
+  return orderRepo.stageCounts(actor.tenantId, {
+    ...query,
+    stageIds: undefined,
+    partyScope: resolvePartyScope(actor),
+  });
 }
 
 export async function getOrder(id: string, actor: ActorContext): Promise<Order> {

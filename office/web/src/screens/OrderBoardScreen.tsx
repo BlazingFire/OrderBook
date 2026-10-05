@@ -151,6 +151,8 @@ export function OrderBoardScreen({
   const pipeline = view.pipelines.find((candidate) => candidate.kind === 'order');
   const stages = sortedStages(pipeline);
   const orders = onMyParties(view.orders, scope === 'assigned' ? view.partyGrants : undefined);
+  // What the stage chips count: this panel holds every order, so under the search and "my parties" they are true totals.
+  const countable = orders.filter((order) => matchesRecordSearch(order, search));
   const inView = view.orders.find((order) => order.id === openId) ?? null;
   // An order this panel's view does not hold (a chat chip, a bell entry) is asked of the Master.
   const [fetched, setFetched] = useState<Order | null>(null);
@@ -216,7 +218,7 @@ export function OrderBoardScreen({
         <FilterDivider />
         <FilterChip
           active={stageFilter === null}
-          count={orders.length}
+          count={countable.length}
           onClick={() => setStageFilter(null)}
         >
           {t('orders.filter.allStages')}
@@ -225,7 +227,7 @@ export function OrderBoardScreen({
           <FilterChip
             key={stage.id}
             active={stageFilter === stage.id}
-            count={orders.filter((order) => order.stageId === stage.id).length}
+            count={countable.filter((order) => order.stageId === stage.id).length}
             onClick={() => setStageFilter(stage.id)}
           >
             {stage.name}

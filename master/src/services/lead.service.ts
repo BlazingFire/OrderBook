@@ -16,6 +16,7 @@ import type {
   LeadListQuery,
   LeadUpdateInput,
   Paginated,
+  StageCounts,
 } from '@orderbook/shared';
 
 import { assertFieldsFresh } from '../domain/access.js';
@@ -67,6 +68,17 @@ export async function listLeads(
   });
 
   return page;
+}
+
+/** Leads per stage under the list's filters, ignoring its stage filter: what the stage chips say. */
+export async function stageCounts(query: LeadListQuery, actor: ActorContext): Promise<StageCounts> {
+  requirePermission(actor, 'leads.view');
+
+  return leadRepo.stageCounts(actor.tenantId, {
+    ...query,
+    stageIds: undefined,
+    partyScope: resolvePartyScope(actor),
+  });
 }
 
 export async function getLead(id: string, actor: ActorContext): Promise<Lead> {

@@ -8,7 +8,7 @@
  * dispatch address, expected date, weight.
  */
 
-import type { Order, OrderListQuery, Paginated, PartyScopeFilter } from '@orderbook/shared';
+import type { Order, OrderListQuery, Paginated, PartyScopeFilter, StageCounts } from '@orderbook/shared';
 import type { Knex } from 'knex';
 
 import { evaluateCompleteness } from '../domain/custom-fields.js';
@@ -99,6 +99,37 @@ export async function listOrders(
     limit: options.limit,
     offset: options.offset,
   };
+}
+
+/** Orders per stage under the list's filters, without the stage filter (what a chip shows). */
+export async function stageCounts(
+  tenantId: string,
+  options: OrderListQuery & { partyScope: PartyScope },
+): Promise<StageCounts> {
+  const base = baseQuery(tenantId, options.partyScope, db(), { filter: options.scope });
+  if (options.ownerId) base.where('o.owner_id', options.ownerId);
+  applyRecordSearch(base, options.search, {
+    alias: 'o',
+    parentType: 'order',
+    columns: ['o.id', 'ld.po_number', 'pa.name', 'ow.display_name', 'st.name', 'o.notes', 'o.lead_id'],
+  });
+
+  const rows = await base
+    .clone()
+    .clearSelect()
+    .clearOrder()
+    .select('o.stage_id as stage_id')
+    .count<Array<{ stage_id: string; count: string }>>('o.id as count')
+    .groupBy('o.stage_id');
+
+  const counts: Record<string, number> = {};
+  let total = 0;
+  for (const row of rows) {
+    const n = Number(row.count);
+    counts[String(row.stage_id)] = n;
+    total += n;
+  }
+  return { total, counts };
 }
 
 export async function findOrderById(
