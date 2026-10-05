@@ -16,6 +16,7 @@
 
 import { existsSync } from 'node:fs';
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';
@@ -36,6 +37,7 @@ import {
   t,
   type ChatMessage,
   type DataChangedEvent,
+  type DeviceInfo,
   type PresenceBeat,
   type ReportKind,
   type PanelHealth,
@@ -154,6 +156,17 @@ export function createApp(): Express {
           }
         : {}),
     } satisfies PanelHealth);
+  });
+
+  /**
+   * The PC this panel runs on: memory and processor count, for the sign-in warning.
+   * Unauthenticated like `/api/health` (nobody has signed in yet); hardware figures only.
+   */
+  app.get('/api/device', (_req, res) => {
+    res.json({
+      totalMemoryBytes: os.totalmem(),
+      cpuCount: os.cpus().length,
+    } satisfies DeviceInfo);
   });
 
   // --- Connection screen ---

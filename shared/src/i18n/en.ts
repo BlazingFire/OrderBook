@@ -3145,6 +3145,10 @@ export const EN_MESSAGES = {
   // 1.4 D4: password eye
   'password.show': 'Show password',
   'password.hide': 'Hide password',
+  'password.capsLock': 'Caps Lock is on',
+  // 1.4.3: device warnings on the sign-in screen
+  'device.warning.lowMemory': 'Low memory: this PC has {memory} GB in total. OrderBook is built for 8 GB or more, so it may feel slow or stall here.',
+  'device.warning.fewCores': 'Few processor cores: this PC has {cores}. With 2 or fewer, OrderBook can feel slow when several things happen at once.',
   // 1.4 D4: note buttons, preview
   'orderNote.column.notes': 'Notes',
   'orderNote.previewButton': 'Preview',

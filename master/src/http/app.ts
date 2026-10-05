@@ -1,7 +1,9 @@
 import { existsSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import express, { type Express } from 'express';
 import cookieParser from 'cookie-parser';
+import type { DeviceInfo } from '@orderbook/shared';
 
 import { config } from '../config/index.js';
 import { queryCountMiddleware } from '../db/query-counter.js';
@@ -52,6 +54,17 @@ export function createApp(): Express {
 
   app.get('/api/health', (req, res) => {
     res.json(liveHealth(req));
+  });
+
+  /**
+   * The PC this panel runs on: memory and processor count, for the sign-in warning.
+   * Unauthenticated like `/api/health` (nobody has signed in yet); hardware figures only.
+   */
+  app.get('/api/device', (_req, res) => {
+    res.json({
+      totalMemoryBytes: os.totalmem(),
+      cpuCount: os.cpus().length,
+    } satisfies DeviceInfo);
   });
 
   /*

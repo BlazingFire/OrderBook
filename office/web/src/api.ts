@@ -107,6 +107,7 @@ import type {
   StageReorderInput,
   SyncConflict,
   SyncSnapshot,
+  DeviceInfo,
 } from '@orderbook/shared';
 import { reportQueryParams } from '@orderbook/shared';
 
@@ -545,6 +546,8 @@ export function desktopBridge(): DesktopBridge | null {
 }
 
 export const api = {
+  /** The PC this panel runs on (memory, processors), for the sign-in warning. */
+  device: () => request<DeviceInfo>('/api/device'),
   connection: () => request<ConnectionInfo>('/api/connection'),
   scan: (signal?: AbortSignal) =>
     request<{ masters: DiscoveredMaster[] }>('/api/connection/scan', { method: 'POST', body: '{}', signal }),

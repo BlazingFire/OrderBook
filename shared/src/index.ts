@@ -1,3 +1,4 @@
+export * from './domain/device.js';
 export * from './domain/activity.js';
 export * from './domain/chat.js';
 export * from './domain/printroom.js';

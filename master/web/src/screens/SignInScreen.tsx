@@ -19,14 +19,16 @@
  * prefill: a fresh setup has no `admin` account to suggest.
  */
 
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import type { MessageKey, SignedInUser } from '@orderbook/shared';
 import { api } from '../api';
 import { MasterKeyRecoveryFlow } from './MasterKeyRecoveryFlow';
 import { ServerMasterSetupFlow } from './ServerMasterSetupFlow';
 import {
   Button,
+  CapsLockHint,
   Card,
+  DeviceWarning,
   FieldError,
   FormField,
   Input,
@@ -35,6 +37,8 @@ import {
   rem,
   t,
   PasswordInput,
+  useCapsLock,
+  useDeviceInfo,
 } from '@orderbook/ui';
 
 interface Props {
@@ -61,6 +65,11 @@ export function SignInScreen({
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const caps = useCapsLock();
+  // On the Master PC this browser and the Master share a machine, so the Master's figures are this PC's.
+  // A LAN browser would be shown the Master's hardware as its own, so it is not asked.
+  const device = useDeviceInfo(onMasterPc ? api.device : () => Promise.reject(new Error('not the Master PC')));
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -72,6 +81,8 @@ export function SignInScreen({
     } catch (caught) {
       setError(apiErrorText(caught, 'signIn.error.default'));
       setPassword('');
+      // Back in the password box, empty: the next thing to do is type it again.
+      window.setTimeout(() => passwordRef.current?.focus(), 0);
     } finally {
       setBusy(false);
     }
@@ -100,19 +111,21 @@ export function SignInScreen({
       <LogoLockup markSize={28} />
 
       <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
-        <p className="ob-small" style={{ textAlign: 'center', margin: 0 }}>
-          {t('signIn.subtitle')}
-        </p>
+        <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
+          <h1 className="ob-title" style={{ margin: 0 }}>
+            {t('signIn.action.signIn')}
+          </h1>
+          <p className="ob-small" style={{ margin: 0 }}>
+            {t('signIn.subtitle')}
+          </p>
+        </div>
 
         {/* Above the card, not inside it: it explains why this screen is here,
             which is not about the fields below. */}
         {notice && (
-          <p
-            className="ob-small"
-            style={{ textAlign: 'center', margin: 0, color: 'var(--accent)' }}
-          >
-            {t(notice)}
-          </p>
+          <div className="ob-banner" role="status">
+            <span>{t(notice)}</span>
+          </div>
         )}
 
         <Card>
@@ -137,12 +150,15 @@ export function SignInScreen({
               {(id) => (
                 <PasswordInput
                   id={id}
+                  ref={passwordRef}
                   value={password}
                   autoComplete="current-password"
                   onChange={(event) => setPassword(event.target.value)}
+                  {...caps.handlers}
                 />
               )}
             </FormField>
+            <CapsLockHint on={caps.on} />
 
             {/* Stays visible until the next attempt — a failed sign-in must not
                 vanish the way a toast would after a few seconds. */}
@@ -159,6 +175,9 @@ export function SignInScreen({
             )}
           </form>
         </Card>
+
+        {/* Said before signing in, not after it feels slow: this PC is short of memory or cores. */}
+        <DeviceWarning device={device} />
       </div>
     </div>
   );

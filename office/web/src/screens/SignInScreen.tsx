@@ -23,14 +23,16 @@
  * smallest disclosure.
  */
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { MessageKey } from '@orderbook/shared';
 
 import { api, type ConnectionInfo, type PanelProfile, type PanelSession } from '../api';
 import {
   Avatar,
   Button,
+  CapsLockHint,
   Card,
+  DeviceWarning,
   FieldError,
   FormField,
   Input,
@@ -41,6 +43,8 @@ import {
   t,
   useConfirm,
   PasswordInput,
+  useCapsLock,
+  useDeviceInfo,
 } from '@orderbook/ui';
 
 import { ConnectionUnpair } from '../components/ConnectionUnpair';
@@ -64,6 +68,10 @@ export function SignInScreen({ connection, onSignedIn, notice, onLeft }: Props) 
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const caps = useCapsLock();
+  // This panel's own server runs on this PC, so these are this PC's figures.
+  const device = useDeviceInfo(api.device);
 
   // "Not reachable" only once the link has actually failed. While it is still being
   // made (the first seconds after pairing) the old line said the Master was down.
@@ -94,6 +102,8 @@ export function SignInScreen({ connection, onSignedIn, notice, onLeft }: Props) 
       // `caught.message` and dropped the key.
       setError(apiErrorText(caught, 'signin.errorFallback'));
       setPassword('');
+      // Back in the password box, empty: the next thing to do is type it again.
+      window.setTimeout(() => passwordRef.current?.focus(), 0);
     } finally {
       setBusy(false);
     }
@@ -146,9 +156,14 @@ export function SignInScreen({ connection, onSignedIn, notice, onLeft }: Props) 
       <LogoLockup markSize={28} />
 
       <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
-        <p className="ob-small" style={{ textAlign: 'center' }}>
-          {connection.companyName ?? t('signin.subtitleFallback')}
-        </p>
+        <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
+          <h1 className="ob-title" style={{ margin: 0 }}>
+            {t('signin.submit')}
+          </h1>
+          <p className="ob-small" style={{ margin: 0 }}>
+            {connection.companyName ?? t('signin.subtitleFallback')}
+          </p>
+        </div>
 
         {/* Which PC this is, so a person can read it out to whoever runs the
             Master. Absent when the panel's server could not read it. */}
@@ -162,12 +177,9 @@ export function SignInScreen({ connection, onSignedIn, notice, onLeft }: Props) 
         {/* Above the card: it explains why this screen is here, which is not
             about the fields below. */}
         {notice && (
-          <p
-            className="ob-small"
-            style={{ textAlign: 'center', margin: 0, color: 'var(--accent)' }}
-          >
-            {t(notice)}
-          </p>
+          <div className="ob-banner" role="status">
+            <span>{t(notice)}</span>
+          </div>
         )}
 
         {/*
@@ -282,14 +294,17 @@ export function SignInScreen({ connection, onSignedIn, notice, onLeft }: Props) 
               {(id) => (
                 <PasswordInput
                   id={id}
+                  ref={passwordRef}
                   value={password}
                   // Focused when a face was picked: the only thing left to do.
                   autoFocus={Boolean(chosen)}
                   autoComplete="current-password"
                   onChange={(event) => setPassword(event.target.value)}
+                  {...caps.handlers}
                 />
               )}
             </FormField>
+            <CapsLockHint on={caps.on} />
 
             {/* Stays visible until the next attempt — a failed sign-in must not
                 vanish the way a toast would after a few seconds. */}
@@ -305,6 +320,9 @@ export function SignInScreen({ connection, onSignedIn, notice, onLeft }: Props) 
             </Button>
           </form>
         </Card>
+
+        {/* Said before signing in, not after it feels slow: this PC is short of memory or cores. */}
+        <DeviceWarning device={device} />
 
         {/*
           Where this panel keeps its files.

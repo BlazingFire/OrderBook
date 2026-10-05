@@ -336,3 +336,16 @@ describe('POST /api/connection/unpair', () => {
     expect(unpair).toHaveBeenLastCalledWith({ pending: undefined });
   });
 });
+
+describe('GET /api/device', () => {
+  it('answers this PC’s memory and processor count without a sign-in', async () => {
+    const os = await import('node:os');
+    const response = await request(createApp()).get('/api/device');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      totalMemoryBytes: os.default.totalmem(),
+      cpuCount: os.default.cpus().length,
+    });
+  });
+});
