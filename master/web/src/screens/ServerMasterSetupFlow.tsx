@@ -30,6 +30,7 @@ import {
   rem,
   t,
   PasswordInput,
+  SaveTextButton,
 } from '@orderbook/ui';
 
 /** The server's own floor (`validation.password.tooShort`), checked here too. */
@@ -263,11 +264,28 @@ export function ServerMasterSetupFlow({ onDone }: { onDone: () => void }) {
           )}
 
           {step === 'done' && (
-            <EmptyState
-              title={t('masterKey.setup.done')}
-              actionLabel={t('signIn.action.signIn')}
-              onAction={onDone}
-            />
+            <>
+              <EmptyState
+                title={t('masterKey.setup.done')}
+                actionLabel={t('signIn.action.signIn')}
+                onAction={onDone}
+              />
+              {drafts.length > 0 && (
+                <div style={{ display: 'flex', gap: 'var(--s-8)', alignItems: 'center', justifyContent: 'center' }}>
+                  <SaveTextButton
+                    title={t('saveText.title.serverMasters')}
+                    slug="server-masters"
+                    sections={drafts.map((draft) => ({
+                      heading: draft.displayName.trim() || draft.username.trim(),
+                      values: [
+                        { label: t('saveText.label.username'), value: draft.username.trim() },
+                        { label: t('saveText.label.password'), value: draft.password },
+                      ],
+                    }))}
+                  />
+                </div>
+              )}
+            </>
           )}
         </Card>
       </div>

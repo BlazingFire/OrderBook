@@ -20,6 +20,7 @@ import { shownColour } from '@orderbook/shared';
 import type {
   ChatRecordChip,
   Lead,
+  StageCounts,
   LineItem,
   NoteKind,
   OptionListItem,
@@ -47,7 +48,9 @@ import {
   IconButton,
   Input,
   LeadRecordView,
-  LoadMorePager,
+  PageBar,
+  pageWindow,
+  usePageSize,
   OrderNoteScreen,
   RecordNumber,
   Segmented,
@@ -69,7 +72,6 @@ import {
   NoteButtons,
 } from '@orderbook/ui';
 
-const PAGE_SIZE = 500;
 
 interface Props {
   /** Bumped by the live socket whenever lead, order or party data changes. */
@@ -169,7 +171,12 @@ export function LeadsScreen({
   const [total, setTotal] = useState(0);
   /** What `rows` was loaded for, so a new view or search shows a skeleton and a refetch does not. */
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [pageSize, setPageSize] = usePageSize('leads');
+  /** The page the person is on, and the view it belongs to: a new view, search, filter or size starts at the first. */
+  const [paging, setPaging] = useState<{ key: string; page: number }>({ key: '', page: 0 });
+  const [fetching, setFetching] = useState(false);
+  /** Per-stage counts under the search and "my parties", whatever stage chip or page is showing. */
+  const [stageCounts, setStageCounts] = useState<StageCounts | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [optionLists, setOptionLists] = useState<OptionListItem[]>([]);
   /** The open lead when it is not in `rows` — a search hit, or one past the loaded page. */
@@ -188,15 +195,20 @@ export function LeadsScreen({
   const canPreviewPdf = permissions.includes('leads.export');
   const canViewParties = permissions.includes('parties.view');
 
-  const loadKey = `${view}|${scope}|${term}`;
+  const loadKey = `${view}|${scope}|${term}|${stageFilter ?? ''}|${pageSize}`;
+  const pageNumber = paging.key === loadKey ? paging.page : 0;
 
   useEffect(() => {
     let cancelled = false;
+    setFetching(true);
     void api
       .leads({
-        limit: PAGE_SIZE,
+        limit: pageSize,
+        offset: pageNumber * pageSize,
         scope,
         search: term || undefined,
+        // The stage chip narrows on the Master, so it holds across every page and not only this one.
+        stageIds: stageFilter ? [stageFilter] : undefined,
         convertedOnly: view === 'converted',
       })
       .then((page) => {
@@ -205,37 +217,35 @@ export function LeadsScreen({
         setTotal(page.total);
         setLoadedFor(loadKey);
         setError(null);
+        // Records were removed while this page was open: land on the last page that still exists.
+        if (page.items.length === 0 && page.total > 0 && pageNumber > 0) {
+          setPaging({ key: loadKey, page: pageWindow(page.total, pageNumber, pageSize).page });
+        }
       })
       .catch((caught) => {
         if (!cancelled)
           setError(caught instanceof Error ? caught.message : t('leadsOrders.error.load'));
+      })
+      .finally(() => {
+        if (!cancelled) setFetching(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [view, scope, term, revision, loadKey]);
+  }, [view, scope, term, stageFilter, revision, loadKey, pageNumber, pageSize]);
 
-  async function loadMore(): Promise<void> {
-    setLoadingMore(true);
-    try {
-      const page = await api.leads({
-        limit: PAGE_SIZE,
-        offset: rows.length,
-        scope,
-        search: term || undefined,
-        convertedOnly: view === 'converted',
-      });
-      setRows((current) => {
-        const seen = new Set(current.map((lead) => lead.id));
-        return [...current, ...page.items.filter((lead) => !seen.has(lead.id))];
-      });
-      setTotal(page.total);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : t('leadsOrders.error.load'));
-    } finally {
-      setLoadingMore(false);
-    }
-  }
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .leadStageCounts({ scope, search: term || undefined, convertedOnly: view === 'converted' })
+      .then((counts) => {
+        if (!cancelled) setStageCounts(counts);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [view, scope, term, revision]);
 
   // Colour chips on the lines resolve through the option lists.
   useEffect(() => {
@@ -303,7 +313,8 @@ export function LeadsScreen({
   const noteKind = note && note.id === openLead?.id ? note.kind : null;
 
   const open = view === 'list';
-  const shown = stageFilter ? rows.filter((lead) => lead.stageId === stageFilter) : rows;
+  // The Master already narrowed `rows` to the stage chip, so every page honours it.
+  const shown = rows;
 
   useFilterBar(
     openLead ? null : (
@@ -329,7 +340,7 @@ export function LeadsScreen({
             <FilterDivider />
             <FilterChip
               active={stageFilter === null}
-              count={rows.length}
+              count={stageCounts?.total}
               onClick={() => setStageFilter(null)}
             >
               {t('lead.board.filter.all')}
@@ -338,7 +349,7 @@ export function LeadsScreen({
               <FilterChip
                 key={stage.id}
                 active={stageFilter === stage.id}
-                count={rows.filter((lead) => lead.stageId === stage.id).length}
+                count={stageCounts ? (stageCounts.counts[stage.id] ?? 0) : undefined}
                 onClick={() => setStageFilter(stage.id)}
               >
                 {stage.name}
@@ -750,10 +761,13 @@ export function LeadsScreen({
               )
             }
           />
-          <LoadMorePager
-            hasMore={rows.length < total}
-            loading={loadingMore}
-            onLoadMore={() => void loadMore()}
+          <PageBar
+            total={total}
+            page={pageNumber}
+            pageSize={pageSize}
+            loading={fetching}
+            onPage={(next) => setPaging({ key: loadKey, page: next })}
+            onPageSize={setPageSize}
           />
         </>
       )}

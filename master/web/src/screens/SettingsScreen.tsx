@@ -62,6 +62,7 @@ import {
   useUnsavedWork,
   type SettingsTab,
   PasswordInput,
+  SaveTextButton,
 } from '@orderbook/ui';
 
 export function SettingsScreen({
@@ -384,14 +385,32 @@ export function SettingsScreen({
                         </Button>
                         {pairingError && <FieldError>{pairingError}</FieldError>}
                         {newPairingPassword && (
-                          <KeyValueList
-                            items={[
-                              {
-                                label: t('masterKey.pairing.newPassword'),
-                                value: <IdField value={newPairingPassword} />,
-                              },
-                            ]}
-                          />
+                          <>
+                            <KeyValueList
+                              items={[
+                                {
+                                  label: t('masterKey.pairing.newPassword'),
+                                  value: <IdField value={newPairingPassword} />,
+                                },
+                              ]}
+                            />
+                            <div>
+                              <SaveTextButton
+                                title={t('saveText.title.pairingPassword')}
+                                slug="pairing-password"
+                                sections={[
+                                  {
+                                    values: [
+                                      { label: t('saveText.label.pairingPassword'), value: newPairingPassword },
+                                      ...(identity
+                                        ? [{ label: t('saveText.label.masterId'), value: identity.masterUniqueId }]
+                                        : []),
+                                    ],
+                                  },
+                                ]}
+                              />
+                            </div>
+                          </>
                         )}
                       </div>
                     )}

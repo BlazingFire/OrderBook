@@ -33,6 +33,9 @@ import {
   Card,
   ColourName,
   DataTable,
+  PageBar,
+  pageWindow,
+  usePageSize,
   EditorScreen,
   EmptyState,
   FilterChip,
@@ -142,10 +145,14 @@ export function OrderBoardScreen({
   const toast = useToast();
   const [scope, setScope] = useState<PartyScopeFilter>('all');
   const [search, setSearch] = useState('');
+  const [pageSize, setPageSize] = usePageSize('office-orders');
+  const [paging, setPaging] = useState<{ key: string; page: number }>({ key: '', page: 0 });
   const colourHex = useColourHex(view.optionLists);
   const pipeline = view.pipelines.find((candidate) => candidate.kind === 'order');
   const stages = sortedStages(pipeline);
   const orders = onMyParties(view.orders, scope === 'assigned' ? view.partyGrants : undefined);
+  // What the stage chips count: this panel holds every order, so under the search and "my parties" they are true totals.
+  const countable = orders.filter((order) => matchesRecordSearch(order, search));
   const inView = view.orders.find((order) => order.id === openId) ?? null;
   // An order this panel's view does not hold (a chat chip, a bell entry) is asked of the Master.
   const [fetched, setFetched] = useState<Order | null>(null);
@@ -211,7 +218,7 @@ export function OrderBoardScreen({
         <FilterDivider />
         <FilterChip
           active={stageFilter === null}
-          count={orders.length}
+          count={countable.length}
           onClick={() => setStageFilter(null)}
         >
           {t('orders.filter.allStages')}
@@ -220,7 +227,7 @@ export function OrderBoardScreen({
           <FilterChip
             key={stage.id}
             active={stageFilter === stage.id}
-            count={orders.filter((order) => order.stageId === stage.id).length}
+            count={countable.filter((order) => order.stageId === stage.id).length}
             onClick={() => setStageFilter(stage.id)}
           >
             {stage.name}
@@ -342,6 +349,11 @@ export function OrderBoardScreen({
     stageFilter ? orders.filter((order) => order.stageId === stageFilter) : orders
   ).filter((order) => matchesRecordSearch(order, search));
 
+  // One page of what the filters leave; the filters run over all of it first.
+  const pageKey = `${scope}|${search}|${stageFilter ?? ''}|${pageSize}`;
+  const orderPage = pageWindow(filteredOrders.length, paging.key === pageKey ? paging.page : 0, pageSize);
+  const pagedOrders = filteredOrders.slice(orderPage.offset, orderPage.offset + pageSize);
+
   const columns: DataTableColumn<Order>[] = [
     {
       key: 'id',
@@ -447,7 +459,7 @@ export function OrderBoardScreen({
     <>
       <DataTable
         columns={columns}
-        rows={filteredOrders}
+        rows={pagedOrders}
         rowKey={(order) => order.id}
         onRowOpen={(order) => onOpenId(order.id)}
         empty={
@@ -460,6 +472,13 @@ export function OrderBoardScreen({
             <EmptyState title={t('orders.empty.filteredTitle')} />
           )
         }
+      />
+      <PageBar
+        total={filteredOrders.length}
+        page={orderPage.page}
+        pageSize={pageSize}
+        onPage={(next) => setPaging({ key: pageKey, page: next })}
+        onPageSize={setPageSize}
       />
     </>
   );

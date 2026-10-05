@@ -24,6 +24,7 @@ import {
   rem,
   t,
   PasswordInput,
+  SaveTextButton,
 } from '@orderbook/ui';
 
 /** The server's own floor (`validation.password.tooShort`), checked here too. */
@@ -40,6 +41,8 @@ export function MasterKeyRecoveryFlow({ onBack }: { onBack: () => void }) {
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** What was just set, kept for the "Save to .txt" on the last step (the fields are cleared). */
+  const [changed, setChanged] = useState<{ account: string; username: string; password: string } | null>(null);
 
   async function unlocked(nextToken: string): Promise<void> {
     setError(null);
@@ -68,6 +71,12 @@ export function MasterKeyRecoveryFlow({ onBack }: { onBack: () => void }) {
     setError(null);
     try {
       await api.recoverServerMaster(userId, password, token);
+      const account = accounts.find((candidate) => candidate.id === userId);
+      setChanged({
+        account: account?.displayName ?? '',
+        username: account?.username ?? '',
+        password,
+      });
       setPassword('');
       setConfirm('');
       setStep('done');
@@ -169,11 +178,30 @@ export function MasterKeyRecoveryFlow({ onBack }: { onBack: () => void }) {
           )}
 
           {step === 'done' && (
-            <EmptyState
-              title={t('masterKey.recover.done')}
-              actionLabel={t('signIn.action.signIn')}
-              onAction={onBack}
-            />
+            <>
+              <EmptyState
+                title={t('masterKey.recover.done')}
+                actionLabel={t('signIn.action.signIn')}
+                onAction={onBack}
+              />
+              {changed && (
+                <div style={{ display: 'flex', gap: 'var(--s-8)', alignItems: 'center', justifyContent: 'center' }}>
+                  <SaveTextButton
+                    title={t('saveText.title.passwordReset')}
+                    slug="password-reset"
+                    sections={[
+                      {
+                        heading: changed.account || changed.username,
+                        values: [
+                          { label: t('saveText.label.username'), value: changed.username },
+                          { label: t('saveText.label.newPassword'), value: changed.password },
+                        ],
+                      },
+                    ]}
+                  />
+                </div>
+              )}
+            </>
           )}
         </Card>
       </div>

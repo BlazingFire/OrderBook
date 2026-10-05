@@ -85,6 +85,8 @@ export * from './ScreenHost.js';
 export * from './SettingsLayout.js';
 export * from './ShortcutSettings.js';
 export * from './Splash.js';
+export * from './PageBar.js';
+export * from './SaveTextButton.js';
 export * from './SuggestInput.js';
 export * from './States.js';
 export * from './StatTile.js';
