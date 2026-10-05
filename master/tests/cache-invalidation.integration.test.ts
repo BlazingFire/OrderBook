@@ -14,6 +14,7 @@ import {
   actorWith,
   createTestProduct,
   resetData,
+  stageIdByName,
   setupDatabase,
   teardownDatabase,
   testActor,
@@ -194,5 +195,48 @@ describe.skipIf(!canRunIntegrationTests)('read caches drop when displayed data c
 
     expect((await dashboard.getDashboardSummary(admin)).partyCount).toBe(0);
     expect((await orders.listOrders({}, admin)).items).toHaveLength(0);
+  });
+
+  it('a stage change moves the cached Pending and Final stage counts, and filters are cached apart', async () => {
+    const { lead, order } = await seed('Counted Traders');
+    await catalog.createParty({ name: 'Other Party' }, admin);
+
+    const quoted = await stageIdByName('lead', 'Quoted');
+    const postpone = await stageIdByName('order', 'Postpone');
+    const leadsBefore = await leads.stageCounts({}, admin);
+    const ordersBefore = await orders.stageCounts({}, admin);
+    expect(leadsBefore.counts[quoted] ?? 0).toBe(0);
+    expect(ordersBefore.counts[postpone] ?? 0).toBe(0);
+    // A different filter is a different answer, not the cached one.
+    expect((await leads.stageCounts({ search: 'no-such-party' }, admin)).total).toBe(0);
+    expect(leadsBefore.total).toBe(1);
+
+    await leads.setStage({ id: lead.id, stageId: quoted }, admin);
+    await orders.setStage({ id: order.id, stageId: postpone }, admin);
+
+    expect((await leads.stageCounts({}, admin)).counts[quoted]).toBe(1);
+    expect((await orders.stageCounts({}, admin)).counts[postpone]).toBe(1);
+  });
+
+  it('a party rename that changes what a search matches, and a Party Access change, reach the cached stage counts', async () => {
+    const reader = await person('latha');
+    const other = await person('naveen');
+    const { party } = await seed('Findable Traders');
+
+    expect((await leads.stageCounts({ search: 'Renamed' }, reader.actor)).total).toBe(0);
+    expect((await orders.stageCounts({}, reader.actor)).total).toBe(1);
+
+    const current = await catalog.getParty(party.id, admin);
+    await catalog.updateParty(party.id, { ...current, name: 'Renamed Traders' } as never, admin);
+    expect((await leads.stageCounts({ search: 'Renamed' }, reader.actor)).total).toBe(1);
+
+    const renamed = await catalog.getParty(party.id, admin);
+    await partyAccess.replaceAssignments(
+      party.id,
+      { entries: [{ userId: other.id, level: 'manage' }], expectedVersion: renamed.sync.version },
+      admin,
+    );
+    expect((await leads.stageCounts({ search: 'Renamed' }, reader.actor)).total).toBe(0);
+    expect((await orders.stageCounts({}, reader.actor)).total).toBe(0);
   });
 });
