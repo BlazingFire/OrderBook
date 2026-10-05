@@ -59,9 +59,12 @@ export function applyChangeToSnapshot(
     case 'lead':
       snapshot.leads = upsert(snapshot.leads, event.payload as Lead);
       return 'applied';
-    case 'party':
-      snapshot.parties = upsert(snapshot.parties, event.payload as Party);
+    case 'party': {
+      const party = event.payload as Party;
+      snapshot.parties = upsert(snapshot.parties, party);
+      renameParty(snapshot, party);
       return 'applied';
+    }
     case 'product':
       snapshot.products = upsert(snapshot.products, event.payload as Product);
       return 'applied';
@@ -75,6 +78,32 @@ export function applyChangeToSnapshot(
       // A Master running a newer version may broadcast entities this panel does
       // not track. Ignoring one is right; invalidating everything is not.
       return 'ignored';
+  }
+}
+
+/**
+ * A party's name is not stored on its leads and orders by the Master: it reads it live
+ * (`pa.name as party_name`) every time it sends one. A party event carries only the party,
+ * so without this a renamed party kept its old name on every lead and order the panel held
+ * until that record itself next changed (or the next full snapshot). Doing it here, in the
+ * one fold the panel's server, its browser and the replay test all share, fixes it for every
+ * caller at once. Line items are not touched: their product, category and brand names are
+ * snapshotted when the line is added, on the Master as much as here.
+ */
+function renameParty(snapshot: SyncSnapshot, party: Party): void {
+  if (snapshot.leads.some((lead) => lead.partyId === party.id && lead.partyName !== party.name)) {
+    snapshot.leads = snapshot.leads.map((lead) =>
+      lead.partyId === party.id && lead.partyName !== party.name
+        ? { ...lead, partyName: party.name }
+        : lead,
+    );
+  }
+  if (snapshot.orders.some((order) => order.partyId === party.id && order.partyName !== party.name)) {
+    snapshot.orders = snapshot.orders.map((order) =>
+      order.partyId === party.id && order.partyName !== party.name
+        ? { ...order, partyName: party.name }
+        : order,
+    );
   }
 }
 

@@ -324,6 +324,15 @@ export async function updateUser(
   if (!user) throw new NotFoundError('User');
 
   publishChange({ entity: 'user', action: 'updated', id, payload: user });
+  /*
+   * Users are withheld from panels, but their names are not: every lead and order a panel
+   * holds carries `ownerName`, read live on the Master. A rename therefore asks every
+   * panel for a fresh snapshot, through the one forcing entity that carries no payload
+   * (so nothing about the user travels), and a reconnecting panel is refused a delta.
+   */
+  if (existing.displayName !== user.displayName) {
+    publishChange({ entity: 'setting', action: 'updated', id: 'user.displayName', payload: null });
+  }
   return user;
 }
 
