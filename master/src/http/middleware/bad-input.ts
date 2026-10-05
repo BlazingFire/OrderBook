@@ -11,9 +11,21 @@ import { ValidationError } from '../../lib/errors.js';
  */
 const BAD_INPUT_CODES: ReadonlySet<string> = new Set(['22P02', '22003', '22007', '22008', '22001', '22021']);
 
+/**
+ * Express's own "Failed to decode param" (a malformed percent-escape such as
+ * `/api/orders/%E0%A4%A`): a URIError carrying `status: 400` that the generic
+ * handler used to ignore and answer 500.
+ */
+export function isUriDecodeError(error: unknown): boolean {
+  return (
+    error instanceof URIError ||
+    (error instanceof Error && /^Failed to decode param/.test(error.message))
+  );
+}
+
 export function isBadInputError(error: unknown): boolean {
   const code = (error as { code?: unknown } | null)?.code;
-  return typeof code === 'string' && BAD_INPUT_CODES.has(code);
+  return (typeof code === 'string' && BAD_INPUT_CODES.has(code)) || isUriDecodeError(error);
 }
 
 /**

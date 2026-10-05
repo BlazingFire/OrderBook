@@ -67,4 +67,15 @@ describe.skipIf(!canRunIntegrationTests)('bad request input (integration)', () =
     const nul = await agent.post('/api/parties').send({ name: 'Sharma\u0000Tiles' });
     expect(nul.status).toBe(400);
   });
+
+  it('BAD-4: a malformed percent-escape in a path is a 400, in a query string it is read leniently', async () => {
+    const agent = await signedIn();
+
+    for (const path of ['/api/orders/%E0%A4%A', '/api/leads/%', '/api/panels/%E0%A4%A/activity']) {
+      const reply = await agent.get(path);
+      expect(reply.status, path).toBe(400);
+      expect(reply.body.messageKey, path).toBe('validation.request.badInput');
+    }
+    expect((await agent.get('/api/leads?search=%E0%A4%A')).status).toBe(200);
+  });
 });
