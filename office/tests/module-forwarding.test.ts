@@ -24,7 +24,7 @@ vi.mock('../src/lib/master-fetch.js', () => ({
   masterFetch: vi.fn().mockRejectedValue(new Error('This panel is not paired with a Master')),
 }));
 
-import { createApp } from '../src/http/app.js';
+import { clearReadCache, createApp } from '../src/http/app.js';
 import { masterFetch } from '../src/lib/master-fetch.js';
 import { MasterCommandError, masterConnection } from '../src/realtime/master-connection.js';
 import * as userSession from '../src/services/user-session.service.js';
@@ -41,6 +41,9 @@ const FAKE_SESSION = {
   offline: false,
   signedInAt: new Date(0).toISOString(),
 };
+
+// The Office server answers a few reads from a short cache; a test must not inherit the last one's.
+beforeEach(clearReadCache);
 
 describe('module forwarding', () => {
   beforeEach(() => {

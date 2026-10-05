@@ -9,15 +9,21 @@
 
 import type { DashboardSummary } from '@orderbook/shared';
 
-import { actorCan, type ActorContext } from '../domain/actor.js';
+import { actorCan, actorKey, type ActorContext } from '../domain/actor.js';
 import { resolvePartyScope } from '../domain/party-scope.js';
+import { seqCached } from '../lib/seq-cache.js';
 import * as catalogService from './catalog.service.js';
 import * as conflictService from './conflict.service.js';
 import * as dashboardRepo from '../repositories/dashboard.repository.js';
 import * as leadService from './lead.service.js';
 import * as orderService from './order.service.js';
 
-export async function getDashboardSummary(actor: ActorContext): Promise<DashboardSummary> {
+/** Cached for a few seconds, and dropped by any change (`lib/seq-cache.ts`): every panel reconnect builds one. */
+export function getDashboardSummary(actor: ActorContext): Promise<DashboardSummary> {
+  return seqCached(`dashboard:${actorKey(actor)}`, 5_000, () => computeDashboardSummary(actor));
+}
+
+async function computeDashboardSummary(actor: ActorContext): Promise<DashboardSummary> {
   const canLeads = actorCan(actor, 'leads.view');
   const canOrders = actorCan(actor, 'orders.view');
   const canParties = actorCan(actor, 'parties.view');

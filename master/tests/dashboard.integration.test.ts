@@ -20,6 +20,7 @@ import * as snapshotService from '../src/services/snapshot.service.js';
 import * as syncRepo from '../src/repositories/sync.repository.js';
 import { canRunIntegrationTests } from './helpers/db.js';
 import { actorWith, resetData, setupDatabase, stageIdByName, teardownDatabase, testActor, testTenantId } from './helpers/fixtures.js';
+import { resetSeqCache } from '../src/lib/seq-cache.js';
 
 let actor: ActorContext;
 
@@ -59,6 +60,7 @@ describe.skipIf(!canRunIntegrationTests)('Dashboard (integration)', () => {
 
   beforeEach(async () => {
     await resetData();
+    resetSeqCache();
     actor = await testActor();
   });
 

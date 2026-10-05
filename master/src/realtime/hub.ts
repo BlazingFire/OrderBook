@@ -98,6 +98,7 @@ import * as settingsService from '../services/settings.service.js';
 import { buildDelta } from '../services/delta.service.js';
 import { buildSnapshot } from '../services/snapshot.service.js';
 import * as syncService from '../services/sync.service.js';
+import { limitSocket } from '../http/middleware/rate-limit.js';
 
 const log = createLogger('realtime');
 
@@ -246,6 +247,7 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
   });
 
   io.on('connection', (socket) => {
+    limitSocket(socket);
     void handleConnection(io, socket as PanelSocket);
   });
 

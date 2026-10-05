@@ -40,6 +40,7 @@ import { resolvePartyScope } from '../domain/party-scope.js';
 import { assertParentsLive, suggestRestoredName } from '../domain/recycle-bin.js';
 import { db } from '../db/knex.js';
 import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
+import { seqCached } from '../lib/seq-cache.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as customFieldRepo from '../repositories/custom-field.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
@@ -364,6 +365,17 @@ export async function getProduct(id: string, actor: ActorContext): Promise<Produ
 
 /** Live categories — the owner's Products — in catalogue order, each with its sub-product count. */
 export async function listCategories(
+  actor: ActorContext,
+  query: { search?: string; brand?: string } = {},
+): Promise<ProductCategoryListRow[]> {
+  requirePermission(actor, 'products.view');
+  // Read on every panel reconnect and every Products open; any change drops it (`lib/seq-cache.ts`).
+  const key = JSON.stringify(query ?? {});
+  if (key.length > 200) return readCategories(actor, query);
+  return seqCached(`categories:${actor.tenantId}:${key}`, 10_000, () => readCategories(actor, query));
+}
+
+async function readCategories(
   actor: ActorContext,
   query: { search?: string; brand?: string } = {},
 ): Promise<ProductCategoryListRow[]> {

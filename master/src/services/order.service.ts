@@ -19,7 +19,7 @@ import type {
 } from '@orderbook/shared';
 
 import { assertFieldsFresh } from '../domain/access.js';
-import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
+import { actorKey, actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import {
   assertConvertible,
   copyLinesForOrder,
@@ -38,6 +38,7 @@ import {
 import { assertParentsLive } from '../domain/recycle-bin.js';
 import { db } from '../db/knex.js';
 import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
+import { seqCached } from '../lib/seq-cache.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as customFieldRepo from '../repositories/custom-field.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
@@ -59,13 +60,17 @@ export async function listOrders(
 ): Promise<Paginated<Order>> {
   requirePermission(actor, 'orders.view');
 
-  const page = await orderRepo.listOrders(actor.tenantId, {
-    ...query,
-    ...clampPaging(query, PAGING),
-    partyScope: resolvePartyScope(actor),
-  });
+  const read = (): Promise<Paginated<Order>> =>
+    orderRepo.listOrders(actor.tenantId, {
+      ...query,
+      ...clampPaging(query, PAGING),
+      partyScope: resolvePartyScope(actor),
+    });
 
-  return page;
+  // The Final list, re-read on every open and reconnect. Any order, party or stage write
+  // publishes a change and drops it (`lib/seq-cache.ts`); the key carries reader, page and filters.
+  const key = JSON.stringify(query ?? {});
+  return key.length > 300 ? read() : seqCached(`orders:${actorKey(actor)}:${key}`, 10_000, read);
 }
 
 export async function getOrder(id: string, actor: ActorContext): Promise<Order> {

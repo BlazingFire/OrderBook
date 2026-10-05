@@ -68,3 +68,9 @@ export function systemActor(tenantId: string): ActorContext {
     actorName: 'System',
   };
 }
+
+/** Everything a permission-dependent answer varies with, as one cache key part. */
+export function actorKey(actor: ActorContext): string {
+  const permissions = [...(actor.permissions?.permissions ?? [])].sort().join(',');
+  return `${actor.tenantId}|${actorUserId(actor) ?? '-'}|${actor.actorType}|${permissions}`;
+}
