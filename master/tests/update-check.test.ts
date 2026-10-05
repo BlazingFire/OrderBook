@@ -63,6 +63,8 @@ describe('checkNow', () => {
 
   it('answers within the wait while a slow download carries on in the background', async () => {
     // Only the wait is faked: the folder is read for real, and file reads are not timers.
+    // Captured before the fake clock goes in: the real waiting below must not run on it.
+    const realSetTimeout = globalThis.setTimeout;
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
       const pending: Array<(value: null) => void> = [];
@@ -73,13 +75,16 @@ describe('checkNow', () => {
 
       const answer = service.checkNow();
       // Two waits of at most five seconds each: the check's own, then the one
-      // `availability` makes before it reads the folder.
+      // `availability` makes before it reads the folder. After each wait the folder is read
+      // for real, and how long that takes depends on the machine (under a loaded full suite it
+      // outlasted the six fixed rounds this used to allow). So: keep moving the fake clock
+      // past the waits, and give the real file reads up to ten REAL seconds to finish.
       let settled = false;
       void answer.then(() => (settled = true));
-      for (let step = 0; step < 6 && !settled; step += 1) {
+      const deadline = Date.now() + 10_000;
+      while (!settled && Date.now() < deadline) {
         await vi.advanceTimersByTimeAsync(6_000);
-        await new Promise((resolve) => setImmediate(resolve));
-        await new Promise((resolve) => setImmediate(resolve));
+        await new Promise((resolve) => realSetTimeout(resolve, 10));
       }
       expect(settled).toBe(true);
       await expect(answer).resolves.toMatchObject({ master: { current: expect.any(String) } });
@@ -90,7 +95,7 @@ describe('checkNow', () => {
       await vi.waitFor(() => {
         for (const resolve of pending) resolve(null);
         expect(service.lastChecked()).not.toBeNull();
-      });
+      }, { timeout: 10_000 });
     } finally {
       vi.useRealTimers();
     }
