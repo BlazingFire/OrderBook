@@ -1001,18 +1001,18 @@ the Office four screens — `office/web/src/screens/AddLeadScreen.tsx`,
 - `buildPermissionCatalogue()` is served by `master/src/services/role.service.ts`
   to the `PermissionGrid`.
 
-### 3.7 `i18n/` — the message catalogue (9 files)
+### 3.7 `i18n/` — the message catalogue (8 files)
 
 | File | Purpose / exports |
 |---|---|
-| `shared/src/i18n/en.ts` | `EN_MESSAGES`, **the source of truth**: one flat `as const` object, **2088 keys**. Flat dotted keys; named `{placeholders}` only; no pre-formatted numbers or currency symbols; plurals as `.one`/`.other`. Largest families: `lead.` 173, `access.` 158, `validation.` 146, `fields.` 115, `developer.` 84, `integrations.` 83, `activity.` 79, `error.` 68. |
+| `shared/src/i18n/en.ts` | `EN_MESSAGES`, **the source of truth**: one flat `as const` object, **3164 keys**. Flat dotted keys; named `{placeholders}` only; no pre-formatted numbers or currency symbols; plurals as `.one`/`.other`. Largest families: `lead.` 173, `access.` 158, `validation.` 146, `fields.` 115, `developer.` 84, `integrations.` 83, `activity.` 79, `error.` 68. |
 | `shared/src/i18n/keys.ts` | Type machinery. `MessageKey = keyof typeof EN_MESSAGES`; `Placeholders<S>`; `ParamsFor<K>` (`[]` with no placeholders, else a required record — a missing, extra or invented param is a compile error); `CountKey` (stems with `.one` and `.other`: `error.unauthorized.signInFailedRemaining`, `validation.permissions.unknown`, `count.leads`, `count.rows`, `sync.changesRefused`); `MessageParams`; `LocaleCatalogue`. |
 | `shared/src/i18n/translate.ts` | `t(locale, key, params?)` fills placeholders with `String(value)` only (no number formatting). Fallback: English → the raw key (English is the only catalogue). `tCount(locale, stem, count)` uses `Intl.PluralRules` and injects `{count}`. Also `createTranslator(locale)` → `Translator`, `resolveCatalogue`. |
 | `shared/src/i18n/locales.ts` | `LOCALES = ['en']`, `Locale` (`'en'`), `DEFAULT_LOCALE = 'en'`, `isLocale`, `LOCALE_LABELS`. |
 | `shared/src/i18n/panel-scoped.ts` | `PANEL_SCOPED_KEYS`: 12 keys (`app.panel`, `backup.export.title`, `backup.restore.confirmWipe`, `settings.storage.title`, `settings.subtitle`, `sync.conflictReview`, `sync.offline`, `sync.offlinePending`, `sync.pendingChanges`, `sync.popoverTitle.offline`/`offlinePending`/`synced`). Each is stored twice in `en.ts` as `master.<key>` and `office.<key>`; the bare key does not exist. `ui/src/i18n.ts` rewrites a bare key to `${uiConfig().panel}.${key}`; `master/tests/i18n-call-sites.test.ts` reads the same list. |
 | `shared/src/i18n/errors.ts` | `ErrorPayload` (`error`, `message`, `messageKey?`, `params?`, `details?`) describes the HTTP error envelope (`error` = stable code, `message` = English). **Nothing imports it**, and the file header's "one shape for HTTP errors and socket acks" is not what the code does: socket acks use `CommandResult` from `socket.ts`, where `error` is the English message and `code` is the stable code (`hub.ts#respond`), so the two shapes put the code in different fields. `errorMessageKey(code)` looks the code up in the private `CODE_TOKENS` map — 22 stable codes (`validation_error`, `forbidden` → `error.generic.forbidden`, `not_found`, `locked_out`, `offline_disabled`, …) — and returns `error.unknown` for any other code; it does not build `error.<code>`. Consumed by `ui/src/errorText.ts`. |
-| `shared/src/i18n/activity.ts` | `ACTIVITY_TOKENS`, derived from every `activity.<entityType>.<action>` key (79 pairs; the 2026-09-25 audit round added `activity.stock.levels_changed` (kept in 1.4: the `activity.stock.*` tokens and `logs.entity.stock` / `logs.action.adjusted|inbound|levels_changed` stay so old log rows still render), `activity.party.variant_saved` and `activity.order.stage_changed`). **Append-only**, because `activity_log` rows can never be updated; `activity.ai_run.*` and `activity.document_template.*` are kept for old rows. `activityMessageKey()` (null for an unknown pair) and `renderActivity(t, input)` (falls back to `"<entityType> · <action>"`, and to `logs.actor.unknown` ("Somebody") when there is no actor name). |
-| `shared/src/i18n/index.ts` | Sub-barrel re-exporting the other 8. |
+| `shared/src/i18n/activity.ts` | `ACTIVITY_TOKENS`, derived from every `activity.<entityType>.<action>` key (141 pairs; the 2026-09-25 audit round added `activity.stock.levels_changed` (kept in 1.4: the `activity.stock.*` tokens and `logs.entity.stock` / `logs.action.adjusted|inbound|levels_changed` stay so old log rows still render), `activity.party.variant_saved` and `activity.order.stage_changed`). **Append-only**, because `activity_log` rows can never be updated; `activity.ai_run.*` and `activity.document_template.*` are kept for old rows. `activityMessageKey()` (null for an unknown pair) and `renderActivity(t, input)` (falls back to `"<entityType> · <action>"`, and to `logs.actor.unknown` ("Somebody") when there is no actor name). |
+| `shared/src/i18n/index.ts` | Sub-barrel re-exporting the other 7. |
 
 Flow: §11.9.
 
@@ -1625,14 +1625,14 @@ Added in 1.3 Phase 1:
   `findBy`, and the Office's sign-in screen shows the device code. The Office's
   one-stream SSE test is unchanged.
 
-1.4.3 added `ui/tests/request-cache.test.ts` and `ui/tests/api-read-cache.test.ts` (the
+1.4.3 added `ui/tests/request-cache.test.ts` (11) and `ui/tests/api-read-cache.test.ts` (6) (the
 cache; six rounds of the same three reads cost 18 requests without a live feed and 3 with
 the cache, and a write or a change event makes the next read go out again),
-`ui/tests/chat-cache.test.ts`, `ui/tests/burst-batch.test.ts`, `ui/tests/page-bar.test.tsx`
-(page boundaries, the page-size memory, the Master Final Orders screen against a fake
-paged endpoint, the stage chips taken from the stage-counts endpoint), `ui/tests/save-text.test.tsx`,
-`ui/tests/role-summary.test.tsx`, `ui/tests/sign-in-device.test.tsx` and
-`ui/tests/stability.test.tsx` (the per-screen boundary and the toast for an uncaught
+`ui/tests/chat-cache.test.ts` (6), `ui/tests/burst-batch.test.ts` (3), `ui/tests/page-bar.test.tsx`
+(15: page boundaries, the page-size memory, the Master Final Orders screen against a fake
+paged endpoint, the stage chips taken from the stage-counts endpoint), `ui/tests/save-text.test.tsx` (15),
+`ui/tests/role-summary.test.tsx` (7), `ui/tests/sign-in-device.test.tsx` (11) and
+`ui/tests/stability.test.tsx` (3: the per-screen boundary and the toast for an uncaught
 rejection); `ui/tests/master-shell.test.tsx` gained cases for the role cards and the
 Duplicates page, and its change-event cases now wait for the 80 ms revision window.
 
@@ -2629,7 +2629,7 @@ Knex.Transaction`). In practice services open transactions themselves with
   (including `/openapi.json`) and never calls `next()`. It is mounted before the
   `/api` catch-all. The connector scheduler also skips tenants with the API off.
 - **Routes are data:** `PUBLIC_API_ROUTES` in `master/src/http/public-api-contract.ts`
-  declares 21 operations; `master/src/http/routes/public-api.routes.ts` walks it
+  declares 18 operations; `master/src/http/routes/public-api.routes.ts` walks it
   against a `Record<PublicApiOperationId, Handler>` (a missing handler is a compile
   error); `buildOpenApiDocument()` generates OpenAPI 3.1 from the same table. Every
   route, including `/openapi.json`, needs a valid key.
@@ -2793,11 +2793,13 @@ mount runs `requirePanel`, then both routers pass the path on). `notFoundHandler
 
 #### 5.8.6 `master/src/http/routes/` — every endpoint
 
-The 19 files declare **154 endpoints**, plus the 21 table-driven `/api/v1`
-operations and the inline `/api/health`. Guards are `needs(...)`; "svc" means only
+The 20 files that declare routes (the folder holds 22; `panel-catalog.routes.ts` and
+`public-api.routes.ts` declare none directly) register **210 endpoints** (recounted on the
+1.4.3 tree), plus the 18 table-driven `/api/v1` operations and the inline `/api/health`
+and `/api/device`. Guards are `needs(...)`; "svc" means only
 the service checks.
 
-- `master/src/http/routes/setup.routes.ts` (`/api/setup`, 6): `GET /status`
+- `master/src/http/routes/setup.routes.ts` (`/api/setup`, 9): `GET /status`
   (`getSetupStatus()`: `{ setupComplete: false }`, or since 1.3 Phase 1
   `{ setupComplete: true, companyName }` — the name is already public through UDP
   discovery and the Office sign-in screen; since 1.3 Phase 2 also `onMasterPc` and
@@ -2807,7 +2809,12 @@ the service checks.
   `x-master-key-token`); `GET /identity` (`settings.manage`); `POST /restore/preview`
   and `POST /restore` (multipart, unauthenticated, **loopback only** with
   `requireLoopback` ahead of multer, and since 1.3 Phase 2 both refused with 409
-  `error.conflict.alreadySetUp` once setup has run, by `refuseAfterSetup`).
+  `error.conflict.alreadySetUp` once setup has run, by `refuseAfterSetup`); and the
+  first-run "magic restore" from a backup-everything zip on a drive: `POST /archive/preview` and
+  `POST /archive/restore` (the body names a file path on this PC, chosen through the shell's
+  picker, never an upload; loopback only and refused once set up; restore answers 202 with the
+  job status) and `GET /archive/job` (loopback only, not refused after setup, polled for
+  progress through and after a restore).
 - `master/src/http/routes/master-key.routes.ts` (`/api/master-key`, 5, 1.3 Phase 2,
   mounted before the `/api` catch-all, every route `requireLoopback`, no session
   needed): `POST /verify` (`{key}` → `{token, expiresAt}`), `POST /lock`,
@@ -2836,7 +2843,7 @@ the service checks.
   (`?platform=darwin|linux|win32`); `updateRoutes` (`requireAuth`) — `GET /status`,
   `POST /master/install` (`settings.manage`; verifies the installer and returns its
   path, never runs it).
-- `master/src/http/routes/party-access.routes.ts` (`/api/party-access`, 5): `GET /`,
+- `master/src/http/routes/party-access.routes.ts` (`/api/party-access`, 6): `GET /`,
   `GET /summary` (company-wide `{total, restricted, open}`, registered before `/:partyId`), `GET /:partyId` (svc `requireCanRead`); `GET /people` (`party.assign` OR `party.accessAll`, checked in the service); list takes `sort` (`code|name|city|access`) and `dir`; `GET
   /export.csv` (`parties.export`); `PUT /:partyId` (`party.assign`).
 - `master/src/http/routes/recycle-bin.routes.ts` (4): `GET /`, `/counts`,
@@ -2849,7 +2856,7 @@ the service checks.
   `POST /stages/reorder`, `POST /stages/:id/archive`, `POST /stages/:id/restore`.
 - `master/src/http/routes/log.routes.ts` (4): `GET /`, `GET /facets` (`logs.view`);
   `POST /verify` (`logs.verifyChain`); `GET /export` (`logs.export`).
-- `master/src/http/routes/report.routes.ts` (6): `GET /dispatches`,
+- `master/src/http/routes/report.routes.ts` (7): `GET /dispatches`,
   `/lead-outcomes`, `/top-parties` (`reports.view`, frozen for older Offices); `GET /options`
   and `GET /table/:report` (`reports.view`, 1.3 H2); `GET /:report/export` (`reports.view` + `reports.export`;
   `format=csv|xlsx|pdf`, `subjectId`, `columns`, `totals`, `paperSize`,
@@ -4016,15 +4023,15 @@ working while the Master is off.
 
 ### 8.4 HTTP API — `office/src/http/app.ts` (2,925 lines at 1.4.3)
 
-**97 route registrations** (37 GET, 43 POST, 8 PUT, 1 PATCH, 8 DELETE, including the
-SPA fallback `GET /^(?!\/api).*/`). Middleware order: `express.json({limit:'1mb'})`
+**144 route registrations** (59 GET, 61 POST, 13 PUT, 1 PATCH, 10 DELETE, recounted on the
+1.4.3 tree, including the SPA fallback `GET /^(?!\/api).*/`). Middleware order: `express.json({limit:'1mb'})`
 → pre-gate routes → `app.use('/api', requireUser)` (401 `not_signed_in` with nobody
 signed in; `/uploads/*` is outside `/api`) → gated routes → `webStatic(office/web/dist)`
 (`office/src/http/web-static.ts`, 1.4.3: hashed `/assets/*` for a year and immutable, everything
 else `no-cache` with an ETag; mirrors the Master's) and the SPA fallback (503 page when `index.html` is missing) → JSON 404 for unknown
 `/api` → `badRequestHandler` → `errorHandler` (multer `LIMIT_FILE_SIZE` → 400).
 
-**1.4.3 additions to this file** (the route count above was not re-taken):
+**1.4.3 additions to this file:**
 
 - `GET /api/device` (before the gate, next to `/api/health`): `{ totalMemoryBytes, cpuCount }`
   from `os`, for the sign-in warning (`os.availableParallelism` is deliberately not used: it
@@ -4457,7 +4464,7 @@ Singleton `masterConnection` (an `EventEmitter`).
 - `office/src/domain/backup.ts` — `BackupValidationError`,
   `assertImportableFormatVersion`, `assertPassphraseStrong`, `summarizeManifest`.
 
-### 8.8 `office/tests` (31 test files at 1.4.3, no PostgreSQL; the table below is the older 16-file subset and its `it(` counts were not re-taken)
+### 8.8 `office/tests` (31 test files, 383 tests at 1.4.3 by vitest's own count, no PostgreSQL)
 
 They mock `../src/config/index.js` or use `mkdtemp`, load modules with dynamic
 `await import()`, and several use `supertest` against `createApp()` with a stubbed
@@ -4468,24 +4475,37 @@ does.
 
 | File | Cases | Pins |
 |---|---|---|
-| `office/tests/outbox.test.ts` | 23 | temp-id shape and no reuse after restart; outbox durability, stamping, `fields`, `settle`, `remapIds`, serialised writes; an unreadable queue set aside (both corrupt shapes), a one-off `EBUSY` read and a one-off `EPERM` rename followed by a save; overlay; restore; view memo; cursor persistence; legacy bare snapshot |
-| `office/tests/user-session.test.ts` | 25 | online vs offline; a Master refusal never falls back; own verifier; revoked vs expired; 3-failure lockout surviving restart; reconcile; `offlineSignInEnabled` |
-| `office/tests/offline-pick.test.ts` | 17 | `pickFromView`, `listProductsFromView` |
-| `office/tests/storage-path.test.ts` | 26 | `paths()`, `relocateDataDir` (the refusals: drive root, home folder, a folder holding foreign files), `writeEnvValue`; a move surviving a real restart under both launchers (shell pointer and source settings file) |
-| `office/tests/developer.test.ts` | 14 | unlock, `.env` override, lockout, TTL, `resetPanel`, routes behind `requireUser` |
-| `office/tests/module-forwarding.test.ts` | 11 | 503 vs refusal pass-through, 403 with permission, 401 without session; `/api/products` online/offline; bulk import online-only |
+| `office/tests/chat-forwarding.test.ts` | 10 | chat forwarding |
+| `office/tests/connection-routes.test.ts` | 17 | GET /api/connection; pairing answers; POST /api/connection/test; POST /api/connection/unpair; GET /api/device; a body the parser refuses |
 | `office/tests/credentials.test.ts` | 8 | round trip, 0600, corrupt = unpaired |
-| `office/tests/lead-route.test.ts` | 12 | `POST /api/leads` and `PUT /api/leads/:id` shape checks (the trust boundary); a malformed payload without `leads.create` / `leads.edit` gets 403, not 400 |
-| `office/tests/sync-settle.test.ts` | 6 | 1.3 Phase 4: `awaitSettled` resolves with the permanent id and PO number, and null on timeout; a save during a flush reruns at once; `numbered` says `announced` only when a save was waiting |
-| `office/tests/presence-route.test.ts` | 4 | 1.3 Phase 4: `POST /api/presence` forwards `presence:beat` with the body cut down to the protocol's fields; 503 offline 1.4 R22: `GET /api/presence/board` forwards the kind, 400 on any other, 503 offline, behind the sign-in gate. |
-| `office/tests/snapshot-for-user.test.ts` | 5 | `GET /api/snapshot` key set (DSH-1), permissions replaced, other people's restricted parties withheld |
-| `office/tests/stock-retired.test.ts` | 2 `it(` | 1.4 (R15): a snapshot cached before stock was removed (old `stock` rows, `reservations` on orders, `lowStockCount`) and one with no `stock` key both restore and build a view |
-| `office/tests/local-store-restore.test.ts` | 4 | concurrent `restore()`, never-synced, torn file |
-| `office/tests/local-store-overlay.test.ts` | 1 | 1.3 Phase 4: a queued lead edit stamps its fields' clocks on the view, so the next edit's base is that edit and the Master's merge sees no clash |
+| `office/tests/dashboard-staleness.test.ts` | 3 | `forCurrentUser` strips figures (DSH-3) |
+| `office/tests/developer.test.ts` | 15 | unlock, `.env` override, lockout, TTL, `resetPanel`, routes behind `requireUser` |
+| `office/tests/discovery-client.test.ts` | 8 | what a search remembers about a Master; stopping a search; where a search broadcasts |
 | `office/tests/health-route.test.ts` | 3 | `/api/health` without a session; the gate holds; JSON 404 |
-| `office/tests/dashboard-staleness.test.ts` | 2 | `forCurrentUser` strips figures (DSH-3) |
-| `office/tests/legacy-compat.test.ts` | 8 (+1 `it.each` over 9 patterns) | the Node 16.17 floor: no named `statfs` import, `fromWeb`, `closeAllConnections`, `AbortSignal.any`/`timeout`, `structuredClone` or ES2023 builtins in `office/src` or `shared/src`; `legacy-globals.js` is the entry point's first import; undici stays on 5.x; `installLegacyGlobals` fills only what is missing; `parseWmicDisk`; the `wmic` fallback when `fs.statfs` is missing |
+| `office/tests/image-cache-headers.test.ts` | 2 | the cached product image route; the cached avatar route |
+| `office/tests/lead-route.test.ts` | 19 | `POST /api/leads` and `PUT /api/leads/:id` shape checks (the trust boundary); a malformed payload without `leads.create` / `leads.edit` gets 403, not 400 |
+| `office/tests/legacy-compat.test.ts` | 18 | the Node 16.17 floor: no named `statfs` import, `fromWeb`, `closeAllConnections`, `AbortSignal.any`/`timeout`, `structuredClone` or ES2023 builtins in `office/src` or `shared/src`; `legacy-globals.js` is the entry point's first import; undici stays on 5.x; `installLegacyGlobals` fills only what is missing; `parseWmicDisk`; the `wmic` fallback when `fs.statfs` is missing |
+| `office/tests/local-store-overlay.test.ts` | 1 | 1.3 Phase 4: a queued lead edit stamps its fields' clocks on the view, so the next edit's base is that edit and the Master's merge sees no clash |
+| `office/tests/local-store-restore.test.ts` | 4 | concurrent `restore()`, never-synced, torn file |
+| `office/tests/malformed-percent-encoding.test.ts` | 1 | malformed percent-encoding on the Office |
+| `office/tests/master-binding.test.ts` | 19 | adopting a Master after pairing; remembering that the Master removed this PC; leaving a Master on purpose |
+| `office/tests/master-connection.test.ts` | 29 | the protocol handshake; uploading offline sign-ins; reconnecting without a restart; what the status says; finding a Master that moved; asking an unproven address for its proof; a role or user edit on the Master (1.4 R9) |
+| `office/tests/module-forwarding.test.ts` | 43 | 503 vs refusal pass-through, 403 with permission, 401 without session; `/api/products` online/offline; bulk import online-only |
+| `office/tests/offline-auth-events.test.ts` | 8 | the offline sign-in store; signing in offline records it for the Master |
+| `office/tests/offline-pick.test.ts` | 24 | `pickFromView`, `listProductsFromView` |
+| `office/tests/outbox.test.ts` | 23 | temp-id shape and no reuse after restart; outbox durability, stamping, `fields`, `settle`, `remapIds`, serialised writes; an unreadable queue set aside (both corrupt shapes), a one-off `EBUSY` read and a one-off `EPERM` rename followed by a save; overlay; restore; view memo; cursor persistence; legacy bare snapshot |
+| `office/tests/pairing-service.test.ts` | 29 | manual pairing: what the Master said is recognised, not passed through; auto pairing: the answer, the address and the refusals; test connection |
+| `office/tests/party-access-route.test.ts` | 5 | the Party Access list and its summary |
+| `office/tests/presence-route.test.ts` | 7 | 1.3 Phase 4: `POST /api/presence` forwards `presence:beat` with the body cut down to the protocol's fields; 503 offline 1.4 R22: `GET /api/presence/board` forwards the kind, 400 on any other, 503 offline, behind the sign-in gate. |
+| `office/tests/print-forwarding.test.ts` | 5 | print forwarding |
+| `office/tests/snapshot-for-user.test.ts` | 6 | `GET /api/snapshot` key set (DSH-1), permissions replaced, other people's restricted parties withheld |
+| `office/tests/stock-retired.test.ts` | 2 | 1.4 (R15): a snapshot cached before stock was removed (old `stock` rows, `reservations` on orders, `lowStockCount`) and one with no `stock` key both restore and build a view |
+| `office/tests/storage-path.test.ts` | 26 | `paths()`, `relocateDataDir` (the refusals: drive root, home folder, a folder holding foreign files), `writeEnvValue`; a move surviving a real restart under both launchers (shell pointer and source settings file) |
+| `office/tests/sync-hold.test.ts` | 4 | holding a chat post for its author |
+| `office/tests/sync-settle.test.ts` | 6 | 1.3 Phase 4: `awaitSettled` resolves with the permanent id and PO number, and null on timeout; a save during a flush reruns at once; `numbered` says `announced` only when a save was waiting |
+| `office/tests/unpair-allowed.test.ts` | 4 | unpairAllowed |
 | `office/tests/update-platform.test.ts` | 8 | the Windows 7 build asks for and downloads `?platform=win7`; a manifest for another platform (or none, which is `win32`) is refused with `noRelease` before `verifyManifest`; Electron 33 and plain Node keep asking for their own platform |
+| `office/tests/user-session.test.ts` | 26 | online vs offline; a Master refusal never falls back; own verifier; revoked vs expired; 3-failure lockout surviving restart; reconcile; `offlineSignInEnabled` |
 
 ### 8.9 Where the code and its comments disagree
 
@@ -6346,10 +6366,10 @@ dropping it), `cache-invalidation.integration.test.ts` (10: a party rename, a us
 Party Access, a product delete, a category rename, a Recycle Bin restore, a data wipe or
 restore and a stage change each drop what they should), `stage-counts.integration.test.ts` (4),
 `duplicate-products-domain.test.ts` (7), `duplicate-products.integration.test.ts` (6),
-`user-rename-sync.integration.test.ts` (2), `device-route.test.ts`,
-`http-bad-input.integration.test.ts`, `paging-not-a-number.test.ts` and
-`socket-malformed-payload.integration.test.ts`. `office/tests`: `image-cache-headers.test.ts`
-and `malformed-percent-encoding.test.ts`. `shared/tests` and `ui/tests`: §3.11 and §4.11.
+`user-rename-sync.integration.test.ts` (2), `device-route.test.ts` (3),
+`http-bad-input.integration.test.ts` (4), `paging-not-a-number.test.ts` (2) and
+`socket-malformed-payload.integration.test.ts` (2). `office/tests`: `image-cache-headers.test.ts` (2)
+and `malformed-percent-encoding.test.ts` (1). (Counts here and below are vitest's own, taken on the merged tree.) `shared/tests` and `ui/tests`: §3.11 and §4.11.
 Existing suites that now meet the limiter or a cache changed only their setup:
 `http-api.integration.test.ts` resets the limiter per test, `dashboard.integration.test.ts`
 calls `resetSeqCache`, `office/tests/module-forwarding.test.ts` and
