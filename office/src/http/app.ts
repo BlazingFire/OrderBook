@@ -17,6 +17,7 @@
 import { existsSync } from 'node:fs';
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { badRequestHandler } from './bad-request.js';
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';
 import {
@@ -1946,6 +1947,7 @@ export function createApp(): Express {
    * broken".
    */
   app.use('/api', notFoundHandler);
+  app.use(badRequestHandler);
   app.use(errorHandler);
 
   return app;
