@@ -32,6 +32,16 @@ and changed the entries marked *catalogue v2* in §3–§13. Only the counts tho
 entries state were re-taken; the workspace-wide file, line and test counts in §2,
 §4's header table and §12's headings still describe `7d6ae68`.
 
+**1.4.3 batch (2026-10-05).** The server rate limiter and caches, the client request
+cache, device warnings on sign-in, Save to .txt, paged order lists with true stage
+counts, the Duplicates page, the stability work (crash guard, body and input errors,
+per-screen error boundary), the role cards, and the party/user rename sync are
+described in the sections where their neighbours live, and end to end in §11.10.
+Counts that the 1.4.3 work changed were re-taken with `git ls-files` and `wc -l` at
+the 1.4.3 integration tree; counts it did not touch still describe the commit named
+beside them (several headings in §3 to §12 were already out of date before 1.4.3 and
+say so where they are corrected).
+
 **How to use this file.**
 
 - It is the single structure reference. It replaced `docs/CODE_MAP.md` on
@@ -812,10 +822,14 @@ Tracked: **79 files** — 51 in `shared/src/` (`domain/` 28, `i18n/` 9, `keys/` 
   `rootDir: ./src`, `outDir: ./dist`. The tests are typechecked by the root
   `tsconfig.test.json` and import `../src/*` directly, so they need no build.
 - Every other workspace reads the **compiled `dist/`**.
-- `shared/src/index.ts` is the barrel: 35 `export *` lines (every `domain/*`,
+- `shared/src/index.ts` is the barrel: 52 `export *` lines at 1.4.3 (every `domain/*`,
   `i18n/index.js`, every `keys/*`, `protocol/*` and `sync/*`).
 
-### 3.2 `domain/` — records, inputs and business rules (24 files)
+### 3.2 `domain/` — records, inputs and business rules (36 files at 1.4.3)
+
+The table lists the files that hold records, rules and constants; it is not every file
+in the folder (`git ls-files shared/src/domain` is 36). The four 1.4.3 additions are the
+last four rows. 1.4.3 also added `StageCounts` to `inputs.ts` (below the table).
 
 | File | Purpose | Main exports |
 |---|---|---|
@@ -846,6 +860,14 @@ Tracked: **79 files** — 51 in `shared/src/` (`domain/` 28, `i18n/` 9, `keys/` 
 | `shared/src/domain/version.ts` | Version comparison and the release manifest. | `parseVersion`, `compareVersions`, `isNewer`, `standing`, `VersionStanding`, `PanelKind`, `ReleasePlatform` (`win32`/`darwin`/`linux`, plus `win7` for the Electron 22 Office line), `releasePlatformFor(platform, electronVersion)` (`win7` for Windows on an Electron major below `LEGACY_ELECTRON_CEILING` = 23), `LEGACY_RELEASE_PLATFORM` (`'win32'`: a manifest with no `platform` is a Windows build), `ReleaseManifest`, `UpdateAvailability` |
 | `shared/src/domain/release-signature.ts` | Exactly which bytes an Ed25519 release signature covers. Browser-safe (no `node:crypto`). | `SIGNED_MANIFEST_FIELDS` (`panel`, `platform`, `version`, `file`, `sizeBytes`, `sha256`, `releasedAt`), `canonicalManifestPayload()` (`field=value` lines joined by newlines, `sha256` lower-cased), `ManifestSignature`, `isManifestSigned` |
 | `shared/src/domain/release-keys.ts` | The public keys a build trusts; rewritten by `tools/make-release-key.mjs`. **`TRUSTED_RELEASE_KEYS` is currently empty.** | `TrustedReleaseKey`, `TRUSTED_RELEASE_KEYS`, `trustedKeyById`, `allowUnsignedReleases(env)` |
+| `shared/src/domain/device.ts` | 1.4.3 (R6/R7). What a panel's own server says about its PC: hardware only, no names or addresses, so it is safe to serve before anybody has signed in. `GET /api/device` on both servers answers a `DeviceInfo`. Memory below 7.5 GiB (a machine sold as "8 GB" reports a little less) or at most 2 logical processors warns; unknown or zero figures warn nothing. Tests: `shared/tests/device.test.ts` | `DeviceInfo` (`totalMemoryBytes`, `cpuCount`), `LOW_MEMORY_BYTES` (7.5 x 1024^3), `FEW_CORES_MAX` (2), `DeviceWarnings`, `isDeviceInfo`, `deviceWarnings`, `formatGigabytes` |
+| `shared/src/domain/crash-guard.ts` | 1.4.3 (R18). What a server process does with an error nobody caught: log it and keep serving; past more than `max` (5) such errors inside `windowMs` (one minute) call `onRepeated`, which both servers wire to their clean `shutdown`, so the desktop shell starts a fresh process. Takes a `ProcessLike` and a clock, so a test passes an `EventEmitter`. Test: `shared/tests/crash-guard.test.ts` | `CrashLogger`, `ProcessLike`, `CrashGuardOptions`, `installCrashGuard` |
+| `shared/src/domain/body-errors.ts` | 1.4.3 (R18). A request body the JSON parser refused, as the answer it deserves: `entity.too.large` is 413 `payload_too_large` (`error.generic.tooLarge`); any other `entity.*` or `*.unsupported` parser failure is 400 `invalid_request` (`error.generic.malformedBody`); anything else is `null`. Both servers' error handlers call it, so neither answers 500 for the caller's mistake. Test: `shared/tests/body-errors.test.ts` | `BodyFailureAnswer`, `bodyParserFailure` |
+| `shared/src/domain/duplicate-products.ts` | 1.4.3 (R13/R14). The wire types of the Duplicates page, and the one key both sides compare names by (case, spacing, punctuation and accents ignored). The grouping itself is on the Master (§5.5). | `DuplicateGroup`, `DuplicateMember`, `DuplicateReport`, `DuplicateResolveInput`, `DuplicateResolveResult`, `duplicateKey` |
+
+`StageCounts` (`inputs.ts`, 1.4.3, R17): `{ total, counts: { [stageId]: n } }`, what
+`GET /api/leads/stage-counts` and `GET /api/orders/stage-counts` answer (§5.8.6); a stage
+with no records is absent from `counts`.
 
 ### 3.3 The column map (`shared/src/domain/columns.ts`)
 
@@ -979,18 +1001,18 @@ the Office four screens — `office/web/src/screens/AddLeadScreen.tsx`,
 - `buildPermissionCatalogue()` is served by `master/src/services/role.service.ts`
   to the `PermissionGrid`.
 
-### 3.7 `i18n/` — the message catalogue (9 files)
+### 3.7 `i18n/` — the message catalogue (8 files)
 
 | File | Purpose / exports |
 |---|---|
-| `shared/src/i18n/en.ts` | `EN_MESSAGES`, **the source of truth**: one flat `as const` object, **2088 keys**. Flat dotted keys; named `{placeholders}` only; no pre-formatted numbers or currency symbols; plurals as `.one`/`.other`. Largest families: `lead.` 173, `access.` 158, `validation.` 146, `fields.` 115, `developer.` 84, `integrations.` 83, `activity.` 79, `error.` 68. |
+| `shared/src/i18n/en.ts` | `EN_MESSAGES`, **the source of truth**: one flat `as const` object, **3164 keys**. Flat dotted keys; named `{placeholders}` only; no pre-formatted numbers or currency symbols; plurals as `.one`/`.other`. Largest families: `lead.` 173, `access.` 158, `validation.` 146, `fields.` 115, `developer.` 84, `integrations.` 83, `activity.` 79, `error.` 68. |
 | `shared/src/i18n/keys.ts` | Type machinery. `MessageKey = keyof typeof EN_MESSAGES`; `Placeholders<S>`; `ParamsFor<K>` (`[]` with no placeholders, else a required record — a missing, extra or invented param is a compile error); `CountKey` (stems with `.one` and `.other`: `error.unauthorized.signInFailedRemaining`, `validation.permissions.unknown`, `count.leads`, `count.rows`, `sync.changesRefused`); `MessageParams`; `LocaleCatalogue`. |
 | `shared/src/i18n/translate.ts` | `t(locale, key, params?)` fills placeholders with `String(value)` only (no number formatting). Fallback: English → the raw key (English is the only catalogue). `tCount(locale, stem, count)` uses `Intl.PluralRules` and injects `{count}`. Also `createTranslator(locale)` → `Translator`, `resolveCatalogue`. |
 | `shared/src/i18n/locales.ts` | `LOCALES = ['en']`, `Locale` (`'en'`), `DEFAULT_LOCALE = 'en'`, `isLocale`, `LOCALE_LABELS`. |
 | `shared/src/i18n/panel-scoped.ts` | `PANEL_SCOPED_KEYS`: 12 keys (`app.panel`, `backup.export.title`, `backup.restore.confirmWipe`, `settings.storage.title`, `settings.subtitle`, `sync.conflictReview`, `sync.offline`, `sync.offlinePending`, `sync.pendingChanges`, `sync.popoverTitle.offline`/`offlinePending`/`synced`). Each is stored twice in `en.ts` as `master.<key>` and `office.<key>`; the bare key does not exist. `ui/src/i18n.ts` rewrites a bare key to `${uiConfig().panel}.${key}`; `master/tests/i18n-call-sites.test.ts` reads the same list. |
 | `shared/src/i18n/errors.ts` | `ErrorPayload` (`error`, `message`, `messageKey?`, `params?`, `details?`) describes the HTTP error envelope (`error` = stable code, `message` = English). **Nothing imports it**, and the file header's "one shape for HTTP errors and socket acks" is not what the code does: socket acks use `CommandResult` from `socket.ts`, where `error` is the English message and `code` is the stable code (`hub.ts#respond`), so the two shapes put the code in different fields. `errorMessageKey(code)` looks the code up in the private `CODE_TOKENS` map — 22 stable codes (`validation_error`, `forbidden` → `error.generic.forbidden`, `not_found`, `locked_out`, `offline_disabled`, …) — and returns `error.unknown` for any other code; it does not build `error.<code>`. Consumed by `ui/src/errorText.ts`. |
-| `shared/src/i18n/activity.ts` | `ACTIVITY_TOKENS`, derived from every `activity.<entityType>.<action>` key (79 pairs; the 2026-09-25 audit round added `activity.stock.levels_changed` (kept in 1.4: the `activity.stock.*` tokens and `logs.entity.stock` / `logs.action.adjusted|inbound|levels_changed` stay so old log rows still render), `activity.party.variant_saved` and `activity.order.stage_changed`). **Append-only**, because `activity_log` rows can never be updated; `activity.ai_run.*` and `activity.document_template.*` are kept for old rows. `activityMessageKey()` (null for an unknown pair) and `renderActivity(t, input)` (falls back to `"<entityType> · <action>"`, and to `logs.actor.unknown` ("Somebody") when there is no actor name). |
-| `shared/src/i18n/index.ts` | Sub-barrel re-exporting the other 8. |
+| `shared/src/i18n/activity.ts` | `ACTIVITY_TOKENS`, derived from every `activity.<entityType>.<action>` key (141 pairs; the 2026-09-25 audit round added `activity.stock.levels_changed` (kept in 1.4: the `activity.stock.*` tokens and `logs.entity.stock` / `logs.action.adjusted|inbound|levels_changed` stay so old log rows still render), `activity.party.variant_saved` and `activity.order.stage_changed`). **Append-only**, because `activity_log` rows can never be updated; `activity.ai_run.*` and `activity.document_template.*` are kept for old rows. `activityMessageKey()` (null for an unknown pair) and `renderActivity(t, input)` (falls back to `"<entityType> · <action>"`, and to `logs.actor.unknown` ("Somebody") when there is no actor name). |
+| `shared/src/i18n/index.ts` | Sub-barrel re-exporting the other 7. |
 
 Flow: §11.9.
 
@@ -1010,7 +1032,7 @@ Flow: §11.9.
 | `shared/src/sync/ids.ts` | Record identity across the offline boundary. **Temporary id:** 15 chars (`TEMP_ID_LENGTH`) = 6-char device code + 9-digit counter, minted by `office/src/sync/device.ts`. **Permanent id:** 12 chars (`PERMANENT_ID_LENGTH`) = 2-letter prefix + 10 digits, minted only by the Master (formatted by `master/src/repositories/identity.repository.ts`), in `compareForIdAssignment` order (HLC, then device code) — the sort is applied in `master/src/services/sync.service.ts#applyPush` (`[...request.mutations].sort(compareForIdAssignment)`, line 92), not in the repository. Device alphabet `23456789ABCDEFGHJKMNPQRSTVWXYZ` (no 0/O/1/I/L/U). `SYNCABLE_ENTITIES` (11) and `ENTITY_PREFIX`: lead LD, order OD, line_item LI, party PT, product PR, product_category PC, product_variant VR, party_variant PV, timeline_entry TL, role RL, user US (the `reservation` kind and its `RS` prefix were removed in 1.4). Also `isSyncableEntity`, `isValidDeviceCode`, `deviceCodeFromSeed` (FNV-1a), `formatTemporaryId`, `formatPermanentId`, `isTemporaryId`, `isPermanentId`, `DEVICE_CODE_LENGTH`. |
 | `shared/src/sync/mutations.ts` | The outbox record. `Mutation`: `mutationId` (client-generated; replay is a no-op), `kind`, `entity`, `entityId`, `hlc`, `deviceCode`, `payload`, `fields` (exactly the fields this edit asserts), `baseFieldHlc` (per-field HLC the editor saw), `actorUserId`, `createdAt`. **`MUTATION_KINDS` (14):** `lead.create`, `lead.update`, `lead.setStage`, `lead.addRemark`, `lead.convert`, `order.update`, `order.setStage`, `order.dispatch`, `party.create`, `party.update`, `product.create`, `product.update`, `partyVariant.upsert`, `chat.post`. A queued `stock.inbound|adjust|setReorderLevel` from a pre-1.4 Office is no longer a kind: the Master rejects it per mutation as "Unknown mutation" and the rest of the push still applies (`sync.service.ts`). `MUTATION_PERMISSIONS` maps each kind to its key (e.g. `lead.convert→lead.convert`, `order.dispatch→orders.dispatch`, `partyVariant.upsert→parties.edit`); the panel checks it locally and the Master again. `MutationStatus` (`applied`/`merged`/`duplicate`/`rejected`), `MutationFieldConflict`, `MutationResult`, `SyncPushRequest`, `SyncPushResponse` (`results`, `idMappings`, `serverHlc`). **Deletes and restores are never mutations**; they need the Master online. |
 | `shared/src/sync/merge.ts` | `mergeFields(target, incoming)` per asserted field (below). Fields in the private `NON_CONFLICTING_FIELDS` set (`updatedAt`, `version`, `hlc`, `searchVector`; not exported — exposed only through `isConflictWorthy`) are never reported. Values are compared with `===`, or with `JSON.stringify` only when both are objects. Outcome: `accepted`, `fieldHlc`, `conflicts`, `status` (`merged`/`applied`). Also `isConflictWorthy`, `MergeCandidate`, `MergeTarget`, `MergeOutcome`. **Used only by `master/src/services/sync.service.ts`** (`mergeFields(` at line 503); `order.service.ts` and `catalog.service.ts` only stamp the per-field HLCs the merge later reads (they name `mergeFields` in comments). Nothing in `office/src` uses it. Since 1.3 Phase 4 it also holds `lineKey` and `sameLines(stored, incoming)`, moved here from `master/src/services/sync.service.ts`: whether two line sets say the same thing in the same order, used by the Master's merge and by both lead forms to leave unchanged lines out of an edit. |
-| `shared/src/sync/apply-change.ts` | `applyChangeToSnapshot(snapshot, event)` → `ApplyOutcome` `applied` / `refresh` / `ignored`. Any entity in `SNAPSHOT_FORCING_ENTITIES` gives `refresh`. `deleted` removes the row (lead, party, product, order). Otherwise upsert (new rows first) for lead, party, product, product_category and order. Unknown entities → `ignored`. One implementation shared by `office/src/realtime/master-connection.ts` and `office/web/src/App.tsx`. |
+| `shared/src/sync/apply-change.ts` | `applyChangeToSnapshot(snapshot, event)` → `ApplyOutcome` `applied` / `refresh` / `ignored`. Any entity in `SNAPSHOT_FORCING_ENTITIES` gives `refresh`. `deleted` removes the row (lead, party, product, order). Otherwise upsert (new rows first) for lead, party, product, product_category and order. Unknown entities → `ignored`. One implementation shared by `office/src/realtime/master-connection.ts` and `office/web/src/App.tsx`. 1.4.3: a `party` change (created, updated or restored) also sets `partyName` on every lead and order of that party the snapshot holds (rows already carrying the name are not copied), because the Master reads `partyName` live by a join but a change event carries only its own row, so an Office kept the old name until the next snapshot. Test: `shared/tests/apply-party-rename.test.ts`. |
 
 **How a merge decides**, for each field the incoming edit asserts:
 
@@ -1168,7 +1190,7 @@ notification plus a taskbar flash, `false` when the shell could not show it).
 only. Also `PanelBootState`, `PanelBootStatus`, `PanelHealthInterface`,
 `PreparedInstaller` (path, sha256, version), `PanelRuntimeHealth`.
 
-### 3.11 `shared/tests/` (21 suites, no database)
+### 3.11 `shared/tests/` (35 test files at 1.4.3, no database)
 
 Counts are tests passed at `43fd5b0`. The three files the 2026-09-25 round changed
 and the one it added show their `it(` count instead, marked `it(`.
@@ -1195,6 +1217,10 @@ and the one it added show their `it(` count instead, marked `it(`.
 | `shared/tests/apply-category-change.test.ts` | 1 `it(` | a `deleted` category change takes the category out of a connected panel's snapshot, and a restore puts it back |
 | `shared/tests/record-search.test.ts` | 4 `it(` | `matchesRecordSearch`: an empty term matches everything; finds by id, party, owner, notes, product, code and packaging, ignoring case; needs every word, in any order; finds by PO number, whole or in part, and by id when there is none |
 | `shared/tests/release-platform.test.ts` | 4 `it(` | `releasePlatformFor`: Windows on Electron 22 gets `win7`; Windows on Electron 23 or 33 gets `win32`; Windows with no Electron version, or an empty one, gets `win32`; Linux and macOS on Electron 22 keep their own platform |
+| `shared/tests/device.test.ts` | 6 `it(` | 1.4.3: the memory and core thresholds (a figure exactly at the limit does not warn on memory; two cores warn), unknown figures warn nothing, the gigabyte text |
+| `shared/tests/crash-guard.test.ts` | 3 `it(` | 1.4.3: errors are logged and tolerated, the sixth inside a minute calls `onRepeated` once, older errors age out of the window |
+| `shared/tests/body-errors.test.ts` | 2 `it(` | 1.4.3: malformed JSON is 400, an oversize body 413, anything else `null` |
+| `shared/tests/apply-party-rename.test.ts` | 4 `it(` | 1.4.3: a party change renames that party's leads and orders in a snapshot (created, updated, restored; other parties untouched) |
 | `shared/tests/activity-tokens.lock.json` | — | 59 committed `activity.*` tokens that must never disappear from `en.ts` (the catalogue has 79) |
 
 ### 3.12 Where the code and its comments or docs disagree
@@ -1246,12 +1272,12 @@ and CSS source, never built**. Neither panel keeps its own copy.
 
 | What | Count (`git ls-files ui`) |
 |---|---|
-| Tracked files | **95** |
-| `ui/src/*.tsx` | 43 |
-| `ui/src/*.ts` (incl. the `ui/src/index.ts` barrel) | 19 (62 modules, 8,864 lines) |
-| `ui/src/*.css` | 5 (3,777 lines; `ui/src/base.css` alone is 3,230) |
-| `ui/src/fonts/*.woff2` | 6 (223,072 bytes) |
-| `ui/tests/` | 18 test files + the `ui/tests/panel-harness.ts` helper + `ui/tests/tsconfig.json` |
+| Tracked files | **211** (1.4.3) |
+| `ui/src/*.tsx` | 88 (24,867 lines) |
+| `ui/src/*.ts` (incl. the `ui/src/index.ts` barrel) | 34 (2,872 lines) |
+| `ui/src/*.css` | 6 (6,325 lines; `ui/src/base.css` alone is 5,012) |
+| `ui/src/fonts/*.woff2` | 5 (the byte sizes in §4.9 were not re-taken) |
+| `ui/tests/` | 74 test files (62 `.tsx`, 12 `.ts`) + the `ui/tests/panel-harness.ts` helper + `ui/tests/tsconfig.json` |
 
 **External imports in `ui/src`:** only `react`, `@orderbook/shared` and `blurhash`.
 No `fetch(`, no `socket.io`, no `react-dom`, no `../` out of the package. **The kit
@@ -1261,8 +1287,11 @@ never talks to a server** (§4.10). (`ui/tests/panel-harness.ts` is the one plac
 ### 4.1 How the panels consume it
 
 - `ui/package.json`: `@orderbook/ui` 1.2.0, `"type": "module"`,
-  `"sideEffects": ["*.css"]`; `exports` `"."` → `./src/index.ts`, `"./styles.css"` →
-  `./src/styles.css`; only script `typecheck`; deps `@orderbook/shared`, `blurhash`;
+  `"sideEffects": ["*.css"]`; `exports` `"."` → `./src/index.ts`, `"./lazy/*"` →
+  `./src/*.tsx` (1.4.3: a deep import of one screen file, so a panel can load it on first
+  visit as its own chunk: both `App.tsx` files import `@orderbook/ui/lazy/ChatroomScreen`,
+  `PrintroomScreen`, `ReportsScreen`, `GalleryScreen` and `CatalogListsScreen` through
+  `lazyScreen`), `"./styles.css"` → `./src/styles.css`; only script `typecheck`; deps `@orderbook/shared`, `blurhash`;
   peer deps `react`/`react-dom` ^19.2.8.
 - `ui/tsconfig.json`: extends base; DOM libs, `jsx: react-jsx`,
   `moduleResolution: bundler`, `noEmit`, `include: ["src"]`.
@@ -1291,14 +1320,14 @@ never talks to a server** (§4.10). (`ui/tests/panel-harness.ts` is the one plac
 - **Adding a module:** add one `export * from './Name.js'` line to `ui/src/index.ts`.
   `master/tests/no-duplicate-ui.test.ts` fails if any `ui/src` module is missing
   from the barrel. Imports use `'./X.js'` or `'./X'`; both resolve under bundler
-  resolution. `ui/src/index.ts` has 60 `export *` lines.
+  resolution. `ui/src/index.ts` has 121 `export *` lines at 1.4.3.
 
 ### 4.2 Shell and layout machinery
 
 | File | Exports | What it does |
 |---|---|---|
 | `ui/src/AppShell.tsx` | `NavItem`, `NavGroup`, `flattenNav`, `AppShell`, `TopbarTitle` | (1.4.0: the topbar `h1` shows its full text as a tooltip, set on hover and only while it is cut; the topbar's flex priorities are `base.css` `.ob-topbar*`, pinned by `ui/tests/topbar-fit.test.tsx`.) The window frame for both panels: `PresenceRail`, a collapsible sidebar (brand button → `onNavigate(homeId)`; `homeId` defaults to `'dashboard'` and each panel passes the person's `landingScreen`), nav groups, collapse toggle), then `.ob-main` with `<TopProgress/>` as its first child, the topbar, an optional `banner` (between the topbar and the filter bar; unused until 1.3 Phase 3), optional `filterbar`, `<main class="ob-content">`, footer and `overlays`. `TopbarTitle({groups, activeId, fallback})` (1.3 Phase 1) is what both topbars render: the active module's icon, its group's name as an eyebrow, and an `h1.ob-title` with the active page's label (`fallback` when the id is in no group, e.g. the gallery). An item with `children` gets a fold chevron and unfolds while the active page is inside it; a collapsed sidebar shows top-level modules only. Registers `useCommand('view.toggleSidebar', onToggleCollapsed)`, so Ctrl+\\ and the palette row fold the sidebar the panel actually draws. Its labels (`nav.modules`, `nav.home`, `nav.collapse`, …) go through `t()`. |
-| `ui/src/ScreenHost.tsx` | `ScreenSpec`, `ScreenHost`, `lazyScreen` | Keep-alive tabs. Each screen mounts on first visit inside React 19.2's `<Activity mode="visible\|hidden">`: hidden screens keep state and DOM, but their effect cleanups run. The visited set updates during render (no blank first frame). The `key` is `${id}:${resetNonce[id]}`, so bumping a nonce remounts that screen. A private `ScreenPane` (`.ob-pane`) saves/restores `scrollTop`. Since 1.3 Phase 1 the visited set is an **LRU**: `liveBudget()` keeps 4 screens alive when `navigator.deviceMemory` is 4 or less **or undefined** (a plain-HTTP LAN tab has none), else 8, and evicts the least recently shown. The active screen, `addLead`, `settings` (its rows hold unsaved drafts inline and publish no sub-nav entry) and every screen holding a sub-nav entry (`useSubNavHeld()`) are pinned and never evicted. Each pane sits in `Suspense` with `LoadingMark` as the fallback, and a private `Frozen` memo skips re-rendering hidden screens. `lazyScreen(load, name)` wraps `React.lazy` for a named export; a chunk-load failure reloads the page once (`sessionStorage['ob.chunkReload']`, cleared on the next success), which is what a LAN tab left open across an update needs, and a second failure reaches the `ErrorBoundary`. |
+| `ui/src/ScreenHost.tsx` | `ScreenSpec`, `ScreenHost`, `lazyScreen` | Keep-alive tabs. Each screen mounts on first visit inside React 19.2's `<Activity mode="visible\|hidden">`: hidden screens keep state and DOM, but their effect cleanups run. The visited set updates during render (no blank first frame). The `key` is `${id}:${resetNonce[id]}`, so bumping a nonce remounts that screen. A private `ScreenPane` (`.ob-pane`) saves/restores `scrollTop`. Since 1.3 Phase 1 the visited set is an **LRU**: `liveBudget()` keeps 4 screens alive when `navigator.deviceMemory` is 4 or less **or undefined** (a plain-HTTP LAN tab has none), else 8, and evicts the least recently shown. The active screen, `addLead`, `settings` (its rows hold unsaved drafts inline and publish no sub-nav entry) and every screen holding a sub-nav entry (`useSubNavHeld()`) are pinned and never evicted. Each pane sits in `Suspense` with `LoadingMark` as the fallback, and a private `Frozen` memo skips re-rendering hidden screens. `lazyScreen(load, name)` wraps `React.lazy` for a named export; a chunk-load failure reloads the page once (`sessionStorage['ob.chunkReload']`, cleared on the next success), which is what a LAN tab left open across an update needs, and a second failure reaches the `ErrorBoundary`. 1.4.3: every pane is also wrapped in a `ScreenErrorBoundary` (§4.2 `ErrorBoundary.tsx`), so one screen's render error leaves the rest of the window working. |
 | `ui/src/BasicHome.tsx` | `BasicHome`, `landingScreen` | 1.3 Phase 1. The launcher: one `.ob-launcher-section` per sidebar group (a `region` named after the group), one `.ob-tile` per top-level item, the `basicHome` item itself skipped. Tiles are built from the panel's own permission-filtered `groups`, so a module a role cannot use has no tile and a later module gets one with no change here. A **New pending order** tile comes first in the first group when `onNewLead` is passed. Each module has a face colour (`data-hue`) and a 120-unit glyph (the mockup's ten; any other module shows its sidebar icon in white), a count badge from the nav item, and a chord chip from `chordFor('nav.<panel>.<id>')` (`record.new` for the New tile) through `displayChord`, hidden when unbound; `aria-keyshortcuts` carries the same chord. No modules at all → `EmptyState` `shell.noModules`. `landingScreen(tier)` sends `office` and `management` to `'basicHome'` and anything else (admin, and later the Server Master) to `'dashboard'`. |
 | `ui/src/TopProgress.tsx` | `trackLoad`, `TopProgress`, `LoadingMark`, `ProgressBar` | 1.3 Phase 1. `trackLoad(promise)` counts a load in a module-level counter until it settles; both panels' `api.ts` wrap every JSON `request()` in it. `TopProgress` (rendered by `AppShell`) reads the counter through `useSyncExternalStore` and shows the 2px indeterminate `.ob-topprogress` strip only after 300 ms, as `role="progressbar"`. `LoadingMark` counts while mounted (`ScreenHost`'s Suspense fallback). `ProgressBar({value, label?})` is **the only** progress bar: a number 0–1 is determinate, `null` indeterminate; it shares the splash bar's CSS. |
 | `ui/src/KeyboardProvider.tsx` | `KeyboardProvider`, `useKeyboard`, `useCommand` | One `document` keydown listener (bubble phase). Props: `panel`, `userId`, `onNavigate`, `canNavigate` (whether `onNavigate` would go to a screen — each panel passes the same sidebar test its navigation applies; absent means every screen) and `shellCommands`. Bindings keyed per user (`ob.keys.v1:<userId>`; corrupt → `{}`). Skips events already `defaultPrevented`; ignores unmodified chords while typing in `input`/`textarea`/`select`/contenteditable; ignores `scope:'screen'` commands while typing or while a *visible* `[role="dialog"]` exists (`checkVisibility()`). The listener answers `view.find` itself (focuses the visible `input[data-screen-search]`, else opens the palette) — chord only. Everything else goes to `runCommand`, which a palette row and a menu item reach the same way: `palette.open`/`palette.search`/`keys.help` (the provider's own state), then the `useCommand` registration stack, then `command.tab` → `onNavigate`, then `shellCommands[id]`. **`offers(commandId)`** answers, in the same order and without running anything, whether a command would do something — what the palette lists: no `view.find`, no nav row for a screen `canNavigate` refuses, no shell command the panel left `null` (fixed 2026-09-25: the palette used to list all of them, and each did nothing). **`useCommand` ranks registrations by mount order, fixed at first render** (a dialog inside a screen always outranks it), and depends on the provider's stable `push`/`pop`, not its api object — before 2026-09-25 every palette or help-sheet open re-pushed registrations children first, so Ctrl+S in an open `PartyFormModal` saved the lead behind it. |
@@ -1308,11 +1337,11 @@ never talks to a server** (§4.10). (`ui/tests/panel-harness.ts` is the one plac
 | `ui/src/SubNavSlot.tsx` | `SubNavState`, `SubNavProvider`, `graftSubNav`, `useSubNavState`, `useClearSubNav`, `useSubNav`, `useSubNavHeld` | Per-screen registry (ref-held `Map` + version counter) of "open operation" entries grafted under a module in the sidebar. `useSubNav` publishes only when a content signature changes. Entries are **not** cleared on teardown (hiding a screen must not remove its entry); only `useClearSubNav` or `useSubNav(id, null)` remove them. `useSubNavHeld()` (1.3 Phase 1) returns the set of screen ids that hold an entry, which `ScreenHost` pins so an open record is never evicted. |
 | `ui/src/ResetSlot.tsx` | `ResetProvider`, `useResetGuard`, `useResetGate` | "Start this screen over": a screen registers a guard returning `boolean \| Promise<boolean>`; the shell calls `useResetGate()()` and, if allowed, bumps that screen's `resetNonce`. |
 | `ui/src/subPages.ts` | `SubPage`, `subPageItems`, `splitSubPage`, `withSubPages` | Sidebar children for a module's sub-pages; child ids are `<module>.<key>`. |
-| `ui/src/EditorScreen.tsx` | `EditorScreenProps`, `EditorScreen` | Frame for a record or large operation opened as its own screen: title, meta, back button (`onBack(): boolean`), trailing actions. Used by the Master's Access screen and Office detail screens. |
+| `ui/src/EditorScreen.tsx` | `EditorScreenProps`, `EditorScreen` | Frame for a record or large operation opened as its own screen: title, meta, back button (`onBack(): boolean | Promise<boolean>` since 1.4.3, so the role editor can ask a themed question before leaving), trailing actions. Used by the Master's Access screen and Office detail screens. |
 | `ui/src/PresenceRail.tsx` | `RailState`, `PresenceRail` | The 3px connection strip; `RailState` = `synced \| syncing \| offline \| offlinePending \| conflict`. Rendered only by `AppShell`. |
 | `ui/src/Clock.tsx` | `Clock` | Footer clock, ticks every 500 ms. |
 | `ui/src/Splash.tsx` | `Splash` | Cold-start screen: lattice mark, wordmark, determinate bar (`progress` 0–1, `label`); `error` replaces the bar with Retry. Minimum hold `SPLASH_MS = 1100`, dropped when `motionDisabled()`. |
-| `ui/src/ErrorBoundary.tsx` | `ErrorBoundary` | App-wide render-error screen (`.ob-crash`): message, first 6 lines of the component stack, Reload / Copy (`copyText`, §4.8). |
+| `ui/src/ErrorBoundary.tsx` | `ErrorBoundary`, `ScreenErrorBoundary` | App-wide render-error screen (`.ob-crash`): message, first 6 lines of the component stack, Reload / Copy (`copyText`, §4.8). 1.4.3 (R18): `ScreenErrorBoundary` is one screen's own boundary (`ScreenHost` puts one around each pane): the error message with **Try again** (a fresh mount) and **Reload**, while the sidebar, the top bar and every other screen keep working. Test: `ui/tests/stability.test.tsx`. |
 
 ### 4.3 Foundation components
 
@@ -1339,6 +1368,9 @@ never talks to a server** (§4.10). (`ui/tests/panel-harness.ts` is the one plac
 | `ui/src/comboboxPlacement.ts` | `placeListbox`, `clippingSpan` | pure arithmetic for where a combobox list goes (tested without layout) |
 | `ui/src/MultiPicker.tsx` | `MultiPicker` | searchable tick-list with Select all / Clear; used by the Party Access "Add several people" panel |
 | `ui/src/FilterBar.tsx` | `FilterChip`, `FilterDivider` | pieces a list screen publishes via `useFilterBar` |
+| `ui/src/CapsLockHint.tsx` | `useCapsLock`, `CapsLockHint` | 1.4.3 (R8). "Caps Lock is on" under a password box, from `getModifierState('CapsLock')` on key down and up (cleared on blur). The hint takes no layout room (a zero-height slot that cancels the form gap), because a line that appeared and vanished moved the Sign in button under a click that had begun on it. Both sign-in screens use it. |
+| `ui/src/DeviceWarning.tsx` | `useDeviceInfo`, `DeviceWarning` | 1.4.3 (R6/R7). `useDeviceInfo(load)` reads `GET /api/device` once (a failed read means no warning); `DeviceWarning` shows a `role="status"` banner for low memory and another for few cores, with the figures, using `deviceWarnings()` from `shared/` (§3.2). It only warns; nothing blocks sign-in. Mounted under the card by both `SignInScreen`s; the Master fetches the figures only when the browser is on the Master PC (`onMasterPc`), because from a LAN browser they would describe the Master, not the PC in front of the person. Test: `ui/tests/sign-in-device.test.tsx`. |
+| `ui/src/SaveTextButton.tsx` | `SavedValue`, `SavedSection`, `deviceDescription`, `localStamp`, `savedFileName`, `buildSavedText`, `downloadTextFile`, `SaveTextButton` | 1.4.3 (R4). A "Save to .txt" button for what is shown once (a password, a token, the first-run accounts): a Blob download with a UTF-8 BOM and CRLF through the browser's own download, no dependency, nothing sent anywhere. The file names what it is, when (local `YYYY-MM-DD HH:MM`), the application (Master or Office Panel), the device (address-bar host and platform), then the values under headings, and ends with a "keep this file private" line; all wording is `saveText.*` in `en.ts`. Used (slug in brackets) by the Master's `FirstRunScreen` (`first-run`, `pairing-password`), `ServerMasterSetupFlow` (`server-masters`), `MasterKeyRecoveryFlow` (`password-reset`), the one-time password dialog in `AccessScreen` (`password`), the API token dialog in `IntegrationsScreen` (`api-token`), the replaced pairing password in `SettingsScreen` and `StorageBackup` (`pairing-password`), and the Office `SetupScreen` (`office-setup`). Test: `ui/tests/save-text.test.tsx`, which also fails if one of those screens loses its button. |
 
 `ui/src/Picker.tsx` (a server-backed picker neither panel imported) and its CSS were
 removed on 2026-09-25.
@@ -1355,7 +1387,9 @@ removed on 2026-09-25.
 | `ui/src/StatTile.tsx` | `StatTile`, `StatTileSkeleton` | 1.3 Phase 1. One dashboard figure: eyebrow label (optional icon), big number, note; `tone` `conflict`/`offline`/`ok` colours the figure; `onClick` makes the whole tile a button. Counts only. Used by both panels' Dashboards, which each kept a private copy before; `StatTileSkeleton` is its static loading shape. |
 | `ui/src/RecordNumber.tsx` | `RecordNumber`, `recordNumberText` | 1.3 Phase 4. A pending or final order's number the way every screen shows it: the PO number in mono, a **Provisional** pill (`tone="offline"`, title `lead.number.provisionalHint`) beside the temporary id while an Office save waits for the Master, else the id. `recordNumberText` is the same as text for toasts and dialog titles. In the strict-i18n lint list. Test: `ui/tests/record-number.test.tsx` |
 | `ui/src/AvatarStack.tsx` | `AvatarStack` | 1.3 Phase 4. Who else has a record open, top right of its header: up to four overlapping `Avatar`s then a `+N` chip, an accent ring (`data-editing`) for anyone editing, a small shield (`data-server-master`) for a Server Master, titles `presence.viewing` / `presence.editing`; `selfUserId` is left out and nothing renders when nobody else is there. 1.4 R22: `max` (faces before the `+N` chip; `BOARD_SHOWN` = 3 on a board) and `size` (`xs` on cards and rows); the board feed (`useBoardPresence`) supplies the entries. In the strict-i18n lint list. Test: `ui/tests/avatar-stack.test.tsx` |
-| `ui/src/CursorPager.tsx` | `LoadMorePager`, `NewerOlderPager` | keyset paging, no page numbers |
+| `ui/src/CursorPager.tsx` | `LoadMorePager`, `NewerOlderPager` | keyset paging, no page numbers. Since 1.4.3 the Pending and Final order lists no longer use `LoadMorePager`; they use `PageBar` below. |
+| `ui/src/PageBar.tsx` | `PAGE_SIZES` (25, 50, 100, 200, 500), `DEFAULT_PAGE_SIZE` (50), `PageWindow`, `pageWindow(total, page, size)`, `usePageSize(list)`, `PageBar` | 1.4.3 (R17). Numbered paging for the Pending and Final order lists: "Showing 51–100 of 120", a per-page select, First / Previous / Next / Last and "Page 2 of 3". `pageWindow` is pure and clamps a page that no longer exists to the last one. `usePageSize` remembers the size per machine under `ob.pageSize.<list>` (`leads`, `orders`, `office-leads`, `office-orders`; an unknown stored value falls back to 50). Strings are `pageBar.*`. Test: `ui/tests/page-bar.test.tsx`. |
+| `ui/src/RolePicker.tsx`, `ui/src/roleSummary.ts` | `RolePicker`; `RoleSummary`, `summariseRole`, `permissionChange`, `matchesQuery` | 1.4.3 (R5). `RolePicker` is a radio group of role cards (name, tier pill, "Current", head count, "N of M permissions", "Can change: …", "Can only view: …", "Also: group n/m"). A role carries no description on the server, so `summariseRole` derives these lines from its permission keys and the permission catalogue (the contract is unchanged); `permissionChange(from, to)` counts gained and lost permissions for the confirm dialog; `matchesQuery` is the case-insensitive match the role editor's search uses. `PermissionGrid` takes a `query` prop and shows only matching modules and capabilities. Used by the Master's `AccessScreen` (§7.4). Test: `ui/tests/role-summary.test.tsx`. |
 | `ui/src/ProgressiveImage.tsx` | `ProgressiveImage` | blurhash placeholder (module-wide decode cache) under `<img src="/uploads/images/:imageId/:variant">`; variant chosen from `slotPx` via `variantForSlot`; no fade-in |
 | `ui/src/PermissionGrid.tsx` | `PermissionGrid` | module × action matrix from the server's `PermissionCatalogue`; cells checkbox / dash / blocked-for-tier (the reason names the tier through `tierLabel`, so admin reads "Normal Admin") |
 | `ui/src/PermissionSummary.tsx` | `PermissionSummary` | read-only view of what a role grants, including what it does not |
@@ -1369,7 +1403,7 @@ removed on 2026-09-25.
 | `ui/src/Modal.tsx` | `ModalSize`, `Modal` | centred `aria-modal` dialog, `sm`/`md`/`lg`/`xl`, `expanded` + `onToggleExpand` |
 | `ui/src/Popover.tsx` | `Popover` | anchored surface; closes on outside `mousedown` or Escape; does **not** use `useOverlay` |
 | `ui/src/ConfirmDialog.tsx` | `ConfirmRequest`, `ConfirmDialog`, `ConfirmProvider`, `useConfirm` | the single confirmation dialog; outside a provider `useConfirm()` resolves `false`; a second request resolves the first `false` |
-| `ui/src/Toast.tsx` | `ToastTone`, `useToast`, `ToastProvider` | bottom-left, ≤ 3, 4000 ms each; `push(message, { tone, action })`; API object memoised on purpose; the dismiss label is `toast.dismiss` |
+| `ui/src/Toast.tsx` | `ToastTone`, `useToast`, `ToastProvider` | bottom-left, ≤ 3, 4000 ms each; `push(message, { tone, action })`; API object memoised on purpose; the dismiss label is `toast.dismiss`. 1.4.3 (R18): `ToastProvider` also listens for `unhandledrejection` and toasts a failed request no screen caught, in the reader's words (`ui/src/failureToasts.ts#unhandledFailureText`: a coded server error through `apiErrorText`, anything else the generic `error.generic.requestFailed`; an `AbortError` is ignored; the same sentence is said at most once per 10 s). |
 | `ui/src/ImageCropModal.tsx` | `CropResult`, `ImageCropModal` | non-destructive crop/rotate on a canvas; `onSave` gets numbers only — the server does the real crop. Office only. |
 
 ### 4.7 Screens shared by both panels (each takes a narrow transport prop)
@@ -1410,6 +1444,11 @@ removed on 2026-09-25.
 | `ui/src/errorText.ts` | `apiErrorText` | if the error is an `Error` with a string `code`: `t(messageKey)`, else `t(errorMessageKey(code))` (a `CODE_TOKENS` entry or `error.unknown` — so a coded error never falls through to its English message); otherwise an `Error`'s `.message`, else `t(fallback)`. Checks shape rather than importing a panel's `ApiError` |
 | `ui/src/sessionEnded.ts` | `SessionEndedReason`, `publishSessionEnded`, `onSessionEnded` | module-level emitter the api clients call on a 401 |
 | `ui/src/abort.ts` | `anySignal` | added in 1.3 Phase 0: `AbortSignal.any` for Chromium 108 (which has it only from 116). Aborts with the first input's reason, returns an already-aborted signal for an already-aborted input, and removes its listeners once settled. Used by both panels' `api.ts` to join a caller's signal to the request timeout. Test: `ui/tests/abort.test.ts` |
+| `ui/src/requestCache.ts` | `CACHE_FRESH_MS` (8,000), `CACHE_MAX_AGE_MS` (60,000), `createRequestCache`, `RequestCache`, `isCacheableRead` | 1.4.3 (R2/R3). The one client read cache, a stale-while-revalidate map (at most 300 entries): an entry younger than 8 s is returned with no network; one up to 60 s old is returned at once and read again in the background (subscribers hear only if the answer differs); nothing older is ever served. `invalidate()` drops everything and a read in flight at that moment is not stored; `setLive(false)` empties it and bypasses it while the panel's change feed is down; every value handed out is a copy. `isCacheableRead(path)` decides by `CACHEABLE_PREFIXES`: `/api/leads`, `/orders`, `/parties`, `/products`, `/categories`, `/lead-entry`, `/option-lists`, `/pipelines`, `/fields/`, `/reports/table/`, `/reports/options`, `/party-access`, `/access/roles`, `/access/users`, `/access/permission-catalogue`, `/recycle-bin/counts`, `/logs/facets`, `/conflicts`, `/search` (matched on a path boundary, so `/api/leads-export` is not a hit); status polls, notifications, chat, presence, sign-in state, setup, panels and updates are asked every time on purpose. Wired into both panels' `api.ts` (§7.3, §9.3). Tests: `ui/tests/request-cache.test.ts`, `ui/tests/api-read-cache.test.ts` (the real `api.ts` with counted fetches). |
+| `ui/src/chatCache.ts` | `CachedRoom`, `ChatCache`, `chatCacheFor(transport)` | 1.4.3 (R16). What the Chatroom keeps in memory between visits, one per transport, subscribed to the chat feed for the page's life: a live `message` push is folded into the cached room (`applyChatPush`, no refetch), a `room` push drops that room's header, a `resync` empties it, and `forViewer` empties it when somebody else signs in. A room opens from memory and one quiet read reconciles; a message still waiting to be sent is never kept; at most 24 rooms. Used by `ChatConversation` and the room lists in `ChatroomScreen`. Test: `ui/tests/chat-cache.test.ts`. |
+| `ui/src/burstBatch.ts` | `BurstBatcher`, `createBurstBatcher(deliver, windowMs)` | 1.4.3 (R3). Collects items that arrive in a burst and hands them over together, in order, after a window that starts at the first item and does not slide; `flush`, `discard`, `dispose`. The Master shell batches socket revision bumps per 80 ms (`REVISION_BATCH_MS`), the Office shell applies SSE `change` frames in one render per 60 ms (`CHANGE_BATCH_MS`; a snapshot discards the queue), so a bulk import is one update per window, not one per event. Test: `ui/tests/burst-batch.test.ts`. |
+| `ui/src/chatUnread.ts`, `ui/src/printWaiting.ts` | `useChatUnread(transport, enabled)`; `usePrintWaiting(transport, enabled)` | 1.4.3 (R3). The sidebar's Chatroom unread count and Printroom waiting count, moved out of `ChatroomScreen.tsx` and `PrintroomScreen.tsx`: while the hooks lived in the screen files, importing them pulled both whole screens into the start-up bundle and defeated lazy loading. |
+| `ui/src/failureToasts.ts` | `unhandledFailureText` | 1.4.3 (R18). The sentence for an unhandled rejection, or `null` when it is not worth a toast (not an `Error`, or an `AbortError`). Read by `ToastProvider` (§4.6). |
 | `ui/src/clipboard.ts` | `copyText` | added 2026-09-25: `navigator.clipboard.writeText` where the browser offers and allows it, else a selected off-screen textarea and `document.execCommand('copy')`; resolves to whether the text was copied, never throws. `navigator.clipboard` is `undefined` outside a secure context, so the Master opened by LAN address over plain HTTP could not copy before. Used by `IdField`, the crash screen, and the Master's one-time password (`AccessScreen`) and API token (`IntegrationsScreen`) dialogs |
 | `ui/src/config.ts` | `PanelKind`, `Theme`, `UiConfig`, `configureUi`, `uiConfig` | default is the Master's config. **No module may read `uiConfig()` at top level** (the barrel evaluates before `configureUi`); only `i18n.ts` and `theme.ts` read it, inside functions. |
 | `ui/src/theme.ts` | `Theme`, `Density`, `SidebarMode`, `SCALE_MIN` (11), `SCALE_MAX` (22), `SCALE_STEP` (0.5), `SCALE_DEFAULT` (14), `read`, `store`, `loadTheme`, `loadDensity`, `loadScale`, `applyScale`, `loadSidebarMode`, `storeSidebarMode`, `motionDisabled`, `applyTheme`, `applyDensity`, `applyMotion`, `initAppearance` | appearance lives on `<html>`: `data-theme`, `data-density`, `data-motion`, `style="--root-size: Npx"`, and `color-scheme` |
@@ -1585,6 +1624,17 @@ Added in 1.3 Phase 1:
   on Basic Home, Alt digits moved up one, screens that are now lazy are awaited with
   `findBy`, and the Office's sign-in screen shows the device code. The Office's
   one-stream SSE test is unchanged.
+
+1.4.3 added `ui/tests/request-cache.test.ts` (11) and `ui/tests/api-read-cache.test.ts` (6) (the
+cache; six rounds of the same three reads cost 18 requests without a live feed and 3 with
+the cache, and a write or a change event makes the next read go out again),
+`ui/tests/chat-cache.test.ts` (6), `ui/tests/burst-batch.test.ts` (3), `ui/tests/page-bar.test.tsx`
+(15: page boundaries, the page-size memory, the Master Final Orders screen against a fake
+paged endpoint, the stage chips taken from the stage-counts endpoint), `ui/tests/save-text.test.tsx` (15),
+`ui/tests/role-summary.test.tsx` (7), `ui/tests/sign-in-device.test.tsx` (11) and
+`ui/tests/stability.test.tsx` (3: the per-screen boundary and the toast for an uncaught
+rejection); `ui/tests/master-shell.test.tsx` gained cases for the role cards and the
+Duplicates page, and its change-event cases now wait for the 80 ms revision window.
 
 Elsewhere: `master/tests/no-duplicate-ui.test.ts` (4), `master/tests/ui-conventions.test.ts`
 (8: rem tokens, px hairlines/radii/breakpoints, no raw px > 3 in JSX style objects,
@@ -1800,11 +1850,14 @@ before `route()` delegates to the owning service, which checks again).
 
 ### 5.2 Boot, shutdown and configuration
 
-**`master/src/index.ts` (324 lines).** At module load it registers the shutdown
+**`master/src/index.ts` (348 lines at 1.4.3).** At module load it registers the shutdown
 handlers (`SIGINT`, `SIGTERM`, an IPC `{type:'orderbook:shutdown'}` message — the one
 Windows can deliver — and `disconnect`, meaning the shell died). Since 1.3 Phase 1 it
 also logs an `unhandledRejection` and keeps running (`office/src/index.ts` does the
-same); an `uncaughtException` still ends the process. Importing
+same). Since 1.4.3 both entrypoints call `installCrashGuard(process, log, { onRepeated })`
+(`shared/src/domain/crash-guard.ts`): an `uncaughtException` is logged and the process keeps
+serving too, and only more than five such errors inside a minute call `shutdown`, which stops
+cleanly so the shell starts a fresh process (§11.10). Importing
 `master/src/config/index.ts` runs `loadEnvFiles()` before any variable is read.
 
 `main()`, in order:
@@ -1996,7 +2049,7 @@ primaryLanAddress() ?? '127.0.0.1', httpPort: config.http.port, acceptingPairing
 | `master/src/pdf/primitives.ts` | 117 | `MM_TO_PT`, `mm()`, `measureRuns`, `runText`, `truncateToWidth`, `runTextRight`, `horizontalRule` |
 | `master/src/pdf/table-renderer.ts` | 165 | `renderReportPdf(table: ReportTablePdf)` — paginated header, rows, optional totals, A4 or Letter |
 
-**`master/src/lib/` (14 files):**
+**`master/src/lib/` (16 files at 1.4.3):**
 
 | File | Lines | Purpose | Importers |
 |---|---|---|---|
@@ -2013,10 +2066,11 @@ primaryLanAddress() ?? '127.0.0.1', httpPort: config.http.port, acceptingPairing
 | `master/src/lib/password.ts` | 134 | `hashPassword()` (`scrypt$16384$8$1$salt$hash`); `verifyPassword()` also accepts legacy bcrypt and flags `needsUpgrade`; `generateTemporaryPassword()`; `PASSWORD_MIN_LENGTH` 8; `assertPasswordLongEnough()` | 4 |
 | `master/src/lib/release-signature.ts` | 75 | `verifyManifest()` — Ed25519 against `trustedKeyById`; unsigned passes only with `ORDERBOOK_ALLOW_UNSIGNED_RELEASES=1`. Duplicated in `office/src/lib/release-signature.ts`. | 2 |
 | `master/src/lib/secret-box.ts` | 178 | `loadOrCreateKey()` (`<dataDir>/secrets/vault.key`), `seal(plaintext, aad)`, `open(sealed, aad)`, `isSealedValue`, `resetSecretBox`, `CURRENT_KEY_VERSION`, `SecretBoxError`; AES-256-GCM with AAD; the key is never in a backup | 6 |
+| `master/src/lib/seq-cache.ts` | 49 | 1.4.3. The server's short read cache: `seqCached(key, ttlMs, compute)`. An entry is valid only while the change ring's `currentSeq()` (plus a bump counter) is the number it was computed at **and** it is younger than its TTL, so any `publishChange` anywhere drops every entry on its next read, with no per-service invalidation to forget; the TTL bounds the rest (figures that move with the clock, a write that publishes no change). The cached value is the promise, so ten Offices reconnecting at once share one computation; a rejection is never kept; at most 500 entries (then it clears). `bumpSeqCache()` is for writes with no ring change (`change-bus.ts` calls it from `publishChat`); `resetSeqCache()` is called by `process-caches.ts` because a restore or reset replaces the data without a change event. Keys carry everything the answer depends on (tenant, `actorKey`, query); a query key over 300 characters is not cached. Users: dashboard summary 5 s, categories list 10 s, Pending list and its stage counts 10 s, Final list and its stage counts 10 s, chat history 15 s (§11.10). Tests: `master/tests/rate-limit.test.ts` (the cache cases) and `master/tests/cache-invalidation.integration.test.ts` | 7 |
 | `master/src/lib/spreadsheet.ts` | 149 | exceljs: `sheetKindOf()` (zip magic ⇒ xlsx), `readSheetRows()` (every cell a string), `buildXlsxTemplate()`, `buildCsvTemplate()`, `XLSX_CONTENT_TYPE` | 1 |
 | `master/src/lib/tile-swatch.ts` | 203 | `tileSwatchSvg()` / `renderTileSwatch()` (sharp) — placeholder photos for sample data | 1 |
 
-### 5.5 `domain/` — all 24 files (catalogue v2 added two and deleted one)
+### 5.5 `domain/` — 29 files at 1.4.3 (catalogue v2 added two and deleted one; 1.4.3 added `duplicate-products.ts`)
 
 "Direct test" names the unit test that imports the module; "none" means it is
 exercised only through service integration tests.
@@ -2041,7 +2095,7 @@ exercised only through service integration tests.
 | `master/src/domain/sample-data.ts` (809) | the demo dataset + a seeded RNG | `SAMPLE_WINDOW_DAYS` (170), `SAMPLE_PRODUCTS`, `SAMPLE_PARTIES`, `SAMPLE_LEADS`, `SAMPLE_DELETIONS`, `createRandom` | `master/tests/sample-data.integration.test.ts` |
 | `master/src/domain/cursor.ts` (60) | the one base64url cursor codec | `encodeCursor`, `decodeCursor`, `clampCursorLimit` | `master/tests/cursor.test.ts` |
 | `master/src/domain/log-cursor.ts` (36) | Logs keyset cursor | `clampLogPage`, `encodeLogCursor`, `decodeLogCursor` | none |
-| `master/src/domain/paging.ts` (23) | page-size clamp | `clampPaging`, `clampLimit` | none |
+| `master/src/domain/paging.ts` | page-size clamp; since 1.4.3 `NaN` (a socket payload, or a caller that skipped the HTTP parse) is treated as "not asked" and a limit is floored | `clampPaging`, `clampLimit` | `master/tests/paging-not-a-number.test.ts` |
 | `master/src/domain/search-terms.ts` (63) | safe prefix `tsquery` and LIKE patterns | `prefixTsQuery`, `likePrefix`, `likeContains` | none |
 | `master/src/domain/report-range.ts` (134) | report ranges from `{year, month, day}` without `Date` (the day-early fix) | `resolveReportRange`, `monthLabels`, `rangeSubtitle` (the PDF line: first day to the inclusive last day), `MAX_RANGE_MONTHS` (12) | `master/tests/report-range.test.ts` |
 | `master/src/domain/recycle-bin.ts` (128) | upward-only restore graph, rename-on-collision, Bin cursor | `PARENT_LINKS`, `assertParentsLive`, `suggestRestoredName`, `visibleBinScopes`, `encodeBinCursor`, `decodeBinCursor` | `master/tests/recycle-bin-domain.test.ts` |
@@ -2050,8 +2104,9 @@ exercised only through service integration tests.
 | `master/src/domain/panel-report.ts` (106) | validates and clamps the five-minute `panel:report` | `normalisePanelReport` | `master/tests/panel-report-domain.test.ts` |
 | `master/src/domain/backup.ts` (49) | backup format rules | `assertImportableFormatVersion`, `assertPassphraseStrong`, `summarizeManifest` | `master/tests/backup-domain.test.ts` |
 | `master/src/domain/archive.ts` (342) | 1.3 Phase 8: the backup-everything zip's rules, no I/O | `classifyArchiveEntry` (the entry allowlist), `safeUploadTarget`, `parseArchiveManifest`, `assertArchiveRestorable`, `checkArchiveEntries` (sizes, duplicates, caps, missing files), `estimateArchiveBytes`, `assertArchiveFits` (free space × 1.1, FAT32 over 4 GiB − 64 MiB), `companySlug`, `archiveFileName` | `master/tests/archive-domain.test.ts` |
+| `master/src/domain/duplicate-products.ts` (131) | 1.4.3 (R13/R14). Pure grouping for the Duplicates page (union-find over name and code tokens, `duplicateKey` from `shared/`). Product (category) level: same brand and same name, or same brand and same code. Sub product level: same Product and same name, or same brand and same variant code; the same name under *different* Products is deliberately not a duplicate (numbered designs such as `1111` and `41` recur). | `findDuplicateGroups` | `master/tests/duplicate-products-domain.test.ts` (7) |
 
-### 5.6 `services/` — all 43 files, by feature
+### 5.6 `services/` — 59 files at 1.4.3, by feature
 
 **Auth, users, roles**
 
@@ -2157,6 +2212,30 @@ exercised only through service integration tests.
   (only with `products.delete`). Tests: `master/tests/duplicate-products-domain.test.ts`,
   `master/tests/duplicate-products.integration.test.ts`, "Duplicates" in
   `ui/tests/master-shell.test.tsx`.
+- 1.4.3 server caches (R2/R15/R16): `dashboard.service.ts#dashboardSummary` (5 s),
+  `catalog.service.ts#listCategories` (10 s), `lead.service.ts#listLeads` and `stageCounts` (10 s),
+  `order.service.ts#listOrders` and `stageCounts` (10 s) and `chat.service.ts#listMessages` (15 s)
+  read through `master/src/lib/seq-cache.ts` (§5.4), keyed by tenant, reader and the whole
+  query. Every write already publishes its change after its transaction commits, so a read
+  cannot cache stale data under a new sequence number; `master/tests/cache-invalidation.integration.test.ts`
+  pins it (a party rename, a user rename, Party Access, a product delete, a Recycle Bin
+  restore and a stage change each drop the cached lists, counts, chat chips and dashboard).
+  `change-bus.ts#publishChat` bumps the cache because chat has its own channel;
+  `process-caches.ts#resetProcessCaches` also resets it and the rate-limit windows.
+- `lead.service.ts#stageCounts` and `order.service.ts#stageCounts` (1.4.3, R17): the number of
+  records per stage under the list's own filters (search, "my parties", the converted page,
+  owner, party, follow-up) with the stage filter **ignored**; `leads.view` / `orders.view` and
+  the same party scope as the list. Repository half: `lead.repository.ts#stageCounts` and
+  `order.repository.ts#stageCounts` (a group-by over the list's own base query). Routes
+  `GET /api/leads/stage-counts` and `GET /api/orders/stage-counts` (§5.8.6). Test:
+  `master/tests/stage-counts.integration.test.ts`.
+- `user.service.ts#updateUser` (1.4.3): when the display name really changed it also
+  publishes a payload-less `setting` change with `id: 'user.displayName'`. Users are withheld
+  from panels but their names are not (every lead and order carries `ownerName`, read live
+  on the Master), so a rename would otherwise reach no Office; `setting` is
+  snapshot-forcing, so connected Offices refresh and a reconnecting one is refused a delta,
+  while nothing about the user travels. Test: `master/tests/user-rename-sync.integration.test.ts`.
+  A party rename needs no such event: the shared fold sets `partyName` (§3.9).
 - `master/src/services/product-import.service.ts` (611) — `productImportTemplate`,
   `importProducts({dryRun, mode})`; `products.bulk` + `products.create` (+
   `products.edit` for upsert); writes through repositories in chunks of
@@ -2418,8 +2497,8 @@ exercised only through service integration tests.
     `error.conflict.backupBusy`, `currentJob`) and the maintenance flag:
     `enterMaintenance` signs everyone out, disconnects every socket, rejects queued
     pushes and waits for the push gate before the schema is touched.
-  - `process-caches.ts` (47) — `resetProcessCaches()`: everything `resetAllData`
-    resets plus the public-API tenant cache, queued pushes, presence, the
+  - `process-caches.ts` (49) — `resetProcessCaches()`: everything `resetAllData`
+    resets plus the public-API tenant cache, the rate-limit windows, the sequence cache (`lib/seq-cache.ts`), queued pushes, presence, the
     long-offline timers and a new `BOOT_ID`. Used by `resetAllData`, the v1 restore
     and the archive restore.
   - `archive-export.service.ts` (435) — `exportArchive`: pre-flight, one
@@ -2550,7 +2629,7 @@ Knex.Transaction`). In practice services open transactions themselves with
   (including `/openapi.json`) and never calls `next()`. It is mounted before the
   `/api` catch-all. The connector scheduler also skips tenants with the API off.
 - **Routes are data:** `PUBLIC_API_ROUTES` in `master/src/http/public-api-contract.ts`
-  declares 21 operations; `master/src/http/routes/public-api.routes.ts` walks it
+  declares 18 operations; `master/src/http/routes/public-api.routes.ts` walks it
   against a `Record<PublicApiOperationId, Handler>` (a missing handler is a compile
   error); `buildOpenApiDocument()` generates OpenAPI 3.1 from the same table. Every
   route, including `/openapi.json`, needs a valid key.
@@ -2578,7 +2657,9 @@ and products reads the row, merges over it and calls the full-replace service. N
 | `TenantViolationError` | 403 | `tenant_violation` (also logged) |
 | `NotFoundError` | 404 | `not_found` |
 | `ConflictError` | 409 | `conflict` (`details`, e.g. stored version) |
-| `TooManyRequestsError` | 429 | `rate_limited` (+ `Retry-After`) |
+| `TooManyRequestsError` | 429 | `rate_limited`; `details` carry `seconds` and, since 1.4.3, `retryAfterSeconds` (the same figure under the name a client reads), and `Retry-After` is set. Raised by `consume` (API key, pairing, and the 1.4.3 limiter of §5.8.4) |
+| a body the JSON parser refused (`bodyParserFailure`, `shared/`) | 400 / 413 | `invalid_request` (`error.generic.malformedBody`) / `payload_too_large` (`error.generic.tooLarge`), 1.4.3; it used to be 500 |
+| a PostgreSQL input error (22P02, 22003, 22007, 22008, 22001, 22021) or a malformed percent-escape in a path (`URIError`, "Failed to decode param") | 400 | `validation_error` (`validation.request.badInput`), 1.4.3, mapped by `bad-input.ts` before `errorHandler` |
 | `BackupError` | 400/409/500 by reason | `backup_<reason>` |
 | multer `LIMIT_FILE_SIZE` | 400 | `validation_error` (`validation.image.tooLarge`) |
 | anything else | 500 | `internal_error` (logged) |
@@ -2604,9 +2685,11 @@ mount runs `requirePanel`, then both routers pass the path on). `notFoundHandler
 
 - `master/src/http/app.ts` — `createApp()`: `trust proxy` false,
   `express.json({limit:'2mb'})`, `cookieParser`, `queryCountMiddleware`,
-  `attachSession`; mounts every router (below); serves `web/dist` with an SPA
-  fallback for non-`/api` GETs (503 "UI not built" if `index.html` is missing); then
-  `notFoundHandler` and `errorHandler`. **No static mount for the uploads
+  `attachSession`; the unauthenticated `GET /api/health` and, since 1.4.3, `GET /api/device`
+  (`{ totalMemoryBytes, cpuCount }`, hardware figures only, for the sign-in warning); the
+  1.4.3 flood guards (`rate-limit.ts`, below), then every router; serves `web/dist` through
+  `webStatic` with an SPA fallback for non-`/api` GETs (503 "UI not built" if `index.html`
+  is missing); then `notFoundHandler`, `badInputHandler` and `errorHandler`. **No static mount for the uploads
   directory**, on purpose.
 - `master/src/http/boot-app.ts` — `createBootApp()`: `GET /api/health` answers the
   boot status; other `/api` paths 503 `{error:'starting'|'startup_failed', boot}`;
@@ -2635,14 +2718,56 @@ mount runs `requirePanel`, then both routers pass the path on). `notFoundHandler
   `apiActorFromRequest`, `resetApiKeyFailures`, private `intersect()`);
   `master/src/http/middleware/api-key-rate-limit.ts` (`consume`, `resetRateLimits`,
   `noteUsed`, `drainTouches`; also limits manual pairing to 10/min/IP as
-  `pairing:<ip>`); `master/src/http/middleware/error-handler.ts`.
+  `pairing:<ip>`); `master/src/http/middleware/error-handler.ts` (since 1.4.3 it answers a refused body with
+  400 / 413 through `bodyParserFailure`).
+- `master/src/http/middleware/rate-limit.ts` (1.4.3, R1). **The server rate limiter**: one
+  in-house limiter (no dependency) that is `consume` from `api-key-rate-limit.ts` (fixed
+  60 s windows, in memory) behind three Express middlewares and a socket guard. It is a
+  flood guard, not the security boundary (sign-in has its own lockout, `auth.service.ts`);
+  every Office reaches the Master from its own PC's address, so one address is one panel,
+  not the company. Limits, per minute (`LIMITS`):
+
+  | Where | Key | Limit |
+  |---|---|---|
+  | `POST /api/auth/sign-in` | source address; attempted username (trimmed, case-folded) | 60; 30 |
+  | non-GET on `/api/access/users/:id/reset-password`, `reveal-password`, `/api/access/me/password`, `/api/setup/pairing-password`, `/api/master-key` | source address | 60 |
+  | `GET /api/reports/:report/pdf` and `/export` | source address | 60 |
+  | any `multipart/form-data` request under `/api` | source address | 120 |
+  | `/api/v1`, before the per-key limit | source address | 1,200 |
+  | every Socket.IO command, panel and browser sockets alike | connection | 1,200 |
+
+  Over a limit an HTTP caller gets 429 `rate_limited` with `Retry-After` and
+  `retryAfterSeconds` (the existing `TooManyRequestsError`, §5.8.3). A socket command that
+  carries an ack gets the same coded failure (`{ok:false, code:'rate_limited', messageKey,
+  params, details}`); one without an ack is dropped; the window is forgotten on disconnect.
+  `::ffff:1.2.3.4` and `1.2.3.4` count as one caller (`sourceKey`). Because IP, username and
+  socket keys are chosen by the caller, `consume` now sweeps expired windows once its map
+  passes 5,000 entries. The pairing limiter (10/min/IP, `panel.routes.ts`) is unchanged.
+  Wiring: the HTTP guards are `app.use` / `app.post` lines in `master/src/http/app.ts`
+  before the routers (no route file was edited); the socket guard is `limitSocket(socket)`
+  on every new connection in `master/src/realtime/hub.ts`. **The Office server has no
+  limiter of its own** (its UI is local to one PC and its sign-in has the offline attempt
+  store). Test: `master/tests/rate-limit.test.ts`.
+- `master/src/http/middleware/bad-input.ts` (1.4.3, R18): `badInputHandler`, mounted before
+  `errorHandler`, turns the PostgreSQL "the value you gave cannot be that type" family and
+  Express's malformed-percent-escape `URIError` into a 400 (§5.8.3); `queryInt` in
+  `master/src/http/query.ts` turns a non-integer `limit`, `offset` or numeric id into 400
+  `validation.query.badNumber` on every route that reads them.
+- `master/src/http/web-static.ts` (1.4.3, R15): `webStatic(root)` is `express.static` with
+  `Cache-Control: public, max-age=31536000, immutable` for anything under `/assets/` (Vite
+  names those files by content hash, so a name never changes its bytes) and `no-cache` plus
+  the default ETag for everything else, so `index.html` is revalidated on each load (a 304,
+  no body) and an update shows on the next open. `office/src/http/web-static.ts` is a
+  mirror.
 
 #### 5.8.5 Mount order in `app.ts` (order matters)
 
 | Prefix | Router (file) | Router-level auth |
 |---|---|---|
 | `/api/health` | inline | none |
-| `/api/v1` | `publicApiRoutes` (`public-api.routes.ts`) | off switch → `requireApiKey` |
+| `/api/device` | inline (1.4.3): `{ totalMemoryBytes, cpuCount }` | none |
+| `/api/v1` | `limitByIp('public-api', 1,200)` (1.4.3), then `publicApiRoutes` (`public-api.routes.ts`) | off switch → `requireApiKey` |
+| `POST /api/auth/sign-in`, the password and master-key routes, report PDF / export, any multipart `/api` request | the 1.4.3 limiters (`rate-limit.ts`), `app.post` / `app.use` lines placed before the routers they guard | none |
 | `/api/setup` | `setupRoutes` | none (per route) |
 | `/api/auth` | `authRoutes` | none (per route) |
 | `/api/notifications` | `notificationRoutes` (`auth.routes.ts`, 1.3 Phase 3): `GET /`, `POST /read`, the signed-in person's own notices only | `requireAuth` |
@@ -2668,11 +2793,13 @@ mount runs `requirePanel`, then both routers pass the path on). `notFoundHandler
 
 #### 5.8.6 `master/src/http/routes/` — every endpoint
 
-The 19 files declare **154 endpoints**, plus the 21 table-driven `/api/v1`
-operations and the inline `/api/health`. Guards are `needs(...)`; "svc" means only
+The 20 files that declare routes (the folder holds 22; `panel-catalog.routes.ts` and
+`public-api.routes.ts` declare none directly) register **210 endpoints** (recounted on the
+1.4.3 tree), plus the 18 table-driven `/api/v1` operations and the inline `/api/health`
+and `/api/device`. Guards are `needs(...)`; "svc" means only
 the service checks.
 
-- `master/src/http/routes/setup.routes.ts` (`/api/setup`, 6): `GET /status`
+- `master/src/http/routes/setup.routes.ts` (`/api/setup`, 9): `GET /status`
   (`getSetupStatus()`: `{ setupComplete: false }`, or since 1.3 Phase 1
   `{ setupComplete: true, companyName }` — the name is already public through UDP
   discovery and the Office sign-in screen; since 1.3 Phase 2 also `onMasterPc` and
@@ -2682,7 +2809,12 @@ the service checks.
   `x-master-key-token`); `GET /identity` (`settings.manage`); `POST /restore/preview`
   and `POST /restore` (multipart, unauthenticated, **loopback only** with
   `requireLoopback` ahead of multer, and since 1.3 Phase 2 both refused with 409
-  `error.conflict.alreadySetUp` once setup has run, by `refuseAfterSetup`).
+  `error.conflict.alreadySetUp` once setup has run, by `refuseAfterSetup`); and the
+  first-run "magic restore" from a backup-everything zip on a drive: `POST /archive/preview` and
+  `POST /archive/restore` (the body names a file path on this PC, chosen through the shell's
+  picker, never an upload; loopback only and refused once set up; restore answers 202 with the
+  job status) and `GET /archive/job` (loopback only, not refused after setup, polled for
+  progress through and after a restore).
 - `master/src/http/routes/master-key.routes.ts` (`/api/master-key`, 5, 1.3 Phase 2,
   mounted before the `/api` catch-all, every route `requireLoopback`, no session
   needed): `POST /verify` (`{key}` → `{token, expiresAt}`), `POST /lock`,
@@ -2711,7 +2843,7 @@ the service checks.
   (`?platform=darwin|linux|win32`); `updateRoutes` (`requireAuth`) — `GET /status`,
   `POST /master/install` (`settings.manage`; verifies the installer and returns its
   path, never runs it).
-- `master/src/http/routes/party-access.routes.ts` (`/api/party-access`, 5): `GET /`,
+- `master/src/http/routes/party-access.routes.ts` (`/api/party-access`, 6): `GET /`,
   `GET /summary` (company-wide `{total, restricted, open}`, registered before `/:partyId`), `GET /:partyId` (svc `requireCanRead`); `GET /people` (`party.assign` OR `party.accessAll`, checked in the service); list takes `sort` (`code|name|city|access`) and `dir`; `GET
   /export.csv` (`parties.export`); `PUT /:partyId` (`party.assign`).
 - `master/src/http/routes/recycle-bin.routes.ts` (4): `GET /`, `/counts`,
@@ -2724,7 +2856,7 @@ the service checks.
   `POST /stages/reorder`, `POST /stages/:id/archive`, `POST /stages/:id/restore`.
 - `master/src/http/routes/log.routes.ts` (4): `GET /`, `GET /facets` (`logs.view`);
   `POST /verify` (`logs.verifyChain`); `GET /export` (`logs.export`).
-- `master/src/http/routes/report.routes.ts` (6): `GET /dispatches`,
+- `master/src/http/routes/report.routes.ts` (7): `GET /dispatches`,
   `/lead-outcomes`, `/top-parties` (`reports.view`, frozen for older Offices); `GET /options`
   and `GET /table/:report` (`reports.view`, 1.3 H2); `GET /:report/export` (`reports.view` + `reports.export`;
   `format=csv|xlsx|pdf`, `subjectId`, `columns`, `totals`, `paperSize`,
@@ -2760,8 +2892,21 @@ the service checks.
   `POST /lock`; `POST /reset-all` (confirmation phrase), `POST /seed-dummy-users`,
   `POST /seed-sample-data`, `POST /load-catalogue` (each
   `developerGate.assertUnlocked(<x-developer-token>)`).
-- `master/src/http/routes/data.routes.ts` (`/api` catch-all, 46 — catalogue v2 added four, the Master UI's main
-  surface): `GET /dashboard`; `GET /storage` (`settings.manage` since 2026-09-25); `POST
+- `master/src/http/routes/data.routes.ts` (`/api` catch-all, 57 registrations at 1.4.3 — catalogue
+  v2 added four, 1.4.3 four more; the Master UI's main surface). 1.4.3 added `GET
+  /leads/stage-counts` and `GET /orders/stage-counts` (registered **before** the `:id`
+  routes, which would take "stage-counts" for an id; same query as the list with the stage
+  filter ignored, answering `StageCounts`; the service checks `leads.view` / `orders.view`),
+  `GET /duplicates` and `POST /duplicates/resolve` (both `needs('products.delete')`: a
+  resolve is a delete through the same soft delete, and the Recycle Bin restore uses the same
+  key; `duplicate-products.service.ts#findDuplicates` and `resolveDuplicates`, §5.6;
+  `resolve` re-finds the groups and refuses with 400 `validation.duplicates.selection`
+  anything not in the kept row's group, and a multi-delete is one delete per row, each its
+  own transaction and event, so a refusal leaves the others deleted and the result says
+  which; merging is not built). Contract: `docs/backend-modules/04-API-CONTRACT.md` §19.
+  The list routes `GET /leads` and `GET /orders` take `limit`, `offset`, `stageIds` (the stage
+  filter now goes to the server, so it narrows every page) and answer `Paginated`.
+  The routes: `GET /dashboard`; `GET /storage` (`settings.manage` since 2026-09-25); `POST
   /storage/export`, `/storage/restore/preview`, `/storage/restore`
   (`storage.manage`, multipart ≤ 1 GiB, buffered in memory); reference data `GET
   /pipelines`, `/option-lists` (ungated by design); `GET /search`,
@@ -2790,8 +2935,12 @@ the service checks.
   Until 2026-09-25 it was `cors: { origin: true, credentials: true }`, which
   reflected any origin — and CORS never applied anyway, since both clients use
   `transports: ['websocket']` and browsers apply no CORS to a WebSocket. Internal
-  functions: `authenticate`, `handleConnection`, `registerCommands` (the 75 non-auth
-  commands), `registerAuthCommands` (`auth:signIn` — records the
+  functions: `authenticate`, `handleConnection` (1.4.3: `io.on('connection')` first calls
+  `limitSocket(socket)`, the per-connection command limit of §5.8.4, then
+  `handleConnection`), `guardedOn` (1.4.3: `socket.on` for every command handler; a handler that
+  throws on a malformed payload acks `validation.socket.badPayload` instead of reaching the
+  process as an uncaught exception, and `respond` no longer double-acks), `registerCommands` (the 75 non-auth
+  commands; 114 `on('…')` registrations in the file at 1.4.3), `registerAuthCommands` (`auth:signIn` — records the
   panel's device code, `auth:assume`, `auth:reconcile` →
   `findRevokedOfflineCredentials`, `auth:signOut`), `respond`, `panelActor`,
   `adminActor`, `emitPartyScopedChange`, `emitGatedChange`, `emitGatedConflict`,
@@ -3392,9 +3541,9 @@ with its DDL; `docs/schema/00-overview.md` says why that stopped being true.
 `@orderbook/master-web` is the React 19 + Vite 5 single-page app for the Master
 Panel. It talks only to its own Master server: HTTP under `/api` and one Socket.IO
 connection. In production `master/src/http/app.ts` (and `http/boot-app.ts` while
-booting) serves `master/web/dist` with an SPA fallback. **30 tracked files**, 14,332
-lines: 16 screens, 3 components, 7 other source files, 4 config files (1.3 Phase 1
-deleted `InventoryScreen.tsx` and added `settingsTabs.ts`). **No test
+booting) serves `master/web/dist` with an SPA fallback. **44 tracked files**, 18,220
+lines at 1.4.3 (22 files in `screens/`, 7 in `components/`; the 30-file, 14,332-line figure
+this paragraph gave was taken before 1.3 Phase 1 deleted `InventoryScreen.tsx`). **No test
 files of its own** — §7.6 lists the tests that read or boot this source.
 
 ### 7.1 File inventory
@@ -3421,7 +3570,7 @@ files of its own** — §7.6 lists the tests that read or boot this source.
 | `master/web/src/components/useBackupJob.ts` | 102 | 1.3 Phase 8. `useBackupJob(read)` → `{job, follow}`: reads once on mount (shows a job already running), then polls every 500 ms until `done` or `failed`; a failed poll (the 503s of a restore) is ignored and retried. `phaseLabel` maps each `BackupJobPhase` to its `backupAll.phase.*` key |
 | `master/web/src/components/BackupAllSection.tsx` | 351 | 1.3 Phase 8, `storage.backupAll`. Off the Master PC only a notice. On it: the keep-the-drive-safe banner, the folder (typed, or `chooseDirectory` through the shell; seeded from the automatic backup's folder), **Back up everything** with a `ProgressBar`, the backups in that folder (`listArchives`) each with **Restore…**, and **Restore from another file…** (`chooseFile`). A restore shows `ArchivePreviewFacts`, needs CONFIRM and the master key (`useMasterKeyPrompt`), is followed through `setupArchiveJob`, and ends on a reload into sign-in. Exports `BackupJobProgress` and `ArchivePreviewFacts` for the first-run screen |
 | `master/web/src/components/AutoBackupSection.tsx` | 175 | 1.3 Phase 8, `storage.backupAll`. The last-run line and an unreachable-folder warning everywhere; on the Master PC the switch, folder (with the chooser), time, keep-last and Save (`saveAutoBackup`) |
-| `master/web/src/screens/*.tsx` (16) | — | §7.4 |
+| `master/web/src/screens/*.tsx` (22 at 1.4.3) | — | §7.4 |
 
 ### 7.2 `App.tsx` — the shell
 
@@ -3436,6 +3585,20 @@ files of its own** — §7.6 lists the tests that read or boot this source.
   `api.ts` on a 401 — not by `requestBlob`/`requestForm`, whose `throwIfNotOk` only
   throws, so a 401 from storage export/restore, setup restore or avatar upload does
   not end the session in the shell) drops to `SignInScreen` with a `notice`.
+- **1.4.3 (R2/R3, `ui/src/requestCache.ts`, `ui/src/burstBatch.ts`):** the socket's
+  `data:changed` handler no longer bumps state per event. `bump(entity)` calls
+  `invalidateReads()` at once (a read started inside the window must not be answered from
+  before the change) and pushes the entity into a `createBurstBatcher` of
+  `REVISION_BATCH_MS` = 80, which then moves each entity's revision counter once, by the
+  number of events that arrived. `requestCache.setLive(true)` runs when the socket is up and
+  `setLive(false)` on its loss; every reconnect drops the cache. Five screens load on first
+  visit from the shared kit through `lazyScreen` and the `@orderbook/ui/lazy/*` export:
+  `ChatroomScreen`, `PrintroomScreen`, `ReportsScreen`, `GalleryScreen` and
+  `CatalogListsScreen` (own chunks; the Master's start-up bundle went from 871,924 to 796,312
+  bytes, D4's measurement). The sidebar's unread and waiting counts come from
+  `useChatUnread` / `usePrintWaiting` (`ui/src/chatUnread.ts`, `printWaiting.ts`), which live
+  outside the lazy screens. The Products sidebar offers a **Duplicates** page only with
+  `products.delete` (`ProductsPage` gained `'duplicates'`).
 - **Providers:** `ToastProvider` › `ConfirmProvider` › `SubNavProvider` ›
   `TopbarActionsProvider` › `ResetProvider` › `MasterPanel` →
   `KeyboardProvider(panel="master", onNavigate={navigate}, canNavigate={offered})` ›
@@ -3625,7 +3788,17 @@ The `NotificationBell` sits beside the palette button: `api.notifications()` /
   `requestUntracked()`: 15 s `REQUEST_TIMEOUT_MS`; plain GETs de-duplicated through a
   ref-counted `inFlight` map keyed by path + headers (aborted only when the last
   waiter releases); writes and calls with their own `signal` never shared. `send()`
-  returns `undefined` on 204; on 401 calls `publishSessionEnded(...)` before throwing.
+  returns `undefined` on 204; on 401 calls `publishSessionEnded(...)` before throwing,
+  except (1.4.3) for a refused sign-in (the screen already says why under the password box;
+  announcing it too showed the refusal twice), the boot-time `/api/auth/me` check (nobody has
+  signed in yet) and the master-key refusals.
+- **The read cache (1.4.3):** `requestCache = createRequestCache()` and `invalidateReads()`
+  are exported for the shell. A GET with no custom headers whose path `isCacheableRead` is
+  answered through `requestCache.get(path, …)` (fresh 8 s, stale up to 60 s while re-read in
+  the background; the in-flight de-duplication above stays underneath it); every non-GET
+  invalidates the cache when it settles, so a screen that saves and re-reads sees its own
+  write. §4.8 has the contract and the list of cached prefixes. `api.device()` reads
+  `GET /api/device` (`DeviceInfo`).
 - `ApiError` carries `code`, `details`, `messageKey`, `params` and getters
   `missingPermission`, `isConflict`, `storedVersion`, `diff`, `blockedBy`,
   `suggestion`; in `request()`'s `asFailure`, a timeout → `code: 'timeout'`
@@ -3690,26 +3863,27 @@ Settings and Updates.
 |---|---|---|---|
 | `master/web/src/screens/DashboardScreen.tsx` | a `StatTile` row (1.3 Phase 1; `StatTileSkeleton` while the summary loads), counts only, a tile only for each figure the summary carries: Pending Orders → `leads`, converted today, dispatched today, follow-ups due, Final Orders → `orders`, dispatched this week, panels online (`panels.manage`), conflicts → Conflicts, pending sync. Optional `printPending` and `chatUnread` props draw a tile only when given (for later phases). There is no low-stock card (`lowStockCount` is gone from `DashboardSummary`); stage bars with "Open board"; follow-ups due (`leads.view` only; a row opens the lead); active panels (`panels.manage`). Not ported: the Office's recent-activity box | `leads` (follow-ups) | `panels.manage`, `leads.view` |
 | `master/web/src/screens/PanelsScreen.tsx` (417) | "Add Office Panel" opens the pairing window and waits until a new row arrives over the socket (the window is also closed on effect cleanup); table of status, name, device code, LAN IP, paired, last seen; detail is an `EditorScreen` sub-screen (sub-nav `panels.detail`) that loads `api.panel(id)` for the acting role and work counts, with **Rename** and **Remove** (modal confirms) only | `openPairingWindow`, `closePairingWindow`, `panel`, `renamePanel`, `revokePanel` | none (nav needs `panels.manage`) |
-| `master/web/src/screens/LeadsScreen.tsx` | Pending Orders (leads), 2026-10-01 (parity plan P2). List: server `search` (debounced, `data-screen-search`), All / My parties, client-side stage chips counting the loaded rows, `LoadMorePager` at 500 per page, no actions column; `view` `list` or `converted` (`convertedOnly`). A row opens `EditorScreen` as a sub-screen (back button, `useSubNav('leads', ...)`): Filling note and Dispatch note (`leads.export`, a not-yet-converted lead only; `OrderNoteScreen` with `source="lead"`, sub-nav `leads.note`, party via `api.party`; 1.3 H3), Preview PDF (`leads.export`), Delete (`leads.delete`, 409 `blockedBy` named), then `LeadRecordView`; party card via `api.party` only with `parties.view`. `openId` not in the loaded rows falls back to `api.lead(id)` (a 404 clears it). | `leads`, `lead`, `party`, `optionLists`, `deleteLead` (+ the transport's `addLeadRemark`, `setLeadStage`, `convertLead`) | `leads.edit`, `lead.convert`, `leads.delete`, `leads.export`, `parties.view` |
+| `master/web/src/screens/LeadsScreen.tsx` | Pending Orders (leads), 2026-10-01 (parity plan P2). List: server `search` (debounced, `data-screen-search`), All / My parties, stage chips whose counts come from `GET /api/leads/stage-counts` (every stage under the current search and scope, the same on every page; All is its `total`; refreshed with the revision), and since 1.4.3 numbered paging with `PageBar` (`usePageSize('leads')`, default 50: the list asks the server for `limit`/`offset` and shows `total`; the stage chip goes to the server as `stageIds`, so it narrows every page; a new view, search, stage or page size starts on page 1, and when records vanish under the current page it lands on the last page that exists; `LoadMorePager` is gone), no actions column; `view` `list` or `converted` (`convertedOnly`). A row opens `EditorScreen` as a sub-screen (back button, `useSubNav('leads', ...)`): Filling note and Dispatch note (`leads.export`, a not-yet-converted lead only; `OrderNoteScreen` with `source="lead"`, sub-nav `leads.note`, party via `api.party`; 1.3 H3), Preview PDF (`leads.export`), Delete (`leads.delete`, 409 `blockedBy` named), then `LeadRecordView`; party card via `api.party` only with `parties.view`. `openId` not in the loaded rows falls back to `api.lead(id)` (a 404 clears it). | `leads`, `lead`, `party`, `optionLists`, `deleteLead` (+ the transport's `addLeadRemark`, `setLeadStage`, `convertLead`) | `leads.edit`, `lead.convert`, `leads.delete`, `leads.export`, `parties.view` |
 | `master/web/src/screens/LeadEntry.tsx` | New / Edit pending order, 2026-10-01 (P3). Host of `ui/LeadEntryScreen`: reads `api.leadEntryView()` (`GET /api/lead-entry`) on mount and whenever `revision` moves, shows a busy mark only until the first answer and never unmounts the form afterwards, so a half-typed draft survives. Mounted by `App.tsx` as the nav-less `addLead` screen and by `LeadsScreen` inside an `EditorScreen` (`lead` prop) for Edit pending order. | `leadEntryView` (+ the transport's `pick`, `createLead`, `updateLead`, `createParty`, `updateParty`) | `canCreateParty` prop (`parties.create`) |
-| `master/web/src/screens/OrdersScreen.tsx` | Final Orders, 2026-10-01 (P2). Same list shape as Pending Orders; stage chips follow the sidebar's `stage:<id>` pages (`stageId`/`onStageChange`); columns Final Order, Party, From pending order (a link that opens the lead), Qty, Weight (`*` = manual), Stage. A row opens the order as a sub-screen: Filling / Dispatch note (`orders.export`, `OrderNoteScreen`, sub-nav `orders.note`, party loaded with `parties.view`), Delete (`orders.delete`, 409 named), then `OrderRecordView`. `openId` not loaded falls back to `api.order(id)`. | `orders`, `order`, `party`, `optionLists`, `updateOrder`, `deleteOrder` (+ the transport's `setOrderStage`, `dispatchOrder`) | `orders.edit`, `orders.dispatch`, `orders.export`, `orders.delete`, `parties.view` |
-| `master/web/src/screens/ProductsScreen.tsx` | Products, 2026-10-01 (P4). Host of the catalogue ports: loads option lists, categories and every sub product (`listProducts({limit: 2000})`), each on its own revision, keeping the previous data on screen while the next loads; renders `SubProductsScreen`, `MainProductsScreen` and `BrandsScreen` (with `optionListTransport` from `transports.ts`) in `<Activity>` blocks. No stock: the stock fetch, `canViewStock` and the `stockRevision` prop are gone, and the view carries no `stock` and no Stock column. | `optionLists`, `categories`, `listProducts` (+ the transport's catalogue writes) | `permissions` prop |
+| `master/web/src/screens/OrdersScreen.tsx` | Final Orders, 2026-10-01 (P2). Same list shape as Pending Orders, including `PageBar` (`usePageSize('orders')`) and stage-count chips from `GET /api/orders/stage-counts`; stage chips follow the sidebar's `stage:<id>` pages (`stageId`/`onStageChange`); columns Final Order, Party, From pending order (a link that opens the lead), Qty, Weight (`*` = manual), Stage. A row opens the order as a sub-screen: Filling / Dispatch note (`orders.export`, `OrderNoteScreen`, sub-nav `orders.note`, party loaded with `parties.view`), Delete (`orders.delete`, 409 named), then `OrderRecordView`. `openId` not loaded falls back to `api.order(id)`. | `orders`, `order`, `party`, `optionLists`, `updateOrder`, `deleteOrder` (+ the transport's `setOrderStage`, `dispatchOrder`) | `orders.edit`, `orders.dispatch`, `orders.export`, `orders.delete`, `parties.view` |
+| `master/web/src/screens/ProductsScreen.tsx` | Products, 2026-10-01 (P4). Host of the catalogue ports: loads option lists, categories and every sub product (`listProducts({limit: 2000})`), each on its own revision, keeping the previous data on screen while the next loads; renders `SubProductsScreen`, `MainProductsScreen` and `BrandsScreen` (with `optionListTransport` from `transports.ts`) in `<Activity>` blocks, and since 1.4.3 `DuplicatesScreen` for the `duplicates` page (only with `products.delete`). No stock: the stock fetch, `canViewStock` and the `stockRevision` prop are gone, and the view carries no `stock` and no Stock column. | `optionLists`, `categories`, `listProducts` (+ the transport's catalogue writes) | `permissions` prop |
+| `master/web/src/screens/DuplicatesScreen.tsx` (203) | 1.4.3 (R13/R14). Products → **Duplicates**: reads `api.duplicates()` and shows each group of probable duplicates, the Product (category) level and the Sub product level, with each copy's name, code, size, the Product it sits under, the number of sub products it holds (`subProductCount`) and the number of live lead and order lines that quote it (`lineCount`), and which fields matched (`matchedOn`: name or code). A radio chooses the copy to keep (default: the oldest); deleting the others asks through a `ConfirmDialog`, then `api.resolveDuplicates({ level, keepId, deleteIds })` (answering `{ deleted, refused }`) and a toast. A copy that cannot go says why (`blockedBy`) and its button is disabled: a Product that still holds sub products (`subProducts`), or a sub product a live lead or order quotes (`liveReferences`) (nothing is re-pointed to the kept copy; merging is not built). The delete is the normal soft delete, so the Recycle Bin holds it and every Office drops it through the `deleted` change. Server: §5.6, §5.8.6; tests `master/tests/duplicate-products*.test.ts` and the "Duplicates" cases in `ui/tests/master-shell.test.tsx` | `duplicates`, `resolveDuplicates` | `products.delete` |
 | `master/web/src/screens/PartiesScreen.tsx` | paged list (`PAGE_SIZE = 100`, `LoadMorePager`), debounced search, client sort, columns incl. own-record count and the caller's own access; a row opens a **sub-screen** (`useSubNav('parties', …'parties.detail')`, `openId` held by the shell, deep link falls back to `api.party`): contact, own access (`myAccess`; plus assignees and a "Party access" button with `party.assign`/`party.accessAll`), own product records with `catalogueName`, recent pending orders (`leads.view`; a row opens the lead); Edit via `PartyFormModal`; Delete with confirm, 409 lists blockers | `parties`, `party`, `partyRecords`, `partyAccessFor`, `leads`, `deleteParty` (+ transport) | `parties.create`, `parties.edit`, `parties.delete`, `leads.view`, `party.assign`/`party.accessAll` |
 | `ui/src/ReportsScreen.tsx`, `master/web/src/transports.ts#reportsTransport`, `office/web/src/reportsTransport.ts` | **1.3 H2: one Reports screen for both panels.** The kind comes from the sidebar's sub-pages (`offeredReportKinds`) or a picker; controls are the period (named, a month range, or exact dates), whose figures (only when `ReportOptions.subjects` is not `null`) and a search box (`data-screen-search`); the body is `StatTile`s of the totals, one `DataTable` of the rows and the legacy extra sections. A request is aborted when the controls move on (`AbortController`); a refused range names its field and leaves the last good report; a hidden report says why. CSV / Excel / PDF through `trackLoad` and `saveBlob`, only with `canExport`; beside them **Preview PDF** (1.3 H3), a `ButtonLink target="_blank"` to `reportPdfPath(kind, query)` (`shared/src/domain/reports.ts`) — a window of its own in the desktop shell (`isPdfWindowUrl`), a new tab in a LAN browser; it shares the export buttons' gate, so a refused range or an offline Office takes it away with them. Takes a `ReportsTransport`, never an api client. Replaces the Master's own `ReportsScreen.tsx` | `reportOptions`, `reportTable`, `reportExport` | `reports.view`, `reports.export` |
-| `master/web/src/screens/AccessScreen.tsx` (2136) | Users and Roles; refetches on another administrator's `user`/`role` change (`revision`). Since 1.3 Phase 2: `TierPill` for every tier, Server Masters highlighted (row, avatar ring, `ServerMasterBadge`); a caller below a person's tier gets **no** controls on them (`mayManage` by `tierRank`); the last two active Server Masters cannot be deactivated or deleted (reason shown); guarded calls go through `withKey`, which repeats a call refused with `error.unauthorized.masterKeyRequired` after `useMasterKeyPrompt`; the role picker offers only roles at or below the caller's tier; the tier `Select` never offers `server_master` and labels tiers via `tierLabel`; the Server Master role has no Edit. Users: filters, add (`UserForm`, password shown once in `OneTimeSecretDialog`), detail as an `EditorScreen` sub-screen (sub-nav `access.person`; role change with `expectedVersion`, avatar, activate/deactivate, set/generate/reveal password, delete), `UserEditForm` as an `EditorScreen` with a sub-nav entry; last active admin protected client-side. Roles: `RoleEditor` (loaded through `api.role(id)` on open; `PermissionGrid`, tier, stale-version banner with Reload/Overwrite), delete. Inline restore of deleted roles and users. | `permissionCatalogue`, `roles`, `role`, `users`, `vaultStatus`, user and role CRUD, `resetPassword`, `revealPassword`, `uploadAvatar`, `removeAvatar`, `deletedRoles`, `deletedUsers`, `restoreRole`, `restoreUser` | `users.manage`, `roles.*`, `roles.assign`, `users.viewPassword` |
+| `master/web/src/screens/AccessScreen.tsx` (2136) | Users and Roles; refetches on another administrator's `user`/`role` change (`revision`). Since 1.3 Phase 2: `TierPill` for every tier, Server Masters highlighted (row, avatar ring, `ServerMasterBadge`); a caller below a person's tier gets **no** controls on them (`mayManage` by `tierRank`); the last two active Server Masters cannot be deactivated or deleted (reason shown); guarded calls go through `withKey`, which repeats a call refused with `error.unauthorized.masterKeyRequired` after `useMasterKeyPrompt`; the role picker offers only roles at or below the caller's tier; the tier `Select` never offers `server_master` and labels tiers via `tierLabel`; the Server Master role has no Edit. Users: filters, add (`UserForm`, password shown once in `OneTimeSecretDialog`), detail as an `EditorScreen` sub-screen (sub-nav `access.person`; role change with `expectedVersion`, avatar, activate/deactivate, set/generate/reveal password, delete), `UserEditForm` as an `EditorScreen` with a sub-nav entry; last active admin protected client-side. Roles: `RoleEditor` (loaded through `api.role(id)` on open; `PermissionGrid`, tier, stale-version banner with Reload/Overwrite), delete. **1.4.3 (R5) role assignment:** the new-user form and a person's detail choose the role on `RolePicker` cards (§4.5) rather than a `Select`; an existing person's role changes only on **Change role** (disabled while the choice equals the current role), after a themed `ConfirmDialog` that says how many permissions are gained and lost (`permissionChange`; the old `Select` saved on the first click). The role editor has a search box (the `PermissionGrid` `query` prop), a "held of total" count, a select-all on the Modules section (acts on the rows shown), a "Unsaved changes" / "No changes yet" marker beside the search, and a themed `useConfirm` question instead of `window.confirm` when leaving with edits (`EditorScreen.onBack` may return a Promise, and `editorCloseRef` is async); a new, untouched role no longer counts as dirty. The one-time password dialog (`OneTimeSecretDialog`) has **Save to .txt** (§4.3). Inline restore of deleted roles and users. | `permissionCatalogue`, `roles`, `role`, `users`, `vaultStatus`, user and role CRUD, `resetPassword`, `revealPassword`, `uploadAvatar`, `removeAvatar`, `deletedRoles`, `deletedUsers`, `restoreRole`, `restoreUser` | `users.manage`, `roles.*`, `roles.assign`, `users.viewPassword` |
 | `master/web/src/screens/PartyAccessScreen.tsx` | who may see/manage each party (1.4.0 redesign): summary strip (company-wide total / restricted / open from `partyAccessSummary`, refreshed after a save), debounced (250 ms) server-side search over code, name, city, phone and assignee names, All/Restricted/Open `Segmented`, a person filter (`Combobox`; "Nobody" = `restriction=open`), server-side sort on code/name/city/access (`PAGE_SIZE = 200`, paged), the Assigned-to cell (full names with level; deactivated holders as "Inactive user"), keyboard row navigation, the row just worked on stays marked (`aria-selected`), CSV export; opens `PartyAccessEditor`. **Byte-identical to the Office copy.** | `partyAccess`, `partyAccessSummary`, `partyAccessPeople`, `partyAccessFor`, `savePartyAccess`, `partyAccessExportUrl` | `party.assign`, `party.accessAll`, `parties.export` |
 | `master/web/src/screens/PartyAccessEditor.tsx` | the editor modal, `{ PartyAccessEditor }` with `PartyAccessEditorProps` (`party`, `people`, `canEdit`, `onSaved`, `onClose`): header with Open/Restricted pill and explainer, people with level switches and Remove, deactivated holders marked and removable, add-person `Combobox`, Add several people (`MultiPicker`), Copy access from another party (searches the Master), whole-set save with `expectedVersion`, conflict banner with Reload, inline discard question (focus on Keep editing), unsaved work registered for "Save all and update", read-only view without `party.assign`, screen-reader-only live status, footer height reserved for two lines. **Byte-identical to the Office copy.** | `partyAccess`, `partyAccessFor`, `savePartyAccess` | `party.assign` |
 | `master/web/src/screens/FieldsScreen.tsx` (1078) | **Values** (per set, now `product.brand` among them: the shared `ui/src/OptionListEditor.tsx` since catalogue v2 — add/edit with hex check, reorder, remove to Bin, usage; its transport `optionListTransport` moved to `transports.ts` in 1.3 Phase 1), **Definitions** (per entity, 5 types, reorder, delete, stale-version notice), **Stages** (edit name/colour/terminal, default, reorder, archive/restore; default-stage and occupied-stage refusals reported separately). No create-stage call. | the 17 fields members | `fields.view`, `fields.manage` |
 | `master/web/src/screens/LogsScreen.tsx` (20) | since 1.3 Phase 2 a thin mount: builds a module-level `LogsTransport` from `api` and renders the shared `ui/src/LogsScreen.tsx` (§4.7) | `logs`, `logFacets`, `verifyLogChain`, `logsExportUrl` | `logs.view`, `logs.verifyChain`, `logs.export` |
 | `master/web/src/screens/RecycleBinScreen.tsx` (578) | soft-deleted records, `LoadMorePager`, type/search/deleted-by filters, counts, own/everyone scope; restore per row with `RESTORE_PERMISSION[type]`; a 409 opens `RefusalDialog` (suggested rename, or restore parents first and retry with `cascadeParents: true`) | `recycleBin`, `recycleBinCounts`, `recycleBinDeleters`, `restoreFromBin` | `recycleBin.view`, `recycleBin.viewAll`, `RESTORE_PERMISSION` |
 | `master/web/src/screens/ConflictsScreen.tsx` (179) | one card per conflict: kept vs overwritten with device codes (a line or variant set reads one row per line, not JSON); Keep (`keepWinner`) / Restore overwritten (`restoreLoser`). The module is gated `sync.resolveConflicts`, so no control is conditional | `conflicts`, `resolveConflict` | none (module gate `sync.resolveConflicts`) |
-| `master/web/src/screens/IntegrationsScreen.tsx` (1108) | Keys (issue — token shown once in `IssuedTokenDialog`, copied with `copyText` — and revoke) and Connectors (list, `ConnectorDialog`, dry run and import, run history, `MappingEditor` as a sub-nav editor) | `apiKeys`, `connectors`, `issueApiKey`, `revokeApiKey`, `users`, `createConnector`, `updateConnector`, `runConnector`, `connectorRuns`, `setConnectorMapping`, `testConnector` | `canManage` (`api.manage`) |
-| `master/web/src/screens/SettingsScreen.tsx` (608) | `SettingsScreen`; `SETTINGS_TAB_IDS` and `settingsTabIdsFor` moved to `settingsTabs.ts` in 1.3 Phase 1. (`MASTER_HIDDEN_SETTINGS` and the three `inventory.*` settings are gone in 1.4.) Since catalogue v2 a **Leads** tab holds the lead-source list (`OptionListEditor`, the Fields permissions) and the `leads` settings group, which left the Company tab; `NumberSetting` moved to `ui/src/SettingsLayout.tsx`. Takes `permissions` from the shell (since 2026-09-25; it used to read `/me` on mount and start from "yes"), so tabs and reads are right on the first render and keyed on booleans. Since 1.3 Phase 2 the Connection tab offers **Change pairing password** to a Server Master on the Master PC (`canChangePairingPassword`): confirm, master key, then the new password shown once. Appearance; Shortcuts; **Company** (only if `api.settings()` returned — `settings.manage`; one section per `SETTING_GROUPS` entry, row-level save; vault coverage beside `security.passwordRevealEnabled`); Connection (company, LAN address:port, master id, setup date; `settings.manage`, the identity read is not made without it); Storage & backup (`settings.tab.storageBackup` since 1.3 Phase 8: usage figures, `StorageBackupActions` with `storage.manage`, and with `storage.backupAll` the `BackupAllSection` and `AutoBackupSection`, told `onMasterPc` by the shell; `settings.manage`). Appearance and Shortcuts are offered to everyone; there is no Developer tab (the routes remain) | `identity`, `storage`, `settings`, `saveSetting`, `vaultStatus`, `developer.*` | `settings.manage`, `storage.manage`, `users.viewPassword` |
+| `master/web/src/screens/IntegrationsScreen.tsx` (1108) | Keys (issue — token shown once in `IssuedTokenDialog`, copied with `copyText` or kept with 1.4.3's **Save to .txt** — and revoke) and Connectors (list, `ConnectorDialog`, dry run and import, run history, `MappingEditor` as a sub-nav editor) | `apiKeys`, `connectors`, `issueApiKey`, `revokeApiKey`, `users`, `createConnector`, `updateConnector`, `runConnector`, `connectorRuns`, `setConnectorMapping`, `testConnector` | `canManage` (`api.manage`) |
+| `master/web/src/screens/SettingsScreen.tsx` (608) | `SettingsScreen`; `SETTINGS_TAB_IDS` and `settingsTabIdsFor` moved to `settingsTabs.ts` in 1.3 Phase 1. (`MASTER_HIDDEN_SETTINGS` and the three `inventory.*` settings are gone in 1.4.) Since catalogue v2 a **Leads** tab holds the lead-source list (`OptionListEditor`, the Fields permissions) and the `leads` settings group, which left the Company tab; `NumberSetting` moved to `ui/src/SettingsLayout.tsx`. Takes `permissions` from the shell (since 2026-09-25; it used to read `/me` on mount and start from "yes"), so tabs and reads are right on the first render and keyed on booleans. Since 1.3 Phase 2 the Connection tab offers **Change pairing password** to a Server Master on the Master PC (`canChangePairingPassword`): confirm, master key, then the new password shown once (with 1.4.3's **Save to .txt**; `StorageBackup`'s restore dialog has it too). Appearance; Shortcuts; **Company** (only if `api.settings()` returned — `settings.manage`; one section per `SETTING_GROUPS` entry, row-level save; vault coverage beside `security.passwordRevealEnabled`); Connection (company, LAN address:port, master id, setup date; `settings.manage`, the identity read is not made without it); Storage & backup (`settings.tab.storageBackup` since 1.3 Phase 8: usage figures, `StorageBackupActions` with `storage.manage`, and with `storage.backupAll` the `BackupAllSection` and `AutoBackupSection`, told `onMasterPc` by the shell; `settings.manage`). Appearance and Shortcuts are offered to everyone; there is no Developer tab (the routes remain) | `identity`, `storage`, `settings`, `saveSetting`, `vaultStatus`, `developer.*` | `settings.manage`, `storage.manage`, `users.viewPassword` |
 | `master/web/src/screens/UpdatesScreen.tsx` (372) | this Master's version, panels behind (`standing()`), the offer from the local releases folder; **Install** → `prepareMasterUpdate` → `desktopBridge().applyUpdate()` (in a browser shows the path); a build that cannot install over itself shows how to update by hand instead of the button — the standalone `.exe` (`updates.standaloneBody`) or a Linux copy not started from an AppImage (`getShellSettings().systemPackage`, `updates.systemPackageBody`); panel version table | `updateStatus`, `prepareMasterUpdate` | `settings.manage` |
-| `master/web/src/screens/FirstRunScreen.tsx` (640) | "Set up new site" (company name and, since 1.3 Phase 2, two typed Server Master account blocks prefilled `master` / `master-backup`, checked for length, match and distinct usernames → `initialize` → the two usernames, LAN addresses, master id and the pairing password shown once; no `admin` is created) or, since 1.3 Phase 8, **Magic restore from a backup drive** (`MagicRestoreFlow`: the zip's path, typed or from `chooseFile`; the preview; the restore followed with `useBackupJob` over `setupArchiveJob`; then Continue to sign-in, with the secrets to re-enter) or "Restore an encrypted backup (.obbackup)" (preview, passphrase, restore, new pairing password); `DataDirCard` | `initialize`, `previewRestoreSetup`, `restoreSetup`, `setupPreviewArchive`, `setupRestoreArchive`, `setupArchiveJob` | none |
-| `master/web/src/screens/SignInScreen.tsx` (165) | username (empty since 1.3 Phase 2; a fresh setup has no `admin`) and password; errors via `apiErrorText`; shows the shell's `notice`. On the Master PC (`onMasterPc` from `/api/setup/status`): `ServerMasterSetupFlow` instead of the form while `serverMasterSetupNeeded`, and a "Forgot Server Master password?" link to `MasterKeyRecoveryFlow` | `signIn` | none |
-| `master/web/src/screens/ServerMasterSetupFlow.tsx` (277) | 1.3 Phase 2. The Server Master accounts an older installation owes: master key (`MasterKeyForm`), then exactly the missing account blocks, no skip; also exports the account blocks and their checks (`accountDrafts`, `accountDraftsError`, `toAccountInputs`, `ServerMasterAccountFields`) that first run uses | `verifyMasterKey`, `serverMasters`, `setUpServerMasters` | none (Master PC, master key) |
-| `master/web/src/screens/MasterKeyRecoveryFlow.tsx` (184) | 1.3 Phase 2. "Forgot Server Master password?": master key, pick the Server Master, new password twice; the password only | `verifyMasterKey`, `serverMasters`, `recoverServerMaster` | none (Master PC, master key) |
+| `master/web/src/screens/FirstRunScreen.tsx` (640) | 1.4.3 (R4): **Save to .txt** on the ready step (accounts, LAN addresses, master id, pairing password) and the restore-done step (new pairing password). "Set up new site" (company name and, since 1.3 Phase 2, two typed Server Master account blocks prefilled `master` / `master-backup`, checked for length, match and distinct usernames → `initialize` → the two usernames, LAN addresses, master id and the pairing password shown once; no `admin` is created) or, since 1.3 Phase 8, **Magic restore from a backup drive** (`MagicRestoreFlow`: the zip's path, typed or from `chooseFile`; the preview; the restore followed with `useBackupJob` over `setupArchiveJob`; then Continue to sign-in, with the secrets to re-enter) or "Restore an encrypted backup (.obbackup)" (preview, passphrase, restore, new pairing password); `DataDirCard` | `initialize`, `previewRestoreSetup`, `restoreSetup`, `setupPreviewArchive`, `setupRestoreArchive`, `setupArchiveJob` | none |
+| `master/web/src/screens/SignInScreen.tsx` | username (empty since 1.3 Phase 2; a fresh setup has no `admin`) and password; errors via `apiErrorText`; shows the shell's `notice`. 1.4.3 (R6-R8): a heading and subtitle, the "why you are here" notice as a banner, `CapsLockHint` under the password box, the password box emptied and refocused after a refused sign-in, and `DeviceWarning` under the card. The request sent is unchanged. **The device figures are read only when the browser is on the Master PC** (`onMasterPc`): from a LAN browser `/api/device` would describe the Master, not the PC the person sits at, so the screen then skips the read and shows no warning (an Office PC shows its own). On the Master PC (`onMasterPc` from `/api/setup/status`): `ServerMasterSetupFlow` instead of the form while `serverMasterSetupNeeded`, and a "Forgot Server Master password?" link to `MasterKeyRecoveryFlow` | `signIn` | none |
+| `master/web/src/screens/ServerMasterSetupFlow.tsx` (277) | 1.4.3: Save to .txt for the accounts and passwords just typed. 1.3 Phase 2. The Server Master accounts an older installation owes: master key (`MasterKeyForm`), then exactly the missing account blocks, no skip; also exports the account blocks and their checks (`accountDrafts`, `accountDraftsError`, `toAccountInputs`, `ServerMasterAccountFields`) that first run uses | `verifyMasterKey`, `serverMasters`, `setUpServerMasters` | none (Master PC, master key) |
+| `master/web/src/screens/MasterKeyRecoveryFlow.tsx` (184) | 1.4.3: Save to .txt for the account and new password, kept before the fields clear. 1.3 Phase 2. "Forgot Server Master password?": master key, pick the Server Master, new password twice; the password only | `verifyMasterKey`, `serverMasters`, `recoverServerMaster` | none (Master PC, master key) |
 
 ### 7.5 Where the code and its comments or docs disagree
 
@@ -3847,14 +4021,44 @@ working while the Master is off.
   because the uninstaller's "delete data" removes the folder the pointer names,
   whole; hardening the uninstall scripts themselves is left to the owner (§10.10).
 
-### 8.4 HTTP API — `office/src/http/app.ts` (2,095 lines)
+### 8.4 HTTP API — `office/src/http/app.ts` (2,925 lines at 1.4.3)
 
-**97 route registrations** (37 GET, 43 POST, 8 PUT, 1 PATCH, 8 DELETE, including the
-SPA fallback `GET /^(?!\/api).*/`). Middleware order: `express.json({limit:'1mb'})`
+**144 route registrations** (59 GET, 61 POST, 13 PUT, 1 PATCH, 10 DELETE, recounted on the
+1.4.3 tree, including the SPA fallback `GET /^(?!\/api).*/`). Middleware order: `express.json({limit:'1mb'})`
 → pre-gate routes → `app.use('/api', requireUser)` (401 `not_signed_in` with nobody
-signed in; `/uploads/*` is outside `/api`) → gated routes → `express.static(office/web/dist)`
-and the SPA fallback (503 page when `index.html` is missing) → JSON 404 for unknown
-`/api` → `errorHandler` (multer `LIMIT_FILE_SIZE` → 400).
+signed in; `/uploads/*` is outside `/api`) → gated routes → `webStatic(office/web/dist)`
+(`office/src/http/web-static.ts`, 1.4.3: hashed `/assets/*` for a year and immutable, everything
+else `no-cache` with an ETag; mirrors the Master's) and the SPA fallback (503 page when `index.html` is missing) → JSON 404 for unknown
+`/api` → `badRequestHandler` → `errorHandler` (multer `LIMIT_FILE_SIZE` → 400).
+
+**1.4.3 additions to this file:**
+
+- `GET /api/device` (before the gate, next to `/api/health`): `{ totalMemoryBytes, cpuCount }`
+  from `os`, for the sign-in warning (`os.availableParallelism` is deliberately not used: it
+  needs Node 18.14 and the Windows 7 Office runs Node 16).
+- `office/src/http/bad-request.ts`: `badRequestHandler` answers Express's malformed
+  percent-escape (`/api/orders/%E0%A4%A`, a `URIError`) with 400 `validation_error`
+  (`validation.request.badInput`) instead of 500; `errorHandler` also answers a body the JSON
+  parser refused with 400 / 413 through `bodyParserFailure` (`shared/`). Tests:
+  `office/tests/malformed-percent-encoding.test.ts`; the malformed and oversize body cases are in `office/tests/connection-routes.test.ts` (Office) and `master/tests/device-route.test.ts` (Master).
+  `POST /api/conflicts/:id/resolve` answers 400 for an id that is not a safe integer.
+- `commandCached(event, payload)`: `forward()` sends a read-only lookup the screens re-ask on
+  every open through a short cache before it reaches the Master. The cached events and their
+  TTLs are `fields:catalogue`, `fields:stages`, `fields:values`, `fields:definitions` (15 s),
+  `report:options` (30 s), `partyAccess:summary` (10 s) and `partyAccess:people` (15 s); the key
+  is the signed-in user plus the event plus its JSON payload; at most 200 entries; a rejection
+  is never kept. `clearReadCache()` runs on the Master link's `change`, `snapshot` and
+  `session:changed` events (registered before the listeners that tell the browser, so a
+  refetch is never stale); the TTL covers a write that publishes no change. Snapshot-served
+  reads (`/api/products`, `/api/categories`, `/api/pick`, `/api/snapshot`) were already local
+  and are not cached again. Tests: `office/tests/module-forwarding.test.ts` and
+  `office/tests/party-access-route.test.ts` call `clearReadCache` between cases.
+- `office/tests/image-cache-headers.test.ts` pins `Cache-Control: private, max-age=31536000,
+  immutable` plus ETag and 304 on `/uploads/images` and `/uploads/avatars` (already the
+  behaviour; nothing in the code changed for it).
+- `office/src/index.ts` installs `installCrashGuard` (§11.10), as does the Master's. The
+  Office has no socket server of its own (only a client to the Master), so no socket guard
+  and no limiter apply here.
 
 **Upload limits** (all `multer.memoryStorage()`, `office/src/http/app.ts`, lines 75-90):
 `imageUpload` = `MAX_IMAGE_SOURCE_BYTES` (60 MiB), `backupUpload` = 64 MiB,
@@ -4181,7 +4385,7 @@ Singleton `masterConnection` (an `EventEmitter`).
   (`POST /api/connection/unpair`; `unpairAllowed()`: no sign-in only when this PC is not recognised or the Master cannot be reached, otherwise `panels.manage`, and discarding unsent work always needs that right): clears the
   pairing, cache and cursor; refuses with `pending_changes` and the count while unsent work
   exists until the caller says `keep` or `discard`.
-- `office/web/src/screens/SetupScreen.tsx` (the first sync after pairing, three steps, warns on a
+- `office/web/src/screens/SetupScreen.tsx` (1.4.3: **Save to .txt** with the company, the Master's address and version, this panel's name and device code, slug `office-setup`; the first sync after pairing, three steps, warns on a
   version difference or a different Master), `office/web/src/components/ConnectionUnpair.tsx`
   (the two-question "Connect to a different Master", on the sign-in screen, the "not recognised"
   banner and Settings), and `ConnectionScreen.tsx` (stop/progress, field validation, Test
@@ -4260,7 +4464,7 @@ Singleton `masterConnection` (an `EventEmitter`).
 - `office/src/domain/backup.ts` — `BackupValidationError`,
   `assertImportableFormatVersion`, `assertPassphraseStrong`, `summarizeManifest`.
 
-### 8.8 `office/tests` (16 files, 175 `it(` cases, no PostgreSQL)
+### 8.8 `office/tests` (31 test files, 383 tests at 1.4.3 by vitest's own count, no PostgreSQL)
 
 They mock `../src/config/index.js` or use `mkdtemp`, load modules with dynamic
 `await import()`, and several use `supertest` against `createApp()` with a stubbed
@@ -4271,24 +4475,37 @@ does.
 
 | File | Cases | Pins |
 |---|---|---|
-| `office/tests/outbox.test.ts` | 23 | temp-id shape and no reuse after restart; outbox durability, stamping, `fields`, `settle`, `remapIds`, serialised writes; an unreadable queue set aside (both corrupt shapes), a one-off `EBUSY` read and a one-off `EPERM` rename followed by a save; overlay; restore; view memo; cursor persistence; legacy bare snapshot |
-| `office/tests/user-session.test.ts` | 25 | online vs offline; a Master refusal never falls back; own verifier; revoked vs expired; 3-failure lockout surviving restart; reconcile; `offlineSignInEnabled` |
-| `office/tests/offline-pick.test.ts` | 17 | `pickFromView`, `listProductsFromView` |
-| `office/tests/storage-path.test.ts` | 26 | `paths()`, `relocateDataDir` (the refusals: drive root, home folder, a folder holding foreign files), `writeEnvValue`; a move surviving a real restart under both launchers (shell pointer and source settings file) |
-| `office/tests/developer.test.ts` | 14 | unlock, `.env` override, lockout, TTL, `resetPanel`, routes behind `requireUser` |
-| `office/tests/module-forwarding.test.ts` | 11 | 503 vs refusal pass-through, 403 with permission, 401 without session; `/api/products` online/offline; bulk import online-only |
+| `office/tests/chat-forwarding.test.ts` | 10 | chat forwarding |
+| `office/tests/connection-routes.test.ts` | 17 | GET /api/connection; pairing answers; POST /api/connection/test; POST /api/connection/unpair; GET /api/device; a body the parser refuses |
 | `office/tests/credentials.test.ts` | 8 | round trip, 0600, corrupt = unpaired |
-| `office/tests/lead-route.test.ts` | 12 | `POST /api/leads` and `PUT /api/leads/:id` shape checks (the trust boundary); a malformed payload without `leads.create` / `leads.edit` gets 403, not 400 |
-| `office/tests/sync-settle.test.ts` | 6 | 1.3 Phase 4: `awaitSettled` resolves with the permanent id and PO number, and null on timeout; a save during a flush reruns at once; `numbered` says `announced` only when a save was waiting |
-| `office/tests/presence-route.test.ts` | 4 | 1.3 Phase 4: `POST /api/presence` forwards `presence:beat` with the body cut down to the protocol's fields; 503 offline 1.4 R22: `GET /api/presence/board` forwards the kind, 400 on any other, 503 offline, behind the sign-in gate. |
-| `office/tests/snapshot-for-user.test.ts` | 5 | `GET /api/snapshot` key set (DSH-1), permissions replaced, other people's restricted parties withheld |
-| `office/tests/stock-retired.test.ts` | 2 `it(` | 1.4 (R15): a snapshot cached before stock was removed (old `stock` rows, `reservations` on orders, `lowStockCount`) and one with no `stock` key both restore and build a view |
-| `office/tests/local-store-restore.test.ts` | 4 | concurrent `restore()`, never-synced, torn file |
-| `office/tests/local-store-overlay.test.ts` | 1 | 1.3 Phase 4: a queued lead edit stamps its fields' clocks on the view, so the next edit's base is that edit and the Master's merge sees no clash |
+| `office/tests/dashboard-staleness.test.ts` | 3 | `forCurrentUser` strips figures (DSH-3) |
+| `office/tests/developer.test.ts` | 15 | unlock, `.env` override, lockout, TTL, `resetPanel`, routes behind `requireUser` |
+| `office/tests/discovery-client.test.ts` | 8 | what a search remembers about a Master; stopping a search; where a search broadcasts |
 | `office/tests/health-route.test.ts` | 3 | `/api/health` without a session; the gate holds; JSON 404 |
-| `office/tests/dashboard-staleness.test.ts` | 2 | `forCurrentUser` strips figures (DSH-3) |
-| `office/tests/legacy-compat.test.ts` | 8 (+1 `it.each` over 9 patterns) | the Node 16.17 floor: no named `statfs` import, `fromWeb`, `closeAllConnections`, `AbortSignal.any`/`timeout`, `structuredClone` or ES2023 builtins in `office/src` or `shared/src`; `legacy-globals.js` is the entry point's first import; undici stays on 5.x; `installLegacyGlobals` fills only what is missing; `parseWmicDisk`; the `wmic` fallback when `fs.statfs` is missing |
+| `office/tests/image-cache-headers.test.ts` | 2 | the cached product image route; the cached avatar route |
+| `office/tests/lead-route.test.ts` | 19 | `POST /api/leads` and `PUT /api/leads/:id` shape checks (the trust boundary); a malformed payload without `leads.create` / `leads.edit` gets 403, not 400 |
+| `office/tests/legacy-compat.test.ts` | 18 | the Node 16.17 floor: no named `statfs` import, `fromWeb`, `closeAllConnections`, `AbortSignal.any`/`timeout`, `structuredClone` or ES2023 builtins in `office/src` or `shared/src`; `legacy-globals.js` is the entry point's first import; undici stays on 5.x; `installLegacyGlobals` fills only what is missing; `parseWmicDisk`; the `wmic` fallback when `fs.statfs` is missing |
+| `office/tests/local-store-overlay.test.ts` | 1 | 1.3 Phase 4: a queued lead edit stamps its fields' clocks on the view, so the next edit's base is that edit and the Master's merge sees no clash |
+| `office/tests/local-store-restore.test.ts` | 4 | concurrent `restore()`, never-synced, torn file |
+| `office/tests/malformed-percent-encoding.test.ts` | 1 | malformed percent-encoding on the Office |
+| `office/tests/master-binding.test.ts` | 19 | adopting a Master after pairing; remembering that the Master removed this PC; leaving a Master on purpose |
+| `office/tests/master-connection.test.ts` | 29 | the protocol handshake; uploading offline sign-ins; reconnecting without a restart; what the status says; finding a Master that moved; asking an unproven address for its proof; a role or user edit on the Master (1.4 R9) |
+| `office/tests/module-forwarding.test.ts` | 43 | 503 vs refusal pass-through, 403 with permission, 401 without session; `/api/products` online/offline; bulk import online-only |
+| `office/tests/offline-auth-events.test.ts` | 8 | the offline sign-in store; signing in offline records it for the Master |
+| `office/tests/offline-pick.test.ts` | 24 | `pickFromView`, `listProductsFromView` |
+| `office/tests/outbox.test.ts` | 23 | temp-id shape and no reuse after restart; outbox durability, stamping, `fields`, `settle`, `remapIds`, serialised writes; an unreadable queue set aside (both corrupt shapes), a one-off `EBUSY` read and a one-off `EPERM` rename followed by a save; overlay; restore; view memo; cursor persistence; legacy bare snapshot |
+| `office/tests/pairing-service.test.ts` | 29 | manual pairing: what the Master said is recognised, not passed through; auto pairing: the answer, the address and the refusals; test connection |
+| `office/tests/party-access-route.test.ts` | 5 | the Party Access list and its summary |
+| `office/tests/presence-route.test.ts` | 7 | 1.3 Phase 4: `POST /api/presence` forwards `presence:beat` with the body cut down to the protocol's fields; 503 offline 1.4 R22: `GET /api/presence/board` forwards the kind, 400 on any other, 503 offline, behind the sign-in gate. |
+| `office/tests/print-forwarding.test.ts` | 5 | print forwarding |
+| `office/tests/snapshot-for-user.test.ts` | 6 | `GET /api/snapshot` key set (DSH-1), permissions replaced, other people's restricted parties withheld |
+| `office/tests/stock-retired.test.ts` | 2 | 1.4 (R15): a snapshot cached before stock was removed (old `stock` rows, `reservations` on orders, `lowStockCount`) and one with no `stock` key both restore and build a view |
+| `office/tests/storage-path.test.ts` | 26 | `paths()`, `relocateDataDir` (the refusals: drive root, home folder, a folder holding foreign files), `writeEnvValue`; a move surviving a real restart under both launchers (shell pointer and source settings file) |
+| `office/tests/sync-hold.test.ts` | 4 | holding a chat post for its author |
+| `office/tests/sync-settle.test.ts` | 6 | 1.3 Phase 4: `awaitSettled` resolves with the permanent id and PO number, and null on timeout; a save during a flush reruns at once; `numbered` says `announced` only when a save was waiting |
+| `office/tests/unpair-allowed.test.ts` | 4 | unpairAllowed |
 | `office/tests/update-platform.test.ts` | 8 | the Windows 7 build asks for and downloads `?platform=win7`; a manifest for another platform (or none, which is `win32`) is refused with `noRelease` before `verifyManifest`; Electron 33 and plain Node keep asking for their own platform |
+| `office/tests/user-session.test.ts` | 26 | online vs offline; a Master refusal never falls back; own verifier; revoked vs expired; 3-failure lockout surviving restart; reconcile; `offlineSignInEnabled` |
 
 ### 8.9 Where the code and its comments disagree
 
@@ -4358,16 +4575,16 @@ record; the real record arrives later over the SSE stream.
 | `office/web/src/screens/MainProductsScreen.tsx` | 598 | App (`products.main`, `products.brands`) | catalogue v2: `MainProductsScreen` — the owner's Products (categories) with code, brand and order, a detail sub-screen listing its sub products in catalogue order, create/edit dialog and delete, all online only (the list falls back to the snapshot); `BrandsScreen` — the `product.brand` list through `OptionListEditor` (`fields.manage`) |
 | `office/web/src/screens/ProductDetail.tsx` | 168 | CatalogScreen | Photo card (`ProductImages`) + Details card with Edit |
 | `office/web/src/screens/PartyDetail.tsx` | 218 | CatalogScreen | contact, access state, the party's own product records, ≤ 5 recent leads |
-| `office/web/src/screens/LeadBoardScreen.tsx` | 538 | App (`leads`) | open leads as list (default) or kanban; scope and stage filters; card menu move/convert; since catalogue v2 **Preview PDF** on an open lead the Master has received (`leads.export`); since 1.3 H3 **Filling note** / **Dispatch note** on an open, not-converted lead (`leads.export`, `OrderNoteScreen source="lead"` from the local snapshot and `view.parties`, so they work offline and need no sync; sub-nav `leads.note`) |
+| `office/web/src/screens/LeadBoardScreen.tsx` | 793 | App (`leads`) | open leads as list (default, `PageBar` paging since 1.4.3) or kanban; scope and stage filters; card menu move/convert; since catalogue v2 **Preview PDF** on an open lead the Master has received (`leads.export`); since 1.3 H3 **Filling note** / **Dispatch note** on an open, not-converted lead (`leads.export`, `OrderNoteScreen source="lead"` from the local snapshot and `view.parties`, so they work offline and need no sync; sub-nav `leads.note`) |
 | `office/web/src/screens/LeadDetail.tsx` | 366 | LeadBoardScreen | lines, history, remark input, stage select, party/details cards, convert form |
-| `office/web/src/screens/OrderBoardScreen.tsx` | 647 | App (`orders`) | orders table; in-file `OrderDetailBody` (lines, weight override, stage, history, dispatch; no reservations card since 1.4) |
+| `office/web/src/screens/OrderBoardScreen.tsx` | 758 | App (`orders`) | orders table, `PageBar` paging (1.4.3); in-file `OrderDetailBody` (lines, weight override, stage, history, dispatch; no reservations card since 1.4) |
 | `office/web/src/screens/PartyAccessScreen.tsx` | 509 | App (`partyAccess`, lazy) | live from the Master; byte-identical to the Master's copy |
 | `office/web/src/screens/ConflictsScreen.tsx` | 265 | App (`conflicts`, lazy) | refused writes (anyone can dismiss) + merge conflicts (resolving needs `sync.resolveConflicts`) |
 | `office/web/src/screens/SettingsScreen.tsx` | 254 | App (`settings`, lazy) | tabs appearance, shortcuts, machine, storage and, since catalogue v2, **leads** — the lead sources (`OptionListEditor`, `fields.view`/`fields.manage`) and the follow-up default (`NumberSetting`, saved through `PUT /api/settings/:key` with `settings.manage`). `SETTINGS_TAB_IDS` moved to `settingsTabs.ts` in 1.3 Phase 1 |
 | `office/web/src/screens/LogsScreen.tsx` | 21 | App (`logs`, lazy; 1.3 Phase 2) | thin mount of the shared `ui/src/LogsScreen.tsx` with a transport over `/api/logs*`, which this panel's server forwards to the Master (503 offline). Offered in the System group, no chord, with `logs.view` |
 | `office/web/src/screens/UpdatesScreen.tsx` | 238 | App (`updates`, lazy) | this panel vs the Master's version; download from the Master and hand to the shell; a standalone `.exe` or a Linux copy not started from an AppImage is told how to update by hand |
 | `office/web/src/screens/ConnectionScreen.tsx` | 409 | App (before pairing) | network status and this PC's device code, marked provisional until paired; auto-pair, manual pair, or restore from `.obbackup` |
-| `office/web/src/screens/SignInScreen.tsx` | 300 | App (paired, no session) | company, this PC's device code (mono); pick a remembered face or type a username; offline notice; forget a profile; `StoragePathCard` |
+| `office/web/src/screens/SignInScreen.tsx` | 351 | App (paired, no session) | company, this PC's device code (mono), Caps Lock hint and the low-memory / few-cores warning (1.4.3); pick a remembered face or type a username; offline notice; forget a profile; `StoragePathCard` |
 | `office/web/src/screens/DashboardScreen.tsx` | 509 | App (`dashboard`) | four `StatTile`s, pipeline bars, recent activity, follow-ups due — all from the `LocalView` |
 
 **Components (`office/web/src/components/`, 5 files, 1,978 lines):**
@@ -4485,6 +4702,14 @@ Sign out and re-reads on `streamEpoch` and on each SSE `notification` (which als
 calls `notify`). `DashboardScreen` takes `railState` and `syncLabel`, so its Sync card
 never reads "All synced" while offline or catching up.
 
+**1.4.3 in this shell (R2/R3):** the SSE `change` frames are applied through a
+`createBurstBatcher` of `CHANGE_BATCH_MS` = 60 (one render per window, every frame still
+applied in order through `applyChangeToSnapshot`; a `snapshot` frame discards the queue), the
+five heavy screens (`ChatroomScreen`, `PrintroomScreen`, `ReportsScreen`, `GalleryScreen`,
+`CatalogListsScreen`) load on first visit through `lazyScreen` and `@orderbook/ui/lazy/*`
+(the Office start-up bundle went from 824,172 to 750,191 bytes, D4's measurement), and the
+sidebar counts come from `useChatUnread` / `usePrintWaiting`.
+
 ### 9.3 `api.ts`
 
 - Transport: `send` (JSON; `ApiError(message, code, details, messageKey, params)`;
@@ -4497,7 +4722,13 @@ never reads "All synced" while offline or catching up.
   mapping, and no `publishSessionEnded` on a 401 (they build the `ApiError`
   themselves). They carry the restore previews and restores (connection and
   storage), storage export, product image upload, product import and its template.
-  `ApiError` has `missingPermission` and `isConflict`. As on the Master (§7.3),
+  `ApiError` has `missingPermission` and `isConflict`. 1.4.3: the same `requestCache`,
+  `invalidateReads()` and cached-GET path as the Master's `api.ts` (§7.3, §4.8) — here the
+  cache is switched on by the shell while the SSE stream is open (`open` → `setLive(true)`, an
+  `error` or a new stream → `setLive(false)`) and dropped by every `change`, `snapshot`,
+  `conflict` and `session` frame, a catch-up after a reconnect and every write; a 401 from
+  `/sign-in` is no longer announced as an ended session; `api.device()` reads `GET /api/device`.
+  As on the Master (§7.3),
   `request()`'s `asFailure` maps a timeout to `'timeout'`, only the caller's own
   cancel to `'aborted'`, and anything else — a network error such as connection
   refused — to `internal_error` (`error.requestFailed`); the texts are catalogue
@@ -4577,14 +4808,18 @@ each with a reason in `ALLOWED_UNCALLED.office`).
   `ProductDetail` on row click; `photoPatch` overlays returned images until the
   snapshot catches up.
 - **`LeadBoardScreen` / `LeadDetail`** — converted leads hidden; scope `all`/`assigned`
-  (`onMyParties` via `view.partyGrants`); list (`DataTable`) or `KanbanBoard`
+  (`onMyParties` via `view.partyGrants`); 1.4.3: the list tab is filtered locally by scope, stage and search
+  (the search through `useDeferredValue`) and then one page of that is shown with `PageBar`
+  (`usePageSize('office-leads')`; the bar's total is the filtered count; the stage chips count
+  what the local list holds under the search and scope); the kanban tab is not paged
+  (it is columns, not a list); list (`DataTable`) or `KanbanBoard`
   (drag → `api.setLeadStage`; card menu Open / next stage / Convert, disabled
   without `lead.convert` or while packaging is missing and required). `LeadDetail`
   shows lines (code, name, variant/colour chips, packaging, grade, weights), total
   weight, history `Timeline`, remark input (`api.addLeadRemark`), stage `Select`
   (disabled once converted), party and details cards, and a convert card (dispatch
   label, expected date → `api.convertLead`).
-- **`OrderBoardScreen`** — table only; stage filter controlled by `App` (so the
+- **`OrderBoardScreen`** — table only, paged locally with `PageBar` since 1.4.3 (`usePageSize('office-orders')`, the filtered rows sliced by `pageWindow`, chips counting the local list, search through `useDeferredValue`); stage filter controlled by `App` (so the
   `orders.stage:<id>` sub-pages and chips agree). `OrderDetailBody`: lines table,
   weight card with an override
   `NumberInput` that calls `api.updateOrder({ totalWeightKgOverride })` on blur only
@@ -4621,7 +4856,9 @@ each with a reason in `ALLOWED_UNCALLED.office`).
 - **`SignInScreen`** — logo, company, the device code (`signin.deviceCode`, mono;
   1.3 Phase 1), notice, `OfflineBanner` when not connected;
   profiles from `api.profiles()` with `api.profileAvatarUrl`; "×" forgets after
-  `useConfirm`; `api.signIn(username, password)`; errors via `apiErrorText`.
+  `useConfirm`; `api.signIn(username, password)`; errors via `apiErrorText`. 1.4.3 (R6-R8): the same
+  heading, notice banner, `CapsLockHint`, refocus-after-refusal and `DeviceWarning` as the Master's
+  (here `useDeviceInfo(api.device)` always runs: the figures are this PC's own).
 - **`DashboardScreen`** — the landing screen for admin-tier people. Four `StatTile`s
   computed from `view`: open leads (+ due today), open orders (+ boxes still to
   dispatch: the sum of line quantities on open orders, `dashboard.orders.boxesOpen`), dispatched this week (pieces), sync status (conflicts first, then queued work). Pipeline bars
@@ -5579,6 +5816,23 @@ connect until what it missed is stored and its outbox is sent, and the Master's
 `notify()` puts a "panel offline over an hour" notice in the bell of everyone who
 manages panels.
 
+**Renames reach the Offices (1.4.3).** The Master reads `partyName`, `ownerName` and
+`stageName` live, by join, but a change event carries only its own row, so an Office used
+to keep the old name on every lead and order it held until that record changed or the next
+full snapshot. Three cases, three answers. A **party** rename: the one shared fold,
+`applyChangeToSnapshot` (§3.9, used by the Office server, its browser and the replay test),
+sets `partyName` on that party's leads and orders when a `party` change arrives (created,
+updated or restored). A **user** rename: users are withheld from panels, so nothing reached an
+Office at all; `user.service.updateUser` now also publishes a payload-less `setting` change
+with `id: 'user.displayName'` when the display name really changed (§5.6). `setting` is a
+snapshot-forcing entity, so connected Offices refresh, a reconnecting one is refused a delta,
+and nothing about the user travels. A **stage** rename: already correct, `pipeline` is
+snapshot-forcing. A product, category or brand rename does *not* reach a line: a line's
+`productName`, `categoryName`, `categoryCode` and `brandName` are stored on the line when it is
+added, and the Master shows the same snapshot, so Master and Office agree and history is not
+rewritten. Tests: `shared/tests/apply-party-rename.test.ts`,
+`master/tests/user-rename-sync.integration.test.ts`.
+
 ### 11.4 Lead → order → dispatch (no stock since 1.4)
 
 1. **Create the lead (Office).** `office/web/src/screens/AddLeadScreen.tsx` → `api.createLead`
@@ -6025,24 +6279,101 @@ Printroom blocks of `master-shell.test.tsx` and `office-shell.test.tsx`.
    `ui/tests/locale.test.ts`, `ui/tests/kit-i18n.test.tsx` (the kit's chrome), `ui/tests/permission-labels.test.tsx`, and the ESLint rule for the swept
    files.
 
+### 11.10 Caching, limits and stability (1.4.3)
+
+**Which layer answers a repeated read.** A browser asks for the same list several times
+(a screen switch, a modal opening a record its list already read, three components asking
+`/api/option-lists` in one second), and each panel has its own layers, outermost first.
+(1) The browser's `index.html` and `/assets/*` come from `webStatic` (§5.8.4): hashed assets are
+cached for a year and immutable, `index.html` is revalidated with its ETag on every load, so an
+update shows on the next open and a repeat visit moves no body. Product images and avatars were
+already `private, max-age=31536000, immutable` under a per-upload URL, with ETag and 304.
+(2) In the page, `ui/src/requestCache.ts` (§4.8) answers a repeated JSON read from memory: fresh
+for 8 s with no network, served stale for up to 60 s while one quiet read refreshes it, never
+older, and only for the prefixes in `CACHEABLE_PREFIXES`; chat has its own `chatCache.ts`, kept
+current by the live pushes. (3) On the Master, when a read does arrive, `seqCached` (§5.4)
+answers the dashboard summary, the categories list, the Pending and Final lists with their stage
+counts, and chat history from the last computation if nothing has changed (5 to 15 s); a read
+that the Office serves from its snapshot never leaves the Office, and the Office's own
+`commandCached` (§8.4) keeps the read-only lookups it would otherwise forward to the Master for
+10 to 30 s. Only then does a query run.
+
+**What drops each cache.** The browser cache is dropped by every change event on that panel's
+feed (the Master's `data:changed` or `sync:conflict`, the Office's `change`, `snapshot`,
+`conflict` and `session` frames), by every write that settles (any non-GET through `api.ts`), by
+every reconnect, and by the feed going down, which also turns it off until the feed is back,
+because with the feed down nobody can say what moved; a read that was in flight at the moment
+of an invalidation is not stored. A burst of events (a bulk import) is folded into one
+update per 80 ms on the Master and one render per 60 ms on the Office (`burstBatch.ts`), but the
+cache is dropped on the first event, not at the end of the window. The Master's sequence cache
+is valid only while the change ring's sequence is the one it was computed at, so any
+`publishChange` anywhere (every write publishes after its transaction commits) drops all of it
+on the next read; a chat push bumps it separately; a restore or reset clears it with the other
+process caches. The Office's lookup cache is dropped by the Master's `change`, a new snapshot
+and `session:changed`. The TTLs only cover what publishes no change (a clock-driven figure, a
+raw SQL edit that only tests do).
+
+**What the limiter answers.** Per source address, per attempted username, per multipart upload
+and per socket connection, `rate-limit.ts` (§5.8.4) counts in fixed 60 s windows. Over a limit
+a caller gets 429 `rate_limited` with `retryAfterSeconds` in the body and `Retry-After` in the
+header (a socket command with an ack gets the same coded failure, one without is dropped), and
+the Master stays up. The limits are set well above a person (60 sign-ins a minute per address,
+30 per username, 1,200 socket commands per connection), because every Office reaches the
+Master from its own PC's address; sign-in's strict control remains the account lockout. The
+Office server has no limiter.
+
+**What a crash does.** A stray rejection or exception in either server is logged and the
+process keeps serving (`installCrashGuard`, §3.2); past more than five in a minute the process
+shuts down cleanly and the desktop shell starts a fresh one. A socket command handler that
+throws on a malformed payload answers its own ack with `validation.socket.badPayload` and never
+reaches the process (`guardedOn`, §5.9). Bad input is the caller's mistake and answers 400 or
+413, never 500: a malformed or oversize JSON body (`bodyParserFailure`), a non-integer
+`limit`, `offset` or id (`queryInt`), a value PostgreSQL refuses by type (`badInputHandler`),
+and a malformed percent-escape in a path (both servers). In the window, one screen's render
+error is caught by its own `ScreenErrorBoundary` (Try again or Reload, the rest of the window
+keeps working), and a request failure no screen caught is said once in a toast
+(`failureToasts.ts`, §4.6).
+
+Not measured on a real shop PC: the limits were chosen, not profiled; the 429 over a real
+socket and the cache headers on a served build were exercised by two-process passes in the
+1.4.3 integration, not by a standing test.
+
 ---
 
 ## 12. Tests
 
 ### 12.1 Where the tests are
 
-201 files in test directories, 193 of them test files (2593 tests in
-the last full run). **No test file exists outside these five directories;
+At 1.4.3, 345 files in test directories, 334 of them test files (the 1.4.3 integration
+gate reported 330 test files and 4,457 tests passed, with 17 skipped in 1 file; the counts
+below are `git ls-files` counts, the 1.4.3 additions are listed after the table). **No test file exists outside these five directories;
 `master/web` and `office/web` have none of their own** — `ui/tests` boots both
 (§4.11).
 
 | Directory | Tracked | Test files | Other |
 |---|---|---|---|
-| `master/tests` | 107 | 105 (48 `*.integration.test.ts`) | `master/tests/helpers/db.ts`, `master/tests/helpers/fixtures.ts` |
-| `office/tests` | 12 | 12 | — |
-| `shared/tests` | 16 | 15 | `shared/tests/activity-tokens.lock.json` |
-| `ui/tests` | 20 | 18 (14 `.tsx`, 4 `.ts`) | `ui/tests/panel-harness.ts`, `ui/tests/tsconfig.json` |
-| `electron/tests` | 14 | 12 | two dry-run fixtures |
+| `master/tests` | 178 | 172 (88 `*.integration.test.ts`) | `master/tests/helpers/db.ts`, `master/tests/helpers/fixtures.ts` |
+| `office/tests` | 31 | 31 | — |
+| `shared/tests` | 36 | 35 | `shared/tests/activity-tokens.lock.json` |
+| `ui/tests` | 76 | 74 (62 `.tsx`, 12 `.ts`) | `ui/tests/panel-harness.ts`, `ui/tests/tsconfig.json` |
+| `electron/tests` | 24 | 22 | two dry-run fixtures |
+
+**1.4.3 additions.** `master/tests`: `rate-limit.test.ts` (9, no database: the limit and its
+coded 429, an IPv6-mapped address counted once, per-route buckets, per-username folding,
+uploads only when multipart, the socket ack refusal and silent drop, and the sequence cache:
+invalidation on a recorded change, TTL, a shared computation, no cached rejection, a chat push
+dropping it), `cache-invalidation.integration.test.ts` (10: a party rename, a user rename,
+Party Access, a product delete, a category rename, a Recycle Bin restore, a data wipe or
+restore and a stage change each drop what they should), `stage-counts.integration.test.ts` (4),
+`duplicate-products-domain.test.ts` (7), `duplicate-products.integration.test.ts` (6),
+`user-rename-sync.integration.test.ts` (2), `device-route.test.ts` (3),
+`http-bad-input.integration.test.ts` (4), `paging-not-a-number.test.ts` (2) and
+`socket-malformed-payload.integration.test.ts` (2). `office/tests`: `image-cache-headers.test.ts` (2)
+and `malformed-percent-encoding.test.ts` (1). (Counts here and below are vitest's own, taken on the merged tree.) `shared/tests` and `ui/tests`: §3.11 and §4.11.
+Existing suites that now meet the limiter or a cache changed only their setup:
+`http-api.integration.test.ts` resets the limiter per test, `dashboard.integration.test.ts`
+calls `resetSeqCache`, `office/tests/module-forwarding.test.ts` and
+`office/tests/party-access-route.test.ts` call `clearReadCache`.
 
 How the suite runs (config, environments, timeouts, coverage): §2.8. Typecheck of
 tests: `tsc -p tsconfig.test.json` (shared, master, office, electron) and `tsc -p
@@ -6566,6 +6897,16 @@ also imports `masterConnection`.
 | Add a ui kit component | `ui/src/<Name>.tsx` + one `export *` line in `ui/src/index.ts`; tokens only, no raw colours or px | `master/tests/no-duplicate-ui.test.ts`, `master/tests/ui-conventions.test.ts`, `ui/tests/no-transport-dep.test.ts` |
 | Share a screen between panels | move it to `ui/src/` behind a narrow transport prop; if it must import `{ api }`, keep two byte-identical copies like `PartyAccessScreen.tsx` | `ui/tests/no-transport-dep.test.ts`, `master/tests/party-access-screen-parity.test.ts` |
 | Change a colour or size | `ui/src/tokens.css` — never a literal in a component | `master/tests/ui-conventions.test.ts` |
+| Change a rate limit or add a limited route | `LIMITS` and the factories in `master/src/http/middleware/rate-limit.ts`; the `app.use` / `app.post` line that applies it in `master/src/http/app.ts` (before the router it guards); a socket command is covered by `limitSocket` already. A new coded refusal reuses `TooManyRequestsError` | `master/tests/rate-limit.test.ts`, `master/tests/http-api.integration.test.ts` |
+| Cache a server read | wrap the read in `seqCached(key, ttl, compute)` (`master/src/lib/seq-cache.ts`) with a key naming every input (tenant, `actorKey`, the whole query); the write must publish a change (`publishChange`) after it commits, or call `bumpSeqCache()` — nothing else invalidates it | `master/tests/cache-invalidation.integration.test.ts`, `master/tests/rate-limit.test.ts` |
+| Cache a client read | add the path prefix to `CACHEABLE_PREFIXES` in `ui/src/requestCache.ts` (only for data a change event or a write would also drop); both panels' `api.ts` already route cacheable GETs through it | `ui/tests/request-cache.test.ts`, `ui/tests/api-read-cache.test.ts` |
+| Load a shared screen on first visit | `lazyScreen(() => import('@orderbook/ui/lazy/<File>'), '<Export>')` in both `App.tsx`; keep any hook the shell needs out of the screen file (as `chatUnread.ts` and `printWaiting.ts` do) | `ui/tests/screen-host.test.tsx`, the shell tests |
+| Page a list | `PageBar` / `usePageSize(list)` / `pageWindow` in `ui/src/PageBar.tsx`; server lists take `limit`, `offset` and `stageIds`, and a stage chip's counts come from a `stage-counts` route (`data.routes.ts`, before its `:id` route) | `ui/tests/page-bar.test.tsx`, `master/tests/stage-counts.integration.test.ts` |
+| Show a value once and let the person keep it | `<SaveTextButton title slug sections>` from `ui/src/SaveTextButton.tsx`, with `saveText.*` keys; add the screen to the guard list in the test | `ui/tests/save-text.test.tsx` |
+| Change the sign-in warnings | thresholds in `shared/src/domain/device.ts`; the figures from `GET /api/device` in both `app.ts` files; `ui/src/DeviceWarning.tsx`, `CapsLockHint.tsx`, both `SignInScreen.tsx` (the Master reads the figures only when `onMasterPc`) | `shared/tests/device.test.ts`, `master/tests/device-route.test.ts`, `ui/tests/sign-in-device.test.tsx` |
+| Change what a crash or bad input answers | `shared/src/domain/crash-guard.ts` and `body-errors.ts`, both `index.ts` and error handlers, `master/src/http/middleware/bad-input.ts`, `office/src/http/bad-request.ts`, `master/src/http/query.ts#queryInt`, `hub.ts#guardedOn`; in the window `ui/src/ErrorBoundary.tsx` and `Toast.tsx` | `shared/tests/crash-guard.test.ts`, `shared/tests/body-errors.test.ts`, `master/tests/http-bad-input.integration.test.ts`, `master/tests/socket-malformed-payload.integration.test.ts`, `office/tests/malformed-percent-encoding.test.ts`, `ui/tests/stability.test.tsx` |
+| Change the Duplicates finder | `shared/src/domain/duplicate-products.ts`, `master/src/domain/duplicate-products.ts` (the rules), `master/src/services/duplicate-products.service.ts`, the two routes in `data.routes.ts` (`products.delete`), `master/web/src/screens/DuplicatesScreen.tsx` | `master/tests/duplicate-products-domain.test.ts`, `master/tests/duplicate-products.integration.test.ts`, `ui/tests/master-shell.test.tsx` |
+| Change the role cards or the role editor | `ui/src/RolePicker.tsx`, `ui/src/roleSummary.ts`, `ui/src/PermissionGrid.tsx` (`query`), the Master's `AccessScreen.tsx` | `ui/tests/role-summary.test.tsx`, `ui/tests/master-shell.test.tsx` |
 | Add a keyboard command | `shared/src/keys/commands.ts`, a handler (`useCommand`, a `command.id ===` switch, or `shellCommands`), a label token; the palette lists it only while `KeyboardProvider#offers()` says it would do something, so a chord-only command needs no palette row | `shared/tests/keys-implemented.test.ts`, `shared/tests/keys.test.ts`, `ui/tests/keyboard-provider.test.tsx` |
 | Change a note's layout, copies, Save PDF or the PDF window | `shared/src/domain/order-note.ts` (model, header, pagination), `ui/src/OrderNote.tsx`, `ui/src/OrderNoteScreen.tsx`, `ui/src/printPortal.ts`, `ui/src/order-note.css`; the shell half in `electron/lib/print-options.ts`, `electron/lib/lead-pdf.ts`, `electron/shell.ts`, `electron/preload.cts`, `shared/src/protocol/desktop.ts`; plan `docs/ORDER_NOTES_PLAN.md`, window allowlist `docs/catalogue/CATALOGUE_MODEL.md` §8 | `shared/tests/order-note.test.ts`, `ui/tests/order-note-screen.test.tsx`, `ui/tests/master-shell.test.tsx`, `ui/tests/office-shell.test.tsx`, `electron/tests/print-options.test.ts`, `electron/tests/lead-pdf.test.ts` |
 | Change the Chatroom | `shared/src/domain/chat.ts` (types, limits, `cleanChatPost`), `master/src/services/chat.service.ts` (every rule: membership, announcement, the five-minute window, chips resolved per viewer, audit), `master/src/repositories/chat.repository.ts`, `master/src/http/routes/chat.routes.ts` and the twinned `chat:*` commands in `master/src/realtime/hub.ts`; the Office forwards in `office/src/http/app.ts` and the held-post rule in `office/src/sync/sync.service.ts`; `ui/src/Chat*.tsx` and `ui/src/chatModel.ts`; both `chatTransport.ts` and `App.tsx`; a new right needs the permission steps above plus the grant in a new migration | `master/tests/chat.integration.test.ts`, `master/tests/chat-fanout.integration.test.ts`, `master/tests/sync.integration.test.ts`, `master/tests/credential-invariants.test.ts`, `office/tests/chat-forwarding.test.ts`, `office/tests/sync-hold.test.ts`, `shared/tests/chat.test.ts`, `ui/tests/chatroom.test.tsx` |
