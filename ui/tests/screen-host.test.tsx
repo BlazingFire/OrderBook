@@ -313,11 +313,12 @@ describe('ScreenHost rendering', () => {
       expect(screen.getByText(t('common.loading'))).toBeTruthy();
     });
 
-    it('sends a second failure within a minute to the error boundary', async () => {
+    it('sends a second failure within a minute to the screen’s error boundary, not another reload', async () => {
       vi.spyOn(console, 'error').mockImplementation(() => undefined);
       sessionStorage.setItem('ob.chunkReload', String(Date.now()));
       renderMissing();
-      expect(await screen.findByText('boundary')).toBeTruthy();
+      // The screen's own boundary answers (Try again, Reload), so the rest of the window stays up.
+      expect(await screen.findByTestId('screen-crash')).toBeTruthy();
     });
 
     it('reloads again for a later update, though no lazy screen cleared the mark', async () => {

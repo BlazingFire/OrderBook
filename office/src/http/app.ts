@@ -31,6 +31,7 @@ import {
   MAX_PRODUCT_IMPORT_BYTES,
   MUTATION_PERMISSIONS,
   PARTY_ACCESS_SORTS,
+  bodyParserFailure,
   cleanChatPost,
   parseReportQuery,
   standing,
@@ -1980,6 +1981,17 @@ function errorHandler(error: unknown, _req: Request, res: Response, _next: NextF
       error: 'validation_error',
       message: 'That file is too large',
       messageKey: 'validation.image.tooLarge',
+    });
+    return;
+  }
+
+  // A body the JSON parser refused is the caller's mistake: 400 or 413, never a 500.
+  const refused = bodyParserFailure(error);
+  if (refused) {
+    res.status(refused.status).json({
+      error: refused.error,
+      message: refused.message,
+      messageKey: refused.messageKey,
     });
     return;
   }

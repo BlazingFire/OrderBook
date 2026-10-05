@@ -47,6 +47,7 @@
 import { Activity, Suspense, lazy, memo, useRef, useState } from 'react';
 import type { ComponentType, LazyExoticComponent, ReactNode } from 'react';
 
+import { ScreenErrorBoundary } from './ErrorBoundary';
 import { useSubNavHeld } from './SubNavSlot';
 import { LoadingMark } from './TopProgress';
 
@@ -131,9 +132,11 @@ export function ScreenHost({
             mode={screen.id === activeId ? 'visible' : 'hidden'}
           >
             <ScreenPane active={screen.id === activeId}>
-              <Suspense fallback={<LoadingMark />}>
-                <Frozen active={screen.id === activeId} render={screen.render} />
-              </Suspense>
+              <ScreenErrorBoundary>
+                <Suspense fallback={<LoadingMark />}>
+                  <Frozen active={screen.id === activeId} render={screen.render} />
+                </Suspense>
+              </ScreenErrorBoundary>
             </ScreenPane>
           </Activity>
         ))}

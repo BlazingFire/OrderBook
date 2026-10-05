@@ -1,3 +1,5 @@
+export * from './domain/body-errors.js';
+export * from './domain/crash-guard.js';
 export * from './domain/device.js';
 export * from './domain/activity.js';
 export * from './domain/chat.js';
