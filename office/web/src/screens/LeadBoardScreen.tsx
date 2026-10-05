@@ -26,6 +26,9 @@ import {
   ButtonLink,
   ColourChip,
   DataTable,
+  PageBar,
+  pageWindow,
+  usePageSize,
   EditorScreen,
   EmptyState,
   FilterChip,
@@ -142,6 +145,8 @@ export function LeadBoardScreen({
   const [note, setNote] = useState<{ id: string; kind: NoteKind } | null>(null);
   const [tab, setTab] = useState<BoardTab>('list');
   const [stageFilter, setStageFilter] = useState<string | null>(null);
+  const [pageSize, setPageSize] = usePageSize('office-leads');
+  const [paging, setPaging] = useState<{ key: string; page: number }>({ key: '', page: 0 });
   const [scope, setScope] = useState<PartyScopeFilter>('all');
   const [search, setSearch] = useState('');
   const [menuId, setMenuId] = useState<string | null>(null);
@@ -160,6 +165,10 @@ export function LeadBoardScreen({
   const filtered = (stageFilter ? open.filter((lead) => lead.stageId === stageFilter) : open).filter(
     (lead) => matchesRecordSearch(lead, search),
   );
+  // The list view shows one page of what the filters leave; the filters run over all of it first.
+  const pageKey = `${scope}|${search}|${stageFilter ?? ''}|${pageSize}`;
+  const leadPage = pageWindow(filtered.length, paging.key === pageKey ? paging.page : 0, pageSize);
+  const pagedLeads = filtered.slice(leadPage.offset, leadPage.offset + pageSize);
   // A provisional lead opened before the Master numbered it stays open once
   // its permanent record replaces it here.
   const renamedTo = openId ? numberedIds?.[openId] : undefined;
@@ -751,20 +760,29 @@ export function LeadBoardScreen({
           }}
         />
       ) : (
-        <DataTable
-          columns={columns}
-          rows={filtered}
-          rowKey={(lead) => lead.id}
-          onRowOpen={(lead) => onOpenId(lead.id)}
-          empty={
-            <EmptyState
-              title={t('lead.board.emptyTitle')}
-              description={t('lead.board.emptyDesc')}
-              actionLabel={onAddLead ? t('action.newLead') : undefined}
-              onAction={onAddLead}
-            />
-          }
-        />
+        <>
+          <DataTable
+            columns={columns}
+            rows={pagedLeads}
+            rowKey={(lead) => lead.id}
+            onRowOpen={(lead) => onOpenId(lead.id)}
+            empty={
+              <EmptyState
+                title={t('lead.board.emptyTitle')}
+                description={t('lead.board.emptyDesc')}
+                actionLabel={onAddLead ? t('action.newLead') : undefined}
+                onAction={onAddLead}
+              />
+            }
+          />
+          <PageBar
+            total={filtered.length}
+            page={leadPage.page}
+            pageSize={pageSize}
+            onPage={(next) => setPaging({ key: pageKey, page: next })}
+            onPageSize={setPageSize}
+          />
+        </>
       )}
     </>
   );

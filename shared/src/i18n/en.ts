@@ -3468,4 +3468,14 @@ export const EN_MESSAGES = {
   'saveText.label.panelName': 'Panel name',
   'saveText.label.deviceCode': 'Device code',
   'saveText.label.role': 'Role',
+  // Page controls (1.4.3 R17)
+  'pageBar.label': 'Pages',
+  'pageBar.range': 'Showing {from}–{to} of {total}',
+  'pageBar.none': 'Nothing to show',
+  'pageBar.perPage': 'Per page',
+  'pageBar.first': 'First page',
+  'pageBar.last': 'Last page',
+  'pageBar.previous': 'Previous',
+  'pageBar.next': 'Next',
+  'pageBar.pageOf': 'Page {page} of {pages}',
 } as const;
