@@ -13,7 +13,7 @@
  * gating on it.
  */
 
-import { Activity, useCallback, useEffect, useRef, useState } from 'react';
+import { Activity, useCallback, useEffect, useRef, useState, type ComponentProps } from 'react';
 import {
   applyChangeToSnapshot,
   isRoleTier,
@@ -43,6 +43,8 @@ import {
   ApiError,
   api,
   desktopBridge,
+  invalidateReads,
+  requestCache,
   type ConnectionInfo,
   type PairResult,
   type LocalView,
@@ -50,19 +52,16 @@ import {
 } from './api';
 import {
   AppShell,
+  createBurstBatcher,
   BasicHome,
   BP_NARROW,
   BusyMark,
-  ChatroomScreen,
-  PrintroomScreen,
   PrintStationRunner,
-  ReportsScreen,
   Clock,
   FilterBarOutlet,
   FilterBarProvider,
   formatDateTime,
   formatElapsed,
-  GalleryScreen,
   Icon,
   IconButton,
   KeyboardOverlays,
@@ -98,7 +97,6 @@ import {
   useToast,
   splitSubPage,
   withSubPages,
-  CatalogListsScreen,
   type CatalogListsPage,
   type ChatPage,
   type PrintPage,
@@ -112,6 +110,13 @@ import {
   type SubPage,
   NAV_ICONS,
   useConfirm,
+} from '@orderbook/ui';
+/** The real components are loaded on first visit (below); these are only for their prop types. */
+import type {
+  CatalogListsScreen as CatalogListsScreenImpl,
+  ChatroomScreen as ChatroomScreenImpl,
+  PrintroomScreen as PrintroomScreenImpl,
+  ReportsScreen as ReportsScreenImpl,
 } from '@orderbook/ui';
 import { dispatchChat, officeChatTransport } from './chatTransport';
 import { dispatchPrint, officePrintroomTransport } from './printroomTransport';
@@ -137,6 +142,41 @@ import { SETTINGS_TAB_IDS } from './settingsTabs';
  * start-up (`ScreenHost` shows the loading mark meanwhile). Basic Home and the
  * daily screens above stay in the first bundle.
  */
+const ChatroomScreen = lazyScreen<
+  'ChatroomScreen',
+  ComponentProps<typeof ChatroomScreenImpl>
+>(
+  () => import('@orderbook/ui/lazy/ChatroomScreen'),
+  'ChatroomScreen',
+);
+const PrintroomScreen = lazyScreen<
+  'PrintroomScreen',
+  ComponentProps<typeof PrintroomScreenImpl>
+>(
+  () => import('@orderbook/ui/lazy/PrintroomScreen'),
+  'PrintroomScreen',
+);
+const ReportsScreen = lazyScreen<
+  'ReportsScreen',
+  ComponentProps<typeof ReportsScreenImpl>
+>(
+  () => import('@orderbook/ui/lazy/ReportsScreen'),
+  'ReportsScreen',
+);
+const GalleryScreen = lazyScreen<
+  'GalleryScreen',
+  object
+>(
+  () => import('@orderbook/ui/lazy/GalleryScreen'),
+  'GalleryScreen',
+);
+const CatalogListsScreen = lazyScreen<
+  'CatalogListsScreen',
+  ComponentProps<typeof CatalogListsScreenImpl>
+>(
+  () => import('@orderbook/ui/lazy/CatalogListsScreen'),
+  'CatalogListsScreen',
+);
 const ConflictsScreen = lazyScreen(() => import('./screens/ConflictsScreen'), 'ConflictsScreen');
 const PartyAccessScreen = lazyScreen(
   () => import('./screens/PartyAccessScreen'),
@@ -215,6 +255,9 @@ function withTimeout<T>(work: Promise<T>, ms = 10_000): Promise<T> {
     }),
   ]);
 }
+
+/** Per-record change frames arriving within this window are applied to the view in one render. */
+const CHANGE_BATCH_MS = 60;
 
 export function App() {
   return (
@@ -591,9 +634,26 @@ function OfficePanel() {
     if (!signedIn) return;
 
     const source = new EventSource('/api/events');
+    // Reads are cached only while this stream is up: it is what says that something moved.
+    requestCache.setLive(false);
+    const changes = createBurstBatcher<DataChangedEvent>((frames) => {
+      if (frames.some((change) => REPORT_ENTITIES.includes(change.entity))) {
+        setViewRevision((count) => count + 1);
+      }
+      setView((current) => {
+        if (!current) return current;
+        // A shallow copy is enough: `applyChangeToSnapshot` replaces whole
+        // arrays rather than pushing into them, so React sees a new reference
+        // for exactly the collections that moved.
+        const next = { ...current };
+        for (const change of frames) applyChangeToSnapshot(next, change);
+        return next;
+      });
+    }, CHANGE_BATCH_MS);
 
     /** Everything a fresh link or a reopened stream may have missed. */
     const catchUp = (): void => {
+      invalidateReads();
       setStreamEpoch((epoch) => epoch + 1);
       // Chat has no replay: whatever was said while the stream was away is read again.
       dispatchChat({ kind: 'resync' });
@@ -626,9 +686,11 @@ function OfficePanel() {
     // it: frames sent meanwhile are gone, so read again what they would have said.
     let dropped = false;
     source.addEventListener('error', () => {
+      requestCache.setLive(false);
       dropped = true;
     });
     source.addEventListener('open', () => {
+      requestCache.setLive(true);
       if (!dropped) return;
       dropped = false;
       catchUp();
@@ -684,10 +746,14 @@ function OfficePanel() {
 
     // A role or user edit on the Master: read the session again, which now holds the new permissions.
     source.addEventListener('session', () => {
+      invalidateReads();
       void refreshSession();
     });
 
     source.addEventListener('snapshot', (event) => {
+      invalidateReads();
+      // A whole view replaces whatever small frames were waiting to be applied to the old one.
+      changes.discard();
       setView(JSON.parse((event as MessageEvent).data) as LocalView);
       setViewRevision((count) => count + 1);
       void refreshSyncState();
@@ -703,25 +769,21 @@ function OfficePanel() {
      * would put back the amplifier the server side just removed.
      */
     source.addEventListener('change', (event) => {
-      const change = JSON.parse((event as MessageEvent).data) as DataChangedEvent;
-      if (REPORT_ENTITIES.includes(change.entity)) setViewRevision((count) => count + 1);
-      setView((current) => {
-        if (!current) return current;
-
-        // A shallow copy is enough: `applyChangeToSnapshot` replaces whole
-        // arrays rather than pushing into them, so React sees a new reference
-        // for exactly the collections that moved.
-        const next = { ...current };
-        applyChangeToSnapshot(next, change);
-        return next;
-      });
+      invalidateReads();
+      // A burst (an import, a catch-up after a long pause) is applied in one render, not one per frame.
+      changes.push(JSON.parse((event as MessageEvent).data) as DataChangedEvent);
     });
 
     source.addEventListener('conflict', () => {
+      invalidateReads();
       void refreshSyncState();
     });
 
-    return () => source.close();
+    return () => {
+      changes.dispose();
+      requestCache.setLive(false);
+      source.close();
+    };
   }, [signedIn, refreshConnection, refreshSession, refreshSyncState]);
 
   // Hash routing: #/gallery is the one extra place a user can land.

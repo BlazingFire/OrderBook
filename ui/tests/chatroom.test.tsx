@@ -20,7 +20,8 @@ import type {
 
 import { ChatConversation } from '../src/ChatConversation.js';
 import { ChatGroupSettings } from '../src/ChatGroupSettings.js';
-import { ChatroomScreen, useChatUnread } from '../src/ChatroomScreen.js';
+import { ChatroomScreen } from '../src/ChatroomScreen.js';
+import { useChatUnread } from '../src/chatUnread.js';
 import { ChatShareScreen } from '../src/ChatShareScreen.js';
 import type { ChatEvent, ChatTransport, ChatViewer } from '../src/chatModel.js';
 import { ConfirmProvider } from '../src/ConfirmDialog.js';

@@ -13,7 +13,7 @@
  * are all still there on the way back.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import { matchesRecordSearch, resolveCompanyFeatures, shownColour } from '@orderbook/shared';
 import type { ChatRecordChip, Lead, NoteKind, PartyScopeFilter, SyncSnapshot } from '@orderbook/shared';
 
@@ -144,6 +144,8 @@ export function LeadBoardScreen({
   const [stageFilter, setStageFilter] = useState<string | null>(null);
   const [scope, setScope] = useState<PartyScopeFilter>('all');
   const [search, setSearch] = useState('');
+  // The box stays instant; the filter over a big board catches up between keystrokes.
+  const deferredSearch = useDeferredValue(search);
   const [menuId, setMenuId] = useState<string | null>(null);
   const colourHex = useColourHex(view.optionLists);
   const toast = useToast();
@@ -158,7 +160,7 @@ export function LeadBoardScreen({
     scope === 'assigned' ? view.partyGrants : undefined,
   );
   const filtered = (stageFilter ? open.filter((lead) => lead.stageId === stageFilter) : open).filter(
-    (lead) => matchesRecordSearch(lead, search),
+    (lead) => matchesRecordSearch(lead, deferredSearch),
   );
   // A provisional lead opened before the Master numbered it stays open once
   // its permanent record replaces it here.

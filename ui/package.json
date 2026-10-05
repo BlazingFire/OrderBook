@@ -8,6 +8,7 @@
   ],
   "exports": {
     ".": "./src/index.ts",
+    "./lazy/*": "./src/*.tsx",
     "./styles.css": "./src/styles.css"
   },
   "scripts": {
