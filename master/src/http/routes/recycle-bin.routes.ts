@@ -15,6 +15,7 @@ import { isRecycleBinEntityType } from '@orderbook/shared';
 
 import { ValidationError } from '../../lib/errors.js';
 import * as recycleBinService from '../../services/recycle-bin.service.js';
+import { queryInt } from '../query.js';
 import { asyncHandler } from '../async-handler.js';
 import { actorFromRequest, requireAuth, requirePermissionMiddleware } from '../middleware/require-auth.js';
 
@@ -49,7 +50,7 @@ recycleBinRoutes.get(
           search: typeof req.query.search === 'string' ? req.query.search : undefined,
           deletedBy: typeof req.query.deletedBy === 'string' ? req.query.deletedBy : undefined,
           cursor: typeof req.query.cursor === 'string' ? req.query.cursor : undefined,
-          limit: req.query.limit ? Number(req.query.limit) : undefined,
+          limit: queryInt(req.query.limit),
         },
         actorFromRequest(req),
       ),

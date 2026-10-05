@@ -8,6 +8,7 @@ import type { DeviceInfo } from '@orderbook/shared';
 import { config } from '../config/index.js';
 import { queryCountMiddleware } from '../db/query-counter.js';
 import { liveHealth } from './health.js';
+import { badInputHandler } from './middleware/bad-input.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { maintenanceGate } from './middleware/maintenance-gate.js';
 import { LIMITS, limitByBodyField, limitByIp, limitUploads } from './middleware/rate-limit.js';
@@ -181,6 +182,7 @@ export function createApp(): Express {
   });
 
   app.use(notFoundHandler);
+  app.use(badInputHandler);
   app.use(errorHandler);
 
   return app;

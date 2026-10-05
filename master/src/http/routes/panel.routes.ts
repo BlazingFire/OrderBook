@@ -8,6 +8,7 @@ import { discoveryStatus } from '../../discovery/responder.js';
 import { config } from '../../config/index.js';
 import { listLanInterfaces } from '../../lib/network.js';
 import * as panelService from '../../services/panel.service.js';
+import { queryInt } from '../query.js';
 import { asyncHandler } from '../async-handler.js';
 import { consume } from '../middleware/api-key-rate-limit.js';
 import { actorFromRequest, requireAuth, requirePermissionMiddleware } from '../middleware/require-auth.js';
@@ -305,13 +306,13 @@ panelRoutes.get(
   needs('logs.view'),
   asyncHandler(async (req, res) => {
     const actor = actorFromRequest(req);
-    const limit = Number.parseInt(String(req.query.limit ?? ''), 10);
+    const limit = queryInt(req.query.limit);
 
     res.json({
       entries: await panelService.listPanelActivity(
         actor.tenantId,
         String(req.params.id),
-        Number.isFinite(limit) ? limit : 50,
+        limit ?? 50,
       ),
     });
   }),

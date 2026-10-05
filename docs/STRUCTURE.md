@@ -2138,6 +2138,14 @@ exercised only through service integration tests.
   `updateImageCaption`, `reorderImages`, `deleteImage` (all `products.edit`),
   `resolveImageFile`, `sweepOrphanImageVariants`, `throughRasterGate` (serialises
   decoding to bound memory). Publishes as `entity: 'product'`.
+- 1.4.3 request hardening (R18): `master/src/realtime/hub.ts#guardedOn` is `socket.on` for every command
+  handler - a handler that throws on a malformed payload answers its ack with
+  `validation.socket.badPayload` instead of reaching the process as an uncaught exception, and
+  `respond` no longer double-acks. `master/src/http/query.ts#queryInt` turns a non-integer
+  `limit`/`offset`/numeric id into 400 `validation.query.badNumber`; `clampPaging` ignores NaN;
+  `master/src/http/middleware/bad-input.ts` maps PostgreSQL input errors (22P02, 22003, 22007,
+  22008, 22001, 22021) to 400 `validation.request.badInput`, mounted before `errorHandler`.
+  Tests: `socket-malformed-payload.integration`, `http-bad-input.integration`, `paging-not-a-number`.
 - `master/src/services/duplicate-products.service.ts` — 1.4.3 Products → Duplicates:
   `findDuplicates` and `resolveDuplicates` (both `products.delete`); detection is the pure
   `master/src/domain/duplicate-products.ts` over `productRepo.listCategories` and

@@ -80,9 +80,9 @@ describe('the settings:save handler', () => {
   );
 
   it('runs the guard before the write, and is the hub’s only way to a setting', () => {
-    const start = hub.indexOf("socket.on('settings:save'");
+    const start = hub.indexOf("  on('settings:save'");
     expect(start).toBeGreaterThan(-1);
-    const handler = hub.slice(start, hub.indexOf('socket.on(', start + 1));
+    const handler = hub.slice(start, hub.indexOf("\n  on('", start + 1));
 
     const guard = handler.indexOf('assertPanelSettingWrite(actor, key);');
     expect(guard).toBeGreaterThan(-1);

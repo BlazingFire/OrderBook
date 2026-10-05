@@ -17,6 +17,7 @@ import type { PartyAccessSort } from '@orderbook/shared';
 import { Router } from 'express';
 
 import * as partyAccessService from '../../services/party-access.service.js';
+import { queryInt } from '../query.js';
 import { asyncHandler } from '../async-handler.js';
 import {
   actorFromRequest,
@@ -49,8 +50,8 @@ partyAccessRoutes.get(
           restriction: restrictionFilter(req.query.restriction),
           sort: sortColumn(req.query.sort),
           dir: req.query.dir === 'desc' ? 'desc' : 'asc',
-          limit: req.query.limit ? Number(req.query.limit) : undefined,
-          offset: req.query.offset ? Number(req.query.offset) : undefined,
+          limit: queryInt(req.query.limit),
+          offset: queryInt(req.query.offset),
         },
         actorFromRequest(req),
       ),
