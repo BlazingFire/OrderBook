@@ -267,8 +267,13 @@ async function send<T>(
      * showing a generic error toast while the shell went on believing it was
      * signed in. Still thrown afterwards, so the caller's own error path runs
      * exactly as before.
+     * A refused sign-in is the exception: nobody was signed in, and the screen
+     * already says why under the password box. Announcing it as well showed the
+     * refusal twice, the second time as a banner with its `{count}` unfilled. So is the
+     * boot-time `me` check: a 401 there means nobody has signed in yet, not that a session
+     * ended, and it put "Not signed in" above a fresh sign-in form.
      */
-    if (response.status === 401 && !MASTER_KEY_REFUSALS.has(detail?.messageKey ?? '')) {
+    if (response.status === 401 && !path.endsWith('/sign-in') && path !== '/api/auth/me' && !MASTER_KEY_REFUSALS.has(detail?.messageKey ?? '')) {
       publishSessionEnded(detail?.messageKey ?? 'signIn.notice.sessionEnded');
     }
 
