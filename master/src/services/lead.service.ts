@@ -79,11 +79,16 @@ export async function listLeads(
 export async function stageCounts(query: LeadListQuery, actor: ActorContext): Promise<StageCounts> {
   requirePermission(actor, 'leads.view');
 
-  return leadRepo.stageCounts(actor.tenantId, {
-    ...query,
-    stageIds: undefined,
-    partyScope: resolvePartyScope(actor),
-  });
+  const read = (): Promise<StageCounts> =>
+    leadRepo.stageCounts(actor.tenantId, {
+      ...query,
+      stageIds: undefined,
+      partyScope: resolvePartyScope(actor),
+    });
+
+  // Same key and same triggers as the list above: any change event drops it (`lib/seq-cache.ts`).
+  const key = JSON.stringify({ ...query, stageIds: undefined });
+  return key.length > 300 ? read() : seqCached(`leads-stage-counts:${actorKey(actor)}:${key}`, 10_000, read);
 }
 
 export async function getLead(id: string, actor: ActorContext): Promise<Lead> {

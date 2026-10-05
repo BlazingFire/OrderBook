@@ -151,6 +151,23 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       return agent;
     }
 
+    it('is immutable under its versioned URL, carries a validator, and answers a repeat request with 304', async () => {
+      const { imageId, tenantDir } = await imageFixture();
+      try {
+        const viewer = await agentWith(['products.view'], 'celia');
+        for (const url of [`/uploads/images/${imageId}/thumb`, `/api/images/${imageId}/thumb`]) {
+          const first = await viewer.get(url).expect(200);
+          expect(first.headers['cache-control']).toBe('private, max-age=31536000, immutable');
+          expect(first.headers.etag).toBeTruthy();
+          expect(first.headers['last-modified']).toBeTruthy();
+
+          await viewer.get(url).set('If-None-Match', first.headers.etag!).expect(304);
+        }
+      } finally {
+        await rm(tenantDir, { recursive: true, force: true });
+      }
+    });
+
     it('serves image/webp to a user with products.view and 404 to one without', async () => {
       const { imageId, tenantDir } = await imageFixture();
       try {
