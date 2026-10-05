@@ -2035,7 +2035,15 @@ function RoleEditor({
               onChange={(event) => setQuery(event.target.value)}
             />
           </div>
-          <span className="ob-help" aria-live="polite">
+          <span
+            className="ob-help"
+            role="status"
+            data-unsaved={dirty || undefined}
+            style={{ whiteSpace: 'nowrap', fontWeight: dirty ? 600 : undefined }}
+          >
+            {dirty ? `● ${t('access.roleEditor.unsaved')}` : t('access.roleEditor.noChanges')}
+          </span>
+          <span className="ob-help" style={{ whiteSpace: 'nowrap' }}>
             {t('access.roleEditor.heldTotal', { held: selected.size, total: totalKeys })}
           </span>
         </div>
@@ -2061,14 +2069,6 @@ function RoleEditor({
         <Button variant="secondary" onClick={() => void cancel()}>
           {t('access.roleEditor.cancel')}
         </Button>
-        <span
-          className="ob-help"
-          role="status"
-          data-unsaved={dirty || undefined}
-          style={{ alignSelf: 'center' }}
-        >
-          {dirty ? `● ${t('access.roleEditor.unsaved')}` : t('access.roleEditor.noChanges')}
-        </span>
       </div>
     </div>
   );

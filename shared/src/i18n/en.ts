@@ -794,11 +794,11 @@ export const EN_MESSAGES = {
   'access.users.roleChangeFailed': 'Could not change the role',
   'access.users.roleChangeApply': 'Change role',
   'access.users.roleChangeBody':
-    '{name} will move from {from} to {to}: {gained} permission(s) gained, {lost} lost.',
+    '{name} will move from {from} to {to}. Permissions gained: {gained}. Permissions lost: {lost}.',
   'access.users.roleChangeTitle': 'Change {name}’s role?',
   'access.users.roleChangeUnchanged': 'Pick a different role to change it.',
   'access.users.roleHint':
-    'Saved as soon as you choose. Everything this person may do comes from their role.',
+    'Nothing changes until you press Change role. Everything this person may do comes from their role.',
   'access.users.searchLabel': 'Search people',
   'access.users.searchPlaceholder': 'Search name or username…',
   'access.users.setPassword': 'Set password',

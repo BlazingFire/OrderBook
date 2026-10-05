@@ -2400,7 +2400,7 @@ describe('Assigning and editing roles (1.4.3)', () => {
     const dialog = await screen.findByRole('dialog');
     // Four keys gained (Packer holds one of Dispatcher's five), none lost.
     expect(dialog.textContent).toContain('Meera');
-    expect(dialog.textContent).toMatch(/4 permission\(s\) gained, 0 lost/);
+    expect(dialog.textContent).toContain('Permissions gained: 4. Permissions lost: 0.');
     expect(calls.some((call) => call.method === 'PUT')).toBe(false);
 
     fireEvent.click(within(dialog).getByRole('button', { name: t('access.users.roleChangeApply') }));
