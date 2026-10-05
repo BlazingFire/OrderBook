@@ -17,7 +17,7 @@ import { standing } from '@orderbook/shared';
 
 import type { ConnectionInfo, PairResult } from '../api';
 import { ConnectionUnpair } from '../components/ConnectionUnpair';
-import { Button, Card, ProgressBar, rem, t } from '@orderbook/ui';
+import { Button, Card, ProgressBar, SaveTextButton, rem, t } from '@orderbook/ui';
 
 interface Props {
   connection: ConnectionInfo;
@@ -128,6 +128,36 @@ export function SetupScreen({ connection, result, onContinue, onLeft }: Props) {
           <Button variant="primary" onClick={onContinue}>
             {t('connection.setup.continue')}
           </Button>
+          <SaveTextButton
+            title={t('saveText.title.officeSetup')}
+            slug="office-setup"
+            sections={[
+              {
+                heading: t('saveText.section.master'),
+                values: [
+                  { label: t('saveText.label.company'), value: company },
+                  ...(connection.masterHost
+                    ? [
+                        {
+                          label: t('saveText.label.address'),
+                          value: connection.masterPort ? `${connection.masterHost}:${connection.masterPort}` : connection.masterHost,
+                        },
+                      ]
+                    : []),
+                  ...(connection.masterVersion
+                    ? [{ label: t('saveText.label.masterVersion'), value: connection.masterVersion }]
+                    : []),
+                ],
+              },
+              {
+                heading: t('saveText.section.thisPanel'),
+                values: [
+                  { label: t('saveText.label.panelName'), value: connection.panelName },
+                  ...(connection.deviceCode ? [{ label: t('saveText.label.deviceCode'), value: connection.deviceCode }] : []),
+                ],
+              },
+            ]}
+          />
           {/* Nobody is signed in here: the server allows leaving only when the Master cannot be reached. */}
           {connection.state !== 'connected' || connection.notRecognised ? (
             <ConnectionUnpair company={company} onDone={onLeft} canDiscard={false} />

@@ -33,6 +33,9 @@ import {
   Card,
   ColourName,
   DataTable,
+  PageBar,
+  pageWindow,
+  usePageSize,
   EditorScreen,
   EmptyState,
   FilterChip,
@@ -144,6 +147,8 @@ export function OrderBoardScreen({
   const [search, setSearch] = useState('');
   // The box stays instant; the filter over a big board catches up between keystrokes.
   const deferredSearch = useDeferredValue(search);
+  const [pageSize, setPageSize] = usePageSize('office-orders');
+  const [paging, setPaging] = useState<{ key: string; page: number }>({ key: '', page: 0 });
   const colourHex = useColourHex(view.optionLists);
   const pipeline = view.pipelines.find((candidate) => candidate.kind === 'order');
   const stages = sortedStages(pipeline);
@@ -344,6 +349,11 @@ export function OrderBoardScreen({
     stageFilter ? orders.filter((order) => order.stageId === stageFilter) : orders
   ).filter((order) => matchesRecordSearch(order, deferredSearch));
 
+  // One page of what the filters leave; the filters run over all of it first.
+  const pageKey = `${scope}|${deferredSearch}|${stageFilter ?? ''}|${pageSize}`;
+  const orderPage = pageWindow(filteredOrders.length, paging.key === pageKey ? paging.page : 0, pageSize);
+  const pagedOrders = filteredOrders.slice(orderPage.offset, orderPage.offset + pageSize);
+
   const columns: DataTableColumn<Order>[] = [
     {
       key: 'id',
@@ -449,7 +459,7 @@ export function OrderBoardScreen({
     <>
       <DataTable
         columns={columns}
-        rows={filteredOrders}
+        rows={pagedOrders}
         rowKey={(order) => order.id}
         onRowOpen={(order) => onOpenId(order.id)}
         empty={
@@ -462,6 +472,13 @@ export function OrderBoardScreen({
             <EmptyState title={t('orders.empty.filteredTitle')} />
           )
         }
+      />
+      <PageBar
+        total={filteredOrders.length}
+        page={orderPage.page}
+        pageSize={pageSize}
+        onPage={(next) => setPaging({ key: pageKey, page: next })}
+        onPageSize={setPageSize}
       />
     </>
   );
