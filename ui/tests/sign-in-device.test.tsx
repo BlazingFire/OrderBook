@@ -176,3 +176,61 @@ describe('Master sign-in window', () => {
     expect(screen.queryByTestId('device-warning')).toBeNull();
   });
 });
+
+describe('a refused sign-in', () => {
+  const refusal = () =>
+    json(
+      {
+        error: 'unauthorized',
+        message: 'Sign-in failed',
+        messageKey: 'error.unauthorized.signInFailedRemaining.other',
+        params: { count: 2 },
+      },
+      401,
+    );
+
+  async function announced(panel: 'master' | 'office', path: string) {
+    configureUi({ panel, defaultTheme: 'light', themeStorageKey: 'ob.theme' });
+    const { onSessionEnded } = await import('../src/sessionEnded.js');
+    const apiPath = `../../${panel}/web/src/api.ts`;
+    const { api } = (await import(/* @vite-ignore */ apiPath)) as {
+      api: { signIn: (u: string, p: string) => Promise<unknown>; me?: () => Promise<unknown> };
+    };
+    routeFetch((call) => (call.url === path ? refusal() : json({}, 401)));
+    const heard = vi.fn();
+    const stop = onSessionEnded(heard);
+    await expect(api.signIn('sam', 'wrong')).rejects.toBeTruthy();
+    stop();
+    return heard;
+  }
+
+  it.each([
+    ['office', '/api/auth/sign-in'],
+    ['master', '/api/auth/sign-in'],
+  ] as const)('is not announced as an ended session on the %s panel', async (panel, path) => {
+    // Nobody was signed in; the screen says why under the password box. Announcing it as
+    // well put the same refusal on screen twice, the second with its {count} unfilled.
+    expect((await announced(panel, path)).mock.calls).toEqual([]);
+  });
+
+  it('and neither is the Master’s boot-time check that nobody has signed in yet', async () => {
+    configureUi({ panel: 'master', defaultTheme: 'light', themeStorageKey: 'ob.theme' });
+    const { onSessionEnded } = await import('../src/sessionEnded.js');
+    const apiPath = '../../master/web/src/api.ts';
+    const { api } = (await import(/* @vite-ignore */ apiPath)) as {
+      api: { me: () => Promise<unknown> };
+    };
+    routeFetch(() =>
+      json(
+        { error: 'unauthorized', message: 'Not signed in', messageKey: 'error.unauthorized' },
+        401,
+      ),
+    );
+    const heard = vi.fn();
+    const stop = onSessionEnded(heard);
+    await expect(api.me()).rejects.toBeTruthy();
+    stop();
+
+    expect(heard).not.toHaveBeenCalled();
+  });
+});
