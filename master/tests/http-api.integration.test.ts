@@ -445,6 +445,19 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
         await stranger.get('/api/panels/pairing-window').expect(403);
       });
 
+      it('serves per-stage counts for leads and orders, before the :id routes, to people who may view them', async () => {
+        const { password } = await initialize();
+        const admin = await signedInAgent(password);
+        const leads = await admin.get('/api/leads/stage-counts').expect(200);
+        const orders = await admin.get('/api/orders/stage-counts?search=zzz').expect(200);
+        expect(leads.body).toEqual({ total: 0, counts: {} });
+        expect(orders.body).toEqual({ total: 0, counts: {} });
+
+        const blind = await agentWith(['parties.view'], 'blind');
+        await blind.get('/api/orders/stage-counts').expect(403);
+        await blind.get('/api/leads/stage-counts').expect(403);
+      });
+
       it('serves the Party Access summary before :partyId, and a sorted list that survives a bad sort', async () => {
         const { password } = await initialize();
         const admin = await signedInAgent(password);

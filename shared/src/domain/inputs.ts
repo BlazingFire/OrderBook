@@ -410,6 +410,18 @@ export interface ConflictResolutionInput {
   action: 'keepWinner' | 'restoreLoser';
 }
 
+/**
+ * How many records each stage holds under a list's own filters (search, "my parties", the converted
+ * page), **ignoring the stage filter**: what a stage chip should say however the list is narrowed,
+ * and the same figure on every page of it.
+ */
+export interface StageCounts {
+  /** Every record the filters leave, in any stage. */
+  total: number;
+  /** By stage id; a stage with none is absent. */
+  counts: Record<string, number>;
+}
+
 export interface Paginated<T> {
   items: T[];
   total: number;

@@ -86,6 +86,7 @@ import type {
   OptionListReorderInput,
   Order,
   Paginated,
+  StageCounts,
   Party,
   AssignablePerson,
   PartyAccessInput,
@@ -948,6 +949,26 @@ export const api = {
     input: { dispatchAddressLabel?: string | null; expectedDispatchDate?: string | null } = {},
   ) => post<Order>(`/api/leads/${id}/convert`, input),
 
+  /** Per-stage counts under the same filters as `leads`, ignoring the stage chip. */
+  leadStageCounts: (
+    options: { includeConverted?: boolean; convertedOnly?: boolean; scope?: PartyScopeFilter; search?: string } = {},
+  ) => {
+    const params = new URLSearchParams();
+    if (options.convertedOnly) params.set('convertedOnly', 'true');
+    else if (options.includeConverted) params.set('includeConverted', 'true');
+    if (options.scope === 'assigned') params.set('scope', 'assigned');
+    if (options.search) params.set('search', options.search);
+    const qs = params.toString();
+    return request<StageCounts>(`/api/leads/stage-counts${qs ? `?${qs}` : ''}`);
+  },
+  /** Per-stage counts under the same filters as `orders`, ignoring the stage. */
+  orderStageCounts: (options: { scope?: PartyScopeFilter; search?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (options.scope === 'assigned') params.set('scope', 'assigned');
+    if (options.search) params.set('search', options.search);
+    const qs = params.toString();
+    return request<StageCounts>(`/api/orders/stage-counts${qs ? `?${qs}` : ''}`);
+  },
   orders: (
     options: {
       stageIds?: string[];

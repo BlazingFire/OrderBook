@@ -583,6 +583,25 @@ dataRoutes.get(
   }),
 );
 
+// Before `/leads/:id`, which would take "stage-counts" for an id.
+dataRoutes.get(
+  '/leads/stage-counts',
+  asyncHandler(async (req, res) => {
+    res.json(
+      await leadService.stageCounts(
+        {
+          ...paging(req.query),
+          includeConverted: req.query.includeConverted === 'true',
+          convertedOnly: req.query.convertedOnly === 'true',
+          partyId: typeof req.query.partyId === 'string' && req.query.partyId ? req.query.partyId : undefined,
+          followUpDueOnly: req.query.followUpDueOnly === 'true',
+        },
+        actorFromRequest(req),
+      ),
+    );
+  }),
+);
+
 dataRoutes.get(
   '/leads/:id',
   asyncHandler(async (req, res) => {
@@ -670,6 +689,14 @@ dataRoutes.get(
         actorFromRequest(req),
       ),
     );
+  }),
+);
+
+// Before `/orders/:id`, which would take "stage-counts" for an id.
+dataRoutes.get(
+  '/orders/stage-counts',
+  asyncHandler(async (req, res) => {
+    res.json(await orderService.stageCounts({ ...paging(req.query) }, actorFromRequest(req)));
   }),
 );
 

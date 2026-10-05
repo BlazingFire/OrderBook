@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { configureUi } from '../src/config.js';
 import { t } from '../src/i18n.js';
+import { FilterBarOutlet, FilterBarProvider } from '../src/FilterBarSlot.js';
 import { DEFAULT_PAGE_SIZE, PageBar, pageWindow, usePageSize } from '../src/PageBar.js';
 import { installBrowserStubs, json, routeFetch } from './panel-harness.js';
 
@@ -120,6 +121,9 @@ describe('the Master’s Final Orders list', () => {
   async function mount(stageId: string | null = null) {
     const requests: URL[] = [];
     routeFetch(({ method, url }) => {
+      if (method === 'GET' && url.startsWith('/api/orders/stage-counts')) {
+        return json({ total: TOTAL, counts: { s1: 70, s2: 50 } });
+      }
       if (method !== 'GET' || !url.startsWith('/api/orders?')) return undefined;
       const query = new URL(url, 'http://x').searchParams;
       requests.push(new URL(url, 'http://x'));
@@ -131,10 +135,20 @@ describe('the Master’s Final Orders list', () => {
     const path = '../../master/web/src/screens/OrdersScreen.tsx';
     const { OrdersScreen } = (await import(/* @vite-ignore */ path)) as { OrdersScreen: ComponentType<Record<string, unknown>> };
     const props = {
-      revision: 0, stages: [], permissions: [], stageId, onStageChange: () => undefined, openId: null,
+      revision: 0,
+      stages: [
+        { id: 's1', name: 'Open', sequence: 1, isDefault: true, isTerminal: false },
+        { id: 's2', name: 'Packed', sequence: 2, isDefault: false, isTerminal: false },
+      ],
+      permissions: [], stageId, onStageChange: () => undefined, openId: null,
       onOpenId: () => undefined, onOpenLead: () => undefined, userId: 'u1',
     };
-    const view = render(<OrdersScreen {...props} />);
+    const view = render(
+      <FilterBarProvider>
+        <FilterBarOutlet />
+        <OrdersScreen {...props} />
+      </FilterBarProvider>,
+    );
     return { requests, view, OrdersScreen, props };
   }
 
@@ -176,6 +190,19 @@ describe('the Master’s Final Orders list', () => {
     expect(last(requests).get('offset') ?? '0').toBe('0');
   });
 
+  it('shows true per-stage totals on the chips, from the Master, the same on every page', async () => {
+    await mount();
+    const chip = (name: string) => screen.getByRole('button', { name: new RegExp(`^${name}`) });
+    await waitFor(() => expect(within(chip('Open')).getByText('70')).toBeTruthy());
+    expect(within(chip('Packed')).getByText('50')).toBeTruthy();
+    expect(within(chip(t('orders.filter.allStages'))).getByText(String(TOTAL))).toBeTruthy();
+
+    // A page of 50 rows holds at most 50 of any stage: the chips are not counts of the page.
+    fireEvent.click(screen.getByRole('button', { name: t('pageBar.next') }));
+    await screen.findByText(t('pageBar.range', { from: 51, to: 100, total: TOTAL }));
+    expect(within(chip('Open')).getByText('70')).toBeTruthy();
+  });
+
   it('sends the stage filter to the Master, so it narrows every page, and starts at the first page', async () => {
     const { requests, view, OrdersScreen, props } = await mount();
     await screen.findByText(t('pageBar.range', { from: 1, to: 50, total: TOTAL }));
@@ -183,7 +210,12 @@ describe('the Master’s Final Orders list', () => {
     await screen.findByText(t('pageBar.range', { from: 51, to: 100, total: TOTAL }));
 
     await act(async () => {
-      view.rerender(<OrdersScreen {...props} stageId="s1" />);
+      view.rerender(
+        <FilterBarProvider>
+          <FilterBarOutlet />
+          <OrdersScreen {...props} stageId="s1" />
+        </FilterBarProvider>,
+      );
     });
     await waitFor(() => expect(last(requests).get('stageIds')).toBe('s1'));
     expect(last(requests).get('offset') ?? '0').toBe('0');
@@ -202,5 +234,8 @@ describe('the Office lists page what their filters leave', () => {
     expect(source).toContain(`total={${filtered}.length}`);
     expect(source).toContain(`${paged} = ${filtered}.slice(`);
     expect(source).toContain(`rows={${paged}}`);
+    // The stage chips count what the search and "my parties" leave, not the page.
+    expect(source).toContain('count={countable.length}');
+    expect(source).toContain('countable.filter(');
   });
 });

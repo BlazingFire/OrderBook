@@ -164,6 +164,8 @@ export function LeadBoardScreen({
     view.leads.filter((lead) => !lead.convertedOrderId),
     scope === 'assigned' ? view.partyGrants : undefined,
   );
+  // What the stage chips count: this panel holds every lead, so under the search and "my parties" they are true totals.
+  const countable = open.filter((lead) => matchesRecordSearch(lead, search));
   const filtered = (stageFilter ? open.filter((lead) => lead.stageId === stageFilter) : open).filter(
     (lead) => matchesRecordSearch(lead, deferredSearch),
   );
@@ -242,7 +244,7 @@ export function LeadBoardScreen({
         <FilterDivider />
         <FilterChip
           active={stageFilter === null}
-          count={open.length}
+          count={countable.length}
           onClick={() => setStageFilter(null)}
         >
           {t('lead.board.filter.all')}
@@ -251,7 +253,7 @@ export function LeadBoardScreen({
           <FilterChip
             key={stage.id}
             active={stageFilter === stage.id}
-            count={open.filter((lead) => lead.stageId === stage.id).length}
+            count={countable.filter((lead) => lead.stageId === stage.id).length}
             onClick={() => setStageFilter(stage.id)}
           >
             {stage.name}
