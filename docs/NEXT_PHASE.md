@@ -10,7 +10,20 @@ This file assumes both.
 
 ---
 
-## First: 1.4.2 is released; what comes next (2026-10-05)
+## First: 1.4.3 is released; what comes next (2026-10-05)
+
+1.4.3 is on `main` @ `60d6b50` and published as v1.4.3 (Setups and manifests only). It brings
+rate limits, caching, paged order lists, the Duplicates page, the sign-in device warning, Save
+to .txt, the role assignment UI and crash hardening. The details are in `HANDOFF.md`, under
+"Speed, limits, stability, duplicates + 1.4.3". In order:
+
+1. The owner installs 1.4.3: the Master first, then the Offices.
+2. The real-PC checklist from the 1.4.1 block below, plus the sign-in warning on a real
+   low-spec PC and the Electron shell.
+3. The owner decides whether Duplicates should merge a Product that holds sub products.
+4. The backlog.
+
+## Before that: 1.4.2 is released (2026-10-05)
 
 1.4.2 is on `main` @ `dbd04c7` and published as v1.4.2 (Setups and manifests only). It is
 English-only, and it carries the filter-strip and Panels-table fixes. The details are in

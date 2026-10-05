@@ -52,6 +52,38 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
+## Speed, limits, stability, duplicates + 1.4.3 (2026-10-05)
+
+**State:** released. `main` @ `60d6b50` (the 1.4.3 bump on D5's green `6e0c006`) is pushed, and
+`origin/main` matches. GitHub release **v1.4.3** is Latest. It holds 8 assets (the three
+Setups and five `latest-*.json` manifests) and an empty body. The owner notes are
+`docs/releases/1.4.3.md`, the new endpoints are §19–§20 of
+`docs/backend-modules/04-API-CONTRACT.md`, and the flows are in `docs/STRUCTURE.md` §11.10.
+The plan and evidence are in `CLAUDE_HELPER_143.md` (R1–R18) and the "1.4.3" sections of
+`CLAUDE_HELPER_D1.md`…`D7.md`. These are untracked coordination files.
+
+**Gate on `d9d8a09`** (everything except docs): lint 0, build 0, typecheck 0, test 0 (333 files
++ 1 skipped; 4,472 tests + 17 skipped), `smoke:legacy` 0.
+
+| ID | Owner said | Result |
+|---|---|---|
+| R1 | rate limiters | One in-house limiter on sign-in (per IP and per username), password changes, reports/PDF, uploads, `/api/v1` and socket commands; 429 `rate_limited` + `retryAfterSeconds`. Pairing keeps its own. Live: the 31st sign-in for one username in a minute → 429, and the Master stays up. |
+| R2, R15, R16 | cache | Server: write-invalidated caches for the dashboard, categories, Pending/Final lists, stage counts and chat history (keyed by reader + query, dropped on any change event, reset on wipe/restore); immutable `/assets`; images were already immutable + ETag. Office: a read cache for fields, report options and party access. Client: a shared request cache (fresh 8 s, stale ≤60 s, dropped on change, write or reconnect) and a chat cache. Live: ETag 304 on orders and images. |
+| R3 | smooth | Change events batched (80 ms Master, 60 ms Office); deferred search on the Office boards; Chatroom, Printroom, Reports, Gallery and Lists lazy (start-up bundle about −9 %). |
+| R4 | save first-login/setup data to .txt | `SaveTextButton` on first run, restore, Server Master setup and recovery, one-time password, API token, replaced pairing password, backup restore, and the Office setup. Live on the Master; the Office setup is checked by unit test only. |
+| R5 | role assign UI | Role cards (tier, head count, permissions held, what the role can change or only view); a role change needs "Change role" plus a confirmation showing permissions gained and lost; the editor has search, select-all, an unsaved marker, and a themed confirm in place of `window.confirm`. |
+| R6–R8 | low RAM / 2 cores warning, sign-in UI | `GET /api/device` on each panel's own server. Warns below 7.5 GB or at ≤2 cores (`os.cpus()`, because the Win7 Office runs Node 16). Caps Lock hint; a refused sign-in no longer shows twice. |
+| R13, R14 | duplicate products menu, everything in sync | Products → Duplicates (`/api/duplicates`, needs `products.delete`): Products and Sub products, normalised. Deleting is the soft delete. It refuses a Product that still holds sub products, and a sub product on a live lead or order (no merge). Sync: deletes reach the Office in under 4 s; a party rename now updates `partyName` in the Office snapshot (`applyChangeToSnapshot`); a user rename forces a snapshot refresh. Line names (product/category/brand) stay as stored history on purpose. |
+| R17 | paged order lists | `PageBar` (25–500 per page) on Pending and Final, on both panels. On the Master the server supplies limit, offset, total and `stageIds`; the Office pages locally. Stage-chip counts come from `/api/{leads,orders}/stage-counts`. Live with 64 final and 61 pending orders. |
+| R18 | never crash | Crash guard (logs and keeps serving; restarts after more than 5 in a minute); 400/413 for bad or oversized JSON; bad params and malformed percent-encoding → 400; all 115 socket handlers guarded; a per-screen error boundary; a toast for any failed request nobody caught. |
+
+**Not verified:** the real Electron shell, real low-spec and Win7 PCs, a socket flood, a real
+backup restore end to end with the caches, the Office setup Save to .txt in a browser, and dark
+theme on everything except Access and Sign-in.
+
+**Open for the owner:** should Duplicates *merge* a duplicate Product (move its sub products to
+the copy kept) rather than refuse it?
+
 ## English only, filter strip + 1.4.2 (2026-10-05)
 
 **State:** released. `main` @ `dbd04c7` (the 1.4.2 bump) is pushed. GitHub release **v1.4.2**

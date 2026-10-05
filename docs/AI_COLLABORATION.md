@@ -190,6 +190,26 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-05 - Speed, limits, stability, duplicates, 1.4.3: CH1 and seven Sonnet sessions (Claude, Opus + Sonnet)
+
+- **Who did what.** The plan is `CLAUDE_HELPER_143.md` (R1–R18, untracked). The owner said
+  "no review or audit", so D4 built instead of auditing; the gate and D5's live pass still ran.
+  - **D1:** the sign-in device warning (`/api/device`), the sign-in layout, the crash guard and
+    400/413 body errors, screen error boundaries, and the party and user rename sync.
+  - **D2:** Save to .txt, paged Pending and Final lists, and the stage-count endpoints.
+  - **D3:** the role assignment UI, its browser-pass fixes, and the Win7 Office build.
+  - **D4:** the client request cache, the chat cache, change-event batching, lazy screens, the
+    update-check flake (a test bug), and every doc.
+  - **D5:** three merge rounds, the gate, and the live two-process pass.
+  - **D6:** the Duplicates page and endpoints, the socket handler guard, and bad-input 400s.
+  - **D7:** the rate limiter, the server caches with invalidation tests, and the image cache headers.
+  - **CH1:** the plan, the verdicts, and the release.
+- **Verified.** The gate on `d9d8a09`: lint, build, typecheck, test (333 files, 4,472 tests; 1
+  file and 17 tests skipped as before), `smoke:legacy`, each 0. After the docs merge (`6e0c006`),
+  lint and typecheck were 0 and the Devanagari grep found nothing. D5's live pass is in HANDOFF.
+- **Release.** CH1 checked `git symbolic-ref` before committing the bump and compared
+  `origin/main` after the push. Both matched (`60d6b50`).
+
 ### 2026-10-05 - English only and the filter strip, 1.4.2: CH1 and five Sonnet sessions (Claude, Opus + Sonnet)
 
 - **Who did what.**
