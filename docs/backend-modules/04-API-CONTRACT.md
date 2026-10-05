@@ -2740,6 +2740,87 @@ service `master/src/services/duplicate-products.service.ts`.
 | `GET /api/duplicates` | `{ groups: DuplicateGroup[] }`. Two levels. `product` (a category): same brand and same name, or same brand and same code. `subProduct`: same Product and same name, or same brand and one same variant code. The comparison (`duplicateKey`) ignores case, spacing, punctuation and accents. Each member carries `blockedBy`: `liveReferences` (a live pending order or order quotes it) or `subProducts` (a Product still holding live sub products) |
 | `POST /api/duplicates/resolve` | `{ level, keepId, deleteIds[] }` → `{ deleted[], refused[{id, blockedBy}] }`. The groups are found again server side; `keepId` and every `deleteIds` entry must sit in one group (else 400 `validation.duplicates.selection`). Each delete is `deleteProduct` / `deleteCategory`, so it is the Recycle Bin soft delete with its activity row and its `data:changed … deleted` event, which every Office folds (`apply-change.ts`). A blocked copy is refused and left; the others still go |
 
+## 20. Device figures, paged order lists, stage counts and the error answers (1.4.3)
+
+Duplicate products are section 19. This section is the rest of the 1.4.3 wire changes.
+
+### 20.1 `GET /api/device` (both servers), unauthenticated
+
+Sits beside `/api/health` on the Master and on the Office's local server, because the sign-in screen
+shows it before anybody has signed in. It describes the PC that server runs on, hardware only:
+
+```ts
+{ totalMemoryBytes: number, cpuCount: number }   // os.totalmem(), os.cpus().length
+```
+
+The thresholds are not on the wire. `shared/src/domain/device.ts` holds them (memory below
+7.5 x 1024^3 bytes, or 2 or fewer logical processors) and `ui/src/DeviceWarning.tsx` applies them. Unknown
+or zero figures warn nothing. `os.availableParallelism` is not used because the Windows 7 Office runs
+Node 16. The Master's own screen asks for it only when the browser is on the Master PC itself, since a
+browser on another machine would be shown the Master's hardware as if it were its own.
+
+### 20.2 The Pending and Final lists are paged
+
+`GET /api/leads` and `GET /api/orders` return `Paginated<T>` = `{ items, total, limit, offset }`. The
+query is `search`, `limit`, `offset`, `scope` (`assigned` or absent), `sort`, `dir`, and a comma-separated
+`stageIds`; leads also take `includeConverted`, `convertedOnly`, `partyId` and `followUpDueOnly`. An unasked
+`limit` is 100 and the ceiling is 500 (`clampPaging`). `total` is the number of rows the filters leave, not
+the page size. The stage filter is applied before the page is cut, so a stage chosen on page 1 narrows
+every page. The Master screens ask for one page at a time and the bar offers 25, 50, 100, 200 or 500
+rows (`ui/src/PageBar.tsx`, remembered per machine). The old load-more button is gone.
+
+The Office does not call these routes for its lists: it pages its local snapshot (filter by scope,
+stage and search first, then slice), so its totals are the local filtered counts.
+
+### 20.3 `GET /api/leads/stage-counts` and `GET /api/orders/stage-counts`
+
+```ts
+StageCounts = { total: number, counts: Record<stageId, number> }   // a stage with none is absent
+```
+
+Same filters as the list (`search`, `scope`, and for leads the converted switches, `partyId` and
+`followUpDueOnly`) with the stage filter **ignored**, and the same party scope and permission check (`leads.view` or
+`orders.view`). The chips above the list show these figures, so each chip is the same on every page
+and under any stage choice, and "All" is `total`. Both routes are registered before the `:id` routes so
+the word "stage-counts" is never taken for an id.
+
+### 20.4 Limits and the answers a caller can get
+
+Every limit is a fixed 60 second window kept in memory (`master/src/http/middleware/rate-limit.ts`,
+built on `consume`). They are flood guards sized so that normal shop use never reaches them: every Office
+reaches the Master from its own PC's address, so one address is one panel.
+
+| Where | Key | Per minute |
+|---|---|---|
+| `POST /api/auth/sign-in` | source address; attempted username (case-folded) | 60; 30 |
+| Password reset, reveal, change, pairing-password and master-key writes | source address | 60 |
+| `/api/reports/:report/pdf` and `/export` | source address | 60 |
+| Any multipart request under `/api` | source address | 120 |
+| `/api/v1` before the key's own limit | source address | 1,200 |
+| Every Socket.IO command | connection | 1,200 |
+| Manual pairing (older, unchanged) | source address | 10 |
+
+| Status | `error` | When | Carries |
+|---|---|---|---|
+| 429 | `rate_limited` | a limit above was passed | `messageKey: error.rateLimited`, `details.seconds` and `details.retryAfterSeconds`, and a `Retry-After` header |
+| 400 | `invalid_request` | the JSON body could not be read (malformed or the wrong encoding) | `messageKey: error.generic.malformedBody` |
+| 413 | `payload_too_large` | the body passed the limit (Master 2 MB, Office 1 MB) | `messageKey: error.generic.tooLarge` |
+| 400 | `validation_error` | a database refusal that a caller causes: a text that is not an id, a number out of range, a bad date, a value too long, a NUL character, or a malformed percent-escape in the path | `messageKey: validation.request.badInput` |
+
+A refused socket command with an acknowledgement gets `{ ok: false, code: 'rate_limited', messageKey, params,
+details }`; one without an acknowledgement is dropped. The window is forgotten when the connection ends.
+None of these is a 500: the generic handler used to answer 500 for the last three.
+
+### 20.5 Caching headers and the server read cache
+
+Not part of any payload, listed here because clients may rely on them. Files under `/assets/` (content-hashed
+by the build) are `public, max-age=31536000, immutable`; `index.html` and the rest are `no-cache` with an
+`ETag`, so an update shows on the next open. Product images and avatars were already `immutable` with an
+`ETag`. A few hot reads (the dashboard summary, the categories list, the Pending and Final lists, chat
+history) are kept for 5 to 15 seconds by `master/src/lib/seq-cache.ts`, valid only while no change has been
+published since they were computed, so any write drops them. An answer is therefore never older than the
+last change event, and a read made inside the window after a write sees it.
+
 ## Appendix — new permission keys
 
 **`08-PERMISSIONS.md` is the authority for permission keys, tiers and the grant-migration algorithm.**
