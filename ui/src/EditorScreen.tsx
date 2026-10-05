@@ -25,8 +25,8 @@ export interface EditorScreenProps {
   meta?: ReactNode;
   /** Trailing controls — Save, Cancel. */
   actions?: ReactNode;
-  /** Returns false when the operation refused to close — an unsaved draft. */
-  onBack: () => boolean;
+  /** Resolves false when the operation refused to close — an unsaved draft. May ask first (a themed dialog), hence the promise. */
+  onBack: () => boolean | Promise<boolean>;
   backLabel: string;
   children: ReactNode;
 }
@@ -35,7 +35,7 @@ export function EditorScreen({ title, meta, actions, onBack, backLabel, children
   return (
     <div className="ob-editorscreen">
       <header className="ob-editorscreen-head">
-        <Button variant="ghost" size="sm" icon="collapse" onClick={() => onBack()}>
+        <Button variant="ghost" size="sm" icon="collapse" onClick={() => void onBack()}>
           {backLabel}
         </Button>
         {title && (
