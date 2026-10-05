@@ -1,3 +1,4 @@
+export * from './failureToasts.js';
 /**
  * The shared UI package's public surface.
  *
@@ -33,9 +34,11 @@ export * from './ChatConversation.js';
 export * from './ChatGroupSettings.js';
 export * from './ChatroomScreen.js';
 export * from './ChatShareScreen.js';
+export * from './CapsLockHint.js';
 export * from './CommandPalette.js';
 export * from './CursorPager.js';
 export * from './DataDisplay.js';
+export * from './DeviceWarning.js';
 export * from './DataTable.js';
 export * from './EditorScreen.js';
 export * from './ErrorBoundary.js';

@@ -24,6 +24,57 @@ interface State {
   componentStack: string | null;
 }
 
+/**
+ * One screen's own boundary, so a crash in it leaves the sidebar, the top bar and every
+ * other screen working. Offers to try the screen again (a fresh mount) or to reload.
+ */
+export class ScreenErrorBoundary extends Component<
+  { children: ReactNode },
+  { error: Error | null }
+> {
+  override state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error): { error: Error } {
+    return { error };
+  }
+
+  override componentDidCatch(error: Error, info: ErrorInfo): void {
+    console.error('Unhandled screen render error', error, info.componentStack);
+  }
+
+  override render(): ReactNode {
+    const { error } = this.state;
+    if (!error) return this.props.children;
+
+    return (
+      <div className="ob-empty" role="alert" data-testid="screen-crash">
+        <h2 className="ob-title" style={{ margin: 0 }}>
+          {t('crash.title')}
+        </h2>
+        <p className="ob-small" style={{ margin: 0 }}>
+          {error.message}
+        </p>
+        <div style={{ display: 'flex', gap: 'var(--s-8)' }}>
+          <button
+            type="button"
+            className="ob-btn ob-btn--primary"
+            onClick={() => this.setState({ error: null })}
+          >
+            {t('crash.retry')}
+          </button>
+          <button
+            type="button"
+            className="ob-btn ob-btn--secondary"
+            onClick={() => window.location.reload()}
+          >
+            {t('crash.reload')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+}
+
 export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
   override state: State = { error: null, componentStack: null };
 

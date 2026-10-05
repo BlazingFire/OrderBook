@@ -16,6 +16,7 @@
 
 import { existsSync } from 'node:fs';
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';
@@ -30,12 +31,14 @@ import {
   MAX_PRODUCT_IMPORT_BYTES,
   MUTATION_PERMISSIONS,
   PARTY_ACCESS_SORTS,
+  bodyParserFailure,
   cleanChatPost,
   parseReportQuery,
   standing,
   t,
   type ChatMessage,
   type DataChangedEvent,
+  type DeviceInfo,
   type PresenceBeat,
   type ReportKind,
   type PanelHealth,
@@ -155,6 +158,17 @@ export function createApp(): Express {
           }
         : {}),
     } satisfies PanelHealth);
+  });
+
+  /**
+   * The PC this panel runs on: memory and processor count, for the sign-in warning.
+   * Unauthenticated like `/api/health` (nobody has signed in yet); hardware figures only.
+   */
+  app.get('/api/device', (_req, res) => {
+    res.json({
+      totalMemoryBytes: os.totalmem(),
+      cpuCount: os.cpus().length,
+    } satisfies DeviceInfo);
   });
 
   // --- Connection screen ---
@@ -1968,6 +1982,17 @@ function errorHandler(error: unknown, _req: Request, res: Response, _next: NextF
       error: 'validation_error',
       message: 'That file is too large',
       messageKey: 'validation.image.tooLarge',
+    });
+    return;
+  }
+
+  // A body the JSON parser refused is the caller's mistake: 400 or 413, never a 500.
+  const refused = bodyParserFailure(error);
+  if (refused) {
+    res.status(refused.status).json({
+      error: refused.error,
+      message: refused.message,
+      messageKey: refused.messageKey,
     });
     return;
   }

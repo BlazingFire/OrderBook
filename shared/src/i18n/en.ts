@@ -289,6 +289,9 @@ export const EN_MESSAGES = {
   'error.generic.validation': 'That is not valid',
   'error.generic.forbidden': 'You do not have permission to do that',
   'error.generic.internal': 'Something went wrong on the server',
+  'error.generic.requestFailed': 'A request did not go through. Check the connection and try again.',
+  'error.generic.malformedBody': 'That request could not be read',
+  'error.generic.tooLarge': 'That request is too large',
   'error.generic.masterCommandFailed': 'The Master Panel could not complete that action',
   'error.generic.invalidRequest': 'That request was not valid',
   'error.generic.notSynced': 'This panel has not synced with the Master yet',
@@ -1043,6 +1046,7 @@ export const EN_MESSAGES = {
     'The panel stopped rather than showing something wrong. Reloading usually gets you back to where you were.',
   'crash.copy': 'Copy details',
   'crash.reload': 'Reload',
+  'crash.retry': 'Try again',
   'crash.title': 'Something went wrong on this screen',
   'dashboard.asOf': 'Figures as of {when}',
   'dashboard.asOf.stale': 'Figures from the last time the Master was reachable · {when}',
@@ -3145,6 +3149,10 @@ export const EN_MESSAGES = {
   // 1.4 D4: password eye
   'password.show': 'Show password',
   'password.hide': 'Hide password',
+  'password.capsLock': 'Caps Lock is on',
+  // 1.4.3: device warnings on the sign-in screen
+  'device.warning.lowMemory': 'Low memory: this PC has {memory} GB in total. OrderBook is built for 8 GB or more, so it may feel slow or stall here.',
+  'device.warning.fewCores': 'Few processor cores: this PC has {cores}. With 2 or fewer, OrderBook can feel slow when several things happen at once.',
   // 1.4 D4: note buttons, preview
   'orderNote.column.notes': 'Notes',
   'orderNote.previewButton': 'Preview',

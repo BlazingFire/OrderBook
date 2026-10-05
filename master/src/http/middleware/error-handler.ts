@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import multer from 'multer';
+import { bodyParserFailure } from '@orderbook/shared';
 
 import { AppError, TenantViolationError, TooManyRequestsError } from '../../lib/errors.js';
 import { createLogger } from '../../lib/logger.js';
@@ -54,6 +55,17 @@ export function errorHandler(
       error: 'validation_error',
       message: 'That file is too large',
       messageKey: 'validation.image.tooLarge',
+    });
+    return;
+  }
+
+  // A body the JSON parser refused is the caller's mistake: 400 or 413, never a 500.
+  const refused = bodyParserFailure(error);
+  if (refused) {
+    res.status(refused.status).json({
+      error: refused.error,
+      message: refused.message,
+      messageKey: refused.messageKey,
     });
     return;
   }

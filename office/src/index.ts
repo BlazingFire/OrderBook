@@ -13,6 +13,8 @@ import { installedLegacyGlobals } from './lib/legacy-globals.js';
 import { createServer } from 'node:http';
 import type { Socket } from 'node:net';
 
+import { installCrashGuard } from '@orderbook/shared';
+
 import { config } from './config/index.js';
 import { createApp } from './http/app.js';
 import { createLogger } from './lib/logger.js';
@@ -90,11 +92,13 @@ process.on('disconnect', () => void shutdown('parent gone'));
 /*
  * A promise nobody awaited that then failed. Node's default since v15 is to
  * kill the process, which on a shop PC means a restart in the middle of the
- * day over what is usually one failed broadcast. Log it and keep running.
- * `uncaughtException` is still left to end the process: a thrown error leaves
- * state half-changed, and the shell restarts a dead server.
+ * day over what is usually one failed broadcast. Log it and keep running; so is a
+ * stray `uncaughtException`, because a window that blanks every time an odd error
+ * escapes is worse than a log line. If they keep coming (more than five in a
+ * minute) the process is in a state nobody can reason about: it shuts down cleanly
+ * and the shell starts a fresh one (`shared/src/domain/crash-guard.ts`).
  */
-process.on('unhandledRejection', (reason) => log.error('Unhandled rejection', reason));
+installCrashGuard(process, log, { onRepeated: (reason) => void shutdown(reason) });
 
 async function main(): Promise<void> {
   const app = createApp();

@@ -336,3 +336,38 @@ describe('POST /api/connection/unpair', () => {
     expect(unpair).toHaveBeenLastCalledWith({ pending: undefined });
   });
 });
+
+describe('GET /api/device', () => {
+  it('answers this PC’s memory and processor count without a sign-in', async () => {
+    const os = await import('node:os');
+    const response = await request(createApp()).get('/api/device');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      totalMemoryBytes: os.default.totalmem(),
+      cpuCount: os.default.cpus().length,
+    });
+  });
+});
+
+describe('a body the parser refuses', () => {
+  it('is a 400 for malformed JSON, not a 500', async () => {
+    const response = await request(createApp())
+      .post('/api/connection/unpair')
+      .set('Content-Type', 'application/json')
+      .send('{"pending": ');
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({ error: 'invalid_request', messageKey: 'error.generic.malformedBody' });
+  });
+
+  it('is a 413 above the 1 MB limit', async () => {
+    const response = await request(createApp())
+      .post('/api/connection/unpair')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ pending: 'x'.repeat(2 * 1024 * 1024) }));
+
+    expect(response.status).toBe(413);
+    expect(response.body).toMatchObject({ error: 'payload_too_large', messageKey: 'error.generic.tooLarge' });
+  });
+});

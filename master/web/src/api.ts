@@ -138,6 +138,7 @@ import type {
   VaultStatus,
   UserInput,
   UserUpdateInput,
+  DeviceInfo,
 } from '@orderbook/shared';
 import { MASTER_KEY_TOKEN_HEADER, reportQueryParams } from '@orderbook/shared';
 
@@ -517,6 +518,8 @@ export function desktopBridge(): DesktopBridge | null {
 }
 
 export const api = {
+  /** The PC the Master runs on (memory, processors), for the sign-in warning. */
+  device: () => request<DeviceInfo>('/api/device'),
   /** `companyName` once set up: the footer shows it (already public through discovery). */
   setupStatus: () => request<SetupStatus>('/api/setup/status'),
   /** Master PC only. Creates the two Server Masters the owner typed, and no admin. */

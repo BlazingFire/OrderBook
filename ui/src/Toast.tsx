@@ -4,9 +4,18 @@
  * "Saved" toast, never a generic "Success".
  */
 
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { ReactNode } from 'react';
 
+import { unhandledFailureText } from './failureToasts.js';
 import { t } from './i18n.js';
 
 export type ToastTone = 'ok' | 'error' | 'info';
@@ -83,6 +92,22 @@ export function ToastProvider({ children }: { children: ReactNode }) {
    * the caller that happened to notice.
    */
   const api = useMemo<ToastApi>(() => ({ push }), [push]);
+
+  // A failed request nobody caught is said here, once per sentence per ten seconds:
+  // a screen polling an unreachable Master must not stack a toast every second.
+  useEffect(() => {
+    const lastSaid = new Map<string, number>();
+    const onRejection = (event: PromiseRejectionEvent): void => {
+      const text = unhandledFailureText(event.reason);
+      if (!text) return;
+      const now = Date.now();
+      if (now - (lastSaid.get(text) ?? 0) < 10_000) return;
+      lastSaid.set(text, now);
+      push(text, { tone: 'error' });
+    };
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => window.removeEventListener('unhandledrejection', onRejection);
+  }, [push]);
 
   return (
     <ToastContext.Provider value={api}>
