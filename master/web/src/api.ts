@@ -1,6 +1,14 @@
 /** Thin wrapper over the Master's local HTTP API. */
 
-import { anySignal, publishSessionEnded, t, trackLoad, type LeadEntryView } from '@orderbook/ui';
+import {
+  anySignal,
+  createRequestCache,
+  isCacheableRead,
+  publishSessionEnded,
+  t,
+  trackLoad,
+  type LeadEntryView,
+} from '@orderbook/ui';
 import type {
   PickKind,
   ChatAccessCapability,
@@ -205,6 +213,17 @@ export class ApiError extends Error {
 const REQUEST_TIMEOUT_MS = 15_000;
 
 /**
+ * The shared read cache of this panel (`ui/src/requestCache.ts`). The shell switches it on while its change
+ * feed is up and calls `invalidateReads()` on every change event; `request()` below invalidates it after
+ * every write. Exported for the shell and for tests.
+ */
+export const requestCache = createRequestCache();
+
+export function invalidateReads(): void {
+  requestCache.invalidate();
+}
+
+/**
  * GETs already in flight, so N screens asking the same question ask once.
  *
  * **Refcounted, and that is not an optimisation.** Two screens sharing one
@@ -326,8 +345,27 @@ function requestUntracked<T>(path: string, init?: RequestInit): Promise<T> {
     // alone can cancel, and joining a shared one would make its abort somebody
     // else's problem.
     const own = init?.signal ? anySignal([init.signal, timeout]) : timeout;
-    return send<T>(path, init, own).catch(asFailure);
+    const sent = send<T>(path, init, own).catch(asFailure);
+    // A write (or a read that opted out) may change what cached lists say: the next read asks again.
+    // Settled either way: a failed write can still have landed.
+    if (method !== 'GET') void sent.then(invalidateReads, invalidateReads);
+    return sent;
   }
+
+  // A read of company data: answered from the shared cache while it is fresh (`requestCache`).
+  if (!init?.headers && isCacheableRead(path)) {
+    return requestCache.get(path, () => sharedRead<T>(path, init, timeout, asFailure));
+  }
+  return sharedRead<T>(path, init, timeout, asFailure);
+}
+
+/** One network read, shared by every caller asking the same question at the same time. */
+function sharedRead<T>(
+  path: string,
+  init: RequestInit | undefined,
+  timeout: AbortSignal,
+  asFailure: (error: unknown) => never,
+): Promise<T> {
 
   /*
    * The dedupe key is the path *plus* whatever headers the caller set. A GET

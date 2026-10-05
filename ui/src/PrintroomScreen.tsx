@@ -70,50 +70,6 @@ const STATUS_LABEL = {
 const isUnavailable = (caught: unknown): boolean =>
   (caught as { code?: unknown } | null)?.code === 'unavailable';
 
-// --- The sidebar badge --------------------------------------------------------------
-
-/**
- * How many jobs are waiting for paper, for the nav row, the Dashboard and the
- * Basic Home tile. Re-read a moment after any push and after a reconnect.
- * `enabled` is false for somebody holding neither Printroom right, who must not
- * even ask.
- */
-export function usePrintWaiting(transport: PrintroomTransport, enabled: boolean): number {
-  const transportRef = useRef(transport);
-  transportRef.current = transport;
-  const [waiting, setWaiting] = useState(0);
-
-  useEffect(() => {
-    if (!enabled) {
-      setWaiting(0);
-      return;
-    }
-    let cancelled = false;
-    let timer: number | null = null;
-    const read = (): void => {
-      void transportRef.current.listJobs({ status: 'waiting', limit: 1 }).then(
-        (page) => {
-          if (!cancelled) setWaiting(page.waitingCount);
-        },
-        () => undefined,
-      );
-    };
-    const later = (): void => {
-      if (timer !== null) window.clearTimeout(timer);
-      timer = window.setTimeout(read, REFRESH_MS);
-    };
-    read();
-    const unsubscribe = transportRef.current.subscribe(later);
-    return () => {
-      cancelled = true;
-      if (timer !== null) window.clearTimeout(timer);
-      unsubscribe();
-    };
-  }, [enabled]);
-
-  return waiting;
-}
-
 // --- The station strip ------------------------------------------------------------------
 
 function StationStrip({

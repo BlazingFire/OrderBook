@@ -13,7 +13,7 @@
  * while that shows, so its filters and scroll position survive the round trip.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import { matchesRecordSearch, shownColour } from '@orderbook/shared';
 import type {
   ChatRecordChip,
@@ -142,6 +142,8 @@ export function OrderBoardScreen({
   const toast = useToast();
   const [scope, setScope] = useState<PartyScopeFilter>('all');
   const [search, setSearch] = useState('');
+  // The box stays instant; the filter over a big board catches up between keystrokes.
+  const deferredSearch = useDeferredValue(search);
   const colourHex = useColourHex(view.optionLists);
   const pipeline = view.pipelines.find((candidate) => candidate.kind === 'order');
   const stages = sortedStages(pipeline);
@@ -340,7 +342,7 @@ export function OrderBoardScreen({
 
   const filteredOrders = (
     stageFilter ? orders.filter((order) => order.stageId === stageFilter) : orders
-  ).filter((order) => matchesRecordSearch(order, search));
+  ).filter((order) => matchesRecordSearch(order, deferredSearch));
 
   const columns: DataTableColumn<Order>[] = [
     {

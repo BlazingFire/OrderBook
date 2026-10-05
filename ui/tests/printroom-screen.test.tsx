@@ -20,7 +20,8 @@ import {
 
 import { ConfirmProvider } from '../src/ConfirmDialog.js';
 import { t } from '../src/i18n.js';
-import { PrintroomScreen, usePrintWaiting, type PrintroomScreenProps } from '../src/PrintroomScreen.js';
+import { PrintroomScreen, type PrintroomScreenProps } from '../src/PrintroomScreen.js';
+import { usePrintWaiting } from '../src/printWaiting.js';
 import type { PrintEvent, PrintroomTransport } from '../src/printroomModel.js';
 import { ToastProvider } from '../src/Toast.js';
 import { installBrowserStubs } from './panel-harness.js';

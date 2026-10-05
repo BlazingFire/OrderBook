@@ -52,6 +52,7 @@ import { Icon } from './icons';
 import { OfflineBanner, ErrorState } from './States.js';
 import { Popover } from './Popover.js';
 import { ServerMasterBadge } from './TierPill.js';
+import { chatCacheFor } from './chatCache.js';
 import { useDebounced } from './useDebounced.js';
 import { useToast } from './Toast.js';
 import { useUnsavedWork } from './unsavedWork.js';
@@ -710,6 +711,7 @@ export function ChatConversation(props: ChatConversationProps) {
       let room: ChatRoomDetail | null = null;
       try {
         room = await transportRef.current.room(roomId);
+        chatCacheFor(transportRef.current).setDetail(roomId, room);
         setDetail(room);
         setOffline(false);
         callbacks.current.onTitle?.(roomTitle(room));
@@ -736,8 +738,10 @@ export function ChatConversation(props: ChatConversationProps) {
           focus ? { beforeSeq: focus + 26, limit: CHAT_LIMITS.pageSize } : { limit: CHAT_LIMITS.pageSize },
         );
         // A reload keeps what is held and folds the newest page into it.
+        const older = page.length >= CHAT_LIMITS.pageSize && (page[0]?.seq ?? 1) > 1;
         setMessages((current) => (focus ? mergeMessages([], page, 'oldest') : mergeMessages(current, page)));
-        setHasOlder(page.length >= CHAT_LIMITS.pageSize && (page[0]?.seq ?? 1) > 1);
+        setHasOlder(older);
+        if (!focus) chatCacheFor(transportRef.current).mergePage(roomId, page, older);
         setOffline(false);
       } catch (caught) {
         if (isUnavailable(caught)) {
@@ -756,9 +760,20 @@ export function ChatConversation(props: ChatConversationProps) {
 
   // Open a room: start fresh, then follow it live.
   useEffect(() => {
-    setDetail(null);
-    setMessages([]);
-    setLoading(true);
+    // A room read before (or followed live since) opens from memory; the read below reconciles it quietly.
+    const cache = chatCacheFor(transportRef.current);
+    cache.forViewer(viewer.id);
+    const held = props.focusSeq ? null : cache.room(roomId);
+    if (held && held.detail && held.messages.length > 0) {
+      setDetail(held.detail);
+      setMessages(held.messages);
+      setHasOlder(held.hasOlder);
+      setLoading(false);
+    } else {
+      setDetail(null);
+      setMessages([]);
+      setLoading(true);
+    }
     readSent.current = 0;
     stickToBottom.current = true;
     void loadAll(props.focusSeq ?? null);
@@ -790,6 +805,7 @@ export function ChatConversation(props: ChatConversationProps) {
       } else if (event.kind === 'room') {
         void transportRef.current.room(roomId).then(
           (room) => {
+            chatCacheFor(transportRef.current).setDetail(roomId, room);
             setDetail(room);
             callbacks.current.onTitle?.(roomTitle(room));
           },
@@ -870,8 +886,10 @@ export function ChatConversation(props: ChatConversationProps) {
       });
       stickToBottom.current = false;
       atBottom.current = false;
+      const more = older.length >= CHAT_LIMITS.pageSize && (older[0]?.seq ?? 1) > 1;
       setMessages((current) => mergeMessages(current, older, 'oldest'));
-      setHasOlder(older.length >= CHAT_LIMITS.pageSize && (older[0]?.seq ?? 1) > 1);
+      setHasOlder(more);
+      chatCacheFor(transportRef.current).mergePage(roomId, older, more);
     } catch (caught) {
       toast.push(apiErrorText(caught, 'chat.error.load'), { tone: 'error' });
     }

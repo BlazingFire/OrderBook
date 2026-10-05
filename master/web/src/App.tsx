@@ -12,7 +12,7 @@
  * server.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ComponentProps } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import type {
   ChatRecordChip,
@@ -39,7 +39,7 @@ import {
   SERVER_MASTER_TIER,
 } from '@orderbook/shared';
 
-import { ApiError, api, desktopBridge } from './api';
+import { ApiError, api, desktopBridge, invalidateReads, requestCache } from './api';
 import { dispatchChat, masterChatTransport } from './chatTransport';
 import { attachPrintSocket, dispatchPrint, masterPrintroomTransport } from './printroomTransport';
 import { presenceChannel } from './presence';
@@ -49,14 +49,12 @@ import {
   Avatar,
   ServerMasterBadge,
   BasicHome,
+  createBurstBatcher,
   BP_NARROW,
-  ChatroomScreen,
-  PrintroomScreen,
   PrintStationRunner,
   Clock,
   FilterBarOutlet,
   FilterBarProvider,
-  GalleryScreen,
   Icon,
   IconButton,
   KeyboardOverlays,
@@ -70,7 +68,6 @@ import {
   PaletteButton,
   ConfirmProvider,
   onSessionEnded,
-  ReportsScreen,
   ResetProvider,
   ScreenHost,
   Splash,
@@ -95,7 +92,6 @@ import {
   useSubNavState,
   splitSubPage,
   withSubPages,
-  CatalogListsScreen,
   type CatalogListsPage,
   type ChatPage,
   type PrintPage,
@@ -109,6 +105,13 @@ import {
   NAV_ICONS,
   useConfirm,
   requestSettingsTab,
+} from '@orderbook/ui';
+/** The real components are loaded on first visit (below); these are only for their prop types. */
+import type {
+  CatalogListsScreen as CatalogListsScreenImpl,
+  ChatroomScreen as ChatroomScreenImpl,
+  PrintroomScreen as PrintroomScreenImpl,
+  ReportsScreen as ReportsScreenImpl,
 } from '@orderbook/ui';
 import { ChangePasswordDialog } from './components/ChangePasswordDialog';
 import { DashboardScreen } from './screens/DashboardScreen';
@@ -128,6 +131,41 @@ import { SETTINGS_TAB_IDS, settingsTabIdsFor } from './settingsTabs';
  * path never wait on a fetch.
  */
 const AccessScreen = lazyScreen(() => import('./screens/AccessScreen'), 'AccessScreen');
+const ChatroomScreen = lazyScreen<
+  'ChatroomScreen',
+  ComponentProps<typeof ChatroomScreenImpl>
+>(
+  () => import('@orderbook/ui/lazy/ChatroomScreen'),
+  'ChatroomScreen',
+);
+const PrintroomScreen = lazyScreen<
+  'PrintroomScreen',
+  ComponentProps<typeof PrintroomScreenImpl>
+>(
+  () => import('@orderbook/ui/lazy/PrintroomScreen'),
+  'PrintroomScreen',
+);
+const ReportsScreen = lazyScreen<
+  'ReportsScreen',
+  ComponentProps<typeof ReportsScreenImpl>
+>(
+  () => import('@orderbook/ui/lazy/ReportsScreen'),
+  'ReportsScreen',
+);
+const GalleryScreen = lazyScreen<
+  'GalleryScreen',
+  object
+>(
+  () => import('@orderbook/ui/lazy/GalleryScreen'),
+  'GalleryScreen',
+);
+const CatalogListsScreen = lazyScreen<
+  'CatalogListsScreen',
+  ComponentProps<typeof CatalogListsScreenImpl>
+>(
+  () => import('@orderbook/ui/lazy/CatalogListsScreen'),
+  'CatalogListsScreen',
+);
 const ConflictsScreen = lazyScreen(() => import('./screens/ConflictsScreen'), 'ConflictsScreen');
 const FieldsScreen = lazyScreen(() => import('./screens/FieldsScreen'), 'FieldsScreen');
 const IntegrationsScreen = lazyScreen(
@@ -245,6 +283,9 @@ function revisionOf(revisions: Record<string, number>, key: string): number {
     revisions['*'] ?? 0,
   );
 }
+
+/** Change events inside this window move a screen's revision once (see the `bump` in the socket effect). */
+const REVISION_BATCH_MS = 80;
 
 /** How long a refused socket waits before it tries again (the server said no, not nothing). */
 const REFUSED_RETRY_MS = 5_000;
@@ -522,8 +563,26 @@ function MasterPanel() {
 
     socket.on('panels:changed', setPanels);
     socket.on('dashboard:changed', setSummary);
-    const bump = (entity: string): void =>
-      setRevisions((current) => ({ ...current, [entity]: (current[entity] ?? 0) + 1 }));
+    /*
+     * One state update per burst, not per event. A bulk import or a catalogue seed publishes
+     * hundreds of change events within a second, and each one used to re-render the shell and
+     * start a re-read on every screen that follows the entity. The counters now move once per
+     * ~80 ms window, by however many events arrived in it; the cache is dropped at once, since
+     * a read started in the window must not be answered from before the change.
+     */
+    const batch = createBurstBatcher<string>((entities) => {
+      const counts = new Map<string, number>();
+      for (const entity of entities) counts.set(entity, (counts.get(entity) ?? 0) + 1);
+      setRevisions((current) => {
+        const next = { ...current };
+        for (const [entity, count] of counts) next[entity] = (next[entity] ?? 0) + count;
+        return next;
+      });
+    }, REVISION_BATCH_MS);
+    const bump = (entity: string): void => {
+      invalidateReads();
+      batch.push(entity);
+    };
 
     // Every entity, unconditionally. The old allow-list is what made a per-entity
     // counter pointless for exactly the screens that most needed one.
@@ -582,6 +641,7 @@ function MasterPanel() {
     };
     socket.on('connect', () => {
       setLinkUp(true);
+      requestCache.setLive(true);
       if (!down) return;
       down = false;
       bump('*');
@@ -597,12 +657,14 @@ function MasterPanel() {
     socket.on('disconnect', (reason) => {
       down = true;
       setLinkUp(false);
+      requestCache.setLive(false);
       presenceChannel.reset();
       if (reason === 'io server disconnect') retryIn(1_000);
     });
     socket.on('connect_error', () => {
       down = true;
       setLinkUp(false);
+      requestCache.setLive(false);
       // Still active: the transport failed and socket.io-client is retrying.
       if (socket.active) return;
       // Refused. A session that has ended reaches the sign-in screen through
@@ -613,6 +675,8 @@ function MasterPanel() {
 
     return () => {
       if (retry) clearTimeout(retry);
+      batch.dispose();
+      requestCache.setLive(false);
       attachPrintSocket(null);
       socket.close();
     };

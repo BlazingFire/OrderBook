@@ -611,7 +611,8 @@ describe('a change made elsewhere reaches the screen built from it', () => {
 
     await changed('catalog');
 
-    expect(gets(calls, '/api/leads')).toBeGreaterThan(before);
+    // Change events inside one 80 ms window move the revision once, so the re-read follows the window.
+    await waitFor(() => expect(gets(calls, '/api/leads')).toBeGreaterThan(before));
   });
 
   it('the shell re-reads the stages when a pipeline changes', async () => {
@@ -622,7 +623,7 @@ describe('a change made elsewhere reaches the screen built from it', () => {
 
     await changed('pipeline');
 
-    expect(gets(calls, '/api/pipelines')).toBeGreaterThan(before);
+    await waitFor(() => expect(gets(calls, '/api/pipelines')).toBeGreaterThan(before));
   });
 
   it.each(['option_list', 'custom_field'])(
@@ -635,7 +636,7 @@ describe('a change made elsewhere reaches the screen built from it', () => {
 
       await changed(entity);
 
-      expect(gets(calls, '/api/recycle-bin')).toBeGreaterThan(before);
+      await waitFor(() => expect(gets(calls, '/api/recycle-bin')).toBeGreaterThan(before));
     },
   );
 });

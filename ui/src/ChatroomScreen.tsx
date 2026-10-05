@@ -31,7 +31,7 @@ import { Button } from './Button.js';
 import { ChatConversation } from './ChatConversation.js';
 import { ChatGroupSettings } from './ChatGroupSettings.js';
 import { ChatShareScreen } from './ChatShareScreen.js';
-import { unreadTotals, roomTitle, type ChatRecordOption, type ChatTransport, type ChatViewer } from './chatModel.js';
+import { roomTitle, type ChatRecordOption, type ChatTransport, type ChatViewer } from './chatModel.js';
 import { Combobox } from './Combobox.js';
 import { apiErrorText } from './errorText.js';
 import { FilterChip } from './FilterBar.js';
@@ -42,6 +42,7 @@ import { Popover } from './Popover.js';
 import { EmptyState, ErrorState, OfflineBanner, SkeletonRows } from './States.js';
 import { useSubNav } from './SubNavSlot.js';
 import { ServerMasterBadge } from './TierPill.js';
+import { chatCacheFor } from './chatCache.js';
 import { useDebounced } from './useDebounced.js';
 import { useToast } from './Toast.js';
 
@@ -69,70 +70,22 @@ function isUnavailable(caught: unknown): boolean {
   return (caught as { code?: unknown } | null)?.code === 'unavailable';
 }
 
-// --- The sidebar badge --------------------------------------------------------------
-
-/**
- * Unread figures for the nav row, the Dashboard and the Basic Home tile: the
- * total across rooms that are not muted, and the @-mentions of the viewer.
- * Re-read a moment after any push, and after a reconnect. `enabled` is false
- * for somebody without `chat.use`, who must not even ask.
- */
-export function useChatUnread(
-  transport: ChatTransport,
-  enabled: boolean,
-): { total: number; mentions: number } {
-  const transportRef = useRef(transport);
-  transportRef.current = transport;
-  const [figures, setFigures] = useState({ total: 0, mentions: 0 });
-
-  useEffect(() => {
-    if (!enabled) {
-      setFigures({ total: 0, mentions: 0 });
-      return;
-    }
-    let cancelled = false;
-    let timer: number | null = null;
-
-    const read = (): void => {
-      void transportRef.current.rooms().then(
-        (rooms) => {
-          if (!cancelled) setFigures(unreadTotals(rooms));
-        },
-        () => undefined,
-      );
-    };
-    const later = (): void => {
-      if (timer !== null) window.clearTimeout(timer);
-      timer = window.setTimeout(read, REFRESH_MS);
-    };
-
-    read();
-    const unsubscribe = transportRef.current.subscribe((event) => {
-      // Somebody else reading a room changes none of this viewer's counts.
-      if (event.kind !== 'read') later();
-    });
-    return () => {
-      cancelled = true;
-      if (timer !== null) window.clearTimeout(timer);
-      unsubscribe();
-    };
-  }, [enabled]);
-
-  return figures;
-}
-
 // --- Reading a list that follows the room pushes -----------------------------------------
 
 function useLive<T>(
   transport: ChatTransport,
   load: () => Promise<T>,
   deps: readonly unknown[],
+  /** What was read last time, shown at once while the list is read again. */
+  remembered?: { get: () => T | null; set: (value: T) => void },
 ): { data: T | null; error: string | null; offline: boolean; reload: () => void } {
   const transportRef = useRef(transport);
   transportRef.current = transport;
   const loadRef = useRef(load);
   loadRef.current = load;
-  const [data, setData] = useState<T | null>(null);
+  const rememberedRef = useRef(remembered);
+  rememberedRef.current = remembered;
+  const [data, setData] = useState<T | null>(() => remembered?.get() ?? null);
   const [error, setError] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
   const [tick, setTick] = useState(0);
@@ -142,6 +95,7 @@ function useLive<T>(
     loadRef.current().then(
       (value) => {
         if (cancelled) return;
+        rememberedRef.current?.set(value);
         setData(value);
         setError(null);
         setOffline(false);
@@ -282,7 +236,13 @@ function RoomsPage({
   const debounced = useDebounced(term);
   const searching = debounced.trim().length >= 2;
 
-  const rooms = useLive(transport, () => transport.rooms({ includeArchived: archived }), [archived]);
+  const roomCache = chatCacheFor(transport);
+  roomCache.forViewer(viewer.id);
+  const roomsKey = archived ? 'rooms:archived' : 'rooms';
+  const rooms = useLive(transport, () => transport.rooms({ includeArchived: archived }), [archived], {
+    get: () => roomCache.roomList(roomsKey),
+    set: (list) => roomCache.setRoomList(roomsKey, list),
+  });
   const hits = useLive<ChatSearchHit[]>(
     transport,
     () => (searching ? transport.search(debounced.trim()) : Promise.resolve([])),
