@@ -56,6 +56,7 @@ import {
   useUnsavedWork,
   type DataTableColumn,
   PasswordInput,
+  SaveTextButton,
 } from '@orderbook/ui';
 
 /**
@@ -1317,6 +1318,18 @@ function OneTimeSecretDialog({ secret, onClose }: { secret: OneTimeSecret; onClo
       title={t('access.secret.title', { username: secret.username })}
       footer={
         <>
+          <SaveTextButton
+            title={t('saveText.title.oneTimePassword', { username: secret.username })}
+            slug="password"
+            sections={[
+              {
+                values: [
+                  { label: t('saveText.label.username'), value: secret.username },
+                  { label: t('saveText.label.password'), value: secret.password },
+                ],
+              },
+            ]}
+          />
           <Button
             variant="secondary"
             onClick={() => void copyText(secret.password).then(setCopied)}

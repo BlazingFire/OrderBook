@@ -11,7 +11,7 @@ import { useState } from 'react';
 import type { BackupRestorePreview } from '@orderbook/shared';
 
 import { api, ApiError } from '../api';
-import { Button, FormField, Input, Modal, t, useToast, PasswordInput } from '@orderbook/ui';
+import { Button, FormField, Input, Modal, t, useToast, PasswordInput, SaveTextButton } from '@orderbook/ui';
 
 export function StorageBackupActions() {
   const [exportOpen, setExportOpen] = useState(false);
@@ -193,9 +193,16 @@ function RestoreModal({ onClose }: { onClose: () => void }) {
       )}
 
       {step === 'done' && newPairingPassword && (
-        <p className="ob-body">
-          {t('backup.restore.newPairingPassword', { password: newPairingPassword })}
-        </p>
+        <>
+          <p className="ob-body">
+            {t('backup.restore.newPairingPassword', { password: newPairingPassword })}
+          </p>
+          <SaveTextButton
+            title={t('saveText.title.pairingPassword')}
+            slug="pairing-password"
+            sections={[{ values: [{ label: t('saveText.label.pairingPassword'), value: newPairingPassword }] }]}
+          />
+        </>
       )}
     </Modal>
   );

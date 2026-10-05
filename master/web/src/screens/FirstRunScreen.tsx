@@ -38,6 +38,7 @@ import {
   rem,
   t,
   PasswordInput,
+  SaveTextButton,
 } from '@orderbook/ui';
 
 interface Props {
@@ -223,9 +224,35 @@ function SetupFlow({ onBack, onComplete }: { onBack: () => void; onComplete: () 
           </div>
         </Card>
 
-        <Button variant="primary" size="lg" onClick={onComplete}>
-          {t('firstRun.ready.continue')}
-        </Button>
+        <div style={{ display: 'flex', gap: 'var(--s-12)', alignItems: 'center', flexWrap: 'wrap' }}>
+          <Button variant="primary" size="lg" onClick={onComplete}>
+            {t('firstRun.ready.continue')}
+          </Button>
+          <SaveTextButton
+            title={t('saveText.title.firstRun')}
+            slug="first-run"
+            sections={[
+              {
+                heading: t('saveText.section.signIn'),
+                values: credentials.accounts.flatMap((account) => [
+                  { label: t('saveText.label.displayName'), value: account.displayName },
+                  { label: t('saveText.label.username'), value: account.username },
+                ]),
+              },
+              {
+                heading: t('saveText.section.panels'),
+                values: [
+                  {
+                    label: credentials.lanIps.length > 1 ? t('saveText.label.addresses') : t('saveText.label.address'),
+                    value: addressValue,
+                  },
+                  { label: t('saveText.label.masterId'), value: credentials.masterUniqueId },
+                  { label: t('saveText.label.pairingPassword'), value: credentials.pairingPassword },
+                ],
+              },
+            ]}
+          />
+        </div>
       </div>
     );
   }
@@ -603,9 +630,18 @@ function RestoreFlow({ onBack, onComplete }: { onBack: () => void; onComplete: (
                 <OfflineBanner>
                   {t('backup.restore.newPairingPassword', { password: newPairingPassword })}
                 </OfflineBanner>
-                <Button variant="primary" size="lg" onClick={onComplete}>
-                  {t('firstRun.ready.continue')}
-                </Button>
+                <div style={{ display: 'flex', gap: 'var(--s-12)', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <Button variant="primary" size="lg" onClick={onComplete}>
+                    {t('firstRun.ready.continue')}
+                  </Button>
+                  <SaveTextButton
+                    title={t('saveText.title.pairingPassword')}
+                    slug="pairing-password"
+                    sections={[
+                      { values: [{ label: t('saveText.label.pairingPassword'), value: newPairingPassword }] },
+                    ]}
+                  />
+                </div>
               </>
             )}
 

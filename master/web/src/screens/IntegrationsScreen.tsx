@@ -48,6 +48,7 @@ import {
   useTopbarActions,
   PasswordInput,
   useUnsavedWork,
+  SaveTextButton,
 } from '@orderbook/ui';
 
 import { api } from '../api';
@@ -410,6 +411,18 @@ function IssuedTokenDialog({
       title={t('integrations.keys.issuedTitle', { name: issued.key.label })}
       footer={
         <>
+          <SaveTextButton
+            title={t('saveText.title.apiToken', { name: issued.key.label })}
+            slug="api-token"
+            sections={[
+              {
+                values: [
+                  { label: t('saveText.label.tokenName'), value: issued.key.label },
+                  { label: t('saveText.label.token'), value: issued.token },
+                ],
+              },
+            ]}
+          />
           <Button variant="secondary" onClick={() => void copyText(issued.token).then(setCopied)}>
             {copied ? t('access.secret.copied') : t('access.secret.copy')}
           </Button>
