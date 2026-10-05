@@ -14,10 +14,12 @@ export function clampPaging(
 ): { limit: number; offset: number } {
   return {
     limit: clampLimit(query.limit, limits),
-    offset: Math.max(query.offset ?? 0, 0),
+    offset: Number.isFinite(query.offset) ? Math.max(query.offset as number, 0) : 0,
   };
 }
 
 export function clampLimit(limit: number | undefined, limits: PagingLimits): number {
-  return Math.min(Math.max(limit ?? limits.defaultLimit, 1), limits.maxLimit);
+  // NaN (a socket payload, or a caller that skipped the HTTP parse) is "not asked".
+  const asked = Number.isFinite(limit) ? (limit as number) : limits.defaultLimit;
+  return Math.min(Math.max(Math.floor(asked), 1), limits.maxLimit);
 }

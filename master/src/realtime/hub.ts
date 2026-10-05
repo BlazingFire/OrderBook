@@ -569,7 +569,8 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
       stationKey: isOnMasterPc(socket.handshake.address, socket.handshake.headers) ? MASTER_STATION_KEY : null,
       holder: socket.id,
     };
-    socket.on('print:claim', (id, ack) =>
+    const on = guardedOn(socket);
+    on('print:claim', (id, ack) =>
       respond(ack, async () => {
         const claimant = await adminActor(socket);
         if (!claimant) throw new UnauthorizedError();
@@ -732,13 +733,14 @@ async function adoptHandshakeToken(socket: PanelSocket): Promise<void> {
  * (docs/ROLES_AND_USERS.md §13).
  */
 function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorContext>): void {
+  const on = guardedOn(socket);
   const run = <T>(ack: CommandAck<T>, operation: (actor: ActorContext) => Promise<T>): void =>
     respond(ack, async () => operation(await actorFor()));
 
   // Not `run`: this is the panel describing *itself*, so it needs no actor and
   // no permission — a panel may always say what it is. Everything it reports is
   // about its own machine and nothing else's.
-  socket.on('panel:report', (report, ack) =>
+  on('panel:report', (report, ack) =>
     respond(ack, async () => {
       const panelId = socket.data.panelId;
       if (panelId) await panelService.recordPanelReport(panelId, report);
@@ -748,7 +750,7 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
 
   // The panel leaving: like `panel:report` it is about the panel itself, so it needs no actor. The
   // socket closes shortly after the ack so the ack itself is delivered first.
-  socket.on('panel:leave', (ack) =>
+  on('panel:leave', (ack) =>
     respond(ack, async () => {
       const panelId = socket.data.panelId;
       if (!panelId) return null;
@@ -759,69 +761,69 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
     }),
   );
 
-  socket.on('sync:request', (ack) => run(ack, (actor) => buildSnapshot(actor)));
-  socket.on('sync:push', (request, ack) =>
+  on('sync:request', (ack) => run(ack, (actor) => buildSnapshot(actor)));
+  on('sync:push', (request, ack) =>
     run(ack, (actor) =>
       syncService.applyPush(request, actor, socket.handshake.issued, socket.data.protocol ?? 1),
     ),
   );
 
-  socket.on('party:list', (query, ack) =>
+  on('party:list', (query, ack) =>
     run(ack, (actor) => catalogService.listParties(query, actor)),
   );
-  socket.on('party:create', (input, ack) =>
+  on('party:create', (input, ack) =>
     run(ack, (actor) => catalogService.createParty(input, actor)),
   );
-  socket.on('party:update', ({ id, input }, ack) =>
+  on('party:update', ({ id, input }, ack) =>
     run(ack, (actor) => catalogService.updateParty(id, input, actor)),
   );
-  socket.on('party:delete', (id, ack) =>
+  on('party:delete', (id, ack) =>
     run(ack, (actor) => catalogService.deleteParty(id, actor)),
   );
 
-  socket.on('product:list', (query, ack) =>
+  on('product:list', (query, ack) =>
     run(ack, (actor) => catalogService.listProducts(query, actor)),
   );
-  socket.on('product:create', (input, ack) =>
+  on('product:create', (input, ack) =>
     run(ack, (actor) => catalogService.createProduct(input, actor)),
   );
-  socket.on('product:update', ({ id, input }, ack) =>
+  on('product:update', ({ id, input }, ack) =>
     run(ack, (actor) => catalogService.updateProduct(id, input, actor)),
   );
-  socket.on('product:delete', (id, ack) =>
+  on('product:delete', (id, ack) =>
     run(ack, (actor) => catalogService.deleteProduct(id, actor)),
   );
 
-  socket.on('product:image:update', ({ id, input }, ack) =>
+  on('product:image:update', ({ id, input }, ack) =>
     run(ack, (actor) => imageService.updateImageCaption(id, input, actor)),
   );
-  socket.on('product:image:reorder', (input, ack) =>
+  on('product:image:reorder', (input, ack) =>
     run(ack, (actor) => imageService.reorderImages(input, actor)),
   );
-  socket.on('product:image:delete', (id, ack) =>
+  on('product:image:delete', (id, ack) =>
     run(ack, (actor) => imageService.deleteImage(id, actor)),
   );
 
-  socket.on('pick', ({ kind, query }, ack) =>
+  on('pick', ({ kind, query }, ack) =>
     run(ack, (actor) => searchService.pick(kind, query, actor)),
   );
 
-  socket.on('category:list', (query, ack) =>
+  on('category:list', (query, ack) =>
     run(ack, (actor) => catalogService.listCategories(actor, query ?? {})),
   );
-  socket.on('category:create', (input, ack) =>
+  on('category:create', (input, ack) =>
     run(ack, (actor) => catalogService.createCategory(input, actor)),
   );
-  socket.on('category:update', ({ id, input }, ack) =>
+  on('category:update', ({ id, input }, ack) =>
     run(ack, (actor) => catalogService.updateCategory(id, input, actor)),
   );
-  socket.on('category:delete', (id, ack) =>
+  on('category:delete', (id, ack) =>
     run(ack, (actor) => catalogService.deleteCategory(id, actor)),
   );
 
   // The acting person's own `settings.manage` is checked by the service, as on
   // the Master's own screen; the answer is the list, as `PUT /api/settings` gives.
-  socket.on('settings:save', ({ key, value }, ack) =>
+  on('settings:save', ({ key, value }, ack) =>
     run(ack, async (actor) => {
       assertPanelSettingWrite(actor, key);
       await settingsService.writeSetting(actor, key, value);
@@ -829,50 +831,50 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
     }),
   );
 
-  socket.on('partyVariant:list', (partyId, ack) =>
+  on('partyVariant:list', (partyId, ack) =>
     run(ack, (actor) => catalogService.listVariantsForParty(partyId, actor)),
   );
-  socket.on('partyVariant:upsert', (input, ack) =>
+  on('partyVariant:upsert', (input, ack) =>
     run(ack, (actor) => catalogService.upsertVariant(input, actor)),
   );
 
-  socket.on('lead:list', (query, ack) => run(ack, (actor) => leadService.listLeads(query, actor)));
-  socket.on('lead:get', (id, ack) => run(ack, (actor) => leadService.getLead(id, actor)));
-  socket.on('lead:create', (input, ack) =>
+  on('lead:list', (query, ack) => run(ack, (actor) => leadService.listLeads(query, actor)));
+  on('lead:get', (id, ack) => run(ack, (actor) => leadService.getLead(id, actor)));
+  on('lead:create', (input, ack) =>
     run(ack, (actor) => leadService.createLead(input, actor)),
   );
-  socket.on('lead:update', ({ id, input }, ack) =>
+  on('lead:update', ({ id, input }, ack) =>
     run(ack, (actor) => leadService.updateLead(id, input, actor)),
   );
-  socket.on('lead:setStage', (input, ack) =>
+  on('lead:setStage', (input, ack) =>
     run(ack, (actor) => leadService.setStage(input, actor)),
   );
-  socket.on('lead:addRemark', (input, ack) =>
+  on('lead:addRemark', (input, ack) =>
     run(ack, (actor) => leadService.addRemark(input, actor)),
   );
-  socket.on('lead:convert', (input, ack) =>
+  on('lead:convert', (input, ack) =>
     run(ack, (actor) => orderService.convertLead(input, actor)),
   );
-  socket.on('lead:delete', (id, ack) => run(ack, (actor) => leadService.deleteLead(id, actor)));
-  socket.on('lead:pdf', (id, ack) => run(ack, (actor) => leadService.leadPdf(id, actor)));
-  socket.on('product:sharePdf', (ids, ack) =>
+  on('lead:delete', (id, ack) => run(ack, (actor) => leadService.deleteLead(id, actor)));
+  on('lead:pdf', (id, ack) => run(ack, (actor) => leadService.leadPdf(id, actor)));
+  on('product:sharePdf', (ids, ack) =>
     run(ack, (actor) => productShareService.productSharePdf(ids, actor)),
   );
 
-  socket.on('order:list', (query, ack) =>
+  on('order:list', (query, ack) =>
     run(ack, (actor) => orderService.listOrders(query, actor)),
   );
-  socket.on('order:get', (id, ack) => run(ack, (actor) => orderService.getOrder(id, actor)));
-  socket.on('order:update', ({ id, input }, ack) =>
+  on('order:get', (id, ack) => run(ack, (actor) => orderService.getOrder(id, actor)));
+  on('order:update', ({ id, input }, ack) =>
     run(ack, (actor) => orderService.updateOrder(id, input, actor)),
   );
-  socket.on('order:setStage', (input, ack) =>
+  on('order:setStage', (input, ack) =>
     run(ack, (actor) => orderService.setStage(input, actor)),
   );
-  socket.on('order:dispatch', (input, ack) =>
+  on('order:dispatch', (input, ack) =>
     run(ack, (actor) => orderService.dispatchOrder(input, actor)),
   );
-  socket.on('order:delete', (id, ack) => run(ack, (actor) => orderService.deleteOrder(id, actor)));
+  on('order:delete', (id, ack) => run(ack, (actor) => orderService.deleteOrder(id, actor)));
 
   // Stock and inventory were removed in 1.4. An Office still on an older build may
   // send its `stock:*` commands; answer each with a refusal so its call settles
@@ -884,118 +886,118 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
     });
   });
 
-  socket.on('search:query', (query, ack) =>
+  on('search:query', (query, ack) =>
     run(ack, (actor) => searchService.search(query, actor)),
   );
 
-  socket.on('pipeline:list', (ack) =>
+  on('pipeline:list', (ack) =>
     run(ack, (actor) => pipelineRepo.listPipelines(actor.tenantId)),
   );
 
-  socket.on('conflict:list', (ack) => run(ack, (actor) => conflictService.listConflicts(actor)));
-  socket.on('conflict:resolve', (input, ack) =>
+  on('conflict:list', (ack) => run(ack, (actor) => conflictService.listConflicts(actor)));
+  on('conflict:resolve', (input, ack) =>
     run(ack, (actor) => conflictService.resolveConflict(input, actor)),
   );
 
-  socket.on('recycleBin:list', (query, ack) =>
+  on('recycleBin:list', (query, ack) =>
     run(ack, (actor) => recycleBinService.listBin(query, actor)),
   );
-  socket.on('recycleBin:counts', (ack) => run(ack, (actor) => recycleBinService.binCounts(actor)));
-  socket.on('recycleBin:restore', (input, ack) =>
+  on('recycleBin:counts', (ack) => run(ack, (actor) => recycleBinService.binCounts(actor)));
+  on('recycleBin:restore', (input, ack) =>
     run(ack, (actor) => recycleBinService.restoreEntity(input, actor)),
   );
 
-  socket.on('partyAccess:list', (query, ack) =>
+  on('partyAccess:list', (query, ack) =>
     run(ack, (actor) => partyAccessService.listAssignments(query, actor)),
   );
-  socket.on('partyAccess:summary', (ack) => run(ack, (actor) => partyAccessService.summary(actor)));
-  socket.on('partyAccess:forParty', (partyId, ack) =>
+  on('partyAccess:summary', (ack) => run(ack, (actor) => partyAccessService.summary(actor)));
+  on('partyAccess:forParty', (partyId, ack) =>
     run(ack, (actor) => partyAccessService.assignmentsForParty(partyId, actor)),
   );
-  socket.on('partyAccess:people', (ack) =>
+  on('partyAccess:people', (ack) =>
     run(ack, (actor) => partyAccessService.assignablePeople(actor)),
   );
-  socket.on('partyAccess:export', (ack) =>
+  on('partyAccess:export', (ack) =>
     run(ack, (actor) => partyAccessService.exportRows(actor)),
   );
-  socket.on('partyAccess:replace', ({ partyId, input }, ack) =>
+  on('partyAccess:replace', ({ partyId, input }, ack) =>
     run(ack, (actor) => partyAccessService.replaceAssignments(partyId, input, actor)),
   );
 
-  socket.on('fields:catalogue', (ack) =>
+  on('fields:catalogue', (ack) =>
     run(ack, (actor) => Promise.resolve(fieldsService.fieldsCatalogue(actor))),
   );
-  socket.on('fields:values', (query, ack) =>
+  on('fields:values', (query, ack) =>
     run(ack, (actor) => fieldsService.listValues(query, actor)),
   );
-  socket.on('fields:usage', (query, ack) =>
+  on('fields:usage', (query, ack) =>
     run(ack, (actor) => fieldsService.fieldUsage(query, actor)),
   );
-  socket.on('fields:createValue', (input, ack) =>
+  on('fields:createValue', (input, ack) =>
     run(ack, (actor) => fieldsService.createValue(input, actor)),
   );
-  socket.on('fields:updateValue', ({ id, input }, ack) =>
+  on('fields:updateValue', ({ id, input }, ack) =>
     run(ack, (actor) => fieldsService.updateValue(id, input, actor)),
   );
-  socket.on('fields:deleteValue', (id, ack) =>
+  on('fields:deleteValue', (id, ack) =>
     run(ack, (actor) => fieldsService.deleteValue(id, actor)),
   );
-  socket.on('fields:reorderValues', (input, ack) =>
+  on('fields:reorderValues', (input, ack) =>
     run(ack, (actor) => fieldsService.reorderValues(input, actor)),
   );
 
-  socket.on('fields:definitions', (query, ack) =>
+  on('fields:definitions', (query, ack) =>
     run(ack, (actor) => fieldsService.listDefinitions(query, actor)),
   );
-  socket.on('fields:createDefinition', (input, ack) =>
+  on('fields:createDefinition', (input, ack) =>
     run(ack, (actor) => fieldsService.createDefinition(input, actor)),
   );
-  socket.on('fields:updateDefinition', ({ id, input }, ack) =>
+  on('fields:updateDefinition', ({ id, input }, ack) =>
     run(ack, (actor) => fieldsService.updateDefinition(id, input, actor)),
   );
-  socket.on('fields:deleteDefinition', (id, ack) =>
+  on('fields:deleteDefinition', (id, ack) =>
     run(ack, (actor) => fieldsService.deleteDefinition(id, actor)),
   );
-  socket.on('fields:reorderDefinitions', (input, ack) =>
+  on('fields:reorderDefinitions', (input, ack) =>
     run(ack, (actor) => fieldsService.reorderDefinitions(input, actor)),
   );
 
-  socket.on('fields:stages', (ack) => run(ack, (actor) => fieldsService.listStages(actor)));
-  socket.on('fields:updateStage', ({ id, input }, ack) =>
+  on('fields:stages', (ack) => run(ack, (actor) => fieldsService.listStages(actor)));
+  on('fields:updateStage', ({ id, input }, ack) =>
     run(ack, (actor) => fieldsService.updateStage(id, input, actor)),
   );
-  socket.on('fields:reorderStages', (input, ack) =>
+  on('fields:reorderStages', (input, ack) =>
     run(ack, (actor) => fieldsService.reorderStages(input, actor)),
   );
-  socket.on('fields:archiveStage', (id, ack) =>
+  on('fields:archiveStage', (id, ack) =>
     run(ack, (actor) => fieldsService.archiveStage(id, actor)),
   );
-  socket.on('fields:restoreStage', (id, ack) =>
+  on('fields:restoreStage', (id, ack) =>
     run(ack, (actor) => fieldsService.restoreStage(id, actor)),
   );
 
-  socket.on('log:list', (query, ack) => run(ack, (actor) => logService.listLogs(query, actor)));
-  socket.on('log:facets', (query, ack) =>
+  on('log:list', (query, ack) => run(ack, (actor) => logService.listLogs(query, actor)));
+  on('log:facets', (query, ack) =>
     run(ack, (actor) => logService.listLogFacets(query, actor)),
   );
-  socket.on('log:verifyChain', (input, ack) =>
+  on('log:verifyChain', (input, ack) =>
     run(ack, (actor) => logService.verifyLogChain(input, actor)),
   );
-  socket.on('log:export', (query, ack) => run(ack, (actor) => logService.exportLogs(query, actor, logService.SOCKET_EXPORT_LIMITS)));
+  on('log:export', (query, ack) => run(ack, (actor) => logService.exportLogs(query, actor, logService.SOCKET_EXPORT_LIMITS)));
 
-  socket.on('report:dispatches', (query, ack) =>
+  on('report:dispatches', (query, ack) =>
     run(ack, (actor) => reportService.dispatchReport(query, actor)),
   );
-  socket.on('report:leadOutcomes', (query, ack) =>
+  on('report:leadOutcomes', (query, ack) =>
     run(ack, (actor) => reportService.leadOutcomeReport(query, actor)),
   );
-  socket.on('report:topParties', (query, ack) =>
+  on('report:topParties', (query, ack) =>
     run(ack, (actor) => reportService.topPartiesReport(query, actor)),
   );
   // A socket payload is whatever the client sent: the range is read the way the
   // REST query string is (`parseReportQuery`), and the export options are
   // normalised by the service.
-  socket.on('report:export', (payload, ack) =>
+  on('report:export', (payload, ack) =>
     run(ack, (actor) => {
       const raw = (payload?.query ?? {}) as Record<string, unknown>;
       return reportService.exportReport(
@@ -1005,7 +1007,7 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
       );
     }),
   );
-  socket.on('report:table', (payload, ack) =>
+  on('report:table', (payload, ack) =>
     run(ack, (actor) =>
       reportService.reportTable(
         payload?.report,
@@ -1014,58 +1016,58 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
       ),
     ),
   );
-  socket.on('report:options', (ack) => run(ack, (actor) => reportService.reportOptions(actor)));
+  on('report:options', (ack) => run(ack, (actor) => reportService.reportOptions(actor)));
 
   // The bell: only ever the acting person's own notices; nobody signed in, none.
-  socket.on('notification:list', (input, ack) =>
+  on('notification:list', (input, ack) =>
     run(ack, (actor) => notificationService.listNotifications(input, actor)),
   );
-  socket.on('notification:markRead', (input, ack) =>
+  on('notification:markRead', (input, ack) =>
     run(ack, (actor) => notificationService.markRead(input, actor)),
   );
 
   // The Chatroom. There is no `chat:post`: an Office posts through `sync:push`
   // as a `chat.post` mutation, which gives it the outbox and a safe resend.
-  socket.on('chat:people', (ack) => run(ack, (actor) => chatService.listPeople(actor)));
-  socket.on('chat:rooms', (input, ack) => run(ack, (actor) => chatService.listRooms(input, actor)));
-  socket.on('chat:room', (roomId, ack) => run(ack, (actor) => chatService.getRoom(roomId, actor)));
-  socket.on('chat:messages', (input, ack) =>
+  on('chat:people', (ack) => run(ack, (actor) => chatService.listPeople(actor)));
+  on('chat:rooms', (input, ack) => run(ack, (actor) => chatService.listRooms(input, actor)));
+  on('chat:room', (roomId, ack) => run(ack, (actor) => chatService.getRoom(roomId, actor)));
+  on('chat:messages', (input, ack) =>
     run(ack, (actor) => chatService.listMessages(input, actor)),
   );
-  socket.on('chat:search', (input, ack) => run(ack, (actor) => chatService.search(input, actor)));
-  socket.on('chat:tasks', (input, ack) => run(ack, (actor) => chatService.listTasks(input, actor)));
-  socket.on('chat:roomCreate', (input, ack) =>
+  on('chat:search', (input, ack) => run(ack, (actor) => chatService.search(input, actor)));
+  on('chat:tasks', (input, ack) => run(ack, (actor) => chatService.listTasks(input, actor)));
+  on('chat:roomCreate', (input, ack) =>
     run(ack, (actor) => chatService.createRoom(input, actor)),
   );
-  socket.on('chat:roomUpdate', (input, ack) =>
+  on('chat:roomUpdate', (input, ack) =>
     run(ack, (actor) => chatService.updateRoom(input, actor)),
   );
-  socket.on('chat:memberSet', (input, ack) =>
+  on('chat:memberSet', (input, ack) =>
     run(ack, (actor) => chatService.setMember(input, actor)),
   );
-  socket.on('chat:direct', (input, ack) => run(ack, (actor) => chatService.openDirect(input, actor)));
-  socket.on('chat:edit', (input, ack) => run(ack, (actor) => chatService.editMessage(input, actor)));
-  socket.on('chat:delete', (messageId, ack) =>
+  on('chat:direct', (input, ack) => run(ack, (actor) => chatService.openDirect(input, actor)));
+  on('chat:edit', (input, ack) => run(ack, (actor) => chatService.editMessage(input, actor)));
+  on('chat:delete', (messageId, ack) =>
     run(ack, (actor) => chatService.deleteMessage(messageId, actor)),
   );
-  socket.on('chat:pin', (input, ack) => run(ack, (actor) => chatService.pinMessage(input, actor)));
-  socket.on('chat:taskDone', (input, ack) => run(ack, (actor) => chatService.setTaskDone(input, actor)));
-  socket.on('chat:read', (input, ack) => run(ack, (actor) => chatService.markRead(input, actor)));
-  socket.on('chat:mute', (input, ack) => run(ack, (actor) => chatService.setMuted(input, actor)));
-  socket.on('chat:requestAccess', (input, ack) =>
+  on('chat:pin', (input, ack) => run(ack, (actor) => chatService.pinMessage(input, actor)));
+  on('chat:taskDone', (input, ack) => run(ack, (actor) => chatService.setTaskDone(input, actor)));
+  on('chat:read', (input, ack) => run(ack, (actor) => chatService.markRead(input, actor)));
+  on('chat:mute', (input, ack) => run(ack, (actor) => chatService.setMuted(input, actor)));
+  on('chat:requestAccess', (input, ack) =>
     run(ack, (actor) => chatService.requestAccess(input, actor)),
   );
 
   // Who is acting comes from this socket, and the tab lives under this panel;
   // the beat itself names only the tab and the record.
-  socket.on('presence:beat', (beat, ack) =>
+  on('presence:beat', (beat, ack) =>
     run(ack, (actor) =>
       presenceService.beat(actor, `panel:${socket.data.panelId ?? ''}:`, beat),
     ),
   );
 
   // The board's current faces, for a screen that has just opened or reconnected.
-  socket.on('presence:board', (kind, ack) =>
+  on('presence:board', (kind, ack) =>
     run(ack, async (actor) => {
       if (kind !== 'lead' && kind !== 'order') throw new ValidationError('validation.presence.invalid');
       return presenceService.boardFor(actor, kind);
@@ -1079,26 +1081,26 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
     stationKey: socket.data.panelId ? panelStationKey(socket.data.panelId) : null,
     holder: socket.id,
   });
-  socket.on('print:list', (input, ack) => run(ack, (actor) => printService.listJobs(input, actor)));
-  socket.on('print:get', (id, ack) => run(ack, (actor) => printService.getJob(id, actor)));
-  socket.on('print:send', (input, ack) =>
+  on('print:list', (input, ack) => run(ack, (actor) => printService.listJobs(input, actor)));
+  on('print:get', (id, ack) => run(ack, (actor) => printService.getJob(id, actor)));
+  on('print:send', (input, ack) =>
     run(ack, (actor) => printService.sendJob(input, actor, printOrigin())),
   );
-  socket.on('print:mark', (input, ack) =>
+  on('print:mark', (input, ack) =>
     run(ack, (actor) => printService.markJob(input, actor, printOrigin())),
   );
-  socket.on('print:cancel', (id, ack) => run(ack, (actor) => printService.cancelJob(id, actor)));
-  socket.on('print:claim', (id, ack) =>
+  on('print:cancel', (id, ack) => run(ack, (actor) => printService.cancelJob(id, actor)));
+  on('print:claim', (id, ack) =>
     run(ack, (actor) => printService.claimJob(id, actor, printOrigin())),
   );
-  socket.on('print:stations', (ack) => run(ack, (actor) => printService.listStations(actor, printOrigin())));
-  socket.on('print:station', (input, ack) =>
+  on('print:stations', (ack) => run(ack, (actor) => printService.listStations(actor, printOrigin())));
+  on('print:station', (input, ack) =>
     run(ack, (actor) => printService.saveStation(input, actor, printOrigin())),
   );
 
   // The one live pull; everything else rides on `SyncSnapshot.dashboard` and
   // the `dashboard:changed` push both extended below.
-  socket.on('dashboard:get', (ack) =>
+  on('dashboard:get', (ack) =>
     run(ack, (actor) => dashboardService.getDashboardSummary(actor)),
   );
 }
@@ -1121,6 +1123,7 @@ function registerAuthCommands(
   onActorChanged: () => void,
   ready: Promise<void>,
 ): void {
+  const on = guardedOn(socket);
   const actAs = (token: string | undefined, userId: string | undefined): void => {
     const changed = socket.data.actingUserToken !== token;
     socket.data.actingUserToken = token;
@@ -1128,7 +1131,7 @@ function registerAuthCommands(
     if (changed) onActorChanged();
   };
 
-  socket.on('auth:signIn', (input, ack) =>
+  on('auth:signIn', (input, ack) =>
     respond(ack, async () => {
       await ready;
       const session = await authService.signIn(
@@ -1153,7 +1156,7 @@ function registerAuthCommands(
     }),
   );
 
-  socket.on('auth:assume', (token, ack) =>
+  on('auth:assume', (token, ack) =>
     respond(ack, async () => {
       await ready;
       if (!token) {
@@ -1188,7 +1191,7 @@ function registerAuthCommands(
     }),
   );
 
-  socket.on('auth:reconcile', (users, ack) =>
+  on('auth:reconcile', (users, ack) =>
     respond(ack, async () => {
       const tenantId = socket.data.tenantId;
       if (!tenantId) return { forget: [] };
@@ -1205,7 +1208,7 @@ function registerAuthCommands(
   // Sign-ins this panel checked while the Master was unreachable, for the
   // audit trail. Filed under the panel's device code, which the handshake
   // established; nothing in the payload can name another machine.
-  socket.on('auth:offlineEvents', (events, ack) =>
+  on('auth:offlineEvents', (events, ack) =>
     respond(ack, async () => {
       const tenantId = socket.data.tenantId;
       if (!tenantId) return { recorded: 0 };
@@ -1217,7 +1220,7 @@ function registerAuthCommands(
     }),
   );
 
-  socket.on('auth:signOut', (token, ack) =>
+  on('auth:signOut', (token, ack) =>
     respond(ack, async () => {
       await ready;
       await authService.signOut(token);
@@ -1242,15 +1245,25 @@ function registerAuthCommands(
 function respond<T>(ack: CommandAck<T>, operation: () => Promise<T>): void {
   if (typeof ack !== 'function') return;
 
+  // An ack that throws (the socket closed under it) must not turn into a second
+  // ack from the catch below, nor into an unhandled rejection.
+  const send = (reply: Parameters<CommandAck<T>>[0]): void => {
+    try {
+      ack(reply);
+    } catch (error) {
+      log.warn(`Ack failed: ${toErrorMessage(error)}`);
+    }
+  };
+
   // A socket that raced the disconnect at the start of a restore still sends
   // commands for a moment; none of them may touch the database being replaced.
-  (isMaintenance() ? Promise.reject(maintenanceError()) : operation())
-    .then((data) => ack({ ok: true, data }))
-    .catch((error: unknown) => {
+  (isMaintenance() ? Promise.reject(maintenanceError()) : operation()).then(
+    (data) => send({ ok: true, data }),
+    (error: unknown) => {
       log.warn(`Command failed: ${toErrorMessage(error)}`);
 
       if (error instanceof AppError) {
-        ack({
+        send({
           ok: false,
           error: error.message,
           code: error.code,
@@ -1262,8 +1275,30 @@ function respond<T>(ack: CommandAck<T>, operation: () => Promise<T>): void {
         return;
       }
 
-      ack({ ok: false, error: toErrorMessage(error) });
-    });
+      send({ ok: false, error: toErrorMessage(error) });
+    },
+  );
+}
+
+/**
+ * `socket.on` for command handlers, with one difference: a handler that throws
+ * (a payload `null` where it destructures `{ id, input }`, say) answers the
+ * caller's ack with a coded refusal. socket.io hands a thrown listener error to
+ * the process as an uncaught exception, which would take down every panel's
+ * connection for one malformed frame.
+ */
+function guardedOn(socket: PanelSocket): PanelSocket['on'] {
+  return ((event: string, listener: (...args: unknown[]) => unknown) =>
+    socket.on(event as never, ((...args: unknown[]) => {
+      try {
+        listener(...args);
+      } catch (error) {
+        log.warn(`Command ${event} refused: ${toErrorMessage(error)}`);
+        respond(args[args.length - 1] as CommandAck<never>, async () => {
+          throw new ValidationError('validation.socket.badPayload');
+        });
+      }
+    }) as never)) as PanelSocket['on'];
 }
 
 /** The settings an Office panel may write — its Settings → Leads tab, one number. */

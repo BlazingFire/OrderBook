@@ -1417,12 +1417,14 @@ export function createApp(): Express {
   });
 
   app.get('/api/conflicts', (_req, res) => forward(res, 'conflict:list'));
-  app.post('/api/conflicts/:id/resolve', (req, res) =>
-    forward(res, 'conflict:resolve', {
-      conflictId: Number(req.params.id),
-      action: req.body?.action,
-    }),
-  );
+  app.post('/api/conflicts/:id/resolve', (req, res) => {
+    const conflictId = Number(req.params.id);
+    if (!Number.isSafeInteger(conflictId)) {
+      res.status(400).json({ error: 'validation_error', message: 'That conflict id is not valid' });
+      return;
+    }
+    return forward(res, 'conflict:resolve', { conflictId, action: req.body?.action });
+  });
 
   // Recycle Bin (docs/backend-modules/04-API-CONTRACT.md §4). Forwarded live
   // and failing hard offline, like every other module in this batch —

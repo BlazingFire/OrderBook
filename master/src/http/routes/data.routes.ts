@@ -35,7 +35,7 @@ import * as searchService from '../../services/search.service.js';
 import * as snapshotService from '../../services/snapshot.service.js';
 import * as storageService from '../../services/storage.service.js';
 import { asyncHandler } from '../async-handler.js';
-import { idList, paging } from '../query.js';
+import { idList, paging, queryInt } from '../query.js';
 import { partyImportRoutes, productImportRoutes } from './panel-catalog.routes.js';
 import {
   actorFromRequest,
@@ -273,7 +273,7 @@ dataRoutes.get(
       await searchService.search(
         {
           term: String(req.query.q ?? ''),
-          limit: req.query.limit ? Number(req.query.limit) : undefined,
+          limit: queryInt(req.query.limit),
         },
         actorFromRequest(req),
       ),
@@ -309,7 +309,7 @@ dataRoutes.get(
         kind,
         {
           term: String(req.query.q ?? ''),
-          limit: req.query.limit ? Number(req.query.limit) : undefined,
+          limit: queryInt(req.query.limit),
           include,
           // The lead screen's second stage: products inside the chosen category.
           categoryId: typeof req.query.categoryId === 'string' ? req.query.categoryId : undefined,
@@ -778,7 +778,7 @@ dataRoutes.post(
 
     res.json(
       await conflictService.resolveConflict(
-        { conflictId: Number(req.params.id), action },
+        { conflictId: queryInt(req.params.id) ?? Number.NaN, action },
         actorFromRequest(req),
       ),
     );

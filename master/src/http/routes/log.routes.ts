@@ -13,6 +13,7 @@ import { Router } from 'express';
 
 import * as logService from '../../services/log.service.js';
 import { asyncHandler } from '../async-handler.js';
+import { queryInt } from '../query.js';
 import { actorFromRequest, requireAuth, requirePermissionMiddleware } from '../middleware/require-auth.js';
 
 export const logRoutes: Router = Router();
@@ -25,7 +26,7 @@ function parseListQuery(query: Record<string, unknown>): Parameters<typeof logSe
   return {
     cursor: typeof query.cursor === 'string' ? query.cursor : undefined,
     direction: query.direction === 'newer' ? 'newer' : query.direction === 'older' ? 'older' : undefined,
-    limit: query.limit ? Number(query.limit) : undefined,
+    limit: queryInt(query.limit),
     actorType: typeof query.actorType === 'string' ? (query.actorType as never) : undefined,
     actorId: typeof query.actorId === 'string' ? query.actorId : undefined,
     entityType: typeof query.entityType === 'string' ? query.entityType : undefined,

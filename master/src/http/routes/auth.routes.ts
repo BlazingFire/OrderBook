@@ -5,6 +5,7 @@ import { ValidationError } from '../../lib/errors.js';
 import { isLoopback, masterPcAddress } from '../../lib/network.js';
 import * as authService from '../../services/auth.service.js';
 import * as notificationService from '../../services/notification.service.js';
+import { queryInt } from '../query.js';
 import { asyncHandler } from '../async-handler.js';
 import { actorFromRequest, requireAuth } from '../middleware/require-auth.js';
 
@@ -73,7 +74,7 @@ notificationRoutes.get(
   '/',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const limit = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
+    const limit = queryInt(req.query.limit);
     res.json(
       await notificationService.listNotifications(
         { limit, before: req.query.before },

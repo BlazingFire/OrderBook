@@ -41,7 +41,7 @@ import {
   buildOpenApiDocument,
   type PublicApiOperationId,
 } from '../public-api-contract.js';
-import { paging } from '../query.js';
+import { paging, queryInt } from '../query.js';
 
 type Handler = (req: Request, res: Response, actor: ActorContext) => Promise<void>;
 
@@ -167,7 +167,7 @@ const HANDLERS: Record<PublicApiOperationId, Handler> = {
       await searchService.search(
         {
           term: String(req.query.q ?? ''),
-          limit: req.query.limit ? Number(req.query.limit) : undefined,
+          limit: queryInt(req.query.limit),
         },
         actor,
       ),
@@ -177,7 +177,7 @@ const HANDLERS: Record<PublicApiOperationId, Handler> = {
   listEvents: async (req, res, actor) => {
     const query: ActivityLogQuery = {
       cursor: typeof req.query.cursor === 'string' ? req.query.cursor : undefined,
-      limit: req.query.limit ? Number(req.query.limit) : undefined,
+      limit: queryInt(req.query.limit),
       entityType: typeof req.query.entityType === 'string' ? req.query.entityType : undefined,
     };
     res.json(await logService.listLogs(query, actor));

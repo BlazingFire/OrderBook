@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser';
 import { config } from '../config/index.js';
 import { queryCountMiddleware } from '../db/query-counter.js';
 import { liveHealth } from './health.js';
+import { badInputHandler } from './middleware/bad-input.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { maintenanceGate } from './middleware/maintenance-gate.js';
 import { attachSession } from './middleware/require-auth.js';
@@ -147,6 +148,7 @@ export function createApp(): Express {
   });
 
   app.use(notFoundHandler);
+  app.use(badInputHandler);
   app.use(errorHandler);
 
   return app;

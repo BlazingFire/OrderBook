@@ -16,6 +16,7 @@ import { isReportFormat, isReportKind, parseReportQuery, type ReportKind } from 
 
 import * as reportService from '../../services/report.service.js';
 import { ValidationError } from '../../lib/errors.js';
+import { queryInt } from '../query.js';
 import { asyncHandler } from '../async-handler.js';
 import { actorFromRequest, requireAuth, requirePermissionMiddleware } from '../middleware/require-auth.js';
 
@@ -66,7 +67,7 @@ reportRoutes.get(
   asyncHandler(async (req, res) => {
     res.json(
       await reportService.topPartiesReport(
-        { ...parseRangeQuery(req.query), limit: req.query.limit ? Number(req.query.limit) : undefined },
+        { ...parseRangeQuery(req.query), limit: queryInt(req.query.limit) },
         actorFromRequest(req),
       ),
     );
