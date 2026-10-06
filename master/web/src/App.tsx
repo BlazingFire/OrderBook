@@ -1550,6 +1550,7 @@ function MasterPanel() {
             render: () => (
               <LeadEntry
                 revision={revisionOf(revisions, 'leadEntry')}
+                catalogueRevision={revisionOf(revisions, 'catalogue')}
                 focusNonce={newLeadNonce}
                 canCreateParty={user.permissions.includes('parties.create')}
                 onSaved={(id, saved) => {

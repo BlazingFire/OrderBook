@@ -2624,6 +2624,8 @@ export const EN_MESSAGES = {
   'lead.add.products.noProduct': 'No sub product of this product matches that.',
   'lead.add.flow.completeSubProduct': 'Complete sub product',
   'lead.add.flow.addColour': 'Add a colour',
+  'lead.add.catalogue.goneOne': '{names} is no longer in the catalogue. It stays on this order and can still be saved.',
+  'lead.add.catalogue.goneMany': '{names} are no longer in the catalogue. They stay on this order and can still be saved.',
   'lead.add.flow.addColourPlaceholder': 'Type or pick a colour',
   'lead.add.flow.colourKeys': 'Enter adds the highlighted colour and stays for the next. Enter on the empty box goes to the quantities.',
   'lead.add.draft.hintColour': 'Add at least one colour',

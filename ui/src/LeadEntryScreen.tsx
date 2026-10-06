@@ -163,7 +163,7 @@ export type LeadEntryView = Pick<
 export interface LeadEntryTransport extends PartyFormTransport {
   pick<T>(
     kind: PickKind,
-    q: { term: string; categoryId?: string; limit?: number },
+    q: { term: string; categoryId?: string; limit?: number; include?: string[] },
   ): Promise<{ items: T[] }>;
   /** The Master answers with the lead, PO number and all. */
   createLead(input: LeadInput): Promise<{ id: string; poNumber?: string | null }>;
@@ -177,6 +177,12 @@ interface Props {
   canCreateParty?: boolean;
   /** Bumped by the shell each time the form is asked for; see the focus effect. */
   focusNonce?: number;
+  /**
+   * Moves whenever the catalogue changes (a product, sub product or variant added, edited,
+   * deleted). The product and sub-product bars read again and the open form is kept:
+   * nothing is unmounted, so the draft and the caret stay where they were.
+   */
+  catalogueRevision?: number;
   /** The saved lead's id; `saved` is the lead as the Master returned it (edit). */
   onSaved: (id: string, saved?: Lead) => void;
   onCancel: () => void;
@@ -413,6 +419,7 @@ function LeadEntryForm({
   transport,
   canCreateParty = true,
   focusNonce = 0,
+  catalogueRevision = 0,
   onSaved,
   onCancel,
   lead,
@@ -727,7 +734,7 @@ function LeadEntryForm({
     return () => {
       cancelled = true;
     };
-  }, [category, draft]);
+  }, [category, draft, catalogueRevision]);
 
   const categoryRows = useMemo(
     // Every product, not the first seven: the list scrolls (`.ob-suggest`).
@@ -744,6 +751,9 @@ function LeadEntryForm({
    */
   useEffect(() => {
     setSubRows([]);
+  }, [categoryId]);
+
+  useEffect(() => {
     if (!categoryId) return;
     let cancelled = false;
 
@@ -763,12 +773,54 @@ function LeadEntryForm({
     return () => {
       cancelled = true;
     };
-  }, [categoryId]);
+  }, [categoryId, catalogueRevision]);
 
   const subMatches = useMemo(
     () => subProductMatches(subRows, query.trim().toLowerCase()),
     [subRows, query],
   );
+
+  /*
+   * Products on this order (lines and the open card) that the catalogue no longer
+   * has, found again each time the catalogue changes. They are flagged, not
+   * dropped: a lead already in progress keeps working and saves as it was.
+   */
+  const [goneNames, setGoneNames] = useState<string[]>([]);
+
+  const checkedProducts = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const line of lines) byId.set(line.productId, line.productName);
+    if (draft) byId.set(draft.productId, draft.productName);
+    return [...byId];
+  }, [lines, draft]);
+  const checkedKey = checkedProducts.map(([id]) => id).join(',');
+
+  useEffect(() => {
+    if (checkedProducts.length === 0) {
+      setGoneNames([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const page = await transportRef.current.pick<Product>('product', {
+          term: '',
+          limit: 1,
+          include: checkedProducts.map(([id]) => id),
+        });
+        if (cancelled) return;
+        const live = new Set(page.items.map((product) => product.id));
+        setGoneNames(checkedProducts.filter(([id]) => !live.has(id)).map(([, name]) => name));
+      } catch {
+        // Unreachable or refused: say nothing rather than flag everything.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // The same ids, asked again whenever the catalogue changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkedKey, catalogueRevision]);
 
   const rows: Array<ProductCategory | Product> = category ? subMatches : categoryRows;
   const pick = rows.length ? Math.min(sel, rows.length - 1) : 0;
@@ -1583,7 +1635,7 @@ function LeadEntryForm({
                       display: 'flex',
                       flexWrap: 'wrap',
                       alignItems: 'center',
-                      gap: 'var(--s-4)',
+                      gap: 'var(--s-8)',
                     }}
                   >
                     <DateField
@@ -1591,18 +1643,30 @@ function LeadEntryForm({
                       aria-label={t('lead.add.details.followUp')}
                       onChange={(event) => setFollowUpDate(event.target.value)}
                     />
-                    {QUICK_FOLLOW_UPS.map(({ days, token }) => {
-                      const iso = isoDate(days);
-                      return (
-                        <Chip
-                          key={token}
-                          active={followUpDate === iso}
-                          onClick={() => setFollowUpDate((current) => (current === iso ? '' : iso))}
-                        >
-                          {t(token)}
-                        </Chip>
-                      );
-                    })}
+                    {/*
+                     * The chips are one group: when the card is too narrow for the date and
+                     * all three they drop below the date together, evenly spaced, instead of
+                     * one chip trailing alone onto a second line (Office, 1280 px wide).
+                     */}
+                    <span
+                      data-follow-up-chips
+                      style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s-8)' }}
+                    >
+                      {QUICK_FOLLOW_UPS.map(({ days, token }) => {
+                        const iso = isoDate(days);
+                        return (
+                          <Chip
+                            key={token}
+                            active={followUpDate === iso}
+                            onClick={() =>
+                              setFollowUpDate((current) => (current === iso ? '' : iso))
+                            }
+                          >
+                            {t(token)}
+                          </Chip>
+                        );
+                      })}
+                    </span>
                   </span>
                 </div>
 
@@ -1972,6 +2036,19 @@ function LeadEntryForm({
                     : t('lead.add.products.categoryHint')}
               </p>
             </div>
+
+            {goneNames.length > 0 && (
+              <p
+                role="note"
+                data-catalogue-gone
+                className="ob-small"
+                style={{ margin: `${rem(8)} 0 0`, color: 'var(--state-conflict)' }}
+              >
+                {goneNames.length === 1
+                  ? t('lead.add.catalogue.goneOne', { names: goneNames[0]! })
+                  : t('lead.add.catalogue.goneMany', { names: goneNames.join(', ') })}
+              </p>
+            )}
 
             {/* The card one model is built in before it joins the lead. */}
             {draft && (

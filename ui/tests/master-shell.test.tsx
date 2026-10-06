@@ -1042,6 +1042,38 @@ describe('New pending order', () => {
     });
   }
 
+  it('shows a product the catalogue gained while the form is open, with the party and the caret kept', async () => {
+    // The Master's catalogue as the picker answers it right now; the test adds to it.
+    let categories = [PICK_CATEGORY];
+    await boot(CREATE, ({ url }) => {
+      const path = url.split('?')[0] ?? url;
+      if (path === '/api/pick/category') return json({ items: categories, truncated: false });
+      return undefined;
+    });
+    await openFormByKey();
+
+    fireEvent.change(screen.getByLabelText(t('lead.add.party.search')), { target: { value: 'Sha' } });
+    fireEvent.click(await screen.findByRole('button', { name: /Sharma Traders/ }));
+    fireEvent.focus(searchBox());
+    await screen.findByRole('button', { name: /ONE PIECE TOILET/ });
+    expect(screen.queryByRole('button', { name: /NEW PAN RANGE/ })).toBeNull();
+    const box = searchBox() as HTMLInputElement;
+    box.focus();
+
+    // An administrator adds a product; the Master pushes a catalogue change to this window.
+    categories = [
+      ...categories,
+      { id: 'cat-2', name: 'NEW PAN RANGE', code: 'NPR', brand: 'Swisware+', sortOrder: 2 },
+    ];
+    await changed('product');
+
+    // It is on offer at once: nothing was closed and reopened, the party is still chosen,
+    // and the caret is still in the search box.
+    expect(await screen.findByRole('button', { name: /NEW PAN RANGE/ })).toBeTruthy();
+    expect(screen.queryByLabelText(t('lead.add.party.search'))).toBeNull();
+    expect(document.activeElement).toBe(searchBox());
+  });
+
   it('offers the topbar button and the sub-page only with leads.create', async () => {
     await boot(['leads.view']);
     expect(newLeadButton()).toBeNull();

@@ -673,7 +673,7 @@ function AddLeadForm({
     return () => {
       cancelled = true;
     };
-  }, [category, draft]);
+  }, [category, draft, view.products, view.categories]);
 
   const categoryRows = useMemo(
     // Every product, not the first seven: the list scrolls (`.ob-suggest`).
@@ -690,6 +690,9 @@ function AddLeadForm({
    */
   useEffect(() => {
     setSubRows([]);
+  }, [categoryId]);
+
+  useEffect(() => {
     if (!categoryId) return;
     let cancelled = false;
 
@@ -709,12 +712,54 @@ function AddLeadForm({
     return () => {
       cancelled = true;
     };
-  }, [categoryId]);
+  }, [categoryId, view.products, view.categories]);
 
   const subMatches = useMemo(
     () => subProductMatches(subRows, query.trim().toLowerCase()),
     [subRows, query],
   );
+
+  /*
+   * Products on this order (lines and the open card) that the catalogue no longer
+   * has, found again each time the catalogue changes. They are flagged, not
+   * dropped: a lead already in progress keeps working and saves as it was.
+   */
+  const [goneNames, setGoneNames] = useState<string[]>([]);
+
+  const checkedProducts = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const line of lines) byId.set(line.productId, line.productName);
+    if (draft) byId.set(draft.productId, draft.productName);
+    return [...byId];
+  }, [lines, draft]);
+  const checkedKey = checkedProducts.map(([id]) => id).join(',');
+
+  useEffect(() => {
+    if (checkedProducts.length === 0) {
+      setGoneNames([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const page = await api.pick<Product>('product', {
+          term: '',
+          limit: 1,
+          include: checkedProducts.map(([id]) => id),
+        });
+        if (cancelled) return;
+        const live = new Set(page.items.map((product) => product.id));
+        setGoneNames(checkedProducts.filter(([id]) => !live.has(id)).map(([, name]) => name));
+      } catch {
+        // Unreachable or refused: say nothing rather than flag everything.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // The same ids, asked again whenever the catalogue changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkedKey, view.products, view.categories]);
 
   const rows: Array<ProductCategory | Product> = category ? subMatches : categoryRows;
   const pick = rows.length ? Math.min(sel, rows.length - 1) : 0;
@@ -1523,7 +1568,7 @@ function AddLeadForm({
                       display: 'flex',
                       flexWrap: 'wrap',
                       alignItems: 'center',
-                      gap: 'var(--s-4)',
+                      gap: 'var(--s-8)',
                     }}
                   >
                     <DateField
@@ -1531,18 +1576,30 @@ function AddLeadForm({
                       aria-label={t('lead.add.details.followUp')}
                       onChange={(event) => setFollowUpDate(event.target.value)}
                     />
-                    {QUICK_FOLLOW_UPS.map(({ days, token }) => {
-                      const iso = isoDate(days);
-                      return (
-                        <Chip
-                          key={token}
-                          active={followUpDate === iso}
-                          onClick={() => setFollowUpDate((current) => (current === iso ? '' : iso))}
-                        >
-                          {t(token)}
-                        </Chip>
-                      );
-                    })}
+                    {/*
+                     * The chips are one group: when the card is too narrow for the date and
+                     * all three they drop below the date together, evenly spaced, instead of
+                     * one chip trailing alone onto a second line (Office, 1280 px wide).
+                     */}
+                    <span
+                      data-follow-up-chips
+                      style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s-8)' }}
+                    >
+                      {QUICK_FOLLOW_UPS.map(({ days, token }) => {
+                        const iso = isoDate(days);
+                        return (
+                          <Chip
+                            key={token}
+                            active={followUpDate === iso}
+                            onClick={() =>
+                              setFollowUpDate((current) => (current === iso ? '' : iso))
+                            }
+                          >
+                            {t(token)}
+                          </Chip>
+                        );
+                      })}
+                    </span>
                   </span>
                 </div>
               </div>
@@ -1889,6 +1946,19 @@ function AddLeadForm({
                     : t('lead.add.products.categoryHint')}
               </p>
             </div>
+
+            {goneNames.length > 0 && (
+              <p
+                role="note"
+                data-catalogue-gone
+                className="ob-small"
+                style={{ margin: `${rem(8)} 0 0`, color: 'var(--state-conflict)' }}
+              >
+                {goneNames.length === 1
+                  ? t('lead.add.catalogue.goneOne', { names: goneNames[0]! })
+                  : t('lead.add.catalogue.goneMany', { names: goneNames.join(', ') })}
+              </p>
+            )}
 
             {/* The card one model is built in before it joins the lead. */}
             {draft && (

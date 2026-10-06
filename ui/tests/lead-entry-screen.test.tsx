@@ -135,6 +135,11 @@ const SOURCES = ['walk-in', 'phone'].map((value, index) => ({
 
 /** The three picker answers the Master gives, matched the way it matches. */
 function makeTransport() {
+  /** What the Master's catalogue holds right now; a test changes it, then moves the revision. */
+  const catalogue = {
+    categories: [WASH_BASIN, CATEGORY] as Array<typeof CATEGORY>,
+    products: [MULTI, DEDICATED, FIXED] as Array<typeof FIXED>,
+  };
   const pick = vi.fn(
     async (kind: string, q: { term: string; categoryId?: string; limit?: number }) => {
       const term = q.term.toLowerCase();
@@ -144,12 +149,12 @@ function makeTransport() {
       }
       if (kind === 'category') {
         // The code from its start, the name anywhere.
-        const items = [WASH_BASIN, CATEGORY].filter(
+        const items = catalogue.categories.filter(
           (row) => row.code.toLowerCase().startsWith(term) || row.name.toLowerCase().includes(term),
         );
         return { items };
       }
-      return { items: [MULTI, DEDICATED, FIXED] };
+      return { items: catalogue.products };
     },
   );
   const createLead = vi.fn(async (_input: unknown) => ({ id: 'L-1' }));
@@ -161,7 +166,7 @@ function makeTransport() {
     createParty: vi.fn(async () => ({ id: 'party-new' })),
     updateParty: vi.fn(async () => undefined),
   } as unknown as LeadEntryTransport;
-  return { transport, pick, createLead, updateLead };
+  return { transport, pick, createLead, updateLead, catalogue };
 }
 
 type Fake = ReturnType<typeof makeTransport>;
@@ -181,10 +186,19 @@ interface Mounted {
   canCreateParty?: boolean;
   lead?: Lead;
   remoteChange?: PresenceLastWrite | null;
+  catalogueRevision?: number;
   onSaved: (id: string, saved?: Lead) => void;
 }
 
-function Harness({ view, transport, canCreateParty, lead, remoteChange, onSaved }: Mounted) {
+function Harness({
+  view,
+  transport,
+  canCreateParty,
+  lead,
+  remoteChange,
+  catalogueRevision,
+  onSaved,
+}: Mounted) {
   return (
     <StrictMode>
       <KeyboardProvider panel="master" userId={null}>
@@ -195,6 +209,7 @@ function Harness({ view, transport, canCreateParty, lead, remoteChange, onSaved 
             canCreateParty={canCreateParty}
             lead={lead}
             remoteChange={remoteChange}
+            catalogueRevision={catalogueRevision}
             onSaved={onSaved}
             onCancel={() => undefined}
           />
@@ -209,7 +224,12 @@ async function openForm(
   view: Record<string, unknown> = {},
   extra: Partial<Mounted> = {},
 ): Promise<
-  Fake & { setView: (next: Record<string, unknown>) => void; onSaved: ReturnType<typeof vi.fn> }
+  Fake & {
+    setView: (next: Record<string, unknown>) => void;
+    /** The catalogue changed: hand the form a new revision, as the shell does on a change event. */
+    catalogueChanged: () => void;
+    onSaved: ReturnType<typeof vi.fn>;
+  }
 > {
   const fake = makeTransport();
   const onSaved = vi.fn();
@@ -218,10 +238,16 @@ async function openForm(
   // An edit opens on the lead's own party, so there is no party box to wait for.
   if (extra.lead) await screen.findByText(t('lead.edit.title'));
   else await screen.findByLabelText(t('lead.add.party.search'), {}, { timeout: 10_000 });
+  let revision = 0;
   return {
     ...fake,
     onSaved,
-    setView: (next) => rerender(<Harness view={viewOf(next)} {...props} />),
+    setView: (next) =>
+      rerender(<Harness view={viewOf(next)} {...props} catalogueRevision={revision} />),
+    catalogueChanged: () => {
+      revision += 1;
+      rerender(<Harness view={viewOf(view)} {...props} catalogueRevision={revision} />);
+    },
   };
 }
 
@@ -817,6 +843,151 @@ describe('colour as a step of the Enter flow', () => {
     const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — OPT-0003`);
     expect(screen.queryByLabelText(t('lead.add.flow.addColour'))).toBeNull();
     expect(document.activeElement).toBe(qty);
+  });
+});
+
+describe('the catalogue changing while the entry is open', () => {
+  const NEW_CATEGORY = {
+    id: 'cat-new',
+    name: 'NEW PAN RANGE',
+    code: 'NPR',
+    brand: 'Swisware+',
+    sortOrder: 5,
+  };
+  const NEW_SUB = {
+    ...FIXED,
+    id: 'prod-new',
+    name: 'Fresh Closet',
+    sortOrder: 9,
+    variants: [{ id: 'var-new', label: 'Black', code: 'OPT-0099', weightKg: 25, isActive: true }],
+  };
+
+  async function chooseParty(): Promise<void> {
+    fireEvent.change(screen.getByLabelText(t('lead.add.party.search')), { target: { value: 'Sha' } });
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(PARTY.name) }));
+  }
+
+  it('offers a product added on the Master at once, with nothing reopened', async () => {
+    const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    await chooseParty();
+    fireEvent.focus(searchBox());
+    await screen.findByRole('button', { name: new RegExp(CATEGORY.name) });
+    expect(screen.queryByRole('button', { name: new RegExp(NEW_CATEGORY.name) })).toBeNull();
+
+    // An administrator adds a product on the Master; the shell moves the revision.
+    fake.catalogue.categories.push(NEW_CATEGORY as never);
+    await act(async () => {
+      fake.catalogueChanged();
+      await wait(0);
+    });
+
+    expect(await screen.findByRole('button', { name: new RegExp(NEW_CATEGORY.name) })).toBeTruthy();
+  });
+
+  it('re-runs the search somebody typed when the catalogue changes, so a product that was not found appears', async () => {
+    const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    await chooseParty();
+    fireEvent.focus(searchBox());
+    fireEvent.change(searchBox(), { target: { value: 'NPR' } });
+    expect(screen.queryByRole('button', { name: new RegExp(NEW_CATEGORY.name) })).toBeNull();
+
+    fake.catalogue.categories.push(NEW_CATEGORY as never);
+    await act(async () => {
+      fake.catalogueChanged();
+      await wait(0);
+    });
+
+    // The same typed text, the product it was looking for.
+    expect(searchBox().value).toBe('NPR');
+    expect(await screen.findByRole('button', { name: new RegExp(NEW_CATEGORY.name) })).toBeTruthy();
+  });
+
+  it('shows a sub product added to the chosen product in the open sub-product bar, and an edit in place', async () => {
+    const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    await chooseParty();
+    fireEvent.focus(searchBox());
+    fireEvent.mouseDown(await screen.findByRole('button', { name: new RegExp(CATEGORY.name) }));
+    await screen.findByRole('button', { name: new RegExp(FIXED.name) });
+
+    fake.catalogue.products.push(NEW_SUB as never);
+    await act(async () => {
+      fake.catalogueChanged();
+      await wait(0);
+    });
+    expect(await screen.findByRole('button', { name: new RegExp(NEW_SUB.name) })).toBeTruthy();
+
+    fake.catalogue.products[fake.catalogue.products.indexOf(NEW_SUB as never)] = {
+      ...NEW_SUB,
+      name: 'Fresh Closet Plus',
+    } as never;
+    await act(async () => {
+      fake.catalogueChanged();
+      await wait(0);
+    });
+    expect(await screen.findByRole('button', { name: /Fresh Closet Plus/ })).toBeTruthy();
+  });
+
+  it('keeps the draft, the typed quantity and the caret through a catalogue change', async () => {
+    const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    await pickSubProduct(FIXED.name);
+    const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — White`);
+    fireEvent.change(qty, { target: { value: '7' } });
+    qty.focus();
+    expect(document.activeElement).toBe(qty);
+
+    fake.catalogue.products.push(NEW_SUB as never);
+    await act(async () => {
+      fake.catalogueChanged();
+      await wait(0);
+    });
+
+    // The same card, the same typed quantity, the caret where it was.
+    const again = screen.getByLabelText(`${t('lead.add.draft.col.quantity')} — White`) as HTMLInputElement;
+    expect(again).toBe(qty);
+    expect(again.value).toBe('7');
+    expect(document.activeElement).toBe(again);
+  });
+
+  it('flags a product that was deleted, keeps it on the order and lets it save', async () => {
+    const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    await enterOneLine();
+    expect(document.querySelector('[data-catalogue-gone]')).toBeNull();
+
+    // The product is deleted on the Master while the order is open.
+    fake.catalogue.products = fake.catalogue.products.filter((product) => product.id !== FIXED.id);
+    await act(async () => {
+      fake.catalogueChanged();
+      await wait(0);
+    });
+
+    const note = await waitFor(() => {
+      const found = document.querySelector('[data-catalogue-gone]');
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(note.textContent).toContain(FIXED.name);
+
+    // The line already on the order saves as it was.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
+      await wait(0);
+    });
+    const { items } = created(fake);
+    expect(items.map(({ variantId, quantity }) => ({ variantId, quantity }))).toEqual([
+      { variantId: 'var-1', quantity: 5 },
+    ]);
+  });
+});
+
+describe('the follow-up chips', () => {
+  it('are one group beside the date, so they wrap together and evenly instead of one at a time', async () => {
+    await openForm();
+    const group = document.querySelector<HTMLElement>('[data-follow-up-chips]')!;
+    expect(group).not.toBeNull();
+    // The three quick chips, and not the date box, share the one wrapping group.
+    expect(group.querySelectorAll('button')).toHaveLength(3);
+    expect(group.querySelector('input')).toBeNull();
+    expect(group.style.flexWrap).toBe('wrap');
   });
 });
 

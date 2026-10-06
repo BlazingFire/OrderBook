@@ -159,6 +159,12 @@ const SOURCES = ['walk-in', 'phone'].map((value, index) => ({
   sortOrder: index,
 }));
 
+/** What the Master's pickers answer right now; a test changes it, then sends the change frame. */
+const live = {
+  categories: [WASH_BASIN, CATEGORY] as Array<typeof CATEGORY>,
+  products: [MULTI, DEDICATED, FIXED] as Array<Record<string, unknown>>,
+};
+
 function snapshot(overrides: Record<string, unknown> = {}) {
   return {
     parties: [PARTY],
@@ -217,13 +223,13 @@ async function openForm(view: Record<string, unknown> = {}): Promise<Call[]> {
     if (path === '/api/pick/category') {
       // Matched the way the Master matches: the code from its start, the name anywhere.
       const term = (new URL(url, 'http://panel').searchParams.get('q') ?? '').toLowerCase();
-      const items = [WASH_BASIN, CATEGORY].filter(
+      const items = live.categories.filter(
         (row) => row.code.toLowerCase().startsWith(term) || row.name.toLowerCase().includes(term),
       );
       return json({ items, truncated: false });
     }
     if (path === '/api/pick/product') {
-      return json({ items: [MULTI, DEDICATED, FIXED], truncated: false });
+      return json({ items: live.products, truncated: false });
     }
     if (path === '/api/leads' && method === 'POST') {
       return json({ queued: true, id: 'L-TMP-1', mutationId: 'mut-1', pendingCount: 1 });
@@ -331,6 +337,8 @@ function leadPosts(calls: Call[]): Call[] {
 
 beforeEach(() => {
   installBrowserStubs();
+  live.categories = [WASH_BASIN, CATEGORY];
+  live.products = [MULTI, DEDICATED, FIXED];
 });
 
 afterEach(() => {
@@ -829,6 +837,87 @@ describe('Office: colour as a step of the Enter flow', () => {
     const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — OPT-0003`);
     expect(screen.queryByLabelText(t('lead.add.flow.addColour'))).toBeNull();
     expect(document.activeElement).toBe(qty);
+  });
+});
+
+describe('Office: the catalogue changing while the entry is open', () => {
+  const NEW_CATEGORY = {
+    id: 'cat-new',
+    name: 'NEW PAN RANGE',
+    code: 'NPR',
+    brand: 'Swisware+',
+    sortOrder: 5,
+  };
+
+  /** The Master added a product category: the Office hears it as a small change frame. */
+  async function masterAddsCategory(): Promise<void> {
+    live.categories = [...live.categories, NEW_CATEGORY];
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('change', {
+        entity: 'product_category',
+        action: 'created',
+        id: NEW_CATEGORY.id,
+        payload: { ...NEW_CATEGORY, tenantId: 't', createdAt: '2026-10-07T00:00:00.000Z', updatedAt: '2026-10-07T00:00:00.000Z', deletedAt: null },
+      });
+      await wait(120); // past the shell's 60 ms batch of change frames
+    });
+  }
+
+  async function chooseParty(): Promise<void> {
+    fireEvent.change(screen.getByLabelText(t('lead.add.party.search')), { target: { value: 'Sha' } });
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(PARTY.name) }));
+  }
+
+  it('offers a product added on the Master at once, with nothing reopened', async () => {
+    await openForm();
+    await chooseParty();
+    fireEvent.focus(searchBox());
+    await screen.findByRole('button', { name: new RegExp(CATEGORY.name) });
+    expect(screen.queryByRole('button', { name: new RegExp(NEW_CATEGORY.name) })).toBeNull();
+
+    await masterAddsCategory();
+
+    expect(await screen.findByRole('button', { name: new RegExp(NEW_CATEGORY.name) })).toBeTruthy();
+  });
+
+  it('re-runs what was typed when the catalogue changes', async () => {
+    await openForm();
+    await chooseParty();
+    fireEvent.focus(searchBox());
+    fireEvent.change(searchBox(), { target: { value: 'NPR' } });
+    expect(screen.queryByRole('button', { name: new RegExp(NEW_CATEGORY.name) })).toBeNull();
+
+    await masterAddsCategory();
+
+    expect(searchBox().value).toBe('NPR');
+    expect(await screen.findByRole('button', { name: new RegExp(NEW_CATEGORY.name) })).toBeTruthy();
+  });
+
+  it('keeps the draft, the typed quantity and the caret through a catalogue change', async () => {
+    await openForm();
+    await pickSubProduct(FIXED.name);
+    const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — White`);
+    fireEvent.change(qty, { target: { value: '7' } });
+    qty.focus();
+
+    await masterAddsCategory();
+
+    const again = screen.getByLabelText(`${t('lead.add.draft.col.quantity')} — White`) as HTMLInputElement;
+    expect(again).toBe(qty);
+    expect(again.value).toBe('7');
+    expect(document.activeElement).toBe(again);
+  });
+});
+
+describe('Office: the follow-up chips', () => {
+  it('are one group beside the date, so they wrap together and evenly instead of one at a time', async () => {
+    await openForm();
+    const group = document.querySelector<HTMLElement>('[data-follow-up-chips]')!;
+    expect(group).not.toBeNull();
+    // The three quick chips, and not the date box, share the one wrapping group.
+    expect(group.querySelectorAll('button')).toHaveLength(3);
+    expect(group.querySelector('input')).toBeNull();
+    expect(group.style.flexWrap).toBe('wrap');
   });
 });
 
