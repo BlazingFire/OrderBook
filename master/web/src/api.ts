@@ -85,6 +85,11 @@ import type {
   OptionListItemUpdateInput,
   OptionListReorderInput,
   Order,
+  Notice,
+  NoticeBoard,
+  NoticeInput,
+  NoticeReaders,
+  NoticeUpdate,
   Paginated,
   StageCounts,
   Party,
@@ -1164,6 +1169,22 @@ export const api = {
     requestUntracked<BoardPresence>(`/api/presence/board?kind=${kind}`),
   markNotificationsRead: (which: { ids: string[] } | { all: true }) =>
     post<{ unreadCount: number }>('/api/notifications/read', which),
+
+  // --- The notice board (`/api/notices`) ---
+  /** The notices meant for the signed-in person (the Master already leaves out expired and out-of-audience ones). */
+  notices: () => request<NoticeBoard>('/api/notices'),
+  /** Every notice, expired ones included, with role names and read counts. `notices.manage`. */
+  noticeManageList: () => request<Notice[]>('/api/notices/manage'),
+  noticeReaders: (id: string) => request<NoticeReaders>(`/api/notices/${encodeURIComponent(id)}/readers`),
+  /** The roles an audience can be made of. `notices.manage`. */
+  noticeAudiences: () => request<Array<{ id: string; name: string }>>('/api/notices/audiences'),
+  createNotice: (input: NoticeInput) => post<Notice>('/api/notices', input),
+  updateNotice: (id: string, update: NoticeUpdate) =>
+    request<Notice>(`/api/notices/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(update) }),
+  deleteNotice: (id: string) =>
+    request<{ id: string }>(`/api/notices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  /** Marks the given notices read (all of them when `ids` is left out) and answers the new unread count. */
+  markNoticesRead: (ids?: string[]) => post<{ unreadCount: number }>('/api/notices/read', ids ? { ids } : {}),
 
   // --- The Chatroom (`/api/chat`). Background reads, so the loading strip stays still. ---
   chatPeople: () => requestUntracked<ChatPerson[]>('/api/chat/people'),
