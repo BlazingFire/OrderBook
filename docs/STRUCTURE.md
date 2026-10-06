@@ -6332,6 +6332,34 @@ Rules: `docs/schema/06-tenancy-permissions-and-sync.md` section 2c, `docs/ROLES_
 - **Tests.** `master/tests/notices.integration.test.ts`, `notice-fan-out.test.ts`, `notice-screens-contract.integration.test.ts`,
   `migration-notice-board.integration.test.ts`, `office/tests/notices-forwarding.test.ts`, `ui/tests/notice-board.test.tsx`.
 
+### 11.13 Product photos in bulk, and the catalogue photos (Oct 2026)
+
+- **Photo import (Master, Products > Photo import, `products.edit`).** `master/web/src/screens/PhotoImportScreen.tsx` picks a folder
+  or many files; `shared/src/domain/photo-import.ts` (`planPhotoImport`, `runPhotoImport`; pure, tested in
+  `shared/tests/photo-import.test.ts`) matches and runs. A file is matched by its name without the extension, ignoring case,
+  to a variant code (`OPT-0011.jpg`) and, failing that, to a sub product's alias when that alias is unique; `OPT-0011_2.jpg` is a
+  second photo of the same code. Status per file: `new`, `hasPhoto`, `unmatched`, `duplicate` (same name twice), `notImage`
+  (jpg, jpeg, png, webp are read). Photos belong to the sub product (`product_images` has no variant column), so a file matched
+  through a colour's code lands in the sub product's gallery captioned with that colour. The screen previews the plan, lets
+  the person choose **skip** or **replace** for sub products that already have a photo, then uploads one photo at a time through
+  the ordinary photo route (waiting out the upload rate limit when a thousand reach it), with progress, a Stop button and a
+  final report (imported / skipped / failed). Nothing is cropped.
+- **The route.** `POST /api/products/:id/images` (`images.routes.ts`) now accepts a request with **no crop fields at all** as
+  "the whole picture" (`wholeFrame` into `image.service.ts#uploadImage`); a partial crop is still refused as before. The
+  existing photo permission, upload limit, pipeline and change events are the ones a single photo already uses; no new route.
+- **The shipped catalogue photos.** `master/assets/catalogue/photos/<sub product code>.jpg` (the 549 photos extracted from the
+  SWISWARE 2026 catalogue by `tools/catalogue-photos.py`) are attached on Master boot by
+  `master/src/services/catalogue-photos.service.ts#attachCataloguePhotos`, called from `master/src/index.ts` after the orphan sweep
+  and **not awaited** (encoding a few hundred photos takes minutes; the panel serves meanwhile). It uses the same plan and run in
+  skip mode and the ordinary upload, as the System actor holding only `products.edit` (the activity log says System), so it only
+  attaches to sub products with no photo and never replaces one the company added. It is recorded once per shipped set, under a
+  fingerprint of the file names and sizes, in the internal setting `internal.cataloguePhotosAttached` (no `SETTINGS` definition
+  names it, so no screen or snapshot shows it); an update that ships a changed set runs once more. A run with a failed photo is
+  not recorded, so the next boot retries; neither is a run where nothing matched any sub product (the catalogue is not loaded yet).
+  Offline: the files are on disk beside the program.
+- **Tests.** `shared/tests/photo-import.test.ts`, `master/tests/photo-import-route.integration.test.ts`,
+  `master/tests/catalogue-photos.integration.test.ts`, "Photo import" in `ui/tests/master-shell.test.tsx`.
+
 ### 11.10 Caching, limits and stability (1.4.3)
 
 **Which layer answers a repeated read.** A browser asks for the same list several times
