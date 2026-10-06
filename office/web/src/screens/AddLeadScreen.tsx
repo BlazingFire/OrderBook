@@ -211,6 +211,9 @@ interface DraftLine extends ProductFacts, VariantFacts {
   quantity: number;
 }
 
+/** How many products on the order are checked against the catalogue after a change. */
+const GONE_CHECK_MAX = 30;
+
 const QUICK_FOLLOW_UPS = [
   { days: 1, token: 'lead.add.followUp.tomorrow' },
   { days: 3, token: 'lead.add.followUp.inThreeDays' },
@@ -724,7 +727,8 @@ function AddLeadForm({
    * has, found again each time the catalogue changes. They are flagged, not
    * dropped: a lead already in progress keeps working and saves as it was.
    */
-  const [goneNames, setGoneNames] = useState<string[]>([]);
+  const [gone, setGone] = useState<Array<{ id: string; name: string }>>([]);
+  const goneNames = gone.map((product) => product.name);
 
   const checkedProducts = useMemo(() => {
     const byId = new Map<string, string>();
@@ -736,20 +740,23 @@ function AddLeadForm({
 
   useEffect(() => {
     if (checkedProducts.length === 0) {
-      setGoneNames([]);
+      setGone([]);
       return;
     }
     let cancelled = false;
     void (async () => {
       try {
-        const page = await api.pick<Product>('product', {
-          term: '',
-          limit: 1,
-          include: checkedProducts.map(([id]) => id),
-        });
+        // Each product is looked up by its own name, which always matches it while it is live:
+        // a deleted one is not in the answer. (Not the picker's `include`, which hands back a
+        // named id whether or not it is still in the catalogue.)
+        const answers = await Promise.all(
+          checkedProducts.slice(0, GONE_CHECK_MAX).map(async ([id, name]) => {
+            const page = await api.pick<Product>('product', { term: name, limit: PICK_MAX_LIMIT });
+            return [id, name, page.items.some((product) => product.id === id)] as const;
+          }),
+        );
         if (cancelled) return;
-        const live = new Set(page.items.map((product) => product.id));
-        setGoneNames(checkedProducts.filter(([id]) => !live.has(id)).map(([, name]) => name));
+        setGone(answers.filter(([, , live]) => !live).map(([id, name]) => ({ id, name })));
       } catch {
         // Unreachable or refused: say nothing rather than flag everything.
       }
@@ -1099,6 +1106,11 @@ function AddLeadForm({
     if (!partyId) return t('lead.add.errors.partyRequired');
     if (lines.length === 0) return t('lead.add.errors.noProducts');
     if (draft) return t('lead.add.errors.draftOpen');
+    // The Master refuses a whole new order that names a deleted product: stop here, keep the form.
+    const goneLines = lines.filter((line) => gone.some((product) => product.id === line.productId));
+    if (goneLines.length > 0 && !lead) {
+      return t('lead.add.errors.goneLines', { names: [...new Set(goneLines.map((line) => line.productName))].join(', ') });
+    }
     return null;
   }
 
@@ -1947,7 +1959,7 @@ function AddLeadForm({
               </p>
             </div>
 
-            {goneNames.length > 0 && (
+            {goneNames.length > 0 && !lead && (
               <p
                 role="note"
                 data-catalogue-gone

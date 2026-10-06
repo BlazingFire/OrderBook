@@ -229,7 +229,11 @@ async function openForm(view: Record<string, unknown> = {}): Promise<Call[]> {
       return json({ items, truncated: false });
     }
     if (path === '/api/pick/product') {
-      return json({ items: live.products, truncated: false });
+      const term = (new URL(url, 'http://panel').searchParams.get('q') ?? '').toLowerCase();
+      const items = term
+        ? live.products.filter((row) => String(row.name).toLowerCase().includes(term))
+        : live.products;
+      return json({ items, truncated: false });
     }
     if (path === '/api/leads' && method === 'POST') {
       return json({ queued: true, id: 'L-TMP-1', mutationId: 'mut-1', pendingCount: 1 });
@@ -891,6 +895,24 @@ describe('Office: the catalogue changing while the entry is open', () => {
 
     expect(searchBox().value).toBe('NPR');
     expect(await screen.findByRole('button', { name: new RegExp(NEW_CATEGORY.name) })).toBeTruthy();
+  });
+
+  it('blocks the save when a product on the order was deleted, sending nothing and keeping the draft', async () => {
+    const calls = await openForm();
+    await enterOneLine();
+    expect(document.querySelector('[data-catalogue-gone]')).toBeNull();
+
+    live.products = live.products.filter((product) => product.id !== FIXED.id);
+    await masterAddsCategory();
+
+    await waitFor(() => expect(document.querySelector('[data-catalogue-gone]')).not.toBeNull());
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
+      await wait(0);
+    });
+    expect(leadPosts(calls)).toHaveLength(0);
+    expect(await screen.findByText(t('lead.add.errors.goneLines', { names: FIXED.name }))).toBeTruthy();
+    expect(screen.getAllByText(new RegExp(FIXED.name)).length).toBeGreaterThan(0);
   });
 
   it('keeps the draft, the typed quantity and the caret through a catalogue change', async () => {

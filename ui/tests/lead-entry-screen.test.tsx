@@ -154,7 +154,12 @@ function makeTransport() {
         );
         return { items };
       }
-      return { items: catalogue.products };
+      // By name when something is typed — how the Master matches a product — else all of them.
+      return {
+        items: term
+          ? catalogue.products.filter((row) => row.name.toLowerCase().includes(term))
+          : catalogue.products,
+      };
     },
   );
   const createLead = vi.fn(async (_input: unknown) => ({ id: 'L-1' }));
@@ -948,7 +953,24 @@ describe('the catalogue changing while the entry is open', () => {
     expect(document.activeElement).toBe(again);
   });
 
-  it('flags a product that was deleted, keeps it on the order and lets it save', async () => {
+  it('does not flag a product that is still in the catalogue when something else changed', async () => {
+    const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    await enterOneLine();
+
+    fake.catalogue.products.push(NEW_SUB as never);
+    await act(async () => {
+      fake.catalogueChanged();
+      await wait(0);
+    });
+    // The check asks for the product by its own name, once the change has been heard.
+    await waitFor(() => {
+      expect(fake.pick.mock.calls.some(([kind, q]) => kind === 'product' && q.term === FIXED.name)).toBe(true);
+    });
+    await act(async () => wait(50));
+    expect(document.querySelector('[data-catalogue-gone]')).toBeNull();
+  });
+
+  it('flags a product that was deleted and blocks the save, naming the line and keeping the draft', async () => {
     const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
     await enterOneLine();
     expect(document.querySelector('[data-catalogue-gone]')).toBeNull();
@@ -967,15 +989,16 @@ describe('the catalogue changing while the entry is open', () => {
     });
     expect(note.textContent).toContain(FIXED.name);
 
-    // The line already on the order saves as it was.
+    // The Master would refuse the whole order, so nothing is sent: the form stays open
+    // with its line, and the message names the product.
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
       await wait(0);
     });
-    const { items } = created(fake);
-    expect(items.map(({ variantId, quantity }) => ({ variantId, quantity }))).toEqual([
-      { variantId: 'var-1', quantity: 5 },
-    ]);
+    expect(fake.createLead).not.toHaveBeenCalled();
+    expect(fake.onSaved).not.toHaveBeenCalled();
+    expect(await screen.findByText(t('lead.add.errors.goneLines', { names: FIXED.name }))).toBeTruthy();
+    expect(screen.getAllByText(new RegExp(FIXED.name)).length).toBeGreaterThan(0);
   });
 });
 
