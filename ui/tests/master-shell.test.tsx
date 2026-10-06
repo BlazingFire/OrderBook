@@ -1802,6 +1802,8 @@ describe('Server Masters at first run and sign-in (1.3)', () => {
     expect(JSON.stringify(sent?.body)).not.toContain('admin');
 
     expect(await screen.findByText(t('firstRun.ready.title'))).toBeTruthy();
+    // On a 720p screen the way out of this one-time screen (and its Save to .txt) must not sit below the fold.
+    expect(screen.getByRole('button', { name: t('firstRun.ready.continue') }).parentElement?.style.position).toBe('sticky');
     expect(screen.getByText('master-backup')).toBeTruthy();
     expect(screen.getByText('pair-word')).toBeTruthy();
   });

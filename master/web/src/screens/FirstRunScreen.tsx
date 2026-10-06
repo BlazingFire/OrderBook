@@ -224,7 +224,19 @@ function SetupFlow({ onBack, onComplete }: { onBack: () => void; onComplete: () 
           </div>
         </Card>
 
-        <div style={{ display: 'flex', gap: 'var(--s-12)', alignItems: 'center', flexWrap: 'wrap' }}>
+        {/* Sticky: the pairing password is on this screen once, and on a 720p screen the way out was below the fold. */}
+        <div
+          style={{
+            display: 'flex',
+            gap: 'var(--s-12)',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            position: 'sticky',
+            bottom: 0,
+            background: 'var(--bg-canvas)',
+            padding: 'var(--s-12) 0',
+          }}
+        >
           <Button variant="primary" size="lg" onClick={onComplete}>
             {t('firstRun.ready.continue')}
           </Button>
@@ -313,12 +325,25 @@ function SetupFlow({ onBack, onComplete }: { onBack: () => void; onComplete: () 
             </p>
             <ServerMasterAccountFields drafts={drafts} onChange={setDrafts} />
             {error && <FieldError>{error}</FieldError>}
-            <Button variant="primary" busy={busy} onClick={() => void generate()}>
-              {busy ? t('firstRun.setup.generating') : t('firstRun.setup.generate')}
-            </Button>
-            <Button variant="ghost" onClick={onBack}>
-              {t('firstRun.choose.back')}
-            </Button>
+            {/* Sticky: the setup form is taller than a 720p screen, and its buttons were at the very end. */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--s-8)',
+                position: 'sticky',
+                bottom: 0,
+                background: 'var(--bg-surface)',
+                padding: 'var(--s-8) 0',
+              }}
+            >
+              <Button variant="primary" busy={busy} onClick={() => void generate()}>
+                {busy ? t('firstRun.setup.generating') : t('firstRun.setup.generate')}
+              </Button>
+              <Button variant="ghost" onClick={onBack}>
+                {t('firstRun.choose.back')}
+              </Button>
+            </div>
           </div>
         </Card>
       </div>
