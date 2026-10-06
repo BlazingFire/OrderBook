@@ -158,8 +158,9 @@ export async function applyPush(
   // created with no owner and be open to the whole company) and not rejected for good either: the Office
   // keeps it queued and sends it again once its author is signed in. Other writers (the connector, an
   // import) never come through here.
+  // A panel with somebody signed in acts as that person (actorType 'user'), so the author check is made for
+  // every actor that reaches this function, not only the bare panel; the userless case is the panel's own.
   if (
-    actor.actorType === 'office_panel' &&
     mutations.some(
       (m) =>
         isPartyScopedKind(m.kind) &&
@@ -167,7 +168,7 @@ export async function applyPush(
           ? // Somebody is signed in: it must be the person who did the work.
             m.actorUserId !== undefined && m.actorUserId !== null && m.actorUserId !== actor.userId
           : // Nobody is, and the panel's own role does not see every party: whatever it made would be open to all.
-            !actorCan(actor, 'party.accessAll')),
+            actor.actorType === 'office_panel' && !actorCan(actor, 'party.accessAll')),
     )
   ) {
     throw new AppError('error.unavailable.signInToSync', {}, 503, 'unavailable');

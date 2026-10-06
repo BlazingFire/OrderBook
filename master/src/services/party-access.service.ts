@@ -363,10 +363,9 @@ async function levelForParty(
   // found" for a hidden party, a different one for an id that is not there) would let them tell which ids
   // exist. A party that is not there is none to them, exactly as a hidden one is.
   if (level !== 'none' && grants.length === 0) {
-    const exists = await db()('parties')
-      .where({ tenant_id: actor.tenantId, id: partyId })
-      .whereNull('deleted_at')
-      .first('id');
+    // Deleted ones count as there: an open party in the Recycle Bin is restored by the people who could have
+    // changed it before it was deleted.
+    const exists = await db()('parties').where({ tenant_id: actor.tenantId, id: partyId }).first('id');
     if (!exists) return 'none';
   }
   return level;

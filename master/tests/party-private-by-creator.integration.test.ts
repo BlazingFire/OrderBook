@@ -367,6 +367,41 @@ describe.skipIf(!canRunIntegrationTests)('a party is private to its creator (int
       expect(await db()('parties').where({ name: 'Wrong Hands' })).toHaveLength(0);
     });
 
+    it('holds A’s queued work pushed under B’s session (a signed-in panel acts as a user, not as the bare panel)', async () => {
+      const [a, b] = desks;
+      // Exactly the actor a socket gives a panel with B signed in: a user, with the device code.
+      const asB = { ...b!.actor, deviceCode: PANEL, actorType: 'user' as const };
+      const push = sync.applyPush(
+        { mutations: [mutationFor('party.create', 'party', formatTemporaryId(PANEL, 45), { name: 'A made this' }, a!.userId)] },
+        asB,
+      );
+      await expect(push).rejects.toMatchObject({ statusCode: 503, messageKey: 'error.unavailable.signInToSync' });
+      expect(await db()('parties').where({ name: 'A made this' })).toHaveLength(0);
+
+      // Work that is B's own goes through.
+      const own = await sync.applyPush(
+        { mutations: [mutationFor('party.create', 'party', formatTemporaryId(PANEL, 46), { name: 'B made this' }, b!.userId)] },
+        asB,
+      );
+      expect(own.results[0]?.status).toBe('applied');
+    });
+
+    it('lets a person without party.accessAll restore an open deleted party from the Recycle Bin, and still hides a hidden one', async () => {
+      const open = await catalog.createParty({ name: 'Open and deleted' }, admins[0]!);
+      await catalog.deleteParty(open.id, admins[0]!);
+      const manager = await actorFor(await makeUser('mgr', [...DESK_KEYS, 'parties.delete', 'recycleBin.view'], 'management'), [
+        ...DESK_KEYS,
+        'parties.delete',
+        'recycleBin.view',
+      ]);
+      await catalog.restoreParty(open.id, manager, undefined);
+      expect((await db()('parties').where({ id: open.id }).first())?.deleted_at).toBeNull();
+
+      // A party that was never there answers like a hidden one.
+      await expect(catalog.getParty(desks[0]!.partyId, manager)).rejects.toBeInstanceOf(NotFoundError);
+      await expect(catalog.getParty('PT9999999999', manager)).rejects.toBeInstanceOf(NotFoundError);
+    });
+
     it('lets the signed-in person push their own work, and other writers keep their behaviour', async () => {
       const a = desks[0]!;
       const response = await sync.applyPush(
