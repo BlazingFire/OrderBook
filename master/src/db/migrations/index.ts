@@ -60,6 +60,7 @@ import * as backupAllPermissionGrant from './20261007000000_backup_all_permissio
 // 1.4 D3
 import * as catalogListsGrant from './20261012000000_catalog_lists_grant.js';
 import * as printroomOfficeManagementGrant from './20261013000000_printroom_office_management_grant.js';
+import * as noticeBoard from './20261014000000_notice_board.js';
 
 export interface Migration {
   name: string;
@@ -272,6 +273,11 @@ export const migrations: Migration[] = [
   {
     name: '20261013000000_printroom_office_management_grant',
     ...printroomOfficeManagementGrant,
+  },
+  // The notice board (Oct 2026): `notices`, `notice_audiences`, `notice_reads`, and the grants.
+  {
+    name: '20261014000000_notice_board',
+    ...noticeBoard,
   },
 ];
 
