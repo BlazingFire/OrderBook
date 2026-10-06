@@ -89,6 +89,7 @@ import * as imageService from '../services/image.service.js';
 import * as panelService from '../services/panel.service.js';
 import * as partyAccessService from '../services/party-access.service.js';
 import * as presenceService from '../services/presence.service.js';
+import * as noticeService from '../services/notice.service.js';
 import * as printService from '../services/print.service.js';
 import type { PrintOrigin } from '../services/print.service.js';
 import type { PresenceChange } from './presence-store.js';
@@ -1096,6 +1097,18 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   on('print:station', (input, ack) =>
     run(ack, (actor) => printService.saveStation(input, actor, printOrigin())),
   );
+
+  // The notice board. What a reader sees is scoped by the acting person's role in the service.
+  on('notice:list', (ack) => run(ack, (actor) => noticeService.listBoard(actor)));
+  on('notice:manageList', (ack) => run(ack, (actor) => noticeService.listManage(actor)));
+  on('notice:audiences', (ack) => run(ack, (actor) => noticeService.listAudienceRoles(actor)));
+  on('notice:readers', (id, ack) => run(ack, (actor) => noticeService.getReaders(id, actor)));
+  on('notice:create', (input, ack) => run(ack, (actor) => noticeService.createNotice(input, actor)));
+  on('notice:update', ({ id, ...input }, ack) =>
+    run(ack, (actor) => noticeService.updateNotice(id, input, actor)),
+  );
+  on('notice:delete', (id, ack) => run(ack, (actor) => noticeService.deleteNotice(id, actor)));
+  on('notice:markRead', (input, ack) => run(ack, (actor) => noticeService.markRead(input, actor)));
 
   // The one live pull; everything else rides on `SyncSnapshot.dashboard` and
   // the `dashboard:changed` push both extended below.

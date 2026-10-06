@@ -112,6 +112,8 @@ describe('the migration registry matches the directory', () => {
     '20261012000000_catalog_lists_grant',
     // 1.4 D4 (R9): `print.send` for Office and Management roles.
     '20261013000000_printroom_office_management_grant',
+    // The notice board tables and grants (Oct 2026).
+    '20261014000000_notice_board',
   ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {

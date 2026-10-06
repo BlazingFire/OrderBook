@@ -117,5 +117,9 @@
   "activity.backup.created",
   "activity.backup.schedule_updated",
   "activity.backup.failed",
-  "activity.backup.restore_failed"
+  "activity.backup.restore_failed",
+  "activity.notice.created",
+  "activity.notice.updated",
+  "activity.notice.deleted",
+  "activity.notice.restored"
 ]

@@ -84,6 +84,8 @@ export const REQUIRED_PERMISSION: Partial<Record<ChangedEntity, Permission>> = {
   // A bulk party import's single "the party book moved" event.
   party_bulk: 'parties.view',
   sync_conflict: 'sync.resolveConflicts',
+  // The notice board: reading it is the gate; the audience is checked on top (`mayReceive`).
+  notice: 'notices.view',
 };
 
 /**
@@ -95,6 +97,18 @@ export const REQUIRED_PERMISSION: Partial<Record<ChangedEntity, Permission>> = {
  * feature turns on. Party scoping and the module permission above are both
  * checked; either one refusing is a refusal.
  */
+/** Whether a notice change's audience covers this recipient: everybody, their role, or they manage notices. */
+function noticeAudienceIncludes(actor: ActorContext, payload: unknown): boolean {
+  if (actorCan(actor, 'notices.manage')) return true;
+
+  const audience = (payload as { audience?: { kind?: string; roleIds?: unknown } } | null)?.audience;
+  if (audience?.kind === 'all') return true;
+  if (audience?.kind !== 'roles' || !Array.isArray(audience.roleIds)) return false;
+
+  const roleId = actor.permissions?.roleId ?? null;
+  return roleId !== null && audience.roleIds.includes(roleId);
+}
+
 export function mayReceive(
   actor: ActorContext,
   event: DataChangedEvent,
@@ -104,6 +118,10 @@ export function mayReceive(
 
   const required = REQUIRED_PERMISSION[event.entity];
   if (required && !actorCan(actor, required)) return false;
+
+  // A notice change names only its audience (before and after). Somebody outside it is told
+  // nothing, and a manager is told everything.
+  if (event.entity === 'notice') return noticeAudienceIncludes(actor, event.payload);
 
   if (!PARTY_SCOPED_ENTITIES.has(event.entity)) return true;
 

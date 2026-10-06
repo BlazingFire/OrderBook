@@ -19,6 +19,7 @@ import { ForbiddenError } from '../lib/errors.js';
 import * as customFieldRepo from '../repositories/custom-field.repository.js';
 import { peekHlc } from '../repositories/identity.repository.js';
 import * as partyAccessRepo from '../repositories/party-access.repository.js';
+import * as noticeService from './notice.service.js';
 import * as variantRepo from '../repositories/party-variant.repository.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
 import * as syncRepo from '../repositories/sync.repository.js';
@@ -144,6 +145,7 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
     partyGrants,
     builtForUserId: partyScope.userId,
     partyAccessCounts,
+    notices: await noticeService.snapshotNotices(actor),
     openPartyIds: parties.map((party) => party.id).filter((id) => !(id in partyAccessCounts)),
     serverHlc,
     serverTime: new Date().toISOString(),

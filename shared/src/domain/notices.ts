@@ -83,6 +83,12 @@ export interface NoticeInput {
 /** An edit says which version it was made from; the Master refuses it if somebody else got there first. */
 export type NoticeUpdate = Partial<NoticeInput> & { expectedVersion: number };
 
+/** A role a notice can be addressed to: what the editor's audience picker lists. */
+export interface NoticeAudienceRole {
+  id: string;
+  name: string;
+}
+
 export interface NoticeReader {
   userId: string;
   displayName: string;
