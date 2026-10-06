@@ -203,7 +203,7 @@ was verified, so the next agent can trust the state without re-auditing.
   - **CH1:** the plan, the verdicts, and the build.
 - **Verified.** The gate on `4c907ed`: lint, build, typecheck, test (341 files, 4,539 tests),
   `smoke:legacy`, each 0. D7's final regression on `3583d2e`: every group passed.
-- **Release.** Built, not published. `main` @ `93fd1ac` is pushed (owner's call); the release waits for the owner.
+- **Release.** Published as v1.4.4 on the owner's word; `main` @ `93fd1ac` pushed.
 
 ### 2026-10-06 - UI fixes: tab strip, footer, party form, import/export icons, empty colour list (Claude, Sonnet)
 
