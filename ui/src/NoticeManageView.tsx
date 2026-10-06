@@ -54,9 +54,12 @@ export interface NoticeManageViewProps {
   today?: string;
 }
 
-/** Newest edit first: what a manager is most likely to want to touch. */
+/** Pinned first, as on the board, then newest edit first: what a manager is most likely to want to touch. */
 export function manageOrder(notices: readonly Notice[]): Notice[] {
-  return [...notices].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
+  return [...notices].sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    return a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0;
+  });
 }
 
 const isConflict = (caught: unknown): boolean => (caught as { code?: string } | null)?.code === 'conflict';
@@ -107,15 +110,23 @@ export function NoticeManageView({
       header: t('notices.manage.col.notice'),
       width: '2fr',
       render: (notice) => (
-        <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-6)', flexWrap: 'wrap', minWidth: 0 }}>
-          <span className="ob-body-strong" title={notice.title} style={{ overflowWrap: 'anywhere' }}>
+        // One line: a table row is one line tall, so the title gives way (its full text is the tooltip) and the
+        // pills keep their size, instead of wrapping under the title into the next row.
+        <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-6)', minWidth: 0, width: '100%' }}>
+          <span
+            className="ob-body-strong"
+            title={notice.title}
+            style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          >
             {notice.title}
           </span>
-          {notice.priority === 'important' && <StatusPill tone="conflict">{t('notices.priority.important')}</StatusPill>}
-          {notice.pinned && <StatusPill tone="accent">{t('notices.pinned')}</StatusPill>}
-          {(notice.expired || (today && isNoticeExpired(notice.showUntil, today))) && (
-            <StatusPill tone="offline">{t('notices.expired')}</StatusPill>
-          )}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-4)', flex: 'none' }}>
+            {notice.priority === 'important' && <StatusPill tone="conflict">{t('notices.priority.important')}</StatusPill>}
+            {notice.pinned && <StatusPill tone="accent">{t('notices.pinned')}</StatusPill>}
+            {(notice.expired || (today && isNoticeExpired(notice.showUntil, today))) && (
+              <StatusPill tone="offline">{t('notices.expired')}</StatusPill>
+            )}
+          </span>
         </span>
       ),
     },
@@ -123,8 +134,13 @@ export function NoticeManageView({
       key: 'audience',
       header: t('notices.manage.col.audience'),
       width: '1.2fr',
+      priority: 2,
       render: (notice) => (
-        <span className="ob-small" title={audienceText(notice)} style={{ overflowWrap: 'anywhere' }}>
+        <span
+          className="ob-small"
+          title={audienceText(notice)}
+          style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+        >
           {audienceText(notice)}
         </span>
       ),
@@ -133,14 +149,16 @@ export function NoticeManageView({
       key: 'until',
       header: t('notices.manage.col.until'),
       width: '8rem',
+      priority: 3,
       render: (notice) => <span className="ob-small">{notice.showUntil ?? t('notices.manage.noEnd')}</span>,
     },
     {
       key: 'reads',
       header: t('notices.manage.col.reads'),
-      width: '7rem',
+      width: '6.5rem',
+      priority: 2,
       render: (notice) => (
-        <Button variant="ghost" size="sm" onClick={() => setReadersOf(notice)} aria-label={`${t('notices.manage.readers')}: ${notice.title}`}>
+        <Button variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); setReadersOf(notice); }} aria-label={`${t('notices.manage.readers')}: ${notice.title}`}>
           {t('notices.manage.reads', { read: notice.readCount ?? 0, total: notice.audienceSize ?? 0 })}
         </Button>
       ),
@@ -148,15 +166,24 @@ export function NoticeManageView({
     {
       key: 'updated',
       header: t('notices.manage.col.updated'),
-      width: '11rem',
-      render: (notice) => <span className="ob-small">{formatDateTime(notice.updatedAt)}</span>,
+      width: '13rem',
+      priority: 3,
+      render: (notice) => (
+        <span className="ob-small" style={{ whiteSpace: 'nowrap' }}>
+          {formatDateTime(notice.updatedAt)}
+        </span>
+      ),
     },
     {
       key: 'actions',
       header: '',
-      width: '16rem',
+      width: '14rem',
       render: (notice) => (
-        <span style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}>
+        // A click on an action is the action, not a click on the row (which opens the editor).
+        <span
+          style={{ display: 'flex', gap: 'var(--s-6)', justifyContent: 'flex-end', width: '100%' }}
+          onClick={(event) => event.stopPropagation()}
+        >
           <Button
             variant="ghost"
             size="sm"
@@ -195,6 +222,9 @@ export function NoticeManageView({
           columns={columns}
           rows={manageOrder(notices)}
           rowKey={(notice) => notice.id}
+          // A row opens the editor, like every other list. That also lets the table drop its less important
+          // columns (audience, end date, readers, updated) before it would clip an action.
+          onRowOpen={(notice) => setEditing(notice)}
           empty={
             <EmptyState
               title={t('notices.manage.empty')}
@@ -338,8 +368,8 @@ function NoticeEditor({
         </FormField>
 
         <FormField
-          label={t('notices.editor.bodyLabel')}
-          hint={`${t('notices.editor.bodyHint')} ${t('notices.editor.counter', { count: body.length, max: NOTICE_BODY_MAX })}`}
+          label={`${t('notices.editor.bodyLabel')} · ${t('notices.editor.counter', { count: body.length, max: NOTICE_BODY_MAX })}`}
+          hint={t('notices.editor.bodyHint')}
           error={problemFor('body_too_long')}
         >
           {(id) => (

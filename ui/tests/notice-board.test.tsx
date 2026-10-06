@@ -423,3 +423,76 @@ describe('the Master screens', () => {
     expect(source).toMatch(/canViewNotices &&/);
   });
 });
+
+describe('the management table’s layout rules (U10)', () => {
+  const source = () => readFileSync(join(process.cwd(), 'ui', 'src', 'NoticeManageView.tsx'), 'utf8');
+
+  it('keeps the title and pills on one line so a row stays one row', () => {
+    const text = source();
+    expect(text).toMatch(/whiteSpace: 'nowrap'/);
+    expect(text).not.toMatch(/flexWrap: 'wrap', minWidth: 0/);
+  });
+
+  it('opens a row in the editor and lets the table drop its less important columns', () => {
+    const text = source();
+    expect(text).toContain('onRowOpen={(notice) => setEditing(notice)}');
+    expect(text).toMatch(/priority: 2/);
+    expect(text).toMatch(/priority: 3/);
+  });
+
+  it('opens the editor from a row, and an action inside the row does not also open it', async () => {
+    const list = [notice('a', { version: 2 })];
+    render(
+      <ConfirmProvider>
+        <NoticeManageView
+          notices={list}
+          roles={[]}
+          onCreate={async () => undefined}
+          onUpdate={async () => undefined}
+          onDelete={async () => undefined}
+          loadReaders={async (id) => ({ noticeId: id, readers: [] })}
+        />
+      </ConfirmProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: t('notices.manage.delete') }));
+    await screen.findByText(t('notices.delete.body'));
+    expect(screen.queryByText(t('notices.editor.editTitle'))).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: t('common.cancel') }));
+    await act(async () => undefined);
+
+    fireEvent.click(screen.getByText('Notice a'));
+    expect(await screen.findByText(t('notices.editor.editTitle'))).toBeTruthy();
+  });
+
+  it('puts pinned notices first in the list, as on the board, then the newest edit', () => {
+    const list = [
+      notice('a', { updatedAt: '2026-10-05T00:00:00.000Z' }),
+      notice('b', { pinned: true, updatedAt: '2026-10-01T00:00:00.000Z' }),
+      notice('c', { updatedAt: '2026-10-06T00:00:00.000Z' }),
+    ];
+    expect(manageOrder(list).map((n) => n.id)).toEqual(['b', 'c', 'a']);
+  });
+
+  it('keeps the character counter in the text field’s label, so an error never hides it', async () => {
+    const created: NoticeInput[] = [];
+    render(
+      <ConfirmProvider>
+        <NoticeManageView
+          notices={[]}
+          roles={[]}
+          onCreate={async (input) => void created.push(input)}
+          onUpdate={async () => undefined}
+          onDelete={async () => undefined}
+          loadReaders={async (id) => ({ noticeId: id, readers: [] })}
+        />
+      </ConfirmProvider>,
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: t('notices.manage.new') })[0]!);
+    fireEvent.change(screen.getByLabelText(new RegExp(t('notices.editor.titleLabel'))), { target: { value: 'Long one' } });
+    const box = screen.getByLabelText(new RegExp(t('notices.editor.bodyLabel')));
+    fireEvent.change(box, { target: { value: 'x'.repeat(4001) } });
+    fireEvent.click(screen.getByRole('button', { name: t('notices.editor.save') }));
+    expect(await screen.findByText(t('notices.problem.body_too_long'))).toBeTruthy();
+    expect(screen.getByLabelText(new RegExp('4001 / 4000'))).toBeTruthy();
+  });
+});
