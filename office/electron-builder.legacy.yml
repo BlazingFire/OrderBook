@@ -48,6 +48,10 @@ icon: installer/icon.png
 # file is about twice the size of the x64-only one. The shell caps a 32-bit
 # server's heap at 1024 MB (electron/lib/memory.ts).
 win:
+  # Its own multi-size .ico (16 to 256 px, `tools/make-icons.mjs`): electron-builder's
+  # conversion of icon.png gives one 256 px image, a blur at taskbar size. The afterPack
+  # hook stamps it into the .exe (`tools/exe-icon.cjs`); NSIS uses it for the setup files.
+  icon: installer/icon.ico
   target:
     - target: nsis
       arch: [x64, ia32]

@@ -211,6 +211,25 @@ was verified, so the next agent can trust the state without re-auditing.
   both notes rendered in a browser (46 named + 200 coded, 4 pages
   each): no column or label overflow, notes and blank-lines variants. Not verified: a real printer.
 
+### 2026-10-07 - U11: the installed panels show the OrderBook icon, not Electron's (Claude, D12)
+
+- **Cause.** Every Windows yml sets `signAndEditExecutable: false`. That flag also skips
+  electron-builder's rcedit step, so the packed `.exe` kept Electron's icon and name, and the
+  window, taskbar button, shortcuts and Explorer showed them. The setup file was not affected.
+- **Fix.** `tools/exe-icon.cjs` stamps the icon and name into the `.exe` with `resedit`, from the
+  existing `afterPack` hook (`tools/flip-fuses.cjs`). Each panel has a 7-size `installer/icon.ico`
+  (`tools/make-icons.mjs`), set as `win.icon` in the master, office and Win7 office yml. Turning the
+  flag back on was rejected: it needs electron-builder's winCodeSign download, which fails to unpack
+  on this PC.
+- **Verified.** `node tools/release.mjs` (both panels) and `--os win7` built into a scratch releases
+  folder. The icon group read back from each `win-unpacked` exe and each setup exe is byte-identical
+  to the panel's `icon.ico`, and the exe's ProductName and FileDescription are the panel name. The
+  new tests in `master/tests/packaging-invariants.test.ts` fail without the stamp or with a yml that
+  lacks `win.icon`.
+- **Not verified.** An install on a real PC. Windows caches icons, so a PC that had the old build may
+  show Electron's icon until its icon cache refreshes. The clean-install tool is unchanged: it has no
+  afterPack hook.
+
 ### 2026-10-06 - Party private to its creator, 1.4.4: CH1 and seven Sonnet sessions (Claude, Opus + Sonnet)
 
 - **Who did what.** The plan is `CLAUDE_HELPER_PV.md` (P1–P5, untracked).
