@@ -394,25 +394,63 @@ describe('the protocol handshake', () => {
     });
   });
 
-  it('refuses a newer command at once, without sending it, until the Master says it can take it', async () => {
-    const link = await connected();
+  describe('a newer command sent right after a connect', () => {
+    it('waits for the Master to say which protocol it speaks instead of being refused as too old', async () => {
+      const link = await connected();
 
-    // Before any snapshot the Master's protocol is unknown, which counts as 1.
-    const early = await masterConnection
-      .command('auth:offlineEvents', [])
-      .catch((error: unknown) => error);
-    expect(early).toBeInstanceOf(MasterCommandError);
-    expect(early).toMatchObject({
-      code: 'updateNeeded',
-      messageKey: 'error.updateNeeded.master',
-      unreachable: false,
+      // Sent in the gap between 'connected' and the first snapshot: the protocol is unknown, not old.
+      const pending = masterConnection.command('auth:offlineEvents', []);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(link.commands('auth:offlineEvents')).toHaveLength(0);
+
+      link.emit('sync:snapshot', snapshot(10));
+      await pending;
+
+      expect(link.commands('auth:offlineEvents')).toHaveLength(1);
+      link.emit('disconnect', 'transport close');
     });
+
+    it('is told the Master is unreachable, not that it needs an update, if the protocol never arrives', async () => {
+      vi.useFakeTimers();
+      const link = await connected();
+
+      const outcome = masterConnection
+        .command('auth:offlineEvents', [])
+        .catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(10_001);
+
+      expect(await outcome).toMatchObject({ unreachable: true, code: undefined });
+      expect(link.commands('auth:offlineEvents')).toHaveLength(0);
+      vi.useRealTimers();
+      link.emit('disconnect', 'transport close');
+    });
+
+    it('lets go if the link drops while it waits', async () => {
+      const link = await connected();
+
+      const outcome = masterConnection
+        .command('auth:offlineEvents', [])
+        .catch((error: unknown) => error);
+      link.emit('disconnect', 'transport close');
+
+      expect(await outcome).toMatchObject({ unreachable: true });
+    });
+  });
+
+  it('refuses a newer command at once, without sending it, once the Master has said it cannot take it', async () => {
+    const link = await connected();
 
     // An older Master sends no protocol at all: still 1.
     link.emit('sync:snapshot', snapshot());
     await settle();
-    await expect(masterConnection.command('auth:offlineEvents', [])).rejects.toMatchObject({
+    const refused = await masterConnection
+      .command('auth:offlineEvents', [])
+      .catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(MasterCommandError);
+    expect(refused).toMatchObject({
       code: 'updateNeeded',
+      messageKey: 'error.updateNeeded.master',
+      unreachable: false,
     });
     expect(link.commands('auth:offlineEvents')).toHaveLength(0);
 
@@ -447,9 +485,12 @@ describe('the protocol handshake', () => {
 
     link.emit('disconnect', 'transport close');
     link.emit('connect');
-    await expect(masterConnection.command('auth:offlineEvents', [])).rejects.toMatchObject({
-      code: 'updateNeeded',
-    });
+    // Forgotten: the command waits for the new connection to say, and only an answer of 1 refuses it.
+    const again = masterConnection
+      .command('auth:offlineEvents', [])
+      .catch((error: unknown) => error);
+    link.emit('sync:snapshot', snapshot(1));
+    expect(await again).toMatchObject({ code: 'updateNeeded' });
   });
 });
 
