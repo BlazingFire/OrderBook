@@ -55,8 +55,8 @@ on it.
 ## Party private to its creator + 1.4.4 (2026-10-06)
 
 **State:** built, not published. `main` @ `93fd1ac` (the 1.4.4 bump on D5's green `3583d2e`) is
-local and not pushed. Signed Setups were built into the scratch folders `.tmpel144` (Master and
-Office) and `OrderBook-d3/.tmp` (Win7). The owner decides whether to push and publish. Notes:
+pushed (owner, 2026-10-06); the GitHub release is not published. Signed Setups were built into the scratch folders `.tmpel144` (Master and
+Office) and `OrderBook-d3/.tmp` (Win7). The owner decides when to publish. Notes:
 `docs/releases/1.4.4.md`. Rule: `docs/schema/06-…` §2a, `docs/ROLES_AND_USERS.md` 15b,
 `docs/STRUCTURE.md` 11.11, API contract §21. Plan and evidence: `CLAUDE_HELPER_PV.md` (P1–P5, owner
 decisions) and the "Party visibility (2026-10-06)" sections of `CLAUDE_HELPER_D1.md`…`D7.md`.
@@ -162,7 +162,8 @@ passed + 1 skipped; 4,316 tests passed + 17 skipped), `smoke:legacy` 0.
 
 **Not verified:** dark theme on the filter strip, the Electron shell, real PCs (as in 1.4.1).
 
-**Release trap:** the Master installed on this PC uses `C:\OrderBook-Releases` as its releases folder. It deleted the freshly built 1.4.2 Master Setup, because GitHub's Latest was still 1.4.1. Build releases with `ORDERBOOK_RELEASES_DIR` pointing at a scratch folder (for example `.tmpel<version>`) and upload from there. **Real-install proof:** after v1.4.2 was published, that installed Master fetched `OrderBook-Master-1.4.2-Setup.exe` from GitHub by itself within about 15 minutes, and its SHA-256 matched the signed manifest.
+**Release trap:** the Master installed on this PC uses `C:\OrderBook-Releases` as its releases folder. It deleted the freshly built 1.4.2 Master Setup, because GitHub's Latest was still 1.4.1. Build releases with `ORDERBOOK_RELEASES_DIR` pointing at a scratch folder (for example `.tmp
+el<version>`) and upload from there. **Real-install proof:** after v1.4.2 was published, that installed Master fetched `OrderBook-Master-1.4.2-Setup.exe` from GitHub by itself within about 15 minutes, and its SHA-256 matched the signed manifest.
 
 ## Add-connection audit, Setup-only builds + 1.4.1 (2026-10-04)
 
