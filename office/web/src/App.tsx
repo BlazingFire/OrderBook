@@ -133,6 +133,9 @@ import { ConnectionUnpair } from './components/ConnectionUnpair';
 import { ConnectionScreen } from './screens/ConnectionScreen';
 import { SetupScreen } from './screens/SetupScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
+import { NoticeBoardScreen } from './screens/NoticeBoardScreen';
+import { NoticeManageScreen } from './screens/NoticeManageScreen';
+import { unreadOnBoard, todayForNotices, useNoticeReads, withReadsHere } from './noticeReads';
 import { LeadBoardScreen } from './screens/LeadBoardScreen';
 import { OrderBoardScreen } from './screens/OrderBoardScreen';
 import { SignInScreen } from './screens/SignInScreen';
@@ -144,41 +147,26 @@ import { SETTINGS_TAB_IDS } from './settingsTabs';
  * start-up (`ScreenHost` shows the loading mark meanwhile). Basic Home and the
  * daily screens above stay in the first bundle.
  */
-const ChatroomScreen = lazyScreen<
-  'ChatroomScreen',
-  ComponentProps<typeof ChatroomScreenImpl>
->(
+const ChatroomScreen = lazyScreen<'ChatroomScreen', ComponentProps<typeof ChatroomScreenImpl>>(
   () => import('@orderbook/ui/lazy/ChatroomScreen'),
   'ChatroomScreen',
 );
-const PrintroomScreen = lazyScreen<
-  'PrintroomScreen',
-  ComponentProps<typeof PrintroomScreenImpl>
->(
+const PrintroomScreen = lazyScreen<'PrintroomScreen', ComponentProps<typeof PrintroomScreenImpl>>(
   () => import('@orderbook/ui/lazy/PrintroomScreen'),
   'PrintroomScreen',
 );
-const ReportsScreen = lazyScreen<
-  'ReportsScreen',
-  ComponentProps<typeof ReportsScreenImpl>
->(
+const ReportsScreen = lazyScreen<'ReportsScreen', ComponentProps<typeof ReportsScreenImpl>>(
   () => import('@orderbook/ui/lazy/ReportsScreen'),
   'ReportsScreen',
 );
-const GalleryScreen = lazyScreen<
-  'GalleryScreen',
-  object
->(
+const GalleryScreen = lazyScreen<'GalleryScreen', object>(
   () => import('@orderbook/ui/lazy/GalleryScreen'),
   'GalleryScreen',
 );
 const CatalogListsScreen = lazyScreen<
   'CatalogListsScreen',
   ComponentProps<typeof CatalogListsScreenImpl>
->(
-  () => import('@orderbook/ui/lazy/CatalogListsScreen'),
-  'CatalogListsScreen',
-);
+>(() => import('@orderbook/ui/lazy/CatalogListsScreen'), 'CatalogListsScreen');
 const ConflictsScreen = lazyScreen(() => import('./screens/ConflictsScreen'), 'ConflictsScreen');
 const PartyAccessScreen = lazyScreen(
   () => import('./screens/PartyAccessScreen'),
@@ -616,10 +604,16 @@ function OfficePanel() {
   const canRunStation = signedIn && (session?.permissions.includes('print.station') ?? false);
   const canPrintroom = canSendPrint || canRunStation;
   // The notice board: `notices.view` reads it, `notices.manage` also gets the management screen.
-  // The unread figure for the sidebar row is the notice board screens' to provide (`noticeUnread`).
   const canViewNotices = signedIn && (session?.permissions.includes('notices.view') ?? false);
   const canManageNotices = signedIn && (session?.permissions.includes('notices.manage') ?? false);
-  const noticeUnread: number | undefined = undefined;
+  // This person's notices from the snapshot, with the reads made here counted; a read made
+  // offline waits for the link (`noticeReads.ts`).
+  const noticeReads = useNoticeReads(session?.userId ?? null, connection?.state === 'connected');
+  const myNotices = withReadsHere(
+    canViewNotices ? (view?.notices ?? []) : [],
+    noticeReads.readHere,
+  );
+  const noticeUnread = unreadOnBoard(myNotices, todayForNotices()).length;
   const printWaiting = usePrintWaiting(officePrintroomTransport, canPrintroom);
 
   useEffect(() => {
@@ -727,7 +721,6 @@ function OfficePanel() {
     source.addEventListener('print', (event) => {
       dispatchPrint({ kind: 'changed', job: JSON.parse((event as MessageEvent).data) });
     });
-
 
     // Who else is on the record open here (the server drops anyone else's frames).
     source.addEventListener('presence', (event) => {
@@ -1336,13 +1329,14 @@ function OfficePanel() {
   }
 
   /** "Share in chat" on a record: the Chatroom's share sheet, with that record ready. */
-  const shareInChat = can('chat.use') && can('chat.shareRecords')
-    ? (chip: ChatRecordChip): void => {
-        setChatOpen(null);
-        setChatShare(chip);
-        goToTab('chatroom');
-      }
-    : undefined;
+  const shareInChat =
+    can('chat.use') && can('chat.shareRecords')
+      ? (chip: ChatRecordChip): void => {
+          setChatOpen(null);
+          setChatShare(chip);
+          goToTab('chatroom');
+        }
+      : undefined;
 
   /** A chip or bell entry opens the record in its own board; a record this panel's view lacks is fetched there. */
   function openChatRecord(record: ChatRecordRef): void {
@@ -1362,12 +1356,22 @@ function OfficePanel() {
     const found: ChatRecordOption[] = [];
     for (const lead of view?.leads ?? []) {
       if (matchesRecordSearch(lead, term)) {
-        found.push({ kind: 'lead', id: lead.id, label: recordNumber(lead), partyName: lead.partyName });
+        found.push({
+          kind: 'lead',
+          id: lead.id,
+          label: recordNumber(lead),
+          partyName: lead.partyName,
+        });
       }
     }
     for (const order of view?.orders ?? []) {
       if (matchesRecordSearch(order, term)) {
-        found.push({ kind: 'order', id: order.id, label: recordNumber(order), partyName: order.partyName });
+        found.push({
+          kind: 'order',
+          id: order.id,
+          label: recordNumber(order),
+          partyName: order.partyName,
+        });
       }
     }
     return found.slice(0, 20);
@@ -1463,7 +1467,9 @@ function OfficePanel() {
     skewShown ? (
       <div key="skew" className="ob-banner" role="status">
         <Icon name="warning" />
-        <span>{t('office.link.clockSkew', { duration: formatElapsed(Math.abs(skewMs ?? 0)) })}</span>
+        <span>
+          {t('office.link.clockSkew', { duration: formatElapsed(Math.abs(skewMs ?? 0)) })}
+        </span>
       </div>
     ) : null,
   ].filter((banner) => banner !== null);
@@ -1801,6 +1807,17 @@ function OfficePanel() {
       ),
     },
     {
+      // Online-only through the Master, like Reports: a fresh snapshot (a notice change
+      // forces one) re-reads the list.
+      id: 'noticesManage',
+      render: () => <NoticeManageScreen revision={viewRevision} />,
+    },
+    {
+      // From the snapshot, so it answers offline; reads made then wait for the link.
+      id: 'notices',
+      render: () => <NoticeBoardScreen notices={myNotices} onMarkRead={noticeReads.markRead} />,
+    },
+    {
       id: 'settings',
       render: () => (
         <SettingsScreen
@@ -1835,6 +1852,8 @@ function OfficePanel() {
               }}
               printPending={canPrintroom ? printWaiting : undefined}
               chatUnread={can('chat.use') ? chatUnread.total : undefined}
+              notices={can('notices.view') ? myNotices : undefined}
+              onOpenNotices={() => goToTab('notices')}
             />
           ),
         },
