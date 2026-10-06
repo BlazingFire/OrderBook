@@ -181,6 +181,8 @@ type MasterSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
 /** How long the Master has to acknowledge a command before it counts as silence. */
 const ACK_TIMEOUT_MS = 15_000;
+/** How long a newer command waits, right after a connect, for the Master to say which protocol it speaks. */
+const PROTOCOL_WAIT_MS = 10_000;
 
 /** The same for `sync:push`, which waits its turn in the Master's push gate. */
 const SYNC_PUSH_ACK_MS = 60_000;
@@ -204,6 +206,8 @@ class MasterConnection extends EventEmitter {
    * counts as protocol 1.
    */
   private masterProtocol: number | null = null;
+  /** Commands waiting for the Master to say which protocol it speaks (right after a connect). */
+  private protocolWaiters: Array<() => void> = [];
   /** True while offline sign-ins are on their way up, so two snapshots do not send them twice. */
   private uploadingAuthEvents = false;
   /** One upload attempt per connection, not one per delta, so a failing one does not repeat on every change. */
@@ -382,6 +386,7 @@ class MasterConnection extends EventEmitter {
       // The Master may come back as a different build, so its protocol is
       // learned again from the next snapshot rather than assumed.
       this.masterProtocol = null;
+      this.releaseProtocolWaiters();
       this.endCatchUp();
       this.setState('disconnected');
       setTransport(null);
@@ -441,7 +446,7 @@ class MasterConnection extends EventEmitter {
       this.snapshot = snapshot;
       this.lastSyncedAt = snapshot.serverTime;
       this.masterVersion = snapshot.serverVersion ?? this.masterVersion;
-      this.masterProtocol = snapshot.protocol ?? 1;
+      this.learnProtocol(snapshot.protocol ?? 1);
       this.bootId = snapshot.bootId ?? null;
       this.clockSkewMs = skewFrom(snapshot.serverTime);
       this.emit('snapshot', snapshot);
@@ -490,7 +495,7 @@ class MasterConnection extends EventEmitter {
       this.bootId = delta.bootId;
       this.lastSyncedAt = delta.serverTime;
       this.masterVersion = delta.serverVersion ?? this.masterVersion;
-      this.masterProtocol = delta.protocol ?? 1;
+      this.learnProtocol(delta.protocol ?? 1);
       this.clockSkewMs = skewFrom(delta.serverTime);
 
       for (const event of delta.events) this.applyChange(event);
@@ -898,6 +903,7 @@ class MasterConnection extends EventEmitter {
     this.rediscoveredFrom = null;
     this.lastError = null;
     this.masterProtocol = null;
+    this.releaseProtocolWaiters();
     this.setState('unpaired');
   }
 
@@ -1041,6 +1047,30 @@ class MasterConnection extends EventEmitter {
    */
   private userCommandBlocked: ((event: string) => boolean) | null = null;
 
+  private learnProtocol(protocol: number): void {
+    this.masterProtocol = protocol;
+    this.releaseProtocolWaiters();
+  }
+
+  private releaseProtocolWaiters(): void {
+    const waiting = this.protocolWaiters;
+    this.protocolWaiters = [];
+    for (const release of waiting) release();
+  }
+
+  /** Resolves once the protocol is known, the link drops, or `ms` pass: the caller re-checks. */
+  private waitForProtocol(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(done, ms);
+      timer.unref?.();
+      function done(): void {
+        clearTimeout(timer);
+        resolve();
+      }
+      this.protocolWaiters.push(done);
+    });
+  }
+
   setUserCommandGuard(guard: ((event: string) => boolean) | null): void {
     this.userCommandBlocked = guard;
   }
@@ -1082,6 +1112,20 @@ class MasterConnection extends EventEmitter {
      * fall back to an offline path over this.
      */
     const needs = COMMAND_MIN_PROTOCOL[event] ?? 1;
+    // Between 'connected' and the first snapshot or delta the Master's protocol is not known yet,
+    // and "unknown" is not "old": a newer command sent in that moment waits (briefly) for it,
+    // instead of being refused as if the Master needed an update.
+    if (needs > 1 && this.masterProtocol === null) {
+      await this.waitForProtocol(PROTOCOL_WAIT_MS);
+      if (!this.socket || this.state !== 'connected' || this.masterProtocol === null) {
+        throw new MasterCommandError(
+          'Not connected to the Master Panel',
+          undefined,
+          undefined,
+          true,
+        );
+      }
+    }
     if (needs > (this.masterProtocol ?? 1)) {
       throw new MasterCommandError(
         'The Master Panel needs an update before it can do this',
@@ -1284,7 +1328,7 @@ class MasterConnection extends EventEmitter {
           this.snapshot = snapshot;
           this.lastSyncedAt = snapshot.serverTime;
           this.masterVersion = snapshot.serverVersion ?? this.masterVersion;
-          this.masterProtocol = snapshot.protocol ?? 1;
+          this.learnProtocol(snapshot.protocol ?? 1);
           this.bootId = snapshot.bootId ?? this.bootId;
           this.clockSkewMs = skewFrom(snapshot.serverTime);
           this.emit('snapshot', snapshot);
