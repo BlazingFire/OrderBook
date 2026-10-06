@@ -400,6 +400,10 @@ describe.skipIf(!canRunIntegrationTests)('live presence (integration)', () => {
       const boardFor = vi.spyOn(presenceService, 'boardFor');
       try {
         await beat(ashaPanel, { tabId: 'tab-1', recordKind: 'lead', recordId: lead.id });
+        // Wait for the beat's own push to have been built for all three readers. "Every panel has some
+        // board" is not that: a board can already be there from the connect, which let this run on
+        // before the push had happened and count no call at all when the machine was slow.
+        await until(() => boardFor.mock.calls.length >= 3, 'the board built for all three readers');
         await until(
           () => [ashaPanel, belaPanel, carlPanel].every((panel) => boards(panel).length > 0),
           'the board push to all three',
