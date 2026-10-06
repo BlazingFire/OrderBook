@@ -2240,3 +2240,25 @@ describe('Party lists mark who can see a party (party visibility)', () => {
     expect(screen.queryByText(/Shared with/)).toBeNull();
   });
 });
+
+describe('Notice board in the Office sidebar (Oct 7)', () => {
+  it('offers the Notice board with notices.view, and management beside it only with notices.manage', async () => {
+    await boot({ permissions: ['notices.view'] });
+    expect(await screen.findByTitle(t('nav.notices'))).toBeTruthy();
+    expect(screen.queryByTitle(t('nav.noticesManage'))).toBeNull();
+  });
+
+  it('offers management to a manager, right after the board', async () => {
+    await boot({ permissions: ['notices.view', 'notices.manage'] });
+    await screen.findByTitle(t('nav.notices'));
+    const labels = [...document.querySelectorAll('.ob-navitem-main')].map((row) => row.getAttribute('title'));
+    expect(labels.indexOf(t('nav.noticesManage'))).toBe(labels.indexOf(t('nav.notices')) + 1);
+  });
+
+  it('offers neither without the permissions', async () => {
+    await boot({ permissions: ['leads.view'] });
+    await screen.findByTitle(t('nav.leads'));
+    expect(screen.queryByTitle(t('nav.notices'))).toBeNull();
+    expect(screen.queryByTitle(t('nav.noticesManage'))).toBeNull();
+  });
+});

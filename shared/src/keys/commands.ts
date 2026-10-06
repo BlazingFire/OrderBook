@@ -86,6 +86,8 @@ const MASTER_NAV: NavEntry[] = [
   ['leads', 'nav.leads'],
   ['orders', 'nav.orders'],
   ['conflicts', 'nav.master.conflicts'],
+  // The Notice board: Alt+N, a plain letter chord (no darwin Meta twin: Cmd+N is New window).
+  ['notices', 'nav.notices', 'Alt+N'],
   // An explicit letter chord: Chatroom sits past the tenth row, and Alt+C has no darwin Meta twin.
   ['chatroom', 'nav.chatroom', 'Alt+C'],
   // Alt+P: Option+P is a plain letter chord on a Mac, so Cmd+P (print) is left alone.
@@ -98,6 +100,8 @@ const MASTER_NAV: NavEntry[] = [
   ['lists', 'nav.lists', 'Alt+G'],
   ['panels', 'nav.master.panels', 'Alt+O'],
   ['access', 'nav.master.access', 'Alt+A'],
+  // Notice board management, in Admin: Alt+M.
+  ['noticesManage', 'nav.noticesManage', 'Alt+M'],
   ['fields', 'nav.master.fields', 'Alt+E'],
   ['logs', 'nav.master.logs', 'Alt+L'],
   ['recycleBin', 'nav.master.recycleBin', 'Alt+B'],
@@ -116,6 +120,9 @@ const OFFICE_NAV: NavEntry[] = [
   ['leads', 'nav.leads'],
   ['orders', 'nav.orders'],
   ['conflicts', 'nav.conflicts'],
+  ['notices', 'nav.notices', 'Alt+N'],
+  // For holders of `notices.manage`; the Office has no Admin group, so it sits beside the board.
+  ['noticesManage', 'nav.noticesManage', 'Alt+M'],
   ['chatroom', 'nav.chatroom', 'Alt+C'],
   ['printroom', 'nav.printroom', 'Alt+P'],
   ['reports', 'nav.reports', 'Alt+R'],

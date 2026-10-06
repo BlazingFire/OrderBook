@@ -25,6 +25,8 @@ export interface RoleSummary {
   groups: Array<{ key: string; label: string; held: number; total: number }>;
   /** The Parties actions the role holds (View, Create, Edit …), because creating parties is the one right that changes who sees what. */
   parties: string[];
+  /** What the role holds on the notice board: nothing, reading, or reading and managing. */
+  notices: 'none' | 'read' | 'manage';
 }
 
 export function summariseRole(
@@ -71,7 +73,9 @@ export function summariseRole(
         .map((action) => actionLabel(action))
     : [];
 
-  return { held, total, changes, viewOnly, groups, parties };
+  const notices = has.has('notices.manage') ? 'manage' : has.has('notices.view') ? 'read' : 'none';
+
+  return { held, total, changes, viewOnly, groups, parties, notices };
 }
 
 /** Keys gained and lost going from one role's permissions to another's. */

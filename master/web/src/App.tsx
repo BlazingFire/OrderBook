@@ -40,6 +40,7 @@ import {
 } from '@orderbook/shared';
 
 import { ApiError, api, desktopBridge, invalidateReads, requestCache } from './api';
+import { useNotices } from './useNotices';
 import { dispatchChat, masterChatTransport } from './chatTransport';
 import { attachPrintSocket, dispatchPrint, masterPrintroomTransport } from './printroomTransport';
 import { presenceChannel } from './presence';
@@ -114,6 +115,8 @@ import type {
 } from '@orderbook/ui';
 import { ChangePasswordDialog } from './components/ChangePasswordDialog';
 import { DashboardScreen } from './screens/DashboardScreen';
+import { NoticeBoardScreen } from './screens/NoticeBoardScreen';
+import { NoticeManageScreen } from './screens/NoticeManageScreen';
 import { FirstRunScreen } from './screens/FirstRunScreen';
 import { LeadEntry } from './screens/LeadEntry';
 import { LeadsScreen } from './screens/LeadsScreen';
@@ -202,6 +205,8 @@ type Tab =
   | 'conflicts'
   | 'chatroom'
   | 'printroom'
+  | 'notices'
+  | 'noticesManage'
   | 'settings'
   | 'updates';
 type Route = '' | 'gallery';
@@ -252,6 +257,8 @@ const SCREEN_ENTITIES: Record<string, readonly string[]> = {
   reports: REPORT_ENTITIES,
   fields: ['option_list', 'custom_field', 'pipeline'],
   access: ['user', 'role'],
+  /** The notice board and its management screen, and the Dashboard card and the sidebar badge built from them. */
+  notices: ['notice'],
   partyAccess: ['party', 'party_bulk'],
   parties: ['party', 'party_bulk', 'party_variant'],
   recycleBin: [
@@ -723,6 +730,15 @@ function MasterPanel() {
    * asks for nothing while this window is not signed in.
    */
   const canChat = phase === 'ready' && (user?.permissions.includes('chat.use') ?? false);
+  /*
+   * The notice board: everybody signed in with `notices.view` reads it, and its management
+   * screen belongs to `notices.manage`. The unread figure for the sidebar row is read here
+   * (and kept current by the board itself as notices are marked read).
+   */
+  const canViewNotices = phase === 'ready' && (user?.permissions.includes('notices.view') ?? false);
+  const canManageNotices = phase === 'ready' && (user?.permissions.includes('notices.manage') ?? false);
+  const noticeBoard = useNotices(revisionOf(revisions, 'notices'), canViewNotices);
+  const noticeUnread = noticeBoard.unread;
   const chatUnread = useChatUnread(masterChatTransport, canChat);
 
   /*
@@ -1118,6 +1134,14 @@ function MasterPanel() {
               count: openConflicts > 0 ? openConflicts : undefined,
             }
           : null,
+        canViewNotices
+          ? {
+              id: 'notices',
+              label: t('nav.notices'),
+              icon: NAV_ICONS.notices,
+              count: noticeUnread && noticeUnread > 0 ? noticeUnread : undefined,
+            }
+          : null,
         canChat
           ? {
               id: 'chatroom',
@@ -1156,6 +1180,9 @@ function MasterPanel() {
       items: [
         canManagePanels ? { id: 'panels', label: t('nav.master.panels'), icon: NAV_ICONS.panels } : null,
         canManageRoles ? { id: 'access', label: t('nav.master.access'), icon: NAV_ICONS.access } : null,
+        canManageNotices
+          ? { id: 'noticesManage', label: t('nav.noticesManage'), icon: NAV_ICONS.noticesManage }
+          : null,
         canViewFields ? { id: 'fields', label: t('nav.master.fields'), icon: NAV_ICONS.fields } : null,
         canViewLogs ? { id: 'logs', label: t('nav.master.logs'), icon: NAV_ICONS.logs } : null,
         canViewRecycleBin
@@ -1480,7 +1507,8 @@ function MasterPanel() {
           panels={panels}
           canManagePanels={canManagePanels}
           canViewLeads={canViewLeads}
-          revision={revisionOf(revisions, 'records')}
+          revision={revisionOf(revisions, 'records') + revisionOf(revisions, 'notices')}
+          canViewNotices={canViewNotices}
           onNavigate={navigate}
           onOpenLead={(id) => openRecord('leads', id)}
           printPending={canPrintroom ? printWaiting : undefined}
@@ -1583,6 +1611,27 @@ function MasterPanel() {
         />
       ),
     },
+    ...(canViewNotices
+      ? [
+          {
+            id: 'notices',
+            render: () => (
+              <NoticeBoardScreen
+                revision={revisionOf(revisions, 'notices')}
+                onUnreadChange={noticeBoard.setUnread}
+              />
+            ),
+          } satisfies ScreenSpec,
+        ]
+      : []),
+    ...(canManageNotices
+      ? [
+          {
+            id: 'noticesManage',
+            render: () => <NoticeManageScreen revision={revisionOf(revisions, 'notices')} />,
+          } satisfies ScreenSpec,
+        ]
+      : []),
     ...(canPrintroom
       ? [
           {

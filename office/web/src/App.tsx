@@ -202,6 +202,8 @@ type Tab =
   | 'products'
   | 'conflicts'
   | 'chatroom'
+  | 'notices'
+  | 'noticesManage'
   | 'printroom'
   | 'reports'
   | 'settings'
@@ -623,6 +625,11 @@ function OfficePanel() {
   const canSendPrint = signedIn && (session?.permissions.includes('print.send') ?? false);
   const canRunStation = signedIn && (session?.permissions.includes('print.station') ?? false);
   const canPrintroom = canSendPrint || canRunStation;
+  // The notice board: `notices.view` reads it, `notices.manage` also gets the management screen.
+  // The unread figure for the sidebar row is the notice board screens' to provide (`noticeUnread`).
+  const canViewNotices = signedIn && (session?.permissions.includes('notices.view') ?? false);
+  const canManageNotices = signedIn && (session?.permissions.includes('notices.manage') ?? false);
+  const noticeUnread: number | undefined = undefined;
   const printWaiting = usePrintWaiting(officePrintroomTransport, canPrintroom);
 
   useEffect(() => {
@@ -1175,6 +1182,18 @@ function OfficePanel() {
                   count: rejections.length > 0 ? rejections.length : undefined,
                 }
               : null,
+          canViewNotices
+            ? {
+                id: 'notices',
+                label: t('nav.notices'),
+                icon: NAV_ICONS.notices,
+                count: noticeUnread && noticeUnread > 0 ? noticeUnread : undefined,
+              }
+            : null,
+          // The Office has no Admin group, so management sits beside the board.
+          canManageNotices
+            ? { id: 'noticesManage', label: t('nav.noticesManage'), icon: NAV_ICONS.noticesManage }
+            : null,
           can('chat.use')
             ? {
                 id: 'chatroom',
@@ -1248,6 +1267,8 @@ function OfficePanel() {
     lists: 'lists',
     products: 'products',
     conflicts: 'conflicts',
+    notices: 'notices',
+    noticesManage: 'noticesManage',
     chatroom: 'chatroom',
     printroom: 'printroom',
     reports: 'reports',

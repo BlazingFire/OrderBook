@@ -16,6 +16,8 @@ export const NAV_ICONS = {
   leads: 'leads',
   orders: 'orders',
   conflicts: 'conflicts',
+  notices: 'pin',
+  noticesManage: 'edit',
   chatroom: 'chat',
   printroom: 'print',
   reports: 'report',

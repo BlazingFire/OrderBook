@@ -41,6 +41,8 @@ const HUE: Record<string, string> = {
   leads: 'orange',
   orders: 'blue',
   conflicts: 'red',
+  notices: 'amber',
+  noticesManage: 'slate',
   chatroom: 'violet',
   printroom: 'brown',
   reports: 'amber',

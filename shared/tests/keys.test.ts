@@ -192,19 +192,40 @@ function navChords(panel: 'master' | 'office'): Array<[string, string | undefine
 describe('the command catalogue', () => {
   it('numbers each panel nav from one, in that panel own sidebar order', () => {
     const office = COMMANDS.filter((command) => command.panel === 'office' && command.navOrder);
-    expect(office.map((command) => command.navOrder)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+    expect(office.map((command) => command.navOrder)).toEqual(
+      Array.from({ length: 17 }, (_, index) => index + 1),
+    );
     expect(office[0]?.tab).toBe('basicHome');
     expect(office[4]?.tab).toBe('conflicts');
-    // The Chatroom follows Conflicts in the Work group; its letter chord takes no digit.
-    expect(office[5]?.tab).toBe('chatroom');
+    // The Notice board follows Conflicts, then its management for holders; letter chords take no digit.
+    expect(office[5]?.tab).toBe('notices');
+    expect(office[6]?.tab).toBe('noticesManage');
+    // The Chatroom follows, its letter chord taking no digit either.
+    expect(office[7]?.tab).toBe('chatroom');
     // The Printroom follows the Chatroom, with a letter chord of its own.
-    expect(office[6]?.tab).toBe('printroom');
+    expect(office[8]?.tab).toBe('printroom');
     // Reports has a row and no chord, so it takes no digit and pushes nothing else.
-    expect(office[7]?.tab).toBe('reports');
+    expect(office[9]?.tab).toBe('reports');
     // 1.4 D3: Lists follows Party Access, with a letter chord of its own.
-    expect(office[11]?.tab).toBe('lists');
-    expect(office[12]?.tab).toBe('settings');
-    expect(office[13]?.tab).toBe('logs');
+    expect(office[13]?.tab).toBe('lists');
+    expect(office[14]?.tab).toBe('settings');
+    expect(office[15]?.tab).toBe('logs');
+  });
+
+  it('binds the notice board to Alt+N and its management to Alt+M, each held by one command per panel, with no digit used up', () => {
+    for (const panel of ['master', 'office'] as const) {
+      const holders = (chord: string) =>
+        COMMANDS.filter((command) => command.panel === panel && command.defaultChord === chord).map((command) => command.id);
+      expect(holders('Alt+N')).toEqual([`nav.${panel}.notices`]);
+      expect(holders('Alt+M')).toEqual([`nav.${panel}.noticesManage`]);
+    }
+    // The digits still run Basic Home to Settings, 1 to 9, on both panels.
+    for (const panel of ['master', 'office'] as const) {
+      const digits = COMMANDS.filter((command) => command.panel === panel && /^Alt\+[1-9]$/.test(command.defaultChord ?? ''));
+      expect(digits.map((command) => command.tab)).toEqual([
+        'basicHome', 'dashboard', 'leads', 'orders', 'conflicts', 'products', 'parties', 'partyAccess', 'settings',
+      ]);
+    }
   });
 
   it('binds Lists to Alt+G on both panels, and no other command takes it', () => {
