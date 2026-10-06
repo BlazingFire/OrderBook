@@ -47,6 +47,13 @@
  * is always optional.
  *
  * Keys, the way the counter works:
+ *  · **Colour is the first step of a multicolour card** (a `selectable` sub
+ *    product): the card opens on the colour box with the company's colour list
+ *    down and the first colour highlighted, so Enter takes it. The box stays
+ *    for the next colour (type to narrow, Enter takes the highlighted one), and
+ *    Enter on the empty box — the list closed — goes on to the quantities. A
+ *    `fixed` colour is shown and has no stop; a `dedicated` sub product has no
+ *    colour at all, so its card opens on the first quantity;
  *  · **Enter** walks each row's quantity, its packaging and its grade (a pick
  *    in either moves on by itself), then the next row; after the last grade
  *    it lands on Add product, whose Enter adds the sub product and returns to
@@ -2698,6 +2705,17 @@ function DraftCard({
               colourHex={colourHex}
               onAdd={onAddColour}
             />
+            {/*
+             * The key hint lives under the box, wrapping, not in its placeholder: a
+             * placeholder is one clipped line, and at 157 % the sentence did not fit.
+             */}
+            <span
+              className="ob-micro"
+              data-colour-keys
+              style={{ display: 'block', marginTop: rem(4), color: 'var(--fg-tertiary)' }}
+            >
+              {t('lead.add.flow.colourKeys')}
+            </span>
           </label>
         )}
 
@@ -2952,7 +2970,10 @@ function ColourAdder({
   onAdd: (colour: string) => void;
 }) {
   const [query, setQuery] = useState('');
-  const [open, setOpen] = useState(false);
+  // A card with no colour yet opens with the list down and the first colour
+  // highlighted, so the Enter walk is Enter to take it and Enter to go on: the
+  // colour is a step of the flow, not a box to find and type into.
+  const [open, setOpen] = useState(autoFocus && !hasRows);
   const [sel, setSel] = useState(0);
 
   const term = query.trim().toLowerCase();
@@ -3012,8 +3033,10 @@ function ColourAdder({
             event.preventDefault();
             add(chosen.value);
           } else if (!hasRows) {
-            // No colour yet, so no quantity to walk on to.
+            // No colour yet, so no quantity to walk on to: Enter opens the list
+            // again (after an Escape closed it) rather than doing nothing.
             event.preventDefault();
+            setOpen(true);
           }
         }}
       />
