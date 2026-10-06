@@ -356,7 +356,9 @@ export function partyScopeLogSql(
   tenantId: string,
   scope: PartyScope,
 ): { sql: string; bindings: string[] } {
-  if (scope.seesAll) return { sql: '', bindings: [] };
+  // Notice rows name notices that may be for other roles only: managers see them, nobody else.
+  const hideNotices = scope.noticesHidden ? " AND activity_log.entity_type <> 'notice'" : '';
+  if (scope.seesAll) return { sql: hideNotices, bindings: [] };
 
   const bindings: string[] = [];
   const branches: string[] = [];
@@ -376,7 +378,7 @@ export function partyScopeLogSql(
   }
 
   return {
-    sql: ` AND (activity_log.entity_type NOT IN ('lead', 'order', 'party') OR ${branches.join(' OR ')})`,
+    sql: ` AND (activity_log.entity_type NOT IN ('lead', 'order', 'party') OR ${branches.join(' OR ')})${hideNotices}`,
     bindings,
   };
 }

@@ -18,6 +18,7 @@ import { config } from '../src/config/index.js';
 import { db } from '../src/db/knex.js';
 import type { ActorContext } from '../src/domain/actor.js';
 import { resetChangeRing, since } from '../src/realtime/change-ring.js';
+import * as logService from '../src/services/log.service.js';
 import * as noticeService from '../src/services/notice.service.js';
 import * as recycleBin from '../src/services/recycle-bin.service.js';
 import * as roleService from '../src/services/role.service.js';
@@ -38,7 +39,11 @@ async function person(
   permissions: string[],
   tier: 'office' | 'admin' = 'office',
 ): Promise<Person> {
-  const role = await roleService.createRole({ name: `Role ${name}`, tier, permissions }, admin);
+  // `noticeBoard: false`: the keys named are exactly the keys held (a new role is otherwise given notices.view).
+  const role = await roleService.createRole(
+    { name: `Role ${name}`, tier, permissions, noticeBoard: false },
+    admin,
+  );
   const { user } = await userService.createUser(
     { username: name, displayName: name, roleId: role.id },
     admin,
@@ -406,6 +411,157 @@ describe.skipIf(!canRunIntegrationTests)('the notice board (integration)', () =>
         event?.payload as { audience: { roleIds: string[] } }
       ).audience.roleIds.sort();
       expect(roleIds).toEqual([sales.roleId, dispatch.roleId].sort());
+    });
+  });
+
+  describe('rework: the log, malformed input, the audience a reader sees, new roles', () => {
+    it('NB-22: the Activity log hides notice rows from everybody who cannot manage notices', async () => {
+      const auditor = await person('auditor', ['logs.view', 'notices.view']);
+      const notice = await noticeService.createNotice(
+        {
+          title: 'Secret restructure',
+          body: '',
+          audience: { kind: 'roles', roleIds: [sales.roleId] },
+        },
+        manager.actor,
+      );
+      await noticeService.updateNotice(
+        notice.id,
+        { expectedVersion: 1, pinned: true },
+        manager.actor,
+      );
+
+      const seenBy = async (who: Person) =>
+        (await logService.listLogs({ entityType: 'notice' } as never, who.actor)).items.length;
+
+      expect(await seenBy(auditor)).toBe(0);
+      expect(
+        JSON.stringify((await logService.listLogs({} as never, auditor.actor)).items),
+      ).not.toContain('Secret restructure');
+
+      const managerWithLogs = await person(
+        'managerlogs',
+        ['logs.view', 'notices.view', 'notices.manage'],
+        'admin',
+      );
+      expect(await seenBy(managerWithLogs)).toBeGreaterThan(0);
+    });
+
+    it('NB-23: malformed input is a 400 on create and on edit, never a 500, and never stored as something else', async () => {
+      const notice = await noticeService.createNotice({ title: 'ok', body: '' }, manager.actor);
+      const malformed = [
+        { title: { a: 1 } },
+        { title: 5 },
+        { title: 'x', body: ['x'] },
+        { title: 'x', pinned: 'yes' },
+        { title: 'x', audience: { kind: 'roles' } },
+        { title: 'x', audience: { kind: 'roles', roleIds: [5] } },
+        { title: 'x', audience: { kind: 'everyone-else' } },
+        { title: 'x', audience: 'all' },
+        { title: 'x', showUntil: 20261031 },
+      ];
+
+      for (const body of malformed) {
+        await expect(
+          noticeService.createNotice(body, manager.actor),
+          JSON.stringify(body),
+        ).rejects.toMatchObject({
+          statusCode: 400,
+          messageKey: 'validation.notice.malformed',
+        });
+        await expect(
+          noticeService.updateNotice(notice.id, { expectedVersion: 1, ...body }, manager.actor),
+          JSON.stringify(body),
+        ).rejects.toMatchObject({ statusCode: 400, messageKey: 'validation.notice.malformed' });
+      }
+      await expect(noticeService.createNotice(null, manager.actor)).rejects.toMatchObject({
+        statusCode: 400,
+      });
+      await expect(noticeService.createNotice([1], manager.actor)).rejects.toMatchObject({
+        statusCode: 400,
+      });
+      await expect(
+        noticeService.updateNotice(notice.id, { expectedVersion: '1' }, manager.actor),
+      ).rejects.toMatchObject({ statusCode: 400 });
+
+      // Nothing got stored by the refused ones: one notice, untouched.
+      const all = await noticeService.listManage(manager.actor);
+      expect(all).toHaveLength(1);
+      expect(all[0]).toMatchObject({ title: 'ok', version: 1, audience: { kind: 'all' } });
+    });
+
+    it('NB-24: a reader is told only whether a notice is for everybody or for their own role', async () => {
+      await noticeService.createNotice(
+        {
+          title: 'Two roles',
+          body: '',
+          audience: { kind: 'roles', roleIds: [sales.roleId, dispatch.roleId] },
+        },
+        manager.actor,
+      );
+
+      const forSales = (await noticeService.listBoard(sales.actor)).notices[0];
+      expect(forSales?.audience).toEqual({ kind: 'roles', roleIds: [sales.roleId] });
+      const snapshotCopy = (await buildSnapshot(dispatch.actor)).notices?.[0];
+      expect(snapshotCopy?.audience).toEqual({ kind: 'roles', roleIds: [dispatch.roleId] });
+      expect(JSON.stringify(forSales)).not.toContain(dispatch.roleId);
+
+      const forManager = (await noticeService.listManage(manager.actor))[0];
+      expect(forManager?.audience).toEqual({
+        kind: 'roles',
+        roleIds: expect.arrayContaining([sales.roleId, dispatch.roleId]),
+      });
+    });
+
+    it('NB-26: a panel acting as itself reads only the notices for everybody, and cannot record a read', async () => {
+      await noticeService.createNotice({ title: 'For all', body: '' }, manager.actor);
+      await noticeService.createNotice(
+        { title: 'Sales only', body: '', audience: { kind: 'roles', roleIds: [sales.roleId] } },
+        manager.actor,
+      );
+      // The panel's own actor: the sales role's permissions, nobody signed in.
+      const panel: ActorContext = {
+        ...sales.actor,
+        actorType: 'office_panel',
+        actorId: 'OP1',
+        userId: null,
+      };
+
+      expect((await noticeService.listBoard(panel)).notices.map((n) => n.title)).toEqual([
+        'For all',
+      ]);
+      expect((await buildSnapshot(panel)).notices?.map((n) => n.title)).toEqual(['For all']);
+      await expect(noticeService.markRead({}, panel)).rejects.toMatchObject({
+        statusCode: 409,
+        messageKey: 'error.conflict.noNoticeReader',
+      });
+    });
+
+    it('NB-25: a role made later reads the board by default, unless the caller says otherwise', async () => {
+      const made = await roleService.createRole(
+        { name: 'Later', tier: 'office', permissions: ['leads.view'] },
+        admin,
+      );
+      expect(made.permissions).toEqual(['leads.view', 'notices.view']);
+
+      const without = await roleService.createRole(
+        { name: 'No board', tier: 'office', permissions: ['leads.view'], noticeBoard: false },
+        admin,
+      );
+      expect(without.permissions).toEqual(['leads.view']);
+
+      // Editing a role never gives it back what an administrator took away.
+      const edited = await roleService.updateRole(
+        made.id,
+        {
+          name: 'Later',
+          tier: 'office',
+          permissions: ['leads.view'],
+          expectedVersion: made.sync.version,
+        },
+        admin,
+      );
+      expect(edited.permissions).toEqual(['leads.view']);
     });
   });
 });

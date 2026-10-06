@@ -774,7 +774,14 @@ export function createApp(): Express {
    * Reading is recorded on the Master, so `read` needs the link. Fixed paths before `:id`.
    */
   app.get('/api/notices', async (_req, res) => {
-    if (masterConnection.getStatus().state === 'connected') return forward(res, 'notice:list');
+    // Connected and signed in as themselves: the Master's answer. Signed in offline and not yet
+    // re-attached, the command would run as the panel, so the cache answers instead.
+    if (
+      masterConnection.getStatus().state === 'connected' &&
+      userSession.currentSession()?.offline !== true
+    ) {
+      return forward(res, 'notice:list');
+    }
 
     if (!userSession.can('notices.view')) {
       res.status(403).json({
@@ -2557,19 +2564,29 @@ function failForward(res: Response, error: unknown): void {
 
   // 426 for a Master too old for the command (`MasterConnection.command()`'s
   // protocol gate): the request was fine, the Master needs an update.
-  res.status(code === 'forbidden' ? 403 : code === 'updateNeeded' ? 426 : 502).json({
-    error: code ?? 'master_command_failed',
-    message,
-    ...(error instanceof MasterCommandError && error.messageKey
-      ? { messageKey: error.messageKey }
-      : {}),
-    ...(error instanceof MasterCommandError && error.params ? { params: error.params } : {}),
-    ...(error instanceof MasterCommandError && error.details
-      ? { details: error.details }
-      : error instanceof MasterCommandError && error.missingPermission
-        ? { details: { permission: error.missingPermission } }
+  res
+    .status(
+      code === 'forbidden'
+        ? 403
+        : code === 'updateNeeded'
+          ? 426
+          : code === 'sign_in_again'
+            ? 401
+            : 502,
+    )
+    .json({
+      error: code ?? 'master_command_failed',
+      message,
+      ...(error instanceof MasterCommandError && error.messageKey
+        ? { messageKey: error.messageKey }
         : {}),
-  });
+      ...(error instanceof MasterCommandError && error.params ? { params: error.params } : {}),
+      ...(error instanceof MasterCommandError && error.details
+        ? { details: error.details }
+        : error instanceof MasterCommandError && error.missingPermission
+          ? { details: { permission: error.missingPermission } }
+          : {}),
+    });
 }
 
 /**

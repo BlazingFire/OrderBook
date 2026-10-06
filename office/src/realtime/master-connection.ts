@@ -426,6 +426,17 @@ class MasterConnection extends EventEmitter {
     });
 
     socket.on('sync:snapshot', (snapshot) => {
+      // A snapshot is built for whoever the link is acting as. If that is not the person signed in
+      // here (an earlier person's token was left on the link), it is theirs, not this person's:
+      // never shown, never written to this PC's disk. An offline session is ended (it gets the
+      // token released and signs in again); an online one gets its own snapshot once it is attached.
+      const viewer = localStore.currentViewer();
+      if (snapshot.builtForUserId && viewer && snapshot.builtForUserId !== viewer) {
+        log.warn('Ignoring a snapshot built for somebody other than the person signed in here');
+        this.emit('session:unattached');
+        return;
+      }
+
       const epoch = this.connectEpoch;
       this.snapshot = snapshot;
       this.lastSyncedAt = snapshot.serverTime;
@@ -1024,6 +1035,16 @@ class MasterConnection extends EventEmitter {
     return this.commandWithin(ACK_TIMEOUT_MS)<E, T>(event, ...args);
   }
 
+  /**
+   * Installed by the session: true for a user-level command that must not be sent right now
+   * (a person signed in offline and is not yet re-attached). Panel-level traffic is never asked.
+   */
+  private userCommandBlocked: ((event: string) => boolean) | null = null;
+
+  setUserCommandGuard(guard: ((event: string) => boolean) | null): void {
+    this.userCommandBlocked = guard;
+  }
+
   /** `command`, with `ackMs` to acknowledge instead of the usual 15 s. */
   commandWithin(ackMs: number) {
     return <E extends keyof ClientToServerEvents, T>(event: E, ...args: unknown[]): Promise<T> =>
@@ -1038,6 +1059,19 @@ class MasterConnection extends EventEmitter {
     const socket = this.socket;
     if (!socket || this.state !== 'connected') {
       throw new MasterCommandError('Not connected to the Master Panel', undefined, undefined, true);
+    }
+
+    // Somebody who signed in offline and has not been re-attached on the Master is nobody to it: a
+    // command now would run as the panel itself, with the panel's role and audience, not theirs.
+    if (this.userCommandBlocked?.(event)) {
+      throw new MasterCommandError(
+        'Sign in again to continue',
+        'sign_in_again',
+        undefined,
+        false,
+        undefined,
+        'error.unauthorized.signInAgain',
+      );
     }
 
     /*
@@ -1150,7 +1184,13 @@ class MasterConnection extends EventEmitter {
    */
   private async reassume(): Promise<void> {
     const token = this.actingToken;
-    if (!token) return;
+    if (!token) {
+      // Nobody can be re-attached: there is no token to present. Anybody who signed in here while
+      // the link was down (a verifier with no stored token) is told so by the session, which ends
+      // them, instead of leaving them on screen as signed in while every command runs as the panel.
+      this.emit('session:unattached');
+      return;
+    }
 
     let resolution: PanelSessionResolution;
 

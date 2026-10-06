@@ -70,12 +70,16 @@ export async function createRole(input: RoleInput, actor: ActorContext): Promise
   // The Server Master tier has its one reserved role; nobody makes another.
   assertTierAssignable(tier);
   assertTierWithinActor(actor, tier);
-  assertPermissionsWithinTier(input.permissions ?? [], tier);
-  assertNameAvailable(
-    await roleRepo.isNameTaken(actor.tenantId, name, null),
-    'role',
-    name,
-  );
+  // Everybody reads the notice board: a role made after the migration that granted it to the
+  // roles of the day is given it too, unless the caller says otherwise.
+  const granted = [
+    ...new Set([
+      ...(input.permissions ?? []),
+      ...(input.noticeBoard === false ? [] : ['notices.view']),
+    ]),
+  ];
+  assertPermissionsWithinTier(granted, tier);
+  assertNameAvailable(await roleRepo.isNameTaken(actor.tenantId, name, null), 'role', name);
 
   const id = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
@@ -85,7 +89,7 @@ export async function createRole(input: RoleInput, actor: ActorContext): Promise
         tenantId: actor.tenantId,
         name,
         tier,
-        permissions: [...(input.permissions ?? [])].sort(),
+        permissions: [...granted].sort(),
         createdBy: actorUserId(actor),
         hlc,
         fieldHlc: Object.fromEntries(ROLE_FIELDS.map((field) => [field, hlc])),
@@ -93,17 +97,21 @@ export async function createRole(input: RoleInput, actor: ActorContext): Promise
       trx,
     );
 
-    await activityLog.recordActivity({
-      tenantId: actor.tenantId,
-      entityType: 'role',
-      entityId: roleId,
-      action: 'created',
-      actorType: actor.actorType,
-      actorId: actor.actorId,
-      // The whole array, not a count: an auditor asks "what could this role do
-      // on 14 March", and a chain of diffs makes that a replay, not a lookup.
-      details: { name, tier, permissions: [...(input.permissions ?? [])].sort() },
-    }, actor, trx);
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'role',
+        entityId: roleId,
+        action: 'created',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        // The whole array, not a count: an auditor asks "what could this role do
+        // on 14 March", and a chain of diffs makes that a replay, not a lookup.
+        details: { name, tier, permissions: [...granted].sort() },
+      },
+      actor,
+      trx,
+    );
 
     return roleId;
   });
@@ -115,11 +123,7 @@ export async function createRole(input: RoleInput, actor: ActorContext): Promise
   return role;
 }
 
-export async function updateRole(
-  id: string,
-  input: RoleInput,
-  actor: ActorContext,
-): Promise<Role> {
+export async function updateRole(id: string, input: RoleInput, actor: ActorContext): Promise<Role> {
   requirePermission(actor, 'roles.edit');
   assertAdminTier(actor, 'roles.edit');
 
@@ -191,20 +195,24 @@ export async function updateRole(
       await accessGuard.readAdministrativeCapability(actor.tenantId, trx),
     );
 
-    await activityLog.recordActivity({
-      tenantId: actor.tenantId,
-      entityType: 'role',
-      entityId: id,
-      action: 'updated',
-      actorType: actor.actorType,
-      actorId: actor.actorId,
-      details: {
-        name: { from: existing.name, to: name },
-        tier: { from: existing.tier, to: tier },
-        permissions: { from: existing.permissions, to: permissions },
-        ...(droppedByTier.length > 0 ? { droppedByTierCeiling: droppedByTier } : {}),
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'role',
+        entityId: id,
+        action: 'updated',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: {
+          name: { from: existing.name, to: name },
+          tier: { from: existing.tier, to: tier },
+          permissions: { from: existing.permissions, to: permissions },
+          ...(droppedByTier.length > 0 ? { droppedByTierCeiling: droppedByTier } : {}),
+        },
       },
-    }, actor, trx);
+      actor,
+      trx,
+    );
   });
 
   const role = await roleRepo.findRoleById(actor.tenantId, id);
@@ -246,15 +254,19 @@ export async function deleteRole(id: string, actor: ActorContext): Promise<Role>
       await accessGuard.readAdministrativeCapability(actor.tenantId, trx),
     );
 
-    await activityLog.recordActivity({
-      tenantId: actor.tenantId,
-      entityType: 'role',
-      entityId: id,
-      action: 'deleted',
-      actorType: actor.actorType,
-      actorId: actor.actorId,
-      details: { name: existing.name },
-    }, actor, trx);
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'role',
+        entityId: id,
+        action: 'deleted',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { name: existing.name },
+      },
+      actor,
+      trx,
+    );
   });
 
   const role = await roleRepo.findRoleById(actor.tenantId, id, { includeDeleted: true });
@@ -299,15 +311,19 @@ export async function restoreRole(
   await db().transaction(async (trx) => {
     await roleRepo.restoreRole(actor.tenantId, id, trx, renameTo);
 
-    await activityLog.recordActivity({
-      tenantId: actor.tenantId,
-      entityType: 'role',
-      entityId: id,
-      action: 'restored',
-      actorType: actor.actorType,
-      actorId: actor.actorId,
-      details: { name: existing.name, ...(renameTo ? { renamedTo: renameTo } : {}) },
-    }, actor, trx);
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'role',
+        entityId: id,
+        action: 'restored',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { name: existing.name, ...(renameTo ? { renamedTo: renameTo } : {}) },
+      },
+      actor,
+      trx,
+    );
   });
 
   const role = await roleRepo.findRoleById(actor.tenantId, id);

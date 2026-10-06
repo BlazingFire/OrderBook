@@ -118,6 +118,27 @@ let current: PanelSession | null = null;
 // may not have accepted yet; a push sent then is taken as the panel's own, so a party would
 // land open to everybody with nobody as its creator.
 setActingUser(() => (current && !current.offline ? current.userId : null));
+// A person who signed in offline is not re-attached on the Master until it accepts their token
+// (`session.offline` goes false). Until then no user-level command may go up: it would run as the
+// panel, with the panel's role. Panel-level traffic (sign-in, sync, the panel's own reports) is not
+// held. Installed on the link at start-up (`index.ts`).
+const PANEL_LEVEL = /^(auth|panel|sync|session):/;
+export function blocksUserCommand(event: string): boolean {
+  return current?.offline === true && !PANEL_LEVEL.test(event);
+}
+
+/**
+ * The link is up and there is nothing to re-attach an offline-signed-in person with: end their
+ * session so they sign in again (online), rather than leave them on screen as somebody the Master
+ * does not know. Their offline verifier stays: this is not a revocation.
+ */
+export async function endUnattachedOfflineSession(): Promise<void> {
+  if (current?.offline !== true) return;
+  // Release whatever the link is still acting as, so it falls back to the panel, not to somebody else.
+  await masterConnection.assume(null);
+  await rejectCurrent('expired');
+}
+
 // The same person decides whose queued work the view draws.
 localStore.setViewer(() => current?.userId ?? null);
 
@@ -370,7 +391,10 @@ async function signInOffline(username: string, password: string): Promise<PanelS
 
   // Presenting the stored token now is harmless while the link is down and
   // means the reconnect re-establishes this person without a second prompt.
-  if (known.masterToken) await masterConnection.assume(known.masterToken);
+  // Always declared, a missing token included: somebody else may still be the acting user on the link
+  // (they signed in online and were never signed out), and leaving their token in place would
+  // re-attach this person to the Master as them on reconnect.
+  await masterConnection.assume(known.masterToken ?? null);
 
   // The Master cannot log this sign-in now, so it is kept and uploaded on reconnect.
   await offlineAuthEvents.append({
@@ -478,7 +502,17 @@ export async function reconcileKnownUsers(): Promise<void> {
 
 /** Refresh the cached permissions after the Master re-resolved this person. */
 export async function refreshFrom(user: SignedInUser): Promise<void> {
-  if (!current || current.userId !== user.id) return;
+  if (!current) return;
+  if (current.userId !== user.id) {
+    // The Master took the link's token for somebody else: this person is not who it re-attached.
+    // Release the token and end them, so they sign in again as themselves.
+    log.warn(
+      `The Master re-attached this panel as somebody other than ${current.username}; signing them out`,
+    );
+    await masterConnection.assume(null);
+    await rejectCurrent('expired');
+    return;
+  }
 
   current = {
     ...current,

@@ -271,6 +271,69 @@ describe('the protocol handshake', () => {
     await masterConnection.assume(null);
   });
 
+  describe('somebody who signed in offline', () => {
+    it('sends no user-level command until they are re-attached, and still sends the panel’s own traffic', async () => {
+      const link = await connected();
+      let blocked = true;
+      masterConnection.setUserCommandGuard(
+        (event) => blocked && !/^(auth|panel|sync|session):/.test(event),
+      );
+
+      // Run as the panel, a read would have the panel's role and audience, not the person's.
+      await expect(masterConnection.command('dashboard:get')).rejects.toMatchObject({
+        code: 'sign_in_again',
+        messageKey: 'error.unauthorized.signInAgain',
+        unreachable: false,
+      });
+      expect(link.commands('dashboard:get')).toHaveLength(0);
+      await masterConnection.command('auth:reconcile', []);
+      expect(link.commands('auth:reconcile')).toHaveLength(1);
+
+      blocked = false;
+      await masterConnection.command('dashboard:get');
+      expect(link.commands('dashboard:get')).toHaveLength(1);
+
+      masterConnection.setUserCommandGuard(null);
+      link.emit('disconnect', 'transport close');
+    });
+
+    it('says so on every connect that has no token to re-attach them with', async () => {
+      const heard = vi.fn();
+      masterConnection.on('session:unattached', heard);
+
+      await connected();
+      await vi.waitFor(() => expect(heard).toHaveBeenCalled());
+
+      masterConnection.off('session:unattached', heard);
+    });
+  });
+
+  describe('a snapshot built for somebody other than the person signed in', () => {
+    it('is never shown or kept, and asks for the session to be ended; their own is taken as usual', async () => {
+      const link = await connected();
+      const shown = vi.fn();
+      const unattached = vi.fn();
+      masterConnection.on('snapshot', shown);
+      masterConnection.on('session:unattached', unattached);
+      local.viewer = 'office1';
+      const before = masterConnection.getSnapshot();
+
+      link.emit('sync:snapshot', { ...snapshot(5), builtForUserId: 'management1' });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(shown).not.toHaveBeenCalled();
+      expect(unattached).toHaveBeenCalled();
+      expect(masterConnection.getSnapshot()).toBe(before);
+
+      link.emit('sync:snapshot', { ...snapshot(5), builtForUserId: 'office1' });
+      await vi.waitFor(() => expect(shown).toHaveBeenCalledTimes(1));
+
+      masterConnection.off('snapshot', shown);
+      masterConnection.off('session:unattached', unattached);
+      link.emit('disconnect', 'transport close');
+    });
+  });
+
   describe('a cache built for somebody else', () => {
     const delta = {
       bootId: 'boot',

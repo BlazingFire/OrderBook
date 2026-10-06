@@ -64,3 +64,53 @@ describe('a notice change reaches only its audience', () => {
     ).toBe(false);
   });
 });
+
+import { noticeEventFor } from '../src/realtime/fan-out.js';
+
+describe('what a recipient is told of a notice change', () => {
+  const full = change({ kind: 'roles', roleIds: ['RL1', 'RL2', 'RL3'] });
+
+  it('a reader is told only that it is for their own role, never which other roles it names', () => {
+    const told = noticeEventFor(actor('RL2', ['notices.view']), full);
+
+    expect(told.payload).toEqual({ audience: { kind: 'roles', roleIds: ['RL2'] } });
+    expect(JSON.stringify(told)).not.toContain('RL1');
+    expect(JSON.stringify(told)).not.toContain('RL3');
+  });
+
+  it('a notice for everybody is told as it is, and a manager is told the whole audience', () => {
+    const everyone = change({ kind: 'all' });
+    expect(noticeEventFor(actor('RL2', ['notices.view']), everyone)).toBe(everyone);
+    expect(noticeEventFor(actor('RL9', ['notices.view', 'notices.manage']), full)).toBe(full);
+  });
+
+  it('leaves every other entity alone', () => {
+    const other: DataChangedEvent = {
+      entity: 'lead',
+      action: 'updated',
+      id: 'L1',
+      payload: { x: 1 },
+    };
+    expect(noticeEventFor(actor('RL2', ['notices.view']), other)).toBe(other);
+  });
+});
+
+describe('a panel acting as itself', () => {
+  const panel = (roleId: string | null): ActorContext =>
+    ({
+      ...actor(roleId, ['notices.view']),
+      actorType: 'office_panel',
+      actorId: 'OP1',
+      userId: null,
+    }) as never;
+
+  it('is told of notices for everybody and never of a role’s, whatever role the panel holds', () => {
+    expect(mayReceive(panel('RL1'), change({ kind: 'all' }), [])).toBe(true);
+    expect(mayReceive(panel('RL1'), change({ kind: 'roles', roleIds: ['RL1'] }), [])).toBe(false);
+  });
+
+  it('is told, of a notice for roles, nothing that names a role', () => {
+    const told = noticeEventFor(panel('RL1'), change({ kind: 'roles', roleIds: ['RL1', 'RL2'] }));
+    expect(told.payload).toEqual({ audience: { kind: 'roles', roleIds: [] } });
+  });
+});

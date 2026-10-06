@@ -9,9 +9,14 @@
  * name.
  */
 
-import type { ChangedEntity, DataChangedEvent, Permission, PartyAccessLevel } from '@orderbook/shared';
+import type {
+  ChangedEntity,
+  DataChangedEvent,
+  Permission,
+  PartyAccessLevel,
+} from '@orderbook/shared';
 
-import { actorCan, type ActorContext } from '../domain/actor.js';
+import { actorCan, actorUserId, type ActorContext } from '../domain/actor.js';
 import { levelFor, resolvePartyScope } from '../domain/party-scope.js';
 
 /**
@@ -97,15 +102,39 @@ export const REQUIRED_PERMISSION: Partial<Record<ChangedEntity, Permission>> = {
  * feature turns on. Party scoping and the module permission above are both
  * checked; either one refusing is a refusal.
  */
+/**
+ * The role a recipient is addressed by. Only a person has one: a panel acting as itself (nobody
+ * signed in, or not yet re-attached) is addressed as nobody, so it hears of notices for everybody
+ * only, as `notice.service`'s `readerOf` reads for it.
+ */
+function audienceRoleOf(actor: ActorContext): string | null {
+  return actorUserId(actor) ? (actor.permissions?.roleId ?? null) : null;
+}
+
+/**
+ * What a recipient is told of a notice change: a manager gets the whole audience, anybody else only
+ * whether it is for everybody or for their own role. The change ring keeps the full one.
+ */
+export function noticeEventFor(actor: ActorContext, event: DataChangedEvent): DataChangedEvent {
+  if (event.entity !== 'notice' || actorCan(actor, 'notices.manage')) return event;
+
+  const audience = (event.payload as { audience?: { kind?: string } } | null)?.audience;
+  if (audience?.kind === 'all') return event;
+
+  const roleId = audienceRoleOf(actor);
+  return { ...event, payload: { audience: { kind: 'roles', roleIds: roleId ? [roleId] : [] } } };
+}
+
 /** Whether a notice change's audience covers this recipient: everybody, their role, or they manage notices. */
 function noticeAudienceIncludes(actor: ActorContext, payload: unknown): boolean {
   if (actorCan(actor, 'notices.manage')) return true;
 
-  const audience = (payload as { audience?: { kind?: string; roleIds?: unknown } } | null)?.audience;
+  const audience = (payload as { audience?: { kind?: string; roleIds?: unknown } } | null)
+    ?.audience;
   if (audience?.kind === 'all') return true;
   if (audience?.kind !== 'roles' || !Array.isArray(audience.roleIds)) return false;
 
-  const roleId = actor.permissions?.roleId ?? null;
+  const roleId = audienceRoleOf(actor);
   return roleId !== null && audience.roleIds.includes(roleId);
 }
 
