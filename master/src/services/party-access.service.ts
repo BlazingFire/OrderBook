@@ -78,6 +78,10 @@ export async function listAssignments(
     actor.tenantId,
     page.items.map((party) => party.id),
   );
+  const creators = await partyAccessRepo.displayNames(
+    actor.tenantId,
+    page.items.flatMap((party) => (party.createdByUserId ? [party.createdByUserId] : [])),
+  );
 
   return {
     ...page,
@@ -91,6 +95,8 @@ export async function listAssignments(
         version: party.version,
         isRestricted: assignees.length > 0,
         assignees,
+        createdByUserId: party.createdByUserId,
+        createdByName: party.createdByUserId ? (creators.get(party.createdByUserId) ?? null) : null,
       };
     }),
   };
@@ -118,6 +124,10 @@ export async function assignmentsForParty(
 
   const grants = await partyAccessRepo.grantsForParties(actor.tenantId, [partyId]);
   const assignees = grants.get(partyId) ?? [];
+  const creators = await partyAccessRepo.displayNames(
+    actor.tenantId,
+    party.createdByUserId ? [party.createdByUserId] : [],
+  );
 
   return {
     partyId: party.id,
@@ -127,6 +137,8 @@ export async function assignmentsForParty(
     version: party.sync.version,
     isRestricted: assignees.length > 0,
     assignees,
+    createdByUserId: party.createdByUserId,
+    createdByName: party.createdByUserId ? (creators.get(party.createdByUserId) ?? null) : null,
   };
 }
 

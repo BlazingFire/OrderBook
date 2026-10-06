@@ -51,6 +51,9 @@ function party(n: number, assignees: ReturnType<typeof assignee>[] = []) {
     version: 1,
     isRestricted: assignees.length > 0,
     assignees,
+    // Party 1 was made by one of its assignees; party 3 by somebody no longer on it.
+    ...(n === 1 ? { createdByUserId: 'u-1', createdByName: 'Anita Rao' } : {}),
+    ...(n === 3 ? { createdByUserId: 'u-9', createdByName: 'Priya Nair' } : {}),
   };
 }
 
@@ -194,6 +197,21 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
       expect(screen.getByText(t('partyAccess.intro'))).toBeTruthy();
       const exportLink = screen.getByRole('link', { name: t('partyAccess.action.export') });
       expect(exportLink.getAttribute('href')).toBe('/api/party-access/export.csv');
+    });
+
+    it('tags the creator among the assignees, and names a creator who no longer holds the party', async () => {
+      await mount();
+      await loaded();
+
+      const one = screen.getByText('Party 1').closest('tr')!;
+      expect(within(one).getByText(t('partyAccess.creator'))).toBeTruthy();
+
+      // Party 3 was made by somebody who is not among its five assignees: the tag has
+      // nobody to sit on, so the creator is named in the list's tooltip instead.
+      const three = screen.getByText('Party 3').closest('tr')!;
+      expect(within(three).queryByText(t('partyAccess.creator'))).toBeNull();
+      const names = three.querySelector('.ob-pa-assignees') as HTMLElement;
+      expect(names.getAttribute('title')).toContain(t('partyAccess.createdBy', { name: 'Priya Nair' }));
     });
 
     it('has no Export button without parties.export', async () => {
@@ -517,7 +535,9 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
 
       const cell = within(row).getByText(t('partyAccess.more', { count: 2 })).parentElement!;
       expect(cell.getAttribute('title')).toBe(
-        'Anita Rao (Manage), Vikram Shah (View), Meera Iyer (View), Rohan Das (View), Samir Khan (Manage)',
+        'Anita Rao (Manage), Vikram Shah (View), Meera Iyer (View), Rohan Das (View), Samir Khan (Manage). ' +
+        // The row's creator is no longer on it, so the tooltip names them last.
+        t('partyAccess.createdBy', { name: 'Priya Nair' }),
       );
       // The level is a small tag next to the name.
       expect(within(row).getAllByText(t('partyAccess.level.manage')).length).toBeGreaterThan(0);

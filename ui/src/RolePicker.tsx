@@ -101,6 +101,11 @@ export function RolePicker({
                       ? t('access.rolePicker.nothing')
                       : t('access.rolePicker.total', { held: summary.held, total: summary.total })}
                   </span>
+                  {summary.parties.length > 0 && (
+                    <span className="ob-rolecard-line">
+                      <strong>{t('access.rolePicker.parties')}</strong> {summary.parties.join(', ')}
+                    </span>
+                  )}
                   {changes && summary.changes.length > 0 && (
                     <span className="ob-rolecard-line" title={changes.full}>
                       <strong>{t('access.rolePicker.changes')}</strong> {changes.text}

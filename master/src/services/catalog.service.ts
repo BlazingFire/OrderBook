@@ -1224,12 +1224,13 @@ export async function getPartyWithAccess(
 export async function listPartiesWithMeta(
   query: PartyListQuery,
   actor: ActorContext,
-): Promise<Paginated<Party & { recordCount: number; myAccess: PartyMyAccess }>> {
+): Promise<Paginated<Party & { recordCount: number; myAccess: PartyMyAccess; accessCount: number }>> {
   const page = await listParties(query, actor);
   const ids = page.items.map((party) => party.id);
-  const [counts, grants] = await Promise.all([
+  const [counts, grants, accessCounts] = await Promise.all([
     variantRepo.countByParty(actor.tenantId, ids),
     partyAccessRepo.grantsForUser(actor.tenantId, resolvePartyScope(actor).userId, ids),
+    partyAccessRepo.grantCounts(actor.tenantId, ids),
   ]);
   const levels = new Map(grants.map((grant) => [grant.partyId, grant.level]));
   return {
@@ -1238,6 +1239,8 @@ export async function listPartiesWithMeta(
       ...party,
       recordCount: counts.get(party.id) ?? 0,
       myAccess: levels.get(party.id) ?? null,
+      // How many people hold a grant: 0 is an open party, 1 is private to its one holder.
+      accessCount: accessCounts.get(party.id) ?? 0,
     })),
   };
 }

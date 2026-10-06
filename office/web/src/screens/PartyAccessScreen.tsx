@@ -326,7 +326,7 @@ export function PartyAccessScreen({
         header: t('partyAccess.column.assignedTo'),
         // The column with the most to say: it takes whatever the others leave.
         width: '1fr',
-        render: (row) => <AssigneeList assignees={row.assignees} />,
+        render: (row) => <AssigneeList assignees={row.assignees} creatorId={row.createdByUserId ?? null} creatorName={row.createdByName ?? null} />,
       },
       // Absent for a reader: a button nobody may use is not a control to grey.
       ...(canAssign
@@ -671,7 +671,15 @@ export function PartyAccessScreen({
  * muted and tagged, rather than left out and leaving a "Restricted" row that
  * appears to name nobody.
  */
-function AssigneeList({ assignees }: { assignees: PartyAccessAssignee[] }) {
+function AssigneeList({
+  assignees,
+  creatorId,
+  creatorName,
+}: {
+  assignees: PartyAccessAssignee[];
+  creatorId: string | null;
+  creatorName: string | null;
+}) {
   if (assignees.length === 0) {
     return <span className="ob-small">{t('partyAccess.everyone')}</span>;
   }
@@ -680,15 +688,20 @@ function AssigneeList({ assignees }: { assignees: PartyAccessAssignee[] }) {
     .map(
       (person) =>
         `${person.displayName} (${levelLabel(person.level)})${
-          person.isActive === false ? ` — ${t('partyAccess.editor.deactivated')}` : ''
-        }`,
+          person.userId === creatorId ? ` — ${t('partyAccess.creator')}` : ''
+        }${person.isActive === false ? ` — ${t('partyAccess.editor.deactivated')}` : ''}`,
     )
     .join(', ');
+  // Said once in the tooltip even when the creator no longer holds a grant on the party.
+  const title =
+    creatorName && !assignees.some((person) => person.userId === creatorId)
+      ? `${full}. ${t('partyAccess.createdBy', { name: creatorName })}`
+      : full;
   const shown = assignees.slice(0, NAMES_SHOWN);
   const hidden = assignees.length - shown.length;
 
   return (
-    <span className="ob-pa-assignees" title={full}>
+    <span className="ob-pa-assignees" title={title}>
       {shown.map((person, index) => {
         const inactive = person.isActive === false;
         return (
@@ -698,6 +711,9 @@ function AssigneeList({ assignees }: { assignees: PartyAccessAssignee[] }) {
           >
             {person.displayName}
             <span className="ob-pa-level">{levelLabel(person.level)}</span>
+            {person.userId === creatorId ? (
+              <span className="ob-pa-level">{t('partyAccess.creator')}</span>
+            ) : null}
             {inactive ? (
               <span className="ob-pa-level ob-pa-inactive-tag">
                 {t('partyAccess.editor.deactivated')}

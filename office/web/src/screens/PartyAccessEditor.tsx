@@ -286,6 +286,9 @@ export function PartyAccessEditor({ party, people, canEdit, onClose, onSaved }: 
         <span style={{ ...ROW, flexWrap: 'wrap', gap: 'var(--s-8)' }}>
           <span className="ob-mono">{party.partyCode}</span>
           {party.city ? <span>{party.city}</span> : null}
+          {party.createdByName ? (
+            <span>{t('partyAccess.createdBy', { name: party.createdByName })}</span>
+          ) : null}
           {entries.length === 0 ? (
             <StatusPill>{t('partyAccess.editor.stateOpen')}</StatusPill>
           ) : (
@@ -535,6 +538,11 @@ export function PartyAccessEditor({ party, people, canEdit, onClose, onSaved }: 
                       {gone ? (
                         <>
                           <StatusPill tone="offline">{t('partyAccess.editor.deactivated')}</StatusPill>{' '}
+                        </>
+                      ) : null}
+                      {entry.userId === party.createdByUserId ? (
+                        <>
+                          <StatusPill tone="accent">{t('partyAccess.creator')}</StatusPill>{' '}
                         </>
                       ) : null}
                       {info?.roleName}

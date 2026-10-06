@@ -94,6 +94,7 @@ import {
   ProductFilterRow,
   productFiltersActive,
   PartyFormModal,
+  PartyVisibilityMark,
   PartyImportControls,
   Input,
   LoadMorePager,
@@ -688,6 +689,14 @@ export function CatalogScreen({
             </StatusPill>
           );
         },
+      },
+      {
+        // "Private" / "Shared with N", from the snapshot's grant counts. A party with no
+        // entry (open, or newer than this snapshot) draws nothing: the number is a hint.
+        key: 'visibility',
+        header: t('catalog.parties.column.visibility'),
+        width: rem(130),
+        render: (party) => <PartyVisibilityMark count={view.partyAccessCounts?.[party.id]} />,
       },
     ];
 

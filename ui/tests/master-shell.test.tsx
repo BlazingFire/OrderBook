@@ -2502,6 +2502,28 @@ describe('Assigning and editing roles (1.4.3)', () => {
     );
   });
 
+  it('puts party creation and editing in plain view on an office role, and a card says what a role holds for parties', async () => {
+    await openAccess((call) =>
+      call.url === '/api/access/roles/role-a' ? json({ ...ROLE_A, permissions: ['leads.view', 'parties.view', 'parties.create'] }) : undefined,
+    );
+
+    fireEvent.click(await screen.findByTitle(t('access.tab.roles')));
+    fireEvent.click(await screen.findByText('Packer'));
+    fireEvent.click(await screen.findByRole('button', { name: t('access.roles.edit') }));
+
+    // The two rights sit in a card of their own, above the full grid.
+    const create = await screen.findByRole('checkbox', { name: new RegExp(`^${t('access.roleEditor.partiesCreate')}`) });
+    const edit = screen.getByRole('checkbox', { name: new RegExp(`^${t('access.roleEditor.partiesEdit')}`) });
+    expect((create as HTMLInputElement).checked).toBe(true);
+    expect((edit as HTMLInputElement).checked).toBe(false);
+    expect(screen.getByText(t('access.roleEditor.partiesCreateHint'))).toBeTruthy();
+
+    // Ticking one dirties the draft and holds the same key the grid below holds.
+    fireEvent.click(edit);
+    expect(screen.getByText(`● ${t('access.roleEditor.unsaved')}`)).toBeTruthy();
+    expect((screen.getByLabelText('Parties — Edit') as HTMLInputElement).checked).toBe(true);
+  });
+
   it('offers "Change role" only for a different role', async () => {
     await openAccess();
     fireEvent.click(await screen.findByTitle(t('access.tab.users')));
