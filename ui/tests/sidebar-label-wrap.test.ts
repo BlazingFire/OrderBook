@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 const css = readFileSync(join(process.cwd(), 'ui', 'src', 'base.css'), 'utf8');
 
 function ruleBody(selector: string): string {
-  const escaped = selector.replace(/[.[\]]/g, '\$&');
+  const escaped = selector.replaceAll('.', String.raw`\.`);
   const match = new RegExp(String.raw`(?:^|[}/])\s*${escaped}\s*\{([^}]*)\}`, 'm').exec(css);
   expect(match, `${selector} not found`).not.toBeNull();
   return match![1] ?? '';
