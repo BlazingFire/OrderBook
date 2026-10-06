@@ -720,13 +720,22 @@ async function mergeUpdate(
 
     outcome.status = outcome.conflicts.length > 0 ? 'merged' : 'applied';
 
+    // Before `buildLines`, which reads the target party's own product variants
+    // and names them in a refusal: access to that party comes first, as the
+    // online `updateLead` does.
+    const itemsPartyId =
+      typeof outcome.accepted.partyId === 'string'
+        ? outcome.accepted.partyId
+        : String(current.values.partyId);
+    if (entity === 'lead' && outcome.accepted.items !== undefined) {
+      await requirePartyAccess(itemsPartyId, 'manage', actor);
+    }
+
     const acceptedItems =
       entity === 'lead' && outcome.accepted.items !== undefined
         ? await leadService.buildLines(
             actor.tenantId,
-            typeof outcome.accepted.partyId === 'string'
-              ? outcome.accepted.partyId
-              : String(current.values.partyId),
+            itemsPartyId,
             outcome.accepted.items as LineDraft[],
             {
               partyWiseMode:

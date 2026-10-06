@@ -326,17 +326,21 @@ export async function listPanelActivity(
   tenantId: string,
   panelId: string,
   limit: number,
+  scope: PartyScope,
   runner: Runner = db(),
 ): Promise<ActivityLogEntry[]> {
+  // A panel's activity names parties, leads and orders (`details.name`), so it
+  // is narrowed to the caller's parties like the Logs screen is.
+  const partyScope = partyScopeLogSql(tenantId, scope);
   const { rows } = await runner.raw<{ rows: LogRow[] }>(
     `SELECT id, sequence, tenant_id, entity_type, entity_id, action, actor_type, actor_id, actor_name, details, created_at, hash,
             ${ACTOR_TIER_SQL}
        FROM activity_log
       WHERE tenant_id = ?
-        AND ((actor_type = 'office_panel' AND actor_id = ?) OR (entity_type = 'office_panel' AND entity_id = ?))
+        AND ((actor_type = 'office_panel' AND actor_id = ?) OR (entity_type = 'office_panel' AND entity_id = ?))${partyScope.sql}
       ORDER BY id DESC
       LIMIT ?`,
-    [tenantId, panelId, panelId, limit],
+    [tenantId, panelId, panelId, ...partyScope.bindings, limit],
   );
 
   return rows.map(mapLogEntry);

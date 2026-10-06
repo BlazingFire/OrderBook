@@ -46,7 +46,7 @@ async function computeDashboardSummary(actor: ActorContext): Promise<DashboardSu
       canParties ? catalogService.countParties(actor) : Promise.resolve(null),
       canProducts ? catalogService.countProducts(actor.tenantId) : Promise.resolve(null),
       canLeads ? dashboardRepo.leadCountsByStage(actor.tenantId, scope) : Promise.resolve(null),
-      canSync ? conflictService.countOpen(actor.tenantId) : Promise.resolve(null),
+      canSync ? conflictService.countOpen(actor.tenantId, scope) : Promise.resolve(null),
       canSync ? dashboardRepo.countRecentMutations(actor.tenantId) : Promise.resolve(null),
     ]);
 

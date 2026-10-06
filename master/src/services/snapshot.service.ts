@@ -90,7 +90,11 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
       pipelineRepo.listPipelines(actor.tenantId),
       customFieldRepo.listOptions(actor.tenantId),
       customFieldRepo.listDefinitions(actor.tenantId),
-      syncRepo.listConflicts(actor.tenantId, { limit: 100, scope: partyScope }),
+      // Conflicts are the reviewer's: the same key `conflict:list` demands, so a
+      // snapshot is no way round it.
+      actorCan(actor, 'sync.resolveConflicts')
+        ? syncRepo.listConflicts(actor.tenantId, { limit: 100, scope: partyScope })
+        : Promise.resolve([]),
       peekHlc(),
       dashboardService.getDashboardSummary(actor),
       companyFeatures(actor.tenantId),

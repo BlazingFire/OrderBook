@@ -7,6 +7,7 @@ import type { PairingWindowState } from '@orderbook/shared';
 import { discoveryStatus } from '../../discovery/responder.js';
 import { config } from '../../config/index.js';
 import { listLanInterfaces } from '../../lib/network.js';
+import { resolvePartyScope } from '../../domain/party-scope.js';
 import * as panelService from '../../services/panel.service.js';
 import { queryInt } from '../query.js';
 import { asyncHandler } from '../async-handler.js';
@@ -313,6 +314,7 @@ panelRoutes.get(
         actor.tenantId,
         String(req.params.id),
         limit ?? 50,
+        resolvePartyScope(actor),
       ),
     });
   }),

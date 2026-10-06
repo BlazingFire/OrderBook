@@ -7,6 +7,7 @@
  * deliberate action at the Master.
  */
 
+import type { PartyScope } from '../domain/party-scope.js';
 import { createHmac, randomBytes } from 'node:crypto';
 import path from 'node:path';
 import type {
@@ -877,12 +878,13 @@ export async function setPanelStoragePath(
 export async function listPanelActivity(
   tenantId: string,
   panelId: string,
-  limit = 50,
+  limit: number,
+  scope: PartyScope,
 ): Promise<ActivityLogEntry[]> {
   const panel = await panelRepo.findPanelById(panelId);
   if (!panel || panel.tenantId !== tenantId) throw new NotFoundError('Panel');
 
-  return activityLog.listPanelActivity(tenantId, panelId, Math.min(Math.max(limit, 1), 200));
+  return activityLog.listPanelActivity(tenantId, panelId, Math.min(Math.max(limit, 1), 200), scope);
 }
 
 /**

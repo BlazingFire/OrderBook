@@ -12,7 +12,7 @@ import { JSON_COLUMNS, ProductValidationError, validateProductInput } from '@ord
 
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { MASTER_MERGE_COLUMNS } from '../domain/merge-columns.js';
-import { resolvePartyScope, UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
+import { resolvePartyScope, UNSCOPED_PARTY_ACCESS, type PartyScope } from '../domain/party-scope.js';
 import { db } from '../db/knex.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
@@ -300,6 +300,6 @@ async function republish(entity: string, tenantId: string, id: string): Promise<
   }
 }
 
-export async function countOpen(tenantId: string): Promise<number> {
-  return syncRepo.countOpenConflicts(tenantId);
+export async function countOpen(tenantId: string, scope?: PartyScope): Promise<number> {
+  return syncRepo.countOpenConflicts(tenantId, scope);
 }
