@@ -2344,11 +2344,37 @@ function withoutAnotherPersonsParties(view: LocalView): LocalView {
   // person held no grant on", which let an administrator's snapshot hand every restricted
   // party to the next person, since an administrator needs no grant to see one. A party not
   // listed (it arrived after the snapshot) is withheld: fail closed.
+  //
+  // Not the person's own queued parties: a party they created offline has a temporary id, so it
+  // is in nobody's list, and an empty `sync.hlc` is the marker that it is queued work (the view
+  // draws queued work only to its author). Filtering it out hid a creator's own new party from
+  // them.
   const open = view.openPartyIds ? new Set(view.openPartyIds) : null;
   const restricted = open
-    ? new Set(view.parties.filter((party) => !open.has(party.id)).map((party) => party.id))
+    ? new Set(
+        view.parties
+          .filter((party) => !open.has(party.id) && party.sync?.hlc !== '')
+          .map((party) => party.id),
+      )
     : new Set((view.partyGrants ?? []).map((grant) => grant.partyId));
-  if (restricted.size === 0) return { ...view, partyGrants: [] };
+
+  // Whatever else, the figures and counts in this cache are the previous person's: the
+  // dashboard summed the parties and records this person is not shown, and the counts name
+  // restricted parties. Neither is recomputed for somebody offline; the next snapshot has them.
+  const withheld = {
+    partyGrants: [],
+    dashboard: { asOf: view.dashboard.asOf } as LocalView['dashboard'],
+    // Only for the parties still shown; the rest would name restricted parties and how many hold them.
+    partyAccessCounts: view.partyAccessCounts
+      ? Object.fromEntries(
+          Object.entries(view.partyAccessCounts).filter(
+            ([partyId]) =>
+              !restricted.has(partyId) && view.parties.some((party) => party.id === partyId),
+          ),
+        )
+      : undefined,
+  };
+  if (restricted.size === 0) return { ...view, ...withheld };
 
   const parties = view.parties.filter((party) => !restricted.has(party.id));
   const leads = view.leads.filter((lead) => !restricted.has(lead.partyId));
@@ -2361,7 +2387,7 @@ function withoutAnotherPersonsParties(view: LocalView): LocalView {
 
   return {
     ...view,
-    partyGrants: [],
+    ...withheld,
     parties,
     leads,
     orders,

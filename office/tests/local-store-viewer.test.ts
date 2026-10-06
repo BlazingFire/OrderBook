@@ -93,6 +93,15 @@ describe('the view of queued work', () => {
     expect(await names()).toEqual(['A Private Co', 'Open Co', 'Shared Co']);
   });
 
+  it('marks queued work with an empty sync.hlc, which the offline user switch relies on to keep it', async () => {
+    localStore.setViewer(() => A);
+    const own = (await localStore.getView())?.parties.find(
+      (party) => party.name === 'A Private Co',
+    );
+    expect(own?.sync.hlc).toBe('');
+    expect(own?.id).toBe('TMP0000000001');
+  });
+
   it('does not show it to the next person to sign in on the same PC', async () => {
     localStore.setViewer(() => B);
     expect(await names()).toEqual(['Open Co', 'Shared Co']);

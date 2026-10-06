@@ -388,6 +388,60 @@ describe('snapshot for the current user (DSH-1)', () => {
         expect(open.body.conflicts.map((c: { id: number }) => c.id)).toEqual([1, 2, 3]);
       });
 
+      it('keeps a creator’s own queued party, which is in nobody’s list, and the lead hanging off it', async () => {
+        // A party queued offline has a temporary id and an empty sync.hlc: it is the viewer's own
+        // work (the view draws queued work only to its author), not somebody else's restricted party.
+        const queuedParty = {
+          ...FIXTURE.parties[0]!,
+          id: 'TMP000000000001',
+          name: 'Own Pending',
+          sync: { ...SYNC_META, hlc: '' },
+        };
+        const queuedLead = { ...FIXTURE.leads[0]!, id: 'TMPLEAD00001', partyId: queuedParty.id };
+        vi.spyOn(localStore, 'getView').mockResolvedValue({
+          ...FIXTURE,
+          parties: [...FIXTURE.parties, queuedParty],
+          leads: [...FIXTURE.leads, queuedLead],
+          builtForUserId: 'US0000000001',
+          partyGrants: [],
+          openPartyIds: [],
+          pendingCount: 1,
+        });
+        asNextPerson();
+
+        const response = await request(createApp()).get('/api/snapshot');
+
+        expect(response.body.parties.map((party: { id: string }) => party.id)).toEqual([
+          queuedParty.id,
+        ]);
+        expect(response.body.leads.map((lead: { id: string }) => lead.id)).toEqual([queuedLead.id]);
+      });
+
+      it('drops the previous person’s dashboard figures, and the counts of parties it hides', async () => {
+        vi.spyOn(localStore, 'getView').mockResolvedValue({
+          ...FIXTURE,
+          builtForUserId: 'US0000000001',
+          partyGrants: [],
+          openPartyIds: [],
+          partyAccessCounts: { PT0000000001: 2 },
+          dashboard: { leadCount: 8, orderCount: 1, partyCount: 13, asOf: NOW },
+          pendingCount: 0,
+        });
+        asNextPerson();
+        vi.spyOn(userSession, 'sessionPermissions').mockReturnValue([
+          'leads.view',
+          'parties.view',
+          'orders.view',
+        ]);
+
+        const response = await request(createApp()).get('/api/snapshot');
+
+        expect(response.body.dashboard.leadCount).toBeUndefined();
+        expect(response.body.dashboard.orderCount).toBeUndefined();
+        expect(response.body.dashboard.partyCount).toBeUndefined();
+        expect(response.body.partyAccessCounts).toEqual({});
+      });
+
       it('keeps a party the Master listed as open', async () => {
         vi.spyOn(localStore, 'getView').mockResolvedValue({
           ...FIXTURE,
