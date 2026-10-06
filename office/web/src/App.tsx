@@ -610,7 +610,11 @@ function OfficePanel() {
   const canManageNotices = signedIn && (session?.permissions.includes('notices.manage') ?? false);
   // This person's notices from the snapshot, with the reads made here counted; a read made
   // offline waits for the link (`noticeReads.ts`).
-  const noticeReads = useNoticeReads(session?.userId ?? null, connection?.state === 'connected');
+  const noticeReads = useNoticeReads(
+    session?.userId ?? null,
+    connection?.state === 'connected',
+    viewRevision,
+  );
   const myNotices = withReadsHere(
     canViewNotices ? (view?.notices ?? []) : [],
     noticeReads.readHere,
