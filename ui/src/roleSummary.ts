@@ -11,7 +11,7 @@
 
 import type { PermissionCatalogue } from '@orderbook/shared';
 
-import { groupLabel, moduleLabel } from './permissionLabels';
+import { actionLabel, groupLabel, moduleLabel } from './permissionLabels';
 
 export interface RoleSummary {
   /** Keys held, out of every key in the catalogue (modules x actions, plus capabilities). */
@@ -23,6 +23,8 @@ export interface RoleSummary {
   viewOnly: string[];
   /** Capability groups the role holds at least one key of. */
   groups: Array<{ key: string; label: string; held: number; total: number }>;
+  /** The Parties actions the role holds (View, Create, Edit …), because creating parties is the one right that changes who sees what. */
+  parties: string[];
 }
 
 export function summariseRole(
@@ -62,7 +64,14 @@ export function summariseRole(
     }
   }
 
-  return { held, total, changes, viewOnly, groups };
+  const partyModule = catalogue.modules.find((module) => module.key === 'parties');
+  const parties = partyModule
+    ? partyModule.actions
+        .filter((action) => has.has(`parties.${action}`))
+        .map((action) => actionLabel(action))
+    : [];
+
+  return { held, total, changes, viewOnly, groups, parties };
 }
 
 /** Keys gained and lost going from one role's permissions to another's. */

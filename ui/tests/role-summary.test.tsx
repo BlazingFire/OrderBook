@@ -81,3 +81,11 @@ describe('PermissionGrid search and select-all', () => {
     expect(onToggleMany.mock.calls[0]![1]).toBe(true);
   });
 });
+
+describe('what a card says about parties', () => {
+  it('lists the Parties actions a role holds, because creating parties changes who sees what', () => {
+    const summary = summariseRole(['parties.view', 'parties.create', 'parties.edit', 'leads.view'], catalogue);
+    expect(summary.parties).toEqual(['View', 'Create', 'Edit']);
+    expect(summariseRole(['leads.view'], catalogue).parties).toEqual([]);
+  });
+});

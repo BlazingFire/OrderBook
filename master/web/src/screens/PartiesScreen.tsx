@@ -63,6 +63,7 @@ import {
   NO_PARTY_LIST_FILTERS,
   PartyFilterRow,
   PartyFormModal,
+  PartyVisibilityMark,
   PartyImportControls,
   SkeletonTable,
   StatusPill,
@@ -404,6 +405,13 @@ export function PartiesScreen({
       header: t('catalog.parties.column.access'),
       width: rem(110),
       render: (party) => (party.myAccess ? <AccessPill level={party.myAccess} /> : ''),
+    },
+    {
+      // "Private" (one person holds it) or "Shared with N"; an open party draws nothing.
+      key: 'visibility',
+      header: t('catalog.parties.column.visibility'),
+      width: rem(130),
+      render: (party) => <PartyVisibilityMark count={party.accessCount} />,
     },
     {
       key: 'since',

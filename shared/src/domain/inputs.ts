@@ -690,6 +690,9 @@ export interface PartyAccessRow {
   version: number;
   isRestricted: boolean;
   assignees: PartyAccessAssignee[];
+  /** Who created the party, when the Master knows (a Master older than 1.4.4 sends neither field). */
+  createdByUserId?: string | null;
+  createdByName?: string | null;
 }
 
 /**

@@ -377,6 +377,8 @@ export interface PartyAccessListRow {
   name: string;
   city: string | null;
   version: number;
+  /** Who created it, when known: the Party Access screen names them beside the party. */
+  createdByUserId: string | null;
 }
 
 /**
@@ -458,7 +460,7 @@ export async function listPartiesForAccess(
   const rows = await orderForAccess(base.clone(), tenantId, options.sort, options.dir)
     .limit(options.limit)
     .offset(options.offset)
-    .select('id', 'party_code', 'name', 'city', 'version');
+    .select('id', 'party_code', 'name', 'city', 'version', 'created_by_user_id');
 
   return {
     items: rows.map((row: Record<string, unknown>) => ({
@@ -467,6 +469,7 @@ export async function listPartiesForAccess(
       name: String(row.name),
       city: (row.city as string | null) ?? null,
       version: Number(row.version),
+      createdByUserId: row.created_by_user_id ? String(row.created_by_user_id) : null,
     })),
     total: firstCount(countRows),
     limit: options.limit,

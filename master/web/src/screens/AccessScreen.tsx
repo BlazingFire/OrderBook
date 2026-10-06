@@ -2031,6 +2031,46 @@ function RoleEditor({
         )}
       </Card>
 
+      {catalogue.modules.some((module) => module.key === 'parties') && (
+        <Card>
+          <h4 className="ob-eyebrow" style={{ margin: 0 }}>
+            {t('access.roleEditor.partiesTitle')}
+          </h4>
+          <p className="ob-help" style={{ margin: 'var(--s-4) 0 var(--s-8)' }}>
+            {t('access.roleEditor.partiesHelp')}
+          </p>
+          <div className="ob-capgrid">
+            {(
+              [
+                ['parties.create', 'access.roleEditor.partiesCreate', 'access.roleEditor.partiesCreateHint'],
+                ['parties.edit', 'access.roleEditor.partiesEdit', 'access.roleEditor.partiesEditHint'],
+              ] as const
+            ).map(([key, label, hint]) => {
+              const allowed =
+                rank(tier) >= rank((catalogue.minimumTier[key] as RoleTier | undefined) ?? 'office');
+              return (
+                <label
+                  key={key}
+                  className={`ob-capability${allowed ? '' : ' ob-capability--blocked'}`}
+                  title={key}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(key)}
+                    disabled={busy || !allowed}
+                    onChange={(event) => toggle(key, event.target.checked)}
+                  />
+                  <span className="ob-capability-body">
+                    <span className="ob-capability-name">{t(label)}</span>
+                    <span className="ob-capability-hint">{t(hint)}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
       <Card>
         <div
           style={{

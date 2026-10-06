@@ -188,6 +188,41 @@ export async function grantsForParties(
   return byParty;
 }
 
+/** How many people hold a grant on each party; a party with none is absent from the map. */
+export async function grantCounts(
+  tenantId: string,
+  partyIds: readonly string[],
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  if (partyIds.length === 0) return counts;
+
+  const rows = await db()(TABLE)
+    .where({ tenant_id: tenantId })
+    .whereIn('party_id', [...partyIds])
+    .groupBy('party_id')
+    .select<Array<{ party_id: string; count: string }>>('party_id', db().raw('count(*) AS count'));
+
+  for (const row of rows) counts.set(row.party_id, Number(row.count));
+  return counts;
+}
+
+/** Display names for the people who created parties, keyed by user id. */
+export async function displayNames(
+  tenantId: string,
+  userIds: readonly string[],
+): Promise<Map<string, string>> {
+  const names = new Map<string, string>();
+  if (userIds.length === 0) return names;
+
+  const rows = await db()('users')
+    .where({ tenant_id: tenantId })
+    .whereIn('id', [...userIds])
+    .select<Array<{ id: string; display_name: string }>>('id', 'display_name');
+
+  for (const row of rows) names.set(String(row.id), row.display_name);
+  return names;
+}
+
 /**
  * Replace a party's whole grant set inside the caller's transaction.
  *

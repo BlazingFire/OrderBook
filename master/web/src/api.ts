@@ -156,7 +156,12 @@ export interface FieldDifference {
 export type PartyMyAccess = 'view' | 'manage' | null;
 
 /** A party list row: the party plus its own-record count and the caller's own access. */
-export type PartyListRow = Party & { recordCount?: number; myAccess?: PartyMyAccess };
+export type PartyListRow = Party & {
+  recordCount?: number;
+  myAccess?: PartyMyAccess;
+  /** People holding a grant on it: 0 = open to everyone, 1 = private to its one holder. Absent from an older Master. */
+  accessCount?: number;
+};
 
 /** One party with the caller's own access to it. */
 export type PartyDetailRecord = Party & { myAccess?: PartyMyAccess };

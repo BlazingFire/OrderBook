@@ -69,6 +69,7 @@ export * from './PrintroomScreen.js';
 export * from './printroomModel.js';
 export * from './PrintStationRunner.js';
 export * from './SendToPrintroomDialog.js';
+export * from './PartyVisibilityMark.js';
 export * from './PermissionGrid.js';
 export * from './RolePicker.js';
 export * from './roleSummary.js';
