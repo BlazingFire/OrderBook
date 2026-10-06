@@ -47,10 +47,10 @@ MIN_SIDE_PT = 35  # smaller is lettering or a swatch (the small trap tiles are a
 MAX_WIDTH_FRACTION = 0.9  # as wide as the page is a background
 ROW_OVERLAP = 0.4  # two photos are in one row when they share this much of their height
 CAPTION_PT = 22  # height of the caption strip kept under a tile for the contact sheet
-# Where the catalogue's list order differs from the page's reading order (see "Transcription
-# decisions" in swisware-plus-2026.md). 0-based tile numbers in reading order, in list order.
-# Page 14: tile 32, "14x14 NEW CORNER", prints in the table-top grid but is Wash Basin's 17th.
-REORDER = {14: [*range(16), 31, *range(16, 31)]}
+# Where the catalogue's list order differs from the page's reading order, 0-based tile numbers in reading
+# order, in list order. Empty: the list order now follows the page ("14x14 NEW CORNER" is the last Table Top
+# Wash Basin on page 14, as the owner confirmed).
+REORDER = {}
 
 
 def parse_catalogue(path):
@@ -174,11 +174,12 @@ def assign(products, photos_by_page):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--pdf', default=str(DEFAULT_PDF))
+    ap.add_argument('--catalogue', default=str(CATALOGUE), help='the catalogue markdown (default: the one in master/assets)')
     ap.add_argument('--out', default=str(ROOT / '.tmp' / 'catalogue-photos'))
     ap.add_argument('--overlay', help='folder for page-NN.png: each page with its numbered tiles, to check the order by eye')
     args = ap.parse_args()
 
-    products = parse_catalogue(CATALOGUE)
+    products = parse_catalogue(Path(args.catalogue))
     out = Path(args.out)
     (out / 'unmatched').mkdir(parents=True, exist_ok=True)
     (out / 'captions').mkdir(exist_ok=True)

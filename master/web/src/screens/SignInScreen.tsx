@@ -105,7 +105,7 @@ export function SignInScreen({
         gap: 'var(--s-24)',
         maxWidth: rem(420),
         margin: '0 auto',
-        padding: 'var(--s-56) var(--s-16)',
+        padding: 'var(--s-40) var(--s-16)',
       }}
     >
       <LogoLockup markSize={28} />

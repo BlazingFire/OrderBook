@@ -466,12 +466,13 @@ export function LogsScreen({ permissions, transport }: Props) {
     {
       key: 'when',
       header: t('logs.table.when'),
-      width: rem(160),
+      width: rem(180),
       render: (entry) => <span className="ob-small">{formatDateTime(entry.createdAt)}</span>,
     },
     {
       key: 'what',
       header: t('logs.table.what'),
+      width: rem(560),
       render: (entry) => {
         const sentence = describe(entry);
         return (
@@ -493,14 +494,14 @@ export function LogsScreen({ permissions, transport }: Props) {
     {
       key: 'who',
       header: t('logs.table.who'),
-      width: rem(220),
+      width: rem(250),
       render: (entry) => <ActorCell entry={entry} />,
     },
     {
       key: 'record',
       header: t('logs.table.record'),
       priority: 2,
-      width: rem(210),
+      width: rem(300),
       render: (entry) => (
         <span
           className="ob-mono"

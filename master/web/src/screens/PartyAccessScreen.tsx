@@ -333,7 +333,9 @@ export function PartyAccessScreen({
             {
               key: 'edit',
               header: '',
-              width: '6.5rem',
+              // Wide enough for the icon, the label and the cell's own padding, so
+              // the button's border is not cut at the table edge.
+              width: '9.5rem',
               // Dropped before the access column on a narrow screen: a click on the row
               // opens the same editor.
               priority: 2 as const,
@@ -341,6 +343,7 @@ export function PartyAccessScreen({
               render: (row: PartyAccessRow) => (
                 <Button
                   size="sm"
+                  icon="edit"
                   variant="secondary"
                   className="ob-row-action"
                   aria-label={`${t('partyAccess.action.edit')}: ${row.partyName}`}

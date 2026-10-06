@@ -114,15 +114,20 @@ function cellOf(row: ReportRow, column: ReportColumn): string {
 }
 
 function columnsFor(table: { columns: readonly ReportColumn[] }): DataTableColumn<ReportRow & { key: string }>[] {
-  return table.columns.map((column, index) => {
+  return table.columns.map((column) => {
     const numeric = column.unit !== 'text' && column.unit !== 'date';
     return {
       key: column.key,
       header: t(column.labelToken),
       align: numeric ? 'right' : undefined,
-      // Only the first text column grows; figures stay as wide as they need.
-      width: numeric ? rem(130) : index === 0 ? undefined : rem(170),
-      render: (row) => <span className={column.unit === 'date' ? 'ob-mono' : undefined}>{cellOf(row, column)}</span>,
+      // Figures stay as wide as they need. A name column (party, product, user) gets a floor wide enough
+      // for a long name, which was cut at 146 px beside the figure columns; codes and cities stay short.
+      width: numeric ? rem(130) : /name|product|user|owner|^party$|^brand$/i.test(column.key) ? rem(260) : rem(150),
+      render: (row) => (
+        <span className={column.unit === 'date' ? 'ob-mono' : undefined} title={cellOf(row, column)}>
+          {cellOf(row, column)}
+        </span>
+      ),
     } satisfies DataTableColumn<ReportRow & { key: string }>;
   });
 }
