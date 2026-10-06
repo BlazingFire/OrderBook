@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Order } from '@orderbook/shared';
 
 import { t } from '../src/i18n.js';
-import { OrderRecordView } from '../src/OrderRecordView.js';
+import { OrderRecordView, showsDispatchedPill } from '../src/OrderRecordView.js';
 import { installBrowserStubs } from './panel-harness.js';
 
 beforeEach(() => {
@@ -71,5 +71,16 @@ describe('the order record', () => {
 
     expect(document.body.textContent).not.toMatch(/reservation|reserved|stock held/i);
     expect(document.body.textContent).not.toContain('Ivory Basin');
+  });
+});
+
+describe('the dispatched pill beside the stage pill', () => {
+  it('is left out when the stage already says Dispatched, and kept when it does not', () => {
+    const at = '2026-10-07T00:00:00.000Z';
+    expect(showsDispatchedPill({ dispatchedAt: at, stageName: 'Dispatched' })).toBe(false);
+    expect(showsDispatchedPill({ dispatchedAt: at, stageName: ' dispatched ' })).toBe(false);
+    // A renamed stage keeps the order where it was, so the pill is the only sign.
+    expect(showsDispatchedPill({ dispatchedAt: at, stageName: 'Booked' })).toBe(true);
+    expect(showsDispatchedPill({ dispatchedAt: null, stageName: 'Booked' })).toBe(false);
   });
 });

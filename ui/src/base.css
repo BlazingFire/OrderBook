@@ -953,6 +953,15 @@ table.ob-table--flat {
 .ob-table--flat thead th {
   background: var(--bg-sunken);
   overflow: visible;
+  /* A two-word header ("Line weight") may take two lines: unbroken, it set the
+     column's width and pushed the last column out of the card at 157 %. */
+  white-space: normal;
+}
+/* Tighter than a DataTable's cells: eight columns of an order's lines must fit
+   a card at 157 %, and 12 a side was a third of the width spent on padding. */
+.ob-table--flat thead th,
+.ob-table--flat tbody td {
+  padding-inline: var(--s-8);
 }
 .ob-table--flat tbody td {
   height: auto;
@@ -965,6 +974,11 @@ table.ob-table--flat {
 }
 .ob-table--flat tbody td > * {
   overflow: visible;
+}
+/* A code or a figure is one token: "OPT-" over "0001" read as two values. */
+.ob-table--flat tbody td.ob-mono,
+.ob-table--flat tbody td.num {
+  white-space: nowrap;
 }
 
 /* Redaction renders as an em dash with a tooltip naming the permission (§9.1).
@@ -1560,6 +1574,27 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   }
   .ob-topbar .ob-btn {
     padding-inline: var(--s-8);
+  }
+}
+/*
+ * Narrower still (157 % on a 1366 px screen leaves the bar about 47rem): the
+ * command box and Change password give up their labels for an icon, keeping
+ * their tooltip and accessible name, so the page title is what stays readable
+ * rather than four labels each cut to "C…".
+ */
+.ob-btn--squeeze > svg {
+  display: none;
+}
+@container ob-main (max-width: 56rem) {
+  .ob-topbar .ob-btn.ob-btn--squeeze {
+    flex: none;
+    min-width: 0;
+  }
+  .ob-btn--squeeze > svg {
+    display: inline-block;
+  }
+  .ob-btn--squeeze > span {
+    display: none;
   }
 }
 

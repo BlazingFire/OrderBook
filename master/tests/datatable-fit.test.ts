@@ -46,6 +46,11 @@ describe('columnWidthPx', () => {
     expect(columnWidthPx('auto', 14)).toBe(columnWidthPx('1fr', 14));
     expect(columnWidthPx('50%', 14)).toBe(columnWidthPx('1fr', 14));
   });
+
+  it('scales a flexible column with the root size, so 157 % drops columns instead of cutting them', () => {
+    expect(columnWidthPx('1fr', 14)).toBeCloseTo(120);
+    expect(columnWidthPx('minmax(0, 1fr)', 22)).toBeCloseTo((120 * 22) / 14);
+  });
 });
 
 describe('fitColumns', () => {
