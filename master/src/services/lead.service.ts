@@ -159,14 +159,14 @@ export async function createLead(input: LeadInput, actor: ActorContext, madeAt?:
   // arrive in. `id_map` keeps every temporary id resolvable, the same way the
   // sync service resolves a mutation's own `entityId`.
   const partyId = await resolveId(actor.tenantId, input.partyId);
-  if (!(await partyRepo.findPartyById(actor.tenantId, partyId))) {
-    throw new ValidationError('validation.lead.partyMissing');
-  }
-
   // Party Access: a lead may only be raised against a party the caller manages.
   // Checked here rather than in the route because the Office Panel — which
   // raises nearly every lead — reaches this function over Socket.IO instead.
+  // Before the "does it exist" check, so that a party the caller may not see answers like one that is not there.
   await requirePartyAccess(partyId, 'manage', actor);
+  if (!(await partyRepo.findPartyById(actor.tenantId, partyId))) {
+    throw new ValidationError('validation.lead.partyMissing');
+  }
 
   await assertSourcePlatform(actor.tenantId, input.sourcePlatform ?? null);
 
@@ -266,13 +266,14 @@ export async function updateLead(
   }
   const partyId = input.partyId === undefined ? undefined : await resolveId(actor.tenantId, input.partyId);
   if (partyId !== undefined) {
+    // Both ends of the move: the old party was checked above, and moving a lead
+    // *onto* a party you do not manage would otherwise be a way to write into
+    // somebody else's book — or to smuggle a record out of your own. Access first, so a party the caller may
+    // not see answers like one that is not there.
+    await requirePartyAccess(partyId, 'manage', actor);
     if (!(await partyRepo.findPartyById(actor.tenantId, partyId))) {
       throw new ValidationError('validation.lead.partyMissing');
     }
-    // Both ends of the move: the old party was checked above, and moving a lead
-    // *onto* a party you do not manage would otherwise be a way to write into
-    // somebody else's book — or to smuggle a record out of your own.
-    await requirePartyAccess(partyId, 'manage', actor);
     patch.party_id = partyId;
   }
 

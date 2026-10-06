@@ -306,7 +306,7 @@ describe.skipIf(!canRunIntegrationTests)('bulk party import (integration)', () =
       expect((await catalog.getParty(open.id, admin)).phone).toBe('111111');
     });
 
-    it('does not add a second copy of a party the caller cannot see', async () => {
+    it('treats a party the caller cannot see as not existing: no "already there" answer that would confirm it, and the copy is the caller’s alone', async () => {
       const mine = await makePerson('mine');
       const theirs = await makePerson('theirs');
       const closed = await catalog.createParty({ name: 'Theirs Only', city: 'Surat' }, admin);
@@ -314,8 +314,10 @@ describe.skipIf(!canRunIntegrationTests)('bulk party import (integration)', () =
 
       const result = await run(csv([HEAD, ['', 'Theirs Only', '', 'Surat', '', '']]), 'create', false, await desk(mine));
 
-      expect(result).toMatchObject({ created: 0, skipped: 1 });
-      expect((await catalog.listParties({}, admin)).total).toBe(1);
+      expect(result).toMatchObject({ created: 1, skipped: 0 });
+      expect((await catalog.listParties({}, admin)).total).toBe(2);
+      expect((await catalog.listParties({}, await desk(mine))).total).toBe(1);
+      expect((await catalog.listParties({}, await desk(theirs))).total).toBe(1);
     });
   });
 });

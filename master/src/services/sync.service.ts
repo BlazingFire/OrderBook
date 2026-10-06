@@ -105,6 +105,11 @@ const log = createLogger('sync');
  */
 const REQUIRED_PERMISSION: Record<Mutation['kind'], Permission> = MUTATION_PERMISSIONS;
 
+/** Whether a mutation kind writes into one party's book (a lead, an order, a party, a party's own variant). */
+export function isPartyScopedKind(kind: string): boolean {
+  return /^(lead|order|party|partyVariant)./.test(kind);
+}
+
 /** The first panel protocol whose stage moves are ordered by their HLC (rule 6). */
 const STAGE_CLOCK_MIN_PROTOCOL = 3;
 
@@ -142,6 +147,28 @@ export async function applyPush(
         REQUIRED_PERMISSION[m.kind] &&
         m.actorUserId &&
         !actorCan(actor, REQUIRED_PERMISSION[m.kind] as Permission),
+    )
+  ) {
+    throw new AppError('error.unavailable.signInToSync', {}, 503, 'unavailable');
+  }
+
+  // Party visibility (P2): what a person makes on a party is theirs, so it must arrive as that person. A push
+  // that carries party-scoped work with nobody signed in on the panel, or work written by somebody other than
+  // the person signed in now, is held, not applied under the panel's own role (where, say, a party would be
+  // created with no owner and be open to the whole company) and not rejected for good either: the Office
+  // keeps it queued and sends it again once its author is signed in. Other writers (the connector, an
+  // import) never come through here.
+  // A panel with somebody signed in acts as that person (actorType 'user'), so the author check is made for
+  // every actor that reaches this function, not only the bare panel; the userless case is the panel's own.
+  if (
+    mutations.some(
+      (m) =>
+        isPartyScopedKind(m.kind) &&
+        (actor.userId
+          ? // Somebody is signed in: it must be the person who did the work.
+            m.actorUserId !== undefined && m.actorUserId !== null && m.actorUserId !== actor.userId
+          : // Nobody is, and the panel's own role does not see every party: whatever it made would be open to all.
+            actor.actorType === 'office_panel' && !actorCan(actor, 'party.accessAll')),
     )
   ) {
     throw new AppError('error.unavailable.signInToSync', {}, 503, 'unavailable');

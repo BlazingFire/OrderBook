@@ -81,7 +81,9 @@ import {
 } from '../lib/spreadsheet.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
+import * as partyAccessRepo from '../repositories/party-access.repository.js';
 import * as partyRepo from '../repositories/party.repository.js';
+import { creatorGrantee } from '../domain/party-scope.js';
 import type { TransactionContext } from '../repositories/transaction.js';
 import { publishChange } from './change-bus.js';
 import { requirePartyAccess } from './party-access.service.js';
@@ -314,7 +316,7 @@ export async function importParties(
 
   if (options.mode === 'create') {
     const taken = new Set(
-      (await partyRepo.listLivePartyNameCities(actor.tenantId)).map((party) => partyKey(party.name, party.city)),
+      (await partyRepo.listLivePartyNameCities(actor.tenantId, resolvePartyScope(actor))).map((party) => partyKey(party.name, party.city)),
     );
     for (const entry of candidates) {
       const checked = checkPartyFields(entry, null, headerFor);
@@ -414,7 +416,7 @@ export async function importParties(
 
   const writeEntry = async (unit: Unit, index: number, hlc: string, trx: TransactionContext): Promise<void> => {
     if (unit.kind === 'create') {
-      await partyRepo.insertParty(
+      const row = await partyRepo.insertParty(
         {
           tenantId: actor.tenantId,
           input: (unit.entries[index] as CreateEntry).input,
@@ -425,6 +427,9 @@ export async function importParties(
         },
         trx,
       );
+      // Each party a person imports is theirs alone until an administrator shares it, as when they add one by hand.
+      const owner = creatorGrantee(actor);
+      if (owner) await partyAccessRepo.grantCreator(actor.tenantId, row.id, owner, trx);
     } else {
       await applyUpdate(unit.entries[index] as UpdateEntry, hlc, actor.tenantId, trx);
     }

@@ -50,6 +50,20 @@ export interface PartyScope {
  */
 export const UNSCOPED_PARTY_ACCESS: PartyScope = { seesAll: true, userId: null };
 
+/**
+ * The person whose `manage` grant a freshly created party must carry, or null when it stays open.
+ *
+ * A real user who does not hold `party.accessAll` owns what they create: nobody else without that key can
+ * see it until an administrator shares it. Somebody who already sees every party (an administrator), and an
+ * actor that is not a person (a panel with nobody signed in, the system, a connector), leave the party
+ * open, as before.
+ */
+export function creatorGrantee(actor: ActorContext): string | null {
+  const userId = actorUserId(actor);
+  if (!userId) return null;
+  return actorCan(actor, 'party.accessAll') ? null : userId;
+}
+
 export function resolvePartyScope(actor: ActorContext): PartyScope {
   return {
     seesAll: actorCan(actor, 'party.accessAll'),
