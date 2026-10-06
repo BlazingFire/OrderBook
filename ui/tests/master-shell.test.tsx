@@ -2656,16 +2656,18 @@ describe('Notices in the role cards and the role editor (Oct 7)', () => {
   };
   const PERMS = [...ADMIN, 'roles.assign', 'roles.edit', 'users.manage'];
 
-  async function openAccess(): Promise<void> {
-    await boot(PERMS, ({ url, method }) => {
+  async function openAccess(): Promise<Call[]> {
+    const calls = await boot([...PERMS, 'roles.create'], ({ url, method }) => {
       const path = url.split('?')[0];
       if (path === '/api/access/users' && method === 'GET') return json([PERSON]);
       if (path === '/api/access/roles' && method === 'GET') return json([READER, EDITOR]);
       if (path === '/api/access/permission-catalogue') return json(buildPermissionCatalogue());
       if (path === '/api/access/roles/role-r') return json(READER);
+      if (path === '/api/access/roles' && method === 'POST') return json(READER, 201);
       return undefined;
     });
     await open(t('nav.master.access'));
+    return calls;
   }
 
   it('says on each role card whether the role reads or also manages the notice board', async () => {
@@ -2677,6 +2679,34 @@ describe('Notices in the role cards and the role editor (Oct 7)', () => {
     const line = (name: string) => within(group).getByText(name).closest('label')!.textContent ?? '';
     expect(line('Reader')).toContain(`${t('access.rolePicker.notices')} ${t('access.rolePicker.noticesRead')}`);
     expect(line('Editor')).toContain(`${t('access.rolePicker.notices')} ${t('access.rolePicker.noticesManage')}`);
+  });
+
+  it('starts a new role holding the notice board, and sends noticeBoard: false only when it is unticked', async () => {
+    for (const untick of [false, true]) {
+      const calls = await openAccess();
+      fireEvent.click(await screen.findByTitle(t('access.tab.roles')));
+      fireEvent.click(await screen.findByRole('button', { name: t('access.roles.create') }));
+
+      const read = (await screen.findAllByRole('checkbox', {
+        name: new RegExp(`^${t('permission.notices.view')}`),
+      }))[0] as HTMLInputElement;
+      expect(read.checked).toBe(true);
+      // Ticked by default is not a change: the form is still untouched.
+      expect(screen.getByText(t('access.roleEditor.noChanges'))).toBeTruthy();
+
+      if (untick) fireEvent.click(read);
+      fireEvent.change(screen.getByLabelText(t('access.roleEditor.nameLabel')), { target: { value: 'Counter' } });
+      fireEvent.click(screen.getByRole('button', { name: t('access.roleEditor.save') }));
+
+      await waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url === '/api/access/roles')).toBe(true));
+      const body = calls.find((call) => call.method === 'POST' && call.url === '/api/access/roles')!.body as {
+        noticeBoard?: boolean;
+        permissions: string[];
+      };
+      expect(body.noticeBoard).toBe(!untick);
+      expect(body.permissions.includes('notices.view')).toBe(!untick);
+      cleanup();
+    }
   });
 
   it('puts the notice board rights in a card of their own in the role editor, the admin one locked on an office role', async () => {
