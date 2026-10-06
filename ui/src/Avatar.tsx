@@ -9,6 +9,7 @@
  */
 
 import { useState } from 'react';
+import { rem } from './rem.js';
 import type { UserAvatar } from '@orderbook/shared';
 
 /** Pixel size per step, and the stored variant each one should fetch. */
@@ -75,7 +76,10 @@ export function Avatar({
       className="ob-avatar"
       data-tint={showImage ? undefined : tintOf(name)}
       data-highlight={highlight || undefined}
-      style={{ width: px, height: px, fontSize: Math.round(px * 0.4) }}
+      // In rem, so a face grows with the app scale like the text beside it;
+      // initials at 0.46 of the disc with an 8 px floor (0.4 drew them at 10 px
+      // in the 24 px disc, and 6 px in the board's 16 px stacks).
+      style={{ width: rem(px), height: rem(px), fontSize: rem(Math.max(8, Math.round(px * 0.46))) }}
       title={name}
     >
       {showImage ? (

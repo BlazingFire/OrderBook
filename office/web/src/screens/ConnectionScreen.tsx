@@ -415,7 +415,7 @@ export function ConnectionScreen({ connection, onConnected }: Props) {
   ) : null;
 
   return (
-    <div style={{ maxWidth: rem(620), margin: 'var(--s-40) auto', padding: '0 var(--s-16)' }}>
+    <div style={{ maxWidth: rem(620), margin: '0 auto', padding: 'var(--s-40) var(--s-16)' }}>
       <h1 className="ob-display" style={{ marginBottom: 'var(--s-16)' }}>
         {t('connection.title')}
       </h1>

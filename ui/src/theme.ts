@@ -57,23 +57,47 @@ export function loadTheme(): Theme {
   return read<Theme>(themeStorageKey, ['light', 'dark'], defaultTheme);
 }
 
-export function loadScale(): number {
+/**
+ * The scale to start at when the operator has not chosen one: 150 % on a 4K
+ * screen at 100-125 % Windows scaling (3000+ device pixels across at a device
+ * pixel ratio under 1.5), where the 14 px root reads as tiny; 100 % on
+ * everything else, 1080p and 1440p included. The owner's rule, 2026-10-07.
+ */
+export function screenDefaultScale(screenWidth: number, devicePixelRatio: number): number {
+  const ratio = devicePixelRatio > 0 ? devicePixelRatio : 1;
+  return screenWidth * ratio >= 3000 && ratio < 1.5 ? SCALE_DEFAULT * 1.5 : SCALE_DEFAULT;
+}
+
+function screenDefault(): number {
   try {
-    const raw = window.localStorage.getItem(KEY_SCALE);
-    const parsed = raw === null ? NaN : Number(raw);
-    return Number.isFinite(parsed) ? clampScale(parsed) : SCALE_DEFAULT;
+    return screenDefaultScale(window.screen?.width ?? 0, window.devicePixelRatio || 1);
   } catch {
     return SCALE_DEFAULT;
   }
 }
 
-export function applyScale(px: number): void {
+export function loadScale(): number {
+  try {
+    const raw = window.localStorage.getItem(KEY_SCALE);
+    const parsed = raw === null ? NaN : Number(raw);
+    return Number.isFinite(parsed) ? clampScale(parsed) : screenDefault();
+  } catch {
+    return screenDefault();
+  }
+}
+
+/**
+ * `remember` is false only for the boot-time apply: storing there would turn
+ * the screen default into a saved choice, and a later move to another screen
+ * would not change it. A scale the operator picks is stored and always wins.
+ */
+export function applyScale(px: number, remember = true): void {
   const value = clampScale(px);
   // Set on the element rather than in a stylesheet: `html { font-size:
   // var(--root-size) }` in tokens.css reads it, so this one assignment
   // resizes everything, live, with no reflow of the token layer.
   document.documentElement.style.setProperty('--root-size', `${value}px`);
-  store(KEY_SCALE, String(value));
+  if (remember) store(KEY_SCALE, String(value));
 }
 
 export function loadSidebarMode(): SidebarMode {
@@ -120,6 +144,6 @@ export function applyMotion(motionOn: boolean): void {
 /** Called once before first paint so there is no flash of the wrong theme. */
 export function initAppearance(): void {
   applyTheme(loadTheme());
-  applyScale(loadScale());
+  applyScale(loadScale(), false);
   applyMotion(!motionDisabled());
 }

@@ -685,7 +685,8 @@ table.ob-table {
    as six active controls. */
 .ob-th-caret {
   color: var(--fg-tertiary);
-  font-size: 0.8em;
+  /* The header's own size: at 0.8em the arrows were 8.8 px and hard to tell apart. */
+  font-size: 1em;
 }
 
 .ob-table th[aria-sort='ascending'] .ob-th-caret,
@@ -696,8 +697,9 @@ table.ob-table {
 .ob-table thead th {
   background: var(--bg-sunken);
   border-bottom: 1px solid var(--line);
-  height: var(--ctl-h-md);
-  padding: 0 var(--s-12);
+  /* At least the control height, taller when a header takes two lines. */
+  min-height: var(--ctl-h-md);
+  padding: var(--s-4) var(--s-12);
   text-align: left;
   font-size: var(--t-eyebrow-size);
   line-height: var(--t-eyebrow-line);
@@ -705,7 +707,10 @@ table.ob-table {
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--fg-tertiary);
-  white-space: nowrap;
+  /* A header wraps between words rather than ending in an ellipsis: at 1080p
+   * "Pending orders created" (192 px in 130) and "Final order" were cut to
+   * "PENDING ORDERS CR…". A single word longer than its column still clips. */
+  white-space: normal;
   /* Same grid-item rule as the body cells below: without this a long header
    * forces its track wider and the column stops lining up with its data. */
   min-width: 0;
@@ -1577,15 +1582,16 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   }
 }
 /*
- * Narrower still (157 % on a 1366 px screen leaves the bar about 47rem): the
- * command box and Change password give up their labels for an icon, keeping
- * their tooltip and accessible name, so the page title is what stays readable
- * rather than four labels each cut to "C…".
+ * Narrower still (1080p at 150 % leaves the bar 76rem, 157 % on a 1366 px screen
+ * about 47rem): the command box and Change password give up their labels for an
+ * icon, keeping their tooltip and accessible name, and the command box keeps its
+ * Ctrl+K chip, so the page title is what stays readable rather than four labels
+ * each cut to "C…". 1080p at 100 and 125 % (118 and 94rem) keep the labels.
  */
 .ob-btn--squeeze > svg {
   display: none;
 }
-@container ob-main (max-width: 56rem) {
+@container ob-main (max-width: 80rem) {
   .ob-topbar .ob-btn.ob-btn--squeeze {
     flex: none;
     min-width: 0;
@@ -1593,7 +1599,7 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   .ob-btn--squeeze > svg {
     display: inline-block;
   }
-  .ob-btn--squeeze > span {
+  .ob-btn--squeeze > span:not(.ob-small) {
     display: none;
   }
 }
@@ -3461,8 +3467,20 @@ button.ob-bell-item:hover {
   overflow: auto;
 }
 
-.ob-measure-wide {
+.ob-measure-wide,
+.ob-launcher {
   max-width: 114.286rem;
+}
+
+/*
+ * Prose keeps a readable line on a wide screen: at 4K and 100 % a hint ran
+ * 3589 px on one line. Tables and cards stay full width; only running text
+ * inside the page is held to about a hundred characters. `:where` keeps this
+ * the weakest rule, so a paragraph with a measure of its own (an empty state's
+ * 46ch) keeps it.
+ */
+:where(.ob-main) p {
+  max-width: 100ch;
 }
 
 /* ===========================================================================
@@ -3609,12 +3627,15 @@ button.ob-bell-item:hover {
  * to their content and drew a hairline under each column.
  * ======================================================================== */
 
+/* The aside grows with the page, 21 to 28rem: fixed at 21rem it cut "Created …"
+   at 1080p while the grid stopped at 96rem and left 325 px empty beside it.
+   The cap still stops a 4K screen from spreading one record across 3600 px. */
 .ob-record-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 21rem;
+  grid-template-columns: minmax(0, 1fr) clamp(21rem, 28%, 28rem);
   gap: var(--s-16);
   align-items: start;
-  max-width: 96rem;
+  max-width: 120rem;
 }
 .ob-detail-main,
 .ob-detail-aside {
