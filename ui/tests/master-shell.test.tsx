@@ -2581,3 +2581,112 @@ describe('Assigning and editing roles (1.4.3)', () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe('Notice board in the sidebar and in roles (Oct 7)', () => {
+  const NOTICE_PERMS = [...ADMIN, 'notices.view'];
+
+  it('offers the Notice board with notices.view and management only with notices.manage', async () => {
+    await boot(NOTICE_PERMS);
+    expect(screen.getByTitle(t('nav.notices'))).toBeTruthy();
+    expect(screen.queryByTitle(t('nav.noticesManage'))).toBeNull();
+  });
+
+  it('offers neither without the permissions: the rows are absent, not greyed', async () => {
+    await boot(ADMIN);
+    expect(screen.queryByTitle(t('nav.notices'))).toBeNull();
+    expect(screen.queryByTitle(t('nav.noticesManage'))).toBeNull();
+  });
+
+  it('offers Notice board management to a manager, in the Admin group after Roles & users', async () => {
+    await boot([...NOTICE_PERMS, 'notices.manage', 'roles.view', 'roles.edit', 'roles.create']);
+    const manage = screen.getByTitle(t('nav.noticesManage'));
+    expect(manage).toBeTruthy();
+    const labels = [...document.querySelectorAll('.ob-navitem-main')].map((row) => row.getAttribute('title'));
+    expect(labels.indexOf(t('nav.noticesManage'))).toBe(labels.indexOf(t('nav.master.access')) + 1);
+  });
+
+  it('is reached by Alt+N and Alt+M only where the sidebar offers it', async () => {
+    await boot(NOTICE_PERMS);
+    const alt = (letter: string) =>
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: letter,
+          code: `Key${letter.toUpperCase()}`,
+          altKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    await waitFor(() => {
+      alt('n');
+      expect(topbarTitle()).toBe(t('nav.notices'));
+    });
+    // Not offered without notices.manage: the chord leaves the screen where it was.
+    await act(async () => {
+      alt('m');
+      await wait(0);
+    });
+    expect(topbarTitle()).toBe(t('nav.notices'));
+  });
+});
+
+describe('Notices in the role cards and the role editor (Oct 7)', () => {
+  const SYNC = { version: 1, hlc: 'h', fieldHlc: {}, temporaryId: null };
+  const stamp = { createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' };
+  const role = (id: string, name: string, tier: string, permissions: string[]) => ({
+    id, tenantId: 't', name, tier, permissions, isSystem: false, userCount: 0, deletedAt: null, ...stamp, sync: SYNC,
+  });
+  const READER = role('role-r', 'Reader', 'office', ['leads.view', 'notices.view']);
+  const EDITOR = role('role-e', 'Editor', 'admin', ['leads.view', 'notices.view', 'notices.manage']);
+  const PERSON = {
+    id: 'user-9', tenantId: 't', username: 'dev', displayName: 'Dev', roleId: 'role-r', roleName: 'Reader',
+    roleTier: 'office', isActive: true, lastSignInAt: null, avatar: null, deletedAt: null, ...stamp, sync: SYNC,
+  };
+  const PERMS = [...ADMIN, 'roles.assign', 'roles.edit', 'users.manage'];
+
+  async function openAccess(): Promise<void> {
+    await boot(PERMS, ({ url, method }) => {
+      const path = url.split('?')[0];
+      if (path === '/api/access/users' && method === 'GET') return json([PERSON]);
+      if (path === '/api/access/roles' && method === 'GET') return json([READER, EDITOR]);
+      if (path === '/api/access/permission-catalogue') return json(buildPermissionCatalogue());
+      if (path === '/api/access/roles/role-r') return json(READER);
+      return undefined;
+    });
+    await open(t('nav.master.access'));
+  }
+
+  it('says on each role card whether the role reads or also manages the notice board', async () => {
+    await openAccess();
+    fireEvent.click(await screen.findByTitle(t('access.tab.users')));
+    fireEvent.click((await screen.findAllByText('Dev'))[0]!);
+    const group = await screen.findByRole('radiogroup', { name: t('access.users.colRole') });
+
+    const line = (name: string) => within(group).getByText(name).closest('label')!.textContent ?? '';
+    expect(line('Reader')).toContain(`${t('access.rolePicker.notices')} ${t('access.rolePicker.noticesRead')}`);
+    expect(line('Editor')).toContain(`${t('access.rolePicker.notices')} ${t('access.rolePicker.noticesManage')}`);
+  });
+
+  it('puts the notice board rights in a card of their own in the role editor, the admin one locked on an office role', async () => {
+    await openAccess();
+    fireEvent.click(await screen.findByTitle(t('access.tab.roles')));
+    fireEvent.click(await screen.findByText('Reader'));
+    fireEvent.click(await screen.findByRole('button', { name: t('access.roles.edit') }));
+
+    await screen.findByLabelText(t('access.roleEditor.searchLabel'));
+    // The grid's own group heading reads the same, so the card is told apart by its help text.
+    expect(screen.getByText(t('access.roleEditor.noticesHelp'))).toBeTruthy();
+    // The card comes first; the grid below repeats the same keys.
+    const read = screen.getAllByRole('checkbox', { name: new RegExp(`^${t('permission.notices.view')}`) })[0] as HTMLInputElement;
+    const manage = screen.getAllByRole('checkbox', { name: new RegExp(`^${t('permission.notices.manage')}`) })[0] as HTMLInputElement;
+    expect(read.checked).toBe(true);
+    expect(read.disabled).toBe(false);
+    // `notices.manage` is admin tier: an office role cannot hold it, and the card says why.
+    expect(manage.checked).toBe(false);
+    expect(manage.disabled).toBe(true);
+    expect(screen.getAllByText(t('access.permissions.blocked', { tier: t('tier.admin') })).length).toBeGreaterThan(0);
+
+    fireEvent.click(read);
+    expect(screen.getByText(`● ${t('access.roleEditor.unsaved')}`)).toBeTruthy();
+  });
+});

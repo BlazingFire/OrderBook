@@ -202,6 +202,8 @@ type Tab =
   | 'conflicts'
   | 'chatroom'
   | 'printroom'
+  | 'notices'
+  | 'noticesManage'
   | 'settings'
   | 'updates';
 type Route = '' | 'gallery';
@@ -723,6 +725,14 @@ function MasterPanel() {
    * asks for nothing while this window is not signed in.
    */
   const canChat = phase === 'ready' && (user?.permissions.includes('chat.use') ?? false);
+  /*
+   * The notice board: everybody signed in with `notices.view` reads it, and its management
+   * screen belongs to `notices.manage`. The unread figure for the sidebar row is the
+   * notice board screens' to provide (`noticeUnread`); until it exists the row shows no badge.
+   */
+  const canViewNotices = phase === 'ready' && (user?.permissions.includes('notices.view') ?? false);
+  const canManageNotices = phase === 'ready' && (user?.permissions.includes('notices.manage') ?? false);
+  const noticeUnread: number | undefined = undefined;
   const chatUnread = useChatUnread(masterChatTransport, canChat);
 
   /*
@@ -1118,6 +1128,14 @@ function MasterPanel() {
               count: openConflicts > 0 ? openConflicts : undefined,
             }
           : null,
+        canViewNotices
+          ? {
+              id: 'notices',
+              label: t('nav.notices'),
+              icon: NAV_ICONS.notices,
+              count: noticeUnread && noticeUnread > 0 ? noticeUnread : undefined,
+            }
+          : null,
         canChat
           ? {
               id: 'chatroom',
@@ -1156,6 +1174,9 @@ function MasterPanel() {
       items: [
         canManagePanels ? { id: 'panels', label: t('nav.master.panels'), icon: NAV_ICONS.panels } : null,
         canManageRoles ? { id: 'access', label: t('nav.master.access'), icon: NAV_ICONS.access } : null,
+        canManageNotices
+          ? { id: 'noticesManage', label: t('nav.noticesManage'), icon: NAV_ICONS.noticesManage }
+          : null,
         canViewFields ? { id: 'fields', label: t('nav.master.fields'), icon: NAV_ICONS.fields } : null,
         canViewLogs ? { id: 'logs', label: t('nav.master.logs'), icon: NAV_ICONS.logs } : null,
         canViewRecycleBin

@@ -24,6 +24,7 @@ import {
   Avatar,
   AvatarPicker,
   Button,
+  capabilityLabel,
   Card,
   ConfirmDialog,
   ConflictBanner,
@@ -2063,6 +2064,44 @@ function RoleEditor({
                   <span className="ob-capability-body">
                     <span className="ob-capability-name">{t(label)}</span>
                     <span className="ob-capability-hint">{t(hint)}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {catalogue.capabilities.some((capability) => capability.key === 'notices.view') && (
+        <Card>
+          <h4 className="ob-eyebrow" style={{ margin: 0 }}>
+            {t('access.roleEditor.noticesTitle')}
+          </h4>
+          <p className="ob-help" style={{ margin: 'var(--s-4) 0 var(--s-8)' }}>
+            {t('access.roleEditor.noticesHelp')}
+          </p>
+          <div className="ob-capgrid">
+            {(['notices.view', 'notices.manage'] as const).map((key) => {
+              const allowed =
+                rank(tier) >= rank((catalogue.minimumTier[key] as RoleTier | undefined) ?? 'office');
+              const reason = t('access.permissions.blocked', {
+                tier: tierLabel(catalogue.minimumTier[key] ?? 'office'),
+              });
+              return (
+                <label
+                  key={key}
+                  className={`ob-capability${allowed ? '' : ' ob-capability--blocked'}`}
+                  title={allowed ? key : `${key} · ${reason}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(key)}
+                    disabled={busy || !allowed}
+                    onChange={(event) => toggle(key, event.target.checked)}
+                  />
+                  <span className="ob-capability-body">
+                    <span className="ob-capability-name">{capabilityLabel(key)}</span>
+                    {!allowed && <span className="ob-capability-hint">{reason}</span>}
                   </span>
                 </label>
               );
