@@ -2769,6 +2769,25 @@ describe('Notice board screens in the Master shell (Oct 7)', () => {
     expect(await screen.findByRole('button', { name: t('notices.board.markAllRead') })).toBeTruthy();
   });
 
+  /** An office-tier sign-in, which lands on Basic Home. */
+  const asOffice = (permissions: string[], inner = noticeRoutes({ n: 0 })) => ({ url, method, body }: Call) =>
+    url === '/api/auth/me'
+      ? json({ user: user(permissions, 'office'), sessionToken: 'session-1' })
+      : inner({ url, method, body });
+
+  it('shows the important and pinned notices above Basic Home, for the roles that land there', async () => {
+    await boot(['notices.view'], asOffice(['notices.view']));
+    expect(topbarTitle()).toBe(t('nav.basicHome'));
+    expect(await screen.findByText('Godown closed on Friday')).toBeTruthy();
+    expect(screen.getByText(t('notices.card.title'))).toBeTruthy();
+  });
+
+  it('draws no notice card on Basic Home without notices.view', async () => {
+    await boot([], asOffice([]));
+    expect(topbarTitle()).toBe(t('nav.basicHome'));
+    expect(screen.queryByText('Godown closed on Friday')).toBeNull();
+  });
+
   it('opens the management screen from its row, for a manager', async () => {
     await boot(PERMS, noticeRoutes({ n: 0 }));
     await open(t('nav.noticesManage'));

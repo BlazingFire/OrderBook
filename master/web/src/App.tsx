@@ -40,6 +40,7 @@ import {
 } from '@orderbook/shared';
 
 import { ApiError, api, desktopBridge, invalidateReads, requestCache } from './api';
+import { todayForNotices } from './noticeToday';
 import { useNotices } from './useNotices';
 import { dispatchChat, masterChatTransport } from './chatTransport';
 import { attachPrintSocket, dispatchPrint, masterPrintroomTransport } from './printroomTransport';
@@ -49,6 +50,8 @@ import {
   AppShell,
   Avatar,
   BasicHome,
+  cardNotices,
+  NoticeDashboardCard,
   createBurstBatcher,
   BP_NARROW,
   PrintStationRunner,
@@ -1491,12 +1494,26 @@ function MasterPanel() {
   const screens: ScreenSpec[] = [
     {
       id: 'basicHome',
+      // Where Office and Management land, so the important and pinned notices are here as well as
+      // on the Dashboard; the card draws nothing while there are none.
       render: () => (
-        <BasicHome
-          groups={groups}
-          onOpen={navigate}
-          onNewLead={canCreateLead ? openNewLead : undefined}
-        />
+        <>
+          {canViewNotices && cardNotices(noticeBoard.notices, todayForNotices()).length > 0 && (
+            // Inset like the launcher's own sections, so the card lines up with the tiles.
+            <div style={{ padding: 'var(--s-8) var(--s-12) 0' }}>
+              <NoticeDashboardCard
+                notices={noticeBoard.notices}
+                today={todayForNotices()}
+                onOpen={() => navigate('notices')}
+              />
+            </div>
+          )}
+          <BasicHome
+            groups={groups}
+            onOpen={navigate}
+            onNewLead={canCreateLead ? openNewLead : undefined}
+          />
+        </>
       ),
     },
     {
