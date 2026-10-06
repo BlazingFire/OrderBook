@@ -568,7 +568,7 @@ export function createApp(): Express {
 
   app.get('/api/sync', async (_req, res) => {
     res.json({
-      pendingCount: await outbox.pendingCount(),
+      pendingCount: await localStore.viewerPendingCount(),
       rejections: await sync.recentRejections(),
       ...masterConnection.getStatus(),
     });
@@ -2136,7 +2136,7 @@ async function queue(
       queued: true,
       id: entityId,
       mutationId: mutation.mutationId,
-      pendingCount: await outbox.pendingCount(),
+      pendingCount: await localStore.viewerPendingCount(),
       ...numbering,
     });
   } catch (error) {

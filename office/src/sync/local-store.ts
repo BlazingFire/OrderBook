@@ -50,6 +50,12 @@ export function setViewer(provider: () => string | null): void {
  * decides who sees it. Without this, a party or lead one person queued offline appeared
  * to whoever signed in next on the same PC.
  */
+/** How many queued changes belong to the person signed in (or to nobody): what they are told is unsent. */
+export async function viewerPendingCount(): Promise<number> {
+  const signedIn = viewer();
+  return (await pending()).filter((mutation) => shownTo(mutation.actorUserId, signedIn)).length;
+}
+
 /** Who is signed in at this PC right now, for the link's choice between a delta and a full snapshot. */
 export function currentViewer(): string | null {
   return viewer();
@@ -300,12 +306,12 @@ function buildView(
     view.leads = [held.poNumber ? { ...lead, poNumber: held.poNumber } : lead, ...view.leads];
   }
 
-  // Everything queued counts as pending, but only this person's own work is drawn.
-  for (const mutation of queued) {
-    if (shownTo(mutation.actorUserId, signedIn)) applyOverlay(view, mutation);
-  }
+  // Only this person's own work is drawn, and only it is counted: a number of unsent changes
+  // would otherwise say that somebody else queued something.
+  const own = queued.filter((mutation) => shownTo(mutation.actorUserId, signedIn));
+  for (const mutation of own) applyOverlay(view, mutation);
 
-  return { ...view, pendingCount: queued.length };
+  return { ...view, pendingCount: own.length };
 }
 
 /**

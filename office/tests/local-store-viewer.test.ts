@@ -98,10 +98,23 @@ describe('the view of queued work', () => {
     expect(await names()).toEqual(['Open Co', 'Shared Co']);
   });
 
-  it('does not show it while nobody is signed in, and counts it as pending for everybody', async () => {
+  it('does not show it while nobody is signed in', async () => {
     localStore.setViewer(() => null);
     expect(await names()).toEqual(['Open Co', 'Shared Co']);
+  });
+
+  it('counts as unsent only what the person signed in may see: their own and the unattributed', async () => {
+    localStore.setViewer(() => A);
     expect((await localStore.getView())?.pendingCount).toBe(2);
+    expect(await localStore.viewerPendingCount()).toBe(2);
+
+    // The count is what `/api/sync` tells the browser: it must not say somebody else queued work.
+    localStore.setViewer(() => B);
+    expect((await localStore.getView())?.pendingCount).toBe(1);
+    expect(await localStore.viewerPendingCount()).toBe(1);
+
+    localStore.setViewer(() => null);
+    expect(await localStore.viewerPendingCount()).toBe(1);
   });
 
   it('follows the person who signs in, without waiting for another change', async () => {
