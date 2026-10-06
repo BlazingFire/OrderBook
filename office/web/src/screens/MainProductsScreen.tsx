@@ -201,7 +201,7 @@ export function MainProductsScreen({ view }: { view: LocalView }) {
         <Button
           variant="secondary"
           size="sm"
-          icon="download"
+          icon="upload"
           onClick={() =>
             void exportCatalogueCsv('main').catch((caught) =>
               toast.push(exportFailureText(caught), { tone: 'error' }),

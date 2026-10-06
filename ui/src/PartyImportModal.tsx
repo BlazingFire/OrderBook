@@ -172,7 +172,7 @@ export function PartyImportControls({
           <Button
             variant="secondary"
             size="sm"
-            icon="download"
+            icon="upload"
             busy={exporting !== null}
             disabled={exporting !== null}
             aria-haspopup="menu"
@@ -199,7 +199,7 @@ export function PartyImportControls({
       )}
       {canImport && (
         <>
-          <Button variant="secondary" size="sm" icon="upload" onClick={() => setOpen(true)}>
+          <Button variant="secondary" size="sm" icon="download" onClick={() => setOpen(true)}>
             {t('partyImport.open')}
           </Button>
           <PartyImportModal

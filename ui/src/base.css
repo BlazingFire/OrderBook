@@ -1649,6 +1649,15 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   color: var(--fg-secondary);
 }
 
+.ob-footer-user {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-8);
+  font-size: var(--t-small-size);
+  font-weight: 550;
+  color: var(--fg-primary);
+}
+
 .ob-footer-sync {
   display: inline-flex;
   align-items: center;
@@ -2889,6 +2898,9 @@ button.ob-bell-item:hover {
   gap: var(--s-16);
   border-bottom: 1px solid var(--line);
   overflow-x: auto;
+  /* The active underline sits 1px over the border, outside the padding box;
+   * with `overflow-x` set that made a vertical scrollbar appear. */
+  overflow-y: hidden;
   scrollbar-width: thin;
 }
 .ob-tab {
@@ -2910,7 +2922,7 @@ button.ob-bell-item:hover {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: -1px;
+  bottom: 0;
   height: 2px;
   background: var(--accent);
 }

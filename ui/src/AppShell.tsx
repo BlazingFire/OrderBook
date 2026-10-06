@@ -3,7 +3,7 @@
  *
  *   rail │ sidebar │ topbar
  *        │         │ content — scrolls; nothing else scrolls
- *        │         │ status footer 26px
+ *        │         │ status footer 40px
  *
  * Overlays (the palette, popovers, dialogs) render inside `.ob-main` so they
  * anchor to the working area rather than the window.

@@ -326,7 +326,7 @@ export function SubProductsScreen({
         <Button
           variant="secondary"
           size="sm"
-          icon="download"
+          icon="upload"
           onClick={() =>
             void exportCatalogueCsv(transportRef.current, 'sub').catch((caught) =>
               toast.push(apiErrorText(caught, 'catalog.export.failed'), { tone: 'error' }),
@@ -336,7 +336,7 @@ export function SubProductsScreen({
           {t('catalog.export')}
         </Button>
         {canImport && (
-          <Button variant="secondary" size="sm" icon="upload" onClick={() => setImportOpen(true)}>
+          <Button variant="secondary" size="sm" icon="download" onClick={() => setImportOpen(true)}>
             {t('catalog.products.import')}
           </Button>
         )}

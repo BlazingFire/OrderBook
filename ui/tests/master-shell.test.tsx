@@ -2,7 +2,7 @@
  * The Master Panel's shell, booted whole in jsdom (`panel-harness.ts` says
  * how; the live socket is the one extra edge replaced here). What it pins:
  *
- *  · the footer's "Design system" link keeps the gallery open;
+ *  · the gallery, opened at #/gallery, stays open;
  *  · Alt+N reaches only what the sidebar offers — with the desktop menu's
  *    Developer entry still opening Settings for anybody, as it always has;
  *  · the screen somebody was on does not outlive their session: whoever signs
@@ -183,7 +183,7 @@ async function boot(
       <App />
     </StrictMode>,
   );
-  await screen.findByRole('link', { name: t('footer.designSystem') });
+  await waitFor(() => expect(document.querySelector('.ob-footer')).not.toBeNull());
   return calls;
 }
 
@@ -226,11 +226,10 @@ afterEach(() => {
 });
 
 describe('the design-system gallery', () => {
-  it('stays open after the link it was opened from changes the hash', async () => {
+  it('stays open after the hash changes to #/gallery', async () => {
     await boot(ADMIN);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('link', { name: t('footer.designSystem') }));
       window.location.hash = '#/gallery';
       await wait(0);
     });
@@ -1930,7 +1929,7 @@ describe('Server Masters at first run and sign-in (1.3)', () => {
     expect(screen.getByLabelText(t('masterKey.label'))).toBeTruthy();
   });
 
-  it('badges a signed-in Server Master in the footer', async () => {
+  it('rings a signed-in Server Master in the footer', async () => {
     await boot(ADMIN, ({ url }) =>
       url === '/api/auth/me'
         ? json({ user: user(ADMIN, 'server_master'), sessionToken: 'session-1' })
@@ -1938,7 +1937,6 @@ describe('Server Masters at first run and sign-in (1.3)', () => {
     );
 
     const footer = document.querySelector('.ob-footer')!;
-    expect(footer.querySelector('[data-server-master]')).not.toBeNull();
     expect(footer.querySelector('.ob-avatar[data-highlight="true"]')).not.toBeNull();
   });
 });

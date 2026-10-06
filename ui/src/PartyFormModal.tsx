@@ -256,11 +256,8 @@ export function PartyFormModal({
         </FieldGroup>
 
         <FieldGroup title={t('party.group.contact')}>
-          {text('phone', t('party.field.phone'), { inputMode: 'tel', className: 'ob-numinput' })}
-          {text('altPhone', t('party.field.altPhone'), {
-            inputMode: 'tel',
-            className: 'ob-numinput',
-          })}
+          {text('phone', t('party.field.phone'), { inputMode: 'tel' })}
+          {text('altPhone', t('party.field.altPhone'), { inputMode: 'tel' })}
           {text('email', t('party.field.email'), { type: 'email' })}
         </FieldGroup>
 
@@ -285,7 +282,7 @@ export function PartyFormModal({
           </Field>
           {text('city', t('party.field.city'))}
           {text('state', t('party.field.state'))}
-          {text('pincode', t('party.field.pincode'), { className: 'ob-numinput' })}
+          {text('pincode', t('party.field.pincode'), { inputMode: 'numeric' })}
         </FieldGroup>
 
         <FieldGroup title={t('party.group.tax')}>

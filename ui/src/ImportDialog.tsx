@@ -331,7 +331,7 @@ export function ImportDialog<Mode extends string, Sample, Report extends ImportR
         </Button>
         <Button
           variant="primary"
-          icon="upload"
+          icon="download"
           autoFocus
           busy={busy === 'importing'}
           disabled={!result || result.created + result.updated === 0}

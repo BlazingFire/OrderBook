@@ -114,7 +114,7 @@ async function openLeadsTab(permissions: string[], view = snapshot()): Promise<C
 
   const App = await loadApp('office');
   render(<App />);
-  await screen.findByRole('link', { name: t('footer.designSystem') });
+  await waitFor(() => expect(document.querySelector('.ob-footer')).not.toBeNull());
   await sendSnapshot(view);
 
   fireEvent.click(screen.getByTitle(t('nav.settings')));

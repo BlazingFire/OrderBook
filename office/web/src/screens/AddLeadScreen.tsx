@@ -2618,6 +2618,16 @@ function DraftCard({
           </label>
         )}
 
+        {draft.rule === 'selectable' && colourOptions.length === 0 && (
+          <p
+            role="note"
+            className="ob-small"
+            style={{ margin: `0 0 ${rem(12)}`, color: 'var(--state-conflict)' }}
+          >
+            {t('lead.add.draft.noColourList')}
+          </p>
+        )}
+
         {draft.rows.length > 0 && (
           <>
             <div

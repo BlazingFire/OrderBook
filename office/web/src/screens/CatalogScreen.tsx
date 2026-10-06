@@ -552,7 +552,7 @@ export function CatalogScreen({
         <Button
           variant="secondary"
           size="sm"
-          icon="download"
+          icon="upload"
           onClick={() =>
             void exportCatalogueCsv('sub').catch((caught) =>
               toast.push(exportFailureText(caught), { tone: 'error' }),
@@ -562,7 +562,7 @@ export function CatalogScreen({
           {t('catalog.export')}
         </Button>
         {canImport && (
-          <Button variant="secondary" size="sm" icon="upload" onClick={() => setImportOpen(true)}>
+          <Button variant="secondary" size="sm" icon="download" onClick={() => setImportOpen(true)}>
             {t('catalog.products.import')}
           </Button>
         )}

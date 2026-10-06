@@ -26,6 +26,7 @@ import {
   REPORT_META,
   reportsOffered,
   resolveCompanyFeatures,
+  SERVER_MASTER_TIER,
 } from '@orderbook/shared';
 import type {
   ChatRecordChip,
@@ -57,7 +58,7 @@ import {
   BP_NARROW,
   BusyMark,
   PrintStationRunner,
-  Clock,
+  Avatar,
   FilterBarOutlet,
   FilterBarProvider,
   formatDateTime,
@@ -1496,6 +1497,17 @@ function OfficePanel() {
 
   const footer = (
     <>
+      <span className="ob-footer-user">
+        <Avatar
+          name={session.displayName}
+          avatar={null}
+          src={api.profileAvatarUrl(session.userId)}
+          size="sm"
+          highlight={session.roleTier === SERVER_MASTER_TIER}
+        />
+        {session.displayName}
+      </span>
+      <span style={{ flex: 1 }} />
       <button
         type="button"
         className="ob-footer-sync"
@@ -1505,25 +1517,12 @@ function OfficePanel() {
         <span className="dot" style={{ background: railDotColour }} />
         {syncLabel}
       </button>
-      <span style={{ flex: 1 }} />
       {connection.companyName && (
         <span>{`${t('footer.company')} · ${connection.companyName}`}</span>
       )}
-      <span>
-        {t('footer.signedInAs', { name: session.displayName, role: session.roleName })}
-        {session.offline ? ` · ${t('footer.offlineSignIn')}` : ''}
-      </span>
-      <a
-        href="#/gallery"
-        onClick={() => setRoute('gallery')}
-        style={{ color: 'var(--fg-tertiary)' }}
-      >
-        {t('footer.designSystem')}
-      </a>
       <span className="ob-mono" style={{ fontSize: rem(10.5), color: 'var(--fg-tertiary)' }}>
         v{__APP_VERSION__}
       </span>
-      <Clock />
     </>
   );
 
