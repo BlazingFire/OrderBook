@@ -20,6 +20,7 @@ export * from './domain/party-import.js';
 export * from './domain/pending-order-number.js';
 export * from './domain/duplicate-products.js';
 export * from './domain/product-import.js';
+export * from './domain/photo-import.js';
 export * from './domain/company-features.js';
 export * from './domain/product-validation.js';
 export * from './domain/recycle-bin.js';

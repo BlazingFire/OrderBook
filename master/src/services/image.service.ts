@@ -40,6 +40,12 @@ export interface UploadImageRequest {
   productId: string;
   fileBuffer: Buffer;
   crop: ImageCropInput;
+  /**
+   * Keep the whole picture, ignoring the crop rect: the bulk photo import
+   * (`shared/src/domain/photo-import.ts`) has no editor, and a browser cannot
+   * know the size sharp sees after EXIF orientation to send a rect for it.
+   */
+  wholeFrame?: boolean;
 }
 
 /*
@@ -124,6 +130,7 @@ async function normalizeAndStore(
   imageId: string,
   fileBuffer: Buffer,
   crop: ImageCropInput,
+  wholeFrame = false,
 ): Promise<{ width: number; height: number; checksum: string; blurhash: string; byteSize: number }> {
   if (fileBuffer.length === 0) throw new ValidationError('validation.image.fileRequired');
   if (fileBuffer.length > MAX_SOURCE_BYTES) throw new ValidationError('validation.image.tooLarge');
@@ -155,11 +162,13 @@ async function normalizeAndStore(
   const rotatedWidth = rotatedInfo.info.width;
   const rotatedHeight = rotatedInfo.info.height;
 
-  const rect = assertCropRect(
-    { x: crop.cropX, y: crop.cropY, width: crop.cropWidth, height: crop.cropHeight },
-    rotatedWidth,
-    rotatedHeight,
-  );
+  const rect = wholeFrame
+    ? { x: 0, y: 0, width: rotatedWidth, height: rotatedHeight }
+    : assertCropRect(
+        { x: crop.cropX, y: crop.cropY, width: crop.cropWidth, height: crop.cropHeight },
+        rotatedWidth,
+        rotatedHeight,
+      );
 
   // Still raw, so the extract and every resize below work from the one decode.
   const cropped = sharp(rotated, {
@@ -221,7 +230,7 @@ export async function uploadImage(request: UploadImageRequest, actor: ActorConte
 
   const imageId = randomUUID();
   const derived = await throughRasterGate(() =>
-    normalizeAndStore(actor.tenantId, imageId, request.fileBuffer, request.crop),
+    normalizeAndStore(actor.tenantId, imageId, request.fileBuffer, request.crop, request.wholeFrame),
   );
 
   await db().transaction(async (trx) => {

@@ -35,6 +35,7 @@ import { createLogger } from './lib/logger.js';
 import { toErrorMessage } from './lib/errors.js';
 import { loadOrCreateKey } from './lib/secret-box.js';
 import { sweepOrphanImageVariants } from './services/image.service.js';
+import { attachCataloguePhotos } from './services/catalogue-photos.service.js';
 import { assertFontsPresent } from './pdf/fonts.js';
 import { listLanAddresses } from './lib/network.js';
 import { createRealtimeHub, type RealtimeHub } from './realtime/hub.js';
@@ -272,6 +273,13 @@ async function main(): Promise<void> {
 
     bootStep('Starting the panel');
     handler = createApp();
+
+    // After the sweep, never before it: the sweep would take a photo being
+    // attached for an orphan. Not awaited — encoding a few hundred photos
+    // takes minutes, and the panel serves meanwhile.
+    void attachCataloguePhotos().catch((error: unknown) => {
+      log.warn(`Could not attach the catalogue photos: ${toErrorMessage(error)}`);
+    });
     hub = createRealtimeHub(server);
 
     discovery = await startDiscoveryResponder();
