@@ -123,7 +123,6 @@ export function NoticeManageView({
       key: 'audience',
       header: t('notices.manage.col.audience'),
       width: '1.2fr',
-      priority: 2,
       render: (notice) => (
         <span className="ob-small" title={audienceText(notice)} style={{ overflowWrap: 'anywhere' }}>
           {audienceText(notice)}
@@ -134,14 +133,12 @@ export function NoticeManageView({
       key: 'until',
       header: t('notices.manage.col.until'),
       width: '8rem',
-      priority: 3,
       render: (notice) => <span className="ob-small">{notice.showUntil ?? t('notices.manage.noEnd')}</span>,
     },
     {
       key: 'reads',
       header: t('notices.manage.col.reads'),
       width: '7rem',
-      priority: 2,
       render: (notice) => (
         <Button variant="ghost" size="sm" onClick={() => setReadersOf(notice)} aria-label={`${t('notices.manage.readers')}: ${notice.title}`}>
           {t('notices.manage.reads', { read: notice.readCount ?? 0, total: notice.audienceSize ?? 0 })}
@@ -152,7 +149,6 @@ export function NoticeManageView({
       key: 'updated',
       header: t('notices.manage.col.updated'),
       width: '11rem',
-      priority: 3,
       render: (notice) => <span className="ob-small">{formatDateTime(notice.updatedAt)}</span>,
     },
     {
