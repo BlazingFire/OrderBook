@@ -2690,3 +2690,58 @@ describe('Notices in the role cards and the role editor (Oct 7)', () => {
     expect(screen.getByText(`● ${t('access.roleEditor.unsaved')}`)).toBeTruthy();
   });
 });
+
+describe('Notice board screens in the Master shell (Oct 7)', () => {
+  const NOTICE = {
+    id: 'n-1', tenantId: 't', title: 'Godown closed on Friday', body: 'No dispatches on Friday.',
+    priority: 'important', pinned: true, showUntil: null, audience: { all: true, roleIds: [] },
+    authorId: 'user-1', authorName: 'Owner', createdAt: '2026-10-07T04:00:00.000Z',
+    updatedAt: '2026-10-07T04:00:00.000Z', version: 1, readByMe: false,
+  };
+  const PERMS = [...ADMIN, 'notices.view', 'notices.manage'];
+
+  function noticeRoutes(calls: { n: number }) {
+    return ({ url, method }: Call): Response | undefined => {
+      const path = url.split('?')[0];
+      if (path === '/api/notices' && method === 'GET') {
+        calls.n += 1;
+        return json({ notices: [NOTICE], unreadCount: 3 });
+      }
+      if (path === '/api/notices/manage') return json([{ ...NOTICE, expired: false, readCount: 0, audienceSize: 4 }]);
+      if (path === '/api/notices/audiences') return json([]);
+      return undefined;
+    };
+  }
+
+  it('puts the unread count on the sidebar row before the board has ever been opened', async () => {
+    await boot(PERMS, noticeRoutes({ n: 0 }));
+    const row = (await screen.findByTitle(t('nav.notices'))).closest('.ob-navitem');
+    await waitFor(() => expect(row?.querySelector('.count')?.textContent).toBe('3'));
+  });
+
+  it('opens the board on its row and shows the notices meant for the person', async () => {
+    await boot(PERMS, noticeRoutes({ n: 0 }));
+    await open(t('nav.notices'));
+    expect(topbarTitle()).toBe(t('nav.notices'));
+    // The Dashboard card behind it carries the title too; the board's own button tells them apart.
+    expect(await screen.findByRole('button', { name: t('notices.board.markAllRead') })).toBeTruthy();
+  });
+
+  it('opens the management screen from its row, for a manager', async () => {
+    await boot(PERMS, noticeRoutes({ n: 0 }));
+    await open(t('nav.noticesManage'));
+    expect(topbarTitle()).toBe(t('nav.noticesManage'));
+    // The topbar title carries the same words; the screen's own button proves it is mounted.
+    expect(await screen.findByRole('button', { name: t('notices.manage.new') })).toBeTruthy();
+  });
+
+  it('re-reads the board when another administrator changes a notice', async () => {
+    const counter = { n: 0 };
+    await boot(PERMS, noticeRoutes(counter));
+    await open(t('nav.notices'));
+    await screen.findByRole('button', { name: t('notices.board.markAllRead') });
+    const before = counter.n;
+    await changed('notice');
+    await waitFor(() => expect(counter.n).toBeGreaterThan(before));
+  });
+});
