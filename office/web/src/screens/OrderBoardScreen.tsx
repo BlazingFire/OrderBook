@@ -367,7 +367,7 @@ export function OrderBoardScreen({
     {
       key: 'viewing',
       header: t('presence.board.column'),
-      width: rem(76),
+      width: rem(96),
       render: (order) => (
         <AvatarStack
           entries={faces.get(order.id) ?? []}
@@ -385,7 +385,6 @@ export function OrderBoardScreen({
     {
       key: 'ref',
       header: t('order.list.col.ref'),
-      priority: 3,
       width: rem(130),
       // Only beside a PO number; without one the id is already the first column.
       render: (order) =>

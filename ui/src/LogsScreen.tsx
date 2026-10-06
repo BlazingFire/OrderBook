@@ -466,7 +466,7 @@ export function LogsScreen({ permissions, transport }: Props) {
     {
       key: 'when',
       header: t('logs.table.when'),
-      width: rem(160),
+      width: rem(200),
       render: (entry) => <span className="ob-small">{formatDateTime(entry.createdAt)}</span>,
     },
     {
@@ -493,14 +493,14 @@ export function LogsScreen({ permissions, transport }: Props) {
     {
       key: 'who',
       header: t('logs.table.who'),
-      width: rem(220),
+      width: rem(180),
       render: (entry) => <ActorCell entry={entry} />,
     },
     {
       key: 'record',
       header: t('logs.table.record'),
       priority: 2,
-      width: rem(210),
+      width: rem(280),
       render: (entry) => (
         <span
           className="ob-mono"

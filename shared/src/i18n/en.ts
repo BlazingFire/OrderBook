@@ -1179,7 +1179,7 @@ export const EN_MESSAGES = {
   'fields.action.moveUp': 'Move up',
   'fields.action.remove': 'Remove',
   'fields.action.save': 'Save',
-  'fields.col.order': 'Final Order',
+  'fields.col.order': 'Move',
   'fields.conflict.notSet': 'not set',
   'fields.conflict.overwrite': 'Overwrite with mine',
   'fields.conflict.reload': 'Reload theirs',
