@@ -42,6 +42,10 @@ const DATA_TABLES = [
   'chat_messages',
   'chat_members',
   'chat_rooms',
+  // Notices and their audiences and reads name users and roles, so they go before both.
+  'notice_reads',
+  'notice_audiences',
+  'notices',
   // Print jobs name users and stations, so they go before both.
   'print_jobs',
   'print_stations',
@@ -141,6 +145,8 @@ export async function setupDatabase(): Promise<void> {
   // Master role (`20261001`), whose name may carry a fallback suffix — so a
   // system role is kept by that flag rather than by name. Anything else is
   // debris.
+  // A crashed run can leave notices whose audiences name those roles; they go first.
+  await db().raw('TRUNCATE TABLE notice_reads, notice_audiences, notices CASCADE');
   await db()('roles')
     .whereNotIn('name', ['Admin', 'Management', 'Office'])
     .andWhere('is_system', false)

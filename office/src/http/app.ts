@@ -34,6 +34,8 @@ import {
   PARTY_ACCESS_SORTS,
   bodyParserFailure,
   cleanChatPost,
+  compareNotices,
+  isNoticeExpired,
   parseReportQuery,
   standing,
   t,
@@ -764,6 +766,55 @@ export function createApp(): Express {
   app.post('/api/print-jobs/:id/claim', (req, res) => forward(res, 'print:claim', req.params.id));
   app.get('/api/print-stations', (_req, res) => forward(res, 'print:stations'));
   app.put('/api/print-stations/self', (req, res) => forward(res, 'print:station', req.body ?? {}));
+
+  /*
+   * The notice board. Online these are the Master's own answers (it scopes by the acting
+   * person's role); the reader's list alone also answers offline, from the notices the last
+   * snapshot held for this person, minus any whose last day has passed on this PC's calendar.
+   * Reading is recorded on the Master, so `read` needs the link. Fixed paths before `:id`.
+   */
+  app.get('/api/notices', async (_req, res) => {
+    if (masterConnection.getStatus().state === 'connected') return forward(res, 'notice:list');
+
+    if (!userSession.can('notices.view')) {
+      res.status(403).json({
+        error: 'permission_denied',
+        message: 'You may not read the notice board',
+        permission: 'notices.view',
+      });
+      return;
+    }
+    const view = await localStore.getView();
+    if (!view) {
+      res.status(503).json({
+        error: 'not_synced',
+        message: 'This panel has not synced with the Master Panel yet',
+      });
+      return;
+    }
+    const today = new Date().toLocaleDateString('en-CA');
+    const notices = (forCurrentUser(view).notices ?? [])
+      .filter((notice) => !isNoticeExpired(notice.showUntil, today))
+      .sort(compareNotices);
+    res.json({ notices, unreadCount: notices.filter((notice) => !notice.readByMe).length });
+  });
+  app.get('/api/notices/manage', (_req, res) => forward(res, 'notice:manageList'));
+  app.get('/api/notices/audiences', (_req, res) => forward(res, 'notice:audiences'));
+  app.post('/api/notices/read', (req, res) =>
+    forward(res, 'notice:markRead', Array.isArray(req.body?.ids) ? { ids: req.body.ids } : {}),
+  );
+  app.get('/api/notices/:id/readers', (req, res) => forward(res, 'notice:readers', req.params.id));
+  app.post('/api/notices', async (req, res) => {
+    try {
+      res.status(201).json(await masterConnection.command('notice:create', req.body ?? {}));
+    } catch (error) {
+      failForward(res, error);
+    }
+  });
+  app.patch('/api/notices/:id', (req, res) =>
+    forward(res, 'notice:update', { ...(req.body ?? {}), id: req.params.id }),
+  );
+  app.delete('/api/notices/:id', (req, res) => forward(res, 'notice:delete', req.params.id));
 
   /*
    * One record by id, for a chat chip or a bell entry that points past the 500
@@ -2299,6 +2350,8 @@ export const SNAPSHOT_POLICY: Record<keyof SyncSnapshot, SnapshotPolicy> = {
   builtForUserId: 'passthrough',
   // Ids only; `withoutAnotherPersonsParties` reads it to decide what the next person may see.
   openPartyIds: 'passthrough',
+  // The reader's own notices, scoped by the Master to their role: gone from a cache built for somebody else.
+  notices: 'gate',
   partyAccessCounts: 'passthrough',
   // Not company data — just says whether `products` above is the complete
   // catalogue or one clamped/permission-emptied page.
@@ -2397,12 +2450,30 @@ function withoutAnotherPersonsParties(view: LocalView): LocalView {
   };
 }
 
+/**
+ * The notices this person may be shown out of a snapshot that is not theirs. Nothing without
+ * `notices.view`; from a cache built for somebody else only the notices for everybody (a notice
+ * for a role is that role's, and the cache's role is not known to be this person's), and none
+ * of the cache's read marks, which are the previous person's: every one reads as unread until
+ * the next snapshot, which is theirs.
+ */
+function noticesFor(view: LocalView, permissions: readonly string[], ownCache: boolean) {
+  if (!view.notices || !permissions.includes('notices.view')) return view.notices ? [] : undefined;
+  if (ownCache) return view.notices;
+  return view.notices
+    .filter((notice) => notice.audience.kind === 'all')
+    .map((notice) => ({ ...notice, readByMe: false }));
+}
+
 function forCurrentUser(view: LocalView): LocalView {
   const permissions = userSession.sessionPermissions();
   const { ownQueuedPartyIds: _own, ...scoped } = withoutAnotherPersonsParties(view);
+  const signedInAs = userSession.currentSession()?.userId ?? null;
+  const ownCache = view.builtForUserId === undefined || view.builtForUserId === signedInAs;
 
   return {
     ...scoped,
+    notices: noticesFor(view, permissions, ownCache),
     permissions,
     dashboard: filterDashboardForCurrentUser(scoped.dashboard, permissions),
   };

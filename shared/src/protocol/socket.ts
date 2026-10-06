@@ -113,6 +113,7 @@ import { PRINTROOM_MIN_PROTOCOL } from '../domain/printroom.js';
 import {
   NOTICE_MIN_PROTOCOL,
   type Notice,
+  type NoticeAudienceRole,
   type NoticeBoard,
   type NoticeInput,
   type NoticeReaders,
@@ -229,6 +230,7 @@ export const COMMAND_MIN_PROTOCOL: Partial<Record<keyof ClientToServerEvents, nu
   // The notice board (protocol 10).
   'notice:list': NOTICE_MIN_PROTOCOL,
   'notice:manageList': NOTICE_MIN_PROTOCOL,
+  'notice:audiences': NOTICE_MIN_PROTOCOL,
   'notice:readers': NOTICE_MIN_PROTOCOL,
   'notice:create': NOTICE_MIN_PROTOCOL,
   'notice:update': NOTICE_MIN_PROTOCOL,
@@ -1057,6 +1059,8 @@ export interface ClientToServerEvents {
   'notice:list': (ack: CommandAck<NoticeBoard>) => void;
   /** Every notice, expired ones included, with audience role names and read counts. */
   'notice:manageList': (ack: CommandAck<Notice[]>) => void;
+  /** The roles a notice can be addressed to (the audience picker). Roles are withheld from panels, so this is how the editor learns them. */
+  'notice:audiences': (ack: CommandAck<NoticeAudienceRole[]>) => void;
   /** Everybody in a notice's audience, with when each read it (null: not yet). */
   'notice:readers': (id: string, ack: CommandAck<NoticeReaders>) => void;
   'notice:create': (input: NoticeInput, ack: CommandAck<Notice>) => void;
