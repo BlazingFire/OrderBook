@@ -1128,7 +1128,15 @@ function OfficePanel() {
   }
 
   /** Hangs each module's sub-pages, then the open record's entry, under it. */
-  const nest = (items: NavItem[]): NavItem[] => graftSubNav(withSubPages(items, subPages), subNav);
+  // The shell's own `leads.new` entry stands for the New pending order form, so the form's grafted
+  // twin (`addLead.new`) is dropped: the sidebar listed "New pending order" twice while it was open.
+  const nest = (items: NavItem[]): NavItem[] =>
+    graftSubNav(
+      withSubPages(items, subPages),
+      subNav && tab === 'addLead'
+        ? { ...subNav, items: subNav.items.filter((item) => item.id !== 'addLead.new') }
+        : subNav,
+    );
 
   /*
    * The sidebar, in the order `OFFICE_NAV` declares (`keys-nav-order.test.ts`
@@ -1365,7 +1373,7 @@ function OfficePanel() {
     return found.slice(0, 20);
   }
 
-  const activeId = subNav
+  const activeId = subNav && tab !== 'addLead'
     ? subNav.activeId
     : route === 'gallery'
       ? 'gallery'

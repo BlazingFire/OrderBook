@@ -1327,7 +1327,7 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   width: 100%;
   color: var(--fg-secondary);
   font-size: var(--t-small-size);
-  white-space: nowrap;
+  white-space: normal;
 }
 .ob-navitem-main {
   display: flex;
@@ -1405,13 +1405,18 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   color: var(--fg-primary);
 }
 
-/* The label truncates; the icon and the count do not. A role called
- * "Warehouse floor supervisor (night)" must not push the count off the edge or
- * widen the sidebar. */
+/* The label wraps to two lines, then ends in an ellipsis (the full text is the row's title);
+ * the icon and the count do not shrink. "Converted pending orders" and "Pending Order outcomes"
+ * were cut to a stub at 157 % with one line. A role called "Warehouse floor supervisor (night)"
+ * still must not push the count off the edge or widen the sidebar. */
 .ob-navitem-label {
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 /*

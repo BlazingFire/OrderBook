@@ -910,6 +910,18 @@ describe('the refusal toast', () => {
   });
 });
 
+describe('the New lead form in the sidebar', () => {
+  it('is listed once under Pending Orders while it is open, and that row is the current page', async () => {
+    await boot({ permissions: ['leads.view', 'leads.create'] });
+    fireEvent.click(newLeadButton());
+    await screen.findByLabelText(t('lead.add.party.search'));
+
+    const rows = screen.getAllByTitle(t('lead.add.title'));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.getAttribute('aria-current')).toBe('page');
+  });
+});
+
 describe('the New lead form', () => {
   it('starts blank again after a lead is saved', async () => {
     const calls = await boot({ permissions: ['leads.view', 'leads.create'] });
