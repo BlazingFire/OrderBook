@@ -708,6 +708,9 @@ export const EN_MESSAGES = {
   'access.roleEditor.partiesHelp':
     'Office users can be allowed to add and edit parties. What they create stays private to them and to administrators.',
   'access.roleEditor.partiesTitle': 'Parties',
+  'access.roleEditor.noticesHelp':
+    'Everybody reads the notices meant for them. Managing is putting up, changing and removing notices, choosing who sees them and seeing who has read them.',
+  'access.roleEditor.noticesTitle': 'Notice board',
   'access.roleEditor.searchLabel': 'Search permissions',
   'access.roleEditor.searchNone': 'No permission matches “{query}”.',
   'access.roleEditor.searchPlaceholder': 'Search permissions…',
@@ -720,6 +723,9 @@ export const EN_MESSAGES = {
   'partyVisibility.sharedHint': '{count} people, and administrators, can see this party.',
   'access.rolePicker.also': 'Also:',
   'access.rolePicker.parties': 'Parties:',
+  'access.rolePicker.notices': 'Notice board:',
+  'access.rolePicker.noticesManage': 'Read and manage',
+  'access.rolePicker.noticesRead': 'Read',
   'access.rolePicker.changes': 'Can change:',
   'access.rolePicker.current': 'Current',
   'access.rolePicker.holders': '{count} assigned',
@@ -3260,6 +3266,8 @@ export const EN_MESSAGES = {
   'signOut.confirm.title': 'Sign out?',
   'signOut.confirm.body': 'Anything you have open and have not saved will be lost.',
   // 1.4 D3: Lists (grades, packaging, brands)
+  'nav.notices': 'Notice board',
+  'nav.noticesManage': 'Notice board management',
   'nav.lists': 'Lists',
   'lists.nav.grades': 'Grades',
   'lists.nav.packaging': 'Packaging',

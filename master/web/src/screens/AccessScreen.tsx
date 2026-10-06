@@ -24,6 +24,7 @@ import {
   Avatar,
   AvatarPicker,
   Button,
+  capabilityLabel,
   Card,
   ConfirmDialog,
   ConflictBanner,
@@ -1730,6 +1731,9 @@ function RolesTab({
 }
 
 /** Reads the role again on open, so the editor works on the current version and not the list row. */
+/** What a new role holds before anything is ticked: reading the notice board. */
+const NEW_ROLE_DEFAULTS: readonly string[] = ['notices.view'];
+
 function RoleEditorLoader(props: ComponentProps<typeof RoleEditor>) {
   const roleId = props.role?.id ?? null;
   const [fresh, setFresh] = useState<Role | null>(null);
@@ -1770,7 +1774,11 @@ function RoleEditor({
 }) {
   const [name, setName] = useState(role?.name ?? '');
   const [tier, setTier] = useState<RoleTier>((role?.tier as RoleTier) ?? 'office');
-  const [selected, setSelected] = useState<Set<string>>(new Set(role?.permissions ?? []));
+  // A new role starts holding the notice board: everybody reads it, so the box is ticked and an
+  // administrator has to untick it on purpose (the server adds it unless told `noticeBoard: false`).
+  const [selected, setSelected] = useState<Set<string>>(
+    new Set(role?.permissions ?? NEW_ROLE_DEFAULTS),
+  );
   const [pendingTier, setPendingTier] = useState<RoleTier | null>(null);
   const [query, setQuery] = useState('');
   const confirm = useConfirm();
@@ -1808,7 +1816,9 @@ function RoleEditor({
     ? name !== role.name ||
       tier !== role.tier ||
       [...selected].sort().join(',') !== [...role.permissions].sort().join(',')
-    : name.trim() !== '' || tier !== 'office' || selected.size > 0;
+    : name.trim() !== '' ||
+      tier !== 'office' ||
+      [...selected].sort().join(',') !== [...NEW_ROLE_DEFAULTS].sort().join(',');
 
   /**
    * Cancel, checking first when there is something to lose. Returns whether the
@@ -1873,6 +1883,8 @@ function RoleEditor({
         // Never automatic: taking the other administrator's version silently is
         // how their work disappears without anybody being told.
         expectedVersion: overwrite ? baseVersion : role?.sync.version,
+        // Only on create: the server gives a new role the notice board unless this says no.
+        ...(role ? {} : { noticeBoard: selected.has('notices.view') }),
       };
 
       if (role) await api.updateRole(role.id, input);
@@ -2064,6 +2076,44 @@ function RoleEditor({
                   <span className="ob-capability-body">
                     <span className="ob-capability-name">{t(label)}</span>
                     <span className="ob-capability-hint">{t(hint)}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {catalogue.capabilities.some((capability) => capability.key === 'notices.view') && (
+        <Card>
+          <h4 className="ob-eyebrow" style={{ margin: 0 }}>
+            {t('access.roleEditor.noticesTitle')}
+          </h4>
+          <p className="ob-help" style={{ margin: 'var(--s-4) 0 var(--s-8)' }}>
+            {t('access.roleEditor.noticesHelp')}
+          </p>
+          <div className="ob-capgrid">
+            {(['notices.view', 'notices.manage'] as const).map((key) => {
+              const allowed =
+                rank(tier) >= rank((catalogue.minimumTier[key] as RoleTier | undefined) ?? 'office');
+              const reason = t('access.permissions.blocked', {
+                tier: tierLabel(catalogue.minimumTier[key] ?? 'office'),
+              });
+              return (
+                <label
+                  key={key}
+                  className={`ob-capability${allowed ? '' : ' ob-capability--blocked'}`}
+                  title={allowed ? key : `${key} · ${reason}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(key)}
+                    disabled={busy || !allowed}
+                    onChange={(event) => toggle(key, event.target.checked)}
+                  />
+                  <span className="ob-capability-body">
+                    <span className="ob-capability-name">{capabilityLabel(key)}</span>
+                    {!allowed && <span className="ob-capability-hint">{reason}</span>}
                   </span>
                 </label>
               );

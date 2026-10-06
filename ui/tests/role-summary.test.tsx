@@ -89,3 +89,13 @@ describe('what a card says about parties', () => {
     expect(summariseRole(['leads.view'], catalogue).parties).toEqual([]);
   });
 });
+
+describe('what a card says about the notice board', () => {
+  it('reads nothing, reading, or reading and managing', () => {
+    expect(summariseRole(['leads.view'], catalogue).notices).toBe('none');
+    expect(summariseRole(['notices.view'], catalogue).notices).toBe('read');
+    expect(summariseRole(['notices.view', 'notices.manage'], catalogue).notices).toBe('manage');
+    // Managing without reading is still managing: the key is the stronger statement.
+    expect(summariseRole(['notices.manage'], catalogue).notices).toBe('manage');
+  });
+});

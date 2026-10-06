@@ -106,6 +106,14 @@ export function RolePicker({
                       <strong>{t('access.rolePicker.parties')}</strong> {summary.parties.join(', ')}
                     </span>
                   )}
+                  {summary.notices !== 'none' && (
+                    <span className="ob-rolecard-line">
+                      <strong>{t('access.rolePicker.notices')}</strong>{' '}
+                      {summary.notices === 'manage'
+                        ? t('access.rolePicker.noticesManage')
+                        : t('access.rolePicker.noticesRead')}
+                    </span>
+                  )}
                   {changes && summary.changes.length > 0 && (
                     <span className="ob-rolecard-line" title={changes.full}>
                       <strong>{t('access.rolePicker.changes')}</strong> {changes.text}

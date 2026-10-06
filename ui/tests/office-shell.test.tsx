@@ -910,6 +910,18 @@ describe('the refusal toast', () => {
   });
 });
 
+describe('the New lead form in the sidebar', () => {
+  it('is listed once under Pending Orders while it is open, and that row is the current page', async () => {
+    await boot({ permissions: ['leads.view', 'leads.create'] });
+    fireEvent.click(newLeadButton());
+    await screen.findByLabelText(t('lead.add.party.search'));
+
+    const rows = screen.getAllByTitle(t('lead.add.title'));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.getAttribute('aria-current')).toBe('page');
+  });
+});
+
 describe('the New lead form', () => {
   it('starts blank again after a lead is saved', async () => {
     const calls = await boot({ permissions: ['leads.view', 'leads.create'] });
@@ -2238,5 +2250,27 @@ describe('Party lists mark who can see a party (party visibility)', () => {
     await openParties({});
     expect(screen.queryByText(t('partyVisibility.private'))).toBeNull();
     expect(screen.queryByText(/Shared with/)).toBeNull();
+  });
+});
+
+describe('Notice board in the Office sidebar (Oct 7)', () => {
+  it('offers the Notice board with notices.view, and management beside it only with notices.manage', async () => {
+    await boot({ permissions: ['notices.view'] });
+    expect(await screen.findByTitle(t('nav.notices'))).toBeTruthy();
+    expect(screen.queryByTitle(t('nav.noticesManage'))).toBeNull();
+  });
+
+  it('offers management to a manager, right after the board', async () => {
+    await boot({ permissions: ['notices.view', 'notices.manage'] });
+    await screen.findByTitle(t('nav.notices'));
+    const labels = [...document.querySelectorAll('.ob-navitem-main')].map((row) => row.getAttribute('title'));
+    expect(labels.indexOf(t('nav.noticesManage'))).toBe(labels.indexOf(t('nav.notices')) + 1);
+  });
+
+  it('offers neither without the permissions', async () => {
+    await boot({ permissions: ['leads.view'] });
+    await screen.findByTitle(t('nav.leads'));
+    expect(screen.queryByTitle(t('nav.notices'))).toBeNull();
+    expect(screen.queryByTitle(t('nav.noticesManage'))).toBeNull();
   });
 });
