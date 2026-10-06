@@ -34,6 +34,37 @@ import { outboxRevision, pending } from './outbox.store.js';
 
 const log = createLogger('local-store');
 
+/**
+ * Who is signed in at this PC, for the view. Injected by the sign-in module, like the sync
+ * queue's acting user, so this module stays free of it.
+ */
+let viewer: () => string | null = () => null;
+export function setViewer(provider: () => string | null): void {
+  viewer = provider;
+}
+
+/**
+ * Whether work queued by `author` may be drawn for the person signed in. Work with no
+ * author is everybody's; anything else is its author's alone until the Master has
+ * confirmed it, at which point it is in the snapshot and the Master's own party scoping
+ * decides who sees it. Without this, a party or lead one person queued offline appeared
+ * to whoever signed in next on the same PC.
+ */
+/** How many queued changes belong to the person signed in (or to nobody): what they are told is unsent. */
+export async function viewerPendingCount(): Promise<number> {
+  const signedIn = viewer();
+  return (await pending()).filter((mutation) => shownTo(mutation.actorUserId, signedIn)).length;
+}
+
+/** Who is signed in at this PC right now, for the link's choice between a delta and a full snapshot. */
+export function currentViewer(): string | null {
+  return viewer();
+}
+
+function shownTo(author: string | null | undefined, signedIn: string | null): boolean {
+  return !author || author === signedIn;
+}
+
 let snapshot: SyncSnapshot | null = null;
 let cursor: SyncDeltaCursor | null = null;
 let loaded = false;
@@ -221,7 +252,17 @@ function isStored(value: StoredSnapshot | SyncSnapshot): value is StoredSnapshot
  * What the browser should render: the server's snapshot with everything still
  * queued applied on top.
  */
-export async function getView(): Promise<(SyncSnapshot & { pendingCount: number }) | null> {
+export type ViewOf = SyncSnapshot & {
+  pendingCount: number;
+  /**
+   * The temporary ids of the parties the person signed in has queued and the Master has not
+   * confirmed. The one reliable way to tell "my own new party" from a server row: a server row
+   * can carry any `sync.hlc`, an empty one included.
+   */
+  ownQueuedPartyIds?: string[];
+};
+
+export async function getView(): Promise<ViewOf | null> {
   const base = snapshot ?? (await restore());
   if (!base) return null;
 
@@ -237,23 +278,21 @@ export async function getView(): Promise<(SyncSnapshot & { pendingCount: number 
    * mutates that same object — a memo keyed on the reference would never
    * invalidate.
    */
-  const key = `${revision}:${outboxRevision()}`;
+  const signedIn = viewer();
+  const key = `${revision}:${outboxRevision()}:${signedIn ?? ''}`;
   if (memo && memo.key === key) return memo.view;
 
   const view =
     queued.length === 0 && numbered.size === 0
-      ? { ...base, pendingCount: 0 }
-      : buildView(base, queued);
+      ? { ...base, pendingCount: 0, ownQueuedPartyIds: [] }
+      : buildView(base, queued, signedIn);
   memo = { key, view };
   return view;
 }
 
-let memo: { key: string; view: SyncSnapshot & { pendingCount: number } } | null = null;
+let memo: { key: string; view: ViewOf } | null = null;
 
-function buildView(
-  base: SyncSnapshot,
-  queued: Mutation[],
-): SyncSnapshot & { pendingCount: number } {
+function buildView(base: SyncSnapshot, queued: Mutation[], signedIn: string | null): ViewOf {
   const view: SyncSnapshot = {
     ...base,
     leads: [...base.leads],
@@ -262,6 +301,7 @@ function buildView(
   };
 
   for (const [temporaryId, held] of numbered) {
+    if (!shownTo(held.mutation.actorUserId, signedIn)) continue;
     if (base.leads.some((lead) => lead.id === held.permanentId)) {
       numbered.delete(temporaryId);
       continue;
@@ -272,9 +312,18 @@ function buildView(
     view.leads = [held.poNumber ? { ...lead, poNumber: held.poNumber } : lead, ...view.leads];
   }
 
-  for (const mutation of queued) applyOverlay(view, mutation);
+  // Only this person's own work is drawn, and only it is counted: a number of unsent changes
+  // would otherwise say that somebody else queued something.
+  const own = queued.filter((mutation) => shownTo(mutation.actorUserId, signedIn));
+  for (const mutation of own) applyOverlay(view, mutation);
 
-  return { ...view, pendingCount: queued.length };
+  return {
+    ...view,
+    pendingCount: own.length,
+    ownQueuedPartyIds: own
+      .filter((mutation) => mutation.kind === 'party.create')
+      .map((mutation) => mutation.entityId),
+  };
 }
 
 /**
@@ -297,7 +346,10 @@ function applyOverlay(view: SyncSnapshot, mutation: Mutation): void {
               // The clocks the Master's merge will write for these fields, so a
               // second edit queued before this one is acknowledged sends this
               // one as its base instead of clashing with it.
-              sync: { ...lead.sync, fieldHlc: { ...lead.sync.fieldHlc, ...stampedFields(mutation) } },
+              sync: {
+                ...lead.sync,
+                fieldHlc: { ...lead.sync.fieldHlc, ...stampedFields(mutation) },
+              },
             }
           : lead,
       );
@@ -358,7 +410,13 @@ function provisionalLead(view: SyncSnapshot, mutation: Mutation): Lead {
   const stage = pipeline?.stages.find((candidate) => candidate.isDefault) ?? pipeline?.stages[0];
 
   const items = (payload.items ?? []).map((item, index) =>
-    provisionalLine(view, mutation.entityId, item, index, payload.partyWiseMode ? payload.partyId : undefined),
+    provisionalLine(
+      view,
+      mutation.entityId,
+      item,
+      index,
+      payload.partyWiseMode ? payload.partyId : undefined,
+    ),
   );
 
   return {
@@ -409,7 +467,8 @@ function provisionalLine(
   const variant = product?.variants.find((candidate) => candidate.id === item.variantId);
   const partyRecord = variantPartyId
     ? view.partyVariants.find(
-        (candidate) => candidate.partyId === variantPartyId && candidate.productId === item.productId,
+        (candidate) =>
+          candidate.partyId === variantPartyId && candidate.productId === item.productId,
       )
     : undefined;
 

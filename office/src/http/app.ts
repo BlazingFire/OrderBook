@@ -568,7 +568,7 @@ export function createApp(): Express {
 
   app.get('/api/sync', async (_req, res) => {
     res.json({
-      pendingCount: await outbox.pendingCount(),
+      pendingCount: await localStore.viewerPendingCount(),
       rejections: await sync.recentRejections(),
       ...masterConnection.getStatus(),
     });
@@ -1657,12 +1657,7 @@ export function createApp(): Express {
   app.get('/api/logs/export', (req, res) => {
     const from = typeof req.query.from === 'string' ? req.query.from : 'all';
     const to = typeof req.query.to === 'string' ? req.query.to : 'all';
-    return forwardCsv(
-      res,
-      'log:export',
-      parseLogQuery(req.query),
-      `logs-${from}-${to}.csv`,
-    );
+    return forwardCsv(res, 'log:export', parseLogQuery(req.query), `logs-${from}-${to}.csv`);
   });
 
   // Reports (docs/backend-modules/04-API-CONTRACT.md §3). Forwarded live and
@@ -2141,7 +2136,7 @@ async function queue(
       queued: true,
       id: entityId,
       mutationId: mutation.mutationId,
-      pendingCount: await outbox.pendingCount(),
+      pendingCount: await localStore.viewerPendingCount(),
       ...numbering,
     });
   } catch (error) {
@@ -2213,7 +2208,7 @@ function presenceBeat(body: unknown): PresenceBeat {
  * it. The dashboard figures and the party scope are re-applied for the same
  * reason.
  */
-type LocalView = SyncSnapshot & { pendingCount: number };
+type LocalView = SyncSnapshot & { pendingCount: number; ownQueuedPartyIds?: string[] };
 
 /**
  * Which permission gates each `DashboardSummary` figure — kept in one place
@@ -2307,6 +2302,9 @@ export const SNAPSHOT_POLICY: Record<keyof SyncSnapshot, SnapshotPolicy> = {
   // signed in — see `withoutAnotherPersonsParties` below.
   partyGrants: 'gate',
   builtForUserId: 'passthrough',
+  // Ids only; `withoutAnotherPersonsParties` reads it to decide what the next person may see.
+  openPartyIds: 'passthrough',
+  partyAccessCounts: 'passthrough',
   // Not company data — just says whether `products` above is the complete
   // catalogue or one clamped/permission-emptied page.
   productsComplete: 'passthrough',
@@ -2342,22 +2340,71 @@ function withoutAnotherPersonsParties(view: LocalView): LocalView {
   // the first place, because it had no such concept.
   if (view.builtForUserId === undefined || view.builtForUserId === signedInAs) return view;
 
-  const restricted = new Set((view.partyGrants ?? []).map((grant) => grant.partyId));
-  if (restricted.size === 0) return { ...view, partyGrants: [] };
+  // A Master that says which parties are open: show only those. Not "the ones the previous
+  // person held no grant on", which let an administrator's snapshot hand every restricted
+  // party to the next person, since an administrator needs no grant to see one. A party not
+  // listed (it arrived after the snapshot) is withheld: fail closed.
+  //
+  // Not the person's own queued parties: a party they created offline has a temporary id, so it
+  // is in nobody's list. They are named by the view from this person's own pending
+  // `party.create`s, never guessed from the row: a server row can carry any `sync.hlc`, an
+  // empty one included (a NULL column reads as ''), so no marker on the row can be trusted.
+  const own = new Set(view.ownQueuedPartyIds ?? []);
+  const open = view.openPartyIds ? new Set(view.openPartyIds) : null;
+  const restricted = open
+    ? new Set(
+        view.parties
+          .filter((party) => !open.has(party.id) && !own.has(party.id))
+          .map((party) => party.id),
+      )
+    : new Set((view.partyGrants ?? []).map((grant) => grant.partyId));
+
+  // Whatever else, the figures and counts in this cache are the previous person's: the
+  // dashboard summed the parties and records this person is not shown, and the counts name
+  // restricted parties. Neither is recomputed for somebody offline; the next snapshot has them.
+  const withheld = {
+    partyGrants: [],
+    dashboard: { asOf: view.dashboard.asOf } as LocalView['dashboard'],
+    // Only for the parties still shown; the rest would name restricted parties and how many hold them.
+    partyAccessCounts: view.partyAccessCounts
+      ? Object.fromEntries(
+          Object.entries(view.partyAccessCounts).filter(
+            ([partyId]) =>
+              !restricted.has(partyId) && view.parties.some((party) => party.id === partyId),
+          ),
+        )
+      : undefined,
+  };
+  if (restricted.size === 0) return { ...view, ...withheld };
+
+  const parties = view.parties.filter((party) => !restricted.has(party.id));
+  const leads = view.leads.filter((lead) => !restricted.has(lead.partyId));
+  const orders = view.orders.filter((order) => !restricted.has(order.partyId));
+  const shown = {
+    party: new Set(parties.map((party) => party.id)),
+    lead: new Set(leads.map((lead) => lead.id)),
+    order: new Set(orders.map((order) => order.id)),
+  };
 
   return {
     ...view,
-    partyGrants: [],
-    parties: view.parties.filter((party) => !restricted.has(party.id)),
-    leads: view.leads.filter((lead) => !restricted.has(lead.partyId)),
-    orders: view.orders.filter((order) => !restricted.has(order.partyId)),
+    ...withheld,
+    parties,
+    leads,
+    orders,
     partyVariants: view.partyVariants.filter((variant) => !restricted.has(variant.partyId)),
+    // A conflict names a lead, an order or a party, and carries both sides' values: it goes
+    // with the record, and a conflict about one this person is not shown is withheld.
+    conflicts: view.conflicts.filter((conflict) => {
+      const visible = shown[conflict.entity as keyof typeof shown];
+      return !visible || visible.has(conflict.entityId);
+    }),
   };
 }
 
 function forCurrentUser(view: LocalView): LocalView {
   const permissions = userSession.sessionPermissions();
-  const scoped = withoutAnotherPersonsParties(view);
+  const { ownQueuedPartyIds: _own, ...scoped } = withoutAnotherPersonsParties(view);
 
   return {
     ...scoped,
@@ -2512,7 +2559,10 @@ function commandCached(event: string, payload: unknown[]): Promise<unknown> {
   if (hit && Date.now() - hit.at < ttl) return hit.value;
 
   if (readCache.size >= READ_CACHE_MAX) readCache.clear();
-  const entry = { at: Date.now(), value: masterConnection.command(event as never, ...payload) as Promise<unknown> };
+  const entry = {
+    at: Date.now(),
+    value: masterConnection.command(event as never, ...payload) as Promise<unknown>,
+  };
   readCache.set(key, entry);
   entry.value.catch(() => {
     if (readCache.get(key) === entry) readCache.delete(key);
