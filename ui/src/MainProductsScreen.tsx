@@ -199,7 +199,7 @@ export function MainProductsScreen({
         <Button
           variant="secondary"
           size="sm"
-          icon="download"
+          icon="upload"
           onClick={() =>
             void exportCatalogueCsv(transportRef.current, 'main').catch((caught) =>
               toast.push(apiErrorText(caught, 'catalog.export.failed'), { tone: 'error' }),

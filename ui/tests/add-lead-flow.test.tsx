@@ -237,7 +237,7 @@ async function openForm(view: Record<string, unknown> = {}): Promise<Call[]> {
       <App />
     </StrictMode>,
   );
-  await screen.findByRole('link', { name: t('footer.designSystem') });
+  await waitFor(() => expect(document.querySelector('.ob-footer')).not.toBeNull());
   await sendSnapshot(snapshot(view));
   fireEvent.click(
     within(document.querySelector<HTMLElement>('.ob-topbar')!).getByRole('button', {

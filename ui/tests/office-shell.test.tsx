@@ -200,7 +200,7 @@ async function boot({ permissions, view = {}, refusals = [], route }: Boot): Pro
       <App />
     </StrictMode>,
   );
-  await screen.findByRole('link', { name: t('footer.designSystem') });
+  await waitFor(() => expect(document.querySelector('.ob-footer')).not.toBeNull());
   await sendSnapshot(snapshot(view));
   return calls;
 }
@@ -497,7 +497,7 @@ describe('where a person lands', () => {
         <App />
       </StrictMode>,
     );
-    await screen.findByRole('link', { name: t('footer.designSystem') });
+    await waitFor(() => expect(document.querySelector('.ob-footer')).not.toBeNull());
 
     // No snapshot has been sent: Basic Home reads only the sidebar.
     expect(topbarTitle()).toBe(t('nav.basicHome'));
@@ -523,7 +523,7 @@ describe('where a person lands', () => {
         <App />
       </StrictMode>,
     );
-    await screen.findByRole('link', { name: t('footer.designSystem') });
+    await waitFor(() => expect(document.querySelector('.ob-footer')).not.toBeNull());
 
     const tiles = [...document.querySelectorAll('.ob-launcher .ob-tile-label')].map((tile) => tile.textContent);
     expect(tiles).toContain(t('nav.chatroom'));
@@ -617,13 +617,11 @@ describe('a request that ends without an answer', () => {
 });
 
 describe('the design-system gallery', () => {
-  it('stays open after the link it was opened from changes the hash', async () => {
+  it('stays open after the hash changes to #/gallery', async () => {
     await boot({ permissions: ['leads.view'] });
 
-    // What a click on the footer link does in a browser: the handler, then the
-    // hash, then `hashchange`.
+    // The hash changes, then `hashchange` fires.
     await act(async () => {
-      fireEvent.click(screen.getByRole('link', { name: t('footer.designSystem') }));
       window.location.hash = '#/gallery';
       await wait(0);
     });
@@ -821,7 +819,6 @@ describe('the refusal toast', () => {
     });
     if (fromGallery) {
       await act(async () => {
-        fireEvent.click(screen.getByRole('link', { name: t('footer.designSystem') }));
         window.location.hash = '#/gallery';
         await wait(0);
       });
@@ -2166,7 +2163,7 @@ describe('an Office on another version than its Master (1.4 R7e)', () => {
     expect(await screen.findByRole('heading', { name: t('updates.required.title') })).toBeTruthy();
     expect(screen.getByText(t('updates.required.body', { mine: '1.2.0', master: '1.3.0' }))).toBeTruthy();
     // No sidebar, no footer: nothing of the app is open behind it.
-    expect(screen.queryByRole('link', { name: t('footer.designSystem') })).toBeNull();
+    expect(document.querySelector('.ob-footer')).toBeNull();
     expect(screen.queryByRole('region', { name: t('nav.work') })).toBeNull();
     // A person with no settings right can still start the update: it is mandatory.
     expect(await screen.findByRole('button', { name: t('updates.installNow') })).toBeTruthy();
@@ -2181,7 +2178,7 @@ describe('an Office on another version than its Master (1.4 R7e)', () => {
         <App />
       </StrictMode>,
     );
-    await screen.findByRole('link', { name: t('footer.designSystem') });
+    await waitFor(() => expect(document.querySelector('.ob-footer')).not.toBeNull());
     expect(screen.queryByRole('heading', { name: t('updates.required.title') })).toBeNull();
   });
 
@@ -2193,7 +2190,7 @@ describe('an Office on another version than its Master (1.4 R7e)', () => {
         <App />
       </StrictMode>,
     );
-    await screen.findByRole('link', { name: t('footer.designSystem') });
+    await waitFor(() => expect(document.querySelector('.ob-footer')).not.toBeNull());
     expect(screen.queryByRole('heading', { name: t('updates.required.title') })).toBeNull();
   });
 
@@ -2209,7 +2206,7 @@ describe('an Office on another version than its Master (1.4 R7e)', () => {
     expect(await screen.findByRole('heading', { name: t('updates.waiting.title') })).toBeTruthy();
     expect(screen.getByText(t('updates.waiting.body', { mine: '1.4.0', master: '1.3.0' }))).toBeTruthy();
     // Nothing of the app, and nothing to install: only the Master can be updated for this.
-    expect(screen.queryByRole('link', { name: t('footer.designSystem') })).toBeNull();
+    expect(document.querySelector('.ob-footer')).toBeNull();
     expect(screen.queryByRole('button', { name: t('updates.installNow') })).toBeNull();
     expect(screen.getByRole('button', { name: t('action.signOut') })).toBeTruthy();
   });

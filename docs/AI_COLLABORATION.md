@@ -190,6 +190,21 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-06 - UI fixes: tab strip, footer, party form, import/export icons, empty colour list (Claude, Sonnet)
+
+- **Tab strip** (`.ob-tabs`): `overflow-y: hidden` and the underline at `bottom: 0`. The 1px underline
+  overhang made a vertical scrollbar on every tabbed screen (Fields, Settings, ...).
+- **Footer**, both panels: left is the signed-in user's avatar (sm) and display name; right is the sync
+  indicator, company and version. The role badge, role text, Design system link, clock and Office
+  "signed in offline" note are gone; the footer is 2.5rem tall. `#/gallery` still opens the gallery.
+- **Party form:** Phone, Alternate phone and PIN code no longer right-align (`ob-numinput` dropped).
+- **Import / Export icons:** Export is the up arrow, Import (and the import confirm button) the down
+  arrow. File saves (templates, issues report, share, Reports) keep the down arrow.
+- **Multicolour product with an empty colour list:** the lead entry card says so (`lead.add.draft.noColourList`)
+  instead of silently dropping the colour step. The list is edited in the Master: Fields > Option lists > Colour.
+- **Verified:** typecheck clean; lint clean; the affected vitest files pass (shell, add-lead, office-settings,
+  shared, party/import tests). Not run: the full `npm run verify`, a browser pass of the footer, or an `.exe`.
+
 ### 2026-10-05 - Speed, limits, stability, duplicates, 1.4.3: CH1 and seven Sonnet sessions (Claude, Opus + Sonnet)
 
 - **Who did what.** The plan is `CLAUDE_HELPER_143.md` (R1–R18, untracked). The owner said

@@ -2607,6 +2607,8 @@ export const EN_MESSAGES = {
   'lead.add.flow.addColour': 'Add a colour',
   'lead.add.flow.addColourPlaceholder': 'Type a colour — Enter adds it; Enter on an empty box goes to the quantities',
   'lead.add.draft.hintColour': 'Add at least one colour',
+  'lead.add.draft.noColourList':
+    'This product comes in several colours, but the company colour list is empty, so there is no colour to pick. Add colours under Fields › Values › Colour, then add the product again. Until then it is added without a colour.',
   'lead.add.draft.removeColour': 'Remove colour {colour}',
   'lead.add.review.title': 'Check this pending order',
   'lead.add.review.hint': 'Ctrl+Enter saves it; Esc goes back to the form.',

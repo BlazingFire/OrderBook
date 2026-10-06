@@ -287,7 +287,7 @@ export function ProductImportModal({
         </Button>
         <Button
           variant="primary"
-          icon="upload"
+          icon="download"
           autoFocus
           busy={busy === 'importing'}
           disabled={!result || result.created + result.updated === 0}
