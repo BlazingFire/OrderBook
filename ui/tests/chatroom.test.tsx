@@ -426,6 +426,56 @@ describe('the composer', () => {
     expect(vi.mocked(transport.post).mock.calls[0]![1]).toMatchObject({ body: 'hello @Bina', mentions: ['US2'] });
   });
 
+  it('keeps what is typed the moment the composer is drawn, before React has run its effects', async () => {
+    // Waits on the DOM alone, without the settle Testing Library adds after a findBy: on a loaded
+    // machine that settle can come after the typing, and a reset run on mount used to wipe it.
+    room(makeTransport());
+    const box = await new Promise<HTMLTextAreaElement>((resolve) => {
+      const find = () => document.querySelector('textarea');
+      const hit = find();
+      if (hit) return resolve(hit);
+      const observer = new MutationObserver(() => {
+        const found = find();
+        if (found) {
+          observer.disconnect();
+          resolve(found);
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
+    fireEvent.change(box, { target: { value: 'hello @bi', selectionStart: 9 } });
+    expect(await screen.findByRole('listbox', { name: t('chat.composer.mentionList') })).toBeTruthy();
+    expect(box.value).toBe('hello @bi');
+  });
+
+  it('starts a new draft in another room, even one that opens from memory', async () => {
+    const transport = makeTransport();
+    const at = (roomId: string) =>
+      wrap(
+        <ChatConversation
+          transport={transport}
+          roomId={roomId}
+          viewer={viewer(['chat.use', 'chat.shareRecords', 'chat.tasks'])}
+          onBack={() => undefined}
+          onOpenSettings={() => undefined}
+          onOpenRecord={() => undefined}
+          findRecords={noRecords}
+        />,
+      );
+    // Room two read once, so it is held and opens without a blank moment.
+    const view = render(at('room-2'));
+    await screen.findByText('message 2');
+    view.rerender(at('room-1'));
+    await waitFor(() => expect(transport.room).toHaveBeenCalledWith('room-1'));
+    const box = (await screen.findByPlaceholderText(t('chat.composer.placeholder'))) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: 'for room one', selectionStart: 12 } });
+
+    view.rerender(at('room-2'));
+
+    const next = (await screen.findByPlaceholderText(t('chat.composer.placeholder'))) as HTMLTextAreaElement;
+    expect(next.value).toBe('');
+  });
+
   it('does not treat an email address as a mention', async () => {
     room(makeTransport());
     const box = await screen.findByPlaceholderText(t('chat.composer.placeholder'));
