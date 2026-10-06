@@ -32,6 +32,11 @@ import { actorCan, actorUserId, type ActorContext } from './actor.js';
  * work today for no gain: an unassigned party was never secret.
  */
 export interface PartyScope {
+  /**
+   * Set when the person may not manage notices: the activity log then hides the rows about them,
+   * which carry notice titles that were meant for other roles. Absent means not narrowed.
+   */
+  noticesHidden?: boolean;
   /** Holds `party.accessAll` — the assignment table does not narrow them. */
   seesAll: boolean;
   userId: string | null;
@@ -68,6 +73,7 @@ export function resolvePartyScope(actor: ActorContext): PartyScope {
   return {
     seesAll: actorCan(actor, 'party.accessAll'),
     userId: actorUserId(actor),
+    noticesHidden: !actorCan(actor, 'notices.manage'),
   };
 }
 

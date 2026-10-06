@@ -33,7 +33,7 @@ import {
 import { db } from '../db/knex.js';
 import { actorCan, actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { assertVersionMatches } from '../domain/access.js';
-import { NotFoundError, ValidationError } from '../lib/errors.js';
+import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as noticeRepo from '../repositories/notice.repository.js';
 import { publishChange } from './change-bus.js';
@@ -45,12 +45,20 @@ function assertNoticeId(id: unknown): asserts id is string {
   if (typeof id !== 'string' || !UUID.test(id)) throw new NotFoundError('Notice');
 }
 
+/**
+ * Who is reading. Only a person has a role to be addressed by: a panel acting as itself (nobody
+ * signed in, or not yet re-attached) is a reader of nothing but the notices for everybody.
+ */
 function readerOf(actor: ActorContext): noticeRepo.Reader {
-  return { userId: actorUserId(actor), roleId: actor.permissions?.roleId ?? null };
+  const userId = actorUserId(actor);
+  return { userId, roleId: userId ? (actor.permissions?.roleId ?? null) : null };
 }
 
-/** What a reader sees of a notice: nothing about who else has read it, or which roles it names. */
-function forReader(row: noticeRepo.NoticeRow): Notice {
+/**
+ * What a reader sees of a notice: nothing about who else has read it, and of its audience only
+ * whether it is for everybody or for their own role (never the other roles it names).
+ */
+function forReader(row: noticeRepo.NoticeRow, viewerRoleId: string | null = null): Notice {
   return {
     id: row.id,
     tenantId: row.tenantId,
@@ -59,7 +67,13 @@ function forReader(row: noticeRepo.NoticeRow): Notice {
     priority: row.priority,
     pinned: row.pinned,
     showUntil: row.showUntil,
-    audience: audienceOf(row),
+    audience: row.audienceAll
+      ? { kind: 'all' }
+      : {
+          kind: 'roles',
+          roleIds:
+            viewerRoleId !== null && row.roleIds.includes(viewerRoleId) ? [viewerRoleId] : [],
+        },
     authorId: row.authorId,
     authorName: row.authorName,
     createdAt: row.createdAt,
@@ -72,6 +86,8 @@ function forReader(row: noticeRepo.NoticeRow): Notice {
 function forManager(row: noticeRepo.NoticeRow, names: Map<string, string>): Notice {
   return {
     ...forReader(row),
+    // The manager sees the whole audience.
+    audience: audienceOf(row),
     readByMe: undefined,
     audienceRoleNames: row.roleIds.map((id) => names.get(id) ?? id),
     expired: row.expired,
@@ -104,6 +120,71 @@ const PROBLEM_KEY = {
   audience_too_big: 'validation.notice.audienceTooBig',
 } as const satisfies Record<NoticeProblem, string>;
 
+/**
+ * The request body as a notice input, or a 400. Types are checked before anything is read from
+ * them: a title that is not text, an audience of an unknown kind or without its roles, a pin that
+ * is not true or false, answer the refusal below and never a 500 (and an unknown audience kind is
+ * never stored as an empty list of roles).
+ */
+function parseInput(
+  body: unknown,
+  mode: 'create' | 'update',
+): Partial<NoticeInput> & { expectedVersion?: number } {
+  const bad = (): never => {
+    throw new ValidationError('validation.notice.malformed');
+  };
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) return bad();
+  const raw = body as Record<string, unknown>;
+
+  const out: Partial<NoticeInput> & { expectedVersion?: number } = {};
+  if (raw.title !== undefined) {
+    if (typeof raw.title !== 'string') return bad();
+    out.title = raw.title;
+  } else if (mode === 'create') {
+    out.title = '';
+  }
+  if (raw.body !== undefined) {
+    if (typeof raw.body !== 'string') return bad();
+    out.body = raw.body;
+  }
+  if (raw.priority !== undefined) {
+    if (typeof raw.priority !== 'string') return bad();
+    out.priority = raw.priority as NoticeInput['priority'];
+  }
+  if (raw.pinned !== undefined) {
+    if (typeof raw.pinned !== 'boolean') return bad();
+    out.pinned = raw.pinned;
+  }
+  if (raw.showUntil !== undefined && raw.showUntil !== null) {
+    if (typeof raw.showUntil !== 'string') return bad();
+    out.showUntil = raw.showUntil;
+  } else if (raw.showUntil === null) {
+    out.showUntil = null;
+  }
+  if (raw.audience !== undefined) {
+    const audience = raw.audience as { kind?: unknown; roleIds?: unknown } | null;
+    if (typeof audience !== 'object' || audience === null) return bad();
+    if (audience.kind === 'all') {
+      out.audience = { kind: 'all' };
+    } else if (audience.kind === 'roles') {
+      if (
+        !Array.isArray(audience.roleIds) ||
+        audience.roleIds.some((id) => typeof id !== 'string' || !id)
+      )
+        return bad();
+      out.audience = { kind: 'roles', roleIds: audience.roleIds as string[] };
+    } else {
+      return bad();
+    }
+  }
+  if (raw.expectedVersion !== undefined) {
+    if (typeof raw.expectedVersion !== 'number' || !Number.isInteger(raw.expectedVersion))
+      return bad();
+    out.expectedVersion = raw.expectedVersion;
+  }
+  return out;
+}
+
 function assertValid(input: Partial<NoticeInput>, mode: 'create' | 'update'): void {
   const problem = noticeProblem(input, mode);
   if (problem)
@@ -131,15 +212,19 @@ async function assertRoles(
 export async function listBoard(actor: ActorContext): Promise<NoticeBoard> {
   requirePermission(actor, 'notices.view');
 
-  const rows = await noticeRepo.listForReader(actor.tenantId, readerOf(actor));
-  const notices = rows.map(forReader);
+  const reader = readerOf(actor);
+  const rows = await noticeRepo.listForReader(actor.tenantId, reader);
+  const notices = rows.map((row) => forReader(row, reader.roleId));
   return { notices, unreadCount: notices.filter((notice) => !notice.readByMe).length };
 }
 
 /** The reader's list for a snapshot: empty without the right, rather than an error. */
 export async function snapshotNotices(actor: ActorContext): Promise<Notice[]> {
   if (!actorCan(actor, 'notices.view')) return [];
-  return (await noticeRepo.listForReader(actor.tenantId, readerOf(actor))).map(forReader);
+  const reader = readerOf(actor);
+  return (await noticeRepo.listForReader(actor.tenantId, reader)).map((row) =>
+    forReader(row, reader.roleId),
+  );
 }
 
 export async function listManage(actor: ActorContext): Promise<Notice[]> {
@@ -182,6 +267,8 @@ export async function markRead(
   requirePermission(actor, 'notices.view');
 
   const reader = readerOf(actor);
+  // A read belongs to a person. Counting it for nobody would answer 200 and record nothing.
+  if (!reader.userId) throw new ConflictError('error.conflict.noNoticeReader');
   const board = await noticeRepo.listForReader(actor.tenantId, reader);
 
   if (reader.userId) {
@@ -199,8 +286,9 @@ export async function markRead(
 
 // --- Writing ---------------------------------------------------------------------
 
-export async function createNotice(input: NoticeInput, actor: ActorContext): Promise<Notice> {
+export async function createNotice(body: unknown, actor: ActorContext): Promise<Notice> {
   requirePermission(actor, 'notices.manage');
+  const input = parseInput(body, 'create') as NoticeInput;
   assertValid(input, 'create');
   const roleIds = await assertRoles(actor, input.audience);
 
@@ -250,11 +338,12 @@ export async function createNotice(input: NoticeInput, actor: ActorContext): Pro
 
 export async function updateNotice(
   id: string,
-  input: NoticeUpdate,
+  body: unknown,
   actor: ActorContext,
 ): Promise<Notice> {
   requirePermission(actor, 'notices.manage');
   assertNoticeId(id);
+  const input = parseInput(body, 'update') as NoticeUpdate;
   assertValid(input, 'update');
 
   const existing = await noticeRepo.findById(actor.tenantId, id);
