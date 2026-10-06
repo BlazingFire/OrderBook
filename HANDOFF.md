@@ -54,9 +54,9 @@ on it.
 
 ## Party private to its creator + 1.4.4 (2026-10-06)
 
-**State:** built, not published. `main` @ `93fd1ac` (the 1.4.4 bump on D5's green `3583d2e`) is
-pushed (owner, 2026-10-06); the GitHub release is not published. Signed Setups were built into the scratch folders `.tmpel144` (Master and
-Office) and `OrderBook-d3/.tmp` (Win7). The owner decides when to publish. Notes:
+**State:** released. `main` @ `93fd1ac` (the 1.4.4 bump on D5's green `3583d2e`) is
+pushed (owner, 2026-10-06), and GitHub release **v1.4.4** is Latest (8 assets, empty body). Signed Setups were built into the scratch folders `.tmpel144` (Master and
+Office) and `OrderBook-d3/.tmp` (Win7). Notes:
 `docs/releases/1.4.4.md`. Rule: `docs/schema/06-…` §2a, `docs/ROLES_AND_USERS.md` 15b,
 `docs/STRUCTURE.md` 11.11, API contract §21. Plan and evidence: `CLAUDE_HELPER_PV.md` (P1–P5, owner
 decisions) and the "Party visibility (2026-10-06)" sections of `CLAUDE_HELPER_D1.md`…`D7.md`.
