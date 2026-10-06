@@ -153,6 +153,9 @@ async function boot(
     // Answered for every test: `api.ts` shares one in-flight GET per path across
     // the file, so a bell read left hanging by one test would swallow the next's.
     if (path === '/api/notifications') return json({ items: [], unreadCount: 0 });
+    // The notice board's read, answered for every test for the same reason: a read left hanging by one
+    // test would swallow the next one's (the in-flight GET sharing in `api.ts`).
+    if (path === '/api/notices') return json({ notices: [], unreadCount: 0 });
     // The faces on a board's rows (R22), nobody by default, for the same reason.
     if (path === '/api/presence/board') {
       return json({ recordKind: url.includes('kind=order') ? 'order' : 'lead', records: {} });
@@ -1079,6 +1082,15 @@ describe('New pending order', () => {
     });
     expect(screen.getByLabelText(t('lead.add.party.search'))).toBeTruthy();
     expect(topbarTitle()).toBe(t('lead.add.title'));
+  });
+
+  it('is listed once in the sidebar while it is open, and that row is the current page', async () => {
+    await boot(CREATE);
+    await openFormByKey();
+
+    const rows = screen.getAllByTitle(t('lead.add.title'));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.getAttribute('aria-current')).toBe('page');
   });
 
   it('does nothing on Ctrl+Shift+N without leads.create', async () => {
