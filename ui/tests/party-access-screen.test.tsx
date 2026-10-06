@@ -535,7 +535,9 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
 
       const cell = within(row).getByText(t('partyAccess.more', { count: 2 })).parentElement!;
       expect(cell.getAttribute('title')).toBe(
-        'Anita Rao (Manage), Vikram Shah (View), Meera Iyer (View), Rohan Das (View), Samir Khan (Manage)',
+        'Anita Rao (Manage), Vikram Shah (View), Meera Iyer (View), Rohan Das (View), Samir Khan (Manage). ' +
+        // The row's creator is no longer on it, so the tooltip names them last.
+        t('partyAccess.createdBy', { name: 'Priya Nair' }),
       );
       // The level is a small tag next to the name.
       expect(within(row).getAllByText(t('partyAccess.level.manage')).length).toBeGreaterThan(0);

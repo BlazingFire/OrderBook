@@ -2211,3 +2211,32 @@ describe('an Office on another version than its Master (1.4 R7e)', () => {
     expect(screen.getByRole('button', { name: t('action.signOut') })).toBeTruthy();
   });
 });
+
+describe('Party lists mark who can see a party (party visibility)', () => {
+  const synced = { ...PARTY, sync: { hlc: 'h1' } };
+  const second = { ...synced, id: 'party-2', partyCode: 'P-002', name: 'Patel Tiles' };
+  const third = { ...synced, id: 'party-3', partyCode: 'P-003', name: 'Joshi Sanitary' };
+
+  async function openParties(view: Record<string, unknown>): Promise<void> {
+    await boot({ permissions: ['parties.view'], view: { parties: [synced, second, third], products: [], ...view } });
+    fireEvent.click(await screen.findByTitle(t('nav.parties')));
+    await screen.findByText('Patel Tiles');
+  }
+
+  it('says Private for one holder and Shared with N for more, and nothing for an open or unlisted party', async () => {
+    await openParties({ partyAccessCounts: { 'party-1': 1, 'party-2': 3 } });
+
+    const row = (name: string) => screen.getByText(name).closest('tr')!;
+    expect(within(row('Sharma Traders')).getByText(t('partyVisibility.private'))).toBeTruthy();
+    expect(within(row('Patel Tiles')).getByText(t('partyVisibility.shared', { count: 3 }))).toBeTruthy();
+    // No entry: open, or newer than the snapshot. Nothing is drawn rather than a guess.
+    expect(within(row('Joshi Sanitary')).queryByText(t('partyVisibility.private'))).toBeNull();
+    expect(within(row('Joshi Sanitary')).queryByText(/Shared with/)).toBeNull();
+  });
+
+  it('draws no marker at all from a snapshot an older Master sent (no counts)', async () => {
+    await openParties({});
+    expect(screen.queryByText(t('partyVisibility.private'))).toBeNull();
+    expect(screen.queryByText(/Shared with/)).toBeNull();
+  });
+});
