@@ -34,6 +34,31 @@ import { outboxRevision, pending } from './outbox.store.js';
 
 const log = createLogger('local-store');
 
+/**
+ * Who is signed in at this PC, for the view. Injected by the sign-in module, like the sync
+ * queue's acting user, so this module stays free of it.
+ */
+let viewer: () => string | null = () => null;
+export function setViewer(provider: () => string | null): void {
+  viewer = provider;
+}
+
+/**
+ * Whether work queued by `author` may be drawn for the person signed in. Work with no
+ * author is everybody's; anything else is its author's alone until the Master has
+ * confirmed it, at which point it is in the snapshot and the Master's own party scoping
+ * decides who sees it. Without this, a party or lead one person queued offline appeared
+ * to whoever signed in next on the same PC.
+ */
+/** Who is signed in at this PC right now, for the link's choice between a delta and a full snapshot. */
+export function currentViewer(): string | null {
+  return viewer();
+}
+
+function shownTo(author: string | null | undefined, signedIn: string | null): boolean {
+  return !author || author === signedIn;
+}
+
 let snapshot: SyncSnapshot | null = null;
 let cursor: SyncDeltaCursor | null = null;
 let loaded = false;
@@ -237,13 +262,14 @@ export async function getView(): Promise<(SyncSnapshot & { pendingCount: number 
    * mutates that same object — a memo keyed on the reference would never
    * invalidate.
    */
-  const key = `${revision}:${outboxRevision()}`;
+  const signedIn = viewer();
+  const key = `${revision}:${outboxRevision()}:${signedIn ?? ''}`;
   if (memo && memo.key === key) return memo.view;
 
   const view =
     queued.length === 0 && numbered.size === 0
       ? { ...base, pendingCount: 0 }
-      : buildView(base, queued);
+      : buildView(base, queued, signedIn);
   memo = { key, view };
   return view;
 }
@@ -253,6 +279,7 @@ let memo: { key: string; view: SyncSnapshot & { pendingCount: number } } | null 
 function buildView(
   base: SyncSnapshot,
   queued: Mutation[],
+  signedIn: string | null,
 ): SyncSnapshot & { pendingCount: number } {
   const view: SyncSnapshot = {
     ...base,
@@ -262,6 +289,7 @@ function buildView(
   };
 
   for (const [temporaryId, held] of numbered) {
+    if (!shownTo(held.mutation.actorUserId, signedIn)) continue;
     if (base.leads.some((lead) => lead.id === held.permanentId)) {
       numbered.delete(temporaryId);
       continue;
@@ -272,7 +300,10 @@ function buildView(
     view.leads = [held.poNumber ? { ...lead, poNumber: held.poNumber } : lead, ...view.leads];
   }
 
-  for (const mutation of queued) applyOverlay(view, mutation);
+  // Everything queued counts as pending, but only this person's own work is drawn.
+  for (const mutation of queued) {
+    if (shownTo(mutation.actorUserId, signedIn)) applyOverlay(view, mutation);
+  }
 
   return { ...view, pendingCount: queued.length };
 }
@@ -297,7 +328,10 @@ function applyOverlay(view: SyncSnapshot, mutation: Mutation): void {
               // The clocks the Master's merge will write for these fields, so a
               // second edit queued before this one is acknowledged sends this
               // one as its base instead of clashing with it.
-              sync: { ...lead.sync, fieldHlc: { ...lead.sync.fieldHlc, ...stampedFields(mutation) } },
+              sync: {
+                ...lead.sync,
+                fieldHlc: { ...lead.sync.fieldHlc, ...stampedFields(mutation) },
+              },
             }
           : lead,
       );
@@ -358,7 +392,13 @@ function provisionalLead(view: SyncSnapshot, mutation: Mutation): Lead {
   const stage = pipeline?.stages.find((candidate) => candidate.isDefault) ?? pipeline?.stages[0];
 
   const items = (payload.items ?? []).map((item, index) =>
-    provisionalLine(view, mutation.entityId, item, index, payload.partyWiseMode ? payload.partyId : undefined),
+    provisionalLine(
+      view,
+      mutation.entityId,
+      item,
+      index,
+      payload.partyWiseMode ? payload.partyId : undefined,
+    ),
   );
 
   return {
@@ -409,7 +449,8 @@ function provisionalLine(
   const variant = product?.variants.find((candidate) => candidate.id === item.variantId);
   const partyRecord = variantPartyId
     ? view.partyVariants.find(
-        (candidate) => candidate.partyId === variantPartyId && candidate.productId === item.productId,
+        (candidate) =>
+          candidate.partyId === variantPartyId && candidate.productId === item.productId,
       )
     : undefined;
 

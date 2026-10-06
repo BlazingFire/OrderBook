@@ -61,11 +61,7 @@ export class SignInError extends Error {
   constructor(
     message: string,
     readonly code:
-      | 'invalid_credentials'
-      | 'unknown_here'
-      | 'inactive'
-      | 'locked_out'
-      | 'offline_disabled',
+      'invalid_credentials' | 'unknown_here' | 'inactive' | 'locked_out' | 'offline_disabled',
     readonly messageKey?: MessageKey,
     readonly params?: MessageParams,
     readonly details?: Record<string, unknown>,
@@ -116,8 +112,14 @@ export interface PanelSession {
  */
 let current: PanelSession | null = null;
 
-// The sync queue holds a chat post back until its author is the one signed in.
-setActingUser(() => current?.userId ?? null);
+// The sync queue holds queued work back until its author is the one signed in.
+// Queued work goes up only while the person who queued it is signed in AND the Master has
+// resolved them (`offline` false). An offline sign-in has only a stored token that the Master
+// may not have accepted yet; a push sent then is taken as the panel's own, so a party would
+// land open to everybody with nobody as its creator.
+setActingUser(() => (current && !current.offline ? current.userId : null));
+// The same person decides whose queued work the view draws.
+localStore.setViewer(() => current?.userId ?? null);
 
 export function currentSession(): PanelSession | null {
   return current;

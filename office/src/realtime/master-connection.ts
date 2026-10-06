@@ -359,7 +359,9 @@ class MasterConnection extends EventEmitter {
         // A push may wait in the Master's push gate (up to 6 s for an offline
         // backlog) before it is applied, so it gets a longer ack than the 15 s
         // a plain command has.
-        setTransport((mutations) => this.commandWithin(SYNC_PUSH_ACK_MS)('sync:push', { mutations }));
+        setTransport((mutations) =>
+          this.commandWithin(SYNC_PUSH_ACK_MS)('sync:push', { mutations }),
+        );
 
         // Say what this PC is. Nothing depends on it succeeding — a Master too
         // old to know the event simply never acknowledges — so it must not be
@@ -391,13 +393,16 @@ class MasterConnection extends EventEmitter {
       // that by itself. A revoke is not retried; its `panel:revoked` comes first.
       if (reason === 'io server disconnect' && !this.revoked) {
         const now = Date.now();
-        this.serverCloses = now - this.lastServerCloseAt < SERVER_CLOSE_WINDOW_MS ? this.serverCloses + 1 : 1;
+        this.serverCloses =
+          now - this.lastServerCloseAt < SERVER_CLOSE_WINDOW_MS ? this.serverCloses + 1 : 1;
         this.lastServerCloseAt = now;
         const extra = this.serverCloses - SERVER_CLOSES_BEFORE_BACKOFF;
         if (extra < 0) {
           this.scheduleRetry(socket, RECONNECT_DELAY_MS * (1 + Math.random()));
         } else {
-          log.warn("The Master keeps closing this connection; another PC may be using this panel's pairing.");
+          log.warn(
+            "The Master keeps closing this connection; another PC may be using this panel's pairing.",
+          );
           const backoff = Math.min(REFUSAL_RETRY_MAX_MS, REFUSAL_RETRY_MIN_MS * 2 ** extra);
           this.scheduleRetry(socket, backoff * (1 + RECONNECT_JITTER * (Math.random() * 2 - 1)));
         }
@@ -458,6 +463,17 @@ class MasterConnection extends EventEmitter {
      */
     socket.on('sync:delta', (delta) => {
       if (!this.snapshot) return;
+
+      // Never fold a delta onto a cache built for somebody else: take the full snapshot for
+      // whoever is signed in instead. The cached one stays withheld (the offline filter fails
+      // closed) until it arrives.
+      if (!this.cacheIsForViewer(this.snapshot)) {
+        log.info(
+          'Ignoring a delta for a cache built for somebody else; asking for a full snapshot',
+        );
+        this.requestFreshSnapshot();
+        return;
+      }
 
       const epoch = this.connectEpoch;
       this.bootId = delta.bootId;
@@ -594,9 +610,25 @@ class MasterConnection extends EventEmitter {
     this.socket = socket;
   }
 
+  /**
+   * Whether this cached snapshot was built for the person signed in at this PC now (or by a
+   * Master too old to say). A snapshot is scoped to one person's Party Access; nothing may be
+   * folded onto it for anybody else, and a delta for somebody else must not be.
+   */
+  private cacheIsForViewer(snapshot: SyncSnapshot): boolean {
+    return (
+      snapshot.builtForUserId === undefined ||
+      snapshot.builtForUserId === localStore.currentViewer()
+    );
+  }
+
   /** The socket auth for one handshake. */
   private handshake(credentials: StoredCredentials): PanelAuthPayload {
-    const cursor = this.snapshot ? localStore.getCursor() : null;
+    // A position in the Master's change ring only means something to the snapshot it came from,
+    // and a delta is scoped to whoever is acting now. Offered for somebody else's cache it would
+    // be folded onto it: the previous person's parties stay, the new person's never arrive.
+    const cursor =
+      this.snapshot && this.cacheIsForViewer(this.snapshot) ? localStore.getCursor() : null;
     return {
       kind: 'office-panel',
       panelId: credentials.panelId,
@@ -729,7 +761,8 @@ class MasterConnection extends EventEmitter {
         return;
       }
       // Back at the saved address needs no proof: the secret already goes there.
-      const saved = candidates.includes(credentials.masterHost) && master.httpPort === credentials.masterPort;
+      const saved =
+        candidates.includes(credentials.masterHost) && master.httpPort === credentials.masterPort;
       if (saved) return;
 
       let chosen: string | null = null;
@@ -740,7 +773,9 @@ class MasterConnection extends EventEmitter {
         }
       }
       if (!chosen) {
-        log.warn(`The Master found at ${address} could not prove it is this panel's Master; staying with ${current}`);
+        log.warn(
+          `The Master found at ${address} could not prove it is this panel's Master; staying with ${current}`,
+        );
         this.refuseRediscovery(address);
         return;
       }
@@ -774,9 +809,15 @@ class MasterConnection extends EventEmitter {
       const credentials = await loadCredentials();
       if (!credentials) return;
       const from = `${credentials.masterHost}:${credentials.masterPort}`;
-      await saveCredentials({ ...credentials, masterHost: candidate.host, masterPort: candidate.port });
+      await saveCredentials({
+        ...credentials,
+        masterHost: candidate.host,
+        masterPort: candidate.port,
+      });
       this.rediscoveredFrom = from;
-      log.info(`The Master moved from ${from} to ${candidate.host}:${candidate.port}; saved the new address`);
+      log.info(
+        `The Master moved from ${from} to ${candidate.host}:${candidate.port}; saved the new address`,
+      );
       this.emitStatus();
     } catch (error) {
       log.warn(`Could not save the Master's new address: ${describeError(error)}`);
@@ -1175,7 +1216,9 @@ class MasterConnection extends EventEmitter {
     // Otherwise the Master would take that move for a stale one (rule 6).
     const hlc = (event.payload as { sync?: { hlc?: unknown } } | null)?.sync?.hlc;
     if (typeof hlc === 'string') {
-      observe(hlc).catch((error: unknown) => log.debug(`Ignored a change's clock: ${(error as Error).message}`));
+      observe(hlc).catch((error: unknown) =>
+        log.debug(`Ignored a change's clock: ${(error as Error).message}`),
+      );
     }
 
     if (applyChangeToSnapshot(this.snapshot, event) === 'refresh') {
@@ -1285,7 +1328,9 @@ export async function masterProves(
     if (typeof body?.proof !== 'string') return false;
 
     const key = createHmac('sha256', credentials.panelSecret).update(MASTER_PROOF_CONTEXT).digest();
-    const expected = createHmac('sha256', key).update(masterProofMessage(nonce, host, port)).digest();
+    const expected = createHmac('sha256', key)
+      .update(masterProofMessage(nonce, host, port))
+      .digest();
     const given = Buffer.from(body.proof, 'hex');
     return given.length === expected.length && timingSafeEqual(given, expected);
   } catch {

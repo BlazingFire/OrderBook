@@ -110,6 +110,7 @@ import {
   type SidebarMode,
   type SubPage,
   NAV_ICONS,
+  setCreatedPartiesPrivate,
   useConfirm,
 } from '@orderbook/ui';
 /** The real components are loaded on first visit (below); these are only for their prop types. */
@@ -283,6 +284,10 @@ function OfficePanel() {
 
   const [connection, setConnection] = useState<ConnectionInfo | null>(null);
   const [session, setSession] = useState<PanelSession | null>(null);
+  // A party this person creates is theirs and the administrators' until shared (the party form says so).
+  useEffect(() => {
+    setCreatedPartiesPrivate(session !== null && !session.permissions.includes('party.accessAll'));
+  }, [session]);
   /** Why this window is at the sign-in screen, when it did not sign out itself. */
   const [signInNotice, setSignInNotice] = useState<MessageKey | null>(null);
   const [sessionChecked, setSessionChecked] = useState(false);

@@ -118,6 +118,26 @@ export async function grantsForParty(
 }
 
 /**
+ * How many people hold a grant on each of these parties. A party with none is open to
+ * everybody and has no entry.
+ */
+export async function accessCountsAmong(
+  tenantId: string,
+  partyIds: readonly string[],
+): Promise<Record<string, number>> {
+  if (partyIds.length === 0) return {};
+
+  const rows = await db()(TABLE)
+    .where({ tenant_id: tenantId })
+    .whereIn('party_id', [...partyIds])
+    .groupBy('party_id')
+    .select<Array<{ party_id: string; count: string }>>('party_id')
+    .count('user_id as count');
+
+  return Object.fromEntries(rows.map((row) => [row.party_id, Number(row.count)]));
+}
+
+/**
  * Grants for many parties at once, keyed by party id.
  *
  * The Party Access screen renders one row per party with its assignees on it;

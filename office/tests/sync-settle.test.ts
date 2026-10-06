@@ -104,7 +104,7 @@ function numberingMaster() {
 }
 
 describe('awaitSettled', () => {
-  it("resolves with the permanent id and PO number once the push is answered", async () => {
+  it('resolves with the permanent id and PO number once the push is answered', async () => {
     const { sync } = await loadModules();
     const master = numberingMaster();
     sync.setTransport(async (mutations) => master.answer(mutations));
@@ -187,7 +187,7 @@ describe('awaitSettled', () => {
     });
   });
 
-  it("announces a number nobody waited for, so the open screen can follow it", async () => {
+  it('announces a number nobody waited for, so the open screen can follow it', async () => {
     const { outbox, sync } = await loadModules();
     await outbox.enqueue({ ...newLead('A3F9K2000000001'), actorUserId: 'U-saver' });
 
@@ -195,11 +195,17 @@ describe('awaitSettled', () => {
     sync.onNumbered((event) => numbered.push(event));
     const master = numberingMaster();
     sync.setTransport(async (mutations) => master.answer(mutations));
+    // Queued work goes up while its author is the one signed in.
+    sync.setActingUser(() => 'U-saver');
 
     await sync.flush();
 
     expect(numbered).toEqual([
-      expect.objectContaining({ announced: false, poNumber: 'PO/2026-27/00042', forUserId: 'U-saver' }),
+      expect.objectContaining({
+        announced: false,
+        poNumber: 'PO/2026-27/00042',
+        forUserId: 'U-saver',
+      }),
     ]);
   });
 });

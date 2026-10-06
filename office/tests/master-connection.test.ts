@@ -25,7 +25,11 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MASTER_PROOF_CONTEXT, masterProofMessage, PANEL_PROTOCOL_VERSION } from '@orderbook/shared';
+import {
+  MASTER_PROOF_CONTEXT,
+  masterProofMessage,
+  PANEL_PROTOCOL_VERSION,
+} from '@orderbook/shared';
 
 let dataDir: string;
 
@@ -154,10 +158,14 @@ vi.mock('../src/sync/clock.js', () => ({
   },
 }));
 
-const local = { cursor: null as { bootId: string; lastSeq: number } | null };
+const local = {
+  cursor: null as { bootId: string; lastSeq: number } | null,
+  viewer: null as string | null,
+};
 vi.mock('../src/sync/local-store.js', () => ({
   restore: () => Promise.resolve(null),
   getCursor: () => local.cursor,
+  currentViewer: () => local.viewer,
   setSnapshot: () => Promise.resolve(),
   noteApplied: () => {},
   persistCurrent: () => Promise.resolve(),
@@ -215,6 +223,7 @@ beforeEach(async () => {
   credentials.cleared = 0;
   network.up = true;
   local.cursor = null;
+  local.viewer = null;
   discoverMasters.mockReset();
 });
 
@@ -260,6 +269,66 @@ describe('the protocol handshake', () => {
       panelSecret: 'reissued',
     });
     await masterConnection.assume(null);
+  });
+
+  describe('a cache built for somebody else', () => {
+    const delta = {
+      bootId: 'boot',
+      seq: 5,
+      events: [
+        { entity: 'party', action: 'updated', id: 'P1', payload: { id: 'P1', name: 'Renamed' } },
+      ],
+      permissions: [],
+      partyGrants: [],
+      dashboard: { asOf: '2026-10-01T00:00:00.000Z' },
+      serverTime: '2026-10-01T00:00:00.000Z',
+      protocol: 5,
+    };
+
+    it('is not offered a cursor, so the Master answers with a full snapshot for whoever is signed in', async () => {
+      const link = await connected();
+      link.emit('sync:snapshot', { ...snapshot(5), builtForUserId: 'admin1' });
+      await settle();
+      local.cursor = { bootId: 'boot', lastSeq: 4 };
+
+      // office1 signed in while the link was down; the cache is admin1's.
+      local.viewer = 'office1';
+      expect(await link.handshake()).not.toHaveProperty('syncCursor');
+
+      // The same person back again, or a cache from an older Master: the cheap catch-up stays.
+      local.viewer = 'admin1';
+      expect(await link.handshake()).toMatchObject({ syncCursor: { bootId: 'boot', lastSeq: 4 } });
+
+      // The link forgets the protocol on disconnect, as the later tests expect.
+      link.emit('disconnect', 'transport close');
+    });
+
+    it('never has a delta folded onto it: it asks for a full snapshot instead', async () => {
+      const link = await connected();
+      link.emit('sync:snapshot', {
+        ...snapshot(5),
+        parties: [{ id: 'P1', name: 'Original' }],
+        builtForUserId: 'admin1',
+      });
+      await settle();
+      local.viewer = 'office1';
+      // What the Master answers for office1: their own snapshot, without admin1's party.
+      link.answer = (event) =>
+        event === 'sync:request'
+          ? { ok: true, data: { ...snapshot(5), parties: [], builtForUserId: 'office1' } }
+          : { ok: true, data: null };
+      const seen: Array<{ parties: Array<{ name: string }> }> = [];
+      masterConnection.on('snapshot', (next) => seen.push(next as never));
+
+      link.emit('sync:delta', delta);
+      await vi.waitFor(() => expect(seen).toHaveLength(1), { timeout: 3000 });
+
+      expect(link.commands('sync:request')).toHaveLength(1);
+      // The only snapshot shown is the full one for office1: the delta's rename was never folded in.
+      expect(seen[0]?.parties).toEqual([]);
+      expect(masterConnection.getSnapshot()?.parties).toEqual([]);
+      link.emit('disconnect', 'transport close');
+    });
   });
 
   it('refuses a newer command at once, without sending it, until the Master says it can take it', async () => {
@@ -582,10 +651,18 @@ describe('what the status says', () => {
       entity: 'lead',
       action: 'updated',
       id: 'L1',
-      payload: { id: 'L1', sync: { version: 2, hlc, fieldHlc: { stageId: hlc }, temporaryId: null } },
+      payload: {
+        id: 'L1',
+        sync: { version: 2, hlc, fieldHlc: { stageId: hlc }, temporaryId: null },
+      },
     });
     // A change without a row clock is passed over, not folded.
-    link.emit('data:changed', { entity: 'lead', action: 'deleted', id: 'L2', payload: { id: 'L2' } });
+    link.emit('data:changed', {
+      entity: 'lead',
+      action: 'deleted',
+      id: 'L2',
+      payload: { id: 'L2' },
+    });
 
     expect(observed).toEqual([hlc]);
   });
@@ -668,7 +745,9 @@ describe('finding a Master that moved', () => {
   /** What the Master that holds this panel's proof key answers when reached at `host:port`. */
   const answerAt = (host: string, port: number) => (nonce: string) => {
     const key = createHmac('sha256', PAIRED.panelSecret).update(MASTER_PROOF_CONTEXT).digest();
-    return createHmac('sha256', key).update(masterProofMessage(nonce, host, port)).digest('hex');
+    return createHmac('sha256', key)
+      .update(masterProofMessage(nonce, host, port))
+      .digest('hex');
   };
   const genuine = answerAt('192.168.1.20', 4000);
 
@@ -751,19 +830,25 @@ describe('finding a Master that moved', () => {
 
   it('proves and connects to the address the Master answered from, not the one it claims', async () => {
     // It claims .99 (an adapter this PC cannot reach) but answered from .20.
-    discoverMasters.mockResolvedValue([{ ...MOVED, lanIp: '192.168.1.99', addresses: ['192.168.1.20', '192.168.1.99'] }]);
+    discoverMasters.mockResolvedValue([
+      { ...MOVED, lanIp: '192.168.1.99', addresses: ['192.168.1.20', '192.168.1.99'] },
+    ]);
     const fetchSpy = prover(genuine);
     const before = opened;
 
     await failThrice();
     await vi.waitFor(() => expect(opened).toBe(before + 2));
 
-    expect((fetchSpy.mock.calls[0] as unknown as [string])[0]).toBe('http://192.168.1.20:4000/api/panel/prove');
+    expect((fetchSpy.mock.calls[0] as unknown as [string])[0]).toBe(
+      'http://192.168.1.20:4000/api/panel/prove',
+    );
     expect(socket.url).toBe('http://192.168.1.20:4000');
   });
 
   it('tries the next address when the first one cannot prove it', async () => {
-    discoverMasters.mockResolvedValue([{ ...MOVED, lanIp: '192.168.1.20', addresses: ['192.168.1.30', '192.168.1.20'] }]);
+    discoverMasters.mockResolvedValue([
+      { ...MOVED, lanIp: '192.168.1.20', addresses: ['192.168.1.30', '192.168.1.20'] },
+    ]);
     // Only .20 holds the key.
     const fetchSpy = prover(genuine);
     const before = opened;

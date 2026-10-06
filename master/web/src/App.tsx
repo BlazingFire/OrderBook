@@ -101,6 +101,7 @@ import {
   type SidebarMode,
   type SubPage,
   NAV_ICONS,
+  setCreatedPartiesPrivate,
   useConfirm,
   requestSettingsTab,
 } from '@orderbook/ui';
@@ -328,6 +329,10 @@ export function App() {
 function MasterPanel() {
   const [phase, setPhase] = useState<Phase>('loading');
   const [user, setUser] = useState<SignedInUser | null>(null);
+  // A party this person creates is theirs and the administrators' until shared (the party form says so).
+  useEffect(() => {
+    setCreatedPartiesPrivate(user !== null && !user.permissions.includes('party.accessAll'));
+  }, [user]);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [changingPassword, setChangingPassword] = useState(false);
   /** Why this window is at the sign-in screen, when it did not sign out itself. */
