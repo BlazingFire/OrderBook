@@ -26,6 +26,8 @@ import { leadEntryTransport } from '../transports';
 interface Props {
   /** Moves when something the form's view is built from changes. */
   revision: number;
+  /** Moves when the catalogue changes: the open form reads its product bars again and keeps the draft. */
+  catalogueRevision?: number;
   /** Bumped by the shell each time the form is asked for. */
   focusNonce?: number;
   /** `parties.create`: whether the party list offers Create party. */
@@ -40,6 +42,7 @@ interface Props {
 
 export function LeadEntry({
   revision,
+  catalogueRevision,
   focusNonce,
   canCreateParty,
   lead,
@@ -77,6 +80,7 @@ export function LeadEntry({
         transport={leadEntryTransport}
         canCreateParty={canCreateParty}
         focusNonce={focusNonce}
+        catalogueRevision={catalogueRevision}
         lead={lead}
         remoteChange={remoteChange}
         onSaved={onSaved}
