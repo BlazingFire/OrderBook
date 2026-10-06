@@ -192,10 +192,18 @@ export function OptionListEditor({
             key: 'order',
             header: t('fields.col.order'),
             width: rem(72),
+            // Dropped on a narrow screen (1280x720 at 157 %) before Value and
+            // Label are squeezed; the row opens the value's editor.
+            priority: 2 as const,
             render: (item: OptionListItem) => {
               const index = items.indexOf(item);
               return (
-                <span style={{ display: 'flex', gap: 'var(--s-2)' }}>
+                // Its own clicks, not the row's: an arrow must not open the editor.
+                <span
+                  style={{ display: 'flex', gap: 'var(--s-2)' }}
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}
+                >
                   <IconButton
                     icon="chevron-up"
                     label={t('fields.action.moveUp')}
@@ -220,6 +228,7 @@ export function OptionListEditor({
             key: 'colour',
             header: t('fields.values.col.colour'),
             width: rem(80),
+            priority: 3 as const,
             render: (item: OptionListItem) => (
               <ColourChip hex={item.hex ?? undefined} name={item.label} />
             ),
@@ -256,6 +265,7 @@ export function OptionListEditor({
       key: 'usage',
       header: t('fields.values.col.usage'),
       width: rem(110),
+      priority: 3,
       align: 'right',
       render: (item) => {
         const entry = usageFor(item.value);
@@ -283,6 +293,9 @@ export function OptionListEditor({
                   justifyContent: 'flex-end',
                   width: '100%',
                 }}
+                // Remove must not also open the editor through the row.
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
               >
                 <Button variant="secondary" size="sm" onClick={() => setEditing(item)}>
                   {t('fields.action.edit')}
@@ -336,6 +349,9 @@ export function OptionListEditor({
             columns={columns}
             rows={items}
             rowKey={(item) => item.id}
+            // Opening a row edits it, so a column dropped on a narrow screen is one
+            // click away (the rule `fitColumns` relies on).
+            onRowOpen={canManage ? (item) => setEditing(item) : undefined}
             empty={
               <EmptyState
                 title={t('fields.values.empty.title')}

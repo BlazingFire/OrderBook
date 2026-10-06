@@ -141,4 +141,31 @@ describe('OptionListEditor', () => {
     expect(screen.queryByRole('button', { name: t('fields.action.remove') })).toBeNull();
     expect(screen.queryByRole('button', { name: t('fields.action.moveUp') })).toBeNull();
   });
+
+  it('opens a row in its editor, so a column dropped on a narrow screen is one click away', async () => {
+    const transport = fakeTransport([item('call'), item('whatsapp')]);
+    render(<OptionListEditor listKey="lead.sourcePlatform" canManage transport={transport} />);
+
+    fireEvent.click(await screen.findByText('WHATSAPP'));
+    expect(await screen.findByRole('button', { name: t('fields.action.save') })).toBeTruthy();
+  });
+
+  it('does not open the editor from the row actions or the move arrows', async () => {
+    const transport = fakeTransport([item('call'), item('whatsapp')]);
+    render(<OptionListEditor listKey="lead.sourcePlatform" canManage transport={transport} />);
+    await screen.findByText('CALL');
+
+    fireEvent.click(screen.getAllByRole('button', { name: t('fields.action.moveDown') })[0]!);
+    fireEvent.click(screen.getAllByRole('button', { name: t('fields.action.remove') })[0]!);
+    expect(screen.queryByRole('button', { name: t('fields.action.save') })).toBeNull();
+    fireEvent.keyDown(screen.getAllByRole('button', { name: t('fields.action.remove') })[0]!, { key: 'Enter' });
+    expect(screen.queryByRole('button', { name: t('fields.action.save') })).toBeNull();
+  });
+
+  it('heads its position column "Order", not "Final Order"', async () => {
+    render(<OptionListEditor listKey="lead.sourcePlatform" canManage transport={fakeTransport([item('call')])} />);
+    await screen.findByText('CALL');
+    expect(t('fields.col.order')).toBe('Order');
+    expect(screen.getByRole('columnheader', { name: 'Order' })).toBeTruthy();
+  });
 });
