@@ -4141,6 +4141,8 @@ button.ob-bell-item:hover {
   display: flex;
   flex-direction: column;
   gap: var(--s-12);
+  /* The same cap the Dashboard uses: at 3840 px wide a room list was 3,600 px of one-line rows. */
+  max-width: 114.286rem;
 }
 .ob-chat-toolbar {
   display: flex;
@@ -4286,6 +4288,11 @@ button.ob-bell-item:hover {
   gap: var(--s-8);
   padding-left: var(--s-12);
 }
+/* The tick and its caption keep their size; the task text takes what is left (it was squeezed to "Mark / done"). */
+.ob-chat-taskrow > .ob-check-row {
+  flex: none;
+  white-space: nowrap;
+}
 .ob-chat-taskrow[data-done='true'] .ob-body-strong {
   text-decoration: line-through;
   color: var(--fg-tertiary);
@@ -4298,6 +4305,7 @@ button.ob-bell-item:hover {
   min-height: 0;
   height: 100%;
   gap: var(--s-8);
+  max-width: 114.286rem;
 }
 .ob-chat-roomhead {
   display: flex;
@@ -4307,6 +4315,13 @@ button.ob-bell-item:hover {
 }
 .ob-chat-roomtitle {
   margin: 0;
+  /* A long group name wraps inside its own box instead of squeezing the member count. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ob-chat-roomhead > .ob-small {
+  flex: none;
+  white-space: nowrap;
 }
 .ob-chat-pinbar {
   flex: none;
@@ -4412,6 +4427,8 @@ button.ob-bell-item:hover {
   /* Plain text: line breaks kept, never turned into links. */
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  /* A line of text a reader can follow, on any screen: a message ran 3,500 px wide at 4K. */
+  max-width: 100ch;
 }
 .ob-chat-deleted {
   margin: 0;
@@ -4559,6 +4576,10 @@ button.ob-chat-chip-open:not(:disabled):hover {
   align-items: center;
   gap: var(--s-8);
 }
+.ob-chat-due > span {
+  flex: none;
+  white-space: nowrap;
+}
 .ob-chat-inputrow {
   display: flex;
   align-items: flex-end;
@@ -4651,6 +4672,8 @@ button.ob-chat-chip-open:not(:disabled):hover {
   display: flex;
   flex-direction: column;
   gap: var(--s-12);
+  /* As the Dashboard: a job's note, party and buttons stay within reach of each other at 4K. */
+  max-width: 114.286rem;
 }
 .ob-print-toolbar {
   display: flex;

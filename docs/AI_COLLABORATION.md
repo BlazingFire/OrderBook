@@ -2982,6 +2982,22 @@ answered `/api/health`; the uninstall sweep found every path a real extracted
 The macOS build cannot be run from here — `assertTarget()` refuses it off macOS
 — so that half is guarded rather than executed, and the CI matrix runs it first.
 
+### 2026-10-07 — U10: Chatroom, Printroom and note screen at 1280×720 to 3840×2160 (D7)
+
+**Method.** A browser pass at 1280×720, 1366×768, 1920×1080 and 3840×2160, each at the app's 100 % and 157 % scale, light
+and dark: the Office Chatroom (rooms, a long-titled room, tasks, groups, new group, group settings, both pickers, the
+composer's task form), the Office and Master Printroom (with the desktop bridge stubbed so the station strip shows) and
+the note screen (Filling, Dispatch, Preview, Send dialog). A script measured clipping, ellipsis, wrapped short labels,
+overlap and off-screen popups on each. **Fixed (local to those screens).** Labels that wrapped beside their field:
+"Vehicle no." and the Printroom station labels (`.ob-note-toolbar-item`), "Due date", "Mark done", the room header's
+member count; the person picker (ran off the right edge) and the composer's record picker (hung below the screen) now
+pass an `anchorStyle`; `.ob-chat-page`, `.ob-chat-room`, `.ob-print-page`, `.ob-print-detail` are capped at
+114.286rem and `.ob-chat-body` at 100ch (rows were 3,600 px wide at 4K). **Note contrast.** The preview's eyebrows,
+captions and strip note were 4.30:1 and 2.99:1 on white; on screen they are now #66737a (4.89:1) in an `@media screen`
+block, the printed page and the PDF unchanged. **Shared, sent to D13.** Top bar, `.ob-popover` default placement, sidebar
+label, 4K caps elsewhere. **Tests.** `ui/tests/chat-print-layout.test.ts`, `ui/tests/order-note-contrast.test.ts`.
+**Not covered.** The per-message action menu (the seeded messages were past the edit window), a real Electron window.
+
 ### 2026-10-07 — Note design: Plex Mono 700, "Sep", seven code columns, no orphan page (D7)
 
 **Verified against the artifact** (the real `OrderNote` fed the design's own 550-product data, in a browser,
