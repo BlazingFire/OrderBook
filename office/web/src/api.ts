@@ -19,7 +19,6 @@ import {
 } from '@orderbook/ui';
 import type {
   Notice,
-  NoticeBoard,
   NoticeInput,
   NoticeReaders,
   NoticeUpdate,
@@ -1198,7 +1197,6 @@ export const api = {
   // --- Notice board (protocol 10). The reader's list rides on `snapshot().notices`;
   // management and reads go through the Master and are online-only, so a read made
   // offline waits in `noticeReads.ts` rather than the outbox.
-  noticeBoard: () => request<NoticeBoard>('/api/notices'),
   manageNotices: () => request<Notice[]>('/api/notices/manage'),
   noticeAudiences: () => request<Array<{ id: string; name: string }>>('/api/notices/audiences'),
   noticeReaders: (id: string) => request<NoticeReaders>(`/api/notices/${id}/readers`),
