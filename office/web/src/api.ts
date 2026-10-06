@@ -18,6 +18,11 @@ import {
   trackLoad,
 } from '@orderbook/ui';
 import type {
+  Notice,
+  NoticeBoard,
+  NoticeInput,
+  NoticeReaders,
+  NoticeUpdate,
   PickKind,
   ChatAccessCapability,
   PrintJob,
@@ -1159,6 +1164,18 @@ export const api = {
   // The one live pull — everything else rides on `snapshot().dashboard` and
   // the SSE `snapshot` event this panel already re-sends on every change.
   refreshDashboard: () => post<DashboardSummary>('/api/dashboard/refresh'),
+
+  // --- Notice board (protocol 10). The reader's list rides on `snapshot().notices`;
+  // management and reads go through the Master and are online-only, so a read made
+  // offline waits in `noticeReads.ts` rather than the outbox.
+  noticeBoard: () => request<NoticeBoard>('/api/notices'),
+  manageNotices: () => request<Notice[]>('/api/notices/manage'),
+  noticeAudiences: () => request<Array<{ id: string; name: string }>>('/api/notices/audiences'),
+  noticeReaders: (id: string) => request<NoticeReaders>(`/api/notices/${id}/readers`),
+  createNotice: (input: NoticeInput) => post<Notice>('/api/notices', input),
+  updateNotice: (id: string, update: NoticeUpdate) => patch<Notice>(`/api/notices/${id}`, update),
+  deleteNotice: (id: string) => request<{ id: string }>(`/api/notices/${id}`, { method: 'DELETE' }),
+  markNoticesRead: (ids: string[]) => post<{ unreadCount: number }>('/api/notices/read', { ids }),
 
   // --- Product images (7-IMAGE-PIPELINE.md) --------------------------------
   // Online-only like the Recycle Bin, and — unlike every write above —

@@ -21,12 +21,14 @@
  * stages and counts the leads in each.
  */
 
-import type { Lead } from '@orderbook/shared';
+import type { Lead, Notice } from '@orderbook/shared';
 
 import type { LocalView } from '../api';
+import { todayForNotices } from '../noticeReads';
 import {
   Card,
   EmptyState,
+  NoticeDashboardCard,
   RecordNumber,
   StatTile,
   Timeline,
@@ -51,6 +53,9 @@ interface Props {
   printPending?: number;
   /** Unread chat messages, from the Chatroom; no tile when absent (no `chat.use`). */
   chatUnread?: number;
+  /** This person's notices with the reads made here counted; no card when absent (no `notices.view`). */
+  notices?: Notice[];
+  onOpenNotices?: () => void;
 }
 
 /** Local calendar date as `YYYY-MM-DD`, matching `Lead.followUpDate`'s format. */
@@ -188,6 +193,8 @@ export function DashboardScreen({
   onOpenLead,
   printPending,
   chatUnread,
+  notices,
+  onOpenNotices,
 }: Props) {
   const canViewLeads = view.permissions.includes('leads.view');
   const canViewOrders = view.permissions.includes('orders.view');
@@ -279,6 +286,9 @@ export function DashboardScreen({
       className="ob-measure-wide"
       style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}
     >
+      {notices && onOpenNotices && (
+        <NoticeDashboardCard notices={notices} today={todayForNotices()} onOpen={onOpenNotices} />
+      )}
       <div
         style={{
           display: 'grid',

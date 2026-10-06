@@ -133,6 +133,9 @@ import { ConnectionUnpair } from './components/ConnectionUnpair';
 import { ConnectionScreen } from './screens/ConnectionScreen';
 import { SetupScreen } from './screens/SetupScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
+import { NoticeBoardScreen } from './screens/NoticeBoardScreen';
+import { NoticeManageScreen } from './screens/NoticeManageScreen';
+import { unreadOnBoard, todayForNotices, useNoticeReads, withReadsHere } from './noticeReads';
 import { LeadBoardScreen } from './screens/LeadBoardScreen';
 import { OrderBoardScreen } from './screens/OrderBoardScreen';
 import { SignInScreen } from './screens/SignInScreen';
@@ -602,6 +605,13 @@ function OfficePanel() {
   // refreshed the session — a loop of about sixteen reopen-and-resync rounds a
   // second against the panel's own server and the Master behind it.
   const signedIn = session !== null;
+
+  // The notice board's reads made here, per person; a read made offline waits for the link.
+  const noticeReads = useNoticeReads(session?.userId ?? null, connection?.state === 'connected');
+  const myNotices = withReadsHere(
+    signedIn && session?.permissions.includes('notices.view') ? (view?.notices ?? []) : [],
+    noticeReads.readHere,
+  );
 
   // The Chatroom's unread figure for the sidebar row; asks for nothing without `chat.use`.
   const chatUnread = useChatUnread(
@@ -1772,6 +1782,19 @@ function OfficePanel() {
       ),
     },
     {
+      // Online-only through the Master, like Reports: a fresh snapshot (a notice change
+      // forces one) re-reads the list.
+      id: 'noticesManage',
+      render: () => <NoticeManageScreen revision={viewRevision} />,
+    },
+    {
+      // From the snapshot, so it answers offline; reads made then wait for the link.
+      id: 'notices',
+      render: () => (
+<NoticeBoardScreen notices={myNotices} onMarkRead={noticeReads.markRead} />
+      ),
+    },
+    {
       id: 'settings',
       render: () => (
         <SettingsScreen
@@ -1806,6 +1829,8 @@ function OfficePanel() {
               }}
               printPending={canPrintroom ? printWaiting : undefined}
               chatUnread={can('chat.use') ? chatUnread.total : undefined}
+              notices={can('notices.view') ? myNotices : undefined}
+              onOpenNotices={() => goToTab('notices')}
             />
           ),
         },
