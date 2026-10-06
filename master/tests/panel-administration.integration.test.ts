@@ -14,6 +14,7 @@
  * `0`, because a disk shown as 0 bytes free is something somebody acts on.
  */
 
+import { UNSCOPED_PARTY_ACCESS } from '../src/domain/party-scope.js';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { OfficePanelReportInput } from '@orderbook/shared';
 
@@ -442,7 +443,7 @@ describe.skipIf(!canRunIntegrationTests)('office panel administration (integrati
         db(),
       );
 
-      const entries = await panels.listPanelActivity(tenantId, paired.panelId);
+      const entries = await panels.listPanelActivity(tenantId, paired.panelId, 50, UNSCOPED_PARTY_ACCESS);
 
       expect(entries.some((entry) => entry.entityType === 'office_panel')).toBe(true);
       expect(entries.some((entry) => entry.actor.type === 'office_panel')).toBe(true);

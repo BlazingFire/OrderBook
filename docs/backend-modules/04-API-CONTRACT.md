@@ -1012,7 +1012,7 @@ Additive fields on routes the Master's own web client calls; the hub's `party:*`
 
 | Route | Adds |
 |---|---|
-| `GET /api/parties/:id` | `myAccess`: the caller's own grant (`'view'` or `'manage'`), `null` when they hold none (an unassigned party is open). Built from `grantsForUser`, so every user gets it, not only holders of `party.assign` / `party.accessAll`. |
+| `GET /api/parties/:id` | `myAccess`: the caller's own grant (`'view'` or `'manage'`), `null` when they hold none (an unassigned party is open; since 2026-10 a party made by a person without `party.accessAll` carries that person's own `manage` grant from birth, see section 21). Built from `grantsForUser`, so every user gets it, not only holders of `party.assign` / `party.accessAll`. |
 | `GET /api/parties` | each row carries `recordCount` (the party's own product records) and `myAccess`, for the list's Products and My access columns. |
 | `GET /api/parties/:id/variants` | each record carries `catalogueName`: the catalogue model's name, `null` when the product is deleted or the caller lacks `products.view`. |
 
@@ -2820,6 +2820,36 @@ by the build) are `public, max-age=31536000, immutable`; `index.html` and the re
 history) are kept for 5 to 15 seconds by `master/src/lib/seq-cache.ts`, valid only while no change has been
 published since they were computed, so any write drops them. An answer is therefore never older than the
 last change event, and a read made inside the window after a write sees it.
+
+## 21. Party visibility (2026-10)
+
+No new route or permission key. What changed in the answers:
+
+- **Creation:** `POST /api/parties`, the `party:create` socket command, a `party.create` mutation pushed from an
+  Office, and a party import all create a party through `createParty` / the import writer, which add the creator's
+  `manage` grant in the same transaction when the actor is a person without `party.accessAll`. The party
+  event that follows is delivered by the usual per-recipient filter, so other users' panels never receive it.
+- **Hidden means not found.** `requirePartyAccess` throws 404 `Party` when the caller's level is `none`,
+  and an id that names no party is `none` for a caller who cannot see every party. A lead create or update, a
+  party-variant upsert or a merged `lead.update` naming a hidden party therefore answers exactly as for a missing
+  one, and the check runs before any lookup that could differ (`createLead`, `updateLead`, `upsertVariant`, and
+  `mergeUpdate`, which runs it before reading the target party's lines).
+- **Import:** `listLivePartyNameCities(tenantId, scope)` counts only parties the caller can see, so "already exists,
+  skipped" no longer confirms someone else's private party.
+- **Sync push (`sync:push`, protocol unchanged):** an `office_panel` push containing a party-scoped mutation
+  (`lead.*`, `order.*`, `party.*`, `partyVariant.*`) is answered **503 `error.unavailable.signInToSync`**, and
+  nothing in it is applied, when nobody is signed in on the panel and the panel's role does not hold
+  `party.accessAll`, or when the signed-in person is not the mutation's `actorUserId`. The Office keeps the
+  mutation queued and sends it again when its author signs in.
+- **Snapshot (`SyncSnapshot`):** adds `openPartyIds` (parties with no grant row; an Office signed in as someone
+  else may show only these while offline) and `partyAccessCounts` (people who can see each restricted party,
+  for the Private / Shared markers). `conflicts` is empty unless the caller holds `sync.resolveConflicts`, and
+  holds only conflicts on parties, leads and orders the caller can see. `GET /api/conflicts`, `conflict:list` and
+  the dashboard's `openConflictCount` use the same narrowing.
+- **Delta replay:** a buffered party-scoped change that names no party id makes the Master answer with a full
+  snapshot, never a delta (the live fan-out already drops such an event). The Office offers a cursor only when its
+  cache was built for the person now signed in.
+- **`GET /api/panels/:id/activity`:** rows about parties, leads and orders the caller cannot see are left out.
 
 ## Appendix — new permission keys
 

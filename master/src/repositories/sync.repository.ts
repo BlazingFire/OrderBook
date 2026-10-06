@@ -93,25 +93,29 @@ export async function recordConflicts(
   return rows.map(mapSyncConflict);
 }
 
-export async function listConflicts(
+function conflictQuery(
   tenantId: string,
-  options: { includeResolved?: boolean; limit?: number; scope?: PartyScope } = {},
-  runner: Runner = db(),
-): Promise<SyncConflict[]> {
+  options: { includeResolved?: boolean; scope?: PartyScope },
+  runner: Runner,
+) {
   const query = runner('sync_conflicts').where({ tenant_id: tenantId });
   if (!options.includeResolved) query.whereNull('resolved_at');
 
   // A conflict names an entity and both competing values, so a lead conflict
-  // discloses the lead. Only the two party-scoped entities are narrowed; a
-  // `product` conflict belongs to the catalogue and stays visible to everyone.
-  if (options.scope) {
+  // discloses the lead, and a party conflict the party. Only the three
+  // party-scoped entities are narrowed; a `product` conflict belongs to the
+  // catalogue and stays visible to everyone.
+  // Someone who sees every party has nothing to narrow, and a conflict whose
+  // record is gone is still theirs to see.
+  if (options.scope && !options.scope.seesAll) {
     const scope = options.scope;
     query.where((outer) => {
-      outer.whereNotIn('entity', ['lead', 'order']);
+      outer.whereNotIn('entity', ['lead', 'order', 'party']);
 
-      for (const [entity, table] of [
-        ['lead', 'leads'],
-        ['order', 'orders'],
+      for (const [entity, table, column] of [
+        ['lead', 'leads', 'scoped_parent.party_id'],
+        ['order', 'orders', 'scoped_parent.party_id'],
+        ['party', 'parties', 'scoped_parent.id'],
       ] as const) {
         outer.orWhere((branch) => {
           branch.where('entity', entity).whereExists((sub) => {
@@ -121,7 +125,7 @@ export async function listConflicts(
               .where('scoped_parent.tenant_id', tenantId)
               .whereRaw('scoped_parent.id = sync_conflicts.entity_id');
 
-            return applyPartyScope(parent, tenantId, 'scoped_parent.party_id', scope, {
+            return applyPartyScope(parent, tenantId, column, scope, {
               level: 'view',
             });
           });
@@ -130,7 +134,18 @@ export async function listConflicts(
     });
   }
 
-  const rows = await query.orderBy('created_at', 'desc').limit(options.limit ?? 200).select('*');
+  return query;
+}
+
+export async function listConflicts(
+  tenantId: string,
+  options: { includeResolved?: boolean; limit?: number; scope?: PartyScope } = {},
+  runner: Runner = db(),
+): Promise<SyncConflict[]> {
+  const rows = await conflictQuery(tenantId, options, runner)
+    .orderBy('created_at', 'desc')
+    .limit(options.limit ?? 200)
+    .select('*');
   return rows.map(mapSyncConflict);
 }
 
@@ -157,10 +172,10 @@ export async function markResolved(
   return row ? mapSyncConflict(row) : null;
 }
 
-export async function countOpenConflicts(tenantId: string): Promise<number> {
-  const rows = await db()('sync_conflicts')
-    .where({ tenant_id: tenantId })
-    .whereNull('resolved_at')
-    .count<Array<{ count: string }>>('id as count');
+/** Open conflicts, narrowed to the parties `scope` reaches when given. */
+export async function countOpenConflicts(tenantId: string, scope?: PartyScope): Promise<number> {
+  const rows = await conflictQuery(tenantId, { scope }, db()).count<Array<{ count: string }>>(
+    'id as count',
+  );
   return firstCount(rows);
 }

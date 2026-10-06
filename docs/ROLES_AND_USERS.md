@@ -574,6 +574,41 @@ No screen reaches them now (the Developer tab was removed in 5a32106); the route
 Full behaviour, the password itself, and the honest statement of what that shared
 secret costs: `docs/DEVELOPER_MODE.md`.
 
+## 15b. Who sees a party someone creates (party visibility, 2026-10)
+
+`parties.create` and `parties.edit` are office-tier keys, so an administrator grants them to an
+office role in Access (Roles, then the role, then Parties). The reach of what that person then
+creates is decided by one more key:
+
+| The creator | The new party |
+|---|---|
+| a person **without** `party.accessAll` (the usual office role) | restricted at birth: a `manage` grant for the creator, in the same transaction. Visible only to them and to `party.accessAll` holders, with its leads, orders, search hits, dashboard figures, reports, chat chips and Office snapshot |
+| a person **with** `party.accessAll` (administrators; grantable to a manager) | open to everyone, as before. They restrict it in Party Access if they want |
+| nobody (an unattended panel, the system, a connector) | open to everyone |
+
+Example: 3 administrators and 5 office users. Office user A's party is invisible to office users B to E and
+visible to A and all 3 administrators. Parties that existed before are unchanged (no backfill).
+
+What an administrator should know:
+- Sharing is Party Access: add people to the party, or remove A's own row to make it open again.
+- A party hidden from someone answers "not found", never "not assigned to you".
+- A bulk party import by an office user makes every imported party theirs alone, and its
+  duplicate check counts only parties that person can see.
+- On an Office PC, a person's offline work on parties waits until that person signs in again on that PC
+  (`docs/STRUCTURE.md` section 11.11). If A creates a party offline and signs out, it is not
+  sent under the next person's name.
+- **The print room is the one deliberate exception (owner decision, 2026-10-06).** A person or PC holding
+  `print.station` sees and prints every print job whatever party it is for, and whether or not they hold
+  `party.accessAll`. The sender addressed the print room, not a person. Grant `print.station` knowingly: to
+  the role of whoever runs the printer, not to a role used for ordinary office work.
+- **Defaults the owner confirmed.** Parties that exist today stay open to everyone. A Management role sees every
+  party only if it holds `party.accessAll`; otherwise it sees the parties it created or was given, like an
+  office role. A party an administrator creates is open to everyone until an administrator restricts it.
+- **Where an administrator sees it.** Roles: the role editor has a **Parties** card (Create parties, Edit
+  parties) and each role card lists the party actions it holds. Parties (Master): a **Visible to** column
+  shows **Private** (one person, and administrators) or **Shared with N**; an open party shows nothing.
+  Party Access: each party's creator is tagged among the people who can see it.
+
 ## 16. Where this deliberately differs from the supplied documents
 
 | Document says | Here | Why |

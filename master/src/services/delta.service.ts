@@ -39,7 +39,7 @@ import { appVersion } from '../lib/app-version.js';
 import { peekHlc } from '../repositories/identity.repository.js';
 import * as partyAccessRepo from '../repositories/party-access.repository.js';
 import { BOOT_ID, currentSeq, since } from '../realtime/change-ring.js';
-import { mayReceive, partyIdOfChange } from '../realtime/fan-out.js';
+import { PARTY_SCOPED_ENTITIES, mayReceive, partyIdOfChange } from '../realtime/fan-out.js';
 import * as dashboardService from './dashboard.service.js';
 
 const REPLAYABLE = new Set<ChangedEntity>(REPLAYABLE_ENTITIES);
@@ -65,6 +65,14 @@ export async function buildDelta(
   // header — this is the check that stops the delta diverging in silence.
   const applicable = buffered.filter((event) => !IRRELEVANT.has(event.entity));
   if (applicable.some((event) => !REPLAYABLE.has(event.entity))) return null;
+
+  // Fail closed, as the live fan-out does (`hub.ts`): a party-scoped change
+  // that names no party cannot be checked against anyone's grants, and empty
+  // grants read as "open to everyone". The panel gets a snapshot instead,
+  // which is built through each service's own scope.
+  if (applicable.some((event) => PARTY_SCOPED_ENTITIES.has(event.entity) && !partyIdOfChange(event))) {
+    return null;
+  }
 
   // One grants lookup per distinct party in the range, not per event.
   const grantsByParty = new Map<string, Array<{ userId: string; level: 'view' | 'manage' }>>();

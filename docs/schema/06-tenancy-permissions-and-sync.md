@@ -174,6 +174,26 @@ assignment mandatory — would empty every staff member's screens on upgrade day
 cached "is restricted" flag on `parties`: whether a party is restricted is an `EXISTS` on this
 table, which `idx_party_access_party` answers directly.
 
+**Who gets a row at birth (party visibility, 2026-10).** The rule above still decides every read,
+but a party no longer always starts without a row. `createParty` writes one `manage` row for the
+creator, in the same transaction as the party, when the creator is a real user who does **not** hold
+`party.accessAll` (`creatorGrantee` in `master/src/domain/party-scope.ts`, written by
+`partyAccessRepo.grantCreator`, `granted_by` = the creator). So an office-role user's new party is
+visible only to them and to `party.accessAll` holders from its first instant. The same row is written for
+each party a person imports (`party-import.service.ts`). No row is written, and the party stays
+open to everyone, when the creator:
+- holds `party.accessAll` (an administrator; they restrict a party in Party Access when they want);
+- is not a person: a panel with nobody signed in, the system, a connector run, the catalogue reload CLI
+  or sample data.
+
+Parties that existed before are untouched (nothing is backfilled).
+
+The creator's row is an ordinary grant. An administrator can raise, lower or remove it in Party Access,
+and **removing the last row makes the party open to everyone again**. A hidden party is
+indistinguishable from one that does not exist: `requirePartyAccess` answers 404 `Party` for a person
+with no access (a `view` holder asked to `manage` still gets the refusal naming the missing level),
+and an id that names no party reads as `none` for anyone who cannot see every party.
+
 `user_id` carries **no foreign key**, for the same reason `users.role_id` has none: users are
 soft-deleted and restorable, and a restored person must come back holding the parties they were
 assigned rather than having had those rows cascaded away. The service validates the account exists
@@ -191,7 +211,10 @@ The predicate every read narrows by is *"nobody is assigned to this party **or**
 in `master/src/repositories/party-access.repository.ts` (`applyPartyScope` for query builders,
 `partyScopeSql` for the hand-written SQL in search, the dashboard, reports and the recycle bin, and
 `partyScopeLogSql` for the activity log, where the subject is named indirectly by
-`(entity_type, entity_id)`). Writes go through `requirePartyAccess(partyId, 'manage', actor)` in the
+`(entity_type, entity_id)`). Sync conflicts are narrowed by the same predicate for all three party-scoped entities
+(`lead`, `order` and `party`, in `sync.repository.ts#listConflicts`, which the open-conflict count
+shares), and a panel's activity feed (`activity-log.repository.ts#listPanelActivity`) takes the
+caller's scope. Writes go through `requirePartyAccess(partyId, 'manage', actor)` in the
 **service** layer, never a route guard — an Office Panel reaches the same functions over Socket.IO.
 
 ---

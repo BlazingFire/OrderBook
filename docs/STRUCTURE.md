@@ -2079,7 +2079,7 @@ exercised only through service integration tests.
 |---|---|---|---|
 | `master/src/domain/actor.ts` (70) | who is acting; the permission check | `ActorContext`, `actorCan`, `requirePermission`, `actorUserId`, `systemActor` | via 31 files |
 | `master/src/domain/access.ts` (218) | role/user guards G1–G8 (the G4 *rule*; its locked read is `access-guard.repository.ts`) | `assertAdminTier`, `assertTierWithinActor`, `assertPermissionsWithinTier`, `assertSystemRoleEditable`, `assertAdministrativeCapabilityRetained`, `assertRoleUnused`, `assertNameAvailable`, `assertVersionMatches`, `fieldDiff` | none |
-| `master/src/domain/party-scope.ts` (101) | Party Access semantics: no grants = open; grants = only named users; `party.accessAll` bypasses | `PartyScope`, `UNSCOPED_PARTY_ACCESS`, `resolvePartyScope`, `levelFor`, `assertPartyAccess` | `master/tests/party-access.integration.test.ts` |
+| `master/src/domain/party-scope.ts` (115) | Party Access semantics: no grants = open; grants = only named users; `party.accessAll` bypasses; since 2026-10 `creatorGrantee(actor)` names the person whose `manage` grant a new party carries (a person without `party.accessAll`; null leaves it open) | `PartyScope`, `UNSCOPED_PARTY_ACCESS`, `resolvePartyScope`, `levelFor`, `assertPartyAccess` | `master/tests/party-access.integration.test.ts` |
 | `master/src/domain/line-items.ts` (178) | the line snapshot rule: one line = one variant, frozen name, category (name, code and brand), variant code, colour and weight; since catalogue v2 a colour on a product that is not multi-colour is dropped, not refused (`LineColourError` removed) | `buildLineSnapshot`, `LineSnapshot`, `LineDraft`, `normaliseQuantity`, `lineWeightKg`, `computeTotalWeightKg`, `linesWithoutWeight` | `master/tests/line-items-domain.test.ts` |
 | `master/src/domain/conversion.ts` (84) | lead → order: lines copied unchanged, packaging never auto-filled (no reservations since 1.4) | `copyLinesForOrder`, `assertConvertible`, `ConversionRules` | `master/tests/line-items-domain.test.ts` |
 | `master/src/domain/pipeline.ts` (97) | stage rules | `defaultStage`, `findStage`, `assertStageMove`, `stageChangeMessage` | none |
@@ -6278,6 +6278,36 @@ Printroom blocks of `master-shell.test.tsx` and `office-shell.test.tsx`.
    `master/tests/web-catalogue-text.test.ts` (the web apps' error fallbacks),
    `ui/tests/locale.test.ts`, `ui/tests/kit-i18n.test.tsx` (the kit's chrome), `ui/tests/permission-labels.test.tsx`, and the ESLint rule for the swept
    files.
+
+### 11.11 Party visibility: who sees a party someone creates (2026-10)
+
+The rule (`docs/schema/06-tenancy-permissions-and-sync.md` section 2, `docs/ROLES_AND_USERS.md` section 15b,
+`docs/backend-modules/04-API-CONTRACT.md` section 21): a party with no `party_access` row is open to
+everyone; a party created by a person without `party.accessAll` gets that person's `manage` row at birth.
+
+- **Master.** `catalog.service.ts#createParty` and `party-import.service.ts` call
+  `partyAccessRepo.grantCreator` inside the create transaction when `creatorGrantee(actor)` names someone.
+  `party-access.service.ts#requirePartyAccess` answers 404 for a party the caller cannot see, and treats an
+  id that names no party like one; `createLead`, `updateLead`, `upsertVariant` and the sync merge check
+  access before any existence lookup. `sync.service.ts#applyPush` answers 503 `signInToSync` for party-scoped
+  mutations whose author is not the signed-in person (`isPartyScopedKind`). `delta.service.ts` falls back to a
+  snapshot for a party-scoped change with no party id; `sync.repository.ts#listConflicts` and `countOpenConflicts`
+  narrow `party` conflicts; `snapshot.service.ts` withholds `conflicts` without `sync.resolveConflicts` and adds
+  `openPartyIds` and `partyAccessCounts` (`party-access.repository.ts`); `activity-log.repository.ts#listPanelActivity`
+  takes a `PartyScope`. Tests: `master/tests/party-private-by-creator.integration.test.ts`,
+  `master/tests/party-visibility-server.integration.test.ts`, `master/tests/snapshot-party-access.integration.test.ts`.
+- **Office.** The snapshot is per signed-in person (`builtForUserId`), not per PC. While offline, switching person
+  (`office/src/sync/local-store.ts#withoutAnotherPersonsParties`) shows only `openPartyIds` plus the new person's
+  own queued `party.create` ids (`ownQueuedPartyIds`, read from the outbox), everything else fails closed until the
+  next online snapshot. A queued mutation is drawn only to its author; the unsent-change count and the refusals
+  list are the viewer's own (the PC-level counts that guard unpairing stay whole). `sync.service.ts#mayGoUp` holds
+  every authored mutation until its author is signed in and resolved online, so A's offline party is never sent
+  under B. A cursor is offered at connect only when the cache was built for the signed-in person.
+  The party form says "Only you and administrators will see this party." for a person without `party.accessAll`
+  (`ui/src/partyPrivacy.ts`). Tests: `office/tests/snapshot-for-user.test.ts`, `local-store-viewer.test.ts`,
+  `sync-hold.test.ts`, `master-connection.test.ts`, `sync-refusals-author.test.ts`, `ui/tests/party-private-note.test.tsx`.
+- **Scratch scenario.** `node tools/seed-party-scenario.mjs --port <master port>` builds 3 administrators, 5 office
+  users, 3 open parties and a party plus a pending order per user on a scratch Master.
 
 ### 11.10 Caching, limits and stability (1.4.3)
 
