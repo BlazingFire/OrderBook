@@ -48,6 +48,7 @@ import {
   PARTY_SCOPED_ENTITIES,
   REQUIRED_PERMISSION,
   mayReceive,
+  noticeEventFor,
   partyIdOfChange,
 } from './fan-out.js';
 import * as partyAccessRepo from '../repositories/party-access.repository.js';
@@ -67,7 +68,13 @@ import * as authService from '../services/auth.service.js';
 import { isMaintenance, maintenanceError } from '../services/backup-job.js';
 import { resolveSession } from '../services/auth.service.js';
 import * as catalogService from '../services/catalog.service.js';
-import { onChange, onChat, onConflict, onNotification, onPrintJob } from '../services/change-bus.js';
+import {
+  onChange,
+  onChat,
+  onConflict,
+  onNotification,
+  onPrintJob,
+} from '../services/change-bus.js';
 import * as chatService from '../services/chat.service.js';
 import * as conflictService from '../services/conflict.service.js';
 import * as dashboardService from '../services/dashboard.service.js';
@@ -89,6 +96,7 @@ import * as imageService from '../services/image.service.js';
 import * as panelService from '../services/panel.service.js';
 import * as partyAccessService from '../services/party-access.service.js';
 import * as presenceService from '../services/presence.service.js';
+import * as noticeService from '../services/notice.service.js';
 import * as printService from '../services/print.service.js';
 import type { PrintOrigin } from '../services/print.service.js';
 import type { PresenceChange } from './presence-store.js';
@@ -385,7 +393,9 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
         (socket.data.kind !== 'office-panel' || (socket.data.protocol ?? 1) >= CHAT_MIN_PROTOCOL),
       userIds,
       (actor, body) => chatService.personalisePush(body as ChatPush, actor),
-    ).catch((error: unknown) => log.warn(`Could not deliver a chat event: ${toErrorMessage(error)}`));
+    ).catch((error: unknown) =>
+      log.warn(`Could not deliver a chat event: ${toErrorMessage(error)}`),
+    );
   });
 
   // Presence goes only to the people on the record, each re-checked as a
@@ -417,7 +427,8 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
         { recordKind: kind, records: {} },
         (actor, socket) =>
           presenceService.mayReadBoard(actor, kind) &&
-          (socket.data.kind !== 'office-panel' || (socket.data.protocol ?? 1) >= BOARD_PRESENCE_MIN_PROTOCOL),
+          (socket.data.kind !== 'office-panel' ||
+            (socket.data.protocol ?? 1) >= BOARD_PRESENCE_MIN_PROTOCOL),
         undefined,
         (actor) => presenceService.boardFor(actor, kind, snapshot),
       ).catch((error: unknown) =>
@@ -440,10 +451,15 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
       'print:changed',
       job,
       (actor, socket) =>
-        (socket.data.kind !== 'office-panel' || (socket.data.protocol ?? 1) >= PRINTROOM_MIN_PROTOCOL) &&
+        (socket.data.kind !== 'office-panel' ||
+          (socket.data.protocol ?? 1) >= PRINTROOM_MIN_PROTOCOL) &&
         (actorCan(actor, 'print.station') ||
-          (actorCan(actor, 'print.send') && actor.userId !== null && actor.userId === job.sender?.id)),
-    ).catch((error: unknown) => log.warn(`Could not deliver a print job: ${toErrorMessage(error)}`));
+          (actorCan(actor, 'print.send') &&
+            actor.userId !== null &&
+            actor.userId === job.sender?.id)),
+    ).catch((error: unknown) =>
+      log.warn(`Could not deliver a print job: ${toErrorMessage(error)}`),
+    );
   });
   // No connection survives a restart, so no claim may.
   void printService.releaseAllClaimsAtBoot();
@@ -480,9 +496,11 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
       panelSockets.clear();
       await Promise.all(
         connectedPanels.map((panelId) =>
-          panelService.markPanelDisconnected(panelId).catch((error: unknown) =>
-            log.warn(`Could not record a panel disconnect: ${toErrorMessage(error)}`),
-          ),
+          panelService
+            .markPanelDisconnected(panelId)
+            .catch((error: unknown) =>
+              log.warn(`Could not record a panel disconnect: ${toErrorMessage(error)}`),
+            ),
         ),
       );
       await io.close();
@@ -568,7 +586,9 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
     // window on the Master PC has a station; a Master browser elsewhere has none.
     const masterOrigin: PrintOrigin = {
       from: 'master',
-      stationKey: isOnMasterPc(socket.handshake.address, socket.handshake.headers) ? MASTER_STATION_KEY : null,
+      stationKey: isOnMasterPc(socket.handshake.address, socket.handshake.headers)
+        ? MASTER_STATION_KEY
+        : null,
       holder: socket.id,
     };
     const on = guardedOn(socket);
@@ -618,7 +638,9 @@ async function handleConnection(io: RealtimeHub['io'], socket: PanelSocket): Pro
     // each other (the Office backs off after a few).
     const from = remoteAddress(socket);
     if (previous.connected && remoteAddress(previous) !== from) {
-      log.warn(`Office panel ${panelId} connected from ${from ?? 'an unknown address'} while still connected from ${remoteAddress(previous) ?? 'an unknown address'}; two PCs may share its pairing`);
+      log.warn(
+        `Office panel ${panelId} connected from ${from ?? 'an unknown address'} while still connected from ${remoteAddress(previous) ?? 'an unknown address'}; two PCs may share its pairing`,
+      );
     }
     previous.disconnect(true);
   }
@@ -770,18 +792,12 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
     ),
   );
 
-  on('party:list', (query, ack) =>
-    run(ack, (actor) => catalogService.listParties(query, actor)),
-  );
-  on('party:create', (input, ack) =>
-    run(ack, (actor) => catalogService.createParty(input, actor)),
-  );
+  on('party:list', (query, ack) => run(ack, (actor) => catalogService.listParties(query, actor)));
+  on('party:create', (input, ack) => run(ack, (actor) => catalogService.createParty(input, actor)));
   on('party:update', ({ id, input }, ack) =>
     run(ack, (actor) => catalogService.updateParty(id, input, actor)),
   );
-  on('party:delete', (id, ack) =>
-    run(ack, (actor) => catalogService.deleteParty(id, actor)),
-  );
+  on('party:delete', (id, ack) => run(ack, (actor) => catalogService.deleteParty(id, actor)));
 
   on('product:list', (query, ack) =>
     run(ack, (actor) => catalogService.listProducts(query, actor)),
@@ -792,9 +808,7 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   on('product:update', ({ id, input }, ack) =>
     run(ack, (actor) => catalogService.updateProduct(id, input, actor)),
   );
-  on('product:delete', (id, ack) =>
-    run(ack, (actor) => catalogService.deleteProduct(id, actor)),
-  );
+  on('product:delete', (id, ack) => run(ack, (actor) => catalogService.deleteProduct(id, actor)));
 
   on('product:image:update', ({ id, input }, ack) =>
     run(ack, (actor) => imageService.updateImageCaption(id, input, actor)),
@@ -802,13 +816,9 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   on('product:image:reorder', (input, ack) =>
     run(ack, (actor) => imageService.reorderImages(input, actor)),
   );
-  on('product:image:delete', (id, ack) =>
-    run(ack, (actor) => imageService.deleteImage(id, actor)),
-  );
+  on('product:image:delete', (id, ack) => run(ack, (actor) => imageService.deleteImage(id, actor)));
 
-  on('pick', ({ kind, query }, ack) =>
-    run(ack, (actor) => searchService.pick(kind, query, actor)),
-  );
+  on('pick', ({ kind, query }, ack) => run(ack, (actor) => searchService.pick(kind, query, actor)));
 
   on('category:list', (query, ack) =>
     run(ack, (actor) => catalogService.listCategories(actor, query ?? {})),
@@ -819,9 +829,7 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   on('category:update', ({ id, input }, ack) =>
     run(ack, (actor) => catalogService.updateCategory(id, input, actor)),
   );
-  on('category:delete', (id, ack) =>
-    run(ack, (actor) => catalogService.deleteCategory(id, actor)),
-  );
+  on('category:delete', (id, ack) => run(ack, (actor) => catalogService.deleteCategory(id, actor)));
 
   // The acting person's own `settings.manage` is checked by the service, as on
   // the Master's own screen; the answer is the list, as `PUT /api/settings` gives.
@@ -842,37 +850,25 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
 
   on('lead:list', (query, ack) => run(ack, (actor) => leadService.listLeads(query, actor)));
   on('lead:get', (id, ack) => run(ack, (actor) => leadService.getLead(id, actor)));
-  on('lead:create', (input, ack) =>
-    run(ack, (actor) => leadService.createLead(input, actor)),
-  );
+  on('lead:create', (input, ack) => run(ack, (actor) => leadService.createLead(input, actor)));
   on('lead:update', ({ id, input }, ack) =>
     run(ack, (actor) => leadService.updateLead(id, input, actor)),
   );
-  on('lead:setStage', (input, ack) =>
-    run(ack, (actor) => leadService.setStage(input, actor)),
-  );
-  on('lead:addRemark', (input, ack) =>
-    run(ack, (actor) => leadService.addRemark(input, actor)),
-  );
-  on('lead:convert', (input, ack) =>
-    run(ack, (actor) => orderService.convertLead(input, actor)),
-  );
+  on('lead:setStage', (input, ack) => run(ack, (actor) => leadService.setStage(input, actor)));
+  on('lead:addRemark', (input, ack) => run(ack, (actor) => leadService.addRemark(input, actor)));
+  on('lead:convert', (input, ack) => run(ack, (actor) => orderService.convertLead(input, actor)));
   on('lead:delete', (id, ack) => run(ack, (actor) => leadService.deleteLead(id, actor)));
   on('lead:pdf', (id, ack) => run(ack, (actor) => leadService.leadPdf(id, actor)));
   on('product:sharePdf', (ids, ack) =>
     run(ack, (actor) => productShareService.productSharePdf(ids, actor)),
   );
 
-  on('order:list', (query, ack) =>
-    run(ack, (actor) => orderService.listOrders(query, actor)),
-  );
+  on('order:list', (query, ack) => run(ack, (actor) => orderService.listOrders(query, actor)));
   on('order:get', (id, ack) => run(ack, (actor) => orderService.getOrder(id, actor)));
   on('order:update', ({ id, input }, ack) =>
     run(ack, (actor) => orderService.updateOrder(id, input, actor)),
   );
-  on('order:setStage', (input, ack) =>
-    run(ack, (actor) => orderService.setStage(input, actor)),
-  );
+  on('order:setStage', (input, ack) => run(ack, (actor) => orderService.setStage(input, actor)));
   on('order:dispatch', (input, ack) =>
     run(ack, (actor) => orderService.dispatchOrder(input, actor)),
   );
@@ -888,13 +884,9 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
     });
   });
 
-  on('search:query', (query, ack) =>
-    run(ack, (actor) => searchService.search(query, actor)),
-  );
+  on('search:query', (query, ack) => run(ack, (actor) => searchService.search(query, actor)));
 
-  on('pipeline:list', (ack) =>
-    run(ack, (actor) => pipelineRepo.listPipelines(actor.tenantId)),
-  );
+  on('pipeline:list', (ack) => run(ack, (actor) => pipelineRepo.listPipelines(actor.tenantId)));
 
   on('conflict:list', (ack) => run(ack, (actor) => conflictService.listConflicts(actor)));
   on('conflict:resolve', (input, ack) =>
@@ -926,21 +918,15 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   on('fields:catalogue', (ack) =>
     run(ack, (actor) => Promise.resolve(fieldsService.fieldsCatalogue(actor))),
   );
-  on('fields:values', (query, ack) =>
-    run(ack, (actor) => fieldsService.listValues(query, actor)),
-  );
-  on('fields:usage', (query, ack) =>
-    run(ack, (actor) => fieldsService.fieldUsage(query, actor)),
-  );
+  on('fields:values', (query, ack) => run(ack, (actor) => fieldsService.listValues(query, actor)));
+  on('fields:usage', (query, ack) => run(ack, (actor) => fieldsService.fieldUsage(query, actor)));
   on('fields:createValue', (input, ack) =>
     run(ack, (actor) => fieldsService.createValue(input, actor)),
   );
   on('fields:updateValue', ({ id, input }, ack) =>
     run(ack, (actor) => fieldsService.updateValue(id, input, actor)),
   );
-  on('fields:deleteValue', (id, ack) =>
-    run(ack, (actor) => fieldsService.deleteValue(id, actor)),
-  );
+  on('fields:deleteValue', (id, ack) => run(ack, (actor) => fieldsService.deleteValue(id, actor)));
   on('fields:reorderValues', (input, ack) =>
     run(ack, (actor) => fieldsService.reorderValues(input, actor)),
   );
@@ -976,13 +962,13 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   );
 
   on('log:list', (query, ack) => run(ack, (actor) => logService.listLogs(query, actor)));
-  on('log:facets', (query, ack) =>
-    run(ack, (actor) => logService.listLogFacets(query, actor)),
-  );
+  on('log:facets', (query, ack) => run(ack, (actor) => logService.listLogFacets(query, actor)));
   on('log:verifyChain', (input, ack) =>
     run(ack, (actor) => logService.verifyLogChain(input, actor)),
   );
-  on('log:export', (query, ack) => run(ack, (actor) => logService.exportLogs(query, actor, logService.SOCKET_EXPORT_LIMITS)));
+  on('log:export', (query, ack) =>
+    run(ack, (actor) => logService.exportLogs(query, actor, logService.SOCKET_EXPORT_LIMITS)),
+  );
 
   on('report:dispatches', (query, ack) =>
     run(ack, (actor) => reportService.dispatchReport(query, actor)),
@@ -1030,20 +1016,12 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   on('chat:people', (ack) => run(ack, (actor) => chatService.listPeople(actor)));
   on('chat:rooms', (input, ack) => run(ack, (actor) => chatService.listRooms(input, actor)));
   on('chat:room', (roomId, ack) => run(ack, (actor) => chatService.getRoom(roomId, actor)));
-  on('chat:messages', (input, ack) =>
-    run(ack, (actor) => chatService.listMessages(input, actor)),
-  );
+  on('chat:messages', (input, ack) => run(ack, (actor) => chatService.listMessages(input, actor)));
   on('chat:search', (input, ack) => run(ack, (actor) => chatService.search(input, actor)));
   on('chat:tasks', (input, ack) => run(ack, (actor) => chatService.listTasks(input, actor)));
-  on('chat:roomCreate', (input, ack) =>
-    run(ack, (actor) => chatService.createRoom(input, actor)),
-  );
-  on('chat:roomUpdate', (input, ack) =>
-    run(ack, (actor) => chatService.updateRoom(input, actor)),
-  );
-  on('chat:memberSet', (input, ack) =>
-    run(ack, (actor) => chatService.setMember(input, actor)),
-  );
+  on('chat:roomCreate', (input, ack) => run(ack, (actor) => chatService.createRoom(input, actor)));
+  on('chat:roomUpdate', (input, ack) => run(ack, (actor) => chatService.updateRoom(input, actor)));
+  on('chat:memberSet', (input, ack) => run(ack, (actor) => chatService.setMember(input, actor)));
   on('chat:direct', (input, ack) => run(ack, (actor) => chatService.openDirect(input, actor)));
   on('chat:edit', (input, ack) => run(ack, (actor) => chatService.editMessage(input, actor)));
   on('chat:delete', (messageId, ack) =>
@@ -1060,15 +1038,14 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   // Who is acting comes from this socket, and the tab lives under this panel;
   // the beat itself names only the tab and the record.
   on('presence:beat', (beat, ack) =>
-    run(ack, (actor) =>
-      presenceService.beat(actor, `panel:${socket.data.panelId ?? ''}:`, beat),
-    ),
+    run(ack, (actor) => presenceService.beat(actor, `panel:${socket.data.panelId ?? ''}:`, beat)),
   );
 
   // The board's current faces, for a screen that has just opened or reconnected.
   on('presence:board', (kind, ack) =>
     run(ack, async (actor) => {
-      if (kind !== 'lead' && kind !== 'order') throw new ValidationError('validation.presence.invalid');
+      if (kind !== 'lead' && kind !== 'order')
+        throw new ValidationError('validation.presence.invalid');
       return presenceService.boardFor(actor, kind);
     }),
   );
@@ -1092,16 +1069,30 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   on('print:claim', (id, ack) =>
     run(ack, (actor) => printService.claimJob(id, actor, printOrigin())),
   );
-  on('print:stations', (ack) => run(ack, (actor) => printService.listStations(actor, printOrigin())));
+  on('print:stations', (ack) =>
+    run(ack, (actor) => printService.listStations(actor, printOrigin())),
+  );
   on('print:station', (input, ack) =>
     run(ack, (actor) => printService.saveStation(input, actor, printOrigin())),
   );
 
+  // The notice board. What a reader sees is scoped by the acting person's role in the service.
+  on('notice:list', (ack) => run(ack, (actor) => noticeService.listBoard(actor)));
+  on('notice:manageList', (ack) => run(ack, (actor) => noticeService.listManage(actor)));
+  on('notice:audiences', (ack) => run(ack, (actor) => noticeService.listAudienceRoles(actor)));
+  on('notice:readers', (id, ack) => run(ack, (actor) => noticeService.getReaders(id, actor)));
+  on('notice:create', (input, ack) =>
+    run(ack, (actor) => noticeService.createNotice(input, actor)),
+  );
+  on('notice:update', ({ id, ...input }, ack) =>
+    run(ack, (actor) => noticeService.updateNotice(id, input, actor)),
+  );
+  on('notice:delete', (id, ack) => run(ack, (actor) => noticeService.deleteNotice(id, actor)));
+  on('notice:markRead', (input, ack) => run(ack, (actor) => noticeService.markRead(input, actor)));
+
   // The one live pull; everything else rides on `SyncSnapshot.dashboard` and
   // the `dashboard:changed` push both extended below.
-  on('dashboard:get', (ack) =>
-    run(ack, (actor) => dashboardService.getDashboardSummary(actor)),
-  );
+  on('dashboard:get', (ack) => run(ack, (actor) => dashboardService.getDashboardSummary(actor)));
 }
 
 /**
@@ -1288,16 +1279,19 @@ function respond<T>(ack: CommandAck<T>, operation: () => Promise<T>): void {
  */
 function guardedOn(socket: PanelSocket): PanelSocket['on'] {
   return ((event: string, listener: (...args: unknown[]) => unknown) =>
-    socket.on(event as never, ((...args: unknown[]) => {
-      try {
-        listener(...args);
-      } catch (error) {
-        log.warn(`Command ${event} refused: ${toErrorMessage(error)}`);
-        respond(args[args.length - 1] as CommandAck<never>, async () => {
-          throw new ValidationError('validation.socket.badPayload');
-        });
-      }
-    }) as never)) as PanelSocket['on'];
+    socket.on(
+      event as never,
+      ((...args: unknown[]) => {
+        try {
+          listener(...args);
+        } catch (error) {
+          log.warn(`Command ${event} refused: ${toErrorMessage(error)}`);
+          respond(args[args.length - 1] as CommandAck<never>, async () => {
+            throw new ValidationError('validation.socket.badPayload');
+          });
+        }
+      }) as never,
+    )) as PanelSocket['on'];
 }
 
 /** The settings an Office panel may write — its Settings → Leads tab, one number. */
@@ -1479,7 +1473,7 @@ async function emitGatedChange(io: RealtimeHub['io'], event: DataChangedEvent): 
           }
         }
 
-        socket.emit('data:changed', event);
+        socket.emit('data:changed', noticeEventFor(actor, event));
       } catch (error: unknown) {
         log.warn(`Could not gate a change for a socket: ${toErrorMessage(error)}`);
       }
@@ -1496,9 +1490,7 @@ type PerUserEvent = {
     : never;
 }[keyof ServerToClientEvents];
 
-type RecipientSocket =
-  | PanelSocket
-  | Awaited<ReturnType<RealtimeHub['io']['fetchSockets']>>[number];
+type RecipientSocket = PanelSocket | Awaited<ReturnType<RealtimeHub['io']['fetchSockets']>>[number];
 
 /**
  * Send a per-person push to every socket acting as a person it may reach.

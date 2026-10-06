@@ -121,6 +121,12 @@ async function main(): Promise<void> {
   masterConnection.on('session:rejected', (reason) => {
     void userSession.rejectCurrent(reason as Parameters<typeof userSession.rejectCurrent>[0]);
   });
+  masterConnection.setUserCommandGuard(userSession.blocksUserCommand);
+  masterConnection.on('session:unattached', () => {
+    void userSession
+      .endUnattachedOfflineSession()
+      .then(() => masterConnection.emit('session:changed'));
+  });
   masterConnection.on('reconcile', () => {
     void userSession.reconcileKnownUsers();
   });

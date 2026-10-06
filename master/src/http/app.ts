@@ -19,6 +19,7 @@ import { accessRoutes } from './routes/access.routes.js';
 import { avatarFilesRoutes, avatarRoutes } from './routes/avatar.routes.js';
 import { authRoutes, notificationRoutes } from './routes/auth.routes.js';
 import { chatRoutes } from './routes/chat.routes.js';
+import { noticeRoutes } from './routes/notice.routes.js';
 import { printJobRoutes, printStationRoutes } from './routes/print.routes.js';
 import { dataRoutes } from './routes/data.routes.js';
 import { fieldsRoutes } from './routes/fields.routes.js';
@@ -106,6 +107,8 @@ export function createApp(): Express {
   // The Chatroom, before the `/api` catch-all of `dataRoutes` below.
   app.use('/api/chat', chatRoutes);
   // The Printroom, likewise before the catch-all.
+  // The notice board, likewise before the catch-all.
+  app.use('/api/notices', noticeRoutes);
   app.use('/api/print-jobs', printJobRoutes);
   app.use('/api/print-stations', printStationRoutes);
   app.use('/api/pairing', pairingRoutes);

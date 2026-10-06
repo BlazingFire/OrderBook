@@ -342,6 +342,11 @@ export interface RoleInput {
   tier: RoleTier;
   /** The whole set. Sorted server-side, so a reorder is not an edit. */
   permissions: string[];
+  /**
+   * A new role is given `notices.view` (everybody reads the notice board) unless this is
+   * `false`. Only on create: editing a role never adds it back.
+   */
+  noticeBoard?: boolean;
   /** Optimistic concurrency; omit to skip the check (creates only). */
   expectedVersion?: number;
 }
