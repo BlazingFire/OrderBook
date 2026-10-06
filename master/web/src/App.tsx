@@ -1342,10 +1342,12 @@ function MasterPanel() {
           do with your own account — and the topbar is on every screen. */}
       {/* The label is in a span so it can end in an ellipsis when the bar is full. */}
       <button
-        className="ob-btn ob-btn--ghost"
+        className="ob-btn ob-btn--ghost ob-btn--squeeze"
         title={t('action.changePassword')}
+        aria-label={t('action.changePassword')}
         onClick={() => setChangingPassword(true)}
       >
+        <Icon name="key" size={16} />
         <span>{t('action.changePassword')}</span>
       </button>
       <button className="ob-btn ob-btn--ghost ob-btn--signout" onClick={() => void signOut()}>

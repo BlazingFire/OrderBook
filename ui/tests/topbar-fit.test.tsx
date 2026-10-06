@@ -69,11 +69,23 @@ describe('the topbar rules', () => {
     expect(css).toMatch(/@container ob-main \(max-width:\s*\d+rem\)\s*\{[\s\S]*\.ob-topbar-eyebrow\s*\{\s*display:\s*none/);
     expect(css).toMatch(/@container ob-main[\s\S]*\.ob-topbar\s*\{[^}]*column-gap/);
   });
+
+  it('turn the command box and Change password into icons when the bar is narrower still (157 % at 1366)', () => {
+    // Wide: the icon is hidden, the label shows.
+    expect(body('.ob-btn--squeeze > svg')).toMatch(/display:\s*none/);
+    const narrow = /@container ob-main \(max-width:\s*(\d+)rem\)\s*\{(?:(?!@container)[\s\S])*?\.ob-btn--squeeze > span\s*\{\s*display:\s*none/.exec(css);
+    expect(narrow, 'no narrow rule hiding the squeeze labels').not.toBeNull();
+    // Below 1080p at 150 % (about 75rem) and above 157 % at 1366 (about 47rem).
+    expect(Number(narrow![1])).toBeGreaterThan(47);
+    expect(Number(narrow![1])).toBeLessThan(75);
+  });
 });
 
 describe('the Master topbar', () => {
   it('keeps the Change password label in a span, so it can end in an ellipsis', () => {
     const app = readFileSync(join(root, 'master', 'web', 'src', 'App.tsx'), 'utf8');
     expect(app).toMatch(/<span>\{t\('action\.changePassword'\)\}<\/span>/);
+    // Squeezable, with an icon and an accessible name for when the label is hidden.
+    expect(app).toMatch(/ob-btn--squeeze"[\s\S]{0,200}aria-label=\{t\('action\.changePassword'\)\}[\s\S]{0,120}<Icon name="key"/);
   });
 });

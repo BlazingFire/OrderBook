@@ -65,6 +65,7 @@ import {
   type PrintroomTransport,
   useToast,
   NoteButtons,
+  showsDispatchedPill,
 } from '@orderbook/ui';
 
 
@@ -395,7 +396,8 @@ export function OrdersScreen({
     {
       key: 'viewing',
       header: t('presence.board.column'),
-      width: rem(76),
+      // Wide enough for its uppercase header at 157 %, which at 76 ran into Party.
+      width: rem(96),
       render: (order) => (
         <AvatarStack
           entries={faces.get(order.id) ?? []}
@@ -500,7 +502,7 @@ export function OrdersScreen({
           meta={
             <>
               <StatusPill tone={stageTone(openOrder, stages)}>{openOrder.stageName}</StatusPill>
-              {openOrder.dispatchedAt && (
+              {showsDispatchedPill(openOrder) && (
                 <StatusPill tone="ok">{t('orders.badge.dispatched')}</StatusPill>
               )}
               <span className="ob-small">

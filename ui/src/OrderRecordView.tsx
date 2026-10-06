@@ -29,6 +29,17 @@ import { t } from './i18n.js';
 import { useUnsavedWork } from './unsavedWork.js';
 import { Select } from './SuggestInput.js';
 
+/**
+ * Whether the order header needs the "dispatched" pill beside its stage pill.
+ * Dispatch moves the order to the stage named Dispatched, and then the stage
+ * pill already says it: two pills reading "Dispatched dispatched" was noise.
+ * The pill still shows when that stage was renamed and the order stayed on
+ * another one (see `dispatchOrder` in the Master's order service).
+ */
+export function showsDispatchedPill(order: Pick<Order, 'dispatchedAt' | 'stageName'>): boolean {
+  return Boolean(order.dispatchedAt) && order.stageName.trim().toLowerCase() !== 'dispatched';
+}
+
 /** What this view may reach. Held in a ref: callers build the object inline. */
 export interface OrderRecordTransport {
   updateOrder: (id: string, input: { totalWeightKgOverride: number | null }) => Promise<unknown>;

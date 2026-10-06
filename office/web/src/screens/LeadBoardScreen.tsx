@@ -474,7 +474,8 @@ export function LeadBoardScreen({
     {
       key: 'viewing',
       header: t('presence.board.column'),
-      width: rem(76),
+      // Wide enough for its uppercase header at 157 %, which at 76 ran into Party.
+      width: rem(96),
       render: (lead) => (
         <AvatarStack
           entries={faces.get(lead.id) ?? []}

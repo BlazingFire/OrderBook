@@ -25,6 +25,7 @@ import {
 } from '@orderbook/shared';
 
 import { Input } from './Form';
+import { Icon } from './icons';
 import { Modal } from './Modal';
 import { useDebounced } from './useDebounced';
 import { useKeyboard } from './KeyboardProvider';
@@ -347,11 +348,12 @@ export function PaletteButton() {
   return (
     <button
       type="button"
-      className="ob-btn ob-btn--ghost"
+      className="ob-btn ob-btn--ghost ob-btn--squeeze"
       aria-label={label}
       title={chord ? `${label} · ${displayChord(chord)}` : label}
       onClick={() => keyboard.setPaletteOpen(true)}
     >
+      <Icon name="search" size={16} />
       <span>{t('keys.palette.placeholder')}</span>
       {chord && <span className="ob-small">{displayChord(chord)}</span>}
     </button>

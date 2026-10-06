@@ -39,12 +39,16 @@ export interface FittableColumn {
  * is the width below which such a column stops being readable — roughly a
  * date, a short name, or a status pill — and it is the same constant the
  * narrow-screen work uses for `.ob-detail-grid`'s single-column threshold.
+ *
+ * In rem, not px: 120 px at the default 14 px root. A fixed 120 px went on
+ * claiming a column fitted at 157 %, where the same text needs half as much
+ * again, so no column was ever dropped and every one was cut instead.
  */
-const FLEXIBLE_COLUMN_PX = 120;
+const FLEXIBLE_COLUMN_REM = 120 / 14;
 
 /** `'12rem'` / `'160px'` / `'1fr'` → a number of physical pixels. */
 export function columnWidthPx(width: string | undefined, rootPx: number): number {
-  if (!width) return FLEXIBLE_COLUMN_PX;
+  if (!width) return FLEXIBLE_COLUMN_REM * rootPx;
 
   const trimmed = width.trim();
 
@@ -55,7 +59,7 @@ export function columnWidthPx(width: string | undefined, rootPx: number): number
   if (px) return Number(px[1]);
 
   // `fr`, `%`, `auto`, `minmax(...)`, anything else: no intrinsic width.
-  return FLEXIBLE_COLUMN_PX;
+  return FLEXIBLE_COLUMN_REM * rootPx;
 }
 
 /**
