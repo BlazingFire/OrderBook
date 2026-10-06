@@ -61,6 +61,7 @@ import * as backupAllPermissionGrant from './20261007000000_backup_all_permissio
 import * as catalogListsGrant from './20261012000000_catalog_lists_grant.js';
 import * as printroomOfficeManagementGrant from './20261013000000_printroom_office_management_grant.js';
 import * as noticeBoard from './20261014000000_notice_board.js';
+import * as catalogueCorrections from './20261015000000_catalogue_corrections.js';
 
 export interface Migration {
   name: string;
@@ -278,6 +279,11 @@ export const migrations: Migration[] = [
   {
     name: '20261014000000_notice_board',
     ...noticeBoard,
+  },
+  // U8, U13 (2026-10-07): the owner's catalogue corrections, in place. UPDATE only.
+  {
+    name: '20261015000000_catalogue_corrections',
+    ...catalogueCorrections,
   },
 ];
 

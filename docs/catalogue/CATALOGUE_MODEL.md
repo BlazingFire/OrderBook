@@ -32,7 +32,7 @@ Owner answers this rests on (2026-09-28):
 | Brand | option list `product.brand` (value = label = brand name) + `product_categories.brand` | `Swisware+` |
 | Product | `product_categories` row | `One Piece Toilet` (code `OPT`) |
 | Product code | `product_categories.code` — alphanumeric, unique per tenant among live rows | `OPT` |
-| Sub product | a `products` row (a "model") with **exactly one variant**; its printed identifier is `products.name` | `102 (9")`, `1111`, `MAGENTA` |
+| Sub product | a `products` row (a "model") with **exactly one variant**; its printed identifier is `products.name` | `102`, `1111`, `MAGENTA` |
 | Sub product software code | that variant's `product_variants.code` (already tenant-unique) | `OPT-0001` |
 | Size | `products.size` | `L-27, B-15, H-26` |
 | Catalogue order | `product_categories.sort_order`, `products.sort_order` | |

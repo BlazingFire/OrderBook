@@ -32,7 +32,7 @@ knows trade aliases (`SKU`, `Model`, `Colour`, `Weight`, …; see `HEADER_ALIASE
 | Brand | no | With Main product, makes the pair that names a product. |
 | Main product code | no | Names the main product by its code (`OPT`). The code never creates a product: it must exist already. |
 | Main product | **yes**, unless the code is filled | Created if absent, when the company allows it (`catalog.importCreatesCategories`). |
-| Sub product | **yes** | The printed name, `102 (9")`. |
+| Sub product | **yes** | The printed name, `102` or `DAMRU`. |
 | Size | no | |
 | Colour rule | no | `fixed`, `dedicated` or `multicolour`. |
 | Colour | no | The colour of a `fixed` sub product. |

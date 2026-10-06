@@ -170,7 +170,7 @@ variants (next section), and a model with no colour or pattern choices has
 exactly one variant.
 
 **Since catalogue v2 (2026-09-29) every catalogue model is a sub product with exactly
-one variant.** Its printed identifier is `products.name` (`102 (9")`, `1111`,
+one variant.** Its printed identifier is `products.name` (`102`, `1111`,
 `MAGENTA`); its software code is that variant's `code` (`OPT-0001`, the category code and
 a four-digit number in catalogue order); `sort_order` is its place in the catalogue.
 The owner's colour rule is **derived, never stored** (`colourRuleOf` in

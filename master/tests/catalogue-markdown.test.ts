@@ -57,8 +57,8 @@ describe('the SWISWARE+ 2026 catalogue file', () => {
     });
     expect(toilet?.subProducts).toHaveLength(56);
     expect(toilet?.subProducts[0]).toEqual({
-      name: '102 (9")',
-      size: 'L-27, B-15, H-26',
+      name: '102',
+      size: '9", L-27, B-15, H-26',
       rule: 'fixed',
       colour: 'White',
     });
