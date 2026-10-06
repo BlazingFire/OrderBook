@@ -190,6 +190,27 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-06 - Filling note and Dispatch note: revised artifact format (Claude, Opus)
+
+- **Ask:** "update filling note and dispatch note format using this artifact" (the revised
+  `M8BRwLB41wrygh9HWrNGMY`). Owner's answers: keep the coded product headers; drop colour from
+  coded cells.
+- **Shared** (`order-note.ts`): `NoteLine.size`; `namedLabel` / `namedRowHeight` (32 px, 44 px for a
+  three-line label); named columns filled by each row's height and balanced two-up when wide;
+  coded rows 50 / 62 px; the last page reserves `NOTE_LAYOUT.notes` (78 px) for a Notes block;
+  `NoteDocument.notes` (optional, so frozen Printroom jobs still read).
+- **UI** (`OrderNote.tsx`, `order-note.css`): named columns `Sub-product · brand | Packing |
+  Colour | Grade | Qty`, brand chips, coded cells with BOX / GRS / PPR chip, grade and `×qty`;
+  58 / 42 split; Notes block; Dispatch signatures Supervisor · Loaded by · Checked by;
+  timestamps with time on the Filling header; no qty/weight footnotes in the Dispatch top strip.
+  i18n: `subProductBrand`, `packing`, `grade`, `notes`, `signSupervisor`; `signDriver` and
+  `productSubProduct` removed.
+- **Docs:** `ORDER_NOTES_PLAN.md` §2. Unit stays "pcs" (quantities are pieces, not boxes).
+- **Verified:** `npm run verify` exit 0 (341 files, 4,536 tests, integration suites ran on a fresh
+  `TEMP` because the shared `%TEMP%\orderbook-test-pg` cluster refused to start, "Access is denied");
+  both notes rendered in a browser (46 named + 200 coded, 4 pages
+  each): no column or label overflow, notes and blank-lines variants. Not verified: a real printer.
+
 ### 2026-10-06 - Party private to its creator, 1.4.4: CH1 and seven Sonnet sessions (Claude, Opus + Sonnet)
 
 - **Who did what.** The plan is `CLAUDE_HELPER_PV.md` (P1–P5, untracked).

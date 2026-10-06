@@ -152,6 +152,7 @@ export function OrderNoteScreen({
     party,
     partyName: record.partyName,
     vehicleNumber: vehicle,
+    notes: record.notes,
     totalQuantity: model.totalQuantity,
     totalWeightKg: model.totalWeightKg,
     itemCount: model.itemCount,

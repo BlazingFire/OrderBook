@@ -2,8 +2,19 @@
 
 Integration plan, written 2026-09-30 from the owner's design artifact
 (`https://claude.ai/artifact/M8BRwLB41wrygh9HWrNGMY`, "A4 print notes") and a
-survey of the tree at `b6bc70e`. Nothing here is built yet. Read `HANDOFF.md`
+survey of the tree at `b6bc70e`. Built on 2026-09-30. Read `HANDOFF.md`
 and `docs/STRUCTURE.md` first; file references below are to that commit.
+
+**Format update, 2026-10-06.** The owner revised the same artifact; §2 now
+describes the revised layout, which is what `ui/src/OrderNote.tsx` draws:
+named rows show `Sub-product · brand | Packing | Colour | Grade | Qty`, at
+32 px, or 44 px when the label wraps to three lines (`namedRowHeight`); coded
+cells show the code with a brand chip, then a packing chip (BOX / GRS / PPR),
+the grade and `×qty`, with no colour (owner's choice); the halves split
+58 % / 42 %; the last page carries a 78 px **Notes** block (the record's notes,
+or two dotted lines) above the signatures; the Dispatch signatures are
+Supervisor · Loaded by · Checked by. The owner chose to **keep** the coded
+product headers below, which the artifact still omits.
 
 ---
 
@@ -32,24 +43,26 @@ pixels at 96 dpi, so one A4 sheet is 794 × 1123 px; the page padding is
 | Part | Filling note | Dispatch note |
 |---|---|---|
 | First-page header | Full, 92 px: party name (28 px bold), party meta line (city · phone · GSTIN), **Dealer** chip with the party code; on the right Order ID, Lead generated, Printed | Slim, 44 px: "Dispatch note" as the big title, "Printed …" on the right |
-| Continuation header | 34 px: party name + "— FILLING NOTE · continued", order id · page n, with a 2 px rule | 34 px: "Dispatch note · continued", order id · page n, no rule |
+| Continuation header | 34 px: party name + "— FILLING NOTE · continued", with a 2 px rule (the strip carries the order id and page) | 34 px: "Dispatch note · continued", no rule |
 | Totals strip | **Bottom** of every page (74 px) | **Top** of every page (64 px), under the header |
 | Strip contents | Quantity (this page / total), Item weight (this page / total, kg), **Dispatch vehicle no.** (blank dotted line to write in), order id + "Page n of N" + "Continued →" / "End of list · N items" | Same four cells; vehicle number printed large |
 | Tick box per line | Yes (12 px square after qty) | No |
-| Signature row (last page only, 62 px) | Filled by · Checked by · Store in-charge | Loaded by · Checked by · Driver signature |
+| Notes block (last page only, 78 px) | The record's notes, 17 px, or two dotted lines to write on | same |
+| Signature row (last page only, 62 px) | Filled by · Checked by · Store in-charge | Supervisor · Loaded by · Checked by |
 | Non-last page notes | "c/f <running qty>", "c/f <running kg>" | same |
 | Last page notes | "N items · P pages", "Gross of packing" | same |
 
 ### 2.2 Left half — "Product lines" (named sub products)
 
-Column header (13 px, 1 px rule): `Product · sub-product | Colour | Qty | [tick]`.
-Each row is **32 px**, dotted bottom rule:
+Column header (13 px, 1 px rule):
+`Sub-product · brand | Packing | Colour | Grade | Qty | [tick]`.
+Each row is **32 px**, or **44 px** when its label needs three lines, dotted
+bottom rule:
 
-- line 1: product (12 px semibold) — the product name and size;
-- line 2: sub-product name (11.5 px) followed by small uppercase chips:
-  **packaging** (Box / Grass / Paper) and, per the latest catalogue commit,
-  **grade** beside it;
-- Colour column 64 px; Qty 34 px, 15 px bold, tabular numerals.
+- the sub-product name with its size (when the name does not carry it),
+  11 px semibold, wrapping, then a two-letter **brand** chip;
+- Packing 11 %, Colour 15 % (both wrap to two lines), Grade 40 px;
+  Qty 34 px, 15 px bold, tabular numerals.
 
 Range label top-right: `1–46 / 46`. When there are no coded lines on a page
 the left half goes full width and splits into **two** columns.
@@ -59,12 +72,14 @@ the left half goes full width and splits into **two** columns.
 A grid of `N` columns (owner picks 3–6; default 4; the artifact's toolbar
 offers 3/4/5). Each cell is **50 px**:
 
-- the code, 14 px bold, underlined, centred;
-- beneath: `Colour - Grade` (9.5 px) and the qty (10.5 px bold).
+- the code, 14 px bold, centred, with the brand chip;
+- beneath: the packing chip (BOX / GRS / PPR, else the first three letters;
+  a dashed empty chip when there is none), the grade (7 px uppercase) and
+  `×qty` (14 px bold). No colour.
 
 When there are no named lines on a page the right half goes full width and
-uses `min(9, cols × 2 − 1)` columns. Split when both exist: left 45 %, right
-55 %, 1 px black divider.
+uses `min(9, cols × 2 − 1)` columns. Split when both exist: left 58 %, right
+42 %, 1 px black divider.
 
 **Addition to the artifact** (the owner's words, "with product and its
 sub-product group"): coded cells are grouped under their **product**. A group

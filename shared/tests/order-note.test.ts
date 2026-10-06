@@ -9,7 +9,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  buildOrderNote, cleanVehicleNumber, clampNoteCopies, noteDocument, noteHeader, noteNumber, NOTE_MAX_COPIES, paginateOrderNote,
+  buildOrderNote, cleanVehicleNumber, clampNoteCopies, namedLabel, namedRowHeight, noteDocument, noteHeader, noteNumber,
+  NOTE_LAYOUT, NOTE_MAX_COPIES, paginateOrderNote,
 } from '../src/index.js';
 import type { Lead, LineItem, NoteKind, NotePage, Order, Party } from '../src/index.js';
 
@@ -180,6 +181,38 @@ describe.each(['filling', 'dispatch'] as NoteKind[])('paginateOrderNote (%s)', (
     expect(pages).toHaveLength(1);
     expect(pages[0]?.isLast).toBe(true);
   });
+
+  it('fits rows of both heights into each named column without overfilling it, every line once', () => {
+    const long = 'Wash basin with full pedestal, rimless';
+    const items = Array.from({ length: 150 }, (_, i) =>
+      line({ productName: i % 3 === 0 ? `${long} ${i}` : `Model ${i}`, brandName: 'Cera' }));
+    const model = buildOrderNote(orderOf(items));
+    const pages = paginateOrderNote(model, kind);
+    expect(printed(pages)).toHaveLength(150);
+    expect(new Set(printed(pages)).size).toBe(150);
+    // The tallest a column can be: page one's body with no notes and signatures.
+    const body = NOTE_LAYOUT.inner - 8 - NOTE_LAYOUT.caption - NOTE_LAYOUT.columnLabel
+      - (kind === 'filling' ? NOTE_LAYOUT.headerContFilling + NOTE_LAYOUT.footerFilling : NOTE_LAYOUT.headerContDispatch);
+    for (const page of pages) {
+      for (const column of page.left) {
+        expect(column.reduce((sum, l) => sum + namedRowHeight(l), 0)).toBeLessThanOrEqual(body);
+      }
+    }
+  });
+});
+
+describe('named rows', () => {
+  it('print the sub product with its size unless the name carries it, and grow tall for a three-line label', () => {
+    const [short, sized, long] = buildOrderNote(orderOf([
+      line({ productName: 'Rustic', size: '600x600' }),
+      line({ productName: 'Rustic 600x600 Gloss', size: '600x600' }),
+      line({ productName: 'Wash basin with full pedestal and rimless overflow', size: '24"', brandName: 'Cera' }),
+    ])).named.sort((a, b) => a.subProduct.length - b.subProduct.length);
+    expect(namedLabel(short!)).toBe('Rustic 600x600');
+    expect(namedLabel(sized!)).toBe('Rustic 600x600 Gloss');
+    expect(namedRowHeight(short!)).toBe(NOTE_LAYOUT.rowNamed);
+    expect(namedRowHeight(long!)).toBe(NOTE_LAYOUT.rowNamedTall);
+  });
 });
 
 describe('a lead as the source of a note', () => {
@@ -205,6 +238,8 @@ describe('a lead as the source of a note', () => {
       source: 'lead', id: 'LD0000000007', number: null, createdAt: '2026-10-01T05:00:00.000Z',
     });
     expect(doc.partyName).toBe('Shree Tiles');
+    expect(doc.notes).toBeNull();
+    expect(noteDocument({ ...lead, notes: 'Handle with care' }, 'lead', null, null).notes).toBe('Handle with care');
   });
 
   it('keeps only the four party fields the header prints', () => {
