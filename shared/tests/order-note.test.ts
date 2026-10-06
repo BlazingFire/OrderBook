@@ -9,7 +9,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  buildOrderNote, cleanVehicleNumber, clampNoteCopies, noteDocument, noteHeader, noteNumber, NOTE_MAX_COPIES, paginateOrderNote,
+  buildOrderNote, cleanVehicleNumber, clampNoteCopies, namedLabel, namedRowHeight, noteDocument, noteHeader, noteNumber,
+  NOTE_LAYOUT, NOTE_MAX_COPIES, paginateOrderNote,
 } from '../src/index.js';
 import type { Lead, LineItem, NoteKind, NotePage, Order, Party } from '../src/index.js';
 
@@ -142,12 +143,19 @@ describe.each(['filling', 'dispatch'] as NoteKind[])('paginateOrderNote (%s)', (
     expect(onlyNamed?.wideLeft).toBe(true);
     expect(onlyNamed?.left).toHaveLength(2);
 
+    // As in the design: seven code columns across a page of codes alone, three beside the named half.
     const onlyCoded = paginateOrderNote(buildOrderNote(orderWith(0, 500)), kind)[0];
     expect(onlyCoded?.wideRight).toBe(true);
-    expect(onlyCoded?.right.length).toBeLessThanOrEqual(2);
+    expect(onlyCoded?.right).toHaveLength(NOTE_LAYOUT.codedColumnsWide);
+    expect(NOTE_LAYOUT.codedColumnsWide).toBe(7);
+
+    const beside = paginateOrderNote(buildOrderNote(orderWith(20, 200)), kind)[0];
+    expect(beside?.wideRight).toBe(false);
+    expect(beside?.right).toHaveLength(NOTE_LAYOUT.codedColumns);
+    expect(NOTE_LAYOUT.codedColumns).toBe(3);
   });
 
-  it('gives a product of three or more codes one header, codes three to a row, and never leaves the header alone at a column foot', () => {
+  it('gives a product of three or more codes one header, one code to a cell, and never leaves the header alone at a column foot', () => {
     const pages = paginateOrderNote(buildOrderNote(orderWith(0, 300)), kind);
     for (const page of pages) {
       for (const column of page.right) {
@@ -158,7 +166,8 @@ describe.each(['filling', 'dispatch'] as NoteKind[])('paginateOrderNote (%s)', (
     const slots = pages.flatMap((p) => p.right.flat());
     expect(slots.some((slot) => slot.kind === 'header' && slot.continued)).toBe(true);
     const rows = slots.flatMap((slot) => (slot.kind === 'row' ? [slot] : []));
-    expect(Math.max(...rows.map((row) => row.lines.length))).toBe(3);
+    expect(Math.max(...rows.map((row) => row.lines.length))).toBe(NOTE_LAYOUT.codesPerRow);
+    expect(NOTE_LAYOUT.codesPerRow).toBe(1);
   });
 
   it('prints the product on each code of a product with fewer than three, and gives it no header', () => {
@@ -171,7 +180,8 @@ describe.each(['filling', 'dispatch'] as NoteKind[])('paginateOrderNote (%s)', (
     const slots = paginateOrderNote(buildOrderNote(orderOf(items)), kind)[0]!.right.flat();
     expect(slots.flatMap((s) => (s.kind === 'header' ? [s.product] : []))).toEqual(['Trio']);
     const rows = slots.flatMap((s) => (s.kind === 'row' ? [s] : []));
-    expect(rows.filter((r) => r.labelled).map((r) => r.product).sort()).toEqual(['Pair', 'Solo']);
+    // Each code of a small product is its own labelled cell.
+    expect(rows.filter((r) => r.labelled).map((r) => r.product).sort()).toEqual(['Pair', 'Pair', 'Solo']);
     expect(rows.filter((r) => !r.labelled).flatMap((r) => r.lines)).toHaveLength(3);
   });
 
@@ -179,6 +189,86 @@ describe.each(['filling', 'dispatch'] as NoteKind[])('paginateOrderNote (%s)', (
     const pages = paginateOrderNote(buildOrderNote(orderOf([])), kind);
     expect(pages).toHaveLength(1);
     expect(pages[0]?.isLast).toBe(true);
+  });
+
+  it('fits rows of both heights into each named column without overfilling it, every line once', () => {
+    const long = 'Wash basin with full pedestal, rimless';
+    const items = Array.from({ length: 150 }, (_, i) =>
+      line({ productName: i % 3 === 0 ? `${long} ${i}` : `Model ${i}`, brandName: 'Cera' }));
+    const model = buildOrderNote(orderOf(items));
+    const pages = paginateOrderNote(model, kind);
+    expect(printed(pages)).toHaveLength(150);
+    expect(new Set(printed(pages)).size).toBe(150);
+    // The tallest a column can be: page one's body with no notes and signatures.
+    const body = NOTE_LAYOUT.inner - 8 - NOTE_LAYOUT.caption - NOTE_LAYOUT.columnLabel
+      - (kind === 'filling' ? NOTE_LAYOUT.headerContFilling + NOTE_LAYOUT.footerFilling : NOTE_LAYOUT.headerContDispatch);
+    for (const page of pages) {
+      for (const column of page.left) {
+        expect(column.reduce((sum, l) => sum + namedRowHeight(l), 0)).toBeLessThanOrEqual(body);
+      }
+    }
+  });
+});
+
+describe('the last page', () => {
+  it('is never a one-to-five-line orphan: a page before it is cut early enough to leave a fair share', () => {
+    for (const [named, coded] of [...PRESETS, [0, 120], [0, 125], [0, 250], [0, 380], [30, 200], [28, 54], [26, 480]] as Array<[number, number]>) {
+      for (const kind of ['filling', 'dispatch'] as const) {
+        const pages = paginateOrderNote(buildOrderNote(orderWith(named, coded)), kind);
+        const tail = pages.at(-1)!.leftCount + pages.at(-1)!.rightCount;
+        if (pages.length > 1) {
+          expect(tail, `${kind} ${named}+${coded}`).toBeGreaterThanOrEqual(12); // a fair share, not the constant under test
+        }
+        expect(printed(pages)).toHaveLength(named + coded);
+      }
+    }
+  });
+
+  it('sweeps every size from one to two pages without an orphan or a lost line', () => {
+    for (let coded = 1; coded <= 330; coded += 1) {
+      const pages = paginateOrderNote(buildOrderNote(orderWith(0, coded)), 'dispatch');
+      if (pages.length > 1) {
+        const last = pages.at(-1)!;
+        expect(last.leftCount + last.rightCount, `coded ${coded}`).toBeGreaterThanOrEqual(Math.min(12, coded));
+      }
+      expect(new Set(printed(pages)).size).toBe(coded);
+    }
+  });
+
+  it('matches the design page counts for its three volumes (Short, Typical, Long) on this plain data', () => {
+    // The design's own dataset gives 2 / 5 / 12 pages for both notes; this synthetic data is
+    // simpler, so the bound is the design's count, never more.
+    const volumes: Array<[number, number, number]> = [[14, 84, 2], [46, 430, 5], [120, 1100, 12]];
+    for (const [named, coded, designPages] of volumes) {
+      for (const kind of ['filling', 'dispatch'] as const) {
+        const pages = paginateOrderNote(buildOrderNote(orderWith(named, coded)), kind);
+        expect(pages.length, `${kind} ${named}+${coded}`).toBeLessThanOrEqual(designPages);
+      }
+    }
+  });
+});
+
+describe('named rows (design rule)', () => {
+  it('use the design rule: label plus room for a brand chip over two lines is tall, branded or not', () => {
+    const fits = 2 * NOTE_LAYOUT.namedCharsPerLine - NOTE_LAYOUT.namedChipChars; // 49 characters
+    const make = (n: number, brandName: string | null) =>
+      buildOrderNote(orderOf([line({ productName: 'A'.repeat(n), size: null, brandName })])).named[0]!;
+    expect(namedRowHeight(make(fits, null))).toBe(NOTE_LAYOUT.rowNamed);
+    expect(namedRowHeight(make(fits + 1, null))).toBe(NOTE_LAYOUT.rowNamedTall);
+    expect(namedRowHeight(make(fits, 'Cera'))).toBe(NOTE_LAYOUT.rowNamed);
+    expect(NOTE_LAYOUT.namedCharsPerLine).toBe(26);
+  });
+
+  it('print the sub product with its size unless the name carries it, and grow tall for a three-line label', () => {
+    const [short, sized, long] = buildOrderNote(orderOf([
+      line({ productName: 'Rustic', size: '600x600' }),
+      line({ productName: 'Rustic 600x600 Gloss', size: '600x600' }),
+      line({ productName: 'Wash basin with full pedestal and rimless overflow', size: '24"', brandName: 'Cera' }),
+    ])).named.sort((a, b) => a.subProduct.length - b.subProduct.length);
+    expect(namedLabel(short!)).toBe('Rustic 600x600');
+    expect(namedLabel(sized!)).toBe('Rustic 600x600 Gloss');
+    expect(namedRowHeight(short!)).toBe(NOTE_LAYOUT.rowNamed);
+    expect(namedRowHeight(long!)).toBe(NOTE_LAYOUT.rowNamedTall);
   });
 });
 
@@ -205,6 +295,8 @@ describe('a lead as the source of a note', () => {
       source: 'lead', id: 'LD0000000007', number: null, createdAt: '2026-10-01T05:00:00.000Z',
     });
     expect(doc.partyName).toBe('Shree Tiles');
+    expect(doc.notes).toBeNull();
+    expect(noteDocument({ ...lead, notes: 'Handle with care' }, 'lead', null, null).notes).toBe('Handle with care');
   });
 
   it('keeps only the four party fields the header prints', () => {

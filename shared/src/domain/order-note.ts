@@ -48,6 +48,8 @@ export interface NoteDocument {
   partyName: string;
   party: NotePartyHeader | null;
   vehicleNumber: string | null;
+  /** The record's notes, printed above the signatures. Absent on jobs frozen before notes were printed. */
+  notes?: string | null;
   model: OrderNoteModel;
 }
 
@@ -91,18 +93,35 @@ export const NOTE_LAYOUT = {
   /** Filling note only: its totals strip sits at the foot of every page. */
   footerFilling: 74,
   signature: 62,
-  rowNamed: 40,
+  /** Last page only, above the signatures: the record's notes, or two lines to write on. */
+  notes: 78,
+  /** A named row whose label takes one or two lines… */
+  rowNamed: 32,
+  /** …and one that takes three (`namedRowHeight`). */
+  rowNamedTall: 44,
+  /**
+   * Characters of a named label per printed line, as the design counts them. A named row is
+   * `rowNamedTall` when the label plus three characters (room for a brand chip) takes more than two
+   * lines; the design reserves those three on every row, branded or not.
+   */
+  namedCharsPerLine: 26,
+  namedChipChars: 3,
   columnLabel: 13,
   /** A row of codes under their group's header. */
-  rowCoded: 46,
+  rowCoded: 50,
   /** A row of codes with their product printed on each — groups too small to earn a header. */
-  rowCodedLabelled: 58,
+  rowCodedLabelled: 62,
   groupHeader: 26,
-  /** Codes side by side in a row. */
-  codesPerRow: 3,
-  /** Columns the coded half takes: one beside the named half, two when it has the page. */
-  codedColumns: 1,
-  codedColumnsWide: 2,
+  /** Codes side by side in a row: one, each column of cells running top-down as in the design. */
+  codesPerRow: 1,
+  /** Columns the coded half takes: three beside the named half, seven when it has the page. */
+  codedColumns: 3,
+  codedColumnsWide: 7,
+  /**
+   * The last page carries the notes and signatures, so the page before it is cut early enough
+   * that the last page holds at least this many lines rather than one or two.
+   */
+  minTailLines: 12,
 } as const;
 
 /** A product with this many codes (or more) gets one header, its codes listed below. */
@@ -118,6 +137,7 @@ export interface NoteLine {
   productName: string;
   /** The sub product: a name on the left half, a code on the right. */
   subProduct: string;
+  size: string | null;
   colour: string | null;
   grade: string | null;
   packaging: string | null;
@@ -141,7 +161,7 @@ export interface OrderNoteModel {
   totalWeightKg: number;
 }
 
-/** One slot of a coded column: a group's header, or a row of up to three codes. */
+/** One slot of a coded column: a group's header, or a row of up to `codesPerRow` codes. */
 export type NoteSlot =
   | { kind: 'header'; product: string; continued: boolean }
   | {
@@ -174,6 +194,20 @@ export interface NotePage {
 }
 
 const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+
+/** How far a page is cut back at a time while it balances the tail (px). */
+const TAIL_STEP = 10;
+
+/** What the named half prints for a line: the sub product, and its size when the name does not carry it already. */
+export function namedLabel(line: NoteLine): string {
+  return line.size && !line.subProduct.includes(line.size) ? `${line.subProduct} ${line.size}` : line.subProduct;
+}
+
+/** A named row's height: taller when its label (and room for a brand chip) wraps past two lines. */
+export function namedRowHeight(line: NoteLine): number {
+  const chars = namedLabel(line).length + NOTE_LAYOUT.namedChipChars;
+  return Math.ceil(chars / NOTE_LAYOUT.namedCharsPerLine) > 2 ? NOTE_LAYOUT.rowNamedTall : NOTE_LAYOUT.rowNamed;
+}
 
 function productLabel(line: LineItem): string {
   const label = [line.categoryName, line.size].filter(Boolean).join(' ').trim();
@@ -214,6 +248,7 @@ export function buildOrderNote(order: NoteRecord): OrderNoteModel {
       product: productLabel(line),
       productName: line.categoryName?.trim() || line.productName,
       subProduct: line.productName.trim(),
+      size: line.size?.trim() || null,
       colour: line.colour ?? line.variantLabel,
       grade: line.grade,
       packaging: line.packaging,
@@ -272,6 +307,7 @@ export function noteDocument(
       ? { partyCode: party.partyCode, city: party.city, phone: party.phone, gstNumber: party.gstNumber }
       : null,
     vehicleNumber,
+    notes: record.notes ?? null,
     model: buildOrderNote(record),
   };
 }
@@ -366,8 +402,42 @@ function sumOf(lines: readonly NoteLine[]): { quantity: number; weightKg: number
 }
 
 /**
+ * The named lines from `start` that fit `height`, by each row's own height: one
+ * column, or two side by side when `wide`, split about evenly.
+ */
+function fillNamed(lines: readonly NoteLine[], start: number, wide: boolean, height: number): NoteLine[][] {
+  const budget = height - NOTE_LAYOUT.columnLabel;
+  const columns: NoteLine[][] = [[]];
+  let used = 0;
+  for (let i = start; i < lines.length; i += 1) {
+    const line = lines[i] as NoteLine;
+    const rowHeight = namedRowHeight(line);
+    if (used > 0 && used + rowHeight > budget) {
+      if (!wide || columns.length === 2) break;
+      columns.push([]);
+      used = 0;
+    }
+    (columns[columns.length - 1] as NoteLine[]).push(line);
+    used += rowHeight;
+  }
+  if (!wide) return columns;
+
+  // Two columns: the first takes about half the height, unless that overfills either.
+  const taken = columns.flat();
+  if (taken.length < 2) return [taken];
+  const total = taken.reduce((sum, line) => sum + namedRowHeight(line), 0);
+  let split = 0;
+  let first = 0;
+  while (split < taken.length && first < total / 2) {
+    first += namedRowHeight(taken[split] as NoteLine);
+    split += 1;
+  }
+  return first <= budget && total - first <= budget ? [taken.slice(0, split), taken.slice(split)] : columns;
+}
+
+/**
  * Cuts the note into A4 pages. Page one takes the full (Filling) or slim
- * (Dispatch) header, the last page reserves the signature row, and a page with
+ * (Dispatch) header, the last page reserves the notes and signature rows, and a page with
  * no coded lines gives the named half the full width in two columns — as one
  * with no named lines gives the coded half two columns.
  */
@@ -400,30 +470,40 @@ export function paginateOrderNote(
       (first ? (filling ? L.headerFirstFilling : L.headerFirstDispatch) : filling ? L.headerContFilling : L.headerContDispatch) -
       L.caption -
       (filling ? L.footerFilling : 0) -
-      (isLast ? L.signature : 0);
-    const leftRows = (h: number): number => {
-      const rows = Math.max(1, Math.floor((h - L.columnLabel) / L.rowNamed));
-      return wideLeft ? rows * 2 : rows;
-    };
+      (isLast ? L.notes + L.signature : 0);
+    const leftRows = (h: number): number => fillNamed(model.named, namedAt, wideLeft, h).flat().length;
 
-    // Would the rest of the note fit on this page with the signature row on it?
+    // Would the rest of the note fit on this page with the notes and signatures on it?
     const lastHeight = height(true);
     const probe = fillColumns(model.coded, codedAt, columnCount, lastHeight);
     const fitsLast = remainingNamed <= leftRows(lastHeight) && remainingCoded - probe.placed <= 0;
-    // The rest fitting only without the signature row is not a last page: cut it
+    // The rest fitting only without the notes and signatures is not a last page: cut it
     // at the last-page height so a page follows to carry the remainder and the
     // signatures, rather than printing them over the final rows.
     const fullHeight = height(false);
     const fullProbe = fillColumns(model.coded, codedAt, columnCount, fullHeight);
     const fitsFull = remainingNamed <= leftRows(fullHeight) && remainingCoded - fullProbe.placed <= 0;
-    const h = fitsLast || fitsFull ? lastHeight : fullHeight;
+    let h = fitsLast || fitsFull ? lastHeight : fullHeight;
 
-    const take = Math.min(remainingNamed, leftRows(h));
-    const namedSlice = model.named.slice(namedAt, namedAt + take);
+    // A page that is not the last must leave the last one a fair share, not one or two lines: the
+    // notes and signatures need a page of their own only if the lines run out exactly at the foot.
+    // Cut it a little earlier until the tail it leaves is at least `minTailLines`.
+    if (!fitsLast) {
+      const placedAt = (height: number): number =>
+        leftRows(height) + fillColumns(model.coded, codedAt, columnCount, height).placed;
+      const remaining = remainingNamed + remainingCoded;
+      const floor = Math.floor(fullHeight / 2);
+      let tail = remaining - placedAt(h);
+      while (tail > 0 && tail < L.minTailLines && h - TAIL_STEP >= floor) {
+        h -= TAIL_STEP;
+        tail = remaining - placedAt(h);
+      }
+    }
+
+    const left = fillNamed(model.named, namedAt, wideLeft, h);
+    const namedSlice = left.flat();
     const filled = fillColumns(model.coded, codedAt, columnCount, h);
 
-    const half = Math.ceil(namedSlice.length / 2);
-    const left = wideLeft && namedSlice.length > 1 ? [namedSlice.slice(0, half), namedSlice.slice(half)] : [namedSlice];
     const cells = filled.columns.flat().flatMap((slot) => (slot.kind === 'row' ? slot.lines : []));
     const totals = sumOf([...namedSlice, ...cells]);
 

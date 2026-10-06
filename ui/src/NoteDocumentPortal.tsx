@@ -26,6 +26,7 @@ export function noteSheetProps(document: NoteDocument, kind: NoteKind, printedAt
     party: document.party,
     partyName: document.partyName,
     vehicleNumber: document.vehicleNumber ?? '',
+    notes: document.notes ?? null,
     totalQuantity: model.totalQuantity,
     totalWeightKg: model.totalWeightKg,
     itemCount: model.itemCount,

@@ -1726,7 +1726,7 @@ describe('the Filling and Dispatch notes on an order', () => {
 
     // Twice: the preview, and the copy that print shows.
     expect((await screen.findAllByText(pageLabel)).length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Duragres').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Rustic Wood 600x600').length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('button', { name: t('action.backToList') }));
     expect(await screen.findByText(t('orders.detail.products'))).toBeTruthy();

@@ -3,9 +3,10 @@
  * (6-UI-DESIGN.md §2.1) — these files ship inside the bundle.
  *
  * Subsets kept deliberately small to stay under the §11 budget of 250 KB for
- * all fonts combined (~218 KB):
+ * all fonts combined (~233 KB):
  *   - Inter variable, latin + a symbols slice (₹, dashes, quotes)
- *   - IBM Plex Mono static 400/500/600, latin
+ *   - IBM Plex Mono static 400/500/600/700, latin (700 for the note's bold figures; the same
+ *     Google Fonts latin files the owner's note design ships, SIL OFL 1.1)
  */
 
 @font-face {
@@ -49,4 +50,12 @@
   font-weight: 600;
   font-display: block;
   src: url('./fonts/IBMPlexMono-600-latin.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  src: url('./fonts/IBMPlexMono-700-latin.woff2') format('woff2');
 }

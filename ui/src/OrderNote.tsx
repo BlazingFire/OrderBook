@@ -3,11 +3,14 @@
  *
  * Presentational only: `paginateOrderNote` has already decided what is on each
  * page, this draws it. Every height a page break depends on is set on the root
- * from `NOTE_LAYOUT`, so `order-note.css` cannot drift from the arithmetic.
+ * from `NOTE_LAYOUT` (a named row's own height from `namedRowHeight`), so
+ * `order-note.css` cannot drift from the arithmetic.
  */
 
 import {
   isTemporaryId,
+  namedLabel,
+  namedRowHeight,
   NOTE_LAYOUT,
   type NoteHeader,
   type NoteKind,
@@ -29,11 +32,12 @@ const LAYOUT_VARS = {
   '--note-caption': `${NOTE_LAYOUT.caption}px`,
   '--note-footer-filling': `${NOTE_LAYOUT.footerFilling}px`,
   '--note-signature': `${NOTE_LAYOUT.signature}px`,
-  '--note-row-named': `${NOTE_LAYOUT.rowNamed}px`,
+  '--note-notes': `${NOTE_LAYOUT.notes}px`,
   '--note-column-label': `${NOTE_LAYOUT.columnLabel}px`,
   '--note-row-coded': `${NOTE_LAYOUT.rowCoded}px`,
   '--note-row-coded-labelled': `${NOTE_LAYOUT.rowCodedLabelled}px`,
   '--note-group-header': `${NOTE_LAYOUT.groupHeader}px`,
+  '--note-codes-per-row': NOTE_LAYOUT.codesPerRow,
 } as CSSProperties;
 
 export interface OrderNoteProps {
@@ -44,6 +48,8 @@ export interface OrderNoteProps {
   party: NotePartyHeader | null;
   partyName: string;
   vehicleNumber: string;
+  /** The record's notes, printed on the last page; blank lines to write on when empty. */
+  notes: string | null;
   /** Total pieces and weight of the whole order, for the last page's strip. */
   totalQuantity: number;
   totalWeightKg: number;
@@ -57,18 +63,18 @@ function num(value: number): string {
   return value.toLocaleString('en-IN', { maximumFractionDigits: 1 });
 }
 
-function stamp(value: Date | string | null | undefined, withTime = true): string {
+/**
+ * Fixed month names: `toLocaleString` abbreviates September as "Sept" in current Chromium, and the
+ * design (and every other month) is three letters.
+ */
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+
+export function stamp(value: Date | string | null | undefined): string {
   if (!value) return '—';
   const date = typeof value === 'string' ? new Date(value) : value;
   if (Number.isNaN(date.getTime())) return '—';
-  return date
-    .toLocaleString('en-GB', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      ...(withTime ? { hour: '2-digit', minute: '2-digit', hour12: false } : {}),
-    })
-    .replace(', ', ' · ');
+  const two = (n: number): string => String(n).padStart(2, '0');
+  return `${two(date.getDate())} ${MONTHS[date.getMonth()]} ${date.getFullYear()} · ${two(date.getHours())}:${two(date.getMinutes())}`;
 }
 
 /** What the sheet calls the record: its number, or its id until it has one. */
@@ -80,23 +86,50 @@ function range(from: number, count: number, all: number): string {
   return count > 0 ? `${from + 1}–${from + count} / ${all}` : '—';
 }
 
-/** Always drawn: a line with no packaging shows an empty chip to write in, not nothing. */
+/** A brand as its two-letter chip: the first two letters or digits of its name. */
+function brandCode(brand: string): string {
+  return brand.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase();
+}
+
+const PACK_CODES: Record<string, string> = { box: 'BOX', grass: 'GRS', paper: 'PPR' };
+
+/** A packaging as the coded cell's three-letter chip. */
+function packCode(packaging: string): string {
+  return PACK_CODES[packaging.trim().toLowerCase()] ?? packaging.trim().slice(0, 3).toUpperCase();
+}
+
+function BrandChip({ brand }: { brand: string | null }) {
+  if (!brand) return null;
+  const code = brandCode(brand);
+  return code ? (
+    <span className="ob-note-brand" title={brand}>
+      {code}
+    </span>
+  ) : null;
+}
+
+/** Always drawn: a code with no packaging shows an empty chip to write in, not nothing. */
 function PackagingChip({ value }: { value: string | null }) {
-  return <span className={`ob-note-chip${value ? '' : ' ob-note-chip--empty'}`}>{value || '—'}</span>;
+  return value ? (
+    <span className="ob-note-chip" title={value}>
+      {packCode(value)}
+    </span>
+  ) : (
+    <span className="ob-note-chip ob-note-chip--empty">—</span>
+  );
 }
 
 function NamedRow({ line, tick }: { line: NoteLine; tick: boolean }) {
+  const height = namedRowHeight(line);
   return (
-    <div className="ob-note-row">
-      <span className="ob-note-grow">
-        <span className="ob-note-product ob-note-clip">{line.productName}</span>
-        <span className="ob-note-sub">
-          <span className="ob-note-sub-name ob-note-clip">{line.subProduct}</span>
-          <PackagingChip value={line.packaging} />
-          {line.grade && <span className="ob-note-chip">{line.grade}</span>}
-        </span>
+    <div className="ob-note-row" style={{ height }}>
+      <span className={`ob-note-grow ob-note-label${height > NOTE_LAYOUT.rowNamed ? ' ob-note-label--tall' : ''}`}>
+        {namedLabel(line)}
+        <BrandChip brand={line.brand} />
       </span>
+      <span className="ob-note-pack ob-note-wrap">{line.packaging}</span>
       <span className="ob-note-colour ob-note-wrap">{line.colour}</span>
+      <span className="ob-note-grade">{line.grade}</span>
       <span className="ob-note-qty">{num(line.quantity)}</span>
       {tick && <span className="ob-note-tick" />}
     </div>
@@ -119,11 +152,12 @@ function CodedSlot({ slot }: { slot: NoteSlot }) {
           {slot.labelled && <div className="ob-note-cell-product">{slot.product}</div>}
           <div className="ob-note-cell-code">
             <span className="ob-note-clip">{line.subProduct}</span>
+            <BrandChip brand={line.brand} />
           </div>
           <div className="ob-note-cell-detail">
             <PackagingChip value={line.packaging} />
-            <span className="ob-note-wrap">{[line.colour, line.grade].filter(Boolean).join(' - ')}</span>
-            <span>{num(line.quantity)}</span>
+            {line.grade && <span className="ob-note-cell-grade">{line.grade}</span>}
+            <span className="ob-note-cell-qty">×{num(line.quantity)}</span>
           </div>
         </div>
       ))}
@@ -142,6 +176,7 @@ function Strip({
 }) {
   const { kind, header } = props;
   const last = page.isLast;
+  const bottom = position === 'bottom';
   return (
     <div className={`ob-note-strip ob-note-strip-${position}`}>
       <div className="ob-note-strip-cell">
@@ -150,11 +185,13 @@ function Strip({
           {num(last ? props.totalQuantity : page.quantity)}
           <span className="ob-note-strip-unit"> {t('orderNote.unit')}</span>
         </div>
-        <div className="ob-note-strip-note">
-          {last
-            ? t('orderNote.itemsPages', { items: props.itemCount, pages: page.pageCount })
-            : t('orderNote.carriedForward', { n: num(page.runQuantity) })}
-        </div>
+        {bottom && (
+          <div className="ob-note-strip-note">
+            {last
+              ? t('orderNote.itemsPages', { items: props.itemCount, pages: page.pageCount })
+              : t('orderNote.carriedForward', { n: num(page.runQuantity) })}
+          </div>
+        )}
       </div>
       <span className="ob-note-strip-rule" />
       <div className="ob-note-strip-cell">
@@ -163,9 +200,11 @@ function Strip({
           {num(last ? props.totalWeightKg : page.weightKg)}
           <span className="ob-note-strip-unit"> kg</span>
         </div>
-        <div className="ob-note-strip-note">
-          {last ? t('orderNote.grossOfPacking') : t('orderNote.carriedForward', { n: num(page.runWeightKg) })}
-        </div>
+        {bottom && (
+          <div className="ob-note-strip-note">
+            {last ? t('orderNote.grossOfPacking') : t('orderNote.carriedForward', { n: num(page.runWeightKg) })}
+          </div>
+        )}
       </div>
       <span className="ob-note-strip-rule" />
       <div className="ob-note-strip-cell">
@@ -190,8 +229,7 @@ function Header({ props, page }: { props: OrderNoteProps; page: NotePage }) {
   const { kind, header, party, partyName } = props;
   const filling = kind === 'filling';
   const title = filling ? t('orderNote.filling') : t('orderNote.dispatch');
-  const pageLabel = t('orderNote.page', { n: page.pageNo, total: page.pageCount });
-  const printed = stamp(props.printedAt, !filling);
+  const printed = stamp(props.printedAt);
 
   if (!page.isFirst) {
     return (
@@ -201,9 +239,6 @@ function Header({ props, page }: { props: OrderNoteProps; page: NotePage }) {
           <span className="ob-note-head-cont-suffix">
             {filling ? ` — ${title} · ${t('orderNote.continued')}` : ` · ${t('orderNote.continued')}`}
           </span>
-        </div>
-        <div className="ob-note-head-cont-page ob-note-mono">
-          {numberOf(header)} · {pageLabel}
         </div>
       </div>
     );
@@ -244,13 +279,9 @@ function Header({ props, page }: { props: OrderNoteProps; page: NotePage }) {
           {isTemporaryId(header.id) && <span className="ob-note-unsynced">{t('orderNote.unsynced')}</span>}
         </span>
         <span className="ob-note-eyebrow">{t('orderNote.leadGenerated')}</span>
-        <span className="ob-note-meta-value ob-note-meta-when">
-          {stamp(header.createdAt, false)}
-        </span>
+        <span className="ob-note-meta-value ob-note-meta-when">{stamp(header.createdAt)}</span>
         <span className="ob-note-eyebrow">{t('orderNote.printed')}</span>
-        <span className="ob-note-meta-value ob-note-meta-when">
-          {printed}
-        </span>
+        <span className="ob-note-meta-value ob-note-meta-when">{printed}</span>
       </div>
     </div>
   );
@@ -260,9 +291,10 @@ function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
   const filling = props.kind === 'filling';
   const hasLeft = page.leftCount > 0;
   const hasRight = page.rightCount > 0;
+  const notes = props.notes?.trim() ?? '';
   const signatures = filling
     ? [t('orderNote.signFilledBy'), t('orderNote.signCheckedBy'), t('orderNote.signStoreInCharge')]
-    : [t('orderNote.signLoadedBy'), t('orderNote.signCheckedBy'), t('orderNote.signDriver')];
+    : [t('orderNote.signSupervisor'), t('orderNote.signLoadedBy'), t('orderNote.signCheckedBy')];
 
   return (
     <section className={`ob-note-page ob-note-${props.kind}`}>
@@ -272,7 +304,7 @@ function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
         {hasLeft && (
           <div
             className={`ob-note-half ob-note-half--left${hasRight ? '' : ' ob-note-half--only'}`}
-            style={{ flex: `1 1 ${page.wideLeft ? '100%' : '45%'}` }}
+            style={{ flex: `1 1 ${page.wideLeft ? '100%' : '58%'}` }}
           >
             <div className="ob-note-caption">
               <span>{t('orderNote.productLines')}</span>
@@ -282,8 +314,10 @@ function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
               {page.left.map((column, index) => (
                 <div className="ob-note-column" key={index}>
                   <div className="ob-note-colhead">
-                    <span className="ob-note-grow">{t('orderNote.productSubProduct')}</span>
+                    <span className="ob-note-grow">{t('orderNote.subProductBrand')}</span>
+                    <span className="ob-note-pack">{t('orderNote.packing')}</span>
                     <span className="ob-note-colour">{t('orderNote.colour')}</span>
+                    <span className="ob-note-grade">{t('orderNote.grade')}</span>
                     <span className="ob-note-qty">{t('orderNote.qty')}</span>
                     {filling && <span className="ob-note-tick ob-note-tick--head" />}
                   </div>
@@ -299,7 +333,7 @@ function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
         {hasRight && (
           <div
             className={`ob-note-half ob-note-half--right${hasLeft ? '' : ' ob-note-half--only'}`}
-            style={{ flex: `1 1 ${page.wideRight ? '100%' : '55%'}` }}
+            style={{ flex: `1 1 ${page.wideRight ? '100%' : '42%'}` }}
           >
             <div className="ob-note-caption">
               <span>{t('orderNote.codedProducts')}</span>
@@ -317,6 +351,19 @@ function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
           </div>
         )}
       </div>
+      {page.isLast && (
+        <div className="ob-note-notes">
+          <div className="ob-note-eyebrow">{t('orderNote.notes')}</div>
+          {notes ? (
+            <div className="ob-note-notes-text">{notes}</div>
+          ) : (
+            <div className="ob-note-notes-blank">
+              <div />
+              <div />
+            </div>
+          )}
+        </div>
+      )}
       {page.isLast && (
         <div className="ob-note-sign">
           {signatures.map((label) => (

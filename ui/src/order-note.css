@@ -79,7 +79,7 @@
   color: var(--note-muted);
 }
 
-/* Long colour names wrap onto a second line instead of being cut off. */
+/* Long packing and colour names wrap onto a second line instead of being cut off. */
 .ob-note-wrap {
   min-width: 0;
   display: -webkit-box;
@@ -231,11 +231,6 @@
   color: var(--note-muted);
 }
 
-.ob-note-head-cont-page {
-  flex: none;
-  font-size: 10px;
-  color: var(--note-soft);
-}
 
 /* ---- Totals strip (top on Dispatch, bottom on Filling) -------------------- */
 
@@ -304,9 +299,14 @@
 }
 
 .ob-note-strip-top .ob-note-vehicle {
-  font-size: 20px;
+  font-size: 15px;
   line-height: 28px;
   min-height: 26px;
+  letter-spacing: 0;
+}
+
+.ob-note-strip-top .ob-note-strip-unit {
+  font-size: 11px;
 }
 
 .ob-note-filling .ob-note-vehicle {
@@ -425,9 +425,9 @@
   color: var(--note-muted);
 }
 
+/* Its height is set per row from `namedRowHeight`: 32 px, or 44 px for a three-line label. */
 .ob-note-row {
   flex: none;
-  height: var(--note-row-named);
   display: flex;
   align-items: center;
   gap: 7px;
@@ -439,12 +439,57 @@
   min-width: 0;
 }
 
-.ob-note-colour {
-  flex: 0 0 64px;
+.ob-note-label {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 13px;
+  font-weight: 600;
+}
+
+.ob-note-label--tall {
+  -webkit-line-clamp: 3;
+}
+
+.ob-note-brand {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 0 3px;
+  vertical-align: 1px;
+  border: 1px solid var(--note-soft);
+  border-radius: 2px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 7.5px;
+  line-height: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.ob-note-pack,
+.ob-note-colour,
+.ob-note-grade {
   min-width: 0;
   font-size: 11px;
   line-height: 13px;
   font-weight: 500;
+  color: #2b353b;
+}
+
+.ob-note-pack {
+  flex: 0 0 11%;
+}
+
+.ob-note-colour {
+  flex: 0 0 15%;
+}
+
+.ob-note-grade {
+  flex: 0 0 40px;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .ob-note-qty {
@@ -464,45 +509,23 @@
   border-radius: 2px;
 }
 
-.ob-note-product {
-  display: block;
-  font-size: 12px;
-  line-height: 14px;
-  font-weight: 600;
-  letter-spacing: -0.012em;
-}
-
-.ob-note-sub {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  min-width: 0;
-}
-
-.ob-note-sub-name {
-  min-width: 0;
-  font-size: 11.5px;
-  line-height: 13px;
-  color: #2b353b;
+.ob-note-chip {
+  flex: none;
+  padding: 0 2px;
+  border: 1px solid var(--note-soft);
+  border-radius: 2px;
+  font-size: 7px;
+  line-height: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .ob-note-chip.ob-note-chip--empty {
-  min-width: 22px;
+  min-width: 20px;
   text-align: center;
   border-style: dashed;
   color: var(--note-muted);
-}
-
-.ob-note-chip {
-  flex: none;
-  padding: 0 3px;
-  border: 1px solid var(--note-muted);
-  border-radius: 2px;
-  font-size: 7.5px;
-  line-height: 11px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
 }
 
 /* ---- Coded lines ---------------------------------------------------------- */
@@ -516,10 +539,10 @@
   padding: 0 0 3px;
   border-bottom: 1px solid var(--note-ink);
   color: var(--note-ink);
-  font-size: 10px;
+  font-size: 9.5px;
   line-height: 11px;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
 }
 
@@ -534,9 +557,11 @@
 
 .ob-note-group-cont {
   flex: none;
-  font-size: 8px;
+  /* Small and tucked in: a column is only a seventh of the page, and the name needs the room. */
+  margin-left: -2px;
+  font-size: 7px;
   font-weight: 500;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   color: var(--note-muted);
 }
 
@@ -544,7 +569,7 @@
   flex: none;
   height: var(--note-row-coded);
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--note-codes-per-row), minmax(0, 1fr));
   gap: 0 10px;
 }
 
@@ -557,7 +582,8 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 3px;
+  gap: 1px;
+  border-bottom: 1px dotted var(--note-dots);
 }
 
 .ob-note-cell-product {
@@ -577,42 +603,90 @@
 
 .ob-note-cell-code {
   display: flex;
-  justify-content: center;
-  min-width: 0;
-}
-
-.ob-note-cell-code span {
-  max-width: 100%;
-  min-width: 28px;
-  text-align: center;
-  font-size: 14px;
-  line-height: 16px;
-  font-weight: 700;
-  border-bottom: 1px solid var(--note-ink);
-}
-
-.ob-note-cell-detail {
-  display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: center;
   gap: 4px;
   min-width: 0;
 }
 
-.ob-note-cell-detail span:not(.ob-note-chip):nth-last-child(2) {
-  min-width: 0;
-  font-size: 9.5px;
-  line-height: 11px;
-}
-
-.ob-note-cell-detail span:last-child {
-  flex: none;
-  font-size: 10.5px;
-  line-height: 11px;
+.ob-note-cell-code .ob-note-clip {
+  font-size: 14px;
+  line-height: 16px;
   font-weight: 700;
 }
 
-/* ---- Signatures ----------------------------------------------------------- */
+.ob-note-cell-code .ob-note-brand {
+  flex: none;
+  margin-left: 0;
+}
+
+.ob-note-cell-detail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.ob-note-cell-grade {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 7px;
+  line-height: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--note-soft);
+}
+
+.ob-note-cell-qty {
+  flex: none;
+  font-size: 14px;
+  line-height: 16px;
+  font-weight: 700;
+}
+
+/* ---- Notes and signatures (last page) ------------------------------------- */
+
+.ob-note-notes {
+  flex: none;
+  height: var(--note-notes);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--note-ink);
+  overflow: hidden;
+}
+
+.ob-note-notes .ob-note-eyebrow {
+  font-weight: 700;
+  letter-spacing: 0.13em;
+}
+
+.ob-note-notes-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: 500;
+}
+
+.ob-note-notes-blank {
+  display: flex;
+  flex-direction: column;
+  gap: 19px;
+  padding-top: 18px;
+}
+
+.ob-note-notes-blank div {
+  border-bottom: 1px dotted #98a3a9;
+}
 
 .ob-note-sign {
   flex: none;
@@ -702,11 +776,14 @@
   font-size: 11px;
 }
 
+.ob-note-colhead .ob-note-pack,
 .ob-note-colhead .ob-note-colour,
+.ob-note-colhead .ob-note-grade,
 .ob-note-colhead .ob-note-qty {
   font-size: inherit;
   line-height: inherit;
   font-weight: inherit;
+  color: inherit;
 }
 
 .ob-note-tick--head {
