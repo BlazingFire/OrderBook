@@ -20,13 +20,15 @@
 
 import { useEffect, useState } from 'react';
 import { isLongOffline } from '@orderbook/shared';
-import type { DashboardSummary, Lead, OfficePanelWithPresence } from '@orderbook/shared';
+import type { DashboardSummary, Lead, Notice, OfficePanelWithPresence } from '@orderbook/shared';
 
 import { api } from '../api';
+import { todayForNotices } from '../noticeToday';
 import {
   Button,
   Card,
   EmptyState,
+  NoticeDashboardCard,
   Skeleton,
   StatTile,
   StatTileSkeleton,
@@ -44,7 +46,9 @@ interface Props {
   canViewLeads: boolean;
   /** Moves when a lead, order or party changes, so the follow-ups list re-reads. */
   revision: number;
-  onNavigate: (target: 'leads' | 'orders' | 'conflicts' | 'panels') => void;
+  onNavigate: (target: 'leads' | 'orders' | 'conflicts' | 'panels' | 'notices') => void;
+  /** `notices.view`: the card of important and pinned notices; asked for nothing without it. */
+  canViewNotices?: boolean;
   onOpenLead: (id: string) => void;
   /** Print jobs waiting, from the Printroom; no tile when absent. */
   printPending?: number;
@@ -59,6 +63,7 @@ export function DashboardScreen({
   canViewLeads,
   revision,
   onNavigate,
+  canViewNotices,
   onOpenLead,
   printPending,
   chatUnread,
@@ -69,6 +74,22 @@ export function DashboardScreen({
   const offlineCount = active.length - connected;
   // Read at render: the panels list re-arrives on every connect and disconnect.
   const longOfflineCount = panels.filter((panel) => isLongOffline(panel, Date.now())).length;
+
+  // The notices worth seeing at a glance; the card draws nothing when there are none.
+  const [notices, setNotices] = useState<Notice[]>([]);
+  useEffect(() => {
+    if (!canViewNotices) return;
+    let cancelled = false;
+    void api
+      .notices()
+      .then((board) => {
+        if (!cancelled) setNotices(board.notices);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewNotices, revision]);
 
   const [followUps, setFollowUps] = useState<Lead[] | null>(null);
   useEffect(() => {
@@ -315,6 +336,8 @@ export function DashboardScreen({
           )}
         </Card>
       )}
+
+      {canViewNotices && <NoticeDashboardCard notices={notices} today={todayForNotices()} onOpen={() => onNavigate('notices')} />}
 
       {canViewLeads && (
         <Card>
