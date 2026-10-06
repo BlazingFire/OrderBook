@@ -609,6 +609,21 @@ What an administrator should know:
   shows **Private** (one person, and administrators) or **Shared with N**; an open party shows nothing.
   Party Access: each party's creator is tagged among the people who can see it.
 
+## 15c. The notice board keys (Oct 2026)
+
+Two keys, group `notices`, shown in the role editor under **Notice board** and on each role card as **Read** or
+**Read and manage**:
+
+| Key | Minimum tier | Meaning |
+|---|---|---|
+| `notices.view` | office | Read the notice board: the notices meant for your role. Every existing role holds it after the update, and the role form ticks it for a new role |
+| `notices.manage` | admin | Put up, change, pin, expire and delete notices, choose who sees them, and see who has read each one. Granted by the update to every admin and Server Master role; a role below the admin tier cannot be given it |
+
+Who a notice reaches is decided by the **role** of the person signed in, so changing someone's role changes what they
+see on their next sign-in (a role change ends their session). On an Office PC the notice board of a person is the
+one the Master built for that person; it is not shared with whoever signs in next. Management of notices is on the Master
+and, for holders of `notices.manage`, on the Office (online only).
+
 ## 16. Where this deliberately differs from the supplied documents
 
 | Document says | Here | Why |

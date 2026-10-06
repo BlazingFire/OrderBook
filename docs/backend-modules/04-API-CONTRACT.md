@@ -2851,6 +2851,33 @@ No new route or permission key. What changed in the answers:
   cache was built for the person now signed in.
 - **`GET /api/panels/:id/activity`:** rows about parties, leads and orders the caller cannot see are left out.
 
+## 22. The notice board (Oct 2026)
+
+Shared types: `shared/src/domain/notices.ts` (`Notice`, `NoticeInput`, `NoticeUpdate`, `NoticeBoard`, `NoticeReaders`,
+`NoticeAudience`, limits `NOTICE_TITLE_MAX` 120, `NOTICE_BODY_MAX` 4000, `NOTICE_AUDIENCE_MAX_ROLES` 50). Service:
+`master/src/services/notice.service.ts`. First protocol that speaks it: `NOTICE_MIN_PROTOCOL` (10).
+
+| Route (Master) | Key | Answer |
+|---|---|---|
+| `GET /api/notices` | `notices.view` | `{ notices, unreadCount }`: the notices for the caller's role, not expired, pinned first, then important, then newest; each carries `readByMe`, never counts or role names |
+| `POST /api/notices/read` | `notices.view` | `{ ids? }` (all of the caller's board when omitted) -> `{ unreadCount }`. An id that is not on the caller's board, not a UUID or not a notice is ignored and answered the same, so the answer says nothing about whether a notice exists |
+| `GET /api/notices/manage` | `notices.manage` | every notice, expired ones too, with `audienceRoleNames`, `expired`, `readCount`, `audienceSize` |
+| `GET /api/notices/audiences` | `notices.manage` | the roles an audience can be made of |
+| `GET /api/notices/:id/readers` | `notices.manage` | everybody in the audience with `readAt` (null = not yet) |
+| `POST /api/notices` | `notices.manage` | create; 201 with the notice. Audience `{kind:'all'}` (default) or `{kind:'roles', roleIds}` of live roles |
+| `PATCH /api/notices/:id` | `notices.manage` | edit; the body carries `expectedVersion`, a stale one is 409 `conflict` |
+| `DELETE /api/notices/:id` | `notices.manage` | soft delete; restore is the Recycle Bin (`entity notice`) |
+
+Socket (Office panels): `notice:list`, `notice:manageList`, `notice:audiences`, `notice:readers`, `notice:create`,
+`notice:update`, `notice:delete`, `notice:markRead`, the same service, with the acting person's role. The Office
+server forwards the same paths (`office/src/http/app.ts`); it answers the board offline from the snapshot (expired notices
+left out, reads shown from the last snapshot) and every write and "mark read" needs the Master.
+
+**Snapshot and events.** `SyncSnapshot.notices` is the reader's own list, empty without `notices.view`. A change is one
+`notice` event (`created`, `updated`, `deleted`, `restored`) whose payload names only the audience, before and after
+(the title and body never ride the change ring); it is snapshot-forcing, and reaches only a recipient whose role is in
+the audience, or who holds `notices.manage`, so an edit that moves a notice off a role still tells that role.
+
 ## Appendix — new permission keys
 
 **`08-PERMISSIONS.md` is the authority for permission keys, tiers and the grant-migration algorithm.**

@@ -284,6 +284,32 @@ may now mean somebody else. See `docs/ROLES_AND_USERS.md` §4.2 for the residual
 
 ---
 
+## 2c. The notice board: `notices`, `notice_audiences`, `notice_reads`
+
+Added by `20261014000000_notice_board`: three tables and two grants, all additive and safe to run twice. No data is
+touched and no column is dropped.
+
+| Table | One row is | Notes |
+|---|---|---|
+| `notices` | a notice | `title` (1 to 120 characters after trimming, a CHECK), `body` (plain text, at most 4000, a CHECK, default empty), `priority` (`normal` or `important`), `pinned`, `show_until` (a calendar `DATE`, the last day it is shown, compared by the Master in the company's time zone, null = until removed), `audience_all`, `author_id` (a user; users are soft-deleted and restorable, so the reference cannot dangle), `version` (rises on every edit, so two administrators cannot overwrite each other), `created_at`, `updated_at`, `deleted_at`, `deleted_by`. Index `notices_board_idx (tenant_id, pinned DESC, created_at DESC, id)` over live rows |
+| `notice_audiences` | one role a notice is for | Used only when `audience_all` is false. Primary key `(notice_id, role_id)`; `role_id` references `roles`, which are soft-deleted too, so it never dangles. A notice for roles with none left alive is seen by nobody but managers |
+| `notice_reads` | one person has read one notice | Primary key `(notice_id, user_id)`, so reading twice is a no-op. It is what the unread badge counts and what a manager sees as "read by" |
+
+**Who sees a notice.** The audience is decided by the reader's **role**, taken from the session or the panel's acting
+person, never from a request. `notices.view` reads the board: the notices for everybody or for the reader's role, not
+deleted, not past `show_until`. `notices.manage` sees every notice (expired ones too, marked `expired`), each audience's
+role names, how many people have read it and who. Nobody else can learn who read what.
+
+**The grants.** `notices.view` goes to **every** role, whatever its tier, so nobody loses anything; `notices.manage` to
+every role of the `admin` and `server_master` tiers (the minimum tier for `notices.manage` is `admin`, so a role below
+that cannot hold it). A role created after the migration gets `notices.view` from the role form's default, not from the
+server. The key lists are inline in the migration, never read from `@orderbook/shared`.
+
+**Delete and restore.** A notice is soft-deleted and comes back from the Recycle Bin (`notices.manage`, entity
+`notice`). A restored notice keeps who has read it.
+
+---
+
 ## 3. Configurable pipelines
 
 ```sql

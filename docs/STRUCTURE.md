@@ -6308,6 +6308,30 @@ everyone; a party created by a person without `party.accessAll` gets that person
 - **Scratch scenario.** `node tools/seed-party-scenario.mjs --port <master port>` builds 3 administrators, 5 office
   users, 3 open parties and a party plus a pending order per user on a scratch Master.
 
+### 11.12 The notice board (Oct 2026)
+
+Rules: `docs/schema/06-tenancy-permissions-and-sync.md` section 2c, `docs/ROLES_AND_USERS.md` section 15c,
+`docs/backend-modules/04-API-CONTRACT.md` section 22.
+
+- **Master.** `20261014000000_notice_board.ts` (tables, grants); `repositories/notice.repository.ts` (the audience filter
+  is SQL, by the reader's role); `services/notice.service.ts` (`listBoard`, `snapshotNotices`, `listManage`,
+  `getReaders`, `markRead`, `createNotice`, `updateNotice`, `deleteNotice`, `restoreNotice`, one `publishChange` each);
+  `http/routes/notice.routes.ts` (`/api/notices`); `realtime/fan-out.ts#noticeAudienceIncludes` (the per-recipient
+  gate); `hub.ts` (`notice:*` commands, on panel sockets); the snapshot's `notices`; the Recycle Bin branch `notice`.
+- **Shared.** `shared/src/domain/notices.ts` (types, `noticeProblem`, `compareNotices`, `isNoticeExpired`,
+  `noticeToday`), `permissions.ts` (`notices.view`, `notices.manage`, group `notices`), `keys/commands.ts`
+  (Notice board Alt+N, Notice board management Alt+M on both panels).
+- **Screens.** `ui/src/NoticeBoardView.tsx` (reader's list, unread marker, mark read, offline note),
+  `NoticeDashboardCard.tsx` (important and pinned unread notices on the Dashboard), `NoticeManageView.tsx` (list, editor,
+  audience picker, pin, expire, delete, read counts and the readers dialog, the 409 conflict with Reload); the Master's
+  `NoticeBoardScreen.tsx`, `NoticeManageScreen.tsx`, `useNotices.ts`; the Office mounts the same views. Text is plain:
+  line breaks kept, no markup, no links.
+- **Office.** `office/src/http/app.ts` forwards `/api/notices`; the reader's list is served offline from the snapshot of
+  the person signed in (`forCurrentUser`), filtered for expiry on the PC; a cache built for somebody else carries no
+  notices.
+- **Tests.** `master/tests/notices.integration.test.ts`, `notice-fan-out.test.ts`, `notice-screens-contract.integration.test.ts`,
+  `migration-notice-board.integration.test.ts`, `office/tests/notices-forwarding.test.ts`, `ui/tests/notice-board.test.tsx`.
+
 ### 11.10 Caching, limits and stability (1.4.3)
 
 **Which layer answers a repeated read.** A browser asks for the same list several times
