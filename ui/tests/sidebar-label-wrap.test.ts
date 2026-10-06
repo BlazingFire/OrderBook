@@ -26,5 +26,7 @@ describe('sidebar labels', () => {
     const label = ruleBody('.ob-navitem-label');
     expect(label).toMatch(/-webkit-line-clamp:\s*2/);
     expect(label).toMatch(/overflow-wrap:\s*anywhere/);
+    // Inside a button the text would otherwise centre, leaving a wrapped line indented.
+    expect(label).toMatch(/text-align:\s*left/);
   });
 });

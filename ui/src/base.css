@@ -1411,6 +1411,8 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
  * still must not push the count off the edge or widen the sidebar. */
 .ob-navitem-label {
   min-width: 0;
+  /* A <button> centres its text; a wrapped second line must start at the first line's edge. */
+  text-align: left;
   overflow: hidden;
   overflow-wrap: anywhere;
   line-height: 1.25;
