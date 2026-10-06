@@ -71,7 +71,7 @@ export const IMPORT_COLUMNS: readonly ImportColumn[] = [
   { field: 'categoryBrand', label: 'Brand', kind: 'text', note: 'The brand the product is sold under — e.g. Swisware+. Read with Main product, since two brands may share a product name.' },
   { field: 'categoryCode', label: 'Main product code', kind: 'text', note: 'The main product by its code — e.g. OPT. It must exist already; filled, it is used instead of Main product.' },
   { field: 'categoryName', label: 'Main product', kind: 'text', required: true, note: 'Required unless Main product code is filled. The main product — e.g. ONE PIECE TOILET. Created if it does not exist yet.' },
-  { field: 'name', label: 'Sub product', kind: 'text', required: true, note: 'Required. The sub product as printed — e.g. 102 (9"), DAMRU. Rows sharing a main product and sub product are one sub product.' },
+  { field: 'name', label: 'Sub product', kind: 'text', required: true, note: 'Required. The sub product as printed — e.g. 102, DAMRU. Rows sharing a main product and sub product are one sub product.' },
   { field: 'size', label: 'Size', kind: 'text', note: 'e.g. 18x12, L-27 B-15 H-26' },
   { field: 'colourRule', label: 'Colour rule', kind: 'text', note: 'fixed = made in the one colour named in Colour; dedicated = the design is its own colour, none shown; multicolour = any colour of the colour range, picked on the lead. Blank reads the Colour column the old way.' },
   { field: 'variant', label: 'Colour', kind: 'text', note: 'The colour of a fixed sub product — e.g. White, Magenta. Leave blank for dedicated and multicolour.' },

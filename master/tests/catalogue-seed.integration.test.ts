@@ -136,8 +136,8 @@ describe.skipIf(!canRunIntegrationTests)('loading the SWISWARE catalogue (integr
       const actor = await testActor();
       const toilet = await catalog.findProductByCode('OPT-0001', actor);
       expect(toilet).toMatchObject({
-        name: '102 (9")',
-        size: 'L-27, B-15, H-26',
+        name: '102',
+        size: '9", L-27, B-15, H-26',
         sortOrder: 1,
         categoryCode: 'OPT',
       });
@@ -176,7 +176,7 @@ describe.skipIf(!canRunIntegrationTests)('loading the SWISWARE catalogue (integr
       expect(mismatched).toEqual([]);
 
       // One of each, spelled out.
-      expect(byKey.get('OPT|102 (9")')).toMatchObject({ hasVariants: true, multiColour: false });
+      expect(byKey.get('OPT|102')).toMatchObject({ hasVariants: true, multiColour: false });
       expect(byKey.get('OPT|1111')).toMatchObject({ hasVariants: false, multiColour: false });
       expect(byKey.get('WC|E.W.C - S TRAP')).toMatchObject({
         hasVariants: false,
@@ -252,7 +252,7 @@ describe.skipIf(!canRunIntegrationTests)('loading the SWISWARE catalogue (integr
       // OPT-0001 stays with the binned one, so its restore can never collide.
       const readded = await db()('products as p')
         .join('product_variants as v', 'v.product_id', 'p.id')
-        .where('p.name', '102 (9")')
+        .where('p.name', '102')
         .whereNull('p.deleted_at')
         .first('v.code');
       expect(readded).toMatchObject({ code: 'OPT-0057' });

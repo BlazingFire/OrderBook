@@ -112,8 +112,8 @@ export const SAMPLE_CUSTOM_FIELDS: readonly SampleCustomField[] = [
  */
 /* prettier-ignore */
 export const SAMPLE_SUB_PRODUCTS: Readonly<Record<string, { product: string; subProduct: string }>> = {
-  '102': { product: 'OPT', subProduct: '102 (9")' },
-  '107': { product: 'OPT', subProduct: '107 (9")' },
+  '102': { product: 'OPT', subProduct: '102' },
+  '107': { product: 'OPT', subProduct: '107' },
   '1181': { product: 'OPT', subProduct: '1181' },
   '1184': { product: 'OPT', subProduct: '1184' },
   'DAMRU-WHITE': { product: 'OPB', subProduct: 'DAMRU' },

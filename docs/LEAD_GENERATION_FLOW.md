@@ -77,7 +77,7 @@ model are therefore two lines, each with its own code, weight and total.
 
 Since catalogue v2 (2026-09-29, `docs/catalogue/CATALOGUE_MODEL.md`) the screens use the owner's
 words: a **Product** is a category (`OPT · One Piece Toilet · Swisware+`) and a **Sub product** is
-a model with exactly one variant (`102 (9")`, `1111`, `MAGENTA`). A sub product's colour rule is
+a model with exactly one variant (`102`, `1111`, `MAGENTA`). A sub product's colour rule is
 derived (`colourRuleOf`): **fixed** (its one variant's label is the colour), **dedicated** (no
 colour at all) or **selectable** (a multi-colour model: any colour of the colour range).
 
