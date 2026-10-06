@@ -3234,6 +3234,8 @@ export const EN_MESSAGES = {
   'signOut.confirm.title': 'Sign out?',
   'signOut.confirm.body': 'Anything you have open and have not saved will be lost.',
   // 1.4 D3: Lists (grades, packaging, brands)
+  'nav.notices': 'Notice board',
+  'nav.noticesManage': 'Notice board management',
   'nav.lists': 'Lists',
   'lists.nav.grades': 'Grades',
   'lists.nav.packaging': 'Packaging',
