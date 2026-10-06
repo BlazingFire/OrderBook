@@ -218,6 +218,33 @@ export async function replaceGrants(
   );
 }
 
+/**
+ * The grant a party's creator gets at birth: `manage`, for the one person who made it.
+ *
+ * A party nobody is assigned to is open to everyone, so a party created by somebody who may not see every
+ * party would be visible to the whole company the moment it exists. This row, written in the same
+ * transaction as the party, makes it restricted from its first instant: the creator and the people who see
+ * all parties (`party.accessAll`) are the only ones who can read it. Administrators change it afterwards in
+ * Party Access like any other grant.
+ */
+export async function grantCreator(
+  tenantId: string,
+  partyId: string,
+  userId: string,
+  trx: TransactionContext,
+): Promise<void> {
+  await trx(TABLE)
+    .insert({
+      tenant_id: tenantId,
+      party_id: partyId,
+      user_id: userId,
+      access_level: 'manage',
+      granted_by: userId,
+    })
+    .onConflict(['tenant_id', 'party_id', 'user_id'])
+    .ignore();
+}
+
 /*
  * There is deliberately no `removeGrantsForUser`. Users are soft-deleted, and a
  * restored person must come back holding the parties they were assigned —

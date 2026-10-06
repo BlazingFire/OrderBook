@@ -356,7 +356,20 @@ async function levelForParty(
   if (scope.seesAll) return 'manage';
 
   const grants = await partyAccessRepo.grantsForParty(actor.tenantId, partyId);
-  return levelFor(scope, grants);
+  const level = levelFor(scope, grants);
+
+  // A party nobody is assigned to reads as open (`manage`), and so does an id that names no party at all. For
+  // somebody who cannot see every party that difference must not be visible, or the one answer ("not
+  // found" for a hidden party, a different one for an id that is not there) would let them tell which ids
+  // exist. A party that is not there is none to them, exactly as a hidden one is.
+  if (level !== 'none' && grants.length === 0) {
+    const exists = await db()('parties')
+      .where({ tenant_id: actor.tenantId, id: partyId })
+      .whereNull('deleted_at')
+      .first('id');
+    if (!exists) return 'none';
+  }
+  return level;
 }
 
 /**
@@ -373,7 +386,12 @@ export async function requirePartyAccess(
   required: PartyAccessLevel,
   actor: ActorContext,
 ): Promise<void> {
-  assertPartyAccess(await levelForParty(partyId, actor), required);
+  const level = await levelForParty(partyId, actor);
+  // Somebody who may not see the party at all is told it is not there, in the same words as for a party that
+  // does not exist: "not assigned to you" would confirm that it does. Somebody who can see it but needs more
+  // (a viewer asked to manage) is told what they lack, because they already know it exists.
+  if (level === 'none') throw new NotFoundError('Party');
+  assertPartyAccess(level, required);
 }
 
 // --- Helpers ---------------------------------------------------------------

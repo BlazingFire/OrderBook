@@ -36,7 +36,7 @@ import {
 
 import { actorCan, actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { clampPaging } from '../domain/paging.js';
-import { resolvePartyScope } from '../domain/party-scope.js';
+import { creatorGrantee, resolvePartyScope } from '../domain/party-scope.js';
 import { assertParentsLive, suggestRestoredName } from '../domain/recycle-bin.js';
 import { db } from '../db/knex.js';
 import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
@@ -119,6 +119,12 @@ export async function createParty(input: PartyInput, actor: ActorContext): Promi
       },
       trx,
     );
+
+    // Private from its first instant: the creator's own grant lands with the party, in this
+    // transaction, so no reader ever sees an open party that was meant to be theirs alone. Every path
+    // that creates a party (HTTP, socket, the Office outbox, the connector) comes through here.
+    const owner = creatorGrantee(actor);
+    if (owner) await partyAccessRepo.grantCreator(actor.tenantId, row.id, owner, trx);
 
     // In the transaction and last in it (`activity-log.repository.ts`): the
     // entry used to be written after the commit, on another connection, by a
@@ -1242,9 +1248,10 @@ export async function upsertVariant(
 ): Promise<PartyProductVariant> {
   requirePermission(actor, 'parties.edit');
 
+  // Access first: for somebody who may not see the party, "no such party" and "not yours" must read the same.
+  await requirePartyAccess(input.partyId, 'manage', actor);
   const party = await partyRepo.findPartyById(actor.tenantId, input.partyId);
   if (!party) throw new NotFoundError('Party');
-  await requirePartyAccess(input.partyId, 'manage', actor);
   const product = await productRepo.findProductById(actor.tenantId, input.productId);
   if (!product) throw new NotFoundError('Product');
 

@@ -27,7 +27,7 @@ import { db } from '../src/db/knex.js';
 import type { ActorContext } from '../src/domain/actor.js';
 import { resolvePartyScope } from '../src/domain/party-scope.js';
 import { applyPartyScope, partyScopeSql } from '../src/repositories/party-access.repository.js';
-import { ForbiddenError, ValidationError } from '../src/lib/errors.js';
+import { ForbiddenError, NotFoundError, ValidationError } from '../src/lib/errors.js';
 import * as catalog from '../src/services/catalog.service.js';
 import * as dashboard from '../src/services/dashboard.service.js';
 import * as leads from '../src/services/lead.service.js';
@@ -219,7 +219,7 @@ describe.skipIf(!canRunIntegrationTests)('party access (integration)', () => {
       expect(order.partyId).toBe(party.id);
     });
 
-    it('PA-5: somebody else’s party refuses a lead with "not assigned to you"', async () => {
+    it('PA-5: somebody else’s party refuses a lead as if it were not there (never "not assigned to you", which would confirm it exists)', async () => {
       const party = await catalog.createParty({ name: 'Their Traders' }, admin);
       const product = await seedProduct();
 
@@ -237,8 +237,12 @@ describe.skipIf(!canRunIntegrationTests)('party access (integration)', () => {
         (error: unknown) => error,
       );
 
-      expect(failure).toBeInstanceOf(ForbiddenError);
-      expect((failure as ForbiddenError).message).toBe('That party is not assigned to you');
+      expect(failure).toBeInstanceOf(NotFoundError);
+      expect((failure as NotFoundError).message).not.toMatch(/assigned/i);
+      // The same answer as for a party that does not exist at all.
+      const missing = await seedLead('00000000-0000-4000-8000-000000000000', product, outsider).catch((error: unknown) => error);
+      expect(missing).toBeInstanceOf(NotFoundError);
+      expect((missing as NotFoundError).message).toBe((failure as NotFoundError).message);
     });
   });
 

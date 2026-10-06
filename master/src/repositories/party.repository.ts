@@ -340,16 +340,19 @@ export async function lockPartyFieldHlc(
 }
 
 /**
- * Name and city of every live party, **whoever may see it** — a bulk add must
- * skip a duplicate of a party its person has no access to, or Party Access
- * would be a way to create a second copy of somebody else's customer. Only
- * the two strings leave this function, never a row.
+ * Name and city of every live party **the caller may see**. It used to be every party, whoever could see
+ * it, so that an import skipped a copy of a customer its person had no access to; but then the import's
+ * answer ("already exists, skipped") told them that somebody else's private party was there. A copy of a
+ * party you cannot see is a different customer to you, so only what you can see counts.
  */
 export async function listLivePartyNameCities(
   tenantId: string,
+  scope: PartyScope,
   runner: Runner = db(),
 ): Promise<Array<{ name: string; city: string | null }>> {
-  const rows = await runner(TABLE).where({ tenant_id: tenantId }).whereNull('deleted_at').select('name', 'city');
+  const query = runner(TABLE).where({ tenant_id: tenantId }).whereNull('deleted_at').select('name', 'city');
+  applyPartyScope(query, tenantId, `${TABLE}.id`, scope, { level: 'view' });
+  const rows = await query;
   return rows.map((row: Record<string, unknown>) => ({
     name: String(row.name),
     city: (row.city as string | null) ?? null,
