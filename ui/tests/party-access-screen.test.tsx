@@ -189,14 +189,12 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
     screen.getByRole('textbox', { name: t('partyAccess.searchPlaceholder') });
 
   describe('the header and the summary strip', () => {
-    it('has the title, a one-line explanation and the Export button', async () => {
+    it('has the title, a one-line explanation', async () => {
       await mount();
       await loaded();
 
       expect(screen.getByRole('heading', { name: t('partyAccess.title') })).toBeTruthy();
       expect(screen.getByText(t('partyAccess.intro'))).toBeTruthy();
-      const exportLink = screen.getByRole('link', { name: t('partyAccess.action.export') });
-      expect(exportLink.getAttribute('href')).toBe('/api/party-access/export.csv');
     });
 
     it('tags the creator among the assignees, and names a creator who no longer holds the party', async () => {
@@ -212,12 +210,6 @@ describe.each(['master', 'office'] as const)('the Party Access list on the %s pa
       expect(within(three).queryByText(t('partyAccess.creator'))).toBeNull();
       const names = three.querySelector('.ob-pa-assignees') as HTMLElement;
       expect(names.getAttribute('title')).toContain(t('partyAccess.createdBy', { name: 'Priya Nair' }));
-    });
-
-    it('has no Export button without parties.export', async () => {
-      await mount(['party.assign']);
-      await loaded();
-      expect(screen.queryByRole('link', { name: t('partyAccess.action.export') })).toBeNull();
     });
 
     it('shows the company-wide counts, not the page: 450 parties, three rows on screen', async () => {

@@ -908,7 +908,6 @@ export const api = {
   partyAccessSummary: () => request<PartyAccessSummary>('/api/party-access/summary'),
   partyAccessPeople: () => request<AssignablePerson[]>('/api/party-access/people'),
   partyAccessFor: (partyId: string) => request<PartyAccessRow>(`/api/party-access/${partyId}`),
-  partyAccessExportUrl: () => '/api/party-access/export.csv',
   savePartyAccess: (partyId: string, input: PartyAccessInput) =>
     put<PartyAccessRow>(`/api/party-access/${partyId}`, input),
 

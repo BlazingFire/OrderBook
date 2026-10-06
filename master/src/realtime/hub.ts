@@ -919,9 +919,6 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   on('partyAccess:people', (ack) =>
     run(ack, (actor) => partyAccessService.assignablePeople(actor)),
   );
-  on('partyAccess:export', (ack) =>
-    run(ack, (actor) => partyAccessService.exportRows(actor)),
-  );
   on('partyAccess:replace', ({ partyId, input }, ack) =>
     run(ack, (actor) => partyAccessService.replaceAssignments(partyId, input, actor)),
   );

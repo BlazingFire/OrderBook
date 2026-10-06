@@ -812,7 +812,6 @@ export interface ClientToServerEvents {
   /** Company-wide counts for the summary strip (protocol 8). */
   'partyAccess:summary': (ack: CommandAck<PartyAccessSummary>) => void;
   'partyAccess:people': (ack: CommandAck<AssignablePerson[]>) => void;
-  'partyAccess:export': (ack: CommandAck<{ csv: string; rowCount: number }>) => void;
   'partyAccess:replace': (
     payload: { partyId: RecordId; input: PartyAccessInput },
     ack: CommandAck<PartyAccessRow>,

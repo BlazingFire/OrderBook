@@ -1547,11 +1547,6 @@ export function createApp(): Express {
   // The summary strip's counts. Online only, like the rest: an Office without the Master
   // shows no counts rather than a stale number (a Master older than protocol 8 answers 'update needed').
   app.get('/api/party-access/summary', (_req, res) => forward(res, 'partyAccess:summary'));
-  // Through `forwardCsv`, the same path Logs and Reports already take, so this
-  // panel serves the file rather than needing a download route of its own.
-  app.get('/api/party-access/export.csv', (_req, res) =>
-    forwardCsv(res, 'partyAccess:export', undefined, 'party-access.csv'),
-  );
   app.get('/api/party-access/:partyId', (req, res) =>
     forward(res, 'partyAccess:forParty', req.params.partyId),
   );

@@ -613,53 +613,6 @@ describe.skipIf(!canRunIntegrationTests)('party access (integration)', () => {
       expect((failure as ForbiddenError).permission).toBe('party.assign');
     });
 
-    it('PA-14: the CSV export carries every party, not the first page of them', async () => {
-      /*
-       * `exportRows` asked for `PAGING.maxLimit` — 200 — exactly once, with no
-       * loop, while its own doc comment promised "the whole book". A shop with
-       * more than 200 parties got a silently truncated file, and `rowCount`
-       * counted the truncated rows, so nothing downstream could notice. An
-       * export that is wrong *and says it is complete* is the worst shape
-       * available.
-       */
-      const count = 205;
-      for (let i = 0; i < count; i += 1) {
-        await catalog.createParty({ name: `Bulk Traders ${String(i).padStart(3, '0')}` }, admin);
-      }
-
-      const { csv, rowCount } = await partyAccess.exportRows(admin);
-
-      expect(rowCount).toBeGreaterThanOrEqual(count);
-      // Not the page size dressed up as a total.
-      expect(rowCount).not.toBe(200);
-
-      // The last party created is the one a single first page would drop.
-      expect(csv).toContain(`Bulk Traders ${String(count - 1).padStart(3, '0')}`);
-      // Header plus one line per row, and no blank tail.
-      expect(csv.trim().split('\n')).toHaveLength(rowCount + 1);
-    });
-
-    it('PA-15: the export needs parties.export on every transport, not just the HTTP route', async () => {
-      // The Master's own route guards this with `needs('parties.export')`; the
-      // socket command an Office panel uses called the service directly and
-      // inherited nothing, leaving a whole-company map of who can see which
-      // customer one transport away from ungated.
-      //
-      // `party.accessAll` and no `parties.export`, deliberately: an actor
-      // lacking *both* would be refused by `requireCanRead` one line earlier
-      // and this test would pass without ever reaching the guard it is about.
-      const reader = await actorWith(['parties.view', 'party.accessAll']);
-
-      const failure = await partyAccess.exportRows(reader).catch((error: unknown) => error);
-
-      expect(failure).toBeInstanceOf(ForbiddenError);
-      expect((failure as ForbiddenError).permission).toBe('parties.export');
-
-      // And the same call succeeds for somebody who holds it, so the assertion
-      // above is about the permission rather than about the export being broken.
-      const exporter = await actorWith(['parties.view', 'party.accessAll', 'parties.export']);
-      await expect(partyAccess.exportRows(exporter)).resolves.toHaveProperty('csv');
-    });
   });
 
   describe('the list: search, filter, sort and summary (Party Access redesign)', () => {

@@ -3942,6 +3942,9 @@ button.ob-bell-item:hover {
  */
 .ob-lead-line {
   box-sizing: border-box;
+  /* The list is a scrolling flex column: without this an overflow:hidden row has no
+     minimum height and is squashed to fit instead of making the list scroll. */
+  flex: none;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
@@ -4921,28 +4924,37 @@ button.ob-chat-chip-open:not(:disabled):hover {
   opacity: 1;
 }
 
-/* Two lines, then clipped (the whole list is the tooltip). */
+/* Names are chips that wrap: two lines at most, then clipped (the whole list is the
+   tooltip). Each name and its tags stay together and share one baseline. */
 .ob-pa-assignees {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-4) var(--s-12);
+  max-height: 3.4rem;
   overflow: hidden;
-  /* A table cell is nowrap by default; this one wraps, to two lines. */
-  white-space: normal;
   line-height: 1.4;
+}
+.ob-pa-assignee {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-4);
+  white-space: nowrap;
 }
 
 /* The skeleton and the loaded table share one row height, so nothing jumps when
-   the rows arrive: a row is two lines of the Assigned-to cell, whatever it holds. */
-.ob-pa-table tbody tr {
-  min-height: 3.4286rem;
+   the rows arrive and an "Everyone" row is as tall as a restricted one. A <tr> does
+   not honour min-height; the cells carry it. */
+.ob-pa-table tbody td {
+  height: 3.4286rem;
+  vertical-align: middle;
 }
 .ob-pa-level {
-  margin-left: var(--s-4);
   padding: 0 var(--s-4);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   font-size: 0.8571rem;
+  line-height: 1.4;
   color: var(--fg-secondary);
 }
 .ob-pa-more {
@@ -5016,9 +5028,9 @@ button.ob-chat-chip-open:not(:disabled):hover {
   /* One line per row (the tooltip has the rest): at this scale a two-line row is 75 px
      and only four fit under the toolbar. The skeleton shares the rule. */
   .ob-pa-assignees {
-    -webkit-line-clamp: 1;
+    max-height: 1.6rem;
   }
-  .ob-pa-table tbody tr {
-    min-height: 2.5rem;
+  .ob-pa-table tbody td {
+    height: 2.5rem;
   }
 }

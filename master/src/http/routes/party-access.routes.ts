@@ -74,19 +74,6 @@ partyAccessRoutes.get(
   }),
 );
 
-
-partyAccessRoutes.get(
-  '/export.csv',
-  needs('parties.export'),
-  asyncHandler(async (req, res) => {
-    const { csv } = await partyAccessService.exportRows(actorFromRequest(req));
-
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', 'attachment; filename="party-access.csv"');
-    res.send(csv);
-  }),
-);
-
 partyAccessRoutes.get(
   '/:partyId',
   asyncHandler(async (req, res) => {

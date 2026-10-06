@@ -31,7 +31,6 @@ import { actorCan, actorUserId, requirePermission, type ActorContext } from '../
 import { clampPaging } from '../domain/paging.js';
 import { assertPartyAccess, levelFor, resolvePartyScope } from '../domain/party-scope.js';
 import { db } from '../db/knex.js';
-import { toCsv } from '../lib/csv.js';
 import { ForbiddenError, NotFoundError, ValidationError } from '../lib/errors.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
@@ -228,103 +227,6 @@ export async function replaceAssignments(
   panelLink()?.resnapshotAll?.();
 
   return row;
-}
-
-const CSV_HEADERS = ['Party code', 'Party', 'Access', 'Person', 'Username', 'Level'] as const;
-
-/**
- * The assignment table as a CSV: one line per (party, assignee), and one line
- * for each open party so the export is the whole book rather than only its
- * restricted half — "who is *not* restricted" is half the question an
- * administrator is asking.
- *
- * Returns `{ csv, rowCount }` rather than rows, matching `log.service`'s and
- * `report.service`'s exports — that shared shape is what lets the Office Panel
- * serve this file through its existing `forwardCsv` helper instead of needing
- * a second download path of its own.
- */
-export async function exportRows(
-  actor: ActorContext,
-): Promise<{ csv: string; rowCount: number }> {
-  requireCanRead(actor);
-  /*
-   * Enforced here, not only on the Master's own HTTP route.
-   *
-   * `party-access.routes.ts` guards this with `needs('parties.export')`; the
-   * socket command `partyAccess:export` — which is the path an Office panel
-   * takes — called the service directly and inherited nothing. A whole-company
-   * CSV of who can see which customer is exactly the kind of thing that
-   * permission exists for, and it was one transport away from being ungated.
-   */
-  requirePermission(actor, 'parties.export');
-
-  const rows: unknown[][] = [];
-
-  /*
-   * Paged to the end, not one page called the whole thing.
-   *
-   * This asked for `PAGING.maxLimit` — 200 — once, with no loop, while its own
-   * doc comment above promised "the whole book". A shop with more than 200
-   * parties got a silently truncated file, and `rowCount` counted the truncated
-   * rows, so nothing downstream could notice either. An export that is wrong
-   * and says it is complete is worse than one that fails.
-   *
-   * Bounded by the `total` the repository already returns, so it terminates
-   * even if a page comes back short or empty.
-   */
-  let offset = 0;
-  let total = Number.POSITIVE_INFINITY;
-  let parties = 0;
-
-  while (parties < total) {
-    const page = await listAssignments({ limit: PAGING.maxLimit, offset }, actor);
-    total = page.total;
-
-    if (page.items.length === 0) break;
-
-    for (const party of page.items) {
-      if (party.assignees.length === 0) {
-        rows.push([party.partyCode, party.partyName, 'open', '', '', '']);
-        continue;
-      }
-
-      for (const assignee of party.assignees) {
-        rows.push([
-          party.partyCode,
-          party.partyName,
-          'restricted',
-          assignee.displayName,
-          assignee.username,
-          assignee.level,
-        ]);
-      }
-    }
-
-    parties += page.items.length;
-    offset += page.items.length;
-  }
-
-  const csv = toCsv([...CSV_HEADERS], rows);
-
-  // After the file is built, in a small transaction of its own, like the log
-  // export: building it wrote nothing.
-  await db().transaction((trx) =>
-    activityLog.recordActivity(
-      {
-        tenantId: actor.tenantId,
-        entityType: 'party_access',
-        entityId: actor.tenantId,
-        action: 'exported',
-        actorType: actor.actorType,
-        actorId: actor.actorId,
-        details: { count: rows.length, parties },
-      },
-      actor,
-      trx,
-    ),
-  );
-
-  return { csv, rowCount: rows.length };
 }
 
 /**

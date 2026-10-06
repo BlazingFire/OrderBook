@@ -2960,3 +2960,26 @@ answered `/api/health`; the uninstall sweep found every path a real extracted
 `.deb` installs. Full suite non-root: 144 files, 1815 tests, **0 skipped**.
 The macOS build cannot be run from here — `assertTarget()` refuses it off macOS
 — so that half is guarded rather than executed, and the CI matrix runs it first.
+
+### 2026-10-06 — Party Access: rows tidied, CSV export removed (Claude)
+
+**Changed.** The Assigned-to cell now lays names out as wrapping chips (no
+commas, tags on one baseline, two lines at most) and row height sits on the
+cells, so an "Everyone" row is as tall as a restricted one
+(`ui/src/base.css`, `PartyAccessScreen.tsx` on both panels, still
+byte-identical).
+
+**Removed (owner's call: no need for it).** The Party Access CSV export end to
+end: the Export button, `partyAccessExportUrl` (both `api.ts`), the Master
+`GET /api/party-access/export.csv` route, `exportRows`, the `partyAccess:export`
+socket command and its protocol entry, the Office proxy route, the
+`partyAccess.action.export` string, and the tests that covered it (PA-14/PA-15,
+the audit-coverage export row, the screen's Export button cases). Old
+`party_access exported` activity rows stay readable. `parties.export` still
+gates the parties and products exports.
+
+**Verified.** Typecheck clean; lint clean on the touched files; the 75 screen
+and parity tests pass. The two PostgreSQL integration suites
+(`party-access`, `audit-coverage`) did not run here: the embedded test cluster
+directory in `%TEMP%\orderbook-test-pg` was left non-empty, so they skipped.
+

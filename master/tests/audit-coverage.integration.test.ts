@@ -73,7 +73,6 @@ const logs = await import('../src/services/log.service.js');
 const { createMasterKeyGate, verifyMasterKey } = await import('../src/services/master-key.service.js');
 const orders = await import('../src/services/order.service.js');
 const panels = await import('../src/services/panel.service.js');
-const partyAccess = await import('../src/services/party-access.service.js');
 const productImport = await import('../src/services/product-import.service.js');
 const serverMasters = await import('../src/services/server-master.service.js');
 const settings = await import('../src/services/settings.service.js');
@@ -336,18 +335,12 @@ describe.skipIf(!canRunIntegrationTests)('every audited operation leaves an entr
   });
 
   describe('exports and backups', () => {
-    it('a product export and a party access export', async () => {
+    it('a product export', async () => {
       await createTestProduct(actor, { name: 'Exported Basin', code: 'EXP-1' });
       await productImport.exportProducts('csv', actor);
       const products = await onlyEntry({ entity_type: 'catalog', action: 'exported' });
       expect(products.details).toMatchObject({ count: 1, level: 'sub', format: 'csv' });
       expect(rendered(products)).toBe('Test Actor exported the product list, 1 rows');
-
-      await catalog.createParty({ name: 'Open Traders' }, actor);
-      await partyAccess.exportRows(actor);
-      const access = await onlyEntry({ entity_type: 'party_access', action: 'exported' });
-      expect(access.details).toMatchObject({ count: 1 });
-      expect(rendered(access)).toBe('Test Actor exported the party access list');
     });
 
     it('a backup export, and its restore written into the restored trail', async () => {

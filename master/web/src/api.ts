@@ -689,7 +689,6 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(input),
     }),
-  partyAccessExportUrl: () => '/api/party-access/export.csv',
 
   // --- Fields (management surface — the three reads above stay ungated) ----
 

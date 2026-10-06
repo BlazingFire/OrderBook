@@ -2075,7 +2075,6 @@ export const EN_MESSAGES = {
   'party.saving': 'Saving…',
   'party.updated': '{name} updated',
   'partyAccess.action.cancel': 'Cancel',
-  'partyAccess.action.export': 'Export',
   'partyAccess.action.save': 'Save',
   'partyAccess.column.access': 'Access',
   'partyAccess.column.assignedTo': 'Assigned to',

@@ -42,7 +42,6 @@ import { api } from '../api';
 import { PartyAccessEditor } from './PartyAccessEditor';
 import {
   Button,
-  ButtonLink,
   Combobox,
   DataTable,
   EmptyState,
@@ -484,11 +483,6 @@ export function PartyAccessScreen({
             {t('partyAccess.intro')}
           </p>
         </div>
-        {permissions.includes('parties.export') ? (
-          <ButtonLink href={api.partyAccessExportUrl()}>
-            {t('partyAccess.action.export')}
-          </ButtonLink>
-        ) : null}
       </div>
 
       <div className="ob-pa-strip" role="group" aria-label={t('partyAccess.strip.label')}>
@@ -702,7 +696,7 @@ function AssigneeList({
 
   return (
     <span className="ob-pa-assignees" title={title}>
-      {shown.map((person, index) => {
+      {shown.map((person) => {
         const inactive = person.isActive === false;
         return (
           <span
@@ -719,7 +713,6 @@ function AssigneeList({
                 {t('partyAccess.editor.deactivated')}
               </span>
             ) : null}
-            {index < shown.length - 1 || hidden > 0 ? ', ' : ''}
           </span>
         );
       })}
