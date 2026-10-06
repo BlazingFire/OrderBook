@@ -1,0 +1,318 @@
+/**
+ * The notice board on the Office Panel, booted whole in jsdom (`panel-harness.ts`).
+ *
+ * The Office reads its notices from the snapshot (`view.notices`, scoped by the Master
+ * to the person it was built for) and marks them read through its own server, which
+ * forwards to the Master. That forward is online-only, so a read made offline is kept
+ * per person in this window (`office/web/src/noticeReads.ts`) and sent on reconnect.
+ * What these pin:
+ *
+ *  · the sidebar badge counts the unread notices, and drops the moment one is marked;
+ *  · a read made offline is not lost: no request while the link is down, the read is
+ *    sent when the status turns connected, and the badge has already dropped;
+ *  · a read queued by one person is never sent, or counted, for the next person;
+ *  · the management screen reads the manage list and writes through the panel's API;
+ *  · the Dashboard shows an important notice and opens the board.
+ */
+
+import { StrictMode } from 'react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { t } from '../src/i18n.js';
+import {
+  FakeEventSource,
+  installBrowserStubs,
+  json,
+  loadApp,
+  routeFetch,
+  type Call,
+} from './panel-harness.js';
+
+const CONNECTION = {
+  hasNetworkLink: true,
+  interfaces: [],
+  isPaired: true,
+  panelName: 'Counter',
+  state: 'connected',
+  masterHost: '10.0.0.1',
+  masterPort: 4100,
+  companyName: 'Acme Ceramics',
+  lastError: null,
+  lastSyncedAt: null,
+  masterVersion: null,
+};
+
+function notice(id: string, overrides: Record<string, unknown> = {}) {
+  return {
+    id,
+    title: `Notice ${id}`,
+    body: `Body of ${id}`,
+    priority: 'normal',
+    pinned: false,
+    showUntil: null,
+    audience: { kind: 'all' },
+    authorId: 'boss',
+    authorName: 'Boss',
+    createdAt: '2026-10-06T09:00:00.000Z',
+    updatedAt: '2026-10-06T09:00:00.000Z',
+    version: 1,
+    readByMe: false,
+    ...overrides,
+  };
+}
+
+function snapshot(notices: unknown[]) {
+  return {
+    parties: [],
+    products: [],
+    categories: [],
+    partyVariants: [],
+    leads: [],
+    orders: [],
+    pipelines: [],
+    optionLists: [],
+    customFields: [],
+    conflicts: [],
+    dashboard: { asOf: '2026-10-06T00:00:00.000Z' },
+    permissions: [],
+    serverHlc: '0',
+    serverTime: '2026-10-06T00:00:00.000Z',
+    pendingCount: 0,
+    notices,
+  };
+}
+
+interface Boot {
+  permissions: string[];
+  notices: unknown[];
+  userId?: string;
+  connection?: Partial<typeof CONNECTION>;
+  route?: (call: Call) => Response | undefined;
+}
+
+async function boot({ permissions, notices, userId = 'user-1', connection = {}, route }: Boot) {
+  const calls = routeFetch((call) => {
+    const answer = route?.(call);
+    if (answer) return answer;
+    const path = call.url.split('?')[0] ?? call.url;
+    if (path === '/api/connection') return json({ ...CONNECTION, ...connection });
+    if (path === '/api/session') {
+      return json({
+        session: {
+          userId,
+          username: userId,
+          displayName: userId,
+          roleId: 'role-admin',
+          roleName: 'Admin',
+          roleTier: 'admin',
+          permissions,
+          offline: false,
+          signedInAt: '2026-10-06T00:00:00.000Z',
+        },
+      });
+    }
+    if (path === '/api/sync') return json({ ...CONNECTION, pendingCount: 0, rejections: [] });
+    if (path === '/api/notifications') return json({ items: [], unreadCount: 0 });
+    if (path === '/api/notices/read' && call.method === 'POST') return json({ unreadCount: 0 });
+    return undefined;
+  });
+
+  const App = await loadApp('office');
+  render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+  await waitFor(() => expect(document.querySelector('.ob-footer')).not.toBeNull());
+  await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(0));
+  await act(async () => {
+    FakeEventSource.instances.at(-1)!.emit('snapshot', snapshot(notices));
+  });
+  return calls;
+}
+
+const readCalls = (calls: Call[]) =>
+  calls.filter((call) => call.url === '/api/notices/read' && call.method === 'POST');
+
+async function badge(): Promise<string | null> {
+  const row = await screen.findByTitle(t('nav.notices'));
+  return row.querySelector('.count')?.textContent ?? null;
+}
+
+async function openBoard(): Promise<void> {
+  fireEvent.click(await screen.findByTitle(t('nav.notices')));
+  await screen.findByText('Notice n1');
+}
+
+beforeEach(() => {
+  installBrowserStubs();
+});
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  delete (window as { orderbook?: unknown }).orderbook;
+});
+
+describe('Office notice board: reading and the badge', () => {
+  it('counts the unread notices on the sidebar row and drops the count on Mark as read', async () => {
+    const calls = await boot({
+      permissions: ['notices.view'],
+      notices: [notice('n1'), notice('n2'), notice('n3', { readByMe: true })],
+    });
+    await waitFor(async () => expect(await badge()).toBe('2'));
+
+    await openBoard();
+    fireEvent.click(screen.getAllByRole('button', { name: t('notices.board.markRead') })[0]!);
+
+    await waitFor(() => expect(readCalls(calls)).toHaveLength(1));
+    expect(readCalls(calls)[0]!.body).toEqual({ ids: [expect.stringMatching(/^n[12]$/)] });
+    await waitFor(async () => expect(await badge()).toBe('1'));
+  });
+
+  it('marks every unread notice, by id, with Mark all as read', async () => {
+    const calls = await boot({
+      permissions: ['notices.view'],
+      notices: [notice('n1'), notice('n2'), notice('n3', { readByMe: true })],
+    });
+    await openBoard();
+    fireEvent.click(screen.getByRole('button', { name: t('notices.board.markAllRead') }));
+
+    await waitFor(() => expect(readCalls(calls)).toHaveLength(1));
+    const { ids } = readCalls(calls)[0]!.body as { ids: string[] };
+    expect([...ids].sort()).toEqual(['n1', 'n2']);
+    await waitFor(async () => expect(await badge()).toBeNull());
+  });
+});
+
+describe('Office notice board: offline reads', () => {
+  it('keeps a read made offline and sends it when the link comes back', async () => {
+    const calls = await boot({
+      permissions: ['notices.view'],
+      notices: [notice('n1'), notice('n2')],
+      connection: { state: 'disconnected' },
+    });
+    await openBoard();
+    fireEvent.click(screen.getByRole('button', { name: t('notices.board.markAllRead') }));
+
+    await waitFor(async () => expect(await badge()).toBeNull());
+    expect(readCalls(calls)).toHaveLength(0);
+    expect(JSON.parse(localStorage.getItem('orderbook.noticeReads.user-1') ?? '[]')).toHaveLength(
+      2,
+    );
+
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('status', { state: 'connected' });
+    });
+    await waitFor(() => expect(readCalls(calls)).toHaveLength(1));
+    expect((readCalls(calls)[0]!.body as { ids: string[] }).ids.sort()).toEqual(['n1', 'n2']);
+    await waitFor(() => expect(localStorage.getItem('orderbook.noticeReads.user-1')).toBeNull());
+  });
+
+  it('keeps the read queued when the Master is out of reach, and drops it when refused for good', async () => {
+    let answer: Response = json({ error: 'unavailable', message: 'down' }, 503);
+    const calls = await boot({
+      permissions: ['notices.view'],
+      notices: [notice('n1')],
+      route: (call) => (call.url === '/api/notices/read' ? answer : undefined),
+    });
+    await openBoard();
+    fireEvent.click(screen.getByRole('button', { name: t('notices.board.markRead') }));
+    await waitFor(() => expect(readCalls(calls)).toHaveLength(1));
+    expect(JSON.parse(localStorage.getItem('orderbook.noticeReads.user-1') ?? '[]')).toEqual([
+      'n1',
+    ]);
+
+    answer = json({ error: 'forbidden', message: 'no' }, 403);
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('status', { state: 'disconnected' });
+    });
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('status', { state: 'connected' });
+    });
+    await waitFor(() => expect(readCalls(calls)).toHaveLength(2));
+    await waitFor(() => expect(localStorage.getItem('orderbook.noticeReads.user-1')).toBeNull());
+  });
+
+  it('never sends or counts a read another person queued at this window', async () => {
+    // Somebody else read n1 offline here and signed out before the link came back.
+    localStorage.setItem('orderbook.noticeReads.user-other', JSON.stringify(['n1']));
+    const calls = await boot({ permissions: ['notices.view'], notices: [notice('n1')] });
+
+    await waitFor(async () => expect(await badge()).toBe('1'));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(readCalls(calls)).toHaveLength(0);
+    expect(localStorage.getItem('orderbook.noticeReads.user-other')).toBe('["n1"]');
+  });
+});
+
+describe('Office notice board: management and the Dashboard', () => {
+  it('lists every notice for a manager and creates one through the panel', async () => {
+    const managed = [notice('m1', { readCount: 1, audienceSize: 3, expired: false })];
+    const calls = await boot({
+      permissions: ['notices.view', 'notices.manage'],
+      notices: [],
+      route: (call) => {
+        if (call.url === '/api/notices/manage') return json(managed);
+        if (call.url === '/api/notices/audiences') return json([{ id: 'r1', name: 'Sales' }]);
+        if (call.url === '/api/notices' && call.method === 'POST') {
+          return json(notice('m2'));
+        }
+        return undefined;
+      },
+    });
+    fireEvent.click(await screen.findByTitle(t('nav.noticesManage')));
+    await screen.findByText('Notice m1');
+
+    fireEvent.click(screen.getAllByRole('button', { name: t('notices.manage.new') })[0]!);
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(
+      within(dialog).getByLabelText(new RegExp(`^${t('notices.editor.titleLabel')}`)),
+      {
+        target: { value: 'Holiday on Friday' },
+      },
+    );
+    fireEvent.change(
+      within(dialog).getByLabelText(new RegExp(`^${t('notices.editor.bodyLabel')}`)),
+      {
+        target: { value: 'The office is closed.' },
+      },
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: t('notices.editor.save') }));
+
+    await waitFor(() =>
+      expect(calls.some((call) => call.url === '/api/notices' && call.method === 'POST')).toBe(
+        true,
+      ),
+    );
+    const created = calls.find((call) => call.url === '/api/notices' && call.method === 'POST')!;
+    expect(created.body).toMatchObject({
+      title: 'Holiday on Friday',
+      body: 'The office is closed.',
+    });
+    // The list is read again after the write.
+    await waitFor(() =>
+      expect(calls.filter((call) => call.url === '/api/notices/manage').length).toBeGreaterThan(1),
+    );
+  });
+
+  // With no leads or orders the Dashboard is its empty state; the card was left out of it.
+  it('shows an important notice on the Dashboard, before any order exists, and opens the board from it', async () => {
+    await boot({
+      permissions: ['notices.view', 'leads.view'],
+      notices: [notice('n1', { priority: 'important', title: 'Stock count Saturday' })],
+    });
+    fireEvent.click(await screen.findByTitle(t('nav.dashboard')));
+    await screen.findByText('Stock count Saturday');
+    fireEvent.click(screen.getByRole('button', { name: t('notices.card.open') }));
+    await screen.findByRole('button', { name: t('notices.board.markRead') });
+  });
+
+  it('shows no notices to somebody without notices.view, even if the snapshot carried some', async () => {
+    await boot({ permissions: ['leads.view'], notices: [notice('n1', { priority: 'important' })] });
+    await screen.findByTitle(t('nav.leads'));
+    expect(screen.queryByTitle(t('nav.notices'))).toBeNull();
+    expect(screen.queryByText('Notice n1')).toBeNull();
+  });
+});

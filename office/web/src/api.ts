@@ -463,7 +463,6 @@ function sharedRead<T>(
   timeout: AbortSignal,
   asFailure: (error: unknown) => never,
 ): Promise<T> {
-
   /*
    * The dedupe key is the path *plus* whatever headers the caller set. A GET
    * carrying `x-developer-token` is a different question from the same GET
@@ -595,7 +594,11 @@ export const api = {
   device: () => request<DeviceInfo>('/api/device'),
   connection: () => request<ConnectionInfo>('/api/connection'),
   scan: (signal?: AbortSignal) =>
-    request<{ masters: DiscoveredMaster[] }>('/api/connection/scan', { method: 'POST', body: '{}', signal }),
+    request<{ masters: DiscoveredMaster[] }>('/api/connection/scan', {
+      method: 'POST',
+      body: '{}',
+      signal,
+    }),
   /** `masterUniqueId` picks one when several Masters answered; `signal` is the Stop button. */
   pairAuto: (input: { panelName?: string; masterUniqueId?: string; signal?: AbortSignal } = {}) =>
     request<PairResult>('/api/connection/pair/auto', {
@@ -626,7 +629,8 @@ export const api = {
       signal: input.signal,
     }),
   /** Leave the Master. `pending` is the answer to "there is unsent work": keep it on this PC, or discard it. */
-  unpair: (pending?: 'keep' | 'discard') => post<UnpairResult>('/api/connection/unpair', { pending }),
+  unpair: (pending?: 'keep' | 'discard') =>
+    post<UnpairResult>('/api/connection/unpair', { pending }),
 
   previewRestoreConnection: (file: File) => {
     const form = new FormData();
@@ -641,8 +645,7 @@ export const api = {
     return postFile<{ manifest: BackupManifest }>('/api/connection/restore', form);
   },
 
-  session: () =>
-    request<{ session: PanelSession | null }>('/api/session'),
+  session: () => request<{ session: PanelSession | null }>('/api/session'),
   signIn: (username: string, password: string) =>
     post<{ session: PanelSession }>('/api/auth/sign-in', { username, password }),
   signOut: () => post<{ ok: true }>('/api/auth/sign-out'),
@@ -1011,7 +1014,8 @@ export const api = {
     requestUntracked<ChatRoomSummary[]>(
       `/api/chat/rooms?all=${options.all ? '1' : '0'}&archived=${options.includeArchived ? '1' : '0'}`,
     ),
-  chatRoom: (roomId: string) => requestUntracked<ChatRoomDetail>(`/api/chat/rooms/${encodeURIComponent(roomId)}`),
+  chatRoom: (roomId: string) =>
+    requestUntracked<ChatRoomDetail>(`/api/chat/rooms/${encodeURIComponent(roomId)}`),
   chatMessages: (roomId: string, options: { beforeSeq?: number; limit?: number } = {}) => {
     const params = new URLSearchParams();
     if (options.beforeSeq) params.set('before', String(options.beforeSeq));
@@ -1033,7 +1037,9 @@ export const api = {
       body: JSON.stringify({ body, ...(mentions ? { mentions } : {}) }),
     }),
   chatDelete: (messageId: string) =>
-    requestUntracked<ChatMessage>(`/api/chat/messages/${encodeURIComponent(messageId)}`, { method: 'DELETE' }),
+    requestUntracked<ChatMessage>(`/api/chat/messages/${encodeURIComponent(messageId)}`, {
+      method: 'DELETE',
+    }),
   chatPin: (messageId: string, pinned: boolean) =>
     requestUntracked<ChatMessage>(`/api/chat/messages/${encodeURIComponent(messageId)}/pin`, {
       method: 'POST',
@@ -1045,35 +1051,49 @@ export const api = {
       body: JSON.stringify({ done }),
     }),
   chatRead: (roomId: string, seq: number) =>
-    requestUntracked<{ lastReadSeq: number }>(`/api/chat/rooms/${encodeURIComponent(roomId)}/read`, {
-      method: 'POST',
-      body: JSON.stringify({ seq }),
-    }),
+    requestUntracked<{ lastReadSeq: number }>(
+      `/api/chat/rooms/${encodeURIComponent(roomId)}/read`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ seq }),
+      },
+    ),
   chatMute: (roomId: string, muted: boolean) =>
     requestUntracked<null>(`/api/chat/rooms/${encodeURIComponent(roomId)}/mute`, {
       method: 'POST',
       body: JSON.stringify({ muted }),
     }),
   chatDirect: (userId: string) =>
-    requestUntracked<ChatRoomSummary>('/api/chat/direct', { method: 'POST', body: JSON.stringify({ userId }) }),
+    requestUntracked<ChatRoomSummary>('/api/chat/direct', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    }),
   chatCreateRoom: (input: ChatRoomInput) =>
-    requestUntracked<ChatRoomSummary>('/api/chat/rooms', { method: 'POST', body: JSON.stringify(input) }),
+    requestUntracked<ChatRoomSummary>('/api/chat/rooms', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
   chatUpdateRoom: (roomId: string, patch: ChatRoomPatch) =>
     requestUntracked<ChatRoomSummary>(`/api/chat/rooms/${encodeURIComponent(roomId)}`, {
       method: 'PUT',
       body: JSON.stringify(patch),
     }),
   chatSetMember: (roomId: string, userId: string, role: ChatMemberRole | null) =>
-    requestUntracked<ChatRoomDetail | null>(`/api/chat/rooms/${encodeURIComponent(roomId)}/members`, {
-      method: 'POST',
-      body: JSON.stringify({ userId, role }),
-    }),
+    requestUntracked<ChatRoomDetail | null>(
+      `/api/chat/rooms/${encodeURIComponent(roomId)}/members`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ userId, role }),
+      },
+    ),
   chatSearch: (q: string, roomId?: string) =>
     requestUntracked<ChatSearchHit[]>(
       `/api/chat/search?q=${encodeURIComponent(q)}${roomId ? `&roomId=${encodeURIComponent(roomId)}` : ''}`,
     ),
   chatTasks: (scope: 'mine' | 'created', includeDone: boolean) =>
-    requestUntracked<ChatTaskRow[]>(`/api/chat/tasks?scope=${scope}&includeDone=${includeDone ? '1' : '0'}`),
+    requestUntracked<ChatTaskRow[]>(
+      `/api/chat/tasks?scope=${scope}&includeDone=${includeDone ? '1' : '0'}`,
+    ),
   chatRequestAccess: (capability: ChatAccessCapability, note?: string) =>
     requestUntracked<{ notified: number }>('/api/chat/access-requests', {
       method: 'POST',
@@ -1099,12 +1119,19 @@ export const api = {
       body: JSON.stringify({ printed, ...(printerName ? { printerName } : {}) }),
     }),
   cancelPrintJob: (id: string) =>
-    requestUntracked<PrintJobSummary>(`/api/print-jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+    requestUntracked<PrintJobSummary>(`/api/print-jobs/${encodeURIComponent(id)}/cancel`, {
+      method: 'POST',
+    }),
   claimPrintJob: (id: string) =>
-    requestUntracked<PrintJob | null>(`/api/print-jobs/${encodeURIComponent(id)}/claim`, { method: 'POST' }),
+    requestUntracked<PrintJob | null>(`/api/print-jobs/${encodeURIComponent(id)}/claim`, {
+      method: 'POST',
+    }),
   printStations: () => requestUntracked<PrintStation[]>('/api/print-stations'),
   savePrintStation: (input: PrintStationInput) =>
-    requestUntracked<PrintStation>('/api/print-stations/self', { method: 'PUT', body: JSON.stringify(input) }),
+    requestUntracked<PrintStation>('/api/print-stations/self', {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
   logs: (query: ActivityLogQuery = {}) => {
     const params = new URLSearchParams();
     if (query.cursor) params.set('cursor', query.cursor);
@@ -1152,7 +1179,10 @@ export const api = {
     request<ReportOptions>('/api/reports/options', signal ? { signal } : undefined),
   reportTable: (kind: ReportKind, query: ReportQuery, signal?: AbortSignal) => {
     const qs = reportQueryParams(query).toString();
-    return request<ReportTable>(`/api/reports/table/${kind}${qs ? `?${qs}` : ''}`, signal ? { signal } : undefined);
+    return request<ReportTable>(
+      `/api/reports/table/${kind}${qs ? `?${qs}` : ''}`,
+      signal ? { signal } : undefined,
+    );
   },
   reportExport: (kind: ReportKind, query: ReportQuery & { format: ReportFormat }) => {
     const params = reportQueryParams(query);

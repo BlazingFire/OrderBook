@@ -199,13 +199,24 @@ export function DashboardScreen({
   const canViewLeads = view.permissions.includes('leads.view');
   const canViewOrders = view.permissions.includes('orders.view');
   const canViewConflicts = view.permissions.includes('sync.resolveConflicts');
+  // Notices are not records: a company with no leads or orders yet still gets them.
+  const noticeCard =
+    notices && onOpenNotices ? (
+      <NoticeDashboardCard notices={notices} today={todayForNotices()} onOpen={onOpenNotices} />
+    ) : null;
   const nothingYet = view.leads.length === 0 && view.orders.length === 0;
   if (nothingYet) {
     return (
-      <EmptyState
-        title={t('dashboard.empty.title')}
-        description={t('dashboard.empty.description')}
-      />
+      <div
+        className="ob-measure-wide"
+        style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}
+      >
+        {noticeCard}
+        <EmptyState
+          title={t('dashboard.empty.title')}
+          description={t('dashboard.empty.description')}
+        />
+      </div>
     );
   }
 
@@ -286,9 +297,7 @@ export function DashboardScreen({
       className="ob-measure-wide"
       style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}
     >
-      {notices && onOpenNotices && (
-        <NoticeDashboardCard notices={notices} today={todayForNotices()} onOpen={onOpenNotices} />
-      )}
+      {noticeCard}
       <div
         style={{
           display: 'grid',
@@ -347,11 +356,17 @@ export function DashboardScreen({
         )}
 
         {printPending !== undefined && (
-          <StatTile label={t('dashboard.stat.printPending')} value={printPending.toLocaleString('en-IN')} />
+          <StatTile
+            label={t('dashboard.stat.printPending')}
+            value={printPending.toLocaleString('en-IN')}
+          />
         )}
 
         {chatUnread !== undefined && (
-          <StatTile label={t('dashboard.stat.chatUnread')} value={chatUnread.toLocaleString('en-IN')} />
+          <StatTile
+            label={t('dashboard.stat.chatUnread')}
+            value={chatUnread.toLocaleString('en-IN')}
+          />
         )}
 
         <StatTile

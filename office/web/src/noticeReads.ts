@@ -77,8 +77,7 @@ export function useNoticeReads(userId: string | null, online: boolean) {
     ids: new Set(),
   });
   // A different person: start from their own queue, never the previous person's reads.
-  const readHere =
-    state.userId === userId ? state.ids : new Set(userId ? load(userId) : []);
+  const readHere = state.userId === userId ? state.ids : new Set(userId ? load(userId) : []);
 
   useEffect(() => {
     setState({ userId, ids: new Set(userId ? load(userId) : []) });
