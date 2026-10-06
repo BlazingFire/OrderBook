@@ -607,7 +607,11 @@ function Composer({
                 disabled={refs.length >= CHAT_LIMITS.refsMax}
                 onClick={() => setPickerOpen((open) => !open)}
               />
-              <Popover open={pickerOpen} onClose={() => setPickerOpen(false)}>
+              <Popover
+                open={pickerOpen}
+                onClose={() => setPickerOpen(false)}
+                anchorStyle={{ bottom: 'calc(100% + var(--s-4))', right: 0 }}
+              >
                 <div className="ob-chat-picker-body">
                   <Input
                     autoFocus

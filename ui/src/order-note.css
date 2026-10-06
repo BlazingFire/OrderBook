@@ -37,6 +37,12 @@
   gap: var(--s-8);
 }
 
+/* The caption keeps its line: the row wraps between fields, not inside a label. */
+.ob-note-toolbar-item > span:first-child {
+  flex: none;
+  white-space: nowrap;
+}
+
 .ob-note-canvas {
   background: #e9ecee;
   padding: 24px;
@@ -797,4 +803,19 @@
 
 .ob-note-copies-input {
   width: 72px;
+}
+
+/*
+ * On screen only: the paper's two lightest greys are 4.30:1 (the eyebrows and captions) and 2.99:1 (the
+ * strip's note) on white, below the 4.5:1 a reader needs at this size. The preview uses darker ones; the
+ * printed page and the PDF are the design's colours, unchanged (print media never matches this block).
+ */
+@media screen {
+  .ob-note-scope {
+    --note-muted: #66737a; /* 4.89:1 on white */
+  }
+
+  .ob-note-strip-note {
+    color: #66737a; /* was #8c979d, 2.99:1 */
+  }
 }

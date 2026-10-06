@@ -295,7 +295,11 @@ function RoomsPage({
             <Button icon="plus" onClick={() => setDirectOpen((open) => !open)} aria-expanded={directOpen}>
               {t('chat.rooms.newDirect')}
             </Button>
-            <Popover open={directOpen} onClose={() => setDirectOpen(false)}>
+            <Popover
+              open={directOpen}
+              onClose={() => setDirectOpen(false)}
+              anchorStyle={{ top: 'calc(100% + var(--s-4))', right: 0 }}
+            >
               <div className="ob-chat-picker-body">
                 <Combobox
                   autoFocus
