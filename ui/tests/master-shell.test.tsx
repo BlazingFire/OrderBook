@@ -184,6 +184,14 @@ async function boot(
     </StrictMode>,
   );
   await waitFor(() => expect(document.querySelector('.ob-footer')).not.toBeNull());
+  // The shell can be on screen before React has run its mount effects: a state update that
+  // arrives from a fetch, outside `act`, commits at once and leaves the passive effects to a
+  // later scheduler task. Under load that task is late, and a keystroke sent now finds the
+  // keyboard listener not yet attached (the sign-out chord test failed this way about one run
+  // in six). Flushing here makes "the shell is up" mean the shell is wired.
+  await act(async () => {
+    await wait(0);
+  });
   return calls;
 }
 
