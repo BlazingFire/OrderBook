@@ -389,8 +389,8 @@ describe('snapshot for the current user (DSH-1)', () => {
       });
 
       it('keeps a creator’s own queued party, which is in nobody’s list, and the lead hanging off it', async () => {
-        // A party queued offline has a temporary id and an empty sync.hlc: it is the viewer's own
-        // work (the view draws queued work only to its author), not somebody else's restricted party.
+        // A party queued offline has a temporary id, so it is in nobody's list. The view names the
+        // viewer's own queued parties; the row itself carries no marker that can be trusted.
         const queuedParty = {
           ...FIXTURE.parties[0]!,
           id: 'TMP000000000001',
@@ -405,6 +405,7 @@ describe('snapshot for the current user (DSH-1)', () => {
           builtForUserId: 'US0000000001',
           partyGrants: [],
           openPartyIds: [],
+          ownQueuedPartyIds: [queuedParty.id],
           pendingCount: 1,
         });
         asNextPerson();
@@ -415,6 +416,28 @@ describe('snapshot for the current user (DSH-1)', () => {
           queuedParty.id,
         ]);
         expect(response.body.leads.map((lead: { id: string }) => lead.id)).toEqual([queuedLead.id]);
+      });
+
+      it('hides a restricted server party whose sync.hlc is empty, though it looks like queued work', async () => {
+        // A NULL parties.hlc reaches the panel as '' (an old row, or a restored backup). It is not in
+        // the viewer's own queue, so it is somebody else's restricted party like any other.
+        const legacy = { ...FIXTURE.parties[0]!, sync: { ...SYNC_META, hlc: '' } };
+        vi.spyOn(localStore, 'getView').mockResolvedValue({
+          ...FIXTURE,
+          parties: [legacy],
+          builtForUserId: 'US0000000001',
+          partyGrants: [],
+          openPartyIds: [],
+          ownQueuedPartyIds: [],
+          pendingCount: 0,
+        });
+        asNextPerson();
+
+        const response = await request(createApp()).get('/api/snapshot');
+
+        expect(response.body.parties).toEqual([]);
+        expect(response.body.leads).toEqual([]);
+        expect(response.body).not.toHaveProperty('ownQueuedPartyIds');
       });
 
       it('drops the previous person’s dashboard figures, and the counts of parties it hides', async () => {

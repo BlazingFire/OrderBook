@@ -2208,7 +2208,7 @@ function presenceBeat(body: unknown): PresenceBeat {
  * it. The dashboard figures and the party scope are re-applied for the same
  * reason.
  */
-type LocalView = SyncSnapshot & { pendingCount: number };
+type LocalView = SyncSnapshot & { pendingCount: number; ownQueuedPartyIds?: string[] };
 
 /**
  * Which permission gates each `DashboardSummary` figure — kept in one place
@@ -2346,14 +2346,15 @@ function withoutAnotherPersonsParties(view: LocalView): LocalView {
   // listed (it arrived after the snapshot) is withheld: fail closed.
   //
   // Not the person's own queued parties: a party they created offline has a temporary id, so it
-  // is in nobody's list, and an empty `sync.hlc` is the marker that it is queued work (the view
-  // draws queued work only to its author). Filtering it out hid a creator's own new party from
-  // them.
+  // is in nobody's list. They are named by the view from this person's own pending
+  // `party.create`s, never guessed from the row: a server row can carry any `sync.hlc`, an
+  // empty one included (a NULL column reads as ''), so no marker on the row can be trusted.
+  const own = new Set(view.ownQueuedPartyIds ?? []);
   const open = view.openPartyIds ? new Set(view.openPartyIds) : null;
   const restricted = open
     ? new Set(
         view.parties
-          .filter((party) => !open.has(party.id) && party.sync?.hlc !== '')
+          .filter((party) => !open.has(party.id) && !own.has(party.id))
           .map((party) => party.id),
       )
     : new Set((view.partyGrants ?? []).map((grant) => grant.partyId));
@@ -2403,7 +2404,7 @@ function withoutAnotherPersonsParties(view: LocalView): LocalView {
 
 function forCurrentUser(view: LocalView): LocalView {
   const permissions = userSession.sessionPermissions();
-  const scoped = withoutAnotherPersonsParties(view);
+  const { ownQueuedPartyIds: _own, ...scoped } = withoutAnotherPersonsParties(view);
 
   return {
     ...scoped,

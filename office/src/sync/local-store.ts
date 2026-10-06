@@ -252,7 +252,17 @@ function isStored(value: StoredSnapshot | SyncSnapshot): value is StoredSnapshot
  * What the browser should render: the server's snapshot with everything still
  * queued applied on top.
  */
-export async function getView(): Promise<(SyncSnapshot & { pendingCount: number }) | null> {
+export type ViewOf = SyncSnapshot & {
+  pendingCount: number;
+  /**
+   * The temporary ids of the parties the person signed in has queued and the Master has not
+   * confirmed. The one reliable way to tell "my own new party" from a server row: a server row
+   * can carry any `sync.hlc`, an empty one included.
+   */
+  ownQueuedPartyIds?: string[];
+};
+
+export async function getView(): Promise<ViewOf | null> {
   const base = snapshot ?? (await restore());
   if (!base) return null;
 
@@ -274,19 +284,15 @@ export async function getView(): Promise<(SyncSnapshot & { pendingCount: number 
 
   const view =
     queued.length === 0 && numbered.size === 0
-      ? { ...base, pendingCount: 0 }
+      ? { ...base, pendingCount: 0, ownQueuedPartyIds: [] }
       : buildView(base, queued, signedIn);
   memo = { key, view };
   return view;
 }
 
-let memo: { key: string; view: SyncSnapshot & { pendingCount: number } } | null = null;
+let memo: { key: string; view: ViewOf } | null = null;
 
-function buildView(
-  base: SyncSnapshot,
-  queued: Mutation[],
-  signedIn: string | null,
-): SyncSnapshot & { pendingCount: number } {
+function buildView(base: SyncSnapshot, queued: Mutation[], signedIn: string | null): ViewOf {
   const view: SyncSnapshot = {
     ...base,
     leads: [...base.leads],
@@ -311,7 +317,13 @@ function buildView(
   const own = queued.filter((mutation) => shownTo(mutation.actorUserId, signedIn));
   for (const mutation of own) applyOverlay(view, mutation);
 
-  return { ...view, pendingCount: own.length };
+  return {
+    ...view,
+    pendingCount: own.length,
+    ownQueuedPartyIds: own
+      .filter((mutation) => mutation.kind === 'party.create')
+      .map((mutation) => mutation.entityId),
+  };
 }
 
 /**
