@@ -37,6 +37,7 @@ import { Field, FieldGroup } from './FieldGrid.js';
 import { Input, Textarea } from './Form.js';
 import { Modal } from './Modal.js';
 import { t } from './i18n.js';
+import { useCreatedPartiesPrivate } from './partyPrivacy.js';
 import { useCommand } from './KeyboardProvider.js';
 import { useEnterToAdvance } from './useEnterToAdvance.js';
 import { useFormBaseline, useUnsavedWork } from './unsavedWork.js';
@@ -104,6 +105,7 @@ export function PartyFormModal({
   onError,
 }: PartyFormModalProps) {
   const editing = party ?? null;
+  const privateNote = useCreatedPartiesPrivate() && !editing;
 
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [busy, setBusy] = useState(false);
@@ -242,6 +244,11 @@ export function PartyFormModal({
           anywhere in the dialog, which is what registering `record.save` here
           rather than on the screen behind the scrim buys. */}
       <div ref={fields}>
+        {privateNote && (
+          <p className="ob-small" role="note" data-testid="party-private-note">
+            {t('party.private.note')}
+          </p>
+        )}
         <FieldGroup title={t('party.group.identity')}>
           <Field label={t('party.field.name')} required span={2}>
             {(id) => (

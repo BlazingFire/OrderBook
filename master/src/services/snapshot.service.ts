@@ -108,6 +108,13 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
     parties.map((party) => party.id),
   );
 
+  // Who holds each restricted party in this snapshot: how many people, and (by absence) which
+  // are open. The panel needs the second to decide what the next person to sign in may see.
+  const partyAccessCounts = await partyAccessRepo.accessCountsAmong(
+    actor.tenantId,
+    parties.map((party) => party.id),
+  );
+
   return {
     bootId: BOOT_ID,
     // Where the ring stands as this snapshot is built. A change that lands
@@ -132,6 +139,8 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
     permissions: [...(actor.permissions?.permissions ?? [])],
     partyGrants,
     builtForUserId: partyScope.userId,
+    partyAccessCounts,
+    openPartyIds: parties.map((party) => party.id).filter((id) => !(id in partyAccessCounts)),
     serverHlc,
     serverTime: new Date().toISOString(),
     serverVersion: appVersion(),

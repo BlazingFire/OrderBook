@@ -2070,6 +2070,7 @@ export const EN_MESSAGES = {
   'party.new.title': 'New party',
   'party.save': 'Save party',
   'party.saveChanges': 'Save changes',
+  'party.private.note': 'Only you and administrators will see this party.',
   'party.saveHint': 'Available in every pending order form the moment it saves — online or off',
   'party.saving': 'Saving…',
   'party.updated': '{name} updated',

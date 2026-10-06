@@ -17,7 +17,7 @@ import { EventEmitter } from 'node:events';
 import { config } from '../config/index.js';
 import { createLogger } from '../lib/logger.js';
 import { observe } from './clock.js';
-import { holdNumbered } from './local-store.js';
+import { currentViewer, holdNumbered } from './local-store.js';
 import * as outbox from './outbox.store.js';
 
 const log = createLogger('sync');
@@ -91,15 +91,21 @@ export function setActingUser(provider: () => string | null): void {
 /**
  * Whether a queued mutation may go up now.
  *
- * A chat post speaks for the person who wrote it, so it waits until that
- * person is the one signed in here. It is never sent under the panel's own
- * role or another person's session, which the Master would refuse and which
- * would put the whole batch, lead and order work included, behind it.
+ * Whatever somebody queued speaks for that person, so it waits until they are the one
+ * signed in here. The Master takes the authority for a push from the session token the
+ * panel presents, never from the name inside the envelope, so work sent under somebody
+ * else's session is applied as theirs: a party A created offline would become B's (B the
+ * creator, B holding its grant) and a lead would be B's lead. It is held, not refused, and
+ * it goes when its author signs in again. Held items never stop anybody else's work: the
+ * batch is built from what may go.
+ *
+ * Work with no author (nobody was signed in when it was queued) goes whenever the link
+ * is up, as before. A chat post with no author stays held for ever, as before.
  */
-function mayGoUp(mutation: Mutation): boolean {
-  if (mutation.kind !== 'chat.post') return true;
-  const user = actingUser();
-  return user !== null && mutation.actorUserId === user;
+export function mayGoUp(mutation: Mutation, signedIn: string | null = actingUser()): boolean {
+  if (mutation.kind === 'chat.post') return signedIn !== null && mutation.actorUserId === signedIn;
+  if (!mutation.actorUserId) return true;
+  return mutation.actorUserId === signedIn;
 }
 
 export function onSyncEvent(listener: () => void): () => void {
@@ -114,7 +120,19 @@ export function onSyncEvent(listener: () => void): () => void {
  * overwritten by the next flush — see `outbox.store.ts`'s `recordRefusals`.
  */
 export async function recentRejections(): Promise<MutationResult[]> {
-  return (await outbox.refusals()).map((entry) => entry.result);
+  return (await ownRefusals()).map((entry) => entry.result);
+}
+
+/**
+ * The refusals this person may be shown: their own, and any that name nobody. The file is
+ * the PC's, but a refusal carries the id and the reason of a record somebody else queued
+ * (possibly a party this person is not allowed to know exists).
+ */
+async function ownRefusals() {
+  const viewer = currentViewer();
+  return (await outbox.refusals()).filter(
+    (entry) => !entry.mutation.actorUserId || entry.mutation.actorUserId === viewer,
+  );
 }
 
 /**
@@ -125,7 +143,10 @@ export async function recentRejections(): Promise<MutationResult[]> {
  * caller that hears nothing in time treats the save as Provisional, and the
  * mutation stays in the outbox either way.
  */
-export function awaitSettled(mutationId: string, timeoutMs: number): Promise<SettledMutation | null> {
+export function awaitSettled(
+  mutationId: string,
+  timeoutMs: number,
+): Promise<SettledMutation | null> {
   const done = recentlySettled.get(mutationId);
   if (done) return Promise.resolve(done);
 
@@ -149,7 +170,11 @@ export function onNumbered(listener: (event: NumberedEvent) => void): () => void
 
 /** Called once the panel's UI has actually shown them to somebody. */
 export async function acknowledgeRejections(mutationIds?: string[]): Promise<void> {
-  await outbox.clearRefusals(mutationIds);
+  // Only this person's own: "clear all" must not clear what somebody else has not read, and
+  // naming another person's id must not clear theirs.
+  const mine = new Set((await ownRefusals()).map((entry) => entry.result.mutationId));
+  const ids = (mutationIds ?? [...mine]).filter((id) => mine.has(id));
+  await outbox.clearRefusals(ids);
 }
 
 /**
@@ -182,7 +207,7 @@ export async function flush(): Promise<FlushOutcome> {
   flushing = true;
 
   try {
-    const queued = (await outbox.pending()).filter(mayGoUp);
+    const queued = (await outbox.pending()).filter((mutation) => mayGoUp(mutation));
     // Only held posts are left: nothing to send, and no retry timer to spin
     // for them. They go when their author signs in (`user-session.service.ts`).
     if (queued.length === 0) return idle;
@@ -212,7 +237,8 @@ export async function flush(): Promise<FlushOutcome> {
     // Before the queue entry goes: the local view draws a queued lead from it,
     // and the permanent record may not have reached this panel yet.
     for (const { mutation, settled } of answers) {
-      if (isNumbering(mutation, settled)) holdNumbered(mutation, settled.permanentId, settled.poNumber);
+      if (isNumbering(mutation, settled))
+        holdNumbered(mutation, settled.permanentId, settled.poNumber);
     }
 
     // Remap before settling: a queued follow-up ("move lead X to Quoted") has to
@@ -280,8 +306,8 @@ export async function flush(): Promise<FlushOutcome> {
     events.emit('changed');
 
     // More than one batch was waiting — keep going rather than waiting for the
-    // next trigger. Held chat posts do not count: they wait for a person.
-    if ((await outbox.pending()).some(mayGoUp)) scheduleRetry();
+    // next trigger. Held work does not count: it waits for its author.
+    if ((await outbox.pending()).some((mutation) => mayGoUp(mutation))) scheduleRetry();
 
     return outcome;
   } catch (error) {

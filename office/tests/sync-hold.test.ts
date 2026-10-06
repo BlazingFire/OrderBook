@@ -68,7 +68,7 @@ const lead = {
 };
 
 describe('holding a chat post for its author', () => {
-  it('sends the lead work and keeps a signed-out author\'s post in the queue', async () => {
+  it("sends the lead work and keeps a signed-out author's post in the queue", async () => {
     const { outbox, sync } = await load();
     const sent: Mutation[][] = [];
     sync.setTransport(acceptAll(sent));
@@ -106,7 +106,7 @@ describe('holding a chat post for its author', () => {
     }
   });
 
-  it('never sends A\'s post while B is signed in, and sends it when A is back', async () => {
+  it("never sends A's post while B is signed in, and sends it when A is back", async () => {
     const { outbox, sync } = await load();
     const sent: Mutation[][] = [];
     sync.setTransport(acceptAll(sent));
@@ -133,6 +133,91 @@ describe('holding a chat post for its author', () => {
 
     await sync.flush();
     expect(sent).toEqual([]);
+    sync.stopSync();
+  });
+});
+
+describe('holding any work for its author', () => {
+  const partyCreate = (actorUserId: string | null) => ({
+    kind: 'party.create' as const,
+    entity: 'party' as const,
+    entityId: 'TMP000000000009',
+    payload: { name: 'Sharma Tiles' },
+    actorUserId,
+  });
+
+  it('never sends A’s offline party under B’s session, and sends it when A signs in again', async () => {
+    const { outbox, sync } = await load();
+    const sent: Mutation[][] = [];
+    sync.setTransport(acceptAll(sent));
+    await outbox.enqueue(partyCreate('US000000000A'));
+
+    // B signs in: the Master would take the push as B's, make B its creator and give B the grant.
+    sync.setActingUser(() => 'US000000000B');
+    await sync.flush();
+    expect(sent).toEqual([]);
+    expect(await outbox.pendingCount()).toBe(1);
+
+    sync.setActingUser(() => 'US000000000A');
+    const outcome = await sync.flush();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.map((mutation) => mutation.kind)).toEqual(['party.create']);
+    expect(outcome.remaining).toBe(0);
+    sync.stopSync();
+  });
+
+  it('holds lead work the same way, and lets B’s own and unattributed work go past it', async () => {
+    const { outbox, sync } = await load();
+    const sent: Mutation[][] = [];
+    sync.setTransport(acceptAll(sent));
+    await outbox.enqueue({ ...partyCreate('US000000000A'), entityId: 'TMP00000000000A' });
+    await outbox.enqueue({ ...lead, actorUserId: 'US000000000A' });
+    await outbox.enqueue({ ...lead, entityId: 'LD0000000002', actorUserId: 'US000000000B' });
+    await outbox.enqueue(lead);
+
+    sync.setActingUser(() => 'US000000000B');
+    await sync.flush();
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.map((mutation) => mutation.entityId)).toEqual(['LD0000000002', 'LD0000000001']);
+    expect((await outbox.pending()).map((mutation) => mutation.actorUserId)).toEqual([
+      'US000000000A',
+      'US000000000A',
+    ]);
+    sync.stopSync();
+  });
+
+  it('holds A’s work while nobody is signed in', async () => {
+    const { outbox, sync } = await load();
+    const sent: Mutation[][] = [];
+    sync.setTransport(acceptAll(sent));
+    sync.setActingUser(() => null);
+    await outbox.enqueue(partyCreate('US000000000A'));
+
+    await sync.flush();
+    expect(sent).toEqual([]);
+    sync.stopSync();
+  });
+
+  it('is still held after a restart, and goes when A signs in', async () => {
+    const first = await load();
+    await first.outbox.enqueue(partyCreate('US000000000A'));
+    first.sync.stopSync();
+
+    // The process restarts: modules and the in-memory cache are gone, the file is not.
+    vi.resetModules();
+    const { outbox, sync } = await load();
+    const sent: Mutation[][] = [];
+    sync.setTransport(acceptAll(sent));
+
+    sync.setActingUser(() => 'US000000000B');
+    await sync.flush();
+    expect(sent).toEqual([]);
+
+    sync.setActingUser(() => 'US000000000A');
+    await sync.flush();
+    expect(sent).toHaveLength(1);
+    expect(await outbox.pendingCount()).toBe(0);
     sync.stopSync();
   });
 });

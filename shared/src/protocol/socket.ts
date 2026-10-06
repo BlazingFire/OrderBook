@@ -572,6 +572,24 @@ export interface SyncSnapshot {
    */
   partyGrants?: Array<{ partyId: string; level: PartyAccessLevel }>;
   /**
+   * Of the parties in this snapshot, the ones **open to everybody** (no Party Access row).
+   *
+   * Exists for one offline case. When somebody else signs in on this PC with no Master to
+   * ask, the panel has to decide which of the previous person's parties the new person may
+   * see. `partyGrants` is only the previous person's *own* grants, and a person with
+   * `party.accessAll` sees restricted parties without holding any, so "no grant of theirs"
+   * did not mean "open". This does: only these may be shown to the next person, anything
+   * not listed (including a party that arrived after this snapshot) is withheld. Optional:
+   * a snapshot from an older Master has none, and the panel falls back to the old rule.
+   */
+  openPartyIds?: string[];
+  /**
+   * For each party in this snapshot that is restricted, how many people hold a grant on it
+   * (the creator counts). An open party has no entry. A UI hint for the "Private" and
+   * "Shared with N" markers; the panel never decides access from it.
+   */
+  partyAccessCounts?: Record<string, number>;
+  /**
    * The user this snapshot was scoped for, so a panel can tell whether the
    * copy on its disk is still the right one for whoever is signed in now.
    *

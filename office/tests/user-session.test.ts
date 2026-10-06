@@ -75,6 +75,7 @@ const userStore = await import('../src/services/user-store.js');
 const attempts = await import('../src/services/sign-in-attempts.store.js');
 const offlineAuthEvents = await import('../src/services/offline-auth-events.store.js');
 const localStore = await import('../src/sync/local-store.js');
+const syncService = await import('../src/sync/sync.service.js');
 
 const MASTER_USER = {
   id: 'US000000000C',
@@ -143,6 +144,37 @@ describe('signing in on an Office Panel', () => {
     // The Master issued the token, so the panel presents it rather than
     // asserting an identity of its own.
     expect(link.assumed).toBe('token-abc');
+  });
+
+  describe('whose queued work may go up', () => {
+    const queuedBy = (actorUserId: string | null) =>
+      ({ kind: 'party.create', entity: 'party', entityId: 'TMP1', actorUserId }) as never;
+
+    it('lets a person’s own work go once the Master has signed them in, and nobody else’s', async () => {
+      await signInOnline();
+      const own = userSession.currentSession()!.userId;
+
+      expect(syncService.mayGoUp(queuedBy(own))).toBe(true);
+      expect(syncService.mayGoUp(queuedBy('somebody-else'))).toBe(false);
+      expect(syncService.mayGoUp(queuedBy(null))).toBe(true);
+    });
+
+    it('holds even their own work while the session is only an offline one, with no word from the Master yet', async () => {
+      await signInOnline('correct-horse');
+      const own = userSession.currentSession()!.userId;
+      userSession.resetSession();
+
+      link.state = 'disconnected';
+      await userSession.signIn('sunita', 'correct-horse');
+
+      // Pushed now, the Master would take it as the panel's own: a party with no creator.
+      expect(syncService.mayGoUp(queuedBy(own))).toBe(false);
+      expect(syncService.mayGoUp(queuedBy(null))).toBe(true);
+    });
+
+    it('holds work while nobody is signed in', async () => {
+      expect(syncService.mayGoUp(queuedBy('anybody'))).toBe(false);
+    });
   });
 
   it('refuses somebody who has never signed in on this panel while it is offline', async () => {
@@ -472,9 +504,7 @@ describe('the company switch for signing in offline', () => {
       permissions: [],
       serverHlc: '0',
       serverTime: '2026-09-18T00:00:00.000Z',
-      ...(offlineSignInEnabled === undefined
-        ? {}
-        : { features: { offlineSignInEnabled } }),
+      ...(offlineSignInEnabled === undefined ? {} : { features: { offlineSignInEnabled } }),
     });
   }
 

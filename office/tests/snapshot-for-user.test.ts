@@ -320,6 +320,168 @@ describe('snapshot for the current user (DSH-1)', () => {
       expect(response.body.partyGrants).toEqual([]);
     });
 
+    describe('built for an administrator, who needs no grant to see a restricted party', () => {
+      const asNextPerson = () => {
+        vi.spyOn(userSession, 'currentSession').mockReturnValue({
+          ...FAKE_SESSION,
+          userId: 'US0000000002',
+        } as never);
+        vi.spyOn(userSession, 'sessionPermissions').mockReturnValue(['leads.create']);
+      };
+
+      it('withholds a party the Master did not list as open, though the administrator holds no grant on it', async () => {
+        // The administrator's own grants are empty, so the old rule ("not one of their grants,
+        // so open") would have shown the next person every restricted party.
+        vi.spyOn(localStore, 'getView').mockResolvedValue({
+          ...FIXTURE,
+          builtForUserId: 'US0000000001',
+          partyGrants: [],
+          openPartyIds: [],
+          pendingCount: 0,
+        });
+        asNextPerson();
+
+        const response = await request(createApp()).get('/api/snapshot');
+
+        expect(response.body.parties).toHaveLength(0);
+        expect(response.body.leads).toHaveLength(0);
+        expect(response.body.orders).toHaveLength(0);
+        expect(response.body.partyVariants).toHaveLength(0);
+      });
+
+      it('withholds a conflict that names a hidden party, lead or order, and keeps one on an open record', async () => {
+        const conflict = (id: number, entity: string, entityId: string) =>
+          ({
+            id,
+            entity,
+            entityId,
+            field: 'name',
+            losingValue: 'Secret',
+            winningValue: 'Other',
+          }) as never;
+        const leadId = FIXTURE.leads[0]!.id;
+        const withConflicts = {
+          ...FIXTURE,
+          builtForUserId: 'US0000000001',
+          partyGrants: [],
+          conflicts: [
+            conflict(1, 'party', 'PT0000000001'),
+            conflict(2, 'lead', leadId),
+            conflict(3, 'product', 'PR0000000001'),
+          ],
+          pendingCount: 0,
+        };
+        asNextPerson();
+
+        // Hidden: the party, its lead and the conflicts on them go. A conflict on something that
+        // is not party-scoped (a product) stays.
+        vi.spyOn(localStore, 'getView').mockResolvedValue({ ...withConflicts, openPartyIds: [] });
+        const hidden = await request(createApp()).get('/api/snapshot');
+        expect(hidden.body.conflicts.map((c: { id: number }) => c.id)).toEqual([3]);
+
+        // Open: the same conflicts are the next person's to see.
+        vi.spyOn(localStore, 'getView').mockResolvedValue({
+          ...withConflicts,
+          openPartyIds: ['PT0000000001'],
+        });
+        const open = await request(createApp()).get('/api/snapshot');
+        expect(open.body.conflicts.map((c: { id: number }) => c.id)).toEqual([1, 2, 3]);
+      });
+
+      it('keeps a creator’s own queued party, which is in nobody’s list, and the lead hanging off it', async () => {
+        // A party queued offline has a temporary id, so it is in nobody's list. The view names the
+        // viewer's own queued parties; the row itself carries no marker that can be trusted.
+        const queuedParty = {
+          ...FIXTURE.parties[0]!,
+          id: 'TMP000000000001',
+          name: 'Own Pending',
+          sync: { ...SYNC_META, hlc: '' },
+        };
+        const queuedLead = { ...FIXTURE.leads[0]!, id: 'TMPLEAD00001', partyId: queuedParty.id };
+        vi.spyOn(localStore, 'getView').mockResolvedValue({
+          ...FIXTURE,
+          parties: [...FIXTURE.parties, queuedParty],
+          leads: [...FIXTURE.leads, queuedLead],
+          builtForUserId: 'US0000000001',
+          partyGrants: [],
+          openPartyIds: [],
+          ownQueuedPartyIds: [queuedParty.id],
+          pendingCount: 1,
+        });
+        asNextPerson();
+
+        const response = await request(createApp()).get('/api/snapshot');
+
+        expect(response.body.parties.map((party: { id: string }) => party.id)).toEqual([
+          queuedParty.id,
+        ]);
+        expect(response.body.leads.map((lead: { id: string }) => lead.id)).toEqual([queuedLead.id]);
+      });
+
+      it('hides a restricted server party whose sync.hlc is empty, though it looks like queued work', async () => {
+        // A NULL parties.hlc reaches the panel as '' (an old row, or a restored backup). It is not in
+        // the viewer's own queue, so it is somebody else's restricted party like any other.
+        const legacy = { ...FIXTURE.parties[0]!, sync: { ...SYNC_META, hlc: '' } };
+        vi.spyOn(localStore, 'getView').mockResolvedValue({
+          ...FIXTURE,
+          parties: [legacy],
+          builtForUserId: 'US0000000001',
+          partyGrants: [],
+          openPartyIds: [],
+          ownQueuedPartyIds: [],
+          pendingCount: 0,
+        });
+        asNextPerson();
+
+        const response = await request(createApp()).get('/api/snapshot');
+
+        expect(response.body.parties).toEqual([]);
+        expect(response.body.leads).toEqual([]);
+        expect(response.body).not.toHaveProperty('ownQueuedPartyIds');
+      });
+
+      it('drops the previous person’s dashboard figures, and the counts of parties it hides', async () => {
+        vi.spyOn(localStore, 'getView').mockResolvedValue({
+          ...FIXTURE,
+          builtForUserId: 'US0000000001',
+          partyGrants: [],
+          openPartyIds: [],
+          partyAccessCounts: { PT0000000001: 2 },
+          dashboard: { leadCount: 8, orderCount: 1, partyCount: 13, asOf: NOW },
+          pendingCount: 0,
+        });
+        asNextPerson();
+        vi.spyOn(userSession, 'sessionPermissions').mockReturnValue([
+          'leads.view',
+          'parties.view',
+          'orders.view',
+        ]);
+
+        const response = await request(createApp()).get('/api/snapshot');
+
+        expect(response.body.dashboard.leadCount).toBeUndefined();
+        expect(response.body.dashboard.orderCount).toBeUndefined();
+        expect(response.body.dashboard.partyCount).toBeUndefined();
+        expect(response.body.partyAccessCounts).toEqual({});
+      });
+
+      it('keeps a party the Master listed as open', async () => {
+        vi.spyOn(localStore, 'getView').mockResolvedValue({
+          ...FIXTURE,
+          builtForUserId: 'US0000000001',
+          partyGrants: [],
+          openPartyIds: ['PT0000000001'],
+          pendingCount: 0,
+        });
+        asNextPerson();
+
+        const response = await request(createApp()).get('/api/snapshot');
+
+        expect(response.body.parties).toHaveLength(1);
+        expect(response.body.leads).toHaveLength(1);
+      });
+    });
+
     it('keeps everything for the person it was built for', async () => {
       vi.spyOn(localStore, 'getView').mockResolvedValue({ ...RESTRICTED, pendingCount: 0 });
       vi.spyOn(userSession, 'sessionPermissions').mockReturnValue(['leads.create']);
