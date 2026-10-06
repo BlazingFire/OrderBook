@@ -387,7 +387,6 @@ export function OrderBoardScreen({
     {
       key: 'ref',
       header: t('order.list.col.ref'),
-      priority: 3,
       width: rem(130),
       // Only beside a PO number; without one the id is already the first column.
       render: (order) =>
