@@ -386,7 +386,8 @@ function Composer({
   viewer: ChatViewer;
   findRecords: (term: string) => Promise<ChatRecordOption[]>;
   onSend: (draft: ComposerDraft) => Promise<void>;
-  /** A new room starts a new draft. */
+  /** Names the draft for "Save all". A new room starts a new draft because the caller keys the
+   *  composer by room — not by an effect, which on mount would wipe what was typed before it ran. */
   roomKey: string;
 }) {
   const [text, setText] = useState('');
@@ -408,17 +409,6 @@ function Composer({
 
   const canShare = viewer.permissions.includes('chat.shareRecords');
   const canTask = viewer.permissions.includes('chat.tasks');
-
-  useEffect(() => {
-    setText('');
-    setRefs([]);
-    setPicked(new Map());
-    setMention(null);
-    setAsTask(false);
-    setAssignees([]);
-    setDueOn('');
-    setPickerOpen(false);
-  }, [roomKey]);
 
   useEffect(() => {
     if (!pickerOpen) return;
@@ -1195,6 +1185,7 @@ export function ChatConversation(props: ChatConversationProps) {
         <p className="ob-small ob-chat-note">{t('chat.composer.announceOnly')}</p>
       ) : canPost ? (
         <Composer
+          key={roomId}
           members={detail.members}
           viewer={viewer}
           findRecords={props.findRecords}
