@@ -768,24 +768,33 @@ export function CatalogScreen({
       sortable: true,
       header: t('catalog.products.column.brand'),
       priority: 3,
-      width: 'minmax(0, 0.8fr)',
+      width: 'minmax(0, 0.7fr)',
       render: (product) => productOf(product).brand ?? '—',
     },
     {
       key: 'category',
       sortable: true,
       header: t('catalog.products.column.category'),
-      width: 'minmax(0, 1.6fr)',
+      width: 'minmax(0, 1.55fr)',
       render: (product) => {
-        const category = productOf(product);
-        return productLabel(category.name) || '—';
+        const label = productLabel(productOf(product).name) || '—';
+        // A long product name can still be cut at 1366 px: the sub product and its colour
+        // get the room first, and the full name is a hover away.
+        return (
+          <span
+            title={label}
+            style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          >
+            {label}
+          </span>
+        );
       },
     },
     {
       key: 'name',
       sortable: true,
       header: t('catalog.products.column.name'),
-      width: 'minmax(0, 1.6fr)',
+      width: 'minmax(0, 1.95fr)',
       render: (product) => (
         <span
           style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-8)', minWidth: 0 }}
@@ -809,8 +818,15 @@ export function CatalogScreen({
       sortable: true,
       header: t('catalog.products.column.size'),
       priority: 3,
-      width: 'minmax(0, 1.2fr)',
-      render: (product) => product.size ?? '—',
+      width: 'minmax(0, 0.8fr)',
+      render: (product) => (
+        <span
+          title={product.size ?? undefined}
+          style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+        >
+          {product.size ?? '—'}
+        </span>
+      ),
     },
     {
       // Blank for a numbered design: the owner's rule is no colour anywhere.
@@ -818,7 +834,7 @@ export function CatalogScreen({
       sortable: true,
       header: t('catalog.products.column.colours'),
       priority: 2,
-      width: 'minmax(0, 1fr)',
+      width: 'minmax(0, 1.2fr)',
       render: (product) => <SubProductColour product={product} colourHex={colourHex} />,
     },
     {
@@ -826,7 +842,7 @@ export function CatalogScreen({
       sortable: true,
       header: t('catalog.products.column.codes'),
       priority: 2,
-      width: 'minmax(0, 0.9fr)',
+      width: 'minmax(0, 0.7fr)',
       render: (product) => (
         <span className="ob-mono" style={{ fontSize: rem(12), color: 'var(--fg-secondary)' }}>
           {codesOf(product)}
@@ -838,7 +854,7 @@ export function CatalogScreen({
       sortable: true,
       header: t('catalog.products.column.weight'),
       priority: 3,
-      width: 'minmax(0, 0.8fr)',
+      width: 'minmax(0, 0.6fr)',
       align: 'right',
       render: (product) => {
         const weight = weightLabel(product);
