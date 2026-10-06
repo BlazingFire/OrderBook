@@ -94,3 +94,23 @@ describe('what a recipient is told of a notice change', () => {
     expect(noticeEventFor(actor('RL2', ['notices.view']), other)).toBe(other);
   });
 });
+
+describe('a panel acting as itself', () => {
+  const panel = (roleId: string | null): ActorContext =>
+    ({
+      ...actor(roleId, ['notices.view']),
+      actorType: 'office_panel',
+      actorId: 'OP1',
+      userId: null,
+    }) as never;
+
+  it('is told of notices for everybody and never of a role’s, whatever role the panel holds', () => {
+    expect(mayReceive(panel('RL1'), change({ kind: 'all' }), [])).toBe(true);
+    expect(mayReceive(panel('RL1'), change({ kind: 'roles', roleIds: ['RL1'] }), [])).toBe(false);
+  });
+
+  it('is told, of a notice for roles, nothing that names a role', () => {
+    const told = noticeEventFor(panel('RL1'), change({ kind: 'roles', roleIds: ['RL1', 'RL2'] }));
+    expect(told.payload).toEqual({ audience: { kind: 'roles', roleIds: [] } });
+  });
+});
