@@ -87,11 +87,19 @@ interface Boot {
   permissions: string[];
   notices: unknown[];
   userId?: string;
+  roleTier?: string;
   connection?: Partial<typeof CONNECTION>;
   route?: (call: Call) => Response | undefined;
 }
 
-async function boot({ permissions, notices, userId = 'user-1', connection = {}, route }: Boot) {
+async function boot({
+  permissions,
+  notices,
+  userId = 'user-1',
+  roleTier = 'admin',
+  connection = {},
+  route,
+}: Boot) {
   const calls = routeFetch((call) => {
     const answer = route?.(call);
     if (answer) return answer;
@@ -105,7 +113,7 @@ async function boot({ permissions, notices, userId = 'user-1', connection = {}, 
           displayName: userId,
           roleId: 'role-admin',
           roleName: 'Admin',
-          roleTier: 'admin',
+          roleTier,
           permissions,
           offline: false,
           signedInAt: '2026-10-06T00:00:00.000Z',
@@ -235,6 +243,24 @@ describe('Office notice board: offline reads', () => {
     await waitFor(() => expect(localStorage.getItem('orderbook.noticeReads.user-1')).toBeNull());
   });
 
+  it('keeps the read for its person when the Master wants them to sign in again', async () => {
+    const calls = await boot({
+      permissions: ['notices.view'],
+      notices: [notice('n1')],
+      route: (call) =>
+        call.url === '/api/notices/read'
+          ? json({ error: 'sign_in_again', message: 'Sign in again' }, 401)
+          : undefined,
+    });
+    await openBoard();
+    fireEvent.click(screen.getByRole('button', { name: t('notices.board.markRead') }));
+    await waitFor(() => expect(readCalls(calls)).toHaveLength(1));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(JSON.parse(localStorage.getItem('orderbook.noticeReads.user-1') ?? '[]')).toEqual([
+      'n1',
+    ]);
+  });
+
   it('never sends or counts a read another person queued at this window', async () => {
     // Somebody else read n1 offline here and signed out before the link came back.
     localStorage.setItem('orderbook.noticeReads.user-other', JSON.stringify(['n1']));
@@ -307,6 +333,21 @@ describe('Office notice board: management and the Dashboard', () => {
     await screen.findByText('Stock count Saturday');
     fireEvent.click(screen.getByRole('button', { name: t('notices.card.open') }));
     await screen.findByRole('button', { name: t('notices.board.markRead') });
+  });
+
+  it('shows the important and pinned notices on Basic Home, where the Office tier lands', async () => {
+    await boot({
+      permissions: ['notices.view', 'leads.view'],
+      roleTier: 'office',
+      notices: [
+        notice('n1', { pinned: true, title: 'Pinned rule' }),
+        notice('n2', { title: 'Plain chatter' }),
+      ],
+    });
+    await screen.findByText('Pinned rule');
+    expect(screen.queryByText('Plain chatter')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: t('notices.card.open') }));
+    await screen.findByRole('button', { name: t('notices.board.markAllRead') });
   });
 
   it('shows no notices to somebody without notices.view, even if the snapshot carried some', async () => {
