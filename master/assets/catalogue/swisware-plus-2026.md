@@ -14,7 +14,7 @@ the table columns and the `### CODE — Name` product headings when editing.
 - **Product** (main product) — `### CODE — Name`. The code is the software code staff can type in
   the product bar instead of the name. Codes are always alphanumeric and unique.
 - **Sub product** — the model inside a product, as printed under its photo: a number (`1111`, `41`)
-  or alphanumeric (`102 (9")`, `DAMRU`, `MAGENTA`). Unique inside its product.
+  or alphanumeric (`DAMRU`, `MAGENTA`, `E-01`). Unique inside its product.
 - **Colour rule**
   - `fixed` — made in one colour only, named in the Colour column. No colour choice at entry.
   - `dedicated` — the design is its own colour (numbered and designer pieces, accessories). No colour
@@ -26,6 +26,9 @@ the table columns and the `### CODE — Name` product headings when editing.
 
 ## Transcription decisions
 
+- Page 4 prints each toilet as a model and its trap size, e.g. `102 (9")`. The model is the number
+  (`102`, a coded sub product); the trap size goes in the Size column first (`9", L-27, B-15, H-26`).
+  `SYPHONIC (9")` is recorded the same way as `SYPHONIC`.
 - Page 4 and pages 6–7 are both headed "ONE PIECE TOILET"; they are one product (`OPT`) with the white
   models and the numbered designer models as its sub products.
 - The "* ALSO AVAILABLE IN IVORY" footers carry no asterisk on any caption; per the owner, page 4
@@ -33,13 +36,20 @@ the table columns and the `### CODE — Name` product headings when editing.
 - Sofiya Vitrosa Double Colour prints BLACK and MAGENTA twice: once as the floral basin, once as the
   solid-colour pedestal. The solid ones are `BLACK PLAIN` and `MAGENTA PLAIN`.
 - `13x9 SQUQRE` is printed with a typo; recorded as `13x9 SQUARE`.
-- `14x14 NEW CORNER` sits in the table-top grid on page 14 but is a wall-hung corner basin; it is
-  listed under Wash Basin.
+- `14x14 NEW CORNER` sits in the table-top grid on page 14; per the owner (2026-10-07) it is a Table
+  Top Wash Basin, listed last there with that product's rule.
 - Under Counter and Lab Sink models are named by their size; the stray spaces in the printed lab-sink
   captions (`24 x18x10`) and in `SILVER SET (18x14 )` are dropped.
 - The ten coloured pans under Orissa Pan (Marble, Double Colour, Rustic) illustrate the colour offer;
-  they are not models. Orissa Pan and Water Closet ("all items available in all colours") are
-  `multicolour`.
+  they are not models (owner, 2026-10-07: colour examples). Orissa Pan is `multicolour`.
+- Page 13's "all items available in all colours" covers only the trap closets, per the owner
+  (2026-10-07): the E.W.C and Anglo Indian S and P traps are `multicolour`; the Eco Concealed,
+  Eco Concealed Slim, Modern and Concealed closets are white only (`fixed` White).
+- Eco Concealed Designer has no E-04 or E-05; per the owner that is intentional.
+- Page 25's "all colours available in all items" adds no colour choice: per the owner, Silver,
+  18"x14", Micra and the Rustic Set come in just the colours printed, one sub product per caption.
+- Page 18's `18x14 SET` is the white Plain Set; page 25's 18"x14" Vitrosa Double Colour is a different
+  product (`D1814`) with its own sub products, per the owner.
 - Urinal channel and the three traps are photographed in cream, so they carry no colour (`dedicated`)
   rather than a guessed one.
 - Sizes are copied only where the catalogue prints them. Vitrosa ranges print no size.
@@ -88,21 +98,21 @@ the table columns and the `### CODE — Name` product headings when editing.
 
 | # | Sub product | Size | Colour rule | Colour |
 |---|---|---|---|---|
-| 1 | 102 (9") | L-27, B-15, H-26 | fixed | White |
-| 2 | 111 (9") | L-27, B-14, H-25 | fixed | White |
-| 3 | 103 (9") | L-27, B-14, H-27 | fixed | White |
-| 4 | 105 (9") | L-26, B-14, H-27 | fixed | White |
-| 5 | 107 (9") | L-26, B-14, H-30 | fixed | White |
-| 6 | 108 (9") | L-25, B-14, H-27 | fixed | White |
-| 7 | 109 (9") | L-26, B-14, H-29 | fixed | White |
-| 8 | 110 (9") | L-25, B-14, H-27 | fixed | White |
-| 9 | 112 (9") | L-26, B-14, H-28 | fixed | White |
-| 10 | 113 (9") | L-25, B-14, H-28 | fixed | White |
-| 11 | 115 (9") | L-26, B-14, H-29 | fixed | White |
-| 12 | 116 (9") | L-26, B-14, H-29 | fixed | White |
-| 13 | 118 (9") | L-26, B-14, H-30 | fixed | White |
-| 14 | 204 (4") | L-27, B-14, H-27 | fixed | White |
-| 15 | SYPHONIC (9") | L-26, B-14, H-30 | fixed | White |
+| 1 | 102 | 9", L-27, B-15, H-26 | fixed | White |
+| 2 | 111 | 9", L-27, B-14, H-25 | fixed | White |
+| 3 | 103 | 9", L-27, B-14, H-27 | fixed | White |
+| 4 | 105 | 9", L-26, B-14, H-27 | fixed | White |
+| 5 | 107 | 9", L-26, B-14, H-30 | fixed | White |
+| 6 | 108 | 9", L-25, B-14, H-27 | fixed | White |
+| 7 | 109 | 9", L-26, B-14, H-29 | fixed | White |
+| 8 | 110 | 9", L-25, B-14, H-27 | fixed | White |
+| 9 | 112 | 9", L-26, B-14, H-28 | fixed | White |
+| 10 | 113 | 9", L-25, B-14, H-28 | fixed | White |
+| 11 | 115 | 9", L-26, B-14, H-29 | fixed | White |
+| 12 | 116 | 9", L-26, B-14, H-29 | fixed | White |
+| 13 | 118 | 9", L-26, B-14, H-30 | fixed | White |
+| 14 | 204 | 4", L-27, B-14, H-27 | fixed | White |
+| 15 | SYPHONIC | 9", L-26, B-14, H-30 | fixed | White |
 | 16 | 1111 |  | dedicated |  |
 | 17 | 1113 |  | dedicated |  |
 | 18 | 1115 |  | dedicated |  |
@@ -384,10 +394,10 @@ the table columns and the `### CODE — Name` product headings when editing.
 
 | # | Sub product | Size | Colour rule | Colour |
 |---|---|---|---|---|
-| 1 | E.W.C - ECO CONCEALED |  | multicolour |  |
-| 2 | E.W.C - ECO CONCEALED SLIM |  | multicolour |  |
-| 3 | E.W.C - MODERN |  | multicolour |  |
-| 4 | E.W.C - CONCEALED |  | multicolour |  |
+| 1 | E.W.C - ECO CONCEALED |  | fixed | White |
+| 2 | E.W.C - ECO CONCEALED SLIM |  | fixed | White |
+| 3 | E.W.C - MODERN |  | fixed | White |
+| 4 | E.W.C - CONCEALED |  | fixed | White |
 | 5 | E.W.C - S TRAP |  | multicolour |  |
 | 6 | E.W.C - P TRAP |  | multicolour |  |
 | 7 | ANGLO INDIAN - S TRAP |  | multicolour |  |
@@ -452,7 +462,6 @@ the table columns and the `### CODE — Name` product headings when editing.
 | 14 | 18x16 MICRA | 18x16 | fixed | White |
 | 15 | 20x16 | 20x16 | fixed | White |
 | 16 | 22x16 | 22x16 | fixed | White |
-| 17 | 14x14 NEW CORNER | 14x14 | fixed | White |
 
 ### TTW — Table Top Wash Basin
 
@@ -476,6 +485,7 @@ the table columns and the `### CODE — Name` product headings when editing.
 | 13 | 7901 | 28x14 | dedicated |  |
 | 14 | 7902 | 23x14 | dedicated |  |
 | 15 | 7903 | 25x15 | dedicated |  |
+| 16 | 14x14 NEW CORNER | 14x14 | dedicated |  |
 
 ### TTV — Table Top Vitrosa Basin
 

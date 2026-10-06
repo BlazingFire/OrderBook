@@ -59,7 +59,7 @@ export function shownColour(
 /**
  * True for a sub product printed as a plain number (`1111`, `41`).
  *
- * `102 (9")` is not: it is a model name that starts with digits, and the
+ * `710 SOFT CLOSE SEAT COVER` is not: it is a model name that starts with digits, and the
  * owner's rule is about what is printed, not what it begins with.
  */
 export function isNumericSubProduct(name: string | null | undefined): boolean {

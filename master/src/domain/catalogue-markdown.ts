@@ -38,7 +38,7 @@ export interface CatalogueColour {
 }
 
 export interface CatalogueSubProduct {
-  /** The printed identifier (`102 (9")`, `1111`, `MAGENTA`); unique inside its product. */
+  /** The printed identifier (`102`, `1111`, `MAGENTA`); unique inside its product. */
   name: string;
   size: string | null;
   rule: ColourRule;

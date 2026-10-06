@@ -147,7 +147,7 @@ same database, prints the counts, and shuts down.
 The rules come from the owner (2026-09-28), not from choices made here:
 
 - **A sub product is what the catalogue prints under a photo**, a number
-  (`1111`, `41`) or a name (`102 (9")`, `DAMRU`, `MAGENTA`), unique inside its
+  (`1111`, `41`) or a name (`DAMRU`, `MAGENTA`), unique inside its
   product. Each is its own model with one variant; nothing is grouped by how
   the pictures look.
 - **The colour rule is the catalogue's**: `fixed` (made in one colour, named in
