@@ -93,7 +93,7 @@ export const MODULE_ACTIONS: Record<PermissionModule, readonly PermissionAction[
 
 // --- Capabilities ----------------------------------------------------------
 
-export const CAPABILITY_GROUPS = ['workflow', 'admin', 'chat'] as const;
+export const CAPABILITY_GROUPS = ['workflow', 'admin', 'chat', 'notices'] as const;
 
 export type CapabilityGroup = (typeof CAPABILITY_GROUPS)[number];
 
@@ -196,6 +196,12 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
   // printed, cancels any queued one and turns a PC into an auto-print station.
   { key: 'print.send', group: 'workflow', labelToken: 'permission.print.send' },
   { key: 'print.station', group: 'workflow', labelToken: 'permission.print.station' },
+
+  // The notice board (Oct 2026). `notices.view` is the right to read the board and is held by
+  // every role (a migration grants it to the roles that exist; new roles are given it by
+  // default); `notices.manage` writes notices, sets their audience and sees who has read them.
+  { key: 'notices.view', group: 'notices', labelToken: 'permission.notices.view' },
+  { key: 'notices.manage', group: 'notices', labelToken: 'permission.notices.manage' },
 ] as const;
 
 // --- The frozen key list ---------------------------------------------------
@@ -286,6 +292,10 @@ const MINIMUM_TIER: Record<string, RoleTier> = {
   // supervisor's call; administering every group in the company is governance.
   'chat.createGroups': 'management',
   'chat.manage': 'admin',
+
+  // The notice board: reading is office tier (no entry); putting up notices for the whole
+  // company is an administrator's call.
+  'notices.manage': 'admin',
 };
 
 /** The lowest tier permitted to hold a key. */
@@ -368,6 +378,7 @@ export const ROLE_TEMPLATES: ReadonlyArray<{
       'chat.shareRecords',
       'chat.tasks',
       'print.send',
+      'notices.view',
     ],
   },
   {
@@ -383,6 +394,7 @@ export const ROLE_TEMPLATES: ReadonlyArray<{
       'chat.use',
       'print.send',
       'print.station',
+      'notices.view',
     ],
   },
 ];
