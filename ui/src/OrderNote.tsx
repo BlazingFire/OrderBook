@@ -37,6 +37,7 @@ const LAYOUT_VARS = {
   '--note-row-coded': `${NOTE_LAYOUT.rowCoded}px`,
   '--note-row-coded-labelled': `${NOTE_LAYOUT.rowCodedLabelled}px`,
   '--note-group-header': `${NOTE_LAYOUT.groupHeader}px`,
+  '--note-codes-per-row': NOTE_LAYOUT.codesPerRow,
 } as CSSProperties;
 
 export interface OrderNoteProps {
@@ -62,20 +63,18 @@ function num(value: number): string {
   return value.toLocaleString('en-IN', { maximumFractionDigits: 1 });
 }
 
-function stamp(value: Date | string | null | undefined): string {
+/**
+ * Fixed month names: `toLocaleString` abbreviates September as "Sept" in current Chromium, and the
+ * design (and every other month) is three letters.
+ */
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+
+export function stamp(value: Date | string | null | undefined): string {
   if (!value) return '—';
   const date = typeof value === 'string' ? new Date(value) : value;
   if (Number.isNaN(date.getTime())) return '—';
-  return date
-    .toLocaleString('en-GB', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    })
-    .replace(', ', ' · ');
+  const two = (n: number): string => String(n).padStart(2, '0');
+  return `${two(date.getDate())} ${MONTHS[date.getMonth()]} ${date.getFullYear()} · ${two(date.getHours())}:${two(date.getMinutes())}`;
 }
 
 /** What the sheet calls the record: its number, or its id until it has one. */

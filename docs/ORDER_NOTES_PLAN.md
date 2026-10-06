@@ -234,8 +234,9 @@ export function paginateOrderNote(model: OrderNoteModel, kind: NoteKind, codeCol
     (the artifact's presets);
   - per-page quantities sum to the grand total; running c/f is monotonic;
   - only the last page carries the signature row;
-  - left goes full width (two columns) when a page has no coded lines, right
-    uses `min(9, cols×2−1)` columns when it has no named lines;
+  - left goes full width (two columns) when a page has no coded lines; the coded half is
+    three columns beside the named half and seven (the design's `cols×2−1`) when it has the page;
+  - the page before the last is cut so the last holds at least `minTailLines` (12) lines;
   - `102 (9")` lands left, `102` lands right;
   - weight is `null` when any merged line lacks it, and the order override
     wins for the total.

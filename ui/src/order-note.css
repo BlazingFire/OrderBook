@@ -539,10 +539,10 @@
   padding: 0 0 3px;
   border-bottom: 1px solid var(--note-ink);
   color: var(--note-ink);
-  font-size: 10px;
+  font-size: 9.5px;
   line-height: 11px;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
 }
 
@@ -557,9 +557,11 @@
 
 .ob-note-group-cont {
   flex: none;
-  font-size: 8px;
+  /* Small and tucked in: a column is only a seventh of the page, and the name needs the room. */
+  margin-left: -2px;
+  font-size: 7px;
   font-weight: 500;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   color: var(--note-muted);
 }
 
@@ -567,7 +569,7 @@
   flex: none;
   height: var(--note-row-coded);
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--note-codes-per-row), minmax(0, 1fr));
   gap: 0 10px;
 }
 

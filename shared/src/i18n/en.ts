@@ -1827,7 +1827,7 @@ export const EN_MESSAGES = {
   'orderNote.itemsPages': '{items} items · {pages} pages',
   'orderNote.grossOfPacking': 'Gross of packing',
   'orderNote.unsynced': 'not yet synced',
-  'orderNote.unit': 'pcs',
+  'orderNote.unit': 'box',
   'orderNote.signFilledBy': 'Filled by',
   'orderNote.signCheckedBy': 'Checked by',
   'orderNote.signStoreInCharge': 'Store in-charge',

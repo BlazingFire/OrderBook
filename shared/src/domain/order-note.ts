@@ -99,19 +99,29 @@ export const NOTE_LAYOUT = {
   rowNamed: 32,
   /** …and one that takes three (`namedRowHeight`). */
   rowNamedTall: 44,
-  /** Characters of a named label per printed line, a little under the narrowest column holds. */
-  namedCharsPerLine: 24,
+  /**
+   * Characters of a named label per printed line, as the design counts them. A named row is
+   * `rowNamedTall` when the label plus three characters (room for a brand chip) takes more than two
+   * lines; the design reserves those three on every row, branded or not.
+   */
+  namedCharsPerLine: 26,
+  namedChipChars: 3,
   columnLabel: 13,
   /** A row of codes under their group's header. */
   rowCoded: 50,
   /** A row of codes with their product printed on each — groups too small to earn a header. */
   rowCodedLabelled: 62,
   groupHeader: 26,
-  /** Codes side by side in a row. */
-  codesPerRow: 3,
-  /** Columns the coded half takes: one beside the named half, two when it has the page. */
-  codedColumns: 1,
-  codedColumnsWide: 2,
+  /** Codes side by side in a row: one, each column of cells running top-down as in the design. */
+  codesPerRow: 1,
+  /** Columns the coded half takes: three beside the named half, seven when it has the page. */
+  codedColumns: 3,
+  codedColumnsWide: 7,
+  /**
+   * The last page carries the notes and signatures, so the page before it is cut early enough
+   * that the last page holds at least this many lines rather than one or two.
+   */
+  minTailLines: 12,
 } as const;
 
 /** A product with this many codes (or more) gets one header, its codes listed below. */
@@ -151,7 +161,7 @@ export interface OrderNoteModel {
   totalWeightKg: number;
 }
 
-/** One slot of a coded column: a group's header, or a row of up to three codes. */
+/** One slot of a coded column: a group's header, or a row of up to `codesPerRow` codes. */
 export type NoteSlot =
   | { kind: 'header'; product: string; continued: boolean }
   | {
@@ -185,14 +195,17 @@ export interface NotePage {
 
 const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 
+/** How far a page is cut back at a time while it balances the tail (px). */
+const TAIL_STEP = 10;
+
 /** What the named half prints for a line: the sub product, and its size when the name does not carry it already. */
 export function namedLabel(line: NoteLine): string {
   return line.size && !line.subProduct.includes(line.size) ? `${line.subProduct} ${line.size}` : line.subProduct;
 }
 
-/** A named row's height: taller when its label (and brand chip, three characters) wraps past two lines. */
+/** A named row's height: taller when its label (and room for a brand chip) wraps past two lines. */
 export function namedRowHeight(line: NoteLine): number {
-  const chars = namedLabel(line).length + (line.brand ? 3 : 0);
+  const chars = namedLabel(line).length + NOTE_LAYOUT.namedChipChars;
   return Math.ceil(chars / NOTE_LAYOUT.namedCharsPerLine) > 2 ? NOTE_LAYOUT.rowNamedTall : NOTE_LAYOUT.rowNamed;
 }
 
@@ -470,7 +483,22 @@ export function paginateOrderNote(
     const fullHeight = height(false);
     const fullProbe = fillColumns(model.coded, codedAt, columnCount, fullHeight);
     const fitsFull = remainingNamed <= leftRows(fullHeight) && remainingCoded - fullProbe.placed <= 0;
-    const h = fitsLast || fitsFull ? lastHeight : fullHeight;
+    let h = fitsLast || fitsFull ? lastHeight : fullHeight;
+
+    // A page that is not the last must leave the last one a fair share, not one or two lines: the
+    // notes and signatures need a page of their own only if the lines run out exactly at the foot.
+    // Cut it a little earlier until the tail it leaves is at least `minTailLines`.
+    if (!fitsLast) {
+      const placedAt = (height: number): number =>
+        leftRows(height) + fillColumns(model.coded, codedAt, columnCount, height).placed;
+      const remaining = remainingNamed + remainingCoded;
+      const floor = Math.floor(fullHeight / 2);
+      let tail = remaining - placedAt(h);
+      while (tail > 0 && tail < L.minTailLines && h - TAIL_STEP >= floor) {
+        h -= TAIL_STEP;
+        tail = remaining - placedAt(h);
+      }
+    }
 
     const left = fillNamed(model.named, namedAt, wideLeft, h);
     const namedSlice = left.flat();

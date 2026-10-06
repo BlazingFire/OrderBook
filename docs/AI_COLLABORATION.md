@@ -2982,6 +2982,22 @@ answered `/api/health`; the uninstall sweep found every path a real extracted
 The macOS build cannot be run from here — `assertTarget()` refuses it off macOS
 — so that half is guarded rather than executed, and the CI matrix runs it first.
 
+### 2026-10-07 — Note design: Plex Mono 700, "Sep", seven code columns, no orphan page (D7)
+
+**Verified against the artifact** (the real `OrderNote` fed the design's own 550-product data, in a browser,
+both notes, Short 14+84, Typical 46+430, Long 120+1100) and fixed what differed. **Changed.**
+`ui/src/fonts/IBMPlexMono-700-latin.woff2` + its `@font-face` (the same Google Fonts latin file the design ships,
+byte-identical to our 400/500/600 source, OFL); `stamp()` in `OrderNote.tsx` writes fixed month names (Chromium's
+en-GB gave "Sept"); `NOTE_LAYOUT`: one code to a cell, `codedColumns` 3 beside the named half and
+`codedColumnsWide` 7 on a coded-only page (was 1 and 2 columns of 3), `namedCharsPerLine` 26 + `namedChipChars` 3
+(the design's row-height rule), `minTailLines` 12; `paginateOrderNote` cuts the page before the last early enough
+to leave 12+ lines (the notes and signatures no longer sit alone with a few codes); group headers kept (owner's
+choice), their "cont." marker and type slightly smaller so a continued name in a seventh-of-a-page column is not cut.
+**Result.** Page counts equal the design's on the same data: Short 2, Typical 5, Long 12, Filling and Dispatch; no
+element overflows, no label, cell or group name clipped; the last page holds 37+ lines. **Unit (owner's choice):**
+`orderNote.unit` is now "box", as in the design. **Tests.** `shared/tests/order-note.test.ts` (layout, tail, row rule),
+`ui/tests/order-note-print-details.test.ts` (month names, the four font faces); each guard seen failing once.
+
 ### 2026-10-06 — Party Access: rows tidied, CSV export removed (Claude)
 
 **Changed.** The Assigned-to cell now lays names out as wrapping chips (no
