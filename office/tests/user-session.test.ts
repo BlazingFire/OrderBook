@@ -172,6 +172,39 @@ describe('signing in on an Office Panel', () => {
       expect(syncService.mayGoUp(queuedBy(null))).toBe(true);
     });
 
+    it('blocks user-level commands only for somebody signed in offline, never for panel traffic', async () => {
+      expect(userSession.blocksUserCommand('dashboard:get')).toBe(false);
+
+      await signInOnline('correct-horse');
+      expect(userSession.blocksUserCommand('dashboard:get')).toBe(false);
+      userSession.resetSession();
+
+      link.state = 'disconnected';
+      await userSession.signIn('sunita', 'correct-horse');
+      expect(userSession.blocksUserCommand('dashboard:get')).toBe(true);
+      expect(userSession.blocksUserCommand('notice:list')).toBe(true);
+      expect(userSession.blocksUserCommand('auth:reconcile')).toBe(false);
+      expect(userSession.blocksUserCommand('sync:push')).toBe(false);
+    });
+
+    it('ends an offline session that cannot be re-attached, and leaves an online one alone', async () => {
+      await signInOnline('correct-horse');
+      await userSession.endUnattachedOfflineSession();
+      expect(userSession.currentSession()).not.toBeNull();
+      userSession.resetSession();
+
+      link.state = 'disconnected';
+      await userSession.signIn('sunita', 'correct-horse');
+      expect(userSession.currentSession()?.offline).toBe(true);
+
+      await userSession.endUnattachedOfflineSession();
+
+      // Signed out, so the person signs in again; the verifier stays, this is not a revocation.
+      expect(userSession.currentSession()).toBeNull();
+      link.state = 'disconnected';
+      expect((await userSession.signIn('sunita', 'correct-horse')).offline).toBe(true);
+    });
+
     it('holds work while nobody is signed in', async () => {
       expect(syncService.mayGoUp(queuedBy('anybody'))).toBe(false);
     });

@@ -272,9 +272,11 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
     });
 
     it('is granted to every office and management role by the migration, once, and never to an administrator role', async () => {
-      const office = await roleService.createRole({ name: 'Plain office', tier: 'office', permissions: ['leads.view'] }, admin);
-      const management = await roleService.createRole({ name: 'Plain management', tier: 'management', permissions: ['leads.view'] }, admin);
-      const owner = await roleService.createRole({ name: 'Plain admin', tier: 'admin', permissions: ['leads.view'] }, admin);
+      // `noticeBoard: false`: a new role is otherwise given notices.view, which is not what is under test.
+      const plain = { permissions: ['leads.view'], noticeBoard: false };
+      const office = await roleService.createRole({ name: 'Plain office', tier: 'office', ...plain }, admin);
+      const management = await roleService.createRole({ name: 'Plain management', tier: 'management', ...plain }, admin);
+      const owner = await roleService.createRole({ name: 'Plain admin', tier: 'admin', ...plain }, admin);
 
       // The roles above were created after the migration ran, so none holds the keys yet.
       const stored = async (id: string): Promise<string[]> => {

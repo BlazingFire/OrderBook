@@ -118,6 +118,25 @@ let current: PanelSession | null = null;
 // may not have accepted yet; a push sent then is taken as the panel's own, so a party would
 // land open to everybody with nobody as its creator.
 setActingUser(() => (current && !current.offline ? current.userId : null));
+// A person who signed in offline is not re-attached on the Master until it accepts their token
+// (`session.offline` goes false). Until then no user-level command may go up: it would run as the
+// panel, with the panel's role. Panel-level traffic (sign-in, sync, the panel's own reports) is not
+// held. Installed on the link at start-up (`index.ts`).
+const PANEL_LEVEL = /^(auth|panel|sync|session):/;
+export function blocksUserCommand(event: string): boolean {
+  return current?.offline === true && !PANEL_LEVEL.test(event);
+}
+
+/**
+ * The link is up and there is nothing to re-attach an offline-signed-in person with: end their
+ * session so they sign in again (online), rather than leave them on screen as somebody the Master
+ * does not know. Their offline verifier stays: this is not a revocation.
+ */
+export async function endUnattachedOfflineSession(): Promise<void> {
+  if (current?.offline !== true) return;
+  await rejectCurrent('expired');
+}
+
 // The same person decides whose queued work the view draws.
 localStore.setViewer(() => current?.userId ?? null);
 

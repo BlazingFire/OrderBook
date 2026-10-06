@@ -87,7 +87,8 @@ describe.skipIf(!canRunIntegrationTests)('roles & users (integration)', () => {
 
     it('stores the permission set sorted, so a reorder is not an edit', async () => {
       const role = await roleService.createRole(
-        { name: 'Shuffled', tier: 'office', permissions: ['orders.view', 'parties.view'] },
+        // `noticeBoard: false`: this is about the order the keys are stored in, not about the default every new role gets.
+        { name: 'Shuffled', tier: 'office', permissions: ['parties.view', 'orders.view'], noticeBoard: false },
         admin,
       );
 
