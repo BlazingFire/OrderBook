@@ -190,7 +190,7 @@ export function OptionListEditor({
       ? [
           {
             key: 'order',
-            header: t('fields.col.order'),
+            header: t('fields.col.position'),
             width: rem(72),
             render: (item: OptionListItem) => {
               const index = items.indexOf(item);
@@ -235,6 +235,9 @@ export function OptionListEditor({
     {
       key: 'label',
       header: t('fields.values.col.label'),
+      // A table that is not asked to fill its card gives the one unsized column what is left over,
+      // which was 62 px beside five fixed ones and cut "WhatsApp".
+      width: rem(220),
       render: (item) => item.label,
     },
     {
