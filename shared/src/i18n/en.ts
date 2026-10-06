@@ -2624,7 +2624,8 @@ export const EN_MESSAGES = {
   'lead.add.products.noProduct': 'No sub product of this product matches that.',
   'lead.add.flow.completeSubProduct': 'Complete sub product',
   'lead.add.flow.addColour': 'Add a colour',
-  'lead.add.flow.addColourPlaceholder': 'Type a colour — Enter adds it; Enter on an empty box goes to the quantities',
+  'lead.add.flow.addColourPlaceholder': 'Type or pick a colour',
+  'lead.add.flow.colourKeys': 'Enter adds the highlighted colour and stays for the next. Enter on the empty box goes to the quantities.',
   'lead.add.draft.hintColour': 'Add at least one colour',
   'lead.add.draft.noColourList':
     'This product comes in several colours, but the company colour list is empty, so there is no colour to pick. Add colours under Fields › Values › Colour, then add the product again. Until then it is added without a colour.',

@@ -716,6 +716,122 @@ describe('a multicolour sub product', () => {
   });
 });
 
+describe('Office: colour as a step of the Enter flow', () => {
+  const qtyBox = (named: string): HTMLInputElement =>
+    screen.getByLabelText(`${t('lead.add.draft.col.quantity')} — ${named}`);
+
+  it('opens a multicolour card on the colour box with the list down, and Enter takes the first colour', async () => {
+    await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    await pickSubProduct(MULTI.name);
+
+    const colourBox = await screen.findByLabelText(t('lead.add.flow.addColour'));
+    expect(document.activeElement).toBe(colourBox);
+    // The list is already down, first colour highlighted, nothing typed.
+    const options = within(screen.getByRole('listbox')).getAllByRole('option');
+    expect(options.map((option) => option.textContent)).toEqual(['White', 'Ivory']);
+    expect(options[0]!.getAttribute('aria-selected')).toBe('true');
+
+    await pressEnter(colourBox);
+    // White is taken as a row, the caret stays for the next colour, the list is closed.
+    expect(qtyBox('White')).toBeTruthy();
+    expect(document.activeElement).toBe(colourBox);
+    expect(screen.queryByRole('listbox')).toBeNull();
+
+    // Enter on the empty box, the list closed, goes on to the quantities.
+    await pressEnter(colourBox);
+    expect(document.activeElement).toBe(qtyBox('White'));
+  });
+
+  it('walks colour, then each colour row quantity, packaging and grade in order, then Add product', async () => {
+    await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    await pickSubProduct(MULTI.name);
+    const colourBox = await screen.findByLabelText(t('lead.add.flow.addColour'));
+
+    // Two colours quickly: type to narrow, Enter takes, the caret stays.
+    for (const typed of ['Whi', 'Ivo']) {
+      fireEvent.change(colourBox, { target: { value: typed } });
+      await pressEnter(colourBox);
+      expect(document.activeElement).toBe(colourBox);
+    }
+
+    const order: HTMLElement[] = [];
+    await pressEnter(colourBox);
+    order.push(document.activeElement as HTMLElement);
+    for (const colour of ['White', 'Ivory']) {
+      fireEvent.change(qtyBox(colour), { target: { value: '3' } });
+      if (colour === 'Ivory') order.push(document.activeElement as HTMLElement);
+      await pressEnter(qtyBox(colour));
+      order.push(document.activeElement as HTMLElement);
+      await pressEnter(packagingBox(colour));
+      order.push(document.activeElement as HTMLElement);
+      await pressEnter(gradeBox(colour));
+      order.push(document.activeElement as HTMLElement);
+    }
+
+    expect(order[0]).toBe(qtyBox('White'));
+    // White: quantity -> packaging -> grade, then the next colour's quantity.
+    expect(order.slice(1, 4)).toEqual([packagingBox('White'), gradeBox('White'), qtyBox('Ivory')]);
+    // Ivory: quantity -> packaging -> grade, then Add product.
+    expect(order.slice(5, 8)).toEqual([packagingBox('Ivory'), gradeBox('Ivory'), addButton()]);
+  });
+
+  it('puts the caret back on the colour box when Escape walks back from the first quantity', async () => {
+    await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    await pickSubProduct(MULTI.name);
+    const colourBox = await screen.findByLabelText(t('lead.add.flow.addColour'));
+    await pressEnter(colourBox);
+    await pressEnter(colourBox);
+    expect(document.activeElement).toBe(qtyBox('White'));
+
+    await act(async () => {
+      fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+      await wait(0);
+    });
+    expect(document.activeElement).toBe(colourBox);
+  });
+
+  it('opens the list again on Enter in the empty colour box while no colour is taken yet', async () => {
+    await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    await pickSubProduct(MULTI.name);
+    const colourBox = await screen.findByLabelText(t('lead.add.flow.addColour'));
+
+    // Escape closes the list; Enter must not be dead on a card with nothing to walk on to.
+    fireEvent.keyDown(colourBox, { key: 'Escape' });
+    expect(screen.queryByRole('listbox')).toBeNull();
+    await pressEnter(colourBox);
+    expect(screen.getByRole('listbox')).toBeTruthy();
+    expect(document.activeElement).toBe(colourBox);
+  });
+
+  it('keeps the key hint under the box and the placeholder short, so nothing is clipped at a large scale', async () => {
+    await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    await pickSubProduct(MULTI.name);
+    const colourBox = await screen.findByLabelText(t('lead.add.flow.addColour'));
+
+    // One short line fits a narrow box at 157 %; the sentence about the keys wraps below it.
+    expect((colourBox as HTMLInputElement).placeholder.length).toBeLessThanOrEqual(32);
+    expect(document.querySelector('[data-colour-keys]')?.textContent).toBe(t('lead.add.flow.colourKeys'));
+  });
+
+  it('shows a fixed colour and skips it: the card opens on the quantity, with no colour box', async () => {
+    await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    await pickSubProduct(FIXED.name);
+
+    const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — White`);
+    expect(screen.queryByLabelText(t('lead.add.flow.addColour'))).toBeNull();
+    expect(document.activeElement).toBe(qty);
+  });
+
+  it('has no colour step for a dedicated sub product: the card opens on the quantity', async () => {
+    await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    await pickSubProduct(DEDICATED.name);
+
+    const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — OPT-0003`);
+    expect(screen.queryByLabelText(t('lead.add.flow.addColour'))).toBeNull();
+    expect(document.activeElement).toBe(qty);
+  });
+});
+
 describe('a dedicated sub product', () => {
   it('asks for a quantity only, and its line carries no colour', async () => {
     const calls = await openForm();
