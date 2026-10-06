@@ -100,6 +100,16 @@ describe('TopbarTitle', () => {
     expect(document.querySelector('.ob-topbar-title svg')).not.toBeNull();
   });
 
+  it('names the module before a sub-page, and not before a module page (U10 G6)', () => {
+    render(<TopbarTitle groups={groups} activeId="leads.followups" fallback="Somewhere" />);
+    expect(document.querySelector('.ob-topbar-parent')?.textContent).toBe('Leads ›');
+    cleanup();
+
+    render(<TopbarTitle groups={groups} activeId="leads" fallback="Somewhere" />);
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Leads');
+    expect(document.querySelector('.ob-topbar-parent')).toBeNull();
+  });
+
   it('falls back to the given name for a page with no sidebar entry', () => {
     render(<TopbarTitle groups={groups} activeId="nowhere" fallback="Somewhere" />);
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Somewhere');

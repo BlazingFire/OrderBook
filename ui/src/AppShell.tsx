@@ -72,6 +72,27 @@ export function TopbarTitle({
     <span className="ob-topbar-title">
       {top && <Icon name={top.icon} size={18} />}
       {group && <span className="ob-eyebrow ob-topbar-eyebrow">{group.label}</span>}
+      {/* A sub-page names its module first ("Pending Orders › List"), so the module is not
+          lost (U10 G6). Beside the heading, not in it: the h1 stays the page's own name.
+          When the bar is tight the module name gives way before the page name. Flex
+          shrink is weighted by width, so even 1000 to the h1's 1 left "List" a fraction of a
+          pixel short, enough for its ellipsis; at 1e6 the h1's share rounds to nothing until
+          the module name is empty, and only then does the h1 itself shrink. */}
+      {top && page && page !== top && (
+        <span
+          className="ob-topbar-parent"
+          style={{
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            minWidth: 0,
+            flexShrink: 1e6,
+            color: 'var(--fg-secondary)',
+          }}
+        >
+          {top.label} ›
+        </span>
+      )}
       {/* The full name as a tooltip, but only while it is cut: a standing `title` would
           also name this heading to every query that looks a sidebar row up by title. */}
       <h1
