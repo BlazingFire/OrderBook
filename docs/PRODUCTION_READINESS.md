@@ -80,8 +80,9 @@ is true.
    real machine — that is the one item nobody can do from the repository.
 5. **Code-sign the executables** (a certificate purchase, not a code change),
    or accept that Windows SmartScreen warns on first run and tell customers
-   so. `signAndEditExecutable: false` also leaves Electron's own name in the
-   `.exe` properties until then.
+   so. `signAndEditExecutable: false` also skips electron-builder's resource edit;
+   since U11 (2026-10-07) the `afterPack` hook writes the OrderBook icon and name
+   into the `.exe` itself (`tools/exe-icon.cjs`).
 6. **Decide the update channel per site.** Internet-connected Masters get
    `ORDERBOOK_RELEASES_GITHUB_REPO` in their `.env` (a *public* releases
    repository; see `docs/UPDATES.md`); air-gapped sites get the releases

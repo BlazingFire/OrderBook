@@ -24,6 +24,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { stampExe } = require('./exe-icon.cjs');
 
 const SENTINEL = Buffer.from('dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX');
 const DISABLED = 0x30;
@@ -80,6 +81,10 @@ function readFuses(buffer, indexes = SWITCH_OFF) {
 async function afterPack(context) {
   if (context.electronPlatformName !== 'win32') return;
   const exe = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.exe`);
+  // The icon and name first (tools/exe-icon.cjs says why), so the fuses are flipped in the final bytes.
+  const { productName, version } = context.packager.appInfo;
+  const images = stampExe(exe, await context.packager.getIconPath(), { productName, version });
+  console.log(`  icon: ${path.basename(exe)} — ${images} images, "${productName}" ${version}`);
   const bytes = fs.readFileSync(exe);
   const turnedOff = flipFuses(bytes);
   fs.writeFileSync(exe, bytes);

@@ -28,6 +28,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -888,4 +889,65 @@ describe('the uninstall script knows what the .deb installs', () => {
     expect(script).toContain('/usr/share/applications/$exec_name.desktop');
     expect(script).toContain('/usr/bin/$exec_name');
   });
+});
+
+describe('the Windows executable carries the OrderBook icon (U11)', () => {
+  /*
+   * `signAndEditExecutable: false` also skips electron-builder's resource edit, so
+   * without the afterPack stamp the installed panel's exe, and so its window,
+   * taskbar button and shortcuts, keep Electron's own icon and name.
+   */
+  const WINDOWS_YMLS = [
+    ['master', 'electron-builder.yml'],
+    ['office', 'electron-builder.yml'],
+    ['office', 'electron-builder.legacy.yml'],
+  ] as const;
+  const ICO_SIZES = [16, 24, 32, 48, 64, 128, 256];
+
+  /** The image sizes in an .ico's directory (a width byte of 0 means 256). */
+  const icoSizes = (ico: Buffer): number[] =>
+    Array.from({ length: ico.readUInt16LE(4) }, (_, i) => ico[6 + 16 * i] || 256);
+
+  it("every Windows build uses the panel's multi-size .ico and runs the afterPack hook that stamps it", () => {
+    for (const [panel, file] of WINDOWS_YMLS) {
+      const yml = readText(panel, file);
+      // The `win:` block: from its header to the next top-level key.
+      const win = yml.split(/^win:\n/m)[1]?.split(/^\S/m)[0] ?? '';
+      expect(win, `${panel}/${file} win.icon`).toMatch(/^ {2}icon: installer\/icon\.ico$/m);
+      expect(yml, `${panel}/${file}`).toMatch(/^afterPack: \.\.\/tools\/flip-fuses\.cjs$/m);
+      expect(icoSizes(readFileSync(path.join(ROOT, panel, 'installer', 'icon.ico'))), `${panel} icon.ico`).toEqual(ICO_SIZES);
+    }
+    const hook = readText('tools', 'flip-fuses.cjs');
+    const stamp = hook.indexOf('stampExe(exe, await context.packager.getIconPath()');
+    expect(stamp).toBeGreaterThan(-1);
+    expect(hook.indexOf('flipFuses(bytes)', stamp)).toBeGreaterThan(stamp);
+  });
+
+  it("stampExe replaces Electron's icon and name in a real Electron executable", () => {
+    const { stampExe, readExe } = createRequire(import.meta.url)('../../tools/exe-icon.cjs') as {
+      stampExe: (exe: string, ico: string, id: { productName: string; version: string }) => number;
+      readExe: (exe: string) => { sizes: number[]; strings: Record<string, string> };
+    };
+    const electronExe = path.join(ROOT, 'node_modules', 'electron', 'dist', 'electron.exe');
+    if (!existsSync(electronExe)) return; // electron's Windows binary exists only on a Windows install
+
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'ob-icon-'));
+    try {
+      const exe = path.join(dir, 'OrderBook Office Panel.exe');
+      writeFileSync(exe, readFileSync(electronExe));
+      expect(readExe(exe).strings.ProductName).toBe('Electron');
+
+      const ico = path.join(ROOT, 'office', 'installer', 'icon.ico');
+      expect(stampExe(exe, ico, { productName: 'OrderBook Office Panel', version: '1.4.4' })).toBe(ICO_SIZES.length);
+      const after = readExe(exe);
+      expect(after.sizes).toEqual(ICO_SIZES);
+      expect(after.strings).toMatchObject({
+        ProductName: 'OrderBook Office Panel',
+        FileDescription: 'OrderBook Office Panel',
+        FileVersion: '1.4.4.0', // setFileVersion writes the four-part form
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
 });
