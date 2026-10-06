@@ -426,6 +426,17 @@ class MasterConnection extends EventEmitter {
     });
 
     socket.on('sync:snapshot', (snapshot) => {
+      // A snapshot is built for whoever the link is acting as. If that is not the person signed in
+      // here (an earlier person's token was left on the link), it is theirs, not this person's:
+      // never shown, never written to this PC's disk. An offline session is ended (it gets the
+      // token released and signs in again); an online one gets its own snapshot once it is attached.
+      const viewer = localStore.currentViewer();
+      if (snapshot.builtForUserId && viewer && snapshot.builtForUserId !== viewer) {
+        log.warn('Ignoring a snapshot built for somebody other than the person signed in here');
+        this.emit('session:unattached');
+        return;
+      }
+
       const epoch = this.connectEpoch;
       this.snapshot = snapshot;
       this.lastSyncedAt = snapshot.serverTime;

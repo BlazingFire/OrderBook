@@ -308,6 +308,32 @@ describe('the protocol handshake', () => {
     });
   });
 
+  describe('a snapshot built for somebody other than the person signed in', () => {
+    it('is never shown or kept, and asks for the session to be ended; their own is taken as usual', async () => {
+      const link = await connected();
+      const shown = vi.fn();
+      const unattached = vi.fn();
+      masterConnection.on('snapshot', shown);
+      masterConnection.on('session:unattached', unattached);
+      local.viewer = 'office1';
+      const before = masterConnection.getSnapshot();
+
+      link.emit('sync:snapshot', { ...snapshot(5), builtForUserId: 'management1' });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(shown).not.toHaveBeenCalled();
+      expect(unattached).toHaveBeenCalled();
+      expect(masterConnection.getSnapshot()).toBe(before);
+
+      link.emit('sync:snapshot', { ...snapshot(5), builtForUserId: 'office1' });
+      await vi.waitFor(() => expect(shown).toHaveBeenCalledTimes(1));
+
+      masterConnection.off('snapshot', shown);
+      masterConnection.off('session:unattached', unattached);
+      link.emit('disconnect', 'transport close');
+    });
+  });
+
   describe('a cache built for somebody else', () => {
     const delta = {
       bootId: 'boot',

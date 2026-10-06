@@ -205,6 +205,51 @@ describe('signing in on an Office Panel', () => {
       expect((await userSession.signIn('sunita', 'correct-horse')).offline).toBe(true);
     });
 
+    it('an offline sign-in with no stored token releases the token an earlier person left on the link', async () => {
+      await signInOnline('correct-horse');
+      expect(link.assumed).toBe('token-abc');
+      const id = userSession.currentSession()!.userId;
+      // The first person is never signed out here; the second has no token of their own to present.
+      userSession.resetSession();
+      await userStore.update(id, { masterToken: null } as never);
+
+      link.state = 'disconnected';
+      await userSession.signIn('sunita', 'correct-horse');
+
+      // Left in place, the Master would re-attach the panel as the first person on reconnect.
+      expect(link.assumed).toBeNull();
+    });
+
+    it('ends and releases a person the Master re-attached as somebody else, and keeps one it re-attached as themselves', async () => {
+      await signInOnline('correct-horse');
+      const mine = userSession.currentSession()!.userId;
+
+      await userSession.refreshFrom({
+        ...MASTER_USER,
+        id: mine,
+        displayName: 'Same Person',
+      } as never);
+      expect(userSession.currentSession()?.displayName).toBe('Same Person');
+
+      await userSession.refreshFrom({ ...MASTER_USER, id: 'US-SOMEBODY-ELSE' } as never);
+
+      expect(userSession.currentSession()).toBeNull();
+      expect(link.assumed).toBeNull();
+    });
+
+    it('releases the link’s token when it ends an offline session it could not re-attach', async () => {
+      await signInOnline('correct-horse');
+      userSession.resetSession();
+      link.state = 'disconnected';
+      await userSession.signIn('sunita', 'correct-horse');
+      link.assumed = 'token-of-somebody-else';
+
+      await userSession.endUnattachedOfflineSession();
+
+      expect(link.assumed).toBeNull();
+      expect(userSession.currentSession()).toBeNull();
+    });
+
     it('holds work while nobody is signed in', async () => {
       expect(syncService.mayGoUp(queuedBy('anybody'))).toBe(false);
     });
