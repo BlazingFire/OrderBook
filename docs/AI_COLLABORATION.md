@@ -190,6 +190,21 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-06 - Party private to its creator, 1.4.4: CH1 and seven Sonnet sessions (Claude, Opus + Sonnet)
+
+- **Who did what.** The plan is `CLAUDE_HELPER_PV.md` (P1–P5, untracked).
+  - **D2:** the creator grant, hidden-equals-missing, the import scope, and the 503 author hold on the Master.
+  - **D1:** the Office per-person view, outbox authorship and the fail-closed offline switch.
+  - **D3:** the Visible to marker, the creator in Party Access, the Parties card, and the Win7 build.
+  - **D6:** the scenario seed, audit fixes F3/F5/F6/F7, and the docs.
+  - **D7 and D4:** adversarial audits, Master side and Office side. They found about 15 issues on the
+    base, plus 5 in the first versions of the fixes; all are fixed and re-attacked live.
+  - **D5:** the merges, the gate and the two-process pass.
+  - **CH1:** the plan, the verdicts, and the build.
+- **Verified.** The gate on `4c907ed`: lint, build, typecheck, test (341 files, 4,539 tests),
+  `smoke:legacy`, each 0. D7's final regression on `3583d2e`: every group passed.
+- **Release.** Built, not published. `main` @ `93fd1ac` is local and waits for the owner.
+
 ### 2026-10-06 - UI fixes: tab strip, footer, party form, import/export icons, empty colour list (Claude, Sonnet)
 
 - **Tab strip** (`.ob-tabs`): `overflow-y: hidden` and the underline at `bottom: 0`. The 1px underline

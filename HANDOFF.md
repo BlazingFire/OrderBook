@@ -52,6 +52,49 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
+## Party private to its creator + 1.4.4 (2026-10-06)
+
+**State:** built, not published. `main` @ `93fd1ac` (the 1.4.4 bump on D5's green `3583d2e`) is
+local and not pushed. Signed Setups were built into the scratch folders `.tmpel144` (Master and
+Office) and `OrderBook-d3/.tmp` (Win7). The owner decides whether to push and publish. Notes:
+`docs/releases/1.4.4.md`. Rule: `docs/schema/06-…` §2a, `docs/ROLES_AND_USERS.md` 15b,
+`docs/STRUCTURE.md` 11.11, API contract §21. Plan and evidence: `CLAUDE_HELPER_PV.md` (P1–P5, owner
+decisions) and the "Party visibility (2026-10-06)" sections of `CLAUDE_HELPER_D1.md`…`D7.md`.
+
+**Gate on `4c907ed`** (all code merged; then docs only): lint 0, build 0, typecheck 0, test 0
+(341 files + 1 skipped; 4,539 tests + 17 skipped), `smoke:legacy` 0.
+
+**The rule now:**
+- A party created by someone without `party.accessAll` gets the creator's `manage` grant inside
+  the create transaction, before the change event (`createParty` and party import, through one
+  helper). Only that person, `party.accessAll` holders (admins) and the Master see it.
+- Parties created by an admin, and every existing party, have no rows and stay open to everyone.
+- A hidden party answers exactly like a missing one (404) on every path.
+
+**Owner decisions:**
+- Print room, option 1: `print.station` sees every print job, whatever the party.
+- Management sees all parties only with `party.accessAll`.
+- `parties.create` and `parties.edit` are office tier and shown on the role editor's Parties card.
+
+**Office, one PC used by several people:**
+- Queued work carries its author and flushes only while the author is signed in. On the Master, a
+  userless or mismatched-author push is held with 503 `signInToSync`, which also covers 1.4.3 Offices.
+- The view shows queued work only to its author.
+- A cache built for somebody else shows only `openPartyIds`, plus the viewer's own queued parties
+  (`ownQueuedPartyIds`, read from the outbox).
+- No delta is ever folded onto another person's cache; the Office takes a full snapshot instead.
+- Refusals, pending counts, `partyAccessCounts` and the dashboard are per viewer.
+
+**Also fixed (audit, D7 and D4):** party conflicts are scoped and only `sync.resolveConflicts`
+holders get them; panel activity is scoped; the access check runs before `buildLines`; delta replay
+fails closed; the import dry run is scoped; the restore regression is fixed.
+
+**Not verified:** a second Office PC, the Electron shell, Win7, and creator grants for connector and
+public-API parties (read in the code only).
+
+**Known limit (deliberate):** offline, a person signing in after somebody else sees only open
+parties until online again.
+
 ## Speed, limits, stability, duplicates + 1.4.3 (2026-10-05)
 
 **State:** released. `main` @ `60d6b50` (the 1.4.3 bump on D5's green `6e0c006`) is pushed, and

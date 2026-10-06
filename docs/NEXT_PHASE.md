@@ -10,7 +10,18 @@ This file assumes both.
 
 ---
 
-## First: 1.4.3 is released; what comes next (2026-10-05)
+## First: 1.4.4 is built; what comes next (2026-10-06)
+
+1.4.4 (a party is private to the office user who created it) is on local `main` @ `93fd1ac`, built
+and signed, not pushed or published. The details are in `HANDOFF.md` under "Party private to its
+creator + 1.4.4". In order:
+
+1. The owner decides: push `main` and publish v1.4.4 (Setups and manifests only).
+2. The owner installs the Master, then the Offices.
+3. A real two-PC pass with two office users and an admin.
+4. Still open from 1.4.3: whether Duplicates should merge a Product that holds sub products.
+
+## Before that: 1.4.3 is released (2026-10-05)
 
 1.4.3 is on `main` @ `60d6b50` and published as v1.4.3 (Setups and manifests only). It brings
 rate limits, caching, paged order lists, the Duplicates page, the sign-in device warning, Save
