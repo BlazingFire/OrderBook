@@ -203,6 +203,27 @@ function openBody(): { response: Route; push: (bytes: Buffer) => void; end: () =
 }
 
 /**
+ * Counts the poll's finished runs through its `afterPoll` hook, and waits for
+ * the n-th. A poll downloads, hashes and renames real files, so how long it
+ * takes is real time, not fake timer time: `vi.waitFor` gave it its default
+ * 1 s and, under a loaded full suite, timed out before the manifest landed
+ * (UPD-63 and UPD-67 failed about one run in five with six CPU burners).
+ */
+function pollWatcher() {
+  let finished = 0;
+  let wake: (() => void) | null = null;
+  return {
+    afterPoll: async (): Promise<void> => {
+      finished += 1;
+      wake?.();
+    },
+    async until(runs: number): Promise<void> {
+      while (finished < runs) await new Promise<void>((resolve) => (wake = resolve));
+    },
+  };
+}
+
+/**
  * Import the service with a repo configured and the test key trusted.
  *
  * `config` reads `process.env` once at module load and the trusted key list is
@@ -530,20 +551,23 @@ describe('polling for releases in the background', () => {
     const { startReleasePolling } = await import('../src/services/update.service.js');
 
     vi.useFakeTimers();
-    const stop = startReleasePolling();
+    const polls = pollWatcher();
+    const stop = startReleasePolling(polls.afterPoll);
 
     const asks = () => requested.filter((url) => url === API).length;
 
     // Nothing at boot: a shop PC starts up before it downloads 150 MB.
     expect(requested).toEqual([]);
 
-    // `waitFor` rather than a bare assertion after advancing: the poll writes
+    // Waited for rather than asserted straight after advancing: the poll writes
     // to disk, and file I/O is not something advancing a timer flushes.
     await vi.advanceTimersByTimeAsync(3 * 60_000);
-    await vi.waitFor(() => expect(asks()).toBe(2)); // one ask per panel
+    await polls.until(1);
+    expect(asks()).toBe(2); // one ask per panel
 
     await vi.advanceTimersByTimeAsync(61 * 60_000);
-    await vi.waitFor(() => expect(asks()).toBe(4));
+    await polls.until(2);
+    expect(asks()).toBe(4);
 
     stop();
     await vi.advanceTimersByTimeAsync(6 * 60 * 60_000);
@@ -1021,12 +1045,13 @@ describe('one releases folder, several operating systems', () => {
     const { readManifest, startReleasePolling } = await import('../src/services/update.service.js');
 
     vi.useFakeTimers();
-    const stop = startReleasePolling();
+    const polls = pollWatcher();
+    const stop = startReleasePolling(polls.afterPoll);
     await vi.advanceTimersByTimeAsync(3 * 60_000);
-    await vi.waitFor(async () =>
-      expect((await readManifest('office', 'darwin'))?.file).toBe(mac.file),
-    );
+    await polls.until(1);
     stop();
+
+    expect((await readManifest('office', 'darwin'))?.file).toBe(mac.file);
 
     expect((await readManifest('office', 'win32'))?.file).toBe(windows.file);
     expect((await readManifest('master', 'win32'))?.file).toBe(master.file);
@@ -1118,12 +1143,13 @@ describe('one releases folder, several operating systems', () => {
     const { readManifest, startReleasePolling } = await import('../src/services/update.service.js');
 
     vi.useFakeTimers();
-    const stop = startReleasePolling();
+    const polls = pollWatcher();
+    const stop = startReleasePolling(polls.afterPoll);
     await vi.advanceTimersByTimeAsync(3 * 60_000);
-    await vi.waitFor(async () =>
-      expect((await readManifest('office', 'win7'))?.file).toBe(win7.file),
-    );
+    await polls.until(1);
     stop();
+
+    expect((await readManifest('office', 'win7'))?.file).toBe(win7.file);
 
     expect((await readManifest('office', 'win32'))?.file).toBe(windows.file);
   });
