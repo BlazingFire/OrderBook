@@ -110,6 +110,14 @@ import type { BinCounts, BinEntry, BinRestoreResult } from '../domain/recycle-bi
 import type { SettingKey, SettingView } from '../domain/settings.js';
 import { CHAT_MIN_PROTOCOL } from '../domain/chat.js';
 import { PRINTROOM_MIN_PROTOCOL } from '../domain/printroom.js';
+import {
+  NOTICE_MIN_PROTOCOL,
+  type Notice,
+  type NoticeBoard,
+  type NoticeInput,
+  type NoticeReaders,
+  type NoticeUpdate,
+} from '../domain/notices.js';
 import type {
   PrintJob,
   PrintJobInput,
@@ -178,7 +186,7 @@ export interface PanelAuthPayload {
  * socket command, so either side can tell the other is too old for one before
  * sending it, instead of waiting out a timeout.
  */
-export const PANEL_PROTOCOL_VERSION = 9;
+export const PANEL_PROTOCOL_VERSION = 10;
 
 /**
  * The lowest Master protocol each command needs. A command not listed has
@@ -218,6 +226,14 @@ export const COMMAND_MIN_PROTOCOL: Partial<Record<keyof ClientToServerEvents, nu
   'print:claim': PRINTROOM_MIN_PROTOCOL,
   'print:stations': PRINTROOM_MIN_PROTOCOL,
   'print:station': PRINTROOM_MIN_PROTOCOL,
+  // The notice board (protocol 10).
+  'notice:list': NOTICE_MIN_PROTOCOL,
+  'notice:manageList': NOTICE_MIN_PROTOCOL,
+  'notice:readers': NOTICE_MIN_PROTOCOL,
+  'notice:create': NOTICE_MIN_PROTOCOL,
+  'notice:update': NOTICE_MIN_PROTOCOL,
+  'notice:delete': NOTICE_MIN_PROTOCOL,
+  'notice:markRead': NOTICE_MIN_PROTOCOL,
   'presence:beat': 4,
   // 1.4 D3: Create product share. All four 1.4 sessions take protocol 7.
   'product:sharePdf': 7,
@@ -372,6 +388,13 @@ export type ChangedEntity =
   | 'role'
   | 'user'
   /**
+   * A notice was created, changed or removed. `payload` is `{ audience }`, the union of the
+   * audience before and after and nothing else: the title and body never ride the change ring.
+   * A panel that is in the audience takes a fresh snapshot (it holds the notices, scoped to
+   * its user), so this entity is snapshot-forcing; one that is not in it is not sent the event.
+   */
+  | 'notice'
+  /**
    * The whole catalogue moved at once — a bulk import. There is no single row
    * to upsert, and publishing one `product` event per imported row would push
    * a five-thousand-row file straight through the change ring and force every
@@ -495,6 +518,7 @@ export const REPLAYABLE_ENTITIES: readonly ChangedEntity[] = [
 export const SNAPSHOT_FORCING_ENTITIES: readonly ChangedEntity[] = [
   'party_variant',
   'sync_conflict',
+  'notice',
   'pipeline',
   'option_list',
   'custom_field',
@@ -589,6 +613,12 @@ export interface SyncSnapshot {
    * "Shared with N" markers; the panel never decides access from it.
    */
   partyAccessCounts?: Record<string, number>;
+  /**
+   * The notices meant for the user this snapshot is for: in their audience, not expired,
+   * newest and pinned first, each with `readByMe`. Empty without `notices.view`. Absent from
+   * an older Master's snapshot (before protocol 10): the panel then shows no board.
+   */
+  notices?: Notice[];
   /**
    * The user this snapshot was scoped for, so a panel can tell whether the
    * copy on its disk is still the right one for whoever is signed in now.
@@ -1015,6 +1045,29 @@ export interface ClientToServerEvents {
   'print:stations': (ack: CommandAck<PrintStation[]>) => void;
   /** Register this PC as a station, or say it is still alive. */
   'print:station': (input: PrintStationInput, ack: CommandAck<PrintStation>) => void;
+
+  // --- Notice board (protocol 10) --------------------------------------------
+  /*
+   * Twinned with the Master's `/api/notices` REST routes: the Master's own browser uses those,
+   * an Office Panel uses these. What a reader may see is decided by the acting user's role,
+   * never by the payload. `notice:list` and `notice:markRead` need `notices.view`; the rest
+   * need `notices.manage`.
+   */
+  /** The notices meant for the person acting: not expired, in their audience, with `readByMe`. */
+  'notice:list': (ack: CommandAck<NoticeBoard>) => void;
+  /** Every notice, expired ones included, with audience role names and read counts. */
+  'notice:manageList': (ack: CommandAck<Notice[]>) => void;
+  /** Everybody in a notice's audience, with when each read it (null: not yet). */
+  'notice:readers': (id: string, ack: CommandAck<NoticeReaders>) => void;
+  'notice:create': (input: NoticeInput, ack: CommandAck<Notice>) => void;
+  'notice:update': (input: { id: string } & NoticeUpdate, ack: CommandAck<Notice>) => void;
+  /** A soft delete: the notice goes to the Recycle Bin. */
+  'notice:delete': (id: string, ack: CommandAck<{ id: string }>) => void;
+  /** `ids` omitted: everything in the board. Answers the new unread count. */
+  'notice:markRead': (
+    input: { ids?: string[] },
+    ack: CommandAck<{ unreadCount: number }>,
+  ) => void;
 
   // --- Dashboard (docs/backend-modules/04-API-CONTRACT.md §7) ---------------
   /** The one live pull — everything else rides on `SyncSnapshot.dashboard` and the `dashboard:changed` push. */

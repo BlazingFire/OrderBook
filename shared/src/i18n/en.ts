@@ -82,6 +82,8 @@ export const EN_MESSAGES = {
   'permission.chat.tasks': 'Give tasks to colleagues in chat',
   'permission.chat.createGroups': 'Create chat groups',
   'permission.chat.manage': 'Manage every chat group in the company',
+  'permission.notices.view': 'Read the notice board',
+  'permission.notices.manage': 'Put up, change and remove notices, choose who sees them and see who has read them',
 
   // --- module.* — one per MODULES entry ---
   'module.leads': 'Pending Orders',
@@ -111,6 +113,7 @@ export const EN_MESSAGES = {
   'capabilityGroup.workflow': 'Workflow',
   'capabilityGroup.admin': 'Administration',
   'capabilityGroup.chat': 'Chatroom',
+  'capabilityGroup.notices': 'Notice board',
 
   // --- roleTemplate.* ---
   'roleTemplate.sales': 'Sales',
