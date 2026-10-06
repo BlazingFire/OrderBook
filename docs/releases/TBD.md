@@ -1,0 +1,51 @@
+# OrderBook (version TBD): party visibility
+
+**Draft.** Not released. The version number and date are filled in by whoever cuts the release;
+rename this file to the version then. Items in "Check before release" are not yet confirmed.
+
+## Install order
+
+As before:
+1. Install the Master Setup over the existing install first. There is no need to uninstall
+   it; the data is kept.
+2. Then install each Office Setup, or the Win7 Office Setup on Windows 7.
+3. From then on, updates are automatic.
+
+## What changed
+
+- **A party an office user adds is private to that user.** When someone whose role does not
+  see every party adds a party, only that person and the administrators (and the Master) can
+  see it. Other office users do not see the party, its pending orders, its final orders, or
+  it in search, the dashboard, reports and chat. Administrators see everything, as before.
+  - A party an administrator adds stays open to everyone. An administrator can make it
+    private, or share a private one with more people, in **Party Access**.
+  - Removing a person's name from a private party in Party Access, when theirs is the only
+    name on it, makes the party open to everyone again.
+  - The same applies to every party an office user imports from a file.
+  - A party someone cannot see is reported as "not found", never as "not assigned to you".
+- **Parties that already exist are not changed.** Nothing is made private by this update.
+- **Giving an office role the right to add and edit parties.** In Access, open the role and
+  tick **Create parties** and **Edit parties**. Both already existed.
+- **The party form tells the person.** When someone who does not see every party adds a
+  party, the form says: "Only you and administrators will see this party."
+- **Office PCs shared by several people.**
+  - A person's work waits until that person signs in. If A adds a party while the Master is
+    unreachable and then signs out, it is sent when A signs in again on that PC, never under
+    the next person's name. It does not block anybody else's work.
+  - The unsent-change count on the screen counts only the signed-in person's own changes.
+  - While the Master is unreachable and a different person signs in, that person sees only
+    the parties that are open to everyone, plus the ones they have added and not yet sent.
+    The rest appear when the Office reconnects.
+  - After an Office restart, the first connection loads the full list once.
+- **Smaller security fixes found while testing.** Sync conflicts, a PC's activity list, an
+  offline edit that moves an order to another party, and the catch-up after a short
+  disconnection no longer reveal a party the person cannot see.
+
+## Check before release
+
+- The Private / Shared marker in the party lists, and the "who can see this" count in Party
+  Access (built by another session): confirm they are in, then add a line here.
+- A real two-PC pass: one Master, one Office with two office users and one administrator.
+  `node tools/seed-party-scenario.mjs --port <master port>` builds the same people on a
+  scratch Master.
+- The Electron window and the dark theme were not exercised.
