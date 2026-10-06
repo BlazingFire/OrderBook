@@ -79,7 +79,7 @@ export function SetupScreen({ connection, result, onContinue, onLeft }: Props) {
       : t('connection.setup.connecting', { company });
 
   return (
-    <div style={{ maxWidth: rem(520), margin: 'var(--s-56) auto', padding: '0 var(--s-16)' }}>
+    <div style={{ maxWidth: rem(520), margin: '0 auto', padding: 'var(--s-56) var(--s-16)' }}>
       <h1 className="ob-display" style={{ marginBottom: 'var(--s-16)' }}>
         {t('connection.setup.title')}
       </h1>

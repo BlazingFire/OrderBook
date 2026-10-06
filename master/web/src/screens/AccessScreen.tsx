@@ -605,7 +605,8 @@ function UsersTab({
     {
       key: 'avatar',
       header: '',
-      width: rem(44),
+      // The 24 px face, its Server Master ring and the cell padding: 44 clipped the ring.
+      width: rem(52),
       render: (user) => (
         <Avatar
           name={user.displayName}

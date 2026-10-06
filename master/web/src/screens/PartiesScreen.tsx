@@ -67,6 +67,7 @@ import {
   PartyImportControls,
   SkeletonTable,
   StatusPill,
+  formatDate,
   formatDateTime,
   presenceOf,
   recordNumberText,
@@ -419,7 +420,8 @@ export function PartiesScreen({
       priority: 3,
       width: rem(110),
       sortable: true,
-      render: (party) => formatDateTime(party.createdAt),
+      // The date alone: a date and time ran 179 px in this 110 px column.
+      render: (party) => formatDate(party.createdAt),
     },
   ];
 

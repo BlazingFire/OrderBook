@@ -105,7 +105,9 @@ export function SignInScreen({
         gap: 'var(--s-24)',
         maxWidth: rem(420),
         margin: '0 auto',
-        padding: 'var(--s-56) var(--s-16)',
+        // Less air above on a short window: at 1280x720 and 157 % the fixed 56
+        // made the page 5 px taller than the window, so it scrolled.
+        padding: 'clamp(var(--s-24), 8vh, var(--s-56)) var(--s-16)',
       }}
     >
       <LogoLockup markSize={28} />

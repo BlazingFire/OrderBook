@@ -120,8 +120,10 @@ function columnsFor(table: { columns: readonly ReportColumn[] }): DataTableColum
       key: column.key,
       header: t(column.labelToken),
       align: numeric ? 'right' : undefined,
-      // Only the first text column grows; figures stay as wide as they need.
-      width: numeric ? rem(130) : index === 0 ? undefined : rem(170),
+      // Shares of the width, not fixed sizes: with every other column fixed, the
+      // growing first column was squeezed to 38 px at 157 % (By party's Code) and
+      // names were cut at 146 px at 1080p. The first text column still gets most.
+      width: numeric ? 'minmax(0, 1fr)' : index === 0 ? 'minmax(0, 2fr)' : 'minmax(0, 1.4fr)',
       render: (row) => <span className={column.unit === 'date' ? 'ob-mono' : undefined}>{cellOf(row, column)}</span>,
     } satisfies DataTableColumn<ReportRow & { key: string }>;
   });

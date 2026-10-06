@@ -73,11 +73,11 @@ describe('the topbar rules', () => {
   it('turn the command box and Change password into icons when the bar is narrower still (157 % at 1366)', () => {
     // Wide: the icon is hidden, the label shows.
     expect(body('.ob-btn--squeeze > svg')).toMatch(/display:\s*none/);
-    const narrow = /@container ob-main \(max-width:\s*(\d+)rem\)\s*\{(?:(?!@container)[\s\S])*?\.ob-btn--squeeze > span\s*\{\s*display:\s*none/.exec(css);
+    const narrow = /@container ob-main \(max-width:\s*(\d+)rem\)\s*\{(?:(?!@container)[\s\S])*?\.ob-btn--squeeze > span:not\(\.ob-small\)\s*\{\s*display:\s*none/.exec(css);
     expect(narrow, 'no narrow rule hiding the squeeze labels').not.toBeNull();
-    // Below 1080p at 150 % (about 75rem) and above 157 % at 1366 (about 47rem).
-    expect(Number(narrow![1])).toBeGreaterThan(47);
-    expect(Number(narrow![1])).toBeLessThan(75);
+    // Takes in 1080p at 150 % (76rem) and 157 % at 1366 (47rem); leaves 1080p at 125 % (94rem).
+    expect(Number(narrow![1])).toBeGreaterThan(76);
+    expect(Number(narrow![1])).toBeLessThan(94);
   });
 });
 

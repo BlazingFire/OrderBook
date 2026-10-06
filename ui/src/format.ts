@@ -24,9 +24,25 @@ export function formatBytes(bytes: number | null): string {
   return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
+/**
+ * Date and time to the minute. Seconds made "10/5/2026, 12:52:00 PM" wider
+ * than every table's date column at 1080p, and nobody reads them off a list.
+ */
 export function formatDateTime(iso: string | null): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleString();
+  return new Date(iso).toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+/** The date alone, for a column that says when something began. */
+export function formatDate(iso: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString();
 }
 
 /**

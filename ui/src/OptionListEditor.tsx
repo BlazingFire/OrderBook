@@ -229,12 +229,16 @@ export function OptionListEditor({
     {
       key: 'value',
       header: t('fields.values.col.value'),
-      width: rem(200),
+      // Value and Label share what the fixed columns leave: a fixed 200 for the
+      // value left Label 64 px in Settings at 1080p ("WhatsApp" cut to "Whats…"),
+      // and 38 px in Lists at 157 %.
+      width: 'minmax(0, 1fr)',
       render: (item) => <span className="ob-mono">{item.value}</span>,
     },
     {
       key: 'label',
       header: t('fields.values.col.label'),
+      width: 'minmax(0, 1.4fr)',
       render: (item) => item.label,
     },
     {
