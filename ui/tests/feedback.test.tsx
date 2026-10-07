@@ -1,6 +1,6 @@
 /**
  * The feedback kit per the Feedback artboard (UI redesign): progress bars that fill by
- * scaleX, the busy mark's timing, toasts (bottom-left, 4 s, at most 3, a failure as an
+ * scaleX, toasts (bottom-left, 4 s, at most 3, a failure as an
  * alert), the 400 ms tooltip that takes over `title`, and the reduced-motion rules.
  */
 
@@ -10,7 +10,6 @@ import { fileURLToPath } from 'node:url';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { BusyMark } from '../src/BusyMark.js';
 import { SkeletonRows } from '../src/States.js';
 import { ToastProvider, useToast } from '../src/Toast.js';
 import { TOOLTIP_DELAY_MS, TooltipLayer } from '../src/Tooltip.js';
@@ -48,21 +47,7 @@ describe('ProgressBar', () => {
   });
 });
 
-describe('BusyMark', () => {
-  it('lights its ten cells in reading order, 70 ms apart', () => {
-    const { container } = render(<BusyMark />);
-    const delays = [...container.querySelectorAll('rect')].map((rect) => rect.style.animationDelay);
-    expect(delays).toEqual(Array.from({ length: 10 }, (_, i) => `${i * 70}ms`));
-  });
-
-  it('runs the artboard loop, and holds still under reduced motion and the motion switch', () => {
-    expect(css).toMatch(/\.ob-busy rect \{[^}]*animation: ob-busy-loop 700ms linear infinite/);
-    expect(css).toMatch(/html\[data-motion='off'\] \.ob-busy rect \{[^}]*animation: none/);
-    expect(css).toMatch(
-      /@media \(prefers-reduced-motion: reduce\) \{\s*\.ob-busy rect \{[^}]*animation: none/,
-    );
-  });
-});
+// The busy mark's timing and its reduced-motion rules are D8's, pinned in mark.test.tsx.
 
 describe('Skeleton', () => {
   it('is static: no shimmer anywhere in the kit', () => {
