@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  colourLabeller,
   colourRepeatsName,
   colourRuleOf,
   isNumericSubProduct,
@@ -102,5 +103,32 @@ describe('the Colour cell', () => {
     expect(lineColourText([{ colour: 'Ivory', variantLabel: 'White', quantity: 1 }], 'X')).toBe(
       'Ivory',
     );
+  });
+});
+
+describe('colourLabeller: lines store the VALUE, screens and notes print the LABEL', () => {
+  const labelOf = colourLabeller([{ value: 'RED BROWN', label: 'Red Brown' }, { value: 'Ivory', label: 'Ivory' }]);
+
+  it('resolves a stored value to its current label, case aside', () => {
+    expect(labelOf('RED BROWN')).toBe('Red Brown');
+    expect(labelOf('red brown')).toBe('Red Brown');
+  });
+
+  it('prints a value the list no longer has as stored', () => {
+    expect(labelOf('Ochre')).toBe('Ochre');
+  });
+
+  it('is what lineColourText prints, one colour or several', () => {
+    expect(lineColourText([{ colour: 'RED BROWN', quantity: 2 }], 'Rustic', labelOf)).toBe('Red Brown');
+    expect(
+      lineColourText(
+        [
+          { colour: 'RED BROWN', quantity: 2 },
+          { colour: 'Ivory', quantity: 3 },
+        ],
+        'Rustic',
+        labelOf,
+      ),
+    ).toBe('Red Brown ×2, Ivory ×3');
   });
 });

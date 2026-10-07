@@ -68,6 +68,8 @@ export interface LineSnapshot {
 
 /** What the client asserted about a line, before the server fills the gaps. */
 export interface LineDraft {
+  /** The stored line this one continues, when a client sends it on an edit. */
+  id?: string | null;
   productId: string;
   variantId: string;
   quantity: number;
@@ -89,6 +91,59 @@ export interface LineDraft {
   notes?: string | null;
 }
 
+/** The part of a stored line an edit must carry over unchanged. */
+export interface KeptLine {
+  id: string;
+  variantId: string;
+  colour: string | null;
+  variantLabel: string | null;
+}
+
+const colourKey = (colour: string | null | undefined): string =>
+  typeof colour === 'string' ? colour.trim().toLowerCase() : '';
+
+/**
+ * Pair each draft with the stored line it continues, or null for a new line.
+ *
+ * By the line id when the client sent one, else by variant and colour (the
+ * panels resend a line's own colour and label, not its id). Each stored line
+ * is used once, so two drafts of one variant and colour do not both claim it.
+ *
+ * This is what stops an edit rewriting history: a line taken as Ivory on a
+ * product that was multicolour then, and is fixed now, is still Ivory after
+ * somebody adds another line to the lead (W2-1, 2026-10-07).
+ */
+export function matchExistingLines(
+  drafts: readonly LineDraft[],
+  existing: readonly KeptLine[],
+): Array<KeptLine | null> {
+  const free = [...existing];
+  const take = (index: number): KeptLine | null => (index < 0 ? null : free.splice(index, 1)[0] ?? null);
+  return drafts.map((draft) => {
+    if (draft.id) {
+      const byId = free.findIndex((line) => line.id === draft.id && line.variantId === draft.variantId);
+      if (byId >= 0) return take(byId);
+    }
+    return take(
+      free.findIndex(
+        (line) => line.variantId === draft.variantId && colourKey(line.colour) === colourKey(draft.colour),
+      ),
+    );
+  });
+}
+
+/**
+ * A new line's colour as the company list spells it, or `undefined` when the
+ * list does not have it. Case and spacing aside, so "ivory " is "Ivory".
+ */
+export function listedColour(
+  colour: string,
+  options: ReadonlyArray<{ value: string; label: string }>,
+): string | undefined {
+  const key = colourKey(colour);
+  return options.find((option) => colourKey(option.value) === key || colourKey(option.label) === key)?.value;
+}
+
 /**
  * Build the stored line from what the panel sent plus the catalogue.
  *
@@ -108,7 +163,9 @@ export interface LineDraft {
  * used to be refused instead, but a lead queued offline cannot be corrected
  * by the person who typed it, so a refusal parked the whole lead in the
  * outbox over a field the line never needed
- * (`docs/catalogue/CATALOGUE_MODEL.md` §2).
+ * (`docs/catalogue/CATALOGUE_MODEL.md` §2). That rule is for a NEW line only:
+ * a `kept` line (`matchExistingLines`) keeps its stored colour and colour text
+ * whatever the product is today, because it records what was sold.
  */
 export function buildLineSnapshot(
   draft: LineDraft,
@@ -116,10 +173,13 @@ export function buildLineSnapshot(
   variant: ProductVariantSnapshotSource,
   partyVariant: PartyVariantSnapshotSource | null,
   sequence: number,
+  kept: KeptLine | null = null,
 ): LineSnapshot {
   const fromPartyVariant = partyVariant !== null;
-  const colour =
-    product.multiColour && typeof draft.colour === 'string' && draft.colour.trim() !== ''
+  const carried = kept !== null && !product.multiColour;
+  const colour = carried
+    ? kept.colour
+    : product.multiColour && typeof draft.colour === 'string' && draft.colour.trim() !== ''
       ? draft.colour.trim()
       : null;
 
@@ -135,7 +195,7 @@ export function buildLineSnapshot(
     brandName: draft.brandName ?? product.brand,
     alias: firstDefined(draft.alias, partyVariant?.alias, product.alias),
     code: draft.code ?? variant.code,
-    variantLabel: draft.variantLabel ?? variant.label,
+    variantLabel: carried ? kept.variantLabel : (draft.variantLabel ?? variant.label),
     colour,
     size: firstDefined(draft.size, partyVariant?.size, product.size),
     weightKg: firstDefined(draft.weightKg, variant.weightKg),
