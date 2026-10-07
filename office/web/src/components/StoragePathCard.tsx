@@ -121,7 +121,9 @@ export function StoragePathCard() {
 
       {open && (
         <div style={{ marginTop: 'var(--s-12)' }}>
-          <p className="ob-small">{t('storage.help')}</p>
+          <p className="ob-small" style={{ marginBottom: 'var(--s-8)' }}>
+            {t('storage.help')}
+          </p>
 
           <FormField label={t('storage.folder')}>
             {(id) => (
