@@ -267,7 +267,7 @@ export function MainProductsScreen({
           </>
         }
       >
-        <p className="ob-body">{t('catalog.mainProducts.delete.body')}</p>
+        <p className="ob-body ob-confirm-body">{t('catalog.mainProducts.delete.body')}</p>
       </Modal>
     </>
   );

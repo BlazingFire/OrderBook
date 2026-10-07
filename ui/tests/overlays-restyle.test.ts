@@ -32,6 +32,7 @@ describe('overlays restyle', () => {
   it('hand-rolled confirm modals cancel with ghost, not a bordered button', () => {
     for (const f of ['../../master/web/src/screens/FieldsScreen.tsx', '../../master/web/src/screens/PanelsScreen.tsx', '../../office/web/src/screens/MainProductsScreen.tsx', '../src/MainProductsScreen.tsx']) {
       const text = readFileSync(resolve(__dirname, f), 'utf8');
+      expect(text).toContain('ob-body ob-confirm-body');
       expect(text).toMatch(/variant="ghost" onClick=\{\(\) => set(ConfirmRemove|ConfirmRevoke|Deleting)\(null\)\}/);
     }
   });

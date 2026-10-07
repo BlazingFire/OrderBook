@@ -488,7 +488,7 @@ function DefinitionsTab({
           </>
         }
       >
-        <p className="ob-body">
+        <p className="ob-body ob-confirm-body">
           {confirmRemove && t('fields.definitions.delete.body', { key: confirmRemove.key })}
         </p>
       </Modal>
