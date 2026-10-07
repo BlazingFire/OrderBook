@@ -100,6 +100,8 @@ function serve(manifest: ReleaseManifest, manifestAsset: string): void {
 async function loadService() {
   vi.resetModules();
   process.env.ORDERBOOK_RELEASES_GITHUB_REPO = REPO;
+  // On, whatever the shell running the suite set (`0` now stops every fetch).
+  process.env.ORDERBOOK_RELEASES_POLL_MINUTES = '2';
   vi.doMock('@orderbook/shared', async () => {
     const actual = await vi.importActual<typeof Shared>('@orderbook/shared');
     return {
@@ -119,6 +121,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   vi.doUnmock('@orderbook/shared');
   delete process.env.ORDERBOOK_RELEASES_GITHUB_REPO;
+  delete process.env.ORDERBOOK_RELEASES_POLL_MINUTES;
   await rm(dir, { recursive: true, force: true });
 });
 

@@ -113,7 +113,18 @@ interface GitHubRelease {
   assets: GitHubAsset[];
 }
 
-export const isConfigured = (): boolean => Boolean(config.releases.githubRepo);
+/**
+ * Whether this Master may ask GitHub at all: a repository is configured and
+ * `ORDERBOOK_RELEASES_POLL_MINUTES` is a positive number. Every sync starts
+ * here — the poll, Check now, the Updates screen's status, an Office panel's
+ * ask and the nightly update — so `0` means no network fetch of any kind.
+ * It used to stop only the timer: a scratch Master with `0` still downloaded a
+ * release about 90 s after start, when a request reached `availability()`.
+ */
+export const isConfigured = (): boolean => {
+  const minutes = config.releases.pollMinutes;
+  return Boolean(config.releases.githubRepo) && Number.isFinite(minutes) && minutes > 0;
+};
 
 function headers(): Record<string, string> {
   return {

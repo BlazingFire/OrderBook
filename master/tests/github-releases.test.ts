@@ -233,6 +233,9 @@ function pollWatcher() {
 async function loadService(env: Record<string, string> = {}) {
   vi.resetModules();
   process.env.ORDERBOOK_RELEASES_GITHUB_REPO = REPO;
+  // Fetching is on unless a test says otherwise, whatever the shell running the
+  // suite set: a scratch gate often has `0` here, which now stops every fetch.
+  process.env.ORDERBOOK_RELEASES_POLL_MINUTES = '2';
   for (const [key, value] of Object.entries(env)) process.env[key] = value;
 
   vi.doMock('@orderbook/shared', async () => {
@@ -256,6 +259,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
   vi.doUnmock('@orderbook/shared');
   delete process.env.ORDERBOOK_RELEASES_GITHUB_REPO;
+  delete process.env.ORDERBOOK_RELEASES_POLL_MINUTES;
   delete process.env.ORDERBOOK_ALLOW_UNSIGNED_RELEASES;
   await rm(dir, { recursive: true, force: true });
 });
@@ -507,6 +511,55 @@ describe('syncing a release from GitHub', () => {
     const { syncFromGitHub } = await loadService();
 
     await expect(syncFromGitHub('master', dir, null, 'win32')).resolves.toBeNull();
+  });
+});
+
+describe('ORDERBOOK_RELEASES_POLL_MINUTES=0', () => {
+  // A scratch Master with `0` still downloaded a release about 90 s after it
+  // started: the setting stopped only the timer, and the Updates screen's
+  // status call synced from GitHub anyway. `0` means no fetch of any kind.
+  for (const minutes of ['0', '-5', 'off']) {
+    it(`makes no network request on any path when it is ${JSON.stringify(minutes)}`, async () => {
+      const manifest = signed();
+      serve({
+        [API]: () => json(listing(manifest)),
+        [MANIFEST_URL]: () => json(manifest),
+        [SETUP_URL]: () => stream(PAYLOAD),
+      });
+
+      const { syncFromGitHub } = await loadService({
+        ORDERBOOK_RELEASES_POLL_MINUTES: minutes,
+        ORDERBOOK_RELEASES_DIR: dir,
+      });
+      const update = await import('../src/services/update.service.js');
+
+      expect(await syncFromGitHub('master', dir, null, 'win32')).toBeNull();
+      await update.availability('office', '0.0.0', 'win32');
+      await update.masterAvailability();
+      await update.checkNow();
+      await update.syncAll();
+
+      vi.useFakeTimers();
+      const stop = update.startReleasePolling();
+      await vi.advanceTimersByTimeAsync(6 * 60 * 60_000);
+      stop();
+      vi.useRealTimers();
+
+      expect(requested).toEqual([]);
+    });
+  }
+
+  it('still fetches when it is a positive number (the guard is not simply off)', async () => {
+    const manifest = signed();
+    serve({
+      [API]: () => json(listing(manifest)),
+      [MANIFEST_URL]: () => json(manifest),
+      [SETUP_URL]: () => stream(PAYLOAD),
+    });
+    const { syncFromGitHub } = await loadService({ ORDERBOOK_RELEASES_POLL_MINUTES: '60' });
+
+    expect(await syncFromGitHub('master', dir, null, 'win32')).not.toBeNull();
+    expect(requested).toContain(API);
   });
 });
 

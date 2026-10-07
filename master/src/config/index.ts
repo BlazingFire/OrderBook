@@ -108,8 +108,9 @@ export const config = {
      * How often the Master asks GitHub, in minutes. Two by default (1.4 R6),
      * so a new release shows within minutes; the release listing is cached and
      * asked conditionally, which keeps this inside GitHub's 60 calls an hour
-     * for an unauthenticated caller. Zero switches polling off and leaves the
-     * Updates screen's own check as the only trigger.
+     * for an unauthenticated caller. Zero (or anything not a positive number)
+     * switches GitHub off entirely: no poll, and no fetch from Check now, the
+     * Updates screen or an Office panel's ask; the releases folder alone serves.
      */
     pollMinutes: Number(process.env.ORDERBOOK_RELEASES_POLL_MINUTES ?? '2'),
   },
