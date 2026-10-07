@@ -62,8 +62,20 @@ describe('FollowUpField', () => {
         groupLabel="Quick follow-up"
         date={<input aria-label="date" />}
         quick={[
-          { key: 'd1', label: '+1 d', title: 'Tomorrow', active: false, onClick: () => picked.push('d1') },
-          { key: 'd3', label: '+3 d', title: 'In 3 days', active: true, onClick: () => picked.push('d3') },
+          {
+            key: 'd1',
+            label: '+1 d',
+            title: 'Tomorrow',
+            active: false,
+            onClick: () => picked.push('d1'),
+          },
+          {
+            key: 'd3',
+            label: '+3 d',
+            title: 'In 3 days',
+            active: true,
+            onClick: () => picked.push('d3'),
+          },
         ]}
       />,
     );
@@ -71,6 +83,7 @@ describe('FollowUpField', () => {
     const radios = within(group).getAllByRole('radio');
     expect(radios.map((radio) => radio.getAttribute('aria-checked'))).toEqual(['false', 'true']);
     expect(radios[0]!.getAttribute('title')).toBe('Tomorrow');
+    expect(screen.getByRole('radio', { name: 'In 3 days' })).toBe(radios[1]);
     fireEvent.click(radios[0]!);
     expect(picked).toEqual(['d1']);
     expect(screen.getByLabelText('date')).toBeTruthy();
@@ -143,7 +156,10 @@ describe('AddedProductsPanel', () => {
   it('disables Save, shows the empty text instead of rows, and shows busy while saving', async () => {
     panel({ saveDisabled: true, empty: <span>Nothing added yet</span>, count: '' });
     const aside = screen.getByRole('complementary', { name: 'Added products' });
-    expect((within(aside).getByRole('button', { name: /Save pending order/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      (within(aside).getByRole('button', { name: /Save pending order/ }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
     expect(within(aside).getByText('Nothing added yet')).toBeTruthy();
     expect(within(aside).queryByText('row one')).toBeNull();
     cleanup();
@@ -179,7 +195,9 @@ describe('CartEntry', () => {
     expect(onTick).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: /WB-2016/ }));
     expect(onToggle).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('button', { name: /WB-2016/ }).getAttribute('aria-expanded')).toBe('false');
+    expect(screen.getByRole('button', { name: /WB-2016/ }).getAttribute('aria-expanded')).toBe(
+      'false',
+    );
 
     rerender(
       <CartEntry
@@ -197,6 +215,8 @@ describe('CartEntry', () => {
     expect(screen.getByText('fact')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'edit' })).toBeTruthy();
     expect(screen.getByText('Standard')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /WB-2016/ }).getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('button', { name: /WB-2016/ }).getAttribute('aria-expanded')).toBe(
+      'true',
+    );
   });
 });
