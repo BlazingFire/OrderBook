@@ -380,6 +380,21 @@ block on a deleted product, offline saves, drafts, follow-up chips, party and ow
 5. **Bottom bar:** secondary **Cancel** (36 px) and primary **Save pending order** (36 px, with a `Ctrl S` kbd that tints with the button; disabled until there is a line).
 6. **Status footer** (26 px): "1 offline, 5 pending", the company, the person, the version.
 
+**As built on the Master (D4, `ui/src/LeadEntryScreen.tsx` on the `ui/src/order/` kit).** The kit, shared with the Office copy: `OrderDetailsBar` (the header strip: Party, Source,
+Follow up, Owner), `OrderField` (a label above a field), `FollowUpField` (the date and the "+1 d / +3 d / +1 wk" chips), `PartyChip` (the picked party as name, code and city; a "create party" row
+reachable by keyboard), `AddedProductsPanel` (the aside: header with the count, search, rows, a footer with the checks, the total and Cancel / Save), `OrderChecks` (the ok / to-do list above the
+total: Party, Products), `CartEntry` and `CartLines` (one added product that opens and closes, its sub lines under it), `ProductThumb` (below). Styles: `ui/src/order/order.css`.
+- **Photos.** `ProductThumb` shows a product's primary photo: **32 px in a sub-product picker row, 48 px on the picked product's card** (blurhash first, then the `thumb` variant); with no photo it draws
+  nothing, or, when given a name, an initial-letter tile of the same size. `GET /api/pick/product` rows now carry the product's primary image for this (a thumbnail, not the gallery). The first-stage
+  list (the Products, i.e. categories) has no photos; the Added products rows show none (the artboard has none).
+- **Colour (verified live on the Master).** A multicolour sub product's card opens with the company colour list down and the first colour highlighted: Enter adds a colour and stays for the next, Enter on the
+  empty box goes to the quantities; each colour is its own row (code, variant, weight, Qty, Packaging, Grade). A fixed colour shows and is skipped; closets show "White", the trap closets "Any colour". Saving stores
+  one line per colour (checked: White 10 and Ivory 5 came back from the API as two lines with their colour names).
+- **Keys on the card:** Enter walks quantity, packaging and grade to **Add product**, which adds the sub product and returns to the list; Shift+Q adds it and moves to the next product; Backspace on the empty
+  sub-product box goes back to the product bar; F2 focuses the product search; Ctrl+S saves.
+- **Quantity unit.** The screen's quantity wording is "pieces" / "pcs" (the entry has said so since before this redesign; the printed notes say **box**). Whether the entry follows the notes is an open
+  question (see the 1.4.6 notes).
+
 **Not built from the artboard (the product has none of them):** the **Rate** column and any amount, the `₹` prefix, the stock figures ("on hand shown", On hand, Reserved).
 Lead wording becomes **pending order**; quantity unit is **box**, never "pcs".
 
@@ -398,4 +413,4 @@ Lead wording becomes **pending order**; quantity unit is **box**, never "pcs".
 | Feedback | `ui/src/BusyMark.tsx`, `UpdateProgress.tsx` (ProgressBar), `TopProgress.tsx`, `States.tsx`, `Toast.tsx`, `Tooltip.tsx`, `GalleryScreen.tsx`; `ui/tests/feedback.test.tsx` |
 | Data | `ui/src/DataTable.tsx`, `ui/src/DataDisplay.tsx` (StatusPill, ColourChip, IdField, Timeline, `recordTimelineEntries`), `ui/src/PageBar.tsx`; `ui/tests/data-timeline.test.tsx` |
 | Overlays | `ui/src/Modal.tsx`, `ConfirmDialog.tsx`, `Popover.tsx`, ... (to be filled) |
-| New pending order | `ui/src/LeadEntryScreen.tsx` (Master), `office/web/src/screens/AddLeadScreen.tsx` (Office) (to be filled) |
+| New pending order | `ui/src/LeadEntryScreen.tsx` (Master) on the `ui/src/order/` kit; `office/web/src/screens/AddLeadScreen.tsx` (Office, to be filled when D1 lands); `ui/tests/lead-entry-screen.test.tsx` |
