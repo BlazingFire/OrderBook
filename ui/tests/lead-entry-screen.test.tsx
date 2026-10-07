@@ -550,6 +550,33 @@ describe('the product card', () => {
     expect(document.activeElement).toBe(qtyBox('OPT-0001'));
   });
 
+  it('focuses the first field in the commit that mounts the card, not a tick after it', async () => {
+    await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    fireEvent.change(screen.getByLabelText(t('lead.add.party.search')), {
+      target: { value: 'Sha' },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(PARTY.name) }));
+    fireEvent.focus(searchBox());
+    const category = await screen.findByRole('button', {
+      name: new RegExp(`^${CATEGORY.code} `),
+    });
+
+    // The card mounts when the sub products arrive, outside any act. A focus left to a later
+    // passive effect lands after whatever a fast keystroke (or a test) did meanwhile, and takes the
+    // caret back to the first field; so it must already be there when the DOM appears.
+    let focusedAtMount: boolean | null = null;
+    const observer = new MutationObserver(() => {
+      const box = document.querySelector<HTMLElement>('input[data-kind="qty"]');
+      if (box && focusedAtMount === null) focusedAtMount = document.activeElement === box;
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    fireEvent.mouseDown(category);
+    await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — OPT-0001`);
+    observer.disconnect();
+
+    expect(focusedAtMount).toBe(true);
+  });
+
   it('walks a row with a quantity through packaging and grade, then on to the next row', async () => {
     await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
     await pickSubProduct(FIXED.name);
