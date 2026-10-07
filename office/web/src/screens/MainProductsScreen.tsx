@@ -259,7 +259,7 @@ export function MainProductsScreen({ view }: { view: LocalView }) {
         title={deleting ? t('catalog.mainProducts.delete.title', { name: deleting.name }) : ''}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setDeleting(null)}>
+            <Button variant="ghost" onClick={() => setDeleting(null)}>
               {t('common.cancel')}
             </Button>
             <Button variant="danger" busy={busy} onClick={() => deleting && void remove(deleting)}>

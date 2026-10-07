@@ -2959,6 +2959,14 @@ button.ob-bell-item:hover {
   border-radius: 0 0 var(--r-lg) var(--r-lg);
 }
 
+/* A confirmation: the sentence sits 10px under the title, in the secondary ink (Overlays artboard). */
+.ob-confirm-body {
+  color: var(--fg-secondary);
+}
+.ob-modal-body:has(> .ob-confirm-body) {
+  padding-top: calc(var(--s-8) + var(--s-2));
+}
+
 /* The command palette: no header, content to the edges, a search field on top, rows below. */
 .ob-modal--palette {
   width: 40rem;

@@ -470,7 +470,7 @@ function DefinitionsTab({
         }
         footer={
           <>
-            <Button variant="secondary" onClick={() => setConfirmRemove(null)}>
+            <Button variant="ghost" onClick={() => setConfirmRemove(null)}>
               {t('fields.action.cancel')}
             </Button>
             <Button

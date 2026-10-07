@@ -501,7 +501,7 @@ export function PanelsScreen({ panels, onRefresh, onOpenSettings }: Props) {
         title={confirmRevoke ? t('panels.revoke.title', { name: confirmRevoke.name }) : ''}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setConfirmRevoke(null)}>
+            <Button variant="ghost" onClick={() => setConfirmRevoke(null)}>
               {t('panels.revoke.cancel')}
             </Button>
             <Button variant="danger" onClick={() => void confirmRevokePanel()}>

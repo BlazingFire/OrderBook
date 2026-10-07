@@ -24,6 +24,17 @@ describe('overlays restyle', () => {
     expect(src('CommandPalette.tsx')).toContain('chrome="palette"');
     expect(css).toContain('.ob-palette-row');
   });
+  it('the confirm body is secondary ink 10px under the title', () => {
+    expect(src('ConfirmDialog.tsx')).toContain('ob-confirm-body');
+    expect(css).toMatch(/\.ob-confirm-body\s*\{[^}]*color:\s*var\(--fg-secondary\)/);
+    expect(css).toMatch(/:has\(> \.ob-confirm-body\)\s*\{[^}]*padding-top:\s*calc\(var\(--s-8\) \+ var\(--s-2\)\)/);
+  });
+  it('hand-rolled confirm modals cancel with ghost, not a bordered button', () => {
+    for (const f of ['../../master/web/src/screens/FieldsScreen.tsx', '../../master/web/src/screens/PanelsScreen.tsx', '../../office/web/src/screens/MainProductsScreen.tsx', '../src/MainProductsScreen.tsx']) {
+      const text = readFileSync(resolve(__dirname, f), 'utf8');
+      expect(text).toMatch(/variant="ghost" onClick=\{\(\) => set(ConfirmRemove|ConfirmRevoke|Deleting)\(null\)\}/);
+    }
+  });
   it('confirm cancel is ghost', () => {
     expect(src('ConfirmDialog.tsx')).toMatch(/variant="ghost" onClick=\{onCancel\}/);
   });
