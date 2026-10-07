@@ -336,15 +336,15 @@ export const EN_MESSAGES = {
   'validation.order.vehicleInvalid': 'Vehicle number: up to 20 letters, digits, spaces or dashes',
   'validation.order.alreadyDispatched': 'This final order was already dispatched',
   'validation.remark.textRequired': 'A remark needs some text',
-  'validation.lead.partyRequired': 'Select a party for this pending order',
-  'validation.lead.itemsRequired': 'Add at least one product to this pending order',
+  'validation.lead.partyRequired': 'Select a party for this order',
+  'validation.lead.itemsRequired': 'Add at least one product to this order',
   'validation.lead.partyMissing': 'The selected party no longer exists',
   'validation.lead.ownerMissing': 'The selected owner no longer exists',
   'validation.lead.convertedLocked':
     'This pending order has become a final order and can no longer be edited',
   'validation.lead.productMissing': 'One of the selected products no longer exists',
   'validation.lead.quantityRequired': 'Add a quantity for {productName}',
-  'validation.lead.sourceInvalid': '"{value}" is not a configured pending order source',
+  'validation.lead.sourceInvalid': '"{value}" is not a configured order source',
   'validation.lead.alreadyConverted':
     'This pending order has already been converted to a final order',
   'validation.lead.noItemsToConvert':
@@ -574,7 +574,7 @@ export const EN_MESSAGES = {
   'activity.party_list.exported': '{actor} exported {count} parties',
   'activity.office_panel.created': '{actor} paired the office panel {name}',
   'activity.office_panel.updated': '{actor} updated the office panel {name}',
-  'activity.lead.created': '{actor} created this pending order',
+  'activity.lead.created': '{actor} created this order',
   'activity.lead.updated': '{actor} updated this pending order',
   'activity.lead.stage_changed': '{actor} moved this pending order to {to}',
   'activity.lead.deleted': '{actor} deleted this pending order',
@@ -660,7 +660,7 @@ export const EN_MESSAGES = {
    * Those 12 are namespaced `master.*` / `office.*` here, because both
    * readings are correct for their own panel. Everything else is shared.
    */
-  'lead.add.discardConfirm': 'Discard this pending order and start over?',
+  'lead.add.discardConfirm': 'Discard this order and start over?',
   /** The confirm button in the dialog `lead.add.discardConfirm` titles. */
   'lead.add.discard': 'Discard the draft',
   'screen.reset': 'Reset this screen',
@@ -1421,14 +1421,14 @@ export const EN_MESSAGES = {
   'footer.signedInAs': '{name} · {role}',
   'lead.add.details.followUp': 'Follow up on',
   'lead.add.details.notes': 'Notes',
-  'lead.add.errors.generic': 'Could not save the pending order',
+  'lead.add.errors.generic': 'Could not save the order',
   'lead.add.errors.noProducts': 'Add at least one product',
-  'lead.add.errors.partyRequired': 'Choose a party for this pending order',
+  'lead.add.errors.partyRequired': 'Choose a party for this order',
   'lead.add.party.change': 'Change',
   'lead.add.draft.col.quantity': 'Quantity',
   'lead.add.draft.editing': 'editing saved product',
   'lead.add.draft.colour': 'Colour',
-  'lead.add.draft.hintPieces': '{count} pieces on this card — add it to the pending order',
+  'lead.add.draft.hintPieces': '{count} pieces on this card — add it to the order',
   'lead.add.draft.hintPackaging': 'Choose packaging to save this product',
   'lead.add.draft.hintQuantity': 'Enter a quantity for at least one variant',
   'lead.add.draft.new': 'new product',
@@ -1489,8 +1489,8 @@ export const EN_MESSAGES = {
     'Enter walks quantity, packaging and grade to Add product, which adds this sub product and returns to the list; Shift+Q adds it and moves on to the next product.',
   'lead.add.products.searchAdds': 'the search adds another',
   'lead.add.products.searchFirst': 'choose a product, then a sub product — at least one',
-  'lead.add.saved': 'Pending Order saved — {id} syncs when the Master is reachable',
-  'lead.add.savedOnline': 'Pending Order {id} saved',
+  'lead.add.saved': 'Order saved — {id} syncs when the Master is reachable',
+  'lead.add.savedOnline': 'Order {id} saved',
   'lead.number.label': 'PO number',
   'lead.number.provisional': 'Provisional',
   'lead.number.provisionalHint': 'Gets its number when the Master is reachable',
@@ -1522,7 +1522,7 @@ export const EN_MESSAGES = {
   'lead.add.savingHintOnline': 'Saves straight to the Master',
   'lead.add.title': 'New pending order',
   'lead.edit.action': 'Edit pending order',
-  'lead.edit.saved': 'Pending Order {id} updated',
+  'lead.edit.saved': 'Order {id} updated',
   'lead.edit.title': 'Edit pending order',
   'lead.badge.converted': 'converted',
   'lead.badge.incomplete': 'incomplete',
@@ -2747,7 +2747,7 @@ export const EN_MESSAGES = {
   'lead.add.draft.noColourList':
     'This product comes in several colours, but the company colour list is empty, so there is no colour to pick. Add colours under Fields › Values › Colour, then add the product again. Until then it is added without a colour.',
   'lead.add.draft.removeColour': 'Remove colour {colour}',
-  'lead.add.review.title': 'Check this pending order',
+  'lead.add.review.title': 'Check this order',
   'lead.add.review.hint': 'Ctrl+Enter saves it; Esc goes back to the form.',
   'lead.add.draft.quantityTitleVariants': 'Quantity — pieces per variant',
   'lead.add.line.qtyShort': '{count} pcs',
@@ -3061,7 +3061,7 @@ export const EN_MESSAGES = {
   'logs.action.variant_saved': 'Party-wise record saved',
   'logs.action.verified': 'Verified',
   'notification.panel.offlineLong': '{panel} has been offline for over an hour',
-  'notification.lead.numbered': 'Your pending order for {party}, saved offline, is now {number}',
+  'notification.lead.numbered': 'Your order for {party}, saved offline, is now {number}',
   'notification.backup.autoSkipped':
     "Today's automatic backup was skipped: the folder {folder} could not be reached. Plug in the backup drive.",
   'notification.backup.autoFailed':
@@ -3275,8 +3275,8 @@ export const EN_MESSAGES = {
   'presence.serverMaster': 'Server Master',
   'validation.presence.invalid': 'That record view update is not valid',
   'lead.add.savedProvisional':
-    'Pending Order saved as Provisional — it gets its number when the Master is reachable',
-  'lead.numbered.toast': 'Provisional pending order is now {number}',
+    'Order saved as Provisional — it gets its number when the Master is reachable',
+  'lead.numbered.toast': 'Provisional order is now {number}',
   'lead.add.owner': 'Owner',
   'lead.add.owner.me': 'Me',
   'lead.conflict.savedBy': '{name} saved this at {time}',

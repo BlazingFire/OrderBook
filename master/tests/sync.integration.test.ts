@@ -924,7 +924,7 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
           leadEdit(lead.id, { fields: ['sourcePlatform'], payload: { sourcePlatform: 'carrier-pigeon' } }),
         );
         expect(response.results[0]?.status).toBe('rejected');
-        expect(response.results[0]?.error).toMatch(/not a configured pending order source/i);
+        expect(response.results[0]?.error).toMatch(/not a configured order source/i);
       });
 
       it('refuses any edit of a converted lead', async () => {
