@@ -798,13 +798,6 @@ function AddLeadForm({
     }, 0);
   }
 
-  /** The copies made by "another colour" can go again; a sub product's first row stays. */
-  function dropRow(key: string): void {
-    setCard((current) =>
-      current ? { ...current, rows: current.rows.filter((row) => row.key !== key) } : current,
-    );
-  }
-
   function cardIsReady(candidate: CardState): boolean {
     // `leads.packagingRequiredOnConvert` off: a shop that packs to order cannot state the
     // packaging at the counter, so a line may go in without. On, every counted row needs its own.
@@ -1713,7 +1706,6 @@ function AddLeadForm({
                     }
                     onRow={patchRow}
                     onAnotherColour={anotherColour}
-                    onDropRow={dropRow}
                     onSave={saveCard}
                     onClear={discardCard}
                   />
@@ -2001,7 +1993,6 @@ function GridCard({
   suggestedPackaging,
   onRow,
   onAnotherColour,
-  onDropRow,
   onSave,
   onClear,
 }: {
@@ -2022,7 +2013,6 @@ function GridCard({
   suggestedPackaging: (productId: string) => string | null;
   onRow: (key: string, patch: Partial<GridRow>) => void;
   onAnotherColour: (key: string) => void;
-  onDropRow: (key: string) => void;
   onSave: () => void;
   onClear: () => void;
 }) {
@@ -2044,6 +2034,17 @@ function GridCard({
     0,
   );
   const colourList = colourOptions.length > 0;
+  /** The row the caret was last in: "another colour" works on it (as on the Master). */
+  const [activeRow, setActiveRow] = useState<string | null>(null);
+  const selectableRows = rows.filter((row) => row.rule === 'selectable');
+  const someSelectable = colourList && selectableRows.length > 0;
+  const moreTarget = someSelectable
+    ? (
+        selectableRows.find((row) => row.key === activeRow) ??
+        [...selectableRows].reverse().find((row) => isCounted(row)) ??
+        selectableRows[selectableRows.length - 1]
+      )?.key
+    : undefined;
   const problems = counted.map((row) => rowProblem(row, readyOptions));
 
   const hint =
@@ -2258,153 +2259,150 @@ function GridCard({
         </div>
       )}
 
-      <SubGrid
-        bodyRef={bodyRef}
-        labels={{
-          code: t('lead.add.products.col.code'),
-          sub: t('lead.add.products.col.product'),
-          colour: t('lead.add.draft.colour'),
-          weight: t('lead.add.products.col.weight'),
-          qty: t('lead.add.draft.col.qty'),
-          grade: t('lead.add.draft.grade'),
-          packaging: (
-            <>
-              {t('lead.add.draft.packaging')}
-              {packagingRequired && (
-                <span
-                  aria-hidden="true"
-                  title={t('lead.add.step.required')}
-                  style={{ color: 'var(--state-offline)' }}
-                >
-                  {' *'}
-                </span>
-              )}
-            </>
-          ),
+      <div
+        onFocus={(event) => {
+          const field = (event.target as HTMLElement).closest<HTMLElement>('[data-row]');
+          if (field?.dataset.row) setActiveRow(field.dataset.row);
         }}
       >
-        {rows.map((row, index) => {
-          const copies = rows.filter((other) => other.variantId === row.variantId).length;
-          const lastOfVariant =
-            rows[index + 1]?.variantId !== row.variantId ||
-            rows[index + 1]?.productId !== row.productId;
-          const fixedColour = row.rule === 'fixed' ? row.variantLabel : null;
-          return (
-            <Fragment key={row.key}>
-              <SubRow muted={!isCounted(row)}>
-                <span className="ob-order-cell--code" title={row.code}>
-                  {row.code}
-                </span>
-                <span className="ob-order-cell--name" title={row.productName}>
-                  {row.productName}
-                </span>
-                {asksColour(row) ? (
-                  <ColourSelect
-                    value={row.colour}
-                    options={colourOptions}
-                    labelOf={labelOf}
-                    hexOf={colourHex}
-                    ariaLabel={`${t('lead.add.draft.colour')} — ${row.code}`}
-                    placeholder={t('lead.add.card.pickColour')}
-                    hint={t('lead.add.card.colourHint')}
-                    noMatches={t('common.noMatches')}
-                    attention={isCounted(row) && !row.colour.trim()}
-                    inputRef={(element) => {
-                      if (!element) return;
-                      element.dataset.walk = 'colour';
-                      element.dataset.row = row.key;
-                    }}
-                    onPick={(colour) => onRow(row.key, { colour })}
-                    onAdvance={() => stepOn(document.activeElement)}
-                  />
-                ) : fixedColour ? (
-                  <span className="ob-order-cell--fixed">
-                    <ColourChip name={labelOf(fixedColour)} hex={colourHex(fixedColour)} />
-                    <span>{labelOf(fixedColour)}</span>
+        <SubGrid
+          bodyRef={bodyRef}
+          labels={{
+            code: t('lead.add.products.col.code'),
+            sub: t('lead.add.products.col.product'),
+            colour: t('lead.add.draft.colour'),
+            weight: t('lead.add.products.col.weight'),
+            qty: t('lead.add.draft.col.qty'),
+            grade: t('lead.add.draft.grade'),
+            packaging: (
+              <>
+                {t('lead.add.draft.packaging')}
+                {packagingRequired && (
+                  <span
+                    aria-hidden="true"
+                    title={t('lead.add.step.required')}
+                    style={{ color: 'var(--state-offline)' }}
+                  >
+                    {' *'}
                   </span>
-                ) : (
-                  <span className="ob-order-cell--fixed">—</span>
                 )}
-                <span className="ob-order-cell--num">
-                  <WeightCell kg={row.weightKg} />
-                </span>
-                <Input
-                  value={row.qty}
-                  inputMode="numeric"
-                  placeholder="0"
-                  aria-label={`${t('lead.add.draft.col.quantity')} — ${rowName(row)}`}
-                  data-walk="qty"
-                  data-row={row.key}
-                  style={{ textAlign: 'right', minWidth: 0, width: '100%' }}
-                  onChange={(event) =>
-                    onRow(row.key, { qty: event.target.value.replace(/[^0-9]/g, '') })
-                  }
-                  onKeyDown={(event) => quantityKey(event, row)}
-                />
-                {/*
-                 * Packaging and grade beside the quantity, the same box (owner's instructions,
-                 * 2026-09-30): the kit's pick-only `Select` is an `Input` with a list under it.
-                 * Type a letter or arrow down, Enter takes it and steps on; "—" is none.
-                 */}
-                <span style={{ minWidth: 0 }} onKeyDown={pickKey}>
-                  <Select
-                    value={row.packaging}
-                    aria-label={`${t('lead.add.draft.packaging')} — ${rowName(row)}`}
-                    aria-required={packagingRequired || undefined}
-                    aria-invalid={
-                      (packagingRequired && isCounted(row) && !row.packaging.trim()) || undefined
-                    }
-                    data-walk="packaging"
-                    data-row={row.key}
-                    onChange={(event) => picked(row.key, { packaging: event.target.value })}
-                  >
-                    <option value="">—</option>
-                    {valuesFor(packagingOptions, row.packaging).map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Select>
-                </span>
-                <span style={{ minWidth: 0 }} onKeyDown={pickKey}>
-                  <Select
-                    value={row.grade}
-                    aria-label={`${t('lead.add.draft.grade')} — ${rowName(row)}`}
-                    data-walk="grade"
-                    data-row={row.key}
-                    onChange={(event) => picked(row.key, { grade: event.target.value })}
-                  >
-                    <option value="">—</option>
-                    {valuesFor(gradeOptions, row.grade).map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Select>
-                </span>
-              </SubRow>
-              {asksColour(row) && lastOfVariant && (
-                <div className="ob-order-more">
-                  <button type="button" onClick={() => onAnotherColour(row.key)}>
-                    <Icon name="plus" size={14} /> {t('lead.add.card.anotherColour')}
-                  </button>
-                  {copies > 1 && (
-                    <button
-                      type="button"
-                      aria-label={t('lead.add.draft.removeColour', {
-                        colour: row.colour ? labelOf(row.colour) : row.code,
-                      })}
-                      onClick={() => onDropRow(row.key)}
-                    >
-                      ✕
-                    </button>
+              </>
+            ),
+          }}
+        >
+          {rows.map((row) => {
+            const fixedColour = row.rule === 'fixed' ? row.variantLabel : null;
+            return (
+              <Fragment key={row.key}>
+                <SubRow muted={!isCounted(row)}>
+                  <span className="ob-order-cell--code" title={row.code}>
+                    {row.code}
+                  </span>
+                  <span className="ob-order-cell--name" title={row.productName}>
+                    {row.productName}
+                  </span>
+                  {asksColour(row) ? (
+                    <ColourSelect
+                      value={row.colour}
+                      options={colourOptions}
+                      labelOf={labelOf}
+                      hexOf={colourHex}
+                      ariaLabel={`${t('lead.add.draft.colour')} — ${row.code}`}
+                      placeholder={t('lead.add.card.pickColour')}
+                      hint={t('lead.add.card.colourHint')}
+                      noMatches={t('common.noMatches')}
+                      attention={isCounted(row) && !row.colour.trim()}
+                      inputRef={(element) => {
+                        if (!element) return;
+                        element.dataset.walk = 'colour';
+                        element.dataset.row = row.key;
+                      }}
+                      onPick={(colour) => onRow(row.key, { colour })}
+                      onAdvance={() => stepOn(document.activeElement)}
+                    />
+                  ) : fixedColour ? (
+                    <span className="ob-order-cell--fixed">
+                      <ColourChip name={labelOf(fixedColour)} hex={colourHex(fixedColour)} />
+                      <span>{labelOf(fixedColour)}</span>
+                    </span>
+                  ) : (
+                    <span className="ob-order-cell--fixed">—</span>
                   )}
-                </div>
-              )}
-            </Fragment>
-          );
-        })}
-      </SubGrid>
+                  <span className="ob-order-cell--num">
+                    <WeightCell kg={row.weightKg} />
+                  </span>
+                  <Input
+                    value={row.qty}
+                    inputMode="numeric"
+                    placeholder="0"
+                    aria-label={`${t('lead.add.draft.col.quantity')} — ${rowName(row)}`}
+                    data-walk="qty"
+                    data-row={row.key}
+                    style={{ textAlign: 'right', minWidth: 0, width: '100%' }}
+                    onChange={(event) =>
+                      onRow(row.key, { qty: event.target.value.replace(/[^0-9]/g, '') })
+                    }
+                    onKeyDown={(event) => quantityKey(event, row)}
+                  />
+                  {/*
+                   * Packaging and grade beside the quantity, the same box (owner's instructions,
+                   * 2026-09-30): the kit's pick-only `Select` is an `Input` with a list under it.
+                   * Type a letter or arrow down, Enter takes it and steps on; "—" is none.
+                   */}
+                  <span style={{ minWidth: 0 }} onKeyDown={pickKey}>
+                    <Select
+                      value={row.packaging}
+                      aria-label={`${t('lead.add.draft.packaging')} — ${rowName(row)}`}
+                      aria-required={packagingRequired || undefined}
+                      aria-invalid={
+                        (packagingRequired && isCounted(row) && !row.packaging.trim()) || undefined
+                      }
+                      data-walk="packaging"
+                      data-row={row.key}
+                      onChange={(event) => picked(row.key, { packaging: event.target.value })}
+                    >
+                      <option value="">—</option>
+                      {valuesFor(packagingOptions, row.packaging).map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </span>
+                  <span style={{ minWidth: 0 }} onKeyDown={pickKey}>
+                    <Select
+                      value={row.grade}
+                      aria-label={`${t('lead.add.draft.grade')} — ${rowName(row)}`}
+                      data-walk="grade"
+                      data-row={row.key}
+                      onChange={(event) => picked(row.key, { grade: event.target.value })}
+                    >
+                      <option value="">—</option>
+                      {valuesFor(gradeOptions, row.grade).map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </span>
+                </SubRow>
+              </Fragment>
+            );
+          })}
+        </SubGrid>
+      </div>
+
+      {someSelectable && (
+        <div className="ob-order-more">
+          <button
+            type="button"
+            disabled={!moreTarget}
+            onClick={() => moreTarget && onAnotherColour(moreTarget)}
+          >
+            <Icon name="plus" size={14} /> {t('lead.add.card.anotherColour')}
+          </button>
+        </div>
+      )}
 
       {/* What is still missing, under the table: the footer keeps the artboard's one short hint. */}
       <p

@@ -846,6 +846,10 @@ describe('a multicolour sub product', () => {
     await pickSubProduct();
     await pickColour('OPT-0002', 'Whi');
 
+    // One button, once, below the table (as on the artboard), working on the row the caret is in.
+    expect(screen.getAllByRole('button', { name: t('lead.add.card.anotherColour') })).toHaveLength(
+      1,
+    );
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: t('lead.add.card.anotherColour') }));
       await wait(10);
