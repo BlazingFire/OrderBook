@@ -1438,23 +1438,6 @@ function AddLeadForm({
 
   return (
     <div ref={rootRef} className="ob-order-page">
-      {/* The page title is the shell's breadcrumb; the heading stays for the screen reader. */}
-      <h1
-        style={{
-          position: 'absolute',
-          width: 1,
-          height: 1,
-          margin: -1,
-          padding: 0,
-          overflow: 'hidden',
-          clip: 'rect(0 0 0 0)',
-          whiteSpace: 'nowrap',
-          border: 0,
-        }}
-      >
-        {lead ? t('lead.edit.title') : t('lead.add.title')}
-      </h1>
-
       {error && <ConflictBanner>{error}</ConflictBanner>}
       {editBase.conflicted && !busy && (
         <StaleEditNotice
