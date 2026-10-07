@@ -45,8 +45,8 @@ describe('the bundled fonts', () => {
 });
 
 describe('the note quantity unit', () => {
-  it('is "box", as the owner chose from the design, not "pcs"', async () => {
+  it('is "pcs": a quantity is always pieces, and "Box" is only a kind of packaging (owner, 2026-10-07)', async () => {
     const { t } = await import('../src/i18n.js');
-    expect(t('orderNote.unit')).toBe('box');
+    expect(t('orderNote.unit')).toBe('pcs');
   });
 });
