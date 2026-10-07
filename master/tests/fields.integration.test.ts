@@ -109,6 +109,20 @@ describe.skipIf(!canRunIntegrationTests)('Fields (integration)', () => {
       ).rejects.toThrow(ValidationError);
     });
 
+    it('answers a removal with the moment it was removed, not when the value was last edited', async () => {
+      const value = await fieldsService.createValue({ listKey: 'stock.colour', value: 'Ivory', label: 'Ivory' }, actor);
+      // Made a year ago and never edited since.
+      await db()('option_lists')
+        .where({ id: value.id })
+        .update({ created_at: '2025-10-07T00:00:00Z', updated_at: '2025-10-07T00:00:00Z' });
+
+      const removed = await fieldsService.deleteValue(value.id, actor);
+
+      const stored = await db()('option_lists').where({ id: value.id }).first();
+      expect(new Date(removed.deletedAt).toISOString()).toBe(new Date(stored.deleted_at).toISOString());
+      expect(new Date(removed.deletedAt).getFullYear()).toBeGreaterThanOrEqual(2026);
+    });
+
     it('after removing "Ivory", adding it back is possible — the partial unique index at work', async () => {
       const first = await fieldsService.createValue({ listKey: 'stock.colour', value: 'Ivory', label: 'Ivory' }, actor);
       await fieldsService.deleteValue(first.id, actor);

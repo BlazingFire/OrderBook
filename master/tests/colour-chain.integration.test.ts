@@ -255,6 +255,41 @@ describe.skipIf(!canRunIntegrationTests)('the colour chain (integration)', () =>
       expect(lines[section - 1]).toBe('');
       expect(lines.slice(section + 1, section + 3).sort()).toEqual(['Ivory,8', 'Magenta,5']);
     });
+
+    it('W2-4 and W2-5: prints a renamed colour by its label, and lines with no colour as "No colour"', async () => {
+      const { party, basin, basinVariant } = await seed();
+      const { product: plain, variant: plainVariant } = await (async () => {
+        const created = await catalog.createProduct(
+          { name: 'PLAIN PAN', categoryName: 'PAN', variants: [{ code: 'PAN-1', weightKg: 5 }] },
+          actor,
+        );
+        return { product: created, variant: created.variants[0]! };
+      })();
+      const lead = await leads.createLead(
+        {
+          partyId: party.id,
+          items: [line(basin.id, basinVariant.id, 5, { colour: 'Magenta' }), line(plain.id, plainVariant.id, 3)],
+        },
+        actor,
+      );
+      const order = await orders.convertLead({ leadId: lead.id }, actor);
+      await orders.dispatchOrder({ orderId: order.id }, actor);
+      // Renamed in Fields after the sale; the line still holds the value.
+      await db()('option_lists')
+        .where({ list_key: 'stock.colour', value: 'Magenta' })
+        .update({ label: 'Magenta Pink' });
+
+      const report = await reports.dispatchReport({ period: 'thisMonth' }, actor);
+      expect(Object.fromEntries(report.colours.map((bucket) => [bucket.colour, bucket.boxCount]))).toEqual({
+        'Magenta Pink': 5,
+        'No colour': 3,
+      });
+
+      const exported = (await reports.exportReport('dispatches', { period: 'thisMonth' }, actor)) as { csv: string };
+      const lines = exported.csv.split('\r\n');
+      const section = lines.indexOf('colour,boxCount');
+      expect(lines.slice(section + 1, section + 3).sort()).toEqual(['Magenta Pink,5', 'No colour,3']);
+    });
   });
 
   describe('the lead PDF prints the colour list label', () => {

@@ -341,7 +341,10 @@ export async function deleteValue(
   if (!item) throw new NotFoundError('Option');
 
   publishChange({ entity: 'option_list', action: 'deleted', id, payload: item });
-  return { id: item.id, deletedAt: item.updatedAt };
+  // The soft delete stamps `deleted_at` and leaves `updated_at` alone, so
+  // answering with `updatedAt` reported when the value was last edited — its
+  // creation date, for most — as the moment it was deleted.
+  return { id: item.id, deletedAt: item.deletedAt ?? item.updatedAt };
 }
 
 /**

@@ -169,7 +169,7 @@ describe.skipIf(!canRunIntegrationTests)('Reports (integration)', () => {
       expect(thisMonth?.boxCount).toBe(10);
     });
 
-    it('RPT-18: the colour buckets are the variant labels the pieces were dispatched in, and a no-variant product is one blank bucket', async () => {
+    it('RPT-18: the colour buckets are the variant labels the pieces were dispatched in, and a no-variant product is one "No colour" bucket', async () => {
       const party = await catalogService.createParty({ name: 'RPT Colours', city: 'Morbi' }, actor);
       const model = await catalogService.createProduct(
         {
@@ -208,7 +208,9 @@ describe.skipIf(!canRunIntegrationTests)('Reports (integration)', () => {
       const buckets = new Map(report.colours.map((bucket) => [bucket.colour, bucket.boxCount]));
       expect(buckets.get('White')).toBe(5);
       expect(buckets.get('Magenta')).toBe(10);
-      expect(buckets.get('')).toBe(7);
+      // Named rather than a blank cell since W2-5 (2026-10-07).
+      expect(buckets.get('No colour')).toBe(7);
+      expect(buckets.has('')).toBe(false);
     });
 
     it('RPT-9: BIGINT totals sum as numbers, not strings', async () => {

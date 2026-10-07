@@ -39,6 +39,7 @@ import type {
   TopPartyRow,
 } from '@orderbook/shared';
 import {
+  colourLabeller,
   REPORT_COLUMNS,
   REPORT_EXPORT_CAPS,
   REPORT_META,
@@ -62,6 +63,7 @@ import { rangeSubtitle, resolveReportRange, type DateComponents } from '../domai
 import { config } from '../config/index.js';
 import { db } from '../db/knex.js';
 import { toCsv } from '../lib/csv.js';
+import * as customFieldRepo from '../repositories/custom-field.repository.js';
 import { ForbiddenError, ValidationError } from '../lib/errors.js';
 import { streamXlsxTable, XLSX_CONTENT_TYPE } from '../lib/spreadsheet.js';
 import * as activityLogRepo from '../repositories/activity-log.repository.js';
@@ -208,9 +210,11 @@ async function contextFor(
 
 async function buildDispatches(ctx: Context): Promise<DispatchesReport> {
   const { range, dateRange } = ctx;
-  const [monthRows, colourRows] = await Promise.all([
+  const [monthRows, colourRows, colourOptions] = await Promise.all([
     reportRepo.dispatchesByMonth(dateRange),
     reportRepo.dispatchesByColour(dateRange),
+    // Deleted ones too: a colour taken off the list keeps the name it sold under.
+    customFieldRepo.listOptionsForKey(dateRange.tenantId, 'stock.colour', { includeDeleted: true }),
   ]);
 
   const byMonth = new Map(monthRows.map((row) => [row.month, row]));
@@ -219,7 +223,18 @@ async function buildDispatches(ctx: Context): Promise<DispatchesReport> {
     return { month, orderCount: row?.orderCount ?? 0, boxCount: row?.boxCount ?? 0 };
   });
 
-  const colours: DispatchColourBucket[] = colourRows.map((row) => ({ colour: row.colour, boxCount: row.boxCount }));
+  // A line stores the colour list's value; the report shows the list's label
+  // as it is now (W2-4), and lines with no colour under a word rather than an
+  // empty cell (W2-5). Two values that now read the same are one row.
+  const labelOf = colourLabeller(colourOptions);
+  const byName = new Map<string, DispatchColourBucket>();
+  for (const row of colourRows) {
+    const colour = row.colour === '' ? label('reports.dispatches.noColour') : labelOf(row.colour);
+    const bucket = byName.get(colour.toLowerCase());
+    if (bucket) bucket.boxCount += row.boxCount;
+    else byName.set(colour.toLowerCase(), { colour, boxCount: row.boxCount });
+  }
+  const colours = [...byName.values()].sort((a, b) => b.boxCount - a.boxCount);
 
   const totals = months.reduce(
     (acc, bucket) => {
