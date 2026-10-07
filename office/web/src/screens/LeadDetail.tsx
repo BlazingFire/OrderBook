@@ -39,6 +39,7 @@ import {
   recordNumberText,
   t,
   useColourHex,
+  useColourLabel,
   useUnsavedWork,
 } from '@orderbook/ui';
 
@@ -56,6 +57,7 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
   const [expectedDate, setExpectedDate] = useState('');
   const [busy, setBusy] = useState(false);
   const colourHex = useColourHex(view.optionLists);
+  const labelOf = useColourLabel(view.optionLists);
 
   // "Save all and update": a remark, a dispatch label or a date typed on the
   // pending order and not yet used is named, never applied (they belong to a stage
@@ -126,15 +128,15 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
                         Magenta (CATALOGUE_MODEL §2). */}
                     {item.variantLabel && shownColour(item.variantLabel, item.productName) && (
                       <span className="ob-colourname ob-small">
-                        <ColourChip name={item.variantLabel} hex={colourHex(item.variantLabel)} />
-                        <span>{item.variantLabel}</span>
+                        <ColourChip name={labelOf(item.variantLabel)} hex={colourHex(item.variantLabel)} />
+                        <span>{labelOf(item.variantLabel)}</span>
                       </span>
                     )}
                     {/* The colour chosen on a multi-colour line, beside the variant's own. */}
                     {item.colour && (
                       <span className="ob-colourname ob-small">
-                        <ColourChip name={item.colour} hex={colourHex(item.colour)} />
-                        <span>{item.colour}</span>
+                        <ColourChip name={labelOf(item.colour)} hex={colourHex(item.colour)} />
+                        <span>{labelOf(item.colour)}</span>
                       </span>
                     )}
                     <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>

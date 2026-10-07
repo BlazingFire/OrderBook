@@ -46,6 +46,7 @@ import {
   rem,
   t,
   useColourHex,
+  useColourLabel,
   useFilterBar,
   useBoardPresence,
   useRecordPresence,
@@ -153,6 +154,7 @@ export function LeadBoardScreen({
   const deferredSearch = useDeferredValue(search);
   const [menuId, setMenuId] = useState<string | null>(null);
   const colourHex = useColourHex(view.optionLists);
+  const labelOf = useColourLabel(view.optionLists);
   const toast = useToast();
   // `leads.packagingRequiredOnConvert`, resolved at this panel's edge. At
   // component scope, not inside `renderCard` — `renderCard` closes over it.
@@ -736,7 +738,7 @@ export function LeadBoardScreen({
                       }}
                     >
                       {colours.map((colour) => (
-                        <ColourChip key={colour} name={colour} hex={colourHex(colour)} />
+                        <ColourChip key={colour} name={labelOf(colour)} hex={colourHex(colour)} />
                       ))}
                     </span>
                   </div>

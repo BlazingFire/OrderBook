@@ -5,7 +5,8 @@
 
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { PipelineStage, TimelineEntry as RecordTimelineEntry } from '@orderbook/shared';
+import { colourLabeller } from '@orderbook/shared';
+import type { ColourLabelOf, PipelineStage, TimelineEntry as RecordTimelineEntry } from '@orderbook/shared';
 import { IconButton } from './Button';
 import { copyText } from './clipboard.js';
 import { t } from './i18n.js';
@@ -36,6 +37,18 @@ export function useColourHex(optionLists: ColourOption[]): (colour: string) => s
   }, [optionLists]);
 
   return (colour: string) => map.get(colour);
+}
+
+/**
+ * A stored colour VALUE in the words the company's colour list uses now (`colourLabeller`):
+ * a colour renamed in Fields reads the new way on every record, and a value the list no
+ * longer has reads as stored. Inactive colours still label, since old lines keep them.
+ */
+export function useColourLabel(optionLists: ColourOption[]): ColourLabelOf {
+  return useMemo(
+    () => colourLabeller(optionLists.filter((option) => option.listKey === 'stock.colour')),
+    [optionLists],
+  );
 }
 
 export function ColourChip({ hex, name }: { hex?: string; name: string }) {

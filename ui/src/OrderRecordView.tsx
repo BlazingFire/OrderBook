@@ -27,6 +27,7 @@ import {
   Timeline,
   recordTimelineEntries,
   useColourHex,
+  useColourLabel,
 } from './DataDisplay.js';
 import { FormField, Input, NumberInput } from './Form.js';
 import { formatDateTime, formatKg } from './format.js';
@@ -81,6 +82,7 @@ export function OrderRecordView({
   transportRef.current = transport;
 
   const colourHex = useColourHex(optionLists);
+  const labelOf = useColourLabel(optionLists);
   const [note, setNote] = useState('');
   const [override, setOverride] = useState(
     order.totalWeightKgOverride === null ? '' : String(order.totalWeightKgOverride),
@@ -165,14 +167,14 @@ export function OrderRecordView({
                     <td>
                       {/* Not when it only repeats the name (CATALOGUE_MODEL §2). */}
                       {item.variantLabel && shownColour(item.variantLabel, item.productName) ? (
-                        <ColourName name={item.variantLabel} hex={colourHex(item.variantLabel)} />
+                        <ColourName name={labelOf(item.variantLabel)} hex={colourHex(item.variantLabel)} />
                       ) : (
                         '—'
                       )}
                     </td>
                     <td>
                       {item.colour ? (
-                        <ColourName name={item.colour} hex={colourHex(item.colour)} />
+                        <ColourName name={labelOf(item.colour)} hex={colourHex(item.colour)} />
                       ) : (
                         '—'
                       )}
