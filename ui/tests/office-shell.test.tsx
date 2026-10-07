@@ -255,9 +255,8 @@ async function draftOneProduct(): Promise<void> {
   const search = screen.getByLabelText(t('lead.add.products.searchLabel'));
   fireEvent.focus(search);
   fireEvent.mouseDown(await screen.findByRole('button', { name: CATEGORY.name }));
-  fireEvent.mouseDown(await screen.findByRole('button', { name: new RegExp(PRODUCT.name) }));
 
-  fireEvent.change(await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — White`), {
+  fireEvent.change(await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — AQ-W`), {
     target: { value: '5' },
   });
 }
@@ -331,9 +330,7 @@ describe('the link to the Master (1.3)', () => {
     });
 
     const since = screen.getByText(t('office.sync.offlineSince'));
-    expect(since.nextElementSibling?.textContent).toContain(
-      `(${formatElapsed(5 * MINUTE)})`,
-    );
+    expect(since.nextElementSibling?.textContent).toContain(`(${formatElapsed(5 * MINUTE)})`);
   });
 
   it('does not let the Dashboard say "All synced" while offline', async () => {
@@ -374,7 +371,9 @@ describe('the link to the Master (1.3)', () => {
     }
 
     expect(await screen.findByText(t('office.link.offlineLongTitle'))).toBeTruthy();
-    expect(screen.getByRole('button', { name: t('notification.unreadLabel', { count: 1 }) })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: t('notification.unreadLabel', { count: 1 }) }),
+    ).toBeTruthy();
     expect(notify).toHaveBeenCalledTimes(1);
     expect(notify).toHaveBeenCalledWith(
       expect.objectContaining({ title: t('office.link.offlineLongTitle') }),
@@ -393,7 +392,9 @@ describe('the link to the Master (1.3)', () => {
     await boot({ permissions: ['leads.view'] });
 
     await status({ clockSkewMs: 90_000 });
-    expect(screen.queryByText(t('office.link.clockSkew', { duration: formatElapsed(90_000) }))).toBeNull();
+    expect(
+      screen.queryByText(t('office.link.clockSkew', { duration: formatElapsed(90_000) })),
+    ).toBeNull();
 
     await status({ clockSkewMs: -5 * MINUTE });
     expect(
@@ -421,7 +422,8 @@ describe('the link to the Master (1.3)', () => {
   it('re-reads the bell on a pushed notice and when the stream reopens, on the same stream', async () => {
     const notify = desktopShell();
     const calls = await boot({ permissions: ['leads.view'] });
-    const reads = () => calls.filter((call) => call.url.split('?')[0] === '/api/notifications').length;
+    const reads = () =>
+      calls.filter((call) => call.url.split('?')[0] === '/api/notifications').length;
     await waitFor(() => expect(reads()).toBeGreaterThan(0));
     const opened = FakeEventSource.opened;
 
@@ -457,7 +459,10 @@ describe('the link to the Master (1.3)', () => {
 
 describe('the Dashboard orders tile (stock removed, 1.4)', () => {
   async function ordersTile(orders: unknown[]): Promise<HTMLElement> {
-    await boot({ permissions: ['leads.view', 'orders.view'], view: { orders, permissions: ['leads.view', 'orders.view'] } });
+    await boot({
+      permissions: ['leads.view', 'orders.view'],
+      view: { orders, permissions: ['leads.view', 'orders.view'] },
+    });
     await pressAltDigitUntil(2, t('nav.dashboard'));
     return screen.getByText(t('dashboard.orders.title')).closest('.ob-stattile') as HTMLElement;
   }
@@ -465,7 +470,12 @@ describe('the Dashboard orders tile (stock removed, 1.4)', () => {
   it('counts the pieces on open orders as pcs still to dispatch', async () => {
     const tile = await ordersTile([
       { ...ORDER, items: [{ quantity: 3 }, { quantity: 4 }] },
-      { ...ORDER, id: 'ORD-2', items: [{ quantity: 99 }], dispatchedAt: '2026-09-23T00:00:00.000Z' },
+      {
+        ...ORDER,
+        id: 'ORD-2',
+        items: [{ quantity: 99 }],
+        dispatchedAt: '2026-09-23T00:00:00.000Z',
+      },
     ]);
 
     expect(within(tile).getByText('7 pcs still to dispatch')).toBeTruthy();
@@ -525,7 +535,9 @@ describe('where a person lands', () => {
     );
     await waitFor(() => expect(document.querySelector('.ob-footer')).not.toBeNull());
 
-    const tiles = [...document.querySelectorAll('.ob-launcher .ob-tile-label')].map((tile) => tile.textContent);
+    const tiles = [...document.querySelectorAll('.ob-launcher .ob-tile-label')].map(
+      (tile) => tile.textContent,
+    );
     expect(tiles).toContain(t('nav.chatroom'));
     expect(tiles).toContain(t('nav.printroom'));
   });
@@ -672,7 +684,13 @@ describe('Reports', () => {
   };
   const TABLE = {
     kind: 'dispatches',
-    range: { period: 'last6Months', fromDate: '2026-05-01', toDateExclusive: '2026-11-01', months: ['2026-05', '2026-10'], timeZone: 'Asia/Kolkata' },
+    range: {
+      period: 'last6Months',
+      fromDate: '2026-05-01',
+      toDateExclusive: '2026-11-01',
+      months: ['2026-05', '2026-10'],
+      timeZone: 'Asia/Kolkata',
+    },
     subject: { id: 'user-1', name: 'Asha' },
     columns: [
       { key: 'month', labelToken: 'reports.column.month', unit: 'text' },
@@ -705,7 +723,9 @@ describe('Reports', () => {
     expect(asked).toContain('/api/reports/options');
     expect(asked.some((url) => url.startsWith('/api/reports/table/dispatches'))).toBe(true);
     // The sidebar opens it on the first kind on offer, and the title says which.
-    expect(document.querySelector('.ob-topbar')?.textContent).toContain(t('reports.kind.dispatches'));
+    expect(document.querySelector('.ob-topbar')?.textContent).toContain(
+      t('reports.kind.dispatches'),
+    );
   });
 
   it('asks again after every change the Master sends, even one that leaves the record counts as they were', async () => {
@@ -716,8 +736,14 @@ describe('Reports', () => {
     });
     await screen.findByText('2026-10');
 
-    const tableCalls = (): number => calls.filter((call) => call.url.startsWith('/api/reports/table/')).length;
-    const change = { entity: 'party', action: 'updated', id: 'PT0000000001', payload: { id: 'PT0000000001', name: 'Shah', city: 'Morbi' } };
+    const tableCalls = (): number =>
+      calls.filter((call) => call.url.startsWith('/api/reports/table/')).length;
+    const change = {
+      entity: 'party',
+      action: 'updated',
+      id: 'PT0000000001',
+      payload: { id: 'PT0000000001', name: 'Shah', city: 'Morbi' },
+    };
 
     // The first change adds a record; the second edits it in place and moves no count.
     for (let round = 0; round < 2; round += 1) {
@@ -733,7 +759,9 @@ describe('Reports', () => {
     const calls = await boot({
       permissions: ['reports.view', 'reports.export'],
       route: (call) =>
-        call.url.split('?')[0] === '/api/reports/options' ? json({ ...OPTIONS, canExport: true }) : reportRoutes(call),
+        call.url.split('?')[0] === '/api/reports/options'
+          ? json({ ...OPTIONS, canExport: true })
+          : reportRoutes(call),
     });
     expect(calls.length).toBeGreaterThan(0);
     const work = within(screen.getByRole('region', { name: t('nav.work') }));
@@ -744,13 +772,17 @@ describe('Reports', () => {
     expect(screen.getByRole('link', { name: t('reports.previewPdf') })).toBeTruthy();
 
     await act(async () => {
-      FakeEventSource.instances.at(-1)!.emit('status', { state: 'disconnected', disconnectedSince: new Date().toISOString() });
+      FakeEventSource.instances
+        .at(-1)!
+        .emit('status', { state: 'disconnected', disconnectedSince: new Date().toISOString() });
       await wait(0);
     });
     expect(screen.queryByRole('link', { name: t('reports.previewPdf') })).toBeNull();
 
     await act(async () => {
-      FakeEventSource.instances.at(-1)!.emit('status', { state: 'connected', disconnectedSince: null });
+      FakeEventSource.instances
+        .at(-1)!
+        .emit('status', { state: 'connected', disconnectedSince: null });
       await wait(0);
     });
     expect(await screen.findByRole('link', { name: t('reports.previewPdf') })).toBeTruthy();
@@ -764,10 +796,18 @@ describe('Reports', () => {
     });
     await screen.findByText('2026-10');
 
-    const tableCalls = (): number => calls.filter((call) => call.url.startsWith('/api/reports/table/')).length;
+    const tableCalls = (): number =>
+      calls.filter((call) => call.url.startsWith('/api/reports/table/')).length;
     const before = tableCalls();
     await act(async () => {
-      FakeEventSource.instances.at(-1)!.emit('change', { entity: 'option_list', action: 'updated', id: 'OL0000000001', payload: {} });
+      FakeEventSource.instances
+        .at(-1)!
+        .emit('change', {
+          entity: 'option_list',
+          action: 'updated',
+          id: 'OL0000000001',
+          payload: {},
+        });
     });
     // Let any wrongly scheduled fetch land before counting.
     await act(async () => {
@@ -778,7 +818,11 @@ describe('Reports', () => {
 
   it('is not offered without reports.view, nor when the company has switched it off for the Office tier', async () => {
     await boot({ permissions: ['orders.view'], route: reportRoutes });
-    expect(within(screen.getByRole('region', { name: t('nav.work') })).queryByRole('button', { name: new RegExp(`^${t('nav.reports')}`) })).toBeNull();
+    expect(
+      within(screen.getByRole('region', { name: t('nav.work') })).queryByRole('button', {
+        name: new RegExp(`^${t('nav.reports')}`),
+      }),
+    ).toBeNull();
     cleanup();
 
     await boot({
@@ -788,7 +832,9 @@ describe('Reports', () => {
     });
     await waitFor(() =>
       expect(
-        within(screen.getByRole('region', { name: t('nav.work') })).queryByRole('button', { name: new RegExp(`^${t('nav.reports')}`) }),
+        within(screen.getByRole('region', { name: t('nav.work') })).queryByRole('button', {
+          name: new RegExp(`^${t('nav.reports')}`),
+        }),
       ).toBeNull(),
     );
   });
@@ -800,7 +846,9 @@ describe('Reports', () => {
       view: { features: { reportsVisibleToOffice: true } },
     });
     expect(
-      within(screen.getByRole('region', { name: t('nav.work') })).getByRole('button', { name: new RegExp(`^${t('nav.reports')}`) }),
+      within(screen.getByRole('region', { name: t('nav.work') })).getByRole('button', {
+        name: new RegExp(`^${t('nav.reports')}`),
+      }),
     ).toBeTruthy();
   });
 });
@@ -1009,7 +1057,7 @@ describe('the New lead form', () => {
     fireEvent.click(newLeadButton());
     await draftOneProduct();
 
-    const packaging = screen.getByLabelText(`${t('lead.add.draft.packaging')} — White`);
+    const packaging = screen.getByLabelText(`${t('lead.add.draft.packaging')} — AQ-W`);
     expect(packaging.getAttribute('aria-required')).toBeNull();
     // Nothing picked and nothing required: the card adds as it is.
     expect(
@@ -1026,7 +1074,7 @@ describe('the New lead form', () => {
     fireEvent.click(newLeadButton());
     await draftOneProduct();
 
-    const packaging = screen.getByLabelText(`${t('lead.add.draft.packaging')} — White`);
+    const packaging = screen.getByLabelText(`${t('lead.add.draft.packaging')} — AQ-W`);
     expect(packaging.getAttribute('aria-required')).toBe('true');
     // Counted but not packed: the card cannot be added yet.
     expect(
@@ -1383,7 +1431,10 @@ describe('Edit lead', () => {
 
   describe('the Filling and Dispatch notes on a pending order', () => {
     async function openLead(permissions: string[]): Promise<Call[]> {
-      const calls = await boot({ permissions, view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] } });
+      const calls = await boot({
+        permissions,
+        view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] },
+      });
       await act(async () => {
         fireEvent.click(screen.getByTitle(t('nav.leads')));
       });
@@ -1405,7 +1456,10 @@ describe('Edit lead', () => {
     });
 
     it('opens a note straight from the list row (R10)', async () => {
-      await boot({ permissions: ['leads.view'], view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] } });
+      await boot({
+        permissions: ['leads.view'],
+        view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] },
+      });
       await act(async () => {
         fireEvent.click(screen.getByTitle(t('nav.leads')));
       });
@@ -1417,11 +1471,16 @@ describe('Edit lead', () => {
         fireEvent.click(screen.getByRole('button', { name: t('orderNote.dispatch') }));
       });
 
-      expect((await screen.findAllByText(t('orderNote.page', { n: 1, total: 1 }))).length).toBeGreaterThan(0);
+      expect(
+        (await screen.findAllByText(t('orderNote.page', { n: 1, total: 1 }))).length,
+      ).toBeGreaterThan(0);
     });
 
     it('opens a note from the board card menu (R10)', async () => {
-      await boot({ permissions: ['leads.view'], view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] } });
+      await boot({
+        permissions: ['leads.view'],
+        view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] },
+      });
       await act(async () => {
         fireEvent.click(screen.getByTitle(t('nav.leads')));
       });
@@ -1430,7 +1489,9 @@ describe('Edit lead', () => {
         fireEvent.click(screen.getByRole('button', { name: t('lead.board.tab.board') }));
       });
       await act(async () => {
-        fireEvent.click((await screen.findAllByRole('button', { name: t('lead.board.cardMenu') }))[0]!);
+        fireEvent.click(
+          (await screen.findAllByRole('button', { name: t('lead.board.cardMenu') }))[0]!,
+        );
       });
       await act(async () => {
         fireEvent.click(await screen.findByRole('menuitem', { name: t('orderNote.filling') }));
@@ -1440,7 +1501,10 @@ describe('Edit lead', () => {
     });
 
     it('the board card menu trigger announces a menu and keeps Enter to itself', async () => {
-      await boot({ permissions: ['leads.view'], view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] } });
+      await boot({
+        permissions: ['leads.view'],
+        view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] },
+      });
       await act(async () => {
         fireEvent.click(screen.getByTitle(t('nav.leads')));
       });
@@ -1448,7 +1512,9 @@ describe('Edit lead', () => {
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: t('lead.board.tab.board') }));
       });
-      const trigger = (await screen.findAllByRole('button', { name: t('lead.board.cardMenu') }))[0]!;
+      const trigger = (
+        await screen.findAllByRole('button', { name: t('lead.board.cardMenu') })
+      )[0]!;
       expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
       expect(trigger.getAttribute('aria-expanded')).toBe('false');
       // Enter on the trigger must not reach the card, whose own handler opens the record.
@@ -1469,8 +1535,10 @@ describe('Edit lead', () => {
           view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] },
           route: (call) => {
             const path = call.url.split('?')[0];
-            if (path === '/api/print-jobs' && call.method === 'POST') return json({ id: 'sent' }, 201);
-            if (path === '/api/print-jobs') return json({ jobs: [], nextCursor: null, waitingCount: 0 });
+            if (path === '/api/print-jobs' && call.method === 'POST')
+              return json({ id: 'sent' }, 201);
+            if (path === '/api/print-jobs')
+              return json({ jobs: [], nextCursor: null, waitingCount: 0 });
             if (path === '/api/print-stations') return json([]);
             return undefined;
           },
@@ -1496,7 +1564,7 @@ describe('Edit lead', () => {
         expect(screen.getByRole('button', { name: t('orderNote.sendToPrintroom') })).toBeTruthy();
       });
 
-      it('posts the pending order to this panel\'s server, which forwards it to the Master', async () => {
+      it("posts the pending order to this panel's server, which forwards it to the Master", async () => {
         const calls = await openNote(['leads.view', 'leads.export', 'print.send']);
         fireEvent.change(screen.getByLabelText(t('orderNote.copies')), { target: { value: '2' } });
         fireEvent.click(screen.getByRole('button', { name: t('orderNote.sendToPrintroom') }));
@@ -1504,23 +1572,42 @@ describe('Edit lead', () => {
         const dialog = await screen.findByRole('dialog');
         fireEvent.click(within(dialog).getByRole('button', { name: t('printroom.dialog.send') }));
 
-        await waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.url === '/api/print-jobs')).toBe(true));
-        const post = calls.find((call) => call.method === 'POST' && call.url === '/api/print-jobs')!;
-        expect(post.body).toMatchObject({ kind: 'filling', source: 'lead', sourceId: LEAD.id, copies: 2 });
+        await waitFor(() =>
+          expect(
+            calls.some((call) => call.method === 'POST' && call.url === '/api/print-jobs'),
+          ).toBe(true),
+        );
+        const post = calls.find(
+          (call) => call.method === 'POST' && call.url === '/api/print-jobs',
+        )!;
+        expect(post.body).toMatchObject({
+          kind: 'filling',
+          source: 'lead',
+          sourceId: LEAD.id,
+          copies: 2,
+        });
       });
 
-      it('says the Master is not reachable when the panel\'s server answers 503, and the local Print still works', async () => {
+      it("says the Master is not reachable when the panel's server answers 503, and the local Print still works", async () => {
         const printPage = vi.fn().mockResolvedValue({ ok: true });
-        (window as Window & { orderbook?: unknown }).orderbook = { shellVersion: 't', applyUpdate: vi.fn(), printPage };
+        (window as Window & { orderbook?: unknown }).orderbook = {
+          shellVersion: 't',
+          applyUpdate: vi.fn(),
+          printPage,
+        };
         const calls = await boot({
           permissions: ['leads.view', 'leads.export', 'print.send'],
           view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] },
           route: (call) => {
             const path = call.url.split('?')[0];
             if (path === '/api/print-jobs' && call.method === 'POST') {
-              return json({ error: 'unavailable', message: 'Not connected', messageKey: 'error.unavailable' }, 503);
+              return json(
+                { error: 'unavailable', message: 'Not connected', messageKey: 'error.unavailable' },
+                503,
+              );
             }
-            if (path === '/api/print-jobs') return json({ jobs: [], nextCursor: null, waitingCount: 0 });
+            if (path === '/api/print-jobs')
+              return json({ jobs: [], nextCursor: null, waitingCount: 0 });
             if (path === '/api/print-stations') return json([]);
             return undefined;
           },
@@ -1533,12 +1620,16 @@ describe('Edit lead', () => {
         });
         await screen.findByText(t('lead.detail.lineItems'));
         fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
-        fireEvent.click(await screen.findByRole('button', { name: t('orderNote.sendToPrintroom') }));
+        fireEvent.click(
+          await screen.findByRole('button', { name: t('orderNote.sendToPrintroom') }),
+        );
         const dialog = await screen.findByRole('dialog');
         fireEvent.click(within(dialog).getByRole('button', { name: t('printroom.dialog.send') }));
 
         expect(await screen.findByText(t('printroom.dialog.offline'))).toBeTruthy();
-        expect(calls.filter((call) => call.method === 'POST' && call.url === '/api/print-jobs')).toHaveLength(1);
+        expect(
+          calls.filter((call) => call.method === 'POST' && call.url === '/api/print-jobs'),
+        ).toHaveLength(1);
 
         fireEvent.click(within(dialog).getByRole('button', { name: t('common.cancel') }));
         fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
@@ -1560,7 +1651,11 @@ describe('Edit lead', () => {
 
     it('prints the copies asked for, and sends no write for the vehicle number', async () => {
       const printPage = vi.fn().mockResolvedValue({ ok: true });
-      (window as Window & { orderbook?: unknown }).orderbook = { shellVersion: 'test', applyUpdate: vi.fn(), printPage };
+      (window as Window & { orderbook?: unknown }).orderbook = {
+        shellVersion: 'test',
+        applyUpdate: vi.fn(),
+        printPage,
+      };
       const calls = await openLead(['leads.view', 'leads.export']);
       fireEvent.click(screen.getByRole('button', { name: t('orderNote.dispatch') }));
 
@@ -1574,8 +1669,12 @@ describe('Edit lead', () => {
 
       fireEvent.change(screen.getByLabelText(t('orderNote.copies')), { target: { value: '4' } });
       fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
-      await waitFor(() => expect(printPage).toHaveBeenLastCalledWith({ deviceName: undefined, copies: 4 }));
-      expect(calls.filter((call) => call.method !== 'GET' && call.url.startsWith('/api/leads'))).toEqual([]);
+      await waitFor(() =>
+        expect(printPage).toHaveBeenLastCalledWith({ deviceName: undefined, copies: 4 }),
+      );
+      expect(
+        calls.filter((call) => call.method !== 'GET' && call.url.startsWith('/api/leads')),
+      ).toEqual([]);
     });
   });
 
@@ -1652,7 +1751,8 @@ describe('Edit lead', () => {
     await boot({
       permissions: ['leads.view'],
       view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] },
-      route: ({ url }) => (url === '/api/presence/board?kind=lead' ? json({ error: 'offline' }, 503) : undefined),
+      route: ({ url }) =>
+        url === '/api/presence/board?kind=lead' ? json({ error: 'offline' }, 503) : undefined,
     });
     await act(async () => {
       fireEvent.click(screen.getByTitle(t('nav.leads')));
@@ -1687,7 +1787,9 @@ describe('Edit lead', () => {
         announced: false,
       });
     });
-    expect(await screen.findByText(t('lead.numbered.toast', { number: 'PO/2026-27/00012' }))).toBeTruthy();
+    expect(
+      await screen.findByText(t('lead.numbered.toast', { number: 'PO/2026-27/00012' })),
+    ).toBeTruthy();
 
     // The permanent record replaces the provisional one: still open, now by its number.
     await sendSnapshot(
@@ -1720,9 +1822,20 @@ describe('Edit lead', () => {
 
 describe('the Filling and Dispatch notes on an order', () => {
   const LINE = {
-    id: 'line-1', variantId: 'var-1', productId: 'prod-1', productName: 'Rustic Wood',
-    categoryName: 'Duragres', size: '600x600', brandName: null, variantLabel: 'Ivory',
-    colour: null, grade: 'Std', packaging: 'Box', quantity: 12, weightKg: 2, lineWeightKg: 24,
+    id: 'line-1',
+    variantId: 'var-1',
+    productId: 'prod-1',
+    productName: 'Rustic Wood',
+    categoryName: 'Duragres',
+    size: '600x600',
+    brandName: null,
+    variantLabel: 'Ivory',
+    colour: null,
+    grade: 'Std',
+    packaging: 'Box',
+    quantity: 12,
+    weightKg: 2,
+    lineWeightKg: 24,
   };
   const NOTE_ORDER = { ...ORDER, items: [LINE] };
 
@@ -1754,7 +1867,10 @@ describe('the Filling and Dispatch notes on an order', () => {
   });
 
   it('opens a note straight from the list row (R10)', async () => {
-    await boot({ permissions: ['orders.view'], view: { orders: [NOTE_ORDER], pipelines: [ORDER_PIPELINE] } });
+    await boot({
+      permissions: ['orders.view'],
+      view: { orders: [NOTE_ORDER], pipelines: [ORDER_PIPELINE] },
+    });
     await act(async () => {
       fireEvent.click(screen.getByTitle(t('nav.orders')));
     });
@@ -1796,11 +1912,15 @@ describe('the Filling and Dispatch notes on an order', () => {
 
     fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
     // `copies` is always sent now (deliberate): one unless the person set more.
-    await waitFor(() => expect(printPage).toHaveBeenLastCalledWith({ deviceName: undefined, copies: 1 }));
+    await waitFor(() =>
+      expect(printPage).toHaveBeenLastCalledWith({ deviceName: undefined, copies: 1 }),
+    );
 
     fireEvent.change(printer, { target: { value: 'HP Laser' } });
     fireEvent.click(screen.getByRole('button', { name: t('orderNote.print') }));
-    await waitFor(() => expect(printPage).toHaveBeenLastCalledWith({ deviceName: 'HP Laser', copies: 1 }));
+    await waitFor(() =>
+      expect(printPage).toHaveBeenLastCalledWith({ deviceName: 'HP Laser', copies: 1 }),
+    );
   });
 
   it('falls back to the browser print when there is no shell', async () => {
@@ -1824,7 +1944,9 @@ describe('the Filling and Dispatch notes on an order', () => {
       await wait(0);
     });
 
-    const writes = calls.filter((call) => call.method === 'PUT' && call.url === `/api/orders/${ORDER.id}`);
+    const writes = calls.filter(
+      (call) => call.method === 'PUT' && call.url === `/api/orders/${ORDER.id}`,
+    );
     expect(writes.map((call) => call.body)).toEqual([{ vehicleNumber: 'GJ 03 AB 4471' }]);
   });
 
@@ -1892,9 +2014,21 @@ describe('the activity log (1.3)', () => {
 
 describe('the Chatroom (1.3 Phase 6)', () => {
   const ROOM = {
-    id: 'room-1', kind: 'group', name: 'Dispatch desk', description: null, announceOnly: false,
-    archivedAt: null, myRole: 'member', muted: false, lastSeq: 4, lastReadSeq: 1, unread: 3,
-    mentionUnread: 0, memberCount: 2, lastMessageAt: '2026-10-03T09:00:00.000Z', lastMessage: null,
+    id: 'room-1',
+    kind: 'group',
+    name: 'Dispatch desk',
+    description: null,
+    announceOnly: false,
+    archivedAt: null,
+    myRole: 'member',
+    muted: false,
+    lastSeq: 4,
+    lastReadSeq: 1,
+    unread: 3,
+    mentionUnread: 0,
+    memberCount: 2,
+    lastMessageAt: '2026-10-03T09:00:00.000Z',
+    lastMessage: null,
     direct: null,
   };
 
@@ -1907,7 +2041,11 @@ describe('the Chatroom (1.3 Phase 6)', () => {
     return undefined;
   };
 
-  const bootChat = (permissions: string[], extra?: Boot['route'], view: Record<string, unknown> = {}) =>
+  const bootChat = (
+    permissions: string[],
+    extra?: Boot['route'],
+    view: Record<string, unknown> = {},
+  ) =>
     boot({
       permissions,
       view,
@@ -1933,7 +2071,13 @@ describe('the Chatroom (1.3 Phase 6)', () => {
 
     await waitFor(() => {
       document.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'c', code: 'KeyC', altKey: true, bubbles: true, cancelable: true }),
+        new KeyboardEvent('keydown', {
+          key: 'c',
+          code: 'KeyC',
+          altKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
       );
       expect(topbarTitle()).toBe(t('chat.sub.rooms'));
     });
@@ -1946,7 +2090,9 @@ describe('the Chatroom (1.3 Phase 6)', () => {
     const before = gets(calls, '/api/chat/rooms');
 
     await act(async () => {
-      FakeEventSource.instances.at(-1)!.emit('chat', { kind: 'room', roomId: 'room-1', forUserId: 'user-1' });
+      FakeEventSource.instances
+        .at(-1)!
+        .emit('chat', { kind: 'room', roomId: 'room-1', forUserId: 'user-1' });
       await wait(700);
     });
     expect(gets(calls, '/api/chat/rooms')).toBeGreaterThan(before);
@@ -1997,16 +2143,30 @@ describe('the Chatroom (1.3 Phase 6)', () => {
 
     await openOrder(['orders.view', 'chat.use', 'chat.shareRecords']);
     fireEvent.click(screen.getByRole('button', { name: t('chat.share.button') }));
-    expect((await screen.findAllByRole('heading', { name: t('chat.share.title') })).length).toBeGreaterThan(0);
+    expect(
+      (await screen.findAllByRole('heading', { name: t('chat.share.title') })).length,
+    ).toBeGreaterThan(0);
     expect(await screen.findByText('Dispatch desk')).toBeTruthy();
   });
 
   describe('a record chip', () => {
     const chipMessage = (id: string) => ({
-      id: 'CM1', roomId: 'room-1', seq: 1, kind: 'text', author: { id: 'user-2', displayName: 'Bina', avatar: null, tier: 'office' },
-      body: 'please look', refs: [{ kind: 'order', id, label: id, partyName: 'Sharma Traders', restricted: false }],
-      mentions: [], system: null, createdAt: new Date().toISOString(), editedAt: null, deletedAt: null,
-      pinnedAt: null, pinnedBy: null, task: null, clientId: null,
+      id: 'CM1',
+      roomId: 'room-1',
+      seq: 1,
+      kind: 'text',
+      author: { id: 'user-2', displayName: 'Bina', avatar: null, tier: 'office' },
+      body: 'please look',
+      refs: [{ kind: 'order', id, label: id, partyName: 'Sharma Traders', restricted: false }],
+      mentions: [],
+      system: null,
+      createdAt: new Date().toISOString(),
+      editedAt: null,
+      deletedAt: null,
+      pinnedAt: null,
+      pinnedBy: null,
+      task: null,
+      clientId: null,
     });
 
     async function openChip(orderId: string, answer: Response): Promise<Call[]> {
@@ -2025,12 +2185,17 @@ describe('the Chatroom (1.3 Phase 6)', () => {
         await wait(0);
       });
       fireEvent.click((await screen.findByText('Dispatch desk')).closest('button')!);
-      fireEvent.click((await screen.findByText(new RegExp(`${orderId} . Sharma Traders`))).closest('button')!);
+      fireEvent.click(
+        (await screen.findByText(new RegExp(`${orderId} . Sharma Traders`))).closest('button')!,
+      );
       return calls;
     }
 
     it("opens an order this panel's view does not hold by fetching it from the Master", async () => {
-      const calls = await openChip('ORD-9', json({ ...ORDER, id: 'ORD-9', partyName: 'Patel Tiles' }));
+      const calls = await openChip(
+        'ORD-9',
+        json({ ...ORDER, id: 'ORD-9', partyName: 'Patel Tiles' }),
+      );
 
       expect(await screen.findByText(/Patel Tiles/, {}, { timeout: 5000 })).toBeTruthy();
       expect(calls.some((call) => call.url === '/api/orders/ORD-9')).toBe(true);
@@ -2048,11 +2213,27 @@ describe('the Chatroom (1.3 Phase 6)', () => {
 
 describe('the Printroom (1.3 Phase 7)', () => {
   const JOB = {
-    id: 'job-1', kind: 'filling', source: 'lead', sourceId: 'LD0000000001', sourceNumber: 'PO/2026-27/00001',
-    partyName: 'Shree Ceramics', copies: 2, note: null, targetStation: null, status: 'queued',
-    sender: { id: 'user-2', displayName: 'Bina', avatar: null, tier: 'office' }, requestedFrom: 'lan',
-    requestedAt: '2026-10-03T09:00:00.000Z', claimedAt: null, claimedStationName: null, printedBy: null,
-    printedAt: null, printerName: null, printedStationName: null, cancelledBy: null, cancelledAt: null,
+    id: 'job-1',
+    kind: 'filling',
+    source: 'lead',
+    sourceId: 'LD0000000001',
+    sourceNumber: 'PO/2026-27/00001',
+    partyName: 'Shree Ceramics',
+    copies: 2,
+    note: null,
+    targetStation: null,
+    status: 'queued',
+    sender: { id: 'user-2', displayName: 'Bina', avatar: null, tier: 'office' },
+    requestedFrom: 'lan',
+    requestedAt: '2026-10-03T09:00:00.000Z',
+    claimedAt: null,
+    claimedStationName: null,
+    printedBy: null,
+    printedAt: null,
+    printerName: null,
+    printedStationName: null,
+    cancelledBy: null,
+    cancelledAt: null,
     hasDocument: true,
   };
 
@@ -2063,8 +2244,11 @@ describe('the Printroom (1.3 Phase 7)', () => {
     return undefined;
   };
 
-  const bootPrint = (permissions: string[], extra?: Boot['route'], view: Record<string, unknown> = {}) =>
-    boot({ permissions, view, route: (call) => extra?.(call) ?? printRoutes(call) });
+  const bootPrint = (
+    permissions: string[],
+    extra?: Boot['route'],
+    view: Record<string, unknown> = {},
+  ) => boot({ permissions, view, route: (call) => extra?.(call) ?? printRoutes(call) });
 
   const row = () => screen.queryByTitle(t('nav.printroom'));
   const gets = (calls: Call[], path: string) =>
@@ -2090,7 +2274,13 @@ describe('the Printroom (1.3 Phase 7)', () => {
 
     await waitFor(() => {
       document.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'p', code: 'KeyP', altKey: true, bubbles: true, cancelable: true }),
+        new KeyboardEvent('keydown', {
+          key: 'p',
+          code: 'KeyP',
+          altKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
       );
       expect(topbarTitle()).toBe(t('printroom.filter.waiting'));
     });
@@ -2118,10 +2308,13 @@ describe('the Printroom (1.3 Phase 7)', () => {
     expect(FakeEventSource.instances).toHaveLength(1);
   });
 
-  it('says the Master is not reachable when the panel\'s server answers 503', async () => {
+  it("says the Master is not reachable when the panel's server answers 503", async () => {
     await bootPrint(['print.station'], (call) =>
       call.url.split('?')[0] === '/api/print-jobs'
-        ? json({ error: 'unavailable', message: 'Not connected', messageKey: 'error.unavailable' }, 503)
+        ? json(
+            { error: 'unavailable', message: 'Not connected', messageKey: 'error.unavailable' },
+            503,
+          )
         : undefined,
     );
     await act(async () => {
@@ -2151,12 +2344,16 @@ describe('the faces on the Final orders board (R22)', () => {
   });
 
   it('shows three faces and a +N on a crowded row, not four', async () => {
-    const crowd = Array.from({ length: 5 }, (_, at) => face('user-' + (10 + at), 'Viewer ' + at, false));
+    const crowd = Array.from({ length: 5 }, (_, at) =>
+      face('user-' + (10 + at), 'Viewer ' + at, false),
+    );
     await boot({
       permissions: ['orders.view'],
       view: { orders: [ORDER], pipelines: [ORDER_PIPELINE] },
       route: ({ url }) =>
-        url === '/api/presence/board?kind=order' ? json(board('order', ORDER.id, crowd)) : undefined,
+        url === '/api/presence/board?kind=order'
+          ? json(board('order', ORDER.id, crowd))
+          : undefined,
     });
     await act(async () => {
       fireEvent.click(screen.getByTitle(t('nav.orders')));
@@ -2176,7 +2373,8 @@ describe('an Office on another version than its Master (1.4 R7e)', () => {
       if (path === '/api/session') {
         return json({ session: panelSession(permissions) });
       }
-      if (path === '/api/sync') return json({ ...CONNECTION, masterVersion, pendingCount: 0, rejections: [] });
+      if (path === '/api/sync')
+        return json({ ...CONNECTION, masterVersion, pendingCount: 0, rejections: [] });
       if (path === '/api/notifications') return json({ items: [], unreadCount: 0 });
       if (path === '/api/updates/available') {
         return json({
@@ -2207,7 +2405,9 @@ describe('an Office on another version than its Master (1.4 R7e)', () => {
     );
 
     expect(await screen.findByRole('heading', { name: t('updates.required.title') })).toBeTruthy();
-    expect(screen.getByText(t('updates.required.body', { mine: '1.2.0', master: '1.3.0' }))).toBeTruthy();
+    expect(
+      screen.getByText(t('updates.required.body', { mine: '1.2.0', master: '1.3.0' })),
+    ).toBeTruthy();
     // No sidebar, no footer: nothing of the app is open behind it.
     expect(document.querySelector('.ob-footer')).toBeNull();
     expect(screen.queryByRole('region', { name: t('nav.work') })).toBeNull();
@@ -2250,7 +2450,9 @@ describe('an Office on another version than its Master (1.4 R7e)', () => {
     );
 
     expect(await screen.findByRole('heading', { name: t('updates.waiting.title') })).toBeTruthy();
-    expect(screen.getByText(t('updates.waiting.body', { mine: '1.4.0', master: '1.3.0' }))).toBeTruthy();
+    expect(
+      screen.getByText(t('updates.waiting.body', { mine: '1.4.0', master: '1.3.0' })),
+    ).toBeTruthy();
     // Nothing of the app, and nothing to install: only the Master can be updated for this.
     expect(document.querySelector('.ob-footer')).toBeNull();
     expect(screen.queryByRole('button', { name: t('updates.installNow') })).toBeNull();
@@ -2264,7 +2466,10 @@ describe('Party lists mark who can see a party (party visibility)', () => {
   const third = { ...synced, id: 'party-3', partyCode: 'P-003', name: 'Joshi Sanitary' };
 
   async function openParties(view: Record<string, unknown>): Promise<void> {
-    await boot({ permissions: ['parties.view'], view: { parties: [synced, second, third], products: [], ...view } });
+    await boot({
+      permissions: ['parties.view'],
+      view: { parties: [synced, second, third], products: [], ...view },
+    });
     fireEvent.click(await screen.findByTitle(t('nav.parties')));
     await screen.findByText('Patel Tiles');
   }
@@ -2274,7 +2479,9 @@ describe('Party lists mark who can see a party (party visibility)', () => {
 
     const row = (name: string) => screen.getByText(name).closest('tr')!;
     expect(within(row('Sharma Traders')).getByText(t('partyVisibility.private'))).toBeTruthy();
-    expect(within(row('Patel Tiles')).getByText(t('partyVisibility.shared', { count: 3 }))).toBeTruthy();
+    expect(
+      within(row('Patel Tiles')).getByText(t('partyVisibility.shared', { count: 3 })),
+    ).toBeTruthy();
     // No entry: open, or newer than the snapshot. Nothing is drawn rather than a guess.
     expect(within(row('Joshi Sanitary')).queryByText(t('partyVisibility.private'))).toBeNull();
     expect(within(row('Joshi Sanitary')).queryByText(/Shared with/)).toBeNull();
@@ -2297,7 +2504,9 @@ describe('Notice board in the Office sidebar (Oct 7)', () => {
   it('offers management to a manager, right after the board', async () => {
     await boot({ permissions: ['notices.view', 'notices.manage'] });
     await screen.findByTitle(t('nav.notices'));
-    const labels = [...document.querySelectorAll('.ob-navitem-main')].map((row) => row.getAttribute('title'));
+    const labels = [...document.querySelectorAll('.ob-navitem-main')].map((row) =>
+      row.getAttribute('title'),
+    );
     expect(labels.indexOf(t('nav.noticesManage'))).toBe(labels.indexOf(t('nav.notices')) + 1);
   });
 
@@ -2311,14 +2520,49 @@ describe('Notice board in the Office sidebar (Oct 7)', () => {
 
 describe('V6: important notices pop up on sign-in', () => {
   const base = {
-    tenantId: 'tenant-1', body: 'Read me.', pinned: false, showUntil: null, audience: { kind: 'all' },
-    authorId: null, authorName: null, updatedAt: '2026-09-20T09:00:00.000Z', version: 1,
+    tenantId: 'tenant-1',
+    body: 'Read me.',
+    pinned: false,
+    showUntil: null,
+    audience: { kind: 'all' },
+    authorId: null,
+    authorName: null,
+    updatedAt: '2026-09-20T09:00:00.000Z',
+    version: 1,
   };
   const notices = [
-    { ...base, id: 'NT1', title: 'Older important', priority: 'important', createdAt: '2026-09-20T09:00:00.000Z', readByMe: false },
-    { ...base, id: 'NT2', title: 'Newer important', priority: 'important', createdAt: '2026-09-22T09:00:00.000Z', readByMe: false },
-    { ...base, id: 'NT3', title: 'Just news', priority: 'normal', createdAt: '2026-09-23T09:00:00.000Z', readByMe: false },
-    { ...base, id: 'NT4', title: 'Already read', priority: 'important', createdAt: '2026-09-23T09:00:00.000Z', readByMe: true },
+    {
+      ...base,
+      id: 'NT1',
+      title: 'Older important',
+      priority: 'important',
+      createdAt: '2026-09-20T09:00:00.000Z',
+      readByMe: false,
+    },
+    {
+      ...base,
+      id: 'NT2',
+      title: 'Newer important',
+      priority: 'important',
+      createdAt: '2026-09-22T09:00:00.000Z',
+      readByMe: false,
+    },
+    {
+      ...base,
+      id: 'NT3',
+      title: 'Just news',
+      priority: 'normal',
+      createdAt: '2026-09-23T09:00:00.000Z',
+      readByMe: false,
+    },
+    {
+      ...base,
+      id: 'NT4',
+      title: 'Already read',
+      priority: 'important',
+      createdAt: '2026-09-23T09:00:00.000Z',
+      readByMe: true,
+    },
   ];
   const popUp = () => screen.queryByRole('dialog', { name: t('notices.signIn.title') });
 
@@ -2329,7 +2573,11 @@ describe('V6: important notices pop up on sign-in', () => {
       route: (call) => (call.url === '/api/notices/read' ? json({ unreadCount: 0 }) : undefined),
     });
     await waitFor(() => expect(popUp()).not.toBeNull());
-    expect(within(popUp()!).getAllByRole('listitem').map((item) => item.getAttribute('data-notice'))).toEqual(['NT2', 'NT1']);
+    expect(
+      within(popUp()!)
+        .getAllByRole('listitem')
+        .map((item) => item.getAttribute('data-notice')),
+    ).toEqual(['NT2', 'NT1']);
 
     await act(async () => {
       fireEvent.click(within(popUp()!).getByRole('button', { name: t('notices.signIn.markRead') }));
@@ -2337,7 +2585,9 @@ describe('V6: important notices pop up on sign-in', () => {
 
     expect(popUp()).toBeNull();
     await waitFor(() =>
-      expect(calls.find((call) => call.url === '/api/notices/read')?.body).toEqual({ ids: ['NT2', 'NT1'] }),
+      expect(calls.find((call) => call.url === '/api/notices/read')?.body).toEqual({
+        ids: ['NT2', 'NT1'],
+      }),
     );
   });
 

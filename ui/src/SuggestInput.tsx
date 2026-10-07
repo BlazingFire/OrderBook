@@ -318,6 +318,8 @@ export const Select = forwardRef<HTMLInputElement, SelectHTMLAttributes<HTMLSele
           className={className}
           value={text}
           disabled={disabled}
+          // "None" chosen (the "—" option): a list may draw it quieter than a real value.
+          data-empty={current === '' ? 'true' : undefined}
           autoComplete="off"
           role="combobox"
           aria-expanded={listOpen}
