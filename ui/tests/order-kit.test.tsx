@@ -211,8 +211,7 @@ describe('AddedProductsPanel', () => {
     panel({ saveDisabled: true, empty: <span>Nothing added yet</span>, count: '' });
     const aside = screen.getByRole('complementary', { name: 'Added products' });
     expect(
-      (within(aside).getByRole('button', { name: /Save order/ }) as HTMLButtonElement)
-        .disabled,
+      (within(aside).getByRole('button', { name: /Save order/ }) as HTMLButtonElement).disabled,
     ).toBe(true);
     expect(within(aside).getByText('Nothing added yet')).toBeTruthy();
     expect(within(aside).queryByText('row one')).toBeNull();
@@ -459,6 +458,22 @@ describe('ColourSelect', () => {
     fireEvent.keyDown(none.box, { key: 'Enter' });
     expect(none.onAdvance).not.toHaveBeenCalled();
     expect(screen.getByRole('listbox')).toBeTruthy();
+  });
+
+  it('keeps the highlighted colour in view as the arrows walk down a long list', () => {
+    const scrolled = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrolled;
+    try {
+      const { box } = select('');
+      fireEvent.keyDown(box, { key: 'ArrowDown' });
+      scrolled.mockClear();
+      fireEvent.keyDown(box, { key: 'ArrowDown' });
+      expect(scrolled).toHaveBeenCalledWith({ block: 'nearest' });
+      expect(screen.getAllByRole('option')[1]!.getAttribute('aria-selected')).toBe('true');
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
   });
 
   it('says so when nothing matches', () => {

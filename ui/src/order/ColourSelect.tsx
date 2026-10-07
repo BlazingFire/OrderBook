@@ -12,6 +12,7 @@
  */
 
 import {
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -72,6 +73,7 @@ export function ColourSelect({
    * when there is not room below.
    */
   const wrap = useRef<HTMLSpanElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<CSSProperties>({});
   useLayoutEffect(() => {
     if (!open || !wrap.current) return;
@@ -91,6 +93,14 @@ export function ColourSelect({
       option.label.toLowerCase().includes(term) || option.value.toLowerCase().includes(term),
   );
   const pick = matches.length ? Math.min(sel, matches.length - 1) : 0;
+
+  // The highlighted colour stays on screen as the arrows walk past the list's visible rows.
+  // `?.()`: jsdom has no `scrollIntoView`.
+  useEffect(() => {
+    if (!open) return;
+    const rows = listRef.current?.querySelectorAll<HTMLElement>('[role="option"]');
+    rows?.[pick]?.scrollIntoView?.({ block: 'nearest' });
+  }, [open, pick]);
 
   function take(colour: string): void {
     onPick(colour);
@@ -170,7 +180,13 @@ export function ColourSelect({
       />
       <Icon name="chevron-down" size={12} />
       {open && (
-        <div role="listbox" aria-label={ariaLabel} className="ob-order-colour__list" style={place}>
+        <div
+          ref={listRef}
+          role="listbox"
+          aria-label={ariaLabel}
+          className="ob-order-colour__list"
+          style={place}
+        >
           {filterHint && <p className="ob-order-colour__filter">{filterHint}</p>}
           {matches.map((option, index) => (
             <button
