@@ -854,7 +854,8 @@ export function CatalogScreen({
       sortable: true,
       header: t('catalog.products.column.weight'),
       priority: 3,
-      width: 'minmax(0, 0.6fr)',
+      // The floor is in rem, so it grows with the scale: at 157 % the header "Weight ↕" needs it.
+      width: 'minmax(6.2rem, 0.6fr)',
       align: 'right',
       render: (product) => {
         const weight = weightLabel(product);
