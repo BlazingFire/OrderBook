@@ -122,11 +122,11 @@ html[data-motion='off'] *::after {
 }
 
 /* ===========================================================================
- * Custom scrollbar — a reserved gutter, coloured only while the area is in use.
+ * Custom scrollbar — a reserved gutter with a thin neutral thumb (Scroll artboard).
  *
  * The gutter is always there, transparent, on every scrollable element: only
- * the thumb's colour changes on hover, so a table never changes width when the
- * bar appears and nothing reflows. That is the whole reason it is painted this
+ * the thumb's colour changes on hover and drag, so a table never changes width
+ * and nothing reflows. That is the whole reason it is painted this
  * way rather than left to the platform, whose overlay bars do reflow on
  * Windows.
  *
@@ -154,12 +154,10 @@ html[data-motion='off'] *::after {
 @supports not selector(::-webkit-scrollbar) {
   * {
     scrollbar-width: thin;
-    scrollbar-color: transparent transparent;
   }
 
-  *:hover,
-  *:focus-within {
-    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  * {
+    scrollbar-color: var(--scrollbar-thumb) transparent;
   }
 }
 
@@ -174,27 +172,20 @@ html[data-motion='off'] *::after {
   background: transparent;
 }
 
-*:hover::-webkit-scrollbar-track,
-*:focus-within::-webkit-scrollbar-track {
-  background: var(--scrollbar-track);
-  box-shadow: inset 1px 0 0 var(--scrollbar-track-line);
-}
-
 /* 2px transparent border + padding-box clip leaves a 6px thumb inside the
- * 10px gutter — the inset the design shows. */
+ * 10px gutter, radius 4 — the Scroll artboard's anatomy. Drawn at rest, so a
+ * list shows it has more without being hovered first; only its colour moves. */
 *::-webkit-scrollbar-thumb {
-  background-color: transparent;
+  background-color: var(--scrollbar-thumb);
   border: 2px solid transparent;
   background-clip: padding-box;
-  border-radius: 999px;
+  border-radius: 4px;
 }
 
-*:hover::-webkit-scrollbar-thumb,
-*:focus-within::-webkit-scrollbar-thumb {
-  background-color: var(--scrollbar-thumb);
-}
-
-*::-webkit-scrollbar-thumb:hover,
-*::-webkit-scrollbar-thumb:active {
+*::-webkit-scrollbar-thumb:hover {
   background-color: var(--scrollbar-thumb-hover);
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background-color: var(--scrollbar-thumb-active);
 }

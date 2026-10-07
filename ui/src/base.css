@@ -3820,30 +3820,6 @@ button.ob-bell-item:hover {
   box-shadow: var(--sh-3);
 }
 
-/*
- * The list's bar is always drawn. reset.css colours a thumb only under hover
- * or focus-within, and focus stays in the input above the list, so a counter
- * walking 56 sub products with the arrows never saw that there were more.
- */
-@supports not selector(::-webkit-scrollbar) {
-  .ob-suggest {
-    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
-  }
-}
-
-.ob-suggest::-webkit-scrollbar-track {
-  background: var(--scrollbar-track);
-  box-shadow: inset 1px 0 0 var(--scrollbar-track-line);
-}
-
-.ob-suggest::-webkit-scrollbar-thumb {
-  background-color: var(--scrollbar-thumb);
-}
-
-.ob-suggest::-webkit-scrollbar-thumb:hover {
-  background-color: var(--scrollbar-thumb-hover);
-}
-
 .ob-suggest-row {
   display: grid;
   gap: 0 var(--s-12);
@@ -4321,6 +4297,7 @@ button.ob-bell-item:hover {
   text-align: center;
 }
 .ob-chat-mention {
+  /* Not the -fill amber: the count is white text on it, 6.4:1 here, 4.0 on #b26a00. */
   background: var(--state-offline);
 }
 .ob-chat-badge {
@@ -4469,7 +4446,7 @@ button.ob-bell-item:hover {
   background: var(--bg-selected);
 }
 .ob-chat-row[data-mention='true'] {
-  box-shadow: inset 3px 0 0 var(--state-offline);
+  box-shadow: inset 3px 0 0 var(--state-offline-fill);
 }
 .ob-chat-avatar {
   flex: none;
