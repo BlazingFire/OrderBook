@@ -379,7 +379,10 @@ describe.skipIf(!canRunIntegrationTests)('Reports (integration)', () => {
         actor,
       );
 
-      const lines = (exported as { csv: string }).csv.trim().split('\r\n');
+      // The last line of the table itself: the colour breakdown follows it
+      // behind a blank line (W2-3).
+      const table = (exported as { csv: string }).csv.split('\r\n\r\n')[0] ?? '';
+      const lines = table.trim().split('\r\n');
       const totals = (lines[lines.length - 1] ?? '').split(',');
 
       // A total of a month name is nonsense, so the first cell is the label.

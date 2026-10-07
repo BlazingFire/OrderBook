@@ -16,6 +16,7 @@ import { db } from '../src/db/knex.js';
 import { up as productMasterTrim } from '../src/db/migrations/20260324000000_product_master_trim.js';
 import * as leads from '../src/services/lead.service.js';
 import * as catalog from '../src/services/catalog.service.js';
+import * as fields from '../src/services/fields.service.js';
 import { canRunIntegrationTests } from './helpers/db.js';
 import {
   createTestProduct,
@@ -95,6 +96,8 @@ describe.skipIf(!canRunIntegrationTests)('product master trim migration (integra
     }
 
     const party = await catalog.createParty({ name: 'Trim Traders' }, actor);
+    // A new line's colour must be on the company list (W2, 2026-10-07).
+    await fields.createValue({ listKey: 'stock.colour', value: 'Ivory', label: 'Ivory' }, actor);
     const anyColour = await catalog.createProduct(
       { name: 'Any colour', categoryName: 'WATER CLOSET', multiColour: true, variants: [{ code: 'TRM-2' }] },
       actor,
