@@ -453,7 +453,7 @@ export function OrderBoardScreen({
       header: t('orderNote.column.notes'),
       // Goes with Weight, before Order ref and Qty: the notes are also on the order itself.
       priority: 3,
-      width: rem(220),
+      width: rem(232),
       render: (order) => (
         <NoteButtons
           onNote={(kind) => {

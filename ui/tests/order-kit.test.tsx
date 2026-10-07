@@ -18,9 +18,9 @@ import {
   OrderDetailsBar,
   OrderField,
   PartyChip,
-  ProductThumb,
   partyInitials,
 } from '../src/index.js';
+import { ProductThumb } from '../src/ProgressiveImage.js';
 import { installBrowserStubs } from './panel-harness.js';
 
 beforeEach(() => {
@@ -239,23 +239,52 @@ describe('ProductThumb', () => {
     uploadedAt: '2026-10-07T00:00:00.000Z',
   };
 
-  it('loads the thumb variant of the photo at the slot size, with the given alt', () => {
-    const { container } = render(<ProductThumb image={image} size={48} alt="Wash basin" />);
+  it('loads the photo at the asked size, with the given alt, from the primary of the gallery', () => {
+    const second = { ...image, id: 'img-2', isPrimary: false };
+    const { container } = render(
+      <ProductThumb images={[second, image]} name="Wash basin" size={48} alt="Basin photo" />,
+    );
     const img = container.querySelector('img')!;
     expect(img.getAttribute('src')).toMatch(/^\/uploads\/images\/img-1\/(micro|thumb|large)$/);
-    expect(img.getAttribute('alt')).toBe('Wash basin');
-    expect(container.querySelector('.ob-order-thumb--48')).not.toBeNull();
+    expect(img.getAttribute('alt')).toBe('Basin photo');
+    expect(container.querySelector('.ob-thumb')!.getAttribute('style')).toContain('3.429rem');
   });
 
-  it('draws nothing without a photo, or a same-size initial tile when given a name', () => {
-    const none = render(<ProductThumb image={undefined} size={32} />);
+  it('with no size it is the list row, and the alt is the name', () => {
+    const { container } = render(<ProductThumb images={[image]} name="Wash basin" />);
+    expect(container.querySelector('img')!.getAttribute('alt')).toBe('Wash basin');
+    expect(container.querySelector('.ob-thumb')!.getAttribute('style')).toContain('2rem');
+  });
+
+  it('draws nothing, a blank square, or an initial tile of the same size when there is no photo', () => {
+    const none = render(<ProductThumb images={undefined} name="x" size={32} fallback="none" />);
     expect(none.container.innerHTML).toBe('');
     none.unmount();
-    const tile = render(<ProductThumb image={null} size={32} name="wash basin" />);
-    expect(
-      tile.container.querySelector('.ob-order-thumb--32.ob-order-thumb--initial')!.textContent,
-    ).toBe('W');
+    const blank = render(<ProductThumb images={[]} name="x" size={32} />);
+    expect(blank.container.querySelector('.ob-thumb--empty')!.textContent).toBe('');
+    blank.unmount();
+    const tile = render(
+      <ProductThumb images={[]} name="wash basin" size={32} fallback="initial" />,
+    );
+    const square = tile.container.querySelector('.ob-thumb--empty')!;
+    expect(square.textContent).toBe('W');
+    expect(square.getAttribute('style')).toContain('2.286rem');
     expect(tile.container.querySelector('img')).toBeNull();
+  });
+});
+
+describe('CartEntry thumb slot', () => {
+  it('puts the thumbnail inside the toggle, between the chevron and the head', () => {
+    render(
+      <CartEntry
+        open={false}
+        onToggle={() => undefined}
+        thumb={<i data-testid="thumb" />}
+        head={<span>WB-2016</span>}
+      />,
+    );
+    const toggle = screen.getByRole('button', { name: /WB-2016/ });
+    expect(within(toggle).getByTestId('thumb')).toBeTruthy();
   });
 });
 

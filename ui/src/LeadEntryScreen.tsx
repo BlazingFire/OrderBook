@@ -121,7 +121,7 @@ import {
 import { Button } from './Button.js';
 import { AddedProductsPanel } from './order/AddedProductsPanel.js';
 import { PartyChip } from './order/PartyChip.js';
-import { ProductThumb } from './order/ProductThumb.js';
+import { ProductThumb } from './ProgressiveImage.js';
 import { FollowUpField, OrderDetailsBar, OrderField } from './order/OrderDetailsBar.js';
 import { Card } from './Card.js';
 import { ColourChip, ColourName, StatusPill, useColourHex } from './DataDisplay.js';
@@ -246,6 +246,8 @@ interface ProductFacts {
   rule: ColourRule;
   fromPartyVariant: boolean;
   notes: string;
+  /** The product's primary photo, when the catalogue has one: the thumbnail on the card and the rows. */
+  image?: ProductImage;
 }
 
 /** The card one model is built in: the product's facts and a row per variant (and colour). */
@@ -253,8 +255,6 @@ interface DraftProduct extends ProductFacts {
   rows: DraftRow[];
   /** What a colour added to a `selectable` card is ordered in — one row per variant here. */
   variants: VariantFacts[];
-  /** The product's primary photo, when the picker sent one: the 48 px thumbnail on the card. */
-  image?: ProductImage;
   /** Where the line goes back to when the draft is a `Modify` of a saved one. */
   at: number | null;
   /** The saved line's key, kept so a modified line stays the same line. */
@@ -402,6 +402,7 @@ function linesOf(lead: Lead, view: LeadEntryView): DraftLine[] {
       brand: item.brandName,
       alias: item.alias,
       size: item.size,
+      image: product?.images?.[0],
       packaging: item.packaging ?? '',
       rule,
       grade: item.grade ?? '',
@@ -1737,7 +1738,13 @@ function LeadEntryForm({
                 <div style={{ position: 'relative' }}>
                   {draft ? (
                     <div className="ob-picked">
-                      <ProductThumb image={draft.image} size={48} />
+                      <ProductThumb
+                        images={draft.image ? [draft.image] : undefined}
+                        name={draft.productName}
+                        size={48}
+                        fallback="none"
+                        alt=""
+                      />
                       <span
                         className="ob-mono ob-body-strong"
                         style={{ fontSize: rem(14), color: 'var(--accent)' }}
@@ -1989,7 +1996,13 @@ function LeadEntryForm({
                                 minWidth: 0,
                               }}
                             >
-                              <ProductThumb image={row.images?.[0]} size={32} />
+                              <ProductThumb
+                                images={row.images}
+                                name={row.name}
+                                size={32}
+                                fallback="none"
+                                alt=""
+                              />
                               <span
                                 style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}
                               >
@@ -2499,6 +2512,13 @@ function LeadLine({
           <span aria-hidden="true" style={{ flex: 'none', color: 'var(--fg-tertiary)' }}>
             {open ? '▾' : '▸'}
           </span>
+          <ProductThumb
+            images={line.image ? [line.image] : undefined}
+            name={line.productName}
+            size={32}
+            fallback="none"
+            alt=""
+          />
           <span className="ob-mono ob-body-strong" style={{ flex: 'none' }}>
             {line.code}
           </span>

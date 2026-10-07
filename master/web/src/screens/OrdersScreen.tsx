@@ -463,7 +463,7 @@ export function OrdersScreen({
       key: 'notes',
       header: t('orderNote.column.notes'),
       priority: 2,
-      width: rem(220),
+      width: rem(232),
       render: (order) => (
         <NoteButtons
           onNote={(kind) => {

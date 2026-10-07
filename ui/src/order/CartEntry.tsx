@@ -14,6 +14,7 @@ export function CartEntry({
   open,
   onToggle,
   leading,
+  thumb,
   head,
   actions,
   facts,
@@ -23,6 +24,8 @@ export function CartEntry({
   onToggle: () => void;
   /** In front of the head, outside the toggle: opening a row must not tick it (a tick box). */
   leading?: ReactNode;
+  /** In the toggle, after the chevron and before the head: a `ProductThumb`. */
+  thumb?: ReactNode;
   /** The collapsed line: code, name, quantity. Inside the toggle button. */
   head: ReactNode;
   /** Edit and remove, at the right of the head or of the opened row. */
@@ -45,6 +48,7 @@ export function CartEntry({
           <span aria-hidden="true" style={{ flex: 'none', color: 'var(--fg-tertiary)' }}>
             {open ? '▾' : '▸'}
           </span>
+          {thumb}
           {head}
         </button>
       </div>

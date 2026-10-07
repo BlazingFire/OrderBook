@@ -99,6 +99,7 @@ import {
   Input,
   LoadMorePager,
   Select,
+  ProductThumb,
   SkeletonTable,
   StatusPill,
   rem,
@@ -763,6 +764,13 @@ export function CatalogScreen({
    * A company with one brand loses that column first.
    */
   const columns: DataTableColumn<Product>[] = [
+    {
+      // The photo first (W4). Never dropped: it is how a ceramic product is recognised.
+      key: 'photo',
+      header: '',
+      width: rem(48),
+      render: (product) => <ProductThumb images={product.images} name={product.name} />,
+    },
     {
       key: 'brand',
       sortable: true,

@@ -20,7 +20,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { variantForSlot, type ImageVariant } from '@orderbook/shared';
+import { variantForSlot, type ImageVariant, type ProductImage } from '@orderbook/shared';
 import { decode } from 'blurhash';
 
 const placeholderCache = new Map<string, string>();
@@ -121,5 +121,67 @@ export function ProgressiveImage({
         }}
       />
     </span>
+  );
+}
+
+/** The two sizes the new pending order draws, besides the list row's own 28 px (2rem). */
+const THUMB_BOX = { 32: '2.286rem', 48: '3.429rem' } as const;
+
+/**
+ * A product's photo, small: its primary image (else the first), square and cropped, with the
+ * blurhash painting first.
+ *
+ * One component for every list and form. With no `size` it is the list row's 28 px (W4); the new
+ * pending order asks for 32 (picker and Added products rows) or 48 (the picked card). With no photo
+ * it draws a neutral empty square (`fallback="blank"`, the lists' way, which keeps the column), a
+ * square with the product's first letter (`"initial"`), or nothing (`"none"`, the order screen's).
+ *
+ * Lazy by way of `ProgressiveImage` (`loading="lazy"`, and a virtualised list only mounts the
+ * rows on screen). On the Office the URL is served from the panel's own image cache, offline
+ * too. 28 px rather than the full 32 px row, so the photo keeps a hairline of air inside it.
+ */
+export function ProductThumb({
+  images,
+  name,
+  size,
+  fallback = 'blank',
+  alt,
+}: {
+  /** Absent on a row that has not carried its photos (a product made offline, not yet synced). */
+  images?: readonly ProductImage[];
+  name: string;
+  size?: 32 | 48;
+  fallback?: 'blank' | 'initial' | 'none';
+  /** Defaults to the name; empty for a thumbnail that sits beside the name already. */
+  alt?: string;
+}) {
+  const primary = images?.find((image) => image.isPrimary) ?? images?.[0];
+  const box = size ? THUMB_BOX[size] : '2rem';
+  if (!primary) {
+    if (fallback === 'none') return null;
+    return (
+      <span
+        className="ob-thumb ob-thumb--empty"
+        data-product-thumb
+        aria-hidden="true"
+        style={size ? { width: box, height: box } : undefined}
+      >
+        {fallback === 'initial' ? name.trim().charAt(0).toUpperCase() : null}
+      </span>
+    );
+  }
+  return (
+    <ProgressiveImage
+      className="ob-thumb"
+      imageId={primary.id}
+      variant="micro"
+      slotPx={size ?? 28}
+      blurhash={primary.blurhash}
+      width={1}
+      height={1}
+      alt={alt ?? name}
+      // On the element itself: ProgressiveImage sets width 100%, which would win over a class.
+      style={{ width: box, height: box, flex: 'none' }}
+    />
   );
 }
