@@ -162,6 +162,12 @@ describe('NoticeDashboardCard', () => {
     expect(container.textContent).toBe('');
   });
 
+  it('keeps a notice line to a reading width and makes opening the board a clear action', () => {
+    const source = readFileSync(join(process.cwd(), 'ui', 'src', 'NoticeDashboardCard.tsx'), 'utf8');
+    expect(source).toContain("maxWidth: '48rem'");
+    expect(source).toContain('variant="primary" size="sm" onClick={onOpen}');
+  });
+
   it('lists the important and pinned notices, counts the unread ones, and opens the board', () => {
     const open = vi.fn();
     render(

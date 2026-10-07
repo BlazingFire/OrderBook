@@ -39,7 +39,10 @@ export function NoticeDashboardCard({ notices, today, onOpen, limit = 3 }: Notic
         </h2>
         {unread > 0 && <StatusPill tone="accent">{t('notices.card.unreadCount', { count: unread })}</StatusPill>}
       </div>
-      <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
+      <ul
+        // A reading width: a line of a notice that runs the width of a 1080p screen is hard to follow.
+        style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 'var(--s-8)', maxWidth: '48rem' }}
+      >
         {listed.map((notice) => (
           <li key={notice.id} data-notice={notice.id} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-6)', flexWrap: 'wrap' }}>
@@ -65,7 +68,7 @@ export function NoticeDashboardCard({ notices, today, onOpen, limit = 3 }: Notic
         ))}
       </ul>
       <div style={{ marginTop: 'var(--s-12)' }}>
-        <Button variant="secondary" size="sm" onClick={onOpen}>
+        <Button variant="primary" size="sm" onClick={onOpen}>
           {t('notices.card.open')}
         </Button>
       </div>
