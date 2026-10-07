@@ -93,6 +93,51 @@ describe('FollowUpField', () => {
   });
 });
 
+describe('FollowUpField keyboard', () => {
+  function field(activeKey: string | null) {
+    const picked: string[] = [];
+    const quick = ['d1', 'd3', 'wk'].map((key) => ({
+      key,
+      label: key,
+      title: `title ${key}`,
+      active: key === activeKey,
+      onClick: () => picked.push(key),
+    }));
+    render(<FollowUpField groupLabel="Quick" date={<input aria-label="date" />} quick={quick} />);
+    return { picked, radios: screen.getAllByRole('radio') };
+  }
+
+  it('has one tab stop: the checked choice, or the first when none is checked', () => {
+    const checked = field('d3');
+    expect(checked.radios.map((radio) => radio.tabIndex)).toEqual([-1, 0, -1]);
+    cleanup();
+    const none = field(null);
+    expect(none.radios.map((radio) => radio.tabIndex)).toEqual([0, -1, -1]);
+  });
+
+  it('moves to the next or previous choice with the arrows, selecting it and wrapping', () => {
+    const { picked, radios } = field('d3');
+    radios[1]!.focus();
+    fireEvent.keyDown(radios[1]!, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(radios[2]);
+    fireEvent.keyDown(radios[2]!, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(radios[0]);
+    fireEvent.keyDown(radios[0]!, { key: 'ArrowLeft' });
+    expect(document.activeElement).toBe(radios[2]);
+    expect(picked).toEqual(['wk', 'd1', 'wk']);
+  });
+
+  it('does not clear the checked choice by moving onto it', () => {
+    const { picked, radios } = field('d1');
+    radios[0]!.focus();
+    fireEvent.keyDown(radios[0]!, { key: 'ArrowRight' });
+    fireEvent.keyDown(radios[1]!, { key: 'ArrowLeft' });
+    // The second move lands on the checked one: it is focused but not clicked (a click would clear it).
+    expect(document.activeElement).toBe(radios[0]);
+    expect(picked).toEqual(['d3']);
+  });
+});
+
 describe('OrderChecks', () => {
   it('marks each item ok, to do or idle, with its tooltip', () => {
     const { container } = render(
