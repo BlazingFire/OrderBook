@@ -126,6 +126,7 @@ import {
   isCounted,
   linesToRows,
   nextWalkStop,
+  prevWalkStop,
   rowProblem,
   rowsToLines,
   type LeadFormValues,
@@ -2071,11 +2072,18 @@ function GridCard({
 
   /** One stop on, by the row walk: an empty row is passed over (`nextWalkStop`). */
   function stepOn(from: Element | null, started?: string): void {
-    // The whole card, not only the grid: the Add button in the footer is the last stop.
+    const found = walkStops(from, started);
+    if (!found) return;
+    const next = nextWalkStop(found.stops, found.index, found.rowOf);
+    if (next !== null) found.nodes[next]?.focus();
+  }
+
+  /** The card's stops in DOM order — the whole card, the Add button in the footer being the last. */
+  function walkStops(from: Element | null, started?: string) {
     const card = bodyRef.current?.closest('[data-product-card]');
     const nodes = [...(card?.querySelectorAll<HTMLElement>('[data-walk]') ?? [])];
     const index = nodes.indexOf(from as HTMLElement);
-    if (index < 0) return;
+    if (index < 0) return null;
     const stops: WalkStop[] = nodes.map((node) => ({
       rowKey: node.dataset.row ?? null,
       field: node.dataset.walk as WalkStop['field'],
@@ -2084,8 +2092,23 @@ function GridCard({
       const row = rows.find((r) => r.key === rowKey);
       return { qty: Number(row?.qty) || 0, hasColour: Boolean(row?.colour) || rowKey === started };
     };
-    const next = nextWalkStop(stops, index, rowOf);
-    if (next !== null) nodes[next]?.focus();
+    return { nodes, stops, index, rowOf };
+  }
+
+  /**
+   * Escape goes back the way Enter came: the stop before, without the packaging and grade of a
+   * row with no quantity (`prevWalkStop`). Run before the screen's document-level Escape walk,
+   * which only gets what is left: an Escape a field already used (a list closing) arrives
+   * `defaultPrevented`, and the first field has nothing before it.
+   */
+  function stepBack(event: ReactKeyboardEvent<HTMLElement>): void {
+    if (event.key !== 'Escape' || event.defaultPrevented || chorded(event)) return;
+    const found = walkStops(event.target as Element);
+    if (!found) return;
+    const previous = prevWalkStop(found.stops, found.index, found.rowOf);
+    if (previous === null) return;
+    event.preventDefault();
+    found.nodes[previous]?.focus();
   }
 
   function quantityKey(event: ReactKeyboardEvent<HTMLInputElement>, row: GridRow): void {
@@ -2220,6 +2243,7 @@ function GridCard({
             data-field
             data-add-card
             data-walk="add"
+            onKeyDown={stepBack}
             disabled={!ready}
             style={{ flex: 'none', whiteSpace: 'nowrap' }}
             aria-label={editing ? t('lead.add.draft.saveChanges') : t('lead.add.draft.saveProduct')}
@@ -2264,6 +2288,7 @@ function GridCard({
       )}
 
       <div
+        onKeyDown={stepBack}
         onFocus={(event) => {
           const field = (event.target as HTMLElement).closest<HTMLElement>('[data-row]');
           if (field?.dataset.row) setActiveRow(field.dataset.row);
