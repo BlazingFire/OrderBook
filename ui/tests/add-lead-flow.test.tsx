@@ -165,6 +165,10 @@ const live = {
   products: [MULTI, DEDICATED, FIXED] as Array<Record<string, unknown>>,
   /** An older Master (or none): the live-ids read answers `null`, "cannot tell". */
   older: false,
+  /** The live-ids read never answers (a missing route, a stalled link). */
+  hang: false,
+  /** The link to the Master is down. */
+  offline: false,
 };
 
 function snapshot(overrides: Record<string, unknown> = {}) {
@@ -200,7 +204,9 @@ async function sendSnapshot(view: ReturnType<typeof snapshot>): Promise<void> {
 async function openForm(view: Record<string, unknown> = {}): Promise<Call[]> {
   const calls = routeFetch(({ method, url, body }) => {
     const path = url.split('?')[0] ?? url;
-    if (path === '/api/connection') return json(CONNECTION);
+    if (path === '/api/connection') {
+      return json(live.offline ? { ...CONNECTION, state: 'disconnected' } : CONNECTION);
+    }
     if (path === '/api/session') {
       return json({
         session: {
@@ -238,6 +244,7 @@ async function openForm(view: Record<string, unknown> = {}): Promise<Call[]> {
       return json({ items, truncated: false });
     }
     if (path === '/api/pick/live-products' && method === 'POST') {
+      if (live.hang) return new Promise<Response>(() => undefined);
       const ids = ((body as { ids?: string[] } | undefined)?.ids ?? []) as string[];
       return json({
         live: live.older ? null : ids.filter((id) => live.products.some((row) => row.id === id)),
@@ -352,6 +359,8 @@ beforeEach(() => {
   live.categories = [WASH_BASIN, CATEGORY];
   live.products = [MULTI, DEDICATED, FIXED];
   live.older = false;
+  live.hang = false;
+  live.offline = false;
 });
 
 afterEach(() => {
@@ -959,6 +968,29 @@ describe('Office: the catalogue changing while the entry is open', () => {
 
     expect(leadPosts(calls)).toHaveLength(0);
     expect(await screen.findByText(t('lead.add.errors.goneLines', { names: FIXED.name }))).toBeTruthy();
+  });
+
+  it('saves anyway when the live-ids read never answers, after a short wait', async () => {
+    live.hang = true;
+    const calls = await openForm();
+    await enterOneLine();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
+      await wait(0);
+    });
+    await waitFor(() => expect(leadPosts(calls)).toHaveLength(1), { timeout: 8000 });
+  }, 20_000);
+
+  it('does not ask at all while the link to the Master is down, and the save goes at once', async () => {
+    live.offline = true;
+    const calls = await openForm();
+    await enterOneLine();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
+      await wait(0);
+    });
+    await waitFor(() => expect(leadPosts(calls)).toHaveLength(1));
+    expect(calls.filter((call) => call.url === '/api/pick/live-products')).toHaveLength(0);
   });
 
   it('does not block when the Master cannot say (an older Master), and the save goes', async () => {

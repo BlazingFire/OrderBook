@@ -1982,6 +1982,7 @@ function OfficePanel() {
           render: () => (
             <AddLeadScreen
               view={view}
+              online={connection.state === 'connected'}
               focusNonce={newLeadNonce}
               onSaved={(id, queued) => {
                 setTab('leads');

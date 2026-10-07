@@ -148,6 +148,11 @@ interface Props {
   lead?: Lead;
   /** The last save somebody else made to `lead` while it is open (a presence push). */
   remoteChange?: PresenceLastWrite | null;
+  /**
+   * The link to the Master is up. Down, nothing asks it which products are live: the save is
+   * queued as it stands, with no call and no wait.
+   */
+  online?: boolean;
 }
 
 /** What every line and every draft row knows about its variant. */
@@ -213,6 +218,9 @@ interface DraftLine extends ProductFacts, VariantFacts {
 
 /** How many products on the order are checked against the catalogue after a change. */
 const LIVE_CHECK_BATCH = 200;
+
+/** How long Save waits for the Master's live-ids answer before saving as if it could not tell. */
+const LIVE_SAVE_WAIT_MS = 3000;
 
 const QUICK_FOLLOW_UPS = [
   { days: 1, token: 'lead.add.followUp.tomorrow' },
@@ -377,6 +385,7 @@ function AddLeadForm({
   onCancel,
   lead,
   remoteChange,
+  online = true,
   onReload,
 }: Props & { onReload: () => void }) {
   const colourHex = useColourHex(view.optionLists);
@@ -741,7 +750,7 @@ function AddLeadForm({
   const checkedKey = checkedProducts.map(([id]) => id).join(',');
 
   useEffect(() => {
-    if (checkedProducts.length === 0) {
+    if (checkedProducts.length === 0 || !online) {
       setGone([]);
       return;
     }
@@ -772,7 +781,7 @@ function AddLeadForm({
     };
     // The same ids, asked again whenever the catalogue changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkedKey, view.products, view.categories]);
+  }, [checkedKey, view.products, view.categories, online]);
 
   const rows: Array<ProductCategory | Product> = category ? subMatches : categoryRows;
   const pick = rows.length ? Math.min(sel, rows.length - 1) : 0;
@@ -1171,7 +1180,17 @@ function AddLeadForm({
       // would otherwise get the whole order refused. Unanswerable (Master off or old) goes on.
       const added = lines.filter((line) => line.key.startsWith('saved-') === false);
       const ids = [...new Set(added.map((line) => line.productId))];
-      const answer = ids.length > 0 ? await api.liveProducts(ids).catch(() => null) : null;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const answer =
+        ids.length > 0 && online
+          ? await Promise.race([
+              api.liveProducts(ids).catch(() => null),
+              new Promise<null>((resolve) => {
+                timer = setTimeout(() => resolve(null), LIVE_SAVE_WAIT_MS);
+              }),
+            ])
+          : null;
+      clearTimeout(timer);
       if (answer?.live) {
         const live = new Set(answer.live);
         const missing = added.filter((line) => !live.has(line.productId));
