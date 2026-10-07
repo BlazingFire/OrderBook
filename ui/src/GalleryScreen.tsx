@@ -13,6 +13,32 @@ import { BusyMark } from './BusyMark';
 import { ConflictBanner, EmptyState, ErrorState, OfflineBanner, SkeletonRows } from './States';
 import { useToast } from './Toast';
 import { ProgressBar } from './TopProgress';
+import { NoticeSlideshow } from './NoticeSlideshow';
+import type { Notice } from '@orderbook/shared';
+
+/** Sample notices for the slideshow, as the board would hand them over. */
+const GALLERY_NOTICES = [
+  ['Stock count on Saturday', 'All godowns closed for dispatch until 2 pm.', 'important', true],
+  ['Diwali holiday', 'Office closed 1–5 November.\nDispatch resumes on the 6th.', 'normal', true],
+  ['New loading bay', 'Trucks use gate 2 from Monday.', 'important', false],
+].map(
+  ([title, body, priority, pinned], i) =>
+    ({
+      id: `gallery-${i}`,
+      title,
+      body,
+      priority,
+      pinned,
+      showUntil: null,
+      audience: { kind: 'all' },
+      authorId: null,
+      authorName: 'Office',
+      createdAt: '2026-10-06T09:00:00.000Z',
+      updatedAt: '2026-10-06T09:00:00.000Z',
+      version: 1,
+      readByMe: false,
+    }) as Notice,
+);
 import { Logo, LogoLockup } from './Logo';
 import { applyMotion, applyTheme, type Theme } from './theme';
 
@@ -584,6 +610,10 @@ export function GalleryScreen() {
           />
           <ProgressBar value={1} tone="ok" label="Update ready · version 1.0.4" />
         </div>
+        <NoticeSlideshow
+          onOpen={() => undefined}
+          notices={GALLERY_NOTICES}
+        />
         <div className="ob-gallery-row" style={{ alignItems: 'flex-end' }}>
           <BusyMark size={40} />
           <span className="ob-gallery-row" style={{ gap: 'var(--s-8)' }}>

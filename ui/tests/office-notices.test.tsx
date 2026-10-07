@@ -384,7 +384,8 @@ describe('Office notice board: management and the Dashboard', () => {
     await screen.findByRole('button', { name: t('notices.board.markRead') });
   });
 
-  it('shows the important and pinned notices on Basic Home, where the Office tier lands', async () => {
+  // Owner add-on V5: the slideshow, from this person's cache, opening the notice it shows.
+  it('turns over the important and pinned notices on Basic Home and opens the one pressed', async () => {
     await boot({
       permissions: ['notices.view', 'leads.view'],
       roleTier: 'office',
@@ -393,10 +394,24 @@ describe('Office notice board: management and the Dashboard', () => {
         notice('n2', { title: 'Plain chatter' }),
       ],
     });
-    await screen.findByText('Pinned rule');
-    expect(screen.queryByText('Plain chatter')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: t('notices.card.open') }));
+    const band = await screen.findByRole('region', { name: t('notices.slideshow.label') });
+    expect(within(band).getByText('Pinned rule')).toBeTruthy();
+    expect(within(band).queryByText('Plain chatter')).toBeNull();
+    fireEvent.click(within(band).getByText('Pinned rule'));
     await screen.findByRole('button', { name: t('notices.board.markAllRead') });
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute('data-notice')).toBe('n1'),
+    );
+  });
+
+  it('shows no slideshow when nothing important or pinned is up', async () => {
+    await boot({
+      permissions: ['notices.view', 'leads.view'],
+      roleTier: 'office',
+      notices: [notice('n2', { title: 'Plain chatter' })],
+    });
+    await screen.findByTitle(t('nav.notices'));
+    expect(screen.queryByRole('region', { name: t('notices.slideshow.label') })).toBeNull();
   });
 
   it('shows no notices to somebody without notices.view, even if the snapshot carried some', async () => {

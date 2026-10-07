@@ -15,9 +15,11 @@ interface Props {
   revision: number;
   /** Tells the shell the unread count, for the badge on the sidebar row. */
   onUnreadChange?: (count: number) => void;
+  /** The notice a Basic Home slide opened. */
+  focus?: { id: string; nonce: number };
 }
 
-export function NoticeBoardScreen({ revision, onUnreadChange }: Props) {
+export function NoticeBoardScreen({ revision, onUnreadChange, focus }: Props) {
   const [notices, setNotices] = useState<Notice[]>([]);
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -70,6 +72,7 @@ export function NoticeBoardScreen({ revision, onUnreadChange }: Props) {
       onMarkRead={(ids) => markRead(ids).catch((caught) => setActionError(apiErrorText(caught, 'notices.board.markFailed')))}
       onMarkAllRead={() => markRead(undefined).catch((caught) => setActionError(apiErrorText(caught, 'notices.board.markFailed')))}
       today={todayForNotices()}
+      focus={focus}
     />
   );
 }

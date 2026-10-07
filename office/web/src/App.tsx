@@ -57,7 +57,7 @@ import {
   BasicHome,
   BP_NARROW,
   cardNotices,
-  NoticeDashboardCard,
+  NoticeSlideshow,
   BusyMark,
   PrintStationRunner,
   Avatar,
@@ -379,6 +379,8 @@ function OfficePanel() {
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
   /** The chat room open as a sub-screen, and the record being shared; both are the signed-in person's, so cleared with the session. */
   const [chatOpen, setChatOpen] = useState<{ id: string; seq?: number } | null>(null);
+  // The notice a Basic Home slide opened, for the board to bring into view.
+  const [noticeFocus, setNoticeFocus] = useState<{ id: string; nonce: number } | null>(null);
   const [chatShare, setChatShare] = useState<ChatRecordChip | null>(null);
   /** Bumped when the sidebar picks a Chatroom page, so a settings sub-screen left open closes. */
   const [chatResetNonce, setChatResetNonce] = useState(0);
@@ -1744,21 +1746,21 @@ function OfficePanel() {
   const alwaysAvailable: ScreenSpec[] = [
     {
       id: 'basicHome',
-      // Where Office and Management land, so the important and pinned notices are here as
-      // well as on the Dashboard; the card draws nothing until the first snapshot has some.
+      // Where Office and Management land, so the important and pinned notices turn over here
+      // (owner add-on V5), from this person's own cache; nothing until the first snapshot has some.
       render: () => (
         <>
           {canViewNotices && cardNotices(myNotices, todayForNotices()).length > 0 && (
-            // Inset like the launcher's own sections, so the card lines up with the tiles. One
-            // notice (unread first): with three, at 157 % on a 720p screen the first row of tiles
-            // fell below the window, and the tiles are what this screen is for. As wide as the
-            // Dashboard's at most: full width at 4K ran each line of text across 3,500 px.
+            // Inset like the launcher's own sections, so the band lines up with the tiles, and no
+            // wider than the Dashboard's content: full width at 4K ran each line across 3,500 px.
             <div className="ob-measure-wide" style={{ padding: 'var(--s-8) var(--s-12) 0' }}>
-              <NoticeDashboardCard
+              <NoticeSlideshow
                 notices={myNotices}
                 today={todayForNotices()}
-                limit={1}
-                onOpen={() => goToTab('notices')}
+                onOpen={(id) => {
+                  setNoticeFocus({ id, nonce: Date.now() });
+                  goToTab('notices');
+                }}
               />
             </div>
           )}
@@ -1840,7 +1842,13 @@ function OfficePanel() {
     {
       // From the snapshot, so it answers offline; reads made then wait for the link.
       id: 'notices',
-      render: () => <NoticeBoardScreen notices={myNotices} onMarkRead={noticeReads.markRead} />,
+      render: () => (
+        <NoticeBoardScreen
+          notices={myNotices}
+          onMarkRead={noticeReads.markRead}
+          focus={noticeFocus ?? undefined}
+        />
+      ),
     },
     {
       id: 'settings',

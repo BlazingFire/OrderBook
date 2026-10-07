@@ -51,7 +51,7 @@ import {
   Avatar,
   BasicHome,
   cardNotices,
-  NoticeDashboardCard,
+  NoticeSlideshow,
   createBurstBatcher,
   BP_NARROW,
   PrintStationRunner,
@@ -741,6 +741,8 @@ function MasterPanel() {
   const canViewNotices = phase === 'ready' && (user?.permissions.includes('notices.view') ?? false);
   const canManageNotices = phase === 'ready' && (user?.permissions.includes('notices.manage') ?? false);
   const noticeBoard = useNotices(revisionOf(revisions, 'notices'), canViewNotices);
+  // The notice a Basic Home slide opened, for the board to bring into view.
+  const [noticeFocus, setNoticeFocus] = useState<{ id: string; nonce: number } | null>(null);
   const noticeUnread = noticeBoard.unread;
   const chatUnread = useChatUnread(masterChatTransport, canChat);
 
@@ -1504,12 +1506,16 @@ function MasterPanel() {
       render: () => (
         <>
           {canViewNotices && cardNotices(noticeBoard.notices, todayForNotices()).length > 0 && (
-            // Inset like the launcher's own sections, so the card lines up with the tiles.
-            <div style={{ padding: 'var(--s-8) var(--s-12) 0' }}>
-              <NoticeDashboardCard
+            // The notice slideshow (owner add-on V5), inset like the launcher's sections so it lines
+            // up with the tiles, and no wider than the Dashboard's content.
+            <div className="ob-measure-wide" style={{ padding: 'var(--s-8) var(--s-12) 0' }}>
+              <NoticeSlideshow
                 notices={noticeBoard.notices}
                 today={todayForNotices()}
-                onOpen={() => navigate('notices')}
+                onOpen={(id) => {
+                  setNoticeFocus({ id, nonce: Date.now() });
+                  navigate('notices');
+                }}
               />
             </div>
           )}
@@ -1642,6 +1648,7 @@ function MasterPanel() {
               <NoticeBoardScreen
                 revision={revisionOf(revisions, 'notices')}
                 onUnreadChange={noticeBoard.setUnread}
+                focus={noticeFocus ?? undefined}
               />
             ),
           } satisfies ScreenSpec,

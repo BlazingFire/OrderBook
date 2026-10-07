@@ -7,7 +7,7 @@
  * as markup.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { compareNotices, isNoticeExpired, type Notice } from '@orderbook/shared';
 
 import { Button } from './Button.js';
@@ -34,6 +34,9 @@ export interface NoticeBoardViewProps {
   onMarkAllRead: () => void | Promise<void>;
   /** Today as `YYYY-MM-DD`; a notice past its last day is left out. Omit to show what is given. */
   today?: string;
+  /** Bring this notice into view, open in full and focused: the Basic Home slideshow opened it. A
+   *  new `nonce` asks again for the same notice. */
+  focus?: { id: string; nonce: number };
 }
 
 /** What is on the board for this person today, in board order. */
@@ -54,6 +57,7 @@ export function NoticeBoardView({
   onMarkRead,
   onMarkAllRead,
   today,
+  focus,
 }: NoticeBoardViewProps) {
   const shown = boardNotices(notices, today);
   const [busy, setBusy] = useState<string | null>(null);
@@ -103,6 +107,7 @@ export function NoticeBoardView({
               online={online}
               busy={busy === notice.id}
               disabled={busy !== null}
+              focusNonce={focus?.id === notice.id ? focus.nonce : undefined}
               onMarkRead={() => void run(notice.id, () => onMarkRead([notice.id]))}
             />
           ))}
@@ -117,21 +122,33 @@ function NoticeItem({
   online,
   busy,
   disabled,
+  focusNonce,
   onMarkRead,
 }: {
   notice: Notice;
   online: boolean;
   busy: boolean;
   disabled: boolean;
+  focusNonce?: number;
   onMarkRead: () => void;
 }) {
   const unread = notice.readByMe === false;
   const long = notice.body.length > CLAMP_CHARS || notice.body.split('\n').length > CLAMP_LINES;
   const [open, setOpen] = useState(false);
   const clipped = long && !open;
+  const item = useRef<HTMLLIElement>(null);
+
+  useEffect(() => {
+    if (focusNonce === undefined) return;
+    setOpen(true);
+    item.current?.scrollIntoView?.({ block: 'nearest' });
+    item.current?.focus({ preventScroll: true });
+  }, [focusNonce]);
 
   return (
     <li
+      ref={item}
+      tabIndex={-1}
       data-notice={notice.id}
       data-unread={unread || undefined}
       style={{

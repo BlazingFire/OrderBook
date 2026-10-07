@@ -13,9 +13,11 @@ import { unreadOnBoard, todayForNotices } from '../noticeReads';
 interface Props {
   notices: Notice[];
   onMarkRead: (ids: string[]) => void;
+  /** The notice a Basic Home slide opened. */
+  focus?: { id: string; nonce: number };
 }
 
-export function NoticeBoardScreen({ notices, onMarkRead }: Props) {
+export function NoticeBoardScreen({ notices, onMarkRead, focus }: Props) {
   const today = todayForNotices();
   const unread = unreadOnBoard(notices, today);
   return (
@@ -24,6 +26,7 @@ export function NoticeBoardScreen({ notices, onMarkRead }: Props) {
       unreadCount={unread.length}
       online
       today={today}
+      focus={focus}
       onMarkRead={onMarkRead}
       onMarkAllRead={() => onMarkRead(unread.map((notice) => notice.id))}
     />
