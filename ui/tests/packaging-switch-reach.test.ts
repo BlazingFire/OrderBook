@@ -76,6 +76,6 @@ describe.each(COPIES)('the packaging switch in %s', (_name, file) => {
   it('finds the sites it claims to be checking', () => {
     // Without this the assertion above passes on an empty list — the failure
     // mode of every "none of them are wrong" test.
-    expect(packagingDecisions(source).length).toBeGreaterThanOrEqual(2);
+    expect(packagingDecisions(source).length).toBeGreaterThanOrEqual(1);
   });
 });

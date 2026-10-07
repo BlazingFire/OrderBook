@@ -222,7 +222,7 @@ export interface LineGroup<L extends GridLine = GridLine> {
 
 /** The key of the group a line belongs to: the product's code, else its name, with the name. */
 export function lineGroupKey(line: { categoryCode: string | null; categoryName: string }): string {
-  return `${line.categoryCode ?? ''}|${line.categoryName}`;
+  return [line.categoryCode ?? '', line.categoryName].join('\u0001');
 }
 
 /**

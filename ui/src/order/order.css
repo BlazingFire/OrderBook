@@ -555,13 +555,13 @@
 
 /* --- The product card's grid ----------------------------------------------------- */
 
-.ob-order-subgrid {
+.ob-order-table {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-.ob-order-subgrid__body {
+.ob-order-table__body {
   max-height: 24rem;
   overflow-y: auto;
   overflow-x: hidden;

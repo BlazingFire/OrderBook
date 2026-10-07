@@ -53,7 +53,7 @@ export function SubGrid({
   children: ReactNode;
 }) {
   return (
-    <div className="ob-order-subgrid">
+    <div className="ob-order-table">
       <div className="ob-order-subrow ob-order-subrow--head" role="presentation">
         <span>{labels.code}</span>
         <span>{labels.sub}</span>
@@ -63,7 +63,7 @@ export function SubGrid({
         <span>{labels.packaging}</span>
         <span>{labels.grade}</span>
       </div>
-      <div className="ob-order-subgrid__body" ref={bodyRef}>
+      <div className="ob-order-table__body" ref={bodyRef}>
         {children}
       </div>
     </div>

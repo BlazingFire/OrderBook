@@ -839,7 +839,8 @@ function LeadEntryForm({
 
   // --- Draft --------------------------------------------------------------
 
-  const cardOptions = { packagingRequired, colourListNonEmpty: colourOptions.length > 0 };
+  /** A counted row still without its packaging, while the company requires one. */
+  const lacks = (r: GridRow) => packagingRequired && Number(r.qty) > 0 && !r.packaging.trim();
 
   /** The caret on the card's first field, the first thing it asks. */
   function focusFirstField(): void {
@@ -903,7 +904,10 @@ function LeadEntryForm({
   function draftIsReady(candidate: DraftCard): boolean {
     // `leads.packagingRequiredOnConvert` off: a shop that packs to order cannot state the
     // packaging at the counter, so a line may go in without. On, every counted row needs its own.
-    return cardReady(candidate.rows, cardOptions);
+    return cardReady(candidate.rows, {
+      packagingRequired,
+      colourListNonEmpty: colourOptions.length > 0,
+    });
   }
 
   /**
@@ -952,6 +956,8 @@ function LeadEntryForm({
   // --- The card's keys ----------------------------------------------------
 
   const cardTitle = draft ? draft.categoryName : '';
+  /** While the company requires packaging, a counted row without it is what holds Add product back. */
+  const lacksPackaging = Boolean(draft?.rows.some(lacks));
   /** The product's photo: the first sub product that has one, since a product itself has none. */
   const cardImage = draft?.rows.find((row) => row.image)?.image;
 
@@ -1918,6 +1924,14 @@ function LeadEntryForm({
                       footer={
                         <div ref={addRef} className="ob-order-product__footrow">
                           <span className="ob-order-hint">{t('lead.add.card.shiftQ')}</span>
+                          {lacksPackaging && (
+                            <span
+                              className="ob-order-hint"
+                              style={{ color: 'var(--state-offline)' }}
+                            >
+                              {t('lead.add.draft.hintPackaging')}
+                            </span>
+                          )}
                           <span style={{ flex: 1, minWidth: 0 }} />
                           <span className="ob-order-product__pieces">
                             {`${t('lead.add.card.thisProduct')} ${cardPieces(draft.rows).toLocaleString('en-IN')} ${t('unit.pieces')}`}
@@ -1994,8 +2008,7 @@ function LeadEntryForm({
                             {draft.rows.map((row) => {
                               // The chosen colour on a multicolour row, else the fixed one.
                               const named = row.colour ? labelOf(row.colour) : variantName(row);
-                              const unpacked =
-                                packagingRequired && Number(row.qty) > 0 && !row.packaging.trim();
+                              const unpacked = lacks(row);
                               const chooses = row.rule === 'selectable' && colourOptions.length > 0;
                               return (
                                 <SubRow key={row.key} rowKey={row.key}>
