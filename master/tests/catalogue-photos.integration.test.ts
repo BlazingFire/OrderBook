@@ -65,6 +65,18 @@ describe.skipIf(!canRunIntegrationTests)('catalogue photos on boot (integration)
     expect((await imagesOf(pictured.id)).map((image) => image.id)).toEqual(own.images.map((image) => image.id));
   });
 
+  it('adds no shipped second photo beside one the company added', async () => {
+    const pictured = await catalog.createProduct({ categoryName: 'Basins', variants: [{ code: 'BAS-0007' }], name: 'Deep' }, actor);
+    await imageService.uploadImage(
+      { productId: pictured.id, fileBuffer: await jpeg('#ff0000'), crop: { cropX: 0, cropY: 0, cropWidth: 48, cropHeight: 32, rotationDeg: 0 } },
+      actor,
+    );
+    await writeFile(path.join(dir, 'BAS-0007_2.jpg'), await jpeg('#00ff00'));
+
+    expect(await attachCataloguePhotos(dir)).toMatchObject({ attached: 0, skipped: 1 });
+    expect(await imagesOf(pictured.id)).toHaveLength(1);
+  });
+
   it('does not run the same set twice, even after the company removed the photo', async () => {
     const bare = await catalog.createProduct({ categoryName: 'Basins', variants: [{ code: 'BAS-0003' }], name: 'Square' }, actor);
     await writeFile(path.join(dir, 'BAS-0003.jpg'), await jpeg('#00ff00'));

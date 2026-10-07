@@ -9,6 +9,7 @@
 
 import { useRef, useState } from 'react';
 import {
+  newestImageId,
   planPhotoImport,
   runPhotoImport,
   type PhotoImportMode,
@@ -26,6 +27,24 @@ interface Props {
   products: Product[];
 }
 
+/** A chosen file with its first bytes, which say whether it really is a photo. */
+interface Item {
+  name: string;
+  file: File;
+  head: Uint8Array;
+}
+
+/** The first bytes of a file. `FileReader` rather than `Blob.arrayBuffer`, which not every engine this runs under has. */
+function readHead(file: File): Promise<Uint8Array> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+    // Unreadable reads as empty, which the planner flags as not a photo.
+    reader.onerror = () => resolve(new Uint8Array());
+    reader.readAsArrayBuffer(file.slice(0, 16));
+  });
+}
+
 const STATUSES: PhotoPlanStatus[] = ['new', 'hasPhoto', 'unmatched', 'duplicate', 'notImage'];
 
 /** Rows drawn at once; a thousand-file folder is filtered by status rather than scrolled. */
@@ -41,19 +60,26 @@ export function PhotoImportScreen({ products }: Props) {
 
   // Made from the products as they were when the files were chosen: a photo
   // the run itself adds must not move rows mid-import.
-  const [plan, setPlan] = useState<PhotoPlanRow<File>[]>([]);
+  const [plan, setPlan] = useState<PhotoPlanRow<Item>[]>([]);
   const [mode, setMode] = useState<PhotoImportMode>('skip');
   const [filter, setFilter] = useState<Filter>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-  const [outcomes, setOutcomes] = useState<PhotoImportOutcome<File>[] | null>(null);
+  const [outcomes, setOutcomes] = useState<PhotoImportOutcome<Item>[] | null>(null);
 
   const running = progress !== null && outcomes === null;
 
   const count = (status: PhotoPlanStatus) => plan.filter((row) => row.status === status).length;
   const toImport = count('new') + (mode === 'replace' ? count('hasPhoto') : 0);
 
-  const pick = (list: FileList | null) => {
-    setPlan(list ? planPhotoImport(Array.from(list), products) : []);
+  const pick = async (list: FileList | null) => {
+    const items = await Promise.all(
+      Array.from(list ?? []).map(async (file) => ({
+        name: file.name,
+        file,
+        head: await readHead(file),
+      })),
+    );
+    setPlan(planPhotoImport(items, products));
     setOutcomes(null);
     setProgress(null);
     setFilter(null);
@@ -63,8 +89,10 @@ export function PhotoImportScreen({ products }: Props) {
     stopRef.current = false;
     setProgress({ done: 0, total: toImport });
     const result = await runPhotoImport(plan, mode, {
-      upload: (productId, file, caption) => api.uploadProductImage(productId, file, null, caption),
+      upload: async (productId, item, caption) =>
+        newestImageId(await api.uploadProductImage(productId, item.file, null, caption)),
       removeImage: (productId, imageId) => api.deleteProductImage(productId, imageId),
+      setPrimary: (productId, imageId) => api.updateProductImage(productId, imageId, { isPrimary: true }),
       retryAfterMs: (error) =>
         error instanceof ApiError && error.code === 'rate_limited'
           ? Number(error.details.retryAfterSeconds ?? 5) * 1000
@@ -82,7 +110,18 @@ export function PhotoImportScreen({ products }: Props) {
   };
 
   const outcomeOf = new Map(outcomes?.map((outcome) => [outcome.row, outcome]));
-  const matches = (row: PhotoPlanRow<File>): boolean => {
+  /** What the preview says will happen to a file, in the mode chosen. */
+  const planText = (row: PhotoPlanRow<Item>): string => {
+    const slot = row.slot ?? 1;
+    if (row.status === 'new') return slot > 1 ? t('photoImport.status.addsSlot', { slot }) : t('photoImport.status.new');
+    if (row.status === 'hasPhoto') {
+      return t(mode === 'replace' ? 'photoImport.status.replacesSlot' : 'photoImport.status.keepsSlot', { slot });
+    }
+    if (row.status === 'duplicate') return t('photoImport.status.duplicateOf', { file: row.duplicateOf ?? '' });
+    return t(`photoImport.status.${row.status}`);
+  };
+
+  const matches = (row: PhotoPlanRow<Item>): boolean => {
     if (filter === null) return true;
     const outcome = outcomeOf.get(row);
     return outcome && (filter === 'imported' || filter === 'skipped' || filter === 'failed')
@@ -124,7 +163,7 @@ export function PhotoImportScreen({ products }: Props) {
           hidden
           multiple
           {...{ webkitdirectory: '' }}
-          onChange={(event) => pick(event.target.files)}
+          onChange={(event) => void pick(event.target.files)}
         />
         <input
           ref={filesInput}
@@ -132,7 +171,7 @@ export function PhotoImportScreen({ products }: Props) {
           hidden
           multiple
           accept=".jpg,.jpeg,.png,.webp"
-          onChange={(event) => pick(event.target.files)}
+          onChange={(event) => void pick(event.target.files)}
         />
       </div>
 
@@ -196,7 +235,7 @@ export function PhotoImportScreen({ products }: Props) {
                 {t('photoImport.stop')}
               </Button>
             )}
-            {outcomes && <Button onClick={() => pick(null)}>{t('photoImport.again')}</Button>}
+            {outcomes && <Button onClick={() => void pick(null)}>{t('photoImport.again')}</Button>}
           </div>
 
           <table className="ob-table ob-table--flat">
@@ -217,7 +256,7 @@ export function PhotoImportScreen({ products }: Props) {
                     <td>{row.matchedAs ?? ''}</td>
                     <td>{row.productName ?? ''}</td>
                     <td>
-                      {outcome ? t(`photoImport.result.${outcome.result}`) : t(`photoImport.status.${row.status}`)}
+                      {outcome ? `${t(`photoImport.result.${outcome.result}`)} - ${planText(row)}` : planText(row)}
                       {outcome?.error && <em className="ob-dup__blocked"> {outcome.error}</em>}
                     </td>
                   </tr>

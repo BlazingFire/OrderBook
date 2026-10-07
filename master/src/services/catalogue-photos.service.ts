@@ -78,13 +78,16 @@ export async function attachCataloguePhotos(
   };
 
   const products = (await productRepo.listProducts(tenantId, { limit: 100_000, offset: 0 })).items;
+  // Stricter than the screen's "skip": not just a taken slot, any photo at
+  // all keeps a sub product out, so a shipped `CODE_2.jpg` never lands beside
+  // a photo the company chose.
   const plan = planPhotoImport(
     names.map((name) => ({ name })),
     products,
-  );
+  ).map((row) => (row.status === 'new' && (row.existingImageIds?.length ?? 0) > 0 ? { ...row, status: 'hasPhoto' as const } : row));
   const outcomes = await runPhotoImport(plan, 'skip', {
-    upload: async (productId, file) =>
-      uploadImage(
+    upload: async (productId, file) => {
+      await uploadImage(
         {
           productId,
           fileBuffer: await readFile(path.join(dir, file.name)),
@@ -92,7 +95,8 @@ export async function attachCataloguePhotos(
           wholeFrame: true,
         },
         actor,
-      ),
+      );
+    },
     // The service is called directly, never through the HTTP upload limit.
     removeImage: async () => undefined,
     retryAfterMs: () => null,

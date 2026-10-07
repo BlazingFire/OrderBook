@@ -6,13 +6,19 @@
  *
  * A file is matched by its name without the extension, ignoring case, to a
  * variant code (`OPT-0011.jpg`) and, failing that, to a sub product's alias.
- * `OPT-0011_2.jpg` is a second photo for the same code. Photos belong to the
- * sub product, not the variant (`product_images` has no variant column), so a
- * file matched through a colour's code lands in its sub product's gallery
- * captioned with that colour's label.
+ * Photos belong to the sub product, not the variant (`product_images` has no
+ * variant column), so a file matched through a colour's code lands in its sub
+ * product's gallery captioned with that colour's label.
+ *
+ * **Slots.** `OPT-0011.jpg` is the sub product's photo 1, its primary;
+ * `OPT-0011_2.jpg` is photo 2, and so on, in the gallery's own order (primary
+ * first, then by sequence). A file whose slot is empty adds a photo. A file
+ * whose slot is taken is skipped, or with "replace" swaps that one photo and
+ * no other: a `_2` never touches the primary, and a new photo 1 becomes the
+ * primary.
  *
  * Pure: the screen hands in the files and the products it already loaded, and
- * the uploader as two functions, so the matching and the run are tested here
+ * the uploader as functions, so the matching and the run are tested here
  * without a browser or a server.
  */
 
@@ -21,16 +27,23 @@ import type { Product } from './entities.js';
 export const PHOTO_IMPORT_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'] as const;
 
 export type PhotoPlanStatus =
-  /** Matched to a sub product with no photo yet. */
+  /** Matched, and its slot is empty: the photo is added. */
   | 'new'
-  /** Matched to a sub product that already has a photo: skipped or replaced, as chosen. */
+  /** Matched, and the sub product already has a photo in that slot: skipped or replaced, as chosen. */
   | 'hasPhoto'
   /** An image whose name is no code or alias in the catalogue. */
   | 'unmatched'
-  /** The same name as an earlier file (another extension, or another folder). */
+  /** The same name as another file (another extension or case, or another folder): `duplicateOf` is imported instead. */
   | 'duplicate'
-  /** Not a jpg, jpeg, png or webp file. */
+  /** Not a jpg, jpeg, png or webp file, by its name or by its first bytes. */
   | 'notImage';
+
+/** What the planner reads from a file: its name and, when the screen read them, its first bytes. */
+export interface PhotoFileLike {
+  name: string;
+  /** The first 12 bytes or more; absent means the bytes were not read and only the name is judged. */
+  head?: Uint8Array;
+}
 
 export interface PhotoPlanRow<F> {
   file: F;
@@ -42,19 +55,39 @@ export interface PhotoPlanRow<F> {
   productName?: string;
   /** The colour's label when matched through a variant code of a multi-variant sub product. */
   caption?: string | null;
-  /** The sub product's photos when the plan was made: what "replace" removes. */
+  /** 1 for `CODE.jpg` (the primary), N for `CODE_N.jpg`. */
+  slot?: number;
+  /** The photo in that slot when the plan was made: what "replace" removes. */
+  slotImageId?: string;
+  /** Every photo the sub product had when the plan was made. */
   existingImageIds?: string[];
+  /** For a duplicate: the file imported in its place. */
+  duplicateOf?: string;
 }
 
-/** `OPT-0011_2.JPG` -> `{ code: 'opt-0011', full: 'opt-0011_2' }`; null when not an image name. */
-export function photoFileKey(fileName: string): { code: string; full: string } | null {
+/** `OPT-0011_2.JPG` -> `{ code: 'opt-0011', full: 'opt-0011_2', base: 'OPT-0011_2', slot: 2 }`; null when not an image name. */
+export function photoFileKey(fileName: string): { code: string; full: string; base: string; slot: number } | null {
   const dot = fileName.lastIndexOf('.');
   if (dot <= 0) return null;
   const extension = fileName.slice(dot + 1).toLowerCase();
   if (!(PHOTO_IMPORT_EXTENSIONS as readonly string[]).includes(extension)) return null;
-  const full = fileName.slice(0, dot).trim().toLowerCase();
-  if (!full) return null;
-  return { code: full.replace(/_\d+$/, ''), full };
+  const base = fileName.slice(0, dot).trim();
+  if (!base) return null;
+  const full = base.toLowerCase();
+  // `_1` and `_0` are not slots: `CODE.jpg` is photo 1, so a `_1` would be a second spelling of it.
+  const suffix = /_([2-9]|[1-9]\d+)$/.exec(full);
+  return suffix
+    ? { code: full.slice(0, suffix.index), full, base, slot: Number(suffix[1]) }
+    : { code: full, full, base, slot: 1 };
+}
+
+/** JPEG, PNG or WebP by the first bytes; the extension alone lets a renamed text file through. */
+export function isImageBytes(head: Uint8Array): boolean {
+  const at = (index: number) => head[index];
+  const ascii = (from: number, text: string) => [...text].every((char, index) => at(from + index) === char.charCodeAt(0));
+  if (at(0) === 0xff && at(1) === 0xd8 && at(2) === 0xff) return true;
+  if (at(0) === 0x89 && ascii(1, 'PNG\r\n\u001a\n')) return true;
+  return ascii(0, 'RIFF') && ascii(8, 'WEBP');
 }
 
 interface Target {
@@ -92,38 +125,64 @@ function targetsByName(products: readonly Product[]): Map<string, Target> {
   return targets;
 }
 
+/** The gallery's own order: the primary first, then by sequence. */
+function galleryOrder(product: Product): string[] {
+  return [...product.images]
+    .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary) || a.sequence - b.sequence)
+    .map((image) => image.id);
+}
+
+const byCodepoint = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
 /**
- * The preview: one row per file, in file-name order. The first of two files
- * with the same name (ignoring case and extension) is the one imported.
+ * The preview: one row per file, in file-name order. Of two files with the
+ * same name ignoring case and extension, the one spelled exactly as the
+ * catalogue spells the code is imported, else the first alphabetically; the
+ * other is a duplicate naming it.
  */
-export function planPhotoImport<F extends { name: string }>(
+export function planPhotoImport<F extends PhotoFileLike>(
   files: readonly F[],
   products: readonly Product[],
 ): PhotoPlanRow<F>[] {
   const targets = targetsByName(products);
-  const seen = new Set<string>();
-  const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true }));
-
-  return sorted.map((file): PhotoPlanRow<F> => {
-    const base = { file, fileName: file.name };
+  const keyed = files.map((file) => {
     const key = photoFileKey(file.name);
-    if (!key) return { ...base, status: 'notImage' };
-    if (seen.has(key.full)) return { ...base, status: 'duplicate' };
-    seen.add(key.full);
+    const target = key ? targets.get(key.code) : undefined;
+    const exact = Boolean(key && target && key.base === `${target.matchedAs}${key.slot > 1 ? key.full.slice(key.code.length) : ''}`);
+    return { file, key, target, exact };
+  });
 
-    const target = targets.get(key.code);
+  // Who wins a shared name is decided before anything is labelled, and never by the folder's order.
+  const winners = new Map<string, string>();
+  for (const entry of [...keyed].sort(
+    (a, b) => Number(b.exact) - Number(a.exact) || byCodepoint(a.file.name, b.file.name),
+  )) {
+    if (!entry.key || (entry.file.head && !isImageBytes(entry.file.head))) continue;
+    if (!winners.has(entry.key.full)) winners.set(entry.key.full, entry.file.name);
+  }
+
+  const rows = keyed.map(({ file, key, target }): PhotoPlanRow<F> => {
+    const base = { file, fileName: file.name };
+    if (!key || (file.head && !isImageBytes(file.head))) return { ...base, status: 'notImage' };
+    const winner = winners.get(key.full) as string;
+    if (winner !== file.name) return { ...base, status: 'duplicate', duplicateOf: winner };
     if (!target) return { ...base, status: 'unmatched' };
-    const existing = target.product.images.map((image) => image.id);
+
+    const gallery = galleryOrder(target.product);
+    const slotImageId = gallery[key.slot - 1];
     return {
       ...base,
-      status: existing.length > 0 ? 'hasPhoto' : 'new',
+      status: slotImageId ? 'hasPhoto' : 'new',
       matchedAs: target.matchedAs,
       productId: target.product.id,
       productName: target.product.name,
       caption: target.caption,
-      existingImageIds: existing,
+      slot: key.slot,
+      ...(slotImageId ? { slotImageId } : {}),
+      existingImageIds: gallery,
     };
   });
+  return rows.sort((a, b) => a.fileName.localeCompare(b.fileName, 'en', { numeric: true }) || byCodepoint(a.fileName, b.fileName));
 }
 
 export type PhotoImportMode = 'skip' | 'replace';
@@ -138,8 +197,11 @@ export interface PhotoImportOutcome<F> {
 }
 
 export interface PhotoImportDeps<F> {
-  upload: (productId: string, file: F, caption: string | null) => Promise<unknown>;
+  /** Adds the photo; answers the new photo's id when it knows it (needed to make a new photo 1 primary). */
+  upload: (productId: string, file: F, caption: string | null) => Promise<string | null | undefined | void>;
   removeImage: (productId: string, imageId: string) => Promise<unknown>;
+  /** Makes a photo the primary; only a replaced photo 1 asks. */
+  setPrimary?: (productId: string, imageId: string) => Promise<unknown>;
   /** Milliseconds to wait before retrying, when the error is the Master's rate limit; null otherwise. */
   retryAfterMs: (error: unknown) => number | null;
   errorText: (error: unknown) => string;
@@ -152,7 +214,7 @@ export interface PhotoImportDeps<F> {
 /** Retries per file on a rate-limit refusal before it counts as failed. */
 const RATE_LIMIT_RETRIES = 5;
 
-async function withRetry<T>(work: () => Promise<T>, deps: PhotoImportDeps<unknown>): Promise<T> {
+async function withRetry<T>(work: () => Promise<T>, deps: PhotoImportDeps<never>): Promise<T> {
   const wait = deps.wait ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   for (let attempt = 0; ; attempt += 1) {
     try {
@@ -168,18 +230,19 @@ async function withRetry<T>(work: () => Promise<T>, deps: PhotoImportDeps<unknow
 /**
  * Upload the plan one file at a time (the Master encodes one photo at a time
  * anyway), a sub product's files together. Safe to run again: with "skip", a
- * sub product that already has a photo is left alone, so a second run adds
- * only what the first did not.
+ * taken slot is left alone, so a second run adds only what the first did not.
  *
- * "Replace" uploads the new photos first and removes the old ones only once
- * every new one is in, so a failed upload never leaves a sub product with no
- * photo where it had one.
+ * "Replace" uploads a sub product's new photos first, and removes the photos
+ * they replace only once every new one is in, so a failed upload never leaves
+ * a sub product with fewer photos than it had. A new photo 1 is made primary
+ * before the old one goes.
  */
 export async function runPhotoImport<F>(
   plan: readonly PhotoPlanRow<F>[],
   mode: PhotoImportMode,
   deps: PhotoImportDeps<F>,
 ): Promise<PhotoImportOutcome<F>[]> {
+  const retryDeps = deps as unknown as PhotoImportDeps<never>;
   const outcomes: PhotoImportOutcome<F>[] = [];
   const groups = new Map<string, PhotoPlanRow<F>[]>();
   for (const row of plan) {
@@ -196,7 +259,10 @@ export async function runPhotoImport<F>(
   deps.onProgress?.(done, total);
 
   for (const [productId, rows] of groups) {
+    // Photo 1 first, so the gallery fills in its own order.
+    rows.sort((a, b) => (a.slot ?? 1) - (b.slot ?? 1));
     let allIn = true;
+    const replaced: Array<{ row: PhotoPlanRow<F>; newId: string | null }> = [];
     for (const row of rows) {
       if (deps.stopped?.()) {
         outcomes.push({ row, result: 'skipped' });
@@ -204,8 +270,9 @@ export async function runPhotoImport<F>(
         continue;
       }
       try {
-        await withRetry(() => deps.upload(productId, row.file, row.caption ?? null), deps as PhotoImportDeps<unknown>);
+        const newId = await withRetry(() => deps.upload(productId, row.file, row.caption ?? null), retryDeps);
         outcomes.push({ row, result: 'imported' });
+        if (row.slotImageId) replaced.push({ row, newId: typeof newId === 'string' ? newId : null });
       } catch (error) {
         outcomes.push({ row, result: 'failed', error: deps.errorText(error) });
         allIn = false;
@@ -214,20 +281,26 @@ export async function runPhotoImport<F>(
       deps.onProgress?.(done, total);
     }
 
-    const old = rows[0]?.existingImageIds ?? [];
-    if (mode === 'replace' && allIn && old.length > 0) {
-      for (const imageId of old) {
-        try {
-          await withRetry(() => deps.removeImage(productId, imageId), deps as PhotoImportDeps<unknown>);
-        } catch (error) {
-          // The new photos are in; an old one left over is shown, not hidden.
-          const first = outcomes.find((outcome) => outcome.row === rows[0]);
-          if (first) first.error = deps.errorText(error);
+    if (!allIn) continue;
+    for (const { row, newId } of replaced) {
+      try {
+        if (row.slot === 1 && newId && deps.setPrimary) {
+          await withRetry(() => deps.setPrimary!(productId, newId), retryDeps);
         }
+        await withRetry(() => deps.removeImage(productId, row.slotImageId as string), retryDeps);
+      } catch (error) {
+        // The new photo is in; an old one left over is shown, not hidden.
+        const outcome = outcomes.find((entry) => entry.row === row);
+        if (outcome) outcome.error = deps.errorText(error);
       }
     }
   }
 
   const order = new Map(plan.map((row, index) => [row, index]));
   return outcomes.sort((a, b) => (order.get(a.row) ?? 0) - (order.get(b.row) ?? 0));
+}
+
+/** The id of the photo an upload just added: uploads take the next sequence, so it is the highest. */
+export function newestImageId(product: Pick<Product, 'images'>): string | null {
+  return [...product.images].sort((a, b) => b.sequence - a.sequence)[0]?.id ?? null;
 }
