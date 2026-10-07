@@ -20,7 +20,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { variantForSlot, type ImageVariant } from '@orderbook/shared';
+import { variantForSlot, type ImageVariant, type ProductImage } from '@orderbook/shared';
 import { decode } from 'blurhash';
 
 const placeholderCache = new Map<string, string>();
@@ -121,5 +121,32 @@ export function ProgressiveImage({
         }}
       />
     </span>
+  );
+}
+
+/**
+ * A product's photo at list-row size (W4): its primary image (else the first), square and
+ * cropped, with the blurhash painting first; a neutral empty square when it has no photo.
+ *
+ * Lazy by way of `ProgressiveImage` (`loading="lazy"`, and a virtualised list only mounts the
+ * rows on screen). On the Office the URL is served from the panel's own image cache, offline
+ * too. 28 px rather than the full 32 px row, so the photo keeps a hairline of air inside it.
+ */
+export function ProductThumb({ images, name }: { images: readonly ProductImage[]; name: string }) {
+  const primary = images.find((image) => image.isPrimary) ?? images[0];
+  if (!primary) return <span className="ob-thumb ob-thumb--empty" aria-hidden="true" />;
+  return (
+    <ProgressiveImage
+      className="ob-thumb"
+      imageId={primary.id}
+      variant="micro"
+      slotPx={28}
+      blurhash={primary.blurhash}
+      width={1}
+      height={1}
+      alt={name}
+      // On the element itself: ProgressiveImage sets width 100%, which would win over a class.
+      style={{ width: '2rem', height: '2rem', flex: 'none' }}
+    />
   );
 }

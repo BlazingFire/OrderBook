@@ -56,6 +56,7 @@ import { EditorScreen } from './EditorScreen.js';
 import { apiErrorText } from './errorText.js';
 import { FilterChip } from './FilterBar.js';
 import { ProductShareBar } from './ProductShare.js';
+import { ProductThumb } from './ProgressiveImage.js';
 import {
   NO_PRODUCT_LIST_FILTERS,
   presenceOf,
@@ -358,6 +359,13 @@ export function SubProductsScreen({
    * is what stops a long product name from pushing its track past its share.
    */
   const columns: DataTableColumn<Product>[] = [
+    {
+      // The photo first (W4). Never dropped: it is how a ceramic product is recognised.
+      key: 'photo',
+      header: '',
+      width: rem(48),
+      render: (product) => <ProductThumb images={product.images} name={product.name} />,
+    },
     {
       key: 'brand',
       sortable: true,

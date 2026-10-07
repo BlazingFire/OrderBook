@@ -542,7 +542,7 @@ export function LeadsScreen({
       key: 'notes',
       header: t('orderNote.column.notes'),
       priority: 2,
-      width: rem(220),
+      width: rem(232),
       render: (lead) =>
         lead.convertedOrderId ? null : (
           <NoteButtons

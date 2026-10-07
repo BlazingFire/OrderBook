@@ -776,6 +776,48 @@ table.ob-table {
   padding-right: var(--s-16);
 }
 
+/*
+ * The page bar under a table (Data artboard): a 40 px band in secondary ink. Straight after
+ * a table card it becomes that card's footer: the card loses its bottom edge and radius, and
+ * the bar takes them, 16 px in, with the last row's hairline as the divider.
+ */
+.ob-pagebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--s-12);
+  box-sizing: border-box;
+  min-height: 2.8571rem;
+  padding: var(--s-4) 0;
+  font-size: var(--t-small-size);
+  color: var(--fg-secondary);
+}
+.ob-tablewrap:has(+ .ob-pagebar) {
+  border-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.ob-tablewrap + .ob-pagebar {
+  padding: var(--s-4) var(--s-16);
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-top: 0;
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
+}
+
+/* A product photo at row size (W4): a 28 px square, 4 px radius; empty is a neutral tile. */
+.ob-thumb--empty {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  display: block;
+  box-sizing: border-box;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: var(--bg-sunken);
+}
+
 /* An id in a table is quiet mono (Data artboard: 12.5 px, secondary ink). */
 .ob-table tbody td.ob-mono,
 .ob-table tbody td .ob-mono {
@@ -3077,6 +3119,12 @@ button.ob-bell-item:hover {
   font-size: var(--t-mono-size);
   color: var(--fg-primary);
   overflow-wrap: anywhere;
+}
+.ob-idfield .ob-icon-btn {
+  flex: none;
+  width: 1.7143rem;
+  height: 1.7143rem;
+  border-radius: var(--r-sm);
 }
 .ob-table .ob-idfield {
   min-height: 0;
