@@ -179,7 +179,7 @@ describe('AddedProductsPanel', () => {
         pcsUnit="pcs"
         cancelLabel="Cancel"
         onCancel={onCancel}
-        saveLabel="Save pending order"
+        saveLabel="Save order"
         saveKbd="Ctrl S"
         saveDisabled={false}
         onSave={onSave}
@@ -201,7 +201,7 @@ describe('AddedProductsPanel', () => {
     expect(within(aside).getByText('queued, will send when online')).toBeTruthy();
     expect(within(aside).getByText('520')).toBeTruthy();
 
-    fireEvent.click(within(aside).getByRole('button', { name: /Save pending order/ }));
+    fireEvent.click(within(aside).getByRole('button', { name: /Save order/ }));
     fireEvent.click(within(aside).getByRole('button', { name: 'Cancel' }));
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(onCancel).toHaveBeenCalledTimes(1);
@@ -211,7 +211,7 @@ describe('AddedProductsPanel', () => {
     panel({ saveDisabled: true, empty: <span>Nothing added yet</span>, count: '' });
     const aside = screen.getByRole('complementary', { name: 'Added products' });
     expect(
-      (within(aside).getByRole('button', { name: /Save pending order/ }) as HTMLButtonElement)
+      (within(aside).getByRole('button', { name: /Save order/ }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
     expect(within(aside).getByText('Nothing added yet')).toBeTruthy();
@@ -219,7 +219,7 @@ describe('AddedProductsPanel', () => {
     cleanup();
 
     panel({ saving: true });
-    const busy = screen.getByRole('button', { name: /Save pending order/ });
+    const busy = screen.getByRole('button', { name: /Save order/ });
     expect(busy.getAttribute('aria-busy')).toBe('true');
     await act(async () => undefined);
   });

@@ -1402,6 +1402,16 @@ describe('the party box and the chosen party', () => {
   });
 });
 
+describe('the save button', () => {
+  it('says Save order, with its Ctrl S chip left out of its name', async () => {
+    await openForm();
+    const save = screen.getByRole('button', { name: 'Save order' });
+    expect(save.textContent).toContain('Save order');
+    expect(save.textContent).toContain('Ctrl S');
+    expect(save.getAttribute('aria-label')).toBe('Save order');
+  });
+});
+
 describe('the follow-up quick choices', () => {
   it('are one segmented radio group beside the date, in the short faces of the design', async () => {
     await openForm();
