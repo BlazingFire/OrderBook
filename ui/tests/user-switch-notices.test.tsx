@@ -1,8 +1,10 @@
 /**
  * D6 chain audit: after A signs out and B signs in, nothing of A's may render for B.
  *
- *  · The Master's `useNotices` lives in the shell, which stays mounted across a sign-out: it starts
- *    empty for a different person on the first render, and drops an answer A's read brings late.
+ *  · The Master's `useNotices` lives in the shell, which stays mounted across a sign-out: D11's reset
+ *    (d90cc45) leaves it empty for the next person's first render, and A's late answer is dropped.
+ *  · A read started under A and still on its way is not joined by B's first identical read
+ *    (`invalidateReads()` drops the in-flight map too, both panels).
  *  · Both panels' shared read cache (`requestCache`) is dropped by signing in and by signing out,
  *    so a per-person list read for A (parties under Party Access, say) is never served to B.
  */
@@ -32,49 +34,25 @@ const notice = (id: string): Notice =>
     readByMe: false,
   }) as Notice;
 
-beforeEach(() => {
+beforeEach(async () => {
   installBrowserStubs();
+  // The panels' api modules live for the whole file: nothing one test left on its way may answer the next.
+  for (const panel of ['master', 'office']) {
+    const api = (await import(/* @vite-ignore */ `../../${panel}/web/src/api.ts`)) as {
+      invalidateReads: () => void;
+    };
+    api.invalidateReads();
+  }
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('Master useNotices across a user switch', () => {
-  it('starts empty for the next person on the first render, and drops the previous person’s late answer', async () => {
-    const pending: Array<(value: Response) => void> = [];
-    routeFetch((call) => {
-      if (call.url !== '/api/notices') return undefined;
-      return new Promise<Response>((resolve) => pending.push(resolve));
-    });
-    const { useNotices } = (await import(
-      /* @vite-ignore */ '../../master/web/src/useNotices.ts'
-    )) as { useNotices: typeof UseNotices };
-
-    const { result, rerender } = renderHook(({ user }) => useNotices(0, true, user), {
-      initialProps: { user: 'A' as string | null },
-    });
-    await vi.waitFor(() => expect(pending).toHaveLength(1));
-    await act(async () => {
-      pending[0]!(json({ notices: [notice('for-admins')], unreadCount: 1 }));
-    });
-    expect(result.current.notices.map((n) => n.id)).toEqual(['for-admins']);
-    expect(result.current.unread).toBe(1);
-
-    // A re-read starts for A, then A signs out and B signs in before it answers.
-    rerender({ user: 'A' });
-    rerender({ user: 'B' });
-    expect(result.current.notices).toEqual([]);
-    expect(result.current.unread).toBeUndefined();
-
-    await vi.waitFor(() => expect(pending.length).toBeGreaterThanOrEqual(2));
-    await act(async () => {
-      pending.at(-1)!(json({ notices: [], unreadCount: 0 }));
-    });
-    expect(result.current.notices).toEqual([]);
-  });
-
-  it('keeps a late answer for A from landing after B is signed in', async () => {
+// The shell renders the hook with `enabled` false while nobody is signed in (`canViewNotices`
+// needs a user), so a switch from A to B always passes through it, as here.
+describe('Master useNotices across a user switch (D11 d90cc45 resets it)', () => {
+  it('is empty on the first render for the next person', async () => {
     const pending: Array<(value: Response) => void> = [];
     routeFetch((call) =>
       call.url === '/api/notices'
@@ -85,16 +63,42 @@ describe('Master useNotices across a user switch', () => {
       /* @vite-ignore */ '../../master/web/src/useNotices.ts'
     )) as { useNotices: typeof UseNotices };
 
-    const { result, rerender } = renderHook(({ user }) => useNotices(0, true, user), {
-      initialProps: { user: 'A' as string | null },
+    const { result, rerender } = renderHook(({ on }) => useNotices(0, on), {
+      initialProps: { on: true },
     });
     await vi.waitFor(() => expect(pending).toHaveLength(1));
-    // B's sign-in invalidates the panel's reads, as every non-GET does when it settles.
+    await act(async () => {
+      pending[0]!(json({ notices: [notice('for-admins')], unreadCount: 1 }));
+    });
+    expect(result.current.notices.map((n) => n.id)).toEqual(['for-admins']);
+
+    rerender({ on: false }); // A signs out
+    rerender({ on: true }); // B signs in: B's first render
+    expect(result.current.notices).toEqual([]);
+    expect(result.current.unread).toBeUndefined();
+  });
+
+  it('keeps a late answer for A from landing after B is signed in, and B reads on its own', async () => {
+    const pending: Array<(value: Response) => void> = [];
+    routeFetch((call) =>
+      call.url === '/api/notices'
+        ? new Promise<Response>((resolve) => pending.push(resolve))
+        : undefined,
+    );
+    const { useNotices } = (await import(
+      /* @vite-ignore */ '../../master/web/src/useNotices.ts'
+    )) as { useNotices: typeof UseNotices };
     const { invalidateReads } = (await import(
       /* @vite-ignore */ '../../master/web/src/api.ts'
     )) as { invalidateReads: () => void };
-    invalidateReads();
-    rerender({ user: 'B' });
+
+    const { result, rerender } = renderHook(({ on }) => useNotices(0, on), {
+      initialProps: { on: true },
+    });
+    await vi.waitFor(() => expect(pending).toHaveLength(1));
+    rerender({ on: false }); // A signs out while A's read is on its way
+    invalidateReads(); // the sign-out / sign-in POSTs invalidate as they settle
+    rerender({ on: true }); // B
     // B's read is its own request, not a share of A's still on its way.
     await vi.waitFor(() => expect(pending).toHaveLength(2));
     await act(async () => {

@@ -52,6 +52,7 @@ import {
   BasicHome,
   cardNotices,
   NoticeSlideshow,
+  SignInNotices,
   createBurstBatcher,
   BP_NARROW,
   PrintStationRunner,
@@ -1840,6 +1841,16 @@ function MasterPanel() {
 
   const overlays = (
     <>
+      {/* V6: important unread notices, once per sign-in; keyed by person so a new one decides afresh. */}
+      {canViewNotices && (
+        <SignInNotices
+          key={user?.id ?? ''}
+          loaded={noticeBoard.loaded}
+          notices={noticeBoard.notices}
+          today={todayForNotices()}
+          onMarkRead={noticeBoard.markRead}
+        />
+      )}
       <KeyboardOverlays
         subscribeMenu={(handler) =>
           desktopBridge()?.onMenuCommand?.((id) => {

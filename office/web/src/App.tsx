@@ -58,6 +58,7 @@ import {
   BP_NARROW,
   cardNotices,
   NoticeSlideshow,
+  SignInNotices,
   BusyMark,
   PrintStationRunner,
   Avatar,
@@ -1577,6 +1578,17 @@ function OfficePanel() {
 
   const overlays = (
     <>
+      {/* V6: important unread notices, once per sign-in, from this person's own snapshot; a read made
+          while the link is down waits in their queue (`noticeReads.ts`). */}
+      {canViewNotices && session && (
+        <SignInNotices
+          key={session.userId}
+          loaded={view !== null}
+          notices={myNotices}
+          today={todayForNotices()}
+          onMarkRead={noticeReads.markRead}
+        />
+      )}
       <KeyboardOverlays
         subscribeMenu={(handler) =>
           desktopBridge()?.onMenuCommand?.((id) => {

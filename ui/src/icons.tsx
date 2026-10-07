@@ -1,7 +1,10 @@
 /**
- * Hand-picked inline icons (~40 budget, §11) — one SVG sprite would also do;
- * individual components keep tree-shaking simple at this size.
- * Stroke style matches the mockups: 16×16 box, 1.4px currentColor stroke.
+ * The one icon set, inline: flat line drawings on a 24-unit grid, a 1.75-unit
+ * round-capped stroke in `currentColor`, no fill. The style and most of the
+ * drawings are the design artifact's (`.design-ui/project/Sidebar.dc.html`,
+ * `Navigation.dc.html` and the component artboards); the rest are drawn the
+ * same way. A circle or a rounded rectangle is written as a path, so every
+ * icon stays one `d`.
  */
 
 export type IconName =
@@ -10,9 +13,11 @@ export type IconName =
   | 'report'
   | 'leads'
   | 'orders'
+  | 'final'
   | 'inventory'
   | 'products'
   | 'parties'
+  | 'people'
   | 'conflicts'
   | 'settings'
   | 'reset'
@@ -34,11 +39,13 @@ export type IconName =
   | 'copy'
   | 'warning'
   | 'sync'
+  | 'update'
   | 'edit'
   | 'eye'
   | 'eye-off'
   | 'trash'
   | 'filter'
+  | 'fields'
   | 'drag'
   | 'external'
   | 'upload'
@@ -46,6 +53,8 @@ export type IconName =
   | 'bell'
   | 'chat'
   | 'pin'
+  | 'notice'
+  | 'noticeEdit'
   | 'task'
   | 'print'
   | 'sign-out'
@@ -53,76 +62,90 @@ export type IconName =
   | 'plug'
   | 'log';
 
+/** A circle as a path, for icons that are otherwise one stroke. */
+const circle = (cx: number, cy: number, r: number) =>
+  `M${cx - r} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`;
+
 const PATHS: Record<IconName, string> = {
-  // The Basic Home launcher, as drawn in the owner's mockup.
-  home: 'M2.5 7.3L8 2.8l5.5 4.5M4 6.2v7.3h8V6.2M6.6 13.5V9.8h2.8v3.7',
-  dashboard: 'M2.5 2.5h4.5v4.5h-4.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5h-4.5zM9 9h4.5v4.5H9z',
-  report: 'M2.5 13.5h11M4.5 11V8M8 11V4.5M11.5 11V6.5',
-  leads: 'M2.5 3h11L9.5 8.5V13l-3-1.8V8.5z',
-  orders: 'M3 4h10M3 8h10M3 12h7',
-  inventory: 'M3 5.5h10v7H3zM3 5.5L5 3h6l2 2.5M8 5.5V12.5',
-  products: 'M8 2.5L13.5 8L8 13.5L2.5 8z',
-  parties: 'M5.5 6.5a2.5 2.5 0 1 0 0-.01M10.5 6.5a2.5 2.5 0 1 0 0-.01M2.5 13c.6-2.2 2-3.2 3.5-3.2M13.5 13c-.6-2.2-2-3.2-3.5-3.2',
-  conflicts: 'M8 2.8L13.5 12.5H2.5zM8 6.8v2.6M8 11.6v.01',
-  settings: 'M3 5.5h10M3 10.5h10M5.5 4v3M10.5 9v3',
-  shield: 'M8 2.2l4.8 1.9v3.6c0 2.9-1.9 4.8-4.8 6-2.9-1.2-4.8-3.1-4.8-6V4.1zM8 6v4M8 10h.01',
-  server: 'M2.5 3h11v4h-11zM2.5 9h11v4h-11zM4.5 5h.01M4.5 11h.01',
-  collapse: 'M10 3L5 8l5 5',
-  expand: 'M6 3l5 5-5 5',
-  close: 'M4 4l8 8M12 4l-8 8',
-  search: 'M7 11.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9zM13.5 13.5L10.3 10.3',
-  plus: 'M8 3v10M3 8h10',
-  minus: 'M3 8h10',
-  more: 'M4 8h.01M8 8h.01M12 8h.01',
-  'chevron-down': 'M3.5 6l4.5 4.5L12.5 6',
-  'chevron-up': 'M3.5 10l4.5-4.5L12.5 10',
-  'chevron-left': 'M10 3L5 8l5 5',
-  'chevron-right': 'M6 3l5 5-5 5',
-  check: 'M3 8.5l3.2 3.2L13 4.5',
-  calendar: 'M3 4.5h10v9H3zM3 6.5h10M5.5 2.5v3M10.5 2.5v3',
-  copy: 'M6 6h6.5v6.5H6zM3.5 3.5h6.5v2M3.5 3.5v6.5h2',
-  warning: 'M8 2.8L13.5 12.5H2.5zM8 6.8v2.6M8 11.6v.01',
-  sync: 'M12.5 5.5A5 5 0 0 0 3.6 4M3.5 10.5A5 5 0 0 0 12.4 12M12.5 2.5v3h-3M3.5 13.5v-3h3',
-  // Distinct from `sync`, which is already the Updates nav glyph — a counter-
-  // clockwise arrow reads as "start over", not "fetch again".
-  reset: 'M3.5 8a4.5 4.5 0 1 0 1.6-3.4M3 3v3h3',
-  edit: 'M10.5 2.5l3 3L5 14H2v-3zM9 4l3 3',
-  eye: 'M2 8s2.3-4.5 6-4.5S14 8 14 8s-2.3 4.5-6 4.5S2 8 2 8zM8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
+  // Modules, as the Sidebar artboard draws them.
+  home: 'M4 11l8-7 8 7v9h-5v-6h-6v6H4z',
+  dashboard: 'M4 16a8 8 0 1 1 16 0M12 16l4-5',
+  leads: 'M8 4h8v3H8zM6 5.5H5v15h14v-15h-1',
+  final: 'M6 3h8l4 4v14H6zM9 14l2 2 4-4',
+  conflicts: 'M8 7h11l-3-3M16 17H5l3 3',
+  chat: 'M4 5h16v11H9l-5 4z',
+  print: 'M7 9V4h10v5M7 16H5V9h14v7h-2M7 14h10v6H7z',
+  report: 'M4 20h16M7 16v-5M12 16V7M17 16v-8',
+  products: `M4 4h8l8 8-8 8-8-8z${circle(8.5, 8.5, 1.2)}`,
+  parties: `${circle(9, 9, 3.2)}M3.5 19c.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5`,
+  // Roles & users: the Navigation artboard's two people, so Parties keeps its one.
+  people: `${circle(9, 9, 3.2)}M3.5 19c.8-3 3-4.5 5.5-4.5s4.7 1.5 5.5 4.5M16 6.5a3 3 0 0 1 0 5.6M17.5 14.8c1.6.6 2.6 2 3 4.2`,
+  shield: 'M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z',
+  task: 'M4 5h16v14H4zM8 12l2 2 4-4',
+  server: 'M4 5h16v6H4zM4 13h16v6H4zM7.5 8h.01M7.5 16h.01',
+  fields: `M4 7h10M18 7h2M4 17h4M12 17h8${circle(16, 7, 2)}${circle(10, 17, 2)}`,
+  log: 'M6 3h12v18H6zM9 8h6M9 12h6M9 16h4',
+  trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
+  plug: 'M9 4v5M15 4v5M6 9h12v3a6 6 0 0 1-12 0zM12 18v3',
+  settings: `${circle(12, 12, 3.5)}M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8`,
+  update: 'M12 4v11M7 10l5 5 5-5M5 20h14',
+  // The notice board: a megaphone; managing it, a sheet with a pencil.
+  notice: 'M4 10v4h3l7 4V6l-7 4zM17.5 9.5a3.5 3.5 0 0 1 0 5',
+  noticeEdit: 'M5 4h11v6M5 4v16h6M8 8h5M8 12h3M14 20v-2.5l5-5 2.5 2.5-5 5z',
+
+  // Everything else, drawn the same way.
+  orders: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
+  inventory: 'M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8',
+  reset: 'M4 11a8 8 0 1 1 2.3 5.7M4 4v7h7',
+  collapse: 'M15 6l-6 6 6 6',
+  expand: 'M9 6l6 6-6 6',
+  close: 'M6 6l12 12M18 6L6 18',
+  search: `${circle(11, 11, 6)}M20 20l-4.5-4.5`,
+  plus: 'M12 5v14M5 12h14',
+  minus: 'M5 12h14',
+  more: 'M6 12h.01M12 12h.01M18 12h.01',
+  'chevron-down': 'M6 9l6 6 6-6',
+  'chevron-up': 'M6 15l6-6 6 6',
+  'chevron-left': 'M15 6l-6 6 6 6',
+  'chevron-right': 'M9 6l6 6-6 6',
+  check: 'M5 12.5l4.5 4.5L19 7',
+  calendar: 'M5.5 5h13a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM3.5 10h17M8 3v4M16 3v4',
+  copy: 'M10 8h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zM16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2',
+  warning: 'M12 4l9 16H3zM12 10v4M12 17.5v.01',
+  sync: 'M19 8a7.5 7.5 0 0 0-13.3-1.5M5 16a7.5 7.5 0 0 0 13.3 1.5M19 3.5V8h-4.5M5 20.5V16h4.5',
+  edit: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
+  eye: `M2.5 12s3.5-7 9.5-7 9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7z${circle(12, 12, 3)}`,
   'eye-off':
-    'M2 2l12 12M6.7 6.8a2 2 0 0 0 2.5 2.5M4 4.4C2.7 5.4 2 8 2 8s2.3 4.5 6 4.5c1.2 0 2.2-.3 3-.8M10.8 3.6C10 3.2 9.1 3 8 3c-.6 0-1.1.1-1.6.2M11.5 5.2C12.9 6.1 14 8 14 8s-.5 1-1.4 2',
-  trash: 'M3 4.5h10M6 4.5V3h4v1.5M5 4.5v8.5h6V4.5M6.5 7v4M9.5 7v4',
-  filter: 'M2.5 3.5h11L9.5 8v4l-3 1.5V8z',
-  drag: 'M5.5 4h.01M10.5 4h.01M5.5 8h.01M10.5 8h.01M5.5 12h.01M10.5 12h.01',
-  external: 'M6.5 2.5H13v6.5M13 2.5L6.5 9M4.5 4H3v9h9v-1.5',
+    'M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M6.5 6.6C4 8.3 2.5 12 2.5 12s3.5 7 9.5 7c1.8 0 3.3-.5 4.6-1.2M9.9 5.3A9.6 9.6 0 0 1 12 5c6 0 9.5 7 9.5 7a17 17 0 0 1-2.3 3.2',
+  filter: 'M4 6h16M7 12h10M10 18h4',
+  drag: 'M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01',
+  external: 'M14 4h6v6M20 4l-9 9M18 14v6H4V6h6',
   // A tray with an arrow: up out of it to send a file, down into it to save one.
-  upload: 'M8 10.5V3M4.8 6.2L8 3l3.2 3.2M3 10.5v2.5h10v-2.5',
-  download: 'M8 3v7.5M4.8 7.3L8 10.5l3.2-3.2M3 10.5v2.5h10v-2.5',
-  // The notification bell in the topbar.
-  bell: 'M4 11.5V7a4 4 0 0 1 8 0v4.5l1 1.5H3zM6.5 13.5a1.5 1.5 0 0 0 3 0',
-  // The Chatroom: a speech bubble with its tail at the lower left.
-  chat: 'M2.5 3.5h11v7.5H7l-3 2.5V11H2.5z',
-  // A pinned message.
-  pin: 'M9.8 2.5l3.7 3.7-2 1-2 2 .4 2.6-1.1 1.1-6-6 1.1-1.1 2.6.4 2-2zM5.2 10.8L2.5 13.5',
-  // A task: a box with a tick in it.
-  task: 'M3 3.5h10v9H3zM5.5 8l1.8 1.8L10.5 6.5',
-  // The Printroom: a printer, paper in at the top and out at the foot.
-  print: 'M4.5 6V2.5h7V6M4.5 11.5H2.5V6h11v5.5h-2M4.5 9h7v4.5h-7z',
-  // 1.4 R12: sign-out, a door with an arrow leaving it.
-  'sign-out': 'M6.5 2.5h-3v11h3M6 8h7M10.5 5.3L13.2 8l-2.7 2.7',
-  key: 'M5.2 11a3 3 0 1 0 0-.01M7.4 9.2L13.5 3.3M11.5 5.3l1.5 1.5M9.6 7.1l1.2 1.2',
-  plug: 'M6 2.5v3M10 2.5v3M4.5 5.5h7v2.5a3.5 3.5 0 0 1-7 0zM8 11.5V14',
-  log: 'M3.5 2.5h9v11h-9zM5.5 5.5h5M5.5 8h5M5.5 10.5h3',
+  upload: 'M12 15V4M7 9l5-5 5 5M5 15v4h14v-4',
+  download: 'M12 4v11M7 10l5 5 5-5M5 15v4h14v-4',
+  bell: 'M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5h4',
+  pin: 'M14.5 4l5.5 5.5-3 1.5-3 3 .5 4-1.5 1.5-9-9L5.5 9l4 .5 3-3zM8 16l-4 4',
+  'sign-out': 'M10 4H5v16h5M9 12h11M16 8l4 4-4 4',
+  key: `${circle(8, 15, 4)}M11 12l9-9M17 6l2 2M14.5 8.5l1.5 1.5`,
 };
+
+/**
+ * The artboard's stroke: 1.75 at the 16 px of a sidebar row and up, 2 at 14 px and below (a sub-page's
+ * 13 px icon, a 14 px chevron), so a small icon does not thin out.
+ */
+export function iconStroke(size: number): number {
+  return size <= 14 ? 2 : 1.75;
+}
 
 export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 16 16"
+      viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.4}
+      strokeWidth={iconStroke(size)}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"

@@ -1,0 +1,115 @@
+/**
+ * Important notices, once, right after somebody signs in (V6, both panels).
+ *
+ * The panel mounts this inside its signed-in shell, so the sign-in screen never shows it and a
+ * sign-out unmounts it: the next sign-in decides afresh. It decides once, the first time the
+ * person's notices have arrived (`loaded`): the important ones they have not read, newest first.
+ * None, or no notices for them at all, and nothing shows. A notice that arrives later in the
+ * session waits for the board and the next sign-in, it does not interrupt.
+ *
+ * "Mark as read" hands the ids to the panel's own read path (the Master posts them; the Office
+ * queues them per person while the link is down). "Later" and Escape only close it.
+ */
+
+import { useEffect, useRef, useState } from 'react';
+import type { Notice } from '@orderbook/shared';
+
+import { Button } from './Button.js';
+import { StatusPill } from './DataDisplay.js';
+import { t } from './i18n.js';
+import { Modal } from './Modal.js';
+import { boardNotices } from './NoticeBoardView.js';
+
+/** What the pop-up lists: on the board today, important, not read by this person, newest first. */
+export function signInNotices(notices: readonly Notice[], today?: string): Notice[] {
+  return boardNotices(notices, today)
+    .filter((notice) => notice.priority === 'important' && notice.readByMe === false)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export interface SignInNoticesProps {
+  /** True once this person's notices have been read after signing in; before that nothing is decided. */
+  loaded: boolean;
+  notices: readonly Notice[];
+  /** Today as `YYYY-MM-DD`, so a notice past its last day is left out. */
+  today?: string;
+  onMarkRead: (ids: string[]) => void | Promise<void>;
+}
+
+export function SignInNotices({ loaded, notices, today, onMarkRead }: SignInNoticesProps) {
+  const decided = useRef(false);
+  const [ids, setIds] = useState<string[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (!loaded || decided.current) return;
+    decided.current = true;
+    const unread = signInNotices(notices, today).map((notice) => notice.id);
+    if (unread.length > 0) setIds(unread);
+  }, [loaded, notices, today]);
+
+  if (!ids) return null;
+  // The ones picked at sign-in, as they stand now (an edit shows), still newest first.
+  const listed = notices
+    .filter((notice) => ids.includes(notice.id))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  if (listed.length === 0) return null;
+
+  const close = () => setIds(null);
+  const markRead = async () => {
+    setBusy(true);
+    setFailed(false);
+    try {
+      await onMarkRead(listed.map((notice) => notice.id));
+      close();
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      size="md"
+      onClose={close}
+      title={t('notices.signIn.title')}
+      footer={
+        <>
+          <Button variant="secondary" onClick={close} disabled={busy}>
+            {t('notices.signIn.later')}
+          </Button>
+          <Button variant="primary" onClick={() => void markRead()} disabled={busy}>
+            {t('notices.signIn.markRead')}
+          </Button>
+        </>
+      }
+    >
+      <p className="ob-small" style={{ marginTop: 0, color: 'var(--fg-secondary)' }}>
+        {t('notices.signIn.intro')}
+      </p>
+      {failed && (
+        <div className="ob-field-error" role="alert">
+          {t('notices.signIn.markFailed')}
+        </div>
+      )}
+      <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}>
+        {listed.map((notice) => (
+          <li key={notice.id} data-notice={notice.id} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-6)', flexWrap: 'wrap' }}>
+              <span className="ob-body-strong" style={{ overflowWrap: 'anywhere' }}>
+                {notice.title}
+              </span>
+              <StatusPill tone="conflict">{t('notices.priority.important')}</StatusPill>
+            </span>
+            <span className="ob-small" style={{ color: 'var(--fg-secondary)', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
+              {notice.body}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Modal>
+  );
+}

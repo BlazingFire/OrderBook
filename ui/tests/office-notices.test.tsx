@@ -378,6 +378,8 @@ describe('Office notice board: management and the Dashboard', () => {
       permissions: ['notices.view', 'leads.view'],
       notices: [notice('n1', { priority: 'important', title: 'Stock count Saturday' })],
     });
+    // The unread important notice also pops up on sign-in (V6); Later leaves the Dashboard to be used.
+    fireEvent.click(await screen.findByRole('button', { name: t('notices.signIn.later') }));
     fireEvent.click(await screen.findByTitle(t('nav.dashboard')));
     await screen.findByText('Stock count Saturday');
     fireEvent.click(screen.getByRole('button', { name: t('notices.card.open') }));
