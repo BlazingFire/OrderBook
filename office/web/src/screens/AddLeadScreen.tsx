@@ -1273,14 +1273,11 @@ function AddLeadForm({
   const totalLabel =
     lines.length === 0
       ? t('lead.add.summary.empty')
-      : [
-          productCount === 1 && lines.length === 1
-            ? t('lead.add.panel.totalOneLine')
-            : productCount === 1
-              ? t('lead.add.panel.totalLineOne', { lines: lines.length })
-              : t('lead.add.panel.totalLine', { products: productCount, lines: lines.length }),
-          t('lead.add.summary.weight', { kg: formatKg(totalWeight) }),
-        ].join(' · ');
+      : productCount === 1 && lines.length === 1
+        ? t('lead.add.panel.totalOneLine')
+        : productCount === 1
+          ? t('lead.add.panel.totalLineOne', { lines: lines.length })
+          : t('lead.add.panel.totalLine', { products: productCount, lines: lines.length });
 
   return (
     <div ref={rootRef} className="ob-order-page">
@@ -1848,7 +1845,9 @@ function AddLeadForm({
                             : 'lead.add.summary.noWeight',
                           { count: unweighed },
                         )
-                      : statusLine}
+                      : lines.length > 0
+                        ? `${t('lead.add.summary.weight', { kg: formatKg(totalWeight) })} · ${statusLine}`
+                        : statusLine}
                   </span>
                 </>
               }
