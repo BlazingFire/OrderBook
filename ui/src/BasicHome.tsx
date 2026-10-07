@@ -7,11 +7,11 @@
  * row, and a module a later release adds to the sidebar appears here with no
  * change to this file. Absent, never disabled.
  *
- * The look is the design artifact's flat style (V1): a plain surface face
- * with a hairline border, the module's own sidebar icon drawn large in the
- * accent colour, the label under it and the shortcut in a monospace chip.
- * One colour for every tile, as the sidebar has: colour is data here, not
- * decoration.
+ * A module with artwork in `TILE_ICONS` shows its colour tile, the one place
+ * the chrome carries colour (docs/DESIGN_SYSTEM.md, "Basic Home tiles"); one
+ * without keeps its sidebar line icon, drawn large in the accent colour on a
+ * plain face with a hairline border. The label sits under the face and the
+ * shortcut in a monospace chip.
  */
 
 import { chordFor, type Chord } from '@orderbook/shared';
@@ -22,6 +22,7 @@ import { t } from './i18n.js';
 import { Icon } from './icons';
 import { useKeyboard } from './KeyboardProvider';
 import { EmptyState } from './States';
+import { TILE_ICONS } from './tileIcons';
 
 /**
  * Where somebody lands after signing in. Office and Management people start
@@ -60,6 +61,7 @@ function Tile({
   chord: Chord | null;
   onClick: () => void;
 }) {
+  const Art = TILE_ICONS[id as keyof typeof TILE_ICONS];
   return (
     <button
       type="button"
@@ -68,9 +70,15 @@ function Tile({
       aria-keyshortcuts={chord ? ariaChord(chord) : undefined}
       onClick={onClick}
     >
-      <span className="ob-tile-face">
-        <Icon name={icon} size={36} />
-      </span>
+      {Art ? (
+        <span className="ob-tile-face ob-tile-face--art">
+          <Art size={80} />
+        </span>
+      ) : (
+        <span className="ob-tile-face">
+          <Icon name={icon} size={36} />
+        </span>
+      )}
       <span className="ob-tile-label">{label}</span>
       {/* After the label, so the button reads "Pending Orders 3"; drawn on the face. */}
       {count ? <span className="ob-tile-count">{count}</span> : null}
@@ -100,7 +108,7 @@ export function BasicHome({
     .map((group, index) => ({
       label: group.label,
       items: group.items.filter((item) => item.id !== 'basicHome'),
-      // The new-pending-order tile leads the first group, which is Work.
+      // The New Order tile leads the first group, which is Work.
       withNewLead: index === 0 && Boolean(onNewLead),
     }))
     .filter((section) => section.items.length > 0 || section.withNewLead);

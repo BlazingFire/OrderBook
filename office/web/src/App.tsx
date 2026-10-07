@@ -1130,8 +1130,8 @@ function OfficePanel() {
   }
 
   /** Hangs each module's sub-pages, then the open record's entry, under it. */
-  // The shell's own `leads.new` entry stands for the New pending order form, so the form's grafted
-  // twin (`addLead.new`) is dropped: the sidebar listed "New pending order" twice while it was open.
+  // The shell's own `leads.new` entry stands for the New Order form, so the form's grafted
+  // twin (`addLead.new`) is dropped: the sidebar listed "New Order" twice while it was open.
   const nest = (items: NavItem[]): NavItem[] =>
     graftSubNav(
       withSubPages(items, subPages),
@@ -1237,7 +1237,7 @@ function OfficePanel() {
             ? { id: 'partyAccess', label: t('nav.partyAccess'), icon: NAV_ICONS.partyAccess }
             : null,
           // Everyone reads the three lists; editing is gated inside the page.
-          { id: 'lists', label: t('nav.lists'), icon: 'task' as const },
+          { id: 'lists', label: t('nav.lists'), icon: NAV_ICONS.lists },
         ] satisfies Array<NavItem | null>
       ).filter((item): item is NonNullable<typeof item> => item !== null),
     },

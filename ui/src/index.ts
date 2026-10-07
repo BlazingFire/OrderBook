@@ -142,6 +142,7 @@ export * from './printWaiting.js';
 export * from './useEnterToAdvance.js';
 export * from './useOverlay.js';
 export * from './navIcons.js';
+export * from './tileIcons.js';
 export * from './NoteButtons.js';
 export * from './CatalogListsScreen.js';
 export * from './ListFilters.js';

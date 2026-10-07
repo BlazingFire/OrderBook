@@ -1,7 +1,7 @@
 # OrderBook design system
 
 The owner's design (the artifact "OrderBook Logo Set", 2026-10-07) is the source of truth for how OrderBook looks:
-the mark, the tokens, every component and the new pending order screen. This file records it in one place, next to
+the mark, the tokens, every component and the New Order screen. This file records it in one place, next to
 the code that implements it. Its artboards are saved read-only under `.design-ui/project/*.dc.html` (untracked, in
 the main checkout); each section below names the artboard it comes from.
 
@@ -277,9 +277,47 @@ Icons take the text colour of where they sit, so they follow the theme and the s
 `ui/src/navIcons.ts` (`NAV_ICONS`) maps each module to one icon for **both** the sidebar and Basic Home, and no two modules share an icon
 (`ui/tests/nav-icons.test.tsx` holds that). The Master and the Office build their navigation from this map.
 
-**Basic Home tiles** are flat: `--bg-surface` face, a 1 px `--line` border, radius `--r-lg`, the module's icon large in `--accent`, the label under it, the
-shortcut in a mono chip; hover fills `--accent-tint`. One colour for every tile (colour is data, not decoration). A module the role cannot open has no tile, as
-it has no sidebar row: absent, never disabled.
+A module the role cannot open has no Basic Home tile, as it has no sidebar row: absent, never disabled. How the tiles look is section 6.2.
+
+### 6.2 Basic Home tiles (owner, 2026-10-07)
+
+- **Colour appears only on Basic Home.** Each module's tile is an 80 px colourful square (a gradient ground, a white glyph), the **one exception** to the
+  colour-neutral chrome of section 1. Everything else, the sidebar included, stays porcelain and accent.
+- **Never in the sidebar, never below 32 px.** The sidebar keeps the 16 px line icons of section 6.1; a tile is drawn at 80 px on Basic Home and is not used
+  smaller than 32 px anywhere.
+- **Source:** `docs/design/home-tiles/*.svg` (96 x 96, with `preview.html` showing them all). `tools/make-tile-icons.mjs` converts them into the inline React
+  components of `ui/src/tileIcons.tsx` (`TILE_ICONS`; ids made unique per copy with `useId`, `aria-hidden`, since the button's label names the module). Change
+  the artwork, then run the script; never edit the generated file by hand. No image file, nothing loaded at runtime.
+- **Face:** `.ob-tile-face--art` drops the plain face's border, fill and padding so the art fills the 80 px. Hover lifts it 2 px (`--s-2`, `--d-fast`,
+  `--e-standard`) with no colour change; pressed returns it; reduced motion (the OS setting or the app's motion switch) keeps it still. The focus ring, the label,
+  the count badge and the shortcut chip are unchanged.
+- **Fallback:** a module with no tile (today only **Notice board management**, `noticesManage`) keeps its line icon in `--accent` on the plain `--bg-surface` face with a
+  `--line` border, which turns `--accent-tint` on hover.
+- **The tile that opens the New Order screen** (until 2026-10-07 "New pending order", `basicHome.newLead`) leads the Work group.
+
+| Module (id) | Tile | Gradient, top to bottom |
+|---|---|---|
+| New Order (`newLead`) | new-order | green `#3DCB7F` to `#14975B` |
+| Dashboard | dashboard | teal `#2CCBC4` to `#0B8F9B` |
+| Pending Orders (`leads`) | pending-orders | orange `#FFAA45` to `#EC6A1C` |
+| Final Orders (`orders`) | final-orders | blue `#4C8CF8` to `#1F54D4` |
+| Conflicts | conflicts | red `#FF6474` to `#D42A4A` |
+| Notice board (`notices`) | notice-board | coral `#FF9466` to `#E8562F` |
+| Chatroom | chatroom | violet `#9D82FF` to `#6443E0` |
+| Printroom | printroom | clay `#E39A66` to `#A65A2E` |
+| Reports | reports | yellow `#FFCC48` to `#E5960F` |
+| Products | products | purple `#C779E0` to `#8B3BB0` |
+| Parties | parties | pink `#FF77AE` to `#D93C7E` |
+| Party access (`partyAccess`) | party-access | cobalt `#3E86E8` to `#14509E` |
+| Lists | lists | lime `#96D85A` to `#53A126` |
+| Office panels (`panels`) | office-panels | cyan `#33CFE0` to `#0A90B0` |
+| Roles & users (`access`) | roles-users | indigo `#7C83FF` to `#4A44DC` |
+| Fields | fields | mint `#3AD3A8` to `#109274` |
+| Activity log (`logs`) | activity-log | slate `#7A8899` to `#3E4A59` |
+| Recycle bin (`recycleBin`) | recycle-bin | red `#FF7A70` to `#DC3B36` |
+| Integrations | integrations | purple `#B07BFF` to `#7440E6` |
+| Settings | settings | grey `#9AA7B4` to `#566472` |
+| App update (`updates`) | app-update | sky `#43C6F7` to `#1488D8` |
 
 ## 7. Feedback (artboard: Feedback)
 
@@ -381,7 +419,7 @@ trigger has `aria-haspopup` and `aria-expanded`, with `menu` / `menuitem` roles;
 - **Source:** Master, the board list (`useNotices`, which now forgets the previous person's list when signed out, so nothing of theirs shows to the next person); Office, the person's own cached list
   (`loaded` once their snapshot exists). Tests: `ui/tests/sign-in-notices.test.tsx`, `master-use-notices.test.tsx`, and cases in the two shell tests.
 
-## 10. The new pending order (artboards: NewOrder, NewOrderFilled; 1440 x 900)
+## 10. The New Order screen (artboards: NewOrder, NewOrderFilled; 1440 x 900)
 
 Replaces the pending order entry on both panels; every existing behaviour is kept (the Enter flow with the colour step, the live catalogue, the save
 block on a deleted product, offline saves, drafts, follow-up chips, party and owner, the added-products panel and the step counter).
@@ -432,11 +470,11 @@ Lead wording becomes **pending order**. The quantity unit is "pcs" everywhere, a
 | Mark, lockup, splash, busy mark, app icons | `ui/src/Mark.tsx`, `Logo.tsx`, `Splash.tsx`, `BusyMark.tsx`, `logoCells.ts`; `tools/make-icons.mjs`, `tools/exe-icon.cjs`, `master/installer/icon.ico`, `office/installer/icon.ico` |
 | Buttons and form controls | `ui/src/Button.tsx` (Button, IconButton), `ui/src/Form.tsx` (Input, Textarea, Select, FieldError, Checkbox, Radio, Switch), control CSS in `base.css`; `ui/tests/form-controls-design.test.ts` |
 | Sidebar, top bar, tabs, status footer | `ui/src/AppShell.tsx`, `ui/src/Tabs.tsx`, shell CSS in `base.css`, both panels' `App.tsx`; `ui/tests/shell-design.test.tsx` |
-| Icons, Basic Home | `ui/src/icons.tsx`, `navIcons.ts`, `BasicHome.tsx`; `ui/tests/nav-icons.test.tsx` |
+| Icons, Basic Home | `ui/src/icons.tsx`, `navIcons.ts`, `BasicHome.tsx`, `tileIcons.tsx` (generated by `tools/make-tile-icons.mjs` from `docs/design/home-tiles/`); `ui/tests/nav-icons.test.tsx`, `basic-home.test.tsx` |
 | Feedback | `ui/src/UpdateProgress.tsx` (ProgressBar), `TopProgress.tsx`, `States.tsx`, `Toast.tsx`, `Tooltip.tsx`, `GalleryScreen.tsx`; `ui/tests/feedback.test.tsx` |
 | Data, stage tones, colour labels, product photos | `ui/src/DataTable.tsx`, `ui/src/DataDisplay.tsx` (StatusPill, `stageTone`, ColourChip, `useColourLabel`, IdField, Timeline, `recordTimelineEntries`, ProductThumb), `ui/src/PageBar.tsx`, `shared/src/domain/colour-rule.ts` (`colourLabeller`); `ui/tests/data-timeline.test.tsx` |
 | Overlays | `ui/src/Modal.tsx`, `ConfirmDialog.tsx`, `Popover.tsx`, `CommandPalette.tsx`, `useOverlay`; `ui/tests/overlays-restyle`, `overlay-focus-return`, `popover-menu-keys` |
 | Notices on Basic Home and at sign-in | `ui/src/NoticeSlideshow.tsx`, `ui/src/SignInNotices.tsx`, `ui/src/NoticeDashboardCard.tsx`, `NoticeBoardView.tsx`; `master/web/src/useNotices.ts` |
-| New pending order | `ui/src/LeadEntryScreen.tsx` (Master) and `office/web/src/screens/AddLeadScreen.tsx` (Office) on the `ui/src/order/` kit (`OrderDetailsBar`, `OrderField`, `FollowUpField`, `PartyChip`, `AddedProductsPanel`, `OrderChecks`, `CartEntry`, `order.css`); `ui/tests/lead-entry-screen.test.tsx`, `add-lead-flow.test.tsx` |
+| New Order screen | `ui/src/LeadEntryScreen.tsx` (Master) and `office/web/src/screens/AddLeadScreen.tsx` (Office) on the `ui/src/order/` kit (`OrderDetailsBar`, `OrderField`, `FollowUpField`, `PartyChip`, `AddedProductsPanel`, `OrderChecks`, `CartEntry`, `order.css`); `ui/tests/lead-entry-screen.test.tsx`, `add-lead-flow.test.tsx` |
 | Notes (three codes to a line, colour labels) | `shared/src/domain/order-note.ts` (`NOTE_LAYOUT.codesPerRow`), `ui/src/OrderNote.tsx`, `ui/src/order-note.css`; `master/src/services/print.service.ts` |
 | Colour chain (server) | `master/src/services/lead.service.ts` (`buildLines`, `matchExistingLines`), the Dispatches report in `report.service.ts` |

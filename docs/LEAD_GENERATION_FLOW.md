@@ -182,7 +182,7 @@ footer, which also counts such lines beside the total weight it could compute.
    Presence is never stored, logged or put in the change ring. A provisional lead is never
    announced.
 9. **Raising one for somebody else** (1.3) — a person holding `record.reassignOwner` (a Server
-   Master, usually) gets an **Owner** picker on the Master's New pending order form, and may delete
+   Master, usually) gets an **Owner** picker on the Master's New Order form, and may delete
    any user's pending order with `leads.delete` and `party.accessAll`. Both are logged under their
    own name.
 

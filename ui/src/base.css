@@ -2673,6 +2673,43 @@ html[data-motion='off'] .ob-progress-fill--indeterminate {
   outline-offset: 3px;
 }
 
+/* A colour tile (tileIcons.tsx) is its own face: no box around it, and hover
+ * lifts it instead of tinting it. The focus ring above still draws round it. */
+.ob-tile-face--art,
+.ob-tile:hover .ob-tile-face--art,
+.ob-tile:active .ob-tile-face--art {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.ob-tile-face--art {
+  transition: transform var(--d-fast) var(--e-standard);
+}
+
+.ob-tile-face--art > svg {
+  width: 100%;
+  height: 100%;
+}
+
+.ob-tile:hover .ob-tile-face--art {
+  transform: translateY(calc(-1 * var(--s-2)));
+}
+
+.ob-tile:active .ob-tile-face--art {
+  transform: translateY(0);
+}
+
+html[data-motion='off'] .ob-tile:hover .ob-tile-face--art {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ob-tile:hover .ob-tile-face--art {
+    transform: none;
+  }
+}
+
 /* Positioned on the tile, not the face, so it can follow the label in the
  * DOM; 1.7143rem is the 24px between the tile's edge and the face's. */
 .ob-tile-count {

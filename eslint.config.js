@@ -214,6 +214,8 @@ export default tseslint.config(
       'coverage/**',
       'build/**',
       '.tmp/**',
+      // Design artifacts saved read-only for reference (.git/info/exclude), not source.
+      '.design-*/**',
     ],
   },
   js.configs.recommended,

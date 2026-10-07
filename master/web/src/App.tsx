@@ -361,7 +361,7 @@ function MasterPanel() {
   const [serverMasterSetupNeeded, setServerMasterSetupNeeded] = useState(false);
   const toast = useToast();
   const confirm = useConfirm();
-  /** Bumped each time New pending order is asked for, so the form can take the cursor when blank. */
+  /** Bumped each time New Order is asked for, so the form can take the cursor when blank. */
   const [newLeadNonce, setNewLeadNonce] = useState(0);
   // Above the early returns: the topbar button, the sub-page and Ctrl+Shift+N all read it.
   const canCreateLead = user?.permissions.includes('leads.create') ?? false;
@@ -1071,7 +1071,7 @@ function MasterPanel() {
     return chosen && pages?.some((page) => page.key === chosen) ? chosen : (pages?.[0]?.key ?? '');
   };
 
-  /** The New pending order form, with the cursor placed only when the form is blank. */
+  /** The New Order form, with the cursor placed only when the form is blank. */
   function openNewLead(): void {
     if (!canCreateLead) return;
     setRoute('');
@@ -1181,7 +1181,7 @@ function MasterPanel() {
           ? { id: 'partyAccess', label: t('nav.master.partyAccess'), icon: NAV_ICONS.partyAccess }
           : null,
         // Everyone reads the three lists; editing is gated inside the page.
-        { id: 'lists', label: t('nav.lists'), icon: 'task' },
+        { id: 'lists', label: t('nav.lists'), icon: NAV_ICONS.lists },
       ] satisfies Array<NavItem | null>,
     },
     {
@@ -1230,7 +1230,7 @@ function MasterPanel() {
    * nothing.
    */
   // Screens that are reached by a button, not the sidebar, so `offered` can never
-  // say yes to them: New pending order (Ctrl+Shift+N, the topbar button) for
+  // say yes to them: New Order (Ctrl+Shift+N, the topbar button) for
   // whoever may create one. Keeping the exemption in one place means that tab is
   // not shown as the landing screen.
   const NOT_IN_SIDEBAR: readonly string[] = canCreateLead ? ['addLead'] : [];

@@ -1,5 +1,5 @@
 /**
- * The order details bar of the new pending order: party, source, follow-up, owner, in one card.
+ * The order details bar of the New Order screen: party, source, follow-up, owner, in one card.
  *
  * Presentational only. The screen passes the controls in (it owns the party search, the lists and
  * the Enter walk); this lays them out the way the design does and keeps both panels identical.

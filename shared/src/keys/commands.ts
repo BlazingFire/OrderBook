@@ -185,7 +185,7 @@ export const COMMANDS: readonly CommandDef[] = [
     id: 'record.new',
     titleToken: 'keys.command.new',
     scope: 'screen',
-    // Both panels: on each it opens New pending order (a lead), and on the
+    // Both panels: on each it opens New Order (a lead), and on the
     // Master only for a role with `leads.create` — the shell registers `null`
     // for everyone else, so the palette entry is absent rather than inert.
     panel: 'both',
