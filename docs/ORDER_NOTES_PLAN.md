@@ -235,7 +235,9 @@ export function paginateOrderNote(model: OrderNoteModel, kind: NoteKind, codeCol
   - per-page quantities sum to the grand total; running c/f is monotonic;
   - only the last page carries the signature row;
   - left goes full width (two columns) when a page has no coded lines; the coded half is
-    three columns beside the named half and seven (the design's `cols×2−1`) when it has the page;
+    one column of lines of three codes beside the named half (V7: three places in one line) and two
+    columns of four when it has the page (the design's seven columns ran top-down, which left a short
+    list as one code to a line);
   - the page before the last is cut so the last holds at least `minTailLines` (12) lines;
   - `102 (9")` lands left, `102` lands right;
   - weight is `null` when any merged line lacks it, and the order override

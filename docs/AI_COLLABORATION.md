@@ -211,6 +211,23 @@ was verified, so the next agent can trust the state without re-auditing.
   both notes rendered in a browser (46 named + 200 coded, 4 pages
   each): no column or label overflow, notes and blank-lines variants. Not verified: a real printer.
 
+### 2026-10-07 - V7: three coded products to a line on the Filling and Dispatch notes (Claude, D7)
+
+**Owner (V7).** "In pdf preview, filling note and dispatch note, on the right side numerical products should take
+3 places in one line; currently only 1." The coded half filled columns top-down, so any list shorter than a column
+printed one code to a line.
+
+**Changed.** `NOTE_LAYOUT.codesPerRow` 1 to 3: a product's codes run across the line, then down; products too small
+for a header share lines (each cell prints its own product). The coded half is one column of such lines beside the
+named half, and two columns of four (`codesPerRowWide`) when it has the page; three columns of three would fit more,
+but a 70 px cell cut the grade off. `OrderNote.tsx` sets `--note-codes-per-row` on the coded half per page. One
+renderer feeds the preview, the print and the PDF (`printToPDF` of the same page), so there is no second path.
+
+**Measured** (the design's own 550-product data, `.tmp/note-harness`): pages Short 2, Typical 5, Long 12 for both
+notes, as the design and as before; no cell clipped at 89 px (beside) and 82 px (alone), no page overflowing.
+**Tests.** `shared/tests/order-note.test.ts` (lines of three, small products sharing a line, page counts),
+`ui/tests/order-note-codes-per-line.test.tsx` (what the sheet carries); each seen failing.
+
 ### 2026-10-07 - U11: the installed panels show the OrderBook icon, not Electron's (Claude, D12)
 
 - **Cause.** Every Windows yml sets `signAndEditExecutable: false`. That flag also skips

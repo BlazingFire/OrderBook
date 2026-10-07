@@ -563,7 +563,7 @@
 
 .ob-note-group-cont {
   flex: none;
-  /* Small and tucked in: a column is only a seventh of the page, and the name needs the room. */
+  /* Small and tucked in: a cell is only a ninth of the page's width, and the name needs the room. */
   margin-left: -2px;
   font-size: 7px;
   font-weight: 500;
