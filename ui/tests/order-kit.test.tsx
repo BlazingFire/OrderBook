@@ -17,6 +17,7 @@ import {
   OrderChecks,
   OrderDetailsBar,
   OrderField,
+  ProductThumb,
 } from '../src/index.js';
 import { installBrowserStubs } from './panel-harness.js';
 
@@ -218,5 +219,40 @@ describe('CartEntry', () => {
     expect(screen.getByRole('button', { name: /WB-2016/ }).getAttribute('aria-expanded')).toBe(
       'true',
     );
+  });
+});
+
+describe('ProductThumb', () => {
+  const image = {
+    id: 'img-1',
+    productId: 'p1',
+    caption: null,
+    isPrimary: true,
+    sequence: 0,
+    width: 48,
+    height: 32,
+    checksum: 'x',
+    blurhash: '',
+    byteSize: 1,
+    uploadedAt: '2026-10-07T00:00:00.000Z',
+  };
+
+  it('loads the thumb variant of the photo at the slot size, with the given alt', () => {
+    const { container } = render(<ProductThumb image={image} size={48} alt="Wash basin" />);
+    const img = container.querySelector('img')!;
+    expect(img.getAttribute('src')).toMatch(/^\/uploads\/images\/img-1\/(micro|thumb|large)$/);
+    expect(img.getAttribute('alt')).toBe('Wash basin');
+    expect(container.querySelector('.ob-order-thumb--48')).not.toBeNull();
+  });
+
+  it('draws nothing without a photo, or a same-size initial tile when given a name', () => {
+    const none = render(<ProductThumb image={undefined} size={32} />);
+    expect(none.container.innerHTML).toBe('');
+    none.unmount();
+    const tile = render(<ProductThumb image={null} size={32} name="wash basin" />);
+    expect(
+      tile.container.querySelector('.ob-order-thumb--32.ob-order-thumb--initial')!.textContent,
+    ).toBe('W');
+    expect(tile.container.querySelector('img')).toBeNull();
   });
 });
