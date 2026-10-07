@@ -12,7 +12,6 @@ import { AppShell, type NavGroup } from '../src/AppShell.js';
 import { BasicHome } from '../src/BasicHome.js';
 import { Icon } from '../src/icons.js';
 import { KeyboardProvider } from '../src/KeyboardProvider.js';
-import { GLYPHS } from '../src/navGlyphs.js';
 import { NAV_ICONS } from '../src/navIcons.js';
 
 afterEach(cleanup);
@@ -61,7 +60,7 @@ describe('one icon per module on the sidebar and on Basic Home (1.4 R18)', () =>
     { label: 'All', items: ids.map((id) => ({ id, label: `M-${id}`, icon: NAV_ICONS[id] })) },
   ];
 
-  it('draws the Basic Home drawing in the sidebar for a module that has one, and the same line icon on both for one that has none', () => {
+  it('draws the same flat line icon for a module in the sidebar and on its Basic Home tile', () => {
     const { container: side } = render(
       <AppShell
         groups={groups}
@@ -87,21 +86,26 @@ describe('one icon per module on the sidebar and on Basic Home (1.4 R18)', () =>
     const tile = (id: string) =>
       [...home.querySelectorAll<HTMLElement>('.ob-tile')].find((el) => el.textContent?.startsWith(`M-${id}`))!;
 
+    const path = (el: Element) => el.querySelector('svg path')?.getAttribute('d');
     for (const id of ids) {
-      if (GLYPHS[id]) {
-        const navArt = sidebar(id).querySelector(`svg[data-glyph="${id}"]`);
-        const tileArt = [...tile(id).querySelectorAll(`svg[data-glyph="${id}"]`)].find((svg) =>
-          svg.classList.contains('ob-tile-art'),
-        );
-        expect(navArt, `${id} sidebar`).not.toBeNull();
-        expect(tileArt, `${id} tile`).not.toBeUndefined();
-        // The same drawing: identical markup, only the box and colours differ.
-        expect(navArt!.innerHTML, id).toBe(tileArt!.innerHTML);
-      } else {
-        const path = (el: Element) => el.querySelector('svg path')?.getAttribute('d');
-        expect(path(sidebar(id)), `${id} line icon`).toBeTruthy();
-        expect(path(sidebar(id)), id).toBe(path(tile(id).querySelector('.ob-tile-icon')!));
-      }
+      expect(path(sidebar(id)), `${id} sidebar`).toBeTruthy();
+      expect(path(tile(id).querySelector('.ob-tile-face')!), id).toBe(path(sidebar(id)));
     }
+    // One set, one style: nothing glossy is left to draw on either.
+    expect(side.querySelector('[data-glyph]')).toBeNull();
+    expect(home.querySelector('[data-glyph], [data-hue], .ob-tile-art')).toBeNull();
+    for (const svg of [...side.querySelectorAll('.ob-navitem-main svg'), ...home.querySelectorAll('.ob-tile svg')]) {
+      expect(svg.getAttribute('viewBox')).toBe('0 0 24 24');
+      expect(svg.getAttribute('fill')).toBe('none');
+    }
+  });
+});
+
+describe('Basic Home tiles (V1)', () => {
+  it('are flat: no gradient, gloss or per-module colour in their CSS', () => {
+    const css = readFileSync(join(process.cwd(), 'ui', 'src', 'base.css'), 'utf8');
+    const tileRules = css.match(/\.ob-tile[^{]*\{[^}]*\}/g) ?? [];
+    expect(tileRules.length).toBeGreaterThan(0);
+    for (const rule of tileRules) expect(rule).not.toMatch(/gradient|--tile-|data-hue/);
   });
 });

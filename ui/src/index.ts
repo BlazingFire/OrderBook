@@ -134,7 +134,6 @@ export * from './useEnterToAdvance.js';
 export * from './useOverlay.js';
 export * from './navIcons.js';
 export * from './NoteButtons.js';
-export * from './navGlyphs.js';
 export * from './CatalogListsScreen.js';
 export * from './ListFilters.js';
 export * from './ProductShare.js';
