@@ -113,7 +113,7 @@
 .ob-order-segmented {
   display: inline-flex;
   box-sizing: border-box;
-  height: 2.143rem;
+  height: var(--ctl-h-md);
   padding: 0.143rem;
   border-radius: 0.429rem;
   background: var(--bg-sunken);

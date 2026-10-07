@@ -106,10 +106,13 @@ export function AddedProductsPanel({
             busy={saving}
             disabled={saveDisabled}
             title={saveTitle}
+            aria-label={saveLabel}
             onClick={onSave}
           >
             {saveLabel}
-            <span className="ob-order-kbd">{saveKbd}</span>
+            <span className="ob-order-kbd" aria-hidden="true">
+              {saveKbd}
+            </span>
           </Button>
         </div>
       </div>
