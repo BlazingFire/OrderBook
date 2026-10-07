@@ -488,13 +488,14 @@
   gap: var(--s-4);
   /* 20px floor: at SCALE_MIN this resolved to 17.3px (15.7px on Compact),
      under HIG's 20×20pt target minimum. */
-  height: max(calc(var(--ctl-h-md) - 0.5714rem), 20px);
+  height: max(calc(var(--ctl-h-md) - 0.4286rem), 20px);
   padding: 0 var(--s-8);
   border: 1px solid var(--line-control);
   border-radius: var(--r-sm);
   background: var(--bg-surface);
   color: var(--fg-secondary);
   font-size: var(--t-small-size);
+  font-weight: 500;
   white-space: nowrap;
   transition: background-color var(--d-fast) var(--e-standard);
 }
@@ -502,8 +503,9 @@
   background: var(--bg-hover);
 }
 .ob-filterchip[aria-pressed='true'] {
+  /* Navigation artboard: a chosen filter is a tinted chip with accent text and no border. */
   background: var(--accent-tint);
-  border-color: var(--accent);
+  border-color: transparent;
   color: var(--accent);
 }
 .ob-filterchip .count {
@@ -1570,7 +1572,8 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   align-items: center;
   width: 100%;
   color: var(--fg-secondary);
-  font-size: var(--t-small-size);
+  /* Sidebar artboard: 13.5px rows (sub-pages step down to 12.5px). */
+  font-size: 0.9643rem;
   white-space: normal;
 }
 .ob-navitem-main {
@@ -1776,6 +1779,34 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   flex: none;
   white-space: nowrap;
 }
+/* The command box is a field (Navigation and Shell artboards): canvas fill, hairline border, 4px
+ * radius, the chord as a small keycap on the right. */
+.ob-topbar .ob-palette-btn {
+  width: 21.4286rem;
+  justify-content: flex-start;
+  gap: var(--s-8);
+  padding: 0 var(--s-8) 0 0.7143rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-canvas);
+  color: var(--fg-tertiary);
+}
+.ob-topbar .ob-palette-btn:hover:not(:disabled) {
+  background: var(--bg-canvas);
+  border-color: var(--line-strong);
+}
+.ob-palette-btn > span:first-of-type {
+  flex: 1;
+  text-align: left;
+}
+.ob-palette-key {
+  padding: 0 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro-size);
+  color: var(--fg-secondary);
+}
 .ob-topbar .ob-btn:has(> span) {
   flex: 0 1 auto;
   min-width: 3.5rem;
@@ -1816,6 +1847,10 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   .ob-topbar .ob-btn.ob-btn--squeeze {
     flex: none;
     min-width: 0;
+  }
+  /* Icon-only again, so the 300px field shrinks to its content. */
+  .ob-topbar .ob-palette-btn {
+    width: auto;
   }
   .ob-btn--squeeze > svg {
     display: inline-block;
@@ -3191,7 +3226,9 @@ button.ob-bell-item:hover {
   display: flex;
   align-items: flex-end;
   gap: var(--s-4);
-  border-bottom: 1px solid var(--line);
+  /* The row's hairline is drawn under the tabs, so a chosen tab's 2px underline covers it (the
+   * artboard's bottom: -1px) instead of stopping one pixel above it. */
+  box-shadow: inset 0 -1px 0 var(--line);
   overflow-x: auto;
   /* The active underline sits 1px over the border, outside the padding box;
    * with `overflow-x` set that made a vertical scrollbar appear. */

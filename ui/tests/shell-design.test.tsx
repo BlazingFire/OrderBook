@@ -142,3 +142,32 @@ describe('status footer (Navigation and Shell artboards)', () => {
     expect(footer).toContain('data-state={railState}');
   });
 });
+
+describe('what the visual review found (D5)', () => {
+  it('sets sidebar rows at 13.5px, a step above the 12.5px sub-pages', () => {
+    expect(rule('.ob-navitem')).toMatch(/font-size:\s*0\.9643rem/);
+    expect(rule('.ob-navitem--child')).toMatch(/font-size:\s*var\(--t-small-size\)/);
+  });
+
+  it('draws the command box as a field: canvas fill, hairline, 4px radius, a keycap chord, 300px', () => {
+    const box = rule('.ob-topbar .ob-palette-btn');
+    expect(box).toMatch(/width:\s*21\.4286rem/);
+    expect(box).toMatch(/background:\s*var\(--bg-canvas\)/);
+    expect(box).toMatch(/border:\s*1px solid var\(--line\)/);
+    expect(box).toMatch(/border-radius:\s*var\(--r-sm\)/);
+    expect(rule('.ob-palette-key')).toMatch(/border:\s*1px solid var\(--line-strong\)/);
+  });
+
+  it('makes a chosen filter chip a tinted, borderless, 500-weight chip 24px high', () => {
+    expect(rule('.ob-filterchip')).toMatch(/font-weight:\s*500/);
+    expect(rule('.ob-filterchip')).toMatch(/var\(--ctl-h-md\) - 0\.4286rem/);
+    const chosen = rule(".ob-filterchip[aria-pressed='true']");
+    expect(chosen).toMatch(/border-color:\s*transparent/);
+    expect(chosen).toMatch(/background:\s*var\(--accent-tint\)/);
+  });
+
+  it('draws the tabs hairline under the tabs, so the chosen underline covers it', () => {
+    expect(rule('.ob-tabs')).toMatch(/box-shadow:\s*inset 0 -1px 0 var\(--line\)/);
+    expect(rule('.ob-tabs')).not.toMatch(/border-bottom/);
+  });
+});

@@ -348,14 +348,14 @@ export function PaletteButton() {
   return (
     <button
       type="button"
-      className="ob-btn ob-btn--ghost ob-btn--squeeze"
+      className="ob-btn ob-btn--ghost ob-btn--squeeze ob-palette-btn"
       aria-label={label}
       title={chord ? `${label} · ${displayChord(chord)}` : label}
       onClick={() => keyboard.setPaletteOpen(true)}
     >
       <Icon name="search" size={16} />
       <span>{t('keys.palette.placeholder')}</span>
-      {chord && <span className="ob-small">{displayChord(chord)}</span>}
+      {chord && <span className="ob-small ob-palette-key">{displayChord(chord)}</span>}
     </button>
   );
 }
