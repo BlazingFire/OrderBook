@@ -2291,6 +2291,7 @@ export const EN_MESSAGES = {
   'reports.kind.leadOutcomes': 'Pending Order outcomes',
   'reports.kind.topParties': 'Top parties',
   'reports.dispatches.byColour': 'By colour',
+  'reports.dispatches.noColour': 'No colour',
   'reports.empty.title': 'No activity in this range',
   'reports.error.load': 'Could not load the report',
   'reports.leadOutcomes.quietNote':
