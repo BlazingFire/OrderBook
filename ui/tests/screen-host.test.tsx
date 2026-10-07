@@ -217,7 +217,7 @@ describe('ScreenHost on a small machine', () => {
     expect((screen.getByTestId('filter-a') as HTMLInputElement).value).toBe('half a draft');
   });
 
-  it('never evicts New pending order', async () => {
+  it('never evicts New Order', async () => {
     const { rerender } = render(host('addLead'));
     await act(async () => typeInto('filter-addLead', 'morbi'));
     await visit(rerender, ['a', 'b', 'c', 'd', 'e']);
