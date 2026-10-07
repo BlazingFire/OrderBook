@@ -543,5 +543,7 @@ carries on from the file it already has open.
 ## Turning it off
 
 Unset `ORDERBOOK_RELEASES_GITHUB_REPO`, or set
-`ORDERBOOK_RELEASES_POLL_MINUTES=0` to keep manual checks but stop the
-background polling. The releases folder keeps working on its own either way.
+`ORDERBOOK_RELEASES_POLL_MINUTES=0`: either one stops every fetch from GitHub —
+the background poll, Check now, the Updates screen and an Office panel's ask
+alike (before 2026-10-07, `0` stopped only the poll). The releases folder keeps
+working on its own either way.

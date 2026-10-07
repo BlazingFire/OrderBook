@@ -710,7 +710,7 @@ redirect an installed app.
 | `ORDERBOOK_RELEASES_DIR` | `<drive root>/OrderBook-Releases` | `master/src/config/index.ts`, `tools/release.mjs` | releases drop folder, and `release.mjs`'s output folder |
 | `ORDERBOOK_RELEASES_GITHUB_REPO` | `BlazingFire/OrderBook-Releases` (1.4; empty = off; `null` under `NODE_ENV=test`) | `master/src/config/index.ts` | `owner/repo` to poll for releases — one of two outbound paths; the other, outbound connectors, is gated by the `externalApi.enabled` setting and `api.manage`, not by any variable (§1.6) |
 | `ORDERBOOK_RELEASES_GITHUB_TOKEN` | null | `master/src/config/index.ts` | token for a private releases repo |
-| `ORDERBOOK_RELEASES_POLL_MINUTES` | 2 (was 180) | `master/src/config/index.ts` | GitHub poll interval; 0 turns polling off |
+| `ORDERBOOK_RELEASES_POLL_MINUTES` | 2 (was 180) | `master/src/config/index.ts` | GitHub poll interval; 0 turns every GitHub fetch off (poll, Check now, status, panel asks) |
 | `ORDERBOOK_ALLOW_UNSIGNED_RELEASES` | off | `allowUnsignedReleases()` in `shared/src/domain/release-keys.ts` (`=== '1'`), called from `master/src/lib/release-signature.ts` and `office/src/lib/release-signature.ts` | accept unsigned manifests; set per machine |
 | `ORDERBOOK_UPGRADE_SNAPSHOT` | on | `master/src/db/cluster-snapshot.ts` | `0` skips the pre-upgrade database copy |
 | `ORDERBOOK_TIMEZONE` | `Asia/Kolkata` (empty also falls back) | `master/src/config/index.ts` | business timezone for reports and month buckets (Master only) |
@@ -5387,7 +5387,8 @@ packages nothing; the Release workflow runs no tests.
    `master-panel/` and `office-panel/`, `releaseDirFor` in
    `master/src/services/update.service.ts`): **by hand** (copy a folder produced by
    `release.mjs`; no network) or **from GitHub**, only if
-   `ORDERBOOK_RELEASES_GITHUB_REPO` is set. `startReleasePolling()` polls 2 min after
+   `ORDERBOOK_RELEASES_GITHUB_REPO` is set and `ORDERBOOK_RELEASES_POLL_MINUTES` is above 0
+   (`isConfigured()`). `startReleasePolling()` polls 2 min after
    boot and then every `ORDERBOOK_RELEASES_POLL_MINUTES`; every `availability()` call
    also syncs, but waits on it for `GITHUB_WAIT_MS` (5 s) at most and then answers
    from the folder as it stands. `syncFromGitHub()`
