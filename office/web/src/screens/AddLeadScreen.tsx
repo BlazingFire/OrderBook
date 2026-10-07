@@ -1699,15 +1699,11 @@ function AddLeadForm({
           </OrderField>
         </OrderDetailsBar>
 
-        <div className="ob-order-cols" style={{ alignItems: 'stretch' }}>
+        <div className="ob-order-cols">
           <div className="ob-order-main">
             {/* --- Products ------------------------------------------------- */}
 
-            <section
-              className="ob-order-card"
-              style={{ flex: 1 }}
-              aria-label={t('lead.add.products.title')}
-            >
+            <section className="ob-order-card" aria-label={t('lead.add.products.title')}>
               {/* Shift+Q is the product flow's key: the notes below sit outside this box. */}
               <div
                 ref={productsRef}
