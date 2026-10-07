@@ -63,7 +63,7 @@
  * temporary id and appears on the board immediately.
  */
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type {
   ColourRule,
@@ -2022,8 +2022,10 @@ function GridCard({
   const first = rows[0];
 
   // The card opens on its first field — the first row's colour box, else its quantity — so the
-  // Enter walk has somewhere to start from.
-  useEffect(() => {
+  // Enter walk has somewhere to start from. In the layout phase, in the commit that mounts the
+  // card: a passive effect ran a tick later, after whatever a fast keystroke had already done,
+  // and took the caret back to this field.
+  useLayoutEffect(() => {
     bodyRef.current
       ?.closest('[data-product-card]')
       ?.querySelector<HTMLElement>('[data-walk]')
