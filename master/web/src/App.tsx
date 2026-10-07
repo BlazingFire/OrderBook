@@ -1838,6 +1838,7 @@ function MasterPanel() {
       {canViewNotices && (
         <SignInNotices
           key={user?.id ?? ''}
+          sessionKey={user && sessionToken ? `${user.id}:${sessionToken}` : undefined}
           loaded={noticeBoard.loaded}
           notices={noticeBoard.notices}
           today={todayForNotices()}

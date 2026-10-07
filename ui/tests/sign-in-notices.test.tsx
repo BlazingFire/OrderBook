@@ -13,7 +13,10 @@ beforeAll(() => {
   // jsdom has no checkVisibility; the dialog's focus trap asks it which controls can take focus.
   Element.prototype.checkVisibility ??= () => true;
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.sessionStorage.clear();
+});
 
 function notice(id: string, overrides: Partial<Notice> = {}): Notice {
   return {
@@ -117,5 +120,28 @@ describe('SignInNotices', () => {
 
     expect(dialog()).not.toBeNull();
     expect(screen.getByRole('alert').textContent).toBe(t('notices.signIn.markFailed'));
+  });
+
+  it('does not ask again after a reload in the same sign-in, and asks again at the next one', () => {
+    const props = { loaded: true, notices: [NEW], today: TODAY, onMarkRead: vi.fn() };
+    render(<SignInNotices {...props} sessionKey="user-1:2026-10-07T08:00:00Z" />);
+    expect(dialog()).not.toBeNull();
+    cleanup();
+
+    // The window reloads: the shell mounts again for the same sign-in.
+    render(<SignInNotices {...props} sessionKey="user-1:2026-10-07T08:00:00Z" />);
+    expect(dialog()).toBeNull();
+    cleanup();
+
+    // Signed out and in again: a new session, so it asks.
+    render(<SignInNotices {...props} sessionKey="user-1:2026-10-07T13:00:00Z" />);
+    expect(dialog()).not.toBeNull();
+  });
+
+  it('keeps nothing of the session key itself in storage', () => {
+    render(<SignInNotices loaded notices={[NEW]} today={TODAY} onMarkRead={vi.fn()} sessionKey="user-1:secret-token" />);
+    const stored = Object.values({ ...window.sessionStorage }).join(' ');
+    expect(stored).not.toContain('secret-token');
+    expect(stored).not.toContain('user-1');
   });
 });
