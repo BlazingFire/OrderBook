@@ -86,7 +86,7 @@
  * temporary id and appears on the board immediately.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import type {
   AssignablePerson,
@@ -863,7 +863,12 @@ function LeadEntryForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category, subsLoaded, draft]);
 
-  useEffect(() => {
+  /*
+   * A layout effect: the caret must be on the first field in the commit that mounts the card. A
+   * passive effect ran a tick later, after a fast keystroke or Enter had already moved the caret,
+   * and took it back to the first field.
+   */
+  useLayoutEffect(() => {
     if (cardOpened > 0) focusFirstField();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cardOpened]);
