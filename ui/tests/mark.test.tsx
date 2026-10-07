@@ -76,6 +76,20 @@ describe('BusyMark', () => {
     expect(css).toMatch(/\.ob-busy \{[^}]*opacity: 0\.4;/);
   });
 
+  it('is an inline glyph at 16 px and below: the text colour, square corners, full strength resting at 25 %', () => {
+    const { container } = render(<BusyMark size={14} label="" />);
+    const svg = container.querySelector('svg') as SVGSVGElement;
+    expect(svg.getAttribute('class')).toBe('ob-busy ob-busy--inline');
+    expect(container.querySelector('g')?.getAttribute('fill')).toBe('currentColor');
+    expect(rects(container).every((rect) => rect.getAttribute('rx') === '0')).toBe(true);
+    expect(css).toMatch(/\.ob-busy--inline \{\s*opacity: 1;/);
+    expect(css).toMatch(/\.ob-busy--inline rect \{\s*opacity: 0\.25;\s*animation-name: ob-busy-inline;/);
+
+    cleanup();
+    const large = render(<BusyMark size={24} label="" />).container.querySelector('svg') as SVGSVGElement;
+    expect(large.getAttribute('class')).toBe('ob-busy');
+  });
+
   it('is announced when labelled and hidden inside a labelled button', () => {
     const { container, rerender } = render(<BusyMark label="Opening orders" />);
     const svg = container.querySelector('svg') as SVGSVGElement;
@@ -101,6 +115,8 @@ describe('Splash', () => {
     // Last arrival: the bar, at 700 ms over 280 ms.
     expect(SPLASH_MS).toBeGreaterThanOrEqual(980);
     expect(css).toMatch(/\.ob-splash-word \{[^}]*animation: ob-word 288ms var\(--e-standard\) 620ms both;/);
+    // Once the squares are in, the outline fades, leaving the ten squares.
+    expect(css).toMatch(/\.ob-splash-outline \{[^}]*ob-outline-fade 220ms var\(--e-exit\) 700ms forwards;/);
   });
 
   it('plays once: it hands the screen back after the hold', () => {
@@ -119,7 +135,7 @@ describe('Splash', () => {
 });
 
 describe('reduced motion', () => {
-  const moving = ['.ob-busy rect', '.ob-splash-outline', '.ob-splash-cell', '.ob-splash-word'];
+  const moving = ['.ob-busy rect', '.ob-splash-cell', '.ob-splash-word'];
 
   it('stands every moving part of the mark still as its final frame, under both switches', () => {
     const reduced = /@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?)\n\}/.exec(css)?.[1] ?? '';
@@ -134,5 +150,8 @@ describe('reduced motion', () => {
       expect(block).toContain('opacity: 1;');
       expect(block).toContain('stroke-dashoffset: 0;');
     }
+    // The outline has faded by the final frame, so it is hidden under both switches.
+    expect(reduced).toMatch(/\.ob-splash-outline \{\s*animation: none !important;\s*opacity: 0;/);
+    expect(css).toMatch(/html\[data-motion='off'\] \.ob-splash-outline \{\s*animation: none !important;\s*opacity: 0;/);
   });
 });
