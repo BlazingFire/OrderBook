@@ -303,6 +303,18 @@ Say what is loading; say what failed and what to do next; no spinners.
   and given back when the pointer leaves; the words stay in `title` otherwise (tests and code that read it keep working). Nobody wraps elements.
 - Banners and empty states use `States.tsx`; the Gallery screen (`ui/src/GalleryScreen.tsx`) shows each feedback component in every tone. Tests: `ui/tests/feedback.test.tsx`.
 
+### 7.1 The notice slideshow (owner add-on V5; no artboard, built from the system's parts)
+
+A band at the top of Basic Home on both panels (`ui/src/NoticeSlideshow.tsx`), inset like the launcher's sections and no wider than the Dashboard's content
+(`ob-measure-wide`). It uses a surface band like the Feedback banners, the Data pills (`StatusPill`: conflict for Important, accent for Pinned) and the icon set's chevrons.
+- **What it shows:** the reader's important and pinned notices that are not expired, **unread first**, then read ones, at most 8 (`cardNotices`, the same selection as the Dashboard card,
+  from the same list the board shows, so the same audience). A slide is the title, the pills, the date and the start of the body (plain text). Pressing a slide opens that notice on the board
+  (the board scrolls to it, opens it in full and focuses it). With nothing to show, nothing is drawn.
+- **Rotation (WAI-ARIA carousel):** 6 s a slide; paused while the pointer is over it or focus is inside it; a stop/start button first, then previous, the dots and next. The slides region is silent
+  while it rotates by itself and polite once the reader is driving. Under reduced motion (the OS setting or the app's motion switch) it never advances by itself and the stop button is not shown.
+- **Source:** on the Master the board list from `GET /api/notices`; on the Office the signed-in person's own cached list (the per-viewer, fail-closed cache), with reads recorded here overlaid.
+  It follows the `notice` change event, so a new notice appears without a reload.
+
 ## 8. Data (artboard: Data)
 
 - **Table:** no zebra stripes, no column lines, numbers right-aligned in tabular figures; header = eyebrow style on `porcelain-10`; row 32 px
