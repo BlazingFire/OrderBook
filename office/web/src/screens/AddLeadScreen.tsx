@@ -2902,10 +2902,10 @@ function DraftCard({
           </p>
         )}
 
-        <div ref={addRef} className="ob-order-product__foot" style={{ flexWrap: 'wrap' }}>
+        <div ref={addRef} className="ob-order-product__foot">
           <span
             className="ob-small"
-            style={{ flex: '1 1 14rem', minWidth: 0, color: 'var(--fg-tertiary)' }}
+            style={{ flex: '1 1 0', minWidth: 0, color: 'var(--fg-tertiary)' }}
           >
             {hint}
             {filled.length > 0 && previewKg > 0 && (
