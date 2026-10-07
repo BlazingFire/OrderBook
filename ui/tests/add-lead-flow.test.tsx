@@ -841,6 +841,21 @@ describe('a multicolour sub product', () => {
     ]);
   });
 
+  it('puts the caret in the colour box of the new row when "another colour" is taken', async () => {
+    await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    await pickSubProduct();
+    await pickColour('OPT-0002', 'Whi');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('lead.add.card.anotherColour') }));
+      await wait(10);
+    });
+
+    const boxes = [...document.querySelectorAll<HTMLInputElement>('[data-walk="colour"]')];
+    expect(boxes).toHaveLength(2);
+    expect(document.activeElement).toBe(boxes[1]);
+  });
+
   it('opens the card on the colour box when its first row is multicolour', async () => {
     live.products = [{ ...MULTI, sortOrder: 0 }, DEDICATED, FIXED];
     await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
@@ -985,6 +1000,33 @@ describe('Office: the catalogue changing while the entry is open', () => {
       await screen.findByText(t('lead.add.errors.goneLines', { names: FIXED.name })),
     ).toBeTruthy();
     expect(screen.getAllByText(new RegExp(FIXED.name)).length).toBeGreaterThan(0);
+  });
+
+  it('clears the refusal once the product it named is removed from the lead', async () => {
+    const calls = await openForm();
+    await enterOneLine();
+
+    live.products = live.products.filter((product) => product.id !== FIXED.id);
+    await masterAddsCategory();
+    await waitFor(() => expect(document.querySelector('[data-catalogue-gone]')).not.toBeNull());
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
+      await wait(0);
+    });
+    const message = t('lead.add.errors.goneLines', { names: FIXED.name });
+    expect(await screen.findByText(message)).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: t('lead.add.line.removeProduct', { product: CATEGORY.name }),
+        }),
+      );
+      await wait(0);
+    });
+
+    expect(screen.queryByText(message)).toBeNull();
+    expect(leadPosts(calls)).toHaveLength(0);
   });
 
   it('does not flag or block a product renamed on the Master while it was on the order', async () => {

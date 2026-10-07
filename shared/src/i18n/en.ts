@@ -1522,7 +1522,7 @@ export const EN_MESSAGES = {
   'lead.add.party.search': 'Search party by name, code or phone',
   'lead.add.party.title': 'Party',
   'lead.add.products.remove': 'Remove',
-  'lead.add.products.searchLabel': 'Search products — the product first, then its sub product',
+  'lead.add.products.searchLabel': 'Search products — its sub products open on a card',
   'lead.add.products.title': 'Products',
   'lead.add.products.useSuggested': 'Use “{value}”',
   'lead.add.save': 'Save order',
