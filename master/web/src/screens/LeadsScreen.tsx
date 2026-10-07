@@ -56,6 +56,7 @@ import {
   Segmented,
   SkeletonTable,
   StatusPill,
+  stageTone,
   formatDateTime,
   formatKg,
   recordNumberText,
@@ -615,7 +616,13 @@ export function LeadsScreen({
               {openLead.convertedOrderId ? (
                 <StatusPill tone="ok">{t('lead.badge.converted')}</StatusPill>
               ) : (
-                <StatusPill>{openLead.stageName}</StatusPill>
+                <StatusPill
+                  tone={stageTone(
+                    stages.find((stage) => stage.id === openLead.stageId),
+                  )}
+                >
+                  {openLead.stageName}
+                </StatusPill>
               )}
               <RecordNumber record={openLead} small />
             </>

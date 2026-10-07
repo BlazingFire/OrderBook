@@ -5,7 +5,7 @@
 
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { TimelineEntry as RecordTimelineEntry } from '@orderbook/shared';
+import type { PipelineStage, TimelineEntry as RecordTimelineEntry } from '@orderbook/shared';
 import { IconButton } from './Button';
 import { copyText } from './clipboard.js';
 import { t } from './i18n.js';
@@ -73,6 +73,55 @@ export function StatusPill({
   return <span className={cls}>{children}</span>;
 }
 
+/**
+ * The pill tone nearest a colour an administrator gave a stage (Fields, Stages), by hue:
+ * reds read as conflict, ambers as offline (amber), greens as ok, blues and purples as
+ * accent, and greys or anything washed out as the neutral default. `null` for no colour
+ * or a value that is not a #rgb / #rrggbb hex, so the caller falls back to the flags.
+ */
+export function toneForColour(colour: string | null | undefined): PillTone | null {
+  const digits = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(colour?.trim() ?? '')?.[1];
+  if (!digits) return null;
+  const hex = digits.length === 3 ? digits.replace(/./g, '$&$&') : digits;
+  const channel = (at: number): number => parseInt(hex.slice(at, at + 2), 16) / 255;
+  const r = channel(0);
+  const g = channel(2);
+  const b = channel(4);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const lightness = (max + min) / 2;
+  const chroma = max - min;
+  const saturation = chroma === 0 ? 0 : chroma / (1 - Math.abs(2 * lightness - 1));
+  if (saturation < 0.2) return 'default';
+  const hue =
+    max === r
+      ? (60 * ((g - b) / chroma) + 360) % 360
+      : max === g
+        ? 60 * ((b - r) / chroma) + 120
+        : 60 * ((r - g) / chroma) + 240;
+  if (hue < 20 || hue >= 320) return 'conflict';
+  if (hue < 70) return 'offline';
+  if (hue < 170) return 'ok';
+  return 'accent';
+}
+
+/**
+ * A stage's pill tone. Its configured colour wins, so a "Cancelled" stage seeded red
+ * (#C7576B) reads red rather than green; only a stage with no colour falls back to its
+ * flags (terminal green, default accent, otherwise neutral). A dispatched order is green.
+ */
+export function stageTone(
+  stage: Pick<PipelineStage, 'colour' | 'isDefault' | 'isTerminal'> | undefined,
+  dispatched = false,
+): PillTone {
+  if (dispatched) return 'ok';
+  const fromColour = toneForColour(stage?.colour);
+  if (fromColour) return fromColour;
+  if (stage?.isTerminal) return 'ok';
+  if (stage?.isDefault) return 'accent';
+  return 'default';
+}
+
 export interface TimelineEntry {
   id: string;
   label: ReactNode;
@@ -94,7 +143,9 @@ export function recordTimelineEntries(
   return entries.map((entry) => ({
     id: entry.id,
     label: entry.message,
-    when: entry.actorName ? `${entry.actorName} · ${formatWhen(entry.createdAt)}` : formatWhen(entry.createdAt),
+    when: entry.actorName
+      ? `${entry.actorName} · ${formatWhen(entry.createdAt)}`
+      : formatWhen(entry.createdAt),
     system: entry.kind === 'system',
   }));
 }
