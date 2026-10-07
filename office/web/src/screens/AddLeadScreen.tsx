@@ -111,6 +111,7 @@ import {
   Modal,
   OrderDetailsBar,
   OrderField,
+  PartyChip,
   PartyFormModal,
   ProductThumb,
   Select,
@@ -1475,90 +1476,26 @@ function AddLeadForm({
         <OrderDetailsBar hasOwner={false}>
           <OrderField label={t('lead.add.party.title')} wide>
             {selectedParty ? (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--s-8)',
-                  minHeight: 'var(--ctl-h-md)',
-                  padding: `0 ${rem(4)} 0 ${rem(8)}`,
-                  border: '1px solid var(--line-control)',
-                  borderRadius: 'var(--r-sm)',
-                  background: 'var(--bg-surface)',
-                  minWidth: 0,
+              <PartyChip
+                name={selectedParty.name}
+                code={selectedParty.partyCode}
+                city={selectedParty.city}
+                extra={
+                  /* The key keeps its name from when party records carried rates; the text says
+                     what it is now — the party's own product names are in use. No money. */
+                  partyWiseMode ? (
+                    <StatusPill tone="ok">{t('lead.add.party.ownRates')}</StatusPill>
+                  ) : undefined
+                }
+                changeLabel={t('lead.add.party.change')}
+                onChange={() => {
+                  setPartyId('');
+                  setPartyQuery('');
+                  setPartyOpen(true);
+                  setPartySel(0);
+                  window.setTimeout(() => partyRef.current?.focus(), 0);
                 }}
-              >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: rem(20),
-                    height: rem(20),
-                    flex: 'none',
-                    borderRadius: 'var(--r-sm)',
-                    background: 'var(--accent-tint)',
-                    color: 'var(--accent)',
-                    fontSize: rem(11),
-                    fontWeight: 600,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  {selectedParty.name
-                    .split(/\s+/)
-                    .filter(Boolean)
-                    .slice(0, 2)
-                    .map((word) => word[0]!.toUpperCase())
-                    .join('')}
-                </span>
-                <span className="ob-body-strong ob-ellipsis" style={{ minWidth: 0 }}>
-                  {selectedParty.name}
-                </span>
-                <span
-                  className="ob-mono ob-small"
-                  style={{ flex: 'none', color: 'var(--fg-secondary)' }}
-                >
-                  {selectedParty.partyCode}
-                </span>
-                {selectedParty.city && (
-                  <span
-                    className="ob-small ob-ellipsis"
-                    style={{ color: 'var(--fg-tertiary)', minWidth: 0 }}
-                  >
-                    {'· '}
-                    {selectedParty.city}
-                  </span>
-                )}
-                {/* The key keeps its name from when party records carried
-                    rates; the text says what it is now — the party's own
-                    product names are in use. No money is shown. */}
-                {partyWiseMode && <StatusPill tone="ok">{t('lead.add.party.ownRates')}</StatusPill>}
-                <span style={{ flex: 1, minWidth: 0 }} />
-                {/*
-                 * `data-field` puts this button back into the Enter/Escape
-                 * walk. Choosing a party replaces the search box with this
-                 * chip, so without it Escape from the source select would
-                 * find no party field to go back to — it is the first step
-                 * of the form, and it has to stay reachable as one.
-                 */}
-                <button
-                  type="button"
-                  className="ob-btn ob-btn--ghost"
-                  data-field
-                  aria-label={t('lead.add.party.change')}
-                  title={t('lead.add.party.change')}
-                  style={{ flex: 'none', padding: 0, minWidth: rem(24), minHeight: rem(24) }}
-                  onClick={() => {
-                    setPartyId('');
-                    setPartyQuery('');
-                    setPartyOpen(true);
-                    setPartySel(0);
-                    window.setTimeout(() => partyRef.current?.focus(), 0);
-                  }}
-                >
-                  <Icon name="close" size={14} />
-                </button>
-              </div>
+              />
             ) : (
               <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
                 <Input
