@@ -116,6 +116,7 @@ import {
   type CreatedParty,
   type GridLine,
   type GridRow,
+  type WalkRow,
   type WalkStop,
   addColourRow,
   groupLines,
@@ -2068,7 +2069,7 @@ function GridCard({
   }
 
   /** One stop on, by the row walk: an empty row is passed over (`nextWalkStop`). */
-  function stepOn(from: Element | null): void {
+  function stepOn(from: Element | null, started?: string): void {
     // The whole card, not only the grid: the Add button in the footer is the last stop.
     const card = bodyRef.current?.closest('[data-product-card]');
     const nodes = [...(card?.querySelectorAll<HTMLElement>('[data-walk]') ?? [])];
@@ -2078,8 +2079,11 @@ function GridCard({
       rowKey: node.dataset.row ?? null,
       field: node.dataset.walk as WalkStop['field'],
     }));
-    const qtyOf = (rowKey: string): number => Number(rows.find((r) => r.key === rowKey)?.qty) || 0;
-    const next = nextWalkStop(stops, index, qtyOf);
+    const rowOf = (rowKey: string): WalkRow => {
+      const row = rows.find((r) => r.key === rowKey);
+      return { qty: Number(row?.qty) || 0, hasColour: Boolean(row?.colour) || rowKey === started };
+    };
+    const next = nextWalkStop(stops, index, rowOf);
     if (next !== null) nodes[next]?.focus();
   }
 
@@ -2315,7 +2319,10 @@ function GridCard({
                       element.dataset.row = row.key;
                     }}
                     onPick={(colour) => onRow(row.key, { colour })}
-                    onAdvance={() => stepOn(document.activeElement)}
+                    openOnEnter={Number(row.qty) > 0}
+                    onAdvance={(picked) =>
+                      stepOn(document.activeElement, picked ? row.key : undefined)
+                    }
                   />
                 ) : fixedColour ? (
                   <span className="ob-order-cell--fixed">
