@@ -1,4 +1,3 @@
-import { rem } from './rem.js';
 /**
  * Form foundation (§9): Input, NumberInput, Textarea, DateField, Checkbox,
  * Switch, Slider, Label, HelperText, FieldError, and FormField — the
@@ -33,7 +32,20 @@ export function HelperText({ children }: { children: ReactNode }) {
 export function FieldError({ children }: { children: ReactNode }) {
   return (
     <div className="ob-field-error" role="alert">
-      {children}
+      <svg
+        width={14}
+        height={14}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v6M12 16.5v.5" />
+      </svg>
+      <span>{children}</span>
     </div>
   );
 }
@@ -181,22 +193,57 @@ export function Checkbox({
       <span className="ob-checkbox-box" aria-hidden="true">
         {checked && !indeterminate && (
           <svg
-            width={10}
-            height={10}
-            viewBox="0 0 16 16"
+            width={16}
+            height={16}
+            viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth={2}
+            strokeWidth={3}
             strokeLinecap="round"
             strokeLinejoin="round"
           >
-            <path d="M3 8.5l3.2 3.2L13 4.5" />
+            <path d="M6 12.5l4 4L18 8" />
           </svg>
         )}
         {indeterminate && (
-          <span style={{ width: rem(8), height: 2, background: 'currentColor', borderRadius: 1 }} />
+          <svg
+            width={16}
+            height={16}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={3}
+            strokeLinecap="round"
+          >
+            <path d="M7 12h10" />
+          </svg>
         )}
       </span>
+      {label != null && <span>{label}</span>}
+    </label>
+  );
+}
+
+/** One choice of a group: give the members of a group the same `name`. */
+export function Radio({
+  checked,
+  onChange,
+  label,
+  disabled,
+  name,
+  value,
+}: Omit<CheckRowProps, 'indeterminate'> & { value?: string }) {
+  return (
+    <label className="ob-check-row" data-disabled={disabled || undefined}>
+      <input
+        type="radio"
+        name={name}
+        value={value}
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span className="ob-radio-circle" aria-hidden="true" />
       {label != null && <span>{label}</span>}
     </label>
   );

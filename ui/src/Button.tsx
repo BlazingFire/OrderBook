@@ -2,9 +2,11 @@
  * Button (§9 Foundation): primary / secondary / ghost / danger · sm 26 · md 30 · lg 36.
  * Every state — default/hover/active/focus-visible/disabled/loading — lives in
  * base.css's `.ob-btn*` rules; this component only ever composes those classes.
+ * A busy button shows the busy mark where its icon would be.
  */
 
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { BusyMark } from './BusyMark';
 import { Icon, type IconName } from './icons';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -39,27 +41,37 @@ export function Button({
     .join(' ');
   return (
     <button type={type} className={classes} disabled={disabled || busy} aria-busy={busy} {...rest}>
-      {icon && <Icon name={icon} size={size === 'lg' ? 18 : 16} />}
+      {busy ? (
+        <BusyMark size={14} label="" />
+      ) : (
+        icon && <Icon name={icon} size={size === 'lg' ? 18 : 16} />
+      )}
       {children}
     </button>
   );
 }
 
+export type IconButtonVariant = 'ghost' | 'bordered' | 'danger';
+
 export function IconButton({
   icon,
   label,
   size = 16,
+  variant = 'ghost',
   className,
   ...rest
 }: {
   icon: IconName;
   label: string;
   size?: number;
+  variant?: IconButtonVariant;
 } & ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       type="button"
-      className={['ob-icon-btn', className].filter(Boolean).join(' ')}
+      className={['ob-icon-btn', variant !== 'ghost' ? `ob-icon-btn--${variant}` : '', className]
+        .filter(Boolean)
+        .join(' ')}
       aria-label={label}
       title={label}
       {...rest}
