@@ -211,6 +211,16 @@ was verified, so the next agent can trust the state without re-auditing.
   both notes rendered in a browser (46 named + 200 coded, 4 pages
   each): no column or label overflow, notes and blank-lines variants. Not verified: a real printer.
 
+### 2026-10-07 - Pieces in the Dispatches report, and captions in the PDF (Claude, D7)
+
+**Dispatches report (D10 P-2).** Its count of pieces was keyed `boxCount` (the legacy CSV header is the key, so the CSV said
+"boxCount"). The key and JSON field are now `pieces` (header `month,orderCount,pieces`; the screen, the sheet and the PDF
+already said Pieces, from `reports.column.pieces`; the duplicate `reports.column.boxCount` is gone). Nothing outside the tests
+read the old name; a bookmarked `?columns=boxCount` still works (`RENAMED_COLUMNS`). **PDF captions (D5).** The product
+caption of a labelled cell in the pending order PDF was wrapped without its letter spacing and ran into the next cell; it is
+wrapped with it now (two lines, then an ellipsis, as the note's CSS clamps it). Tests: `shared/tests/quantity-unit.test.ts`
+(no report key or heading says box), `master/tests/reports.integration.test.ts`, `master/tests/note-pdf.test.ts`.
+
 ### 2026-10-07 - V8: the pending order PDF is the note's sheet (Claude, D7)
 
 **Owner.** "need same format in pdf export in software", and for the notes "header and footer will change but content

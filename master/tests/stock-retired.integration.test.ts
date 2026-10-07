@@ -167,8 +167,8 @@ describe.skipIf(!canRunIntegrationTests)('stock is retired (integration)', () =>
 
     const report = await reportService.dispatchReport({ period: 'thisMonth' }, actor);
 
-    expect(report.months.reduce((sum, month) => sum + month.boxCount, 0)).toBe(12);
-    const buckets = new Map(report.colours.map((bucket) => [bucket.colour, bucket.boxCount]));
+    expect(report.months.reduce((sum, month) => sum + month.pieces, 0)).toBe(12);
+    const buckets = new Map(report.colours.map((bucket) => [bucket.colour, bucket.pieces]));
     expect([...buckets.values()].reduce((sum, count) => sum + count, 0)).toBe(12);
   });
 

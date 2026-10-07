@@ -166,7 +166,7 @@ describe.skipIf(!canRunIntegrationTests)('Reports (integration)', () => {
 
       const report = await reportService.dispatchReport({ period: 'thisMonth' }, actor);
       const thisMonth = report.months.find((m) => m.orderCount > 0);
-      expect(thisMonth?.boxCount).toBe(10);
+      expect(thisMonth?.pieces).toBe(10);
     });
 
     it('RPT-18: the colour buckets are the variant labels the pieces were dispatched in, and a no-variant product is one "No colour" bucket', async () => {
@@ -205,7 +205,7 @@ describe.skipIf(!canRunIntegrationTests)('Reports (integration)', () => {
       await setDispatchedAt(order.id, new Date().toISOString());
 
       const report = await reportService.dispatchReport({ period: 'thisMonth' }, actor);
-      const buckets = new Map(report.colours.map((bucket) => [bucket.colour, bucket.boxCount]));
+      const buckets = new Map(report.colours.map((bucket) => [bucket.colour, bucket.pieces]));
       expect(buckets.get('White')).toBe(5);
       expect(buckets.get('Magenta')).toBe(10);
       // Named rather than a blank cell since W2-5 (2026-10-07).
@@ -368,7 +368,10 @@ describe.skipIf(!canRunIntegrationTests)('Reports (integration)', () => {
       );
 
       const lines = (exported as { csv: string }).csv.trim().split('\r\n');
-      expect(lines[0]).toBe('month,orderCount,boxCount');
+      expect(lines[0]).toBe('month,orderCount,pieces');
+      // An old link that names the column by its old key still gets it.
+      const old = await reportService.exportReport('dispatches', { period: 'thisMonth', columns: ['boxCount'] }, actor);
+      expect((old as { csv: string }).csv.trim().split('\r\n')[0]).toBe('pieces');
     });
 
     it('appends a totals row that sums only the numeric columns', async () => {

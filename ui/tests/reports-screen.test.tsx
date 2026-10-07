@@ -160,17 +160,17 @@ describe('the table', () => {
 
   it('draws the extra sections a legacy report carries, and the quiet threshold the server applied', async () => {
     const dispatches = tableFor('dispatches', {
-      rows: [{ month: '2026-10', orderCount: 3, boxCount: 40 }],
-      totals: { orderCount: 3, boxCount: 40 },
+      rows: [{ month: '2026-10', orderCount: 3, pieces: 40 }],
+      totals: { orderCount: 3, pieces: 40 },
       rowCount: 1,
       sections: [
         {
           titleToken: 'reports.dispatches.byColour',
           columns: [
             { key: 'colour', labelToken: 'reports.column.colour', unit: 'text' },
-            { key: 'boxCount', labelToken: 'reports.column.boxCount', unit: 'count' },
+            { key: 'pieces', labelToken: 'reports.column.pieces', unit: 'count' },
           ],
-          rows: [{ colour: 'White', boxCount: 40 }],
+          rows: [{ colour: 'White', pieces: 40 }],
         },
       ],
     });

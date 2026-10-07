@@ -2169,7 +2169,6 @@ export const EN_MESSAGES = {
   'partyImport.unchanged': '{count} already match the party book and need no change.',
   'partyImport.exportFailed': 'Could not export the parties',
   'reports.column.orderCount': 'Final Orders',
-  'reports.column.boxCount': 'Pieces',
   'reports.column.partyId': 'Party ID',
   'reports.column.partyName': 'Party',
   'reports.column.partyCode': 'Code',

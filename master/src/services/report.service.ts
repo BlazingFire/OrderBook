@@ -220,7 +220,7 @@ async function buildDispatches(ctx: Context): Promise<DispatchesReport> {
   const byMonth = new Map(monthRows.map((row) => [row.month, row]));
   const months: DispatchMonthBucket[] = range.months.map((month) => {
     const row = byMonth.get(month);
-    return { month, orderCount: row?.orderCount ?? 0, boxCount: row?.boxCount ?? 0 };
+    return { month, orderCount: row?.orderCount ?? 0, pieces: row?.pieces ?? 0 };
   });
 
   // A line stores the colour list's value; the report shows the list's label
@@ -231,18 +231,18 @@ async function buildDispatches(ctx: Context): Promise<DispatchesReport> {
   for (const row of colourRows) {
     const colour = row.colour === '' ? label('reports.dispatches.noColour') : labelOf(row.colour);
     const bucket = byName.get(colour.toLowerCase());
-    if (bucket) bucket.boxCount += row.boxCount;
-    else byName.set(colour.toLowerCase(), { colour, boxCount: row.boxCount });
+    if (bucket) bucket.pieces += row.pieces;
+    else byName.set(colour.toLowerCase(), { colour, pieces: row.pieces });
   }
-  const colours = [...byName.values()].sort((a, b) => b.boxCount - a.boxCount);
+  const colours = [...byName.values()].sort((a, b) => b.pieces - a.pieces);
 
   const totals = months.reduce(
     (acc, bucket) => {
       acc.orderCount += bucket.orderCount;
-      acc.boxCount += bucket.boxCount;
+      acc.pieces += bucket.pieces;
       return acc;
     },
-    { orderCount: 0, boxCount: 0 },
+    { orderCount: 0, pieces: 0 },
   );
 
   return { range, months, colours, totals };
@@ -331,11 +331,14 @@ function label(key: MessageKey, params?: Record<string, string | number>): strin
   return (t as (locale: string, key: MessageKey, params?: Record<string, string | number>) => string)('en', key, params);
 }
 
+/** Column keys that were renamed, old to new: a bookmarked `?columns=` link keeps its meaning (a quantity is pieces, never boxes). */
+const RENAMED_COLUMNS: Record<string, string> = { boxCount: 'pieces' };
+
 /** The units the three legacy kinds' export columns never declared, by key. */
 const LEGACY_UNITS: Record<string, ReportColumn['unit']> = {
   month: 'text',
   orderCount: 'count',
-  boxCount: 'count',
+  pieces: 'count',
   converted: 'count',
   lost: 'count',
   quiet: 'count',
@@ -375,15 +378,15 @@ async function rowsOf(kind: ReportKind, ctx: Context, input: ReportQuery, cap: n
     case 'dispatches': {
       const report = await buildDispatches(ctx);
       return {
-        rows: report.months.map((month) => ({ month: month.month, orderCount: month.orderCount, boxCount: month.boxCount })),
+        rows: report.months.map((month) => ({ month: month.month, orderCount: month.orderCount, pieces: month.pieces })),
         sections: [
           {
             titleToken: 'reports.dispatches.byColour',
             columns: [
               { key: 'colour', labelToken: 'reports.column.colour', unit: 'text' },
-              { key: 'boxCount', labelToken: 'reports.column.boxCount', unit: 'count' },
+              { key: 'pieces', labelToken: 'reports.column.pieces', unit: 'count' },
             ],
-            rows: report.colours.map((colour) => ({ colour: colour.colour, boxCount: colour.boxCount })),
+            rows: report.colours.map((colour) => ({ colour: colour.colour, pieces: colour.pieces })),
           },
         ],
       };
@@ -524,7 +527,7 @@ function chosenColumns(kind: ReportKind, requested: string[] | undefined): Repor
   if (!requested || requested.length === 0) return all;
 
   const picked = requested
-    .map((key) => all.find((column) => column.key === key))
+    .map((key) => all.find((column) => column.key === (RENAMED_COLUMNS[key] ?? key)))
     .filter((column): column is ReportColumn => column !== undefined);
 
   return picked.length > 0 ? picked : all;

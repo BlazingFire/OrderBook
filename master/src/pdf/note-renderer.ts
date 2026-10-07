@@ -132,7 +132,11 @@ function clip(measure: Measure, text: string, font: PdfFont, size: number, maxWi
   return `${text.slice(0, Math.max(end, 1)).trimEnd()}…`;
 }
 
-/** Greedy word wrap into at most `maxLines` lines; the last one is clipped with an ellipsis when text is left over. */
+/**
+ * Greedy word wrap into at most `maxLines` lines; the last one is clipped with an ellipsis when text is left over.
+ * `spacing` is the letter spacing the text will be drawn with: it counts towards the width, so a line never runs
+ * past its box.
+ */
 function wrap(
   measure: Measure,
   text: string,
@@ -140,6 +144,7 @@ function wrap(
   size: number,
   maxWidth: number,
   maxLines: number,
+  spacing = 0,
 ): string[] {
   const words = text.split(/\s+/).filter(Boolean);
   const lines: string[] = [];
@@ -149,16 +154,16 @@ function wrap(
   };
   for (const word of words) {
     const candidate = current ? `${current} ${word}` : word;
-    if (measure(candidate, font, size) <= maxWidth) {
+    if (measure(candidate, font, size, spacing) <= maxWidth) {
       current = candidate;
       continue;
     }
     if (current) push(current);
     current = word;
     // A word wider than the line breaks where it must, like `overflow-wrap: anywhere`.
-    while (measure(current, font, size) > maxWidth && current.length > 1) {
+    while (measure(current, font, size, spacing) > maxWidth && current.length > 1) {
       let cut = current.length - 1;
-      while (cut > 1 && measure(current.slice(0, cut), font, size) > maxWidth) cut -= 1;
+      while (cut > 1 && measure(current.slice(0, cut), font, size, spacing) > maxWidth) cut -= 1;
       push(current.slice(0, cut));
       current = current.slice(cut);
     }
@@ -167,7 +172,7 @@ function wrap(
   if (lines.length <= maxLines) return lines;
   const kept = lines.slice(0, maxLines);
   const rest = lines.slice(maxLines - 1).join(' ');
-  kept[maxLines - 1] = clip(measure, rest, font, size, maxWidth);
+  kept[maxLines - 1] = clip(measure, rest, font, size, maxWidth, spacing);
   return kept;
 }
 
@@ -453,7 +458,7 @@ function planCoded(
         const h = L.groupHeader;
         const cont = slot.continued ? t('en', 'orderNote.groupContinued') : '';
         const contW = cont ? measure(cont, 'body', 7) + 3 : 0;
-        const lines = wrap(measure, caps(slot.product), 'bold', 9.5, colW - contW, 2);
+        const lines = wrap(measure, caps(slot.product), 'bold', 9.5, colW - contW, 2, 0.29);
         const base = y + h - 3 - lines.length * 11;
         lines.forEach((value, i) => page.text(x, centred(base + i * 11, 11, 9.5, 'bold'), value, 'bold', 9.5, INK, 0.29));
         if (cont) {
@@ -468,7 +473,8 @@ function planCoded(
       slot.lines.forEach((line, cell) => {
         const cx = x + cell * (cellW + cellGap);
         const middle = cx + cellW / 2;
-        const productLines = slot.labelled ? wrap(measure, caps(line.product), 'bold', 8, cellW, 2) : [];
+        // A caption stays inside its own cell: two lines at most, then an ellipsis, as the note's CSS clamps it.
+        const productLines = slot.labelled ? wrap(measure, caps(line.product), 'bold', 8, cellW, 2, 0.64) : [];
         const contentH = productLines.length * 10 + 16 + 1 + 16;
         let cy = y + (h - 1 - contentH) / 2;
         productLines.forEach((value) => {
