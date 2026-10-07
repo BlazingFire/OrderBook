@@ -221,7 +221,8 @@ export async function createLead(input: LeadInput, actor: ActorContext, madeAt?:
         parentType: 'lead',
         parentId: leadId,
         kind: 'system',
-        message: 'Lead created',
+        // What the owner calls it on the New Order screen; rows written before keep their words.
+        message: 'Order created',
         toStageId: defaultStage(stages).id,
         actorUserId: actorUserId(actor),
       },

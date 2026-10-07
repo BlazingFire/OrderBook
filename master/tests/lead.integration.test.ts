@@ -442,7 +442,7 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
       );
 
       expect(lead.stageName).toBe('New');
-      expect(lead.timeline.map((entry) => entry.message)).toContain('Lead created');
+      expect(lead.timeline.map((entry) => entry.message)).toContain('Order created');
     });
 
     it('rejects a lead with no products', async () => {
@@ -465,7 +465,7 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
           },
           actor,
         ),
-      ).rejects.toThrow(/not a configured pending order source/i);
+      ).rejects.toThrow(/not a configured order source/i);
     });
 
     it('accepts a configured source platform', async () => {
