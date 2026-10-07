@@ -220,6 +220,11 @@ export interface LineGroup<L extends GridLine = GridLine> {
   pieces: number;
 }
 
+/** The key of the group a line belongs to: the product's code, else its name, with the name. */
+export function lineGroupKey(line: { categoryCode: string | null; categoryName: string }): string {
+  return [line.categoryCode ?? '', line.categoryName].join('\u0001');
+}
+
 /**
  * The lines grouped by the product (category) they belong to, groups in the order first seen and
  * lines inside a group in their original order. Nothing is reordered: lines are saved in order.
@@ -227,7 +232,7 @@ export interface LineGroup<L extends GridLine = GridLine> {
 export function groupLines<L extends GridLine>(lines: readonly L[]): Array<LineGroup<L>> {
   const groups = new Map<string, LineGroup<L>>();
   for (const line of lines) {
-    const key = `${line.categoryCode ?? ''}|${line.categoryName}`;
+    const key = lineGroupKey(line);
     let group = groups.get(key);
     if (!group) {
       group = {

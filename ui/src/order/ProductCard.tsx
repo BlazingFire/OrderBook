@@ -53,7 +53,7 @@ export function SubGrid({
   children: ReactNode;
 }) {
   return (
-    <div className="ob-order-subgrid">
+    <div className="ob-order-table">
       <div className="ob-order-subrow ob-order-subrow--head" role="presentation">
         <span>{labels.code}</span>
         <span>{labels.sub}</span>
@@ -63,7 +63,7 @@ export function SubGrid({
         <span>{labels.packaging}</span>
         <span>{labels.grade}</span>
       </div>
-      <div className="ob-order-subgrid__body" ref={bodyRef}>
+      <div className="ob-order-table__body" ref={bodyRef}>
         {children}
       </div>
     </div>
@@ -71,9 +71,18 @@ export function SubGrid({
 }
 
 /** One row of the grid: seven cells in the template's order. */
-export function SubRow({ muted = false, children }: { muted?: boolean; children: ReactNode }) {
+export function SubRow({
+  muted = false,
+  rowKey,
+  children,
+}: {
+  muted?: boolean;
+  /** The row's key, for the screen's Enter walk to read back from the DOM. */
+  rowKey?: string;
+  children: ReactNode;
+}) {
   return (
-    <div className="ob-order-subrow" data-muted={muted ? 'true' : undefined}>
+    <div className="ob-order-subrow" data-muted={muted ? 'true' : undefined} data-row-key={rowKey}>
       {children}
     </div>
   );

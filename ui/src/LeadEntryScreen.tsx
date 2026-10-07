@@ -90,7 +90,7 @@
  * temporary id and appears on the board immediately.
  */
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import type {
   AssignablePerson,
@@ -106,8 +106,6 @@ import type {
   PresenceLastWrite,
   Product,
   ProductCategory,
-  ProductImage,
-  ProductVariant,
   SyncSnapshot,
 } from '@orderbook/shared';
 import {
@@ -116,16 +114,33 @@ import {
   colourRuleOf,
   lineColourText,
   resolveCompanyFeatures,
-  shownColour,
 } from '@orderbook/shared';
 
 import { Button } from './Button.js';
+import { AddedGroup, AddedLine } from './order/AddedGroup.js';
 import { AddedProductsPanel } from './order/AddedProductsPanel.js';
+import { ColourSelect } from './order/ColourSelect.js';
+import {
+  addColourRow,
+  buildRows,
+  cardPieces,
+  cardReady,
+  groupLines,
+  inCatalogueOrder,
+  lineGroupKey,
+  linesToRows,
+  nextWalkStop,
+  rowsToLines,
+  type GridLine,
+  type GridRow,
+  type LineGroup,
+  type WalkStop,
+} from './order/gridModel.js';
+import { ProductCard, SubGrid, SubRow } from './order/ProductCard.js';
 import { PartyChip } from './order/PartyChip.js';
 import { ProductThumb } from './ProgressiveImage.js';
 import { FollowUpField, OrderDetailsBar, OrderField } from './order/OrderDetailsBar.js';
-import { Card } from './Card.js';
-import { ColourChip, ColourName, StatusPill, useColourHex } from './DataDisplay.js';
+import { ColourChip, StatusPill, useColourHex } from './DataDisplay.js';
 import { useConfirm } from './ConfirmDialog.js';
 import { apiErrorText } from './errorText.js';
 import {
@@ -208,67 +223,20 @@ interface Props {
   remoteChange?: PresenceLastWrite | null;
 }
 
-/** What every line and every draft row knows about its variant. */
-interface VariantFacts {
-  variantId: string;
-  /** The colour or pattern; null on a product that comes in one form. */
-  variantLabel: string | null;
-  code: string;
-  /** Per piece, or null while the master has no figure for it yet. */
-  weightKg: number | null;
-}
+/** One line on the lead: one variant, one colour, one quantity. */
+type DraftLine = GridLine;
 
-/** One variant of the model on the draft card, in one colour, with the quantity as typed. */
-interface DraftRow extends VariantFacts {
-  /**
-   * The colour chosen from the colour list — only ever on a `selectable` sub
-   * product, where each colour added is its own row. Blank everywhere else.
-   */
-  colour: string;
-  /** Kept as text so a half-typed number stays half-typed. */
-  qty: string;
-  /** From the company's packaging list, beside the quantity; blank until somebody picks. */
-  packaging: string;
-  /** From the company's grade list, beside the packaging; blank is no grade. */
-  grade: string;
-}
-
-/** What is decided once for the whole card, and copied onto every line it adds. */
-interface ProductFacts {
-  productId: string;
-  productName: string;
+/**
+ * The product card, open: the chosen product and a row for each variant of each of its sub
+ * products. A card lifted from the Added products list (an edit) holds that product's lines only.
+ */
+interface DraftCard {
   categoryName: string;
-  /** Snapshots of the product's code and brand, sent with each line (§3). */
   categoryCode: string | null;
   brand: string | null;
-  alias: string | null;
-  size: string | null;
-  /** Decides what the card asks about colour (§2). */
-  rule: ColourRule;
-  fromPartyVariant: boolean;
-  notes: string;
-  /** The product's primary photo, when the catalogue has one: the thumbnail on the card and the rows. */
-  image?: ProductImage;
-}
-
-/** The card one model is built in: the product's facts and a row per variant (and colour). */
-interface DraftProduct extends ProductFacts {
-  rows: DraftRow[];
-  /** What a colour added to a `selectable` card is ordered in — one row per variant here. */
-  variants: VariantFacts[];
-  /** Where the line goes back to when the draft is a `Modify` of a saved one. */
+  rows: GridRow[];
+  /** Where the lines go back to when the card is an edit of a group; null appends them. */
   at: number | null;
-  /** The saved line's key, kept so a modified line stays the same line. */
-  editKey: string | null;
-}
-
-/** One line on the lead: one variant, one colour, one quantity. */
-interface DraftLine extends ProductFacts, VariantFacts {
-  key: string;
-  colour: string;
-  packaging: string;
-  grade: string;
-  quantity: number;
 }
 
 const QUICK_FOLLOW_UPS = [
@@ -303,50 +271,6 @@ function lineWeight(line: { weightKg: number | null; quantity: number }): number
 /** The variant's name as a line shows it: the colour, or the code when it has none. */
 function variantName(facts: { variantLabel: string | null; code: string }): string {
   return facts.variantLabel ?? facts.code;
-}
-
-/** A draft row's identity: the same variant appears once per colour on a multicolour card. */
-function rowKey(row: { variantId: string; colour: string }): string {
-  return `${row.variantId}|${row.colour}`;
-}
-
-/**
- * Catalogue order (`sortOrder`), stable, a sub product without one after those
- * with. Sorted here as well as by the Master so the bar reads in catalogue order
- * whichever of the two — the Master or this panel's snapshot — answered.
- */
-function inCatalogueOrder(rows: readonly Product[]): Product[] {
-  const last = Number.MAX_SAFE_INTEGER;
-  return rows.slice().sort((a, b) => (a.sortOrder ?? last) - (b.sortOrder ?? last));
-}
-
-/**
- * The sub products matching what is typed in the bar: an exact name or code
- * first, then a prefix, then anywhere in the name, alias, code or colour —
- * catalogue order inside each, the sort being stable.
- *
- * Local, over every sub product fetched once per product, so a fast Enter never
- * lands on the rows of a search that has not come back yet.
- */
-function subProductMatches(rows: readonly Product[], term: string): Product[] {
-  if (!term) return rows.slice();
-  const ranked: Array<{ row: Product; rank: number }> = [];
-  for (const row of rows) {
-    const words = [
-      row.name,
-      row.alias ?? '',
-      ...row.variants.flatMap((variant) => [variant.code, variant.label ?? '']),
-    ].map((word) => word.toLowerCase());
-    const rank = words.includes(term)
-      ? 0
-      : words.some((word) => word.startsWith(term))
-        ? 1
-        : words.some((word) => word.includes(term))
-          ? 2
-          : -1;
-    if (rank >= 0) ranked.push({ row, rank });
-  }
-  return ranked.sort((a, b) => a.rank - b.rank).map((entry) => entry.row);
 }
 
 /**
@@ -502,9 +426,16 @@ function LeadEntryForm({
   /** Every live sub product of the chosen product, in catalogue order. */
   const [subRows, setSubRows] = useState<Product[]>([]);
   const [lines, setLines] = useState<DraftLine[]>(() => (lead ? linesOf(lead, view) : []));
-  const [draft, setDraft] = useState<DraftProduct | null>(null);
-  /** Which panel rows are expanded, ticked, and what is filtering them. */
-  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [draft, setDraft] = useState<DraftCard | null>(null);
+  /** The product's sub products have arrived, so the card can open on them. */
+  const [subsLoaded, setSubsLoaded] = useState(false);
+  /** The row the caret was last in: the "another colour" button works on it. */
+  const [activeRow, setActiveRow] = useState<string | null>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  /** Bumped when a card opens; the effect after it puts the caret on the first field. */
+  const [cardOpened, setCardOpened] = useState(0);
+  const addRef = useRef<HTMLDivElement>(null);
+  /** Which Added products groups are ticked, and what is filtering them. */
   const [selected, setSelected] = useState<Record<string, true>>({});
   const [lineQuery, setLineQuery] = useState('');
 
@@ -781,6 +712,7 @@ function LeadEntryForm({
    */
   useEffect(() => {
     setSubRows([]);
+    setSubsLoaded(false);
   }, [categoryId]);
 
   useEffect(() => {
@@ -794,9 +726,15 @@ function LeadEntryForm({
           categoryId,
           limit: PICK_MAX_LIMIT,
         });
-        if (!cancelled) setSubRows(inCatalogueOrder(page.items));
+        if (!cancelled) {
+          setSubRows(inCatalogueOrder(page.items));
+          setSubsLoaded(true);
+        }
       } catch {
-        if (!cancelled) setSubRows([]);
+        if (!cancelled) {
+          setSubRows([]);
+          setSubsLoaded(true);
+        }
       }
     })();
 
@@ -804,11 +742,6 @@ function LeadEntryForm({
       cancelled = true;
     };
   }, [categoryId, catalogueRevision]);
-
-  const subMatches = useMemo(
-    () => subProductMatches(subRows, query.trim().toLowerCase()),
-    [subRows, query],
-  );
 
   /*
    * Products on this order (lines and the open card) that the catalogue no longer
@@ -824,7 +757,9 @@ function LeadEntryForm({
     // what this edit adds is checked, because only that can make the Master refuse the save.
     for (const line of lines)
       if (!line.key.startsWith('saved-')) byId.set(line.productId, line.productName);
-    if (draft) byId.set(draft.productId, draft.productName);
+    for (const row of draft?.rows ?? []) {
+      if (Number(row.qty) > 0) byId.set(row.productId, row.productName);
+    }
     return [...byId];
   }, [lines, draft]);
   const checkedKey = checkedProducts.map(([id]) => id).join(',');
@@ -867,9 +802,9 @@ function LeadEntryForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkedKey, catalogueRevision]);
 
-  const rows: Array<ProductCategory | Product> = category ? subMatches : categoryRows;
+  const rows: ProductCategory[] = categoryRows;
   const pick = rows.length ? Math.min(sel, rows.length - 1) : 0;
-  const listOpen = !draft && searchOpen;
+  const listOpen = !draft && !category && searchOpen;
   const listRef = useRef<HTMLDivElement>(null);
 
   // Keep the highlighted row on screen as the arrows walk past the list's
@@ -880,15 +815,22 @@ function LeadEntryForm({
     rowEls?.[pick]?.scrollIntoView?.({ block: 'nearest' });
   }, [listOpen, pick, category]);
 
+  /** A key for a card row: unique for the life of the screen. */
+  function newRowKey(): string {
+    return `row-${nextKey.current++}`;
+  }
+
   function chooseCategory(next: ProductCategory): void {
     setCategory(next);
     setQuery('');
     setSel(0);
-    setSearchOpen(true);
-    window.setTimeout(() => searchRef.current?.focus(), 0);
+    // The card opens by itself once the product's sub products have arrived (the effect below).
+    setSearchOpen(false);
   }
 
-  function clearCategory(): void {
+  /** The card, closed — added, cleared, or Shift+Q — and the caret back in the product bar. */
+  function closeCard(): void {
+    setDraft(null);
     setCategory(null);
     setQuery('');
     setSel(0);
@@ -897,134 +839,86 @@ function LeadEntryForm({
 
   // --- Draft --------------------------------------------------------------
 
-  function factsFor(variant: ProductVariant): VariantFacts {
-    return {
-      variantId: variant.id,
-      variantLabel: variant.label,
-      code: variant.code,
-      weightKg: variant.weightKg,
-    };
+  /** A counted row still without its packaging, while the company requires one. */
+  const lacks = (r: GridRow) => packagingRequired && Number(r.qty) > 0 && !r.packaging.trim();
+
+  /** The caret on the card's first field, the first thing it asks. */
+  function focusFirstField(): void {
+    gridRef.current
+      ?.querySelector<HTMLElement>('.ob-order-colour__input, input[data-kind]')
+      ?.focus();
   }
 
-  function openDraft(product: Product, typed = ''): void {
-    const partyRecord = partyRecordFor.get(product.id) ?? null;
-    const rule = colourRuleOf(product);
-    // A variant taken off the form stays sellable on old lines, not new ones.
-    const active = product.variants.filter((variant) => variant.isActive);
-    // A code typed exactly names one variant, so the card opens on that one
-    // alone — the way Modify opens a saved line.
-    const exact = active.find(
-      (variant) => variant.code.toLowerCase() === typed.trim().toLowerCase(),
-    );
-    const variants = (exact ? [exact] : active).map(factsFor);
-
+  /*
+   * The chosen product's sub products have arrived: open the card on all of them. Only once per
+   * choice (`draft` guards it), so a catalogue change mid-entry never rebuilds a card somebody has
+   * typed into; `subRows` is read again only when the card is next opened.
+   */
+  useEffect(() => {
+    if (!category || !subsLoaded || draft) return;
     setDraft({
-      productId: product.id,
-      productName: partyRecord?.productName ?? product.name,
-      image: product.images?.[0],
-      categoryName: product.categoryName,
-      categoryCode: product.categoryCode,
-      brand: product.brand,
-      alias: partyRecord?.alias ?? product.alias,
-      size: partyRecord?.size ?? product.size,
-      rule,
-      fromPartyVariant: partyRecord !== null,
-      notes: '',
-      /*
-       * A multicolour card starts with no rows: the colours are the first
-       * thing it asks, each one adding its own row. Every other card has a row
-       * per variant, blank until somebody types. With no colour list at all
-       * there is nothing to choose from, so a multicolour card falls back to
-       * the plain rows rather than become impossible to add.
-       *
-       * Packaging starts empty on purpose (§3.2): the party's saved packaging
-       * is offered on the card as a suggestion, never applied. Grade starts
-       * empty too — there is no grade on a party's record to carry over.
-       */
-      rows:
-        rule === 'selectable' && colourOptions.length > 0
-          ? []
-          : variants.map((variant) => ({
-              ...variant,
-              colour: '',
-              packaging: '',
-              grade: '',
-              qty: '',
-            })),
-      variants,
+      categoryName: category.name,
+      categoryCode: category.code ?? null,
+      brand: category.brand ?? null,
+      rows: buildRows(subRows, {
+        nextKey: newRowKey,
+        partyRecordFor: (id) => partyRecordFor.get(id),
+      }),
       at: null,
-      editKey: null,
     });
-    setQuery('');
-    setSel(0);
-    setSearchOpen(false);
-  }
+    setCardOpened((n) => n + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category, subsLoaded, draft]);
 
-  function patchRow(key: string, patch: Partial<DraftRow>): void {
+  useEffect(() => {
+    if (cardOpened > 0) focusFirstField();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardOpened]);
+
+  function patchRow(key: string, patch: Partial<GridRow>): void {
     setDraft((current) =>
       current
         ? {
             ...current,
-            rows: current.rows.map((row) => (rowKey(row) === key ? { ...row, ...patch } : row)),
+            rows: current.rows.map((row) => (row.key === key ? { ...row, ...patch } : row)),
           }
         : current,
     );
   }
 
-  /** A colour added to a multicolour card: a row for it on every variant the card orders. */
-  function addColour(colour: string): void {
+  /** "+ Same sub product, another colour": a blank copy under the row, the caret on its colour. */
+  function addAnotherColour(rowKey: string): void {
+    const key = newRowKey();
     setDraft((current) =>
-      current
-        ? {
-            ...current,
-            rows: [
-              ...current.rows,
-              ...current.variants
-                .filter(
-                  (variant) =>
-                    !current.rows.some((row) => rowKey(row) === rowKey({ ...variant, colour })),
-                )
-                .map((variant) => ({ ...variant, colour, packaging: '', grade: '', qty: '' })),
-            ],
-          }
-        : current,
+      current ? { ...current, rows: addColourRow(current.rows, rowKey, () => key) } : current,
+    );
+    window.setTimeout(
+      () =>
+        gridRef.current
+          ?.querySelector<HTMLElement>(`[data-row-key="${key}"] .ob-order-colour__input`)
+          ?.focus(),
+      0,
     );
   }
 
-  function removeColour(colour: string): void {
-    setDraft((current) =>
-      current ? { ...current, rows: current.rows.filter((row) => row.colour !== colour) } : current,
-    );
-  }
-
-  function draftIsReady(candidate: DraftProduct): boolean {
-    const filled = candidate.rows.filter((row) => Number(row.qty) > 0);
-    // `leads.packagingRequiredOnConvert` off: a shop that packs to order
-    // cannot state the packaging at the counter, so a line may go in without.
-    // On, every row that becomes a line needs its own.
-    return filled.length > 0 && !filled.some((row) => packagingRequired && !row.packaging.trim());
+  function draftIsReady(candidate: DraftCard): boolean {
+    // `leads.packagingRequiredOnConvert` off: a shop that packs to order cannot state the
+    // packaging at the counter, so a line may go in without. On, every counted row needs its own.
+    return cardReady(candidate.rows, {
+      packagingRequired,
+      colourListNonEmpty: colourOptions.length > 0,
+    });
   }
 
   /**
-   * One line per row with a quantity — per variant, and on a multicolour card
-   * per colour: White ×10 and Ivory ×5 are two lines on the same variant.
+   * One line per row with a quantity — per variant, and per colour: White ×10 and Ivory ×5 are
+   * two lines on the same variant. A card lifted from the list puts its lines back where they were.
    */
   function saveDraft(): void {
     if (!draft || !draftIsReady(draft)) return;
 
-    const { rows: draftRows, variants: _variants, at, editKey, ...facts } = draft;
-    const added: DraftLine[] = draftRows
-      .filter((row) => Number(row.qty) > 0)
-      .map((row, index) => {
-        const { qty, ...variant } = row;
-        return {
-          ...facts,
-          ...variant,
-          quantity: Number(qty),
-          // A modified line keeps its key, so a tick or an open row stays put.
-          key: editKey && index === 0 ? editKey : `line-${nextKey.current++}`,
-        };
-      });
+    const added = rowsToLines(draft.rows, () => `line-${nextKey.current++}`);
+    const at = draft.at;
 
     setLines((current) => {
       const next = current.slice();
@@ -1032,49 +926,149 @@ function LeadEntryForm({
       else next.splice(Math.min(at, next.length), 0, ...added);
       return next;
     });
-    setDraft(null);
-    window.setTimeout(() => searchRef.current?.focus(), 0);
+    closeCard();
+  }
+
+  /** Lift one product's lines back into the card, on their own; Add puts them back in place. */
+  function modifyGroup(group: LineGroup<DraftLine>): void {
+    const at = lines.indexOf(group.lines[0]!);
+    const doomed = new Set(group.lines.map((line) => line.key));
+    setLines((current) => current.filter((candidate) => !doomed.has(candidate.key)));
+    forget(group.key);
+    setCategory(null);
+    setDraft({
+      categoryName: group.name,
+      categoryCode: group.code,
+      brand: group.brand,
+      rows: linesToRows(group.lines, newRowKey),
+      at: Math.max(0, at),
+    });
+    setSearchOpen(false);
+    setCardOpened((n) => n + 1);
+  }
+
+  function removeGroup(group: LineGroup<DraftLine>): void {
+    const doomed = new Set(group.lines.map((line) => line.key));
+    setLines((current) => current.filter((candidate) => !doomed.has(candidate.key)));
+    forget(group.key);
+  }
+
+  // --- The card's keys ----------------------------------------------------
+
+  const cardTitle = draft ? draft.categoryName : '';
+  /** While the company requires packaging, a counted row without it is what holds Add product back. */
+  const lacksPackaging = Boolean(draft?.rows.some(lacks));
+  /** The product's photo: the first sub product that has one, since a product itself has none. */
+  const cardImage = draft?.rows.find((row) => row.image)?.image;
+
+  /** A selectable row can take "another colour": the one the caret is on, else the last counted. */
+  const selectableRows = draft?.rows.filter((row) => row.rule === 'selectable') ?? [];
+  const someSelectable = colourOptions.length > 0 && selectableRows.length > 0;
+  const moreTarget = someSelectable
+    ? (
+        selectableRows.find((row) => row.key === activeRow) ??
+        [...selectableRows].reverse().find((row) => Number(row.qty) > 0) ??
+        selectableRows[selectableRows.length - 1]
+      )?.key
+    : undefined;
+
+  /** The party's saved packaging is offered for the rows still without one — never applied alone. */
+  const suggestedAny = Boolean(
+    draft?.rows.some((row) => row.packaging === '' && partyRecordFor.get(row.productId)?.packaging),
+  );
+
+  function useSuggestedPackaging(): void {
+    setDraft((current) =>
+      current
+        ? {
+            ...current,
+            rows: current.rows.map((row) => {
+              const suggested = partyRecordFor.get(row.productId)?.packaging;
+              return row.packaging === '' && suggested ? { ...row, packaging: suggested } : row;
+            }),
+          }
+        : current,
+    );
+  }
+
+  function stepQty(row: GridRow, delta: number): void {
+    const current = Number(row.qty) || 0;
+    patchRow(row.key, { qty: String(Math.max(0, current + delta)) });
   }
 
   /**
-   * Lift one saved line back into the card, on its own — the variant is fixed,
-   * and so is its colour; a colour added now becomes a line of its own.
+   * One stop on, row by row: each row's colour (a multicolour one), quantity, packaging and grade,
+   * then Add product. From a row with no quantity the walk skips that row's packaging and grade and
+   * goes on to the next row (`nextWalkStop`). A disabled Add takes no focus, so a card still short
+   * of something keeps the caret where it is and the footer says what is missing.
    */
-  function modifyLine(line: DraftLine, index: number): void {
-    setLines((current) => current.filter((candidate) => candidate.key !== line.key));
-    setOpenKey(null);
-    forget(line.key);
-    const {
-      key,
-      quantity,
-      colour,
-      packaging,
-      grade,
-      variantId,
-      variantLabel,
-      code,
-      weightKg,
-      ...facts
-    } = line;
-    const variant: VariantFacts = {
-      variantId,
-      variantLabel,
-      code,
-      weightKg,
-    };
-    setDraft({
-      ...facts,
-      rows: [{ ...variant, colour, packaging, grade, qty: String(quantity) }],
-      variants: [variant],
-      at: index,
-      editKey: key,
-    });
+  function stepOn(from: Element | null): void {
+    const body = gridRef.current;
+    if (!body || !from) return;
+    const fields = Array.from(
+      body.querySelectorAll<HTMLInputElement>('.ob-order-colour__input, input[data-kind]'),
+    );
+    const add = addRef.current?.querySelector<HTMLElement>('[data-add-card]') ?? null;
+    const stops: WalkStop[] = fields.map((field) => ({
+      rowKey: field.closest<HTMLElement>('[data-row-key]')?.dataset.rowKey ?? null,
+      field: field.classList.contains('ob-order-colour__input')
+        ? 'colour'
+        : (field.dataset.kind as WalkStop['field']),
+    }));
+    stops.push({ rowKey: null, field: 'add' });
+    const index = fields.indexOf(from as HTMLInputElement);
+    if (index < 0) return;
+    const next = nextWalkStop(stops, index, (key) =>
+      Number(draft?.rows.find((row) => row.key === key)?.qty ?? 0),
+    );
+    if (next === null) return;
+    (next < fields.length ? fields[next] : add)?.focus();
   }
 
-  function removeLine(line: DraftLine): void {
-    setLines((current) => current.filter((candidate) => candidate.key !== line.key));
-    setOpenKey((current) => (current === line.key ? null : current));
-    forget(line.key);
+  function quantityKey(event: ReactKeyboardEvent<HTMLInputElement>, row: GridRow): void {
+    const by = event.shiftKey ? 10 : 1;
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      stepQty(row, by);
+      return;
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      stepQty(row, -by);
+      return;
+    }
+    if (event.key !== 'Enter' || chorded(event)) return;
+    // Claimed, not left to the screen's walk, which would run on past the Add button into the notes.
+    event.preventDefault();
+    stepOn(event.currentTarget);
+  }
+
+  /**
+   * A packaging or grade box's Enter, heard after the list inside it has taken the highlighted value
+   * (a wrapper's handler runs after the box's own). Escape needs nothing here: the list closes on its
+   * first press when somebody opened it, and otherwise the screen's walk steps back.
+   */
+  function pickKey(event: ReactKeyboardEvent<HTMLElement>): void {
+    if (event.key !== 'Enter' || chorded(event)) return;
+    event.preventDefault();
+    stepOn(event.target as Element);
+  }
+
+  /** A pick — by Enter or by mouse — moves on by itself (owner's instruction, 2026-09-30). */
+  function picked(key: string, patch: Partial<GridRow>): void {
+    patchRow(key, patch);
+    stepOn(document.activeElement);
+  }
+
+  /** A retired value, or one typed on an older lead, stays shown — not silently blanked. */
+  function valuesFor(
+    options: OptionListItem[],
+    current: string,
+  ): Array<{ value: string; label: string }> {
+    const listed = options.map((option) => ({ value: option.value, label: option.label }));
+    return current && !listed.some((option) => option.value === current)
+      ? [...listed, { value: current, label: current }]
+      : listed;
   }
 
   /** Drop a key from the tick set — a line that is gone cannot stay selected. */
@@ -1118,8 +1112,10 @@ function LeadEntryForm({
    * Remove, or by a Modify that lifts it back into the draft). Reading the set
    * back through the live lines keeps a stale key from inflating the count.
    */
-  const selectedLines = lines.filter((line) => selected[line.key]);
-  const shownKeys = panelLines.map((line) => line.key);
+  const groups = groupLines(panelLines);
+  const selectedGroups = groups.filter((group) => selected[group.key]);
+  const selectedLines = lines.filter((line) => selected[lineGroupKey(line)]);
+  const shownKeys = groups.map((group) => group.key);
   const allShownTicked = shownKeys.length > 0 && shownKeys.every((key) => selected[key]);
 
   function toggleSelect(key: string): void {
@@ -1145,7 +1141,6 @@ function LeadEntryForm({
   function removeSelected(): void {
     const doomed = new Set(selectedLines.map((line) => line.key));
     setLines((current) => current.filter((line) => !doomed.has(line.key)));
-    setOpenKey((current) => (current && doomed.has(current) ? null : current));
     setSelected({});
   }
 
@@ -1158,13 +1153,8 @@ function LeadEntryForm({
    * product chosen — so the key it came from is left to type its Q.
    */
   function completeSubProduct(): boolean {
-    if (draft) {
-      if (!draftIsReady(draft)) return false;
-      saveDraft();
-    } else if (!category || query.trim() !== '') {
-      return false;
-    }
-    clearCategory();
+    if (!draft || !draftIsReady(draft)) return false;
+    saveDraft();
     return true;
   }
 
@@ -1388,7 +1378,7 @@ function LeadEntryForm({
 
   const ready = Boolean(partyId) && lines.length > 0 && !draft;
   /** Distinct products on the order: the panel counts products, and lines under them. */
-  const productCount = new Set(lines.map((line) => line.productId)).size;
+  const productCount = groupLines(lines).length;
   const doneSteps = (partyId ? 1 : 0) + (sourcePlatform ? 1 : 0) + (lines.length > 0 ? 1 : 0);
 
   const statusLine = !partyId
@@ -1481,10 +1471,6 @@ function LeadEntryForm({
           count: lines.length,
           qty: totalQty,
         });
-
-  const searchPlaceholder = category
-    ? t('lead.add.products.productPlaceholder', { category: category.name })
-    : t('lead.add.products.categoryPlaceholder');
 
   return (
     <div ref={rootRef} className="ob-order-page">
@@ -1756,149 +1742,61 @@ function LeadEntryForm({
                   </span>
                 </div>
 
-                {/* The search field, or the model it turned into. */}
+                {/* The product bar: the product first; its sub products open below as a grid. */}
                 <div style={{ position: 'relative' }}>
-                  {draft ? (
-                    <div className="ob-picked">
-                      <ProductThumb
-                        images={draft.image ? [draft.image] : undefined}
-                        name={draft.productName}
-                        size={48}
-                        fallback="none"
-                        alt=""
-                      />
-                      <span
-                        className="ob-mono ob-body-strong"
-                        style={{
-                          fontSize: rem(14),
-                          color: 'var(--accent)',
-                          flex: 'none',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {draft.variants.length === 1
-                          ? draft.variants[0]!.code
-                          : t('lead.add.products.variantCount', { count: draft.variants.length })}
-                      </span>
-                      <span
-                        className="ob-body-strong"
-                        style={{ flex: '1 1 8rem', minWidth: 0, overflowWrap: 'anywhere' }}
-                      >
-                        {draft.productName}
-                      </span>
-                      <span
-                        className="ob-micro"
-                        style={{ color: 'var(--fg-tertiary)', flex: 'none', whiteSpace: 'nowrap' }}
-                      >
-                        {[draft.categoryName, draft.size].filter(Boolean).join(' · ')}
-                      </span>
-                      {draft.rule === 'selectable' && (
-                        <StatusPill tone="accent">{t('product.multiColour.pill')}</StatusPill>
-                      )}
-                      <span style={{ flex: 1, minWidth: 0 }} />
-                      <Button
-                        variant="secondary"
-                        disabled={!draftIsReady(draft)}
-                        onClick={() => saveDraft()}
-                      >
-                        {draft.editKey
-                          ? t('lead.add.draft.saveChanges')
-                          : t('lead.add.draft.saveProduct')}
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        aria-label={t('lead.add.products.clear')}
-                        title={t('lead.add.products.clear')}
-                        onClick={() => {
-                          setDraft(null);
-                          window.setTimeout(() => searchRef.current?.focus(), 0);
-                        }}
-                      >
-                        ✕
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="ob-lead-search">
-                      {category && (
-                        <span className="ob-chip" aria-pressed="true" style={{ cursor: 'default' }}>
-                          <span className="ob-ellipsis">{category.name}</span>
-                          <button
-                            type="button"
-                            className="ob-chip__clear"
-                            aria-label={t('lead.add.products.changeCategory')}
-                            title={t('lead.add.products.changeCategory')}
-                            onClick={clearCategory}
-                          >
-                            ✕
-                          </button>
-                        </span>
-                      )}
-                      <Input
-                        ref={searchRef}
-                        value={query}
-                        placeholder={searchPlaceholder}
-                        aria-label={t('lead.add.products.searchLabel')}
-                        autoComplete="off"
-                        style={{ flex: 1, minWidth: rem(160) }}
-                        onFocus={() => setSearchOpen(true)}
-                        onBlur={() => setSearchOpen(false)}
-                        onChange={(event) => {
-                          setQuery(event.target.value);
+                  <div className="ob-lead-search">
+                    <Input
+                      ref={searchRef}
+                      value={draft ? cardTitle : query}
+                      disabled={Boolean(draft)}
+                      placeholder={t('lead.add.products.categoryPlaceholder')}
+                      aria-label={t('lead.add.products.searchLabel')}
+                      autoComplete="off"
+                      style={{ flex: 1, minWidth: rem(160) }}
+                      onFocus={() => setSearchOpen(true)}
+                      onBlur={() => setSearchOpen(false)}
+                      onChange={(event) => {
+                        setQuery(event.target.value);
+                        setSearchOpen(true);
+                        setSel(0);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape' && searchOpen) {
+                          event.preventDefault();
+                          setSearchOpen(false);
+                          return;
+                        }
+                        if (event.key === 'ArrowDown') {
+                          event.preventDefault();
                           setSearchOpen(true);
-                          setSel(0);
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Escape' && searchOpen) {
-                            event.preventDefault();
-                            setSearchOpen(false);
-                            return;
-                          }
-                          // Backspace on an empty box steps back a stage, the way
-                          // a token in a search field is deleted.
-                          if (event.key === 'Backspace' && query === '' && category) {
-                            event.preventDefault();
-                            clearCategory();
-                            return;
-                          }
-                          if (event.key === 'ArrowDown') {
-                            event.preventDefault();
-                            setSearchOpen(true);
-                            setSel(Math.min(pick + 1, Math.max(0, rows.length - 1)));
-                          }
-                          if (event.key === 'ArrowUp') {
-                            event.preventDefault();
-                            setSel(Math.max(0, pick - 1));
-                          }
-                          /*
-                           * A bare Enter takes the highlighted row; Tab only once
-                           * something was typed. The sub-product bar reopens on
-                           * its whole list after every line, and a Tab out of it
-                           * took the first sub product as one nobody chose. A
-                           * chord is never a pick: Ctrl+Enter here is the review.
-                           */
-                          const takes =
-                            !chorded(event) &&
-                            (event.key === 'Enter' || (event.key === 'Tab' && query.trim() !== ''));
-                          if (takes && listOpen && rows[pick]) {
-                            // Claimed, so the Enter walk does not step past a
-                            // choice that has only just been made.
-                            event.preventDefault();
-                            if (category) openDraft(rows[pick] as Product, query);
-                            else chooseCategory(rows[pick] as ProductCategory);
-                          } else if (takes && listOpen && event.key === 'Enter') {
-                            // Nothing to take — a typo, or `opt⏎41⏎` typed before
-                            // the product's sub products arrived. The walk would
-                            // put the caret in the notes and the next code typed
-                            // there; it stays in the bar. Escape closes the list
-                            // for somebody who does mean to walk on.
-                            event.preventDefault();
-                          }
-                        }}
-                      />
-                    </div>
-                  )}
+                          setSel(Math.min(pick + 1, Math.max(0, rows.length - 1)));
+                        }
+                        if (event.key === 'ArrowUp') {
+                          event.preventDefault();
+                          setSel(Math.max(0, pick - 1));
+                        }
+                        /*
+                         * A bare Enter takes the highlighted row; Tab only once something was
+                         * typed. A chord is never a pick: Ctrl+Enter here is the review.
+                         */
+                        const takes =
+                          !chorded(event) &&
+                          (event.key === 'Enter' || (event.key === 'Tab' && query.trim() !== ''));
+                        if (takes && listOpen && rows[pick]) {
+                          // Claimed, so the Enter walk does not step past a choice that has only
+                          // just been made.
+                          event.preventDefault();
+                          chooseCategory(rows[pick]!);
+                        } else if (takes && listOpen && event.key === 'Enter') {
+                          // Nothing to take (a typo): the caret stays in the bar. Escape closes
+                          // the list for somebody who does mean to walk on.
+                          event.preventDefault();
+                        }
+                      }}
+                    />
+                  </div>
 
-                  {listOpen && !category && (
+                  {listOpen && (
                     <div role="listbox" className="ob-suggest" ref={listRef}>
                       <div
                         className="ob-suggest-row ob-eyebrow"
@@ -1961,140 +1859,13 @@ function LeadEntryForm({
                     </div>
                   )}
 
-                  {listOpen && category && (
-                    <div role="listbox" className="ob-suggest" ref={listRef}>
-                      <div
-                        className="ob-suggest-row ob-eyebrow"
-                        style={{
-                          gridTemplateColumns: SUGGEST_GRID,
-                          color: 'var(--fg-tertiary)',
-                          fontSize: 'var(--t-eyebrow-size)',
-                          fontWeight: 600,
-                          letterSpacing: '0.07em',
-                        }}
-                      >
-                        <span>{t('lead.add.products.col.code')}</span>
-                        <span>{t('lead.add.products.col.product')}</span>
-                        <span>{t('lead.add.products.col.variant')}</span>
-                        <span style={{ textAlign: 'right' }}>
-                          {t('lead.add.products.col.weight')}
-                        </span>
-                      </div>
-                      {subMatches.map((row, index) => {
-                        const active = row.variants.filter((variant) => variant.isActive);
-                        const first = active[0] ?? row.variants[0];
-                        const weights = active.map((variant) => variant.weightKg);
-                        const rule = colourRuleOf(row);
-                        // A colour-named sub product (a fixed colour, or MAGENTA
-                        // sold in Magenta) carries its swatch beside the name.
-                        const swatch =
-                          rule === 'fixed' && first?.label ? colourHex(first.label) : undefined;
-                        return (
-                          <button
-                            key={row.id}
-                            type="button"
-                            /*
-                             * Out of the Tab order: the rows are for the pointer,
-                             * the box's arrows and Enter are the keyboard's. A Tab
-                             * from an empty bar landed on the first row, the box's
-                             * blur then closed the list under it, and the caret
-                             * was left on nothing at all.
-                             */
-                            tabIndex={-1}
-                            className="ob-suggest-row"
-                            style={{
-                              gridTemplateColumns: SUGGEST_GRID,
-                              background: index === pick ? 'var(--bg-selected)' : undefined,
-                            }}
-                            onMouseEnter={() => setSel(index)}
-                            onMouseDown={(event) => {
-                              event.preventDefault();
-                              openDraft(row, query);
-                            }}
-                          >
-                            <span
-                              className="ob-mono ob-body-strong"
-                              style={{
-                                fontSize: rem(12),
-                                color: index === pick ? 'var(--accent)' : undefined,
-                              }}
-                            >
-                              {active.length > 1
-                                ? t('lead.add.products.variantCount', { count: active.length })
-                                : (first?.code ?? '—')}
-                            </span>
-                            <span
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: rem(8),
-                                minWidth: 0,
-                              }}
-                            >
-                              <ProductThumb
-                                images={row.images}
-                                name={row.name}
-                                size={32}
-                                fallback="none"
-                                alt=""
-                              />
-                              <span
-                                style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}
-                              >
-                                <span
-                                  className="ob-ellipsis"
-                                  style={{ display: 'flex', alignItems: 'center', gap: rem(6) }}
-                                >
-                                  {swatch && first?.label && (
-                                    <ColourChip name={first.label} hex={swatch} />
-                                  )}
-                                  {row.name}
-                                </span>
-                                <span
-                                  className="ob-mono ob-micro"
-                                  style={{ color: 'var(--fg-tertiary)' }}
-                                >
-                                  {row.size ?? ''}
-                                </span>
-                              </span>
-                            </span>
-                            <span className="ob-small ob-ellipsis" style={{ minWidth: 0 }}>
-                              {active.length > 1
-                                ? active.map((variant) => variant.label ?? variant.code).join(', ')
-                                : rule === 'selectable'
-                                  ? t('product.multiColour.pill')
-                                  : (shownColour(first?.label, row.name) ?? '')}
-                            </span>
-                            <span
-                              className="ob-small"
-                              style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                            >
-                              {weights.length === 1
-                                ? formatKg(weights[0] ?? null)
-                                : weights.some((weight) => weight === null)
-                                  ? t('product.weight.missingShort')
-                                  : formatKg(weights.reduce<number>((sum, w) => sum + (w ?? 0), 0))}
-                            </span>
-                          </button>
-                        );
-                      })}
-                      {subMatches.length === 0 && (
-                        <p className="ob-small" style={{ margin: 0, padding: 'var(--s-8)' }}>
-                          {t('lead.add.products.noProduct')}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
                   <p
                     className="ob-micro"
                     style={{ margin: `${rem(7)} 0 0`, color: 'var(--fg-tertiary)' }}
                   >
                     {draft
                       ? t('lead.add.products.pickedHint')
-                      : category
-                        ? t('lead.add.products.productHint')
-                        : t('lead.add.products.categoryHint')}
+                      : t('lead.add.products.categoryHint')}
                   </p>
                 </div>
 
@@ -2120,24 +1891,266 @@ function LeadEntryForm({
                   </p>
                 )}
 
-                {/* The card one model is built in before it joins the lead. */}
+                {/* The product card: every sub product of the chosen product, a row each. */}
                 {draft && (
-                  <DraftCard
-                    draft={draft}
-                    ready={draftIsReady(draft)}
-                    packagingRequired={packagingRequired}
-                    packagingOptions={packagingOptions}
-                    gradeOptions={gradeOptions}
-                    colourOptions={colourOptions}
-                    labelOf={labelOf}
-                    suggestedPackaging={partyRecordFor.get(draft.productId)?.packaging ?? null}
-                    colourHex={colourHex}
-                    onRow={patchRow}
-                    onAddColour={addColour}
-                    onRemoveColour={removeColour}
-                    onSave={saveDraft}
-                    onComplete={completeSubProduct}
-                  />
+                  <div style={{ marginTop: 'var(--s-12)' }}>
+                    <ProductCard
+                      head={
+                        <>
+                          <ProductThumb
+                            images={cardImage ? [cardImage] : undefined}
+                            name={draft.categoryName}
+                            size={48}
+                            fallback="none"
+                            alt=""
+                          />
+                          {draft.categoryCode && (
+                            <span className="ob-order-product__chip">{draft.categoryCode}</span>
+                          )}
+                          <span className="ob-order-product__name">{draft.categoryName}</span>
+                          {draft.brand && <span className="ob-order-eyebrow">{draft.brand}</span>}
+                          <span style={{ flex: 1, minWidth: 0 }} />
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            aria-label={t('lead.add.products.clear')}
+                            title={t('lead.add.products.clear')}
+                            onClick={closeCard}
+                          >
+                            ✕
+                          </Button>
+                        </>
+                      }
+                      footer={
+                        <div ref={addRef} className="ob-order-product__footrow">
+                          <span className="ob-order-hint">{t('lead.add.card.shiftQ')}</span>
+                          {lacksPackaging && (
+                            <span
+                              className="ob-order-hint"
+                              style={{ color: 'var(--state-offline)' }}
+                            >
+                              {t('lead.add.draft.hintPackaging')}
+                            </span>
+                          )}
+                          <span style={{ flex: 1, minWidth: 0 }} />
+                          <span className="ob-order-product__pieces">
+                            {`${t('lead.add.card.thisProduct')} ${cardPieces(draft.rows).toLocaleString('en-IN')} ${t('unit.pieces')}`}
+                          </span>
+                          {/*
+                           * The last stop of the card's Enter walk, after the last row: Enter over a
+                           * button is a click. `data-field` makes it a stop of the screen's Escape
+                           * walk too, back to that row's grade. While the card is short of something
+                           * the button is disabled, which takes it out of both.
+                           */}
+                          <Button
+                            variant="secondary"
+                            data-field
+                            data-add-card
+                            disabled={!draftIsReady(draft)}
+                            aria-label={
+                              draft.at !== null
+                                ? t('lead.add.draft.saveChanges')
+                                : t('lead.add.draft.saveProduct')
+                            }
+                            onClick={saveDraft}
+                          >
+                            {draft.at !== null
+                              ? t('lead.add.draft.saveChanges')
+                              : t('lead.add.draft.saveProduct')}
+                            <span className="ob-order-kbd" aria-hidden="true">
+                              Enter
+                            </span>
+                          </Button>
+                        </div>
+                      }
+                    >
+                      {draft.rows.length === 0 ? (
+                        <p
+                          className="ob-small"
+                          style={{ margin: rem(14), color: 'var(--fg-tertiary)' }}
+                        >
+                          {t('lead.add.card.noSubs')}
+                        </p>
+                      ) : (
+                        <div
+                          onFocus={(event) => {
+                            const row = (event.target as HTMLElement).closest<HTMLElement>(
+                              '[data-row-key]',
+                            );
+                            if (row?.dataset.rowKey) setActiveRow(row.dataset.rowKey);
+                          }}
+                        >
+                          <SubGrid
+                            bodyRef={gridRef}
+                            labels={{
+                              code: t('lead.add.products.col.code'),
+                              sub: t('lead.add.products.col.product'),
+                              colour: t('lead.add.draft.colour'),
+                              weight: t('lead.add.products.col.weight'),
+                              qty: t('lead.add.draft.col.qty'),
+                              packaging: (
+                                <>
+                                  {t('lead.add.draft.packaging')}
+                                  {packagingRequired && (
+                                    <span
+                                      aria-hidden="true"
+                                      title={t('lead.add.step.required')}
+                                      style={{ color: 'var(--state-offline)' }}
+                                    >
+                                      {' *'}
+                                    </span>
+                                  )}
+                                </>
+                              ),
+                              grade: t('lead.add.draft.grade'),
+                            }}
+                          >
+                            {draft.rows.map((row) => {
+                              // The chosen colour on a multicolour row, else the fixed one.
+                              const named = row.colour ? labelOf(row.colour) : variantName(row);
+                              const unpacked = lacks(row);
+                              const chooses = row.rule === 'selectable' && colourOptions.length > 0;
+                              return (
+                                <SubRow key={row.key} rowKey={row.key}>
+                                  <span className="ob-order-cell--code" title={row.code}>
+                                    {row.code}
+                                  </span>
+                                  <span className="ob-order-cell--name" title={row.productName}>
+                                    {row.productName}
+                                  </span>
+                                  {chooses ? (
+                                    <ColourSelect
+                                      value={row.colour}
+                                      options={colourOptions}
+                                      labelOf={labelOf}
+                                      hexOf={colourHex}
+                                      ariaLabel={`${t('lead.add.draft.colour')} — ${row.productName} ${row.code}`}
+                                      placeholder={t('lead.add.card.pickColour')}
+                                      hint={t('lead.add.card.colourHint')}
+                                      filterHint={t('lead.add.card.filterHint')}
+                                      noMatches={t('common.noMatches')}
+                                      attention
+                                      onPick={(colour) => patchRow(row.key, { colour })}
+                                      onAdvance={() => stepOn(document.activeElement)}
+                                    />
+                                  ) : row.rule === 'fixed' && row.variantLabel ? (
+                                    <span className="ob-order-cell--fixed">
+                                      <ColourChip
+                                        name={labelOf(row.variantLabel)}
+                                        hex={colourHex(row.variantLabel)}
+                                      />
+                                      <span className="ob-order-cell--name">
+                                        {labelOf(row.variantLabel)}
+                                      </span>
+                                    </span>
+                                  ) : (
+                                    <span className="ob-order-cell--num">—</span>
+                                  )}
+                                  <span className="ob-order-cell--num">
+                                    <WeightCell kg={row.weightKg} />
+                                  </span>
+                                  <Input
+                                    data-kind="qty"
+                                    value={row.qty}
+                                    inputMode="numeric"
+                                    placeholder="0"
+                                    aria-label={`${t('lead.add.draft.col.quantity')} — ${named}`}
+                                    style={{ textAlign: 'right', minWidth: 0, width: '100%' }}
+                                    onChange={(event) =>
+                                      patchRow(row.key, {
+                                        qty: event.target.value.replace(/[^0-9]/g, ''),
+                                      })
+                                    }
+                                    onKeyDown={(event) => quantityKey(event, row)}
+                                  />
+                                  {/*
+                                   * Packaging and grade beside the quantity and the same box: the
+                                   * kit's pick-only `Select` is an `Input` with a list under it. Type
+                                   * a letter or arrow down, Enter takes it and steps on; "—" is none.
+                                   */}
+                                  <span style={{ minWidth: 0 }} onKeyDown={pickKey}>
+                                    <Select
+                                      data-kind="packaging"
+                                      value={row.packaging}
+                                      aria-label={`${t('lead.add.draft.packaging')} — ${named}`}
+                                      aria-required={packagingRequired || undefined}
+                                      aria-invalid={unpacked || undefined}
+                                      onChange={(event) =>
+                                        picked(row.key, { packaging: event.target.value })
+                                      }
+                                    >
+                                      <option value="">—</option>
+                                      {valuesFor(packagingOptions, row.packaging).map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                          {option.label}
+                                        </option>
+                                      ))}
+                                    </Select>
+                                  </span>
+                                  <span style={{ minWidth: 0 }} onKeyDown={pickKey}>
+                                    <Select
+                                      data-kind="grade"
+                                      value={row.grade}
+                                      aria-label={`${t('lead.add.draft.grade')} — ${named}`}
+                                      onChange={(event) =>
+                                        picked(row.key, { grade: event.target.value })
+                                      }
+                                    >
+                                      <option value="">—</option>
+                                      {valuesFor(gradeOptions, row.grade).map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                          {option.label}
+                                        </option>
+                                      ))}
+                                    </Select>
+                                  </span>
+                                </SubRow>
+                              );
+                            })}
+                          </SubGrid>
+                        </div>
+                      )}
+
+                      {draft.rows.length > 0 && (
+                        <div className="ob-order-more">
+                          {someSelectable && (
+                            <button
+                              type="button"
+                              disabled={!moreTarget}
+                              onClick={() => moreTarget && addAnotherColour(moreTarget)}
+                            >
+                              <Icon name="plus" size={14} />
+                              {t('lead.add.card.anotherColour')}
+                            </button>
+                          )}
+                          {suggestedAny && (
+                            <button type="button" onClick={useSuggestedPackaging}>
+                              {t('lead.add.card.useSuggested')}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {draft.rows.length > 0 && packagingOptions.length === 0 && (
+                        <p
+                          className="ob-micro"
+                          style={{ margin: `${rem(4)} ${rem(14)} 0`, color: 'var(--fg-tertiary)' }}
+                        >
+                          {t('lead.add.draft.packagingEmptyFields')}
+                        </p>
+                      )}
+                      {draft.rows.length > 0 && gradeOptions.length === 0 && (
+                        <p
+                          className="ob-micro"
+                          style={{
+                            margin: `${rem(4)} ${rem(14)} ${rem(8)}`,
+                            color: 'var(--fg-tertiary)',
+                          }}
+                        >
+                          {t('lead.add.draft.gradeEmptyFields')}
+                        </p>
+                      )}
+                    </ProductCard>
+                  </div>
                 )}
               </section>
 
@@ -2189,13 +2202,13 @@ function LeadEntryForm({
           }
           toolbar={
             <>
-              {selectedLines.length > 0 && (
+              {selectedGroups.length > 0 && (
                 <div className="ob-lead-selbar">
                   <span
                     className="ob-small ob-body-strong"
                     style={{ fontVariantNumeric: 'tabular-nums' }}
                   >
-                    {t('lead.add.panel.selected', { count: selectedLines.length })}
+                    {t('lead.add.panel.selected', { count: selectedGroups.length })}
                   </span>
                   <span style={{ flex: 1, minWidth: 0 }} />
                   <Button variant="secondary" size="sm" onClick={() => setSelected({})}>
@@ -2203,10 +2216,10 @@ function LeadEntryForm({
                   </Button>
                   <Button variant="danger" size="sm" onClick={removeSelected}>
                     {t(
-                      selectedLines.length === 1
+                      selectedGroups.length === 1
                         ? 'lead.add.panel.removeSelectedOne'
                         : 'lead.add.panel.removeSelected',
-                      { count: selectedLines.length },
+                      { count: selectedGroups.length },
                     )}
                   </Button>
                 </div>
@@ -2311,21 +2324,57 @@ function LeadEntryForm({
           saving={busy}
           onSave={() => void save()}
         >
-          {panelLines.map((line) => (
-            <LeadLine
-              key={line.key}
-              line={line}
-              open={openKey === line.key}
-              checked={Boolean(selected[line.key])}
-              packagingRequired={packagingRequired}
-              colourHex={colourHex}
-              labelOf={labelOf}
-              onToggle={() => setOpenKey((current) => (current === line.key ? null : line.key))}
-              onCheck={() => toggleSelect(line.key)}
-              onModify={() => modifyLine(line, lines.indexOf(line))}
-              onRemove={() => removeLine(line)}
-            />
-          ))}
+          {groups.map((group) => {
+            const image = group.lines.find((line) => line.image)?.image;
+            return (
+              <AddedGroup
+                key={group.key}
+                leading={
+                  <input
+                    type="checkbox"
+                    className="ob-lead-check"
+                    style={{ marginLeft: 'var(--s-8)' }}
+                    checked={Boolean(selected[group.key])}
+                    aria-label={t('lead.add.panel.select', { product: group.name })}
+                    onChange={() => toggleSelect(group.key)}
+                  />
+                }
+                thumb={
+                  <ProductThumb
+                    images={image ? [image] : undefined}
+                    name={group.name}
+                    size={32}
+                    fallback="none"
+                    alt=""
+                  />
+                }
+                code={group.code}
+                name={group.name}
+                pieces={group.pieces}
+                pcsUnit={t('unit.pieces')}
+                editLabel={t('lead.add.line.modifyProduct', { product: group.name })}
+                removeLabel={t('lead.add.line.removeProduct', { product: group.name })}
+                onEdit={() => modifyGroup(group)}
+                onRemove={() => removeGroup(group)}
+              >
+                {group.lines.map((line) => {
+                  const colour =
+                    line.colour || (line.rule === 'fixed' ? (line.variantLabel ?? '') : '');
+                  return (
+                    <AddedLine
+                      key={line.key}
+                      sub={line.productName}
+                      colour={colour ? labelOf(colour) : ''}
+                      colourHex={colour ? colourHex(colour) : undefined}
+                      packaging={line.packaging}
+                      grade={line.grade}
+                      qty={line.quantity}
+                    />
+                  );
+                })}
+              </AddedGroup>
+            );
+          })}
           {matchedLines.length > panelLines.length && (
             <p className="ob-micro" style={{ margin: 0, color: 'var(--fg-tertiary)' }}>
               {t('lead.add.panel.truncated', { shown: panelLines.length })}
@@ -2371,61 +2420,11 @@ function LeadEntryForm({
 
 // --- Pieces ---------------------------------------------------------------
 
-const SUGGEST_GRID = `${rem(84)} minmax(0, 1fr) minmax(0, 0.7fr) ${rem(84)}`;
-/*
- * Six columns in the form column's width — code, variant, weight, quantity,
- * packaging, grade. It shares the screen with the Added-products panel, so at
- * the 1024-wide floor the minimums must fit about 27rem: the figures get as
- * little as they need, packaging and grade shrink from a comfortable width to
- * a word and the chevron, and the variant's name takes what is left.
- */
-const VARIANT_GRID = `${rem(64)} minmax(${rem(48)}, 1fr) ${rem(60)} ${rem(56)} minmax(${rem(72)}, ${rem(96)}) minmax(${rem(72)}, ${rem(96)})`;
-
 /** The small upper-case label that names a row without becoming a heading. */
 function Eyebrow({ children }: { children: ReactNode }) {
   return (
     <span className="ob-eyebrow" style={{ flex: 'none', color: 'var(--fg-tertiary)' }}>
       {children}
-    </span>
-  );
-}
-
-/**
- * A row's colour with its dot, when the palette knows the colour: the fixed
- * colour (the variant's label), or the one chosen on a multicolour row.
- *
- * The words are left off when they only repeat the sub product's name —
- * MAGENTA in Magenta (§2); the dot stays. A dedicated sub product has no
- * colour at all and shows the table's em-dash.
- */
-function VariantName({
-  colour,
-  productName,
-  hex,
-}: {
-  colour: string | null;
-  productName: string;
-  hex: string | undefined;
-}) {
-  return (
-    <span
-      className="ob-small"
-      style={{ display: 'inline-flex', alignItems: 'center', gap: rem(7), minWidth: 0 }}
-    >
-      {colour && (
-        <span
-          aria-hidden="true"
-          style={{
-            width: rem(13),
-            height: rem(13),
-            borderRadius: '50%',
-            flex: 'none',
-            background: hex ?? 'var(--bg-sunken)',
-            border: '1px solid var(--line-strong)',
-          }}
-        />
-      )}
-      <span className="ob-ellipsis">{colour ? (shownColour(colour, productName) ?? '') : '—'}</span>
     </span>
   );
 }
@@ -2437,805 +2436,6 @@ function WeightCell({ kg }: { kg: number | null }) {
   return (
     <span className="ob-small" style={{ fontVariantNumeric: 'tabular-nums' }}>
       {formatKg(kg)}
-    </span>
-  );
-}
-
-/**
- * One variant already on the lead, as the panel draws it.
- *
- * Collapsed it is one line — code, name, colour, quantity — so twenty lines
- * can be scanned for the one that is wrong. Opened it adds **one wrapping row**
- * of everything else the line knows, and the two things that can be done about
- * it.
- *
- * One row, not five. It was five: a variant line, a weight line, a packaging
- * line, and a button line, each the full width of the panel and
- * mostly empty — expanding one product pushed the next three off the screen.
- * The facts are short words; they belong beside each other, separated by a
- * middot, and they wrap when there is no room.
- *
- * A line with no variant name of its own no longer draws an em-dash for it.
- * The placeholder is right in the draft card's *table*, where a column has to
- * have a cell; here it sat immediately in front of the colour swatch and read
- * as though something were missing.
- *
- * The tick box sits outside the toggle rather than inside it: expanding a row
- * to read it must not select it for removal.
- */
-function LeadLine({
-  line,
-  open,
-  checked,
-  packagingRequired,
-  colourHex,
-  labelOf,
-  onToggle,
-  onCheck,
-  onModify,
-  onRemove,
-}: {
-  line: DraftLine;
-  open: boolean;
-  checked: boolean;
-  packagingRequired: boolean;
-  colourHex: (name: string) => string | undefined;
-  /** The colour list's current label for a stored colour value. */
-  labelOf: (colour: string) => string;
-  onToggle: () => void;
-  onCheck: () => void;
-  onModify: () => void;
-  onRemove: () => void;
-}) {
-  const kg = lineWeight(line);
-  const packaging = line.packaging.trim();
-  const grade = line.grade.trim();
-
-  /*
-   * The colour to show a swatch for: the one chosen on the line, or the
-   * variant's own when nothing was chosen. A product that comes in one
-   * unlabelled form has neither, and then there is simply no swatch — the
-   * em-dash that used to stand in for it said nothing the row did not already
-   * say by leaving the space empty. Nor when the variant's colour only
-   * repeats the name (`MAGENTA` in Magenta), as the head above leaves it out.
-   */
-  const swatch = line.colour.trim() || shownColour(line.variantLabel, line.productName);
-
-  /*
-   * Everything the collapsed head has no room for, in the order somebody reads
-   * it: what it is, then how it goes out, then what it weighs. Each entry is a
-   * few words; `null` drops out rather than leaving a gap.
-   */
-  const facts: ReactNode[] = [
-    swatch ? <ColourName key="colour" name={labelOf(swatch)} hex={colourHex(swatch)} /> : null,
-    line.categoryName ? <span key="category">{line.categoryName}</span> : null,
-    grade ? (
-      <span key="grade">
-        {t('lead.add.line.grade')} {grade}
-      </span>
-    ) : null,
-    // "no packaging" is a warning only while the company requires packaging;
-    // otherwise a line without it is simply how the shop sells.
-    packaging || packagingRequired ? (
-      <span key="packaging" style={packaging ? undefined : { color: 'var(--state-offline)' }}>
-        {packaging || t('lead.add.line.noPackaging')}
-      </span>
-    ) : null,
-    // The long wording, not the table's `missingShort`. In the draft card's
-    // variants table a bare "missing" sits under a Weight column header; in a
-    // row of middot-separated words it would be missing *what*.
-    line.weightKg === null ? (
-      <StatusPill key="weight" tone="offline">
-        {t('product.weight.missing')}
-      </StatusPill>
-    ) : (
-      <span key="weight">{t('lead.add.line.lineWeight', { kg: formatKg(kg) })}</span>
-    ),
-  ].filter(Boolean);
-
-  return (
-    <div className="ob-lead-line" data-open={open ? 'true' : undefined}>
-      <div className="ob-lead-line__head">
-        <input
-          type="checkbox"
-          className="ob-lead-check"
-          style={{ marginLeft: 'var(--s-8)' }}
-          checked={checked}
-          aria-label={t('lead.add.panel.select', { product: line.productName })}
-          onChange={onCheck}
-        />
-        <button
-          type="button"
-          className="ob-lead-line__toggle"
-          aria-expanded={open}
-          onClick={onToggle}
-        >
-          <span aria-hidden="true" style={{ flex: 'none', color: 'var(--fg-tertiary)' }}>
-            {open ? '▾' : '▸'}
-          </span>
-          <ProductThumb
-            images={line.image ? [line.image] : undefined}
-            name={line.productName}
-            size={32}
-            fallback="none"
-            alt=""
-          />
-          <span className="ob-mono ob-body-strong" style={{ flex: 'none' }}>
-            {line.code}
-          </span>
-          <span className="ob-body-strong ob-ellipsis" style={{ flex: 1, minWidth: 0 }}>
-            {line.productName}
-            {shownColour(line.variantLabel, line.productName) && (
-              <span className="ob-small" style={{ fontWeight: 450, color: 'var(--fg-secondary)' }}>
-                {' · '}
-                {labelOf(line.variantLabel ?? '')}
-              </span>
-            )}
-            {line.colour && (
-              <span className="ob-small" style={{ fontWeight: 450, color: 'var(--fg-secondary)' }}>
-                {' · '}
-                {labelOf(line.colour)}
-              </span>
-            )}
-            {line.grade && (
-              <span className="ob-small" style={{ fontWeight: 450, color: 'var(--fg-secondary)' }}>
-                {' · '}
-                {line.grade}
-              </span>
-            )}
-          </span>
-          <span
-            className="ob-micro"
-            style={{
-              flex: 'none',
-              color: 'var(--fg-tertiary)',
-              fontVariantNumeric: 'tabular-nums',
-            }}
-          >
-            {t('lead.add.line.qtyShort', { count: line.quantity })}
-          </span>
-        </button>
-      </div>
-
-      {open && (
-        <div className="ob-lead-line__body">
-          <span className="ob-lead-line__facts ob-micro">
-            {facts.map((fact, index) => (
-              <Fragment key={index}>
-                {index > 0 && (
-                  <span aria-hidden="true" className="ob-lead-line__sep">
-                    ·
-                  </span>
-                )}
-                {fact}
-              </Fragment>
-            ))}
-          </span>
-
-          <span className="ob-lead-line__acts">
-            {/*
-             * Icons on a tinted square, not words (owner's instruction). Two
-             * verbs repeated down a list of twenty lines is twenty times the
-             * same two words; the pencil and the bin are read once. The square
-             * is what makes them look pressable — as bare ghost text they read
-             * as part of the sentence in front of them.
-             *
-             * `title` for the pointer, `aria-label` naming the product for
-             * everything else: "Remove" on its own, twenty times over, tells a
-             * screen reader nothing about which line is about to go.
-             */}
-            <button
-              type="button"
-              className="ob-lead-line__act"
-              title={t('lead.add.line.modify')}
-              aria-label={t('lead.add.line.modifyProduct', { product: line.productName })}
-              onClick={onModify}
-            >
-              <Icon name="edit" size={14} />
-            </button>
-            <button
-              type="button"
-              className="ob-lead-line__act ob-lead-line__act--danger"
-              title={t('lead.add.products.remove')}
-              aria-label={t('lead.add.line.removeProduct', { product: line.productName })}
-              onClick={onRemove}
-            >
-              <Icon name="trash" size={14} />
-            </button>
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
- * The card one sub product is built in before it joins the lead.
- *
- * Nothing here is on the voucher yet, which is the point: what the sub
- * product's colour rule leaves to ask, packaging while the company requires
- * it, and at least one quantity are all decided in one place, and Add is
- * refused until they are. The hint along the bottom says what is missing
- * rather than making somebody guess at a disabled button.
- *
- * One row per variant — per variant *and colour* on a multicolour card — the
- * code and weight already filled from the master; what is left to say is how
- * many and, right beside it, how they are packed and in which grade. A row
- * with no quantity simply adds nothing.
- *
- * Enter walks quantity → packaging → grade on each row, then on to Add
- * product; Enter there adds the card (§6.6–6.7). Escape walks the same stops
- * back — the screen's `useEscapeToPrevious` does that, the Add button being a
- * `data-field` stop of it.
- */
-function DraftCard({
-  draft,
-  ready,
-  packagingRequired,
-  packagingOptions,
-  gradeOptions,
-  colourOptions,
-  labelOf,
-  suggestedPackaging,
-  colourHex,
-  onRow,
-  onAddColour,
-  onRemoveColour,
-  onSave,
-  onComplete,
-}: {
-  draft: DraftProduct;
-  ready: boolean;
-  /** `leads.packagingRequiredOnConvert`, already coalesced by the screen. */
-  packagingRequired: boolean;
-  packagingOptions: OptionListItem[];
-  gradeOptions: OptionListItem[];
-  colourOptions: OptionListItem[];
-  /** The colour list's current label for a stored colour value. */
-  labelOf: (colour: string) => string;
-  suggestedPackaging: string | null;
-  colourHex: (name: string) => string | undefined;
-  onRow: (key: string, patch: Partial<DraftRow>) => void;
-  onAddColour: (colour: string) => void;
-  onRemoveColour: (colour: string) => void;
-  onSave: () => void;
-  /** Shift+Q's button: add the card and go to the product bar. */
-  onComplete: () => boolean;
-}) {
-  const quantitiesRef = useRef<HTMLDivElement>(null);
-  const addRef = useRef<HTMLDivElement>(null);
-  const filled = draft.rows.filter((row) => Number(row.qty) > 0);
-  const pieces = filled.reduce((sum, row) => sum + Number(row.qty), 0);
-  const previewKg = filled.reduce(
-    (sum, row) => sum + (lineWeight({ weightKg: row.weightKg, quantity: Number(row.qty) }) ?? 0),
-    0,
-  );
-  /** A multicolour card with a colour list to choose from (else it fell back to plain rows). */
-  const choosing = draft.rule === 'selectable' && colourOptions.length > 0;
-
-  /** A counted row still waiting for its packaging, while the company requires one. */
-  const unpacked = (row: DraftRow): boolean =>
-    packagingRequired && Number(row.qty) > 0 && !row.packaging.trim();
-
-  const hint =
-    choosing && draft.rows.length === 0
-      ? t('lead.add.draft.hintColour')
-      : filled.length === 0
-        ? t('lead.add.draft.hintQuantity')
-        : filled.some(unpacked)
-          ? t('lead.add.draft.hintPackaging')
-          : t('lead.add.draft.hintPieces', { count: pieces });
-
-  function stepQty(row: DraftRow, delta: number): void {
-    const current = Number(row.qty) || 0;
-    onRow(rowKey(row), { qty: String(Math.max(0, current + delta)) });
-  }
-
-  /**
-   * One stop on: each row's quantity, packaging and grade, then Add product.
-   * A disabled Add takes no focus, so a card still short of something keeps
-   * the caret on its last grade and the hint says what is missing.
-   */
-  function stepOn(from: Element | null): void {
-    const stops: HTMLElement[] = [
-      ...Array.from(quantitiesRef.current?.querySelectorAll('input') ?? []),
-      ...Array.from(addRef.current?.querySelectorAll<HTMLElement>('[data-add-card]') ?? []),
-    ];
-    const index = stops.indexOf(from as HTMLElement);
-    if (index >= 0) stops[index + 1]?.focus();
-  }
-
-  function quantityKey(event: ReactKeyboardEvent<HTMLInputElement>, row: DraftRow): void {
-    const by = event.shiftKey ? 10 : 1;
-    if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      stepQty(row, by);
-      return;
-    }
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      stepQty(row, -by);
-      return;
-    }
-    if (event.key !== 'Enter' || chorded(event)) return;
-    // Claimed, not left to the screen's walk, which would run on past the Add
-    // button into the notes.
-    event.preventDefault();
-    stepOn(event.currentTarget);
-  }
-
-  /**
-   * A packaging or grade box's Enter, heard after the list inside it has
-   * taken the highlighted value (a wrapper's handler runs after the box's
-   * own). Escape needs nothing here: the list closes on its first press when
-   * somebody opened it, and otherwise the screen's walk steps back.
-   */
-  function pickKey(event: ReactKeyboardEvent<HTMLElement>): void {
-    if (event.key !== 'Enter' || chorded(event)) return;
-    event.preventDefault();
-    stepOn(event.target as Element);
-  }
-
-  /**
-   * A pick — by Enter or by mouse — moves on by itself (owner's instruction,
-   * 2026-09-30). The list keeps focus in its box while it is clicked, so the
-   * box is the focused element here; on Enter `pickKey` then steps from the
-   * same box to the same next stop.
-   */
-  function picked(key: string, patch: Partial<DraftRow>): void {
-    onRow(key, patch);
-    stepOn(document.activeElement);
-  }
-
-  /** A retired value, or one typed on an older lead, stays shown — not silently blanked. */
-  function valuesFor(
-    options: OptionListItem[],
-    current: string,
-  ): Array<{ value: string; label: string }> {
-    const listed = options.map((option) => ({ value: option.value, label: option.label }));
-    return current && !listed.some((option) => option.value === current)
-      ? [...listed, { value: current, label: current }]
-      : listed;
-  }
-  /**
-   * The party's saved packaging, offered — never applied (§3.2) — to the rows
-   * still without one. An offer, not a refusal, so the switch does not enter
-   * into it; a picked value is never blank-with-spaces, so no trim either.
-   */
-  const offerSuggested = draft.rows.some((row) => row.packaging === '');
-
-  /*
-   * Where the caret lands when the card replaces the search box: the first
-   * thing the card asks. Without it the caret lands on the body and the Enter
-   * walk has nowhere to start from.
-   */
-  const focusQuantity = !choosing;
-
-  return (
-    <Card padded={false} style={{ marginTop: 'var(--s-8)' }}>
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          gap: `${rem(6)} ${rem(12)}`,
-          padding: `${rem(8)} ${rem(14)}`,
-          borderBottom: '1px solid var(--line)',
-        }}
-      >
-        <Eyebrow>{t('lead.add.draft.title')}</Eyebrow>
-        <span style={{ flex: 1, minWidth: 0 }} />
-        <span
-          className="ob-small"
-          style={{ color: 'var(--fg-tertiary)', flex: 'none', whiteSpace: 'nowrap' }}
-        >
-          {draft.editKey ? t('lead.add.draft.editing') : t('lead.add.draft.new')}
-        </span>
-      </div>
-
-      <div style={{ padding: `${rem(12)} ${rem(14)} ${rem(14)}` }}>
-        {/*
-         * The colours of a multicolour sub product: asked before the
-         * quantities, each colour adding its rows.
-         */}
-        {choosing && (
-          <label
-            className="ob-small"
-            style={{
-              display: 'block',
-              maxWidth: rem(340),
-              marginBottom: 'var(--s-12)',
-              color: 'var(--fg-secondary)',
-            }}
-          >
-            {t('lead.add.draft.colour')}
-            <ColourAdder
-              autoFocus
-              options={colourOptions}
-              taken={draft.rows.map((row) => row.colour)}
-              hasRows={draft.rows.length > 0}
-              colourHex={colourHex}
-              onAdd={onAddColour}
-            />
-            {/*
-             * The key hint lives under the box, wrapping, not in its placeholder: a
-             * placeholder is one clipped line, and at 157 % the sentence did not fit.
-             */}
-            <span
-              className="ob-micro"
-              data-colour-keys
-              style={{ display: 'block', marginTop: rem(4), color: 'var(--fg-tertiary)' }}
-            >
-              {t('lead.add.flow.colourKeys')}
-            </span>
-          </label>
-        )}
-
-        {draft.rule === 'selectable' && colourOptions.length === 0 && (
-          <p
-            role="note"
-            className="ob-small"
-            style={{ margin: `0 0 ${rem(12)}`, color: 'var(--state-conflict)' }}
-          >
-            {t('lead.add.draft.noColourList')}
-          </p>
-        )}
-
-        {draft.rows.length > 0 && (
-          <>
-            <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                gap: `${rem(4)} ${rem(8)}`,
-                marginBottom: rem(6),
-              }}
-            >
-              <span className="ob-eyebrow" style={{ color: 'var(--fg-tertiary)' }}>
-                {draft.rows.length > 1
-                  ? t('lead.add.draft.quantityTitleVariants')
-                  : t('lead.add.draft.quantityTitle')}
-              </span>
-              <span style={{ flex: 1, minWidth: 0 }} />
-              {suggestedPackaging && offerSuggested && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    for (const row of draft.rows) {
-                      if (row.packaging === '') {
-                        onRow(rowKey(row), { packaging: suggestedPackaging });
-                      }
-                    }
-                  }}
-                >
-                  {t('lead.add.products.useSuggested', { value: suggestedPackaging })}
-                </Button>
-              )}
-            </div>
-
-            <div
-              className="ob-eyebrow"
-              style={{
-                display: 'grid',
-                gridTemplateColumns: VARIANT_GRID,
-                gap: `0 ${rem(8)}`,
-                paddingBottom: rem(4),
-                color: 'var(--fg-tertiary)',
-              }}
-            >
-              <span>{t('lead.add.products.col.code')}</span>
-              <span>{t('lead.add.products.col.variant')}</span>
-              <span style={{ textAlign: 'right' }}>{t('lead.add.products.col.weight')}</span>
-              <span style={{ textAlign: 'right' }}>{t('lead.add.draft.col.qty')}</span>
-              <span>
-                {t('lead.add.draft.packaging')}
-                {packagingRequired && (
-                  <span
-                    aria-hidden="true"
-                    title={t('lead.add.step.required')}
-                    style={{ color: 'var(--state-offline)' }}
-                  >
-                    {' *'}
-                  </span>
-                )}
-              </span>
-              <span>{t('lead.add.draft.grade')}</span>
-            </div>
-          </>
-        )}
-        <div ref={quantitiesRef}>
-          {draft.rows.map((row, index) => {
-            // The chosen colour on a multicolour row, else the fixed one.
-            const colour = row.colour || row.variantLabel;
-            const named = row.colour ? labelOf(row.colour) : variantName(row);
-            const key = rowKey(row);
-            return (
-              <div
-                key={key}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: VARIANT_GRID,
-                  gap: `0 ${rem(8)}`,
-                  alignItems: 'center',
-                  padding: `${rem(3)} 0`,
-                }}
-              >
-                <span className="ob-mono ob-body-strong ob-ellipsis">{row.code}</span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: rem(4), minWidth: 0 }}>
-                  <VariantName
-                    colour={colour ? labelOf(colour) : colour}
-                    productName={draft.productName}
-                    hex={colour ? colourHex(colour) : undefined}
-                  />
-                  {row.colour && (
-                    <button
-                      type="button"
-                      className="ob-btn ob-btn--ghost"
-                      aria-label={t('lead.add.draft.removeColour', { colour: labelOf(row.colour) })}
-                      title={t('lead.add.draft.removeColour', { colour: labelOf(row.colour) })}
-                      style={{ padding: 0, minWidth: rem(20) }}
-                      onClick={() => onRemoveColour(row.colour)}
-                    >
-                      ✕
-                    </button>
-                  )}
-                </span>
-                <span style={{ textAlign: 'right' }}>
-                  <WeightCell kg={row.weightKg} />
-                </span>
-                <Input
-                  value={row.qty}
-                  autoFocus={focusQuantity && index === 0}
-                  inputMode="numeric"
-                  placeholder="0"
-                  aria-label={`${t('lead.add.draft.col.quantity')} — ${named}`}
-                  style={{ textAlign: 'right', minWidth: 0, width: '100%' }}
-                  onChange={(event) =>
-                    onRow(key, { qty: event.target.value.replace(/[^0-9]/g, '') })
-                  }
-                  onKeyDown={(event) => quantityKey(event, row)}
-                />
-                {/*
-                 * Packaging and grade beside the quantity and the same box
-                 * (owner's instructions, 2026-09-30): the kit's pick-only
-                 * `Select` is an `Input` with a list under it. Type a letter or
-                 * arrow down, Enter takes it and steps on; "—" is none.
-                 */}
-                <span style={{ minWidth: 0 }} onKeyDown={pickKey}>
-                  <Select
-                    value={row.packaging}
-                    aria-label={`${t('lead.add.draft.packaging')} — ${named}`}
-                    aria-required={packagingRequired || undefined}
-                    aria-invalid={unpacked(row) || undefined}
-                    onChange={(event) => picked(key, { packaging: event.target.value })}
-                  >
-                    <option value="">—</option>
-                    {valuesFor(packagingOptions, row.packaging).map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Select>
-                </span>
-                <span style={{ minWidth: 0 }} onKeyDown={pickKey}>
-                  <Select
-                    value={row.grade}
-                    aria-label={`${t('lead.add.draft.grade')} — ${named}`}
-                    onChange={(event) => picked(key, { grade: event.target.value })}
-                  >
-                    <option value="">—</option>
-                    {valuesFor(gradeOptions, row.grade).map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Select>
-                </span>
-              </div>
-            );
-          })}
-        </div>
-        {draft.rows.length > 0 && packagingOptions.length === 0 && (
-          <p className="ob-micro" style={{ margin: `${rem(4)} 0 0`, color: 'var(--fg-tertiary)' }}>
-            {t('lead.add.draft.packagingEmptyFields')}
-          </p>
-        )}
-        {draft.rows.length > 0 && gradeOptions.length === 0 && (
-          <p className="ob-micro" style={{ margin: `${rem(4)} 0 0`, color: 'var(--fg-tertiary)' }}>
-            {t('lead.add.draft.gradeEmptyFields')}
-          </p>
-        )}
-
-        <div
-          ref={addRef}
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            gap: 'var(--s-8)',
-            marginTop: 'var(--s-16)',
-            paddingTop: 'var(--s-12)',
-            borderTop: '1px solid var(--line)',
-          }}
-        >
-          <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
-            {hint}
-            {filled.length > 0 && previewKg > 0 && (
-              <>
-                {' · '}
-                {t('lead.add.summary.weight', { kg: formatKg(previewKg) })}
-              </>
-            )}
-          </span>
-          <span style={{ flex: 1, minWidth: 0 }} />
-          <Button
-            variant="secondary"
-            disabled={!ready}
-            title="Shift+Q"
-            onClick={() => onComplete()}
-          >
-            {t('lead.add.flow.completeSubProduct')}
-          </Button>
-          {/*
-           * The last stop of the card's Enter walk, after the last grade: Enter
-           * over a button is a click. `data-field` makes it a stop of the
-           * screen's Escape walk too, back to that grade. While the draft is
-           * short of something the button is disabled, which takes it out of
-           * both.
-           */}
-          <Button
-            variant="secondary"
-            data-field
-            data-add-card
-            disabled={!ready}
-            aria-label={
-              draft.editKey ? t('lead.add.draft.saveChanges') : t('lead.add.draft.saveProduct')
-            }
-            onClick={onSave}
-          >
-            {draft.editKey ? t('lead.add.draft.saveChanges') : t('lead.add.draft.saveProduct')}
-            <span className="ob-order-kbd" aria-hidden="true">
-              Enter
-            </span>
-          </Button>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-/**
- * The colour range for a multicolour sub product (§6.6), from the company's
- * colour list: type to narrow, Enter adds the highlighted colour and stays for
- * the next; Enter on the empty box goes on to the quantities — left to the
- * Enter walk, which is the field after this one.
- *
- * Not the kit's `Combobox`: that takes its first row on any Enter, so the
- * empty box could never step on to the quantities. And not a native select,
- * which on Windows commits a value on every arrow press.
- */
-function ColourAdder({
-  options,
-  taken,
-  hasRows,
-  colourHex,
-  autoFocus,
-  onAdd,
-}: {
-  options: OptionListItem[];
-  /** Colours already on the card, which are not offered twice. */
-  taken: readonly string[];
-  /** Whether there is a quantity to walk on to yet. */
-  hasRows: boolean;
-  colourHex: (name: string) => string | undefined;
-  autoFocus: boolean;
-  onAdd: (colour: string) => void;
-}) {
-  const [query, setQuery] = useState('');
-  // A card with no colour yet opens with the list down and the first colour
-  // highlighted, so the Enter walk is Enter to take it and Enter to go on: the
-  // colour is a step of the flow, not a box to find and type into.
-  const [open, setOpen] = useState(autoFocus && !hasRows);
-  const [sel, setSel] = useState(0);
-
-  const term = query.trim().toLowerCase();
-  const matches = options.filter(
-    (option) =>
-      !taken.includes(option.value) &&
-      (option.label.toLowerCase().includes(term) || option.value.toLowerCase().includes(term)),
-  );
-  const pick = matches.length ? Math.min(sel, matches.length - 1) : 0;
-
-  function add(colour: string): void {
-    onAdd(colour);
-    setQuery('');
-    setOpen(false);
-    setSel(0);
-  }
-
-  return (
-    <span style={{ position: 'relative', display: 'block', marginTop: rem(4) }}>
-      <Input
-        autoFocus={autoFocus}
-        value={query}
-        placeholder={t('lead.add.flow.addColourPlaceholder')}
-        aria-label={t('lead.add.flow.addColour')}
-        autoComplete="off"
-        role="combobox"
-        aria-expanded={open}
-        aria-autocomplete="list"
-        style={{ width: '100%' }}
-        onClick={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
-        onChange={(event) => {
-          setQuery(event.target.value);
-          setOpen(true);
-          setSel(0);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            if (open) setSel(Math.min(pick + 1, Math.max(0, matches.length - 1)));
-            setOpen(true);
-            return;
-          }
-          if (event.key === 'ArrowUp') {
-            event.preventDefault();
-            setSel(Math.max(0, pick - 1));
-            return;
-          }
-          if (event.key === 'Escape' && open) {
-            event.preventDefault();
-            setOpen(false);
-            return;
-          }
-          if (event.key !== 'Enter' || chorded(event)) return;
-          const chosen = open ? matches[pick] : undefined;
-          if (chosen) {
-            event.preventDefault();
-            add(chosen.value);
-          } else if (!hasRows) {
-            // No colour yet, so no quantity to walk on to: Enter opens the list
-            // again (after an Escape closed it) rather than doing nothing.
-            event.preventDefault();
-            setOpen(true);
-          }
-        }}
-      />
-      {open && (
-        <div role="listbox" className="ob-suggest">
-          {matches.map((option, index) => (
-            <button
-              key={option.id}
-              type="button"
-              role="option"
-              // Out of the Tab order, for the bars' reason: the box's blur closes this list.
-              tabIndex={-1}
-              aria-selected={index === pick}
-              className="ob-suggest-row"
-              style={{
-                gridTemplateColumns: 'minmax(0, 1fr)',
-                background: index === pick ? 'var(--bg-selected)' : undefined,
-              }}
-              onMouseEnter={() => setSel(index)}
-              // `mousedown`, not `click`: the box's blur would close the list first.
-              onMouseDown={(event) => {
-                event.preventDefault();
-                add(option.value);
-              }}
-            >
-              <ColourName name={option.label} hex={colourHex(option.value)} />
-            </button>
-          ))}
-          {matches.length === 0 && (
-            <p className="ob-small" style={{ margin: 0, padding: 'var(--s-8)' }}>
-              {t('common.noMatches')}
-            </p>
-          )}
-        </div>
-      )}
     </span>
   );
 }
