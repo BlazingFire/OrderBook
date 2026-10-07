@@ -50,7 +50,7 @@
   gap: 0.857rem;
 }
 
-@container order (max-width: 76rem) {
+@container order (max-width: 70rem) {
   .ob-order-cols {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -113,7 +113,10 @@
 }
 
 /* Under 1100 px the controls take two rows; the party keeps a row to itself. */
-@container order (max-width: 76rem) {
+@container order (max-width: 70rem) {
+  .ob-order-details .ob-order-followup {
+    flex-wrap: wrap;
+  }
   .ob-order-details,
   .ob-order-details[data-owner='false'] {
     grid-template-columns: repeat(auto-fit, minmax(10.714rem, 1fr));
@@ -128,6 +131,39 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.429rem;
+}
+
+/* The date keeps the design's 124 px; the quick choices sit beside it on the same line. */
+.ob-order-followup {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.ob-order-followup > :first-child {
+  flex: 0 0 8.857rem;
+  width: 8.857rem;
+  min-width: 0;
+}
+
+/* Nothing picked yet: the one line of help the design shows under the search. */
+.ob-order-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.429rem;
+  padding: 2.5rem 1rem;
+  text-align: center;
+}
+
+.ob-order-empty__title {
+  font-size: var(--t-body-size);
+  font-weight: 550;
+}
+
+.ob-order-empty__body {
+  max-width: 27rem;
+  font-size: 0.964rem;
+  color: var(--fg-secondary);
 }
 
 .ob-order-segmented {
@@ -252,6 +288,11 @@
   align-items: center;
   gap: 0.571rem;
   color: var(--fg-tertiary);
+}
+
+.ob-order-checks__dot {
+  width: 1rem;
+  text-align: center;
 }
 
 .ob-order-checks li[data-state='ok'] {

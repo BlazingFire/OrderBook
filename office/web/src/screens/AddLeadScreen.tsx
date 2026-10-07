@@ -2019,30 +2019,11 @@ function AddLeadForm({
                 )}
 
                 {!draft && (
-                  <div
-                    style={{
-                      flex: 1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      padding: `${rem(12)} 0`,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: 'var(--s-6)',
-                        maxWidth: rem(380),
-                        textAlign: 'center',
-                      }}
-                    >
-                      <span className="ob-body-strong">{t('lead.add.products.noneTitle')}</span>
-                      <span className="ob-small" style={{ color: 'var(--fg-secondary)' }}>
-                        {t('lead.add.products.noneBody')}
-                      </span>
-                    </div>
+                  <div className="ob-order-empty">
+                    <span className="ob-order-empty__title">
+                      {t('lead.add.products.noneTitle')}
+                    </span>
+                    <span className="ob-order-empty__body">{t('lead.add.products.noneBody')}</span>
                   </div>
                 )}
               </div>
