@@ -2338,3 +2338,100 @@ describe('V6: important notices pop up on sign-in', () => {
     expect(popUp()).toBeNull();
   });
 });
+
+describe('W2: a renamed colour reads by its current label on the Office records', () => {
+  /** "Ivory" renamed to "Antique Ivory" in Fields; lines still store the value "Ivory". */
+  const IVORY = {
+    id: 'opt-ivory',
+    listKey: 'stock.colour',
+    value: 'Ivory',
+    label: 'Antique Ivory',
+    sequence: 1,
+    isActive: true,
+    hex: '#F1E8CF',
+  };
+  const LINE = {
+    id: 'li-ivory',
+    productId: PRODUCT.id,
+    variantId: 'var-1',
+    productName: 'E.W.C - S TRAP',
+    categoryName: CATEGORY.name,
+    categoryCode: null,
+    brandName: null,
+    alias: null,
+    code: 'WC-0005',
+    variantLabel: null,
+    colour: 'Ivory',
+    size: null,
+    weightKg: null,
+    packaging: null,
+    grade: null,
+    sequence: 1,
+    fromPartyVariant: false,
+    notes: null,
+    quantity: 4,
+    lineWeightKg: null,
+  };
+
+  it('pending-order detail (LeadDetail)', async () => {
+    const lead = {
+      id: 'LD-IV',
+      partyId: PARTY.id,
+      partyName: PARTY.name,
+      ownerId: 'user-1',
+      stageId: 'stage-lead',
+      stageName: 'New',
+      sourcePlatform: null,
+      followUpDate: null,
+      partyWiseMode: false,
+      notes: null,
+      customFields: {},
+      incomplete: false,
+      missingFields: [],
+      convertedOrderId: null,
+      items: [LINE],
+      timeline: [],
+      totalWeightKg: 0,
+      linesWithoutWeight: 1,
+      createdAt: '2026-09-24T00:00:00.000Z',
+      sync: { hlc: 'h1', fieldHlc: {} },
+    };
+    const pipeline = {
+      id: 'pipe-leads',
+      kind: 'lead',
+      name: 'Leads',
+      stages: [{ id: 'stage-lead', name: 'New', sequence: 1, isDefault: true, isTerminal: false }],
+    };
+    await boot({
+      permissions: ['leads.view'],
+      view: { leads: [lead], pipelines: [pipeline], optionLists: [IVORY] },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTitle(t('nav.leads')));
+    });
+    await act(async () => {
+      fireEvent.click((await screen.findAllByText(PARTY.name))[0]!);
+    });
+    expect(await screen.findByText('Antique Ivory')).toBeTruthy();
+    expect(screen.queryByText('Ivory', { exact: true })).toBeNull();
+  });
+
+  it('final-order detail (OrderDetailBody)', async () => {
+    await boot({
+      permissions: ['orders.view'],
+      view: {
+        orders: [{ ...ORDER, items: [LINE] }],
+        pipelines: [ORDER_PIPELINE],
+        optionLists: [IVORY],
+      },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTitle(t('nav.orders')));
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByText(ORDER.id));
+    });
+    expect(await screen.findByText('Antique Ivory')).toBeTruthy();
+    expect(screen.queryByText('Ivory', { exact: true })).toBeNull();
+  });
+});

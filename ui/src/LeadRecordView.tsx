@@ -29,6 +29,7 @@ import {
   Timeline,
   recordTimelineEntries,
   useColourHex,
+  useColourLabel,
 } from './DataDisplay.js';
 import { DateField, FormField, Input } from './Form.js';
 import { formatDateTime, formatKg } from './format.js';
@@ -90,6 +91,7 @@ export function LeadRecordView({
   const [expectedDate, setExpectedDate] = useState('');
   const [busy, setBusy] = useState(false);
   const colourHex = useColourHex(optionLists);
+  const labelOf = useColourLabel(optionLists);
 
   // "Save all and update": a remark typed on the pending order and not yet added is named.
   useUnsavedWork(
@@ -140,14 +142,14 @@ export function LeadRecordView({
                     {/* Not when it only repeats the name (CATALOGUE_MODEL §2). */}
                     {item.variantLabel && shownColour(item.variantLabel, item.productName) && (
                       <span className="ob-colourname ob-small">
-                        <ColourChip name={item.variantLabel} hex={colourHex(item.variantLabel)} />
-                        <span>{item.variantLabel}</span>
+                        <ColourChip name={labelOf(item.variantLabel)} hex={colourHex(item.variantLabel)} />
+                        <span>{labelOf(item.variantLabel)}</span>
                       </span>
                     )}
                     {item.colour && (
                       <span className="ob-colourname ob-small">
-                        <ColourChip name={item.colour} hex={colourHex(item.colour)} />
-                        <span>{item.colour}</span>
+                        <ColourChip name={labelOf(item.colour)} hex={colourHex(item.colour)} />
+                        <span>{labelOf(item.colour)}</span>
                       </span>
                     )}
                     <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>

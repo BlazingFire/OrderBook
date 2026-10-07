@@ -56,6 +56,7 @@ import {
   rem,
   t,
   useColourHex,
+  useColourLabel,
   useFilterBar,
   useBoardPresence,
   useRecordPresence,
@@ -153,6 +154,7 @@ export function OrderBoardScreen({
   const [pageSize, setPageSize] = usePageSize('office-orders');
   const [paging, setPaging] = useState<{ key: string; page: number }>({ key: '', page: 0 });
   const colourHex = useColourHex(view.optionLists);
+  const labelOf = useColourLabel(view.optionLists);
   const pipeline = view.pipelines.find((candidate) => candidate.kind === 'order');
   const stages = sortedStages(pipeline);
   const orders = onMyParties(view.orders, scope === 'assigned' ? view.partyGrants : undefined);
@@ -338,6 +340,7 @@ export function OrderBoardScreen({
           onClose={() => onOpenId(null)}
           onError={onError}
           colourHex={colourHex}
+          labelOf={labelOf}
         />
       </EditorScreen>
     );
@@ -501,6 +504,7 @@ function OrderDetailBody({
   onClose,
   onError,
   colourHex,
+  labelOf,
 }: {
   order: Order;
   stages: PipelineStage[];
@@ -508,6 +512,8 @@ function OrderDetailBody({
   onClose: () => void;
   onError: (message: string) => void;
   colourHex: (colour: string) => string | undefined;
+  /** The colour list's current label for a stored colour value (`useColourLabel`). */
+  labelOf: (colour: string) => string;
 }) {
   const [note, setNote] = useState('');
   const [override, setOverride] = useState(
@@ -604,14 +610,14 @@ function OrderDetailBody({
                     <td>
                       {/* Not when it only repeats the name (CATALOGUE_MODEL §2). */}
                       {item.variantLabel && shownColour(item.variantLabel, item.productName) ? (
-                        <ColourName name={item.variantLabel} hex={colourHex(item.variantLabel)} />
+                        <ColourName name={labelOf(item.variantLabel)} hex={colourHex(item.variantLabel)} />
                       ) : (
                         '—'
                       )}
                     </td>
                     <td>
                       {/* The colour chosen on a multi-colour line — frozen like the rest of the line. */}
-                      {item.colour ? <ColourName name={item.colour} hex={colourHex(item.colour)} /> : '—'}
+                      {item.colour ? <ColourName name={labelOf(item.colour)} hex={colourHex(item.colour)} /> : '—'}
                     </td>
                     <td>{item.packaging ?? '—'}</td>
                     <td>{item.grade ?? '—'}</td>
