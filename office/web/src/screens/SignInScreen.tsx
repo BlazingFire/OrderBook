@@ -210,6 +210,7 @@ export function SignInScreen({ connection, onSignedIn, notice, onLeft }: Props) 
                   <button
                     type="button"
                     className="ob-profile-pick"
+                    title={`${profile.displayName} — ${profile.roleName}`}
                     onClick={() => {
                       setChosen(profile);
                       setError(null);

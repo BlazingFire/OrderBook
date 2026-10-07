@@ -17,7 +17,7 @@
  * actual reason.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 
 import { Button, Card, FormField, Input, formatBytes, t, useUnsavedWork } from '@orderbook/ui';
 
@@ -95,8 +95,14 @@ export function StoragePathCard() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="ob-eyebrow">{t('storage.title')}</div>
-          <div className="ob-small ob-mono" style={{ wordBreak: 'break-all' }}>
-            {dataDir}
+          <div className="ob-small ob-mono" style={{ overflowWrap: 'anywhere' }}>
+            {/* Break after each folder, not mid-word. */}
+            {dataDir.split(/(?<=[/\\])/).map((part, index) => (
+              <Fragment key={index}>
+                {part}
+                <wbr />
+              </Fragment>
+            ))}
           </div>
           {/* Omitted rather than shown as a dash: the panel answers `null` when
               it cannot read the drive, and "— free" reads like no space left. */}
