@@ -88,17 +88,12 @@ Inter for text, IBM Plex Mono for ids, codes and shortcuts. Figures that line up
 - **Motion:** fast 120 ms (hover, focus, checkbox, chip), base 160 ms (dropdown, tab, tooltip, expand), slow 220 ms
   (modal, drawer, kanban settle). Easing standard `cubic-bezier(.2,0,0,1)`; exit `cubic-bezier(.4,0,1,1)`, one step faster.
 
-### 2.5 Density and scrollbars (artboard: Scroll)
+### 2.5 Size and scrollbars (artboard: Scroll)
 
-Density is per machine and never synced; it scales the whole interface from the root size.
-
-| Density | Root | Table row | Control height |
-|---|---|---|---|
-| Compact | 13 | 28 | 26 |
-| Comfortable (default) | 14 | 32 | 30 |
-| Large | 16 | 38 | 36 |
-
-(The app's own size setting is the same idea in finer steps, 79 % to 157 %, root 11 to 22 px.)
+The Scroll artboard shows three per-machine densities (compact: root 13, row 28, control 26; comfortable: root 14, row 32, control 30;
+large: root 16, row 38, control 36). **The product does not build them (decision of the lead session, 2026-10-07): there is no
+density setting.** A single set remains: table row 32 and controls 26 / 30 / 36 (small, default, large) at the 14 px root. The
+**size slider** (the app scale, root 11 to 22 px, shown as 79 % to 157 %) is the only size control, and it scales everything.
 
 Scrollbars: only the content area scrolls; thin, no arrows, colour change only. A 10 px gutter holding a 6 px thumb;
 rest, hover and drag are three greys (light and dark each have their own); horizontal scroll is for wide tables only.
@@ -126,9 +121,8 @@ Components use the semantic names only.
 **Scrollbars (as built):** a 10 px gutter holding a 6 px thumb with radius 4, a transparent track; the thumb is always drawn
 (not only on hover); rest `--porcelain-30`, hover `#6E7C84`, drag `--porcelain-70`.
 
-**Density (as built):** per machine, set in Settings > Appearance, stored as `ob.density` and applied as `data-density` on `<html>`:
-compact (root 13, row 28, control 26), comfortable (root 14, row 32, control 30, the default), large (root 16, row 38, control 36).
-The scale slider still sets the root size on top of that.
+**Retired:** the per-machine density (`ob.density`, `data-density`), the `--tile-*` set of the old glossy icon tiles, and `--r-xl`.
+The status footer is 26 px tall (`--shell-footer-h`).
 
 ## 3. The mark (artboards: Main, Marks, Usage, Mark, Icons, Panels)
 
@@ -300,7 +294,7 @@ Lead wording becomes **pending order**; quantity unit is **box**, never "pcs".
 
 | Area | Files |
 |---|---|
-| Tokens, type, radii, focus ring, scrollbars, density | `ui/src/tokens.css` (names in 2.6), `ui/src/base.css`, `ui/src/theme.ts` (density, scale) |
+| Tokens, type, radii, focus ring, scrollbars, density | `ui/src/tokens.css` (names in 2.6), `ui/src/base.css`, `ui/src/theme.ts` (the size slider) |
 | Fonts (Inter, IBM Plex Mono, bundled) | `ui/src/fonts/`, `ui/src/fonts.css` |
 | Mark, splash, busy indicator, app icons | (to be filled) |
 | Buttons and form controls | `ui/src/Button.tsx`, `Input.tsx`, `Select.tsx`, ... (to be filled) |
