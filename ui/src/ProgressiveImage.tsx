@@ -17,6 +17,11 @@
  * No fade-in: swapping the `<img>` in front of the placeholder is a single
  * paint, not an animation — a transition here would itself be the kind of
  * visible loading state §5.6 forbids.
+ *
+ * A variant that does not load (404 for files gone from the Master's disk, 503
+ * from an Office offline with nothing cached, a file that will not decode)
+ * swaps the blur for the neutral empty-photo tile: a blur is a promise of a
+ * photo, and it must never stand in for one that is not coming.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -84,15 +89,22 @@ export function ProgressiveImage({
       : variantForSlot(slotPx, typeof window === 'undefined' ? 1 : window.devicePixelRatio);
 
   const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
   const placeholder = useMemo(() => placeholderDataUrl(blurhash), [blurhash]);
 
   // A different `imageId` means a different photo, not a slow-loading one —
   // reset so the old picture's placeholder doesn't flash in front of the new one.
-  useEffect(() => setLoaded(false), [imageId]);
+  useEffect(() => {
+    setLoaded(false);
+    setFailed(false);
+  }, [imageId]);
 
   return (
     <span
       className={className}
+      data-photo-missing={failed ? 'true' : undefined}
+      role={failed && alt ? 'img' : undefined}
+      aria-label={failed && alt ? alt : undefined}
       style={{
         position: 'relative',
         display: 'block',
@@ -100,26 +112,33 @@ export function ProgressiveImage({
         aspectRatio: `${width || 1} / ${height || 1}`,
         overflow: 'hidden',
         borderRadius: 'var(--r-sm, 4px)',
-        background: placeholder ? `center/cover url(${placeholder})` : 'var(--bg-subtle, #e8ebef)',
+        background: failed
+          ? 'var(--bg-sunken)'
+          : placeholder
+            ? `center/cover url(${placeholder})`
+            : 'var(--bg-subtle, #e8ebef)',
         contentVisibility: 'auto',
         ...style,
       }}
     >
-      <img
-        src={`/uploads/images/${imageId}/${chosen}`}
-        alt={alt}
-        loading="lazy"
-        decoding="async"
-        onLoad={() => setLoaded(true)}
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          opacity: loaded ? 1 : 0,
-        }}
-      />
+      {!failed && (
+        <img
+          src={`/uploads/images/${imageId}/${chosen}`}
+          alt={alt}
+          loading="lazy"
+          decoding="async"
+          onLoad={() => setLoaded(true)}
+          onError={() => setFailed(true)}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            opacity: loaded ? 1 : 0,
+          }}
+        />
+      )}
     </span>
   );
 }

@@ -17,7 +17,7 @@
 
 import type { ImageCropInput, Product, ProductImageReorderInput, ProductImageUpdateInput } from '@orderbook/shared';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { encode as encodeBlurhash } from 'blurhash';
@@ -131,6 +131,8 @@ async function normalizeAndStore(
   fileBuffer: Buffer,
   crop: ImageCropInput,
   wholeFrame = false,
+  /** Write nothing unless the source's blurhash passes: how a heal proves the source is that photo. */
+  accept?: (blurhash: string) => boolean,
 ): Promise<{ width: number; height: number; checksum: string; blurhash: string; byteSize: number }> {
   if (fileBuffer.length === 0) throw new ValidationError('validation.image.fileRequired');
   if (fileBuffer.length > MAX_SOURCE_BYTES) throw new ValidationError('validation.image.tooLarge');
@@ -179,6 +181,10 @@ async function normalizeAndStore(
     },
   }).extract({ left: rect.x, top: rect.y, width: rect.width, height: rect.height });
 
+  // Before any file is written, so `accept` can refuse a source that is not this photo.
+  const blurhash = await encodeBlurhashFrom(cropped);
+  if (accept && !accept(blurhash)) throw new SourceMismatchError();
+
   const dir = imageDir(tenantId, imageId);
   await mkdir(dir, { recursive: true });
 
@@ -206,9 +212,15 @@ async function normalizeAndStore(
   // watches a spinner; the re-read bought nothing but a second copy in memory
   // and a second trip to the disk.
   const checksum = createHash('sha256').update(masterBytes).digest('hex');
-  const blurhash = await encodeBlurhashFrom(cropped);
 
   return { width: masterMeta.width, height: masterMeta.height, checksum, blurhash, byteSize: masterMeta.byteSize };
+}
+
+/** A heal's source decoded to a different picture than the row's: nothing was written. */
+export class SourceMismatchError extends Error {
+  constructor() {
+    super('the source is not this photo');
+  }
 }
 
 async function encodeBlurhashFrom(cropped: sharp.Sharp): Promise<string> {
@@ -412,6 +424,52 @@ export async function deleteImage(imageId: string, actor: ActorContext): Promise
 
   const updated = await reloadProduct(actor.tenantId, productId);
   return publishUpdated(updated);
+}
+
+/** True when any of the image's variant files is not on disk: a restored database, a copied or cleaned data folder. */
+export async function imageVariantsMissing(tenantId: string, imageId: string): Promise<boolean> {
+  for (const spec of IMAGE_VARIANT_SPECS) {
+    const present = await access(path.join(imageDir(tenantId, imageId), `${spec.name}.webp`)).then(
+      () => true,
+      () => false,
+    );
+    if (!present) return true;
+  }
+  return false;
+}
+
+/**
+ * Write an existing image's variant files again from its source, under the same id, so the row and
+ * every client that holds it stay as they are. Throws `SourceMismatchError`, writing nothing, when
+ * the source is not that photo. The row's size, checksum and blurhash follow the new
+ * files only where they differ; id, product, caption, primary and sequence are never touched.
+ */
+export async function rederiveImageVariants(tenantId: string, imageId: string, fileBuffer: Buffer): Promise<void> {
+  const image = await imageRepo.findImageById(tenantId, imageId);
+  if (!image) throw new NotFoundError('Image');
+  const derived = await throughRasterGate(() =>
+    normalizeAndStore(
+      tenantId,
+      imageId,
+      fileBuffer,
+      { cropX: 0, cropY: 0, cropWidth: 0, cropHeight: 0, rotationDeg: 0 },
+      true,
+      // The same source through the same pipeline gives the same blurhash. Anything else (a photo
+      // the company put in that slot, a cropped upload) is refused rather than overwritten.
+      (blurhash) => blurhash === image.blurhash,
+    ),
+  );
+  const changed =
+    derived.checksum !== image.checksum ||
+    derived.width !== image.width ||
+    derived.height !== image.height ||
+    derived.blurhash !== image.blurhash ||
+    derived.byteSize !== image.byteSize;
+  if (changed) {
+    await db().transaction((trx) => imageRepo.updateImageDerivation(tenantId, imageId, derived, trx));
+  }
+  // Either way the files are new: the panels get the product again and draw it afresh.
+  publishUpdated(await reloadProduct(tenantId, image.productId));
 }
 
 export interface ImageFile {

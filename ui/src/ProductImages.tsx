@@ -337,7 +337,7 @@ export function ProductImages({
       >
         {primary ? (
           <>
-            {/* The well is square and clips: a photo of a basin and a photo of
+            {/* The well is square: a photo of a basin and a photo of
                 a tile stack line up down the column whatever shape they were
                 shot in. `slotPx` picks the variant; `large` is the fallback
                 for a browser that cannot measure. */}
@@ -349,6 +349,11 @@ export function ProductImages({
                 overflow: 'hidden',
                 borderRadius: 'var(--r-sm)',
                 background: 'var(--bg-sunken)',
+                // The photo keeps its own shape, centred: a wide one letterboxed top and bottom,
+                // a tall one at the sides, never a band on one edge only.
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
             >
               <ProgressiveImage
@@ -359,6 +364,11 @@ export function ProductImages({
                 width={primary.width}
                 height={primary.height}
                 alt={primary.caption ?? product.name}
+                style={
+                  primary.height > primary.width
+                    ? { width: 'auto', height: '100%', borderRadius: 0 }
+                    : { borderRadius: 0 }
+                }
               />
             </div>
             {canEdit && (
