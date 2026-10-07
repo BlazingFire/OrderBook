@@ -20,13 +20,13 @@ export function BusyMark({
   /** Announced to screen readers; pass '' inside labelled buttons. */
   label?: string;
 }) {
-  // At 16 px and below the squares lose their corners (the artboard's inline
-  // size) and take the text colour, so the mark sits in a button or a line of
-  // text the way a glyph would.
+  // At 16 px and below the mark is inline (the Buttons artboard's loading
+  // buttons): square corners, the text colour, full strength resting at 25 %
+  // instead of the whole mark dimmed to 40 %, so it reads in a primary button.
   const small = size <= 16;
   return (
     <svg
-      className="ob-busy"
+      className={small ? 'ob-busy ob-busy--inline' : 'ob-busy'}
       width={size}
       height={size}
       viewBox="0 0 24 24"

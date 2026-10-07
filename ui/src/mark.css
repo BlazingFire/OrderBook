@@ -48,11 +48,38 @@
   animation: ob-busy 700ms linear infinite;
 }
 
+/* Inline, in a button or a line of text (the Buttons artboard): the mark at
+   full strength, each square resting at 25 %. */
+@keyframes ob-busy-inline {
+  0% {
+    opacity: 0.25;
+  }
+  20% {
+    opacity: 1;
+  }
+  60% {
+    opacity: 0.25;
+  }
+  100% {
+    opacity: 0.25;
+  }
+}
+
+.ob-busy--inline {
+  opacity: 1;
+}
+
+.ob-busy--inline rect {
+  opacity: 0.25;
+  animation-name: ob-busy-inline;
+}
+
 /* ---------------------------------------------------------------------------
  * Splash, played once on a cold start (Splash.tsx):
  *   0–240 ms    the lattice outline draws
  *   240–620 ms  the ten squares ink, 34 ms apart, each from 88 % to full size
  *   620–908 ms  the wordmark rises 4 px
+ *   700–920 ms  the outline fades, leaving the ten inked squares
  * ------------------------------------------------------------------------ */
 
 @keyframes ob-outline-draw {
@@ -61,6 +88,15 @@
   }
   to {
     stroke-dashoffset: 0;
+  }
+}
+
+@keyframes ob-outline-fade {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
   }
 }
 
@@ -101,7 +137,9 @@
 .ob-splash-outline {
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
-  animation: ob-outline-draw 240ms var(--e-standard) forwards;
+  animation:
+    ob-outline-draw 240ms var(--e-standard) forwards,
+    ob-outline-fade 220ms var(--e-exit) 700ms forwards;
 }
 
 .ob-splash-cell {
@@ -128,7 +166,6 @@
  */
 @media (prefers-reduced-motion: reduce) {
   .ob-busy rect,
-  .ob-splash-outline,
   .ob-splash-cell,
   .ob-splash-word {
     animation: none !important;
@@ -136,14 +173,24 @@
     stroke-dashoffset: 0;
     transform: none;
   }
+
+  /* The outline has faded by the final frame. */
+  .ob-splash-outline {
+    animation: none !important;
+    opacity: 0;
+  }
 }
 
 html[data-motion='off'] .ob-busy rect,
-html[data-motion='off'] .ob-splash-outline,
 html[data-motion='off'] .ob-splash-cell,
 html[data-motion='off'] .ob-splash-word {
   animation: none !important;
   opacity: 1;
   stroke-dashoffset: 0;
   transform: none;
+}
+
+html[data-motion='off'] .ob-splash-outline {
+  animation: none !important;
+  opacity: 0;
 }
