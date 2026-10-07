@@ -54,6 +54,11 @@ describe('sidebar (Sidebar artboard)', () => {
     expect(rule('.ob-sidebar--collapsed .ob-sidebar-brand')).toMatch(/justify-content:\s*center/);
   });
 
+  it('hides the scroll bar of the collapsed column so the centred icons stay centred', () => {
+    expect(rule('.ob-sidebar--collapsed .ob-sidebar-nav')).toMatch(/padding:\s*var\(--s-12\) 0/);
+    expect(css).toMatch(/\.ob-sidebar--collapsed \.ob-sidebar-nav\s*\{\s*scrollbar-width:\s*none/);
+  });
+
   it('keeps a 36px collapse button', () => {
     expect(rule('.ob-sidebar-collapse')).toMatch(/height:\s*var\(--ctl-h-lg\)/);
   });

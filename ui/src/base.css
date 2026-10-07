@@ -1306,6 +1306,13 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
 .ob-sidebar--collapsed .ob-sidebar-nav {
   padding: var(--s-12) 0;
 }
+/* A scroll bar would shove the centred icons off the middle of a 52px column; the wheel still scrolls. */
+.ob-sidebar--collapsed .ob-sidebar-nav {
+  scrollbar-width: none;
+}
+.ob-sidebar--collapsed .ob-sidebar-nav::-webkit-scrollbar {
+  display: none;
+}
 .ob-sidebar--collapsed .ob-navitem-main {
   flex: none;
   width: 2.2857rem;
