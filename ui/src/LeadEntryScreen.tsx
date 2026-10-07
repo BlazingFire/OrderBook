@@ -1234,6 +1234,37 @@ function LeadEntryForm({
     setError(null);
 
     try {
+      // Asked again now, not read from the background check: a product deleted a moment ago
+      // would otherwise get the whole order refused. Unanswerable (Master off or old) goes on.
+      const added = lines.filter((line) => line.key.startsWith('saved-') === false);
+      const ids = [...new Set(added.map((line) => line.productId))];
+      const ask = transportRef.current.liveProducts;
+      const answer =
+        ids.length > 0 && ask ? await ask.call(transportRef.current, ids).catch(() => null) : null;
+      if (answer?.live) {
+        const live = new Set(answer.live);
+        const missing = added.filter((line) => !live.has(line.productId));
+        if (missing.length > 0) {
+          setGone(
+            [...new Map(missing.map((line) => [line.productId, line.productName])).entries()].map(
+              ([id, name]) => ({ id, name }),
+            ),
+          );
+          setError(
+            t('lead.add.errors.goneLines', {
+              names: [...new Set(missing.map((line) => line.productName))].join(', '),
+            }),
+          );
+          saving.current = false;
+          setBusy(false);
+          return;
+        }
+      }
+    } catch {
+      // Cannot tell: the Master still decides on save.
+    }
+
+    try {
       const input = buildInput();
 
       if (lead && editBase.opened) {

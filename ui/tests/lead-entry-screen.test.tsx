@@ -1048,6 +1048,24 @@ describe('the catalogue changing while the entry is open', () => {
     expect(note.textContent).toContain(last.name);
   }, 120_000);
 
+  it('asks the Master again at save time, so a delete the background check has not heard of yet still blocks', async () => {
+    const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    await enterOneLine();
+    await act(async () => wait(50));
+    expect(document.querySelector('[data-catalogue-gone]')).toBeNull();
+
+    // Deleted on the Master, and no change event has reached this window yet.
+    fake.catalogue.products = fake.catalogue.products.filter((product) => product.id !== FIXED.id);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
+      await wait(0);
+    });
+
+    expect(fake.createLead).not.toHaveBeenCalled();
+    expect(await screen.findByText(t('lead.add.errors.goneLines', { names: FIXED.name }))).toBeTruthy();
+    expect(screen.getAllByText(new RegExp(FIXED.name)).length).toBeGreaterThan(0);
+  });
+
   it('does not block when the Master cannot say (an older Master), and lets the save go', async () => {
     const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
     fake.master.older = true;
