@@ -238,7 +238,7 @@ on white and 3.06:1 on the canvas, which meets WCAG 1.4.11 (non-text contrast, 3
 ## 6. Navigation (artboards: Navigation, Sidebar, Shell)
 
 - **Sidebar:** 208 px wide, white, 1 px right border; collapsed 52 px (icons and the mark only, tooltip with the name). Header:
-  the mark (24) and the name "OrderBook" at 15 px / 600 (the compact lockup measures, mark 24, type 18, gap 8, apply where the full lockup is shown).
+  the compact in-app lockup, the mark (24) beside the name "OrderBook" (the Sidebar artboard shows it at 15 px; the app uses 18 px / mark 24 / gap 8, see "As built").
   Groups follow the work: **Work, Catalogue, Output, Admin**, each with an eyebrow label (padding 8 8 4, then 12 8 4). A module the
   role cannot view is absent, not greyed out. Items: height 30, padding 0 8, gap 10, radius 6, icon then label (14 px, secondary
   text); **active** item = `accent-tint` fill, accent text, weight 550; a count sits at the right (11 px / 500).
@@ -251,6 +251,15 @@ on white and 3.06:1 on the canvas, which meets WCAG 1.4.11 (non-text contrast, 3
   focus = 2 px accent outline; disabled = `porcelain-30`. A count is a micro badge (16 px, `porcelain-10`).
 - **Status footer / presence rail:** 26 px tall, white, 1 px top border: sync state (Synced, Syncing N, Offline, "Offline, 4 pending"
   in amber 550, "3 fields resolved, review" as a link), company name, the signed-in person, the version in mono 11 px at the right.
+
+**As built (D3, `ui/src/AppShell.tsx`, `ui/src/Tabs.tsx`, `ui/src/base.css`, both panels' `App.tsx`; `ui/tests/shell-design.test.tsx`).**
+- **Sidebar lockup:** the mark at 24 px, the wordmark "OrderBook" at 18 px, gap 8 (the Main artboard's in-app lockup). Rows are **28 px** with a 10 px gap (the artboard draws 30), group
+  bands 28 px, **sub-pages 26 px**, counts in the accent colour at 11 px / 500, the collapse button 36 px. **Collapsed**, the column shows 32 px square icon buttons, centred, with the mark
+  alone on top and no scroll bar (so the centred icons stay centred).
+- **Segmented control:** a sunken track (`--bg-sunken`) with the chosen segment as a raised chip with a hairline.
+- **Tabs:** 36 px tall, a 12 px inset underline, a hover wash, a count badge after the label, a disabled tab that the arrow keys skip; every tab is visited when none is disabled.
+- **Status footer:** a 26 px strip of 12 px-padded cells; **the sync state comes first** (in its own colour when it is not fine: offline, offline with pending changes, conflict), then the
+  company, the person and the version (mono). The sync button's target is the whole strip height and never below 24 px.
 
 ### 6.1 Icons and Basic Home (owner V1: "ui icons not updated yet")
 
@@ -362,7 +371,7 @@ Lead wording becomes **pending order**; quantity unit is **box**, never "pcs".
 | Fonts (Inter, IBM Plex Mono, bundled) | `ui/src/fonts/`, `ui/src/fonts.css` |
 | Mark, splash, busy indicator, app icons | (to be filled) |
 | Buttons and form controls | `ui/src/Button.tsx` (Button, IconButton), `ui/src/Form.tsx` (Input, Textarea, Select, FieldError, Checkbox, Radio, Switch), control CSS in `ui/src/base.css`; `ui/tests/form-controls-design.test.ts` |
-| Sidebar, top bar, tabs, footer | `ui/src/Sidebar.tsx`, `Topbar`, ... (to be filled) |
+| Sidebar, top bar, tabs, footer | `ui/src/AppShell.tsx` (sidebar, top bar, footer), `ui/src/Tabs.tsx`, shell CSS in `ui/src/base.css`, both panels' `App.tsx`; `ui/tests/shell-design.test.tsx` |
 | Icons | `ui/src/icons.tsx` (the set), `ui/src/navIcons.ts` (module to icon), `ui/src/BasicHome.tsx` (flat tiles); `ui/tests/nav-icons.test.tsx` |
 | Feedback | `ui/src/BusyMark.tsx`, `UpdateProgress.tsx` (ProgressBar), `TopProgress.tsx`, `States.tsx`, `Toast.tsx`, `Tooltip.tsx`, `GalleryScreen.tsx`; `ui/tests/feedback.test.tsx` |
 | Data | `ui/src/DataTable.tsx`, `ui/src/DataDisplay.tsx` (StatusPill, ColourChip, IdField, Timeline, `recordTimelineEntries`), `ui/src/PageBar.tsx`; `ui/tests/data-timeline.test.tsx` |
