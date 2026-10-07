@@ -17,7 +17,7 @@ export function OrderChecks({ items }: { items: OrderCheck[] }) {
       {items.map((item) => (
         <li key={item.key} data-state={item.state} title={item.title}>
           {item.state === 'idle' ? (
-            <span aria-hidden="true" style={{ width: 14, textAlign: 'center' }}>
+            <span aria-hidden="true" className="ob-order-checks__dot">
               ·
             </span>
           ) : (

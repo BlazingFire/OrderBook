@@ -2035,6 +2035,15 @@ function LeadEntryForm({
                   </p>
                 </div>
 
+                {!draft && !category && (
+                  <div className="ob-order-empty">
+                    <span className="ob-order-empty__title">
+                      {t('lead.add.products.noneTitle')}
+                    </span>
+                    <span className="ob-order-empty__body">{t('lead.add.products.noneBody')}</span>
+                  </div>
+                )}
+
                 {goneNames.length > 0 && (
                   <p
                     role="note"
