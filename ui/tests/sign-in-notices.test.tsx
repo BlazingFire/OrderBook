@@ -24,7 +24,7 @@ function notice(id: string, overrides: Partial<Notice> = {}): Notice {
     priority: 'important',
     pinned: false,
     showUntil: null,
-    audience: { kind: 'everyone' },
+    audience: { kind: 'all' },
     authorId: null,
     authorName: null,
     createdAt: '2026-10-01T09:00:00.000Z',

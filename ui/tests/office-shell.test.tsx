@@ -2277,7 +2277,7 @@ describe('Notice board in the Office sidebar (Oct 7)', () => {
 
 describe('V6: important notices pop up on sign-in', () => {
   const base = {
-    tenantId: 'tenant-1', body: 'Read me.', pinned: false, showUntil: null, audience: { kind: 'everyone' },
+    tenantId: 'tenant-1', body: 'Read me.', pinned: false, showUntil: null, audience: { kind: 'all' },
     authorId: null, authorName: null, updatedAt: '2026-09-20T09:00:00.000Z', version: 1,
   };
   const notices = [

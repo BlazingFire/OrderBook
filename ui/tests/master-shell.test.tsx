@@ -2904,7 +2904,7 @@ describe('Notice board screens in the Master shell (Oct 7)', () => {
 describe('V6: important notices pop up on sign-in', () => {
   const IMPORTANT = {
     id: 'NT1', tenantId: 'tenant-1', title: 'Office closed Friday', body: 'Holiday.', priority: 'important',
-    pinned: false, showUntil: null, audience: { kind: 'everyone' }, authorId: null, authorName: null,
+    pinned: false, showUntil: null, audience: { kind: 'all' }, authorId: null, authorName: null,
     createdAt: '2026-10-05T09:00:00.000Z', updatedAt: '2026-10-05T09:00:00.000Z', version: 1, readByMe: false,
   };
   const withNotice = (call: Call) =>
