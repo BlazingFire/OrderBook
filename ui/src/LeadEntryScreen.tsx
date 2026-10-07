@@ -417,6 +417,9 @@ function linesOf(lead: Lead, view: LeadEntryView): DraftLine[] {
 /** How many products on the order are checked against the catalogue after a change. */
 const LIVE_CHECK_BATCH = 200;
 
+/** How long Save waits for the Master's live-ids answer before saving as if it could not tell. */
+const LIVE_SAVE_WAIT_MS = 3000;
+
 export function LeadEntryScreen(props: Props) {
   const [opening, setOpening] = useState(0);
   return <LeadEntryForm key={opening} {...props} onReload={() => setOpening((n) => n + 1)} />;
@@ -1239,8 +1242,17 @@ function LeadEntryForm({
       const added = lines.filter((line) => line.key.startsWith('saved-') === false);
       const ids = [...new Set(added.map((line) => line.productId))];
       const ask = transportRef.current.liveProducts;
+      let timer: ReturnType<typeof setTimeout> | undefined;
       const answer =
-        ids.length > 0 && ask ? await ask.call(transportRef.current, ids).catch(() => null) : null;
+        ids.length > 0 && ask
+          ? await Promise.race([
+              ask.call(transportRef.current, ids).catch(() => null),
+              new Promise<null>((resolve) => {
+                timer = setTimeout(() => resolve(null), LIVE_SAVE_WAIT_MS);
+              }),
+            ])
+          : null;
+      clearTimeout(timer);
       if (answer?.live) {
         const live = new Set(answer.live);
         const missing = added.filter((line) => !live.has(line.productId));

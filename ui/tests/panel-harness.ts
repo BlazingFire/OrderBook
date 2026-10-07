@@ -91,6 +91,9 @@ export function routeFetch(
       };
       calls.push(call);
       const answer = route(call);
+      // The entry form's save-time "which products are live" read: a screen the test did not set
+      // up for gets "cannot tell", as from an older Master, instead of a request that never settles.
+      if (!answer && call.url === '/api/pick/live-products') return json({ live: null });
       return answer ?? new Promise<Response>(() => undefined);
     }),
   );
