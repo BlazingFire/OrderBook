@@ -740,7 +740,7 @@ function MasterPanel() {
    */
   const canViewNotices = phase === 'ready' && (user?.permissions.includes('notices.view') ?? false);
   const canManageNotices = phase === 'ready' && (user?.permissions.includes('notices.manage') ?? false);
-  const noticeBoard = useNotices(revisionOf(revisions, 'notices'), canViewNotices, user?.id ?? null);
+  const noticeBoard = useNotices(revisionOf(revisions, 'notices'), canViewNotices);
   // The notice a Basic Home slide opened, for the board to bring into view.
   const [noticeFocus, setNoticeFocus] = useState<{ id: string; nonce: number } | null>(null);
   const noticeUnread = noticeBoard.unread;

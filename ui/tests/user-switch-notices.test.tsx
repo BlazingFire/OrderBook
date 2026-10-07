@@ -11,6 +11,8 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Notice } from '@orderbook/shared';
 
+import type { useNotices as UseNotices } from '../../master/web/src/useNotices';
+
 import { installBrowserStubs, json, routeFetch, type Call } from './panel-harness.js';
 
 const notice = (id: string): Notice =>
@@ -47,7 +49,7 @@ describe('Master useNotices across a user switch', () => {
     });
     const { useNotices } = (await import(
       /* @vite-ignore */ '../../master/web/src/useNotices.ts'
-    )) as typeof import('../../master/web/src/useNotices');
+    )) as { useNotices: typeof UseNotices };
 
     const { result, rerender } = renderHook(({ user }) => useNotices(0, true, user), {
       initialProps: { user: 'A' as string | null },
@@ -81,7 +83,7 @@ describe('Master useNotices across a user switch', () => {
     );
     const { useNotices } = (await import(
       /* @vite-ignore */ '../../master/web/src/useNotices.ts'
-    )) as typeof import('../../master/web/src/useNotices');
+    )) as { useNotices: typeof UseNotices };
 
     const { result, rerender } = renderHook(({ user }) => useNotices(0, true, user), {
       initialProps: { user: 'A' as string | null },
