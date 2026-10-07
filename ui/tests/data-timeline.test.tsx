@@ -52,10 +52,10 @@ describe('Timeline', () => {
         ]}
       />,
     );
-    const items = container.querySelectorAll('.ob-timeline li');
-    expect([...items[0].children].map((child) => child.className)).toEqual(['when', 'what']);
-    expect(items[0].getAttribute('data-system')).toBeNull();
-    expect(items[1].getAttribute('data-system')).toBe('true');
-    expect(items[1].getAttribute('data-tone')).toBe('ok');
+    const [note, system] = [...container.querySelectorAll('.ob-timeline li')];
+    expect([...(note?.children ?? [])].map((child) => child.className)).toEqual(['when', 'what']);
+    expect(note?.getAttribute('data-system')).toBeNull();
+    expect(system?.getAttribute('data-system')).toBe('true');
+    expect(system?.getAttribute('data-tone')).toBe('ok');
   });
 });

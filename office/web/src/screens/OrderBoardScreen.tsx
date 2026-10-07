@@ -63,6 +63,7 @@ import {
   useToast,
   useUnsavedWork,
   type PillTone,
+  stageTone,
   type PrintroomTransport,
   NoteButtons,
   showsDispatchedPill,
@@ -95,12 +96,12 @@ function sortedStages(pipeline: LocalView['pipelines'][number] | undefined): Pip
   return [...(pipeline?.stages ?? [])].sort((a, b) => a.sequence - b.sequence);
 }
 
-function stageTone(order: Order, stages: PipelineStage[]): PillTone {
-  if (order.dispatchedAt) return 'ok';
-  const stage = stages.find((candidate) => candidate.id === order.stageId);
-  if (stage?.isTerminal) return 'ok';
-  if (stage?.isDefault) return 'accent';
-  return 'default';
+/** The order's stage pill tone: the stage's own colour, else its flags (`stageTone` in the kit). */
+function orderStageTone(order: Order, stages: PipelineStage[]): PillTone {
+  return stageTone(
+    stages.find((candidate) => candidate.id === order.stageId),
+    Boolean(order.dispatchedAt),
+  );
 }
 
 function totalPieces(order: Order): number {
@@ -296,7 +297,7 @@ export function OrderBoardScreen({
         title={openOrder.partyName}
         meta={
           <>
-            <StatusPill tone={stageTone(openOrder, stages)}>{openOrder.stageName}</StatusPill>
+            <StatusPill tone={orderStageTone(openOrder, stages)}>{openOrder.stageName}</StatusPill>
             {showsDispatchedPill(openOrder) && (
               <StatusPill tone="ok">{t('orders.badge.dispatched')}</StatusPill>
             )}
@@ -431,7 +432,7 @@ export function OrderBoardScreen({
       key: 'stage',
       header: t('orders.column.stage'),
       width: rem(110),
-      render: (order) => <StatusPill tone={stageTone(order, stages)}>{order.stageName}</StatusPill>,
+      render: (order) => <StatusPill tone={orderStageTone(order, stages)}>{order.stageName}</StatusPill>,
     },
     {
       key: 'sync',
