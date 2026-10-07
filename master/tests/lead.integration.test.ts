@@ -31,6 +31,7 @@ import type { ActorContext } from '../src/domain/actor.js';
 import { ConflictError } from '../src/lib/errors.js';
 import * as productRepo from '../src/repositories/product.repository.js';
 import * as catalog from '../src/services/catalog.service.js';
+import * as fields from '../src/services/fields.service.js';
 import * as leads from '../src/services/lead.service.js';
 import * as orders from '../src/services/order.service.js';
 import * as settings from '../src/services/settings.service.js';
@@ -39,6 +40,10 @@ let actor: ActorContext;
 
 /** A one-form product, a model with three colour variants (one unweighed), and a model made in every colour. */
 async function seed() {
+  // A new line's colour must be on the company list (W2, 2026-10-07).
+  for (const value of ['White', 'Ivory']) {
+    await fields.createValue({ listKey: 'stock.colour', value, label: value }, actor);
+  }
   const party = await catalog.createParty({ name: 'Patel Sanitary' }, actor);
   const plain = await catalog.createProduct(
     {

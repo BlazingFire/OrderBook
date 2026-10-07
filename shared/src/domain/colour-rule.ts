@@ -82,6 +82,22 @@ export function subProductCells(name: string | null | undefined): {
     : { model: printed, code: null };
 }
 
+/** Turns a stored colour into the words to print. */
+export type ColourLabelOf = (colour: string) => string;
+
+/**
+ * A line stores the colour list's VALUE; what prints is that value's LABEL as
+ * the list has it now, so a colour renamed in Fields reads the new way on
+ * every note and screen. Matched case-insensitively; a value the list no
+ * longer has (deleted, or never listed) prints as stored.
+ */
+export function colourLabeller(
+  options: ReadonlyArray<{ value: string; label: string }>,
+): ColourLabelOf {
+  const byValue = new Map(options.map((option) => [option.value.trim().toLowerCase(), option.label]));
+  return (colour) => byValue.get(colour.trim().toLowerCase())?.trim() || colour;
+}
+
 /**
  * The Colour cell for the lines of one sub product (§8).
  *
@@ -104,12 +120,15 @@ export function lineColourText(
     quantity: number;
   }>,
   subProductName: string | null | undefined,
+  /** The list's label for a stored colour value; the value itself when absent. */
+  labelOf: ColourLabelOf = (colour) => colour,
 ): string {
   // Keyed case-insensitively, first spelling kept; a line with no colour is
   // its own entry so it still counts towards "several".
   const groups = new Map<string, { colour: string | null; quantity: number }>();
   for (const line of lines) {
-    const colour = line.colour?.trim() || line.variantLabel?.trim() || null;
+    const stored = line.colour?.trim() || line.variantLabel?.trim() || null;
+    const colour = stored === null ? null : labelOf(stored);
     const key = colour?.toLowerCase() ?? '';
     const group = groups.get(key);
     if (group) group.quantity += line.quantity;

@@ -388,6 +388,8 @@ export const EN_MESSAGES = {
   'validation.product.restoreCodesTaken':
     'Cannot restore — another product now uses {codes}',
   'validation.lead.variantMissing': 'One of the selected product variants no longer exists',
+  'validation.lead.colourUnknown':
+    '{colour} is not in the company colour list, so it cannot be added to {productName}',
   // --- Bulk product import: file-level refusals and per-row issues ----------
   'validation.import.fileRequired': 'Choose a CSV or Excel file',
   'validation.import.unsupportedFormat': 'Only .csv and .xlsx files can be imported',
