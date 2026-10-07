@@ -19,6 +19,8 @@ export default defineConfig({
     // globals to the server suites.
     environmentMatchGlobs: [['ui/tests/**', 'jsdom']],
     environment: 'node',
+    // Retries for recursive `fs.rm` (a Windows cleanup race); see the file.
+    setupFiles: ['./vitest.setup.ts'],
     /*
      * Point the Master's data directory at a throwaway location for the whole
      * run. `master/src/config/index.ts` resolves `dataDir` at module load, so
