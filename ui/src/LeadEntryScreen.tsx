@@ -432,6 +432,8 @@ function LeadEntryForm({
   /** The row the caret was last in: the "another colour" button works on it. */
   const [activeRow, setActiveRow] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  /** Bumped when a card opens; the effect after it puts the caret on the first field. */
+  const [cardOpened, setCardOpened] = useState(0);
   const addRef = useRef<HTMLDivElement>(null);
   /** Which Added products groups are ticked, and what is filtering them. */
   const [selected, setSelected] = useState<Record<string, true>>({});
@@ -863,9 +865,14 @@ function LeadEntryForm({
       }),
       at: null,
     });
-    window.setTimeout(focusFirstField, 0);
+    setCardOpened((n) => n + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category, subsLoaded, draft]);
+
+  useEffect(() => {
+    if (cardOpened > 0) focusFirstField();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardOpened]);
 
   function patchRow(key: string, patch: Partial<GridRow>): void {
     setDraft((current) =>
@@ -933,7 +940,7 @@ function LeadEntryForm({
       at: Math.max(0, at),
     });
     setSearchOpen(false);
-    window.setTimeout(focusFirstField, 0);
+    setCardOpened((n) => n + 1);
   }
 
   function removeGroup(group: LineGroup<DraftLine>): void {
@@ -2007,6 +2014,7 @@ function LeadEntryForm({
                                       ariaLabel={`${t('lead.add.draft.colour')} — ${row.productName} ${row.code}`}
                                       placeholder={t('lead.add.card.pickColour')}
                                       hint={t('lead.add.card.colourHint')}
+                                      filterHint={t('lead.add.card.filterHint')}
                                       noMatches={t('common.noMatches')}
                                       attention
                                       onPick={(colour) => patchRow(row.key, { colour })}

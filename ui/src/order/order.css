@@ -572,8 +572,8 @@
 .ob-order-subrow {
   display: grid;
   grid-template-columns:
-    5.857rem minmax(0, 1fr) 8.857rem 3.571rem 4rem minmax(5rem, 6.857rem)
-    minmax(4rem, 5.714rem);
+    minmax(4.571rem, 5.857rem) minmax(6rem, 1fr) minmax(7rem, 8.857rem) minmax(3rem, 3.571rem)
+    minmax(3.429rem, 4rem) minmax(5rem, 6.857rem) minmax(4rem, 5.714rem);
   column-gap: 0.571rem;
   align-items: center;
   padding: 0.214rem 0.857rem;
@@ -626,7 +626,7 @@
 }
 
 .ob-order-more {
-  padding: 0.286rem 0.857rem 0.571rem;
+  padding: 0.286rem 0.857rem 0.714rem;
 }
 
 .ob-order-more button {
@@ -667,7 +667,7 @@
   z-index: 1;
 }
 
-.ob-order-colour__input {
+.ob-order-colour .ob-order-colour__input {
   width: 100%;
   padding-left: 1.929rem;
 }
@@ -888,4 +888,56 @@ button.ob-order-group__toggle:hover {
   color: var(--fg-secondary);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+
+/* --- Polish against the artboard (D12's pass) ------------------------------------- */
+
+.ob-order-colour__empty {
+  width: 1rem;
+  height: 1rem;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 1px dashed var(--line-strong);
+}
+
+.ob-order-colour[data-state='needed'] .ob-order-colour__input::placeholder {
+  color: var(--state-offline);
+}
+
+.ob-order-colour > svg {
+  position: absolute;
+  right: 0.429rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--fg-secondary);
+}
+
+.ob-order-colour .ob-order-colour__input {
+  padding-right: 1.714rem;
+}
+
+.ob-order-colour__filter {
+  margin: 0 0 0.286rem;
+  padding: 0.357rem 0.571rem;
+  border-bottom: 1px solid var(--bg-sunken);
+  font-size: 0.893rem;
+  color: var(--fg-tertiary);
+}
+
+.ob-order-colour__hint {
+  border-top-color: var(--bg-sunken);
+  min-height: 1.857rem;
+}
+
+/* Every control of a row at the artboard's 28 px. */
+.ob-order-subrow input {
+  height: 2rem;
+}
+
+/* A header label never wraps onto a second line: it is cut short instead. */
+.ob-order-subrow--head > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

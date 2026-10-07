@@ -1487,6 +1487,7 @@ export const EN_MESSAGES = {
   'lead.add.card.pickColour': 'Pick colour',
   'lead.add.card.anotherColour': 'Same sub product, another colour',
   'lead.add.card.colourHint': '↑↓ move · Enter picks',
+  'lead.add.card.filterHint': 'Type to filter',
   'lead.add.draft.hintColourRow': 'Pick a colour for every row that has a quantity',
   'lead.add.saveKbd': 'Ctrl S',
   'lead.add.draft.title': 'Details for this product',
