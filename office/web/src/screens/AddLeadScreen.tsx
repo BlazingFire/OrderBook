@@ -10,18 +10,17 @@
  *
  * Products are found the way the catalogue is organised — **Brand → Product →
  * Sub product** (`docs/catalogue/CATALOGUE_MODEL.md` §6; in code a product is
- * a *category* and a sub product a *model*). The search box is first the
- * **product bar**: a product by name or code, rows `CODE · Name · Brand`. The
- * chosen product becomes a chip in front of the box and the same box turns into
- * the **sub-product bar**: every sub product of that product in catalogue
- * order, narrowed locally as somebody types. Choosing one replaces the box with
- * it and opens a draft card underneath, which asks what the sub product's
- * colour rule (`colourRuleOf`) leaves to ask:
+ * a *category* and a sub product a *model*). The search box is the **product
+ * bar**: a product by name or code, rows `CODE · Name · Brand`. Choosing one
+ * opens its **card**: every sub product of that product at once, a row for each
+ * variant in catalogue order (the shared grid model, `ui/src/order/gridModel.ts`),
+ * which asks what each row's colour rule (`colourRuleOf`) leaves to ask:
  *  · `fixed` — the colour is the variant's label, shown and not chosen; a
  *    quantity;
  *  · `dedicated` — nothing about colour at all; a quantity;
- *  · `selectable` (multicolour) — colours from the company's colour list,
- *    several if the customer wants several, each with its own quantity.
+ *  · `selectable` (multicolour) — a colour from the company's colour list in the
+ *    row, and "+ Same sub product, another colour" for a second colour on the
+ *    same sub product, each with its own quantity.
  * Each row's packaging sits right beside its quantity, a pick from the
  * company's `line.packaging` list (Box, Grass and Paper to start; Settings →
  * Fields keeps it), required only while the company requires it. Grade sits
@@ -29,21 +28,13 @@
  * is always optional.
  *
  * Keys, the way the counter works:
- *  · **Colour is the first step of a multicolour card** (a `selectable` sub
- *    product): the card opens on the colour box with the company's colour list
- *    down and the first colour highlighted, so Enter takes it. The box stays
- *    for the next colour (type to narrow, Enter takes the highlighted one), and
- *    Enter on the empty box — the list closed — goes on to the quantities. A
- *    `fixed` colour is shown and has no stop; a `dedicated` sub product has no
- *    colour at all, so its card opens on the first quantity;
- *  · **Enter** walks each row's quantity, its packaging and its grade (a pick
- *    in either moves on by itself), then the next row; after the last grade
- *    it lands on Add product, whose Enter adds the sub product and returns to
- *    the sub-product bar, the product still chosen. **Escape** walks back one
- *    field, Add product to grade to packaging to quantity to the row above;
- *  · **Shift+Q** (or Complete sub product) adds a pending valid one and goes
- *    to the product bar; with nothing pending and an empty sub-product box it
- *    just finishes the product. Anywhere it would do nothing it is a capital Q;
+ *  · **Enter** walks a row's colour (multicolour only), quantity, packaging and
+ *    grade (a pick in either moves on by itself), then the next row; a row with
+ *    no quantity is passed over (`nextWalkStop`). After the last row it lands on
+ *    Add product, whose Enter adds every counted row and returns to the product
+ *    bar. **Escape** walks back one field;
+ *  · **Shift+Q** adds a ready card and goes to the product bar. Anywhere it
+ *    would do nothing it is a capital Q;
  *  · **Ctrl+Enter** opens a review of the finished lead, and Ctrl+Enter there
  *    saves it — once, however the key repeats. Ctrl+S still saves directly.
  *
@@ -239,7 +230,7 @@ function inCatalogueOrder(rows: readonly Product[]): Product[] {
  * (`pickCategories`): the code from its start, the name or brand anywhere, a
  * code typed in full first, catalogue order otherwise (the sort is stable).
  *
- * Local for the sub-product bar's reason: `OPT⏎` typed blind took the first
+ * Local, so that `OPT⏎` typed blind does not take the first
  * row of the list from before the code, which the debounced search had not
  * replaced yet.
  */
@@ -366,7 +357,7 @@ function AddLeadForm({
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [sel, setSel] = useState(0);
-  /** The product bar's answer. Cleared with the chip's ✕, Backspace on an empty box, or Shift+Q. */
+  /** The product bar's answer; its card opens once the sub products are here. Cleared when the card is added or closed. */
   const [category, setCategory] = useState<ProductCategory | null>(null);
   /** Every product the bar can offer, in catalogue order; narrowed locally as somebody types. */
   const [allCategories, setAllCategories] = useState<ProductCategory[]>([]);
@@ -605,7 +596,7 @@ function AddLeadForm({
     window.setTimeout(() => sourceRef.current?.focus(), 0);
   }
 
-  // --- The product bar, then the sub-product bar -------------------------
+  // --- The product bar, then the product's card -------------------------
 
   /*
    * Every product, fetched each time the bar is back on products (41 in the
@@ -794,9 +785,17 @@ function AddLeadForm({
 
   /** "+ Same sub product, another colour": a blank copy of the row, right under it. */
   function anotherColour(key: string): void {
+    const added = newRowKey();
     setCard((current) =>
-      current ? { ...current, rows: addColourRow(current.rows, key, newRowKey) } : current,
+      current ? { ...current, rows: addColourRow(current.rows, key, () => added) } : current,
     );
+    // The caret goes into the new row's colour box, as on the Master: Enter on the button must not
+    // leave it on the page.
+    window.setTimeout(() => {
+      productsRef.current
+        ?.querySelector<HTMLElement>(`[data-walk="colour"][data-row="${added}"]`)
+        ?.focus();
+    }, 0);
   }
 
   /** The copies made by "another colour" can go again; a sub product's first row stays. */
@@ -854,6 +853,8 @@ function AddLeadForm({
     const doomed = new Set(group.map((line) => line.key));
     setLines((current) => current.filter((line) => !doomed.has(line.key)));
     for (const line of group) forget(line.key);
+    // A refusal that named a product on the lead is over once that product is gone.
+    setError(null);
   }
 
   /** Drop a key from the tick set — a line that is gone cannot stay selected. */
@@ -936,6 +937,7 @@ function AddLeadForm({
     const doomed = new Set(selectedLines.map((line) => line.key));
     setLines((current) => current.filter((line) => !doomed.has(line.key)));
     setSelected({});
+    setError(null);
   }
 
   // --- Complete sub product (Shift+Q) --------------------------------------
@@ -1585,10 +1587,9 @@ function AddLeadForm({
                           }
                           /*
                            * A bare Enter takes the highlighted row; Tab only once
-                           * something was typed. The sub-product bar reopens on
-                           * its whole list after every line, and a Tab out of it
-                           * took the first sub product as one nobody chose. A
-                           * chord is never a pick: Ctrl+Enter here is the review.
+                           * something was typed, so a Tab out of the bar does not
+                           * take a product nobody chose. A chord is never a pick:
+                           * Ctrl+Enter here is the review.
                            */
                           const takes =
                             !chorded(event) &&
