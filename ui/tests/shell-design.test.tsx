@@ -127,6 +127,12 @@ describe('status footer (Navigation and Shell artboards)', () => {
     expect(rule(".ob-footer-sync[data-state='conflict']")).toMatch(/color:\s*var\(--state-conflict\)/);
   });
 
+  it('gives the sync button the whole strip as its target, never under 24px', () => {
+    const button = rule('.ob-footer > button');
+    expect(button).toMatch(/align-self:\s*stretch/);
+    expect(button).toMatch(/min-height:\s*1\.7143rem/);
+  });
+
   it.each(['master/web', 'office/web'])('puts the sync state first and the version last in %s', (panel) => {
     const source = readFileSync(join(process.cwd(), panel, 'src', 'App.tsx'), 'utf8').split(String.fromCharCode(13)).join('');
     const footer = source.slice(source.indexOf('const footer = ('), source.indexOf('const ', source.indexOf('const footer = (') + 20));

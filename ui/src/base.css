@@ -1724,6 +1724,12 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
 .ob-footer > a {
   padding: 0 var(--s-12);
 }
+/* The sync button fills the strip's height, so its hit area is the whole 26px (never under the 24px
+ * minimum target, WCAG 2.2 SC 2.5.8) while the text keeps the footer's look. */
+.ob-footer > button {
+  align-self: stretch;
+  min-height: 1.7143rem;
+}
 .ob-footer-sync[data-state='offline'],
 .ob-footer-sync[data-state='offlinePending'] {
   color: var(--state-offline);
