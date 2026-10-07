@@ -1812,6 +1812,15 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   gap: var(--s-8);
   z-index: var(--z-toast);
 }
+/* Bottom-left of the working area, so a toast never covers the sidebar's own rows; the sidebar's
+ * width tokens follow its collapse and the UI scale. With no sidebar (sign-in, splash, pairing)
+ * the window's own edge, as above. */
+body:has(.ob-sidebar) .ob-toasts {
+  left: calc(var(--shell-sidebar-w) + var(--s-16));
+}
+body:has(.ob-sidebar--collapsed) .ob-toasts {
+  left: calc(var(--shell-sidebar-collapsed-w) + var(--s-16));
+}
 
 .ob-toast {
   display: flex;
@@ -2838,25 +2847,26 @@ button.ob-stattile:hover {
   }
 }
 
+/* Rises into place: sliding in from the left crossed the sidebar's edge for its first frames. */
 @keyframes ob-toast-in {
   from {
     opacity: 0;
-    transform: translateX(-16px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
-    transform: translateX(0);
+    transform: translateY(0);
   }
 }
 
 @keyframes ob-toast-out {
   from {
     opacity: 1;
-    transform: translateX(0);
+    transform: translateY(0);
   }
   to {
     opacity: 0;
-    transform: translateX(-16px);
+    transform: translateY(8px);
   }
 }
 

@@ -97,6 +97,19 @@ describe('Toasts', () => {
   });
 });
 
+describe('Toast placement', () => {
+  // D5 note 1: at x = 16 the stack covered the sidebar's Collapse row for its 4 s.
+  it('starts past the sidebar, expanded or collapsed, and at the window edge with no sidebar', () => {
+    expect(css).toMatch(/\.ob-toasts \{[^}]*left: var\(--s-16\);/);
+    expect(css).toMatch(
+      /body:has\(\.ob-sidebar\) \.ob-toasts \{\s*left: calc\(var\(--shell-sidebar-w\) \+ var\(--s-16\)\);/,
+    );
+    expect(css).toMatch(
+      /body:has\(\.ob-sidebar--collapsed\) \.ob-toasts \{\s*left: calc\(var\(--shell-sidebar-collapsed-w\) \+ var\(--s-16\)\);/,
+    );
+  });
+});
+
 describe('Tooltip', () => {
   it('shows the title after 400 ms in its own bubble, and gives the title back on leave', () => {
     vi.useFakeTimers();
