@@ -23,7 +23,7 @@ function line(over: Partial<LineItem>): LineItem {
   } as LineItem;
 }
 
-function sheet(named: number, coded: number, kind: NoteKind = 'dispatch'): string {
+function sheet(named: number, coded: number, kind: NoteKind = 'dispatch', notes: string | null = null): string {
   const items: LineItem[] = [];
   for (let i = 0; i < named; i += 1) items.push(line({ productName: `Model ${String(i).padStart(4, '0')}` }));
   for (let i = 0; i < coded; i += 1) items.push(line({ productName: String(100 + i), categoryName: 'Basin' }));
@@ -31,13 +31,13 @@ function sheet(named: number, coded: number, kind: NoteKind = 'dispatch'): strin
   const model = buildOrderNote(order);
   return renderToStaticMarkup(
     <OrderNote
-      pages={paginateOrderNote(model, kind)}
+      pages={paginateOrderNote(model, kind, { notes })}
       kind={kind}
       header={noteHeader(order, 'order')}
       party={null}
       partyName="Shree Tiles"
       vehicleNumber=""
-      notes={null}
+      notes={notes}
       totalQuantity={model.totalQuantity}
       totalWeightKg={model.totalWeightKg}
       itemCount={model.itemCount}
@@ -88,5 +88,28 @@ describe('the unit of a quantity on a note', () => {
     expect(cellsOf(html, 'ob-note-pack ob-note-wrap')).toContain('Box');
     expect(cellsOf(html, 'ob-note-chip')).toContain('BOX');
     expect(html).not.toMatch(/boxes/i);
+  });
+});
+
+describe('the notes of a note', () => {
+  const words = (count: number): string => Array.from({ length: count }, (_, i) => `word${i}`).join(' ');
+
+  it.each(['filling', 'dispatch'] as const)('%s: prints a long note whole, and gives the page the height it needs', (kind) => {
+    const text = words(100);
+    const html = sheet(30, 80, kind, text);
+
+    expect(html).toContain(text);
+    // The block is as tall as the note, not the 78 px of two lines.
+    const heights = [...html.matchAll(/ob-note-notes" style="height:([0-9.]+)px/g)].map((match) => Number(match[1]));
+    expect(heights.length).toBe(1);
+    expect(heights[0]).toBeGreaterThan(78);
+  });
+
+  it.each(['filling', 'dispatch'] as const)('%s: prints a very long note over pages of its own, once', (kind) => {
+    const text = words(2200);
+    const html = sheet(10, 20, kind, text);
+    const printed = [...html.matchAll(/ob-note-notes-text">([^<]*)</g)].map((match) => match[1]).join(' ');
+
+    expect(printed.split(' ').filter(Boolean)).toEqual(text.split(' '));
   });
 });

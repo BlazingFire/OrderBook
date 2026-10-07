@@ -232,6 +232,14 @@ Shared helpers (`noteFigure`, `noteStamp`, `noteRange`, `noteBrandCode`, `notePa
 **Tests.** `master/tests/note-pdf.test.ts`, `ui/tests/order-note-codes-per-line.test.tsx` (unit after a quantity); the
 old lead PDF table tests are gone with the table.
 
+**Follow-up (D10's audit).** The record's notes are printed whole on the notes and the PDF: `paginateOrderNote` takes
+`notes`, makes the last page's block as tall as the text needs (`NOTE_LAYOUT.notesBase`/`notesLine`, 64 characters a line
+counted low), and a note over `notesMaxLines` (14) gets pages of its own after the lines (`splitNoteText`, 36 lines a page,
+the strip on top, the notes under it). `NotePage` gained `notesHeight` and `notesText`. The page weight D10 flagged was
+right (the weighted codes were all on page 2); withdrawn. **Tests.** `shared/tests/order-note-notes.test.ts`,
+`master/tests/note-pdf.test.ts`, `ui/tests/order-note-codes-per-line.test.tsx`, `master/tests/note-pdf.integration.test.ts` (the
+weights of a real lead).
+
 ### 2026-10-07 - V7: three coded products to a line on the Filling and Dispatch notes (Claude, D7)
 
 **Follow-up (CH1, on d13/colour).** Notes print the colour list's CURRENT label: `OrderNoteScreen` takes the company option lists (`optionLists`; the four screens that open it pass theirs) and builds the note with `colourLabeller`; the Master's print job (`print.service.sendJob`) does the same with the `stock.colour` list, deleted entries included. Tests: `ui/tests/order-note-screen.test.tsx` and `master/tests/printroom.integration.test.ts`, each seen failing.

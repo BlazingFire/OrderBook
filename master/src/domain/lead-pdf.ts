@@ -40,7 +40,7 @@ export function leadNotePdf(
     numberText: recordNumber(lead),
     notes: lead.notes?.trim() ?? '',
     // No signature row: nobody signs this one, so its room goes to the lines.
-    pages: paginateOrderNote(model, 'dispatch', { signatures: false }),
+    pages: paginateOrderNote(model, 'dispatch', { signatures: false, notes: lead.notes }),
     namedCount: model.named.length,
     codedCount: model.coded.reduce((sum, group) => sum + group.lines.length, 0),
     itemCount: model.itemCount,

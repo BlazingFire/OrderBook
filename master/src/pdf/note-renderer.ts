@@ -319,7 +319,7 @@ function planPage(input: NotePdfInput, data: NotePage, measure: Measure): PdfOp[
   // ---- Body ---------------------------------------------------------------
   const hasLeft = data.leftCount > 0;
   const hasRight = data.rightCount > 0;
-  const notesH = last ? L.notes : 0;
+  const notesH = data.notesHeight;
   const bodyBottom = PAGE_H - PAD_BOTTOM - notesH;
 
   const leftX = PAD_X;
@@ -349,14 +349,16 @@ function planPage(input: NotePdfInput, data: NotePage, measure: Measure): PdfOp[
     planCoded(page, measure, data.right, rightX, y + L.caption, rightW, perRow);
   }
 
-  // ---- Notes (last page) --------------------------------------------------
-  if (last) {
-    const top = bodyBottom;
+  // ---- Notes (the last pages) -----------------------------------------------
+  if (notesH > 0) {
+    // A page of a long note's own: the notes sit under the strip, not at the foot.
+    const top = hasLeft || hasRight ? bodyBottom : y;
     page.line(PAD_X, top + 0.5, right, top + 0.5, INK, 1);
     page.text(PAD_X, top + 10, caps(t('en', 'orderNote.notes')), 'bold', 8.5, MUTED, 1.1);
-    const notes = input.notes.trim();
+    const notes = data.notesText.trim();
     if (notes) {
-      const lines = wrap(measure, notes, 'body', 17, CONTENT_W, 2);
+      // Every line of what was written, wrapped to the width: the page made room for all of it.
+      const lines = notes.split('\n').flatMap((paragraph) => wrap(measure, paragraph, 'body', 17, CONTENT_W, 1000));
       lines.forEach((value, index) => page.text(PAD_X, centred(top + 24 + index * 22, 22, 17, 'body'), value, 'body', 17, INK));
     } else {
       page.line(PAD_X, top + 42, right, top + 42, '#98a3a9', 1, true);

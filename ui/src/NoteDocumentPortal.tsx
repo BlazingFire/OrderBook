@@ -20,7 +20,7 @@ import { OrderNote, type OrderNoteProps } from './OrderNote.js';
 export function noteSheetProps(document: NoteDocument, kind: NoteKind, printedAt: Date): OrderNoteProps {
   const { model } = document;
   return {
-    pages: paginateOrderNote(model, kind),
+    pages: paginateOrderNote(model, kind, { notes: document.notes }),
     kind,
     header: document.header,
     party: document.party,

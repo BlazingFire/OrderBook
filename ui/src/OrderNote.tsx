@@ -270,7 +270,10 @@ function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
   const filling = props.kind === 'filling';
   const hasLeft = page.leftCount > 0;
   const hasRight = page.rightCount > 0;
-  const notes = props.notes?.trim() ?? '';
+  /** A page of a long note's own: the notes sit under the strip, the signature row stays at the foot. */
+  const notesOnly = !hasLeft && !hasRight && page.notesHeight > 0;
+  // The part of the notes this page carries (`paginateOrderNote` made room for all of them).
+  const notes = page.notesText.trim();
   const signatures = filling
     ? [t('orderNote.signFilledBy'), t('orderNote.signCheckedBy'), t('orderNote.signStoreInCharge')]
     : [t('orderNote.signSupervisor'), t('orderNote.signLoadedBy'), t('orderNote.signCheckedBy')];
@@ -279,7 +282,7 @@ function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
     <section className={`ob-note-page ob-note-${props.kind}`}>
       <Header props={props} page={page} />
       {!filling && <Strip props={props} page={page} position="top" />}
-      <div className="ob-note-body">
+      <div className="ob-note-body" style={notesOnly ? { flex: 'none' } : undefined}>
         {hasLeft && (
           <div
             className={`ob-note-half ob-note-half--left${hasRight ? '' : ' ob-note-half--only'}`}
@@ -333,8 +336,8 @@ function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
           </div>
         )}
       </div>
-      {page.isLast && (
-        <div className="ob-note-notes">
+      {page.notesHeight > 0 && (
+        <div className={`ob-note-notes${notesOnly ? ' ob-note-notes--top' : ''}`} style={{ height: page.notesHeight }}>
           <div className="ob-note-eyebrow">{t('orderNote.notes')}</div>
           {notes ? (
             <div className="ob-note-notes-text">{notes}</div>

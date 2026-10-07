@@ -130,6 +130,36 @@ describe('the pending order PDF — what is on the sheets', () => {
   });
 });
 
+describe('the pending order PDF — the whole note', () => {
+  const longNote = (words: number): string => Array.from({ length: words }, (_, i) => `word${i}`).join(' ');
+
+  it('prints every word of a long note, wrapped, with room made for it', () => {
+    const text = `${longNote(120)}
+and a second paragraph`;
+    const input = order(40, 120, text);
+    const plans = planNotePdf(input, measure);
+    const printed = texts(plans.at(-1)!).map((op) => op.text).join(' ');
+
+    for (let i = 0; i < 120; i += 1) expect(printed).toContain(`word${i}`);
+    expect(printed).toContain('and a second paragraph');
+    expect(printed).not.toContain('…');
+    for (const op of texts(plans.at(-1)!)) expect(op.y + op.size, op.text).toBeLessThanOrEqual(NOTE_LAYOUT.pageHeight - 19);
+  });
+
+  it('puts a note too long for the last page on pages of its own, every word once and in order', () => {
+    const text = longNote(2200);
+    const input = order(30, 60, text);
+    const plans = planNotePdf(input, measure);
+    const printed = plans
+      .flatMap((ops) => texts(ops).filter((op) => op.size === 17 && /^word/.test(op.text)))
+      .flatMap((op) => op.text.split(' '));
+
+    expect(input.pages.filter((page) => page.notesHeight > 0).length).toBeGreaterThan(1);
+    expect(printed).toEqual(text.split(' '));
+    expect(texts(plans.at(-1)!).map((op) => op.text)).toContain(`Page ${plans.length} of ${plans.length}`);
+  });
+});
+
 describe('the pending order PDF — units and money', () => {
   it('prints pcs after a quantity, never box or boxes, and carries no money', () => {
     const plans = planNotePdf(order(25, 90, 'Packed in boxes of four.'), measure);
