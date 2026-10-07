@@ -103,6 +103,33 @@ Density is per machine and never synced; it scales the whole interface from the 
 Scrollbars: only the content area scrolls; thin, no arrows, colour change only. A 10 px gutter holding a 6 px thumb;
 rest, hover and drag are three greys (light and dark each have their own); horizontal scroll is for wide tables only.
 
+### 2.6 Token names in code (`ui/src/tokens.css`, names final, from D13)
+
+Components use the semantic names only.
+
+| Group | Names |
+|---|---|
+| Surfaces | `--bg-canvas`, `--bg-surface`, `--bg-sunken`, `--bg-hover`, `--bg-selected` |
+| Text | `--fg-primary`, `--fg-secondary`, `--fg-tertiary`, `--fg-disabled`, `--fg-on-accent` |
+| Lines | `--line`, `--line-strong`, `--line-control` (a control's border), `--line-focus` |
+| Accent | `--accent`, `--accent-hover`, `--accent-tint` |
+| State | `--state-offline`, `--state-conflict`, `--state-ok`, each with a `-tint`; new `--state-offline-fill` (the design's amber, for fills) |
+| Ramps | `--porcelain-00` to `-90`, `--glaze-50`, `-60`, `-05`, `--kiln-*` |
+| Fill-only design values | `--porcelain-50-fill` `#6E7C84`, `--kiln-amber-fill` `#B26A00`; text keeps `#5D6B73` (`--porcelain-50`) and `#8A5200` (`--kiln-amber`) for 4.5:1 |
+| Type | `--t-<role>-size` and `--t-<role>-line` for display 24/28 600, title 18/24 600, eyebrow 11/14 600 caps, body 14/20, data 13.5/18 tabular, small 12.5/16, micro 11/14 500, mono 12.5/18 |
+| Space | 4 px base, `--s-2` to `--s-56` (2, 4, 6, 8, 12, 16, 20, 24, 32, 40, 56) |
+| Radius | 4, 6, 10 |
+| Elevation | hairline, `--sh-2`, `--sh-3` |
+| Motion | 120 / 160 / 220 ms; standard `.2,0,0,1`; exit `.4,0,1,1` |
+| Focus ring | 2 px solid accent, offset 2 px |
+
+**Scrollbars (as built):** a 10 px gutter holding a 6 px thumb with radius 4, a transparent track; the thumb is always drawn
+(not only on hover); rest `--porcelain-30`, hover `#6E7C84`, drag `--porcelain-70`.
+
+**Density (as built):** per machine, set in Settings > Appearance, stored as `ob.density` and applied as `data-density` on `<html>`:
+compact (root 13, row 28, control 26), comfortable (root 14, row 32, control 30, the default), large (root 16, row 38, control 36).
+The scale slider still sets the root size on top of that.
+
 ## 3. The mark (artboards: Main, Marks, Usage, Mark, Icons, Panels)
 
 **What it is.** A 4 x 3 lattice of 4-unit squares on a 24 x 24 grid with 2-unit gutters, each square `rx` 0.6, an SVG of
@@ -273,7 +300,7 @@ Lead wording becomes **pending order**; quantity unit is **box**, never "pcs".
 
 | Area | Files |
 |---|---|
-| Tokens, type, radii, focus ring, scrollbars, density | `ui/src/tokens.css`, `ui/src/base.css` |
+| Tokens, type, radii, focus ring, scrollbars, density | `ui/src/tokens.css` (names in 2.6), `ui/src/base.css`, `ui/src/theme.ts` (density, scale) |
 | Fonts (Inter, IBM Plex Mono, bundled) | `ui/src/fonts/`, `ui/src/fonts.css` |
 | Mark, splash, busy indicator, app icons | (to be filled) |
 | Buttons and form controls | `ui/src/Button.tsx`, `Input.tsx`, `Select.tsx`, ... (to be filled) |
