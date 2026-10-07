@@ -490,6 +490,7 @@ export function OrdersScreen({
         onBack={() => setNote(null)}
         desktop={desktopBridge() ?? undefined}
         printroom={printroom}
+        optionLists={optionLists}
       />
     );
   }
