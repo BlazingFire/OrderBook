@@ -1495,7 +1495,7 @@ export const EN_MESSAGES = {
   'lead.add.line.noPackaging': 'no packaging',
   'lead.add.products.clear': 'Clear selection',
   'lead.add.products.pickedHint':
-    'Enter walks quantity, packaging and grade to Add product, which adds this sub product and returns to the list; Shift+Q adds it and moves on to the next product.',
+    'Enter walks each row to Add product, which adds the rows with a quantity and returns to the product bar; Shift+Q adds them and moves on to the next product.',
   'lead.add.products.searchAdds': 'the search adds another',
   'lead.add.products.searchFirst': 'choose a product, then a sub product — at least one',
   'lead.add.saved': 'Pending Order saved — {id} syncs when the Master is reachable',
@@ -1522,7 +1522,7 @@ export const EN_MESSAGES = {
   'lead.add.party.search': 'Search party by name, code or phone',
   'lead.add.party.title': 'Party',
   'lead.add.products.remove': 'Remove',
-  'lead.add.products.searchLabel': 'Search products — the product first, then its sub product',
+  'lead.add.products.searchLabel': 'Search products — its sub products open on a card',
   'lead.add.products.title': 'Products',
   'lead.add.products.useSuggested': 'Use “{value}”',
   'lead.add.save': 'Save order',

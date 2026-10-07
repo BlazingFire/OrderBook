@@ -39,6 +39,7 @@ export function ColourSelect({
   filterHint,
   noMatches,
   attention = false,
+  openOnEnter = true,
   inputRef,
   onPick,
   onAdvance,
@@ -59,10 +60,20 @@ export function ColourSelect({
   noMatches: string;
   /** Draws the dashed amber "needs a colour" border while no colour is chosen. */
   attention?: boolean;
+  /**
+   * Enter on a closed select with no colour opens the list (default). False for a row nobody has
+   * started (no quantity): Enter goes on to the walk's next stop instead, and the list opens on an
+   * arrow, a click or typing.
+   */
+  openOnEnter?: boolean;
   inputRef?: Ref<HTMLInputElement>;
   onPick: (value: string) => void;
-  /** Enter on a closed select that already has its colour: the walk's next stop. */
-  onAdvance: () => void;
+  /**
+   * The walk's next stop: after a pick (called with the colour just taken, before the row's own
+   * state has caught up), on Enter over a closed select that has its colour, and on Enter over a
+   * closed one of an unstarted row (`openOnEnter` false).
+   */
+  onAdvance: (picked?: string) => void;
 }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
@@ -107,7 +118,7 @@ export function ColourSelect({
     setQuery('');
     setOpen(false);
     setSel(0);
-    onAdvance();
+    onAdvance(colour);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
@@ -137,7 +148,7 @@ export function ColourSelect({
     event.stopPropagation();
     const chosen = open ? matches[pick] : undefined;
     if (chosen) take(chosen.value);
-    else if (value) onAdvance();
+    else if (value || !openOnEnter) onAdvance();
     else setOpen(true);
   }
 

@@ -28,42 +28,38 @@
  *
  * Products are found the way the catalogue is organised — **Brand → Product →
  * Sub product** (`docs/catalogue/CATALOGUE_MODEL.md` §6; in code a product is
- * a *category* and a sub product a *model*). The search box is first the
- * **product bar**: a product by name or code, rows `CODE · Name · Brand`. The
- * chosen product becomes a chip in front of the box and the same box turns into
- * the **sub-product bar**: every sub product of that product in catalogue
- * order, narrowed locally as somebody types. Choosing one replaces the box with
- * it and opens a draft card underneath, which asks what the sub product's
- * colour rule (`colourRuleOf`) leaves to ask:
- *  · `fixed` — the colour is the variant's label, shown and not chosen; a
- *    quantity;
- *  · `dedicated` — nothing about colour at all; a quantity;
- *  · `selectable` (multicolour) — colours from the company's colour list,
- *    several if the customer wants several, each with its own quantity.
- * Each row's packaging sits right beside its quantity, a pick from the
- * company's `line.packaging` list (Box, Grass and Paper to start; Settings →
- * Fields keeps it), required only while the company requires it. Grade sits
- * beside the packaging, the same box over the company's `line.grade` list, and
- * is always optional.
+ * a *category* and a sub product a *model*). The search box is the **product
+ * bar**: a product by name or code, rows `CODE · Name · Brand`. Choosing one
+ * opens the **product card** under it with EVERY sub product of that product,
+ * one row for each variant on sale, in catalogue order. A row says what its
+ * sub product's colour rule (`colourRuleOf`) leaves to ask:
+ *  · `fixed` — the colour is the variant's label, shown and not chosen;
+ *  · `dedicated` — nothing about colour at all (a dash);
+ *  · `selectable` (multicolour) — a colour from the company's colour list in
+ *    the row's colour select, and "+ Same sub product, another colour" adds a
+ *    blank row under it, so White ×10 and Ivory ×5 are two rows.
+ * A row is a line once it has a quantity. Each row's packaging sits beside its
+ * quantity, a pick from the company's `line.packaging` list (required only
+ * while the company requires it), and grade beside that, always optional.
  *
- * Keys, the way the counter works:
- *  · **Colour is the first step of a multicolour card** (a `selectable` sub
- *    product): the card opens on the colour box with the company's colour list
- *    down and the first colour highlighted, so Enter takes it. The box stays
- *    for the next colour (type to narrow, Enter takes the highlighted one), and
- *    Enter on the empty box — the list closed — goes on to the quantities. A
- *    `fixed` colour is shown and has no stop; a `dedicated` sub product has no
- *    colour at all, so its card opens on the first quantity;
- *  · **Enter** walks each row's quantity, its packaging and its grade (a pick
- *    in either moves on by itself), then the next row; after the last grade
- *    it lands on Add product, whose Enter adds the sub product and returns to
- *    the sub-product bar, the product still chosen. **Escape** walks back one
- *    field, Add product to grade to packaging to quantity to the row above;
- *  · **Shift+Q** (or Complete sub product) adds a pending valid one and goes
- *    to the product bar; with nothing pending and an empty sub-product box it
- *    just finishes the product. Anywhere it would do nothing it is a capital Q;
+ * Keys, the way the counter works (the model is `ui/src/order/gridModel.ts`):
+ *  · **Enter** walks a row's colour select (a multicolour row), quantity,
+ *    packaging and grade (a pick moves on by itself), then the next row; after
+ *    the last row it lands on Add product, whose Enter adds every counted row
+ *    and returns to the product bar. A row nobody has started is skipped: from
+ *    an empty quantity the walk goes past that row's packaging and grade, and
+ *    from the closed colour select of a row with no quantity it goes on to the
+ *    next row without opening the list. **Escape** walks back over the same
+ *    stops;
+ *  · **Shift+Q** adds a ready card and goes to the product bar. Anywhere it
+ *    would do nothing it is a capital Q;
  *  · **Ctrl+Enter** opens a review of the finished lead, and Ctrl+Enter there
  *    saves it — once, however the key repeats. Ctrl+S still saves directly.
+ *
+ * The Added products list groups the lines by product (`groupLines`): code,
+ * name and total pieces, then a line per sub product and colour; the pencil
+ * lifts that product's lines back into the card, where Add puts them back in
+ * place.
  *
  * The unit of a lead is **one variant in one colour** (`LineItem.variantId`,
  * `LineItem.colour`). A multicolour sub product ordered in White and Ivory adds
@@ -130,10 +126,12 @@ import {
   lineGroupKey,
   linesToRows,
   nextWalkStop,
+  prevWalkStop,
   rowsToLines,
   type GridLine,
   type GridRow,
   type LineGroup,
+  type WalkRow,
   type WalkStop,
 } from './order/gridModel.js';
 import { ProductCard, SubGrid, SubRow } from './order/ProductCard.js';
@@ -266,11 +264,6 @@ function isoDate(daysFromToday: number): string {
 function lineWeight(line: { weightKg: number | null; quantity: number }): number | null {
   if (line.weightKg === null) return null;
   return Math.round(line.weightKg * line.quantity * 1000) / 1000;
-}
-
-/** The variant's name as a line shows it: the colour, or the code when it has none. */
-function variantName(facts: { variantLabel: string | null; code: string }): string {
-  return facts.variantLabel ?? facts.code;
 }
 
 /**
@@ -996,15 +989,10 @@ function LeadEntryForm({
     patchRow(row.key, { qty: String(Math.max(0, current + delta)) });
   }
 
-  /**
-   * One stop on, row by row: each row's colour (a multicolour one), quantity, packaging and grade,
-   * then Add product. From a row with no quantity the walk skips that row's packaging and grade and
-   * goes on to the next row (`nextWalkStop`). A disabled Add takes no focus, so a card still short
-   * of something keeps the caret where it is and the footer says what is missing.
-   */
-  function stepOn(from: Element | null): void {
+  /** The card's fields in DOM order (a multicolour row's colour select first), and its Add button. */
+  function cardStops() {
     const body = gridRef.current;
-    if (!body || !from) return;
+    if (!body) return null;
     const fields = Array.from(
       body.querySelectorAll<HTMLInputElement>('.ob-order-colour__input, input[data-kind]'),
     );
@@ -1016,13 +1004,49 @@ function LeadEntryForm({
         : (field.dataset.kind as WalkStop['field']),
     }));
     stops.push({ rowKey: null, field: 'add' });
-    const index = fields.indexOf(from as HTMLInputElement);
+    return { fields, add, stops };
+  }
+
+  /** What the walk needs to know of a row; `started` is a row whose colour was just taken. */
+  function rowOf(key: string, started?: string): WalkRow {
+    const row = draft?.rows.find((candidate) => candidate.key === key);
+    return { qty: Number(row?.qty) || 0, hasColour: Boolean(row?.colour) || key === started };
+  }
+
+  /**
+   * One stop on, row by row: each row's colour (a multicolour one), quantity, packaging and grade,
+   * then Add product. A row nobody has started — no quantity and no colour — is skipped whole, and
+   * from a row with no quantity the walk skips its packaging and grade (`nextWalkStop`). A disabled
+   * Add takes no focus, so a card still short of something keeps the caret where it is and the
+   * footer says what is missing.
+   */
+  function stepOn(from: Element | null, started?: string): void {
+    const found = cardStops();
+    if (!found || !from) return;
+    const index = found.fields.indexOf(from as HTMLInputElement);
     if (index < 0) return;
-    const next = nextWalkStop(stops, index, (key) =>
-      Number(draft?.rows.find((row) => row.key === key)?.qty ?? 0),
-    );
+    const next = nextWalkStop(found.stops, index, (key) => rowOf(key, started));
     if (next === null) return;
-    (next < fields.length ? fields[next] : add)?.focus();
+    (next < found.fields.length ? found.fields[next] : found.add)?.focus();
+  }
+
+  /**
+   * Escape walks back over the same stops the forward walk uses: a row with no quantity has no
+   * packaging or grade stop, so Escape from the row below lands on its quantity. Heard after a list
+   * has closed itself (which spends the key) and before the screen's general step back.
+   */
+  function escapeBack(event: ReactKeyboardEvent<HTMLElement>): void {
+    if (event.key !== 'Escape' || event.defaultPrevented || chorded(event)) return;
+    const found = cardStops();
+    if (!found) return;
+    const target = event.target as Element;
+    const index =
+      target === found.add ? found.fields.length : found.fields.indexOf(target as HTMLInputElement);
+    if (index <= 0) return;
+    const previous = prevWalkStop(found.stops, index, (key) => rowOf(key));
+    if (previous === null) return;
+    event.preventDefault();
+    (previous < found.fields.length ? found.fields[previous] : found.add)?.focus();
   }
 
   function quantityKey(event: ReactKeyboardEvent<HTMLInputElement>, row: GridRow): void {
@@ -1893,7 +1917,7 @@ function LeadEntryForm({
 
                 {/* The product card: every sub product of the chosen product, a row each. */}
                 {draft && (
-                  <div style={{ marginTop: 'var(--s-12)' }}>
+                  <div style={{ marginTop: 'var(--s-12)' }} onKeyDown={escapeBack}>
                     <ProductCard
                       head={
                         <>
@@ -2007,7 +2031,9 @@ function LeadEntryForm({
                           >
                             {draft.rows.map((row) => {
                               // The chosen colour on a multicolour row, else the fixed one.
-                              const named = row.colour ? labelOf(row.colour) : variantName(row);
+                              const named = row.colour
+                                ? `${row.code} · ${labelOf(row.colour)}`
+                                : row.code;
                               const unpacked = lacks(row);
                               const chooses = row.rule === 'selectable' && colourOptions.length > 0;
                               return (
@@ -2024,14 +2050,17 @@ function LeadEntryForm({
                                       options={colourOptions}
                                       labelOf={labelOf}
                                       hexOf={colourHex}
-                                      ariaLabel={`${t('lead.add.draft.colour')} — ${row.productName} ${row.code}`}
+                                      ariaLabel={`${t('lead.add.draft.colour')} — ${row.code}`}
                                       placeholder={t('lead.add.card.pickColour')}
                                       hint={t('lead.add.card.colourHint')}
                                       filterHint={t('lead.add.card.filterHint')}
                                       noMatches={t('common.noMatches')}
                                       attention
                                       onPick={(colour) => patchRow(row.key, { colour })}
-                                      onAdvance={() => stepOn(document.activeElement)}
+                                      openOnEnter={Number(row.qty) > 0}
+                                      onAdvance={(picked) =>
+                                        stepOn(document.activeElement, picked ? row.key : undefined)
+                                      }
                                     />
                                   ) : row.rule === 'fixed' && row.variantLabel ? (
                                     <span className="ob-order-cell--fixed">
@@ -2186,10 +2215,10 @@ function LeadEntryForm({
           count={
             panelTerm
               ? t('lead.add.panel.countFiltered', {
-                  shown: matchedLines.length,
-                  total: lines.length,
+                  shown: groupLines(matchedLines).length,
+                  total: productCount,
                 })
-              : String(lines.length)
+              : String(productCount)
           }
           search={
             <Input
