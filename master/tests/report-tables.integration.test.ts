@@ -468,10 +468,10 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
       await makeDispatched(await author(alice), shop, 'Shah Ceramics', 'Morbi');
 
       const dispatches = await reportService.reportTable('dispatches', { period: 'thisMonth' }, admin);
-      expect(dispatches.columns.map((column) => column.key)).toEqual(['month', 'orderCount', 'boxCount']);
+      expect(dispatches.columns.map((column) => column.key)).toEqual(['month', 'orderCount', 'pieces']);
       expect(dispatches.rows).toHaveLength(1);
       expect(dispatches.sections.map((section) => section.titleToken)).toEqual(['reports.dispatches.byColour']);
-      expect(dispatches.sections[0]!.rows).toEqual([{ colour: 'White', boxCount: dispatches.rows[0]!.boxCount }]);
+      expect(dispatches.sections[0]!.rows).toEqual([{ colour: 'White', pieces: dispatches.rows[0]!.pieces }]);
 
       const top = await reportService.reportTable('top-parties', { period: 'thisMonth' }, admin);
       // The id column is a key for a program, not a column for a person.
@@ -697,7 +697,7 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
       // The table's own lines as they always were; since W2-3 (2026-10-07) the
       // colour breakdown follows behind a blank line, as the screen shows it.
       expect((dispatches as { csv: string }).csv).toBe(
-        `month,orderCount,boxCount\r\n${month},1,10\r\n\r\ncolour,boxCount\r\nWhite,10\r\n`,
+        `month,orderCount,pieces\r\n${month},1,10\r\n\r\ncolour,pieces\r\nWhite,10\r\n`,
       );
 
       const outcomes = await reportService.exportReport('lead-outcomes', { period: 'thisMonth' }, admin);
@@ -706,9 +706,9 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
       const top = await reportService.exportReport('top-parties', { period: 'thisMonth' }, admin);
       expect((top as { csv: string }).csv).toBe(`partyId,partyName,partyCode,city,orderCount\r\n${made.party.id},Golden Party,${code},Morbi,1\r\n`);
 
-      const narrowed = await reportService.exportReport('dispatches', { period: 'thisMonth', columns: ['boxCount', 'month'], totals: true }, admin);
+      const narrowed = await reportService.exportReport('dispatches', { period: 'thisMonth', columns: ['pieces', 'month'], totals: true }, admin);
       expect((narrowed as { csv: string }).csv).toBe(
-        `boxCount,month\r\n10,${month}\r\n10,Total\r\n\r\ncolour,boxCount\r\nWhite,10\r\n`,
+        `pieces,month\r\n10,${month}\r\n10,Total\r\n\r\ncolour,pieces\r\nWhite,10\r\n`,
       );
     });
   });

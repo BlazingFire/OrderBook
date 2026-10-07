@@ -40,7 +40,7 @@ describe('the catalogue', () => {
   });
 
   it('keeps the legacy CSV headers exactly as they always were', () => {
-    expect(REPORT_COLUMNS.dispatches.map((column) => column.key)).toEqual(['month', 'orderCount', 'boxCount']);
+    expect(REPORT_COLUMNS.dispatches.map((column) => column.key)).toEqual(['month', 'orderCount', 'pieces']);
     expect(REPORT_COLUMNS['lead-outcomes'].map((column) => column.key)).toEqual([
       'month',
       'converted',

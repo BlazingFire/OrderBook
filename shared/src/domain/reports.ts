@@ -58,18 +58,18 @@ export interface ReportRange {
 
 export interface ReportTotals {
   orderCount: number;
-  boxCount: number;
+  pieces: number;
 }
 
 export interface DispatchMonthBucket {
   month: string;
   orderCount: number;
-  boxCount: number;
+  pieces: number;
 }
 
 export interface DispatchColourBucket {
   colour: string;
-  boxCount: number;
+  pieces: number;
 }
 
 export interface DispatchesReport {
@@ -186,7 +186,7 @@ export const REPORT_COLUMNS: Record<ReportKind, readonly ReportColumn[]> = {
   dispatches: [
     { key: 'month', labelToken: 'reports.column.month' },
     { key: 'orderCount', labelToken: 'reports.column.orderCount' },
-    { key: 'boxCount', labelToken: 'reports.column.boxCount' },
+    { key: 'pieces', labelToken: 'reports.column.pieces' },
   ],
   'lead-outcomes': [
     { key: 'month', labelToken: 'reports.column.month' },

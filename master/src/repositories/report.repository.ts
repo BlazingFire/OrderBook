@@ -81,12 +81,12 @@ function scoped(range: DateRange, alias: string): { sql: string; bindings: Array
 export interface DispatchMonthRow {
   month: string;
   orderCount: number;
-  boxCount: number;
+  pieces: number;
 }
 
 export interface DispatchColourRow {
   colour: string;
-  boxCount: number;
+  pieces: number;
 }
 
 /** Order-level month buckets. Box counts joined separately so a multi-line order is not double-counted. */
@@ -97,7 +97,7 @@ export async function dispatchesByMonth(range: DateRange, runner: Runner = db())
   const boxAggScope = partyScopeSql('o.party_id', range.tenantId, range.scope);
   const boxAggOwner = ownerSql('o.owner_id', range.ownerId);
   const { rows } = await runner.raw<{
-    rows: Array<{ month: string; order_count: string; box_count: string }>;
+    rows: Array<{ month: string; order_count: string; piece_count: string }>;
   }>(
     `WITH order_agg AS (
        SELECT to_char(date_trunc('month', dispatched_at AT TIME ZONE ?), 'YYYY-MM') AS month,
@@ -111,7 +111,7 @@ export async function dispatchesByMonth(range: DateRange, runner: Runner = db())
      ),
      box_agg AS (
        SELECT to_char(date_trunc('month', o.dispatched_at AT TIME ZONE ?), 'YYYY-MM') AS month,
-              SUM(li.quantity) AS box_count
+              SUM(li.quantity) AS piece_count
          FROM orders o
          JOIN line_items li
            ON li.tenant_id = o.tenant_id AND li.parent_type = 'order' AND li.parent_id = o.id
@@ -121,7 +121,7 @@ export async function dispatchesByMonth(range: DateRange, runner: Runner = db())
           AND o.deleted_at IS NULL${boxAggScope.sql}${boxAggOwner.sql}
         GROUP BY 1
      )
-     SELECT oa.month, oa.order_count, COALESCE(ba.box_count, 0) AS box_count
+     SELECT oa.month, oa.order_count, COALESCE(ba.piece_count, 0) AS piece_count
        FROM order_agg oa
        LEFT JOIN box_agg ba ON ba.month = oa.month
       ORDER BY oa.month`,
@@ -134,7 +134,7 @@ export async function dispatchesByMonth(range: DateRange, runner: Runner = db())
   return rows.map((row) => ({
     month: row.month,
     orderCount: toNumber(row.order_count) ?? 0,
-    boxCount: toNumber(row.box_count) ?? 0,
+    pieces: toNumber(row.piece_count) ?? 0,
   }));
 }
 
@@ -151,9 +151,9 @@ export async function dispatchesByMonth(range: DateRange, runner: Runner = db())
 export async function dispatchesByColour(range: DateRange, runner: Runner = db()): Promise<DispatchColourRow[]> {
   const tz = config.locale.timeZone;
   const scope = scoped(range, 'o');
-  const { rows } = await runner.raw<{ rows: Array<{ colour: string; box_count: string }> }>(
+  const { rows } = await runner.raw<{ rows: Array<{ colour: string; piece_count: string }> }>(
     `SELECT COALESCE(NULLIF(li.colour, ''), NULLIF(li.variant_label, ''), '') AS colour,
-            SUM(li.quantity) AS box_count
+            SUM(li.quantity) AS piece_count
        FROM orders o
        JOIN line_items li
          ON li.tenant_id = o.tenant_id AND li.parent_type = 'order' AND li.parent_id = o.id
@@ -162,11 +162,11 @@ export async function dispatchesByColour(range: DateRange, runner: Runner = db()
         AND o.dispatched_at <  (?::timestamp AT TIME ZONE ?)
         AND o.deleted_at IS NULL${scope.sql}
       GROUP BY 1
-      ORDER BY box_count DESC`,
+      ORDER BY piece_count DESC`,
     [range.tenantId, range.fromDate, tz, range.toDateExclusive, tz, ...scope.bindings],
   );
 
-  return rows.map((row) => ({ colour: row.colour, boxCount: toNumber(row.box_count) ?? 0 }));
+  return rows.map((row) => ({ colour: row.colour, pieces: toNumber(row.piece_count) ?? 0 }));
 }
 
 export interface LeadOutcomeRow {

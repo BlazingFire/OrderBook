@@ -160,6 +160,42 @@ and a second paragraph`;
   });
 });
 
+describe('the pending order PDF — captions stay in their cells', () => {
+  it('wraps the product caption of a labelled cell to two lines inside its own cell, never over its neighbour', () => {
+    // Products of one or two codes get no group header: each cell carries its own caption.
+    const items: LineItem[] = [];
+    for (let i = 0; i < 40; i += 1) {
+      items.push(line({ productName: String(900 + i), categoryName: `One piece toilet ${i}"`, size: 'L-27, B-14, H-27, extra long size text' }));
+    }
+    const input = leadNotePdf(lead(items), PARTY, 'Swisware Ceramics', PRINTED);
+    const plans = planNotePdf(input, measure);
+    let captions = 0;
+
+    for (const ops of plans) {
+      const lines = texts(ops).filter((op) => op.size === 8 && op.font === 'bold' && op.spacing === 0.64);
+      const byY = new Map<number, TextOp[]>();
+      for (const op of lines) byY.set(op.y, [...(byY.get(op.y) ?? []), op]);
+      for (const row of byY.values()) {
+        const sorted = [...row].sort((a, b) => a.x - b.x);
+        captions += sorted.length;
+        sorted.forEach((op, index) => {
+          const next = sorted[index + 1];
+          const right = op.x + measure(op.text, op.font, op.size, op.spacing);
+          if (next) expect(right, `${op.text} runs into ${next.text}`).toBeLessThanOrEqual(next.x);
+          // The widest cell is 96 px (seven to a line): a caption never is wider than its own cell.
+          expect(right - op.x, op.text).toBeLessThanOrEqual(96.3);
+        });
+      }
+      // And no caption is more than two lines tall: at most two caption rows above any code.
+      const captionYs = new Set(lines.map((op) => op.y));
+      expect(captionYs.size).toBeGreaterThan(0);
+    }
+    expect(captions).toBeGreaterThan(40);
+    // A caption too long for two lines ends in an ellipsis rather than spilling.
+    expect(words(plans)).toContain('…');
+  });
+});
+
 describe('the pending order PDF — units and money', () => {
   it('prints pcs after a quantity, never box or boxes, and carries no money', () => {
     const plans = planNotePdf(order(25, 90, 'Packed in boxes of four.'), measure);

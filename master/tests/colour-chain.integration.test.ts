@@ -242,15 +242,15 @@ describe.skipIf(!canRunIntegrationTests)('the colour chain (integration)', () =>
       await correctToFixedWhite(closet.id, closetVariant.id);
 
       const report = await reports.dispatchReport({ period: 'thisMonth' }, actor);
-      expect(Object.fromEntries(report.colours.map((bucket) => [bucket.colour, bucket.boxCount]))).toEqual({
+      expect(Object.fromEntries(report.colours.map((bucket) => [bucket.colour, bucket.pieces]))).toEqual({
         Ivory: 8,
         Magenta: 5,
       });
 
       const exported = (await reports.exportReport('dispatches', { period: 'thisMonth' }, actor)) as { csv: string };
       const lines = exported.csv.split('\r\n');
-      expect(lines[0]).toBe('month,orderCount,boxCount');
-      const section = lines.indexOf('colour,boxCount');
+      expect(lines[0]).toBe('month,orderCount,pieces');
+      const section = lines.indexOf('colour,pieces');
       expect(section).toBeGreaterThan(1);
       expect(lines[section - 1]).toBe('');
       expect(lines.slice(section + 1, section + 3).sort()).toEqual(['Ivory,8', 'Magenta,5']);
@@ -280,14 +280,14 @@ describe.skipIf(!canRunIntegrationTests)('the colour chain (integration)', () =>
         .update({ label: 'Magenta Pink' });
 
       const report = await reports.dispatchReport({ period: 'thisMonth' }, actor);
-      expect(Object.fromEntries(report.colours.map((bucket) => [bucket.colour, bucket.boxCount]))).toEqual({
+      expect(Object.fromEntries(report.colours.map((bucket) => [bucket.colour, bucket.pieces]))).toEqual({
         'Magenta Pink': 5,
         'No colour': 3,
       });
 
       const exported = (await reports.exportReport('dispatches', { period: 'thisMonth' }, actor)) as { csv: string };
       const lines = exported.csv.split('\r\n');
-      const section = lines.indexOf('colour,boxCount');
+      const section = lines.indexOf('colour,pieces');
       expect(lines.slice(section + 1, section + 3).sort()).toEqual(['Magenta Pink,5', 'No colour,3']);
     });
   });
