@@ -230,6 +230,27 @@ was verified, so the next agent can trust the state without re-auditing.
   show Electron's icon until its icon cache refreshes. The clean-install tool is unchanged: it has no
   afterPack hook.
 
+### 2026-10-07 - Notes, notice board, photos, catalogue, screen sizes, 1.4.5: CH1, D1–D13 and a merger session (Claude, Opus + Sonnet)
+
+- **Who did what.**
+  - D1: the notice server and the reconnect fixes.
+  - D2 and D9: the notice screens (Master, Office).
+  - D3: notice permissions and navigation.
+  - D4: the colour Enter flow and live products.
+  - D5: the photo tool, the upgrade test and Master screen fixes.
+  - D6 and D10: audits (Master, Office) and docs.
+  - D7: note design fixes and Chat/Print screen sizes.
+  - D8: photo import and the boot attach.
+  - D11: the catalogue reconciliation and migration.
+  - D12: the icon, Office fixes and the browser pass.
+  - D13: shared screen-size fixes, the POLL=0 bug and the Win7 build.
+  - "D1-D13 merger and Claude optimization": integration and gates.
+  - The "Note and dispatch format update" session: the note design.
+- **Verified.** The gate on `7a75565` (4,805 tests); the 1.4.4 to RC upgrade test (9/9); final audits
+  (D6, D10); the browser pass (D12).
+- **Release.** CH1 checked `git symbolic-ref` before committing the bump, and compared `origin/main`
+  after the push.
+
 ### 2026-10-06 - Party private to its creator, 1.4.4: CH1 and seven Sonnet sessions (Claude, Opus + Sonnet)
 
 - **Who did what.** The plan is `CLAUDE_HELPER_PV.md` (P1–P5, untracked).

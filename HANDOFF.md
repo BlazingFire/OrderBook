@@ -52,6 +52,42 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
+## Notes, notice board, photos, catalogue, screen sizes + 1.4.5 (2026-10-07)
+
+**State:** released. `main` @ `590609b` (the 1.4.5 bump on the final RC `7a75565`, built by the
+merger session on `merge/oct7`) is pushed, and GitHub release **v1.4.5** is Latest (Setups and
+manifests only). The owner gave a standing OK to build and publish this batch. Owner notes:
+`docs/releases/1.4.5.md`. Plan and evidence: `CLAUDE_HELPER_OCT7.md` (U1–U14, untracked) and the
+"Oct 7 batch" sections of `CLAUDE_HELPER_D1.md`…`D13.md` and `CLAUDE_HELPER_D_MERGE.md`.
+
+**Gate on `7a75565`:** lint 0, build 0, typecheck 0, test 0 (361 files + 1 skipped; 4,805 tests + 17
+skipped), `smoke:legacy` 0. Panel protocol **10** (notice commands, `product:live`).
+
+| ID | Owner asked | Result |
+|---|---|---|
+| U1 | the new A4 Filling/Dispatch note design | Built by the "Note and dispatch format update" session, fixed by D7. Matches the design's page counts (2/5/12); coded grid 3/7 columns; no orphan last page; Inter + IBM Plex Mono bundled; "box"; coded group headers kept and no colour in coded cells (owner). |
+| U3 | colours in the pending-order Enter flow | The colour list opens with the first colour ready (Enter, Enter); Enter reopens it after Escape; the hint fits. |
+| U4, U5 | a notice board and its own management menu | Tables `notices`, `notice_audiences`, `notice_reads` (migration `20261014000000_notice_board`); `notices.view` (every role, and new roles by default) and `notices.manage` (admin); both panels have board, badge, Dashboard and Basic Home cards, management, Alt+N/Alt+M; per-person offline reads. Audited by D6 and D10: F-N1..F-N6, NB1/NB2, D9-1 fixed. |
+| U6, U7 | photos of all products, from the catalogue | Products › Photo import (code or alias; `CODE_N` = photo N; skip/replace per slot). The 549 catalogue photos ship in `master/assets/catalogue/photos` and attach once on boot, only to sub products with no photo. |
+| U8, U9, U13 | numeric models fixed; a "perfect" catalogue | Three readings reconciled. Migration `20261015000000_catalogue_corrections`: OPT 102…118 and 204 become numbers with the trap size in Size (old lines renamed too, owner); four concealed closets White-fixed; 14x14 NEW CORNER moves to Table Top as TTW-0016. Only rows still as shipped are changed, and nothing is deleted. |
+| U10 | no UI glitch, HD to 4K, 1080p first | Audited on both panels at 1280–3840 and 100–157 %; about 40 fixes; 4K starts at 150 % on new installs only. |
+| U11 | the OrderBook icon, not Electron's | The exe resource is stamped in afterPack (`tools/exe-icon.cjs`); 7-size .ico; installer and uninstaller. |
+| U14 | live product changes in an open pending order | Live refresh on both panels; `POST /api/pick/live-products` / `product:live`; save blocked, with the draft kept, when a line's product is gone (new orders and lines added in an edit); offline saves are never checked. |
+
+Also fixed: an offline-signed-in person is re-attached or ended on reconnect; the protocol-at-connect
+race; `ORDERBOOK_RELEASES_POLL_MINUTES=0` now blocks every GitHub fetch; four test flakes and one real
+chat race.
+
+**Upgrade proof:** D5 restored a 1.4.4 install and booted the RC on it. All 9 checks passed: migrations,
+renames in products and in old lines, the TTW-0016 move, company-renamed rows untouched, closets, photos
+(530 attached, company photos kept), notices, unchanged data, and a no-op second boot.
+
+**Known, deferred (NEXT_PHASE):** U14-5: an offline save of a draft whose product was deleted while
+online goes to Conflicts. Offline, the Office could check against `view.products`.
+
+**Not verified:** a real two-PC pass, real print and PDF from the installed program, the installed icon
+on a clean PC and on Win7, and the Electron window end to end.
+
 ## Party private to its creator + 1.4.4 (2026-10-06)
 
 **State:** released. `main` @ `93fd1ac` (the 1.4.4 bump on D5's green `3583d2e`) is

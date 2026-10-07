@@ -10,7 +10,20 @@ This file assumes both.
 
 ---
 
-## First: 1.4.4 is released; what comes next (2026-10-06)
+## First: 1.4.5 is released; what comes next (2026-10-07)
+
+1.4.5 is on `main` @ `590609b` and published as v1.4.5. The details are in `HANDOFF.md`, under
+"Notes, notice board, photos, catalogue, screen sizes + 1.4.5". In order:
+
+1. The owner starts the installed Master again (it was found stopped on 2026-10-07) and installs 1.4.5,
+   Master first. Windows' icon cache may show the old icon until it refreshes.
+2. A real two-PC pass, plus a real print or PDF of both notes.
+3. Two cosmetic leftovers at app scale 157 % (D12, 2026-10-07): the Recycle bin Type pill "Pending Order" is 3 px too
+   wide in its column at 1366 and 1920, and the "Notice board management" title ellipsizes at 1366.
+4. U14-5: when offline, check the draft's lines against `view.products` (productsComplete) before saving.
+5. The backlog.
+
+## Before that: 1.4.4 is released (2026-10-06)
 
 1.4.4 (a party is private to the office user who created it) is on `main` @ `93fd1ac`, pushed
 and released as v1.4.4. The details are in `HANDOFF.md` under "Party private to its
