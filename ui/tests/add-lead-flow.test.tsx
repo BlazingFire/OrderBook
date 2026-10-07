@@ -597,6 +597,29 @@ describe('the product card', () => {
     expect(addButton().disabled).toBe(true);
   });
 
+  it('walks back with Escape over the same stops: a row with no quantity has no packaging or grade', async () => {
+    await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    await pickSubProduct();
+    const escape = async (): Promise<void> => {
+      await act(async () => {
+        fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+        await wait(0);
+      });
+    };
+
+    // Nothing counted above: Escape from the last row lands on the row above's quantity.
+    qtyBox('OPT-0003').focus();
+    await escape();
+    expect(document.activeElement).toBe(qtyBox('OPT-0002'));
+
+    // Counted: its packaging and grade are stops again, grade first.
+    await pickColour('OPT-0002', 'Whi');
+    fireEvent.change(qtyBox('OPT-0002 · White'), { target: { value: '3' } });
+    qtyBox('OPT-0003').focus();
+    await escape();
+    expect(document.activeElement).toBe(gradeBox('OPT-0002 · White'));
+  });
+
   it('after the last row, Enter lands on Add product, which stays off until a row is counted', async () => {
     await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
     await pickSubProduct();
