@@ -6,6 +6,10 @@ import type { KeyboardEvent } from 'react';
 export interface TabItem {
   id: string;
   label: string;
+  /** A small figure after the label (Navigation artboard: "Line items 4"); 0 is shown, absent is not. */
+  count?: number;
+  /** Greyed and skipped by the arrow keys; it cannot be chosen. */
+  disabled?: boolean;
 }
 
 export function Tabs({
@@ -23,7 +27,9 @@ export function Tabs({
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
     e.preventDefault();
     const dir = e.key === 'ArrowRight' ? 1 : -1;
-    const next = tabs[(index + dir + tabs.length) % tabs.length];
+    let step = 1;
+    while (step < tabs.length && tabs[(index + dir * step + tabs.length * step) % tabs.length]?.disabled) step += 1;
+    const next = tabs[(index + dir * step + tabs.length * step) % tabs.length];
     // The modulo keeps this in range; the guard is for the type-checker, and
     // costs nothing if `tabs` is ever empty.
     if (!next) return;
@@ -43,11 +49,13 @@ export function Tabs({
           role="tab"
           className="ob-tab"
           aria-selected={activeId === tab.id}
+          disabled={tab.disabled}
           tabIndex={activeId === tab.id ? 0 : -1}
           onClick={() => onChange(tab.id)}
           onKeyDown={(e) => onKeyDown(e, i)}
         >
           {tab.label}
+          {tab.count !== undefined && <span className="ob-tab-count">{tab.count}</span>}
         </button>
       ))}
     </div>
