@@ -143,7 +143,7 @@ export function ProgressiveImage({
   );
 }
 
-/** The two sizes the new pending order draws, besides the list row's own 28 px (2rem). */
+/** The two sizes the New Order screen draws, besides the list row's own 28 px (2rem). */
 const THUMB_BOX = { 32: '2.286rem', 48: '3.429rem' } as const;
 
 /**

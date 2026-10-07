@@ -12,6 +12,7 @@ import type { NavGroup } from '../src/AppShell.js';
 import { BasicHome, landingScreen } from '../src/BasicHome.js';
 import { KeyboardProvider } from '../src/KeyboardProvider.js';
 import { t } from '../src/i18n.js';
+import { TILE_ICONS } from '../src/tileIcons.js';
 
 beforeEach(() => window.localStorage.clear());
 afterEach(cleanup);
@@ -97,6 +98,27 @@ describe('BasicHome', () => {
     home();
     expect(tile('Pending Orders').querySelector('.ob-tile-count')?.textContent).toBe('3');
     expect(tile('Dashboard').querySelector('.ob-tile-count')).toBeNull();
+  });
+
+  it('draws every tile as its colour art or, with none, the line icon on a plain face', () => {
+    home({
+      onNewLead: () => undefined,
+      groups: [
+        ...groups,
+        { label: 'Admin', items: [{ id: 'noticesManage', label: 'Manage notices', icon: 'noticeEdit' }] },
+      ],
+    });
+    const tiles = screen.getAllByRole('button').filter((button) => button.classList.contains('ob-tile'));
+    expect(tiles.length).toBe(7);
+    for (const button of tiles) {
+      const id = button.getAttribute('data-tile')!;
+      const face = button.querySelector('.ob-tile-face')!;
+      const art = TILE_ICONS[id as keyof typeof TILE_ICONS];
+      expect(face.classList.contains('ob-tile-face--art'), id).toBe(Boolean(art));
+      expect(face.querySelector('svg')?.getAttribute('viewBox'), id).toBe(art ? '0 0 96 96' : '0 0 24 24');
+    }
+    expect(TILE_ICONS.newLead).toBeDefined();
+    expect(tile('Manage notices').querySelector('.ob-tile-face--art')).toBeNull();
   });
 
   it('offers New Order first in Work only when it is given', () => {

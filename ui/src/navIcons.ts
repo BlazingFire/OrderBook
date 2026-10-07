@@ -21,6 +21,7 @@ export const NAV_ICONS = {
   products: 'products',
   parties: 'parties',
   partyAccess: 'shield',
+  lists: 'task',
   panels: 'server',
   access: 'people',
   fields: 'fields',

@@ -94,7 +94,7 @@ interface Props {
   onShareInChat?: (chip: ChatRecordChip) => void;
   /** Present only for somebody who may send to the Printroom (`print.send`): the note screen offers it. */
   printroom?: PrintroomTransport;
-  /** `leads.create`: the empty state offers New pending order. */
+  /** `leads.create`: the empty state offers New Order. */
   canCreate: boolean;
   onNewLead: () => void;
   /** `parties.create`, for the edit form's party list. */

@@ -1,5 +1,5 @@
 /**
- * The Added products aside of the new pending order: a header with the count, a search, the rows,
+ * The Added products aside of the New Order screen: a header with the count, a search, the rows,
  * and a footer with the checks, the total and Cancel / Save.
  *
  * The rows are the screen's own (`children`): each panel keeps its row behaviour, selection and

@@ -3142,3 +3142,23 @@ and parity tests pass. The two PostgreSQL integration suites
 (`party-access`, `audit-coverage`) did not run here: the embedded test cluster
 directory in `%TEMP%\orderbook-test-pg` was left non-empty, so they skipped.
 
+### 2026-10-07 — Basic Home colour tiles, New Order wording in docs (Claude)
+
+**Changed.** Basic Home draws each module as a colourful 80 px tile from
+`docs/design/home-tiles/` (21 SVGs). `tools/make-tile-icons.mjs` converts them
+into `ui/src/tileIcons.tsx` (`TILE_ICONS`, inline SVG, ids unique per copy via
+`useId`, `aria-hidden`); `BasicHome.tsx` uses the tile when one exists and the
+line icon on the plain face otherwise (only `noticesManage` today).
+`.ob-tile-face--art` in `base.css` drops the face's border and fill and lifts
+2 px on hover (still under reduced motion and the motion switch); focus ring,
+label, count and chord unchanged. The sidebar keeps its line icons. `lists` joined
+`NAV_ICONS` (same `task` icon) so both panels take it from the map. Docs and
+comments that named the screen "New pending order" now say New Order (the
+strings themselves were renamed in 328db63); `DESIGN_SYSTEM.md` 6.2 records the
+tile rules and the module-to-colour list. ESLint now ignores the local,
+git-excluded `.design-*/` artifact folders, which failed `npm run lint`.
+
+**Tests.** `nav-icons.test.tsx` (art or same line icon per module, sidebar line
+icons only, per-copy ids, which modules lack art), `basic-home.test.tsx` (every
+tile resolves to art or the fallback).
+

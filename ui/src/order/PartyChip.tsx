@@ -1,5 +1,5 @@
 /**
- * The chosen party on the new pending order: a chip with the initials badge, the NAME, the CODE
+ * The chosen party on the New Order screen: a chip with the initials badge, the NAME, the CODE
  * and the CITY (owner's rule, 2026-10-07: all three, replacing both the old name-only rule and
  * the artboard's code + city), an optional extra (a pill) and a 24 px close button that gives the
  * party back to the search box.

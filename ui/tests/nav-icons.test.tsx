@@ -13,6 +13,7 @@ import { BasicHome } from '../src/BasicHome.js';
 import { Icon } from '../src/icons.js';
 import { KeyboardProvider } from '../src/KeyboardProvider.js';
 import { NAV_ICONS } from '../src/navIcons.js';
+import { TILE_ICONS } from '../src/tileIcons.js';
 
 afterEach(cleanup);
 
@@ -32,7 +33,7 @@ describe('NAV_ICONS', () => {
 
   it.each(['master/web', 'office/web'])('is the only icon source in %s App.tsx nav rows', (panel) => {
     const source = readFileSync(join(process.cwd(), panel, 'src', 'App.tsx'), 'utf8');
-    const literal = source.match(/id: '(?:basicHome|dashboard|leads|orders|conflicts|chatroom|printroom|reports|products|parties|partyAccess|panels|access|fields|logs|recycleBin|integrations|settings|updates)',[^}]{0,140}?icon: '/g);
+    const literal = source.match(/id: '(?:basicHome|dashboard|leads|orders|conflicts|chatroom|printroom|reports|products|parties|partyAccess|lists|panels|access|fields|logs|recycleBin|integrations|settings|updates)',[^}]{0,140}?icon: '/g);
     expect(literal).toBeNull();
   });
 });
@@ -54,13 +55,13 @@ describe('sign-out control (R12)', () => {
   });
 });
 
-describe('one icon per module on the sidebar and on Basic Home (1.4 R18)', () => {
+describe('one icon per module in the sidebar, a colour tile or the same icon on Basic Home', () => {
   const ids = Object.keys(NAV_ICONS).filter((id) => id !== 'basicHome') as Array<keyof typeof NAV_ICONS>;
   const groups: NavGroup[] = [
     { label: 'All', items: ids.map((id) => ({ id, label: `M-${id}`, icon: NAV_ICONS[id] })) },
   ];
 
-  it('draws the same flat line icon for a module in the sidebar and on its Basic Home tile', () => {
+  it('keeps the sidebar on line icons and gives each tile its art or the sidebar icon', () => {
     const { container: side } = render(
       <AppShell
         groups={groups}
@@ -89,20 +90,58 @@ describe('one icon per module on the sidebar and on Basic Home (1.4 R18)', () =>
     const path = (el: Element) => el.querySelector('svg path')?.getAttribute('d');
     for (const id of ids) {
       expect(path(sidebar(id)), `${id} sidebar`).toBeTruthy();
-      expect(path(tile(id).querySelector('.ob-tile-face')!), id).toBe(path(sidebar(id)));
+      const face = tile(id).querySelector('.ob-tile-face')!;
+      if (TILE_ICONS[id]) {
+        expect(face.classList.contains('ob-tile-face--art'), id).toBe(true);
+        expect(face.querySelector('svg')?.getAttribute('viewBox'), id).toBe('0 0 96 96');
+      } else {
+        expect(face.classList.contains('ob-tile-face--art'), id).toBe(false);
+        expect(path(face), id).toBe(path(sidebar(id)));
+      }
     }
-    // One set, one style: nothing glossy is left to draw on either.
+    // Colour stays on Basic Home: the sidebar is line icons only.
     expect(side.querySelector('[data-glyph]')).toBeNull();
-    expect(home.querySelector('[data-glyph], [data-hue], .ob-tile-art')).toBeNull();
-    for (const svg of [...side.querySelectorAll('.ob-navitem-main svg'), ...home.querySelectorAll('.ob-tile svg')]) {
+    for (const svg of side.querySelectorAll('.ob-navitem-main svg')) {
       expect(svg.getAttribute('viewBox')).toBe('0 0 24 24');
       expect(svg.getAttribute('fill')).toBe('none');
     }
   });
 });
 
-describe('Basic Home tiles (V1)', () => {
-  it('are flat: no gradient, gloss or per-module colour in their CSS', () => {
+describe('Basic Home colour tiles', () => {
+  it('has art for every module but the notices manager, which keeps its line icon', () => {
+    const missing = Object.keys(NAV_ICONS).filter(
+      (id) => !TILE_ICONS[id as keyof typeof TILE_ICONS],
+    );
+    expect(missing.sort()).toEqual(['basicHome', 'noticesManage']);
+    expect(TILE_ICONS.newLead).toBeDefined();
+  });
+
+  it('gives each rendered copy its own gradient and filter ids, and hides itself from readers', () => {
+    const Art = TILE_ICONS.dashboard!;
+    const { container } = render(
+      <>
+        <Art />
+        <Art size={40} />
+      </>,
+    );
+    const [first, second] = [...container.querySelectorAll('svg')];
+    expect(first!.getAttribute('aria-hidden')).toBe('true');
+    expect(first!.getAttribute('width')).toBe('80');
+    expect(second!.getAttribute('width')).toBe('40');
+    const ids = [...container.querySelectorAll('[id]')].map((el) => el.id);
+    expect(ids.length).toBeGreaterThan(0);
+    expect(new Set(ids).size).toBe(ids.length);
+    // Every url(#...) reference points at an id inside its own copy.
+    for (const svg of [first!, second!]) {
+      const own = new Set([...svg.querySelectorAll('[id]')].map((el) => el.id));
+      const refs = svg.outerHTML.match(/url\(#([^)]+)\)/g) ?? [];
+      expect(refs.length).toBeGreaterThan(0);
+      for (const ref of refs) expect(own.has(ref.slice(5, -1)), ref).toBe(true);
+    }
+  });
+
+  it('keep their colour in the SVG, not the tile CSS, which draws no gradient or per-module hue', () => {
     const css = readFileSync(join(process.cwd(), 'ui', 'src', 'base.css'), 'utf8');
     const tileRules = css.match(/\.ob-tile[^{]*\{[^}]*\}/g) ?? [];
     expect(tileRules.length).toBeGreaterThan(0);
