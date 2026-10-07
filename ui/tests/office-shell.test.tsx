@@ -1428,6 +1428,29 @@ describe('Edit lead', () => {
       expect((await screen.findAllByText(t('orderNote.pendingOrderNo'))).length).toBeGreaterThan(0);
     });
 
+    it('the board card menu trigger announces a menu and keeps Enter to itself', async () => {
+      await boot({ permissions: ['leads.view'], view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] } });
+      await act(async () => {
+        fireEvent.click(screen.getByTitle(t('nav.leads')));
+      });
+      await screen.findAllByText(PARTY.name);
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: t('lead.board.tab.board') }));
+      });
+      const trigger = (await screen.findAllByRole('button', { name: t('lead.board.cardMenu') }))[0]!;
+      expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+      expect(trigger.getAttribute('aria-expanded')).toBe('false');
+      // Enter on the trigger must not reach the card, whose own handler opens the record.
+      await act(async () => {
+        fireEvent.keyDown(trigger, { key: 'Enter' });
+      });
+      expect(screen.queryByRole('button', { name: t('lead.board.tab.board') })).not.toBeNull();
+      await act(async () => {
+        fireEvent.click(trigger);
+      });
+      expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    });
+
     describe('Send to Printroom', () => {
       async function openNote(permissions: string[]): Promise<Call[]> {
         const calls = await boot({
