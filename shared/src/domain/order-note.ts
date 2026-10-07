@@ -13,7 +13,7 @@
  * alone and silently overflow a page.
  */
 
-import { isNumericSubProduct } from './colour-rule.js';
+import { isNumericSubProduct, shownColour, type ColourLabelOf } from './colour-rule.js';
 import type { IsoTimestamp, Lead, LineItem, Order, Party, RecordId } from './entities.js';
 
 export type NoteKind = 'filling' | 'dispatch';
@@ -228,7 +228,11 @@ function compareLines(a: NoteLine, b: NoteLine): number {
  * packaging), splits them by `isNumericSubProduct` — the only test of named
  * against coded — and sorts each half.
  */
-export function buildOrderNote(order: NoteRecord): OrderNoteModel {
+export function buildOrderNote(
+  order: NoteRecord,
+  /** The list's label for a stored colour value (`colourLabeller`); the value when absent. */
+  labelOf: ColourLabelOf = (colour) => colour,
+): OrderNoteModel {
   const merged = new Map<string, NoteLine>();
 
   for (const line of order.items) {
@@ -249,7 +253,10 @@ export function buildOrderNote(order: NoteRecord): OrderNoteModel {
       productName: line.categoryName?.trim() || line.productName,
       subProduct: line.productName.trim(),
       size: line.size?.trim() || null,
-      colour: line.colour ?? line.variantLabel,
+      // Through `shownColour`, as every other colour that prints: a colour that
+      // only repeats the sub product's name ("Ivory" on "IVORY BASIN") is not
+      // printed beside it a second time. Then the list's current label.
+      colour: noteColour(line.colour ?? line.variantLabel, line.productName, labelOf),
       grade: line.grade,
       packaging: line.packaging,
       quantity: line.quantity,
@@ -293,12 +300,22 @@ export function noteHeader(record: Lead | Order, source: NoteSource): NoteHeader
   return { source, id: record.id, number: noteNumber(record), createdAt };
 }
 
+function noteColour(
+  stored: string | null | undefined,
+  subProduct: string,
+  labelOf: ColourLabelOf,
+): string | null {
+  const shown = shownColour(stored, subProduct);
+  return shown === null ? null : labelOf(shown);
+}
+
 /** Builds the document a note is drawn from, for a lead (pending order) or a final order. */
 export function noteDocument(
   record: Lead | Order,
   source: NoteSource,
   party: Party | null,
   vehicleNumber: string | null,
+  labelOf: ColourLabelOf = (colour) => colour,
 ): NoteDocument {
   return {
     header: noteHeader(record, source),
@@ -308,7 +325,7 @@ export function noteDocument(
       : null,
     vehicleNumber,
     notes: record.notes ?? null,
-    model: buildOrderNote(record),
+    model: buildOrderNote(record, labelOf),
   };
 }
 

@@ -14,7 +14,7 @@
  * dealer, not to whoever clicked Preview in their own locale.
  */
 
-import { lineColourText, recordNumber, subProductCells } from '@orderbook/shared';
+import { lineColourText, recordNumber, subProductCells, type ColourLabelOf } from '@orderbook/shared';
 import type { Lead, LineItem, Party } from '@orderbook/shared';
 
 import type { ReportTablePdf } from '../pdf/table-renderer.js';
@@ -24,6 +24,8 @@ export function leadPdfTable(
   party: Party | null,
   companyName: string,
   date: string,
+  /** The colour list's label for a stored value (`colourLabeller`), resolved at print time. */
+  labelOf: ColourLabelOf = (colour) => colour,
 ): ReportTablePdf {
   // A single-brand lead would repeat one word down the page; the column earns
   // its width only when the lines span two brands.
@@ -44,7 +46,7 @@ export function leadPdfTable(
       first.categoryName ?? '',
       subProduct.model ?? '',
       first.size ?? '',
-      lineColourText(lines, first.productName),
+      lineColourText(lines, first.productName, labelOf),
       subProduct.code ?? '',
       String(lines.reduce((total, line) => total + line.quantity, 0)),
     ];

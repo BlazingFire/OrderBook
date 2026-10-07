@@ -634,10 +634,21 @@ export async function exportReport(
     // Header keys, not translated labels: the default output has to stay
     // byte-identical to what it was, because somebody's spreadsheet is pointing
     // at it.
-    const csv = toCsv(
+    let csv = toCsv(
       columns.map((column) => column.key),
       totals ? [...body, totals] : body,
     );
+    // Dispatches only: its colour breakdown after the table, behind a blank
+    // line with its own header keys. The export had no colour at all while the
+    // screen showed one (W2-3); the table's own lines are unchanged. The other
+    // legacy kinds stay byte-identical (top parties' cities are not asked for).
+    for (const section of kind === 'dispatches' ? loaded.sections : []) {
+      if (section.rows.length === 0) continue;
+      csv += '\r\n' + toCsv(
+        section.columns.map((column) => column.key),
+        section.rows.map((row) => section.columns.map((column) => cell(row, column))),
+      );
+    }
     // The new kinds carry names in any script, and Excel reads a BOM-less file as
     // ANSI; the three legacy kinds stay byte-identical to what they always were.
     return { format: 'csv', csv: isLegacyReportKind(kind) ? csv : `\uFEFF${csv}`, rowCount: rows.length };

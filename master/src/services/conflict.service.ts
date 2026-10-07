@@ -11,6 +11,7 @@ import type { ConflictResolutionInput, SyncConflict } from '@orderbook/shared';
 import { JSON_COLUMNS, ProductValidationError, validateProductInput } from '@orderbook/shared';
 
 import { actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
+import type { KeptLine } from '../domain/line-items.js';
 import { MASTER_MERGE_COLUMNS } from '../domain/merge-columns.js';
 import { resolvePartyScope, UNSCOPED_PARTY_ACCESS, type PartyScope } from '../domain/party-scope.js';
 import { db } from '../db/knex.js';
@@ -228,6 +229,7 @@ async function restoreSet(conflict: SyncConflict, actor: ActorContext, trx: Trx)
     if (target.values.convertedOrderId) throw new ValidationError('validation.lead.convertedLocked');
     const lines = await leadService.buildLines(tenantId, String(target.values.partyId), conflict.losingValue as never, {
       partyWiseMode: Boolean(target.values.partyWiseMode),
+      existing: (target.values.items as KeptLine[] | undefined) ?? [],
     });
     await leadRepo.replaceLeadLines(tenantId, conflict.entityId, lines, trx);
     await leadRepo.updateLeadColumns(tenantId, conflict.entityId, {}, meta, trx);

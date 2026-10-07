@@ -694,7 +694,11 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
       const code = (await catalogService.getParty(made.party.id, admin)).partyCode;
 
       const dispatches = await reportService.exportReport('dispatches', { period: 'thisMonth' }, admin);
-      expect((dispatches as { csv: string }).csv).toBe(`month,orderCount,boxCount\r\n${month},1,10\r\n`);
+      // The table's own lines as they always were; since W2-3 (2026-10-07) the
+      // colour breakdown follows behind a blank line, as the screen shows it.
+      expect((dispatches as { csv: string }).csv).toBe(
+        `month,orderCount,boxCount\r\n${month},1,10\r\n\r\ncolour,boxCount\r\nWhite,10\r\n`,
+      );
 
       const outcomes = await reportService.exportReport('lead-outcomes', { period: 'thisMonth' }, admin);
       expect((outcomes as { csv: string }).csv).toBe(`month,converted,lost,quiet,open\r\n${month},1,0,0,0\r\n`);
@@ -703,7 +707,9 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
       expect((top as { csv: string }).csv).toBe(`partyId,partyName,partyCode,city,orderCount\r\n${made.party.id},Golden Party,${code},Morbi,1\r\n`);
 
       const narrowed = await reportService.exportReport('dispatches', { period: 'thisMonth', columns: ['boxCount', 'month'], totals: true }, admin);
-      expect((narrowed as { csv: string }).csv).toBe(`boxCount,month\r\n10,${month}\r\nTotal,10\r\n`.replace('Total,10', '10,Total'));
+      expect((narrowed as { csv: string }).csv).toBe(
+        `boxCount,month\r\n10,${month}\r\n10,Total\r\n\r\ncolour,boxCount\r\nWhite,10\r\n`,
+      );
     });
   });
 });
