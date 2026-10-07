@@ -31,8 +31,9 @@ import {
 import { api } from '../api';
 import { catalogueTransport, optionListTransport } from '../transports';
 import { DuplicatesScreen } from './DuplicatesScreen';
+import { PhotoImportScreen } from './PhotoImportScreen';
 
-export type ProductsPage = 'sub' | 'main' | 'brands' | 'duplicates';
+export type ProductsPage = 'sub' | 'main' | 'brands' | 'duplicates' | 'photos';
 
 interface Props {
   page: ProductsPage;
@@ -122,6 +123,12 @@ export function ProductsScreen({
       </Activity>
       {page === 'duplicates' && permissions.includes('products.delete') && (
         <DuplicatesScreen revision={catalogueRevision + importBump} />
+      )}
+      {/* Kept mounted while hidden, so leaving the page does not drop an import that is running. */}
+      {permissions.includes('products.edit') && (
+        <Activity mode={page === 'photos' ? 'visible' : 'hidden'}>
+          <PhotoImportScreen products={products} />
+        </Activity>
       )}
       <Activity mode={page === 'brands' ? 'visible' : 'hidden'}>
         <BrandsScreen

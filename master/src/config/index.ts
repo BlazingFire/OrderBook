@@ -128,6 +128,9 @@ export const config = {
    */
   catalogueFile: path.join(packageRoot, 'assets', 'catalogue', 'swisware-plus-2026.md'),
 
+  /** The catalogue's photos, `<sub product code>.jpg`, attached on boot (`services/catalogue-photos.service.ts`). */
+  cataloguePhotosDir: path.join(packageRoot, 'assets', 'catalogue', 'photos'),
+
   session: {
     cookieName: 'orderbook_session',
     /** Sessions live in memory; restarting the Master signs admins out. */

@@ -887,6 +887,7 @@ export const api = {
   uploadProductImage: (
     productId: string,
     file: Blob,
+    /** Null keeps the whole picture: the bulk photo import has no crop editor. */
     crop: {
       cropX: number;
       cropY: number;
@@ -894,16 +895,20 @@ export const api = {
       cropHeight: number;
       rotationDeg: number;
       caption?: string | null;
-    },
+    } | null,
+    caption?: string | null,
   ) => {
     const form = new FormData();
     form.set('file', file, 'image');
-    form.set('cropX', String(crop.cropX));
-    form.set('cropY', String(crop.cropY));
-    form.set('cropWidth', String(crop.cropWidth));
-    form.set('cropHeight', String(crop.cropHeight));
-    form.set('rotationDeg', String(crop.rotationDeg));
-    if (crop.caption) form.set('caption', crop.caption);
+    if (crop) {
+      form.set('cropX', String(crop.cropX));
+      form.set('cropY', String(crop.cropY));
+      form.set('cropWidth', String(crop.cropWidth));
+      form.set('cropHeight', String(crop.cropHeight));
+      form.set('rotationDeg', String(crop.rotationDeg));
+    }
+    const text = crop?.caption ?? caption;
+    if (text) form.set('caption', text);
     return requestForm<Product>(`/api/products/${productId}/images`, form);
   },
   updateProductImage: (productId: string, imageId: string, input: ProductImageUpdateInput) =>

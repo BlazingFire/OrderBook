@@ -995,6 +995,9 @@ function MasterPanel() {
       ...(user.permissions.includes('products.delete')
         ? [{ key: 'duplicates', label: t('catalog.nav.duplicates'), icon: 'trash' as const }]
         : []),
+      ...(user.permissions.includes('products.edit')
+        ? [{ key: 'photos', label: t('catalog.nav.photoImport'), icon: 'upload' as const }]
+        : []),
     ],
     reports: offeredReportKinds(user.roleTier, user.features, user.permissions).map((kind) => ({
       key: kind,

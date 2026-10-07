@@ -1371,6 +1371,56 @@ describe('Products', () => {
     await waitFor(() => expect(gets(calls, '/api/products')).toBeGreaterThan(before));
   });
 
+  describe('Photo import', () => {
+    it('is offered only with products.edit', async () => {
+      await openProducts(['products.view']);
+      expect(screen.queryByText(t('catalog.nav.photoImport'))).toBeNull();
+    });
+
+    it('previews a chosen folder and uploads the matched photo to its sub product', async () => {
+      const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46, 0, 1]);
+      const calls = await boot(['products.view', 'products.edit'], (call) => {
+        const path = call.url.split('?')[0];
+        if (path === '/api/products') return json({ items: [PRODUCT], total: 1, limit: 100, offset: 0 });
+        if (path === `/api/products/${PRODUCT.id}/images`) return json(PRODUCT, 201);
+        return undefined;
+      });
+      await act(async () => {
+        fireEvent.click(moduleEntry());
+        await wait(0);
+      });
+      fireEvent.click(await screen.findByText(t('catalog.nav.photoImport')));
+
+      const [folder] = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="file"][webkitdirectory]'));
+      await act(async () => {
+        fireEvent.change(folder!, {
+        target: {
+          files: [
+            new File([jpegBytes], 'opt-0001.jpg', { type: 'image/jpeg' }),
+            new File([jpegBytes], 'NOPE-9.jpg', { type: 'image/jpeg' }),
+            // Named like a photo, but its bytes say otherwise: flagged before any upload.
+            new File(['notes, not a photo'], 'OPT-0001_2.jpg', { type: 'image/jpeg' }),
+          ],
+        },
+        });
+        await wait(0);
+      });
+
+      expect(await screen.findByText('opt-0001.jpg')).toBeTruthy();
+      expect(screen.getAllByText(PRODUCT.name).length).toBeGreaterThan(0);
+      expect(screen.getByText(t('photoImport.status.unmatched'))).toBeTruthy();
+      expect(screen.getByText(t('photoImport.status.notImage'))).toBeTruthy();
+
+      fireEvent.click(screen.getByRole('button', { name: t('photoImport.start', { count: 1 }) }));
+
+      await waitFor(() => {
+        const uploads = calls.filter((call) => call.url === `/api/products/${PRODUCT.id}/images`);
+        expect(uploads.map((call) => call.method)).toEqual(['POST']);
+      });
+      expect(await screen.findByText(`${t('photoImport.result.imported')} - ${t('photoImport.status.new')}`)).toBeTruthy();
+    });
+  });
+
   describe('Duplicates', () => {
     const MEMBER = {
       code: 'WB', size: null, productName: null, subProductCount: 0, lineCount: 0, blockedBy: null,
