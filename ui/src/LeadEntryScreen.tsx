@@ -1924,14 +1924,6 @@ function LeadEntryForm({
                       footer={
                         <div ref={addRef} className="ob-order-product__footrow">
                           <span className="ob-order-hint">{t('lead.add.card.shiftQ')}</span>
-                          {lacksPackaging && (
-                            <span
-                              className="ob-order-hint"
-                              style={{ color: 'var(--state-offline)' }}
-                            >
-                              {t('lead.add.draft.hintPackaging')}
-                            </span>
-                          )}
                           <span style={{ flex: 1, minWidth: 0 }} />
                           <span className="ob-order-product__pieces">
                             {`${t('lead.add.card.thisProduct')} ${cardPieces(draft.rows).toLocaleString('en-IN')} ${t('unit.pieces')}`}
@@ -2109,6 +2101,22 @@ function LeadEntryForm({
                             })}
                           </SubGrid>
                         </div>
+                      )}
+
+                      {/* What is still missing, under the table, as on the Office: the footer keeps
+                          the artboard's one short hint. */}
+                      {lacksPackaging && (
+                        <p
+                          className="ob-order-hint"
+                          data-card-hint
+                          style={{
+                            margin: 0,
+                            padding: `${rem(6)} ${rem(14)} 0`,
+                            color: 'var(--state-offline)',
+                          }}
+                        >
+                          {t('lead.add.draft.hintPackaging')}
+                        </p>
                       )}
 
                       {draft.rows.length > 0 && (
