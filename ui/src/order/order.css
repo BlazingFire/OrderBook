@@ -562,7 +562,7 @@
 }
 
 .ob-order-table__body {
-  max-height: 24rem;
+  max-height: clamp(8rem, calc(100vh - 36rem), 24rem);
   overflow-y: auto;
   overflow-x: hidden;
   padding-bottom: 0.286rem;
@@ -572,7 +572,7 @@
 .ob-order-subrow {
   display: grid;
   grid-template-columns:
-    minmax(4.571rem, 5.857rem) minmax(6rem, 1fr) minmax(7rem, 8.857rem) minmax(3rem, 3.571rem)
+    minmax(4.571rem, 5.857rem) minmax(6rem, 1fr) minmax(7.5rem, 8.857rem) minmax(3rem, 3.571rem)
     minmax(3.429rem, 4rem) minmax(5rem, 6.857rem) minmax(4rem, 5.714rem);
   column-gap: 0.571rem;
   align-items: center;
@@ -669,7 +669,7 @@
 
 .ob-order-colour .ob-order-colour__input {
   width: 100%;
-  padding-left: 1.929rem;
+  padding-left: 1.714rem;
 }
 
 .ob-order-colour[data-state='needed'] .ob-order-colour__input {
@@ -914,7 +914,7 @@ button.ob-order-group__toggle:hover {
 }
 
 .ob-order-colour .ob-order-colour__input {
-  padding-right: 1.714rem;
+  padding-right: 1.5rem;
 }
 
 .ob-order-colour__filter {
