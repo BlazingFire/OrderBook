@@ -94,6 +94,7 @@ export * from './ShortcutSettings.js';
 export * from './Splash.js';
 export * from './NoticeBoardView.js';
 export * from './NoticeDashboardCard.js';
+export * from './SignInNotices.js';
 export * from './NoticeManageView.js';
 export * from './PageBar.js';
 export * from './SaveTextButton.js';
