@@ -436,7 +436,7 @@ export function GalleryScreen() {
           </div>
           <div className="ob-field">
             <label className="ob-label" htmlFor="g-qty">
-              Quantity (boxes)
+              Quantity (pcs)
             </label>
             <input
               id="g-qty"

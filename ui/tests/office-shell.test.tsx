@@ -462,13 +462,13 @@ describe('the Dashboard orders tile (stock removed, 1.4)', () => {
     return screen.getByText(t('dashboard.orders.title')).closest('.ob-stattile') as HTMLElement;
   }
 
-  it('counts the pieces on open orders as boxes still to dispatch', async () => {
+  it('counts the pieces on open orders as pcs still to dispatch', async () => {
     const tile = await ordersTile([
       { ...ORDER, items: [{ quantity: 3 }, { quantity: 4 }] },
       { ...ORDER, id: 'ORD-2', items: [{ quantity: 99 }], dispatchedAt: '2026-09-23T00:00:00.000Z' },
     ]);
 
-    expect(within(tile).getByText('7 boxes still to dispatch')).toBeTruthy();
+    expect(within(tile).getByText('7 pcs still to dispatch')).toBeTruthy();
   });
 
   it('says nothing is waiting when no order is open', async () => {
