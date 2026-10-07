@@ -1480,6 +1480,12 @@ export const EN_MESSAGES = {
   'lead.add.followUp.inThreeDaysShort': '+3 d',
   'lead.add.followUp.nextWeekShort': '+1 wk',
   'lead.add.followUp.group': 'Quick follow-up',
+  'lead.add.card.shiftQ': 'Shift+Q adds & next',
+  'lead.add.card.thisProduct': 'This product',
+  'lead.add.card.pickColour': 'Pick colour',
+  'lead.add.card.anotherColour': 'Same sub product, another colour',
+  'lead.add.card.colourHint': '↑↓ move · Enter picks',
+  'lead.add.draft.hintColourRow': 'Pick a colour for every row that has a quantity',
   'lead.add.saveKbd': 'Ctrl S',
   'lead.add.draft.title': 'Details for this product',
   'lead.add.followUp.label': 'Follow up',
@@ -1487,8 +1493,8 @@ export const EN_MESSAGES = {
   'lead.add.products.clear': 'Clear selection',
   'lead.add.products.pickedHint':
     'Enter walks quantity, packaging and grade to Add product, which adds this sub product and returns to the list; Shift+Q adds it and moves on to the next product.',
-  'lead.add.products.searchAdds': 'the search adds another',
-  'lead.add.products.searchFirst': 'choose a product, then a sub product — at least one',
+  'lead.add.products.searchAdds': 'search for another product',
+  'lead.add.products.searchFirst': 'choose a product — its sub products open as a grid',
   'lead.add.saved': 'Pending Order saved — {id} syncs when the Master is reachable',
   'lead.add.savedOnline': 'Pending Order {id} saved',
   'lead.number.label': 'PO number',
@@ -2724,7 +2730,7 @@ export const EN_MESSAGES = {
     'Sub product of {category} — type to narrow, e.g. 41, Magenta',
   'lead.add.products.changeCategory': 'Change product',
   'lead.add.products.categoryHint':
-    'Choose the product by name or code; its sub products come next.',
+    'Choose the product by name or code; its sub products open on a card.',
   'lead.add.products.productHint':
     'Pick a sub product. Shift+Q on an empty box finishes this product; Backspace goes back to the product bar.',
   'lead.add.products.col.category': 'Product',
