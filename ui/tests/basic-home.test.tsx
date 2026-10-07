@@ -99,7 +99,7 @@ describe('BasicHome', () => {
     expect(tile('Dashboard').querySelector('.ob-tile-count')).toBeNull();
   });
 
-  it('offers New pending order first in Work only when it is given', () => {
+  it('offers New Order first in Work only when it is given', () => {
     home();
     expect(screen.queryByText(t('basicHome.newLead'))).toBeNull();
     cleanup();
