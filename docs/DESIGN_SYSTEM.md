@@ -292,6 +292,19 @@ Say what is loading; say what failed and what to do next; no spinners.
 - **Colour x quantity grid:** columns Colour, Qty (and the artboard's stock columns, not built), a Total row; Tab moves down, Enter commits the line,
   up/down change by 1, Shift by 10, a blank is not 0.
 
+**As built (D12, `ui/src/DataDisplay.tsx`, `ui/src/PageBar.tsx`, `ui/src/base.css`).**
+- `DataTable`: the header and rows are `--row-h` (32 px), separated by hairlines only (no zebra, no column lines), numbers in tabular figures, ids in mono.
+- `StatusPill` is 20 px (tones `default`, `ok`, `offline`, `conflict`, `accent`, `master`). Stage pills are about to take the stage's own colour
+  (`PipelineStage.colour`), so Cancelled shows red and Postpone amber as on the artboard.
+- `ColourChip` is a 14 px circle with a 1 px border; a colour with no known hex falls back to the artboard's two-letter initials circle ("RU").
+  `ColourName` puts the name beside it.
+- `IdField` is the sunken id box with a copy button.
+- `Timeline` draws a hairline down the left, each entry's meta line ("Ramesh P. · 10:42") over its text; entries written by the software (a stage change) are smaller
+  and italic. A lead's or order's history is fed through `recordTimelineEntries(entries, formatWhen)`.
+- `PageBar` (paging) is a 40 px footer band in secondary ink under the rows.
+- The kanban card follows the artboard (name, quantity, due line, owner) with the dragging outline and no shadow. **There is no colour x quantity grid in the kit:** the new
+  pending order's own card does that job (section 10).
+
 ## 9. Overlays (artboard: Overlays)
 
 Level 2 for menus and popovers, level 3 for modals and drawers; Esc closes; focus returns to the opener.
@@ -337,6 +350,6 @@ Lead wording becomes **pending order**; quantity unit is **box**, never "pcs".
 | Sidebar, top bar, tabs, footer | `ui/src/Sidebar.tsx`, `Topbar`, ... (to be filled) |
 | Icons | `ui/src/icons.tsx` (the set), `ui/src/navIcons.ts` (module to icon), `ui/src/BasicHome.tsx` (flat tiles); `ui/tests/nav-icons.test.tsx` |
 | Feedback | (to be filled) |
-| Data | `ui/src/DataTable.tsx`, ... (to be filled) |
+| Data | `ui/src/DataTable.tsx`, `ui/src/DataDisplay.tsx` (StatusPill, ColourChip, IdField, Timeline, `recordTimelineEntries`), `ui/src/PageBar.tsx`; `ui/tests/data-timeline.test.tsx` |
 | Overlays | `ui/src/Modal.tsx`, `ConfirmDialog.tsx`, `Popover.tsx`, ... (to be filled) |
 | New pending order | `ui/src/LeadEntryScreen.tsx` (Master), `office/web/src/screens/AddLeadScreen.tsx` (Office) (to be filled) |
