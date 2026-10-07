@@ -197,6 +197,12 @@ With an icon: gap 6, padding 0 12 0 10 (icon left) or 0 10 0 12 (icon right); a 
 **Icon buttons** are 30 x 30 (26 for a close button), radius 6, secondary / ghost / tinted / red-text variants, always with an
 `aria-label`.
 
+**As built (`ui/src/Button.tsx`, `ui/src/base.css`).** Heights come from `--ctl-h-sm`, `--ctl-h-md`, `--ctl-h-lg` (26, 30 and 36 px at the 14 px root).
+A busy button shows the busy mark (14 px, in the button's own ink) where its icon would be, sets `aria-busy`, and keeps a present-tense label
+("Saving"); its fill does not turn into the disabled look. An icon first in the button trims that side of the padding so the glyph sits in the
+corner. `IconButton` has three variants, `ghost` (default), `bordered` and `danger`, 30 px square. Hover, pressed (1 px down) and disabled follow the table.
+Test: `ui/tests/form-controls-design.test.ts`.
+
 ## 5. Form controls (artboard: Inputs)
 
 - **Text input:** height 30, padding 0 10, 1 px `porcelain-30` border, radius 4, white, 14 px. Label above (12.5 px / 500);
@@ -212,6 +218,18 @@ With an icon: gap 6, padding 0 12 0 10 (icon left) or 0 10 0 12 (icon right); a 
 - **Checkbox** 16 x 16, radius 4, 1 px `porcelain-30` border; checked = accent fill with a white tick; disabled = `porcelain-10` fill.
   **Radio** 16 x 16 circle, selected = 5 px accent border ring. **Switch** for per-machine settings, with the label to its right;
   a disabled switch names why ("Webhooks, Admin only").
+
+**Control edges (decision of the lead session, 2026-10-07).** The edge of an input, select, checkbox, radio and switch track is
+**`--line-control`** (`#848D94` light, `#6B787E` dark), **not** the artboard's `#B9C1C6`. The artboard value is 1.83:1 on white; `#848D94` is 3.38:1
+on white and 3.06:1 on the canvas, which meets WCAG 1.4.11 (non-text contrast, 3:1). Decorative hairlines (cards, table rules) stay on `--line`.
+
+**As built (`ui/src/Form.tsx`, `ui/src/base.css`).**
+- `Input`, `Textarea`, `Select` share the field box; the select's arrow is the artboard's chevron (a 16 px inline SVG background), not the platform's.
+  A label whose field is disabled goes quiet with it (`.ob-label:has(+ :disabled)`); placeholders use the muted text token.
+- `FieldError` is a 14 px circled exclamation and the message, in the error colour; it says what failed and what to do.
+- `Checkbox` is 16 px with a 3-stroke tick, or a dash when indeterminate. **`Radio` is new in the kit:** one choice of a group (members share a `name`),
+  a ring that fills to a dot, drawn with the border, with the same focus and disabled treatment as the checkbox. `Switch` is 32 x 18.
+- The combobox list rows are **32 px**, not the artboard's 28 (a larger target); the content of a row is as in the artboard.
 
 ## 6. Navigation (artboards: Navigation, Sidebar, Shell)
 
@@ -297,7 +315,7 @@ Lead wording becomes **pending order**; quantity unit is **box**, never "pcs".
 | Tokens, type, radii, focus ring, scrollbars, size | `ui/src/tokens.css` (names in 2.6), `ui/src/base.css`, `ui/src/theme.ts` (the size slider) |
 | Fonts (Inter, IBM Plex Mono, bundled) | `ui/src/fonts/`, `ui/src/fonts.css` |
 | Mark, splash, busy indicator, app icons | (to be filled) |
-| Buttons and form controls | `ui/src/Button.tsx`, `Input.tsx`, `Select.tsx`, ... (to be filled) |
+| Buttons and form controls | `ui/src/Button.tsx` (Button, IconButton), `ui/src/Form.tsx` (Input, Textarea, Select, FieldError, Checkbox, Radio, Switch), control CSS in `ui/src/base.css`; `ui/tests/form-controls-design.test.ts` |
 | Sidebar, top bar, tabs, footer | `ui/src/Sidebar.tsx`, `Topbar`, ... (to be filled) |
 | Icons | `ui/src/icons.tsx`, `ui/src/navIcons.ts`, `ui/src/BasicHome.tsx` (to be filled) |
 | Feedback | (to be filled) |
