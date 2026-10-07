@@ -412,8 +412,8 @@ total: Party, Products), `CartEntry` and `CartLines` (one added product that ope
   one line per colour (checked: White 10 and Ivory 5 came back from the API as two lines with their colour names).
 - **Keys on the card:** Enter walks quantity, packaging and grade to **Add product**, which adds the sub product and returns to the list; Shift+Q adds it and moves to the next product; Backspace on the empty
   sub-product box goes back to the product bar; F2 focuses the product search; Ctrl+S saves.
-- **Quantity unit.** The screen's quantity wording is "pieces" / "pcs" (the entry has said so since before this redesign; the printed notes say **box**). Whether the entry follows the notes is an open
-  question (see the 1.4.6 notes).
+- **Quantity unit (owner decision, 2026-10-07).** The entry screens, the detail views and the lists say "pieces" / "pcs", as the artboard does and as they always have; the printed Filling and Dispatch notes keep saying **box**. Pieces and boxes
+  are not renamed into one another (reports keep separate Pieces and Boxes columns).
 
 **The Office copy (D1, `office/web/src/screens/AddLeadScreen.tsx`)** is the same screen on the same `ui/src/order/` kit and keeps its own behaviours: per-person drafts, the provisional party, offline saves queued to the outbox, the
 live catalogue from the person's snapshot. **Since then:** the party chip shows name, code and city (`PartyChip`); "Create a new party" opens the New party form pre-filled with the typed text (works by Enter); Added products rows
@@ -421,7 +421,7 @@ show the 32 px photo (`CartEntry` thumb slot); the follow-up chips are a real ra
 the page title is the shell's top bar (no second heading). The page is capped at 120 rem.
 
 **Not built from the artboard (the product has none of them):** the **Rate** column and any amount, the `₹` prefix, the stock figures ("on hand shown", On hand, Reserved).
-Lead wording becomes **pending order**. The artboard's quantity unit "pcs" is as the entry screens already say it; the printed notes say **box**; which one each screen should say is an open owner question (reports keep separate Pieces and Boxes columns, so they may be different quantities).
+Lead wording becomes **pending order**. The quantity unit is "pcs" on the entry screens, details and lists, as the artboard draws it, and "box" on the printed notes (owner decision, 2026-10-07).
 
 ## 11. Where it lives in the code
 
