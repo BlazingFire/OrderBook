@@ -89,6 +89,7 @@ import type {
 } from '@orderbook/shared';
 import {
   PICK_MAX_LIMIT,
+  colourLabeller,
   colourRuleOf,
   lineColourText,
   resolveCompanyFeatures,
@@ -452,7 +453,7 @@ function AddLeadForm({
    * The primary photo of each product picked this visit, kept beside the draft rather than in
    * it: the draft's facts are copied onto every line it adds, and a photo is not a line fact.
    */
-  const [pickedImages, setPickedImages] = useState<Record<string, ProductImage | undefined>>({});
+  const [pickedImages, setPickedImages] = useState<Record<string, ProductImage[] | undefined>>({});
   /** Which panel rows are expanded, ticked, and what is filtering them. */
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [selected, setSelected] = useState<Record<string, true>>({});
@@ -550,6 +551,12 @@ function AddLeadForm({
       ),
     [view.optionLists],
   );
+
+  /**
+   * A line keeps the colour list's VALUE; the screen shows that value's LABEL as the list has it
+   * now, so a colour renamed in Fields reads the new way on every line without touching the lines.
+   */
+  const labelOf = useMemo(() => colourLabeller(colourOptions), [colourOptions]);
 
   /*
    * The enquiry came from somewhere, and on this screen it always came from the
@@ -843,7 +850,7 @@ function AddLeadForm({
   }
 
   function openDraft(product: Product, typed = ''): void {
-    setPickedImages((current) => ({ ...current, [product.id]: product.images?.[0] }));
+    setPickedImages((current) => ({ ...current, [product.id]: product.images }));
     const partyRecord = partyRecordFor.get(product.id) ?? null;
     const rule = colourRuleOf(product);
     // A variant taken off the form stays sellable on old lines, not new ones.
@@ -1438,22 +1445,25 @@ function AddLeadForm({
 
   return (
     <div ref={rootRef} className="ob-order-page">
-      {/* The page title is the shell's breadcrumb; the heading stays for the screen reader. */}
-      <h1
-        style={{
-          position: 'absolute',
-          width: 1,
-          height: 1,
-          margin: -1,
-          padding: 0,
-          overflow: 'hidden',
-          clip: 'rect(0 0 0 0)',
-          whiteSpace: 'nowrap',
-          border: 0,
-        }}
-      >
-        {lead ? t('lead.edit.title') : t('lead.add.title')}
-      </h1>
+      {/* New: the shell's topbar names the page. Edit has no topbar title, so the heading
+          stays, for the screen reader (and the tests that look for it). */}
+      {lead && (
+        <h1
+          style={{
+            position: 'absolute',
+            width: 1,
+            height: 1,
+            margin: -1,
+            padding: 0,
+            overflow: 'hidden',
+            clip: 'rect(0 0 0 0)',
+            whiteSpace: 'nowrap',
+            border: 0,
+          }}
+        >
+          {t('lead.edit.title')}
+        </h1>
+      )}
 
       {error && <ConflictBanner>{error}</ConflictBanner>}
       {editBase.conflicted && !busy && (
@@ -1881,7 +1891,13 @@ function AddLeadForm({
                               openDraft(row, query);
                             }}
                           >
-                            <ProductThumb image={row.images?.[0]} size={32} name={row.name} />
+                            <ProductThumb
+                              images={row.images}
+                              size={32}
+                              fallback="initial"
+                              alt=""
+                              name={row.name}
+                            />
                             <span
                               className="ob-mono ob-body-strong"
                               style={{
@@ -1964,15 +1980,16 @@ function AddLeadForm({
                 {draft && (
                   <DraftCard
                     draft={draft}
-                    image={
+                    images={
                       pickedImages[draft.productId] ??
-                      view.products.find((product) => product.id === draft.productId)?.images?.[0]
+                      view.products.find((product) => product.id === draft.productId)?.images
                     }
                     ready={draftIsReady(draft)}
                     packagingRequired={packagingRequired}
                     packagingOptions={packagingOptions}
                     gradeOptions={gradeOptions}
                     colourOptions={colourOptions}
+                    labelOf={labelOf}
                     suggestedPackaging={partyRecordFor.get(draft.productId)?.packaging ?? null}
                     colourHex={colourHex}
                     onRow={patchRow}
@@ -2139,6 +2156,7 @@ function AddLeadForm({
                   checked={Boolean(selected[line.key])}
                   packagingRequired={packagingRequired}
                   colourHex={colourHex}
+                  labelOf={labelOf}
                   onToggle={() => setOpenKey((current) => (current === line.key ? null : line.key))}
                   onCheck={() => toggleSelect(line.key)}
                   onModify={() => modifyLine(line, lines.indexOf(line))}
@@ -2159,6 +2177,7 @@ function AddLeadForm({
         followUpDate={followUpDate}
         notes={notes}
         lines={lines}
+        labelOf={labelOf}
         summary={summary}
         busy={busy}
         error={error}
@@ -2275,6 +2294,7 @@ function LeadLine({
   checked,
   packagingRequired,
   colourHex,
+  labelOf,
   onToggle,
   onCheck,
   onModify,
@@ -2285,6 +2305,8 @@ function LeadLine({
   checked: boolean;
   packagingRequired: boolean;
   colourHex: (name: string) => string | undefined;
+  /** The colour list's current label for a stored colour value. */
+  labelOf: (colour: string) => string;
   onToggle: () => void;
   onCheck: () => void;
   onModify: () => void;
@@ -2310,7 +2332,7 @@ function LeadLine({
    * few words; `null` drops out rather than leaving a gap.
    */
   const facts: ReactNode[] = [
-    swatch ? <ColourName key="colour" name={swatch} hex={colourHex(swatch)} /> : null,
+    swatch ? <ColourName key="colour" name={labelOf(swatch)} hex={colourHex(swatch)} /> : null,
     line.categoryName ? <span key="category">{line.categoryName}</span> : null,
     grade ? (
       <span key="grade">
@@ -2360,13 +2382,13 @@ function LeadLine({
             {shownColour(line.variantLabel, line.productName) && (
               <span className="ob-small" style={{ fontWeight: 450, color: 'var(--fg-secondary)' }}>
                 {' · '}
-                {line.variantLabel}
+                {labelOf(line.variantLabel ?? '')}
               </span>
             )}
             {line.colour && (
               <span className="ob-small" style={{ fontWeight: 450, color: 'var(--fg-secondary)' }}>
                 {' · '}
-                {line.colour}
+                {labelOf(line.colour)}
               </span>
             )}
             {line.grade && (
@@ -2458,12 +2480,13 @@ function LeadLine({
  */
 function DraftCard({
   draft,
-  image,
+  images,
   ready,
   packagingRequired,
   packagingOptions,
   gradeOptions,
   colourOptions,
+  labelOf,
   suggestedPackaging,
   colourHex,
   onRow,
@@ -2475,13 +2498,15 @@ function DraftCard({
 }: {
   draft: DraftProduct;
   /** The product's primary photo, when it has one (an initial tile stands in otherwise). */
-  image: ProductImage | undefined;
+  images: ProductImage[] | undefined;
   ready: boolean;
   /** `leads.packagingRequiredOnConvert`, already coalesced by the screen. */
   packagingRequired: boolean;
   packagingOptions: OptionListItem[];
   gradeOptions: OptionListItem[];
   colourOptions: OptionListItem[];
+  /** The colour list's current label for a stored colour value. */
+  labelOf: (colour: string) => string;
   suggestedPackaging: string | null;
   colourHex: (name: string) => string | undefined;
   onRow: (key: string, patch: Partial<DraftRow>) => void;
@@ -2605,22 +2630,38 @@ function DraftCard({
   return (
     <div className="ob-order-product">
       <div className="ob-order-product__head">
-        <ProductThumb image={image} size={48} name={draft.productName} />
-        <span className="ob-mono" style={{ fontSize: rem(12), color: 'var(--accent)' }}>
+        <ProductThumb
+          images={images}
+          size={48}
+          fallback="initial"
+          alt=""
+          name={draft.productName}
+        />
+        <span
+          className="ob-mono"
+          style={{ fontSize: rem(12), color: 'var(--accent)', whiteSpace: 'nowrap', flex: 'none' }}
+        >
           {draft.variants.length === 1
             ? draft.variants[0]!.code
             : t('lead.add.products.variantCount', { count: draft.variants.length })}
         </span>
         {/* The product as the design names it, its group beside it; the sub product's own name
             and size are in the table below, shown here only when they differ. */}
-        <span className="ob-body-strong ob-ellipsis" style={{ minWidth: 0 }}>
+        <span
+          className="ob-body-strong"
+          style={{ flex: '1 1 8rem', minWidth: 0, overflowWrap: 'anywhere' }}
+        >
           {draft.categoryName}
         </span>
-        {draft.brand && <span className="ob-order-eyebrow">{draft.brand}</span>}
+        {draft.brand && (
+          <span className="ob-order-eyebrow" style={{ whiteSpace: 'nowrap', flex: 'none' }}>
+            {draft.brand}
+          </span>
+        )}
         {draft.productName !== draft.categoryName && (
           <span
             className="ob-small ob-ellipsis"
-            style={{ minWidth: 0, color: 'var(--fg-secondary)' }}
+            style={{ flex: '0 1 auto', minWidth: 0, color: 'var(--fg-secondary)' }}
           >
             {[draft.productName, draft.size].filter(Boolean).join(' · ')}
           </span>
@@ -2628,8 +2669,10 @@ function DraftCard({
         {draft.rule === 'selectable' && (
           <StatusPill tone="accent">{t('product.multiColour.pill')}</StatusPill>
         )}
-        <span style={{ flex: 1, minWidth: 0 }} />
-        <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
+        <span
+          className="ob-small"
+          style={{ color: 'var(--fg-tertiary)', whiteSpace: 'nowrap', flex: 'none' }}
+        >
           {draft.editKey ? t('lead.add.draft.editing') : t('lead.add.draft.new')}
         </span>
         <button
@@ -2760,7 +2803,7 @@ function DraftCard({
           {draft.rows.map((row, index) => {
             // The chosen colour on a multicolour row, else the fixed one.
             const colour = row.colour || row.variantLabel;
-            const named = row.colour || variantName(row);
+            const named = row.colour ? labelOf(row.colour) : variantName(row);
             const key = rowKey(row);
             return (
               <div
@@ -2776,7 +2819,7 @@ function DraftCard({
                 <span className="ob-mono ob-body-strong ob-ellipsis">{row.code}</span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: rem(4), minWidth: 0 }}>
                   <VariantName
-                    colour={colour}
+                    colour={colour ? labelOf(colour) : colour}
                     productName={draft.productName}
                     hex={colour ? colourHex(colour) : undefined}
                   />
@@ -2784,8 +2827,8 @@ function DraftCard({
                     <button
                       type="button"
                       className="ob-btn ob-btn--ghost"
-                      aria-label={t('lead.add.draft.removeColour', { colour: row.colour })}
-                      title={t('lead.add.draft.removeColour', { colour: row.colour })}
+                      aria-label={t('lead.add.draft.removeColour', { colour: labelOf(row.colour) })}
+                      title={t('lead.add.draft.removeColour', { colour: labelOf(row.colour) })}
                       style={{ padding: 0, minWidth: rem(20) }}
                       onClick={() => onRemoveColour(row.colour)}
                     >
@@ -3058,6 +3101,7 @@ function ReviewModal({
   followUpDate,
   notes,
   lines,
+  labelOf,
   summary,
   busy,
   error,
@@ -3070,6 +3114,7 @@ function ReviewModal({
   followUpDate: string;
   notes: string;
   lines: DraftLine[];
+  labelOf: (colour: string) => string;
   summary: string;
   busy: boolean;
   error: string | null;
@@ -3141,7 +3186,7 @@ function ReviewModal({
                   {[
                     first.categoryName,
                     first.size,
-                    lineColourText(group, first.productName),
+                    lineColourText(group, first.productName, labelOf),
                     first.grade,
                     first.packaging,
                   ]

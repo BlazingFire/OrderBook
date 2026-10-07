@@ -638,6 +638,26 @@ describe('the packaging and grade beside each quantity', () => {
     ).toEqual([{ variantId: 'var-1', packaging: 'Grass', grade: 'B' }]);
   });
 
+  it("shows a colour by the list's CURRENT label, so a renamed colour reads the new way", async () => {
+    const renamed = COLOURS.map((colour) =>
+      colour.value === 'White' ? { ...colour, label: 'Pearl White' } : colour,
+    );
+    await openForm({ optionLists: [...renamed, ...PACKAGING, ...GRADES] });
+    await pickSubProduct(MULTI.name);
+    const colourBox = await screen.findByLabelText(t('lead.add.flow.addColour'));
+    fireEvent.change(colourBox, { target: { value: 'Pea' } });
+    fireEvent.keyDown(colourBox, { key: 'Enter' });
+
+    const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — Pearl White`);
+    fireEvent.change(qty, { target: { value: '10' } });
+    await pressEnter(qty);
+    await finishCard('Pearl White');
+
+    const aside = document.querySelector<HTMLElement>('.ob-order-aside')!;
+    expect(aside.textContent).toContain('Pearl White');
+    expect(aside.textContent).not.toContain('· White');
+  });
+
   it('gives each colour its own packaging and grade', async () => {
     const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
     await pickSubProduct(MULTI.name);

@@ -112,6 +112,7 @@ import type {
 } from '@orderbook/shared';
 import {
   PICK_MAX_LIMIT,
+  colourLabeller,
   colourRuleOf,
   lineColourText,
   resolveCompanyFeatures,
@@ -603,6 +604,12 @@ function LeadEntryForm({
       ),
     [view.optionLists],
   );
+
+  /**
+   * A line keeps the colour list's VALUE; the screen shows that value's LABEL as the list has it
+   * now, so a colour renamed in Fields reads the new way on every line without touching the lines.
+   */
+  const labelOf = useMemo(() => colourLabeller(colourOptions), [colourOptions]);
 
   /*
    * The enquiry came from somewhere, and on this screen it always came from the
@@ -2094,6 +2101,7 @@ function LeadEntryForm({
                     packagingOptions={packagingOptions}
                     gradeOptions={gradeOptions}
                     colourOptions={colourOptions}
+                    labelOf={labelOf}
                     suggestedPackaging={partyRecordFor.get(draft.productId)?.packaging ?? null}
                     colourHex={colourHex}
                     onRow={patchRow}
@@ -2283,6 +2291,7 @@ function LeadEntryForm({
               checked={Boolean(selected[line.key])}
               packagingRequired={packagingRequired}
               colourHex={colourHex}
+              labelOf={labelOf}
               onToggle={() => setOpenKey((current) => (current === line.key ? null : line.key))}
               onCheck={() => toggleSelect(line.key)}
               onModify={() => modifyLine(line, lines.indexOf(line))}
@@ -2306,6 +2315,7 @@ function LeadEntryForm({
         followUpDate={followUpDate}
         notes={notes}
         lines={lines}
+        labelOf={labelOf}
         summary={summary}
         busy={busy}
         error={error}
@@ -2431,6 +2441,7 @@ function LeadLine({
   checked,
   packagingRequired,
   colourHex,
+  labelOf,
   onToggle,
   onCheck,
   onModify,
@@ -2441,6 +2452,8 @@ function LeadLine({
   checked: boolean;
   packagingRequired: boolean;
   colourHex: (name: string) => string | undefined;
+  /** The colour list's current label for a stored colour value. */
+  labelOf: (colour: string) => string;
   onToggle: () => void;
   onCheck: () => void;
   onModify: () => void;
@@ -2466,7 +2479,7 @@ function LeadLine({
    * few words; `null` drops out rather than leaving a gap.
    */
   const facts: ReactNode[] = [
-    swatch ? <ColourName key="colour" name={swatch} hex={colourHex(swatch)} /> : null,
+    swatch ? <ColourName key="colour" name={labelOf(swatch)} hex={colourHex(swatch)} /> : null,
     line.categoryName ? <span key="category">{line.categoryName}</span> : null,
     grade ? (
       <span key="grade">
@@ -2527,13 +2540,13 @@ function LeadLine({
             {shownColour(line.variantLabel, line.productName) && (
               <span className="ob-small" style={{ fontWeight: 450, color: 'var(--fg-secondary)' }}>
                 {' · '}
-                {line.variantLabel}
+                {labelOf(line.variantLabel ?? '')}
               </span>
             )}
             {line.colour && (
               <span className="ob-small" style={{ fontWeight: 450, color: 'var(--fg-secondary)' }}>
                 {' · '}
-                {line.colour}
+                {labelOf(line.colour)}
               </span>
             )}
             {line.grade && (
@@ -2634,6 +2647,7 @@ function DraftCard({
   packagingOptions,
   gradeOptions,
   colourOptions,
+  labelOf,
   suggestedPackaging,
   colourHex,
   onRow,
@@ -2649,6 +2663,8 @@ function DraftCard({
   packagingOptions: OptionListItem[];
   gradeOptions: OptionListItem[];
   colourOptions: OptionListItem[];
+  /** The colour list's current label for a stored colour value. */
+  labelOf: (colour: string) => string;
   suggestedPackaging: string | null;
   colourHex: (name: string) => string | undefined;
   onRow: (key: string, patch: Partial<DraftRow>) => void;
@@ -2902,7 +2918,7 @@ function DraftCard({
           {draft.rows.map((row, index) => {
             // The chosen colour on a multicolour row, else the fixed one.
             const colour = row.colour || row.variantLabel;
-            const named = row.colour || variantName(row);
+            const named = row.colour ? labelOf(row.colour) : variantName(row);
             const key = rowKey(row);
             return (
               <div
@@ -2918,7 +2934,7 @@ function DraftCard({
                 <span className="ob-mono ob-body-strong ob-ellipsis">{row.code}</span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: rem(4), minWidth: 0 }}>
                   <VariantName
-                    colour={colour}
+                    colour={colour ? labelOf(colour) : colour}
                     productName={draft.productName}
                     hex={colour ? colourHex(colour) : undefined}
                   />
@@ -2926,8 +2942,8 @@ function DraftCard({
                     <button
                       type="button"
                       className="ob-btn ob-btn--ghost"
-                      aria-label={t('lead.add.draft.removeColour', { colour: row.colour })}
-                      title={t('lead.add.draft.removeColour', { colour: row.colour })}
+                      aria-label={t('lead.add.draft.removeColour', { colour: labelOf(row.colour) })}
+                      title={t('lead.add.draft.removeColour', { colour: labelOf(row.colour) })}
                       style={{ padding: 0, minWidth: rem(20) }}
                       onClick={() => onRemoveColour(row.colour)}
                     >
@@ -3207,6 +3223,7 @@ function ReviewModal({
   followUpDate,
   notes,
   lines,
+  labelOf,
   summary,
   busy,
   error,
@@ -3219,6 +3236,7 @@ function ReviewModal({
   followUpDate: string;
   notes: string;
   lines: DraftLine[];
+  labelOf: (colour: string) => string;
   summary: string;
   busy: boolean;
   error: string | null;
@@ -3290,7 +3308,7 @@ function ReviewModal({
                   {[
                     first.categoryName,
                     first.size,
-                    lineColourText(group, first.productName),
+                    lineColourText(group, first.productName, labelOf),
                     first.grade,
                     first.packaging,
                   ]
