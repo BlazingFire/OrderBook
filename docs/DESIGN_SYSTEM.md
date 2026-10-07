@@ -176,6 +176,12 @@ the mark alone is never below 16 px. Never recolour squares with product colours
 Windows `.ico`: 256 master, radius 24; sizes 128 (radius 16), 64 (10), 48 (8), 32 (6), 24 (4), 16 (3); the mark inside is
 96, 48, 36, 26, 20, 14. macOS `.icns`: 1024 master, radius 54 on 240 (not built; no macOS release). **24 and 16 drop the ghosts.**
 
+**As built (D8, `ui/src/Mark.tsx`, `Logo.tsx`, `Splash.tsx`, `BusyMark.tsx`, `ui/src/logoCells.ts`, `tools/make-icons.mjs`).** `Mark({ size, ink, ghost, title })` draws the 24-unit "Fill"; the ink is `--accent`
+and the ghost opacity `--ob-mark-ghost` (0.2 light, 0.28 dark); the two ghost squares are left out at 24 px and below. `Logo` and `LogoLockup` draw it in the app. `make-icons.mjs` renders every `.ico` size on its own with the Icons
+artboard's tile radius and mark size (ghosts out at 24 and 16): the Office a cobalt tile with the white mark, the Master a white tile with a hairline and the cobalt mark, the clean-install tool the white mark on its warning red;
+`master/installer/icon.ico` and `office/installer/icon.ico` are stamped into the program file by `tools/exe-icon.cjs`, and a test pins the committed files to what the script renders.
+The splash is the mark at 56 px beside the wordmark: outline 0 to 240 ms, squares ink from 240 ms 34 ms apart, wordmark rises 4 px at 620 ms, the progress bar from 700 ms.
+
 **Motion (artboard: Motion).**
 - *Splash, 900 ms, once on a cold start:* 0 to 240 ms the 12-square outline draws (stroke-dashoffset); 240 to 620 ms the 10
   squares ink in with a 34 ms stagger (opacity 0 to 1, scale .88 to 1); 620 to 900 ms the wordmark rises 4 px.
@@ -315,6 +321,11 @@ A band at the top of Basic Home on both panels (`ui/src/NoticeSlideshow.tsx`), i
 - **Source:** on the Master the board list from `GET /api/notices`; on the Office the signed-in person's own cached list (the per-viewer, fail-closed cache), with reads recorded here overlaid.
   It follows the `notice` change event, so a new notice appears without a reload.
 
+**Stage tones and colour labels (as built).** `stageTone()` (`ui/src/DataDisplay.tsx`) maps a pipeline stage's own colour (set in Fields > Pipeline stages) by hue to the five pill tones
+(red, amber, green, accent; greys neutral) and keeps the stage flags only as the fallback for a stage with no colour: Cancelled shows red, Postpone amber, Dispatched green, In progress accent.
+Colour names are shown through `colourLabeller` (`shared/src/domain/colour-rule.ts`) and the kit's `useColourLabel(optionLists)`: a line stores the colour list's value, every screen prints the list's **current label**
+(deleted and inactive entries included), and falls back to the stored value for a colour the list no longer has.
+
 ## 8. Data (artboard: Data)
 
 - **Table:** no zebra stripes, no column lines, numbers right-aligned in tabular figures; header = eyebrow style on `porcelain-10`; row 32 px
@@ -338,6 +349,8 @@ A band at the top of Basic Home on both panels (`ui/src/NoticeSlideshow.tsx`), i
 - `Timeline` draws a hairline down the left, each entry's meta line ("Ramesh P. · 10:42") over its text; entries written by the software (a stage change) are smaller
   and italic. A lead's or order's history is fed through `recordTimelineEntries(entries, formatWhen)`.
 - `PageBar` (paging) is a 40 px footer band in secondary ink under the rows.
+- **`ProductThumb`** is the one photo component (in `DataDisplay.tsx`, on `ProgressiveImage`): sizes 32 and 48 px (the order screen), 28 px in the Products lists (the `micro` variant, blurhash first, lazy so a virtualised list
+  fetches only the rows on screen), with a fallback of blank, an initial-letter tile or nothing, and an `alt`. The Office draws it from its own image cache, so photos show offline.
 - The kanban card follows the artboard (name, quantity, due line, owner) with the dragging outline and no shadow. **There is no colour x quantity grid in the kit:** the new
   pending order's own card does that job (section 10).
 
@@ -349,6 +362,13 @@ Level 2 for menus and popovers, level 3 for modals and drawers; Esc closes; focu
 - **Command palette** (Ctrl K): groups (Create, Go to) under eyebrows; rows 30 px; the highlighted row `accent-tint` with accent text and its chord at the right.
 - **Modal:** on a scrim, radius 10, level 3; title 18 / 600, body 14 / 20 secondary, footer with Cancel (ghost) and the primary action. A confirmation names what happens.
 - **Drawer:** 520 px, right edge; the id (mono), a status pill, the title, tabs (Details, Line items N, Timeline), a definition list (term 12.5 tertiary, value 14), footer actions.
+**As built (D2, `ui/src/Modal.tsx`, `ConfirmDialog.tsx`, `Popover.tsx`, `CommandPalette.tsx`, `useOverlay`, `base.css`).** The scrim is `--overlay-scrim` over the whole window (fixed, alpha .32). `Modal` has
+a `chrome="palette"` mode (headerless, top-aligned) for the command palette; the dialog head has no rule and the foot no fill (header padding 20/20/0, footer 14/20). `ConfirmDialog`'s Cancel is **ghost**, its body is in
+`--fg-secondary` 10 px under the title; the hand-rolled confirms (Fields remove, Panels revoke, Main products delete) match. The palette has its own search row (44 px) and rows, the selected row in the accent colour; the
+row-actions menu is 220 px wide with focus ring, danger and separator states and a mono hint. **Focus and ARIA:** `Popover` moves focus with the arrow keys, Home and End and returns it to its trigger; a card's menu
+trigger has `aria-haspopup` and `aria-expanded`, with `menu` / `menuitem` roles; `useOverlay` reads the opener during render so an autofocused field no longer makes a close drop focus to the body. Tests: `overlays-restyle`,
+`overlay-focus-return`, `popover-menu-keys`.
+
 - **Sync detail popover** (from the status rail): the state, last sync, the server address (mono), and a "Review conflicts" link.
 
 ### 9.1 The sign-in notice pop-up (owner add-on V6; no artboard, built on the modal)
@@ -395,22 +415,28 @@ total: Party, Products), `CartEntry` and `CartLines` (one added product that ope
 - **Quantity unit.** The screen's quantity wording is "pieces" / "pcs" (the entry has said so since before this redesign; the printed notes say **box**). Whether the entry follows the notes is an open
   question (see the 1.4.6 notes).
 
+**The Office copy (D1, `office/web/src/screens/AddLeadScreen.tsx`)** is the same screen on the same `ui/src/order/` kit and keeps its own behaviours: per-person drafts, the provisional party, offline saves queued to the outbox, the
+live catalogue from the person's snapshot. **Since then:** the party chip shows name, code and city (`PartyChip`); "Create a new party" opens the New party form pre-filled with the typed text (works by Enter); Added products rows
+show the 32 px photo (`CartEntry` thumb slot); the follow-up chips are a real radio group (roving focus, arrow keys); lines show the colour list's current label; the picked card head keeps code and label on one line at 1366 px;
+the page title is the shell's top bar (no second heading). The page is capped at 120 rem.
+
 **Not built from the artboard (the product has none of them):** the **Rate** column and any amount, the `₹` prefix, the stock figures ("on hand shown", On hand, Reserved).
 Lead wording becomes **pending order**; quantity unit is **box**, never "pcs".
 
 ## 11. Where it lives in the code
 
-(Filled in as each helper's work lands. Until then the artboards above are the specification.)
-
 | Area | Files |
 |---|---|
 | Tokens, type, radii, focus ring, scrollbars, size | `ui/src/tokens.css` (names in 2.6), `ui/src/base.css`, `ui/src/theme.ts` (the size slider) |
 | Fonts (Inter, IBM Plex Mono, bundled) | `ui/src/fonts/`, `ui/src/fonts.css` |
-| Mark, splash, busy indicator, app icons | (to be filled) |
-| Buttons and form controls | `ui/src/Button.tsx` (Button, IconButton), `ui/src/Form.tsx` (Input, Textarea, Select, FieldError, Checkbox, Radio, Switch), control CSS in `ui/src/base.css`; `ui/tests/form-controls-design.test.ts` |
-| Sidebar, top bar, tabs, footer | `ui/src/AppShell.tsx` (sidebar, top bar, footer), `ui/src/Tabs.tsx`, shell CSS in `ui/src/base.css`, both panels' `App.tsx`; `ui/tests/shell-design.test.tsx` |
-| Icons | `ui/src/icons.tsx` (the set), `ui/src/navIcons.ts` (module to icon), `ui/src/BasicHome.tsx` (flat tiles); `ui/tests/nav-icons.test.tsx` |
-| Feedback | `ui/src/BusyMark.tsx`, `UpdateProgress.tsx` (ProgressBar), `TopProgress.tsx`, `States.tsx`, `Toast.tsx`, `Tooltip.tsx`, `GalleryScreen.tsx`; `ui/tests/feedback.test.tsx` |
-| Data | `ui/src/DataTable.tsx`, `ui/src/DataDisplay.tsx` (StatusPill, ColourChip, IdField, Timeline, `recordTimelineEntries`), `ui/src/PageBar.tsx`; `ui/tests/data-timeline.test.tsx` |
-| Overlays | `ui/src/Modal.tsx`, `ConfirmDialog.tsx`, `Popover.tsx`, ... (to be filled) |
-| New pending order | `ui/src/LeadEntryScreen.tsx` (Master) on the `ui/src/order/` kit; `office/web/src/screens/AddLeadScreen.tsx` (Office, to be filled when D1 lands); `ui/tests/lead-entry-screen.test.tsx` |
+| Mark, lockup, splash, busy mark, app icons | `ui/src/Mark.tsx`, `Logo.tsx`, `Splash.tsx`, `BusyMark.tsx`, `logoCells.ts`; `tools/make-icons.mjs`, `tools/exe-icon.cjs`, `master/installer/icon.ico`, `office/installer/icon.ico` |
+| Buttons and form controls | `ui/src/Button.tsx` (Button, IconButton), `ui/src/Form.tsx` (Input, Textarea, Select, FieldError, Checkbox, Radio, Switch), control CSS in `base.css`; `ui/tests/form-controls-design.test.ts` |
+| Sidebar, top bar, tabs, status footer | `ui/src/AppShell.tsx`, `ui/src/Tabs.tsx`, shell CSS in `base.css`, both panels' `App.tsx`; `ui/tests/shell-design.test.tsx` |
+| Icons, Basic Home | `ui/src/icons.tsx`, `navIcons.ts`, `BasicHome.tsx`; `ui/tests/nav-icons.test.tsx` |
+| Feedback | `ui/src/UpdateProgress.tsx` (ProgressBar), `TopProgress.tsx`, `States.tsx`, `Toast.tsx`, `Tooltip.tsx`, `GalleryScreen.tsx`; `ui/tests/feedback.test.tsx` |
+| Data, stage tones, colour labels, product photos | `ui/src/DataTable.tsx`, `ui/src/DataDisplay.tsx` (StatusPill, `stageTone`, ColourChip, `useColourLabel`, IdField, Timeline, `recordTimelineEntries`, ProductThumb), `ui/src/PageBar.tsx`, `shared/src/domain/colour-rule.ts` (`colourLabeller`); `ui/tests/data-timeline.test.tsx` |
+| Overlays | `ui/src/Modal.tsx`, `ConfirmDialog.tsx`, `Popover.tsx`, `CommandPalette.tsx`, `useOverlay`; `ui/tests/overlays-restyle`, `overlay-focus-return`, `popover-menu-keys` |
+| Notices on Basic Home and at sign-in | `ui/src/NoticeSlideshow.tsx`, `ui/src/SignInNotices.tsx`, `ui/src/NoticeDashboardCard.tsx`, `NoticeBoardView.tsx`; `master/web/src/useNotices.ts` |
+| New pending order | `ui/src/LeadEntryScreen.tsx` (Master) and `office/web/src/screens/AddLeadScreen.tsx` (Office) on the `ui/src/order/` kit (`OrderDetailsBar`, `OrderField`, `FollowUpField`, `PartyChip`, `AddedProductsPanel`, `OrderChecks`, `CartEntry`, `order.css`); `ui/tests/lead-entry-screen.test.tsx`, `add-lead-flow.test.tsx` |
+| Notes (three codes to a line, colour labels) | `shared/src/domain/order-note.ts` (`NOTE_LAYOUT.codesPerRow`), `ui/src/OrderNote.tsx`, `ui/src/order-note.css`; `master/src/services/print.service.ts` |
+| Colour chain (server) | `master/src/services/lead.service.ts` (`buildLines`, `matchExistingLines`), the Dispatches report in `report.service.ts` |
