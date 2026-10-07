@@ -452,3 +452,36 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* --- Product photos ---------------------------------------------------------- */
+
+.ob-order-thumb {
+  flex: none;
+  display: block;
+  overflow: hidden;
+  border-radius: var(--r-sm);
+  background: var(--bg-sunken);
+}
+
+.ob-order-thumb--32 {
+  width: 2.286rem;
+  height: 2.286rem;
+}
+
+.ob-order-thumb--48 {
+  width: 3.429rem;
+  height: 3.429rem;
+}
+
+.ob-order-thumb--initial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-tertiary);
+  font-size: var(--t-small-size);
+  font-weight: 600;
+}
+
+.ob-order-thumb--48.ob-order-thumb--initial {
+  font-size: var(--t-body-size);
+}
