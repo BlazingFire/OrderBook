@@ -10,7 +10,23 @@ This file assumes both.
 
 ---
 
-## First: 1.4.5 is released; what comes next (2026-10-07)
+## First: 1.4.6 is released; what comes next (2026-10-07)
+
+1.4.6 (the new look, New Order grid, note layout for the pending-order PDF, pcs everywhere) is described in
+`docs/releases/1.4.6.md` and `docs/DESIGN_SYSTEM.md`. Left for later, in order:
+
+1. The owner's own passes first: a real two-PC pass, a real print or PDF of the notes and the pending order, and the installed
+   program on a clean PC (including Windows 7).
+2. Recycle bin: the "Pending Order" Type pill is clipped at app scale 157 % (1366 and 1920).
+3. The "API keys" and "Notice board management" titles ellipsize at 1366 and 157 %.
+4. A notes-only page of the notes shows "0 pcs this page"; it should show nothing for a page with no quantities.
+5. The catalogue photo rebuild at start is refused if a newer `sharp` ever changes the blurhash of a shipped photo; decide whether
+   that check should compare the picture instead.
+6. Office `failForward` answers 502 where 404 is meant when the Master says a record is gone.
+7. The settings help prose still says "new pending order" where the screen is now called New Order.
+8. Converting a lead to an order drops the lead's notes (unchanged since 1.4.5). Whether it should carry them is the owner's call.
+
+## Before that: 1.4.5 is released; what comes next (2026-10-07)
 
 1.4.5 is on `main` @ `590609b` and published as v1.4.5. The details are in `HANDOFF.md`, under
 "Notes, notice board, photos, catalogue, screen sizes + 1.4.5". In order:
