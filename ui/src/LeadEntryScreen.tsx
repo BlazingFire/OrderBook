@@ -168,6 +168,11 @@ export interface LeadEntryTransport extends PartyFormTransport {
   /** The Master answers with the lead, PO number and all. */
   createLead(input: LeadInput): Promise<{ id: string; poNumber?: string | null }>;
   updateLead(id: string, input: LeadUpdateInput): Promise<unknown>;
+  /**
+   * Which of these product ids are still in the catalogue; `live: null` when that cannot be told
+   * (Master off or too old). Absent on a transport that cannot ask.
+   */
+  liveProducts?(ids: string[]): Promise<{ live: string[] | null }>;
 }
 
 interface Props {
@@ -410,7 +415,7 @@ function linesOf(lead: Lead, view: LeadEntryView): DraftLine[] {
  * lead as it is now, which no amount of resetting state in place does reliably.
  */
 /** How many products on the order are checked against the catalogue after a change. */
-const GONE_CHECK_MAX = 30;
+const LIVE_CHECK_BATCH = 200;
 
 export function LeadEntryScreen(props: Props) {
   const [opening, setOpening] = useState(0);
@@ -793,7 +798,9 @@ function LeadEntryForm({
 
   const checkedProducts = useMemo(() => {
     const byId = new Map<string, string>();
-    for (const line of lines) byId.set(line.productId, line.productName);
+    // On an existing lead its saved lines may legitimately name a product deleted since; only
+    // what this edit adds is checked, because only that can make the Master refuse the save.
+    for (const line of lines) if (!line.key.startsWith('saved-')) byId.set(line.productId, line.productName);
     if (draft) byId.set(draft.productId, draft.productName);
     return [...byId];
   }, [lines, draft]);
@@ -807,17 +814,21 @@ function LeadEntryForm({
     let cancelled = false;
     void (async () => {
       try {
-        // Each product is looked up by its own name, which always matches it while it is live:
-        // a deleted one is not in the answer. (Not the picker's `include`, which hands back a
-        // named id whether or not it is still in the catalogue.)
+        // Ask the Master which of the ids are still live, in batches so no order is too long
+        // for it. `null` is "cannot tell" (Master off or too old): say nothing, block nothing.
+        const ids = checkedProducts.map(([id]) => id);
         const answers = await Promise.all(
-          checkedProducts.slice(0, GONE_CHECK_MAX).map(async ([id, name]) => {
-            const page = await transportRef.current.pick<Product>('product', { term: name, limit: PICK_MAX_LIMIT });
-            return [id, name, page.items.some((product) => product.id === id)] as const;
-          }),
+          Array.from({ length: Math.ceil(ids.length / LIVE_CHECK_BATCH) }, (_, index) =>
+            transportRef.current.liveProducts?.(ids.slice(index * LIVE_CHECK_BATCH, (index + 1) * LIVE_CHECK_BATCH)),
+          ),
         );
         if (cancelled) return;
-        setGone(answers.filter(([, , live]) => !live).map(([id, name]) => ({ id, name })));
+        if (answers.some((answer) => !answer || !answer.live)) {
+          setGone([]);
+          return;
+        }
+        const live = new Set(answers.flatMap((answer) => answer!.live!));
+        setGone(checkedProducts.filter(([id]) => !live.has(id)).map(([id, name]) => ({ id, name })));
       } catch {
         // Unreachable or refused: say nothing rather than flag everything.
       }
@@ -1169,7 +1180,7 @@ function LeadEntryForm({
     if (draft) return t('lead.add.errors.draftOpen');
     // The Master refuses a whole new order that names a deleted product: stop here, keep the form.
     const goneLines = lines.filter((line) => gone.some((product) => product.id === line.productId));
-    if (goneLines.length > 0 && !lead) {
+    if (goneLines.length > 0) {
       return t('lead.add.errors.goneLines', { names: [...new Set(goneLines.map((line) => line.productName))].join(', ') });
     }
     return null;
@@ -2049,7 +2060,7 @@ function LeadEntryForm({
               </p>
             </div>
 
-            {goneNames.length > 0 && !lead && (
+            {goneNames.length > 0 && (
               <p
                 role="note"
                 data-catalogue-gone

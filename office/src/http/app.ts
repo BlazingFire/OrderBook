@@ -1372,6 +1372,21 @@ export function createApp(): Express {
    * carries the restricted parties granted to them, which this person may not
    * be allowed to see.
    */
+  /**
+   * Which product ids are still live, for the entry form's save check. Anything but a clear
+   * answer (Master off, an older Master that has no such event, a refusal) is `live: null`:
+   * the form then cannot tell and does not block, because the Master still decides on save.
+   */
+  app.post('/api/pick/live-products', (req, res) => {
+    void (async () => {
+      try {
+        res.json(await masterConnection.command('product:live' as never, { ids: req.body?.ids }));
+      } catch {
+        res.json({ live: null });
+      }
+    })();
+  });
+
   app.get('/api/pick/:kind', (req, res) => {
     const kind: unknown = String(req.params.kind);
     if (!isPickKind(kind)) {

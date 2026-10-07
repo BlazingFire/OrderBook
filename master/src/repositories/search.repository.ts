@@ -262,6 +262,25 @@ export async function pickProducts(
   return { rows: rows.slice(0, options.limit), truncated: rows.length > options.limit };
 }
 
+/**
+ * The ids, of those given, that are still in the catalogue: active and not deleted.
+ * The tenant guard is the same one the picker has; `pickProducts`' `include` is not used
+ * for this because it hands back a named id whether or not it is live.
+ */
+export async function liveProductIds(
+  tenantId: string,
+  ids: string[],
+  runner: Runner = db(),
+): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const { rows } = await runner.raw<{ rows: Array<{ id: string }> }>(
+    `SELECT id FROM products
+      WHERE tenant_id = ? AND id = ANY(?) AND is_active AND deleted_at IS NULL`,
+    [tenantId, ids],
+  );
+  return rows.map((row) => String(row.id));
+}
+
 /** What `mapProduct` reads of the category, joined as `c`: brand lives only there. */
 const PICKED_CATEGORY_COLUMNS =
   'c.name AS category_name, c.code AS category_code, c.brand AS category_brand';

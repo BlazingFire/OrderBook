@@ -320,6 +320,14 @@ dataRoutes.get(
   }),
 );
 
+/** Which of the posted product ids are still in the catalogue (the entry form's save check). */
+dataRoutes.post(
+  '/pick/live-products',
+  asyncHandler(async (req, res) => {
+    res.json(await searchService.liveProducts(req.body?.ids, actorFromRequest(req)));
+  }),
+);
+
 // --- Parties & products ----------------------------------------------------
 
 // Party import and export, ahead of `/parties/:id` so `export.csv` is not read

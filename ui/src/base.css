@@ -3592,9 +3592,9 @@ button.ob-bell-item:hover {
   grid-template-columns: max-content minmax(0, 1fr);
 }
 .ob-detail-aside .ob-kv dd {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* A value wraps rather than being cut: a created-at time is worth reading whole. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* The card's own header and footer rows, flush with its padding. */

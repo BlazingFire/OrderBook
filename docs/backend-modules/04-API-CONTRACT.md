@@ -2025,6 +2025,7 @@ now assumes (the design is `docs/schema/02-parties-and-products.md` §*Product v
 |---|---|---|
 | `GET /api/pick/category?q=` | same, answered from the cached snapshot offline | The lead screen's first stage. `PickKind` is `'category' \| 'product' \| 'party'`; the tile-era `'variant'` kind is gone |
 | `GET /api/pick/product?q=&categoryId=` | same | The second stage: models inside one category, matched on name, alias, barcode, brand and every variant's code and label; each row carries `variants[]` |
+| `POST /api/pick/live-products` `{ids}` | Office forwards (`product:live`, protocol 10); `{live:null}` when the Master is off or too old | Which of the ids are still active and not deleted, tenant-scoped, `products.view`. The lead entry's save check: the Master refuses a whole order that names a deleted product, so the form blocks the save and keeps the draft (new orders, and lines added in an edit). `null` means "cannot tell": nothing is blocked |
 | `GET /api/products?search=&categoryId=&missingWeight=true` | same | `ProductListPage.categories` is the facet, counted over the search without the category filter |
 | `GET /api/categories?search=` | — | |
 | `POST /api/products` · `PUT /api/products/:id` | queued | `ProductInput` carries `categoryId` or `categoryName` (one required on create), `hasVariants` and `variants: ProductVariantInput[]`; the set is validated by `validateProductVariants` on both the online and the offline-merge path, and replaced whole (`fieldHlc.variants` carries one stamp) |

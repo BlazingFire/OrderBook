@@ -78,6 +78,18 @@ export async function search(query: SearchQuery, actor: ActorContext): Promise<S
  * question, and answering an empty list to somebody without the permission
  * would read as "there are none".
  */
+/** Which of these product ids are still in the catalogue; see `liveProductIds`. */
+export async function liveProducts(
+  ids: unknown,
+  actor: ActorContext,
+): Promise<{ live: string[] }> {
+  requirePermission(actor, REQUIRED_PERMISSION.product);
+  const wanted = Array.isArray(ids)
+    ? [...new Set(ids.filter((id): id is string => typeof id === 'string' && id.length > 0))]
+    : [];
+  return { live: await searchRepo.liveProductIds(actor.tenantId, wanted) };
+}
+
 export async function pick(
   kind: PickKind,
   query: PickQuery,

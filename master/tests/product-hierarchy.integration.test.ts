@@ -118,4 +118,29 @@ describe.skipIf(!canRunIntegrationTests)('product hierarchy (integration)', () =
     expect(namesOf(kept).sort()).toEqual(['Discontinued', 'Urinal']);
     expect(product.categoryName).toBe('Urinal');
   });
+
+  it('answers which of the named products are still live: renamed yes, deleted no, unknown no', async () => {
+    const kept = await catalog.createProduct(
+      { name: 'Live One', categoryName: 'Urinal', variants: [{ code: 'L-01' }] },
+      actor,
+    );
+    const renamed = await catalog.createProduct(
+      { name: 'Before', categoryName: 'Urinal', variants: [{ code: 'L-02' }] },
+      actor,
+    );
+    const removed = await catalog.createProduct(
+      { name: 'Removed', categoryName: 'Urinal', variants: [{ code: 'L-03' }] },
+      actor,
+    );
+    await catalog.updateProduct(renamed.id, { name: 'ZZ After' }, actor);
+    await catalog.deleteProduct(removed.id, actor);
+
+    const answer = await searchService.liveProducts(
+      [kept.id, renamed.id, removed.id, 'PR-NOPE', kept.id],
+      actor,
+    );
+    expect(answer.live.sort()).toEqual([kept.id, renamed.id].sort());
+    expect((await searchService.liveProducts([], actor)).live).toEqual([]);
+    expect((await searchService.liveProducts('not a list', actor)).live).toEqual([]);
+  });
 });
