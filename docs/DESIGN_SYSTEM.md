@@ -351,6 +351,16 @@ Level 2 for menus and popovers, level 3 for modals and drawers; Esc closes; focu
 - **Drawer:** 520 px, right edge; the id (mono), a status pill, the title, tabs (Details, Line items N, Timeline), a definition list (term 12.5 tertiary, value 14), footer actions.
 - **Sync detail popover** (from the status rail): the state, last sync, the server address (mono), and a "Review conflicts" link.
 
+### 9.1 The sign-in notice pop-up (owner add-on V6; no artboard, built on the modal)
+
+`ui/src/SignInNotices.tsx`, mounted inside each panel's signed-in shell (so the sign-in screen never shows it and a sign-out unmounts it), keyed by the person so each sign-in decides afresh.
+- **When:** once, the first time that person's notices have arrived after signing in: the notices on their board today that are **important** and **not read by them**, newest first. None,
+  or no notices for them at all, and nothing shows. A notice that arrives later in the session waits for the board and the next sign-in; it never interrupts.
+- **What:** a medium modal ("Important notices", an intro line), each notice's title with the Important pill and its full plain text (line breaks kept). **Mark as read** hands the ids to the panel's
+  own read path: the Master posts them; the Office queues them per person while the link is down. A failure shows a field error inside the dialog and leaves it open. **Later** and Escape only close it; it shows again at the next sign-in.
+- **Source:** Master, the board list (`useNotices`, which now forgets the previous person's list when signed out, so nothing of theirs shows to the next person); Office, the person's own cached list
+  (`loaded` once their snapshot exists). Tests: `ui/tests/sign-in-notices.test.tsx`, `master-use-notices.test.tsx`, and cases in the two shell tests.
+
 ## 10. The new pending order (artboards: NewOrder, NewOrderFilled; 1440 x 900)
 
 Replaces the pending order entry on both panels; every existing behaviour is kept (the Enter flow with the colour step, the live catalogue, the save
