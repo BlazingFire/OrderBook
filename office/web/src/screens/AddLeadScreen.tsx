@@ -1438,6 +1438,26 @@ function AddLeadForm({
 
   return (
     <div ref={rootRef} className="ob-order-page">
+      {/* New: the shell's topbar names the page. Edit has no topbar title, so the heading
+          stays, for the screen reader (and the tests that look for it). */}
+      {lead && (
+        <h1
+          style={{
+            position: 'absolute',
+            width: 1,
+            height: 1,
+            margin: -1,
+            padding: 0,
+            overflow: 'hidden',
+            clip: 'rect(0 0 0 0)',
+            whiteSpace: 'nowrap',
+            border: 0,
+          }}
+        >
+          {t('lead.edit.title')}
+        </h1>
+      )}
+
       {error && <ConflictBanner>{error}</ConflictBanner>}
       {editBase.conflicted && !busy && (
         <StaleEditNotice
