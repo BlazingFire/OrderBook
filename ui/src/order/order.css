@@ -1,0 +1,587 @@
+/*
+ * The new pending order, as drawn in the design artboard (NewOrder / NewOrderFilled, 1440 x 900).
+ *
+ * One stylesheet for both panels: the Master's `LeadEntryScreen` and the Office's `AddLeadScreen`
+ * build the same page from these classes and the pieces in this folder. Sizes are rem (the design
+ * is at the 14 px root, so 1 rem is 14 design px); colours are the kit's tokens, never literals,
+ * so the page follows the light and dark themes.
+ */
+
+/* The page: the details card on top, the two columns under it. */
+/*
+ * The page is a size container and every breakpoint below is a container query in rem: a media
+ * query is in px and cannot follow the UI scale (79-157 %), so at 157 % the two columns never
+ * stacked. Inside a container query 1rem is the root font size, so 76rem is the same share of the
+ * page at every scale.
+ */
+.ob-order-page {
+  container: order / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 0.857rem;
+  min-width: 0;
+}
+
+/*
+ * The body: the details bar across the top, the main column on the left and the aside on the
+ * right. The form wrapper is `display: contents` so a screen can scope its Enter walk to the
+ * form (details bar + main column) without the aside's own inputs joining it.
+ */
+.ob-order-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34.286rem;
+  align-items: stretch;
+  gap: 0.857rem;
+  min-width: 0;
+}
+
+.ob-order-formwrap {
+  display: contents;
+}
+
+.ob-order-details {
+  grid-column: 1 / -1;
+}
+
+.ob-order-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.857rem;
+}
+
+@container order (max-width: 70rem) {
+  .ob-order-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.ob-order-main > .ob-order-card {
+  flex: 1 1 auto;
+}
+
+.ob-order-card {
+  box-sizing: border-box;
+  min-width: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-radius: 0.714rem;
+  padding: 1.143rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.857rem;
+}
+
+.ob-order-eyebrow {
+  margin: 0;
+  font-size: var(--t-eyebrow-size);
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--fg-tertiary);
+}
+
+.ob-order-hint {
+  font-size: 0.893rem;
+  color: var(--fg-tertiary);
+}
+
+/* --- The order details bar ------------------------------------------------ */
+
+.ob-order-details {
+  box-sizing: border-box;
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-radius: 0.714rem;
+  padding: 0.857rem 1.143rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 10.714rem 18.571rem 10.714rem;
+  column-gap: 1.143rem;
+  row-gap: 0.714rem;
+  align-items: end;
+}
+
+.ob-order-details[data-owner='false'] {
+  grid-template-columns: minmax(0, 1fr) 10.714rem 18.571rem;
+}
+
+.ob-order-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.286rem;
+  min-width: 0;
+}
+
+/* Under 1100 px the controls take two rows; the party keeps a row to itself. */
+@container order (max-width: 70rem) {
+  .ob-order-details .ob-order-followup {
+    flex-wrap: wrap;
+  }
+  .ob-order-details,
+  .ob-order-details[data-owner='false'] {
+    grid-template-columns: repeat(auto-fit, minmax(10.714rem, 1fr));
+  }
+  .ob-order-field[data-wide='true'] {
+    grid-column: 1 / -1;
+  }
+}
+
+/* The quick follow-up: one segmented control beside the date. */
+.ob-order-followup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.429rem;
+}
+
+/* The date keeps the design's 124 px; the quick choices sit beside it on the same line. */
+.ob-order-followup {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.ob-order-followup > :first-child {
+  flex: 0 0 8.857rem;
+  width: 8.857rem;
+  min-width: 0;
+}
+
+/* Nothing picked yet: the one line of help the design shows under the search. */
+.ob-order-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.429rem;
+  padding: 2.5rem 1rem;
+  text-align: center;
+}
+
+.ob-order-empty__title {
+  font-size: var(--t-body-size);
+  font-weight: 550;
+}
+
+.ob-order-empty__body {
+  max-width: 27rem;
+  font-size: 0.964rem;
+  color: var(--fg-secondary);
+}
+
+.ob-order-segmented {
+  display: inline-flex;
+  box-sizing: border-box;
+  height: var(--ctl-h-md);
+  padding: 0.143rem;
+  border-radius: 0.429rem;
+  background: var(--bg-sunken);
+}
+
+.ob-order-segmented button {
+  padding: 0 0.571rem;
+  border: 0;
+  border-radius: 0.286rem;
+  background: transparent;
+  color: var(--fg-secondary);
+  font: inherit;
+  font-size: 0.893rem;
+  cursor: pointer;
+}
+
+.ob-order-segmented button[aria-checked='true'] {
+  background: var(--bg-surface);
+  color: var(--accent);
+  font-weight: 550;
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+/* --- The added-products aside ---------------------------------------------- */
+
+.ob-order-aside {
+  box-sizing: border-box;
+  width: 100%;
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-radius: 0.714rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ob-order-aside__head {
+  min-height: 3.143rem;
+  flex: none;
+  padding: 0 1.143rem;
+  display: flex;
+  align-items: center;
+  gap: 0.571rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.ob-order-count {
+  min-width: 1.286rem;
+  height: 1.286rem;
+  padding: 0 0.357rem;
+  box-sizing: border-box;
+  border-radius: 0.286rem;
+  background: var(--bg-sunken);
+  color: var(--fg-secondary);
+  font-size: var(--t-micro-size);
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.ob-order-aside__tools {
+  flex: none;
+  padding: 0.571rem 1.143rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.571rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.ob-order-aside__rows {
+  flex: 1 1 auto;
+  min-height: 8rem;
+  max-height: 60vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0.571rem 0.857rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.286rem;
+}
+
+.ob-order-aside__empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.714rem;
+  text-align: center;
+  font-size: 0.964rem;
+  color: var(--fg-tertiary);
+}
+
+.ob-order-aside__foot {
+  flex: none;
+  padding: 0.857rem 1.143rem 1.143rem;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 0.857rem;
+}
+
+.ob-order-checks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.286rem;
+  font-size: 0.893rem;
+}
+
+.ob-order-checks li {
+  display: flex;
+  align-items: center;
+  gap: 0.571rem;
+  color: var(--fg-tertiary);
+}
+
+.ob-order-checks__dot {
+  width: 1rem;
+  text-align: center;
+}
+
+.ob-order-checks li[data-state='ok'] {
+  color: var(--state-ok);
+}
+
+.ob-order-checks li[data-state='todo'] {
+  color: var(--state-offline);
+}
+
+.ob-order-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.857rem;
+}
+
+.ob-order-total__label {
+  font-size: 0.964rem;
+  color: var(--fg-secondary);
+}
+
+.ob-order-total__figure {
+  font-size: 1.714rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.ob-order-total__unit {
+  font-size: 0.964rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--fg-secondary);
+}
+
+.ob-order-actions {
+  display: flex;
+  gap: 0.571rem;
+}
+
+.ob-order-actions .ob-order-save {
+  flex: 1 1 auto;
+}
+
+.ob-order-kbd {
+  padding: 0 0.286rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.286rem;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: var(--t-micro-size);
+  color: var(--fg-secondary);
+  background: transparent;
+}
+
+.ob-order-save .ob-order-kbd {
+  border-color: transparent;
+  background: rgba(0, 0, 0, 0.18);
+  color: inherit;
+}
+
+/* --- The product card (sub products, colour, quantity) ----------------------- */
+
+.ob-order-product {
+  border: 1px solid var(--accent);
+  border-radius: 0.429rem;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ob-order-product__head {
+  padding: 0.714rem 0.857rem;
+  display: flex;
+  align-items: center;
+  gap: 0.714rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-canvas);
+  border-radius: 0.429rem 0.429rem 0 0;
+}
+
+.ob-order-product__foot {
+  padding: 0.571rem 0.857rem;
+  display: flex;
+  align-items: center;
+  gap: 0.857rem;
+  border-top: 1px solid var(--line);
+}
+
+/* --- A cart row: the one frame, collapsible, with its own leading slot ------- */
+
+.ob-order-entry {
+  box-sizing: border-box;
+  flex: none;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 0.429rem;
+  background: var(--bg-surface);
+}
+
+.ob-order-entry[data-open='true'] {
+  border-color: var(--line-strong);
+}
+
+.ob-order-entry__head {
+  display: flex;
+  align-items: center;
+  gap: 0.286rem;
+  padding-left: 0.571rem;
+  padding-right: 0.357rem;
+}
+
+.ob-order-entry[data-open='true'] .ob-order-entry__head {
+  background: var(--bg-canvas);
+}
+
+.ob-order-entry__toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.571rem;
+  padding: 0.571rem 0.571rem 0.571rem 0.571rem;
+  border: 0;
+  background: none;
+  color: var(--fg-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ob-order-entry__toggle:hover {
+  background: var(--bg-hover);
+}
+
+.ob-order-entry__body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.286rem 0.571rem;
+  padding: 0.5rem 0.857rem 0.5rem 1.571rem;
+  border-top: 1px solid var(--line);
+}
+
+.ob-order-entry__lines {
+  flex: 1 1 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 6.857rem 5.143rem 4.571rem 2.857rem;
+  row-gap: 0.143rem;
+  column-gap: 0.571rem;
+  font-size: 0.893rem;
+  color: var(--fg-secondary);
+}
+
+.ob-order-entry__lines > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- Product photos ---------------------------------------------------------- */
+
+.ob-order-thumb {
+  flex: none;
+  display: block;
+  overflow: hidden;
+  border-radius: var(--r-sm);
+  background: var(--bg-sunken);
+}
+
+.ob-order-thumb--32 {
+  width: 2.286rem;
+  height: 2.286rem;
+}
+
+.ob-order-thumb--48 {
+  width: 3.429rem;
+  height: 3.429rem;
+}
+
+.ob-order-thumb--initial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-tertiary);
+  font-size: var(--t-small-size);
+  font-weight: 600;
+}
+
+.ob-order-thumb--48.ob-order-thumb--initial {
+  font-size: var(--t-body-size);
+}
+
+/* --- The chosen party chip ------------------------------------------------------ */
+
+.ob-order-party {
+  box-sizing: border-box;
+  min-height: var(--ctl-h-md);
+  display: flex;
+  align-items: center;
+  gap: 0.571rem;
+  min-width: 0;
+  padding: 0 0.286rem 0 0.571rem;
+  border: 1px solid var(--line-control);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+}
+
+.ob-order-party__badge {
+  flex: none;
+  width: 1.429rem;
+  height: 1.429rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-size: var(--t-micro-size);
+  font-weight: 600;
+}
+
+.ob-order-party__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-body-size);
+  font-weight: 550;
+}
+
+.ob-order-party__code {
+  flex: none;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.857rem;
+  color: var(--fg-secondary);
+}
+
+.ob-order-party__meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.893rem;
+  color: var(--fg-tertiary);
+}
+
+.ob-order-party__gap {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.ob-order-party__close {
+  flex: none;
+  width: 1.714rem;
+  height: 1.714rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-secondary);
+  cursor: pointer;
+}
+
+.ob-order-party__close:hover {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
+}
+
+/* --- Page width, Cancel / Save height, the panel's search ----------------------- */
+
+/* Capped like the Dashboard and Basic Home, so a 4K screen is not 1.5 m of Party field. */
+.ob-order-page {
+  max-width: 120rem;
+  margin-inline: auto;
+  width: 100%;
+}
+
+.ob-order-actions .ob-btn {
+  height: var(--ctl-h-lg);
+}
+
+.ob-order-aside__tools input[type='text'],
+.ob-order-aside__tools input:not([type]) {
+  height: 2rem;
+  background: var(--bg-canvas);
+  border-color: var(--line);
+  border-radius: var(--r-sm);
+}
