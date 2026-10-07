@@ -1,0 +1,27 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+const css = readFileSync(resolve(__dirname, '../src/base.css'), 'utf8');
+const src = (f: string) => readFileSync(resolve(__dirname, '../src', f), 'utf8');
+
+describe('overlays restyle', () => {
+  it('draws the scrim from the token', () => {
+    expect(css).toMatch(/\.ob-overlay\s*\{[^}]*background:\s*var\(--overlay-scrim\)/);
+  });
+  it('menu items keep a focus ring and have danger/separator/hint states', () => {
+    expect(css).toMatch(/\.ob-menu-item:focus-visible\s*\{[^}]*2px solid var\(--line-focus\)/);
+    for (const c of ['.ob-menu-item--danger', '.ob-menu-sep', '.ob-menu-hint']) expect(css).toContain(c);
+  });
+  it('the palette is a headerless modal with its own rows', () => {
+    expect(src('Modal.tsx')).toContain("chrome === 'dialog'");
+    expect(src('CommandPalette.tsx')).toContain('chrome="palette"');
+    expect(css).toContain('.ob-palette-row');
+  });
+  it('confirm cancel is ghost', () => {
+    expect(src('ConfirmDialog.tsx')).toMatch(/variant="ghost" onClick=\{onCancel\}/);
+  });
+  it('focus trap and Escape are still wired through useOverlay', () => {
+    expect(src('Modal.tsx')).toContain('useOverlay');
+  });
+});

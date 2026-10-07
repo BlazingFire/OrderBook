@@ -36,10 +36,22 @@ export function useOverlay(
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
 
+  /*
+   * The opener is read while rendering, before the commit. A child's `autoFocus`
+   * fires during the commit, ahead of this effect, so reading `activeElement`
+   * in the effect found the dialog's own field: closing then "restored" focus to a
+   * node that was gone, and it fell to <body>.
+   */
+  if (open && restoreFocus.current === null && typeof document !== 'undefined') {
+    restoreFocus.current = document.activeElement as HTMLElement | null;
+  }
+
   useEffect(() => {
     if (!open) return;
-    restoreFocus.current = document.activeElement as HTMLElement | null;
     const container = containerRef.current;
+    if (restoreFocus.current === null || container?.contains(restoreFocus.current)) {
+      restoreFocus.current = document.activeElement as HTMLElement | null;
+    }
 
     // Anything the overlay itself already focused — a form's `autoFocus` field —
     // wins over the first focusable in DOM order, which is the Close button.
@@ -118,7 +130,7 @@ export function useOverlay(
        * removed node, `checkVisibility()` catches a hidden one.
        */
       const target = restoreFocus.current;
-      if (target?.isConnected && target.checkVisibility()) target.focus();
+      if (target?.isConnected && (target.checkVisibility?.() ?? true)) target.focus();
       restoreFocus.current = null;
     };
   }, [open, containerRef]);

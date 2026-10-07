@@ -31,6 +31,25 @@ export function Popover({
 
   useEffect(() => {
     if (!open) return;
+    // A menu inside takes focus, moves it with the arrow keys, and gives it back to its trigger on close.
+    const opener = document.activeElement as HTMLElement | null;
+    const items = () =>
+      Array.from(ref.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)') ?? []);
+    if (ref.current?.querySelector('[role="menu"]')) items()[0]?.focus();
+    function onMenuKey(e: KeyboardEvent) {
+      const list = items();
+      const at = list.indexOf(document.activeElement as HTMLElement);
+      if (list.length === 0 || at === -1) return;
+      const next =
+        e.key === 'ArrowDown' ? (at + 1) % list.length
+        : e.key === 'ArrowUp' ? (at - 1 + list.length) % list.length
+        : e.key === 'Home' ? 0
+        : e.key === 'End' ? list.length - 1
+        : -1;
+      if (next === -1) return;
+      e.preventDefault();
+      list[next]?.focus();
+    }
     function onDocClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     }
@@ -42,9 +61,14 @@ export function Popover({
     }
     document.addEventListener('mousedown', onDocClick);
     document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keydown', onMenuKey);
     return () => {
       document.removeEventListener('mousedown', onDocClick);
       document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('keydown', onMenuKey);
+      // Only when focus was left inside the closing surface or dropped to <body>; a click elsewhere keeps its own focus.
+      const active = document.activeElement;
+      if ((active === document.body || ref.current?.contains(active)) && opener?.isConnected) opener.focus();
     };
   }, [open, onClose]);
 

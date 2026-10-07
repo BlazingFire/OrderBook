@@ -2801,13 +2801,48 @@ button.ob-bell-item:hover {
   cursor: pointer;
 }
 
-.ob-menu-item:hover:not(:disabled) {
+.ob-menu-item:hover:not(:disabled),
+.ob-menu-item:focus-visible {
   background: var(--bg-hover);
+}
+
+.ob-menu-item:focus-visible {
+  outline: 2px solid var(--line-focus);
+  outline-offset: -2px;
 }
 
 .ob-menu-item:disabled {
   opacity: 0.45;
   cursor: default;
+}
+
+/* A destructive item, a divider between groups, and a trailing hint (Overlays artboard). */
+.ob-menu-item--danger {
+  color: var(--state-conflict);
+}
+.ob-menu-sep {
+  height: 1px;
+  margin: var(--s-4) calc(var(--s-4) * -1);
+  background: var(--line);
+}
+.ob-menu-hint {
+  margin-left: auto;
+  padding-left: var(--s-12);
+  color: var(--fg-tertiary);
+  font-family: var(--font-mono);
+}
+
+/* The scrim behind every modal. It had no rule: the dialog floated over an undimmed screen. */
+.ob-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-drawer);
+  background: var(--overlay-scrim);
+}
+
+.ob-modal-wrap--top {
+  align-items: flex-start;
+  padding-top: 12vh;
 }
 
 .ob-modal-wrap {
@@ -2863,7 +2898,6 @@ button.ob-bell-item:hover {
   align-items: flex-start;
   gap: var(--s-12);
   padding: var(--s-16) var(--s-20);
-  border-bottom: 1px solid var(--line);
 }
 
 .ob-modal-heading {
@@ -2922,8 +2956,85 @@ button.ob-bell-item:hover {
   gap: var(--s-8);
   padding: var(--s-12) var(--s-20);
   border-top: 1px solid var(--line);
-  background: var(--bg-canvas);
   border-radius: 0 0 var(--r-lg) var(--r-lg);
+}
+
+/* The command palette: no header, content to the edges, a search field on top, rows below. */
+.ob-modal--palette {
+  width: 40rem;
+}
+.ob-modal-body--flush {
+  padding: 0;
+  gap: 0;
+}
+.ob-palette-search {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  padding: 0 var(--s-16);
+  height: var(--ctl-h-lg);
+  border-bottom: 1px solid var(--line);
+  color: var(--fg-tertiary);
+}
+.ob-palette-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--fg-primary);
+  font: inherit;
+}
+.ob-palette-input:focus-visible {
+  outline: 2px solid var(--line-focus);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+.ob-palette-list {
+  max-height: 24rem;
+  overflow-y: auto;
+  padding: var(--s-4);
+}
+.ob-palette-note {
+  padding: var(--s-8) var(--s-12);
+}
+.ob-palette-section {
+  padding: var(--s-8) var(--s-12) var(--s-4);
+}
+.ob-palette-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-12);
+  width: 100%;
+  height: var(--ctl-h-md);
+  padding: 0 var(--s-12);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ob-palette-row:hover,
+.ob-palette-row[aria-current='page'] {
+  background: var(--accent-tint);
+}
+.ob-palette-row:focus-visible {
+  outline: 2px solid var(--line-focus);
+  outline-offset: -2px;
+}
+.ob-palette-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ob-palette-hint {
+  flex: none;
+  color: var(--fg-tertiary);
+  font-family: var(--font-mono);
 }
 
 /* ===========================================================================

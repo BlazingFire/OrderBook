@@ -1422,7 +1422,7 @@ describe('Edit lead', () => {
         fireEvent.click((await screen.findAllByRole('button', { name: t('lead.board.cardMenu') }))[0]!);
       });
       await act(async () => {
-        fireEvent.click(await screen.findByRole('button', { name: t('orderNote.filling') }));
+        fireEvent.click(await screen.findByRole('menuitem', { name: t('orderNote.filling') }));
       });
 
       expect((await screen.findAllByText(t('orderNote.pendingOrderNo'))).length).toBeGreaterThan(0);

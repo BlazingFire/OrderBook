@@ -292,7 +292,7 @@ function OpenPalette() {
 
 describe('what the palette lists', () => {
   function rowLabels(): string[] {
-    return [...document.querySelectorAll('.ob-navitem-label')].map((row) => row.textContent ?? '');
+    return [...document.querySelectorAll('.ob-palette-label')].map((row) => row.textContent ?? '');
   }
 
   it('lists only the commands that would do something now', () => {

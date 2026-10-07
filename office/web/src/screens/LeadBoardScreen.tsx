@@ -628,9 +628,10 @@ export function LeadBoardScreen({
                       top: 'calc(var(--s-12) + var(--ctl-h-sm))',
                     }}
                   >
-                    <div className="ob-menu">
+                    <div className="ob-menu" role="menu">
                       <button
                         type="button"
+                        role="menuitem"
                         className="ob-menu-item ob-body"
                         onClick={(event) => {
                           event.stopPropagation();
@@ -645,7 +646,8 @@ export function LeadBoardScreen({
                           <button
                             key={kind}
                             type="button"
-                            className="ob-menu-item ob-body"
+                            role="menuitem"
+                        className="ob-menu-item ob-body"
                             onClick={(event) => {
                               event.stopPropagation();
                               setMenuId(null);
@@ -659,7 +661,8 @@ export function LeadBoardScreen({
                       {nextStage && (
                         <button
                           type="button"
-                          className="ob-menu-item ob-body"
+                          role="menuitem"
+                        className="ob-menu-item ob-body"
                           onClick={(event) => {
                             event.stopPropagation();
                             setMenuId(null);
@@ -671,6 +674,7 @@ export function LeadBoardScreen({
                       )}
                       <button
                         type="button"
+                        role="menuitem"
                         className="ob-menu-item ob-body"
                         disabled={!canConvert || missingPackaging}
                         title={
