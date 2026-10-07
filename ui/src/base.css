@@ -609,7 +609,8 @@
 .ob-tablewrap {
   background: var(--bg-surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  /* Data artboard: the table is a 10 px card. */
+  border-radius: var(--r-lg);
   /* `clip`, not only `hidden`: `hidden` makes this element a scroll container, and a
      sticky header then sticks to *it* (which never scrolls) instead of to the pane, so
      it scrolled away with the rows. `clip` still rounds the corners and does not.
@@ -697,8 +698,8 @@ table.ob-table {
 .ob-table thead th {
   background: var(--bg-sunken);
   border-bottom: 1px solid var(--line);
-  /* At least the control height, taller when a header takes two lines. */
-  min-height: var(--ctl-h-md);
+  /* One row tall (Data artboard: 32 px at 100 %), taller only when a header takes two lines. */
+  min-height: var(--row-h);
   padding: var(--s-4) var(--s-12);
   text-align: left;
   font-size: var(--t-eyebrow-size);
@@ -706,7 +707,7 @@ table.ob-table {
   font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--fg-tertiary);
+  color: var(--fg-secondary);
   /* A header wraps between words rather than ending in an ellipsis: at 1080p
    * "Pending orders created" (192 px in 130) and "Final order" were cut to
    * "PENDING ORDERS CR…". A single word longer than its column still clips. */
@@ -742,7 +743,8 @@ table.ob-table {
   border-bottom: 1px solid var(--line);
   font-size: var(--t-data-size);
   line-height: var(--t-data-line);
-  font-weight: 450;
+  font-weight: 400;
+  color: var(--fg-primary);
   vertical-align: middle;
   min-width: 0;
   white-space: nowrap;
@@ -762,6 +764,23 @@ table.ob-table {
 
 .ob-table tbody tr:hover td {
   background: var(--bg-hover);
+}
+
+/* Data artboard: the first and last columns sit 16 px inside the frame, the rest 12. */
+.ob-table thead th:first-child,
+.ob-table tbody td:first-child {
+  padding-left: var(--s-16);
+}
+.ob-table thead th:last-child,
+.ob-table tbody td:last-child {
+  padding-right: var(--s-16);
+}
+
+/* An id in a table is quiet mono (Data artboard: 12.5 px, secondary ink). */
+.ob-table tbody td.ob-mono,
+.ob-table tbody td .ob-mono {
+  font-size: var(--t-mono-size);
+  color: var(--fg-secondary);
 }
 
 /* ---------------------------------------------------------------------------
@@ -999,18 +1018,20 @@ table.ob-table--flat {
 
 .ob-colourchip {
   display: inline-block;
+  box-sizing: border-box;
   width: 1rem;
   height: 1rem;
   border-radius: 50%;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line-control);
   flex: none;
 }
 
+/* No hex on file: the first two letters in the ring ("RU" for Rustic). */
 .ob-colourchip--empty {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.6429rem;
+  font-size: 0.5rem;
   font-weight: 600;
   color: var(--fg-tertiary);
   background: transparent;
@@ -1025,17 +1046,25 @@ table.ob-table--flat {
   min-width: 0;
 }
 
+/*
+ * Data artboard: a 20 px lozenge (1.4286rem at 100 %), 8 px sides, 4 px radius, 11 px
+ * medium. Tones: default neutral (New), accent (In progress), offline amber (Postpone),
+ * ok green (Dispatched), conflict red (Cancelled).
+ */
 .ob-pill {
-  display: inline-block;
-  padding: 1px 7px;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 1.4286rem;
+  padding: 0 var(--s-8);
   border-radius: var(--r-sm);
   font-size: var(--t-micro-size);
-  line-height: var(--t-micro-line);
+  line-height: 1;
   font-weight: 500;
-  letter-spacing: 0.02em;
   background: var(--bg-sunken);
   color: var(--fg-secondary);
   white-space: nowrap;
+  vertical-align: middle;
 }
 .ob-pill--ok {
   background: var(--state-ok-tint);
@@ -1137,38 +1166,52 @@ table.ob-table--flat {
  * Timeline
  * ======================================================================== */
 
+/*
+ * Data artboard: one hairline down the left, 14 px in; each entry is its meta line
+ * (who · when) over the text, 12 px apart. A system entry ("Status changed New → In
+ * progress") is smaller and italic so people's notes stand out. A tone colours the meta.
+ */
 .ob-timeline {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 0 0 var(--s-12);
+  padding-left: 1rem;
+  border-left: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
 }
 .ob-timeline li {
   display: flex;
-  gap: var(--s-8);
-  padding: var(--s-4) 0;
-}
-.ob-timeline .dot {
-  width: 0.4286rem;
-  height: 0.4286rem;
-  border-radius: 50%;
-  margin-top: var(--s-6);
-  flex: none;
-  background: var(--line-strong);
-}
-.ob-timeline .dot--ok {
-  background: var(--state-ok);
-}
-.ob-timeline .dot--offline {
-  background: var(--state-offline);
-}
-.ob-timeline .dot--conflict {
-  background: var(--state-conflict);
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
 }
 .ob-timeline .when {
-  font-size: var(--t-micro-size);
-  line-height: var(--t-micro-line);
+  font-size: var(--t-small-size);
+  line-height: var(--t-small-line);
   color: var(--fg-tertiary);
-  margin-top: 1px;
+}
+.ob-timeline .what {
+  font-size: var(--t-body-size);
+  line-height: var(--t-body-line);
+  color: var(--fg-primary);
+  overflow-wrap: anywhere;
+}
+.ob-timeline li[data-system='true'] .what {
+  font-size: var(--t-small-size);
+  line-height: var(--t-small-line);
+  font-style: italic;
+  color: var(--fg-secondary);
+}
+.ob-timeline li[data-tone='ok'] .when {
+  color: var(--state-ok);
+}
+.ob-timeline li[data-tone='offline'] .when {
+  color: var(--state-offline);
+}
+.ob-timeline li[data-tone='conflict'] .when {
+  color: var(--state-conflict);
 }
 
 /* ===========================================================================
@@ -1222,6 +1265,9 @@ table.ob-table--flat {
 
 .ob-boardcard {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
   text-align: left;
   background: var(--bg-surface);
   border: 1px solid var(--line);
@@ -1235,10 +1281,29 @@ table.ob-table--flat {
 .ob-boardcard:hover {
   background: var(--bg-hover);
 }
+/* Data artboard: the dragged card keeps full colour, takes a 2 px accent outline
+   inside its border and tilts 1.5 degrees; never a drop shadow. */
 .ob-boardcard--dragging {
-  opacity: 0.8;
-  outline: 2px solid var(--accent); /* never a drop-shadow while dragging */
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  transform: rotate(-1.5deg);
   pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ob-boardcard--dragging {
+    transform: none;
+  }
+}
+/* The card's title line (party), the artboard's 14 px semibold. */
+.ob-boardcard__title {
+  font-size: var(--t-body-size);
+  line-height: var(--t-body-line);
+  font-weight: 550;
+  color: var(--fg-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ===========================================================================
@@ -2990,13 +3055,39 @@ button.ob-bell-item:hover {
  * IdField — mono identifier plus a copy affordance
  * ======================================================================== */
 
+/*
+ * Data artboard: a sunken 30 px field (2.1429rem), 10 px in on the left and 4 on the
+ * right where the 24 px copy button sits, mono 12.5 px in primary ink. Inside a table
+ * cell it stays a plain inline id so a 32 px row is not crowded by a box.
+ */
 .ob-idfield {
   display: inline-flex;
   align-items: center;
-  gap: var(--s-6);
+  gap: var(--s-8);
+  box-sizing: border-box;
+  min-height: 2.1429rem;
+  max-width: 100%;
+  padding: 0 var(--s-4) 0 0.7143rem;
+  border-radius: var(--r-sm);
+  background: var(--bg-canvas);
 }
 .ob-idfield .ob-mono {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--t-mono-size);
+  color: var(--fg-primary);
+  overflow-wrap: anywhere;
+}
+.ob-table .ob-idfield {
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+}
+.ob-table .ob-idfield .ob-mono {
   color: var(--fg-secondary);
+  overflow-wrap: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ===========================================================================

@@ -33,6 +33,7 @@ import {
   Select,
   StatusPill,
   Timeline,
+  recordTimelineEntries,
   formatDateTime,
   formatKg,
   recordNumberText,
@@ -201,18 +202,7 @@ export function LeadDetail({ lead, view, canConvert, onClose, onError }: Props) 
           {lead.timeline.length === 0 ? (
             <p className="ob-small">{t('lead.detail.noHistory')}</p>
           ) : (
-            <Timeline
-              entries={lead.timeline.map((entry) => ({
-                id: entry.id,
-                label: (
-                  <>
-                    {entry.message}
-                    {entry.actorName ? ` · ${entry.actorName}` : ''}
-                  </>
-                ),
-                when: formatDateTime(entry.createdAt),
-              }))}
-            />
+            <Timeline entries={recordTimelineEntries(lead.timeline, formatDateTime)} />
           )}
 
           <div style={{ display: 'flex', gap: 'var(--s-8)', marginTop: 'var(--s-12)' }}>

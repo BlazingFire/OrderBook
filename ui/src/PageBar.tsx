@@ -94,7 +94,10 @@ export function PageBar({ total, page, pageSize, onPage, onPageSize, loading }: 
         justifyContent: 'space-between',
         flexWrap: 'wrap',
         gap: 'var(--s-12)',
-        padding: 'var(--s-8) 0',
+        // Data artboard: a 40 px footer band in secondary ink under the rows.
+        minHeight: '2.8571rem',
+        padding: 'var(--s-4) 0',
+        color: 'var(--fg-secondary)',
       }}
     >
       <span className="ob-small" role="status" aria-live="polite">

@@ -50,6 +50,7 @@ import {
   Select,
   StatusPill,
   Timeline,
+  recordTimelineEntries,
   formatDateTime,
   formatKg,
   rem,
@@ -702,13 +703,7 @@ function OrderDetailBody({
 
       <Card>
         <Section title={t('orders.detail.history')}>
-          <Timeline
-            entries={order.timeline.map((entry) => ({
-              id: entry.id,
-              label: entry.message,
-              when: formatDateTime(entry.createdAt),
-            }))}
-          />
+          <Timeline entries={recordTimelineEntries(order.timeline, formatDateTime)} />
         </Section>
       </Card>
 
