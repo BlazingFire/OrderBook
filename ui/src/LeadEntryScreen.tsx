@@ -520,6 +520,8 @@ function LeadEntryForm({
 
   /** The whole screen: the scope of Ctrl+Enter, since a hidden screen stays mounted. */
   const rootRef = useRef<HTMLDivElement>(null);
+  /** The last "no longer in the catalogue" message shown, so it can be cleared with its lines. */
+  const goneMessage = useRef<string | null>(null);
   /** The products section: the scope of Shift+Q. */
   const productsRef = useRef<HTMLElement>(null);
   const partyRef = useRef<HTMLInputElement>(null);
@@ -1200,12 +1202,25 @@ function LeadEntryForm({
     // The Master refuses a whole new order that names a deleted product: stop here, keep the form.
     const goneLines = lines.filter((line) => gone.some((product) => product.id === line.productId));
     if (goneLines.length > 0) {
-      return t('lead.add.errors.goneLines', {
+      const message = t('lead.add.errors.goneLines', {
         names: [...new Set(goneLines.map((line) => line.productName))].join(', '),
       });
+      goneMessage.current = message;
+      return message;
     }
     return null;
   }
+
+  /*
+   * The "no longer in the catalogue" message belongs to the lines it names: once none of them is on
+   * the order any more (removed, or the product is back), it goes too instead of lingering.
+   */
+  useEffect(() => {
+    if (error === null || error !== goneMessage.current) return;
+    if (lines.some((line) => gone.some((product) => product.id === line.productId))) return;
+    goneMessage.current = null;
+    setError(null);
+  }, [error, lines, gone]);
 
   /** The form as the Master would receive it; also what "Save all" compares with the lead as opened. */
   function buildInput(): LeadFormValues {
@@ -1280,11 +1295,11 @@ function LeadEntryForm({
               ([id, name]) => ({ id, name }),
             ),
           );
-          setError(
-            t('lead.add.errors.goneLines', {
-              names: [...new Set(missing.map((line) => line.productName))].join(', '),
-            }),
-          );
+          const message = t('lead.add.errors.goneLines', {
+            names: [...new Set(missing.map((line) => line.productName))].join(', '),
+          });
+          goneMessage.current = message;
+          setError(message);
           saving.current = false;
           setBusy(false);
           return;
@@ -1747,14 +1762,27 @@ function LeadEntryForm({
                       />
                       <span
                         className="ob-mono ob-body-strong"
-                        style={{ fontSize: rem(14), color: 'var(--accent)' }}
+                        style={{
+                          fontSize: rem(14),
+                          color: 'var(--accent)',
+                          flex: 'none',
+                          whiteSpace: 'nowrap',
+                        }}
                       >
                         {draft.variants.length === 1
                           ? draft.variants[0]!.code
                           : t('lead.add.products.variantCount', { count: draft.variants.length })}
                       </span>
-                      <span className="ob-body-strong">{draft.productName}</span>
-                      <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+                      <span
+                        className="ob-body-strong"
+                        style={{ flex: '1 1 8rem', minWidth: 0, overflowWrap: 'anywhere' }}
+                      >
+                        {draft.productName}
+                      </span>
+                      <span
+                        className="ob-micro"
+                        style={{ color: 'var(--fg-tertiary)', flex: 'none', whiteSpace: 'nowrap' }}
+                      >
                         {[draft.categoryName, draft.size].filter(Boolean).join(' · ')}
                       </span>
                       {draft.rule === 'selectable' && (
@@ -2781,7 +2809,10 @@ function DraftCard({
       >
         <Eyebrow>{t('lead.add.draft.title')}</Eyebrow>
         <span style={{ flex: 1, minWidth: 0 }} />
-        <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
+        <span
+          className="ob-small"
+          style={{ color: 'var(--fg-tertiary)', flex: 'none', whiteSpace: 'nowrap' }}
+        >
           {draft.editKey ? t('lead.add.draft.editing') : t('lead.add.draft.new')}
         </span>
       </div>

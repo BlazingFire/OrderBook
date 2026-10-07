@@ -1102,6 +1102,57 @@ describe('the catalogue changing while the entry is open', () => {
     expect(fake.createLead).toHaveBeenCalledTimes(1);
   });
 
+  it('clears the no-longer-in-the-catalogue message once the gone line is removed', async () => {
+    const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    await enterOneLine();
+    fake.catalogue.products = fake.catalogue.products.filter((product) => product.id !== FIXED.id);
+    await act(async () => {
+      fake.catalogueChanged();
+      await wait(0);
+    });
+    await waitFor(() => expect(document.querySelector('[data-catalogue-gone]')).not.toBeNull());
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
+      await wait(0);
+    });
+    const alertText = t('lead.add.errors.goneLines', { names: FIXED.name });
+    expect(await screen.findByText(alertText)).toBeTruthy();
+
+    // Open the row and remove it: nothing gone is left, so the message goes too.
+    fireEvent.click(screen.getByRole('button', { name: /OPT-0001/ }));
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: t('lead.add.line.removeProduct', { product: FIXED.name }),
+      }),
+    );
+    await waitFor(() => expect(screen.queryByText(alertText)).toBeNull());
+  });
+
+  it('clears it as well when the product comes back in the catalogue', async () => {
+    const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    await enterOneLine();
+    const original = fake.catalogue.products;
+    fake.catalogue.products = original.filter((product) => product.id !== FIXED.id);
+    await act(async () => {
+      fake.catalogueChanged();
+      await wait(0);
+    });
+    await waitFor(() => expect(document.querySelector('[data-catalogue-gone]')).not.toBeNull());
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
+      await wait(0);
+    });
+    const alertText = t('lead.add.errors.goneLines', { names: FIXED.name });
+    expect(await screen.findByText(alertText)).toBeTruthy();
+
+    fake.catalogue.products = original;
+    await act(async () => {
+      fake.catalogueChanged();
+      await wait(0);
+    });
+    await waitFor(() => expect(screen.queryByText(alertText)).toBeNull());
+  });
+
   it('flags a product that was deleted and blocks the save, naming the line and keeping the draft', async () => {
     const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
     await enterOneLine();
