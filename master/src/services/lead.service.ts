@@ -7,7 +7,7 @@
  * the repositories, and the rules that decide anything live in `domain/`.
  */
 
-import { fieldFor, LEAD_COLUMNS, recordNumber } from '@orderbook/shared';
+import { colourLabeller, fieldFor, LEAD_COLUMNS, recordNumber } from '@orderbook/shared';
 import type {
   BinBlocker,
   BinRestoreResult,
@@ -23,7 +23,14 @@ import { assertFieldsFresh } from '../domain/access.js';
 import { actorKey, actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { normalizeCustomFields } from '../domain/custom-fields.js';
 import { assertOptionValueChange } from '../domain/field-values.js';
-import { buildLineSnapshot, type LineDraft, type LineSnapshot } from '../domain/line-items.js';
+import {
+  buildLineSnapshot,
+  listedColour,
+  matchExistingLines,
+  type KeptLine,
+  type LineDraft,
+  type LineSnapshot,
+} from '../domain/line-items.js';
 import { leadPdfTable } from '../domain/lead-pdf.js';
 import { clampPaging } from '../domain/paging.js';
 import { resolvePartyScope, UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
@@ -124,7 +131,12 @@ export async function leadPdf(
   const party = await partyRepo.findPartyById(actor.tenantId, lead.partyId);
   const company = (await findMasterConfig())?.company_name?.trim() || 'OrderBook';
 
-  const bytes = await renderReportPdf(leadPdfTable(lead, party, company, localIsoDate(new Date())));
+  // Deleted options too: a colour taken off the list still has the label it
+  // was sold under; one the list never had prints as stored.
+  const colours = await customFieldRepo.listOptionsForKey(actor.tenantId, 'stock.colour', { includeDeleted: true });
+  const bytes = await renderReportPdf(
+    leadPdfTable(lead, party, company, localIsoDate(new Date()), colourLabeller(colours)),
+  );
   // `PO/2026-27/00042` → `pending-order-PO-2026-27-00042.pdf`: a slash cannot be in a file name.
   return { fileName: `pending-order-${recordNumber(lead).replace(/\//g, '-')}.pdf`, bytes };
 }
@@ -299,6 +311,7 @@ export async function updateLead(
       ? null
       : await buildLines(actor.tenantId, partyId ?? existing.partyId, input.items, {
           partyWiseMode: input.partyWiseMode ?? existing.partyWiseMode,
+          existing: existing.items,
         });
 
   await db().transaction(async (trx) => {
@@ -542,9 +555,19 @@ export async function buildLines(
   tenantId: string,
   partyId: string,
   drafts: LineDraft[],
-  options: { partyWiseMode: boolean },
+  options: {
+    partyWiseMode: boolean;
+    /**
+     * The lines stored on the lead now, when this is an edit. A draft that
+     * continues one of them keeps its colour and colour text as stored, and is
+     * not re-checked against today's colour list (`matchExistingLines`).
+     */
+    existing?: readonly KeptLine[];
+  },
 ): Promise<LineSnapshot[]> {
   assertLineDrafts(drafts);
+  const kept = matchExistingLines(drafts, options.existing ?? []);
+  let colourOptions: Awaited<ReturnType<typeof customFieldRepo.listOptionsForKey>> | null = null;
 
   const partyVariants = options.partyWiseMode
     ? await variantRepo.listForParty(tenantId, partyId)
@@ -569,8 +592,24 @@ export async function buildLines(
 
     const partyVariant = partyVariantByProduct.get(product.id) ?? null;
 
+    // A NEW line's colour must be one the company lists, spelled as listed.
+    // Refused, not dropped: a typo stored as "Blue" would print on a note and
+    // count in a report as a colour nobody makes. Online that is a 400; for a
+    // lead an Office queued offline it is a readable refusal on its outbox,
+    // never a silent store. A line the lead already had is left as stored.
+    let input = draft;
+    const typed = typeof draft.colour === 'string' ? draft.colour.trim() : '';
+    if (kept[index] === null && product.multiColour && typed !== '') {
+      colourOptions ??= await customFieldRepo.listOptionsForKey(tenantId, 'stock.colour');
+      const listed = listedColour(typed, colourOptions);
+      if (listed === undefined) {
+        throw new ValidationError('validation.lead.colourUnknown', { colour: typed, productName: product.name });
+      }
+      input = { ...draft, colour: listed };
+    }
+
     const line = buildLineSnapshot(
-      draft,
+      input,
       {
         id: product.id,
         name: product.name,
@@ -590,6 +629,7 @@ export async function buildLines(
           }
         : null,
       index + 1,
+      kept[index] ?? null,
     );
 
     if (line.quantity <= 0) {

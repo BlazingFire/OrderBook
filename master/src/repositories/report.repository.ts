@@ -139,23 +139,29 @@ export async function dispatchesByMonth(range: DateRange, runner: Runner = db())
 }
 
 /**
- * Aggregated across the whole range, not per month, by the variant's colour
- * or pattern text (`''` for a no-variant product — the UI's "—" bucket).
+ * Aggregated across the whole range, not per month, by the colour the LINE
+ * was sold in: the colour chosen on it (a multicolour product), else the
+ * colour text frozen on it from its variant, else `''` (the UI's "—" bucket).
+ *
+ * The line's own snapshot, never the live `product_variants.label`: grouping
+ * by the live label counted every multicolour line as blank (their variant has
+ * no label) and a line sold as Ivory as White after the product was corrected
+ * to a fixed White (W2-2, 2026-10-07).
  */
 export async function dispatchesByColour(range: DateRange, runner: Runner = db()): Promise<DispatchColourRow[]> {
   const tz = config.locale.timeZone;
   const scope = scoped(range, 'o');
   const { rows } = await runner.raw<{ rows: Array<{ colour: string; box_count: string }> }>(
-    `SELECT COALESCE(v.label, '') AS colour, SUM(li.quantity) AS box_count
+    `SELECT COALESCE(NULLIF(li.colour, ''), NULLIF(li.variant_label, ''), '') AS colour,
+            SUM(li.quantity) AS box_count
        FROM orders o
        JOIN line_items li
          ON li.tenant_id = o.tenant_id AND li.parent_type = 'order' AND li.parent_id = o.id
-       JOIN product_variants v ON v.id = li.variant_id
       WHERE o.tenant_id = ?
         AND o.dispatched_at >= (?::timestamp AT TIME ZONE ?)
         AND o.dispatched_at <  (?::timestamp AT TIME ZONE ?)
         AND o.deleted_at IS NULL${scope.sql}
-      GROUP BY COALESCE(v.label, '')
+      GROUP BY 1
       ORDER BY box_count DESC`,
     [range.tenantId, range.fromDate, tz, range.toDateExclusive, tz, ...scope.bindings],
   );

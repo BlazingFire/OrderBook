@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  buildOrderNote, cleanVehicleNumber, clampNoteCopies, namedLabel, namedRowHeight, noteDocument, noteHeader, noteNumber,
+  buildOrderNote, cleanVehicleNumber, colourLabeller, clampNoteCopies, namedLabel, namedRowHeight, noteDocument, noteHeader, noteNumber,
   NOTE_LAYOUT, NOTE_MAX_COPIES, paginateOrderNote,
 } from '../src/index.js';
 import type { Lead, LineItem, NoteKind, NotePage, Order, Party } from '../src/index.js';
@@ -53,6 +53,25 @@ function printed(pages: NotePage[]): string[] {
 }
 
 const PRESETS: Array<[number, number]> = [[14, 84], [46, 430], [120, 1100], [0, 300], [200, 0], [1, 1]];
+
+describe('the colour a note prints', () => {
+  it('does not repeat a colour that only repeats the sub product name (shownColour)', () => {
+    const model = buildOrderNote(orderOf([line({ productName: 'MAGENTA', variantLabel: 'Magenta' })]));
+    expect(model.named[0]?.colour).toBeNull();
+  });
+
+  it('prints the colour list LABEL for the stored value, and the value when the list has none', () => {
+    const labelOf = colourLabeller([{ value: 'RED BROWN', label: 'Red Brown' }]);
+    const model = buildOrderNote(
+      orderOf([
+        line({ productName: 'Rustic', variantLabel: null, colour: 'RED BROWN' }),
+        line({ productName: 'Classic', variantLabel: null, colour: 'Ochre' }),
+      ]),
+      labelOf,
+    );
+    expect(model.named.map((l) => l.colour).sort()).toEqual(['Ochre', 'Red Brown']);
+  });
+});
 
 describe('buildOrderNote', () => {
   it('puts a name left and a plain code right, and reuses isNumericSubProduct for the test', () => {

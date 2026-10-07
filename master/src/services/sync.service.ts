@@ -60,7 +60,7 @@ import {
 } from '@orderbook/shared';
 
 import { actorCan, actorUserId, type ActorContext } from '../domain/actor.js';
-import type { LineDraft } from '../domain/line-items.js';
+import type { KeptLine, LineDraft } from '../domain/line-items.js';
 import { MASTER_MERGE_COLUMNS } from '../domain/merge-columns.js';
 import { UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
 import { assertStageMove } from '../domain/pipeline.js';
@@ -769,6 +769,9 @@ async function mergeUpdate(
                 typeof outcome.accepted.partyWiseMode === 'boolean'
                   ? outcome.accepted.partyWiseMode
                   : Boolean(current.values.partyWiseMode),
+              // The lines as stored now: an offline edit that resends an old
+              // line keeps its colour (W2-1), the same as an online one.
+              existing: (current.values.items as KeptLine[] | undefined) ?? [],
             },
           )
         : null;

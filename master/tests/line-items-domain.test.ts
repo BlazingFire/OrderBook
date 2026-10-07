@@ -20,6 +20,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildLineSnapshot,
   computeTotalWeightKg,
+  listedColour,
+  matchExistingLines,
   lineWeightKg,
   linesWithoutWeight,
   normaliseQuantity,
@@ -102,6 +104,55 @@ describe('the colour on a line', () => {
     // The rest of the line survives: the lead is taken, only the colour goes.
     expect(line.variantLabel).toBe('White');
     expect(line.quantity).toBe(4);
+  });
+});
+
+describe('an edit keeps what a line was sold as (W2-1)', () => {
+  // A line taken as Ivory on a model made in every colour, before the model
+  // was corrected to a fixed White sub product.
+  const stored = { id: 'LI0000000001', variantId: WHITE.id, colour: 'Ivory', variantLabel: null };
+
+  it('matches a resent line by variant and colour, and by id when one is sent', () => {
+    expect(matchExistingLines([draft({ colour: 'ivory' })], [stored])).toEqual([stored]);
+    expect(matchExistingLines([draft({ id: stored.id, colour: null })], [stored])).toEqual([stored]);
+    // Another colour, or another variant, is a new line.
+    expect(matchExistingLines([draft({ colour: 'Red' })], [stored])).toEqual([null]);
+    expect(matchExistingLines([draft({ variantId: UNWEIGHED.id, colour: 'Ivory' })], [stored])).toEqual([null]);
+  });
+
+  it('gives each stored line to one draft only', () => {
+    expect(matchExistingLines([draft({ colour: 'Ivory' }), draft({ colour: 'Ivory' })], [stored])).toEqual([
+      stored,
+      null,
+    ]);
+  });
+
+  it('keeps the stored colour and colour text on a product that is no longer multi-colour', () => {
+    const line = buildLineSnapshot(draft({ colour: 'Ivory', variantLabel: null }), PRODUCT, WHITE, null, 1, stored);
+    expect(line.colour).toBe('Ivory');
+    expect(line.variantLabel).toBeNull();
+  });
+
+  it('still drops a colour on a NEW line of such a product', () => {
+    const line = buildLineSnapshot(draft({ colour: 'Ivory', variantLabel: null }), PRODUCT, WHITE, null, 1, null);
+    expect(line.colour).toBeNull();
+    expect(line.variantLabel).toBe('White');
+  });
+});
+
+describe('a new colour is spelled as the company list has it', () => {
+  const list = [
+    { value: 'Ivory', label: 'Ivory' },
+    { value: 'RED BROWN', label: 'Red Brown' },
+  ];
+
+  it('matches the value or the label, case and spacing aside, and answers the VALUE', () => {
+    expect(listedColour(' ivory ', list)).toBe('Ivory');
+    expect(listedColour('red brown', list)).toBe('RED BROWN');
+  });
+
+  it('answers undefined for a colour the list does not have', () => {
+    expect(listedColour('Blue', list)).toBeUndefined();
   });
 });
 
