@@ -79,6 +79,7 @@ export function FollowUpField({
             role="radio"
             aria-checked={item.active}
             title={item.title}
+            aria-label={item.title}
             onClick={item.onClick}
           >
             {item.label}
