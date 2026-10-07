@@ -396,7 +396,7 @@ block on a deleted product, offline saves, drafts, follow-up chips, party and ow
    combobox opens as a 220 px popover (rows 28 px, "Type to filter", footer hint "up/down move, Enter picks"). Footer of the card: "This product" count, a hint "Shift+Q adds and goes to the next", and the
    secondary **Add product** button with an `Enter` kbd. **Notes** (optional) sits at the bottom of the card.
 4. **Added products panel:** header (44 px) "Added products" with the count; an empty state ("Nothing added yet", padding 24); a search field (28 px) over the list; each product block
-   shows its sub-product rows in a grid `minmax(0,1fr) | 96 | 72 | 64 | 40` (name and colour, packaging, grade, quantity with the unit **box**, remove); a footer (padding 12 16 16) with the total quantity.
+   shows its sub-product rows in a grid `minmax(0,1fr) | 96 | 72 | 64 | 40` (name and colour, packaging, grade, quantity with the unit **pcs**, remove); a footer (padding 12 16 16) with the total quantity.
 5. **Bottom bar:** secondary **Cancel** (36 px) and primary **Save pending order** (36 px, with a `Ctrl S` kbd that tints with the button; disabled until there is a line).
 6. **Status footer** (26 px): "1 offline, 5 pending", the company, the person, the version.
 
@@ -412,8 +412,8 @@ total: Party, Products), `CartEntry` and `CartLines` (one added product that ope
   one line per colour (checked: White 10 and Ivory 5 came back from the API as two lines with their colour names).
 - **Keys on the card:** Enter walks quantity, packaging and grade to **Add product**, which adds the sub product and returns to the list; Shift+Q adds it and moves to the next product; Backspace on the empty
   sub-product box goes back to the product bar; F2 focuses the product search; Ctrl+S saves.
-- **Quantity unit (owner decision, 2026-10-07).** The entry screens, the detail views and the lists say "pieces" / "pcs", as the artboard does and as they always have; the printed Filling and Dispatch notes keep saying **box**. Pieces and boxes
-  are not renamed into one another (reports keep separate Pieces and Boxes columns).
+- **Quantity unit (owner decision, 2026-10-07): pcs everywhere; Box = a packaging value.** A quantity is always pieces ("pcs"): the entry screens, details, lists, reports, the dashboard, the activity log and the printed Filling and Dispatch notes
+  all say pcs. "Box" is only a value of the Packaging field (like the other packaging types), never a unit of quantity.
 
 **The Office copy (D1, `office/web/src/screens/AddLeadScreen.tsx`)** is the same screen on the same `ui/src/order/` kit and keeps its own behaviours: per-person drafts, the provisional party, offline saves queued to the outbox, the
 live catalogue from the person's snapshot. **Since then:** the party chip shows name, code and city (`PartyChip`); "Create a new party" opens the New party form pre-filled with the typed text (works by Enter); Added products rows
@@ -421,7 +421,7 @@ show the 32 px photo (`CartEntry` thumb slot); the follow-up chips are a real ra
 the page title is the shell's top bar (no second heading). The page is capped at 120 rem.
 
 **Not built from the artboard (the product has none of them):** the **Rate** column and any amount, the `₹` prefix, the stock figures ("on hand shown", On hand, Reserved).
-Lead wording becomes **pending order**. The quantity unit is "pcs" on the entry screens, details and lists, as the artboard draws it, and "box" on the printed notes (owner decision, 2026-10-07).
+Lead wording becomes **pending order**. The quantity unit is "pcs" everywhere, as the artboard draws it; "Box" is a packaging value (owner decision, 2026-10-07).
 
 ## 11. Where it lives in the code
 
