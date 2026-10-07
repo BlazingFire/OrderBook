@@ -77,6 +77,7 @@ export function RolePicker({
           >
             <input
               type="radio"
+              className="ob-radio"
               name={name}
               value={role.id}
               checked={checked}

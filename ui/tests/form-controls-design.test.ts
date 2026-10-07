@@ -70,6 +70,10 @@ describe('fields', () => {
     expect(focus).toContain('outline-offset: 2px;');
   });
 
+  it('darken their edge on hover from the rest colour, never lighten it', () => {
+    expect(rule('.ob-input:hover,\n.ob-select:hover,\n.ob-textarea:hover')).toContain('border-color: var(--fg-tertiary);');
+  });
+
   it('put the label above in the primary ink, weight 500, and quieten it with a disabled field', () => {
     const block = rule('.ob-label');
     expect(block).toContain('font-weight: 500;');
@@ -92,8 +96,13 @@ describe('checkbox, radio and switch', () => {
   });
 
   it('fill a radio with a 5 px accent ring', () => {
-    expect(rule('.ob-check-row input:checked + .ob-radio-circle')).toContain('border: 5px solid var(--accent);');
+    expect(rule('.ob-radio:checked')).toContain('border: 5px solid var(--accent);');
     expect(read('../src/Form.tsx')).toContain('export function Radio(');
+  });
+
+  it('are used for the role cards and the duplicate-merge choice, not the browser radio', () => {
+    expect(read('../src/RolePicker.tsx')).toMatch(/type="radio"[ \n]+className="ob-radio"/);
+    expect(read('../../master/web/src/screens/DuplicatesScreen.tsx')).toMatch(/type="radio"[ \n]+className="ob-radio"/);
   });
 
   it('are a 32 x 18 switch with a 14 px thumb that travels 14 px, grey when off, with no border', () => {
