@@ -106,6 +106,8 @@ export function installBrowserStubs(): void {
   configure({ asyncUtilTimeout: 5000 });
 
   window.localStorage.clear();
+  // Each test is its own sign-in: a remembered pop-up decision (V6) must not carry into the next one.
+  window.sessionStorage.clear();
   window.localStorage.setItem('ob.motion', 'off');
   window.history.replaceState(null, '', '/');
 
