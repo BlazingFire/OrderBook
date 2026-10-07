@@ -9,9 +9,10 @@ import { rem } from './rem.js';
  */
 
 import { useEffect, useState } from 'react';
-import { t } from './i18n.js';
 import { BusyMark } from './BusyMark';
-import { Icon } from './icons';
+import { ConflictBanner, EmptyState, ErrorState, OfflineBanner, SkeletonRows } from './States';
+import { useToast } from './Toast';
+import { ProgressBar } from './TopProgress';
 import { Logo, LogoLockup } from './Logo';
 import { applyMotion, applyTheme, type Theme } from './theme';
 
@@ -105,6 +106,7 @@ const TABLE_ROWS: SampleRow[] = [
 ];
 
 export function GalleryScreen() {
+  const toast = useToast();
   const [theme, setThemeState] = useState<Theme>(
     () => (document.documentElement.dataset.theme as Theme) ?? 'light',
   );
@@ -515,19 +517,28 @@ export function GalleryScreen() {
           <span className="ob-pill ob-pill--accent">Active</span>
           <span className="ob-pill">Synced</span>
         </div>
-        <div className="ob-banner ob-banner--offline">
-          <Icon name="conflicts" />
-          <span>
-            Can&apos;t reach the server. Your work is saved on this machine and will sync when
-            it&apos;s back.
-          </span>
-          <span style={{ flex: 1 }} />
-          <button className="ob-btn ob-btn--secondary ob-btn--sm">{t('action.retryNow')}</button>
-        </div>
-        <div className="ob-empty" style={{ padding: 'var(--s-32) 0 0' }}>
-          <h3>No leads yet</h3>
-          <p>Leads you create appear here, online or off.</p>
-          <button className="ob-btn ob-btn--primary ob-btn--sm">New lead</button>
+        <OfflineBanner>
+          You&apos;re offline. Work is saved on this machine and syncs when the server is back.
+        </OfflineBanner>
+        <ConflictBanner action={<button className="ob-btn ob-btn--secondary">Review</button>}>
+          3 fields were resolved automatically.
+        </ConflictBanner>
+        <div className="ob-gallery-row" style={{ alignItems: 'stretch' }}>
+          <div className="ob-card" style={{ flex: 1 }}>
+            <EmptyState
+              title="No leads yet"
+              description="Leads you create appear here, online or off."
+              actionLabel="New lead"
+              onAction={() => undefined}
+            />
+          </div>
+          <div className="ob-card" style={{ flex: 1 }}>
+            <ErrorState
+              title="Can't reach the server"
+              description="Your work is saved on this machine and will sync when the server is back."
+              onAction={() => undefined}
+            />
+          </div>
         </div>
         <ul className="ob-timeline" style={{ maxWidth: rem(380) }}>
           <li>
@@ -545,6 +556,72 @@ export function GalleryScreen() {
             </div>
           </li>
         </ul>
+      </section>
+
+      {/* ---- Loading and feedback (Feedback artboard) ------------------------ */}
+      <section className="ob-card ob-card--pad ob-gallery-section">
+        <h2 className="ob-eyebrow">08b · Progress · busy · skeleton · toasts · tooltip</h2>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--s-16)',
+            maxWidth: rem(520),
+          }}
+        >
+          <ProgressBar value={0.64} label="Downloading update" detail="41.2 of 64.0 MB" />
+          <ProgressBar value={null} label="Taking backup snapshot" detail="D:\Backups · NAS" />
+          <ProgressBar
+            value={0.38}
+            tone="offline"
+            label="Offline — import paused at 38%"
+            detail="152 of 400 products"
+          />
+          <ProgressBar
+            value={0.72}
+            tone="conflict"
+            label="Checksum didn't match. The package was refused."
+          />
+          <ProgressBar value={1} tone="ok" label="Update ready · version 1.0.4" />
+        </div>
+        <div className="ob-gallery-row" style={{ alignItems: 'flex-end' }}>
+          <BusyMark size={40} />
+          <span className="ob-gallery-row" style={{ gap: 'var(--s-8)' }}>
+            <BusyMark size={16} label="" />
+            Opening orders
+          </span>
+        </div>
+        <div style={{ maxWidth: rem(520) }}>
+          <SkeletonRows rows={3} columns={3} />
+        </div>
+        <div className="ob-gallery-row">
+          <button className="ob-btn ob-btn--secondary" onClick={() => toast.push('Lead saved')}>
+            Toast · saved
+          </button>
+          <button
+            className="ob-btn ob-btn--secondary"
+            onClick={() =>
+              toast.push('Converted to order', {
+                action: { label: 'Open', onClick: () => undefined },
+              })
+            }
+          >
+            Toast · with action
+          </button>
+          <button
+            className="ob-btn ob-btn--secondary"
+            onClick={() => toast.push("Couldn't print: no printer selected", { tone: 'error' })}
+          >
+            Toast · failure
+          </button>
+          <span
+            className="ob-small"
+            title="Needs field.saleRate.view"
+            style={{ color: 'var(--fg-tertiary)' }}
+          >
+            — rate (hover)
+          </span>
+        </div>
       </section>
 
       {/* ---- Presence rail preview ----------------------------------------- */}

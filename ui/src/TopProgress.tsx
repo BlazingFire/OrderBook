@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import type { ReactNode } from 'react';
 import { t } from './i18n.js';
 
 let pending = 0;
@@ -74,15 +75,39 @@ export function LoadingMark() {
   return <span className="sr-only">{t('common.loading')}</span>;
 }
 
+/** What a bar says by its colour: working, held up while offline, failed, or finished. */
+export type ProgressTone = 'default' | 'offline' | 'conflict' | 'ok';
+
 /**
- * The determinate bar, for imports, exports and backups: `value` from 0 to 1,
- * or `null` while the size of the job is not known yet. Built on the splash
- * bar's track and fill. There is no other ProgressBar; reuse this one.
+ * The determinate bar, for imports, exports, backups and updates: `value` from 0 to 1, or
+ * `null` while the size of the job is not known yet (then the indeterminate sweep). The
+ * Feedback artboard: what is happening on the left, the figure on the right, a 6 px track
+ * under them, and a fill that moves by `scaleX` only, so a moving bar never re-lays out the
+ * row. There is no other ProgressBar; reuse this one.
  */
-export function ProgressBar({ value, label }: { value: number | null; label?: string }) {
-  const percent = value === null ? null : Math.round(Math.min(1, Math.max(0, value)) * 100);
+export function ProgressBar({
+  value,
+  label,
+  detail,
+  tone = 'default',
+}: {
+  value: number | null;
+  /** What is happening; also the bar's accessible name. */
+  label?: string;
+  /** The figure on the right: "41.2 of 64.0 MB", "152 of 400 products", a place. */
+  detail?: ReactNode;
+  tone?: ProgressTone;
+}) {
+  const fraction = value === null ? null : Math.min(1, Math.max(0, value));
+  const percent = fraction === null ? null : Math.round(fraction * 100);
   return (
-    <div className="ob-progress-wrap">
+    <div className={`ob-progress-wrap ob-progress--${tone}`}>
+      {(label || detail) && (
+        <div className="ob-progress-head">
+          {label && <span className="ob-progress-label">{label}</span>}
+          {detail && <span className="ob-progress-detail">{detail}</span>}
+        </div>
+      )}
       <div
         className="ob-progress"
         role="progressbar"
@@ -91,13 +116,12 @@ export function ProgressBar({ value, label }: { value: number | null; label?: st
         aria-valuemax={100}
         aria-valuenow={percent ?? undefined}
       >
-        {percent === null ? (
+        {fraction === null ? (
           <div className="ob-progress-fill--indeterminate" />
         ) : (
-          <div className="ob-progress-fill" style={{ width: `${percent}%` }} />
+          <div className="ob-progress-fill" style={{ transform: `scaleX(${fraction})` }} />
         )}
       </div>
-      {label && <span className="ob-small">{label}</span>}
     </div>
   );
 }

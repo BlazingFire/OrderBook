@@ -1,8 +1,9 @@
 /**
- * The busy indicator (§6): the same mark, inking in reading order on a 780ms
- * loop at 42% opacity, eased with the standard curve. One asset, two jobs —
- * there is no other spinner in the product. Stops when the window loses focus
- * (see base.css) and collapses to a static grid under the motion kill switches.
+ * The busy indicator, per the Feedback artboard: the mark's ten cells at 40 % opacity,
+ * each lighting from 0.15 to full and back in reading order, 70 ms apart, on a 700 ms
+ * linear loop. One asset, two jobs: there is no other spinner in the product. Stops when
+ * the window loses focus (see base.css) and holds still, every cell lit, under reduced
+ * motion or the app's motion switch.
  */
 
 import { t } from './i18n.js';
@@ -33,12 +34,9 @@ export function BusyMark({
           y={y}
           width={4}
           height={4}
-          rx={0.75}
-          fill={size <= 16 ? 'currentColor' : 'var(--accent)'}
-          /* Base opacity is the resting state when animation is disabled;
-           * the keyframes drive it while looping. The stagger is 42ms, the
-           * same as the splash's ink-in, so the two jobs read as one asset. */
-          style={{ opacity: 0.25, animationDelay: `${i * 42}ms` }}
+          rx={0.6}
+          fill="var(--accent)"
+          style={{ animationDelay: `${i * 70}ms` }}
         />
       ))}
     </svg>

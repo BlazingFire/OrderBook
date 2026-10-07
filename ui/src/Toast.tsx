@@ -17,6 +17,7 @@ import type { ReactNode } from 'react';
 
 import { unhandledFailureText } from './failureToasts.js';
 import { t } from './i18n.js';
+import { TooltipLayer } from './Tooltip.js';
 
 export type ToastTone = 'ok' | 'error' | 'info';
 
@@ -35,11 +36,32 @@ interface ToastItem {
 const MAX_TOASTS = 3;
 const TOAST_MS = 4000;
 
-const TONE_DOT: Record<ToastTone, string> = {
-  ok: 'var(--state-ok)',
-  error: 'var(--state-conflict)',
-  info: 'var(--accent)',
-};
+/** The Feedback artboard's 16 px stroke glyphs: a tick for done (green) and for news (accent), a ring for a failure. */
+function ToneIcon({ tone }: { tone: ToastTone }) {
+  return (
+    <svg
+      className={`ob-toast-icon ob-toast-icon--${tone}`}
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {tone === 'error' ? (
+        <>
+          <circle cx={12} cy={12} r={9} />
+          <path d="M12 7v6M12 16.5v.5" />
+        </>
+      ) : (
+        <path d="M5 12.5l4.5 4.5L19 7" />
+      )}
+    </svg>
+  );
+}
 
 interface ToastApi {
   push: (message: string, opts?: { tone?: ToastTone; action?: ToastAction }) => void;
@@ -112,19 +134,26 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={api}>
       {children}
+      {/* Here because both panels wrap their whole app in this provider; see Tooltip.tsx. */}
+      <TooltipLayer />
       <div className="ob-toasts">
         {toasts.map((toast) => (
-          <div key={toast.id} className="ob-toast" role="status">
-            <span className="dot" style={{ background: TONE_DOT[toast.tone] }} />
-            <span>{toast.message}</span>
+          <div
+            key={toast.id}
+            className="ob-toast"
+            // A failure interrupts; anything else waits its turn.
+            role={toast.tone === 'error' ? 'alert' : 'status'}
+          >
+            <ToneIcon tone={toast.tone} />
+            <span className="ob-toast-text">{toast.message}</span>
             {toast.action && (
               <button
                 type="button"
+                className="ob-toast-action"
                 onClick={() => {
                   toast.action?.onClick();
                   remove(toast.id);
                 }}
-                style={{ color: 'var(--accent)', fontWeight: 550 }}
               >
                 {toast.action.label}
               </button>
