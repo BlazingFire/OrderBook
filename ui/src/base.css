@@ -811,7 +811,12 @@ table.ob-table {
   flex: none;
   width: 2rem;
   height: 2rem;
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-tertiary);
+  font-size: var(--t-small-size);
+  font-weight: 600;
   box-sizing: border-box;
   border-radius: var(--r-sm);
   border: 1px solid var(--line);
