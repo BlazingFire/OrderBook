@@ -96,6 +96,7 @@ export * from './Splash.js';
 export * from './NoticeBoardView.js';
 export * from './NoticeDashboardCard.js';
 export * from './NoticeSlideshow.js';
+export * from './SignInNotices.js';
 export * from './NoticeManageView.js';
 export * from './PageBar.js';
 export * from './SaveTextButton.js';

@@ -6326,7 +6326,9 @@ Rules: `docs/schema/06-tenancy-permissions-and-sync.md` section 2c, `docs/ROLES_
   `noticeToday`), `permissions.ts` (`notices.view`, `notices.manage`, group `notices`), `keys/commands.ts`
   (Notice board Alt+N, Notice board management Alt+M on both panels).
 - **Screens.** `ui/src/NoticeBoardView.tsx` (reader's list, unread marker, mark read, offline note),
-  `NoticeDashboardCard.tsx` (important and pinned unread notices on the Dashboard), `NoticeManageView.tsx` (list, editor,
+  `NoticeDashboardCard.tsx` (important and pinned unread notices on the Dashboard), `SignInNotices.tsx` (V6: the
+  important unread notices in a dialog once right after sign-in, newest first; Mark as read goes through the panel's
+  read path, the Office queuing per person while offline; Later only closes it), `NoticeManageView.tsx` (list, editor,
   audience picker, pin, expire, delete, read counts and the readers dialog, the 409 conflict with Reload); the Master's
   `NoticeBoardScreen.tsx`, `NoticeManageScreen.tsx`, `useNotices.ts`; the Office mounts the same views. Text is plain:
   line breaks kept, no markup, no links.

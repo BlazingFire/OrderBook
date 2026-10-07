@@ -129,6 +129,14 @@ const PATHS: Record<IconName, string> = {
   key: `${circle(8, 15, 4)}M11 12l9-9M17 6l2 2M14.5 8.5l1.5 1.5`,
 };
 
+/**
+ * The artboard's stroke: 1.75 at the 16 px of a sidebar row and up, 2 at 14 px and below (a sub-page's
+ * 13 px icon, a 14 px chevron), so a small icon does not thin out.
+ */
+export function iconStroke(size: number): number {
+  return size <= 14 ? 2 : 1.75;
+}
+
 export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
   return (
     <svg
@@ -137,7 +145,7 @@ export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.75}
+      strokeWidth={iconStroke(size)}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"

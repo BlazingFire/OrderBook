@@ -2870,6 +2870,8 @@ describe('Notice board screens in the Master shell (Oct 7)', () => {
   it('turns over the important and pinned notices above Basic Home, for the roles that land there', async () => {
     await boot(['notices.view'], asOffice(['notices.view']));
     expect(topbarTitle()).toBe(t('nav.basicHome'));
+    // The unread important notice also pops up on sign-in (V6); Later leaves the card to be seen.
+    fireEvent.click(await screen.findByRole('button', { name: t('notices.signIn.later') }));
     expect(await screen.findByText('Godown closed on Friday')).toBeTruthy();
     // Owner add-on V5: the slideshow, and a slide opens its notice on the board.
     const band = screen.getByRole('region', { name: t('notices.slideshow.label') });
@@ -2899,5 +2901,41 @@ describe('Notice board screens in the Master shell (Oct 7)', () => {
     const before = counter.n;
     await changed('notice');
     await waitFor(() => expect(counter.n).toBeGreaterThan(before));
+  });
+});
+
+describe('V6: important notices pop up on sign-in', () => {
+  const IMPORTANT = {
+    id: 'NT1', tenantId: 'tenant-1', title: 'Office closed Friday', body: 'Holiday.', priority: 'important',
+    pinned: false, showUntil: null, audience: { kind: 'all' }, authorId: null, authorName: null,
+    createdAt: '2026-10-05T09:00:00.000Z', updatedAt: '2026-10-05T09:00:00.000Z', version: 1, readByMe: false,
+  };
+  const withNotice = (call: Call) =>
+    call.url.split('?')[0] === '/api/notices' && call.method !== 'POST'
+      ? json({ notices: [IMPORTANT], unreadCount: 1 })
+      : call.url === '/api/notices/read'
+        ? json({ unreadCount: 0 })
+        : undefined;
+  const popUp = () => screen.queryByRole('dialog', { name: t('notices.signIn.title') });
+
+  it('lists the unread important notice after sign-in, and Mark as read posts it and closes', async () => {
+    const calls = await boot([...ADMIN, 'notices.view'], withNotice);
+    await waitFor(() => expect(popUp()).not.toBeNull());
+    expect(within(popUp()!).getByText('Office closed Friday')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(within(popUp()!).getByRole('button', { name: t('notices.signIn.markRead') }));
+      await wait(0);
+    });
+
+    expect(calls.find((call) => call.url === '/api/notices/read')?.body).toEqual({ ids: ['NT1'] });
+    expect(popUp()).toBeNull();
+  });
+
+  it('never shows to somebody without notices.view, and does not even ask', async () => {
+    const calls = await boot(ADMIN, withNotice);
+    await wait(50);
+    expect(popUp()).toBeNull();
+    expect(calls.some((call) => call.url.split('?')[0] === '/api/notices')).toBe(false);
   });
 });

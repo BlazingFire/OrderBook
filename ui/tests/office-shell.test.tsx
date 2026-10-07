@@ -2274,3 +2274,44 @@ describe('Notice board in the Office sidebar (Oct 7)', () => {
     expect(screen.queryByTitle(t('nav.noticesManage'))).toBeNull();
   });
 });
+
+describe('V6: important notices pop up on sign-in', () => {
+  const base = {
+    tenantId: 'tenant-1', body: 'Read me.', pinned: false, showUntil: null, audience: { kind: 'all' },
+    authorId: null, authorName: null, updatedAt: '2026-09-20T09:00:00.000Z', version: 1,
+  };
+  const notices = [
+    { ...base, id: 'NT1', title: 'Older important', priority: 'important', createdAt: '2026-09-20T09:00:00.000Z', readByMe: false },
+    { ...base, id: 'NT2', title: 'Newer important', priority: 'important', createdAt: '2026-09-22T09:00:00.000Z', readByMe: false },
+    { ...base, id: 'NT3', title: 'Just news', priority: 'normal', createdAt: '2026-09-23T09:00:00.000Z', readByMe: false },
+    { ...base, id: 'NT4', title: 'Already read', priority: 'important', createdAt: '2026-09-23T09:00:00.000Z', readByMe: true },
+  ];
+  const popUp = () => screen.queryByRole('dialog', { name: t('notices.signIn.title') });
+
+  it('lists this person’s unread important notices from the snapshot, newest first, and marks them read', async () => {
+    const calls = await boot({
+      permissions: ['notices.view'],
+      view: { notices },
+      route: (call) => (call.url === '/api/notices/read' ? json({ unreadCount: 0 }) : undefined),
+    });
+    await waitFor(() => expect(popUp()).not.toBeNull());
+    expect(within(popUp()!).getAllByRole('listitem').map((item) => item.getAttribute('data-notice'))).toEqual(['NT2', 'NT1']);
+
+    await act(async () => {
+      fireEvent.click(within(popUp()!).getByRole('button', { name: t('notices.signIn.markRead') }));
+    });
+
+    expect(popUp()).toBeNull();
+    await waitFor(() =>
+      expect(calls.find((call) => call.url === '/api/notices/read')?.body).toEqual({ ids: ['NT2', 'NT1'] }),
+    );
+  });
+
+  it('never shows without notices.view, even with notices in the snapshot', async () => {
+    await boot({ permissions: [], view: { notices } });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(popUp()).toBeNull();
+  });
+});

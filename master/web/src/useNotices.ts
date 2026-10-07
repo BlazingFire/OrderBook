@@ -9,7 +9,9 @@ import { api } from './api';
  * somebody without `notices.view`: nothing is asked.
  *
  * The Notice board screen reports its own unread count back through `setUnread`, so the badge drops the
- * moment a notice is marked read instead of waiting for the next read.
+ * moment a notice is marked read instead of waiting for the next read. `loaded` turns true once the
+ * first read after sign-in has answered, so the sign-in pop-up (V6) knows the list is real, and
+ * `markRead` is the pop-up's way to mark notices read through the same route as the board.
  */
 export function useNotices(
   revision: number,
@@ -17,13 +19,23 @@ export function useNotices(
 ): {
   notices: Notice[];
   unread: number | undefined;
+  loaded: boolean;
   setUnread: (count: number) => void;
+  markRead: (ids: string[]) => Promise<void>;
 } {
   const [notices, setNotices] = useState<Notice[]>([]);
   const [unread, setUnreadState] = useState<number | undefined>(undefined);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (!enabled) return;
+    // Signed out (or no right to read): forget the last person's list, so the next sign-in starts
+    // empty and unloaded and nothing of theirs is ever shown to somebody else.
+    if (!enabled) {
+      setNotices([]);
+      setUnreadState(undefined);
+      setLoaded(false);
+      return;
+    }
     let live = true;
     api
       .notices()
@@ -31,6 +43,7 @@ export function useNotices(
         if (!live) return;
         setNotices(board.notices);
         setUnreadState(board.unreadCount);
+        setLoaded(true);
       })
       // A Master older than the notice board has no such route; the row simply carries no badge.
       .catch(() => undefined);
@@ -40,5 +53,10 @@ export function useNotices(
   }, [revision, enabled]);
 
   const setUnread = useCallback((count: number) => setUnreadState(count), []);
-  return { notices, unread: unread && unread > 0 ? unread : undefined, setUnread };
+  const markRead = useCallback(async (ids: string[]) => {
+    const { unreadCount } = await api.markNoticesRead(ids);
+    setNotices((current) => current.map((notice) => (ids.includes(notice.id) ? { ...notice, readByMe: true } : notice)));
+    setUnreadState(unreadCount);
+  }, []);
+  return { notices, unread: unread && unread > 0 ? unread : undefined, loaded, setUnread, markRead };
 }
