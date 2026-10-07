@@ -557,7 +557,7 @@ describe('the sub-product bar', () => {
     // sub-product bar with the product still chosen.
     expect(screen.queryByLabelText(`${t('lead.add.draft.col.quantity')} — White`)).toBeNull();
     expect(
-      within(document.querySelector<HTMLElement>('.ob-lead-panel')!).getByText('OPT-0001'),
+      within(document.querySelector<HTMLElement>('.ob-order-aside')!).getByText('OPT-0001'),
     ).toBeTruthy();
     expect(document.activeElement).toBe(searchBox());
     expect(searchBox().placeholder).toBe(
@@ -706,7 +706,7 @@ describe('the packaging and grade beside each quantity', () => {
     await finishCard('White');
     expect(screen.queryByLabelText(`${t('lead.add.draft.col.quantity')} — White`)).toBeNull();
     expect(
-      within(document.querySelector<HTMLElement>('.ob-lead-panel')!).getByText('OPT-0001'),
+      within(document.querySelector<HTMLElement>('.ob-order-aside')!).getByText('OPT-0001'),
     ).toBeTruthy();
   });
 });
@@ -837,7 +837,9 @@ describe('colour as a step of the Enter flow', () => {
 
     // One short line fits a narrow box at 157 %; the sentence about the keys wraps below it.
     expect((colourBox as HTMLInputElement).placeholder.length).toBeLessThanOrEqual(32);
-    expect(document.querySelector('[data-colour-keys]')?.textContent).toBe(t('lead.add.flow.colourKeys'));
+    expect(document.querySelector('[data-colour-keys]')?.textContent).toBe(
+      t('lead.add.flow.colourKeys'),
+    );
   });
 
   it('shows a fixed colour and skips it: the card opens on the quantity, with no colour box', async () => {
@@ -876,7 +878,9 @@ describe('the catalogue changing while the entry is open', () => {
   };
 
   async function chooseParty(): Promise<void> {
-    fireEvent.change(screen.getByLabelText(t('lead.add.party.search')), { target: { value: 'Sha' } });
+    fireEvent.change(screen.getByLabelText(t('lead.add.party.search')), {
+      target: { value: 'Sha' },
+    });
     fireEvent.click(await screen.findByRole('button', { name: new RegExp(PARTY.name) }));
   }
 
@@ -955,7 +959,9 @@ describe('the catalogue changing while the entry is open', () => {
     });
 
     // The same card, the same typed quantity, the caret where it was.
-    const again = screen.getByLabelText(`${t('lead.add.draft.col.quantity')} — White`) as HTMLInputElement;
+    const again = screen.getByLabelText(
+      `${t('lead.add.draft.col.quantity')} — White`,
+    ) as HTMLInputElement;
     expect(again).toBe(qty);
     expect(again.value).toBe('7');
     expect(document.activeElement).toBe(again);
@@ -1008,7 +1014,15 @@ describe('the catalogue changing while the entry is open', () => {
       id: `prod-x${index}`,
       name: `Bulk Closet ${String(index).padStart(2, '0')}`,
       sortOrder: 20 + index,
-      variants: [{ id: `var-x${index}`, label: 'White', code: `OPT-X${index}`, weightKg: 25, isActive: true }],
+      variants: [
+        {
+          id: `var-x${index}`,
+          label: 'White',
+          code: `OPT-X${index}`,
+          weightKg: 25,
+          isActive: true,
+        },
+      ],
     }));
     fake.catalogue.products.push(...(extra as never[]));
     await enterOneLine();
@@ -1062,7 +1076,9 @@ describe('the catalogue changing while the entry is open', () => {
     });
 
     expect(fake.createLead).not.toHaveBeenCalled();
-    expect(await screen.findByText(t('lead.add.errors.goneLines', { names: FIXED.name }))).toBeTruthy();
+    expect(
+      await screen.findByText(t('lead.add.errors.goneLines', { names: FIXED.name })),
+    ).toBeTruthy();
     expect(screen.getAllByText(new RegExp(FIXED.name)).length).toBeGreaterThan(0);
   });
 
@@ -1113,20 +1129,42 @@ describe('the catalogue changing while the entry is open', () => {
     });
     expect(fake.createLead).not.toHaveBeenCalled();
     expect(fake.onSaved).not.toHaveBeenCalled();
-    expect(await screen.findByText(t('lead.add.errors.goneLines', { names: FIXED.name }))).toBeTruthy();
+    expect(
+      await screen.findByText(t('lead.add.errors.goneLines', { names: FIXED.name })),
+    ).toBeTruthy();
     expect(screen.getAllByText(new RegExp(FIXED.name)).length).toBeGreaterThan(0);
   });
 });
 
-describe('the follow-up chips', () => {
-  it('are one group beside the date, so they wrap together and evenly instead of one at a time', async () => {
+describe('the follow-up quick choices', () => {
+  it('are one segmented radio group beside the date, in the short faces of the design', async () => {
     await openForm();
     const group = document.querySelector<HTMLElement>('[data-follow-up-chips]')!;
     expect(group).not.toBeNull();
-    // The three quick chips, and not the date box, share the one wrapping group.
-    expect(group.querySelectorAll('button')).toHaveLength(3);
+    expect(group.getAttribute('role')).toBe('radiogroup');
+    const radios = group.querySelectorAll('button[role="radio"]');
+    expect([...radios].map((radio) => radio.textContent)).toEqual(['+1 d', '+3 d', '+1 wk']);
+    expect([...radios].map((radio) => radio.getAttribute('title'))).toEqual([
+      t('lead.add.followUp.tomorrow'),
+      t('lead.add.followUp.inThreeDays'),
+      t('lead.add.followUp.nextWeek'),
+    ]);
+    // The date box is not in the group.
     expect(group.querySelector('input')).toBeNull();
-    expect(group.style.flexWrap).toBe('wrap');
+  });
+
+  it('start on three days, and a click on the checked one clears the date, another sets it again', async () => {
+    await openForm();
+    const date = screen.getByLabelText(t('lead.add.details.followUp')) as HTMLInputElement;
+    const three = screen.getByRole('radio', { name: t('lead.add.followUp.inThreeDays') });
+    expect(three.getAttribute('aria-checked')).toBe('true');
+    expect(date.value).not.toBe('');
+    fireEvent.click(three);
+    expect(three.getAttribute('aria-checked')).toBe('false');
+    expect(date.value).toBe('');
+    fireEvent.click(three);
+    expect(three.getAttribute('aria-checked')).toBe('true');
+    expect(date.value).not.toBe('');
   });
 });
 
@@ -1199,7 +1237,7 @@ describe('Shift+Q', () => {
 
     expect(typed).toBe(false);
     expect(
-      within(document.querySelector<HTMLElement>('.ob-lead-panel')!).getByText('OPT-0001'),
+      within(document.querySelector<HTMLElement>('.ob-order-aside')!).getByText('OPT-0001'),
     ).toBeTruthy();
     expect(searchBox().placeholder).toBe(t('lead.add.products.categoryPlaceholder'));
   });
@@ -1339,7 +1377,7 @@ describe('what the shared copy adds', () => {
     // The party is the lead's own — it was never in a list this screen fetched.
     expect(screen.getByText(PARTY.name)).toBeTruthy();
     expect(
-      within(document.querySelector<HTMLElement>('.ob-lead-panel')!).getByText('OPT-0001'),
+      within(document.querySelector<HTMLElement>('.ob-order-aside')!).getByText('OPT-0001'),
     ).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText(t('lead.add.details.notes')), {
@@ -1398,7 +1436,8 @@ describe('what the shared copy adds', () => {
         },
       ],
     } as unknown as Lead;
-    const notesBox = () => screen.getByLabelText(t('lead.add.details.notes')) as HTMLTextAreaElement;
+    const notesBox = () =>
+      screen.getByLabelText(t('lead.add.details.notes')) as HTMLTextAreaElement;
     const save = async () => {
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
@@ -1421,7 +1460,9 @@ describe('what the shared copy adds', () => {
       const fake = await openForm({ optionLists: [...COLOURS, ...SOURCES] }, { lead: opened });
       await addDedicatedLine();
 
-      fake.catalogue.products = fake.catalogue.products.filter((product) => product.id !== DEDICATED.id);
+      fake.catalogue.products = fake.catalogue.products.filter(
+        (product) => product.id !== DEDICATED.id,
+      );
       await act(async () => {
         fake.catalogueChanged();
         await wait(0);
@@ -1431,13 +1472,17 @@ describe('what the shared copy adds', () => {
       await save();
       expect(fake.updateLead).not.toHaveBeenCalled();
       expect(fake.onSaved).not.toHaveBeenCalled();
-      expect(await screen.findByText(t('lead.add.errors.goneLines', { names: DEDICATED.name }))).toBeTruthy();
+      expect(
+        await screen.findByText(t('lead.add.errors.goneLines', { names: DEDICATED.name })),
+      ).toBeTruthy();
       expect(screen.getAllByText(new RegExp(DEDICATED.name)).length).toBeGreaterThan(0);
     });
 
     it('leaves a line that was already saved on the lead alone when its product was deleted since', async () => {
       const fake = await openForm({ optionLists: [...COLOURS, ...SOURCES] }, { lead: opened });
-      fake.catalogue.products = fake.catalogue.products.filter((product) => product.id !== FIXED.id);
+      fake.catalogue.products = fake.catalogue.products.filter(
+        (product) => product.id !== FIXED.id,
+      );
       await act(async () => {
         fake.catalogueChanged();
         await wait(0);
@@ -1496,7 +1541,9 @@ describe('what the shared copy adds', () => {
         />,
       );
 
-      expect(await screen.findByText(t('lead.conflict.savedBy', { name: 'Ravi', time }))).toBeTruthy();
+      expect(
+        await screen.findByText(t('lead.conflict.savedBy', { name: 'Ravi', time })),
+      ).toBeTruthy();
       // Nothing is taken over by itself: the half-typed note is still there.
       expect(notesBox().value).toBe('half typed');
 
@@ -1644,7 +1691,9 @@ describe('Save all before an update (1.4 R7b)', () => {
 
   it('names a lead that is not ready, saves nothing, and does not post a half-lead', async () => {
     const fake = await openForm();
-    fireEvent.change(screen.getByLabelText(t('lead.add.party.search')), { target: { value: 'Sha' } });
+    fireEvent.change(screen.getByLabelText(t('lead.add.party.search')), {
+      target: { value: 'Sha' },
+    });
     fireEvent.click(await screen.findByRole('button', { name: new RegExp(PARTY.name) }));
 
     let result: Awaited<ReturnType<typeof saveAllUnsavedWork>> | undefined;

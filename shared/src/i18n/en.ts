@@ -83,7 +83,8 @@ export const EN_MESSAGES = {
   'permission.chat.createGroups': 'Create chat groups',
   'permission.chat.manage': 'Manage every chat group in the company',
   'permission.notices.view': 'Read the notice board',
-  'permission.notices.manage': 'Put up, change and remove notices, choose who sees them and see who has read them',
+  'permission.notices.manage':
+    'Put up, change and remove notices, choose who sees them and see who has read them',
 
   // --- module.* — one per MODULES entry ---
   'module.leads': 'Pending Orders',
@@ -149,7 +150,8 @@ export const EN_MESSAGES = {
   'setting.leads.followUpDefaultDays.label': 'Follow up a new pending order after',
   'setting.leads.followUpDefaultDays.help':
     'The follow-up date a new pending order starts with, in days from today. 3 unless you change it; 0 means today. Whoever is taking the enquiry can still change it, and the Tomorrow / In 3 days / Next week buttons are unchanged.',
-  'setting.leads.packagingRequiredOnConvert.label': 'Packaging is required before converting a pending order',
+  'setting.leads.packagingRequiredOnConvert.label':
+    'Packaging is required before converting a pending order',
   'setting.leads.packagingRequiredOnConvert.help':
     'Off by default: pending order entry does not ask for packaging, and a pending order whose lines have none can still become a final order. On, pending order entry asks for it on every line and a pending order without it cannot be converted. Packaging already entered is kept either way.',
   'setting.leads.quietAfterDays.label': 'A pending order has gone quiet after',
@@ -190,7 +192,8 @@ export const EN_MESSAGES = {
   'validation.connector.urlInvalid': 'That is not a web address',
   'validation.connector.urlScheme': 'A connection address must start with http or https',
   'validation.connector.urlSelf': 'A connection cannot point back at this Master',
-  'validation.connector.authHeaderReserved': 'That header is reserved for this Master and cannot carry a connection credential',
+  'validation.connector.authHeaderReserved':
+    'That header is reserved for this Master and cannot carry a connection credential',
   'validation.developer.passwordRequired': 'Enter the developer password',
   'validation.developer.confirmationRequired': 'Type RESET to confirm',
   'validation.developer.administratorRequired':
@@ -225,11 +228,11 @@ export const EN_MESSAGES = {
   // the sixty have gone. `auth.service.ts` holds `lockedUntil` — the exact
   // millisecond the lock lifts — on the line above the throw, and passed
   // nothing.
-  'error.unauthorized.tooManyAttempts':
-    'Too many failed attempts. Try again in {seconds} seconds.',
+  'error.unauthorized.tooManyAttempts': 'Too many failed attempts. Try again in {seconds} seconds.',
   'error.unauthorized.pairingNotAccepting':
     'The Master Panel is not accepting new panels right now. Open "Add Office Panel" on the Master and try again.',
-  'error.unauthorized.incorrectPairingPassword': 'Incorrect pairing password. Check it and try again. If it is lost, an administrator can set a new one in Settings on the Master Panel.',
+  'error.unauthorized.incorrectPairingPassword':
+    'Incorrect pairing password. Check it and try again. If it is lost, an administrator can set a new one in Settings on the Master Panel.',
   'error.unauthorized.differentMaster': 'This is a different Master Panel than the one you entered',
   'error.unauthorized.panelNotPaired': 'This panel is not paired',
   'error.unauthorized.panelCredentialsInvalid': 'Panel credentials are not valid',
@@ -275,8 +278,7 @@ export const EN_MESSAGES = {
   'error.unavailable': 'The Master Panel is unreachable. Try again when the link is back.',
   'error.unavailable.maintenance':
     'The Master Panel is busy starting up or being maintained. The link comes back by itself.',
-  'error.unavailable.signInToSync':
-    'Queued work waits until the person who did it signs in again.',
+  'error.unavailable.signInToSync': 'Queued work waits until the person who did it signs in again.',
   'error.updateNeeded.master': 'The Master Panel needs an update before it can do this.',
   'error.updateNeeded.office': 'This Office Panel needs an update before it can do this.',
   'error.unknown': 'Something went wrong',
@@ -292,7 +294,8 @@ export const EN_MESSAGES = {
   'error.generic.validation': 'That is not valid',
   'error.generic.forbidden': 'You do not have permission to do that',
   'error.generic.internal': 'Something went wrong on the server',
-  'error.generic.requestFailed': 'A request did not go through. Check the connection and try again.',
+  'error.generic.requestFailed':
+    'A request did not go through. Check the connection and try again.',
   'error.generic.malformedBody': 'That request could not be read',
   'error.generic.tooLarge': 'That request is too large',
   'error.generic.masterCommandFailed': 'The Master Panel could not complete that action',
@@ -327,7 +330,8 @@ export const EN_MESSAGES = {
   'validation.conflict.cannotRestoreEntity': 'Cannot restore a {entity} value automatically',
   'validation.conflict.actionRequired':
     'Choose whether to keep the current value or restore the other',
-  'validation.order.dispatchedLocked': 'This final order has been dispatched and can no longer be edited',
+  'validation.order.dispatchedLocked':
+    'This final order has been dispatched and can no longer be edited',
   'validation.order.weightNegative': 'Weight cannot be negative',
   'validation.order.vehicleInvalid': 'Vehicle number: up to 20 letters, digits, spaces or dashes',
   'validation.order.alreadyDispatched': 'This final order was already dispatched',
@@ -336,11 +340,13 @@ export const EN_MESSAGES = {
   'validation.lead.itemsRequired': 'Add at least one product to this pending order',
   'validation.lead.partyMissing': 'The selected party no longer exists',
   'validation.lead.ownerMissing': 'The selected owner no longer exists',
-  'validation.lead.convertedLocked': 'This pending order has become a final order and can no longer be edited',
+  'validation.lead.convertedLocked':
+    'This pending order has become a final order and can no longer be edited',
   'validation.lead.productMissing': 'One of the selected products no longer exists',
   'validation.lead.quantityRequired': 'Add a quantity for {productName}',
   'validation.lead.sourceInvalid': '"{value}" is not a configured pending order source',
-  'validation.lead.alreadyConverted': 'This pending order has already been converted to a final order',
+  'validation.lead.alreadyConverted':
+    'This pending order has already been converted to a final order',
   'validation.lead.noItemsToConvert':
     'A pending order needs at least one product before it can become a final order',
   'validation.lead.quantityMissingOnConvert':
@@ -385,8 +391,7 @@ export const EN_MESSAGES = {
   'validation.product.variantLabelUnexpected':
     'A product without variants carries one code — switch variants on to add more',
   'validation.product.weightPositive': 'Weight must be a number greater than zero',
-  'validation.product.restoreCodesTaken':
-    'Cannot restore — another product now uses {codes}',
+  'validation.product.restoreCodesTaken': 'Cannot restore — another product now uses {codes}',
   'validation.lead.variantMissing': 'One of the selected product variants no longer exists',
   // --- Bulk product import: file-level refusals and per-row issues ----------
   'validation.import.fileRequired': 'Choose a CSV or Excel file',
@@ -400,7 +405,8 @@ export const EN_MESSAGES = {
   'validation.import.duplicateInFile': '"{column}" repeats row {firstRow}',
   'validation.import.unknownCategory':
     'There is no category named "{categoryName}" — this company does not let an import create one',
-  'validation.import.tooManyRows': 'The file has more than {max} rows — split it and import the parts',
+  'validation.import.tooManyRows':
+    'The file has more than {max} rows — split it and import the parts',
   'validation.import.tooLarge': 'That file is too large to import',
   'validation.import.sameProduct':
     '{name} and another product in this file both match the same existing product',
@@ -414,12 +420,14 @@ export const EN_MESSAGES = {
   'validation.party.gstInvalid': 'GST number must be a valid 15-character GSTIN',
   'validation.party.emailInvalid': 'Email address is not valid',
   'validation.party.tooLong': '"{column}" is longer than {max} characters',
-  'validation.party.phoneInvalid': 'Phone number needs at least six digits, and only digits, +, -, brackets and spaces',
+  'validation.party.phoneInvalid':
+    'Phone number needs at least six digits, and only digits, +, -, brackets and spaces',
   'validation.party.codeInvalid': 'Party Code is not in the form P- followed by digits',
   'validation.import.partyRowFailed': 'The row could not be saved',
   'validation.import.partyRowConflict': 'The row clashes with a party that already exists',
   'validation.import.partyRowInvalid': 'A value in the row is not allowed',
-  'validation.import.partyCodeNotAllowed': 'Party Code must be blank when adding parties — codes are given automatically',
+  'validation.import.partyCodeNotAllowed':
+    'Party Code must be blank when adding parties — codes are given automatically',
   'validation.import.partyCodeRequired': 'Party Code is needed to update a party',
   'validation.import.partyCodeUnknown': 'No party has the code {code}',
   'validation.import.partyOutOfScope': 'You do not have access to the party {code}',
@@ -576,7 +584,8 @@ export const EN_MESSAGES = {
   'activity.party.deleted': '{actor} deleted the party {name}',
   'activity.party.restored': '{actor} restored the party {name}',
   'activity.party.access_changed': '{actor} changed who may access the party {name}',
-  'activity.party.variant_saved': '{actor} saved the party-wise record of {product} for the party {name}',
+  'activity.party.variant_saved':
+    '{actor} saved the party-wise record of {product} for the party {name}',
   'activity.product.deleted': '{actor} deleted the product {name}',
   'activity.product.restored': '{actor} restored the product {name}',
   'activity.product_category.created': '{actor} added the product {name} to the catalogue',
@@ -900,9 +909,12 @@ export const EN_MESSAGES = {
   'backup.restore.readFailed': 'Could not read that file',
   'backup.restore.title': 'Restore from backup',
   'backupAll.title': 'Back up everything to a drive',
-  'backupAll.help': 'One zip file with every record and every photo, written to a folder you choose, such as a USB drive. A new Master PC can be set up from it with Magic restore.',
-  'backupAll.keepSafe': 'Keep this drive safe. The zip is not encrypted: it holds the password hashes and the keys that pair the Office panels.',
-  'backupAll.notMasterPc': 'Backing up to a drive, and restoring from one, are done on the Master PC itself.',
+  'backupAll.help':
+    'One zip file with every record and every photo, written to a folder you choose, such as a USB drive. A new Master PC can be set up from it with Magic restore.',
+  'backupAll.keepSafe':
+    'Keep this drive safe. The zip is not encrypted: it holds the password hashes and the keys that pair the Office panels.',
+  'backupAll.notMasterPc':
+    'Backing up to a drive, and restoring from one, are done on the Master PC itself.',
   'backupAll.folderLabel': 'Folder',
   'backupAll.folderPlaceholder': 'For example E:\\OrderBook backups',
   'backupAll.chooseFolder': 'Choose folder…',
@@ -911,9 +923,11 @@ export const EN_MESSAGES = {
   'backupAll.start': 'Back up everything',
   'backupAll.done': 'Saved as {file}',
   'backupAll.failed': 'The backup did not finish',
-  'backupAll.fat32TooLarge': 'Format the drive as exFAT or NTFS, or choose another drive. Formatting erases everything on the drive.',
+  'backupAll.fat32TooLarge':
+    'Format the drive as exFAT or NTFS, or choose another drive. Formatting erases everything on the drive.',
   'backupAll.insufficientSpace': 'Free some space on the drive, or choose a bigger one.',
-  'backupAll.sealedNotice': 'Enter these again after restoring on another PC: {settings} secret settings and {connectors} integration logins. They are sealed to the PC that made the backup.',
+  'backupAll.sealedNotice':
+    'Enter these again after restoring on another PC: {settings} secret settings and {connectors} integration logins. They are sealed to the PC that made the backup.',
   'backupAll.phase.preparing': 'Getting ready',
   'backupAll.phase.data': 'Copying records',
   'backupAll.phase.photos': 'Copying photos',
@@ -929,12 +943,14 @@ export const EN_MESSAGES = {
   'backupAll.restore.action': 'Restore…',
   'backupAll.restore.fromFile': 'Restore from another file…',
   'backupAll.restore.title': 'Restore this backup',
-  'backupAll.restore.warning': 'Every record on this Master is replaced by the backup. A safety copy of the current data is saved first. Everyone is signed out while it runs.',
+  'backupAll.restore.warning':
+    'Every record on this Master is replaced by the backup. A safety copy of the current data is saved first. Everyone is signed out while it runs.',
   'backupAll.restore.typeConfirm': 'Type CONFIRM to restore',
   'backupAll.restore.doneSignIn': 'Everything is back. Sign in again to carry on.',
   'backupAll.restore.signIn': 'Sign in again',
   'autoBackup.title': 'Automatic backup',
-  'autoBackup.help': 'Once a day, at the time below, this PC backs everything up to the folder. Older automatic backups beyond the number kept are deleted.',
+  'autoBackup.help':
+    'Once a day, at the time below, this PC backs everything up to the folder. Older automatic backups beyond the number kept are deleted.',
   'autoBackup.enabled': 'Back up every day',
   'autoBackup.folder': 'Folder',
   'autoBackup.time': 'Time',
@@ -945,12 +961,14 @@ export const EN_MESSAGES = {
   'autoBackup.lastRun.ok': 'Last backup {at}: {file}',
   'autoBackup.lastRun.failed': 'Last attempt {at} did not finish: {reason}',
   'autoBackup.lastRun.never': 'No automatic backup has run yet.',
-  'autoBackup.folderUnreachable': 'The folder cannot be reached right now. Plug in the backup drive.',
+  'autoBackup.folderUnreachable':
+    'The folder cannot be reached right now. Plug in the backup drive.',
   'autoBackup.onAt': 'Every day at {time}, to {folder}.',
   'autoBackup.off': 'Automatic backup is off.',
   'autoBackup.masterPcOnly': 'It is changed on the Master PC.',
   'magicRestore.title': 'Magic restore',
-  'magicRestore.help': 'Set this PC up from a backup made with "Back up everything to a drive". Plug in the drive and choose the zip file.',
+  'magicRestore.help':
+    'Set this PC up from a backup made with "Back up everything to a drive". Plug in the drive and choose the zip file.',
   'magicRestore.pathLabel': 'Backup file',
   'magicRestore.pathPlaceholder': 'For example E:\\OrderBook-Backup-Company.zip',
   'magicRestore.chooseFile': 'Choose file…',
@@ -959,12 +977,14 @@ export const EN_MESSAGES = {
   'magicRestore.created': 'Backed up on',
   'magicRestore.version': 'Made by version',
   'magicRestore.records': 'Records',
-  'magicRestore.counts': '{parties} parties, {products} products, {users} users, {leads} pending orders, {orders} final orders',
+  'magicRestore.counts':
+    '{parties} parties, {products} products, {users} users, {leads} pending orders, {orders} final orders',
   'magicRestore.photos': 'Photos',
   'magicRestore.size': 'Size',
   'magicRestore.start': 'Restore everything',
   'magicRestore.doneTitle': 'Everything is back',
-  'magicRestore.doneBody': 'Sign in with your usual username and password. The Office panels find this PC by themselves and reconnect.',
+  'magicRestore.doneBody':
+    'Sign in with your usual username and password. The Office panels find this PC by themselves and reconnect.',
   'catalog.filter.all': 'All',
   'catalog.parties.column.visibility': 'Visible to',
   'catalog.parties.column.access': 'My access',
@@ -1052,8 +1072,7 @@ export const EN_MESSAGES = {
   'duplicates.addedOn': 'Added {date}',
   'duplicates.blocked.liveReferences':
     'On {count} live pending orders or orders - cannot be deleted',
-  'duplicates.blocked.subProducts':
-    'Holds {count} sub products - delete them first, then this one',
+  'duplicates.blocked.subProducts': 'Holds {count} sub products - delete them first, then this one',
   'duplicates.delete': 'Delete the other copies',
   'duplicates.confirm.title': 'Delete the other copies?',
   'duplicates.confirm.body':
@@ -1133,7 +1152,8 @@ export const EN_MESSAGES = {
   'connection.auto.step1':
     'On the Master Panel PC, open “Office Panels” and press “Add Office Panel”.',
   'connection.auto.step2': 'It will say “Waiting for office panel…”.',
-  'connection.auto.step3': 'Press the button below within 5 minutes. The two will find each other automatically.',
+  'connection.auto.step3':
+    'Press the button below within 5 minutes. The two will find each other automatically.',
   'connection.auto.title': 'Auto connection (recommended)',
   'connection.errorFallback': 'Connection failed',
   'connection.manual.address': 'Master address',
@@ -1176,7 +1196,8 @@ export const EN_MESSAGES = {
   'dashboard.dispatched.title': 'Dispatched this week',
   'dashboard.dispatched.unitMany': 'final orders',
   'dashboard.dispatched.unitOne': 'final order',
-  'dashboard.empty.description': 'Once pending orders or final orders exist on this panel, your dashboard fills in.',
+  'dashboard.empty.description':
+    'Once pending orders or final orders exist on this panel, your dashboard fills in.',
   'dashboard.empty.title': 'Nothing here yet',
   'dashboard.leads.dueToday': '{count} due for follow-up today',
   'dashboard.leads.noneDueToday': 'None due today',
@@ -1200,7 +1221,8 @@ export const EN_MESSAGES = {
   'dashboard.pipeline.emptyDescription': 'Pending Orders you create appear here, online or off.',
   'dashboard.followUp.title': 'Follow up today',
   'dashboard.followUp.emptyTitle': 'Nothing due',
-  'dashboard.followUp.emptyDescription': 'Pending Orders whose follow-up date arrives show up here.',
+  'dashboard.followUp.emptyDescription':
+    'Pending Orders whose follow-up date arrives show up here.',
   'dashboard.activity.title': 'Recent activity',
   'dashboard.activity.emptyTitle': 'No activity yet',
   'dashboard.activity.emptyDescription': 'Moves, conversions and dispatches show up here.',
@@ -1291,7 +1313,8 @@ export const EN_MESSAGES = {
   'fields.stages.description':
     'Stages are the Kanban columns. Archiving one stops new records landing in it; everything already there keeps rendering.',
   'fields.stages.edit.title': 'Edit {name}',
-  'fields.stages.empty.description': 'Pending Order and final order pipelines are created with the company.',
+  'fields.stages.empty.description':
+    'Pending Order and final order pipelines are created with the company.',
   'fields.stages.empty.pipelines': 'No pipelines on this company',
   'fields.stages.empty.title': 'No stages in this pipeline',
   'fields.stages.error.description':
@@ -1412,7 +1435,8 @@ export const EN_MESSAGES = {
   'lead.add.draft.gradeEmptyFields': 'No grades listed yet — add them under Fields → Option lists.',
   'lead.add.draft.packaging': 'Packaging',
   'lead.add.draft.packagingEmpty': 'No packaging listed yet — add it under Settings → Fields.',
-  'lead.add.draft.packagingEmptyFields': 'No packaging listed yet — add it under Fields → Option lists.',
+  'lead.add.draft.packagingEmptyFields':
+    'No packaging listed yet — add it under Fields → Option lists.',
   'lead.add.draft.quantityTitle': 'Quantity — pieces',
   'lead.add.draft.showOptions': 'Show {field} options',
   'lead.add.draft.saveChanges': 'Save changes',
@@ -1438,11 +1462,29 @@ export const EN_MESSAGES = {
   'lead.add.panel.selected': '{count} selected',
   'lead.add.panel.title': 'Added products',
   'lead.add.panel.truncated': 'Showing the first {shown} — narrow the search to see the rest',
+  'lead.add.check.party.ok': 'Party · {name}',
+  'lead.add.check.party.todo': 'Select a party',
+  'lead.add.check.products.ok': 'Products · {count} added',
+  'lead.add.check.products.todo': 'Add at least one product',
+  'lead.add.check.followUp': 'Follow up · {date}',
+  'lead.add.check.followUp.none': 'No follow-up date',
+  'lead.add.products.noneTitle': 'No product picked',
+  'lead.add.products.noneBody':
+    'Search above. Its sub products open here — pick a colour, then quantity, packaging and grade for each.',
+  'lead.add.panel.totalLine': '{products} products · {lines} lines',
+  'lead.add.panel.totalLineOne': '1 product · {lines} lines',
+  'lead.add.panel.totalOneLine': '1 product · 1 line',
+  'lead.add.followUp.tomorrowShort': '+1 d',
+  'lead.add.followUp.inThreeDaysShort': '+3 d',
+  'lead.add.followUp.nextWeekShort': '+1 wk',
+  'lead.add.followUp.group': 'Quick follow-up',
+  'lead.add.saveKbd': 'Ctrl S',
   'lead.add.draft.title': 'Details for this product',
   'lead.add.followUp.label': 'Follow up',
   'lead.add.line.noPackaging': 'no packaging',
   'lead.add.products.clear': 'Clear selection',
-  'lead.add.products.pickedHint': 'Enter walks quantity, packaging and grade to Add product, which adds this sub product and returns to the list; Shift+Q adds it and moves on to the next product.',
+  'lead.add.products.pickedHint':
+    'Enter walks quantity, packaging and grade to Add product, which adds this sub product and returns to the list; Shift+Q adds it and moves on to the next product.',
   'lead.add.products.searchAdds': 'the search adds another',
   'lead.add.products.searchFirst': 'choose a product, then a sub product — at least one',
   'lead.add.saved': 'Pending Order saved — {id} syncs when the Master is reachable',
@@ -1554,7 +1596,8 @@ export const EN_MESSAGES = {
   'leadsOrders.leads.column.products': 'Products',
   'leadsOrders.leads.column.stage': 'Stage',
   'leadsOrders.leads.convert': 'Convert to final order',
-  'leadsOrders.leads.convertBlocked': 'Every line needs packaging before this can become a final order',
+  'leadsOrders.leads.convertBlocked':
+    'Every line needs packaging before this can become a final order',
   'leadsOrders.leads.converted': 'converted',
   'leadsOrders.leads.convertedOrder': 'final order {id}',
   'leadsOrders.leads.empty.converted.title': 'No converted pending orders yet',
@@ -1919,7 +1962,8 @@ export const EN_MESSAGES = {
   'panels.action.rename': 'Rename',
   'panels.add.action': 'Add Office Panel',
   'panels.add.cancel': 'Cancel',
-  'panels.add.description': 'Press this, then start automatic connection on the office PC. This Master only accepts new panels without a password while you are waiting here.',
+  'panels.add.description':
+    'Press this, then start automatic connection on the office PC. This Master only accepts new panels without a password while you are waiting here.',
   'panels.add.startFailed': 'Could not start pairing',
   'panels.add.title': 'Add Office Panel',
   'panels.add.waitingBody':
@@ -1956,7 +2000,8 @@ export const EN_MESSAGES = {
   'panels.rename.label': 'Name for this office panel',
   'panels.rename.save': 'Save',
   'panels.rename.title': 'Rename "{name}"',
-  'panels.revoke.body': 'That PC is disconnected right away and goes back to its connection screen. To use it again it has to be paired again; it then gets this row back.',
+  'panels.revoke.body':
+    'That PC is disconnected right away and goes back to its connection screen. To use it again it has to be paired again; it then gets this row back.',
   'panels.revoke.cancel': 'Cancel',
   'panels.revoke.failed': 'Could not remove the panel',
   'panels.revoke.title': 'Remove "{name}"?',
@@ -2141,8 +2186,10 @@ export const EN_MESSAGES = {
   'partyAccess.error.load': 'Could not load party access',
   'partyAccess.error.save': 'Could not save the assignments',
   'partyAccess.everyone': 'Everyone',
-  'partyAccess.explainOpen': 'Nobody is assigned, so everyone can see and work on this party. Add a person to limit it to the people you choose.',
-  'partyAccess.explainRestricted': 'Only the people below can see this party and its pending and final orders. View lets them look; Manage also lets them create and edit. Remove everyone to open it again.',
+  'partyAccess.explainOpen':
+    'Nobody is assigned, so everyone can see and work on this party. Add a person to limit it to the people you choose.',
+  'partyAccess.explainRestricted':
+    'Only the people below can see this party and its pending and final orders. View lets them look; Manage also lets them create and edit. Remove everyone to open it again.',
   'partyAccess.filter.all': 'All',
   'partyAccess.filter.open': 'Open',
   'partyAccess.filter.restricted': 'Restricted',
@@ -2159,7 +2206,8 @@ export const EN_MESSAGES = {
   'partyAccess.scope.all': 'All parties',
   'partyAccess.scope.assigned': 'My parties',
   'partyAccess.searchPlaceholder': 'Search parties',
-  'partyAccess.staleSave': 'Somebody else changed this party’s access first. Reload to see their version; your changes here are not saved.',
+  'partyAccess.staleSave':
+    'Somebody else changed this party’s access first. Reload to see their version; your changes here are not saved.',
   'partyAccess.title': 'Party access',
   'product.createFailed': 'Could not create the sub product',
   'product.detail.editAction': 'Edit sub product',
@@ -2349,7 +2397,8 @@ export const EN_MESSAGES = {
   'reports.subject.label': 'Figures for',
   'reports.search': 'Search this report',
   'reports.subject.everyone': 'Everyone',
-  'reports.snapshotNote': 'This report shows what is open right now, so the date range does not apply to it.',
+  'reports.snapshotNote':
+    'This report shows what is open right now, so the date range does not apply to it.',
   'reports.truncated': 'Showing the first {shown} of {total} rows — export to get them all.',
   'reports.export.csv': 'CSV',
   'reports.export.xlsx': 'Excel',
@@ -2366,7 +2415,8 @@ export const EN_MESSAGES = {
   'validation.reports.dates.fromRequired': 'Choose a starting date for an exact range',
   'validation.reports.dates.tooWide': 'That range spans more than {maxDays} days',
   'validation.reports.format.unknown': 'That is not a format this report can be written in',
-  'validation.reports.tooManyRows': 'This report has more than {max} rows — narrow the range or choose another format',
+  'validation.reports.tooManyRows':
+    'This report has more than {max} rows — narrow the range or choose another format',
   'error.forbidden.reportsHidden': 'Reports are switched off for your role',
   'reports.topParties.cities': 'Cities',
   'settings.appearance.subtitle': 'Per-machine — never synced',
@@ -2569,8 +2619,6 @@ export const EN_MESSAGES = {
   'updates.upToDateBody': 'This is the newest build in the releases folder. Nothing to do.',
   'updates.verifying': 'Checking the file…',
 
-
-
   // --- Developer mode ---
   'developer.unlockFailed': 'Unlock failed',
   'developer.unlocked.title': 'Developer mode is active',
@@ -2601,7 +2649,8 @@ export const EN_MESSAGES = {
     'This seed had to run first-time setup itself. The pairing password it generated is shown once, here, and cannot be shown again:',
 
   'developer.tool.sample.title': 'Sample data',
-  'developer.tool.sample.description': 'Fills this Master with six months of a small sanitaryware trade — the Swisware catalogue with weights on the models it sells, parties, pending orders at every stage, final orders in progress and dispatched, remarks, party-wise records, party access, custom fields and a few records in the Recycle Bin — so every screen has something to show. Seeds the three test users first, exactly as "Seed test users" does. Runs once per installation; erase everything to start over.',
+  'developer.tool.sample.description':
+    'Fills this Master with six months of a small sanitaryware trade — the Swisware catalogue with weights on the models it sells, parties, pending orders at every stage, final orders in progress and dispatched, remarks, party-wise records, party access, custom fields and a few records in the Recycle Bin — so every screen has something to show. Seeds the three test users first, exactly as "Seed test users" does. Runs once per installation; erase everything to start over.',
   'developer.tool.sample.action': 'Seed sample data',
   'developer.tool.sample.done': 'Sample data is ready — open the dashboard',
   'developer.tool.sample.span': 'History runs from {from} to {to}.',
@@ -2627,7 +2676,8 @@ export const EN_MESSAGES = {
   'developer.tool.resetAll.confirmTitle': 'Erase this installation?',
   'developer.tool.resetAll.confirmHint':
     'What stays: the database server itself, the log files, and the data-folder location.',
-  'developer.tool.resetAll.detail.records': 'Every record — parties, products, pending orders and final orders',
+  'developer.tool.resetAll.detail.records':
+    'Every record — parties, products, pending orders and final orders',
   'developer.tool.resetAll.detail.files': 'Uploads',
   'developer.tool.resetAll.detail.people': 'Users and roles',
   'developer.tool.resetAll.detail.settings': 'Company settings',
@@ -2665,11 +2715,15 @@ export const EN_MESSAGES = {
   'developer.tool.uninstall.refused': 'Uninstall cancelled — nothing was removed',
 
   // --- Product model → variant restructure (2026-09): categories, variants, weights ---
-  'lead.add.products.categoryPlaceholder': 'Type a product name or code — e.g. OPT, one piece toilet',
-  'lead.add.products.productPlaceholder': 'Sub product of {category} — type to narrow, e.g. 41, Magenta',
+  'lead.add.products.categoryPlaceholder':
+    'Type a product name or code — e.g. OPT, one piece toilet',
+  'lead.add.products.productPlaceholder':
+    'Sub product of {category} — type to narrow, e.g. 41, Magenta',
   'lead.add.products.changeCategory': 'Change product',
-  'lead.add.products.categoryHint': 'Choose the product by name or code; its sub products come next.',
-  'lead.add.products.productHint': 'Pick a sub product. Shift+Q on an empty box finishes this product; Backspace goes back to the product bar.',
+  'lead.add.products.categoryHint':
+    'Choose the product by name or code; its sub products come next.',
+  'lead.add.products.productHint':
+    'Pick a sub product. Shift+Q on an empty box finishes this product; Backspace goes back to the product bar.',
   'lead.add.products.col.category': 'Product',
   'lead.add.products.col.variant': 'Variant',
   'lead.add.products.col.weight': 'Weight',
@@ -2678,11 +2732,14 @@ export const EN_MESSAGES = {
   'lead.add.products.noProduct': 'No sub product of this product matches that.',
   'lead.add.flow.completeSubProduct': 'Complete sub product',
   'lead.add.flow.addColour': 'Add a colour',
-  'lead.add.catalogue.goneOne': '{names} is no longer in the catalogue. Remove its line to save this order.',
-  'lead.add.catalogue.goneMany': '{names} are no longer in the catalogue. Remove their lines to save this order.',
+  'lead.add.catalogue.goneOne':
+    '{names} is no longer in the catalogue. Remove its line to save this order.',
+  'lead.add.catalogue.goneMany':
+    '{names} are no longer in the catalogue. Remove their lines to save this order.',
   'lead.add.errors.goneLines': '{names} is no longer in the catalogue. Remove this line to save.',
   'lead.add.flow.addColourPlaceholder': 'Type or pick a colour',
-  'lead.add.flow.colourKeys': 'Enter adds the highlighted colour and stays for the next. Enter on the empty box goes to the quantities.',
+  'lead.add.flow.colourKeys':
+    'Enter adds the highlighted colour and stays for the next. Enter on the empty box goes to the quantities.',
   'lead.add.draft.hintColour': 'Add at least one colour',
   'lead.add.draft.noColourList':
     'This product comes in several colours, but the company colour list is empty, so there is no colour to pick. Add colours under Fields › Values › Colour, then add the product again. Until then it is added without a colour.',
@@ -2705,8 +2762,10 @@ export const EN_MESSAGES = {
   'orders.column.variant': 'Variant',
   'orders.column.qty': 'Qty',
   'orders.column.lineWeight': 'Line weight',
-  'orders.detail.linesWithoutWeight': '{count} lines have no weight yet — the computed figure leaves them out',
-  'orders.detail.linesWithoutWeightOne': '{count} line has no weight yet — the computed figure leaves it out',
+  'orders.detail.linesWithoutWeight':
+    '{count} lines have no weight yet — the computed figure leaves them out',
+  'orders.detail.linesWithoutWeightOne':
+    '{count} line has no weight yet — the computed figure leaves it out',
   'catalog.products.column.category': 'Product',
   'catalog.products.column.codes': 'Code',
   'catalog.products.column.weight': 'Weight',
@@ -2715,28 +2774,33 @@ export const EN_MESSAGES = {
   'product.weight.missingShort': 'missing',
   'product.weight.range': '{low} – {high}',
   'product.field.category': 'Product',
-  'product.field.categoryHint': 'The product it sits under. New products are added on the Products page.',
-  'product.field.weightHint': 'Per piece. Leave blank until measured — it shows as missing, never as zero.',
+  'product.field.categoryHint':
+    'The product it sits under. New products are added on the Products page.',
+  'product.field.weightHint':
+    'Per piece. Leave blank until measured — it shows as missing, never as zero.',
   'product.group.colours': 'Colours',
   'product.multiColour.label': 'Made in every colour?',
   'product.multiColour.no': 'No — only the variants above',
   'product.multiColour.yes': 'Yes — any colour from the colour list',
   'product.multiColour.noHint': 'A pending order line quotes the variant as it is.',
-  'product.multiColour.yesHint': 'A pending order line on this product can also name a colour from the colour list (Settings → Fields → Colours).',
+  'product.multiColour.yesHint':
+    'A pending order line on this product can also name a colour from the colour list (Settings → Fields → Colours).',
   'product.field.sizePlaceholder': 'e.g. 18x12, L-27 B-15 H-26',
   'product.group.codes': 'Codes & weight',
   'product.variants.hasVariants': 'Comes in variants (colours or patterns)?',
   'product.variants.no': 'No — one code',
   'product.variants.yes': 'Yes — one code per variant',
   'product.variants.noHint': 'One product, one code, one weight.',
-  'product.variants.yesHint': 'Each colour or pattern is its own line on a pending order, with its own code and weight.',
+  'product.variants.yesHint':
+    'Each colour or pattern is its own line on a pending order, with its own code and weight.',
   'product.variants.col.label': 'Colour',
   'product.variants.col.code': 'Code',
   'product.variants.col.weight': 'Weight (kg)',
   'product.variants.labelPlaceholder': 'e.g. White, Vitrosa 41',
   'product.variants.add': '+ Add variant',
   'product.variants.remove': 'Remove variant {label}',
-  'product.variants.weightHint': 'Weights are per piece. A blank weight shows as missing on every pending order until it is entered.',
+  'product.variants.weightHint':
+    'Weights are per piece. A blank weight shows as missing on every pending order until it is entered.',
   'product.detail.category': 'Product',
   'product.detail.detailsTitle': 'Details',
   'product.detail.photoTitle': 'Photo',
@@ -2750,11 +2814,14 @@ export const EN_MESSAGES = {
   'leadsOrders.leads.column.weight': 'Weight',
   'leadsOrders.linesWithoutWeight': '{count} lines have no weight yet — the figure leaves them out',
   'developer.tool.swisware.title': 'Load the SWISWARE catalogue',
-  'developer.tool.swisware.description': 'Loads the SWISWARE catalogue shipped with the Master: its brand, the colour range, every product with its code and every sub product in catalogue final order, weights left blank for the administrator to enter. Nothing is deleted, and it is safe to press again: a sub product already in its product is skipped.',
+  'developer.tool.swisware.description':
+    'Loads the SWISWARE catalogue shipped with the Master: its brand, the colour range, every product with its code and every sub product in catalogue final order, weights left blank for the administrator to enter. Nothing is deleted, and it is safe to press again: a sub product already in its product is skipped.',
   'developer.tool.swisware.action': 'Load catalogue',
   'developer.tool.swisware.done': 'Catalogue loaded',
-  'developer.tool.swisware.loaded': 'The catalogue is in the product master. Open the Office panel’s Catalogue to enter weights.',
-  'developer.tool.swisware.alreadyPresent': 'Nothing to load — every sub product in the catalogue is already in the product master.',
+  'developer.tool.swisware.loaded':
+    'The catalogue is in the product master. Open the Office panel’s Catalogue to enter weights.',
+  'developer.tool.swisware.alreadyPresent':
+    'Nothing to load — every sub product in the catalogue is already in the product master.',
   'developer.tool.swisware.count.products': 'Products created',
   'developer.tool.swisware.count.subProducts': 'Sub products created',
   'developer.tool.swisware.count.colours': 'Colours added',
@@ -2780,7 +2847,8 @@ export const EN_MESSAGES = {
   'dashboard.stat.printPending': 'Print jobs waiting',
   'dashboard.stat.chatUnread': 'Unread messages',
   'signin.deviceCode': 'Device code',
-  'connection.deviceCodeProvisional': 'Provisional — the Master assigns the final code when this PC pairs',
+  'connection.deviceCodeProvisional':
+    'Provisional — the Master assigns the final code when this PC pairs',
 
   // --- 1.3 Phase 2: Server Master tier and master key ---
   'tier.office': 'Office',
@@ -3008,11 +3076,16 @@ export const EN_MESSAGES = {
   'office.sync.clockAhead': '{duration} ahead of the Master',
   'office.sync.clockBehind': '{duration} behind the Master',
   'office.link.offlineLongTitle': 'Offline for over an hour',
-  'office.link.offlineLong': 'This PC has not reached the Master for {duration}. Work saved here is kept and will sync when the link is back.',
-  'office.link.clockSkew': 'This PC\'s clock is {duration} away from the Master\'s. Set the correct time so changes made here are put in the right order.',
-  'office.link.notRecognised': 'The Master at {host} does not recognise this panel. The pairing is kept and this panel keeps trying; ask an administrator to check Office panels on the Master.',
-  'office.link.rediscovered': 'The Master moved from {from} to {to}. This panel now uses the new address.',
-  'office.link.rediscoveryRefused': 'Something at {address} answered as this panel\'s Master but could not prove it. This panel stays with the saved address.',
+  'office.link.offlineLong':
+    'This PC has not reached the Master for {duration}. Work saved here is kept and will sync when the link is back.',
+  'office.link.clockSkew':
+    "This PC's clock is {duration} away from the Master's. Set the correct time so changes made here are put in the right order.",
+  'office.link.notRecognised':
+    'The Master at {host} does not recognise this panel. The pairing is kept and this panel keeps trying; ask an administrator to check Office panels on the Master.',
+  'office.link.rediscovered':
+    'The Master moved from {from} to {to}. This panel now uses the new address.',
+  'office.link.rediscoveryRefused':
+    "Something at {address} answered as this panel's Master but could not prove it. This panel stays with the saved address.",
   'master.sync.serverUnreachable': 'Reconnecting to the Master server…',
   'panels.offlineFor': 'Offline for {duration}',
   'panels.updateNeeded': 'Update needed',
@@ -3024,7 +3097,8 @@ export const EN_MESSAGES = {
   'validation.chat.bodyRequired': 'Write a message first',
   'validation.chat.bodyTooLong': 'That message is too long',
   'validation.chat.tooManyRefs': 'A message can carry at most five records',
-  'validation.chat.refNotFound': 'That record cannot be shared: it does not exist or is outside your access',
+  'validation.chat.refNotFound':
+    'That record cannot be shared: it does not exist or is outside your access',
   'validation.chat.assigneeRequired': 'Choose at least one person for the task',
   'validation.chat.dueInvalid': 'Enter a valid due date',
   'validation.chat.roomArchived': 'This group is archived',
@@ -3051,7 +3125,8 @@ export const EN_MESSAGES = {
   'activity.chat_room.restored': '{actor} restored the chat group {name}',
   'activity.chat_room.member_added': '{actor} added {member} to the chat group {name}',
   'activity.chat_room.member_removed': '{actor} removed {member} from the chat group {name}',
-  'activity.chat_room.role_changed': '{actor} changed the role of {member} in the chat group {name}',
+  'activity.chat_room.role_changed':
+    '{actor} changed the role of {member} in the chat group {name}',
   'activity.chat_message.removed': '{actor} removed a message by {author} in {name}',
   'activity.chat_message.pinned': '{actor} pinned a message in {name}',
   'activity.chat_message.unpinned': '{actor} unpinned a message in {name}',
@@ -3074,7 +3149,8 @@ export const EN_MESSAGES = {
   'chat.sub.rooms': 'Rooms',
   'chat.sub.tasks': 'My tasks',
   'chat.sub.groups': 'Groups',
-  'chat.offline': 'The Master is out of reach, so chat cannot refresh. Messages you send are kept and go out when it is back.',
+  'chat.offline':
+    'The Master is out of reach, so chat cannot refresh. Messages you send are kept and go out when it is back.',
   'chat.error.load': 'Could not load the chat',
   'chat.error.send': 'Could not send the message',
   'chat.error.edit': 'Could not change the message',
@@ -3103,7 +3179,8 @@ export const EN_MESSAGES = {
   'chat.search.results': 'Messages found',
   'chat.search.none': 'No messages match',
   'chat.access.title': 'Chat rights',
-  'chat.access.hint': 'Some chat features are off for your role. You can ask an administrator for them.',
+  'chat.access.hint':
+    'Some chat features are off for your role. You can ask an administrator for them.',
   'chat.access.ask': 'Request access: {right}',
   'chat.access.sent': 'Your request was sent to the administrators',
   'chat.access.nobody': 'There is no administrator to send the request to',
@@ -3194,7 +3271,8 @@ export const EN_MESSAGES = {
   'presence.more': '+{count} more',
   'presence.serverMaster': 'Server Master',
   'validation.presence.invalid': 'That record view update is not valid',
-  'lead.add.savedProvisional': 'Pending Order saved as Provisional — it gets its number when the Master is reachable',
+  'lead.add.savedProvisional':
+    'Pending Order saved as Provisional — it gets its number when the Master is reachable',
   'lead.numbered.toast': 'Provisional pending order is now {number}',
   'lead.add.owner': 'Owner',
   'lead.add.owner.me': 'Me',
@@ -3202,7 +3280,7 @@ export const EN_MESSAGES = {
   'lead.conflict.keepMine': 'Keep mine',
   // --- 1.3 Phase 7: the Printroom and the auto-print station ---
   'permission.print.send': 'Send notes to the Printroom',
-  'permission.print.station': 'Run a Printroom: see and print every party\'s jobs',
+  'permission.print.station': "Run a Printroom: see and print every party's jobs",
   'nav.printroom': 'Printroom',
   'notification.print.printed': '{name} printed your note for {party}',
   'activity.print_job.sent': '{actor} sent the note for {number} to the Printroom',
@@ -3255,11 +3333,13 @@ export const EN_MESSAGES = {
   'printroom.job.printedAt': 'Printed on {printer}',
   'printroom.job.cancelledBy': 'Cancelled by {name}',
   'printroom.job.holding': 'Being printed at {station}',
-  'printroom.payloadExpired': 'This job\'s note has been removed (notes are kept for 30 days after printing). Print it again from the order.',
+  'printroom.payloadExpired':
+    "This job's note has been removed (notes are kept for 30 days after printing). Print it again from the order.",
   'printroom.empty.title': 'Nothing waiting',
   'printroom.empty.description': 'Notes sent to the Printroom wait here until they are printed.',
   'printroom.empty.generic': 'No jobs here',
-  'printroom.error.offline': 'The Master is not reachable, so the Printroom cannot be shown. You can still print from an order on this PC.',
+  'printroom.error.offline':
+    'The Master is not reachable, so the Printroom cannot be shown. You can still print from an order on this PC.',
   'printroom.error.load': 'Could not load the Printroom',
   'printroom.error.action': 'The Printroom could not do that: {error}',
   'printroom.station.title': 'This PC',
@@ -3267,7 +3347,8 @@ export const EN_MESSAGES = {
   'printroom.station.printerNone': 'Choose a printer',
   'printroom.station.name': 'Name of this Printroom',
   'printroom.station.autoPrint': 'Auto-print new jobs on this PC',
-  'printroom.station.autoPrintHint': 'Keep OrderBook open and signed in on this PC. New jobs print by themselves and are marked printed.',
+  'printroom.station.autoPrintHint':
+    'Keep OrderBook open and signed in on this PC. New jobs print by themselves and are marked printed.',
   'printroom.station.autoPrintNeedsPrinter': 'Choose a printer first',
   'printroom.station.list': 'Printrooms',
   'printroom.station.online': 'Online',
@@ -3287,8 +3368,10 @@ export const EN_MESSAGES = {
   'password.hide': 'Hide password',
   'password.capsLock': 'Caps Lock is on',
   // 1.4.3: device warnings on the sign-in screen
-  'device.warning.lowMemory': 'Low memory: this PC has {memory} GB in total. OrderBook is built for 8 GB or more, so it may feel slow or stall here.',
-  'device.warning.fewCores': 'Few processor cores: this PC has {cores}. With 2 or fewer, OrderBook can feel slow when several things happen at once.',
+  'device.warning.lowMemory':
+    'Low memory: this PC has {memory} GB in total. OrderBook is built for 8 GB or more, so it may feel slow or stall here.',
+  'device.warning.fewCores':
+    'Few processor cores: this PC has {cores}. With 2 or fewer, OrderBook can feel slow when several things happen at once.',
   // 1.4 D4: note buttons, preview
   'orderNote.column.notes': 'Notes',
   'orderNote.previewButton': 'Preview',
@@ -3340,7 +3423,8 @@ export const EN_MESSAGES = {
   'listFilter.gst.yes': 'Has a GST number',
   'listFilter.gst.no': 'No GST number',
   'listFilter.clear': 'Clear filters',
-  'permission.catalog.lists.manage': 'Add, rename, reorder and remove grades, packaging types and brands',
+  'permission.catalog.lists.manage':
+    'Add, rename, reorder and remove grades, packaging types and brands',
 
   // 1.4 D2: stock and inventory removed, replacement wording
   'validation.stock.retired': 'Stock is no longer part of OrderBook',
@@ -3362,37 +3446,45 @@ export const EN_MESSAGES = {
   'updates.progress.failed': 'The download failed: {error}',
   'updates.progress.figures': '{done} of {total} · {speed} · {eta} left',
   'updates.saveAll.unsavedTitle': 'Some work cannot be saved yet',
-  'updates.saveAll.unsavedBody': 'Everything that could be saved has been. These cannot be saved as they stand and will be lost if you update now:',
+  'updates.saveAll.unsavedBody':
+    'Everything that could be saved has been. These cannot be saved as they stand and will be lost if you update now:',
   'updates.saveAll.updateAnyway': 'Update anyway',
   'updates.saveAll.leadFor': 'New lead for {party}',
   'updates.saveAll.newLead': 'New lead (no party chosen yet)',
   'updates.auto.title': 'Nightly update',
-  'updates.auto.help': 'Every night at the chosen time this Master installs a newer version by itself and starts again. A copy of the data is taken first, and the server serves the Offices as soon as it is up: nobody has to sign in. The PC must be switched on and signed in to Windows.',
+  'updates.auto.help':
+    'Every night at the chosen time this Master installs a newer version by itself and starts again. A copy of the data is taken first, and the server serves the Offices as soon as it is up: nobody has to sign in. The PC must be switched on and signed in to Windows.',
   'updates.auto.enabled': 'Update this Master automatically every night',
   'updates.auto.time': 'Time',
   'updates.auto.save': 'Save',
   'updates.auto.saved': 'Nightly update saved',
   'updates.auto.never': 'No nightly update has run yet.',
   'updates.auto.updated': 'Updated to {version} automatically at {at}.',
-  'updates.auto.waiting': '{version} was prepared at {at} but has not been installed. Installing without anyone present needs the Master to run as administrator; use Install now instead.',
+  'updates.auto.waiting':
+    '{version} was prepared at {at} but has not been installed. Installing without anyone present needs the Master to run as administrator; use Install now instead.',
   'updates.auto.skipped': 'At {at} there was nothing newer to install.',
   'updates.auto.failed': 'The update at {at} could not be prepared: {reason}',
   'updates.auto.failedBody': 'The update could not be prepared: {error}',
   'updates.required.title': 'Update needed',
-  'updates.required.body': 'This Office Panel is on version {mine} but the Master Panel is on {master}. Update this panel to continue; the two must be on the same version.',
-  'notification.update.available': 'OrderBook {version} is available. Open App update to install it.',
+  'updates.required.body':
+    'This Office Panel is on version {mine} but the Master Panel is on {master}. Update this panel to continue; the two must be on the same version.',
+  'notification.update.available':
+    'OrderBook {version} is available. Open App update to install it.',
   'validation.autoUpdate.time': 'The update time must be a time of day, like 23:00.',
   'activity.master_update.schedule_updated': '{actor} changed the nightly update schedule',
-  'notification.update.installing': 'The Master is restarting to install OrderBook {version}. Panels reconnect by themselves in a minute or two.',
+  'notification.update.installing':
+    'The Master is restarting to install OrderBook {version}. Panels reconnect by themselves in a minute or two.',
   'updates.saveAll.party': 'Party {name}',
   'updates.saveAll.product': 'Product {name}',
   'updates.saveAll.listValue': 'List value {name}',
   'updates.saveAll.setting': 'Setting {name}',
-  'updates.saveAll.newUser': 'New user {name} (the password is shown once, so the user is not created for you)',
+  'updates.saveAll.newUser':
+    'New user {name} (the password is shown once, so the user is not created for you)',
   'updates.saveAll.role': 'Role {name}',
   'updates.saveAll.user': 'User {name}',
   'updates.saveAll.field': 'Custom field {name}',
-  'updates.saveAll.apiKey': 'New API key {name} (the key is shown once, so it is not issued for you)',
+  'updates.saveAll.apiKey':
+    'New API key {name} (the key is shown once, so it is not issued for you)',
   'updates.saveAll.connector': 'Connector {name}',
   'updates.saveAll.mapping': 'Field mapping for {name}',
   'updates.saveAll.partyAccess': 'Who can see {name}',
@@ -3402,10 +3494,12 @@ export const EN_MESSAGES = {
   'updates.saveAll.chatMessage': 'Chat message not sent: "{text}"',
   'updates.saveAll.password': 'Password change (it signs you out, so it is not applied for you)',
   'updates.saveAll.recordNote': 'Note not added: "{text}"',
-  'updates.saveAll.storagePath': 'New data folder not applied (moving the company data is not done for you)',
+  'updates.saveAll.storagePath':
+    'New data folder not applied (moving the company data is not done for you)',
   'updates.saveAll.leadEdit': 'Changes to the pending order for {party}',
   'updates.waiting.title': 'Waiting for the Master to update',
-  'updates.waiting.body': 'This Office Panel is on version {mine}, which is newer than the Master Panel ({master}). It opens when the Master has been updated to the same version. This screen checks again by itself.',
+  'updates.waiting.body':
+    'This Office Panel is on version {mine}, which is newer than the Master Panel ({master}). It opens when the Master has been updated to the same version. This screen checks again by itself.',
   'updates.saveAll.vehicle': 'Vehicle number {number}',
   'updates.saveAll.stationName': 'Printroom station name {name}',
   // Party Access D1: list screen (summary strip, toolbar, row action, empty states)
@@ -3440,11 +3534,13 @@ export const EN_MESSAGES = {
   'partyAccess.editor.unsaved': 'Unsaved changes',
   'partyAccess.editor.noChanges': 'No changes yet',
   'partyAccess.editor.openWarningTitle': 'Everyone will be able to see this party',
-  'partyAccess.editor.openWarningBody': 'You removed the last person. Saving makes {name} open to everyone again.',
+  'partyAccess.editor.openWarningBody':
+    'You removed the last person. Saving makes {name} open to everyone again.',
   'partyAccess.editor.levelFor': 'Access level for {name}',
   'partyAccess.editor.removeFor': 'Remove {name}',
   'partyAccess.editor.deactivated': 'Inactive user',
-  'partyAccess.editor.deactivatedHelp': 'Inactive users keep their access in case they come back. Remove them to clear it.',
+  'partyAccess.editor.deactivatedHelp':
+    'Inactive users keep their access in case they come back. Remove them to clear it.',
   'partyAccess.editor.addLabel': 'Add a person to this party',
   'partyAccess.editor.addPlaceholder': 'Add a person — type a name or role',
   'partyAccess.editor.allAssigned': 'Everyone is already assigned',
@@ -3462,7 +3558,8 @@ export const EN_MESSAGES = {
   'partyAccess.editor.bulkAdd.other': 'Add {count} people',
   'partyAccess.editor.copyButton': 'Copy access from another party',
   'partyAccess.editor.copyTitle': 'Copy access from another party',
-  'partyAccess.editor.copyHelp': 'Adds the people who can see that party. Anybody already here keeps their level.',
+  'partyAccess.editor.copyHelp':
+    'Adds the people who can see that party. Anybody already here keeps their level.',
   'partyAccess.editor.copySearch': 'Search parties by name, code or city',
   'partyAccess.editor.copyOpenHint': 'Open to everyone',
   'partyAccess.editor.copyPeopleHint': '{count} people',
@@ -3481,25 +3578,41 @@ export const EN_MESSAGES = {
   'partyAccess.editor.readOnlyOpen': 'Everyone can see and work on this party.',
   'partyAccess.editor.readOnlyRestricted': 'Only the people below can see this party.',
   // Connection D1: add-connection on the Office side (errors, test, set-up, removal, unpair)
-  'connection.error.noMaster': 'No Master Panel answered. Check that the Master PC is switched on and on the same Wi-Fi or network as this PC. A firewall or VPN on either PC can also block the search. Try again, or enter the Master’s address yourself.',
-  'connection.error.notAccepting': 'A Master Panel answered, but it is not accepting new panels. On the Master, open Office panels and press “Add Office Panel” (and check that automatic pairing is switched on), then try again.',
-  'connection.error.multipleMasters': 'More than one Master Panel answered. Choose the one this PC should join.',
-  'connection.error.networkUnavailable': 'This PC is not connected to a network. Connect to the shop’s Wi-Fi or cable, then try again.',
+  'connection.error.noMaster':
+    'No Master Panel answered. Check that the Master PC is switched on and on the same Wi-Fi or network as this PC. A firewall or VPN on either PC can also block the search. Try again, or enter the Master’s address yourself.',
+  'connection.error.notAccepting':
+    'A Master Panel answered, but it is not accepting new panels. On the Master, open Office panels and press “Add Office Panel” (and check that automatic pairing is switched on), then try again.',
+  'connection.error.multipleMasters':
+    'More than one Master Panel answered. Choose the one this PC should join.',
+  'connection.error.networkUnavailable':
+    'This PC is not connected to a network. Connect to the shop’s Wi-Fi or cable, then try again.',
   'connection.error.cancelled': 'Stopped.',
-  'connection.error.invalidAddress': 'Enter the Master’s address as numbers such as {example}, or as its PC name.',
+  'connection.error.invalidAddress':
+    'Enter the Master’s address as numbers such as {example}, or as its PC name.',
   'connection.error.emptyAddress': 'Enter the Master’s address.',
-  'connection.error.invalidPort': 'The port must be a whole number from 1 to {max} (the Master normally uses {port}).',
+  'connection.error.invalidPort':
+    'The port must be a whole number from 1 to {max} (the Master normally uses {port}).',
   'connection.error.passwordMissing': 'Enter the pairing password.',
-  'connection.error.timeout': 'No answer from {address} within {seconds} seconds. Check the address, and that the Master PC is on and on the same network.',
-  'connection.error.unreachable': 'Cannot reach {address}. Check the address and that both PCs are on the same network.',
-  'connection.error.connectionRefused': '{address} is reachable, but nothing is listening on port {port}. Check the port, and that the Master Panel is running.',
-  'connection.error.hostNotFound': 'No PC called {host} was found. Check the name, or use its address.',
-  'connection.error.notAMaster': 'Something answered at {address}, but it is not a Master Panel. Check the address and the port.',
-  'connection.error.wrongPassword': 'That pairing password is not correct. Check it and try again. If it was lost, whoever runs the Master PC can set a new one in Settings on the Master Panel.',
-  'connection.error.rateLimited': 'Too many attempts from this PC. Wait {seconds} seconds and try again.',
-  'connection.error.differentMaster': 'The Master at that address is not the one you meant. Check the address.',
-  'connection.error.setupIncomplete': 'That Master Panel has not finished its first-time setup yet.',
-  'connection.error.autoPairingOff': 'This Master Panel is open for new panels, but only with the pairing password. Choose manual connection and enter the Master’s address and the pairing password.',
+  'connection.error.timeout':
+    'No answer from {address} within {seconds} seconds. Check the address, and that the Master PC is on and on the same network.',
+  'connection.error.unreachable':
+    'Cannot reach {address}. Check the address and that both PCs are on the same network.',
+  'connection.error.connectionRefused':
+    '{address} is reachable, but nothing is listening on port {port}. Check the port, and that the Master Panel is running.',
+  'connection.error.hostNotFound':
+    'No PC called {host} was found. Check the name, or use its address.',
+  'connection.error.notAMaster':
+    'Something answered at {address}, but it is not a Master Panel. Check the address and the port.',
+  'connection.error.wrongPassword':
+    'That pairing password is not correct. Check it and try again. If it was lost, whoever runs the Master PC can set a new one in Settings on the Master Panel.',
+  'connection.error.rateLimited':
+    'Too many attempts from this PC. Wait {seconds} seconds and try again.',
+  'connection.error.differentMaster':
+    'The Master at that address is not the one you meant. Check the address.',
+  'connection.error.setupIncomplete':
+    'That Master Panel has not finished its first-time setup yet.',
+  'connection.error.autoPairingOff':
+    'This Master Panel is open for new panels, but only with the pairing password. Choose manual connection and enter the Master’s address and the pairing password.',
   'connection.error.refused': 'The Master Panel refused this pairing request.',
   'connection.error.unexpected': 'Pairing failed unexpectedly. Try again.',
   'connection.action.tryAgain': 'Try again',
@@ -3516,66 +3629,91 @@ export const EN_MESSAGES = {
   'connection.test.ok': 'Found a Master Panel at {address} (version {version}).',
   'connection.test.starting': 'It is still starting. Wait a minute and test again.',
   'connection.test.same': 'Same version as this PC.',
-  'connection.test.masterOlder': 'The Master is on version {master} and this PC on {mine}. This PC is newer, so after pairing it will wait until the Master has been updated.',
-  'connection.test.masterNewer': 'The Master is on version {master} and this PC on {mine}. After pairing, this PC will ask to update to match.',
+  'connection.test.masterOlder':
+    'The Master is on version {master} and this PC on {mine}. This PC is newer, so after pairing it will wait until the Master has been updated.',
+  'connection.test.masterNewer':
+    'The Master is on version {master} and this PC on {mine}. After pairing, this PC will ask to update to match.',
   'connection.test.unknown': 'Could not compare the versions.',
   'connection.setup.title': 'Setting up this PC',
   'connection.setup.connecting': 'Connecting to {company}…',
   'connection.setup.receiving': 'Receiving {company}’s data…',
   'connection.setup.ready': 'Connected to {company}.',
   'connection.setup.continue': 'Continue',
-  'connection.setup.slow': 'This is taking longer than usual. The Master may be busy. You can wait, or continue and let it finish in the background.',
+  'connection.setup.slow':
+    'This is taking longer than usual. The Master may be busy. You can wait, or continue and let it finish in the background.',
   'connection.setup.failed': 'Could not reach the Master: {reason}',
-  'connection.setup.newMaster': 'This PC was connected to a different Master before. That company’s saved data was cleared.',
-  'connection.setup.parked': '{count} unsent changes from the other Master were set aside, not sent.',
+  'connection.setup.newMaster':
+    'This PC was connected to a different Master before. That company’s saved data was cleared.',
+  'connection.setup.parked':
+    '{count} unsent changes from the other Master were set aside, not sent.',
   'connection.removed.title': 'This PC was removed by the Master Panel',
-  'connection.removed.body': '{company} removed this PC on {when}. Pair it with the Master again to carry on.',
-  'connection.removed.unsent.one': '{count} change made here was never sent. If you reconnect to the same Master it will be sent; if you connect to a different one it is set aside.',
-  'connection.removed.unsent.other': '{count} changes made here were never sent. If you reconnect to the same Master they will be sent; if you connect to a different one they are set aside.',
+  'connection.removed.body':
+    '{company} removed this PC on {when}. Pair it with the Master again to carry on.',
+  'connection.removed.unsent.one':
+    '{count} change made here was never sent. If you reconnect to the same Master it will be sent; if you connect to a different one it is set aside.',
+  'connection.removed.unsent.other':
+    '{count} changes made here were never sent. If you reconnect to the same Master they will be sent; if you connect to a different one they are set aside.',
   'connection.unpair.action': 'Connect to a different Master',
   'connection.unpair.title': 'Leave this Master?',
-  'connection.unpair.body': 'This PC will stop using {company}, forget its saved data and its list of people who can sign in offline, and tell the Master it is leaving, if the Master can be reached. You can connect it again afterwards, and the Master gives this PC its old entry back.',
+  'connection.unpair.body':
+    'This PC will stop using {company}, forget its saved data and its list of people who can sign in offline, and tell the Master it is leaving, if the Master can be reached. You can connect it again afterwards, and the Master gives this PC its old entry back.',
   'connection.unpair.confirm': 'Leave this Master',
   'connection.unpair.pendingTitle': 'Changes that were never sent',
-  'connection.unpair.pendingBody': '{count} changes made on this PC have not reached the Master. If you leave now they stay on this PC: they are sent if you connect to the same Master again, and never to a different one. Or discard them now.',
-  'connection.unpair.pendingBlocked': '{count} changes made on this PC were never sent to the Master.',
+  'connection.unpair.pendingBody':
+    '{count} changes made on this PC have not reached the Master. If you leave now they stay on this PC: they are sent if you connect to the same Master again, and never to a different one. Or discard them now.',
+  'connection.unpair.pendingBlocked':
+    '{count} changes made on this PC were never sent to the Master.',
   'connection.unpair.keep': 'Keep them and leave',
   'connection.unpair.discard': 'Discard them and leave',
-  'connection.unpair.signInRequired': 'Sign in as somebody who manages panels to leave this Master.',
-  'connection.unpair.discardNeedsSignIn': 'Discarding unsent changes needs somebody signed in who manages panels.',
+  'connection.unpair.signInRequired':
+    'Sign in as somebody who manages panels to leave this Master.',
+  'connection.unpair.discardNeedsSignIn':
+    'Discarding unsent changes needs somebody signed in who manages panels.',
   'connection.unpair.forbidden': 'Only somebody who manages panels can leave this Master.',
   'connection.unpair.notPaired': 'This PC is not paired.',
   'connection.unpair.done': 'This PC has left the Master.',
   // Connection audit (D2)
-  'validation.panel.nameTaken': 'Another Office Panel is already called "{name}". Choose a different name.',
+  'validation.panel.nameTaken':
+    'Another Office Panel is already called "{name}". Choose a different name.',
   'panels.add.timeLeft': 'This Master accepts a new panel for {time} more.',
   'panels.add.expiredTitle': 'The window closed.',
-  'panels.add.expiredBody': 'No panel joined in 5 minutes, so this Master stopped accepting new ones. Press Add Office Panel to open it again.',
+  'panels.add.expiredBody':
+    'No panel joined in 5 minutes, so this Master stopped accepting new ones. Press Add Office Panel to open it again.',
   'panels.add.autoOffTitle': 'Joining without the password is switched off',
-  'panels.add.autoOffBody': 'A new Office Panel has to use manual connection and the pairing password. You can allow automatic joining again in Settings.',
+  'panels.add.autoOffBody':
+    'A new Office Panel has to use manual connection and the pairing password. You can allow automatic joining again in Settings.',
   'panels.add.manualTitle': 'To connect by address instead',
-  'panels.add.manualBody': 'On the office PC choose manual connection and enter one of these addresses and the pairing password. The password was shown once when this Master was set up. If it is lost, whoever runs the Master PC can set a new one in Settings, on the Connection tab, with the master key.',
-  'panels.add.discoveryDown': 'Automatic search is not running ({reason}), so panels cannot find this Master by themselves. Use the address below. This Master tries again every 30 seconds.',
-  'panels.add.reinstallNote': 'A PC that was removed from this list gets its old row back when it pairs again. A PC that was reinstalled without being removed first joins as a new panel: remove its old row once the new one appears.',
+  'panels.add.manualBody':
+    'On the office PC choose manual connection and enter one of these addresses and the pairing password. The password was shown once when this Master was set up. If it is lost, whoever runs the Master PC can set a new one in Settings, on the Connection tab, with the master key.',
+  'panels.add.discoveryDown':
+    'Automatic search is not running ({reason}), so panels cannot find this Master by themselves. Use the address below. This Master tries again every 30 seconds.',
+  'panels.add.reinstallNote':
+    'A PC that was removed from this list gets its old row back when it pairs again. A PC that was reinstalled without being removed first joins as a new panel: remove its old row once the new one appears.',
   'panels.rotate.action': 'Reissue secret',
   'panels.rotate.title': 'Reissue the secret for "{name}"?',
-  'panels.rotate.body': 'This panel gets a new secret over its live connection and carries on working. Nothing has to be typed. If the panel is switched off while this happens it has to be paired again, so only do it while the panel shows Connected.',
+  'panels.rotate.body':
+    'This panel gets a new secret over its live connection and carries on working. Nothing has to be typed. If the panel is switched off while this happens it has to be paired again, so only do it while the panel shows Connected.',
   'panels.rotate.confirm': 'Reissue',
   'panels.rotate.done': '"{name}" received a new secret.',
   'panels.rotate.notDelivered': '"{name}" could not be reached, so it has to be paired again.',
   'panels.rotate.failed': 'Could not reissue the secret',
   'panels.list.showRemoved': 'Show removed ({count})',
   'panels.list.hideRemoved': 'Hide removed',
-  'activity.office_panel.re_paired': '{actor} paired the office panel {name} again, replacing its earlier pairing',
+  'activity.office_panel.re_paired':
+    '{actor} paired the office panel {name} again, replacing its earlier pairing',
   'logs.action.re_paired': 'Paired again',
-  'error.unauthorized.pairingAutoOff': 'This Master Panel is open for new panels, but only with the pairing password. On the office PC choose manual connection and enter the Master address and the pairing password.',
+  'error.unauthorized.pairingAutoOff':
+    'This Master Panel is open for new panels, but only with the pairing password. On the office PC choose manual connection and enter the Master address and the pairing password.',
   'activity.office_panel.left': 'The office panel {name} unpaired itself from this Master',
   'logs.action.left': 'Left',
   'panels.empty.noActive': 'No active office panels',
-  'panels.empty.noActiveBody': 'Every panel that was paired has been removed. Use Show removed to see them, or add a panel again.',
-  'panels.add.autoOffNotice': 'Automatic joining is switched off — Offices must use the pairing password.',
+  'panels.empty.noActiveBody':
+    'Every panel that was paired has been removed. Use Show removed to see them, or add a panel again.',
+  'panels.add.autoOffNotice':
+    'Automatic joining is switched off — Offices must use the pairing password.',
   'panels.add.autoOffLink': 'Change this in Settings',
-  'panels.add.descriptionAutoOff': 'Press this to open a 5-minute window. A new office PC then joins with manual connection, the Master address below and the pairing password.',
+  'panels.add.descriptionAutoOff':
+    'Press this to open a 5-minute window. A new office PC then joins with manual connection, the Master address below and the pairing password.',
   // Save to .txt (1.4.3)
   'saveText.button': 'Save to .txt',
   'saveText.done': 'Saved to this PC (your Downloads folder).',
@@ -3585,7 +3723,8 @@ export const EN_MESSAGES = {
   'saveText.file.saved': 'Saved',
   'saveText.file.application': 'Application',
   'saveText.file.device': 'Device',
-  'saveText.file.keepPrivate': 'Keep this file private. It holds values that are shown only once. Delete it when you no longer need it.',
+  'saveText.file.keepPrivate':
+    'Keep this file private. It holds values that are shown only once. Delete it when you no longer need it.',
   'saveText.title.firstRun': 'First-run details',
   'saveText.title.serverMasters': 'Server Master accounts',
   'saveText.title.passwordReset': 'Server Master password reset',
@@ -3630,7 +3769,8 @@ export const EN_MESSAGES = {
   'notices.board.upToDate': 'You are up to date.',
   'notices.board.markRead': 'Mark as read',
   'notices.board.markAllRead': 'Mark all as read',
-  'notices.board.offlineNote': 'Marking a notice as read needs the connection to the Master. You can still read them.',
+  'notices.board.offlineNote':
+    'Marking a notice as read needs the connection to the Master. You can still read them.',
   'notices.board.emptyTitle': 'No notices',
   'notices.board.emptyBody': 'Notices from the company appear here.',
   'notices.board.loadFailed': 'Could not load the notices',
@@ -3679,7 +3819,8 @@ export const EN_MESSAGES = {
   'notices.editor.priorityLabel': 'Priority',
   'notices.editor.pinned': 'Pin to the top of the board',
   'notices.editor.untilLabel': 'Show until',
-  'notices.editor.untilHint': 'The last day it is shown. Leave empty to keep it up until you remove it.',
+  'notices.editor.untilHint':
+    'The last day it is shown. Leave empty to keep it up until you remove it.',
   'notices.editor.clearDate': 'No end date',
   'notices.editor.audienceLabel': 'Who sees it',
   'notices.editor.audienceAll': 'Everyone',
