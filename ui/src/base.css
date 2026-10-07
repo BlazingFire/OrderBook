@@ -255,30 +255,32 @@
   transform: none;
 }
 
-/* Segmented control (theme switcher, density) */
+/* Segmented control (theme switcher, density), per the Navigation artboard: a sunken track,
+ * the chosen segment a raised chip with a hairline. */
 .ob-seg {
   display: inline-flex;
-  border: 1px solid var(--line);
+  padding: var(--s-2);
   border-radius: var(--r-md);
-  overflow: hidden;
+  background: var(--bg-sunken);
 }
 .ob-seg > button {
   height: var(--ctl-h-sm);
   padding: 0 var(--s-12);
+  border-radius: var(--r-sm);
   font-size: var(--t-small-size);
-  background: var(--bg-surface);
-  color: var(--fg-tertiary);
+  font-weight: 500;
+  background: transparent;
+  color: var(--fg-secondary);
   transition: background-color var(--d-fast) var(--e-standard);
 }
-.ob-seg > button + button {
-  border-left: 1px solid var(--line);
-}
 .ob-seg > button:hover {
-  background: var(--bg-hover);
+  color: var(--fg-primary);
 }
 .ob-seg > button[aria-pressed='true'] {
-  background: var(--accent);
-  color: var(--fg-on-accent);
+  background: var(--bg-surface);
+  color: var(--fg-primary);
+  font-weight: 550;
+  box-shadow: 0 0 0 1px var(--line);
 }
 .ob-seg > button:focus-visible {
   outline: 2px solid var(--line-focus);
@@ -289,10 +291,10 @@
   opacity: 0.55;
 }
 .ob-seg > button:disabled:hover {
-  background: var(--bg-surface);
+  background: transparent;
 }
 .ob-seg > button[aria-pressed='true']:disabled:hover {
-  background: var(--accent);
+  background: var(--bg-surface);
 }
 
 /*
@@ -1492,6 +1494,30 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
 .ob-sidebar--collapsed {
   width: var(--shell-sidebar-collapsed-w);
 }
+/* Collapsed (Navigation artboard): 32px square icon buttons, centred, with a tooltip. */
+.ob-sidebar--collapsed .ob-sidebar-nav {
+  padding: var(--s-12) 0;
+}
+/* A scroll bar would shove the centred icons off the middle of a 52px column; the wheel still scrolls. */
+.ob-sidebar--collapsed .ob-sidebar-nav {
+  scrollbar-width: none;
+}
+.ob-sidebar--collapsed .ob-sidebar-nav::-webkit-scrollbar {
+  display: none;
+}
+.ob-sidebar--collapsed .ob-navitem-main {
+  flex: none;
+  width: 2.2857rem;
+  height: 2.2857rem;
+  min-height: 0;
+  padding: 0;
+  margin: 0 auto;
+  justify-content: center;
+}
+.ob-sidebar--collapsed .ob-sidebar-brand {
+  justify-content: center;
+  padding: 0;
+}
 
 .ob-sidebar-brand {
   height: var(--shell-topbar-h);
@@ -1512,7 +1538,8 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
 }
 
 .ob-sidebar-wordmark {
-  font-size: 1.0714rem;
+  /* The in-app lockup (Main artboard): mark 24, type 18, gap 8. */
+  font-size: 1.2857rem;
   font-weight: 600;
   letter-spacing: -0.02em;
 }
@@ -1520,14 +1547,19 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
 .ob-sidebar-nav {
   flex: 1;
   overflow-y: auto;
-  padding: var(--s-12) var(--s-8);
+  padding: var(--s-4) var(--s-8);
 }
 
 .ob-navgroup {
-  padding: var(--s-8) 0 var(--s-2);
+  padding: 0;
 }
 
+/* Sidebar artboard: a 28px band, the label sitting on its bottom edge. */
 .ob-navgroup-label {
+  display: flex;
+  align-items: flex-end;
+  box-sizing: border-box;
+  height: 2rem;
   padding: 0 var(--s-8) var(--s-4);
 }
 
@@ -1543,11 +1575,14 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
 .ob-navitem-main {
   display: flex;
   align-items: center;
-  gap: var(--s-8);
+  /* Sidebar artboard: 28px rows, icon and label 10px apart. The row may grow to a
+   * second line (label wrap) but is never shorter. */
+  gap: 0.7143rem;
   flex: 1;
   min-width: 0;
-  padding: var(--s-6) var(--s-8);
-  border-radius: var(--r-sm);
+  min-height: 2rem;
+  padding: var(--s-4) var(--s-8);
+  border-radius: var(--r-md);
   color: inherit;
   transition: background-color var(--d-fast) var(--e-standard);
 }
@@ -1557,34 +1592,7 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
 }
 .ob-navitem-main svg {
   flex: none;
-  opacity: 0.85;
 }
-/* 1.4 R18: a module's Basic Home drawing as its sidebar icon, in the text colour. */
-.ob-navglyph {
-  --tile-paper: currentColor;
-  --tile-ink: var(--bg-surface);
-  --tile-spark: currentColor;
-  --tile-tick: currentColor;
-  --tile-led: currentColor;
-  --tile-water: currentColor;
-  --tile-tint-green: currentColor;
-  --tile-tint-orange: currentColor;
-  --tile-tint-purple: currentColor;
-  --tile-tint-pink: currentColor;
-  opacity: 1;
-}
-.ob-navglyph [fill*='tint'],
-.ob-navglyph [fill*='spark'],
-.ob-navglyph [fill*='water'] {
-  fill-opacity: 0.5;
-}
-.ob-navitem-main svg.ob-navglyph {
-  opacity: 0.9;
-}
-.ob-navitem-main[aria-current='page'] svg.ob-navglyph {
-  --tile-ink: var(--accent-tint);
-}
-
 .ob-navitem-main[aria-current='page'] {
   background: var(--accent-tint);
   color: var(--accent);
@@ -1593,7 +1601,8 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
 .ob-navitem-main .count {
   margin-left: auto;
   font-size: var(--t-micro-size);
-  color: var(--fg-tertiary);
+  font-weight: 500;
+  color: var(--accent);
   font-variant-numeric: tabular-nums;
 }
 .ob-navitem-main[aria-current='page'] .count {
@@ -1622,6 +1631,8 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
  * still must not push the count off the edge or widen the sidebar. */
 .ob-navitem-label {
   min-width: 0;
+  /* The row is secondary text; its name reads one step darker, as in the artboard. */
+  color: var(--fg-primary);
   /* A <button> centres its text; a wrapped second line must start at the first line's edge. */
   text-align: left;
   overflow: hidden;
@@ -1639,29 +1650,39 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
  * detail band uses. Nesting adds another indent per level.
  */
 .ob-navitem-children {
-  margin-left: var(--s-12);
-  padding-left: var(--s-12);
+  margin-left: 1.0714rem;
+  padding-left: 0;
   border-left: 1px solid var(--line);
 }
+/* Sub-pages: 26px rows, 12.5px, a flat left edge against the hairline. */
 .ob-navitem--child {
-  font-size: var(--t-micro-size);
-  color: var(--fg-tertiary);
+  font-size: var(--t-small-size);
+  color: var(--fg-secondary);
 }
 .ob-navitem--child .ob-navitem-main {
-  padding-top: var(--s-4);
-  padding-bottom: var(--s-4);
+  gap: var(--s-8);
+  min-height: 1.8571rem;
+  padding-top: var(--s-2);
+  padding-bottom: var(--s-2);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+}
+.ob-navitem--child .ob-navitem-label {
+  color: inherit;
+}
+.ob-navitem-main[aria-current='page'] .ob-navitem-label {
+  color: inherit;
 }
 .ob-navitem-children:has(> .ob-navitem-wrap > .ob-navitem > .ob-navitem-main[aria-current='page']) {
   border-left-color: var(--accent);
 }
 
 .ob-sidebar-collapse {
-  height: var(--ctl-h-md);
+  height: var(--ctl-h-lg);
   flex: none;
   border-top: 1px solid var(--line);
   background: var(--bg-surface);
-  color: var(--fg-tertiary);
-  font-size: var(--t-micro-size);
+  color: var(--fg-secondary);
+  font-size: var(--t-small-size);
 }
 .ob-sidebar-collapse:hover {
   background: var(--bg-hover);
@@ -1681,7 +1702,7 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   display: flex;
   align-items: center;
   gap: var(--s-12);
-  padding: 0 var(--s-20);
+  padding: 0 var(--s-16);
   background: var(--bg-surface);
   border-bottom: 1px solid var(--line);
 }
@@ -1880,13 +1901,39 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   flex: none;
   display: flex;
   align-items: center;
-  gap: var(--s-16);
-  padding: 0 var(--s-20);
+  gap: 0;
+  padding: 0;
   background: var(--bg-surface);
   border-top: 1px solid var(--line);
-  font-size: var(--t-micro-size);
+  font-size: var(--t-small-size);
   line-height: var(--t-micro-line);
   color: var(--fg-secondary);
+}
+
+/* Navigation artboard: every footer cell is padded 12px on each side, nothing else spaces them. */
+.ob-footer > span,
+.ob-footer > button,
+.ob-footer > a {
+  padding: 0 var(--s-12);
+}
+/* The sync button fills the strip's height, so its hit area is the whole 26px (never under the 24px
+ * minimum target, WCAG 2.2 SC 2.5.8) while the text keeps the footer's look. */
+.ob-footer > button {
+  align-self: stretch;
+  min-height: 1.7143rem;
+}
+.ob-footer-sync[data-state='offline'],
+.ob-footer-sync[data-state='offlinePending'] {
+  color: var(--state-offline);
+  font-weight: 550;
+}
+.ob-footer-sync[data-state='conflict'] {
+  color: var(--state-conflict);
+  font-weight: 550;
+}
+.ob-footer-version {
+  font-size: var(--t-micro-size);
+  color: var(--fg-tertiary);
 }
 
 .ob-footer-user {
@@ -1902,6 +1949,7 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   display: inline-flex;
   align-items: center;
   gap: var(--s-6);
+  color: inherit;
   font-weight: 500;
   letter-spacing: 0.02em;
 }
@@ -1942,7 +1990,7 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
 .ob-search {
   position: relative;
   /* Never wider than the topbar space it is given — the shell shrinks first. */
-  width: 18.5714rem;
+  width: 21.4286rem; /* 300px, Navigation artboard */
   max-width: 100%;
 }
 .ob-search input {
@@ -3132,8 +3180,8 @@ button.ob-bell-item:hover {
  */
 .ob-tabs {
   display: flex;
-  align-items: center;
-  gap: var(--s-16);
+  align-items: flex-end;
+  gap: var(--s-4);
   border-bottom: 1px solid var(--line);
   overflow-x: auto;
   /* The active underline sits 1px over the border, outside the padding box;
@@ -3143,23 +3191,56 @@ button.ob-bell-item:hover {
 }
 .ob-tab {
   position: relative;
-  padding: var(--s-8) var(--s-2);
-  font-size: var(--t-small-size);
+  height: var(--ctl-h-lg);
+  padding: 0 var(--s-12);
+  border-radius: var(--r-md) var(--r-md) 0 0;
+  font-size: var(--t-body-size);
   color: var(--fg-secondary);
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-6);
 }
 .ob-tab:hover {
+  background: var(--bg-hover);
   color: var(--fg-primary);
+}
+.ob-tab-count {
+  min-width: 1.2857rem;
+  height: 1.1429rem;
+  padding: 0 var(--s-4);
+  box-sizing: border-box;
+  border-radius: var(--r-sm);
+  background: var(--bg-sunken);
+  color: var(--fg-secondary);
+  font-size: var(--t-micro-size);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ob-tab:disabled {
+  background: transparent;
+  color: var(--fg-disabled, var(--line-strong));
+  cursor: default;
+}
+.ob-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 .ob-tab[aria-selected='true'] {
   color: var(--fg-primary);
   font-weight: 550;
 }
+.ob-tab[aria-selected='true']:hover {
+  background: transparent;
+}
 .ob-tab[aria-selected='true']::after {
   content: '';
   position: absolute;
-  left: 0;
-  right: 0;
+  left: var(--s-12);
+  right: var(--s-12);
   bottom: 0;
   height: 2px;
   background: var(--accent);

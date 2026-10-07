@@ -1544,6 +1544,20 @@ function OfficePanel() {
 
   const footer = (
     <>
+      {/* Shell artboard: the sync state first and growing, then company, person and version. */}
+      <button
+        type="button"
+        className="ob-footer-sync"
+        data-state={railState}
+        onClick={() => setSyncPopover((open) => !open)}
+      >
+        <span className="dot" style={{ background: railDotColour }} />
+        {syncLabel}
+      </button>
+      <span style={{ flex: 1 }} />
+      {connection.companyName && (
+        <span>{`${t('footer.company')} · ${connection.companyName}`}</span>
+      )}
       <span className="ob-footer-user">
         <Avatar
           name={session.displayName}
@@ -1554,22 +1568,7 @@ function OfficePanel() {
         />
         {session.displayName}
       </span>
-      <span style={{ flex: 1 }} />
-      <button
-        type="button"
-        className="ob-footer-sync"
-        style={{ color: 'inherit' }}
-        onClick={() => setSyncPopover((open) => !open)}
-      >
-        <span className="dot" style={{ background: railDotColour }} />
-        {syncLabel}
-      </button>
-      {connection.companyName && (
-        <span>{`${t('footer.company')} · ${connection.companyName}`}</span>
-      )}
-      <span className="ob-mono" style={{ fontSize: rem(10.5), color: 'var(--fg-tertiary)' }}>
-        v{__APP_VERSION__}
-      </span>
+      <span className="ob-mono ob-footer-version">v{__APP_VERSION__}</span>
     </>
   );
 
