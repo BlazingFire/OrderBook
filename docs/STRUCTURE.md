@@ -6320,7 +6320,8 @@ Rules: `docs/schema/06-tenancy-permissions-and-sync.md` section 2c, `docs/ROLES_
   is SQL, by the reader's role); `services/notice.service.ts` (`listBoard`, `snapshotNotices`, `listManage`,
   `getReaders`, `markRead`, `createNotice`, `updateNotice`, `deleteNotice`, `restoreNotice`, one `publishChange` each);
   `http/routes/notice.routes.ts` (`/api/notices`); `realtime/fan-out.ts#noticeAudienceIncludes` (the per-recipient
-  gate); `hub.ts` (`notice:*` commands, on panel sockets); the snapshot's `notices`; the Recycle Bin branch `notice`.
+  gate; `audienceRoleOf` gives a person their role and a panel acting as itself, with nobody signed in or not yet re-attached, none, so it hears
+  and reads only the notices for everybody and `markRead` for it answers 409); `hub.ts` (`notice:*` commands, on panel sockets); the snapshot's `notices`; the Recycle Bin branch `notice`.
 - **Shared.** `shared/src/domain/notices.ts` (types, `noticeProblem`, `compareNotices`, `isNoticeExpired`,
   `noticeToday`), `permissions.ts` (`notices.view`, `notices.manage`, group `notices`), `keys/commands.ts`
   (Notice board Alt+N, Notice board management Alt+M on both panels).
