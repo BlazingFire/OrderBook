@@ -333,6 +333,10 @@ export const requestCache = createRequestCache();
 
 export function invalidateReads(): void {
   requestCache.invalidate();
+  // A read already on its way is not joined by anybody asking after this: it may answer for a
+  // different person (a sign-out or sign-in invalidates too) or for the world before a write.
+  // Whoever is already waiting on it keeps their own answer.
+  inFlight.clear();
 }
 
 /**
@@ -349,20 +353,20 @@ export function invalidateReads(): void {
  * arrives; sharing it before then would mean sharing the two `ApiError` classes
  * as well, which are not the same class.
  */
-const inFlight = new Map<
-  string,
-  { promise: Promise<unknown>; controller: AbortController; waiters: number }
->();
+interface InFlightRead {
+  promise: Promise<unknown>;
+  controller: AbortController;
+  waiters: number;
+}
+const inFlight = new Map<string, InFlightRead>();
 
-function release(key: string): void {
-  const entry = inFlight.get(key);
-  if (!entry) return;
-
+function release(key: string, entry: InFlightRead): void {
   entry.waiters -= 1;
   if (entry.waiters > 0) return;
 
   entry.controller.abort();
-  inFlight.delete(key);
+  // Its own entry only: after `invalidateReads()` the key may name a newer read.
+  if (inFlight.get(key) === entry) inFlight.delete(key);
 }
 
 async function send<T>(
@@ -480,21 +484,26 @@ function sharedRead<T>(
       promise: send<unknown>(path, init, anySignal([controller.signal, timeout])),
     };
 
-    void created.promise.catch(() => undefined).finally(() => inFlight.delete(key));
+    void created.promise
+      .catch(() => undefined)
+      .finally(() => {
+        if (inFlight.get(key) === created) inFlight.delete(key);
+      });
 
     inFlight.set(key, created);
     entry = created;
   }
 
   entry.waiters += 1;
+  const shared = entry;
 
-  return entry.promise.then(
+  return shared.promise.then(
     (value) => {
-      release(key);
+      release(key, shared);
       return value as T;
     },
     (error: unknown) => {
-      release(key);
+      release(key, shared);
       return asFailure(error);
     },
   );
@@ -871,7 +880,8 @@ export const api = {
   },
 
   /** Which product ids are still in the catalogue — the entry form's save check. */
-  liveProducts: (ids: string[]) => post<{ live: string[] | null }>('/api/pick/live-products', { ids }),
+  liveProducts: (ids: string[]) =>
+    post<{ live: string[] | null }>('/api/pick/live-products', { ids }),
 
   recycleBin: (query: RecycleBinQuery = {}) => {
     const params = new URLSearchParams();
