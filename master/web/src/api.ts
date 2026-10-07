@@ -236,6 +236,10 @@ export const requestCache = createRequestCache();
 
 export function invalidateReads(): void {
   requestCache.invalidate();
+  // A read already on its way is not joined by anybody asking after this: it may answer for a
+  // different person (a sign-out or sign-in invalidates too) or for the world before a write.
+  // Whoever is already waiting on it keeps their own answer.
+  inFlight.clear();
 }
 
 /**
@@ -249,20 +253,20 @@ export function invalidateReads(): void {
  *
  * POSTs never dedup: two identical writes are two writes.
  */
-const inFlight = new Map<
-  string,
-  { promise: Promise<unknown>; controller: AbortController; waiters: number }
->();
+interface InFlightRead {
+  promise: Promise<unknown>;
+  controller: AbortController;
+  waiters: number;
+}
+const inFlight = new Map<string, InFlightRead>();
 
-function release(key: string): void {
-  const entry = inFlight.get(key);
-  if (!entry) return;
-
+function release(key: string, entry: InFlightRead): void {
   entry.waiters -= 1;
   if (entry.waiters > 0) return;
 
   entry.controller.abort();
-  inFlight.delete(key);
+  // Its own entry only: after `invalidateReads()` the key may name a newer read.
+  if (inFlight.get(key) === entry) inFlight.delete(key);
 }
 
 async function send<T>(
@@ -408,21 +412,26 @@ function sharedRead<T>(
 
     // Cleared on settle either way; the `catch` is only to stop an unhandled
     // rejection warning on the shared promise itself.
-    void created.promise.catch(() => undefined).finally(() => inFlight.delete(key));
+    void created.promise
+      .catch(() => undefined)
+      .finally(() => {
+        if (inFlight.get(key) === created) inFlight.delete(key);
+      });
 
     inFlight.set(key, created);
     entry = created;
   }
 
   entry.waiters += 1;
+  const shared = entry;
 
-  return entry.promise.then(
+  return shared.promise.then(
     (value) => {
-      release(key);
+      release(key, shared);
       return value as T;
     },
     (error: unknown) => {
-      release(key);
+      release(key, shared);
       return asFailure(error);
     },
   );
