@@ -1136,6 +1136,62 @@ describe('the catalogue changing while the entry is open', () => {
   });
 });
 
+describe('product photos', () => {
+  const PHOTO = {
+    id: 'img-9',
+    productId: FIXED.id,
+    caption: null,
+    isPrimary: true,
+    sequence: 0,
+    width: 48,
+    height: 32,
+    checksum: 'x',
+    blurhash: '',
+    byteSize: 1,
+    uploadedAt: '2026-10-07T00:00:00.000Z',
+  };
+
+  it('shows the photo on the picker row, on the picked card and on the added line', async () => {
+    const fake = makeTransport();
+    fake.catalogue.products = fake.catalogue.products.map((product) =>
+      product.id === FIXED.id ? { ...product, images: [PHOTO] } : product,
+    ) as never;
+    const onSaved = vi.fn();
+    render(
+      <Harness
+        view={viewOf({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] })}
+        transport={fake.transport}
+        onSaved={onSaved}
+      />,
+    );
+    await screen.findByLabelText(t('lead.add.party.search'), {}, { timeout: 10_000 });
+
+    fireEvent.change(screen.getByLabelText(t('lead.add.party.search')), {
+      target: { value: 'Sha' },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(PARTY.name) }));
+    fireEvent.focus(searchBox());
+    fireEvent.mouseDown(await screen.findByRole('button', { name: new RegExp(CATEGORY.name) }));
+    const row = await screen.findByRole('button', { name: new RegExp(FIXED.name) });
+    expect(row.querySelector('[data-product-thumb]')).not.toBeNull();
+
+    fireEvent.mouseDown(row);
+    const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — White`);
+    expect(document.querySelector('.ob-picked [data-product-thumb]')).not.toBeNull();
+
+    fireEvent.change(qty, { target: { value: '5' } });
+    await pressEnter(qty);
+    await finishCard('White');
+    expect(document.querySelector('.ob-order-aside [data-product-thumb]')).not.toBeNull();
+  });
+
+  it('draws nothing for a product with no photo', async () => {
+    await openForm();
+    await enterOneLine();
+    expect(document.querySelector('[data-product-thumb]')).toBeNull();
+  });
+});
+
 describe('the party box and the chosen party', () => {
   it('shows the chosen party by name, code and city (owner, 2026-10-07)', async () => {
     await openForm();

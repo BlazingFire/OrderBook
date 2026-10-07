@@ -246,6 +246,8 @@ interface ProductFacts {
   rule: ColourRule;
   fromPartyVariant: boolean;
   notes: string;
+  /** The product's primary photo, when the catalogue has one: the thumbnail on the card and the rows. */
+  image?: ProductImage;
 }
 
 /** The card one model is built in: the product's facts and a row per variant (and colour). */
@@ -253,8 +255,6 @@ interface DraftProduct extends ProductFacts {
   rows: DraftRow[];
   /** What a colour added to a `selectable` card is ordered in — one row per variant here. */
   variants: VariantFacts[];
-  /** The product's primary photo, when the picker sent one: the 48 px thumbnail on the card. */
-  image?: ProductImage;
   /** Where the line goes back to when the draft is a `Modify` of a saved one. */
   at: number | null;
   /** The saved line's key, kept so a modified line stays the same line. */
@@ -402,6 +402,7 @@ function linesOf(lead: Lead, view: LeadEntryView): DraftLine[] {
       brand: item.brandName,
       alias: item.alias,
       size: item.size,
+      image: product?.images?.[0],
       packaging: item.packaging ?? '',
       rule,
       grade: item.grade ?? '',
@@ -2499,6 +2500,7 @@ function LeadLine({
           <span aria-hidden="true" style={{ flex: 'none', color: 'var(--fg-tertiary)' }}>
             {open ? '▾' : '▸'}
           </span>
+          <ProductThumb image={line.image} size={32} />
           <span className="ob-mono ob-body-strong" style={{ flex: 'none' }}>
             {line.code}
           </span>

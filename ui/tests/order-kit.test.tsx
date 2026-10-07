@@ -259,6 +259,21 @@ describe('ProductThumb', () => {
   });
 });
 
+describe('CartEntry thumb slot', () => {
+  it('puts the thumbnail inside the toggle, between the chevron and the head', () => {
+    render(
+      <CartEntry
+        open={false}
+        onToggle={() => undefined}
+        thumb={<i data-testid="thumb" />}
+        head={<span>WB-2016</span>}
+      />,
+    );
+    const toggle = screen.getByRole('button', { name: /WB-2016/ });
+    expect(within(toggle).getByTestId('thumb')).toBeTruthy();
+  });
+});
+
 describe('PartyChip', () => {
   it('shows the initials, the name, the code and the city, and gives the party back on close', () => {
     const onChange = vi.fn();
