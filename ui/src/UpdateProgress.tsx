@@ -29,24 +29,28 @@ export function UpdateProgress({ progress }: { progress: UpdateDownloadProgress 
         ? t('updates.progress.done', { version: progress.version ?? '' })
         : t('updates.progress.downloading', { version: progress.version ?? '' });
 
+  // The Feedback artboard: what is happening on the left, the figures on the right, the
+  // bar under them, green once the file is in.
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
-      <span className="ob-body-strong">{title}</span>
-      <ProgressBar
-        value={progress.totalBytes > 0 ? progress.receivedBytes / progress.totalBytes : null}
-        label={`${progress.percent.toFixed(1)} %`}
-      />
-      {progress.phase === 'downloading' ? (
-        <span className="ob-small" data-testid="update-progress-figures">
-          {t('updates.progress.figures', {
-            done: formatBytes(progress.receivedBytes),
-            total: formatBytes(progress.totalBytes),
-            speed: formatSpeed(progress.bytesPerSecond),
-            eta: formatEta(progress.etaSeconds),
-          })}
-        </span>
-      ) : null}
-    </div>
+    <ProgressBar
+      value={progress.totalBytes > 0 ? progress.receivedBytes / progress.totalBytes : null}
+      label={title}
+      tone={progress.phase === 'done' ? 'ok' : 'default'}
+      detail={
+        progress.phase === 'downloading' ? (
+          <span data-testid="update-progress-figures">
+            {t('updates.progress.figures', {
+              done: formatBytes(progress.receivedBytes),
+              total: formatBytes(progress.totalBytes),
+              speed: formatSpeed(progress.bytesPerSecond),
+              eta: formatEta(progress.etaSeconds),
+            })}
+          </span>
+        ) : (
+          `${progress.percent.toFixed(1)} %`
+        )
+      }
+    />
   );
 }
 

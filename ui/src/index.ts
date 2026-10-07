@@ -108,6 +108,7 @@ export * from './catalogueSummary.js';
 export * from './Tabs.js';
 export * from './TierPill.js';
 export * from './Toast.js';
+export * from './Tooltip.js';
 export * from './TopbarSlot.js';
 export * from './TopProgress.js';
 export * from './abort.js';

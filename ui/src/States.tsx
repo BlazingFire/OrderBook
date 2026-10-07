@@ -79,29 +79,34 @@ export function OfflineBanner({ children, action }: { children: ReactNode; actio
 
 export function Skeleton({
   width = '100%',
-  height = 'var(--s-8)',
+  height,
 }: {
   width?: string | number;
+  /** The Feedback artboard's 10 px bar unless a caller needs another shape. */
   height?: string | number;
 }) {
   return <div className="ob-skeleton" style={{ width, height }} aria-hidden="true" />;
 }
 
+/** Bar lengths for the middle columns, varied row to row so the block reads as text, not stripes. */
+const SKELETON_WIDTHS = ['8.5rem', '7rem', '10rem'];
+
+/**
+ * Generic placeholder rows, per the Feedback artboard: 28 px rows split by a hairline, a
+ * short key on the left, text of varying length, a short figure on the right. Static: the
+ * busy mark and the loading bars are the only movers.
+ */
 export function SkeletonRows({ rows = 6, columns = 4 }: { rows?: number; columns?: number }) {
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 'var(--s-12)',
-        padding: 'var(--s-16)',
-      }}
-    >
+    <div className="ob-skeleton-rows" aria-hidden="true">
       {Array.from({ length: rows }).map((_, r) => (
-        <div key={r} style={{ display: 'flex', gap: 'var(--s-16)' }}>
-          {Array.from({ length: columns }).map((_, c) => (
-            <Skeleton key={c} width={c === 0 ? '20%' : `${100 / columns}%`} />
+        <div key={r} className="ob-skeleton-row">
+          <Skeleton width="6rem" />
+          {Array.from({ length: Math.max(0, columns - 2) }).map((_, c) => (
+            <Skeleton key={c} width={SKELETON_WIDTHS[(r + c) % SKELETON_WIDTHS.length]} />
           ))}
+          <span style={{ flex: 1 }} />
+          {columns > 1 && <Skeleton width="2.857rem" />}
         </div>
       ))}
     </div>

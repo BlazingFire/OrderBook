@@ -1200,42 +1200,68 @@ table.ob-table--flat {
  * ======================================================================== */
 
 .ob-banner {
+  --banner-dot: var(--accent);
   display: flex;
   align-items: center;
-  gap: var(--s-12);
-  padding: var(--s-12) var(--s-16);
-  border: 1px solid var(--line);
+  gap: 0.7143rem; /* 10px */
+  padding: var(--s-8) var(--s-12);
   border-radius: var(--r-md);
-  background: var(--bg-surface);
-  font-size: var(--t-small-size);
-  line-height: var(--t-small-line);
+  background: var(--accent-tint);
+  color: var(--fg-primary);
+  font-size: var(--t-body-size);
+  line-height: var(--t-body-line);
+}
+/* The Feedback artboard's state dot: the colour says which kind before the words do. */
+.ob-banner::before {
+  content: '';
+  flex: none;
+  width: var(--s-8);
+  height: var(--s-8);
+  border-radius: 50%;
+  background: var(--banner-dot);
 }
 .ob-banner--offline {
+  --banner-dot: var(--state-offline-fill, var(--state-offline));
   background: var(--state-offline-tint);
-  border-color: var(--state-offline);
-  color: var(--fg-primary);
 }
 .ob-banner--conflict {
+  --banner-dot: var(--state-conflict);
   background: var(--state-conflict-tint);
+}
+/* One compact action at the end, outlined in the banner's own colour. */
+.ob-banner .ob-btn {
+  flex: none;
+  height: 1.857rem; /* 26px */
+  padding: 0 0.7143rem;
+  font-size: var(--t-small-size);
+}
+.ob-banner--conflict .ob-btn {
   border-color: var(--state-conflict);
+  background: var(--bg-surface);
+  color: var(--state-conflict);
 }
 
+/* The Feedback artboard: two lines and one action, set left like the text around it. */
 .ob-empty {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: var(--s-4);
-  padding: var(--s-56) var(--s-20);
-  text-align: center;
+  align-items: flex-start;
+  justify-content: center;
+  gap: var(--s-6);
+  padding: var(--s-24);
+  text-align: left;
 }
 .ob-empty h3 {
+  margin: 0;
   font-size: var(--t-body-size);
   line-height: var(--t-body-line);
   font-weight: 550;
+  color: var(--fg-primary);
 }
 .ob-empty p {
-  font-size: var(--t-small-size);
-  line-height: var(--t-small-line);
+  margin: 0;
+  font-size: var(--t-body-size);
+  line-height: var(--t-body-line);
   color: var(--fg-secondary);
   max-width: 46ch;
 }
@@ -1956,22 +1982,91 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
 .ob-toast {
   display: flex;
   align-items: center;
-  gap: var(--s-12);
+  gap: 0.7143rem;
+  max-width: 32rem;
   background: var(--bg-surface);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   box-shadow: var(--sh-2);
-  padding: var(--s-8) var(--s-16);
-  font-size: var(--t-small-size);
-  line-height: var(--t-small-line);
+  padding: 0.7143rem var(--s-12);
+  font-size: var(--t-body-size);
+  line-height: var(--t-body-line);
+  color: var(--fg-primary);
   animation: ob-toast-in var(--d-base) var(--e-standard);
 }
-
-.ob-toast .dot {
-  width: 0.4286rem;
-  height: 0.4286rem;
-  border-radius: 50%;
+.ob-toast-icon {
   flex: none;
+}
+.ob-toast-icon--ok {
+  color: var(--state-ok);
+}
+.ob-toast-icon--info {
+  color: var(--accent);
+}
+.ob-toast-icon--error {
+  color: var(--state-conflict);
+}
+.ob-toast-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ob-toast-action {
+  flex: none;
+  height: 1.857rem; /* 26px */
+  padding: 0 var(--s-8);
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--accent);
+  font-size: var(--t-small-size);
+  font-weight: 550;
+  cursor: pointer;
+}
+.ob-toast-action:hover {
+  background: var(--accent-tint);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ob-toast {
+    animation: none;
+  }
+}
+
+/* The tooltip (Feedback artboard, Tooltip.tsx): inverse of the surface it floats over, a
+ * small pointer at the element's start, 400 ms after the pointer settles. Never takes the
+ * pointer, so it cannot cover what it explains. */
+.ob-tooltip {
+  position: fixed;
+  z-index: var(--z-toast);
+  max-width: 20rem;
+  padding: var(--s-6) var(--s-8);
+  border-radius: var(--r-md);
+  background: var(--porcelain-90);
+  color: var(--porcelain-00);
+  font-size: var(--t-small-size);
+  line-height: 1.1429rem; /* 16px */
+  box-shadow: var(--sh-2);
+  pointer-events: none;
+  transform: translateY(-100%);
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+.ob-tooltip::after {
+  content: '';
+  position: absolute;
+  left: var(--s-16);
+  bottom: -4px;
+  width: var(--s-8);
+  height: var(--s-8);
+  background: inherit;
+  transform: rotate(45deg);
+}
+.ob-tooltip--below {
+  transform: none;
+}
+.ob-tooltip--below::after {
+  bottom: auto;
+  top: -4px;
 }
 
 /* ===========================================================================
@@ -2040,8 +2135,7 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   animation: ob-rise-in 280ms var(--e-standard) 500ms both;
 }
 
-.ob-splash-track,
-.ob-progress {
+.ob-splash-track {
   width: 100%;
   height: var(--s-4);
   border-radius: var(--r-sm);
@@ -2053,16 +2147,14 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
  * Splash.tsx alongside the figure, so a CSS transition on top would only lag
  * behind it. The glint is a 1px light line riding the fill's top edge — the
  * bar reads as a liquid surface, not a flat block. */
-.ob-splash-fill,
-.ob-progress-fill {
+.ob-splash-fill {
   position: relative;
   height: 100%;
   border-radius: inherit;
   background: var(--accent);
 }
 
-.ob-splash-fill::after,
-.ob-progress-fill::after {
+.ob-splash-fill::after {
   content: '';
   position: absolute;
   inset: 0 0 auto 0;
@@ -2102,15 +2194,33 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
  * ======================================================================== */
 
 .ob-skeleton {
-  border-radius: var(--s-2);
+  flex: none;
+  max-width: 100%;
+  border-radius: var(--r-sm);
   background: var(--bg-sunken);
-  height: var(--s-8);
+  height: 0.7143rem; /* 10px */
+}
+.ob-skeleton-rows {
+  display: flex;
+  flex-direction: column;
+  padding: var(--s-8) var(--s-16);
+}
+.ob-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-12);
+  height: 2rem; /* 28px */
+  border-bottom: 1px solid var(--bg-sunken);
+}
+.ob-skeleton-row:last-child {
+  border-bottom: 0;
 }
 
 /* ===========================================================================
- * Loading bars. The owner asked for them (2026-10-01), which overrides "the
- * busy mark is the only mover". Both freeze into a static segment when
- * motion is off and pause while the window is in the background.
+ * Loading bars (Feedback artboard). The owner asked for them (2026-10-01), which
+ * overrides "the busy mark is the only mover". Fills move by scaleX only, so a moving
+ * bar never re-lays out its row. Both freeze into a static segment when motion is off
+ * or reduced, and pause while the window is in the background.
  * ======================================================================== */
 
 /* A 2px strip along the top of the working area, shown only once requests
@@ -2124,7 +2234,7 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   pointer-events: none;
 }
 
-@keyframes ob-topprogress-slide {
+@keyframes ob-indeterminate {
   0% {
     transform: translateX(-100%);
   }
@@ -2138,7 +2248,7 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   width: 40%;
   height: 100%;
   background: var(--accent);
-  animation: ob-topprogress-slide 1.2s var(--e-standard) infinite;
+  animation: ob-indeterminate 1400ms var(--e-standard) infinite;
 }
 
 html[data-motion='off'] .ob-topprogress-bar,
@@ -2153,15 +2263,73 @@ html[data-motion='off'] .ob-progress-fill--indeterminate {
   }
 }
 
-/* The determinate bar is the splash track and fill above, plus a caption. */
+/* The determinate bar: what is happening and its figure on one line, the track below. */
 .ob-progress-wrap {
+  --progress-fill: var(--accent);
+  --progress-track: var(--bg-sunken);
+  --progress-text: var(--fg-primary);
   display: flex;
   flex-direction: column;
   gap: var(--s-6);
   min-width: 0;
 }
+.ob-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-12);
+  min-width: 0;
+  font-size: var(--t-small-size);
+  line-height: var(--t-small-line);
+}
+.ob-progress-label {
+  color: var(--progress-text);
+  min-width: 0;
+}
+.ob-progress-detail {
+  color: var(--fg-secondary);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.ob-progress {
+  width: 100%;
+  height: 0.4286rem; /* 6px */
+  border-radius: var(--r-sm);
+  background: var(--progress-track);
+  overflow: hidden;
+}
 .ob-progress-fill {
-  transition: width var(--d-base) var(--e-standard);
+  height: 100%;
+  background: var(--progress-fill);
+  transform-origin: left;
+  transition: transform var(--d-base) var(--e-standard);
+}
+/* Not known yet: the sweep runs on the accent's own tint, so it reads as waiting, not as 0 %. */
+.ob-progress:has(.ob-progress-fill--indeterminate) {
+  background: var(--accent-tint);
+}
+.ob-progress-fill--indeterminate {
+  background: var(--progress-fill);
+}
+.ob-progress--offline {
+  --progress-fill: var(--state-offline-fill, var(--state-offline));
+  --progress-track: var(--state-offline-tint);
+  --progress-text: var(--state-offline);
+}
+.ob-progress--conflict {
+  --progress-fill: var(--state-conflict);
+  --progress-track: var(--state-conflict-tint);
+  --progress-text: var(--state-conflict);
+}
+.ob-progress--ok {
+  --progress-fill: var(--state-ok);
+  --progress-track: var(--state-ok-tint);
+  --progress-text: var(--state-ok);
+}
+.ob-progress--offline .ob-progress-label,
+.ob-progress--conflict .ob-progress-label,
+.ob-progress--ok .ob-progress-label {
+  font-weight: 550;
 }
 
 /* ===========================================================================
@@ -2670,7 +2838,7 @@ button.ob-stattile:hover {
 @keyframes ob-toast-in {
   from {
     opacity: 0;
-    transform: translateX(16px);
+    transform: translateX(-16px);
   }
   to {
     opacity: 1;
@@ -2685,7 +2853,7 @@ button.ob-stattile:hover {
   }
   to {
     opacity: 0;
-    transform: translateX(16px);
+    transform: translateX(-16px);
   }
 }
 

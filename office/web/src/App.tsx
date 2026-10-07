@@ -1749,11 +1749,15 @@ function OfficePanel() {
       render: () => (
         <>
           {canViewNotices && cardNotices(myNotices, todayForNotices()).length > 0 && (
-            // Inset like the launcher's own sections, so the card lines up with the tiles.
-            <div style={{ padding: 'var(--s-8) var(--s-12) 0' }}>
+            // Inset like the launcher's own sections, so the card lines up with the tiles. One
+            // notice (unread first): with three, at 157 % on a 720p screen the first row of tiles
+            // fell below the window, and the tiles are what this screen is for. As wide as the
+            // Dashboard's at most: full width at 4K ran each line of text across 3,500 px.
+            <div className="ob-measure-wide" style={{ padding: 'var(--s-8) var(--s-12) 0' }}>
               <NoticeDashboardCard
                 notices={myNotices}
                 today={todayForNotices()}
+                limit={1}
                 onOpen={() => goToTab('notices')}
               />
             </div>
