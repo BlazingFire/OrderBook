@@ -684,6 +684,27 @@ describe('the packaging and grade beside each quantity', () => {
     ).toEqual([{ variantId: 'var-1', packaging: 'Grass', grade: 'B' }]);
   });
 
+  it("shows a colour by the list's CURRENT label, so a renamed colour reads the new way", async () => {
+    const renamed = COLOURS.map((colour) =>
+      colour.value === 'White' ? { ...colour, label: 'Pearl White' } : colour,
+    );
+    await openForm({ optionLists: [...renamed, ...PACKAGING, ...GRADES] });
+    await pickSubProduct(MULTI.name);
+    const colourBox = await screen.findByLabelText(t('lead.add.flow.addColour'));
+    fireEvent.change(colourBox, { target: { value: 'Pea' } });
+    fireEvent.keyDown(colourBox, { key: 'Enter' });
+
+    // The card row, then the added line, both say the label.
+    const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — Pearl White`);
+    fireEvent.change(qty, { target: { value: '10' } });
+    await pressEnter(qty);
+    await finishCard('Pearl White');
+
+    const aside = document.querySelector<HTMLElement>('.ob-order-aside')!;
+    expect(aside.textContent).toContain('Pearl White');
+    expect(aside.textContent).not.toContain('· White');
+  });
+
   it('gives each colour its own packaging and grade', async () => {
     const calls = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
     await pickSubProduct(MULTI.name);
@@ -885,7 +906,9 @@ describe('Office: colour as a step of the Enter flow', () => {
 
     // One short line fits a narrow box at 157 %; the sentence about the keys wraps below it.
     expect((colourBox as HTMLInputElement).placeholder.length).toBeLessThanOrEqual(32);
-    expect(document.querySelector('[data-colour-keys]')?.textContent).toBe(t('lead.add.flow.colourKeys'));
+    expect(document.querySelector('[data-colour-keys]')?.textContent).toBe(
+      t('lead.add.flow.colourKeys'),
+    );
   });
 
   it('shows a fixed colour and skips it: the card opens on the quantity, with no colour box', async () => {
@@ -924,14 +947,22 @@ describe('Office: the catalogue changing while the entry is open', () => {
         entity: 'product_category',
         action: 'created',
         id: NEW_CATEGORY.id,
-        payload: { ...NEW_CATEGORY, tenantId: 't', createdAt: '2026-10-07T00:00:00.000Z', updatedAt: '2026-10-07T00:00:00.000Z', deletedAt: null },
+        payload: {
+          ...NEW_CATEGORY,
+          tenantId: 't',
+          createdAt: '2026-10-07T00:00:00.000Z',
+          updatedAt: '2026-10-07T00:00:00.000Z',
+          deletedAt: null,
+        },
       });
       await wait(120); // past the shell's 60 ms batch of change frames
     });
   }
 
   async function chooseParty(): Promise<void> {
-    fireEvent.change(screen.getByLabelText(t('lead.add.party.search')), { target: { value: 'Sha' } });
+    fireEvent.change(screen.getByLabelText(t('lead.add.party.search')), {
+      target: { value: 'Sha' },
+    });
     fireEvent.click(await screen.findByRole('button', { name: new RegExp(PARTY.name) }));
   }
 
@@ -974,7 +1005,9 @@ describe('Office: the catalogue changing while the entry is open', () => {
       await wait(0);
     });
     expect(leadPosts(calls)).toHaveLength(0);
-    expect(await screen.findByText(t('lead.add.errors.goneLines', { names: FIXED.name }))).toBeTruthy();
+    expect(
+      await screen.findByText(t('lead.add.errors.goneLines', { names: FIXED.name })),
+    ).toBeTruthy();
     expect(screen.getAllByText(new RegExp(FIXED.name)).length).toBeGreaterThan(0);
   });
 
@@ -987,7 +1020,9 @@ describe('Office: the catalogue changing while the entry is open', () => {
     );
     await masterAddsCategory();
     await waitFor(() =>
-      expect(calls.filter((call) => call.url === '/api/pick/live-products').length).toBeGreaterThan(1),
+      expect(calls.filter((call) => call.url === '/api/pick/live-products').length).toBeGreaterThan(
+        1,
+      ),
     );
     await act(async () => wait(50));
     expect(document.querySelector('[data-catalogue-gone]')).toBeNull();
@@ -1012,7 +1047,9 @@ describe('Office: the catalogue changing while the entry is open', () => {
     });
 
     expect(leadPosts(calls)).toHaveLength(0);
-    expect(await screen.findByText(t('lead.add.errors.goneLines', { names: FIXED.name }))).toBeTruthy();
+    expect(
+      await screen.findByText(t('lead.add.errors.goneLines', { names: FIXED.name })),
+    ).toBeTruthy();
   });
 
   it('saves anyway when the live-ids read never answers, after a short wait', async () => {
@@ -1045,7 +1082,9 @@ describe('Office: the catalogue changing while the entry is open', () => {
     live.products = live.products.filter((product) => product.id !== FIXED.id);
     await masterAddsCategory();
     await waitFor(() =>
-      expect(calls.filter((call) => call.url === '/api/pick/live-products').length).toBeGreaterThan(1),
+      expect(calls.filter((call) => call.url === '/api/pick/live-products').length).toBeGreaterThan(
+        1,
+      ),
     );
     await act(async () => wait(50));
     expect(document.querySelector('[data-catalogue-gone]')).toBeNull();
@@ -1066,7 +1105,9 @@ describe('Office: the catalogue changing while the entry is open', () => {
 
     await masterAddsCategory();
 
-    const again = screen.getByLabelText(`${t('lead.add.draft.col.quantity')} — White`) as HTMLInputElement;
+    const again = screen.getByLabelText(
+      `${t('lead.add.draft.col.quantity')} — White`,
+    ) as HTMLInputElement;
     expect(again).toBe(qty);
     expect(again.value).toBe('7');
     expect(document.activeElement).toBe(again);
