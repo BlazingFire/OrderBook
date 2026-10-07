@@ -435,7 +435,7 @@ export function SubProductsScreen({
       render: (product) => {
         const weight = weightLabel(product);
         return weight === null ? (
-          <StatusPill tone="offline">{t('product.weight.missing')}</StatusPill>
+          <StatusPill tone="offline">{t('product.weight.missingShort')}</StatusPill>
         ) : (
           weight
         );

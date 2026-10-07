@@ -349,7 +349,9 @@ export function RecycleBinScreen({ permissions, revision, type, onTypeChange }: 
     {
       key: 'type',
       header: t('recycleBin.column.type'),
-      width: rem(170),
+      // The four fixed columns together took so much of a 1366 px screen at 157 % that Record and
+      // Detail were left 38 px each and their headers were cut.
+      width: rem(110),
       render: (entry) => <StatusPill>{t(`recycleBin.entity.${entry.entityType}`)}</StatusPill>,
     },
     {
@@ -365,13 +367,13 @@ export function RecycleBinScreen({ permissions, revision, type, onTypeChange }: 
     {
       key: 'deletedAt',
       header: t('recycleBin.column.deletedAt'),
-      width: rem(170),
+      width: rem(140),
       render: (entry) => <span className="ob-small">{formatDateTime(entry.deletedAt)}</span>,
     },
     {
       key: 'deletedBy',
       header: t('recycleBin.column.deletedBy'),
-      width: rem(170),
+      width: rem(120),
       // An unattended Office Panel deletes with nobody attached, which is a
       // different fact from a name this screen could not resolve.
       render: (entry) =>
@@ -385,7 +387,7 @@ export function RecycleBinScreen({ permissions, revision, type, onTypeChange }: 
     {
       key: 'actions',
       header: '',
-      width: rem(120),
+      width: rem(100),
       render: (entry) =>
         canRestore(entry.entityType) ? (
           <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
