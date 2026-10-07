@@ -111,15 +111,19 @@ Components use the semantic names only.
 | State | `--state-offline`, `--state-conflict`, `--state-ok`, each with a `-tint`; new `--state-offline-fill` (the design's amber, for fills) |
 | Ramps | `--porcelain-00` to `-90`, `--glaze-50`, `-60`, `-05`, `--kiln-*` |
 | Fill-only design values | `--porcelain-50-fill` `#6E7C84`, `--kiln-amber-fill` `#B26A00`; text keeps `#5D6B73` (`--porcelain-50`) and `#8A5200` (`--kiln-amber`) for 4.5:1 |
-| Type | `--t-<role>-size` and `--t-<role>-line` for display 24/28 600, title 18/24 600, eyebrow 11/14 600 caps, body 14/20, data 13.5/18 tabular, small 12.5/16, micro 11/14 500, mono 12.5/18 |
+| Type | `--t-<role>-size` and `--t-<role>-line` (in rem on the 14 px root; the eyebrow and micro sizes never go below 10 px) for display 24/28 600, title 18/24 600, eyebrow 11/14 600 caps, body 14/20, data 13.5/18 tabular, small 12.5/16, micro 11/14 500, mono 12.5/18 |
 | Space | 4 px base, `--s-2` to `--s-56` (2, 4, 6, 8, 12, 16, 20, 24, 32, 40, 56) |
 | Radius | 4, 6, 10 |
-| Elevation | hairline, `--sh-2`, `--sh-3` |
-| Motion | 120 / 160 / 220 ms; standard `.2,0,0,1`; exit `.4,0,1,1` |
+| Elevation | hairline, `--sh-2` (`0 4px 12px`), `--sh-3` (`0 16px 40px`); the dark theme uses black shadows at .45 and .60 |
+| Motion | `--d-fast` 120, `--d-base` 160, `--d-slow` 220, `--d-exit` 140 ms; `--e-standard` `.2,0,0,1`, `--e-exit` `.4,0,1,1`, `--e-spring` (a small overshoot, kept for the kanban settle) |
 | Focus ring | 2 px solid accent, offset 2 px |
 
-**Scrollbars (as built):** a 10 px gutter holding a 6 px thumb with radius 4, a transparent track; the thumb is always drawn
-(not only on hover); rest `--porcelain-30`, hover `#6E7C84`, drag `--porcelain-70`.
+**Scrollbars (as built):** `--scrollbar-w` 10 px gutter holding a 6 px thumb with radius 4, a transparent track (the track tokens are gone);
+the thumb is always drawn (not only on hover); `--scrollbar-thumb` = `--porcelain-30`, `--scrollbar-thumb-hover` = `--porcelain-50-fill`,
+`--scrollbar-thumb-active` = `--porcelain-70`.
+
+**Sizes:** `--row-h` 32 px (2.2857rem), `--ctl-h-sm` / `-md` / `-lg` 26 / 30 / 36 px, `--shell-footer-h` 26 px. In the dark theme `--porcelain-50` and
+`--porcelain-50-fill` are the same `#7E8E96` and `--kiln-amber` and `--kiln-amber-fill` the same `#E0A040`, since both pass as text.
 
 **Retired:** the per-machine density (`ob.density`, `data-density`), the `--tile-*` set of the old glossy icon tiles, and `--r-xl`.
 The status footer is 26 px tall (`--shell-footer-h`).
