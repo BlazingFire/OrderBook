@@ -557,7 +557,7 @@ describe('the sub-product bar', () => {
     // sub-product bar with the product still chosen.
     expect(screen.queryByLabelText(`${t('lead.add.draft.col.quantity')} — White`)).toBeNull();
     expect(
-      within(document.querySelector<HTMLElement>('.ob-lead-panel')!).getByText('OPT-0001'),
+      within(document.querySelector<HTMLElement>('.ob-order-aside')!).getByText('OPT-0001'),
     ).toBeTruthy();
     expect(document.activeElement).toBe(searchBox());
     expect(searchBox().placeholder).toBe(
@@ -708,7 +708,7 @@ describe('the packaging and grade beside each quantity', () => {
     await finishCard('White');
     expect(screen.queryByLabelText(`${t('lead.add.draft.col.quantity')} — White`)).toBeNull();
     expect(
-      within(document.querySelector<HTMLElement>('.ob-lead-panel')!).getByText('OPT-0001'),
+      within(document.querySelector<HTMLElement>('.ob-order-aside')!).getByText('OPT-0001'),
     ).toBeTruthy();
   });
 });
@@ -1029,14 +1029,15 @@ describe('Office: the catalogue changing while the entry is open', () => {
 });
 
 describe('Office: the follow-up chips', () => {
-  it('are one group beside the date, so they wrap together and evenly instead of one at a time', async () => {
+  it('are one radio group beside the date, not three loose chips', async () => {
     await openForm();
     const group = document.querySelector<HTMLElement>('[data-follow-up-chips]')!;
     expect(group).not.toBeNull();
     // The three quick chips, and not the date box, share the one wrapping group.
     expect(group.querySelectorAll('button')).toHaveLength(3);
     expect(group.querySelector('input')).toBeNull();
-    expect(group.style.flexWrap).toBe('wrap');
+    // One segmented radio group, the design's control, not three loose chips.
+    expect(group.getAttribute('role')).toBe('radiogroup');
   });
 });
 
@@ -1110,7 +1111,7 @@ describe('Shift+Q', () => {
 
     expect(typed).toBe(false);
     expect(
-      within(document.querySelector<HTMLElement>('.ob-lead-panel')!).getByText('OPT-0001'),
+      within(document.querySelector<HTMLElement>('.ob-order-aside')!).getByText('OPT-0001'),
     ).toBeTruthy();
     expect(searchBox().placeholder).toBe(t('lead.add.products.categoryPlaceholder'));
   });
