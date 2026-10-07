@@ -2138,31 +2138,34 @@ html[data-motion='off'] .ob-progress-fill--indeterminate {
 }
 
 .ob-tile-face {
-  position: relative;
-  display: block;
-  width: 7.4286rem; /* 104px */
-  height: 7.4286rem;
-  border-radius: var(--r-xl);
-  overflow: hidden;
-  background:
-    radial-gradient(150% 95% at 0% -30%, var(--tile-sheen) 99.4%, transparent 100%),
-    linear-gradient(180deg, var(--tile-gloss) 0%, transparent 46%),
-    linear-gradient(180deg, var(--tile-a) 0%, var(--tile-b) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 5.7143rem; /* 80px */
+  height: 5.7143rem;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-surface);
+  color: var(--accent);
+  transition:
+    border-color var(--d-fast) var(--e-standard),
+    background-color var(--d-fast) var(--e-standard);
 }
 
-.ob-tile-face,
-.ob-tile-count {
-  transition: transform var(--d-fast) var(--e-standard);
+/* The icon is drawn at 36px; the stroke stays the sidebar's 1.75 units. */
+.ob-tile-face > svg {
+  width: 2.5714rem; /* 36px */
+  height: 2.5714rem;
 }
 
-.ob-tile:hover .ob-tile-face,
-.ob-tile:hover .ob-tile-count {
-  transform: translateY(-2px);
+.ob-tile:hover .ob-tile-face {
+  border-color: var(--accent);
+  background: var(--accent-tint);
 }
 
-.ob-tile:active .ob-tile-face,
-.ob-tile:active .ob-tile-count {
-  transform: translateY(0);
+.ob-tile:active .ob-tile-face {
+  background: var(--bg-selected);
 }
 
 .ob-tile:focus-visible .ob-tile-face {
@@ -2170,45 +2173,19 @@ html[data-motion='off'] .ob-progress-fill--indeterminate {
   outline-offset: 3px;
 }
 
-/* The glyph and its long shadow, drawn on a 120-unit box over the face. */
-.ob-tile-art {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.ob-tile-shadow {
-  -webkit-mask-image: linear-gradient(135deg, black 40%, transparent 95%);
-}
-
-/* A module with no drawn glyph shows its sidebar icon, in white. */
-.ob-tile-icon {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--tile-paper);
-}
-.ob-tile-icon > svg {
-  width: 2.8571rem; /* 40px */
-  height: 2.8571rem;
-}
-
 /* Positioned on the tile, not the face, so it can follow the label in the
- * DOM; 0.8571rem is the 12px between the tile's edge and the face's. */
+ * DOM; 1.7143rem is the 24px between the tile's edge and the face's. */
 .ob-tile-count {
   position: absolute;
-  top: var(--s-6);
-  right: calc(0.8571rem + var(--s-6));
+  top: calc(-1 * var(--s-6));
+  right: calc(1.7143rem - var(--s-6));
   min-width: 1.2857rem;
   height: 1.2857rem;
   padding: 0 var(--s-6);
   box-sizing: border-box;
   border-radius: 999px;
-  background: var(--tile-paper);
-  color: var(--tile-ink);
+  background: var(--accent);
+  color: var(--fg-on-accent);
   font-size: var(--t-micro-size);
   line-height: 1.2857rem;
   font-weight: 600;
@@ -2237,59 +2214,6 @@ html[data-motion='off'] .ob-progress-fill--indeterminate {
   line-height: 1.1429rem;
   color: var(--fg-secondary);
   white-space: nowrap;
-}
-
-.ob-tile[data-hue='green'] {
-  --tile-a: var(--tile-green-a);
-  --tile-b: var(--tile-green-b);
-}
-.ob-tile[data-hue='orange'] {
-  --tile-a: var(--tile-orange-a);
-  --tile-b: var(--tile-orange-b);
-}
-.ob-tile[data-hue='blue'] {
-  --tile-a: var(--tile-blue-a);
-  --tile-b: var(--tile-blue-b);
-}
-.ob-tile[data-hue='teal'] {
-  --tile-a: var(--tile-teal-a);
-  --tile-b: var(--tile-teal-b);
-}
-.ob-tile[data-hue='red'] {
-  --tile-a: var(--tile-red-a);
-  --tile-b: var(--tile-red-b);
-}
-.ob-tile[data-hue='purple'] {
-  --tile-a: var(--tile-purple-a);
-  --tile-b: var(--tile-purple-b);
-}
-.ob-tile[data-hue='pink'] {
-  --tile-a: var(--tile-pink-a);
-  --tile-b: var(--tile-pink-b);
-}
-.ob-tile[data-hue='indigo'] {
-  --tile-a: var(--tile-indigo-a);
-  --tile-b: var(--tile-indigo-b);
-}
-.ob-tile[data-hue='slate'] {
-  --tile-a: var(--tile-slate-a);
-  --tile-b: var(--tile-slate-b);
-}
-.ob-tile[data-hue='cyan'] {
-  --tile-a: var(--tile-cyan-a);
-  --tile-b: var(--tile-cyan-b);
-}
-.ob-tile[data-hue='amber'] {
-  --tile-a: var(--tile-amber-a);
-  --tile-b: var(--tile-amber-b);
-}
-.ob-tile[data-hue='violet'] {
-  --tile-a: var(--tile-violet-a);
-  --tile-b: var(--tile-violet-b);
-}
-.ob-tile[data-hue='brown'] {
-  --tile-a: var(--tile-brown-a);
-  --tile-b: var(--tile-brown-b);
 }
 
 /* ===========================================================================

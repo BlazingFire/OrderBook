@@ -13,7 +13,6 @@ import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { t } from './i18n.js';
 import { Icon, type IconName } from './icons';
-import { GLYPHS, NavGlyph } from './navGlyphs';
 import { useCommand } from './KeyboardProvider.js';
 import { Logo } from './Logo';
 import { PresenceRail, type RailState } from './PresenceRail';
@@ -189,7 +188,7 @@ export function AppShell({
               if (hasChildren) setFolded((current) => ({ ...current, [item.id]: false }));
             }}
           >
-            {depth === 0 && GLYPHS[item.id] ? (<NavGlyph id={item.id} />) : (<Icon name={item.icon} size={depth ? 14 : 16} />)}
+            <Icon name={item.icon} size={depth ? 13 : 16} />
             {!collapsed && <span className="ob-navitem-label">{item.label}</span>}
             {!collapsed && item.count ? <span className="count">{item.count}</span> : null}
           </button>
