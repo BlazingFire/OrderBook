@@ -1910,66 +1910,8 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
 }
 
 /* ===========================================================================
- * The mark — "The Fill" — and its two jobs (§6)
+ * The splash screen's frame, bar and caption (the mark itself is mark.css)
  * ======================================================================== */
-
-@keyframes ob-outline-draw {
-  from {
-    stroke-dashoffset: 80;
-  }
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
-@keyframes ob-outline-fade {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
-}
-
-/* The mark settles in as one body: a soft rise and a settle from 1.04 to 0.98
- * — the lattice ends a hair inside its outline, which reads as precision
- * rather than a crop. */
-@keyframes ob-mark-in {
-  from {
-    opacity: 0;
-    transform: translateY(3px) scale(1.04);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(0.98);
-  }
-}
-
-/* Each square eases in from a half-step below its final seat. The origin is
- * set per-cell in Splash.tsx; the 0.94 start is a settle, not a pop. */
-@keyframes ob-ink {
-  from {
-    opacity: 0;
-    transform: scale(0.94) translateY(0.5px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
-@keyframes ob-word {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-    letter-spacing: 0.01em;
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-    letter-spacing: -0.02em;
-  }
-}
 
 /* The caption under the bar re-announces itself when the boot step changes:
  * a 120ms fade, not a hard swap. */
@@ -1997,25 +1939,6 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   }
 }
 
-@keyframes ob-busy-loop {
-  0% {
-    opacity: 0.08;
-  }
-  25% {
-    opacity: 0.42;
-  }
-  60% {
-    opacity: 0.08;
-  }
-  100% {
-    opacity: 0.08;
-  }
-}
-
-.ob-busy rect {
-  animation: ob-busy-loop 780ms var(--e-standard) infinite;
-}
-
 .ob-splash {
   position: fixed;
   inset: 0;
@@ -2026,20 +1949,6 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   align-items: center;
   justify-content: center;
   gap: var(--s-20);
-}
-
-.ob-splash-mark {
-  overflow: visible;
-  opacity: 0;
-  animation: ob-mark-in 320ms var(--e-standard) both;
-}
-
-.ob-splash-word {
-  font-size: 2rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  opacity: 0;
-  animation: ob-word 300ms var(--e-standard) 700ms both;
 }
 
 /* The bar and its caption ride in a beat behind the wordmark, not before it:
@@ -2057,7 +1966,7 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
      `both` fill that end state sticks, so borrowing it here squeezed the boot
      caption and the tabular percentage under the bar for the rest of the
      splash. This block only ever wanted the rise. */
-  animation: ob-rise-in 280ms var(--e-standard) 800ms both;
+  animation: ob-rise-in 280ms var(--e-standard) 700ms both;
 }
 
 /* The error variant arrives later than the bar would have — the boot is

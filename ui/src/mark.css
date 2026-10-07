@@ -1,0 +1,149 @@
+/*
+ * The mark and its two moving jobs: the splash and the busy indicator
+ * (the Mark, Marks and Motion artboards). `Mark.tsx`, `BusyMark.tsx` and
+ * `Splash.tsx` draw them; the geometry is `logoCells.ts`.
+ */
+
+:root {
+  /* The accent — cobalt on light, the lighter blue on dark (tokens.css) —
+     with the ghosts at 20 % on light and 28 % on dark. */
+  --ob-mark-ink: var(--accent);
+  --ob-mark-ghost: 0.2;
+}
+
+[data-theme='dark'] {
+  --ob-mark-ghost: 0.28;
+}
+
+.ob-mark [data-ghost] {
+  opacity: var(--ob-mark-ghost);
+}
+
+/* ---------------------------------------------------------------------------
+ * Busy indicator: 700 ms loop, linear, squares 70 ms apart (BusyMark.tsx),
+ * the whole mark at 40 %. Paused while the window is out of focus (base.css).
+ * ------------------------------------------------------------------------ */
+
+@keyframes ob-busy {
+  0% {
+    opacity: 0.15;
+  }
+  20% {
+    opacity: 1;
+  }
+  60% {
+    opacity: 0.15;
+  }
+  100% {
+    opacity: 0.15;
+  }
+}
+
+.ob-busy {
+  opacity: 0.4;
+}
+
+.ob-busy rect {
+  opacity: 0.15;
+  animation: ob-busy 700ms linear infinite;
+}
+
+/* ---------------------------------------------------------------------------
+ * Splash, played once on a cold start (Splash.tsx):
+ *   0–240 ms    the lattice outline draws
+ *   240–620 ms  the ten squares ink, 34 ms apart, each from 88 % to full size
+ *   620–908 ms  the wordmark rises 4 px
+ * ------------------------------------------------------------------------ */
+
+@keyframes ob-outline-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes ob-ink {
+  from {
+    opacity: 0;
+    transform: scale(0.88);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes ob-word {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* The primary horizontal lockup at splash size: mark 56, wordmark 36, gap 16. */
+.ob-splash-lockup {
+  display: flex;
+  align-items: center;
+  gap: 1.1429rem;
+}
+
+.ob-splash-mark {
+  flex: none;
+  overflow: visible;
+}
+
+.ob-splash-outline {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: ob-outline-draw 240ms var(--e-standard) forwards;
+}
+
+.ob-splash-cell {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ob-ink 144ms var(--e-standard) both;
+}
+
+.ob-splash-word {
+  font-size: 2.5714rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  opacity: 0;
+  animation: ob-word 288ms var(--e-standard) 620ms both;
+}
+
+/*
+ * Reduced motion and the motion switch: no movement at all, the final frame.
+ * `reset.css` only clamps durations to 1 ms, which would leave the busy squares
+ * resting at 15 % and the splash a frame away from its end; here they stand as
+ * the finished mark.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .ob-busy rect,
+  .ob-splash-outline,
+  .ob-splash-cell,
+  .ob-splash-word {
+    animation: none !important;
+    opacity: 1;
+    stroke-dashoffset: 0;
+    transform: none;
+  }
+}
+
+html[data-motion='off'] .ob-busy rect,
+html[data-motion='off'] .ob-splash-outline,
+html[data-motion='off'] .ob-splash-cell,
+html[data-motion='off'] .ob-splash-word {
+  animation: none !important;
+  opacity: 1;
+  stroke-dashoffset: 0;
+  transform: none;
+}

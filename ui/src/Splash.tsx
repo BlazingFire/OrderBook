@@ -1,42 +1,43 @@
 /**
- * Splash (§6): the cold-start screen — the mark, the wordmark, and a
- * determinate bar reporting the boot the app is actually doing underneath it.
+ * Splash (the Motion artboard): the cold-start screen — the mark and the
+ * wordmark side by side, and a determinate bar reporting the boot the app is
+ * actually doing underneath it. Played once:
  *
- *   0–280ms    lattice outline draws in (stroke-dashoffset on one path)
- *   280–700ms  squares ink in reading order, 42ms stagger — each cell eases
- *              from a half-step below its final seat, so the lattice settles
- *   700–980ms  wordmark rises in
- *   800ms      the bar and its caption ride in a beat behind the wordmark
+ *   0–240 ms    the lattice outline draws (one path, `pathLength` 1)
+ *   240–620 ms  the ten squares ink in reading order, 34 ms apart
+ *   620–908 ms  the wordmark rises 4 px
+ *   700 ms      the bar and its caption ride in a beat behind the wordmark
  *
  * The bar is not decoration. `progress` and `label` come from the shell's real
- * startup sequence, so a Master whose database is unreachable now stalls
- * visibly on the step that hung instead of sitting on a "Starting…" line that
- * never changes. A step that fails replaces the bar with the reason and a
- * Retry — the exit that used to be missing from an unbreakable wait.
+ * startup sequence, so a Master whose database is unreachable stalls visibly
+ * on the step that hung instead of sitting on a "Starting…" line that never
+ * changes. A step that fails replaces the bar with the reason and a Retry.
  *
- * Motion is handled entirely in CSS: `reset.css` collapses every animation and
- * transition to 1ms under `prefers-reduced-motion` or `data-motion="off"`, so
- * the choreography disappears while the mark, the bar and any error stay. The
- * one thing this component does check is `motionDisabled()`, to drop the
- * minimum hold — with animation off there is nothing left to hold *for*.
+ * Motion is CSS (`mark.css`): under `prefers-reduced-motion` or
+ * `data-motion="off"` the splash shows its final frame at once. The one thing
+ * this component checks is `motionDisabled()`, to drop the minimum hold — with
+ * animation off there is nothing left to hold *for*.
  */
 
 import { useEffect, useRef, useState } from 'react';
 import { Button } from './Button';
-import { CELLS } from './logoCells';
+import { CELLS, CELL_RADIUS, GHOST_CELLS } from './logoCells.js';
 import { motionDisabled } from './theme';
 
 /**
- * Long enough that the ink-in and the wordmark read as one move, not a blink —
- * and long enough to actually contain them.
- *
- * The last thing to arrive is the bar and its caption at 800ms over 280ms, so
- * the sequence is not finished until 1080ms. At 1020 the splash dismissed
- * itself 60ms into that entrance, which reads as a stutter rather than a
- * hand-off. The other two: the cells finish at 280 + 9 x 42 + 150 = 808ms, the
- * wordmark at 700 + 300 = 1000ms.
+ * Long enough to contain the whole entrance: the last arrival is the bar and
+ * its caption, at 700 ms over 280 ms, so the sequence ends at 980 ms; the
+ * wordmark ends at 908 and the last square at 240 + 9 × 34 + 144 = 690.
  */
-const SPLASH_MS = 1100;
+export const SPLASH_MS = 1000;
+
+/** Delay between one square inking and the next. */
+export const SPLASH_STAGGER_MS = 34;
+
+/** The outline of all twelve squares, ghosts included, as one path the draw-in traces. */
+const OUTLINE = [...CELLS.slice(0, 2), ...GHOST_CELLS, ...CELLS.slice(2)]
+  .map(([x, y]) => `M${x} ${y}h4v4h-4z`)
+  .join(' ');
 
 export function Splash({
   wordmark,
@@ -103,48 +104,34 @@ export function Splash({
 
   return (
     <div className="ob-splash" role="status" aria-live="polite">
-      {/* The whole mark eases in as one body, then rests at 0.98: the lattice
-       * never quite touches its own edges, which reads as precision rather
-       * than a crop. */}
-      <svg
-        width={104}
-        height={104}
-        viewBox="0 0 24 24"
-        aria-hidden="true"
-        className="ob-splash-mark"
-      >
-        <rect
-          x={0.5}
-          y={3.5}
-          width={23}
-          height={17}
-          rx={2.5}
-          fill="none"
-          stroke="var(--line-strong)"
-          strokeWidth={0.5}
-          strokeDasharray={80}
-          style={{
-            animation: `ob-outline-draw 280ms var(--e-standard) forwards, ob-outline-fade 220ms var(--e-exit) 760ms forwards`,
-          }}
-        />
-        {CELLS.map(([x, y], i) => (
-          <rect
-            key={i}
-            x={x}
-            y={y}
-            width={4}
-            height={4}
-            rx={0.75}
-            fill="var(--accent)"
-            style={{
-              transformOrigin: `${x + 2}px ${y + 2}px`,
-              animation: 'ob-ink 150ms var(--e-standard) both',
-              animationDelay: `${280 + i * 42}ms`,
-            }}
+      <div className="ob-splash-lockup">
+        <svg width={56} height={56} viewBox="0 0 24 24" aria-hidden="true" className="ob-splash-mark">
+          <path
+            className="ob-splash-outline"
+            pathLength={1}
+            fill="none"
+            stroke="var(--ob-mark-ink)"
+            strokeOpacity={0.35}
+            strokeWidth={0.35}
+            d={OUTLINE}
           />
-        ))}
-      </svg>
-      <span className="ob-splash-word">{wordmark}</span>
+          <g fill="var(--ob-mark-ink)">
+            {CELLS.map(([x, y], i) => (
+              <rect
+                key={i}
+                className="ob-splash-cell"
+                x={x}
+                y={y}
+                width={4}
+                height={4}
+                rx={CELL_RADIUS}
+                style={{ animationDelay: `${240 + i * SPLASH_STAGGER_MS}ms` }}
+              />
+            ))}
+          </g>
+        </svg>
+        <span className="ob-splash-word">{wordmark}</span>
+      </div>
 
       {error ? (
         <div className="ob-splash-status ob-splash-status--error">
