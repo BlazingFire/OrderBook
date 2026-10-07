@@ -84,6 +84,7 @@ import type {
   PresenceLastWrite,
   Product,
   ProductCategory,
+  ProductImage,
   ProductVariant,
 } from '@orderbook/shared';
 import {
@@ -110,7 +111,9 @@ import {
   Modal,
   OrderDetailsBar,
   OrderField,
+  PartyChip,
   PartyFormModal,
+  ProductThumb,
   Select,
   StaleEditNotice,
   StatusPill,
@@ -445,6 +448,11 @@ function AddLeadForm({
   const [subRows, setSubRows] = useState<Product[]>([]);
   const [lines, setLines] = useState<DraftLine[]>(() => (lead ? linesOf(lead, view) : []));
   const [draft, setDraft] = useState<DraftProduct | null>(null);
+  /**
+   * The primary photo of each product picked this visit, kept beside the draft rather than in
+   * it: the draft's facts are copied onto every line it adds, and a photo is not a line fact.
+   */
+  const [pickedImages, setPickedImages] = useState<Record<string, ProductImage | undefined>>({});
   /** Which panel rows are expanded, ticked, and what is filtering them. */
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [selected, setSelected] = useState<Record<string, true>>({});
@@ -649,7 +657,11 @@ function AddLeadForm({
     };
   }, [partyTerm, partyId, readOnlyParties]);
 
-  const partyPick = partyRows.length ? Math.min(partySel, partyRows.length - 1) : 0;
+  /*
+   * The highlighted row, counting "+ Create a new party" as the row after the last party: with
+   * no match it is the only row, so Enter on it opens the dialog instead of walking on to Source.
+   */
+  const partyPick = Math.min(partySel, partyRows.length);
   const partyListOpen = partyOpen && partyQuery.trim() !== '';
 
   function chooseParty(party: Party): void {
@@ -831,6 +843,7 @@ function AddLeadForm({
   }
 
   function openDraft(product: Product, typed = ''): void {
+    setPickedImages((current) => ({ ...current, [product.id]: product.images?.[0] }));
     const partyRecord = partyRecordFor.get(product.id) ?? null;
     const rule = colourRuleOf(product);
     // A variant taken off the form stays sellable on old lines, not new ones.
@@ -1463,90 +1476,26 @@ function AddLeadForm({
         <OrderDetailsBar hasOwner={false}>
           <OrderField label={t('lead.add.party.title')} wide>
             {selectedParty ? (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--s-8)',
-                  minHeight: 'var(--ctl-h-md)',
-                  padding: `0 ${rem(4)} 0 ${rem(8)}`,
-                  border: '1px solid var(--line-control)',
-                  borderRadius: 'var(--r-sm)',
-                  background: 'var(--bg-surface)',
-                  minWidth: 0,
+              <PartyChip
+                name={selectedParty.name}
+                code={selectedParty.partyCode}
+                city={selectedParty.city}
+                extra={
+                  /* The key keeps its name from when party records carried rates; the text says
+                     what it is now — the party's own product names are in use. No money. */
+                  partyWiseMode ? (
+                    <StatusPill tone="ok">{t('lead.add.party.ownRates')}</StatusPill>
+                  ) : undefined
+                }
+                changeLabel={t('lead.add.party.change')}
+                onChange={() => {
+                  setPartyId('');
+                  setPartyQuery('');
+                  setPartyOpen(true);
+                  setPartySel(0);
+                  window.setTimeout(() => partyRef.current?.focus(), 0);
                 }}
-              >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: rem(20),
-                    height: rem(20),
-                    flex: 'none',
-                    borderRadius: 'var(--r-sm)',
-                    background: 'var(--accent-tint)',
-                    color: 'var(--accent)',
-                    fontSize: rem(11),
-                    fontWeight: 600,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  {selectedParty.name
-                    .split(/\s+/)
-                    .filter(Boolean)
-                    .slice(0, 2)
-                    .map((word) => word[0]!.toUpperCase())
-                    .join('')}
-                </span>
-                <span className="ob-body-strong ob-ellipsis" style={{ minWidth: 0 }}>
-                  {selectedParty.name}
-                </span>
-                <span
-                  className="ob-mono ob-small"
-                  style={{ flex: 'none', color: 'var(--fg-secondary)' }}
-                >
-                  {selectedParty.partyCode}
-                </span>
-                {selectedParty.city && (
-                  <span
-                    className="ob-small ob-ellipsis"
-                    style={{ color: 'var(--fg-tertiary)', minWidth: 0 }}
-                  >
-                    {'· '}
-                    {selectedParty.city}
-                  </span>
-                )}
-                {/* The key keeps its name from when party records carried
-                    rates; the text says what it is now — the party's own
-                    product names are in use. No money is shown. */}
-                {partyWiseMode && <StatusPill tone="ok">{t('lead.add.party.ownRates')}</StatusPill>}
-                <span style={{ flex: 1, minWidth: 0 }} />
-                {/*
-                 * `data-field` puts this button back into the Enter/Escape
-                 * walk. Choosing a party replaces the search box with this
-                 * chip, so without it Escape from the source select would
-                 * find no party field to go back to — it is the first step
-                 * of the form, and it has to stay reachable as one.
-                 */}
-                <button
-                  type="button"
-                  className="ob-btn ob-btn--ghost"
-                  data-field
-                  aria-label={t('lead.add.party.change')}
-                  title={t('lead.add.party.change')}
-                  style={{ flex: 'none', padding: 0, minWidth: rem(24), minHeight: rem(24) }}
-                  onClick={() => {
-                    setPartyId('');
-                    setPartyQuery('');
-                    setPartyOpen(true);
-                    setPartySel(0);
-                    window.setTimeout(() => partyRef.current?.focus(), 0);
-                  }}
-                >
-                  <Icon name="close" size={14} />
-                </button>
-              </div>
+              />
             ) : (
               <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
                 <Input
@@ -1570,7 +1519,7 @@ function AddLeadForm({
                     if (event.key === 'ArrowDown') {
                       event.preventDefault();
                       setPartyOpen(true);
-                      setPartySel(Math.min(partyPick + 1, Math.max(0, partyRows.length - 1)));
+                      setPartySel(Math.min(partyPick + 1, partyRows.length));
                     }
                     if (event.key === 'ArrowUp') {
                       event.preventDefault();
@@ -1591,6 +1540,11 @@ function AddLeadForm({
                       } else if (partyRows[partyPick]) {
                         event.preventDefault();
                         chooseParty(partyRows[partyPick]);
+                      } else if (event.key === 'Enter') {
+                        // The create row: open the dialog, the typed name already in it.
+                        event.preventDefault();
+                        setPartyOpen(false);
+                        setPartyDrawerOpen(true);
                       }
                     }
                   }}
@@ -1633,7 +1587,10 @@ function AddLeadForm({
                         width: '100%',
                         justifyContent: 'flex-start',
                         color: 'var(--accent)',
+                        background:
+                          partyPick === partyRows.length ? 'var(--bg-selected)' : undefined,
                       }}
+                      onMouseEnter={() => setPartySel(partyRows.length)}
                       onClick={() => {
                         setPartyOpen(false);
                         setPartyDrawerOpen(true);
@@ -1876,8 +1833,15 @@ function AddLeadForm({
                     <div role="listbox" className="ob-suggest" ref={listRef}>
                       <div
                         className="ob-suggest-row ob-eyebrow"
-                        style={{ gridTemplateColumns: SUGGEST_GRID, color: 'var(--fg-tertiary)' }}
+                        style={{
+                          gridTemplateColumns: SUGGEST_GRID,
+                          color: 'var(--fg-tertiary)',
+                          fontSize: 'var(--t-eyebrow-size)',
+                          fontWeight: 600,
+                          letterSpacing: '0.07em',
+                        }}
                       >
+                        <span />
                         <span>{t('lead.add.products.col.code')}</span>
                         <span>{t('lead.add.products.col.product')}</span>
                         <span>{t('lead.add.products.col.variant')}</span>
@@ -1917,10 +1881,11 @@ function AddLeadForm({
                               openDraft(row, query);
                             }}
                           >
+                            <ProductThumb image={row.images?.[0]} size={32} name={row.name} />
                             <span
                               className="ob-mono ob-body-strong"
                               style={{
-                                fontSize: rem(14),
+                                fontSize: rem(12),
                                 color: index === pick ? 'var(--accent)' : undefined,
                               }}
                             >
@@ -1999,6 +1964,10 @@ function AddLeadForm({
                 {draft && (
                   <DraftCard
                     draft={draft}
+                    image={
+                      pickedImages[draft.productId] ??
+                      view.products.find((product) => product.id === draft.productId)?.images?.[0]
+                    }
                     ready={draftIsReady(draft)}
                     packagingRequired={packagingRequired}
                     packagingOptions={packagingOptions}
@@ -2200,6 +2169,7 @@ function AddLeadForm({
       <PartyFormModal
         transport={partyFormTransport}
         open={partyDrawerOpen}
+        initialName={partyQuery.trim()}
         onClose={() => setPartyDrawerOpen(false)}
         onCreated={(party: CreatedParty) => {
           seenParties.current.set(party.id, party as unknown as Party);
@@ -2216,7 +2186,7 @@ function AddLeadForm({
 
 // --- Pieces ---------------------------------------------------------------
 
-const SUGGEST_GRID = `${rem(84)} minmax(0, 1fr) minmax(0, 0.7fr) ${rem(84)}`;
+const SUGGEST_GRID = `${rem(32)} ${rem(84)} minmax(0, 1fr) minmax(0, 0.7fr) ${rem(84)}`;
 /*
  * Six columns in the form column's width — code, variant, weight, quantity,
  * packaging, grade. It shares the screen with the Added-products panel, so at
@@ -2488,6 +2458,7 @@ function LeadLine({
  */
 function DraftCard({
   draft,
+  image,
   ready,
   packagingRequired,
   packagingOptions,
@@ -2503,6 +2474,8 @@ function DraftCard({
   onClear,
 }: {
   draft: DraftProduct;
+  /** The product's primary photo, when it has one (an initial tile stands in otherwise). */
+  image: ProductImage | undefined;
   ready: boolean;
   /** `leads.packagingRequiredOnConvert`, already coalesced by the screen. */
   packagingRequired: boolean;
@@ -2632,15 +2605,26 @@ function DraftCard({
   return (
     <div className="ob-order-product">
       <div className="ob-order-product__head">
+        <ProductThumb image={image} size={48} name={draft.productName} />
         <span className="ob-mono" style={{ fontSize: rem(12), color: 'var(--accent)' }}>
           {draft.variants.length === 1
             ? draft.variants[0]!.code
             : t('lead.add.products.variantCount', { count: draft.variants.length })}
         </span>
-        <span className="ob-body-strong">{draft.productName}</span>
-        <span className="ob-order-eyebrow">
-          {[draft.categoryName, draft.size].filter(Boolean).join(' · ')}
+        {/* The product as the design names it, its group beside it; the sub product's own name
+            and size are in the table below, shown here only when they differ. */}
+        <span className="ob-body-strong ob-ellipsis" style={{ minWidth: 0 }}>
+          {draft.categoryName}
         </span>
+        {draft.brand && <span className="ob-order-eyebrow">{draft.brand}</span>}
+        {draft.productName !== draft.categoryName && (
+          <span
+            className="ob-small ob-ellipsis"
+            style={{ minWidth: 0, color: 'var(--fg-secondary)' }}
+          >
+            {[draft.productName, draft.size].filter(Boolean).join(' · ')}
+          </span>
+        )}
         {draft.rule === 'selectable' && (
           <StatusPill tone="accent">{t('product.multiColour.pill')}</StatusPill>
         )}
@@ -2875,10 +2859,10 @@ function DraftCard({
           </p>
         )}
 
-        <div ref={addRef} className="ob-order-product__foot">
+        <div ref={addRef} className="ob-order-product__foot" style={{ flexWrap: 'wrap' }}>
           <span
             className="ob-small"
-            style={{ flex: '1 1 0', minWidth: 0, color: 'var(--fg-tertiary)' }}
+            style={{ flex: '1 1 14rem', minWidth: 0, color: 'var(--fg-tertiary)' }}
           >
             {hint}
             {filled.length > 0 && previewKg > 0 && (
@@ -2892,6 +2876,7 @@ function DraftCard({
             variant="secondary"
             disabled={!ready}
             title="Shift+Q"
+            style={{ flex: 'none', whiteSpace: 'nowrap' }}
             onClick={() => onComplete()}
           >
             {t('lead.add.flow.completeSubProduct')}
@@ -2903,8 +2888,21 @@ function DraftCard({
            * short of something the button is disabled, which takes it out of
            * both.
            */}
-          <Button variant="primary" data-field data-add-card disabled={!ready} onClick={onSave}>
+          <Button
+            variant="secondary"
+            data-field
+            data-add-card
+            disabled={!ready}
+            style={{ flex: 'none', whiteSpace: 'nowrap' }}
+            aria-label={
+              draft.editKey ? t('lead.add.draft.saveChanges') : t('lead.add.draft.saveProduct')
+            }
+            onClick={onSave}
+          >
             {draft.editKey ? t('lead.add.draft.saveChanges') : t('lead.add.draft.saveProduct')}
+            <span className="ob-order-kbd" aria-hidden="true">
+              Enter
+            </span>
           </Button>
         </div>
       </div>

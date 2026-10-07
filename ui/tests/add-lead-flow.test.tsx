@@ -423,6 +423,51 @@ describe('the party', () => {
     await screen.findByRole('button', { name: t('lead.add.party.change') });
     expect(screen.getByText(PARTY.name)).toBeTruthy();
   });
+
+  it('opens New party on Enter over "+ Create a new party", with the typed name in it', async () => {
+    await openForm();
+    const partyBox = screen.getByLabelText(t('lead.add.party.search'));
+    fireEvent.change(partyBox, { target: { value: 'Zzz Traders' } });
+    await screen.findByRole('button', { name: t('lead.add.party.create') });
+    await act(async () => wait(300)); // the empty answer has arrived
+
+    await pressEnter(partyBox);
+
+    const name = await screen.findByLabelText(new RegExp(t('party.field.name')));
+    expect((name as HTMLInputElement).value).toBe('Zzz Traders');
+    // And it did not walk on to the source box behind the dialog.
+    expect(document.activeElement).not.toBe(screen.getByLabelText(t('lead.add.step.source')));
+  });
+
+  it('reaches "+ Create a new party" with the arrow keys past the matches, and Enter opens it', async () => {
+    await openForm();
+    const partyBox = screen.getByLabelText(t('lead.add.party.search'));
+    fireEvent.change(partyBox, { target: { value: 'Sha' } });
+    await screen.findByRole('button', { name: new RegExp(SHAH.name) });
+    await act(async () => wait(300));
+
+    fireEvent.keyDown(partyBox, { key: 'ArrowDown' });
+    fireEvent.keyDown(partyBox, { key: 'ArrowDown' });
+    await pressEnter(partyBox);
+
+    const name = await screen.findByLabelText(new RegExp(t('party.field.name')));
+    expect((name as HTMLInputElement).value).toBe('Sha');
+    // No party was chosen on the way.
+    expect(screen.queryByRole('button', { name: t('lead.add.party.change') })).toBeNull();
+  });
+
+  it('shows the chosen party by name, code and city (owner, 2026-10-07)', async () => {
+    await openForm();
+    fireEvent.change(screen.getByLabelText(t('lead.add.party.search')), {
+      target: { value: 'Sha' },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(PARTY.name) }));
+    await screen.findByRole('button', { name: t('lead.add.party.change') });
+
+    const chip = screen.getByText(PARTY.name).parentElement!;
+    expect(within(chip).getByText(PARTY.partyCode)).toBeTruthy();
+    expect(chip.textContent).toContain(PARTY.city);
+  });
 });
 
 describe('the follow-up date', () => {
@@ -1063,6 +1108,44 @@ describe('a dedicated sub product', () => {
     expect(
       items.map(({ variantId, colour, quantity }) => ({ variantId, colour, quantity })),
     ).toEqual([{ variantId: 'var-3', colour: null, quantity: 3 }]);
+  });
+});
+
+describe('picking a sub product with Enter', () => {
+  it('opens a fixed-colour card on its quantity, not on the packaging beside it (D10 R1)', async () => {
+    await openForm();
+    fireEvent.change(screen.getByLabelText(t('lead.add.party.search')), {
+      target: { value: 'Sha' },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(PARTY.name) }));
+    fireEvent.focus(searchBox());
+    fireEvent.mouseDown(await screen.findByRole('button', { name: new RegExp(CATEGORY.name) }));
+    await screen.findByRole('button', { name: new RegExp(FIXED.name) });
+
+    fireEvent.change(searchBox(), { target: { value: FIXED.name } });
+    await act(async () => wait(300));
+    await pressEnter(searchBox());
+
+    const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — White`);
+    expect(document.activeElement).toBe(qty);
+  });
+
+  it('after a line is added by the Enter walk, the bar still holds the product, and Enter on a typed sub product opens it on its quantity', async () => {
+    await openForm();
+    await enterOneLine();
+
+    // Back in the sub-product bar with the product still chosen (§6.7), not on a card.
+    expect(searchBox().placeholder).toBe(
+      t('lead.add.products.productPlaceholder', { category: CATEGORY.name }),
+    );
+    expect(document.querySelector('[data-add-card]')).toBeNull();
+
+    fireEvent.change(searchBox(), { target: { value: DEDICATED.name } });
+    await act(async () => wait(300));
+    await pressEnter(searchBox());
+
+    const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — OPT-0003`);
+    expect(document.activeElement).toBe(qty);
   });
 });
 
