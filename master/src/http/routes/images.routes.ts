@@ -17,6 +17,7 @@ import { ValidationError } from '../../lib/errors.js';
 import * as imageService from '../../services/image.service.js';
 import { asyncHandler } from '../async-handler.js';
 import { actorFromRequest, requireAuth, requirePermissionMiddleware } from '../middleware/require-auth.js';
+import { sendStoredFile } from '../send-stored-file.js';
 
 const needs = requirePermissionMiddleware;
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_SOURCE_BYTES } });
@@ -101,8 +102,6 @@ imageFilesRoutes.get(
     res.set('ETag', `"${file.checksum}"`);
     res.set('Cache-Control', 'private, max-age=31536000, immutable');
     res.type('image/webp');
-    res.sendFile(file.path, (error) => {
-      if (error) next(error);
-    });
+    sendStoredFile(res, file.path, next);
   }),
 );
