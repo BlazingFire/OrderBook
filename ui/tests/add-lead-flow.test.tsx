@@ -945,6 +945,22 @@ describe('Office: the catalogue changing while the entry is open', () => {
     expect(leadPosts(calls)).toHaveLength(1);
   });
 
+  it('asks the Master again at save time, so a delete not yet heard of still blocks the save', async () => {
+    const calls = await openForm();
+    await enterOneLine();
+    await act(async () => wait(50));
+
+    // Deleted on the Master with no change frame sent yet.
+    live.products = live.products.filter((product) => product.id !== FIXED.id);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
+      await wait(0);
+    });
+
+    expect(leadPosts(calls)).toHaveLength(0);
+    expect(await screen.findByText(t('lead.add.errors.goneLines', { names: FIXED.name }))).toBeTruthy();
+  });
+
   it('does not block when the Master cannot say (an older Master), and the save goes', async () => {
     const calls = await openForm();
     live.older = true;
