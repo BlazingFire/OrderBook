@@ -11,7 +11,14 @@
  * value, the Enter walk (`onAdvance` is "the walk's next stop") and all strings.
  */
 
-import { useState, type KeyboardEvent, type Ref } from 'react';
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type Ref,
+} from 'react';
 
 import type { OptionListItem } from '@orderbook/shared';
 
@@ -55,6 +62,24 @@ export function ColourSelect({
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [sel, setSel] = useState(0);
+  /*
+   * The list is placed against the window, not the cell: the grid's body scrolls, and an absolutely
+   * placed list would be clipped by it on a row near the bottom. It opens below the box, or above it
+   * when there is not room below.
+   */
+  const wrap = useRef<HTMLSpanElement>(null);
+  const [place, setPlace] = useState<CSSProperties>({});
+  useLayoutEffect(() => {
+    if (!open || !wrap.current) return;
+    const box = wrap.current.getBoundingClientRect();
+    const room = window.innerHeight - box.bottom;
+    const tall = 260;
+    setPlace(
+      room >= tall || room >= box.top
+        ? { position: 'fixed', left: box.left, top: box.bottom + 4 }
+        : { position: 'fixed', left: box.left, bottom: window.innerHeight - box.top + 4 },
+    );
+  }, [open, query]);
 
   const term = query.trim().toLowerCase();
   const matches = options.filter(
@@ -105,7 +130,11 @@ export function ColourSelect({
   const shown = open ? query : value ? labelOf(value) : '';
 
   return (
-    <span className="ob-order-colour" data-state={value ? 'set' : attention ? 'needed' : 'idle'}>
+    <span
+      ref={wrap}
+      className="ob-order-colour"
+      data-state={value ? 'set' : attention ? 'needed' : 'idle'}
+    >
       <span className="ob-order-colour__dot" aria-hidden="true">
         {value && <ColourChip name={labelOf(value)} hex={hexOf(value)} />}
       </span>
@@ -132,7 +161,7 @@ export function ColourSelect({
         onKeyDown={onKeyDown}
       />
       {open && (
-        <div role="listbox" aria-label={ariaLabel} className="ob-order-colour__list">
+        <div role="listbox" aria-label={ariaLabel} className="ob-order-colour__list" style={place}>
           {matches.map((option, index) => (
             <button
               key={option.id}

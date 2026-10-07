@@ -71,9 +71,18 @@ export function SubGrid({
 }
 
 /** One row of the grid: seven cells in the template's order. */
-export function SubRow({ muted = false, children }: { muted?: boolean; children: ReactNode }) {
+export function SubRow({
+  muted = false,
+  rowKey,
+  children,
+}: {
+  muted?: boolean;
+  /** The row's key, for the screen's Enter walk to read back from the DOM. */
+  rowKey?: string;
+  children: ReactNode;
+}) {
   return (
-    <div className="ob-order-subrow" data-muted={muted ? 'true' : undefined}>
+    <div className="ob-order-subrow" data-muted={muted ? 'true' : undefined} data-row-key={rowKey}>
       {children}
     </div>
   );
