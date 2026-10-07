@@ -15,6 +15,7 @@ import {
   groupLines,
   linesToRows,
   nextWalkStop,
+  prevWalkStop,
   rowProblem,
   rowsToLines,
   type GridLine,
@@ -252,7 +253,7 @@ describe('groupLines', () => {
   });
 });
 
-describe('nextWalkStop', () => {
+describe('the row walk, forward and back', () => {
   const stops: WalkStop[] = [
     { rowKey: 'r1', field: 'qty' },
     { rowKey: 'r1', field: 'packaging' },
@@ -263,23 +264,44 @@ describe('nextWalkStop', () => {
     { rowKey: 'r2', field: 'grade' },
     { rowKey: null, field: 'add' },
   ];
+  const rows = (table: Record<string, { qty: number; hasColour?: boolean }>) => (key: string) => ({
+    qty: table[key]?.qty ?? 0,
+    hasColour: table[key]?.hasColour ?? false,
+  });
 
   it('goes on to the next field of a row that has a quantity', () => {
-    const qty = (key: string) => (key === 'r1' ? 5 : 0);
-    expect(nextWalkStop(stops, 0, qty)).toBe(1);
-    expect(nextWalkStop(stops, 1, qty)).toBe(2);
-    expect(nextWalkStop(stops, 2, qty)).toBe(3);
+    const of = rows({ r1: { qty: 5 } });
+    expect(nextWalkStop(stops, 0, of)).toBe(1);
+    expect(nextWalkStop(stops, 1, of)).toBe(2);
+    expect(nextWalkStop(stops, 2, of)).toBe(3);
   });
 
   it("skips a row's packaging and grade from an empty quantity, on to the next row", () => {
-    const qty = () => 0;
-    expect(nextWalkStop(stops, 0, qty)).toBe(3);
+    const of = rows({});
+    expect(nextWalkStop(stops, 0, of)).toBe(3);
     // From the last row's empty quantity: the Add button.
-    expect(nextWalkStop(stops, 4, qty)).toBe(7);
+    expect(nextWalkStop(stops, 4, of)).toBe(7);
+  });
+
+  it('skips a row nobody has started from its closed colour select, but not one that has a colour or a quantity', () => {
+    expect(nextWalkStop(stops, 3, rows({}))).toBe(7);
+    expect(nextWalkStop(stops, 3, rows({ r2: { qty: 0, hasColour: true } }))).toBe(4);
+    expect(nextWalkStop(stops, 3, rows({ r2: { qty: 3 } }))).toBe(4);
   });
 
   it('ends after the Add button', () => {
-    expect(nextWalkStop(stops, 7, () => 1)).toBeNull();
-    expect(nextWalkStop(stops, 99, () => 1)).toBeNull();
+    expect(nextWalkStop(stops, 7, rows({}))).toBeNull();
+    expect(nextWalkStop(stops, 99, rows({}))).toBeNull();
+  });
+
+  it('goes back one stop, leaving out the packaging and grade of a row with no quantity', () => {
+    // r1 has a quantity: every stop of it is there on the way back.
+    expect(prevWalkStop(stops, 3, rows({ r1: { qty: 5 } }))).toBe(2);
+    expect(prevWalkStop(stops, 2, rows({ r1: { qty: 5 } }))).toBe(1);
+    // r1 is empty: from the row below, back to its quantity, past its grade and packaging.
+    expect(prevWalkStop(stops, 3, rows({}))).toBe(0);
+    // From the Add button over an empty last row: that row's quantity.
+    expect(prevWalkStop(stops, 7, rows({ r1: { qty: 5 } }))).toBe(4);
+    expect(prevWalkStop(stops, 0, rows({}))).toBeNull();
   });
 });

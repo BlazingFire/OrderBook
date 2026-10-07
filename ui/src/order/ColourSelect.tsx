@@ -12,6 +12,7 @@
  */
 
 import {
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -38,6 +39,7 @@ export function ColourSelect({
   filterHint,
   noMatches,
   attention = false,
+  openOnEnter = true,
   inputRef,
   onPick,
   onAdvance,
@@ -58,10 +60,20 @@ export function ColourSelect({
   noMatches: string;
   /** Draws the dashed amber "needs a colour" border while no colour is chosen. */
   attention?: boolean;
+  /**
+   * Enter on a closed select with no colour opens the list (default). False for a row nobody has
+   * started (no quantity): Enter goes on to the walk's next stop instead, and the list opens on an
+   * arrow, a click or typing.
+   */
+  openOnEnter?: boolean;
   inputRef?: Ref<HTMLInputElement>;
   onPick: (value: string) => void;
-  /** Enter on a closed select that already has its colour: the walk's next stop. */
-  onAdvance: () => void;
+  /**
+   * The walk's next stop: after a pick (called with the colour just taken, before the row's own
+   * state has caught up), on Enter over a closed select that has its colour, and on Enter over a
+   * closed one of an unstarted row (`openOnEnter` false).
+   */
+  onAdvance: (picked?: string) => void;
 }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
@@ -72,6 +84,7 @@ export function ColourSelect({
    * when there is not room below.
    */
   const wrap = useRef<HTMLSpanElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<CSSProperties>({});
   useLayoutEffect(() => {
     if (!open || !wrap.current) return;
@@ -92,12 +105,20 @@ export function ColourSelect({
   );
   const pick = matches.length ? Math.min(sel, matches.length - 1) : 0;
 
+  // The highlighted colour stays on screen as the arrows walk past the list's visible rows.
+  // `?.()`: jsdom has no `scrollIntoView`.
+  useEffect(() => {
+    if (!open) return;
+    const rows = listRef.current?.querySelectorAll<HTMLElement>('[role="option"]');
+    rows?.[pick]?.scrollIntoView?.({ block: 'nearest' });
+  }, [open, pick]);
+
   function take(colour: string): void {
     onPick(colour);
     setQuery('');
     setOpen(false);
     setSel(0);
-    onAdvance();
+    onAdvance(colour);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
@@ -127,7 +148,7 @@ export function ColourSelect({
     event.stopPropagation();
     const chosen = open ? matches[pick] : undefined;
     if (chosen) take(chosen.value);
-    else if (value) onAdvance();
+    else if (value || !openOnEnter) onAdvance();
     else setOpen(true);
   }
 
@@ -170,7 +191,13 @@ export function ColourSelect({
       />
       <Icon name="chevron-down" size={12} />
       {open && (
-        <div role="listbox" aria-label={ariaLabel} className="ob-order-colour__list" style={place}>
+        <div
+          ref={listRef}
+          role="listbox"
+          aria-label={ariaLabel}
+          className="ob-order-colour__list"
+          style={place}
+        >
           {filterHint && <p className="ob-order-colour__filter">{filterHint}</p>}
           {matches.map((option, index) => (
             <button

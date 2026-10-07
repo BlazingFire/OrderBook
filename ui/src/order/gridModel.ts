@@ -251,35 +251,68 @@ export function groupLines<L extends GridLine>(lines: readonly L[]): Array<LineG
   return [...groups.values()];
 }
 
-/**
- * Where Enter goes from a field of the row walk. A row's fields in order are colour (selectable
- * only), quantity, packaging, grade. From the quantity of a row with no quantity the walk skips that
- * row's packaging and grade and goes on to the next row, so a card of thirty sub products is not
- * thirty rows of three Enters.
- *
- * `stops` is the DOM order of every field of the card followed by the Add button; each stop says
- * which row it belongs to and what kind of field it is. Returns the index of the stop to focus, or
- * null when there is none after `from`.
- */
+/** One stop of the card's Enter / Escape walk: which row it belongs to and what kind of field it is. */
 export interface WalkStop {
   /** Row key, or null for the Add button. */
   rowKey: string | null;
   field: 'colour' | 'qty' | 'packaging' | 'grade' | 'add';
 }
 
+export interface WalkRow {
+  /** The row's quantity, 0 when blank. */
+  qty: number;
+  /** A colour is already chosen on the row. */
+  hasColour: boolean;
+}
+
+/**
+ * Where Enter goes from a field of the row walk. A row's fields in order are colour (selectable
+ * only), quantity, packaging, grade. A row nobody has started is skipped whole: from its colour
+ * select (no quantity, no colour) or from its quantity (no quantity) the walk goes on to the next
+ * row, so a card of thirty sub products is not thirty rows of three Enters.
+ *
+ * `stops` is the DOM order of every field of the card followed by the Add button; each stop says
+ * which row it belongs to and what kind of field it is. Returns the index of the stop to focus, or
+ * null when there is none after `from`.
+ */
 export function nextWalkStop(
   stops: readonly WalkStop[],
   from: number,
-  qtyOf: (rowKey: string) => number,
+  rowOf: (rowKey: string) => WalkRow,
 ): number | null {
   const here = stops[from];
   if (!here) return null;
-  if (here.field === 'qty' && here.rowKey && qtyOf(here.rowKey) <= 0) {
-    // An empty row: on to the next row's first field (or the Add button).
+  const row = here.rowKey ? rowOf(here.rowKey) : null;
+  const empty =
+    row !== null &&
+    ((here.field === 'qty' && row.qty <= 0) ||
+      (here.field === 'colour' && row.qty <= 0 && !row.hasColour));
+  if (empty) {
     for (let index = from + 1; index < stops.length; index += 1) {
       if (stops[index]!.rowKey !== here.rowKey) return index;
     }
     return null;
   }
   return from + 1 < stops.length ? from + 1 : null;
+}
+
+/**
+ * Where Escape goes back to: the stop before, except that a row with no quantity has no packaging or
+ * grade stops, the same stops the forward walk uses, so Escape from the row below lands on that
+ * row's quantity.
+ */
+export function prevWalkStop(
+  stops: readonly WalkStop[],
+  from: number,
+  rowOf: (rowKey: string) => WalkRow,
+): number | null {
+  for (let index = from - 1; index >= 0; index -= 1) {
+    const stop = stops[index]!;
+    const skipped =
+      stop.rowKey !== null &&
+      (stop.field === 'packaging' || stop.field === 'grade') &&
+      rowOf(stop.rowKey).qty <= 0;
+    if (!skipped) return index;
+  }
+  return null;
 }

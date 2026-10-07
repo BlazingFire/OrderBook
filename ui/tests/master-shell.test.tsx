@@ -1044,7 +1044,7 @@ describe('New pending order', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Sharma Traders/ }));
     fireEvent.focus(searchBox());
     fireEvent.mouseDown(await screen.findByRole('button', { name: /ONE PIECE TOILET/ }));
-    const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — White`);
+    const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — OPT-0001`);
     fireEvent.change(qty, { target: { value: '5' } });
     await act(async () => {
       fireEvent.keyDown(qty, { key: 'Q', shiftKey: true });

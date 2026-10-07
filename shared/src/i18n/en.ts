@@ -1495,7 +1495,7 @@ export const EN_MESSAGES = {
   'lead.add.line.noPackaging': 'no packaging',
   'lead.add.products.clear': 'Clear selection',
   'lead.add.products.pickedHint':
-    'Enter walks quantity, packaging and grade to Add product, which adds this sub product and returns to the list; Shift+Q adds it and moves on to the next product.',
+    'Enter walks each row to Add product, which adds the rows with a quantity and returns to the product bar; Shift+Q adds them and moves on to the next product.',
   'lead.add.products.searchAdds': 'search for another product',
   'lead.add.products.searchFirst': 'choose a product — its sub products open as a grid',
   'lead.add.saved': 'Pending Order saved — {id} syncs when the Master is reachable',
