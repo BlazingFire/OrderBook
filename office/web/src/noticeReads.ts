@@ -4,7 +4,8 @@
  * `notice:markRead` is online-only and has no outbox mutation (the Master records a
  * read once per person and notice, and ignores ids outside the reader's board, so a
  * replay changes nothing). A read made while the Master is out of reach is kept here,
- * per signed-in user, in this window's storage and sent on the next reconnect. Until
+ * per signed-in user, in this window's storage and sent once the link is back, retried with a
+ * backoff until the Master takes it. Until
  * the next snapshot says `readByMe`, the ids read here count as read, so the badge and
  * the board move the moment somebody marks something.
  *
@@ -43,21 +44,32 @@ function save(userId: string, ids: string[]): void {
   }
 }
 
-/** Sends this user's queued reads plus `extra`; what the Master took leaves the queue. */
-async function flush(userId: string, extra: string[] = []): Promise<void> {
-  const ids = [...new Set([...load(userId), ...extra])];
-  if (ids.length === 0) return;
+/**
+ * Sends this user's queued reads; what the Master took leaves the queue. True when some are
+ * still waiting: the Master was out of reach, not yet ready for the command (426), or wants
+ * this person to sign in again (401 `sign_in_again`). A replay changes nothing on the Master,
+ * so trying again is always safe.
+ */
+async function flush(userId: string): Promise<boolean> {
+  const ids = load(userId);
+  if (ids.length === 0) return false;
   try {
     await api.markNoticesRead(ids);
-    save(
-      userId,
-      load(userId).filter((id) => !ids.includes(id)),
-    );
+    const left = load(userId).filter((id) => !ids.includes(id));
+    save(userId, left);
+    return left.length > 0;
   } catch (error) {
-    // Without `notices.view` the reads can never land; anything else waits for the next link.
-    if (error instanceof ApiError && error.code === 'forbidden') save(userId, []);
+    // Without `notices.view` the reads can never land.
+    if (error instanceof ApiError && error.code === 'forbidden') {
+      save(userId, []);
+      return false;
+    }
+    return true;
   }
 }
+
+/** Waits between tries while the link is up: 1 s, 2 s, 4 s … at most 30 s. */
+const RETRY_MS = (attempt: number) => Math.min(30_000, 1000 * 2 ** attempt);
 
 /** This person's notices with the reads made on this panel counted as read. */
 export function withReadsHere(notices: readonly Notice[], readHere: ReadonlySet<string>): Notice[] {
@@ -71,7 +83,7 @@ export function unreadOnBoard(notices: readonly Notice[], today: string): Notice
   return notices.filter((notice) => !notice.readByMe && !isNoticeExpired(notice.showUntil, today));
 }
 
-export function useNoticeReads(userId: string | null, online: boolean) {
+export function useNoticeReads(userId: string | null, online: boolean, revision: number) {
   const [state, setState] = useState<{ userId: string | null; ids: ReadonlySet<string> }>({
     userId: null,
     ids: new Set(),
@@ -83,9 +95,24 @@ export function useNoticeReads(userId: string | null, online: boolean) {
     setState({ userId, ids: new Set(userId ? load(userId) : []) });
   }, [userId]);
 
+  // Sends the queue on sign-in, on the link coming up, on every fresh snapshot (`revision`: the
+  // person is attached again and the Master's protocol is known) and on every new read, then
+  // keeps trying with a backoff while something is left and the link stays up.
+  const [nudge, setNudge] = useState(0);
   useEffect(() => {
-    if (userId && online) void flush(userId);
-  }, [userId, online]);
+    if (!userId || !online) return;
+    let live = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const attempt = async (tries: number) => {
+      const again = await flush(userId);
+      if (live && again) timer = setTimeout(() => void attempt(tries + 1), RETRY_MS(tries));
+    };
+    void attempt(0);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [userId, online, revision, nudge]);
 
   const markRead = useCallback(
     (ids: string[]) => {
@@ -95,9 +122,9 @@ export function useNoticeReads(userId: string | null, online: boolean) {
         ids: new Set([...(current.userId === userId ? current.ids : []), ...ids]),
       }));
       save(userId, [...new Set([...load(userId), ...ids])]);
-      if (online) void flush(userId, ids);
+      setNudge((count) => count + 1);
     },
-    [userId, online],
+    [userId],
   );
 
   return { readHere, markRead };

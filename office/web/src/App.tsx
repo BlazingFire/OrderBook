@@ -56,6 +56,8 @@ import {
   createBurstBatcher,
   BasicHome,
   BP_NARROW,
+  cardNotices,
+  NoticeDashboardCard,
   BusyMark,
   PrintStationRunner,
   Avatar,
@@ -608,7 +610,11 @@ function OfficePanel() {
   const canManageNotices = signedIn && (session?.permissions.includes('notices.manage') ?? false);
   // This person's notices from the snapshot, with the reads made here counted; a read made
   // offline waits for the link (`noticeReads.ts`).
-  const noticeReads = useNoticeReads(session?.userId ?? null, connection?.state === 'connected');
+  const noticeReads = useNoticeReads(
+    session?.userId ?? null,
+    connection?.state === 'connected',
+    viewRevision,
+  );
   const myNotices = withReadsHere(
     canViewNotices ? (view?.notices ?? []) : [],
     noticeReads.readHere,
@@ -1377,21 +1383,22 @@ function OfficePanel() {
     return found.slice(0, 20);
   }
 
-  const activeId = subNav && tab !== 'addLead'
-    ? subNav.activeId
-    : route === 'gallery'
-      ? 'gallery'
-      : // `addLead` is deliberately absent from the sidebar (reached only via
-        // the "New lead" button), so it can never satisfy the sidebar-membership
-        // check below — that used to fall through to the first sidebar item
-        // (Dashboard) and silently discard the switch to Add Lead.
-        tab === 'addLead'
-        ? 'leads.new'
-        : subPages[tab]?.length
-          ? `${tab}.${subKeyOf(tab)}`
-          : groups.some((group) => group.items.some((item) => item.id === idToTab[tab]))
-            ? tab
-            : landing;
+  const activeId =
+    subNav && tab !== 'addLead'
+      ? subNav.activeId
+      : route === 'gallery'
+        ? 'gallery'
+        : // `addLead` is deliberately absent from the sidebar (reached only via
+          // the "New lead" button), so it can never satisfy the sidebar-membership
+          // check below — that used to fall through to the first sidebar item
+          // (Dashboard) and silently discard the switch to Add Lead.
+          tab === 'addLead'
+          ? 'leads.new'
+          : subPages[tab]?.length
+            ? `${tab}.${subKeyOf(tab)}`
+            : groups.some((group) => group.items.some((item) => item.id === idToTab[tab]))
+              ? tab
+              : landing;
 
   const flatItems = groups.flatMap((group) => flattenNav(group.items));
   /** Whether the sidebar offers this person the screen — navigation's gate and the palette's. */
@@ -1737,12 +1744,26 @@ function OfficePanel() {
   const alwaysAvailable: ScreenSpec[] = [
     {
       id: 'basicHome',
+      // Where Office and Management land, so the important and pinned notices are here as
+      // well as on the Dashboard; the card draws nothing until the first snapshot has some.
       render: () => (
-        <BasicHome
-          groups={groups}
-          onOpen={goToTab}
-          onNewLead={can('leads.create') ? openNewLead : undefined}
-        />
+        <>
+          {canViewNotices && cardNotices(myNotices, todayForNotices()).length > 0 && (
+            // Inset like the launcher's own sections, so the card lines up with the tiles.
+            <div style={{ padding: 'var(--s-8) var(--s-12) 0' }}>
+              <NoticeDashboardCard
+                notices={myNotices}
+                today={todayForNotices()}
+                onOpen={() => goToTab('notices')}
+              />
+            </div>
+          )}
+          <BasicHome
+            groups={groups}
+            onOpen={goToTab}
+            onNewLead={can('leads.create') ? openNewLead : undefined}
+          />
+        </>
       ),
     },
     {

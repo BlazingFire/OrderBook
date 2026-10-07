@@ -87,11 +87,19 @@ interface Boot {
   permissions: string[];
   notices: unknown[];
   userId?: string;
+  roleTier?: string;
   connection?: Partial<typeof CONNECTION>;
   route?: (call: Call) => Response | undefined;
 }
 
-async function boot({ permissions, notices, userId = 'user-1', connection = {}, route }: Boot) {
+async function boot({
+  permissions,
+  notices,
+  userId = 'user-1',
+  roleTier = 'admin',
+  connection = {},
+  route,
+}: Boot) {
   const calls = routeFetch((call) => {
     const answer = route?.(call);
     if (answer) return answer;
@@ -105,7 +113,7 @@ async function boot({ permissions, notices, userId = 'user-1', connection = {}, 
           displayName: userId,
           roleId: 'role-admin',
           roleName: 'Admin',
-          roleTier: 'admin',
+          roleTier,
           permissions,
           offline: false,
           signedInAt: '2026-10-06T00:00:00.000Z',
@@ -210,12 +218,21 @@ describe('Office notice board: offline reads', () => {
     await waitFor(() => expect(localStorage.getItem('orderbook.noticeReads.user-1')).toBeNull());
   });
 
-  it('keeps the read queued when the Master is out of reach, and drops it when refused for good', async () => {
-    let answer: Response = json({ error: 'unavailable', message: 'down' }, 503);
+  // D10's D9-1: the replay ran once on 'connected', was refused, and never ran again while the
+  // link stayed up. Now it backs off and tries again, with nobody pressing anything.
+  it.each([
+    ['the Master is out of reach', 503, 'unavailable'],
+    ['the Master is not ready for the command yet', 426, 'updateNeeded'],
+  ])('sends a read again on its own after a refusal because %s', async (_why, status, code) => {
+    let refused = false;
     const calls = await boot({
       permissions: ['notices.view'],
       notices: [notice('n1')],
-      route: (call) => (call.url === '/api/notices/read' ? answer : undefined),
+      route: (call) => {
+        if (call.url !== '/api/notices/read' || refused) return undefined;
+        refused = true;
+        return json({ error: code, message: 'not now' }, status);
+      },
     });
     await openBoard();
     fireEvent.click(screen.getByRole('button', { name: t('notices.board.markRead') }));
@@ -224,15 +241,73 @@ describe('Office notice board: offline reads', () => {
       'n1',
     ]);
 
-    answer = json({ error: 'forbidden', message: 'no' }, 403);
-    await act(async () => {
-      FakeEventSource.instances.at(-1)!.emit('status', { state: 'disconnected' });
-    });
-    await act(async () => {
-      FakeEventSource.instances.at(-1)!.emit('status', { state: 'connected' });
-    });
-    await waitFor(() => expect(readCalls(calls)).toHaveLength(2));
+    await waitFor(() => expect(readCalls(calls)).toHaveLength(2), { timeout: 4000 });
+    expect(readCalls(calls)[1]!.body).toEqual({ ids: ['n1'] });
     await waitFor(() => expect(localStorage.getItem('orderbook.noticeReads.user-1')).toBeNull());
+  });
+
+  it('sends the queue again when a fresh snapshot arrives, without waiting out the backoff', async () => {
+    let refused = false;
+    const calls = await boot({
+      permissions: ['notices.view'],
+      notices: [notice('n1')],
+      route: (call) => {
+        if (call.url !== '/api/notices/read' || refused) return undefined;
+        refused = true;
+        return json({ error: 'unavailable', message: 'down' }, 503);
+      },
+    });
+    await openBoard();
+    fireEvent.click(screen.getByRole('button', { name: t('notices.board.markRead') }));
+    await waitFor(() => expect(readCalls(calls)).toHaveLength(1));
+
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('snapshot', snapshot([notice('n1')]));
+    });
+    // Well inside the first one-second backoff.
+    await waitFor(() => expect(readCalls(calls)).toHaveLength(2), { timeout: 500 });
+  });
+
+  it('keeps a read refused with sign_in_again for its person, and sends it when they sign in', async () => {
+    const calls = await boot({
+      permissions: ['notices.view'],
+      notices: [notice('n1')],
+      route: (call) =>
+        call.url === '/api/notices/read'
+          ? json({ error: 'sign_in_again', message: 'Sign in again' }, 401)
+          : undefined,
+    });
+    await openBoard();
+    fireEvent.click(screen.getByRole('button', { name: t('notices.board.markRead') }));
+    await waitFor(() => expect(readCalls(calls)).toHaveLength(1));
+    expect(JSON.parse(localStorage.getItem('orderbook.noticeReads.user-1') ?? '[]')).toEqual([
+      'n1',
+    ]);
+
+    // The same person, signed in again at this window.
+    cleanup();
+    FakeEventSource.instances.length = 0;
+    const again = await boot({ permissions: ['notices.view'], notices: [notice('n1')] });
+    await waitFor(() => expect(readCalls(again)).toHaveLength(1));
+    expect(readCalls(again)[0]!.body).toEqual({ ids: ['n1'] });
+    await waitFor(() => expect(localStorage.getItem('orderbook.noticeReads.user-1')).toBeNull());
+  });
+
+  it('drops a queued read refused for good (no notices.view)', async () => {
+    const calls = await boot({
+      permissions: ['notices.view'],
+      notices: [notice('n1')],
+      route: (call) =>
+        call.url === '/api/notices/read'
+          ? json({ error: 'forbidden', message: 'no' }, 403)
+          : undefined,
+    });
+    await openBoard();
+    fireEvent.click(screen.getByRole('button', { name: t('notices.board.markRead') }));
+    await waitFor(() => expect(readCalls(calls)).toHaveLength(1));
+    await waitFor(() => expect(localStorage.getItem('orderbook.noticeReads.user-1')).toBeNull());
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    expect(readCalls(calls)).toHaveLength(1);
   });
 
   it('never sends or counts a read another person queued at this window', async () => {
@@ -307,6 +382,21 @@ describe('Office notice board: management and the Dashboard', () => {
     await screen.findByText('Stock count Saturday');
     fireEvent.click(screen.getByRole('button', { name: t('notices.card.open') }));
     await screen.findByRole('button', { name: t('notices.board.markRead') });
+  });
+
+  it('shows the important and pinned notices on Basic Home, where the Office tier lands', async () => {
+    await boot({
+      permissions: ['notices.view', 'leads.view'],
+      roleTier: 'office',
+      notices: [
+        notice('n1', { pinned: true, title: 'Pinned rule' }),
+        notice('n2', { title: 'Plain chatter' }),
+      ],
+    });
+    await screen.findByText('Pinned rule');
+    expect(screen.queryByText('Plain chatter')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: t('notices.card.open') }));
+    await screen.findByRole('button', { name: t('notices.board.markAllRead') });
   });
 
   it('shows no notices to somebody without notices.view, even if the snapshot carried some', async () => {
