@@ -143,19 +143,19 @@ describe.each(['filling', 'dispatch'] as NoteKind[])('paginateOrderNote (%s)', (
     expect(onlyNamed?.wideLeft).toBe(true);
     expect(onlyNamed?.left).toHaveLength(2);
 
-    // As in the design: seven code columns across a page of codes alone, three beside the named half.
+    // Two columns of four across a page of codes alone, one column of three beside the named half.
     const onlyCoded = paginateOrderNote(buildOrderNote(orderWith(0, 500)), kind)[0];
     expect(onlyCoded?.wideRight).toBe(true);
     expect(onlyCoded?.right).toHaveLength(NOTE_LAYOUT.codedColumnsWide);
-    expect(NOTE_LAYOUT.codedColumnsWide).toBe(7);
+    expect(NOTE_LAYOUT.codedColumnsWide).toBe(2);
 
     const beside = paginateOrderNote(buildOrderNote(orderWith(20, 200)), kind)[0];
     expect(beside?.wideRight).toBe(false);
     expect(beside?.right).toHaveLength(NOTE_LAYOUT.codedColumns);
-    expect(NOTE_LAYOUT.codedColumns).toBe(3);
+    expect(NOTE_LAYOUT.codedColumns).toBe(1);
   });
 
-  it('gives a product of three or more codes one header, one code to a cell, and never leaves the header alone at a column foot', () => {
+  it('gives a product of three or more codes one header, codes side by side, and never leaves the header alone at a column foot', () => {
     const pages = paginateOrderNote(buildOrderNote(orderWith(0, 300)), kind);
     for (const page of pages) {
       for (const column of page.right) {
@@ -166,8 +166,29 @@ describe.each(['filling', 'dispatch'] as NoteKind[])('paginateOrderNote (%s)', (
     const slots = pages.flatMap((p) => p.right.flat());
     expect(slots.some((slot) => slot.kind === 'header' && slot.continued)).toBe(true);
     const rows = slots.flatMap((slot) => (slot.kind === 'row' ? [slot] : []));
-    expect(Math.max(...rows.map((row) => row.lines.length))).toBe(NOTE_LAYOUT.codesPerRow);
-    expect(NOTE_LAYOUT.codesPerRow).toBe(1);
+    expect(Math.max(...rows.map((row) => row.lines.length))).toBe(NOTE_LAYOUT.codesPerRowWide);
+    expect(NOTE_LAYOUT.codesPerRowWide).toBe(4);
+  });
+
+  it('V7: puts three codes on every line beside the named half, only the last line of a product being short', () => {
+    expect(NOTE_LAYOUT.codesPerRow).toBe(3);
+    const pages = paginateOrderNote(buildOrderNote(orderWith(60, 120)), kind);
+    const beside = pages.filter((page) => !page.wideRight && page.right.length > 0);
+    expect(beside.length).toBeGreaterThan(0);
+    for (const page of beside) {
+      for (const column of page.right) {
+        column.forEach((slot, index) => {
+          if (slot.kind !== 'row') return;
+          const next = column[index + 1];
+          // A line is full unless the product (or the run of small ones) ends there, or the page does.
+          if (next?.kind === 'row') expect(slot.lines).toHaveLength(NOTE_LAYOUT.codesPerRow);
+        });
+      }
+    }
+    // Where a product has a header, its first line already holds three, not one.
+    const firstRows = beside.flatMap((page) => page.right.flat()).flatMap((slot, i, all) =>
+      slot.kind === 'header' && all[i + 1]?.kind === 'row' ? [(all[i + 1] as { lines: unknown[] }).lines.length] : []);
+    expect(firstRows.some((n) => n === NOTE_LAYOUT.codesPerRow)).toBe(true);
   });
 
   it('prints the product on each code of a product with fewer than three, and gives it no header', () => {
@@ -180,8 +201,10 @@ describe.each(['filling', 'dispatch'] as NoteKind[])('paginateOrderNote (%s)', (
     const slots = paginateOrderNote(buildOrderNote(orderOf(items)), kind)[0]!.right.flat();
     expect(slots.flatMap((s) => (s.kind === 'header' ? [s.product] : []))).toEqual(['Trio']);
     const rows = slots.flatMap((s) => (s.kind === 'row' ? [s] : []));
-    // Each code of a small product is its own labelled cell.
-    expect(rows.filter((r) => r.labelled).map((r) => r.product).sort()).toEqual(['Pair', 'Pair', 'Solo']);
+    // Small products share a line, and each code of one is its own labelled cell with its own product.
+    const small = rows.filter((r) => r.labelled);
+    expect(small).toHaveLength(1);
+    expect(small[0]!.lines.map((l) => l.product.split(' ')[0]).sort()).toEqual(['Pair', 'Pair', 'Solo']);
     expect(rows.filter((r) => !r.labelled).flatMap((r) => r.lines)).toHaveLength(3);
   });
 

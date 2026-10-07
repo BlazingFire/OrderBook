@@ -112,11 +112,21 @@ export const NOTE_LAYOUT = {
   /** A row of codes with their product printed on each — groups too small to earn a header. */
   rowCodedLabelled: 62,
   groupHeader: 26,
-  /** Codes side by side in a row: one, each column of cells running top-down as in the design. */
-  codesPerRow: 1,
-  /** Columns the coded half takes: three beside the named half, seven when it has the page. */
-  codedColumns: 3,
-  codedColumnsWide: 7,
+  /**
+   * Codes side by side on one printed line: three beside the named half, as the owner asked (V7,
+   * 2026-10-07). A product's codes run across the line, then down; small products share lines, each cell
+   * printing its own product.
+   */
+  codesPerRow: 3,
+  /**
+   * The coded half on a page of its own: two columns of four, which keeps the design's page counts
+   * (Short 2, Typical 5, Long 12) and a cell wide enough for its pack, grade and quantity (82 px).
+   * Three columns of three fit more, but cells of 70 px cut the grade off.
+   */
+  codesPerRowWide: 4,
+  /** Columns of such lines the coded half takes: one beside the named half, two when it has the page. */
+  codedColumns: 1,
+  codedColumnsWide: 2,
   /**
    * The last page carries the notes and signatures, so the page before it is cut early enough
    * that the last page holds at least this many lines rather than one or two.
@@ -161,13 +171,13 @@ export interface OrderNoteModel {
   totalWeightKg: number;
 }
 
-/** One slot of a coded column: a group's header, or a row of up to `codesPerRow` codes. */
+/** One slot of a coded column: a group's header, or a line of up to `codesPerRow` codes. */
 export type NoteSlot =
   | { kind: 'header'; product: string; continued: boolean }
   | {
       kind: 'row';
       lines: NoteLine[];
-      /** Each code prints its own product: the group is too small for a header. */
+      /** Each code prints its own product (`NoteLine.product`): the products are too small for a header. */
       labelled: boolean;
       product: string;
     };
@@ -335,8 +345,9 @@ function fillColumns(
   start: Cursor,
   columnCount: number,
   height: number,
+  codesPerRow: number,
 ): Filled {
-  const { groupHeader, rowCoded, rowCodedLabelled, codesPerRow } = NOTE_LAYOUT;
+  const { groupHeader, rowCoded, rowCodedLabelled } = NOTE_LAYOUT;
   const columns: NoteSlot[][] = [];
   let column: NoteSlot[] = [];
   let used = 0;
@@ -370,17 +381,25 @@ function fillColumns(
       column.push({ kind: 'header', product: current.product, continued: line > 0 });
     }
     needHeader = false;
-    const lines = current.lines.slice(line, line + codesPerRow);
+    // A headed product fills its own lines. Products too small for a header share them, so a line is
+    // never a lone code with two empty places beside it.
+    const lines: NoteLine[] = [];
+    let g = group;
+    let l = line;
+    while (lines.length < codesPerRow && g < groups.length && (g === group || (!headed && groups[g]!.lines.length < NOTE_GROUP_HEADER_MIN))) {
+      const taken = (groups[g] as NoteGroup).lines.slice(l, l + codesPerRow - lines.length);
+      lines.push(...taken);
+      l += taken.length;
+      if (l < (groups[g] as NoteGroup).lines.length) break;
+      g += 1;
+      l = 0;
+    }
     column.push({ kind: 'row', lines, labelled: !headed, product: current.product });
     used += cost;
     placed += lines.length;
-    line += lines.length;
-
-    if (line >= current.lines.length) {
-      group += 1;
-      line = 0;
-      needHeader = true;
-    }
+    group = g;
+    line = l;
+    if (line === 0) needHeader = true;
   }
 
   if (column.length > 0) columns.push(column);
@@ -463,6 +482,7 @@ export function paginateOrderNote(
     const wideLeft = remainingCoded === 0;
     const wideRight = remainingNamed === 0;
     const columnCount = wideRight ? L.codedColumnsWide : L.codedColumns;
+    const perRow = wideRight ? L.codesPerRowWide : L.codesPerRow;
 
     const height = (isLast: boolean): number =>
       L.inner -
@@ -475,13 +495,13 @@ export function paginateOrderNote(
 
     // Would the rest of the note fit on this page with the notes and signatures on it?
     const lastHeight = height(true);
-    const probe = fillColumns(model.coded, codedAt, columnCount, lastHeight);
+    const probe = fillColumns(model.coded, codedAt, columnCount, lastHeight, perRow);
     const fitsLast = remainingNamed <= leftRows(lastHeight) && remainingCoded - probe.placed <= 0;
     // The rest fitting only without the notes and signatures is not a last page: cut it
     // at the last-page height so a page follows to carry the remainder and the
     // signatures, rather than printing them over the final rows.
     const fullHeight = height(false);
-    const fullProbe = fillColumns(model.coded, codedAt, columnCount, fullHeight);
+    const fullProbe = fillColumns(model.coded, codedAt, columnCount, fullHeight, perRow);
     const fitsFull = remainingNamed <= leftRows(fullHeight) && remainingCoded - fullProbe.placed <= 0;
     let h = fitsLast || fitsFull ? lastHeight : fullHeight;
 
@@ -490,7 +510,7 @@ export function paginateOrderNote(
     // Cut it a little earlier until the tail it leaves is at least `minTailLines`.
     if (!fitsLast) {
       const placedAt = (height: number): number =>
-        leftRows(height) + fillColumns(model.coded, codedAt, columnCount, height).placed;
+        leftRows(height) + fillColumns(model.coded, codedAt, columnCount, height, perRow).placed;
       const remaining = remainingNamed + remainingCoded;
       const floor = Math.floor(fullHeight / 2);
       let tail = remaining - placedAt(h);
@@ -502,7 +522,7 @@ export function paginateOrderNote(
 
     const left = fillNamed(model.named, namedAt, wideLeft, h);
     const namedSlice = left.flat();
-    const filled = fillColumns(model.coded, codedAt, columnCount, h);
+    const filled = fillColumns(model.coded, codedAt, columnCount, h, perRow);
 
     const cells = filled.columns.flat().flatMap((slot) => (slot.kind === 'row' ? slot.lines : []));
     const totals = sumOf([...namedSlice, ...cells]);

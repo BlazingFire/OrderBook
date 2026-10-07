@@ -37,7 +37,6 @@ const LAYOUT_VARS = {
   '--note-row-coded': `${NOTE_LAYOUT.rowCoded}px`,
   '--note-row-coded-labelled': `${NOTE_LAYOUT.rowCodedLabelled}px`,
   '--note-group-header': `${NOTE_LAYOUT.groupHeader}px`,
-  '--note-codes-per-row': NOTE_LAYOUT.codesPerRow,
 } as CSSProperties;
 
 export interface OrderNoteProps {
@@ -149,7 +148,7 @@ function CodedSlot({ slot }: { slot: NoteSlot }) {
     <div className={`ob-note-coderow${slot.labelled ? ' ob-note-coderow--labelled' : ''}`}>
       {slot.lines.map((line) => (
         <div className="ob-note-cell" key={line.key}>
-          {slot.labelled && <div className="ob-note-cell-product">{slot.product}</div>}
+          {slot.labelled && <div className="ob-note-cell-product">{line.product}</div>}
           <div className="ob-note-cell-code">
             <span className="ob-note-clip">{line.subProduct}</span>
             <BrandChip brand={line.brand} />
@@ -333,7 +332,10 @@ function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
         {hasRight && (
           <div
             className={`ob-note-half ob-note-half--right${hasLeft ? '' : ' ob-note-half--only'}`}
-            style={{ flex: `1 1 ${page.wideRight ? '100%' : '42%'}` }}
+            style={{
+              flex: `1 1 ${page.wideRight ? '100%' : '42%'}`,
+              '--note-codes-per-row': page.wideRight ? NOTE_LAYOUT.codesPerRowWide : NOTE_LAYOUT.codesPerRow,
+            } as CSSProperties}
           >
             <div className="ob-note-caption">
               <span>{t('orderNote.codedProducts')}</span>
