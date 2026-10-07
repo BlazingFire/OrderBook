@@ -192,7 +192,8 @@ export function UpdatesScreen({
       key: 'status',
       header: t('panels.table.status'),
       // The four fixed columns are kept narrow so that Name keeps room for its header at 157 % on a 1366 px screen.
-      width: rem(100),
+      // 108: the "Connected" pill (74 px at 100 %) plus the cell's 16 px edges; 100 clipped it.
+      width: rem(108),
       render: (panel) =>
         panel.isConnected ? (
           <StatusPill tone="ok">{t('panels.status.connected')}</StatusPill>

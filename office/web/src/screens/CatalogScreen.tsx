@@ -850,7 +850,8 @@ export function CatalogScreen({
       sortable: true,
       header: t('catalog.products.column.codes'),
       priority: 2,
-      width: 'minmax(0, 0.7fr)',
+      // Floor in rem, as Weight's: "Code ↕" plus the cell edges is 114 px at 157 % (22 px rem).
+      width: 'minmax(5.2rem, 0.7fr)',
       render: (product) => (
         <span className="ob-mono" style={{ fontSize: rem(12), color: 'var(--fg-secondary)' }}>
           {codesOf(product)}
@@ -863,7 +864,7 @@ export function CatalogScreen({
       header: t('catalog.products.column.weight'),
       priority: 3,
       // The floor is in rem, so it grows with the scale: at 157 % the header "Weight ↕" needs it.
-      width: 'minmax(6.2rem, 0.6fr)',
+      width: 'minmax(6.3rem, 0.6fr)',
       align: 'right',
       render: (product) => {
         const weight = weightLabel(product);
