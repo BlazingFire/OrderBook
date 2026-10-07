@@ -1129,6 +1129,24 @@ describe('picking a sub product with Enter', () => {
     const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — White`);
     expect(document.activeElement).toBe(qty);
   });
+
+  it('after a line is added by the Enter walk, the bar still holds the product, and Enter on a typed sub product opens it on its quantity', async () => {
+    await openForm();
+    await enterOneLine();
+
+    // Back in the sub-product bar with the product still chosen (§6.7), not on a card.
+    expect(searchBox().placeholder).toBe(
+      t('lead.add.products.productPlaceholder', { category: CATEGORY.name }),
+    );
+    expect(document.querySelector('[data-add-card]')).toBeNull();
+
+    fireEvent.change(searchBox(), { target: { value: DEDICATED.name } });
+    await act(async () => wait(300));
+    await pressEnter(searchBox());
+
+    const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — OPT-0003`);
+    expect(document.activeElement).toBe(qty);
+  });
 });
 
 describe('Shift+Q', () => {
