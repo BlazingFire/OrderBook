@@ -120,6 +120,7 @@ import {
 
 import { Button } from './Button.js';
 import { AddedProductsPanel } from './order/AddedProductsPanel.js';
+import { PartyChip } from './order/PartyChip.js';
 import { ProductThumb } from './order/ProductThumb.js';
 import { FollowUpField, OrderDetailsBar, OrderField } from './order/OrderDetailsBar.js';
 import { Card } from './Card.js';
@@ -707,7 +708,12 @@ function LeadEntryForm({
     };
   }, [partyTerm, partyId, readOnlyParties]);
 
-  const partyPick = partyRows.length ? Math.min(partySel, partyRows.length - 1) : 0;
+  /*
+   * "+ Create a new party" is the row after the last party when the person may create one: with
+   * no match it is the only row, highlighted at once, and Enter on it opens the dialog.
+   */
+  const lastPartyRow = canCreateParty ? partyRows.length : Math.max(0, partyRows.length - 1);
+  const partyPick = Math.min(partySel, lastPartyRow);
   const partyListOpen = partyOpen && partyQuery.trim() !== '';
 
   function chooseParty(party: Party): void {
@@ -1462,9 +1468,11 @@ function LeadEntryForm({
       {/* --- Header ------------------------------------------------------ */}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
-        <h1 className="ob-title" style={{ margin: 0 }}>
-          {lead ? t('lead.edit.title') : t('lead.add.title')}
-        </h1>
+        {lead && (
+          <h1 className="ob-title" style={{ margin: 0 }}>
+            {t('lead.edit.title')}
+          </h1>
+        )}
         <span
           className="ob-small"
           style={{
@@ -1497,57 +1505,32 @@ function LeadEntryForm({
           <OrderDetailsBar hasOwner={Boolean(view.owners)}>
             <OrderField label={t('lead.add.party.title')} wide>
               {selectedParty ? (
-                <div
-                  style={{
-                    display: 'flex',
-                    flex: 1,
-                    minWidth: 0,
-                    flexWrap: 'wrap',
-                    alignItems: 'center',
-                    gap: `${rem(4)} ${rem(10)}`,
-                    padding: `${rem(5)} ${rem(6)} ${rem(5)} ${rem(11)}`,
-                    border: '1px solid var(--line)',
-                    borderRadius: 'var(--r-md)',
+                /*
+                 * Name, code and city (owner's rule, 2026-10-07): the code and the town tell two
+                 * Sharma Traders apart and stay on the chip once one is chosen. The close button is
+                 * a step of the Enter/Escape walk (`data-field`, in the kit chip) so Escape from the
+                 * source select still lands on the party after one has been chosen.
+                 */
+                <PartyChip
+                  name={selectedParty.name}
+                  code={selectedParty.partyCode}
+                  city={selectedParty.city}
+                  // The key keeps its name from when party records carried rates; the text says
+                  // what it is now — the party's own product names are in use. No money is shown.
+                  extra={
+                    partyWiseMode ? (
+                      <StatusPill tone="ok">{t('lead.add.party.ownRates')}</StatusPill>
+                    ) : undefined
+                  }
+                  changeLabel={t('lead.add.party.change')}
+                  onChange={() => {
+                    setPartyId('');
+                    setPartyQuery('');
+                    setPartyOpen(true);
+                    setPartySel(0);
+                    window.setTimeout(() => partyRef.current?.focus(), 0);
                   }}
-                >
-                  {/*
-                   * The name and nothing else (owner's instruction,
-                   * 2026-09-22). The code, the phone number and the town
-                   * belong to the *picker*, where they tell two Sharma
-                   * Traders apart; once one has been chosen they are four
-                   * more things to read on the field somebody is typing
-                   * past, and the party is already decided.
-                   */}
-                  <span className="ob-body-strong ob-ellipsis">{selectedParty.name}</span>
-                  {/* The key keeps its name from when party records carried
-                    rates; the text says what it is now — the party's own
-                    product names are in use. No money is shown. */}
-                  {partyWiseMode && (
-                    <StatusPill tone="ok">{t('lead.add.party.ownRates')}</StatusPill>
-                  )}
-                  <span style={{ flex: 1, minWidth: 0 }} />
-                  {/*
-                   * `data-field` puts this button back into the Enter/Escape
-                   * walk. Choosing a party replaces the search box with this
-                   * chip, so without it Escape from the source select would
-                   * find no party field to go back to — it is the first step
-                   * of the form, and it has to stay reachable as one.
-                   */}
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    data-field
-                    onClick={() => {
-                      setPartyId('');
-                      setPartyQuery('');
-                      setPartyOpen(true);
-                      setPartySel(0);
-                      window.setTimeout(() => partyRef.current?.focus(), 0);
-                    }}
-                  >
-                    {t('lead.add.party.change')}
-                  </Button>
-                </div>
+                />
               ) : (
                 <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
                   <Input
@@ -1571,7 +1554,7 @@ function LeadEntryForm({
                       if (event.key === 'ArrowDown') {
                         event.preventDefault();
                         setPartyOpen(true);
-                        setPartySel(Math.min(partyPick + 1, Math.max(0, partyRows.length - 1)));
+                        setPartySel(Math.min(partyPick + 1, lastPartyRow));
                       }
                       if (event.key === 'ArrowUp') {
                         event.preventDefault();
@@ -1592,6 +1575,11 @@ function LeadEntryForm({
                         } else if (partyRows[partyPick]) {
                           event.preventDefault();
                           chooseParty(partyRows[partyPick]);
+                        } else if (event.key === 'Enter' && canCreateParty) {
+                          // The create row: open the dialog, the typed name already in it.
+                          event.preventDefault();
+                          setPartyOpen(false);
+                          setPartyDrawerOpen(true);
                         }
                       }
                     }}
@@ -1638,7 +1626,10 @@ function LeadEntryForm({
                             width: '100%',
                             justifyContent: 'flex-start',
                             color: 'var(--accent)',
+                            background:
+                              partyPick === partyRows.length ? 'var(--bg-selected)' : undefined,
                           }}
+                          onMouseEnter={() => setPartySel(partyRows.length)}
                           onClick={() => {
                             setPartyOpen(false);
                             setPartyDrawerOpen(true);
@@ -1764,7 +1755,7 @@ function LeadEntryForm({
                       )}
                       <span style={{ flex: 1, minWidth: 0 }} />
                       <Button
-                        variant="primary"
+                        variant="secondary"
                         disabled={!draftIsReady(draft)}
                         onClick={() => saveDraft()}
                       >
@@ -1932,7 +1923,13 @@ function LeadEntryForm({
                     <div role="listbox" className="ob-suggest" ref={listRef}>
                       <div
                         className="ob-suggest-row ob-eyebrow"
-                        style={{ gridTemplateColumns: SUGGEST_GRID, color: 'var(--fg-tertiary)' }}
+                        style={{
+                          gridTemplateColumns: SUGGEST_GRID,
+                          color: 'var(--fg-tertiary)',
+                          fontSize: 'var(--t-eyebrow-size)',
+                          fontWeight: 600,
+                          letterSpacing: '0.07em',
+                        }}
                       >
                         <span>{t('lead.add.products.col.code')}</span>
                         <span>{t('lead.add.products.col.product')}</span>
@@ -1976,7 +1973,7 @@ function LeadEntryForm({
                             <span
                               className="ob-mono ob-body-strong"
                               style={{
-                                fontSize: rem(14),
+                                fontSize: rem(12),
                                 color: index === pick ? 'var(--accent)' : undefined,
                               }}
                             >
@@ -2305,6 +2302,7 @@ function LeadEntryForm({
 
       <PartyFormModal
         transport={transport}
+        initialName={partyQuery.trim()}
         open={partyDrawerOpen}
         onClose={() => setPartyDrawerOpen(false)}
         onCreated={(party: CreatedParty) => {
@@ -3020,8 +3018,20 @@ function DraftCard({
            * short of something the button is disabled, which takes it out of
            * both.
            */}
-          <Button variant="primary" data-field data-add-card disabled={!ready} onClick={onSave}>
+          <Button
+            variant="secondary"
+            data-field
+            data-add-card
+            disabled={!ready}
+            aria-label={
+              draft.editKey ? t('lead.add.draft.saveChanges') : t('lead.add.draft.saveProduct')
+            }
+            onClick={onSave}
+          >
             {draft.editKey ? t('lead.add.draft.saveChanges') : t('lead.add.draft.saveProduct')}
+            <span className="ob-order-kbd" aria-hidden="true">
+              Enter
+            </span>
           </Button>
         </div>
       </div>

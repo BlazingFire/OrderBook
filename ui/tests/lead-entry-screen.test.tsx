@@ -1136,6 +1136,66 @@ describe('the catalogue changing while the entry is open', () => {
   });
 });
 
+describe('the party box and the chosen party', () => {
+  it('shows the chosen party by name, code and city (owner, 2026-10-07)', async () => {
+    await openForm();
+    fireEvent.change(screen.getByLabelText(t('lead.add.party.search')), {
+      target: { value: 'Sha' },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(PARTY.name) }));
+    await screen.findByRole('button', { name: t('lead.add.party.change') });
+
+    const chip = document.querySelector<HTMLElement>('[data-party-chip]')!;
+    expect(chip).not.toBeNull();
+    expect(chip.querySelector('.ob-order-party__name')!.textContent).toBe(PARTY.name);
+    expect(chip.querySelector('.ob-order-party__code')!.textContent).toBe(PARTY.partyCode);
+    expect(chip.querySelector('.ob-order-party__meta')!.textContent).toContain(PARTY.city);
+    expect(chip.querySelector('.ob-order-party__badge')!.textContent).toBe('ST');
+    // The close button is still a step of the Enter / Escape walk.
+    expect(chip.querySelector('button')!.hasAttribute('data-field')).toBe(true);
+  });
+
+  it('opens New party on Enter over "+ Create a new party", with the typed name in it', async () => {
+    await openForm({}, { canCreateParty: true });
+    const partyBox = screen.getByLabelText(t('lead.add.party.search'));
+    fireEvent.change(partyBox, { target: { value: 'Zzz Traders' } });
+    await screen.findByRole('button', { name: t('lead.add.party.create') });
+    await act(async () => wait(300)); // the empty answer has arrived
+
+    await pressEnter(partyBox);
+
+    const name = await screen.findByLabelText(new RegExp(t('party.field.name')));
+    expect((name as HTMLInputElement).value).toBe('Zzz Traders');
+    expect(document.activeElement).not.toBe(screen.getByLabelText(t('lead.add.step.source')));
+  });
+
+  it('reaches "+ Create a new party" with the arrow keys past the matches, and Enter opens it', async () => {
+    await openForm({}, { canCreateParty: true });
+    const partyBox = screen.getByLabelText(t('lead.add.party.search'));
+    fireEvent.change(partyBox, { target: { value: 'Sha' } });
+    await screen.findByRole('button', { name: new RegExp(SHAH.name) });
+    await act(async () => wait(300));
+
+    fireEvent.keyDown(partyBox, { key: 'ArrowDown' });
+    fireEvent.keyDown(partyBox, { key: 'ArrowDown' });
+    await pressEnter(partyBox);
+
+    const name = await screen.findByLabelText(new RegExp(t('party.field.name')));
+    expect((name as HTMLInputElement).value).toBe('Sha');
+    expect(screen.queryByRole('button', { name: t('lead.add.party.change') })).toBeNull();
+  });
+
+  it('has no create row, and Enter opens nothing, without the permission to create a party', async () => {
+    await openForm({}, { canCreateParty: false });
+    const partyBox = screen.getByLabelText(t('lead.add.party.search'));
+    fireEvent.change(partyBox, { target: { value: 'Zzz Traders' } });
+    await act(async () => wait(400));
+    await pressEnter(partyBox);
+    expect(screen.queryByRole('button', { name: t('lead.add.party.create') })).toBeNull();
+    expect(screen.queryByLabelText(new RegExp(t('party.field.name')))).toBeNull();
+  });
+});
+
 describe('the follow-up quick choices', () => {
   it('are one segmented radio group beside the date, in the short faces of the design', async () => {
     await openForm();

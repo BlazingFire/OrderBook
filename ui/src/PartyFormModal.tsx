@@ -72,6 +72,8 @@ interface PartyFormModalProps {
   open: boolean;
   transport: PartyFormTransport;
   party?: Party | null;
+  /** A new party opens with this name already in the box (the text typed in a party search). */
+  initialName?: string;
   onClose: () => void;
   onCreated?: (party: CreatedParty) => void;
   onUpdated?: (name: string) => void;
@@ -99,6 +101,7 @@ export function PartyFormModal({
   open,
   transport,
   party,
+  initialName,
   onClose,
   onCreated,
   onUpdated,
@@ -137,7 +140,7 @@ export function PartyFormModal({
           gstNumber: editing.gstNumber ?? '',
           notes: editing.notes ?? '',
         }
-      : EMPTY;
+      : { ...EMPTY, name: initialName ?? '' };
     baseline.mark(loaded);
     setDraft(loaded);
     // Keyed on the record's identity, not the record: an unrelated field
