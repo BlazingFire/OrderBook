@@ -2044,7 +2044,7 @@ function LeadEntryForm({
                                       </span>
                                     </span>
                                   ) : (
-                                    <span className="ob-order-cell--num">—</span>
+                                    <span className="ob-order-cell--none">—</span>
                                   )}
                                   <span className="ob-order-cell--num">
                                     <WeightCell kg={row.weightKg} />

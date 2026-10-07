@@ -930,9 +930,10 @@ button.ob-order-group__toggle:hover {
   min-height: 1.857rem;
 }
 
-/* Every control of a row at the artboard's 28 px. */
+/* Every control of a row at the artboard's 28 px and 13 px. */
 .ob-order-subrow input {
   height: 2rem;
+  font-size: 0.929rem;
 }
 
 /* A header label never wraps onto a second line: it is cut short instead. */
@@ -940,4 +941,14 @@ button.ob-order-group__toggle:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A row with no colour to choose: "—" where the colour box would start, in tertiary ink. */
+.ob-order-cell--none {
+  color: var(--fg-tertiary);
+}
+
+/* A packaging or grade left at "—" reads as none, in tertiary ink (artboard). */
+.ob-order-subrow input[data-empty='true'] {
+  color: var(--fg-tertiary);
 }
