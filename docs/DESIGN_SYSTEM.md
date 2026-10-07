@@ -38,9 +38,16 @@ says why.
 | `porcelain-10` | `#E9ECEE` | `#0A0F11` | sunken (table header, segmented track, disabled fill) |
 | `porcelain-20` | `#D6DBDE` | `#263136` | hairline lines |
 | `porcelain-30` | `#B9C1C6` | `#3A484E` | strong lines, control borders, disabled text |
-| `porcelain-50` | `#6E7C84` | `#7E8E96` | tertiary text, eyebrows |
+| `porcelain-50` | `#6E7C84` (design) | `#7E8E96` | tertiary text, eyebrows; see the contrast rule below |
 | `porcelain-70` | `#46535B` | `#9AA9B0` | secondary text |
 | `porcelain-90` | `#10161A` | `#E6EDF0` | primary text |
+
+**Contrast rule (owner decision via the lead session, 2026-10-07).** Where the design's value fails WCAG 4.5:1 as
+text, the product keeps its darker value **for text** and uses the design value only for fills, borders and dots.
+Measured on the light theme: `porcelain-50` `#6E7C84` is 4.30:1 on white, 3.90:1 on canvas and 3.63:1 on the sunken
+fill; the product's `#5D6B73` is 5.50:1, 5.10:1 and 4.64:1. Amber `#B26A00` is 4.24:1 on white and 3.75:1 on its own tint;
+the product's text amber `#8A5200` is 6.39:1 and 5.66:1. The dark values all pass (`#7E8E96` is 5.09:1 on the dark surface,
+`#E0A040` 6.79:1 on its tint). The final per-token values are those of `ui/src/tokens.css` (section 11).
 
 ### 2.2 Accent and state
 
@@ -49,7 +56,7 @@ says why.
 | `glaze-50` (accent) | `#14509E` | `#5B9BF0` | primary button, links, active nav, focus ring, selection |
 | `glaze-60` (accent-hover) | `#0F4088` | `#7DB0F4` | primary hover and pressed |
 | `glaze-05` (accent-tint) | `#E3ECF8` | `#16283F` | active nav row, selected row, "In progress" pill, filter chips |
-| `amber` / `amber-05` | `#B26A00` / `#FBF0DC` | `#E0A040` / `#2E2313` | offline, postponed, due today, temporary id |
+| `amber` / `amber-05` | `#B26A00` (fills, borders; text uses `#8A5200`) / `#FBF0DC` | `#E0A040` / `#2E2313` | offline, postponed, due today, temporary id |
 | `red` / `red-05` | `#A8231F` / `#FAE9E8` | `#E8706B` / `#331716` | error, conflict, destructive, cancelled |
 | `green` / `green-05` | `#1F6F4A` / `#E4F1EA` | `#4FB483` / `#10281D` | success, dispatched, update ready |
 
@@ -117,7 +124,9 @@ mark stays crisp. Kit prop: `size`, `ink`, `ghost` (0 to 1).
 | One colour (print, stamp, fax) | `#000000` | 0 | white |
 | One colour reversed | `#FFFFFF` | 0 | `#000000` |
 
-**Lockups.** Wordmark "Order Book Software" in Inter 600, letter-spacing -0.02em, line-height 1.
+**Lockups.** Wordmark in Inter 600, letter-spacing -0.02em, line-height 1. The lockup and marketing artboards spell it
+"Order Book Software"; **inside the application the wordmark is "OrderBook"**, as the Sidebar artboard shows (15 px / 600), and
+"Order Book Software" is used only on lockups, the splash and marketing material (owner's design, confirmed by the lead session, 2026-10-07).
 
 | Lockup | Mark | Type | Gap |
 |---|---|---|---|
@@ -186,7 +195,7 @@ With an icon: gap 6, padding 0 12 0 10 (icon left) or 0 10 0 12 (icon right); a 
 ## 6. Navigation (artboards: Navigation, Sidebar, Shell)
 
 - **Sidebar:** 208 px wide, white, 1 px right border; collapsed 52 px (icons and the mark only, tooltip with the name). Header:
-  the compact lockup (mark 24, type 18, gap 8) in the app; the Sidebar artboard writes the name "OrderBook" at 15 px / 600.
+  the mark (24) and the name "OrderBook" at 15 px / 600 (the compact lockup measures, mark 24, type 18, gap 8, apply where the full lockup is shown).
   Groups follow the work: **Work, Catalogue, Output, Admin**, each with an eyebrow label (padding 8 8 4, then 12 8 4). A module the
   role cannot view is absent, not greyed out. Items: height 30, padding 0 8, gap 10, radius 6, icon then label (14 px, secondary
   text); **active** item = `accent-tint` fill, accent text, weight 550; a count sits at the right (11 px / 500).
