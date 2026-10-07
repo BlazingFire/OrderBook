@@ -121,7 +121,7 @@ import {
 import { Button } from './Button.js';
 import { AddedProductsPanel } from './order/AddedProductsPanel.js';
 import { PartyChip } from './order/PartyChip.js';
-import { ProductThumb } from './order/ProductThumb.js';
+import { ProductThumb } from './ProgressiveImage.js';
 import { FollowUpField, OrderDetailsBar, OrderField } from './order/OrderDetailsBar.js';
 import { Card } from './Card.js';
 import { ColourChip, ColourName, StatusPill, useColourHex } from './DataDisplay.js';
@@ -1738,7 +1738,13 @@ function LeadEntryForm({
                 <div style={{ position: 'relative' }}>
                   {draft ? (
                     <div className="ob-picked">
-                      <ProductThumb image={draft.image} size={48} />
+                      <ProductThumb
+                        images={draft.image ? [draft.image] : undefined}
+                        name={draft.productName}
+                        size={48}
+                        fallback="none"
+                        alt=""
+                      />
                       <span
                         className="ob-mono ob-body-strong"
                         style={{ fontSize: rem(14), color: 'var(--accent)' }}
@@ -1990,7 +1996,13 @@ function LeadEntryForm({
                                 minWidth: 0,
                               }}
                             >
-                              <ProductThumb image={row.images?.[0]} size={32} />
+                              <ProductThumb
+                                images={row.images}
+                                name={row.name}
+                                size={32}
+                                fallback="none"
+                                alt=""
+                              />
                               <span
                                 style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}
                               >
@@ -2500,7 +2512,13 @@ function LeadLine({
           <span aria-hidden="true" style={{ flex: 'none', color: 'var(--fg-tertiary)' }}>
             {open ? '▾' : '▸'}
           </span>
-          <ProductThumb image={line.image} size={32} />
+          <ProductThumb
+            images={line.image ? [line.image] : undefined}
+            name={line.productName}
+            size={32}
+            fallback="none"
+            alt=""
+          />
           <span className="ob-mono ob-body-strong" style={{ flex: 'none' }}>
             {line.code}
           </span>

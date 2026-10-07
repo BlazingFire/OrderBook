@@ -1173,22 +1173,22 @@ describe('product photos', () => {
     fireEvent.focus(searchBox());
     fireEvent.mouseDown(await screen.findByRole('button', { name: new RegExp(CATEGORY.name) }));
     const row = await screen.findByRole('button', { name: new RegExp(FIXED.name) });
-    expect(row.querySelector('[data-product-thumb]')).not.toBeNull();
+    expect(row.querySelector('.ob-thumb')).not.toBeNull();
 
     fireEvent.mouseDown(row);
     const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — White`);
-    expect(document.querySelector('.ob-picked [data-product-thumb]')).not.toBeNull();
+    expect(document.querySelector('.ob-picked .ob-thumb')).not.toBeNull();
 
     fireEvent.change(qty, { target: { value: '5' } });
     await pressEnter(qty);
     await finishCard('White');
-    expect(document.querySelector('.ob-order-aside [data-product-thumb]')).not.toBeNull();
+    expect(document.querySelector('.ob-order-aside .ob-thumb')).not.toBeNull();
   });
 
   it('draws nothing for a product with no photo', async () => {
     await openForm();
     await enterOneLine();
-    expect(document.querySelector('[data-product-thumb]')).toBeNull();
+    expect(document.querySelector('.ob-thumb')).toBeNull();
   });
 });
 
