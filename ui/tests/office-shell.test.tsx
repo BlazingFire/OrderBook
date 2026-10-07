@@ -910,6 +910,17 @@ describe('the refusal toast', () => {
   });
 });
 
+describe('the New Order screen name', () => {
+  it('reads New Order on the topbar button, the sidebar row and the title', async () => {
+    await boot({ permissions: ['leads.view', 'leads.create'] });
+    expect(newLeadButton().textContent).toContain('New Order');
+    fireEvent.click(newLeadButton());
+    await screen.findByLabelText(t('lead.add.party.search'));
+    expect(topbarTitle()).toBe('New Order');
+    expect(screen.getAllByTitle('New Order')).toHaveLength(1);
+  });
+});
+
 describe('the New lead form in the sidebar', () => {
   it('is listed once under Pending Orders while it is open, and that row is the current page', async () => {
     await boot({ permissions: ['leads.view', 'leads.create'] });

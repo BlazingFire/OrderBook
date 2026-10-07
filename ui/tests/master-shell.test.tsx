@@ -20,7 +20,7 @@
  *  · Pending Orders and Final Orders are modules of their own, each gated on its
  *    permission, whose rows open as sub-screens with a way back, and whose
  *    actions (Convert, Dispatch) are absent without theirs;
- *  · New pending order: the topbar button and sub-page only with `leads.create`,
+ *  · New Order: the topbar button and sub-page only with `leads.create`,
  *    Ctrl+Shift+N opens the form (not the Dashboard), a draft survives leaving
  *    and coming back, Save posts and returns to the list, Reset asks first, and
  *    Edit pending order is offered with `leads.edit`;
@@ -555,7 +555,7 @@ describe('Basic Home and the landing screen', () => {
     expect(topbarTitle()).toBe(t('nav.basicHome'));
   });
 
-  it('opens the New pending order form from its tile', async () => {
+  it('opens the New Order form from its tile', async () => {
     await bootAs('office', MANAGER);
 
     await act(async () => {
@@ -1010,7 +1010,7 @@ describe('the Filling and Dispatch notes on a pending order', () => {
   });
 });
 
-describe('New pending order', () => {
+describe('New Order', () => {
   const CREATE = ['leads.view', 'leads.create', 'parties.view', 'products.view'];
 
   const topbar = () => document.querySelector<HTMLElement>('.ob-topbar')!;
@@ -1244,7 +1244,15 @@ describe('New pending order', () => {
     ).toBeTruthy();
   });
 
-  it('has one New pending order entry in the sidebar while the form is open', async () => {
+  it('is called New Order on the topbar button, the sidebar row and the title', async () => {
+    await boot(CREATE);
+    expect(within(topbar()).getByRole('button', { name: 'New Order' })).toBeTruthy();
+    await openFormByKey();
+    expect(topbarTitle()).toBe('New Order');
+    expect(screen.getAllByTitle('New Order')).toHaveLength(1);
+  });
+
+  it('has one New Order entry in the sidebar while the form is open', async () => {
     await boot(CREATE);
     await openFormByKey();
     expect(screen.getAllByTitle(t('lead.add.title'))).toHaveLength(1);

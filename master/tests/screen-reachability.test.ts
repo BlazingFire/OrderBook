@@ -109,7 +109,7 @@ const NAVLESS_SCREENS: Record<string, Record<string, string>> = {
     firstRun: 'Shown once, before any sidebar exists — the panel routes to it from boot state.',
     dashboard: 'The default landing screen; reached by starting the app, not by a sidebar row.',
     addLead:
-      'Opened by the `record.new` command, the topbar button and Pending Orders → New pending order, never as a sidebar row of its own.',
+      'Opened by the `record.new` command, the topbar button and Pending Orders → New Order, never as a sidebar row of its own.',
   },
   office: {
     addLead: 'Opened by the `record.new` command and the Leads screen, never from the sidebar.',
