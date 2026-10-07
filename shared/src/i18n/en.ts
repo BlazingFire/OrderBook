@@ -528,7 +528,7 @@ export const EN_MESSAGES = {
   'error.conflict.stageIsDefault': 'This is the pipeline’s default stage and cannot be archived',
 
   // --- activity.* — activity.<entityType>.<action>, rendered by the Logs screen ---
-  'activity.stock.inbound': '{actor} recorded {quantity} boxes in for {product}',
+  'activity.stock.inbound': '{actor} recorded {quantity} pcs in for {product}',
   'activity.stock.adjusted': '{actor} adjusted the counted stock for {product}',
   'activity.stock.levels_changed': '{actor} changed the stock levels for {product}',
   'activity.user.created': '{actor} created the account for {name}',
@@ -1925,7 +1925,7 @@ export const EN_MESSAGES = {
   'orderNote.itemsPages': '{items} items · {pages} pages',
   'orderNote.grossOfPacking': 'Gross of packing',
   'orderNote.unsynced': 'not yet synced',
-  'orderNote.unit': 'box',
+  'orderNote.unit': 'pcs',
   'orderNote.signFilledBy': 'Filled by',
   'orderNote.signCheckedBy': 'Checked by',
   'orderNote.signStoreInCharge': 'Store in-charge',
@@ -2158,7 +2158,7 @@ export const EN_MESSAGES = {
   'partyImport.unchanged': '{count} already match the party book and need no change.',
   'partyImport.exportFailed': 'Could not export the parties',
   'reports.column.orderCount': 'Final Orders',
-  'reports.column.boxCount': 'Boxes',
+  'reports.column.boxCount': 'Pieces',
   'reports.column.partyId': 'Party ID',
   'reports.column.partyName': 'Party',
   'reports.column.partyCode': 'Code',
@@ -3431,7 +3431,7 @@ export const EN_MESSAGES = {
 
   // 1.4 D2: stock and inventory removed, replacement wording
   'validation.stock.retired': 'Stock is no longer part of OrderBook',
-  'dashboard.orders.boxesOpen': '{count} boxes still to dispatch',
+  'dashboard.orders.boxesOpen': '{count} pcs still to dispatch',
   'dashboard.orders.noneOpen': 'Nothing waiting to go out',
   // 1.4 D2 (R22): the column and tooltip of the faces on a board's rows.
   'presence.board.column': 'Open now',
