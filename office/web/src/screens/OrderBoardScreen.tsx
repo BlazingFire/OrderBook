@@ -287,6 +287,7 @@ export function OrderBoardScreen({
         onBack={() => setNote(null)}
         desktop={desktopBridge() ?? undefined}
         printroom={printroom}
+        optionLists={view.optionLists}
       />
     );
   }

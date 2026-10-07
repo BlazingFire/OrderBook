@@ -213,6 +213,7 @@ was verified, so the next agent can trust the state without re-auditing.
 
 ### 2026-10-07 - V7: three coded products to a line on the Filling and Dispatch notes (Claude, D7)
 
+**Follow-up (CH1, on d13/colour).** Notes print the colour list's CURRENT label: `OrderNoteScreen` takes the company option lists (`optionLists`; the four screens that open it pass theirs) and builds the note with `colourLabeller`; the Master's print job (`print.service.sendJob`) does the same with the `stock.colour` list, deleted entries included. Tests: `ui/tests/order-note-screen.test.tsx` and `master/tests/printroom.integration.test.ts`, each seen failing.
 **Owner (V7).** "In pdf preview, filling note and dispatch note, on the right side numerical products should take
 3 places in one line; currently only 1." The coded half filled columns top-down, so any list shorter than a column
 printed one code to a line.

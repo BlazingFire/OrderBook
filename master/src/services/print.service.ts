@@ -43,6 +43,7 @@ import {
   MASTER_STATION_KEY,
   PRINT_LIMITS,
   cleanPrintJobInput,
+  colourLabeller,
   noteDocument,
   noteNumber,
   normalisePrintQuery,
@@ -55,6 +56,7 @@ import { ForbiddenError, NotFoundError, ValidationError, toErrorMessage } from '
 import { createLogger } from '../lib/logger.js';
 import * as activityRepo from '../repositories/activity-log.repository.js';
 import * as chatRepo from '../repositories/chat.repository.js';
+import * as customFieldRepo from '../repositories/custom-field.repository.js';
 import * as identityRepo from '../repositories/identity.repository.js';
 import * as panelRepo from '../repositories/office-panel.repository.js';
 import * as partyRepo from '../repositories/party.repository.js';
@@ -219,7 +221,10 @@ export async function sendJob(raw: unknown, actor: ActorContext, origin: PrintOr
   // A vehicle number typed in the dialog wins; a final order falls back to the one it holds.
   const saved = input.source === 'order' ? ((record as { vehicleNumber?: string | null }).vehicleNumber ?? null) : null;
   const vehicle = input.kind === 'dispatch' ? (input.vehicleNumber ?? saved) : null;
-  const document: NoteDocument = noteDocument(record, input.source, party, vehicle);
+  // The colour list as it stands now, deleted entries too (a colour taken off the list still has the label it
+  // was sold under), so a renamed colour prints its new label; one the list never had prints as stored.
+  const colours = await customFieldRepo.listOptionsForKey(actor.tenantId, 'stock.colour', { includeDeleted: true });
+  const document: NoteDocument = noteDocument(record, input.source, party, vehicle, colourLabeller(colours));
 
   const { row, created } = await db().transaction(async (trx) => {
     const made = await printRepo.insertJob(trx, {

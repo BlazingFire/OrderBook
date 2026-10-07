@@ -16,6 +16,7 @@ import {
   buildOrderNote,
   cleanVehicleNumber,
   clampNoteCopies,
+  colourLabeller,
   isTemporaryId,
   noteHeader,
   NOTE_MAX_COPIES,
@@ -24,6 +25,7 @@ import {
   type Lead,
   type NoteKind,
   type NoteSource,
+  type OptionListItem,
   type Order,
   type Party,
 } from '@orderbook/shared';
@@ -86,6 +88,11 @@ export interface OrderNoteScreenProps {
    * Master builds the sheet from its own copy).
    */
   printroom?: PrintroomTransport;
+  /**
+   * The company's option lists. The colour list's CURRENT label is what prints for a stored colour, so a
+   * colour renamed in Fields reads the new way on the note; without it the stored value prints.
+   */
+  optionLists?: ReadonlyArray<Pick<OptionListItem, 'listKey' | 'value' | 'label'>>;
 }
 
 export function OrderNoteScreen({
@@ -98,6 +105,7 @@ export function OrderNoteScreen({
   onBack,
   desktop,
   printroom,
+  optionLists,
 }: OrderNoteScreenProps) {
   const toast = useToast();
   const [sending, setSending] = useState(false);
@@ -124,7 +132,10 @@ export function OrderNoteScreen({
   const busyRef = useRef(false);
   const [printedAt] = useState(() => new Date());
 
-  const model = useMemo(() => buildOrderNote(record), [record]);
+  const model = useMemo(
+    () => buildOrderNote(record, colourLabeller((optionLists ?? []).filter((option) => option.listKey === 'stock.colour'))),
+    [record, optionLists],
+  );
   const header = useMemo(() => noteHeader(record, source), [record, source]);
   const pages = useMemo(() => paginateOrderNote(model, kind), [model, kind]);
 

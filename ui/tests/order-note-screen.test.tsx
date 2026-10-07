@@ -68,6 +68,26 @@ function mount(props: Partial<React.ComponentProps<typeof OrderNoteScreen>> = {}
   );
 }
 
+describe('the colour a line prints', () => {
+  const RENAMED = [{ listKey: 'stock.colour', value: 'Ivory', label: 'Bone White' }];
+
+  it('is the current colour label from the list, so a colour renamed in Fields reads the new way', () => {
+    mount({ initialKind: 'filling', optionLists: RENAMED });
+    expect(screen.getAllByText('Bone White').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('Ivory')).toHaveLength(0);
+  });
+
+  it('is the stored value when the list is not given, or has no such colour, or is another list', () => {
+    mount({ initialKind: 'filling' });
+    expect(screen.getAllByText('Ivory').length).toBeGreaterThan(0);
+    cleanup();
+
+    mount({ initialKind: 'filling', optionLists: [{ listKey: 'product.brand', value: 'Ivory', label: 'Bone White' }] });
+    expect(screen.getAllByText('Ivory').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('Bone White')).toHaveLength(0);
+  });
+});
+
 describe('what the header calls the record', () => {
   it('heads a pending order "Pending Order No." with the lead id, and a final order "Final Order No."', () => {
     mount({ initialKind: 'filling' });

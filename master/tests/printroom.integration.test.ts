@@ -29,6 +29,7 @@ import { createApp } from '../src/http/app.js';
 import { ForbiddenError, NotFoundError, ValidationError } from '../src/lib/errors.js';
 import { onPrintJob, type PrintJobEvent } from '../src/services/change-bus.js';
 import * as catalog from '../src/services/catalog.service.js';
+import * as fields from '../src/services/fields.service.js';
 import * as leads from '../src/services/lead.service.js';
 import * as orders from '../src/services/order.service.js';
 import * as partyAccess from '../src/services/party-access.service.js';
@@ -141,6 +142,32 @@ describe.skipIf(!canRunIntegrationTests)('printroom (integration)', () => {
         vehicleNumber: 'GJ 01 AB-1234',
       });
       expect(job.document?.model.totalQuantity).toBe(3);
+    });
+
+    it('prints the current colour label from the list, so a colour renamed in Fields reads the new way on the note', async () => {
+      const ivory = await fields.createValue({ listKey: 'stock.colour', value: 'Ivory', label: 'Ivory' }, admin);
+      const party = await catalog.createParty({ name: 'Colour Traders' }, admin);
+      const product = await catalog.createProduct(
+        { name: 'ROMA', categoryName: 'WASH BASIN', multiColour: true, variants: [{ code: 'ROMA-1', weightKg: 12 }] },
+        admin,
+      );
+      const lead = await leads.createLead(
+        {
+          partyId: party.id,
+          items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 4, packaging: 'carton', colour: 'Ivory' }],
+        },
+        admin,
+      );
+      await fields.updateValue(ivory.id, { label: 'Bone White', expectedVersion: ivory.version }, admin);
+      const sender = await person('asha', SENDER);
+
+      const job = await print.sendJob(
+        { requestId: requestId(), kind: 'filling', source: 'lead', sourceId: lead.id, copies: 1 },
+        sender.actor,
+        MASTER_PC,
+      );
+
+      expect(job.document?.model.named.map((line) => line.colour)).toEqual(['Bone White']);
     });
 
     it('keeps the sheet as it was when the record changes afterwards', async () => {
