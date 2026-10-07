@@ -28,6 +28,7 @@ import * as avatarService from '../../services/avatar.service.js';
 import * as imageService from '../../services/image.service.js';
 import { asyncHandler } from '../async-handler.js';
 import { panelActorFromRequest } from '../middleware/require-panel.js';
+import { sendStoredFile } from '../send-stored-file.js';
 
 // The same memory storage and ceiling `images.routes.ts` uses: the pipeline
 // wants one buffer, and a temp file would only add a path to clean up.
@@ -104,9 +105,7 @@ panelImageRoutes.get(
     // can never change — the same reasoning `avatarFilesRoutes` gives.
     res.set('Cache-Control', 'private, max-age=31536000, immutable');
     res.type('image/webp');
-    res.sendFile(file, (error) => {
-      if (error) next(error);
-    });
+    sendStoredFile(res, file, next);
   }),
 );
 
@@ -122,8 +121,6 @@ panelImageRoutes.get(
     res.set('ETag', `"${file.checksum}"`);
     res.set('Cache-Control', 'private, max-age=31536000, immutable');
     res.type('image/webp');
-    res.sendFile(file.path, (error) => {
-      if (error) next(error);
-    });
+    sendStoredFile(res, file.path, next);
   }),
 );

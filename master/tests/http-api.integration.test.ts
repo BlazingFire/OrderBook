@@ -7,7 +7,7 @@
 
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import sharp from 'sharp';
 import type { Express } from 'express';
@@ -178,6 +178,26 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
         const blind = await agentWith(['leads.view'], 'blake');
         await blind.get(`/uploads/images/${imageId}/thumb`).expect(404);
       } finally {
+        await rm(tenantDir, { recursive: true, force: true });
+      }
+    });
+
+    it('answers a quiet 404, never cached, for a photo whose file is gone from disk', async () => {
+      const { imageId, tenantDir } = await imageFixture();
+      const errors = vi.spyOn(console, 'error');
+      try {
+        await rm(path.join(tenantDir, imageId), { recursive: true, force: true });
+        const viewer = await agentWith(['products.view'], 'nadia');
+        for (const url of [`/uploads/images/${imageId}/thumb`, `/api/images/${imageId}/large`]) {
+          const missing = await viewer.get(url).expect(404);
+          expect(missing.body.error).toBe('not_found');
+          expect(missing.headers['cache-control'] ?? '').not.toContain('immutable');
+          // Express's own weak tag on the JSON body is fine; the photo's checksum tag must be gone.
+          expect(missing.headers.etag ?? '').not.toMatch(/^"[0-9a-f]{64}"$/);
+        }
+        expect(errors).not.toHaveBeenCalled();
+      } finally {
+        errors.mockRestore();
         await rm(tenantDir, { recursive: true, force: true });
       }
     });

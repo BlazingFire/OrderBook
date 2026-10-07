@@ -21,6 +21,7 @@ import multer from 'multer';
 import * as avatarService from '../../services/avatar.service.js';
 import { asyncHandler } from '../async-handler.js';
 import { actorFromRequest, requireAuth } from '../middleware/require-auth.js';
+import { sendStoredFile } from '../send-stored-file.js';
 
 // Buffered in memory, like every other upload here: the file is small by
 // definition and goes straight into sharp, so a temp file would be a round
@@ -81,8 +82,6 @@ avatarFilesRoutes.get(
     // merely convenient.
     res.set('Cache-Control', 'private, max-age=31536000, immutable');
     res.type('image/webp');
-    res.sendFile(file, (error) => {
-      if (error) next(error);
-    });
+    sendStoredFile(res, file, next);
   }),
 );
