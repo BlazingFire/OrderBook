@@ -252,6 +252,20 @@ on white and 3.06:1 on the canvas, which meets WCAG 1.4.11 (non-text contrast, 3
 - **Status footer / presence rail:** 26 px tall, white, 1 px top border: sync state (Synced, Syncing N, Offline, "Offline, 4 pending"
   in amber 550, "3 fields resolved, review" as a link), company name, the signed-in person, the version in mono 11 px at the right.
 
+### 6.1 Icons and Basic Home (owner V1: "ui icons not updated yet")
+
+**One icon set**, inline SVG, flat line drawings on a 24-unit grid with a 1.75-unit round-capped, round-joined stroke in `currentColor` and no fill
+(`ui/src/icons.tsx`: `Icon({ name, size = 16 })`, 53 names; each icon is a single path, a circle or rounded rectangle written as a path). The glossy gradient
+tiles and the `navGlyphs.tsx` drawings are gone. A size is a prop: 16 px in the sidebar and in buttons (18 in a large button), 14 in field messages, larger on a tile.
+Icons take the text colour of where they sit, so they follow the theme and the state (accent when active, red in a destructive control).
+
+`ui/src/navIcons.ts` (`NAV_ICONS`) maps each module to one icon for **both** the sidebar and Basic Home, and no two modules share an icon
+(`ui/tests/nav-icons.test.tsx` holds that). The Master and the Office build their navigation from this map.
+
+**Basic Home tiles** are flat: `--bg-surface` face, a 1 px `--line` border, radius `--r-lg`, the module's icon large in `--accent`, the label under it, the
+shortcut in a mono chip; hover fills `--accent-tint`. One colour for every tile (colour is data, not decoration). A module the role cannot open has no tile, as
+it has no sidebar row: absent, never disabled.
+
 ## 7. Feedback (artboard: Feedback)
 
 Say what is loading; say what failed and what to do next; no spinners.
@@ -321,7 +335,7 @@ Lead wording becomes **pending order**; quantity unit is **box**, never "pcs".
 | Mark, splash, busy indicator, app icons | (to be filled) |
 | Buttons and form controls | `ui/src/Button.tsx` (Button, IconButton), `ui/src/Form.tsx` (Input, Textarea, Select, FieldError, Checkbox, Radio, Switch), control CSS in `ui/src/base.css`; `ui/tests/form-controls-design.test.ts` |
 | Sidebar, top bar, tabs, footer | `ui/src/Sidebar.tsx`, `Topbar`, ... (to be filled) |
-| Icons | `ui/src/icons.tsx`, `ui/src/navIcons.ts`, `ui/src/BasicHome.tsx` (to be filled) |
+| Icons | `ui/src/icons.tsx` (the set), `ui/src/navIcons.ts` (module to icon), `ui/src/BasicHome.tsx` (flat tiles); `ui/tests/nav-icons.test.tsx` |
 | Feedback | (to be filled) |
 | Data | `ui/src/DataTable.tsx`, ... (to be filled) |
 | Overlays | `ui/src/Modal.tsx`, `ConfirmDialog.tsx`, `Popover.tsx`, ... (to be filled) |
