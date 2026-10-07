@@ -279,6 +279,21 @@ Say what is loading; say what failed and what to do next; no spinners.
   automatically." with a "Review" button), amber and red tints.
 - **Empty states:** a title (14 / 550), one sentence, one button ("No leads yet", "Can't reach the server" with "Retry now").
 
+**As built (D9, `ui/src/BusyMark.tsx`, `ProgressBar` in `UpdateProgress.tsx`, `TopProgress.tsx`, `States.tsx`, `Toast.tsx`, `Tooltip.tsx`, `base.css`).**
+- `BusyMark`: the mark's ten cells at 40 % opacity, each lighting from 0.15 to full and back in reading order, 70 ms apart, on a 700 ms linear loop. The one spinner-like asset
+  in the product; it stops while the window is in the background and holds still with every cell lit under reduced motion or the app's motion switch.
+- `ProgressBar` (the only determinate bar, reuse it): `value` from 0 to 1, or `null` while the size of the job is unknown (an indeterminate sweep); what is happening on the left,
+  the figure on the right, a 6 px track under them, and a fill that moves by `scaleX` only. Tones: `default`, `offline` (amber), `conflict` (red), `ok` (green).
+  The thin **loading bar** at the top of a screen (`TopProgress`) is kept (the owner asked for it on 2026-10-01); it freezes into a static segment under reduced motion
+  and pauses in the background. So "no spinners" holds, and bars are the only other movers.
+- `Skeleton` and the skeleton rows are static: 28 px rows split by a hairline, a short key at the left, bars of varying length, a short figure at the right.
+- Toasts: bottom left, 4 s, at most 3, a 16 px stroke icon (a tick for done in green and for news in accent, a ring with an exclamation for a failure), an optional action button;
+  a failure interrupts, anything else waits its turn.
+- **Tooltip** (`TooltipLayer`, mounted once by `ToastProvider`): a dark bubble with a small pointer, shown 400 ms after the pointer rests on something, never taking the pointer.
+  It **takes over the `title` attribute**: while the pointer is on an element with a `title` the attribute is parked in `data-ob-title` so the browser's own tooltip does not also show,
+  and given back when the pointer leaves; the words stay in `title` otherwise (tests and code that read it keep working). Nobody wraps elements.
+- Banners and empty states use `States.tsx`; the Gallery screen (`ui/src/GalleryScreen.tsx`) shows each feedback component in every tone. Tests: `ui/tests/feedback.test.tsx`.
+
 ## 8. Data (artboard: Data)
 
 - **Table:** no zebra stripes, no column lines, numbers right-aligned in tabular figures; header = eyebrow style on `porcelain-10`; row 32 px
@@ -349,7 +364,7 @@ Lead wording becomes **pending order**; quantity unit is **box**, never "pcs".
 | Buttons and form controls | `ui/src/Button.tsx` (Button, IconButton), `ui/src/Form.tsx` (Input, Textarea, Select, FieldError, Checkbox, Radio, Switch), control CSS in `ui/src/base.css`; `ui/tests/form-controls-design.test.ts` |
 | Sidebar, top bar, tabs, footer | `ui/src/Sidebar.tsx`, `Topbar`, ... (to be filled) |
 | Icons | `ui/src/icons.tsx` (the set), `ui/src/navIcons.ts` (module to icon), `ui/src/BasicHome.tsx` (flat tiles); `ui/tests/nav-icons.test.tsx` |
-| Feedback | (to be filled) |
+| Feedback | `ui/src/BusyMark.tsx`, `UpdateProgress.tsx` (ProgressBar), `TopProgress.tsx`, `States.tsx`, `Toast.tsx`, `Tooltip.tsx`, `GalleryScreen.tsx`; `ui/tests/feedback.test.tsx` |
 | Data | `ui/src/DataTable.tsx`, `ui/src/DataDisplay.tsx` (StatusPill, ColourChip, IdField, Timeline, `recordTimelineEntries`), `ui/src/PageBar.tsx`; `ui/tests/data-timeline.test.tsx` |
 | Overlays | `ui/src/Modal.tsx`, `ConfirmDialog.tsx`, `Popover.tsx`, ... (to be filled) |
 | New pending order | `ui/src/LeadEntryScreen.tsx` (Master), `office/web/src/screens/AddLeadScreen.tsx` (Office) (to be filled) |
