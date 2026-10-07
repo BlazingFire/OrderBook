@@ -47,6 +47,15 @@ describe('labels never wrap beside their field', () => {
   });
 });
 
+describe('a message row with an open menu', () => {
+  it('is drawn normally, so its fixed-position menu is placed against the screen, not against the row', () => {
+    // `content-visibility: auto` contains layout: a `position: fixed` menu inside the row is then offset by
+    // the row's own position, which put it 100-250 px past the right edge at 1280 x 720 and at 157 %.
+    expect(rule(base, '.ob-chat-row')).toContain('content-visibility: auto;');
+    expect(rule(base, '.ob-chat-row:has(.ob-popover)')).toContain('content-visibility: visible;');
+  });
+});
+
 describe('pickers open where they fit', () => {
   it('the person picker drops below its button and lines up with its right edge', () => {
     const source = read('../src/ChatroomScreen.tsx');

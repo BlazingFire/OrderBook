@@ -4452,6 +4452,14 @@ button.ob-bell-item:hover {
   content-visibility: auto;
   contain-intrinsic-size: auto 3rem;
 }
+/*
+ * `content-visibility: auto` (above) contains layout, which makes the row the containing block of anything
+ * `position: fixed` inside it. A row's own menu and receipts popovers are placed against the viewport, so
+ * while one is open the row is drawn normally: otherwise the menu lands one row-offset off, past the screen.
+ */
+.ob-chat-row:has(.ob-popover) {
+  content-visibility: visible;
+}
 .ob-chat-row:hover {
   background: var(--bg-hover);
 }
