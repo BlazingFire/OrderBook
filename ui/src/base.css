@@ -91,39 +91,49 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--s-8);
+  gap: var(--s-6);
   height: var(--ctl-h-md);
   padding: 0 var(--s-12);
+  border: 1px solid transparent;
   border-radius: var(--r-md);
-  font-size: var(--t-small-size);
+  font-size: var(--t-body-size);
   font-weight: 550;
   white-space: nowrap;
   transition:
     background-color var(--d-fast) var(--e-standard),
     border-color var(--d-fast) var(--e-standard),
     color var(--d-fast) var(--e-standard),
-    transform var(--d-fast) var(--e-standard),
-    opacity var(--d-fast) var(--e-standard);
+    transform var(--d-fast) var(--e-standard);
+}
+/* An icon first: the artboard trims its side of the padding so the glyph sits in the corner. */
+.ob-btn:has(> svg:first-child) {
+  padding-inline-start: 0.7143rem;
+}
+.ob-btn:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .ob-btn--primary {
   background: var(--accent);
+  border-color: var(--accent);
   color: var(--fg-on-accent);
 }
-.ob-btn--primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
+.ob-btn--primary:hover:not(:disabled),
 .ob-btn--primary:active:not(:disabled) {
-  transform: translateY(1px);
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 .ob-btn--secondary {
   background: var(--bg-surface);
   color: var(--fg-primary);
-  border: 1px solid var(--line-control);
+  border-color: var(--line-control);
 }
 .ob-btn--secondary:hover:not(:disabled) {
   background: var(--bg-hover);
+}
+.ob-btn--secondary:active:not(:disabled) {
+  background: var(--bg-sunken);
 }
 
 .ob-btn--ghost {
@@ -132,6 +142,10 @@
 }
 .ob-btn--ghost:hover:not(:disabled) {
   background: var(--bg-hover);
+  color: var(--fg-primary);
+}
+.ob-btn--ghost:active:not(:disabled) {
+  background: var(--bg-sunken);
   color: var(--fg-primary);
 }
 
@@ -143,30 +157,62 @@
 .ob-btn--danger {
   background: var(--bg-surface);
   color: var(--state-conflict);
-  border: 1px solid var(--line-control);
+  border-color: var(--state-conflict);
 }
 .ob-btn--danger:hover:not(:disabled) {
   background: var(--state-conflict-tint);
-  border-color: var(--state-conflict);
+}
+.ob-btn--danger:active:not(:disabled) {
+  background: var(--state-conflict);
+  color: var(--fg-on-accent);
 }
 
 .ob-btn--sm {
   height: var(--ctl-h-sm);
-  padding: 0 var(--s-8);
+  padding: 0 0.7143rem;
+  font-size: var(--t-small-size);
+}
+.ob-btn--sm:has(> svg:first-child) {
+  padding-inline-start: var(--s-8);
 }
 .ob-btn--lg {
   height: var(--ctl-h-lg);
   padding: 0 var(--s-16);
-  font-size: var(--t-body-size);
+}
+.ob-btn--lg:has(> svg:first-child) {
+  padding-inline-start: var(--s-12);
 }
 
-.ob-btn:disabled {
-  opacity: 0.45;
+/*
+ * Disabled is a flat grey button, not a dimmed one: the fill, the edge and the label each go to their
+ * quiet token. A busy button is disabled too (it takes no second click) but keeps its own look.
+ */
+.ob-btn:disabled:not([aria-busy='true']) {
+  cursor: default;
+}
+.ob-btn--primary:disabled:not([aria-busy='true']) {
+  background: var(--bg-sunken);
+  border-color: var(--bg-sunken);
+  color: var(--fg-disabled);
+}
+.ob-btn--secondary:disabled:not([aria-busy='true']),
+.ob-btn--danger:disabled:not([aria-busy='true']) {
+  background: var(--bg-surface);
+  border-color: var(--line);
+  color: var(--fg-disabled);
+}
+.ob-btn--ghost:disabled:not([aria-busy='true']) {
+  background: transparent;
+  color: var(--fg-disabled);
 }
 
+/* Loading: the busy mark in front of a present-tense label ("Saving"), in the button's own ink. */
 .ob-btn[aria-busy='true'] {
   cursor: progress;
-  opacity: 0.85;
+  gap: var(--s-8);
+}
+.ob-btn--secondary[aria-busy='true'] .ob-busy {
+  color: var(--accent);
 }
 
 /* Icon-only buttons always carry an aria-label equal to their tooltip (§10). */
@@ -174,15 +220,39 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: var(--ctl-h-sm);
-  height: var(--ctl-h-sm);
-  border-radius: var(--r-sm);
+  width: var(--ctl-h-md);
+  height: var(--ctl-h-md);
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
   color: var(--fg-secondary);
-  transition: background-color var(--d-fast) var(--e-standard);
+  transition:
+    background-color var(--d-fast) var(--e-standard),
+    color var(--d-fast) var(--e-standard),
+    transform var(--d-fast) var(--e-standard);
 }
 .ob-icon-btn:hover {
   background: var(--bg-hover);
   color: var(--fg-primary);
+}
+.ob-icon-btn:active {
+  background: var(--bg-sunken);
+  transform: translateY(1px);
+}
+.ob-icon-btn--bordered {
+  border-color: var(--line-control);
+  background: var(--bg-surface);
+}
+.ob-icon-btn--danger,
+.ob-icon-btn--danger:hover {
+  color: var(--state-conflict);
+}
+.ob-icon-btn:disabled {
+  background: transparent;
+  color: var(--fg-disabled);
+  cursor: default;
+  transform: none;
 }
 
 /* Segmented control (theme switcher, density) */
@@ -449,7 +519,12 @@
 .ob-label {
   display: block;
   font-size: var(--t-small-size);
-  color: var(--fg-secondary);
+  font-weight: 500;
+  color: var(--fg-primary);
+}
+/* The label of a field that cannot be edited goes quiet with it. */
+.ob-label:has(+ :disabled) {
+  color: var(--fg-disabled);
 }
 
 .ob-input,
@@ -457,13 +532,31 @@
 .ob-textarea {
   width: 100%;
   height: var(--ctl-h-md);
-  padding: 0 var(--s-8);
+  padding: 0 0.7143rem;
   border: 1px solid var(--line-control);
   border-radius: var(--r-sm);
   background: var(--bg-surface);
   color: var(--fg-primary);
-  font-size: var(--t-small-size);
+  font-size: var(--t-body-size);
   transition: border-color var(--d-fast) var(--e-standard);
+}
+.ob-input::placeholder,
+.ob-textarea::placeholder {
+  color: var(--fg-tertiary);
+  opacity: 1;
+}
+/* A native <select> in the kit's field: the platform's arrow is replaced by the artboard's chevron. */
+select.ob-input,
+.ob-select {
+  appearance: none;
+  padding-inline-end: 2.1429rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2346535b' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5714rem center;
+}
+:root[data-theme='dark'] select.ob-input,
+:root[data-theme='dark'] .ob-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239aa9b0' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
 
 .ob-password {
@@ -503,7 +596,8 @@
 .ob-textarea {
   height: auto;
   min-height: calc(var(--t-body-line) * 3 + var(--s-16));
-  padding: var(--s-8);
+  padding: 0.5rem 0.7143rem;
+  line-height: var(--t-body-line);
   resize: vertical;
 }
 
@@ -516,9 +610,9 @@
 .ob-input:focus,
 .ob-select:focus,
 .ob-textarea:focus {
-  outline: none;
+  outline: 2px solid var(--line-focus);
+  outline-offset: 2px;
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent); /* hairline companion to the ring */
 }
 
 .ob-input:disabled,
@@ -526,7 +620,7 @@
 .ob-textarea:disabled {
   background: var(--bg-sunken);
   color: var(--fg-disabled);
-  border-color: var(--line);
+  border-color: var(--bg-sunken);
 }
 
 .ob-input[aria-invalid='true'],
@@ -538,14 +632,21 @@
   margin-top: var(--s-4);
   font-size: var(--t-small-size);
   line-height: var(--t-small-line);
-  color: var(--fg-tertiary);
+  color: var(--fg-secondary);
 }
 
 .ob-field-error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-6);
   margin-top: var(--s-4);
   font-size: var(--t-small-size);
   line-height: var(--t-small-line);
   color: var(--state-conflict);
+}
+.ob-field-error > svg {
+  flex: none;
+  margin-top: 1px;
 }
 
 .ob-field {
@@ -2381,6 +2482,31 @@ button.ob-stattile:hover {
   background: var(--accent);
   border-color: var(--accent);
 }
+/* A radio: the same hidden input, a ring that fills to a dot, drawn with the border. */
+.ob-radio-circle {
+  width: 1.1429rem;
+  height: 1.1429rem;
+  box-sizing: border-box;
+  flex: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--bg-surface);
+  transition:
+    border-width var(--d-fast) var(--e-standard),
+    border-color var(--d-fast) var(--e-standard);
+}
+.ob-check-row input:checked + .ob-radio-circle {
+  border: 5px solid var(--accent);
+}
+.ob-check-row input:focus-visible + .ob-radio-circle {
+  outline: 2px solid var(--line-focus);
+  outline-offset: 2px;
+}
+.ob-check-row input:disabled + .ob-radio-circle {
+  background: var(--bg-sunken);
+  border-color: var(--line);
+}
+
 .ob-check-row input:focus-visible + .ob-checkbox-box {
   outline: 2px solid var(--line-focus);
   outline-offset: 2px;
@@ -2395,43 +2521,39 @@ button.ob-stattile:hover {
 }
 
 .ob-switch {
-  width: 2.1429rem;
+  width: 2.2857rem;
   height: 1.2857rem;
   flex: none;
-  border-radius: 10px;
-  background: var(--bg-sunken);
-  border: 1px solid var(--line-strong);
+  box-sizing: border-box;
+  border-radius: 9px;
+  background: var(--line-strong);
   position: relative;
-  transition:
-    background-color var(--d-fast) var(--e-standard),
-    border-color var(--d-fast) var(--e-standard);
+  transition: background-color var(--d-fast) var(--e-standard);
 }
 .ob-switch::after {
   content: '';
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 0.8571rem;
-  height: 0.8571rem;
+  width: 1rem;
+  height: 1rem;
   border-radius: 50%;
-  background: var(--bg-surface);
-  box-shadow: 0 1px 2px rgba(16, 22, 26, 0.3);
+  background: var(--fg-on-accent);
   transform: translateX(0);
   transition: transform var(--d-fast) var(--e-standard);
 }
 .ob-check-row input:checked + .ob-switch {
   background: var(--accent);
-  border-color: var(--accent);
 }
 .ob-check-row input:checked + .ob-switch::after {
-  transform: translateX(12px);
+  transform: translateX(1rem);
 }
 .ob-check-row input:focus-visible + .ob-switch {
   outline: 2px solid var(--line-focus);
   outline-offset: 2px;
 }
 .ob-check-row input:disabled + .ob-switch {
-  opacity: 0.5;
+  background: var(--bg-sunken);
 }
 
 /* ===========================================================================
@@ -2465,9 +2587,10 @@ button.ob-stattile:hover {
   display: flex;
   align-items: center;
   gap: var(--s-8);
-  padding: var(--s-6) var(--s-8);
+  min-height: 2.2857rem;
+  padding: 0 var(--s-8);
   border-radius: var(--r-sm);
-  font-size: var(--t-small-size);
+  font-size: var(--t-data-size);
   cursor: pointer;
   color: var(--fg-primary);
 }
@@ -2485,7 +2608,8 @@ button.ob-stattile:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--fg-tertiary);
+  font-size: var(--t-small-size);
+  color: var(--fg-secondary);
 }
 .ob-combobox-more {
   padding: var(--s-6) var(--s-8);
@@ -2493,7 +2617,7 @@ button.ob-stattile:hover {
   color: var(--fg-tertiary);
 }
 .ob-combobox-option[data-active='true'] {
-  background: var(--bg-hover);
+  background: var(--bg-selected);
 }
 .ob-combobox-option[aria-selected='true'] {
   background: var(--accent-tint);
