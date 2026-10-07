@@ -191,7 +191,8 @@ export function UpdatesScreen({
     {
       key: 'status',
       header: t('panels.table.status'),
-      width: rem(120),
+      // The four fixed columns are kept narrow so that Name keeps room for its header at 157 % on a 1366 px screen.
+      width: rem(100),
       render: (panel) =>
         panel.isConnected ? (
           <StatusPill tone="ok">{t('panels.status.connected')}</StatusPill>
@@ -203,7 +204,7 @@ export function UpdatesScreen({
     {
       key: 'version',
       header: t('updates.table.version'),
-      width: rem(140),
+      width: rem(110),
       render: (panel) =>
         panel.device.appVersion === null ? (
           <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
@@ -216,13 +217,13 @@ export function UpdatesScreen({
     {
       key: 'match',
       header: '',
-      width: rem(160),
+      width: rem(140),
       render: (panel) => <StandingPill version={panel.device.appVersion} reference={master} />,
     },
     {
       key: 'lastSeen',
       header: t('panels.table.lastSeen'),
-      width: rem(170),
+      width: rem(150),
       render: (panel) => <span className="ob-small">{formatDateTime(panel.lastSeenAt)}</span>,
     },
   ];

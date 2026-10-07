@@ -252,7 +252,8 @@ export function PanelsScreen({ panels, onRefresh, onOpenSettings }: Props) {
     {
       key: 'status',
       header: t('panels.table.status'),
-      width: rem(240),
+      // 220 rather than 240: at 157 % on a 1366 px screen the Name column was left 80 px and its header was cut.
+      width: rem(220),
       render: (panel) => <StatusChips panel={panel} />,
     },
     {
