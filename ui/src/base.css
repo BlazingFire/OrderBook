@@ -601,10 +601,11 @@ select.ob-input,
   resize: vertical;
 }
 
+/* Hover darkens the edge a step from its rest colour (--line-control); it never lightens it. */
 .ob-input:hover,
 .ob-select:hover,
 .ob-textarea:hover {
-  border-color: var(--line-strong);
+  border-color: var(--fg-tertiary);
 }
 
 .ob-input:focus,

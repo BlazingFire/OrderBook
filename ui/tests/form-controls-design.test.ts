@@ -70,6 +70,10 @@ describe('fields', () => {
     expect(focus).toContain('outline-offset: 2px;');
   });
 
+  it('darken their edge on hover from the rest colour, never lighten it', () => {
+    expect(rule('.ob-input:hover,\n.ob-select:hover,\n.ob-textarea:hover')).toContain('border-color: var(--fg-tertiary);');
+  });
+
   it('put the label above in the primary ink, weight 500, and quieten it with a disabled field', () => {
     const block = rule('.ob-label');
     expect(block).toContain('font-weight: 500;');
