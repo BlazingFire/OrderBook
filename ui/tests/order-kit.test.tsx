@@ -17,7 +17,9 @@ import {
   OrderChecks,
   OrderDetailsBar,
   OrderField,
+  PartyChip,
   ProductThumb,
+  partyInitials,
 } from '../src/index.js';
 import { installBrowserStubs } from './panel-harness.js';
 
@@ -254,5 +256,44 @@ describe('ProductThumb', () => {
       tile.container.querySelector('.ob-order-thumb--32.ob-order-thumb--initial')!.textContent,
     ).toBe('W');
     expect(tile.container.querySelector('img')).toBeNull();
+  });
+});
+
+describe('PartyChip', () => {
+  it('shows the initials, the name, the code and the city, and gives the party back on close', () => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <PartyChip
+        name="Shree Ceramics"
+        code="SC-0142"
+        city="Rajkot"
+        extra={<span>own names</span>}
+        changeLabel="Change party"
+        onChange={onChange}
+      />,
+    );
+    expect(container.querySelector('.ob-order-party__badge')!.textContent).toBe('SC');
+    expect(container.querySelector('.ob-order-party__name')!.textContent).toBe('Shree Ceramics');
+    expect(container.querySelector('.ob-order-party__code')!.textContent).toBe('SC-0142');
+    expect(container.querySelector('.ob-order-party__meta')!.textContent).toBe('· Rajkot');
+    expect(screen.getByText('own names')).toBeTruthy();
+    const close = screen.getByRole('button', { name: 'Change party' });
+    expect(close.hasAttribute('data-field')).toBe(true);
+    fireEvent.click(close);
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves out a code or a city it was not given, and takes initials from two words at most', () => {
+    const { container } = render(
+      <PartyChip
+        name="om sai marble and sanitary"
+        changeLabel="Change party"
+        onChange={() => undefined}
+      />,
+    );
+    expect(container.querySelector('.ob-order-party__code')).toBeNull();
+    expect(container.querySelector('.ob-order-party__meta')).toBeNull();
+    expect(partyInitials('om sai marble and sanitary')).toBe('OS');
+    expect(partyInitials('  ')).toBe('');
   });
 });
