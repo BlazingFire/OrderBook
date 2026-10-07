@@ -485,3 +485,103 @@
 .ob-order-thumb--48.ob-order-thumb--initial {
   font-size: var(--t-body-size);
 }
+
+/* --- The chosen party chip ------------------------------------------------------ */
+
+.ob-order-party {
+  box-sizing: border-box;
+  min-height: var(--ctl-h-md);
+  display: flex;
+  align-items: center;
+  gap: 0.571rem;
+  min-width: 0;
+  padding: 0 0.286rem 0 0.571rem;
+  border: 1px solid var(--line-control);
+  border-radius: var(--r-sm);
+  background: var(--bg-surface);
+}
+
+.ob-order-party__badge {
+  flex: none;
+  width: 1.429rem;
+  height: 1.429rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-size: var(--t-micro-size);
+  font-weight: 600;
+}
+
+.ob-order-party__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-body-size);
+  font-weight: 550;
+}
+
+.ob-order-party__code {
+  flex: none;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.857rem;
+  color: var(--fg-secondary);
+}
+
+.ob-order-party__meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.893rem;
+  color: var(--fg-tertiary);
+}
+
+.ob-order-party__gap {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.ob-order-party__close {
+  flex: none;
+  width: 1.714rem;
+  height: 1.714rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-secondary);
+  cursor: pointer;
+}
+
+.ob-order-party__close:hover {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
+}
+
+/* --- Page width, Cancel / Save height, the panel's search ----------------------- */
+
+/* Capped like the Dashboard and Basic Home, so a 4K screen is not 1.5 m of Party field. */
+.ob-order-page {
+  max-width: 120rem;
+  margin-inline: auto;
+  width: 100%;
+}
+
+.ob-order-actions .ob-btn {
+  height: var(--ctl-h-lg);
+}
+
+.ob-order-aside__tools input[type='text'],
+.ob-order-aside__tools input:not([type]) {
+  height: 2rem;
+  background: var(--bg-canvas);
+  border-color: var(--line);
+  border-radius: var(--r-sm);
+}

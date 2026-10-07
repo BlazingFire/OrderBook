@@ -42,6 +42,7 @@ export * from './order/AddedProductsPanel.js';
 export * from './order/CartEntry.js';
 export * from './order/OrderChecks.js';
 export * from './order/OrderDetailsBar.js';
+export * from './order/PartyChip.js';
 export * from './order/ProductThumb.js';
 export * from './DeviceWarning.js';
 export * from './DataTable.js';
