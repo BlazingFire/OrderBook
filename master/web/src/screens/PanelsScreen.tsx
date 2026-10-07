@@ -510,7 +510,7 @@ export function PanelsScreen({ panels, onRefresh, onOpenSettings }: Props) {
           </>
         }
       >
-        <p className="ob-body">{t('panels.revoke.body')}</p>
+        <p className="ob-body ob-confirm-body">{t('panels.revoke.body')}</p>
       </Modal>
     </>
   );
