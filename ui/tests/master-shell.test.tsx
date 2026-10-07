@@ -2867,11 +2867,14 @@ describe('Notice board screens in the Master shell (Oct 7)', () => {
       ? json({ user: user(permissions, 'office'), sessionToken: 'session-1' })
       : inner({ url, method, body });
 
-  it('shows the important and pinned notices above Basic Home, for the roles that land there', async () => {
+  it('turns over the important and pinned notices above Basic Home, for the roles that land there', async () => {
     await boot(['notices.view'], asOffice(['notices.view']));
     expect(topbarTitle()).toBe(t('nav.basicHome'));
     expect(await screen.findByText('Godown closed on Friday')).toBeTruthy();
-    expect(screen.getByText(t('notices.card.title'))).toBeTruthy();
+    // Owner add-on V5: the slideshow, and a slide opens its notice on the board.
+    const band = screen.getByRole('region', { name: t('notices.slideshow.label') });
+    fireEvent.click(within(band).getByText('Godown closed on Friday'));
+    await waitFor(() => expect(topbarTitle()).toBe(t('nav.notices')));
   });
 
   it('draws no notice card on Basic Home without notices.view', async () => {

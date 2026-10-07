@@ -24,6 +24,19 @@ interface Tip {
   below: boolean;
 }
 
+/**
+ * The title React last rendered on `element`: the string, `null` when it rendered none, or
+ * `undefined` when React does not manage the element. Read from the props React keeps on the
+ * node, because removing an attribute that is already gone (it is parked) changes nothing a
+ * MutationObserver could see.
+ */
+function reactTitle(element: HTMLElement): string | null | undefined {
+  const key = Object.keys(element).find((name) => name.startsWith('__reactProps$'));
+  if (!key) return undefined;
+  const props = (element as unknown as Record<string, { title?: unknown } | undefined>)[key];
+  return typeof props?.title === 'string' && props.title ? props.title : null;
+}
+
 export function TooltipLayer() {
   const [tip, setTip] = useState<Tip | null>(null);
 
@@ -36,9 +49,13 @@ export function TooltipLayer() {
       if (current) {
         const parked = current.dataset.obTitle;
         delete current.dataset.obTitle;
-        // React may have set a new title while it was parked; that one wins.
-        if (parked !== undefined && !current.hasAttribute('title')) {
-          current.setAttribute('title', parked);
+        // React may have set a new title while it was parked: that one stands. Otherwise give
+        // back what React renders now, so a title it removed meanwhile stays removed; the parked
+        // words only for an element React does not manage.
+        if (!current.hasAttribute('title')) {
+          const rendered = reactTitle(current);
+          const restore = rendered === undefined ? parked : rendered;
+          if (restore) current.setAttribute('title', restore);
         }
       }
       current = null;

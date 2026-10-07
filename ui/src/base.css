@@ -2062,6 +2062,15 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   gap: var(--s-8);
   z-index: var(--z-toast);
 }
+/* Bottom-left of the working area, so a toast never covers the sidebar's own rows; the sidebar's
+ * width tokens follow its collapse and the UI scale. With no sidebar (sign-in, splash, pairing)
+ * the window's own edge, as above. */
+body:has(.ob-sidebar) .ob-toasts {
+  left: calc(var(--shell-sidebar-w) + var(--s-16));
+}
+body:has(.ob-sidebar--collapsed) .ob-toasts {
+  left: calc(var(--shell-sidebar-collapsed-w) + var(--s-16));
+}
 
 .ob-toast {
   display: flex;
@@ -2414,6 +2423,122 @@ html[data-motion='off'] .ob-progress-fill--indeterminate {
 .ob-progress--conflict .ob-progress-label,
 .ob-progress--ok .ob-progress-label {
   font-weight: 550;
+}
+
+/* ===========================================================================
+ * The notice slideshow (NoticeSlideshow.tsx, owner add-on V5): a surface band like the
+ * Feedback banners, an accent edge (red for an important notice), one slide at a time,
+ * the controls on the right. The slide area has a fixed height, so turning a slide never
+ * moves the tiles under it.
+ * ======================================================================== */
+
+.ob-slideshow {
+  --slideshow-edge: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: var(--s-12);
+  padding: var(--s-12) var(--s-16);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--slideshow-edge);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  min-width: 0;
+}
+.ob-slideshow--important {
+  --slideshow-edge: var(--state-conflict);
+}
+.ob-slideshow-slides {
+  flex: 1;
+  min-width: 0;
+}
+.ob-slideshow-open {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  width: 100%;
+  min-width: 0;
+  height: calc(var(--t-body-line) + var(--s-4) + 2 * var(--t-small-line));
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.ob-slideshow-open:hover .ob-slideshow-title {
+  color: var(--accent);
+}
+.ob-slideshow-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  min-width: 0;
+}
+.ob-slideshow-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-body-size);
+  line-height: var(--t-body-line);
+  font-weight: 550;
+}
+.ob-slideshow-head .ob-pill {
+  flex: none;
+}
+.ob-slideshow-date {
+  flex: none;
+  margin-left: auto;
+  font-size: var(--t-small-size);
+  color: var(--fg-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.ob-slideshow-body {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-size: var(--t-small-size);
+  line-height: var(--t-small-line);
+  color: var(--fg-secondary);
+}
+.ob-slideshow-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  flex: none;
+}
+.ob-slideshow-dots {
+  display: flex;
+  align-items: center;
+}
+.ob-slideshow-dot {
+  width: 1.4286rem; /* 20px target */
+  height: 1.4286rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.ob-slideshow-dot::before {
+  content: '';
+  width: var(--s-6);
+  height: var(--s-6);
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+.ob-slideshow-dot[aria-current='true']::before {
+  background: var(--accent);
+}
+.ob-slideshow-dot:focus-visible {
+  outline: 2px solid var(--line-focus);
+  outline-offset: -2px;
+  border-radius: var(--r-sm);
 }
 
 /* ===========================================================================
@@ -2927,25 +3052,26 @@ button.ob-stattile:hover {
   }
 }
 
+/* Rises into place: sliding in from the left crossed the sidebar's edge for its first frames. */
 @keyframes ob-toast-in {
   from {
     opacity: 0;
-    transform: translateX(-16px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
-    transform: translateX(0);
+    transform: translateY(0);
   }
 }
 
 @keyframes ob-toast-out {
   from {
     opacity: 1;
-    transform: translateX(0);
+    transform: translateY(0);
   }
   to {
     opacity: 0;
-    transform: translateX(-16px);
+    transform: translateY(8px);
   }
 }
 
