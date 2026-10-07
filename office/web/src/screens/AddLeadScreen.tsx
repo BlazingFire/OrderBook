@@ -2637,21 +2637,31 @@ function DraftCard({
           alt=""
           name={draft.productName}
         />
-        <span className="ob-mono" style={{ fontSize: rem(12), color: 'var(--accent)' }}>
+        <span
+          className="ob-mono"
+          style={{ fontSize: rem(12), color: 'var(--accent)', whiteSpace: 'nowrap', flex: 'none' }}
+        >
           {draft.variants.length === 1
             ? draft.variants[0]!.code
             : t('lead.add.products.variantCount', { count: draft.variants.length })}
         </span>
         {/* The product as the design names it, its group beside it; the sub product's own name
             and size are in the table below, shown here only when they differ. */}
-        <span className="ob-body-strong ob-ellipsis" style={{ minWidth: 0 }}>
+        <span
+          className="ob-body-strong"
+          style={{ flex: '1 1 8rem', minWidth: 0, overflowWrap: 'anywhere' }}
+        >
           {draft.categoryName}
         </span>
-        {draft.brand && <span className="ob-order-eyebrow">{draft.brand}</span>}
+        {draft.brand && (
+          <span className="ob-order-eyebrow" style={{ whiteSpace: 'nowrap', flex: 'none' }}>
+            {draft.brand}
+          </span>
+        )}
         {draft.productName !== draft.categoryName && (
           <span
             className="ob-small ob-ellipsis"
-            style={{ minWidth: 0, color: 'var(--fg-secondary)' }}
+            style={{ flex: '0 1 auto', minWidth: 0, color: 'var(--fg-secondary)' }}
           >
             {[draft.productName, draft.size].filter(Boolean).join(' · ')}
           </span>
@@ -2659,8 +2669,10 @@ function DraftCard({
         {draft.rule === 'selectable' && (
           <StatusPill tone="accent">{t('product.multiColour.pill')}</StatusPill>
         )}
-        <span style={{ flex: 1, minWidth: 0 }} />
-        <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
+        <span
+          className="ob-small"
+          style={{ color: 'var(--fg-tertiary)', whiteSpace: 'nowrap', flex: 'none' }}
+        >
           {draft.editKey ? t('lead.add.draft.editing') : t('lead.add.draft.new')}
         </span>
         <button
