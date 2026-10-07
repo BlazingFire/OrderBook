@@ -40,6 +40,7 @@ export * from './CursorPager.js';
 export * from './DataDisplay.js';
 export * from './order/AddedProductsPanel.js';
 export * from './order/CartEntry.js';
+export * from './order/gridModel.js';
 export * from './order/OrderChecks.js';
 export * from './order/OrderDetailsBar.js';
 export * from './order/PartyChip.js';
