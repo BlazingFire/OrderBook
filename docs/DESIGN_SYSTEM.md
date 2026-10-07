@@ -421,7 +421,7 @@ show the 32 px photo (`CartEntry` thumb slot); the follow-up chips are a real ra
 the page title is the shell's top bar (no second heading). The page is capped at 120 rem.
 
 **Not built from the artboard (the product has none of them):** the **Rate** column and any amount, the `₹` prefix, the stock figures ("on hand shown", On hand, Reserved).
-Lead wording becomes **pending order**; quantity unit is **box**, never "pcs".
+Lead wording becomes **pending order**. The artboard's quantity unit "pcs" is as the entry screens already say it; the printed notes say **box**; which one each screen should say is an open owner question (reports keep separate Pieces and Boxes columns, so they may be different quantities).
 
 ## 11. Where it lives in the code
 
