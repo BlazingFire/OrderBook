@@ -387,6 +387,9 @@ export function OrderBoardScreen({
     {
       key: 'ref',
       header: t('order.list.col.ref'),
+      // Kept after Weight and Qty go (G14), but not at any cost: at 1366 px and 157 % an
+      // undroppable ref left Party 38 px wide.
+      priority: 2,
       width: rem(130),
       // Only beside a PO number; without one the id is already the first column.
       render: (order) =>
@@ -445,7 +448,8 @@ export function OrderBoardScreen({
     {
       key: 'notes',
       header: t('orderNote.column.notes'),
-      priority: 2,
+      // Goes with Weight, before Order ref and Qty: the notes are also on the order itself.
+      priority: 3,
       width: rem(220),
       render: (order) => (
         <NoteButtons
