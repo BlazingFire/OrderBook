@@ -56,6 +56,7 @@ export * from './LeadEntryScreen.js';
 export * from './LeadRecordView.js';
 export * from './LeadStaleEdit.js';
 export * from './Logo.js';
+export * from './Mark.js';
 export * from './LogsScreen.js';
 export * from './Modal.js';
 export * from './NotificationBell.js';
