@@ -36,7 +36,7 @@ const COPIES: Array<
     ['ui', 'src', 'LeadEntryScreen.tsx'],
     'function draftIsReady',
     'packagingRequired',
-    2,
+    1,
   ],
 ];
 
