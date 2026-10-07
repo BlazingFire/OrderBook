@@ -1582,6 +1582,7 @@ function OfficePanel() {
       {canViewNotices && session && (
         <SignInNotices
           key={session.userId}
+          sessionKey={`${session.userId}:${session.signedInAt}`}
           loaded={view !== null}
           notices={myNotices}
           today={todayForNotices()}

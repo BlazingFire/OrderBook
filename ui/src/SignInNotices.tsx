@@ -9,6 +9,10 @@
  *
  * "Mark as read" hands the ids to the panel's own read path (the Master posts them; the Office
  * queues them per person while the link is down). "Later" and Escape only close it.
+ *
+ * A reload while still signed in (F5, an Electron reload) is not a new sign-in: given a
+ * `sessionKey`, the decision is remembered in sessionStorage for that sign-in, as a hash of the
+ * key in one slot that the next sign-in overwrites.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -19,6 +23,33 @@ import { StatusPill } from './DataDisplay.js';
 import { t } from './i18n.js';
 import { Modal } from './Modal.js';
 import { boardNotices } from './NoticeBoardView.js';
+
+const DECIDED_SLOT = 'ob.signInNotices.decided';
+
+/** A short non-reversible tag for a sign-in, so nothing of the key itself is stored. */
+function tagOf(key: string): string {
+  let hash = 5381;
+  for (let index = 0; index < key.length; index += 1) hash = ((hash << 5) + hash + key.charCodeAt(index)) | 0;
+  return (hash >>> 0).toString(36);
+}
+
+function decidedBefore(key: string | undefined): boolean {
+  if (!key) return false;
+  try {
+    return window.sessionStorage.getItem(DECIDED_SLOT) === tagOf(key);
+  } catch {
+    return false;
+  }
+}
+
+function rememberDecided(key: string | undefined): void {
+  if (!key) return;
+  try {
+    window.sessionStorage.setItem(DECIDED_SLOT, tagOf(key));
+  } catch {
+    // No storage (a locked-down profile): a reload asks again, which is the safe side.
+  }
+}
 
 /** What the pop-up lists: on the board today, important, not read by this person, newest first. */
 export function signInNotices(notices: readonly Notice[], today?: string): Notice[] {
@@ -34,9 +65,11 @@ export interface SignInNoticesProps {
   /** Today as `YYYY-MM-DD`, so a notice past its last day is left out. */
   today?: string;
   onMarkRead: (ids: string[]) => void | Promise<void>;
+  /** Unique to this sign-in (the person and the session), so a reload does not ask again. */
+  sessionKey?: string;
 }
 
-export function SignInNotices({ loaded, notices, today, onMarkRead }: SignInNoticesProps) {
+export function SignInNotices({ loaded, notices, today, onMarkRead, sessionKey }: SignInNoticesProps) {
   const decided = useRef(false);
   const [ids, setIds] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -45,9 +78,11 @@ export function SignInNotices({ loaded, notices, today, onMarkRead }: SignInNoti
   useEffect(() => {
     if (!loaded || decided.current) return;
     decided.current = true;
+    if (decidedBefore(sessionKey)) return;
+    rememberDecided(sessionKey);
     const unread = signInNotices(notices, today).map((notice) => notice.id);
     if (unread.length > 0) setIds(unread);
-  }, [loaded, notices, today]);
+  }, [loaded, notices, today, sessionKey]);
 
   if (!ids) return null;
   // The ones picked at sign-in, as they stand now (an edit shows), still newest first.
