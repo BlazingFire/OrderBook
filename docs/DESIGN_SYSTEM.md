@@ -224,7 +224,7 @@ With an icon: gap 6, padding 0 12 0 10 (icon left) or 0 10 0 12 (icon right); a 
   box ("Command or search records", `Ctrl K` chip), notifications bell with a badge (15 px accent pill, 10 px), and a 26 px avatar.
   The top bar keeps the title readable: the command box and secondary actions collapse to icons on a narrow main column.
 - **Filter chips:** 24 px, accent-tint fill, accent text, 12.5 px / 500 ("Status: Open"), with a remove x; "Add filter" is a dashed
-  `porcelain-30` chip. **Segmented control** (List / Kanban, density): 24 to 26 px tall, track `porcelain-10`, the selected segment white with a 1 px line.
+  `porcelain-30` chip. **Segmented control** (List / Kanban): 24 to 26 px tall, track `porcelain-10`, the selected segment white with a 1 px line.
 - **Tabs:** 36 px tall, 14 px; active = primary text, 550, a 2 px accent underline; hover = `porcelain-05` fill with rounded top;
   focus = 2 px accent outline; disabled = `porcelain-30`. A count is a micro badge (16 px, `porcelain-10`).
 - **Status footer / presence rail:** 26 px tall, white, 1 px top border: sync state (Synced, Syncing N, Offline, "Offline, 4 pending"
@@ -294,7 +294,7 @@ Lead wording becomes **pending order**; quantity unit is **box**, never "pcs".
 
 | Area | Files |
 |---|---|
-| Tokens, type, radii, focus ring, scrollbars, density | `ui/src/tokens.css` (names in 2.6), `ui/src/base.css`, `ui/src/theme.ts` (the size slider) |
+| Tokens, type, radii, focus ring, scrollbars, size | `ui/src/tokens.css` (names in 2.6), `ui/src/base.css`, `ui/src/theme.ts` (the size slider) |
 | Fonts (Inter, IBM Plex Mono, bundled) | `ui/src/fonts/`, `ui/src/fonts.css` |
 | Mark, splash, busy indicator, app icons | (to be filled) |
 | Buttons and form controls | `ui/src/Button.tsx`, `Input.tsx`, `Select.tsx`, ... (to be filled) |
