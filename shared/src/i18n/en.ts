@@ -1522,7 +1522,7 @@ export const EN_MESSAGES = {
   'lead.add.products.searchLabel': 'Search products — the product first, then its sub product',
   'lead.add.products.title': 'Products',
   'lead.add.products.useSuggested': 'Use “{value}”',
-  'lead.add.save': 'Save pending order',
+  'lead.add.save': 'Save order',
   'lead.add.saving': 'Saving…',
   'lead.add.savingHint': 'Saves on this machine first — offline is the normal path',
   'lead.add.savingHintOnline': 'Saves straight to the Master',
