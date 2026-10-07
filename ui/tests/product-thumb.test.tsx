@@ -67,3 +67,10 @@ describe('the Products lists', () => {
     });
   }
 });
+
+describe('ProductThumb without an images list', () => {
+  it('shows the empty tile rather than crashing the list', () => {
+    const { container } = render(<ProductThumb name="x" />);
+    expect(container.querySelector('.ob-thumb--empty')).not.toBeNull();
+  });
+});

@@ -132,8 +132,15 @@ export function ProgressiveImage({
  * rows on screen). On the Office the URL is served from the panel's own image cache, offline
  * too. 28 px rather than the full 32 px row, so the photo keeps a hairline of air inside it.
  */
-export function ProductThumb({ images, name }: { images: readonly ProductImage[]; name: string }) {
-  const primary = images.find((image) => image.isPrimary) ?? images[0];
+export function ProductThumb({
+  images,
+  name,
+}: {
+  /** Absent on a row that has not carried its photos (a product made offline, not yet synced). */
+  images?: readonly ProductImage[];
+  name: string;
+}) {
+  const primary = images?.find((image) => image.isPrimary) ?? images?.[0];
   if (!primary) return <span className="ob-thumb ob-thumb--empty" aria-hidden="true" />;
   return (
     <ProgressiveImage
