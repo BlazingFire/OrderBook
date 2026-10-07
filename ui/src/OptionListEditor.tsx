@@ -419,7 +419,7 @@ export function OptionListEditor({
         title={confirmRemove ? t('fields.values.delete.title', { label: confirmRemove.label }) : ''}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setConfirmRemove(null)}>
+            <Button variant="ghost" onClick={() => setConfirmRemove(null)}>
               {t('fields.action.cancel')}
             </Button>
             <Button

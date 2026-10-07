@@ -79,7 +79,7 @@ export function ConfirmDialog({
         </>
       }
     >
-      {typeof body === 'string' ? <p className="ob-body">{body}</p> : body}
+      {typeof body === 'string' ? <p className="ob-body ob-confirm-body">{body}</p> : body}
     </Modal>
   );
 }
