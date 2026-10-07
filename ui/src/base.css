@@ -3190,7 +3190,7 @@ button.ob-bell-item:hover {
 .ob-menu {
   display: flex;
   flex-direction: column;
-  min-width: 11rem;
+  min-width: 15.7143rem;
   padding: var(--s-4);
 }
 
@@ -3242,7 +3242,7 @@ button.ob-bell-item:hover {
 
 /* The scrim behind every modal. It had no rule: the dialog floated over an undimmed screen. */
 .ob-overlay {
-  position: absolute;
+  position: fixed;
   inset: 0;
   z-index: var(--z-drawer);
   background: var(--overlay-scrim);
@@ -3254,7 +3254,7 @@ button.ob-bell-item:hover {
 }
 
 .ob-modal-wrap {
-  position: absolute;
+  position: fixed;
   inset: 0;
   z-index: var(--z-drawer);
   display: flex;
@@ -3305,7 +3305,7 @@ button.ob-bell-item:hover {
   display: flex;
   align-items: flex-start;
   gap: var(--s-12);
-  padding: var(--s-16) var(--s-20);
+  padding: var(--s-20) var(--s-20) 0;
 }
 
 .ob-modal-heading {
@@ -3362,7 +3362,7 @@ button.ob-bell-item:hover {
   align-items: center;
   justify-content: flex-end;
   gap: var(--s-8);
-  padding: var(--s-12) var(--s-20);
+  padding: calc(var(--s-12) + var(--s-2)) var(--s-20);
   border-top: 1px solid var(--line);
   border-radius: 0 0 var(--r-lg) var(--r-lg);
 }
@@ -3378,9 +3378,9 @@ button.ob-bell-item:hover {
 .ob-palette-search {
   display: flex;
   align-items: center;
-  gap: var(--s-8);
-  padding: 0 var(--s-16);
-  height: var(--ctl-h-lg);
+  height: calc(var(--ctl-h-lg) + var(--s-8));
+  gap: calc(var(--s-8) + var(--s-2));
+  padding: 0 var(--s-12);
   border-bottom: 1px solid var(--line);
   color: var(--fg-tertiary);
 }
@@ -3427,6 +3427,13 @@ button.ob-bell-item:hover {
 .ob-palette-row:hover,
 .ob-palette-row[aria-current='page'] {
   background: var(--accent-tint);
+}
+.ob-palette-row[aria-current='page'] {
+  color: var(--accent);
+}
+.ob-palette-row[aria-current='page'] .ob-palette-hint {
+  color: inherit;
+  font-size: 11px;
 }
 .ob-palette-row:focus-visible {
   outline: 2px solid var(--line-focus);

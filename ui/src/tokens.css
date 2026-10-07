@@ -103,7 +103,7 @@
   --sh-3: 0 16px 40px rgba(16, 22, 26, 0.18);
 
   /* ---- Scrims & glints (modal overlay, rail highlight, swatch ring) ----- */
-  --overlay-scrim: rgba(16, 22, 26, 0.18);
+  --overlay-scrim: rgba(16, 22, 26, 0.32);
   --rail-glint: rgba(255, 255, 255, 0.6);
   --swatch-ring: rgba(16, 22, 26, 0.14);
 

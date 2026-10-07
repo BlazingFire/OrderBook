@@ -9,6 +9,12 @@ describe('overlays restyle', () => {
   it('draws the scrim from the token', () => {
     expect(css).toMatch(/\.ob-overlay\s*\{[^}]*background:\s*var\(--overlay-scrim\)/);
   });
+  it('the scrim is .32 and covers the whole window, not just the pane', () => {
+    const tokens = readFileSync(resolve(__dirname, '../src/tokens.css'), 'utf8');
+    expect(tokens).toMatch(/--overlay-scrim:\s*rgba\(16, 22, 26, 0\.32\)/);
+    expect(css).toMatch(/\.ob-overlay\s*\{[^}]*position:\s*fixed/);
+    expect(css).toMatch(/\.ob-modal-wrap\s*\{[^}]*position:\s*fixed/);
+  });
   it('menu items keep a focus ring and have danger/separator/hint states', () => {
     expect(css).toMatch(/\.ob-menu-item:focus-visible\s*\{[^}]*2px solid var\(--line-focus\)/);
     for (const c of ['.ob-menu-item--danger', '.ob-menu-sep', '.ob-menu-hint']) expect(css).toContain(c);

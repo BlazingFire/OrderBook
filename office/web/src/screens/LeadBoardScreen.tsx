@@ -615,6 +615,12 @@ export function LeadBoardScreen({
                   <IconButton
                     icon="more"
                     label={t('lead.board.cardMenu')}
+                    aria-haspopup="menu"
+                    aria-expanded={menuId === lead.id}
+                    // Enter/Space on the trigger belong to the trigger; the card's own key handler would open the record.
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
+                    }}
                     onClick={(event) => {
                       event.stopPropagation();
                       setMenuId((current) => (current === lead.id ? null : lead.id));
