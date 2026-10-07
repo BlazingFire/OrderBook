@@ -2192,14 +2192,6 @@ function GridCard({
             style={{ flex: '1 1 0', minWidth: 0, color: 'var(--fg-tertiary)' }}
           >
             <span className="ob-mono ob-micro">{t('lead.add.card.shiftQ')}</span>
-            {' · '}
-            {hint}
-            {counted.length > 0 && previewKg > 0 && (
-              <>
-                {' · '}
-                {t('lead.add.summary.weight', { kg: formatKg(previewKg) })}
-              </>
-            )}
           </span>
           <span
             className="ob-small"
@@ -2412,6 +2404,21 @@ function GridCard({
           );
         })}
       </SubGrid>
+
+      {/* What is still missing, under the table: the footer keeps the artboard's one short hint. */}
+      <p
+        className="ob-small"
+        data-card-hint
+        style={{ margin: 0, padding: `${rem(6)} ${rem(14)} 0`, color: 'var(--fg-tertiary)' }}
+      >
+        {hint}
+        {counted.length > 0 && previewKg > 0 && (
+          <>
+            {' · '}
+            {t('lead.add.summary.weight', { kg: formatKg(previewKg) })}
+          </>
+        )}
+      </p>
 
       {packagingOptions.length === 0 && rows.length > 0 && (
         <p
