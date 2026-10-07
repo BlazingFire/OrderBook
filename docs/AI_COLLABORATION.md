@@ -2996,7 +2996,14 @@ pass an `anchorStyle`; `.ob-chat-page`, `.ob-chat-room`, `.ob-print-page`, `.ob-
 captions and strip note were 4.30:1 and 2.99:1 on white; on screen they are now #66737a (4.89:1) in an `@media screen`
 block, the printed page and the PDF unchanged. **Shared, sent to D13.** Top bar, `.ob-popover` default placement, sidebar
 label, 4K caps elsewhere. **Tests.** `ui/tests/chat-print-layout.test.ts`, `ui/tests/order-note-contrast.test.ts`.
-**Not covered.** The per-message action menu (the seeded messages were past the edit window), a real Electron window.
+**Follow-up pass (Master Chatroom and the message menu).** The Master Chatroom (rooms, a room, tasks, groups, new
+group, the pickers, group settings) and the per-message menu (Edit, Delete, Pin; the Delete confirmation; the Edit
+state) on both panels, at 1280×720, 1920×1080 and 3840×2160, 100 % and 157 %: clean apart from the menu itself, which
+opened 65–250 px past the right edge. Cause: each `.ob-chat-row` uses `content-visibility: auto`, which contains
+layout, so the shared Popover's `position: fixed` placement (D13, 4c0c816) was measured from the row, not the screen.
+`.ob-chat-row:has(.ob-popover)` now draws the row normally while its menu is open; checked with D13's branch merged
+(menus inside the viewport at every size and scale, flipping above near the foot of the list).
+**Not covered.** A real Electron window.
 
 ### 2026-10-07 — Note design: Plex Mono 700, "Sep", seven code columns, no orphan page (D7)
 
