@@ -97,15 +97,19 @@ import {
 import { api, type LocalView, type QueuedResult } from '../api';
 import { partyFormTransport } from '../partyFormTransport';
 import {
+  AddedProductsPanel,
   Button,
-  Card,
+  CartEntry,
   ColourChip,
   ColourName,
   ConflictBanner,
   DateField,
+  FollowUpField,
   Icon,
   Input,
   Modal,
+  OrderDetailsBar,
+  OrderField,
   PartyFormModal,
   Select,
   StaleEditNotice,
@@ -114,6 +118,7 @@ import {
   changedLeadFields,
   type CreatedParty,
   type LeadFormValues,
+  type OrderCheck,
   formatKg,
   rem,
   t,
@@ -223,9 +228,9 @@ const LIVE_CHECK_BATCH = 200;
 const LIVE_SAVE_WAIT_MS = 3000;
 
 const QUICK_FOLLOW_UPS = [
-  { days: 1, token: 'lead.add.followUp.tomorrow' },
-  { days: 3, token: 'lead.add.followUp.inThreeDays' },
-  { days: 7, token: 'lead.add.followUp.nextWeek' },
+  { days: 1, token: 'lead.add.followUp.tomorrow', short: 'lead.add.followUp.tomorrowShort' },
+  { days: 3, token: 'lead.add.followUp.inThreeDays', short: 'lead.add.followUp.inThreeDaysShort' },
+  { days: 7, token: 'lead.add.followUp.nextWeek', short: 'lead.add.followUp.nextWeekShort' },
 ] as const;
 
 /**
@@ -459,7 +464,7 @@ function AddLeadForm({
   /** The whole screen: the scope of Ctrl+Enter, since a hidden screen stays mounted. */
   const rootRef = useRef<HTMLDivElement>(null);
   /** The products section: the scope of Shift+Q. */
-  const productsRef = useRef<HTMLElement>(null);
+  const productsRef = useRef<HTMLDivElement>(null);
   const partyRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const sourceRef = useRef<HTMLInputElement>(null);
@@ -743,7 +748,8 @@ function AddLeadForm({
     const byId = new Map<string, string>();
     // On an existing lead its saved lines may legitimately name a product deleted since; only
     // what this edit adds is checked, because only that can make the Master refuse the save.
-    for (const line of lines) if (!line.key.startsWith('saved-')) byId.set(line.productId, line.productName);
+    for (const line of lines)
+      if (!line.key.startsWith('saved-')) byId.set(line.productId, line.productName);
     if (draft) byId.set(draft.productId, draft.productName);
     return [...byId];
   }, [lines, draft]);
@@ -771,7 +777,9 @@ function AddLeadForm({
           return;
         }
         const live = new Set(answers.flatMap((answer) => answer!.live!));
-        setGone(checkedProducts.filter(([id]) => !live.has(id)).map(([id, name]) => ({ id, name })));
+        setGone(
+          checkedProducts.filter(([id]) => !live.has(id)).map(([id, name]) => ({ id, name })),
+        );
       } catch {
         // Unreachable or refused: say nothing rather than flag everything.
       }
@@ -1124,7 +1132,9 @@ function AddLeadForm({
     // The Master refuses a whole new order that names a deleted product: stop here, keep the form.
     const goneLines = lines.filter((line) => gone.some((product) => product.id === line.productId));
     if (goneLines.length > 0) {
-      return t('lead.add.errors.goneLines', { names: [...new Set(goneLines.map((line) => line.productName))].join(', ') });
+      return t('lead.add.errors.goneLines', {
+        names: [...new Set(goneLines.map((line) => line.productName))].join(', '),
+      });
     }
     return null;
   }
@@ -1280,7 +1290,6 @@ function AddLeadForm({
   const unweighed = lines.filter((line) => line.weightKg === null).length;
 
   const ready = Boolean(partyId) && lines.length > 0 && !draft;
-  const doneSteps = (partyId ? 1 : 0) + (sourcePlatform ? 1 : 0) + (lines.length > 0 ? 1 : 0);
 
   const statusLine = !partyId
     ? t('lead.add.status.party')
@@ -1377,31 +1386,61 @@ function AddLeadForm({
     ? t('lead.add.products.productPlaceholder', { category: category.name })
     : t('lead.add.products.categoryPlaceholder');
 
-  return (
-    <div ref={rootRef} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-20)' }}>
-      {/* --- Header ------------------------------------------------------ */}
+  const productCount = new Set(lines.map((line) => line.productId)).size;
+  const followUpShown = followUpDate.split('-').reverse().join('-');
+  const checks: OrderCheck[] = [
+    selectedParty
+      ? {
+          key: 'party',
+          state: 'ok',
+          label: t('lead.add.check.party.ok', { name: selectedParty.name }),
+        }
+      : { key: 'party', state: 'todo', label: t('lead.add.check.party.todo') },
+    lines.length > 0
+      ? {
+          key: 'products',
+          state: 'ok',
+          label: t('lead.add.check.products.ok', { count: productCount }),
+        }
+      : { key: 'products', state: 'idle', label: t('lead.add.check.products.todo') },
+    followUpDate
+      ? {
+          key: 'followUp',
+          state: 'ok',
+          label: t('lead.add.check.followUp', { date: followUpShown }),
+        }
+      : { key: 'followUp', state: 'idle', label: t('lead.add.check.followUp.none') },
+  ];
+  const totalLabel =
+    lines.length === 0
+      ? t('lead.add.summary.empty')
+      : [
+          productCount === 1 && lines.length === 1
+            ? t('lead.add.panel.totalOneLine')
+            : productCount === 1
+              ? t('lead.add.panel.totalLineOne', { lines: lines.length })
+              : t('lead.add.panel.totalLine', { products: productCount, lines: lines.length }),
+          t('lead.add.summary.weight', { kg: formatKg(totalWeight) }),
+        ].join(' · ');
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
-        <h1 className="ob-title" style={{ margin: 0 }}>
-          {lead ? t('lead.edit.title') : t('lead.add.title')}
-        </h1>
-        <span
-          className="ob-small"
-          style={{
-            padding: `${rem(1)} ${rem(7)}`,
-            borderRadius: 'var(--r-sm)',
-            background: 'var(--bg-sunken)',
-            color: 'var(--fg-secondary)',
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          {t('lead.add.progress', { done: doneSteps, total: 3 })}
-        </span>
-        <span style={{ flex: 1 }} />
-        <Button variant="secondary" onClick={onCancel}>
-          {t('action.cancel')}
-        </Button>
-      </div>
+  return (
+    <div ref={rootRef} className="ob-order-page">
+      {/* The page title is the shell's breadcrumb; the heading stays for the screen reader. */}
+      <h1
+        style={{
+          position: 'absolute',
+          width: 1,
+          height: 1,
+          margin: -1,
+          padding: 0,
+          overflow: 'hidden',
+          clip: 'rect(0 0 0 0)',
+          whiteSpace: 'nowrap',
+          border: 0,
+        }}
+      >
+        {lead ? t('lead.edit.title') : t('lead.add.title')}
+      </h1>
 
       {error && <ConflictBanner>{error}</ConflictBanner>}
       {editBase.conflicted && !busy && (
@@ -1414,827 +1453,732 @@ function AddLeadForm({
       )}
 
       {/*
-       * Two columns that become one when there is no room for two: the form on
-       * the left, and everything already added on the right, where it stays in
-       * view while the next product is being built rather than pushing the Save
-       * button off the bottom of a growing page.
+       * The Enter / Escape walk covers the details bar and the products column and not the Added
+       * products panel, which has its own controls: `display: contents` gives the walk one
+       * container without adding a box to the layout.
        */}
-      <div className="ob-lead-cols">
-        <div className="ob-lead-form" ref={formRef}>
-          {/* --- The enquiry: party, source, follow-up -------------------- */}
+      <div ref={formRef} style={{ display: 'contents' }}>
+        {/* --- The enquiry: party, source, follow-up ------------------------ */}
 
-          <Card padded={false}>
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 'var(--s-8)',
-                padding: `${rem(9)} ${rem(12)}`,
-              }}
-            >
+        <OrderDetailsBar hasOwner={false}>
+          <OrderField label={t('lead.add.party.title')} wide>
+            {selectedParty ? (
               <div
                 style={{
                   display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'stretch',
-                  gap: rem(5),
-                  width: '100%',
-                }}
-              >
-                <Eyebrow>{t('lead.add.party.title')}</Eyebrow>
-                {selectedParty ? (
-                  <div
-                    style={{
-                      display: 'flex',
-                      flex: 1,
-                      minWidth: 0,
-                      flexWrap: 'wrap',
-                      alignItems: 'center',
-                      gap: `${rem(4)} ${rem(10)}`,
-                      padding: `${rem(5)} ${rem(6)} ${rem(5)} ${rem(11)}`,
-                      border: '1px solid var(--line)',
-                      borderRadius: 'var(--r-md)',
-                    }}
-                  >
-                    {/*
-                     * The name and nothing else (owner's instruction,
-                     * 2026-09-22). The code, the phone number and the town
-                     * belong to the *picker*, where they tell two Sharma
-                     * Traders apart; once one has been chosen they are four
-                     * more things to read on the field somebody is typing
-                     * past, and the party is already decided.
-                     */}
-                    <span className="ob-body-strong ob-ellipsis">{selectedParty.name}</span>
-                    {/* The key keeps its name from when party records carried
-                        rates; the text says what it is now — the party's own
-                        product names are in use. No money is shown. */}
-                    {partyWiseMode && (
-                      <StatusPill tone="ok">{t('lead.add.party.ownRates')}</StatusPill>
-                    )}
-                    <span style={{ flex: 1, minWidth: 0 }} />
-                    {/*
-                     * `data-field` puts this button back into the Enter/Escape
-                     * walk. Choosing a party replaces the search box with this
-                     * chip, so without it Escape from the source select would
-                     * find no party field to go back to — it is the first step
-                     * of the form, and it has to stay reachable as one.
-                     */}
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      data-field
-                      onClick={() => {
-                        setPartyId('');
-                        setPartyQuery('');
-                        setPartyOpen(true);
-                        setPartySel(0);
-                        window.setTimeout(() => partyRef.current?.focus(), 0);
-                      }}
-                    >
-                      {t('lead.add.party.change')}
-                    </Button>
-                  </div>
-                ) : (
-                  <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
-                    <Input
-                      ref={partyRef}
-                      value={partyQuery}
-                      placeholder={t('lead.add.party.placeholder')}
-                      aria-label={t('lead.add.party.search')}
-                      autoComplete="off"
-                      onChange={(event) => {
-                        setPartyQuery(event.target.value);
-                        setPartyOpen(true);
-                        setPartySel(0);
-                        // An Enter waiting on the old text is not one for the new.
-                        partyEnterFor.current = null;
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Escape') {
-                          setPartyOpen(false);
-                          return;
-                        }
-                        if (event.key === 'ArrowDown') {
-                          event.preventDefault();
-                          setPartyOpen(true);
-                          setPartySel(Math.min(partyPick + 1, Math.max(0, partyRows.length - 1)));
-                        }
-                        if (event.key === 'ArrowUp') {
-                          event.preventDefault();
-                          setPartySel(Math.max(0, partyPick - 1));
-                        }
-                        // Only over a list that is showing: the rows of the last
-                        // term linger for the debounce after the box is cleared.
-                        if (
-                          (event.key === 'Enter' || event.key === 'Tab') &&
-                          !chorded(event) &&
-                          partyListOpen
-                        ) {
-                          // The rows on screen answer an older text: this key
-                          // takes the first of its own answer when it comes.
-                          if (partyAnswered.current !== partyQuery) {
-                            event.preventDefault();
-                            partyEnterFor.current = partyQuery;
-                          } else if (partyRows[partyPick]) {
-                            event.preventDefault();
-                            chooseParty(partyRows[partyPick]);
-                          }
-                        }
-                      }}
-                    />
-                    {partyListOpen && (
-                      <div role="listbox" className="ob-suggest">
-                        {partyRows.map((party, index) => (
-                          <button
-                            key={party.id}
-                            type="button"
-                            className="ob-suggest-row"
-                            style={{
-                              gridTemplateColumns: `${rem(92)} minmax(0, 1fr) ${rem(130)}`,
-                              background: index === partyPick ? 'var(--bg-selected)' : undefined,
-                            }}
-                            onMouseEnter={() => setPartySel(index)}
-                            onClick={() => chooseParty(party)}
-                          >
-                            <span
-                              className="ob-mono ob-micro"
-                              style={{ color: 'var(--fg-tertiary)' }}
-                            >
-                              {party.partyCode}
-                            </span>
-                            <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                              <span className="ob-body-strong ob-ellipsis">{party.name}</span>
-                              <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                                {party.city ?? ''}
-                              </span>
-                            </span>
-                            <span
-                              className="ob-small"
-                              style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                            >
-                              {party.phone ?? ''}
-                            </span>
-                          </button>
-                        ))}
-                        <button
-                          type="button"
-                          className="ob-btn ob-btn--ghost"
-                          style={{
-                            width: '100%',
-                            justifyContent: 'flex-start',
-                            color: 'var(--accent)',
-                          }}
-                          onClick={() => {
-                            setPartyOpen(false);
-                            setPartyDrawerOpen(true);
-                          }}
-                        >
-                          {t('lead.add.party.create')}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="ob-lead-enquiry">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: rem(5), minWidth: 0 }}>
-                  <Eyebrow>{t('lead.add.source.label')}</Eyebrow>
-                  {/*
-                   * A select rather than a row of chips: the list is
-                   * company-defined and a shop with eight sources wrapped the
-                   * chips onto three lines above a field nobody had filled in
-                   * yet.
-                   *
-                   * The listed sources and nothing else (§6.2). The free-text
-                   * box behind "Other" sent whatever was typed as the source,
-                   * which the Master refuses as unlisted — a queued lead
-                   * bounced on it. A source the shop needs is added to the
-                   * list, in Settings → Fields.
-                   */}
-                  <Select
-                    ref={sourceRef}
-                    value={sourcePlatform}
-                    aria-label={t('lead.add.step.source')}
-                    style={{ width: '100%', maxWidth: rem(280) }}
-                    onChange={(event) => setSourcePlatform(event.target.value)}
-                  >
-                    {sourceOptions.map((option) => (
-                      <option key={option.id} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: rem(5), minWidth: 0 }}>
-                  <Eyebrow>{t('lead.add.followUp.label')}</Eyebrow>
-                  <span
-                    style={{
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      alignItems: 'center',
-                      gap: 'var(--s-8)',
-                    }}
-                  >
-                    <DateField
-                      value={followUpDate}
-                      aria-label={t('lead.add.details.followUp')}
-                      onChange={(event) => setFollowUpDate(event.target.value)}
-                    />
-                    {/*
-                     * The chips are one group: when the card is too narrow for the date and
-                     * all three they drop below the date together, evenly spaced, instead of
-                     * one chip trailing alone onto a second line (Office, 1280 px wide).
-                     */}
-                    <span
-                      data-follow-up-chips
-                      style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s-8)' }}
-                    >
-                      {QUICK_FOLLOW_UPS.map(({ days, token }) => {
-                        const iso = isoDate(days);
-                        return (
-                          <Chip
-                            key={token}
-                            active={followUpDate === iso}
-                            onClick={() =>
-                              setFollowUpDate((current) => (current === iso ? '' : iso))
-                            }
-                          >
-                            {t(token)}
-                          </Chip>
-                        );
-                      })}
-                    </span>
-                  </span>
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          {/* --- Products ----------------------------------------------------- */}
-
-          <section ref={productsRef} style={{ display: 'flex', flexDirection: 'column' }}>
-            <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                gap: `${rem(6)} ${rem(10)}`,
-                marginBottom: 'var(--s-6)',
-              }}
-            >
-              <span
-                aria-hidden="true"
-                style={{
-                  width: rem(17),
-                  height: rem(17),
-                  flex: 'none',
-                  borderRadius: '50%',
-                  background: lines.length > 0 ? 'var(--accent)' : 'var(--bg-sunken)',
-                  color: lines.length > 0 ? 'var(--fg-on-accent)' : 'var(--fg-tertiary)',
-                  fontSize: rem(11),
-                  fontWeight: 600,
-                  display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
+                  gap: 'var(--s-8)',
+                  minHeight: 'var(--ctl-h-md)',
+                  padding: `0 ${rem(4)} 0 ${rem(8)}`,
+                  border: '1px solid var(--line-control)',
+                  borderRadius: 'var(--r-sm)',
+                  background: 'var(--bg-surface)',
+                  minWidth: 0,
                 }}
               >
-                1
-              </span>
-              <span className="ob-body-strong">{t('lead.add.products.title')}</span>
-              <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                {lines.length
-                  ? t('lead.add.products.searchAdds')
-                  : t('lead.add.products.searchFirst')}
-              </span>
-              <span style={{ flex: 1, minWidth: 0 }} />
-              {lines.length > 0 && (
-                <span className="ob-small" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  {summary}
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: rem(20),
+                    height: rem(20),
+                    flex: 'none',
+                    borderRadius: 'var(--r-sm)',
+                    background: 'var(--accent-tint)',
+                    color: 'var(--accent)',
+                    fontSize: rem(11),
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {selectedParty.name
+                    .split(/\s+/)
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .map((word) => word[0]!.toUpperCase())
+                    .join('')}
                 </span>
-              )}
-            </div>
-
-            {/* The search field, or the model it turned into. */}
-            <div style={{ position: 'relative' }}>
-              {draft ? (
-                <div className="ob-picked">
+                <span className="ob-body-strong ob-ellipsis" style={{ minWidth: 0 }}>
+                  {selectedParty.name}
+                </span>
+                <span
+                  className="ob-mono ob-small"
+                  style={{ flex: 'none', color: 'var(--fg-secondary)' }}
+                >
+                  {selectedParty.partyCode}
+                </span>
+                {selectedParty.city && (
                   <span
-                    className="ob-mono ob-body-strong"
-                    style={{ fontSize: rem(14), color: 'var(--accent)' }}
+                    className="ob-small ob-ellipsis"
+                    style={{ color: 'var(--fg-tertiary)', minWidth: 0 }}
                   >
-                    {draft.variants.length === 1
-                      ? draft.variants[0]!.code
-                      : t('lead.add.products.variantCount', { count: draft.variants.length })}
+                    {'· '}
+                    {selectedParty.city}
                   </span>
-                  <span className="ob-body-strong">{draft.productName}</span>
-                  <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                    {[draft.categoryName, draft.size]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </span>
-                  {draft.rule === 'selectable' && (
-                    <StatusPill tone="accent">{t('product.multiColour.pill')}</StatusPill>
-                  )}
-                  <span style={{ flex: 1, minWidth: 0 }} />
-                  <Button
-                    variant="primary"
-                    disabled={!draftIsReady(draft)}
-                    onClick={() => saveDraft()}
-                  >
-                    {draft.editKey
-                      ? t('lead.add.draft.saveChanges')
-                      : t('lead.add.draft.saveProduct')}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    aria-label={t('lead.add.products.clear')}
-                    title={t('lead.add.products.clear')}
-                    onClick={() => {
-                      setDraft(null);
-                      window.setTimeout(() => searchRef.current?.focus(), 0);
-                    }}
-                  >
-                    ✕
-                  </Button>
-                </div>
-              ) : (
-                <div className="ob-lead-search">
-                  {category && (
-                    <span className="ob-chip" aria-pressed="true" style={{ cursor: 'default' }}>
-                      <span className="ob-ellipsis">
-                        {category.name}
-                      </span>
+                )}
+                {/* The key keeps its name from when party records carried
+                    rates; the text says what it is now — the party's own
+                    product names are in use. No money is shown. */}
+                {partyWiseMode && <StatusPill tone="ok">{t('lead.add.party.ownRates')}</StatusPill>}
+                <span style={{ flex: 1, minWidth: 0 }} />
+                {/*
+                 * `data-field` puts this button back into the Enter/Escape
+                 * walk. Choosing a party replaces the search box with this
+                 * chip, so without it Escape from the source select would
+                 * find no party field to go back to — it is the first step
+                 * of the form, and it has to stay reachable as one.
+                 */}
+                <button
+                  type="button"
+                  className="ob-btn ob-btn--ghost"
+                  data-field
+                  aria-label={t('lead.add.party.change')}
+                  title={t('lead.add.party.change')}
+                  style={{ flex: 'none', padding: 0, minWidth: rem(24), minHeight: rem(24) }}
+                  onClick={() => {
+                    setPartyId('');
+                    setPartyQuery('');
+                    setPartyOpen(true);
+                    setPartySel(0);
+                    window.setTimeout(() => partyRef.current?.focus(), 0);
+                  }}
+                >
+                  <Icon name="close" size={14} />
+                </button>
+              </div>
+            ) : (
+              <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+                <Input
+                  ref={partyRef}
+                  value={partyQuery}
+                  placeholder={t('lead.add.party.placeholder')}
+                  aria-label={t('lead.add.party.search')}
+                  autoComplete="off"
+                  onChange={(event) => {
+                    setPartyQuery(event.target.value);
+                    setPartyOpen(true);
+                    setPartySel(0);
+                    // An Enter waiting on the old text is not one for the new.
+                    partyEnterFor.current = null;
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') {
+                      setPartyOpen(false);
+                      return;
+                    }
+                    if (event.key === 'ArrowDown') {
+                      event.preventDefault();
+                      setPartyOpen(true);
+                      setPartySel(Math.min(partyPick + 1, Math.max(0, partyRows.length - 1)));
+                    }
+                    if (event.key === 'ArrowUp') {
+                      event.preventDefault();
+                      setPartySel(Math.max(0, partyPick - 1));
+                    }
+                    // Only over a list that is showing: the rows of the last
+                    // term linger for the debounce after the box is cleared.
+                    if (
+                      (event.key === 'Enter' || event.key === 'Tab') &&
+                      !chorded(event) &&
+                      partyListOpen
+                    ) {
+                      // The rows on screen answer an older text: this key
+                      // takes the first of its own answer when it comes.
+                      if (partyAnswered.current !== partyQuery) {
+                        event.preventDefault();
+                        partyEnterFor.current = partyQuery;
+                      } else if (partyRows[partyPick]) {
+                        event.preventDefault();
+                        chooseParty(partyRows[partyPick]);
+                      }
+                    }
+                  }}
+                />
+                {partyListOpen && (
+                  <div role="listbox" className="ob-suggest">
+                    {partyRows.map((party, index) => (
                       <button
+                        key={party.id}
                         type="button"
-                        className="ob-chip__clear"
-                        aria-label={t('lead.add.products.changeCategory')}
-                        title={t('lead.add.products.changeCategory')}
-                        onClick={clearCategory}
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  )}
-                  <Input
-                    ref={searchRef}
-                    value={query}
-                    placeholder={searchPlaceholder}
-                    aria-label={t('lead.add.products.searchLabel')}
-                    autoComplete="off"
-                    style={{ flex: 1, minWidth: rem(160) }}
-                    onFocus={() => setSearchOpen(true)}
-                    onBlur={() => setSearchOpen(false)}
-                    onChange={(event) => {
-                      setQuery(event.target.value);
-                      setSearchOpen(true);
-                      setSel(0);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Escape' && searchOpen) {
-                        event.preventDefault();
-                        setSearchOpen(false);
-                        return;
-                      }
-                      // Backspace on an empty box steps back a stage, the way
-                      // a token in a search field is deleted.
-                      if (event.key === 'Backspace' && query === '' && category) {
-                        event.preventDefault();
-                        clearCategory();
-                        return;
-                      }
-                      if (event.key === 'ArrowDown') {
-                        event.preventDefault();
-                        setSearchOpen(true);
-                        setSel(Math.min(pick + 1, Math.max(0, rows.length - 1)));
-                      }
-                      if (event.key === 'ArrowUp') {
-                        event.preventDefault();
-                        setSel(Math.max(0, pick - 1));
-                      }
-                      /*
-                       * A bare Enter takes the highlighted row; Tab only once
-                       * something was typed. The sub-product bar reopens on
-                       * its whole list after every line, and a Tab out of it
-                       * took the first sub product as one nobody chose. A
-                       * chord is never a pick: Ctrl+Enter here is the review.
-                       */
-                      const takes =
-                        !chorded(event) &&
-                        (event.key === 'Enter' || (event.key === 'Tab' && query.trim() !== ''));
-                      if (takes && listOpen && rows[pick]) {
-                        // Claimed, so the Enter walk does not step past a
-                        // choice that has only just been made.
-                        event.preventDefault();
-                        if (category) openDraft(rows[pick] as Product, query);
-                        else chooseCategory(rows[pick] as ProductCategory);
-                      } else if (takes && listOpen && event.key === 'Enter') {
-                        // Nothing to take — a typo, or `opt⏎41⏎` typed before
-                        // the product's sub products arrived. The walk would
-                        // put the caret in the notes and the next code typed
-                        // there; it stays in the bar. Escape closes the list
-                        // for somebody who does mean to walk on.
-                        event.preventDefault();
-                      }
-                    }}
-                  />
-                </div>
-              )}
-
-              {listOpen && !category && (
-                <div role="listbox" className="ob-suggest" ref={listRef}>
-                  <div
-                    className="ob-suggest-row ob-eyebrow"
-                    style={{ gridTemplateColumns: 'minmax(0, 1fr)', color: 'var(--fg-tertiary)' }}
-                  >
-                    <span>{t('lead.add.products.col.category')}</span>
-                  </div>
-                  {categoryRows.map((row, index) => (
-                    <button
-                      key={row.id}
-                      type="button"
-                      // Out of the Tab order, as in the sub-product list below.
-                      tabIndex={-1}
-                      className="ob-suggest-row"
-                      style={{
-                        gridTemplateColumns: 'minmax(0, 1fr)',
-                        background: index === pick ? 'var(--bg-selected)' : undefined,
-                      }}
-                      onMouseEnter={() => setSel(index)}
-                      // `mousedown`, not `click`: the input's blur would close
-                      // the list out from under the pointer first.
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                        chooseCategory(row);
-                      }}
-                    >
-                      {/* `CODE · Name · Brand` (§6.4): the code is what the
-                          counter types, the brand what tells two ranges'
-                          same-named products apart. */}
-                      <span className="ob-ellipsis">
-                        {row.code && (
-                          <span className="ob-mono ob-body-strong">
-                            {row.code}
-                            {' · '}
-                          </span>
-                        )}
-                        <span
-                          className="ob-body-strong"
-                          style={{ color: index === pick ? 'var(--accent)' : undefined }}
-                        >
-                          {row.name}
-                        </span>
-                        {row.brand && (
-                          <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
-                            {' · '}
-                            {row.brand}
-                          </span>
-                        )}
-                      </span>
-                    </button>
-                  ))}
-                  {categoryRows.length === 0 && (
-                    <p className="ob-small" style={{ margin: 0, padding: 'var(--s-8)' }}>
-                      {t('lead.add.products.noCategory')}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {listOpen && category && (
-                <div role="listbox" className="ob-suggest" ref={listRef}>
-                  <div
-                    className="ob-suggest-row ob-eyebrow"
-                    style={{ gridTemplateColumns: SUGGEST_GRID, color: 'var(--fg-tertiary)' }}
-                  >
-                    <span>{t('lead.add.products.col.code')}</span>
-                    <span>{t('lead.add.products.col.product')}</span>
-                    <span>{t('lead.add.products.col.variant')}</span>
-                    <span style={{ textAlign: 'right' }}>{t('lead.add.products.col.weight')}</span>
-                  </div>
-                  {subMatches.map((row, index) => {
-                    const active = row.variants.filter((variant) => variant.isActive);
-                    const first = active[0] ?? row.variants[0];
-                    const weights = active.map((variant) => variant.weightKg);
-                    const rule = colourRuleOf(row);
-                    // A colour-named sub product (a fixed colour, or MAGENTA
-                    // sold in Magenta) carries its swatch beside the name.
-                    const swatch =
-                      rule === 'fixed' && first?.label ? colourHex(first.label) : undefined;
-                    return (
-                      <button
-                        key={row.id}
-                        type="button"
-                        /*
-                         * Out of the Tab order: the rows are for the pointer,
-                         * the box's arrows and Enter are the keyboard's. A Tab
-                         * from an empty bar landed on the first row, the box's
-                         * blur then closed the list under it, and the caret
-                         * was left on nothing at all.
-                         */
-                        tabIndex={-1}
                         className="ob-suggest-row"
                         style={{
-                          gridTemplateColumns: SUGGEST_GRID,
-                          background: index === pick ? 'var(--bg-selected)' : undefined,
+                          gridTemplateColumns: `${rem(92)} minmax(0, 1fr) ${rem(130)}`,
+                          background: index === partyPick ? 'var(--bg-selected)' : undefined,
                         }}
-                        onMouseEnter={() => setSel(index)}
-                        onMouseDown={(event) => {
-                          event.preventDefault();
-                          openDraft(row, query);
-                        }}
+                        onMouseEnter={() => setPartySel(index)}
+                        onClick={() => chooseParty(party)}
                       >
-                        <span
-                          className="ob-mono ob-body-strong"
-                          style={{
-                            fontSize: rem(14),
-                            color: index === pick ? 'var(--accent)' : undefined,
-                          }}
-                        >
-                          {active.length > 1
-                            ? t('lead.add.products.variantCount', { count: active.length })
-                            : (first?.code ?? '—')}
+                        <span className="ob-mono ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+                          {party.partyCode}
                         </span>
                         <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                          <span
-                            className="ob-ellipsis"
-                            style={{ display: 'flex', alignItems: 'center', gap: rem(6) }}
-                          >
-                            {swatch && first?.label && (
-                              <ColourChip name={first.label} hex={swatch} />
-                            )}
-                            {row.name}
+                          <span className="ob-body-strong ob-ellipsis">{party.name}</span>
+                          <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+                            {party.city ?? ''}
                           </span>
-                          <span
-                            className="ob-mono ob-micro"
-                            style={{ color: 'var(--fg-tertiary)' }}
-                          >
-                            {row.size ?? ''}
-                          </span>
-                        </span>
-                        <span className="ob-small ob-ellipsis" style={{ minWidth: 0 }}>
-                          {active.length > 1
-                            ? active.map((variant) => variant.label ?? variant.code).join(', ')
-                            : rule === 'selectable'
-                              ? t('product.multiColour.pill')
-                              : (shownColour(first?.label, row.name) ?? '')}
                         </span>
                         <span
                           className="ob-small"
                           style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
                         >
-                          {weights.length === 1
-                            ? formatKg(weights[0] ?? null)
-                            : weights.some((weight) => weight === null)
-                              ? t('product.weight.missingShort')
-                              : formatKg(weights.reduce<number>((sum, w) => sum + (w ?? 0), 0))}
+                          {party.phone ?? ''}
                         </span>
                       </button>
-                    );
-                  })}
-                  {subMatches.length === 0 && (
-                    <p className="ob-small" style={{ margin: 0, padding: 'var(--s-8)' }}>
-                      {t('lead.add.products.noProduct')}
+                    ))}
+                    <button
+                      type="button"
+                      className="ob-btn ob-btn--ghost"
+                      style={{
+                        width: '100%',
+                        justifyContent: 'flex-start',
+                        color: 'var(--accent)',
+                      }}
+                      onClick={() => {
+                        setPartyOpen(false);
+                        setPartyDrawerOpen(true);
+                      }}
+                    >
+                      {t('lead.add.party.create')}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </OrderField>
+
+          <OrderField label={t('lead.add.source.label')}>
+            {/*
+             * A select rather than a row of chips: the list is
+             * company-defined and a shop with eight sources wrapped the
+             * chips onto three lines above a field nobody had filled in
+             * yet.
+             *
+             * The listed sources and nothing else (§6.2). The free-text
+             * box behind "Other" sent whatever was typed as the source,
+             * which the Master refuses as unlisted — a queued lead
+             * bounced on it. A source the shop needs is added to the
+             * list, in Settings → Fields.
+             */}
+            <Select
+              ref={sourceRef}
+              value={sourcePlatform}
+              aria-label={t('lead.add.step.source')}
+              style={{ width: '100%' }}
+              onChange={(event) => setSourcePlatform(event.target.value)}
+            >
+              {sourceOptions.map((option) => (
+                <option key={option.id} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </OrderField>
+
+          <OrderField label={t('lead.add.followUp.label')}>
+            <FollowUpField
+              groupLabel={t('lead.add.followUp.group')}
+              date={
+                <DateField
+                  value={followUpDate}
+                  aria-label={t('lead.add.details.followUp')}
+                  onChange={(event) => setFollowUpDate(event.target.value)}
+                />
+              }
+              quick={QUICK_FOLLOW_UPS.map(({ days, token, short }) => {
+                const iso = isoDate(days);
+                return {
+                  key: token,
+                  label: t(short),
+                  title: t(token),
+                  active: followUpDate === iso,
+                  onClick: () => setFollowUpDate((current) => (current === iso ? '' : iso)),
+                };
+              })}
+            />
+          </OrderField>
+        </OrderDetailsBar>
+
+        <div className="ob-order-cols">
+          <div className="ob-order-main">
+            {/* --- Products ------------------------------------------------- */}
+
+            <section className="ob-order-card" aria-label={t('lead.add.products.title')}>
+              {/* Shift+Q is the product flow's key: the notes below sit outside this box. */}
+              <div
+                ref={productsRef}
+                style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)', flex: 1 }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    gap: 'var(--s-8)',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <h2 className="ob-order-eyebrow">{t('lead.add.products.title')}</h2>
+                  <span className="ob-order-hint">
+                    {lines.length
+                      ? t('lead.add.products.searchAdds')
+                      : t('lead.add.products.searchFirst')}
+                  </span>
+                </div>
+
+                {/* The search field, or the model it turned into. */}
+                <div style={{ position: 'relative' }}>
+                  {draft ? null : (
+                    <div className="ob-lead-search ob-order-search">
+                      <Icon name="search" size={16} />
+                      {category && (
+                        <span className="ob-chip" aria-pressed="true" style={{ cursor: 'default' }}>
+                          <span className="ob-ellipsis">{category.name}</span>
+                          <button
+                            type="button"
+                            className="ob-chip__clear"
+                            aria-label={t('lead.add.products.changeCategory')}
+                            title={t('lead.add.products.changeCategory')}
+                            onClick={clearCategory}
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      )}
+                      <Input
+                        ref={searchRef}
+                        value={query}
+                        placeholder={searchPlaceholder}
+                        aria-label={t('lead.add.products.searchLabel')}
+                        autoComplete="off"
+                        style={{ flex: 1, minWidth: rem(160) }}
+                        onFocus={() => setSearchOpen(true)}
+                        onBlur={() => setSearchOpen(false)}
+                        onChange={(event) => {
+                          setQuery(event.target.value);
+                          setSearchOpen(true);
+                          setSel(0);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Escape' && searchOpen) {
+                            event.preventDefault();
+                            setSearchOpen(false);
+                            return;
+                          }
+                          // Backspace on an empty box steps back a stage, the way
+                          // a token in a search field is deleted.
+                          if (event.key === 'Backspace' && query === '' && category) {
+                            event.preventDefault();
+                            clearCategory();
+                            return;
+                          }
+                          if (event.key === 'ArrowDown') {
+                            event.preventDefault();
+                            setSearchOpen(true);
+                            setSel(Math.min(pick + 1, Math.max(0, rows.length - 1)));
+                          }
+                          if (event.key === 'ArrowUp') {
+                            event.preventDefault();
+                            setSel(Math.max(0, pick - 1));
+                          }
+                          /*
+                           * A bare Enter takes the highlighted row; Tab only once
+                           * something was typed. The sub-product bar reopens on
+                           * its whole list after every line, and a Tab out of it
+                           * took the first sub product as one nobody chose. A
+                           * chord is never a pick: Ctrl+Enter here is the review.
+                           */
+                          const takes =
+                            !chorded(event) &&
+                            (event.key === 'Enter' || (event.key === 'Tab' && query.trim() !== ''));
+                          if (takes && listOpen && rows[pick]) {
+                            // Claimed, so the Enter walk does not step past a
+                            // choice that has only just been made.
+                            event.preventDefault();
+                            if (category) openDraft(rows[pick] as Product, query);
+                            else chooseCategory(rows[pick] as ProductCategory);
+                          } else if (takes && listOpen && event.key === 'Enter') {
+                            // Nothing to take — a typo, or `opt⏎41⏎` typed before
+                            // the product's sub products arrived. The walk would
+                            // put the caret in the notes and the next code typed
+                            // there; it stays in the bar. Escape closes the list
+                            // for somebody who does mean to walk on.
+                            event.preventDefault();
+                          }
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {listOpen && !category && (
+                    <div role="listbox" className="ob-suggest" ref={listRef}>
+                      <div
+                        className="ob-suggest-row ob-eyebrow"
+                        style={{
+                          gridTemplateColumns: 'minmax(0, 1fr)',
+                          color: 'var(--fg-tertiary)',
+                        }}
+                      >
+                        <span>{t('lead.add.products.col.category')}</span>
+                      </div>
+                      {categoryRows.map((row, index) => (
+                        <button
+                          key={row.id}
+                          type="button"
+                          // Out of the Tab order, as in the sub-product list below.
+                          tabIndex={-1}
+                          className="ob-suggest-row"
+                          style={{
+                            gridTemplateColumns: 'minmax(0, 1fr)',
+                            background: index === pick ? 'var(--bg-selected)' : undefined,
+                          }}
+                          onMouseEnter={() => setSel(index)}
+                          // `mousedown`, not `click`: the input's blur would close
+                          // the list out from under the pointer first.
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            chooseCategory(row);
+                          }}
+                        >
+                          {/* `CODE · Name · Brand` (§6.4): the code is what the
+                          counter types, the brand what tells two ranges'
+                          same-named products apart. */}
+                          <span className="ob-ellipsis">
+                            {row.code && (
+                              <span className="ob-mono ob-body-strong">
+                                {row.code}
+                                {' · '}
+                              </span>
+                            )}
+                            <span
+                              className="ob-body-strong"
+                              style={{ color: index === pick ? 'var(--accent)' : undefined }}
+                            >
+                              {row.name}
+                            </span>
+                            {row.brand && (
+                              <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
+                                {' · '}
+                                {row.brand}
+                              </span>
+                            )}
+                          </span>
+                        </button>
+                      ))}
+                      {categoryRows.length === 0 && (
+                        <p className="ob-small" style={{ margin: 0, padding: 'var(--s-8)' }}>
+                          {t('lead.add.products.noCategory')}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {listOpen && category && (
+                    <div role="listbox" className="ob-suggest" ref={listRef}>
+                      <div
+                        className="ob-suggest-row ob-eyebrow"
+                        style={{ gridTemplateColumns: SUGGEST_GRID, color: 'var(--fg-tertiary)' }}
+                      >
+                        <span>{t('lead.add.products.col.code')}</span>
+                        <span>{t('lead.add.products.col.product')}</span>
+                        <span>{t('lead.add.products.col.variant')}</span>
+                        <span style={{ textAlign: 'right' }}>
+                          {t('lead.add.products.col.weight')}
+                        </span>
+                      </div>
+                      {subMatches.map((row, index) => {
+                        const active = row.variants.filter((variant) => variant.isActive);
+                        const first = active[0] ?? row.variants[0];
+                        const weights = active.map((variant) => variant.weightKg);
+                        const rule = colourRuleOf(row);
+                        // A colour-named sub product (a fixed colour, or MAGENTA
+                        // sold in Magenta) carries its swatch beside the name.
+                        const swatch =
+                          rule === 'fixed' && first?.label ? colourHex(first.label) : undefined;
+                        return (
+                          <button
+                            key={row.id}
+                            type="button"
+                            /*
+                             * Out of the Tab order: the rows are for the pointer,
+                             * the box's arrows and Enter are the keyboard's. A Tab
+                             * from an empty bar landed on the first row, the box's
+                             * blur then closed the list under it, and the caret
+                             * was left on nothing at all.
+                             */
+                            tabIndex={-1}
+                            className="ob-suggest-row"
+                            style={{
+                              gridTemplateColumns: SUGGEST_GRID,
+                              background: index === pick ? 'var(--bg-selected)' : undefined,
+                            }}
+                            onMouseEnter={() => setSel(index)}
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              openDraft(row, query);
+                            }}
+                          >
+                            <span
+                              className="ob-mono ob-body-strong"
+                              style={{
+                                fontSize: rem(14),
+                                color: index === pick ? 'var(--accent)' : undefined,
+                              }}
+                            >
+                              {active.length > 1
+                                ? t('lead.add.products.variantCount', { count: active.length })
+                                : (first?.code ?? '—')}
+                            </span>
+                            <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                              <span
+                                className="ob-ellipsis"
+                                style={{ display: 'flex', alignItems: 'center', gap: rem(6) }}
+                              >
+                                {swatch && first?.label && (
+                                  <ColourChip name={first.label} hex={swatch} />
+                                )}
+                                {row.name}
+                              </span>
+                              <span
+                                className="ob-mono ob-micro"
+                                style={{ color: 'var(--fg-tertiary)' }}
+                              >
+                                {row.size ?? ''}
+                              </span>
+                            </span>
+                            <span className="ob-small ob-ellipsis" style={{ minWidth: 0 }}>
+                              {active.length > 1
+                                ? active.map((variant) => variant.label ?? variant.code).join(', ')
+                                : rule === 'selectable'
+                                  ? t('product.multiColour.pill')
+                                  : (shownColour(first?.label, row.name) ?? '')}
+                            </span>
+                            <span
+                              className="ob-small"
+                              style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                            >
+                              {weights.length === 1
+                                ? formatKg(weights[0] ?? null)
+                                : weights.some((weight) => weight === null)
+                                  ? t('product.weight.missingShort')
+                                  : formatKg(weights.reduce<number>((sum, w) => sum + (w ?? 0), 0))}
+                            </span>
+                          </button>
+                        );
+                      })}
+                      {subMatches.length === 0 && (
+                        <p className="ob-small" style={{ margin: 0, padding: 'var(--s-8)' }}>
+                          {t('lead.add.products.noProduct')}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {!draft && (
+                    <p className="ob-order-hint" style={{ margin: `${rem(7)} 0 0` }}>
+                      {category
+                        ? t('lead.add.products.productHint')
+                        : t('lead.add.products.categoryHint')}
                     </p>
                   )}
                 </div>
-              )}
 
-              <p
-                className="ob-micro"
-                style={{ margin: `${rem(7)} 0 0`, color: 'var(--fg-tertiary)' }}
-              >
-                {draft
-                  ? t('lead.add.products.pickedHint')
-                  : category
-                    ? t('lead.add.products.productHint')
-                    : t('lead.add.products.categoryHint')}
-              </p>
-            </div>
-
-            {goneNames.length > 0 && (
-              <p
-                role="note"
-                data-catalogue-gone
-                className="ob-small"
-                style={{ margin: `${rem(8)} 0 0`, color: 'var(--state-conflict)' }}
-              >
-                {goneNames.length === 1
-                  ? t('lead.add.catalogue.goneOne', { names: goneNames[0]! })
-                  : t('lead.add.catalogue.goneMany', { names: goneNames.join(', ') })}
-              </p>
-            )}
-
-            {/* The card one model is built in before it joins the lead. */}
-            {draft && (
-              <DraftCard
-                draft={draft}
-                ready={draftIsReady(draft)}
-                packagingRequired={packagingRequired}
-                packagingOptions={packagingOptions}
-                gradeOptions={gradeOptions}
-                colourOptions={colourOptions}
-                suggestedPackaging={partyRecordFor.get(draft.productId)?.packaging ?? null}
-                colourHex={colourHex}
-                onRow={patchRow}
-                onAddColour={addColour}
-                onRemoveColour={removeColour}
-                onSave={saveDraft}
-                onComplete={completeSubProduct}
-              />
-            )}
-          </section>
-
-          {/* --- Notes -------------------------------------------------------- */}
-
-          <section>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--s-8)',
-                marginBottom: rem(5),
-              }}
-            >
-              <Eyebrow>{t('lead.add.details.notes')}</Eyebrow>
-              <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                {t('lead.add.step.notesHint')}
-              </span>
-            </div>
-            <Textarea
-              rows={3}
-              value={notes}
-              placeholder={t('lead.add.notes.placeholder')}
-              aria-label={t('lead.add.details.notes')}
-              onChange={(event) => setNotes(event.target.value)}
-            />
-          </section>
-
-          {/* --- Save --------------------------------------------------------- */}
-
-          <div
-            style={{
-              borderTop: '1px solid var(--line)',
-              paddingTop: 'var(--s-16)',
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              gap: `${rem(12)} ${rem(16)}`,
-            }}
-          >
-            <Button
-              variant="primary"
-              size="lg"
-              busy={busy}
-              disabled={!ready}
-              title="Ctrl+S · Ctrl+Enter"
-              onClick={() => void save()}
-            >
-              {busy ? t('lead.add.saving') : t('lead.add.save')}
-            </Button>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: rem(2) }}>
-              <span className="ob-small" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                {summary}
-                {lines.length > 0 && (
-                  <>
-                    {' · '}
-                    {t('lead.add.summary.weight', { kg: formatKg(totalWeight) })}
-                  </>
+                {goneNames.length > 0 && (
+                  <p
+                    role="note"
+                    data-catalogue-gone
+                    className="ob-small"
+                    style={{ margin: `${rem(8)} 0 0`, color: 'var(--state-conflict)' }}
+                  >
+                    {goneNames.length === 1
+                      ? t('lead.add.catalogue.goneOne', { names: goneNames[0]! })
+                      : t('lead.add.catalogue.goneMany', { names: goneNames.join(', ') })}
+                  </p>
                 )}
-              </span>
-              <span
-                className="ob-micro"
-                style={{ color: ready ? 'var(--fg-tertiary)' : 'var(--state-offline)' }}
-              >
-                {unweighed > 0
+
+                {/* The card one model is built in before it joins the lead. */}
+                {draft && (
+                  <DraftCard
+                    draft={draft}
+                    ready={draftIsReady(draft)}
+                    packagingRequired={packagingRequired}
+                    packagingOptions={packagingOptions}
+                    gradeOptions={gradeOptions}
+                    colourOptions={colourOptions}
+                    suggestedPackaging={partyRecordFor.get(draft.productId)?.packaging ?? null}
+                    colourHex={colourHex}
+                    onRow={patchRow}
+                    onAddColour={addColour}
+                    onRemoveColour={removeColour}
+                    onSave={saveDraft}
+                    onComplete={completeSubProduct}
+                    onClear={() => {
+                      setDraft(null);
+                      window.setTimeout(() => searchRef.current?.focus(), 0);
+                    }}
+                  />
+                )}
+
+                {!draft && (
+                  <div className="ob-order-empty">
+                    <span className="ob-order-empty__title">
+                      {t('lead.add.products.noneTitle')}
+                    </span>
+                    <span className="ob-order-empty__body">{t('lead.add.products.noneBody')}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* --- Notes -------------------------------------------------- */}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--s-8)' }}>
+                  <span className="ob-order-eyebrow">{t('lead.add.details.notes')}</span>
+                  <span className="ob-order-hint">{t('lead.add.step.notesHint')}</span>
+                </div>
+                <Textarea
+                  rows={2}
+                  value={notes}
+                  placeholder={t('lead.add.notes.placeholder')}
+                  aria-label={t('lead.add.details.notes')}
+                  onChange={(event) => setNotes(event.target.value)}
+                />
+              </div>
+            </section>
+          </div>
+
+          {/* --- Added products --------------------------------------------- */}
+
+          {/* Outside the Enter walk: the panel's own search, ticks and buttons. */}
+          <div data-keys-grid style={{ display: 'contents' }}>
+            <AddedProductsPanel
+              ariaLabel={t('lead.add.panel.title')}
+              title={t('lead.add.panel.title')}
+              count={
+                lines.length === 0
+                  ? '0'
+                  : panelTerm
+                    ? t('lead.add.panel.countFiltered', {
+                        shown: matchedLines.length,
+                        total: lines.length,
+                      })
+                    : String(lines.length)
+              }
+              search={
+                <Input
+                  value={lineQuery}
+                  placeholder={t('lead.add.panel.search')}
+                  aria-label={t('lead.add.panel.search')}
+                  autoComplete="off"
+                  onChange={(event) => setLineQuery(event.target.value)}
+                />
+              }
+              toolbar={
+                <>
+                  {selectedLines.length > 0 && (
+                    <div className="ob-lead-selbar">
+                      <span
+                        className="ob-small ob-body-strong"
+                        style={{ fontVariantNumeric: 'tabular-nums' }}
+                      >
+                        {t('lead.add.panel.selected', { count: selectedLines.length })}
+                      </span>
+                      <span style={{ flex: 1, minWidth: 0 }} />
+                      <Button variant="secondary" size="sm" onClick={() => setSelected({})}>
+                        {t('lead.add.panel.clear')}
+                      </Button>
+                      <Button variant="danger" size="sm" onClick={removeSelected}>
+                        {t(
+                          selectedLines.length === 1
+                            ? 'lead.add.panel.removeSelectedOne'
+                            : 'lead.add.panel.removeSelected',
+                          { count: selectedLines.length },
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                  {lines.length > 0 && (
+                    <label
+                      className="ob-small"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 'var(--s-8)',
+                        color: 'var(--fg-tertiary)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        className="ob-lead-check"
+                        checked={allShownTicked}
+                        onChange={toggleSelectAllShown}
+                      />
+                      {t('lead.add.panel.selectAll')}
+                    </label>
+                  )}
+                </>
+              }
+              empty={
+                panelLines.length === 0
                   ? t(
-                      unweighed === 1
-                        ? 'lead.add.summary.noWeightOne'
-                        : 'lead.add.summary.noWeight',
-                      { count: unweighed },
+                      lines.length === 0
+                        ? 'lead.add.panel.emptyNone'
+                        : 'lead.add.panel.emptyFiltered',
                     )
-                  : statusLine}
-              </span>
-            </div>
-            <span style={{ flex: 1 }} />
-            <span className="ob-title" style={{ margin: 0, fontVariantNumeric: 'tabular-nums' }}>
-              {totalQty.toLocaleString('en-IN')}{' '}
-              <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
-                {t('unit.pieces')}
-              </span>
-            </span>
+                  : null
+              }
+              footerNote={
+                <>
+                  {matchedLines.length > panelLines.length && (
+                    <span className="ob-order-hint">
+                      {t('lead.add.panel.truncated', { shown: panelLines.length })}
+                    </span>
+                  )}
+                  <span
+                    className="ob-order-hint"
+                    style={{ color: ready ? undefined : 'var(--state-offline)' }}
+                  >
+                    {unweighed > 0
+                      ? t(
+                          unweighed === 1
+                            ? 'lead.add.summary.noWeightOne'
+                            : 'lead.add.summary.noWeight',
+                          { count: unweighed },
+                        )
+                      : statusLine}
+                  </span>
+                </>
+              }
+              checks={checks}
+              totalLabel={totalLabel}
+              totalPcs={totalQty.toLocaleString('en-IN')}
+              pcsUnit={t('unit.pieces')}
+              cancelLabel={t('action.cancel')}
+              onCancel={onCancel}
+              saveLabel={busy ? t('lead.add.saving') : t('lead.add.save')}
+              saveKbd="Ctrl S"
+              saveTitle="Ctrl+S · Ctrl+Enter"
+              saveDisabled={!ready}
+              saving={busy}
+              onSave={() => void save()}
+            >
+              {panelLines.map((line) => (
+                <LeadLine
+                  key={line.key}
+                  line={line}
+                  open={openKey === line.key}
+                  checked={Boolean(selected[line.key])}
+                  packagingRequired={packagingRequired}
+                  colourHex={colourHex}
+                  onToggle={() => setOpenKey((current) => (current === line.key ? null : line.key))}
+                  onCheck={() => toggleSelect(line.key)}
+                  onModify={() => modifyLine(line, lines.indexOf(line))}
+                  onRemove={() => removeLine(line)}
+                />
+              ))}
+            </AddedProductsPanel>
           </div>
         </div>
-
-        {/* --- Added products ------------------------------------------- */}
-
-        <aside className="ob-lead-panel" aria-label={t('lead.add.panel.title')}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
-            <Eyebrow>{t('lead.add.panel.title')}</Eyebrow>
-            <span
-              className="ob-micro"
-              style={{ color: 'var(--fg-tertiary)', fontVariantNumeric: 'tabular-nums' }}
-            >
-              {lines.length === 0
-                ? ''
-                : panelTerm
-                  ? t('lead.add.panel.countFiltered', {
-                      shown: matchedLines.length,
-                      total: lines.length,
-                    })
-                  : String(lines.length)}
-            </span>
-            <span style={{ flex: 1, minWidth: 0 }} />
-            <span className="ob-small" style={{ fontVariantNumeric: 'tabular-nums' }}>
-              {summary}
-            </span>
-          </div>
-
-          <Input
-            value={lineQuery}
-            placeholder={t('lead.add.panel.search')}
-            aria-label={t('lead.add.panel.search')}
-            autoComplete="off"
-            onChange={(event) => setLineQuery(event.target.value)}
-          />
-
-          {selectedLines.length > 0 && (
-            <div className="ob-lead-selbar">
-              <span
-                className="ob-small ob-body-strong"
-                style={{ fontVariantNumeric: 'tabular-nums' }}
-              >
-                {t('lead.add.panel.selected', { count: selectedLines.length })}
-              </span>
-              <span style={{ flex: 1, minWidth: 0 }} />
-              <Button variant="secondary" size="sm" onClick={() => setSelected({})}>
-                {t('lead.add.panel.clear')}
-              </Button>
-              <Button variant="danger" size="sm" onClick={removeSelected}>
-                {t(
-                  selectedLines.length === 1
-                    ? 'lead.add.panel.removeSelectedOne'
-                    : 'lead.add.panel.removeSelected',
-                  { count: selectedLines.length },
-                )}
-              </Button>
-            </div>
-          )}
-
-          {lines.length > 0 && (
-            <label
-              className="ob-small"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--s-8)',
-                color: 'var(--fg-tertiary)',
-                cursor: 'pointer',
-              }}
-            >
-              <input
-                type="checkbox"
-                className="ob-lead-check"
-                checked={allShownTicked}
-                onChange={toggleSelectAllShown}
-              />
-              {t('lead.add.panel.selectAll')}
-            </label>
-          )}
-
-          {panelLines.length === 0 && (
-            <p
-              className="ob-small"
-              style={{ margin: 0, padding: `${rem(12)} ${rem(2)}`, color: 'var(--fg-tertiary)' }}
-            >
-              {t(lines.length === 0 ? 'lead.add.panel.emptyNone' : 'lead.add.panel.emptyFiltered')}
-            </p>
-          )}
-
-          <div className="ob-lead-lines">
-            {panelLines.map((line) => (
-              <LeadLine
-                key={line.key}
-                line={line}
-                open={openKey === line.key}
-                checked={Boolean(selected[line.key])}
-                packagingRequired={packagingRequired}
-                colourHex={colourHex}
-                onToggle={() => setOpenKey((current) => (current === line.key ? null : line.key))}
-                onCheck={() => toggleSelect(line.key)}
-                onModify={() => modifyLine(line, lines.indexOf(line))}
-                onRemove={() => removeLine(line)}
-              />
-            ))}
-          </div>
-
-          {matchedLines.length > panelLines.length && (
-            <p className="ob-micro" style={{ margin: 0, color: 'var(--fg-tertiary)' }}>
-              {t('lead.add.panel.truncated', { shown: panelLines.length })}
-            </p>
-          )}
-        </aside>
       </div>
 
       <ReviewModal
@@ -2281,31 +2225,6 @@ const SUGGEST_GRID = `${rem(84)} minmax(0, 1fr) minmax(0, 0.7fr) ${rem(84)}`;
  * a word and the chevron, and the variant's name takes what is left.
  */
 const VARIANT_GRID = `${rem(64)} minmax(${rem(48)}, 1fr) ${rem(60)} ${rem(56)} minmax(${rem(72)}, ${rem(96)}) minmax(${rem(72)}, ${rem(96)})`;
-
-/** The small upper-case label that names a row without becoming a heading. */
-function Eyebrow({ children }: { children: ReactNode }) {
-  return (
-    <span className="ob-eyebrow" style={{ flex: 'none', color: 'var(--fg-tertiary)' }}>
-      {children}
-    </span>
-  );
-}
-
-function Chip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button type="button" className="ob-chip" aria-pressed={active} onClick={onClick}>
-      {children}
-    </button>
-  );
-}
 
 /**
  * A row's colour with its dot, when the palette knows the colour: the fixed
@@ -2448,8 +2367,10 @@ function LeadLine({
   ].filter(Boolean);
 
   return (
-    <div className="ob-lead-line" data-open={open ? 'true' : undefined}>
-      <div className="ob-lead-line__head">
+    <CartEntry
+      open={open}
+      onToggle={onToggle}
+      leading={
         <input
           type="checkbox"
           className="ob-lead-check"
@@ -2458,15 +2379,9 @@ function LeadLine({
           aria-label={t('lead.add.panel.select', { product: line.productName })}
           onChange={onCheck}
         />
-        <button
-          type="button"
-          className="ob-lead-line__toggle"
-          aria-expanded={open}
-          onClick={onToggle}
-        >
-          <span aria-hidden="true" style={{ flex: 'none', color: 'var(--fg-tertiary)' }}>
-            {open ? '▾' : '▸'}
-          </span>
+      }
+      head={
+        <>
           <span className="ob-mono ob-body-strong" style={{ flex: 'none' }}>
             {line.code}
           </span>
@@ -2501,58 +2416,54 @@ function LeadLine({
           >
             {t('lead.add.line.qtyShort', { count: line.quantity })}
           </span>
-        </button>
-      </div>
-
-      {open && (
-        <div className="ob-lead-line__body">
-          <span className="ob-lead-line__facts ob-micro">
-            {facts.map((fact, index) => (
-              <Fragment key={index}>
-                {index > 0 && (
-                  <span aria-hidden="true" className="ob-lead-line__sep">
-                    ·
-                  </span>
-                )}
-                {fact}
-              </Fragment>
-            ))}
-          </span>
-
-          <span className="ob-lead-line__acts">
-            {/*
-             * Icons on a tinted square, not words (owner's instruction). Two
-             * verbs repeated down a list of twenty lines is twenty times the
-             * same two words; the pencil and the bin are read once. The square
-             * is what makes them look pressable — as bare ghost text they read
-             * as part of the sentence in front of them.
-             *
-             * `title` for the pointer, `aria-label` naming the product for
-             * everything else: "Remove" on its own, twenty times over, tells a
-             * screen reader nothing about which line is about to go.
-             */}
-            <button
-              type="button"
-              className="ob-lead-line__act"
-              title={t('lead.add.line.modify')}
-              aria-label={t('lead.add.line.modifyProduct', { product: line.productName })}
-              onClick={onModify}
-            >
-              <Icon name="edit" size={14} />
-            </button>
-            <button
-              type="button"
-              className="ob-lead-line__act ob-lead-line__act--danger"
-              title={t('lead.add.products.remove')}
-              aria-label={t('lead.add.line.removeProduct', { product: line.productName })}
-              onClick={onRemove}
-            >
-              <Icon name="trash" size={14} />
-            </button>
-          </span>
-        </div>
-      )}
-    </div>
+        </>
+      }
+      facts={
+        <span className="ob-lead-line__facts ob-micro">
+          {facts.map((fact, index) => (
+            <Fragment key={index}>
+              {index > 0 && (
+                <span aria-hidden="true" className="ob-lead-line__sep">
+                  ·
+                </span>
+              )}
+              {fact}
+            </Fragment>
+          ))}
+        </span>
+      }
+      actions={
+        <span className="ob-lead-line__acts">
+          {/*
+           * Icons on a tinted square, not words (owner's instruction). Two
+           * verbs repeated down a list of twenty lines is twenty times the
+           * same two words; the pencil and the bin are read once.
+           *
+           * `title` for the pointer, `aria-label` naming the product for
+           * everything else: "Remove" on its own, twenty times over, tells a
+           * screen reader nothing about which line is about to go.
+           */}
+          <button
+            type="button"
+            className="ob-lead-line__act"
+            title={t('lead.add.line.modify')}
+            aria-label={t('lead.add.line.modifyProduct', { product: line.productName })}
+            onClick={onModify}
+          >
+            <Icon name="edit" size={14} />
+          </button>
+          <button
+            type="button"
+            className="ob-lead-line__act ob-lead-line__act--danger"
+            title={t('lead.add.products.remove')}
+            aria-label={t('lead.add.line.removeProduct', { product: line.productName })}
+            onClick={onRemove}
+          >
+            <Icon name="trash" size={14} />
+          </button>
+        </span>
+      }
+    />
   );
 }
 
@@ -2589,6 +2500,7 @@ function DraftCard({
   onRemoveColour,
   onSave,
   onComplete,
+  onClear,
 }: {
   draft: DraftProduct;
   ready: boolean;
@@ -2605,6 +2517,8 @@ function DraftCard({
   onSave: () => void;
   /** Shift+Q's button: add the card and go to the product bar. */
   onComplete: () => boolean;
+  /** The product's ✕: drop the card and go back to the search box. */
+  onClear: () => void;
 }) {
   const quantitiesRef = useRef<HTMLDivElement>(null);
   const addRef = useRef<HTMLDivElement>(null);
@@ -2716,22 +2630,34 @@ function DraftCard({
   const focusQuantity = !choosing;
 
   return (
-    <Card padded={false} style={{ marginTop: 'var(--s-8)' }}>
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          gap: `${rem(6)} ${rem(12)}`,
-          padding: `${rem(8)} ${rem(14)}`,
-          borderBottom: '1px solid var(--line)',
-        }}
-      >
-        <Eyebrow>{t('lead.add.draft.title')}</Eyebrow>
+    <div className="ob-order-product">
+      <div className="ob-order-product__head">
+        <span className="ob-mono" style={{ fontSize: rem(12), color: 'var(--accent)' }}>
+          {draft.variants.length === 1
+            ? draft.variants[0]!.code
+            : t('lead.add.products.variantCount', { count: draft.variants.length })}
+        </span>
+        <span className="ob-body-strong">{draft.productName}</span>
+        <span className="ob-order-eyebrow">
+          {[draft.categoryName, draft.size].filter(Boolean).join(' · ')}
+        </span>
+        {draft.rule === 'selectable' && (
+          <StatusPill tone="accent">{t('product.multiColour.pill')}</StatusPill>
+        )}
         <span style={{ flex: 1, minWidth: 0 }} />
         <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
           {draft.editKey ? t('lead.add.draft.editing') : t('lead.add.draft.new')}
         </span>
+        <button
+          type="button"
+          className="ob-btn ob-btn--ghost"
+          aria-label={t('lead.add.products.clear')}
+          title={t('lead.add.products.clear')}
+          style={{ flex: 'none', padding: 0, minWidth: rem(24), minHeight: rem(24) }}
+          onClick={onClear}
+        >
+          <Icon name="close" size={14} />
+        </button>
       </div>
 
       <div style={{ padding: `${rem(12)} ${rem(14)} ${rem(14)}` }}>
@@ -2949,19 +2875,11 @@ function DraftCard({
           </p>
         )}
 
-        <div
-          ref={addRef}
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            gap: 'var(--s-8)',
-            marginTop: 'var(--s-16)',
-            paddingTop: 'var(--s-12)',
-            borderTop: '1px solid var(--line)',
-          }}
-        >
-          <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
+        <div ref={addRef} className="ob-order-product__foot">
+          <span
+            className="ob-small"
+            style={{ flex: '1 1 0', minWidth: 0, color: 'var(--fg-tertiary)' }}
+          >
             {hint}
             {filled.length > 0 && previewKg > 0 && (
               <>
@@ -2970,7 +2888,6 @@ function DraftCard({
               </>
             )}
           </span>
-          <span style={{ flex: 1, minWidth: 0 }} />
           <Button
             variant="secondary"
             disabled={!ready}
@@ -2991,7 +2908,7 @@ function DraftCard({
           </Button>
         </div>
       </div>
-    </Card>
+    </div>
   );
 }
 
