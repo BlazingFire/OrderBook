@@ -453,7 +453,7 @@ function AddLeadForm({
    * The primary photo of each product picked this visit, kept beside the draft rather than in
    * it: the draft's facts are copied onto every line it adds, and a photo is not a line fact.
    */
-  const [pickedImages, setPickedImages] = useState<Record<string, ProductImage | undefined>>({});
+  const [pickedImages, setPickedImages] = useState<Record<string, ProductImage[] | undefined>>({});
   /** Which panel rows are expanded, ticked, and what is filtering them. */
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [selected, setSelected] = useState<Record<string, true>>({});
@@ -850,7 +850,7 @@ function AddLeadForm({
   }
 
   function openDraft(product: Product, typed = ''): void {
-    setPickedImages((current) => ({ ...current, [product.id]: product.images?.[0] }));
+    setPickedImages((current) => ({ ...current, [product.id]: product.images }));
     const partyRecord = partyRecordFor.get(product.id) ?? null;
     const rule = colourRuleOf(product);
     // A variant taken off the form stays sellable on old lines, not new ones.
@@ -1891,7 +1891,13 @@ function AddLeadForm({
                               openDraft(row, query);
                             }}
                           >
-                            <ProductThumb image={row.images?.[0]} size={32} name={row.name} />
+                            <ProductThumb
+                              images={row.images}
+                              size={32}
+                              fallback="initial"
+                              alt=""
+                              name={row.name}
+                            />
                             <span
                               className="ob-mono ob-body-strong"
                               style={{
@@ -1974,9 +1980,9 @@ function AddLeadForm({
                 {draft && (
                   <DraftCard
                     draft={draft}
-                    image={
+                    images={
                       pickedImages[draft.productId] ??
-                      view.products.find((product) => product.id === draft.productId)?.images?.[0]
+                      view.products.find((product) => product.id === draft.productId)?.images
                     }
                     ready={draftIsReady(draft)}
                     packagingRequired={packagingRequired}
@@ -2474,7 +2480,7 @@ function LeadLine({
  */
 function DraftCard({
   draft,
-  image,
+  images,
   ready,
   packagingRequired,
   packagingOptions,
@@ -2492,7 +2498,7 @@ function DraftCard({
 }: {
   draft: DraftProduct;
   /** The product's primary photo, when it has one (an initial tile stands in otherwise). */
-  image: ProductImage | undefined;
+  images: ProductImage[] | undefined;
   ready: boolean;
   /** `leads.packagingRequiredOnConvert`, already coalesced by the screen. */
   packagingRequired: boolean;
@@ -2624,7 +2630,13 @@ function DraftCard({
   return (
     <div className="ob-order-product">
       <div className="ob-order-product__head">
-        <ProductThumb image={image} size={48} name={draft.productName} />
+        <ProductThumb
+          images={images}
+          size={48}
+          fallback="initial"
+          alt=""
+          name={draft.productName}
+        />
         <span className="ob-mono" style={{ fontSize: rem(12), color: 'var(--accent)' }}>
           {draft.variants.length === 1
             ? draft.variants[0]!.code
