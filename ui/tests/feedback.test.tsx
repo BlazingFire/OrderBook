@@ -130,6 +130,32 @@ describe('Tooltip', () => {
     expect(button.getAttribute('title')).toBe('Needs field.saleRate.view');
   });
 
+  // D10 note b: React removed the title while it was parked; giving it back would resurrect it.
+  it('keeps a title React removed while it was parked removed, and takes a changed one', () => {
+    vi.useFakeTimers();
+    const Target = ({ title }: { title?: string }) => (
+      <>
+        <TooltipLayer />
+        <button type="button" title={title}>
+          go
+        </button>
+      </>
+    );
+    const { rerender } = render(<Target title="Old words" />);
+    const button = screen.getByRole('button');
+
+    fireEvent.pointerOver(button);
+    rerender(<Target />);
+    fireEvent.pointerDown(button);
+    expect(button.hasAttribute('title')).toBe(false);
+
+    rerender(<Target title="First" />);
+    fireEvent.pointerOver(button);
+    rerender(<Target title="Second" />);
+    fireEvent.pointerDown(button);
+    expect(button.getAttribute('title')).toBe('Second');
+  });
+
   it('goes at once on a click or a key', () => {
     vi.useFakeTimers();
     render(
