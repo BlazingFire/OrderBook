@@ -211,6 +211,27 @@ was verified, so the next agent can trust the state without re-auditing.
   both notes rendered in a browser (46 named + 200 coded, 4 pages
   each): no column or label overflow, notes and blank-lines variants. Not verified: a real printer.
 
+### 2026-10-07 - V8: the pending order PDF is the note's sheet (Claude, D7)
+
+**Owner.** "need same format in pdf export in software", and for the notes "header and footer will change but content
+layout will be same". Reference: the owner's `print.pdf` (the Dispatch note of the design, 5 pages, US Letter).
+
+**Compared with the current note** (rendered from `print.pdf` with PyMuPDF and from the note on the design's own data):
+the header, the four-cell strip, "Continued →", the thick rule, the divider, the range captions, the last-page totals
+strip with "End of list · N items", the notes and the cell anatomy already match, because the note was built from the same
+design. Differences: the print has no group headers (kept here, the owner's earlier choice), it is Letter where the notes are
+A4, it says "box" where the notes now say "pcs", and its codes-only pages are 7 across (the note had two columns of four;
+now 7 across).
+
+**Changed.** `pdf/note-renderer.ts` draws the note's pages with PDFKit: `planNotePdf` (pure, drawing operations in
+the note's pixel space) and `renderNotePdf`. `domain/lead-pdf.ts` is now `leadNotePdf`: it builds the pages with the
+notes' own `buildOrderNote` / `paginateOrderNote` (new option `signatures: false`), so the PDF and the preview cut the same
+pages; header strip carries the party (name, code · city), totals on the last page, notes, no signature row, no vehicle.
+Shared helpers (`noteFigure`, `noteStamp`, `noteRange`, `noteBrandCode`, `notePackCode`) moved from `OrderNote.tsx` to
+`order-note.ts`. The report PDFs stay tables. Mono face is Source Code Pro (IBM Plex Mono breaks PDFKit, see `fonts.ts`).
+**Tests.** `master/tests/note-pdf.test.ts`, `ui/tests/order-note-codes-per-line.test.tsx` (unit after a quantity); the
+old lead PDF table tests are gone with the table.
+
 ### 2026-10-07 - V7: three coded products to a line on the Filling and Dispatch notes (Claude, D7)
 
 **Follow-up (CH1, on d13/colour).** Notes print the colour list's CURRENT label: `OrderNoteScreen` takes the company option lists (`optionLists`; the four screens that open it pass theirs) and builds the note with `colourLabeller`; the Master's print job (`print.service.sendJob`) does the same with the `stock.colour` list, deleted entries included. Tests: `ui/tests/order-note-screen.test.tsx` and `master/tests/printroom.integration.test.ts`, each seen failing.
@@ -220,12 +241,14 @@ printed one code to a line.
 
 **Changed.** `NOTE_LAYOUT.codesPerRow` 1 to 3: a product's codes run across the line, then down; products too small
 for a header share lines (each cell prints its own product). The coded half is one column of such lines beside the
-named half, and two columns of four (`codesPerRowWide`) when it has the page; three columns of three would fit more,
+named half, and seven to a line (`codesPerRowWide`, as the owner's print) when it has the page; three columns of three would fit more,
 but a 70 px cell cut the grade off. `OrderNote.tsx` sets `--note-codes-per-row` on the coded half per page. One
 renderer feeds the preview, the print and the PDF (`printToPDF` of the same page), so there is no second path.
 
-**Measured** (the design's own 550-product data, `.tmp/note-harness`): pages Short 2, Typical 5, Long 12 for both
-notes, as the design and as before; no cell clipped at 89 px (beside) and 82 px (alone), no page overflowing.
+**Measured** (the design's own 550-product data, `.tmp/note-harness`), as first built (two columns of four on a
+codes-only page): pages Short 2, Typical 5, Long 12 for both notes. Later the same day the coded-only pages went to
+seven to a line as in the owner's print, which with the group headers kept gives Typical 6 and Long 14 (the print
+has no headers and gets 5 and 12); no cell clipped (89 px beside, 96 px alone), no page overflowing.
 **Tests.** `shared/tests/order-note.test.ts` (lines of three, small products sharing a line, page counts),
 `ui/tests/order-note-codes-per-line.test.tsx` (what the sheet carries); each seen failing.
 

@@ -119,14 +119,14 @@ export const NOTE_LAYOUT = {
    */
   codesPerRow: 3,
   /**
-   * The coded half on a page of its own: two columns of four, which keeps the design's page counts
-   * (Short 2, Typical 5, Long 12) and a cell wide enough for its pack, grade and quantity (82 px).
-   * Three columns of three fit more, but cells of 70 px cut the grade off.
+   * The coded half on a page of its own: seven to a line across the page, as the owner's print of the design
+   * has it (a cell of 96 px holds its pack, grade and quantity). The owner's print has no group headers; this
+   * keeps them (the owner's choice), so a codes-only page holds fewer codes and Typical runs to 6 pages, Long to 14.
    */
-  codesPerRowWide: 4,
-  /** Columns of such lines the coded half takes: one beside the named half, two when it has the page. */
+  codesPerRowWide: 7,
+  /** Columns of such lines the coded half takes: one, beside the named half or across a page of its own. */
   codedColumns: 1,
-  codedColumnsWide: 2,
+  codedColumnsWide: 1,
   /**
    * The last page carries the notes and signatures, so the page before it is cut early enough
    * that the last page holds at least this many lines rather than one or two.
@@ -207,6 +207,43 @@ const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
 
 /** How far a page is cut back at a time while it balances the tail (px). */
 const TAIL_STEP = 10;
+
+/** A quantity or weight as the sheets print it: Indian digit grouping, one decimal at most. */
+export function noteFigure(value: number): string {
+  return value.toLocaleString('en-IN', { maximumFractionDigits: 1 });
+}
+
+/**
+ * Fixed month names: `toLocaleString` abbreviates September as "Sept" in current Chromium, and the
+ * design (and every other month) is three letters.
+ */
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+
+/** A moment as the sheets print it, `19 Sep 2026 · 09:41`, in the clock of the machine that prints. */
+export function noteStamp(value: Date | string | null | undefined): string {
+  if (!value) return '—';
+  const date = typeof value === 'string' ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return '—';
+  const two = (n: number): string => String(n).padStart(2, '0');
+  return `${two(date.getDate())} ${MONTHS[date.getMonth()]} ${date.getFullYear()} · ${two(date.getHours())}:${two(date.getMinutes())}`;
+}
+
+/** The caption's range, `1–28 / 46`, or a dash when the page holds none. */
+export function noteRange(from: number, count: number, all: number): string {
+  return count > 0 ? `${from + 1}–${from + count} / ${all}` : '—';
+}
+
+/** A brand as its two-letter chip: the first two letters or digits of its name. */
+export function noteBrandCode(brand: string): string {
+  return brand.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase();
+}
+
+const PACK_CODES: Record<string, string> = { box: 'BOX', grass: 'GRS', paper: 'PPR' };
+
+/** A packaging as the coded cell's three-letter chip. */
+export function notePackCode(packaging: string): string {
+  return PACK_CODES[packaging.trim().toLowerCase()] ?? packaging.trim().slice(0, 3).toUpperCase();
+}
 
 /** What the named half prints for a line: the sub product, and its size when the name does not carry it already. */
 export function namedLabel(line: NoteLine): string {
@@ -480,6 +517,8 @@ function fillNamed(lines: readonly NoteLine[], start: number, wide: boolean, hei
 export function paginateOrderNote(
   model: OrderNoteModel,
   kind: NoteKind,
+  /** `signatures: false` leaves the signature row's room to the lines: a document with none to sign. */
+  options: { signatures?: boolean } = {},
 ): NotePage[] {
   const L = NOTE_LAYOUT;
   const filling = kind === 'filling';
@@ -507,7 +546,7 @@ export function paginateOrderNote(
       (first ? (filling ? L.headerFirstFilling : L.headerFirstDispatch) : filling ? L.headerContFilling : L.headerContDispatch) -
       L.caption -
       (filling ? L.footerFilling : 0) -
-      (isLast ? L.notes + L.signature : 0);
+      (isLast ? L.notes + (options.signatures === false ? 0 : L.signature) : 0);
     const leftRows = (h: number): number => fillNamed(model.named, namedAt, wideLeft, h).flat().length;
 
     // Would the rest of the note fit on this page with the notes and signatures on it?

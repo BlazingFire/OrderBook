@@ -1,110 +1,50 @@
 /**
- * The lead PDF's table (`docs/catalogue/CATALOGUE_MODEL.md` §8): a fixed
- * layout, no designer and no templates — the PDF Designer stays removed.
+ * The pending order PDF (V8, 2026-10-07): the same sheet as the Dispatch note, with a header and footer made for
+ * a document that goes to a dealer. A fixed layout, no designer and no templates — the PDF Designer stays
+ * removed.
  *
- * `# | [Brand] | Main product | Model | Size | Colour | Code | Qty`
+ * The owner asked for "the same format" as the notes: named lines on the left, coded products as a grid on the
+ * right (three to a line, seven when they have the page), the same page strip. So this does not lay anything out:
+ * it builds the note model and cuts it into pages with the notes' own `buildOrderNote` / `paginateOrderNote`
+ * (`shared/src/domain/order-note.ts`), the code the preview and the print use, and hands the pages and the few
+ * strings of this document's header to `pdf/note-renderer.ts`. Only the head and the foot differ: no vehicle,
+ * no signature row, the party in the strip.
  *
- * Pure: no PDFKit, no database, no clock (the date is passed in). What prints
- * where is decided here and only here; `pdf/table-renderer.ts` lays out the
- * strings it is handed and cannot add a column this file did not build — which
- * is also why there is no money on this document: no line carries any.
+ * Pure: no PDFKit, no database, no clock (the moment is passed in). There is no money on this document: no line
+ * carries any.
  *
- * Headings are English literals. Report PDFs print in English too
- * (`report.service` renders its labels in `en`), and the document goes to a
- * dealer, not to whoever clicked Preview in their own locale.
+ * Headings are English literals. Report PDFs print in English too, and the document goes to a dealer, not to
+ * whoever clicked Preview in their own locale.
  */
 
-import { lineColourText, recordNumber, subProductCells, type ColourLabelOf } from '@orderbook/shared';
-import type { Lead, LineItem, Party } from '@orderbook/shared';
+import { buildOrderNote, paginateOrderNote, recordNumber, t, type ColourLabelOf } from '@orderbook/shared';
+import type { Lead, Party } from '@orderbook/shared';
 
-import type { ReportTablePdf } from '../pdf/table-renderer.js';
+import type { NotePdfInput } from '../pdf/note-renderer.js';
 
-export function leadPdfTable(
+export function leadNotePdf(
   lead: Lead,
   party: Party | null,
   companyName: string,
-  date: string,
+  printedAt: Date,
   /** The colour list's label for a stored value (`colourLabeller`), resolved at print time. */
   labelOf: ColourLabelOf = (colour) => colour,
-): ReportTablePdf {
-  // A single-brand lead would repeat one word down the page; the column earns
-  // its width only when the lines span two brands.
-  const brands = new Set(
-    lead.items.map((line) => line.brandName?.trim().toLowerCase()).filter(Boolean),
-  );
-  const showBrand = brands.size > 1;
-
-  const rows = groupBySubProduct(lead.items).map((lines, index) => {
-    const first = lines[0]!;
-    // The printed sub product lands in exactly one of Model or Code. The
-    // software code (`line.code`, `OPT-0001`) is internal and never prints.
-    const subProduct = subProductCells(first.productName);
-
-    return [
-      String(index + 1),
-      ...(showBrand ? [first.brandName ?? ''] : []),
-      first.categoryName ?? '',
-      subProduct.model ?? '',
-      first.size ?? '',
-      lineColourText(lines, first.productName, labelOf),
-      subProduct.code ?? '',
-      String(lines.reduce((total, line) => total + line.quantity, 0)),
-    ];
-  });
-
+): NotePdfInput {
+  const model = buildOrderNote(lead, labelOf);
   return {
-    title: companyName,
-    subtitle: `Pending order ${recordNumber(lead)} · ${date}`,
-    preamble: partyLines(lead, party),
-    columns: [
-      // Room for `999`: a figure never wraps, so row 100 would print as `1…`.
-      { label: '#', numeric: true, weight: 4 },
-      ...(showBrand ? [{ label: 'Brand', weight: 11 }] : []),
-      { label: 'Main product', weight: 16 },
-      { label: 'Model', weight: 19 },
-      { label: 'Size', weight: 9 },
-      // Colour gives Qty its width: this cell wraps and grows the row, where a
-      // narrow Qty would truncate `1000` to `10…`.
-      { label: 'Colour', weight: 14 },
-      // Right-aligned: the numbered sub products (`1111`, `41`) read as figures.
-      { label: 'Code', numeric: true, weight: 8 },
-      { label: 'Qty', numeric: true, weight: 8 },
-    ],
-    rows,
-    paperSize: 'a4',
-    orientation: 'portrait',
+    title: t('en', 'orderNote.pendingOrder'),
+    companyName,
+    printedAt,
+    partyName: party?.name?.trim() || lead.partyName,
+    partyMeta: [party?.partyCode, party?.city].map((part) => part?.trim()).filter(Boolean).join(' · '),
+    numberText: recordNumber(lead),
+    notes: lead.notes?.trim() ?? '',
+    // No signature row: nobody signs this one, so its room goes to the lines.
+    pages: paginateOrderNote(model, 'dispatch', { signatures: false }),
+    namedCount: model.named.length,
+    codedCount: model.coded.reduce((sum, group) => sum + group.lines.length, 0),
+    itemCount: model.itemCount,
+    totalQuantity: model.totalQuantity,
+    totalWeightKg: model.totalWeightKg,
   };
-}
-
-/**
- * The lines of one sub product, in the order the lead first holds each.
- *
- * A multicolour sub product sold in three colours is three lines on one
- * variant (§2); the customer reads it as one row, `White ×10, Ivory ×5,
- * Pink ×4`, with the pieces summed in Qty. Grouping every variant, not only
- * the multicolour ones, costs nothing: a fixed or dedicated sub product entered
- * twice is still one thing ordered.
- */
-function groupBySubProduct(items: readonly LineItem[]): LineItem[][] {
-  const groups = new Map<string, LineItem[]>();
-  for (const line of items) {
-    const group = groups.get(line.variantId);
-    if (group) group.push(line);
-    else groups.set(line.variantId, [line]);
-  }
-  return [...groups.values()];
-}
-
-/** Who the lead is for: the party's name, address, phone and GST, blanks dropped. */
-function partyLines(lead: Lead, party: Party | null): string[] {
-  return [
-    party?.name ?? lead.partyName,
-    party?.addressLine1,
-    party?.addressLine2,
-    [party?.city, party?.state, party?.pincode].filter(Boolean).join(' '),
-    party?.phone,
-    party?.gstNumber ? `GST: ${party.gstNumber}` : null,
-  ]
-    .map((line) => line?.trim() ?? '')
-    .filter((line) => line.length > 0);
 }

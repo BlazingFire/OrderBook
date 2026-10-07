@@ -31,7 +31,7 @@ import {
   type LineDraft,
   type LineSnapshot,
 } from '../domain/line-items.js';
-import { leadPdfTable } from '../domain/lead-pdf.js';
+import { leadNotePdf } from '../domain/lead-pdf.js';
 import { clampPaging } from '../domain/paging.js';
 import { resolvePartyScope, UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
 import {
@@ -46,7 +46,7 @@ import { assertParentsLive } from '../domain/recycle-bin.js';
 import { db } from '../db/knex.js';
 import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
 import { seqCached } from '../lib/seq-cache.js';
-import { renderReportPdf } from '../pdf/table-renderer.js';
+import { renderNotePdf } from '../pdf/note-renderer.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as customFieldRepo from '../repositories/custom-field.repository.js';
 import { nextHlc, resolveId } from '../repositories/identity.repository.js';
@@ -134,17 +134,10 @@ export async function leadPdf(
   // Deleted options too: a colour taken off the list still has the label it
   // was sold under; one the list never had prints as stored.
   const colours = await customFieldRepo.listOptionsForKey(actor.tenantId, 'stock.colour', { includeDeleted: true });
-  const bytes = await renderReportPdf(
-    leadPdfTable(lead, party, company, localIsoDate(new Date()), colourLabeller(colours)),
-  );
+  // The Master PC's own clock: the day and time it was printed, where it was printed.
+  const bytes = await renderNotePdf(leadNotePdf(lead, party, company, new Date(), colourLabeller(colours)));
   // `PO/2026-27/00042` → `pending-order-PO-2026-27-00042.pdf`: a slash cannot be in a file name.
   return { fileName: `pending-order-${recordNumber(lead).replace(/\//g, '-')}.pdf`, bytes };
-}
-
-/** The Master PC's own calendar date — the day it was printed, where it was printed. */
-function localIsoDate(now: Date): string {
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
 /**

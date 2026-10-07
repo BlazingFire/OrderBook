@@ -1908,6 +1908,8 @@ export const EN_MESSAGES = {
   'orderNote.grade': 'Grade',
   'orderNote.qty': 'Qty',
   'orderNote.dealer': 'Dealer',
+  'orderNote.party': 'Party',
+  'orderNote.pendingOrder': 'Pending order',
   'orderNote.orderId': 'Final Order No.',
   'orderNote.pendingOrderNo': 'Pending Order No.',
   'orderNote.leadGenerated': 'Pending Order generated',
