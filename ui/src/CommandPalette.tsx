@@ -24,7 +24,6 @@ import {
   formatChordMac,
 } from '@orderbook/shared';
 
-import { Input } from './Form';
 import { Icon } from './icons';
 import { Modal } from './Modal';
 import { useDebounced } from './useDebounced';
@@ -156,53 +155,46 @@ function CommandPalette({
   if (!open) return null;
 
   return (
-    <Modal open onClose={close} title={t('keys.command.palette')} size="lg">
-      <Input
-        autoFocus
-        value={term}
-        placeholder={t('keys.palette.placeholder')}
-        aria-label={t('keys.palette.placeholder')}
-        onChange={(event) => {
-          setTerm(event.target.value);
-          setActive(0);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            setActive((index) => Math.min(index + 1, rows.length - 1));
-          } else if (event.key === 'ArrowUp') {
-            event.preventDefault();
-            setActive((index) => Math.max(index - 1, 0));
-          } else if (event.key === 'Enter') {
-            event.preventDefault();
-            rows[clamped]?.run();
-          }
-        }}
-      />
+    <Modal open onClose={close} title={t('keys.command.palette')} label={t('keys.command.palette')} chrome="palette">
+      <div className="ob-palette-search">
+        <Icon name="search" size={16} />
+        <input
+          type="text"
+          className="ob-palette-input"
+          autoFocus
+          value={term}
+          placeholder={t('keys.palette.placeholder')}
+          aria-label={t('keys.palette.placeholder')}
+          onChange={(event) => {
+            setTerm(event.target.value);
+            setActive(0);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowDown') {
+              event.preventDefault();
+              setActive((index) => Math.min(index + 1, rows.length - 1));
+            } else if (event.key === 'ArrowUp') {
+              event.preventDefault();
+              setActive((index) => Math.max(index - 1, 0));
+            } else if (event.key === 'Enter') {
+              event.preventDefault();
+              rows[clamped]?.run();
+            }
+          }}
+        />
+      </div>
 
-      {records.offline && (
-        <p className="ob-small" style={{ marginTop: 'var(--s-8)' }}>
-          {t('keys.palette.offline')}
-        </p>
-      )}
+      {records.offline && <p className="ob-small ob-palette-note">{t('keys.palette.offline')}</p>}
 
-      <div ref={listRef} style={{ maxHeight: '24rem', overflowY: 'auto', marginTop: 'var(--s-8)' }}>
-        {rows.length === 0 && <p className="ob-small">{t('keys.palette.empty')}</p>}
+      <div ref={listRef} className="ob-palette-list">
+        {rows.length === 0 && <p className="ob-small ob-palette-note">{t('keys.palette.empty')}</p>}
 
-        {commandRows.length > 0 && (
-          <p className="ob-eyebrow" style={{ marginTop: 'var(--s-8)' }}>
-            {t('keys.palette.commands')}
-          </p>
-        )}
+        {commandRows.length > 0 && <p className="ob-eyebrow ob-palette-section">{t('keys.palette.commands')}</p>}
         {commandRows.map((row, index) => (
           <PaletteRow key={row.key} row={row} active={index === clamped} />
         ))}
 
-        {recordRows.length > 0 && (
-          <p className="ob-eyebrow" style={{ marginTop: 'var(--s-8)' }}>
-            {t('keys.palette.records')}
-          </p>
-        )}
+        {recordRows.length > 0 && <p className="ob-eyebrow ob-palette-section">{t('keys.palette.records')}</p>}
         {recordRows.map((row, index) => (
           <PaletteRow key={row.key} row={row} active={commandRows.length + index === clamped} />
         ))}
@@ -212,23 +204,19 @@ function CommandPalette({
 }
 
 /**
- * A row, on the sidebar's own item style.
- *
- * `.ob-navitem` already is a full-width row with a hover state, a trailing
- * `.count` and an `aria-current` treatment — reusing it means the palette needs
- * no CSS of its own and cannot drift from the chrome around it.
+ * A row (Overlays artboard): the label, the chord in mono on the right, the chosen row on the accent tint.
  */
 function PaletteRow({ row, active }: { row: Row; active: boolean }) {
   return (
     <button
       type="button"
-      className="ob-navitem"
+      className="ob-palette-row"
       aria-current={active ? 'page' : undefined}
       data-palette-active={active}
       onClick={row.run}
     >
-      <span className="ob-navitem-label">{row.label}</span>
-      {row.hint && <span className="count">{row.hint}</span>}
+      <span className="ob-palette-label">{row.label}</span>
+      {row.hint && <span className="ob-palette-hint">{row.hint}</span>}
     </button>
   );
 }

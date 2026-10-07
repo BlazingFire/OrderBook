@@ -66,7 +66,7 @@ export function ConfirmDialog({
       footer={
         <>
           <span style={{ flex: 1 }} />
-          <Button variant="secondary" onClick={onCancel}>
+          <Button variant="ghost" onClick={onCancel}>
             {cancelLabel ?? t('common.cancel')}
           </Button>
           <Button

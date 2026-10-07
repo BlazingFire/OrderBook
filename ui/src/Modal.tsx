@@ -39,6 +39,7 @@ export function Modal({
   expanded,
   onToggleExpand,
   footer,
+  chrome = 'dialog',
   children,
 }: {
   open: boolean;
@@ -61,6 +62,11 @@ export function Modal({
   expanded?: boolean;
   onToggleExpand?: () => void;
   footer?: ReactNode;
+  /**
+   * `palette` is the command palette's shape (Overlays artboard): no header, the content flush to the
+   * edges, the dialog sitting near the top. The name still reaches a screen reader through `label`.
+   */
+  chrome?: 'dialog' | 'palette';
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -73,15 +79,22 @@ export function Modal({
   return (
     <>
       <div className="ob-overlay" onClick={onClose} />
-      <div className="ob-modal-wrap">
+      <div className={chrome === 'palette' ? 'ob-modal-wrap ob-modal-wrap--top' : 'ob-modal-wrap'}>
         <div
-          className={width === 'sm' ? 'ob-modal' : `ob-modal ob-modal--${width}`}
+          className={
+            chrome === 'palette'
+              ? 'ob-modal ob-modal--palette'
+              : width === 'sm'
+                ? 'ob-modal'
+                : `ob-modal ob-modal--${width}`
+          }
           role="dialog"
           aria-modal="true"
           aria-label={label ?? (typeof title === 'string' ? title : undefined)}
           ref={ref}
           tabIndex={-1}
         >
+          {chrome === 'dialog' && (
           <div className="ob-modal-head">
             <div className="ob-modal-heading">
               <h2 className="ob-modal-title">{title}</h2>
@@ -96,7 +109,8 @@ export function Modal({
             )}
             <IconButton icon="close" label={t('modal.close')} onClick={onClose} />
           </div>
-          <div className="ob-modal-body">{children}</div>
+          )}
+          <div className={chrome === 'palette' ? 'ob-modal-body ob-modal-body--flush' : 'ob-modal-body'}>{children}</div>
           {footer && <div className="ob-modal-foot">{footer}</div>}
         </div>
       </div>
