@@ -88,14 +88,7 @@ export function PageBar({ total, page, pageSize, onPage, onPageSize, loading }: 
     <nav
       aria-label={t('pageBar.label')}
       aria-busy={loading ? true : undefined}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: 'var(--s-12)',
-        padding: 'var(--s-8) 0',
-      }}
+      className="ob-pagebar"
     >
       <span className="ob-small" role="status" aria-live="polite">
         {total === 0

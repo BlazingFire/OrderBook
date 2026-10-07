@@ -21,7 +21,13 @@ import type { MessageKey, OptionListItem, Order, PipelineStage } from '@orderboo
 
 import { Button } from './Button.js';
 import { Card, Section } from './Card.js';
-import { ColourName, StatusPill, Timeline, useColourHex } from './DataDisplay.js';
+import {
+  ColourName,
+  StatusPill,
+  Timeline,
+  recordTimelineEntries,
+  useColourHex,
+} from './DataDisplay.js';
 import { FormField, Input, NumberInput } from './Form.js';
 import { formatDateTime, formatKg } from './format.js';
 import { apiErrorText } from './errorText.js';
@@ -264,13 +270,7 @@ export function OrderRecordView({
 
       <Card>
         <Section title={t('orders.detail.history')}>
-          <Timeline
-            entries={order.timeline.map((entry) => ({
-              id: entry.id,
-              label: entry.message,
-              when: formatDateTime(entry.createdAt),
-            }))}
-          />
+          <Timeline entries={recordTimelineEntries(order.timeline, formatDateTime)} />
         </Section>
       </Card>
 
