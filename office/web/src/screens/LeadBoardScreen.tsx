@@ -588,6 +588,8 @@ export function LeadBoardScreen({
           onOpen={(lead) => onOpenId(lead.id)}
           emptyMessage={t('lead.board.emptyColumn')}
           renderCard={(lead) => {
+            // Local calendar day, YYYY-MM-DD, the shape `followUpDate` is stored in.
+            const today = new Date().toLocaleDateString('en-CA');
             const pieces = leadPieces(lead);
             const colours = leadColours(lead);
             const mains = leadMains(lead);
@@ -599,9 +601,7 @@ export function LeadBoardScreen({
             return (
               <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-6)' }}>
-                  <span className="ob-body-strong" style={{ fontSize: rem(13) }}>
-                    {lead.partyName}
-                  </span>
+                  <span className="ob-boardcard__title">{lead.partyName}</span>
                   <span style={{ flex: 1 }} />
                   <AvatarStack
                     entries={faces.get(lead.id) ?? []}
@@ -697,7 +697,6 @@ export function LeadBoardScreen({
                     display: 'flex',
                     alignItems: 'center',
                     gap: 'var(--s-6)',
-                    marginTop: 'var(--s-4)',
                   }}
                 >
                   {/* Provisional until the Master has acknowledged and numbered it. */}
@@ -713,7 +712,7 @@ export function LeadBoardScreen({
                 {mains.length > 0 && (
                   <div
                     className="ob-micro ob-ellipsis"
-                    style={{ color: 'var(--fg-tertiary)', marginTop: 'var(--s-4)' }}
+                    style={{ color: 'var(--fg-tertiary)' }}
                   >
                     {mains.join(' · ')}
                   </div>
@@ -725,13 +724,12 @@ export function LeadBoardScreen({
                       display: 'flex',
                       alignItems: 'center',
                       gap: 'var(--s-8)',
-                      marginTop: 'var(--s-6)',
                     }}
                   >
                     <span
                       style={{
                         display: 'inline-flex',
-                        gap: 'var(--s-8)',
+                        gap: 'var(--s-4)',
                         overflow: 'hidden',
                         flex: 1,
                         minWidth: 0,
@@ -744,10 +742,7 @@ export function LeadBoardScreen({
                   </div>
                 )}
 
-                <div
-                  style={{ display: 'flex', gap: 'var(--s-8)', marginTop: 'var(--s-6)' }}
-                  className="ob-micro"
-                >
+                <div style={{ display: 'flex', gap: 'var(--s-8)' }} className="ob-micro">
                   {lead.sourcePlatform && (
                     <span style={{ color: 'var(--fg-tertiary)' }}>
                       {t('lead.board.via', { source: lead.sourcePlatform })}
@@ -755,7 +750,13 @@ export function LeadBoardScreen({
                   )}
                   <span style={{ flex: 1 }} />
                   {lead.followUpDate && (
-                    <span style={{ color: 'var(--fg-tertiary)' }}>
+                    // Amber once it is due (today or overdue), as on the Data artboard's card.
+                    <span
+                      style={{
+                        color:
+                          lead.followUpDate <= today ? 'var(--state-offline)' : 'var(--fg-tertiary)',
+                      }}
+                    >
                       {t('lead.detail.followUp')} {lead.followUpDate}
                     </span>
                   )}

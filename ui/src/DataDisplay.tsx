@@ -5,6 +5,7 @@
 
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import type { TimelineEntry as RecordTimelineEntry } from '@orderbook/shared';
 import { IconButton } from './Button';
 import { copyText } from './clipboard.js';
 import { t } from './i18n.js';
@@ -77,22 +78,39 @@ export interface TimelineEntry {
   label: ReactNode;
   when: string;
   tone?: 'default' | 'ok' | 'offline' | 'conflict';
+  /** Written by the software rather than a person (a stage change): smaller and italic. */
+  system?: boolean;
 }
 
+/**
+ * A lead's or an order's history as Timeline entries: who and when on the meta line
+ * ("Ramesh P. · 10:42"), the message under it, and the software's own entries (stage
+ * changes) marked as system so people's remarks stand out.
+ */
+export function recordTimelineEntries(
+  entries: RecordTimelineEntry[],
+  formatWhen: (iso: string) => string,
+): TimelineEntry[] {
+  return entries.map((entry) => ({
+    id: entry.id,
+    label: entry.message,
+    when: entry.actorName ? `${entry.actorName} · ${formatWhen(entry.createdAt)}` : formatWhen(entry.createdAt),
+    system: entry.kind === 'system',
+  }));
+}
+
+/** Data artboard: a hairline down the left; each entry's meta line over its text. */
 export function Timeline({ entries }: { entries: TimelineEntry[] }) {
   return (
     <ul className="ob-timeline">
       {entries.map((entry) => (
-        <li key={entry.id}>
-          <span
-            className={`dot${entry.tone && entry.tone !== 'default' ? ` dot--${entry.tone}` : ''}`}
-          />
-          <span style={{ flex: 1 }}>
-            <div className="ob-small" style={{ color: 'var(--fg-primary)' }}>
-              {entry.label}
-            </div>
-            <div className="when">{entry.when}</div>
-          </span>
+        <li
+          key={entry.id}
+          data-tone={entry.tone && entry.tone !== 'default' ? entry.tone : undefined}
+          data-system={entry.system ? 'true' : undefined}
+        >
+          <span className="when">{entry.when}</span>
+          <span className="what">{entry.label}</span>
         </li>
       ))}
     </ul>
