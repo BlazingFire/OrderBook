@@ -10,7 +10,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { configureUi } from '../src/config.js';
 import {
+  AddedGroup,
+  AddedLine,
   AddedProductsPanel,
+  ColourSelect,
+  ProductCard,
+  SubGrid,
+  SubRow,
   CartEntry,
   CartLines,
   FollowUpField,
@@ -369,5 +375,194 @@ describe('PartyChip', () => {
     expect(container.querySelector('.ob-order-party__meta')).toBeNull();
     expect(partyInitials('om sai marble and sanitary')).toBe('OS');
     expect(partyInitials('  ')).toBe('');
+  });
+});
+
+describe('ColourSelect', () => {
+  const OPTIONS = [
+    { id: '1', value: 'WHITE', label: 'White' },
+    { id: '2', value: 'IVORY', label: 'Ivory' },
+    { id: '3', value: 'ALMOND', label: 'Almond' },
+  ] as never;
+
+  function select(value: string, attention = false) {
+    const onPick = vi.fn();
+    const onAdvance = vi.fn();
+    const view = render(
+      <ColourSelect
+        value={value}
+        options={OPTIONS}
+        labelOf={(v) => v.charAt(0) + v.slice(1).toLowerCase()}
+        hexOf={() => '#fff'}
+        ariaLabel="Colour"
+        placeholder="Pick colour"
+        hint="Arrows move, Enter picks"
+        noMatches="No match"
+        attention={attention}
+        onPick={onPick}
+        onAdvance={onAdvance}
+      />,
+    );
+    return {
+      onPick,
+      onAdvance,
+      box: screen.getByRole('combobox', { name: 'Colour' }) as HTMLInputElement,
+      view,
+    };
+  }
+
+  it('shows the placeholder, the chosen colour by its label, and the amber state while one is needed', () => {
+    const empty = select('', true);
+    expect(empty.box.value).toBe('');
+    expect(empty.box.placeholder).toBe('Pick colour');
+    expect(empty.view.container.querySelector('[data-state="needed"]')).not.toBeNull();
+    cleanup();
+    const chosen = select('IVORY');
+    expect(chosen.box.value).toBe('Ivory');
+    expect(chosen.view.container.querySelector('[data-state="set"]')).not.toBeNull();
+  });
+
+  it('opens its list on a click, narrows it as somebody types, and takes the highlighted colour on Enter', () => {
+    const { box, onPick, onAdvance } = select('');
+    fireEvent.click(box);
+    expect(screen.getAllByRole('option')).toHaveLength(3);
+    expect(screen.getByText('Arrows move, Enter picks')).toBeTruthy();
+    fireEvent.change(box, { target: { value: 'iv' } });
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['Ivory']);
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(onPick).toHaveBeenCalledWith('IVORY');
+    expect(onAdvance).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
+  it('moves with the arrows, closes on Escape, and a mouse press picks', () => {
+    const { box, onPick } = select('');
+    fireEvent.keyDown(box, { key: 'ArrowDown' });
+    fireEvent.keyDown(box, { key: 'ArrowDown' });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(onPick).toHaveBeenLastCalledWith('IVORY');
+    fireEvent.click(box);
+    fireEvent.keyDown(box, { key: 'Escape' });
+    expect(screen.queryByRole('listbox')).toBeNull();
+    fireEvent.click(box);
+    fireEvent.mouseDown(screen.getByRole('option', { name: /Almond/ }));
+    expect(onPick).toHaveBeenLastCalledWith('ALMOND');
+  });
+
+  it('on a closed select that has its colour, Enter just goes on; with none it opens the list', () => {
+    const set = select('WHITE');
+    fireEvent.keyDown(set.box, { key: 'Enter' });
+    expect(set.onAdvance).toHaveBeenCalledTimes(1);
+    expect(set.onPick).not.toHaveBeenCalled();
+    cleanup();
+    const none = select('');
+    fireEvent.keyDown(none.box, { key: 'Enter' });
+    expect(none.onAdvance).not.toHaveBeenCalled();
+    expect(screen.getByRole('listbox')).toBeTruthy();
+  });
+
+  it('says so when nothing matches', () => {
+    const { box } = select('');
+    fireEvent.change(box, { target: { value: 'zzz' } });
+    expect(screen.getByText('No match')).toBeTruthy();
+  });
+});
+
+describe('ProductCard and its grid', () => {
+  it('frames a head, a header row of seven labels, the rows and a footer', () => {
+    const { container } = render(
+      <ProductCard head={<span>OPT head</span>} footer={<span>footer</span>}>
+        <SubGrid
+          labels={{
+            code: 'Code',
+            sub: 'Sub product',
+            colour: 'Colour',
+            weight: 'Weight',
+            qty: 'Qty',
+            packaging: 'Packaging',
+            grade: 'Grade',
+          }}
+        >
+          <SubRow muted>
+            <span>a</span>
+          </SubRow>
+        </SubGrid>
+      </ProductCard>,
+    );
+    expect(screen.getByText('OPT head')).toBeTruthy();
+    expect(screen.getByText('footer')).toBeTruthy();
+    const head = container.querySelector('.ob-order-subrow--head')!;
+    expect([...head.children].map((cell) => cell.textContent)).toEqual([
+      'Code',
+      'Sub product',
+      'Colour',
+      'Weight',
+      'Qty',
+      'Packaging',
+      'Grade',
+    ]);
+    expect(container.querySelector('.ob-order-subrow[data-muted="true"]')).not.toBeNull();
+  });
+});
+
+describe('AddedGroup', () => {
+  function group(open: boolean) {
+    const onToggle = vi.fn();
+    const onEdit = vi.fn();
+    const onRemove = vi.fn();
+    render(
+      <AddedGroup
+        open={open}
+        onToggle={onToggle}
+        leading={<input type="checkbox" aria-label="tick" />}
+        code="WB"
+        name="Wash basin"
+        pieces={350}
+        pcsUnit="pcs"
+        onEdit={onEdit}
+        onRemove={onRemove}
+        editLabel="Edit Wash basin"
+        removeLabel="Remove Wash basin"
+      >
+        <AddedLine
+          sub="Standard"
+          colour="White"
+          colourHex="#fff"
+          packaging="Box"
+          grade=""
+          qty={200}
+        />
+        <AddedLine sub="Standard" colour="" packaging="" grade="Premium" qty={150} />
+      </AddedGroup>,
+    );
+    return { onToggle, onEdit, onRemove };
+  }
+
+  it('shows code, name and total, and its lines when open: colour, dashes for blanks, quantity', () => {
+    group(true);
+    expect(screen.getByText('WB')).toBeTruthy();
+    expect(screen.getByText('Wash basin')).toBeTruthy();
+    expect(screen.getByText('350')).toBeTruthy();
+    const lines = document.querySelectorAll('[data-added-line]');
+    expect(lines).toHaveLength(2);
+    expect(lines[0]!.textContent).toContain('White');
+    expect(lines[0]!.textContent).toContain('Box');
+    expect(lines[0]!.textContent).toContain('200');
+    // No colour, no packaging: dashes, and the grade where it is.
+    expect(lines[1]!.textContent).toContain('—');
+    expect(lines[1]!.textContent).toContain('Premium');
+  });
+
+  it('hides its lines when closed, toggles on its head only, and edit / remove are their own buttons', () => {
+    const { onToggle, onEdit, onRemove } = group(false);
+    expect(document.querySelectorAll('[data-added-line]')).toHaveLength(0);
+    fireEvent.click(screen.getByLabelText('tick'));
+    expect(onToggle).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /Wash basin/, expanded: false }));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Wash basin' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Wash basin' }));
+    expect(onEdit).toHaveBeenCalledTimes(1);
+    expect(onRemove).toHaveBeenCalledTimes(1);
   });
 });

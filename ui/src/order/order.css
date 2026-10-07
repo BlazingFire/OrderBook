@@ -552,3 +552,308 @@
   border-color: var(--line);
   border-radius: var(--r-sm);
 }
+
+/* --- The product card's grid ----------------------------------------------------- */
+
+.ob-order-subgrid {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ob-order-subgrid__body {
+  max-height: 24rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 0.286rem;
+}
+
+/* The seven columns: code, sub product, colour, weight, quantity, packaging, grade. */
+.ob-order-subrow {
+  display: grid;
+  grid-template-columns:
+    5.857rem minmax(0, 1fr) 8.857rem 3.571rem 4rem minmax(5rem, 6.857rem)
+    minmax(4rem, 5.714rem);
+  column-gap: 0.571rem;
+  align-items: center;
+  padding: 0.214rem 0.857rem;
+  font-size: 0.929rem;
+  min-width: 0;
+}
+
+.ob-order-subrow > * {
+  min-width: 0;
+}
+
+.ob-order-subrow--head {
+  padding-top: 0.571rem;
+  font-size: var(--t-eyebrow-size);
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--fg-tertiary);
+}
+
+.ob-order-subrow[data-muted='true'] .ob-order-cell--code,
+.ob-order-subrow[data-muted='true'] .ob-order-cell--name {
+  color: var(--fg-tertiary);
+}
+
+.ob-order-cell--code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.857rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ob-order-cell--name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ob-order-cell--num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-secondary);
+}
+
+.ob-order-cell--fixed {
+  display: flex;
+  align-items: center;
+  gap: 0.429rem;
+}
+
+.ob-order-more {
+  padding: 0.286rem 0.857rem 0.571rem;
+}
+
+.ob-order-more button {
+  height: 1.857rem;
+  padding: 0 0.571rem 0 0.429rem;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.893rem;
+  font-weight: 550;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.286rem;
+  cursor: pointer;
+}
+
+.ob-order-more button:hover {
+  background: var(--bg-hover);
+}
+
+/* --- The colour select ------------------------------------------------------------ */
+
+.ob-order-colour {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.ob-order-colour__dot {
+  position: absolute;
+  left: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.ob-order-colour__input {
+  width: 100%;
+  padding-left: 1.929rem;
+}
+
+.ob-order-colour[data-state='needed'] .ob-order-colour__input {
+  border-style: dashed;
+  border-color: var(--state-offline);
+}
+
+.ob-order-colour__list {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  top: calc(100% + 0.286rem);
+  width: 15.714rem;
+  max-height: 16rem;
+  overflow-y: auto;
+  padding: 0.286rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-2);
+  display: flex;
+  flex-direction: column;
+}
+
+.ob-order-colour__row {
+  height: 2rem;
+  flex: none;
+  padding: 0 0.571rem;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-primary);
+  font: inherit;
+  display: flex;
+  align-items: center;
+  gap: 0.571rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ob-order-colour__row[data-active='true'] {
+  background: var(--bg-selected);
+}
+
+.ob-order-colour__none,
+.ob-order-colour__hint {
+  margin: 0;
+  padding: 0.286rem 0.571rem;
+  font-size: 0.821rem;
+  color: var(--fg-tertiary);
+}
+
+.ob-order-colour__hint {
+  margin-top: 0.286rem;
+  border-top: 1px solid var(--line);
+}
+
+/* --- Added products, grouped by product -------------------------------------------- */
+
+.ob-order-group {
+  box-sizing: border-box;
+  flex: none;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+}
+
+.ob-order-group__head {
+  display: flex;
+  align-items: center;
+  gap: 0.143rem;
+  padding: 0 0.357rem 0 0.571rem;
+}
+
+.ob-order-group__toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.571rem;
+  padding: 0.714rem 0.286rem 0.714rem 0.286rem;
+  border: 0;
+  background: none;
+  color: var(--fg-primary);
+  font: inherit;
+  text-align: left;
+}
+
+button.ob-order-group__toggle {
+  cursor: pointer;
+}
+
+button.ob-order-group__toggle:hover {
+  background: var(--bg-hover);
+}
+
+.ob-order-group__code {
+  flex: none;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.821rem;
+  color: var(--fg-tertiary);
+}
+
+.ob-order-group__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-body-size);
+  font-weight: 550;
+}
+
+.ob-order-group__pieces {
+  flex: none;
+  font-size: var(--t-body-size);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ob-order-group__unit {
+  font-size: 0.857rem;
+  font-weight: 400;
+  color: var(--fg-tertiary);
+}
+
+.ob-order-group__act {
+  flex: none;
+  width: 1.714rem;
+  height: 1.714rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-tertiary);
+  cursor: pointer;
+}
+
+.ob-order-group__act:hover {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
+}
+
+.ob-order-group__act--danger:hover {
+  background: var(--state-conflict-tint);
+  color: var(--state-conflict);
+}
+
+.ob-order-group__lines {
+  padding: 0 0.857rem 0.714rem 1.286rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.143rem;
+}
+
+.ob-order-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 6.857rem 5.143rem 4.571rem 2.857rem;
+  column-gap: 0.571rem;
+  align-items: center;
+  font-size: 0.893rem;
+  color: var(--fg-secondary);
+}
+
+.ob-order-line > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ob-order-line__colour {
+  display: flex;
+  align-items: center;
+  gap: 0.429rem;
+  color: var(--fg-primary);
+}
+
+.ob-order-line__qty {
+  text-align: right;
+  color: var(--fg-primary);
+  font-variant-numeric: tabular-nums;
+}
