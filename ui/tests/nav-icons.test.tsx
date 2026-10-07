@@ -109,3 +109,15 @@ describe('Basic Home tiles (V1)', () => {
     for (const rule of tileRules) expect(rule).not.toMatch(/gradient|--tile-|data-hue/);
   });
 });
+
+describe('Icon stroke (artboard)', () => {
+  it('is 1.75 from 16 px up and 2 at 14 px and below', () => {
+    const stroke = (size: number) => {
+      const { container } = render(<Icon name="check" size={size} />);
+      const width = container.querySelector('svg')?.getAttribute('stroke-width');
+      cleanup();
+      return width;
+    };
+    expect([stroke(13), stroke(14), stroke(16), stroke(36)]).toEqual(['2', '2', '1.75', '1.75']);
+  });
+});
