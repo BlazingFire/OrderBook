@@ -201,6 +201,7 @@ export function PhotoImportScreen({ products }: Props) {
                 <label key={value}>
                   <input
                     type="radio"
+                    className="ob-radio"
                     name="photo-import-mode"
                     checked={mode === value}
                     onChange={() => setMode(value)}

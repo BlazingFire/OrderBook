@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Render the application icons for both panels and the clean-install tool
  * from the mark (the Icons and Panels artboards).
@@ -15,7 +14,10 @@
  * `--glaze-50` in `ui/src/tokens.css`, both read here, so the icon cannot drift from the mark the
  * app draws.
  *
- *   node tools/make-icons.mjs
+ *   node tools/make-icons.mjs   (npm run icons)
+ *
+ * No shebang: the test imports this file, and a CRLF checkout leaves a `` on
+ * the shebang line that the test runner's transform cannot parse.
  *
  * `renderIcons()` is exported for `master/tests/app-icons.test.ts`, which checks
  * that the committed icons are exactly what this renders.
