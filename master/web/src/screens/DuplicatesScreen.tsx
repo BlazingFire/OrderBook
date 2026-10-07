@@ -154,6 +154,7 @@ export function DuplicatesScreen({ revision }: Props) {
                       <label>
                         <input
                           type="radio"
+                          className="ob-radio"
                           name={group.key}
                           checked={member.id === kept}
                           onChange={() => setKeep((current) => ({ ...current, [group.key]: member.id }))}

@@ -92,8 +92,13 @@ describe('checkbox, radio and switch', () => {
   });
 
   it('fill a radio with a 5 px accent ring', () => {
-    expect(rule('.ob-check-row input:checked + .ob-radio-circle')).toContain('border: 5px solid var(--accent);');
+    expect(rule('.ob-radio:checked')).toContain('border: 5px solid var(--accent);');
     expect(read('../src/Form.tsx')).toContain('export function Radio(');
+  });
+
+  it('are used for the role cards and the duplicate-merge choice, not the browser radio', () => {
+    expect(read('../src/RolePicker.tsx')).toMatch(/type="radio"[ \n]+className="ob-radio"/);
+    expect(read('../../master/web/src/screens/DuplicatesScreen.tsx')).toMatch(/type="radio"[ \n]+className="ob-radio"/);
   });
 
   it('are a 32 x 18 switch with a 14 px thumb that travels 14 px, grey when off, with no border', () => {

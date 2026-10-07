@@ -2451,7 +2451,7 @@ button.ob-stattile:hover {
   font-size: var(--t-small-size);
   color: var(--fg-primary);
 }
-.ob-check-row input {
+.ob-check-row input:not(.ob-radio) {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -2482,29 +2482,37 @@ button.ob-stattile:hover {
   background: var(--accent);
   border-color: var(--accent);
 }
-/* A radio: the same hidden input, a ring that fills to a dot, drawn with the border. */
-.ob-radio-circle {
+/*
+ * A radio: the input itself, painted as a ring that fills to a dot with its border. Put the class on any
+ * `<input type="radio">`; it keeps its native keyboard and screen-reader behaviour, and it works inside a
+ * card or list row that is already the label.
+ */
+.ob-radio {
+  appearance: none;
+  box-sizing: border-box;
   width: 1.1429rem;
   height: 1.1429rem;
-  box-sizing: border-box;
+  margin: 0;
   flex: none;
   border: 1px solid var(--line-strong);
   border-radius: 50%;
   background: var(--bg-surface);
+  cursor: pointer;
   transition:
     border-width var(--d-fast) var(--e-standard),
     border-color var(--d-fast) var(--e-standard);
 }
-.ob-check-row input:checked + .ob-radio-circle {
+.ob-radio:checked {
   border: 5px solid var(--accent);
 }
-.ob-check-row input:focus-visible + .ob-radio-circle {
+.ob-radio:focus-visible {
   outline: 2px solid var(--line-focus);
   outline-offset: 2px;
 }
-.ob-check-row input:disabled + .ob-radio-circle {
+.ob-radio:disabled {
   background: var(--bg-sunken);
   border-color: var(--line);
+  cursor: default;
 }
 
 .ob-check-row input:focus-visible + .ob-checkbox-box {
@@ -3531,8 +3539,6 @@ button.ob-bell-item:hover {
 }
 .ob-rolecard input {
   margin-top: 3px;
-  flex: none;
-  accent-color: var(--accent);
 }
 .ob-rolecard-body {
   display: flex;

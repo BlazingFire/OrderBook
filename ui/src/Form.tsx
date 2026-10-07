@@ -237,13 +237,13 @@ export function Radio({
     <label className="ob-check-row" data-disabled={disabled || undefined}>
       <input
         type="radio"
+        className="ob-radio"
         name={name}
         value={value}
         checked={checked}
         disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
       />
-      <span className="ob-radio-circle" aria-hidden="true" />
       {label != null && <span>{label}</span>}
     </label>
   );
