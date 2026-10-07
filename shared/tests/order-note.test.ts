@@ -162,11 +162,11 @@ describe.each(['filling', 'dispatch'] as NoteKind[])('paginateOrderNote (%s)', (
     expect(onlyNamed?.wideLeft).toBe(true);
     expect(onlyNamed?.left).toHaveLength(2);
 
-    // Two columns of four across a page of codes alone, one column of three beside the named half.
+    // One column of lines of seven across a page of codes alone (as in the owner's print), one of three beside the named half.
     const onlyCoded = paginateOrderNote(buildOrderNote(orderWith(0, 500)), kind)[0];
     expect(onlyCoded?.wideRight).toBe(true);
     expect(onlyCoded?.right).toHaveLength(NOTE_LAYOUT.codedColumnsWide);
-    expect(NOTE_LAYOUT.codedColumnsWide).toBe(2);
+    expect(NOTE_LAYOUT.codedColumnsWide).toBe(1);
 
     const beside = paginateOrderNote(buildOrderNote(orderWith(20, 200)), kind)[0];
     expect(beside?.wideRight).toBe(false);
@@ -186,7 +186,7 @@ describe.each(['filling', 'dispatch'] as NoteKind[])('paginateOrderNote (%s)', (
     expect(slots.some((slot) => slot.kind === 'header' && slot.continued)).toBe(true);
     const rows = slots.flatMap((slot) => (slot.kind === 'row' ? [slot] : []));
     expect(Math.max(...rows.map((row) => row.lines.length))).toBe(NOTE_LAYOUT.codesPerRowWide);
-    expect(NOTE_LAYOUT.codesPerRowWide).toBe(4);
+    expect(NOTE_LAYOUT.codesPerRowWide).toBe(7);
   });
 
   it('V7: puts three codes on every line beside the named half, only the last line of a product being short', () => {

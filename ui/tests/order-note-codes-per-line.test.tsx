@@ -23,7 +23,7 @@ function line(over: Partial<LineItem>): LineItem {
   } as LineItem;
 }
 
-function sheet(named: number, coded: number, kind: NoteKind = 'dispatch'): string {
+function sheet(named: number, coded: number, kind: NoteKind = 'dispatch', notes: string | null = null): string {
   const items: LineItem[] = [];
   for (let i = 0; i < named; i += 1) items.push(line({ productName: `Model ${String(i).padStart(4, '0')}` }));
   for (let i = 0; i < coded; i += 1) items.push(line({ productName: String(100 + i), categoryName: 'Basin' }));
@@ -31,13 +31,13 @@ function sheet(named: number, coded: number, kind: NoteKind = 'dispatch'): strin
   const model = buildOrderNote(order);
   return renderToStaticMarkup(
     <OrderNote
-      pages={paginateOrderNote(model, kind)}
+      pages={paginateOrderNote(model, kind, { notes })}
       kind={kind}
       header={noteHeader(order, 'order')}
       party={null}
       partyName="Shree Tiles"
       vehicleNumber=""
-      notes={null}
+      notes={notes}
       totalQuantity={model.totalQuantity}
       totalWeightKg={model.totalWeightKg}
       itemCount={model.itemCount}
@@ -52,11 +52,11 @@ const perLine = (html: string): number[] =>
   [...html.matchAll(/ob-note-half--right[^>]*--note-codes-per-row:(\d+)/g)].map((match) => Number(match[1]));
 
 describe('the coded half of a note', () => {
-  it.each(['filling', 'dispatch'] as const)('%s: gives a line three places beside the named half and four on a page of codes alone', (kind) => {
+  it.each(['filling', 'dispatch'] as const)('%s: gives a line three places beside the named half and seven on a page of codes alone', (kind) => {
     const html = sheet(12, 90, kind);
     expect(perLine(html)[0]).toBe(3);
     const wide = sheet(0, 90, kind);
-    expect(perLine(wide)[0]).toBe(4);
+    expect(perLine(wide)[0]).toBe(7);
   });
 
   it('fills a line with three codes, not one', () => {
@@ -66,5 +66,50 @@ describe('the coded half of a note', () => {
     );
     expect(lines.length).toBeGreaterThan(5);
     expect(lines.filter((count) => count === 3).length).toBeGreaterThanOrEqual(lines.length - 1);
+  });
+});
+
+describe('the unit of a quantity on a note', () => {
+  const cellsOf = (html: string, className: string): string[] =>
+    [...html.matchAll(new RegExp(`class="${className}"[^>]*>([^<]*)<`, 'g'))].map((match) => match[1]!.trim());
+
+  it.each(['filling', 'dispatch'] as const)('%s: says pcs after a quantity and never box or boxes; Box stays a packaging value', (kind) => {
+    const html = sheet(14, 60, kind);
+
+    // The strip's figures carry the unit, and it is pcs.
+    const units = cellsOf(html, 'ob-note-strip-unit').filter((unit) => !/^kg$/i.test(unit));
+    expect(units.length).toBeGreaterThan(0);
+    expect(new Set(units)).toEqual(new Set(['pcs']));
+    // A quantity cell is a bare figure, nothing after it.
+    for (const cell of [...cellsOf(html, 'ob-note-qty'), ...cellsOf(html, 'ob-note-cell-qty')].filter((text) => text !== 'Qty')) {
+      expect(cell).toMatch(/^×?[0-9,.]+$/);
+    }
+    // Box is only ever the packaging: the Packing column and the tag of a code cell.
+    expect(cellsOf(html, 'ob-note-pack ob-note-wrap')).toContain('Box');
+    expect(cellsOf(html, 'ob-note-chip')).toContain('BOX');
+    expect(html).not.toMatch(/boxes/i);
+  });
+});
+
+describe('the notes of a note', () => {
+  const words = (count: number): string => Array.from({ length: count }, (_, i) => `word${i}`).join(' ');
+
+  it.each(['filling', 'dispatch'] as const)('%s: prints a long note whole, and gives the page the height it needs', (kind) => {
+    const text = words(100);
+    const html = sheet(30, 80, kind, text);
+
+    expect(html).toContain(text);
+    // The block is as tall as the note, not the 78 px of two lines.
+    const heights = [...html.matchAll(/ob-note-notes" style="height:([0-9.]+)px/g)].map((match) => Number(match[1]));
+    expect(heights.length).toBe(1);
+    expect(heights[0]).toBeGreaterThan(78);
+  });
+
+  it.each(['filling', 'dispatch'] as const)('%s: prints a very long note over pages of its own, once', (kind) => {
+    const text = words(2200);
+    const html = sheet(10, 20, kind, text);
+    const printed = [...html.matchAll(/ob-note-notes-text">([^<]*)</g)].map((match) => match[1]).join(' ');
+
+    expect(printed.split(' ').filter(Boolean)).toEqual(text.split(' '));
   });
 });

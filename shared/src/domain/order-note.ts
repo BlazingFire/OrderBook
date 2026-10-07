@@ -95,6 +95,17 @@ export const NOTE_LAYOUT = {
   signature: 62,
   /** Last page only, above the signatures: the record's notes, or two lines to write on. */
   notes: 78,
+  /**
+   * What the notes block costs above its text, and per line of text (the block is `notes` tall for two lines, or
+   * for none, which leaves two lines to write on). Whole notes are printed, never cut: the block grows with the
+   * text, up to `notesMaxLines`; a longer note gets pages of its own, `notesPageLines` lines a page.
+   */
+  notesBase: 34,
+  notesLine: 22,
+  /** Characters of note per printed line at 17 px across the page, counted low so a line never runs over. */
+  notesCharsPerLine: 64,
+  notesMaxLines: 14,
+  notesPageLines: 36,
   /** A named row whose label takes one or two lines… */
   rowNamed: 32,
   /** …and one that takes three (`namedRowHeight`). */
@@ -119,14 +130,14 @@ export const NOTE_LAYOUT = {
    */
   codesPerRow: 3,
   /**
-   * The coded half on a page of its own: two columns of four, which keeps the design's page counts
-   * (Short 2, Typical 5, Long 12) and a cell wide enough for its pack, grade and quantity (82 px).
-   * Three columns of three fit more, but cells of 70 px cut the grade off.
+   * The coded half on a page of its own: seven to a line across the page, as the owner's print of the design
+   * has it (a cell of 96 px holds its pack, grade and quantity). The owner's print has no group headers; this
+   * keeps them (the owner's choice), so a codes-only page holds fewer codes and Typical runs to 6 pages, Long to 14.
    */
-  codesPerRowWide: 4,
-  /** Columns of such lines the coded half takes: one beside the named half, two when it has the page. */
+  codesPerRowWide: 7,
+  /** Columns of such lines the coded half takes: one, beside the named half or across a page of its own. */
   codedColumns: 1,
-  codedColumnsWide: 2,
+  codedColumnsWide: 1,
   /**
    * The last page carries the notes and signatures, so the page before it is cut early enough
    * that the last page holds at least this many lines rather than one or two.
@@ -201,12 +212,107 @@ export interface NotePage {
   /** Carried forward: everything up to and including this page. */
   runQuantity: number;
   runWeightKg: number;
+  /**
+   * The block of notes this page carries, as tall as its text needs (0: none). The last page has one, blank
+   * lines to write on when the record has no notes; a long note also fills pages of its own after the lines.
+   */
+  notesHeight: number;
+  /** The part of the notes printed on this page. */
+  notesText: string;
 }
 
 const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 
 /** How far a page is cut back at a time while it balances the tail (px). */
 const TAIL_STEP = 10;
+
+/** Printed lines a note's text takes, counted the same way on every sheet so a page's room is known before it is drawn. */
+export function noteTextLines(text: string): number {
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  return trimmed
+    .split('\n')
+    .reduce((sum, paragraph) => sum + Math.max(1, Math.ceil(paragraph.trim().length / NOTE_LAYOUT.notesCharsPerLine)), 0);
+}
+
+/** The note cut into parts of at most `maxLines` lines, at line ends and spaces: nothing is dropped. */
+export function splitNoteText(text: string, maxLines: number): string[] {
+  const parts: string[] = [];
+  let current: string[] = [];
+  let used = 0;
+  const flush = (): void => {
+    if (current.length > 0) parts.push(current.join('\n'));
+    current = [];
+    used = 0;
+  };
+  for (const paragraph of text.trim().split('\n')) {
+    let rest = paragraph.trim();
+    for (;;) {
+      const lines = Math.max(1, Math.ceil(rest.length / NOTE_LAYOUT.notesCharsPerLine));
+      if (used + lines <= maxLines) {
+        current.push(rest);
+        used += lines;
+        break;
+      }
+      const room = maxLines - used;
+      if (room <= 0) {
+        flush();
+        continue;
+      }
+      let cut = room * NOTE_LAYOUT.notesCharsPerLine;
+      const space = rest.lastIndexOf(' ', cut);
+      if (space > cut / 2) cut = space;
+      current.push(rest.slice(0, cut).trim());
+      rest = rest.slice(cut).trim();
+      flush();
+      if (rest === '') break;
+    }
+  }
+  flush();
+  return parts;
+}
+
+/** The block of notes for `lines` lines of text: the blank block for none, never shorter than for two. */
+export function notesBlockHeight(lines: number): number {
+  return NOTE_LAYOUT.notesBase + NOTE_LAYOUT.notesLine * Math.max(2, lines);
+}
+
+/** A quantity or weight as the sheets print it: Indian digit grouping, one decimal at most. */
+export function noteFigure(value: number): string {
+  return value.toLocaleString('en-IN', { maximumFractionDigits: 1 });
+}
+
+/**
+ * Fixed month names: `toLocaleString` abbreviates September as "Sept" in current Chromium, and the
+ * design (and every other month) is three letters.
+ */
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+
+/** A moment as the sheets print it, `19 Sep 2026 · 09:41`, in the clock of the machine that prints. */
+export function noteStamp(value: Date | string | null | undefined): string {
+  if (!value) return '—';
+  const date = typeof value === 'string' ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return '—';
+  const two = (n: number): string => String(n).padStart(2, '0');
+  return `${two(date.getDate())} ${MONTHS[date.getMonth()]} ${date.getFullYear()} · ${two(date.getHours())}:${two(date.getMinutes())}`;
+}
+
+/** The caption's range, `1–28 / 46`, or a dash when the page holds none. */
+export function noteRange(from: number, count: number, all: number): string {
+  return count > 0 ? `${from + 1}–${from + count} / ${all}` : '—';
+}
+
+/** A brand as its two-letter chip: the first two letters or digits of its name. */
+export function noteBrandCode(brand: string): string {
+  return brand.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase();
+}
+
+const PACK_CODES: Record<string, string> = { box: 'BOX', grass: 'GRS', paper: 'PPR' };
+
+/** A packaging as the coded cell's three-letter chip. */
+export function notePackCode(packaging: string): string {
+  return PACK_CODES[packaging.trim().toLowerCase()] ?? packaging.trim().slice(0, 3).toUpperCase();
+}
 
 /** What the named half prints for a line: the sub product, and its size when the name does not carry it already. */
 export function namedLabel(line: NoteLine): string {
@@ -480,12 +586,24 @@ function fillNamed(lines: readonly NoteLine[], start: number, wide: boolean, hei
 export function paginateOrderNote(
   model: OrderNoteModel,
   kind: NoteKind,
+  /**
+   * `signatures: false` leaves the signature row's room to the lines: a document with none to sign. `notes`
+   * is the record's notes: the last page makes room for all of them, and a note too long for that gets pages of
+   * its own.
+   */
+  options: { signatures?: boolean; notes?: string | null } = {},
 ): NotePage[] {
   const L = NOTE_LAYOUT;
   const filling = kind === 'filling';
   const totalCoded = codedCount(model.coded);
+  const noteText = options.notes?.trim() ?? '';
+  const noteLines = noteTextLines(noteText);
+  // A note that fits beside the last lines goes under them; a longer one gets pages after them.
+  const inlineNotes = noteLines <= L.notesMaxLines;
+  const lastNotesHeight = inlineNotes ? notesBlockHeight(noteLines) : 0;
 
-  const pages: Omit<NotePage, 'pageNo' | 'pageCount' | 'isLast' | 'runQuantity' | 'runWeightKg'>[] = [];
+  type Draft = Omit<NotePage, 'pageNo' | 'pageCount' | 'isLast' | 'runQuantity' | 'runWeightKg' | 'notesHeight' | 'notesText'>;
+  const pages: Draft[] = [];
   let namedAt = 0;
   let codedAt: Cursor = { group: 0, line: 0 };
   let codedDone = 0;
@@ -507,7 +625,7 @@ export function paginateOrderNote(
       (first ? (filling ? L.headerFirstFilling : L.headerFirstDispatch) : filling ? L.headerContFilling : L.headerContDispatch) -
       L.caption -
       (filling ? L.footerFilling : 0) -
-      (isLast ? L.notes + L.signature : 0);
+      (isLast ? lastNotesHeight + (inlineNotes && options.signatures !== false ? L.signature : 0) : 0);
     const leftRows = (h: number): number => fillNamed(model.named, namedAt, wideLeft, h).flat().length;
 
     // Would the rest of the note fit on this page with the notes and signatures on it?
@@ -572,11 +690,26 @@ export function paginateOrderNote(
     });
   }
 
+  // The notes of each page: all of them under the last lines, or, for a long note, pages of their own.
+  const noteParts = inlineNotes ? [noteText] : splitNoteText(noteText, L.notesPageLines);
+  const withNotes = inlineNotes ? 1 : noteParts.length;
+  if (!inlineNotes) {
+    for (let part = 0; part < noteParts.length; part += 1) {
+      pages.push({
+        isFirst: false, left: [[]], right: [], leftFrom: model.named.length, leftCount: 0,
+        rightFrom: totalCoded, rightCount: 0, wideLeft: true, wideRight: true, quantity: 0, weightKg: 0,
+      });
+    }
+  }
+  const firstWithNotes = pages.length - withNotes;
+
   let runQuantity = 0;
   let runWeightKg = 0;
   return pages.map((page, index) => {
     runQuantity += page.quantity;
     runWeightKg += page.weightKg;
+    const part = index - firstWithNotes;
+    const text = part >= 0 ? (noteParts[part] ?? '') : '';
     return {
       ...page,
       pageNo: index + 1,
@@ -584,6 +717,8 @@ export function paginateOrderNote(
       isLast: index === pages.length - 1,
       runQuantity,
       runWeightKg,
+      notesHeight: part >= 0 ? notesBlockHeight(noteTextLines(text)) : 0,
+      notesText: text,
     };
   });
 }

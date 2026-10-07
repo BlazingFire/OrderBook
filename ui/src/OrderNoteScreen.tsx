@@ -137,7 +137,7 @@ export function OrderNoteScreen({
     [record, optionLists],
   );
   const header = useMemo(() => noteHeader(record, source), [record, source]);
-  const pages = useMemo(() => paginateOrderNote(model, kind), [model, kind]);
+  const pages = useMemo(() => paginateOrderNote(model, kind, { notes: record.notes }), [model, kind, record.notes]);
 
   useEffect(() => {
     let alive = true;

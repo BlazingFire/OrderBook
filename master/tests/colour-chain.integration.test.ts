@@ -22,7 +22,7 @@ import { canRunIntegrationTests } from './helpers/db.js';
 import { resetData, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
 import { db } from '../src/db/knex.js';
 import type { ActorContext } from '../src/domain/actor.js';
-import * as tableRenderer from '../src/pdf/table-renderer.js';
+import * as noteRenderer from '../src/pdf/note-renderer.js';
 import * as catalog from '../src/services/catalog.service.js';
 import * as fields from '../src/services/fields.service.js';
 import * as leads from '../src/services/lead.service.js';
@@ -302,12 +302,11 @@ describe.skipIf(!canRunIntegrationTests)('the colour chain (integration)', () =>
       // Renamed in Fields after the sale: the value on the line stays.
       await db()('option_lists').where({ list_key: 'stock.colour', value: 'Red Brown' }).update({ label: 'Rust' });
 
-      const render = vi.spyOn(tableRenderer, 'renderReportPdf');
+      const render = vi.spyOn(noteRenderer, 'renderNotePdf');
       try {
         await leads.leadPdf(lead.id, actor);
-        const rows = render.mock.calls[0]?.[0].rows ?? [];
-        expect(rows[0]).toContain('Rust');
-        expect(rows[0]).not.toContain('Red Brown');
+        const printed = render.mock.calls[0]?.[0].pages[0]?.left[0]?.[0]?.colour;
+        expect(printed).toBe('Rust');
       } finally {
         render.mockRestore();
       }

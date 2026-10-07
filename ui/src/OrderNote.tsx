@@ -11,6 +11,11 @@ import {
   isTemporaryId,
   namedLabel,
   namedRowHeight,
+  noteBrandCode,
+  noteFigure,
+  noteRange,
+  notePackCode,
+  noteStamp,
   NOTE_LAYOUT,
   type NoteHeader,
   type NoteKind,
@@ -58,44 +63,19 @@ export interface OrderNoteProps {
   printedAt: Date;
 }
 
-function num(value: number): string {
-  return value.toLocaleString('en-IN', { maximumFractionDigits: 1 });
-}
+const num = noteFigure;
 
-/**
- * Fixed month names: `toLocaleString` abbreviates September as "Sept" in current Chromium, and the
- * design (and every other month) is three letters.
- */
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
-
-export function stamp(value: Date | string | null | undefined): string {
-  if (!value) return '—';
-  const date = typeof value === 'string' ? new Date(value) : value;
-  if (Number.isNaN(date.getTime())) return '—';
-  const two = (n: number): string => String(n).padStart(2, '0');
-  return `${two(date.getDate())} ${MONTHS[date.getMonth()]} ${date.getFullYear()} · ${two(date.getHours())}:${two(date.getMinutes())}`;
-}
+/** The fixed-month stamp the sheets print, shared with the PDF export (`noteStamp`). */
+export const stamp = noteStamp;
 
 /** What the sheet calls the record: its number, or its id until it has one. */
 function numberOf(header: NoteHeader): string {
   return header.number ?? header.id;
 }
 
-function range(from: number, count: number, all: number): string {
-  return count > 0 ? `${from + 1}–${from + count} / ${all}` : '—';
-}
-
-/** A brand as its two-letter chip: the first two letters or digits of its name. */
-function brandCode(brand: string): string {
-  return brand.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase();
-}
-
-const PACK_CODES: Record<string, string> = { box: 'BOX', grass: 'GRS', paper: 'PPR' };
-
-/** A packaging as the coded cell's three-letter chip. */
-function packCode(packaging: string): string {
-  return PACK_CODES[packaging.trim().toLowerCase()] ?? packaging.trim().slice(0, 3).toUpperCase();
-}
+const range = noteRange;
+const brandCode = noteBrandCode;
+const packCode = notePackCode;
 
 function BrandChip({ brand }: { brand: string | null }) {
   if (!brand) return null;
@@ -290,7 +270,10 @@ function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
   const filling = props.kind === 'filling';
   const hasLeft = page.leftCount > 0;
   const hasRight = page.rightCount > 0;
-  const notes = props.notes?.trim() ?? '';
+  /** A page of a long note's own: the notes sit under the strip, the signature row stays at the foot. */
+  const notesOnly = !hasLeft && !hasRight && page.notesHeight > 0;
+  // The part of the notes this page carries (`paginateOrderNote` made room for all of them).
+  const notes = page.notesText.trim();
   const signatures = filling
     ? [t('orderNote.signFilledBy'), t('orderNote.signCheckedBy'), t('orderNote.signStoreInCharge')]
     : [t('orderNote.signSupervisor'), t('orderNote.signLoadedBy'), t('orderNote.signCheckedBy')];
@@ -299,7 +282,7 @@ function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
     <section className={`ob-note-page ob-note-${props.kind}`}>
       <Header props={props} page={page} />
       {!filling && <Strip props={props} page={page} position="top" />}
-      <div className="ob-note-body">
+      <div className="ob-note-body" style={notesOnly ? { flex: 'none' } : undefined}>
         {hasLeft && (
           <div
             className={`ob-note-half ob-note-half--left${hasRight ? '' : ' ob-note-half--only'}`}
@@ -353,8 +336,8 @@ function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
           </div>
         )}
       </div>
-      {page.isLast && (
-        <div className="ob-note-notes">
+      {page.notesHeight > 0 && (
+        <div className={`ob-note-notes${notesOnly ? ' ob-note-notes--top' : ''}`} style={{ height: page.notesHeight }}>
           <div className="ob-note-eyebrow">{t('orderNote.notes')}</div>
           {notes ? (
             <div className="ob-note-notes-text">{notes}</div>
