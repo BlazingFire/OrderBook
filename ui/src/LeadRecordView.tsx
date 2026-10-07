@@ -22,7 +22,14 @@ import type { Lead, OptionListItem, Order, Party, PipelineStage } from '@orderbo
 
 import { Button } from './Button.js';
 import { Card } from './Card.js';
-import { ColourChip, KeyValueList, StatusPill, Timeline, useColourHex } from './DataDisplay.js';
+import {
+  ColourChip,
+  KeyValueList,
+  StatusPill,
+  Timeline,
+  recordTimelineEntries,
+  useColourHex,
+} from './DataDisplay.js';
 import { DateField, FormField, Input } from './Form.js';
 import { formatDateTime, formatKg } from './format.js';
 import { apiErrorText } from './errorText.js';
@@ -201,18 +208,7 @@ export function LeadRecordView({
           {lead.timeline.length === 0 ? (
             <p className="ob-small">{t('lead.detail.noHistory')}</p>
           ) : (
-            <Timeline
-              entries={lead.timeline.map((entry) => ({
-                id: entry.id,
-                label: (
-                  <>
-                    {entry.message}
-                    {entry.actorName ? ` · ${entry.actorName}` : ''}
-                  </>
-                ),
-                when: formatDateTime(entry.createdAt),
-              }))}
-            />
+            <Timeline entries={recordTimelineEntries(lead.timeline, formatDateTime)} />
           )}
 
           {canEdit && (

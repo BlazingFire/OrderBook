@@ -62,6 +62,7 @@ import {
   useSubNav,
   type DataTableColumn,
   type PillTone,
+  stageTone,
   type PrintroomTransport,
   useToast,
   NoteButtons,
@@ -92,12 +93,12 @@ interface Props {
   userId: string;
 }
 
-function stageTone(order: Order, stages: PipelineStage[]): PillTone {
-  if (order.dispatchedAt) return 'ok';
-  const stage = stages.find((candidate) => candidate.id === order.stageId);
-  if (stage?.isTerminal) return 'ok';
-  if (stage?.isDefault) return 'accent';
-  return 'default';
+/** The order's stage pill tone: the stage's own colour, else its flags (`stageTone` in the kit). */
+function orderStageTone(order: Order, stages: PipelineStage[]): PillTone {
+  return stageTone(
+    stages.find((candidate) => candidate.id === order.stageId),
+    Boolean(order.dispatchedAt),
+  );
 }
 
 function totalPieces(order: Order): number {
@@ -456,13 +457,13 @@ export function OrdersScreen({
       key: 'stage',
       header: t('orders.column.stage'),
       width: rem(130),
-      render: (order) => <StatusPill tone={stageTone(order, stages)}>{order.stageName}</StatusPill>,
+      render: (order) => <StatusPill tone={orderStageTone(order, stages)}>{order.stageName}</StatusPill>,
     },
     {
       key: 'notes',
       header: t('orderNote.column.notes'),
       priority: 2,
-      width: rem(220),
+      width: rem(232),
       render: (order) => (
         <NoteButtons
           onNote={(kind) => {
@@ -501,7 +502,7 @@ export function OrdersScreen({
           title={openOrder.partyName}
           meta={
             <>
-              <StatusPill tone={stageTone(openOrder, stages)}>{openOrder.stageName}</StatusPill>
+              <StatusPill tone={orderStageTone(openOrder, stages)}>{openOrder.stageName}</StatusPill>
               {showsDispatchedPill(openOrder) && (
                 <StatusPill tone="ok">{t('orders.badge.dispatched')}</StatusPill>
               )}

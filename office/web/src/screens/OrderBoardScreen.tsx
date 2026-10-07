@@ -50,6 +50,7 @@ import {
   Select,
   StatusPill,
   Timeline,
+  recordTimelineEntries,
   formatDateTime,
   formatKg,
   rem,
@@ -62,6 +63,7 @@ import {
   useToast,
   useUnsavedWork,
   type PillTone,
+  stageTone,
   type PrintroomTransport,
   NoteButtons,
   showsDispatchedPill,
@@ -94,12 +96,12 @@ function sortedStages(pipeline: LocalView['pipelines'][number] | undefined): Pip
   return [...(pipeline?.stages ?? [])].sort((a, b) => a.sequence - b.sequence);
 }
 
-function stageTone(order: Order, stages: PipelineStage[]): PillTone {
-  if (order.dispatchedAt) return 'ok';
-  const stage = stages.find((candidate) => candidate.id === order.stageId);
-  if (stage?.isTerminal) return 'ok';
-  if (stage?.isDefault) return 'accent';
-  return 'default';
+/** The order's stage pill tone: the stage's own colour, else its flags (`stageTone` in the kit). */
+function orderStageTone(order: Order, stages: PipelineStage[]): PillTone {
+  return stageTone(
+    stages.find((candidate) => candidate.id === order.stageId),
+    Boolean(order.dispatchedAt),
+  );
 }
 
 function totalPieces(order: Order): number {
@@ -295,7 +297,7 @@ export function OrderBoardScreen({
         title={openOrder.partyName}
         meta={
           <>
-            <StatusPill tone={stageTone(openOrder, stages)}>{openOrder.stageName}</StatusPill>
+            <StatusPill tone={orderStageTone(openOrder, stages)}>{openOrder.stageName}</StatusPill>
             {showsDispatchedPill(openOrder) && (
               <StatusPill tone="ok">{t('orders.badge.dispatched')}</StatusPill>
             )}
@@ -430,7 +432,7 @@ export function OrderBoardScreen({
       key: 'stage',
       header: t('orders.column.stage'),
       width: rem(110),
-      render: (order) => <StatusPill tone={stageTone(order, stages)}>{order.stageName}</StatusPill>,
+      render: (order) => <StatusPill tone={orderStageTone(order, stages)}>{order.stageName}</StatusPill>,
     },
     {
       key: 'sync',
@@ -450,7 +452,7 @@ export function OrderBoardScreen({
       header: t('orderNote.column.notes'),
       // Goes with Weight, before Order ref and Qty: the notes are also on the order itself.
       priority: 3,
-      width: rem(220),
+      width: rem(232),
       render: (order) => (
         <NoteButtons
           onNote={(kind) => {
@@ -702,13 +704,7 @@ function OrderDetailBody({
 
       <Card>
         <Section title={t('orders.detail.history')}>
-          <Timeline
-            entries={order.timeline.map((entry) => ({
-              id: entry.id,
-              label: entry.message,
-              when: formatDateTime(entry.createdAt),
-            }))}
-          />
+          <Timeline entries={recordTimelineEntries(order.timeline, formatDateTime)} />
         </Section>
       </Card>
 
