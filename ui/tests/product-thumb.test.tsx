@@ -6,11 +6,11 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { cleanup, render } from '@testing-library/react';
+import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ProductImage } from '@orderbook/shared';
 
-import { ProductThumb } from '../src/ProgressiveImage.js';
+import { ProductThumb, ProgressiveImage } from '../src/ProgressiveImage.js';
 
 afterEach(cleanup);
 
@@ -72,5 +72,29 @@ describe('ProductThumb without an images list', () => {
   it('shows the empty tile rather than crashing the list', () => {
     const { container } = render(<ProductThumb name="x" />);
     expect(container.querySelector('.ob-thumb--empty')).not.toBeNull();
+  });
+});
+
+describe('a photo whose file does not load', () => {
+  it('swaps the blur for the empty-photo tile, never keeping the blur', () => {
+    const blurred = { ...image('gone', true), blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj' };
+    const { container } = render(<ProductThumb images={[blurred]} name="102" />);
+    const img = container.querySelector('img');
+    expect(img).not.toBeNull();
+    fireEvent.error(img!);
+    const tile = container.querySelector('.ob-thumb') as HTMLElement;
+    expect(container.querySelector('img')).toBeNull();
+    expect(tile.dataset.photoMissing).toBe('true');
+    expect(tile.style.background).not.toContain('url(');
+    expect(tile.getAttribute('aria-label')).toBe('102');
+  });
+
+  it('the detail frame does the same', () => {
+    const { container } = render(
+      <ProgressiveImage imageId="gone" variant="large" blurhash="" width={800} height={600} alt="Basin" />,
+    );
+    fireEvent.error(container.querySelector('img')!);
+    expect(container.querySelector('img')).toBeNull();
+    expect((container.firstElementChild as HTMLElement).dataset.photoMissing).toBe('true');
   });
 });

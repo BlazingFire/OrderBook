@@ -528,7 +528,7 @@ export const EN_MESSAGES = {
   'error.conflict.stageIsDefault': 'This is the pipeline’s default stage and cannot be archived',
 
   // --- activity.* — activity.<entityType>.<action>, rendered by the Logs screen ---
-  'activity.stock.inbound': '{actor} recorded {quantity} boxes in for {product}',
+  'activity.stock.inbound': '{actor} recorded {quantity} pcs in for {product}',
   'activity.stock.adjusted': '{actor} adjusted the counted stock for {product}',
   'activity.stock.levels_changed': '{actor} changed the stock levels for {product}',
   'activity.user.created': '{actor} created the account for {name}',
@@ -1496,8 +1496,8 @@ export const EN_MESSAGES = {
   'lead.add.products.clear': 'Clear selection',
   'lead.add.products.pickedHint':
     'Enter walks each row to Add product, which adds the rows with a quantity and returns to the product bar; Shift+Q adds them and moves on to the next product.',
-  'lead.add.products.searchAdds': 'the search adds another',
-  'lead.add.products.searchFirst': 'choose a product, then a sub product — at least one',
+  'lead.add.products.searchAdds': 'search for another product',
+  'lead.add.products.searchFirst': 'choose a product — its sub products open as a grid',
   'lead.add.saved': 'Pending Order saved — {id} syncs when the Master is reachable',
   'lead.add.savedOnline': 'Pending Order {id} saved',
   'lead.number.label': 'PO number',
@@ -1934,7 +1934,7 @@ export const EN_MESSAGES = {
   'orderNote.itemsPages': '{items} items · {pages} pages',
   'orderNote.grossOfPacking': 'Gross of packing',
   'orderNote.unsynced': 'not yet synced',
-  'orderNote.unit': 'box',
+  'orderNote.unit': 'pcs',
   'orderNote.signFilledBy': 'Filled by',
   'orderNote.signCheckedBy': 'Checked by',
   'orderNote.signStoreInCharge': 'Store in-charge',
@@ -2167,7 +2167,7 @@ export const EN_MESSAGES = {
   'partyImport.unchanged': '{count} already match the party book and need no change.',
   'partyImport.exportFailed': 'Could not export the parties',
   'reports.column.orderCount': 'Final Orders',
-  'reports.column.boxCount': 'Boxes',
+  'reports.column.boxCount': 'Pieces',
   'reports.column.partyId': 'Party ID',
   'reports.column.partyName': 'Party',
   'reports.column.partyCode': 'Code',
@@ -2733,7 +2733,7 @@ export const EN_MESSAGES = {
     'Sub product of {category} — type to narrow, e.g. 41, Magenta',
   'lead.add.products.changeCategory': 'Change product',
   'lead.add.products.categoryHint':
-    'Choose the product by name or code; its sub products come next.',
+    'Choose the product by name or code; its sub products open on a card.',
   'lead.add.products.productHint':
     'Pick a sub product. Shift+Q on an empty box finishes this product; Backspace goes back to the product bar.',
   'lead.add.products.col.category': 'Product',
@@ -3440,7 +3440,7 @@ export const EN_MESSAGES = {
 
   // 1.4 D2: stock and inventory removed, replacement wording
   'validation.stock.retired': 'Stock is no longer part of OrderBook',
-  'dashboard.orders.boxesOpen': '{count} boxes still to dispatch',
+  'dashboard.orders.boxesOpen': '{count} pcs still to dispatch',
   'dashboard.orders.noneOpen': 'Nothing waiting to go out',
   // 1.4 D2 (R22): the column and tooltip of the faces on a board's rows.
   'presence.board.column': 'Open now',

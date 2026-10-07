@@ -122,6 +122,33 @@ export async function updateImage(
   return updated ? findImageById(tenantId, imageId, trx) : null;
 }
 
+/** What re-deriving an image's files from its source can change: the row keeps its id, product, caption and place. */
+export async function updateImageDerivation(
+  tenantId: string,
+  imageId: string,
+  derived: { width: number; height: number; checksum: string; blurhash: string; byteSize: number },
+  trx: TransactionContext,
+): Promise<void> {
+  await trx(TABLE).where({ tenant_id: tenantId, id: imageId }).update({
+    width: derived.width,
+    height: derived.height,
+    checksum: derived.checksum,
+    blurhash: derived.blurhash,
+    byte_size: derived.byteSize,
+  });
+}
+
+/** Every image row of a tenant, id and product only: what the startup file check walks. */
+export async function imageRefsForTenant(
+  tenantId: string,
+  runner: Runner = db(),
+): Promise<Array<{ id: string; productId: string }>> {
+  const rows = await runner(TABLE)
+    .where({ tenant_id: tenantId })
+    .select<Array<{ id: string; product_id: string }>>('id', 'product_id');
+  return rows.map((row) => ({ id: String(row.id), productId: String(row.product_id) }));
+}
+
 /** Unsets every other image on the product, then marks this one primary — kept in one transaction so exactly one is ever true. */
 export async function setPrimary(tenantId: string, productId: string, imageId: string, trx: TransactionContext): Promise<void> {
   await trx(TABLE).where({ tenant_id: tenantId, product_id: productId }).update({ is_primary: false });

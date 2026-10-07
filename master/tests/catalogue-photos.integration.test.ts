@@ -3,7 +3,7 @@
  * only where a sub product has no photo, once per shipped set.
  */
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
@@ -12,7 +12,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { ActorContext } from '../src/domain/actor.js';
 import { config } from '../src/config/index.js';
 import * as catalog from '../src/services/catalog.service.js';
-import { attachCataloguePhotos } from '../src/services/catalogue-photos.service.js';
+import { attachCataloguePhotos, healMissingImageFiles } from '../src/services/catalogue-photos.service.js';
 import * as imageService from '../src/services/image.service.js';
 import * as productRepo from '../src/repositories/product.repository.js';
 import { canRunIntegrationTests } from './helpers/db.js';
@@ -110,6 +110,49 @@ describe.skipIf(!canRunIntegrationTests)('catalogue photos on boot (integration)
     const later = await catalog.createProduct({ categoryName: 'Basins', variants: [{ code: 'BAS-0006' }], name: 'Late' }, actor);
     expect(await attachCataloguePhotos(dir)).toMatchObject({ attached: 1 });
     expect(await imagesOf(later.id)).toHaveLength(1);
+  });
+
+  it('writes missing photo files again on boot, under the same id, even after the set already ran', async () => {
+    const bare = await catalog.createProduct({ categoryName: 'Basins', variants: [{ code: 'BAS-0010' }], name: 'Healed' }, actor);
+    await writeFile(path.join(dir, 'BAS-0010.jpg'), await jpeg('#00ff00'));
+    await attachCataloguePhotos(dir);
+    const [before] = await imagesOf(bare.id);
+    const folder = path.join(tenantImagesDir, before!.id);
+    await rm(folder, { recursive: true, force: true });
+
+    // The set's marker is recorded, so nothing is attached; the files still come back.
+    expect(await attachCataloguePhotos(dir)).toBeNull();
+    expect((await readdir(folder)).sort()).toEqual(['large.webp', 'master.webp', 'micro.webp', 'thumb.webp']);
+    const [after] = await imagesOf(bare.id);
+    expect(after).toMatchObject({ id: before!.id, checksum: before!.checksum, sequence: before!.sequence, isPrimary: true });
+
+    // A second boot finds every file and does nothing.
+    expect(await healMissingImageFiles(actor.tenantId, dir, ['BAS-0010.jpg'])).toEqual({
+      missing: 0,
+      healed: 0,
+      unsourced: 0,
+      failed: 0,
+    });
+  });
+
+  it('never writes a shipped photo over the files of one the company added, and keeps its row', async () => {
+    const pictured = await catalog.createProduct({ categoryName: 'Basins', variants: [{ code: 'BAS-0011' }], name: 'Own' }, actor);
+    const own = await imageService.uploadImage(
+      { productId: pictured.id, fileBuffer: await jpeg('#ff0000'), crop: { cropX: 0, cropY: 0, cropWidth: 48, cropHeight: 32, rotationDeg: 0 } },
+      actor,
+    );
+    const ownId = own.images[0]!.id;
+    await rm(path.join(tenantImagesDir, ownId), { recursive: true, force: true });
+    await writeFile(path.join(dir, 'BAS-0011.jpg'), await jpeg('#0000ff'));
+
+    expect(await healMissingImageFiles(actor.tenantId, dir, ['BAS-0011.jpg'])).toEqual({
+      missing: 1,
+      healed: 0,
+      unsourced: 1,
+      failed: 0,
+    });
+    await expect(access(path.join(tenantImagesDir, ownId))).rejects.toThrow();
+    expect((await imagesOf(pictured.id)).map((image) => image.id)).toEqual([ownId]);
   });
 
   it('does nothing when no photos are shipped', async () => {

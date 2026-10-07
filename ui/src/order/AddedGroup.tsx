@@ -114,7 +114,10 @@ export function AddedLine({
 }) {
   return (
     <div className="ob-order-line" data-added-line>
-      <span className="ob-order-line__sub">{sub}</span>
+      {/* Cut short in a narrow panel: the whole name in the tooltip. */}
+      <span className="ob-order-line__sub" title={typeof sub === 'string' ? sub : undefined}>
+        {sub}
+      </span>
       <span className="ob-order-line__colour">
         {colour ? (
           <>

@@ -569,10 +569,12 @@
 }
 
 /* The seven columns: code, sub product, colour, weight, quantity, packaging, grade. */
+/* Floors measured at 1366: 6.5rem holds the SUB PRODUCT label, 8.25rem "Pick colour" in its box,
+   3.571rem the WEIGHT label. */
 .ob-order-subrow {
   display: grid;
   grid-template-columns:
-    minmax(4.571rem, 5.857rem) minmax(6rem, 1fr) minmax(7.5rem, 8.857rem) minmax(3rem, 3.571rem)
+    minmax(4.571rem, 5.857rem) minmax(6.5rem, 1fr) minmax(8.25rem, 8.857rem) 3.571rem
     minmax(3.429rem, 4rem) minmax(5rem, 6.857rem) minmax(4rem, 5.714rem);
   column-gap: 0.571rem;
   align-items: center;
@@ -930,9 +932,10 @@ button.ob-order-group__toggle:hover {
   min-height: 1.857rem;
 }
 
-/* Every control of a row at the artboard's 28 px. */
+/* Every control of a row at the artboard's 28 px and 13 px. */
 .ob-order-subrow input {
   height: 2rem;
+  font-size: 0.929rem;
 }
 
 /* A header label never wraps onto a second line: it is cut short instead. */
@@ -940,4 +943,14 @@ button.ob-order-group__toggle:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A row with no colour to choose: "—" where the colour box would start, in tertiary ink. */
+.ob-order-cell--none {
+  color: var(--fg-tertiary);
+}
+
+/* A packaging or grade left at "—" reads as none, in tertiary ink (artboard). */
+.ob-order-subrow input[data-empty='true'] {
+  color: var(--fg-tertiary);
 }

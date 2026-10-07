@@ -16,6 +16,12 @@
  * where no photo matched any sub product (the catalogue is not loaded yet), so
  * the photos still land on the first boot after it is.
  *
+ * Every boot, before that marker is looked at, the photos' files are checked
+ * (`healMissingImageFiles`): a row whose variant files are gone (a database
+ * restored without `uploads/`, a copied or cleaned data folder) gets them
+ * written again from its shipped photo, under the same id. The marker records
+ * what was attached, never that the files are still there.
+ *
  * Offline: the files are on disk beside the program, nothing is fetched.
  */
 
@@ -29,10 +35,11 @@ import { config } from '../config/index.js';
 import { systemActor, type ActorContext } from '../domain/actor.js';
 import { db } from '../db/knex.js';
 import { createLogger } from '../lib/logger.js';
+import * as imageRepo from '../repositories/product-image.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
 import * as settingsRepo from '../repositories/settings.repository.js';
 import { resolveDefaultTenantId } from '../repositories/tenant.repository.js';
-import { uploadImage } from './image.service.js';
+import { imageVariantsMissing, rederiveImageVariants, SourceMismatchError, uploadImage } from './image.service.js';
 
 const log = createLogger('catalogue-photos');
 
@@ -52,11 +59,72 @@ export interface CataloguePhotosResult {
   failed: number;
 }
 
+export interface ImageFilesHealResult {
+  /** Rows with at least one variant file missing. */
+  missing: number;
+  /** Written again from the shipped photo. */
+  healed: number;
+  /** No shipped photo is that image (one the company uploaded, or a set that changed): left as it is. */
+  unsourced: number;
+  failed: number;
+}
+
+/**
+ * Write again the variant files of every photo whose files are gone, from the shipped photo in its
+ * slot, under the same image id. Rows are never deleted: one with no source stays, and the panels
+ * show the empty photo tile for it. A second run finds the files and does nothing.
+ */
+export async function healMissingImageFiles(
+  tenantId: string,
+  dir: string,
+  names: string[],
+): Promise<ImageFilesHealResult> {
+  const missing: Array<{ id: string; productId: string }> = [];
+  for (const ref of await imageRepo.imageRefsForTenant(tenantId)) {
+    if (await imageVariantsMissing(tenantId, ref.id)) missing.push(ref);
+  }
+  const result: ImageFilesHealResult = { missing: missing.length, healed: 0, unsourced: 0, failed: 0 };
+  if (missing.length === 0) return result;
+
+  // The import's own matching names the photo in each file's slot.
+  const products = (await productRepo.listProducts(tenantId, { limit: 100_000, offset: 0 })).items;
+  const sourceOf = new Map<string, string>();
+  for (const row of planPhotoImport(names.map((name) => ({ name })), products)) {
+    if (row.slotImageId) sourceOf.set(row.slotImageId, row.fileName);
+  }
+
+  for (const ref of missing) {
+    const fileName = sourceOf.get(ref.id);
+    if (!fileName) {
+      result.unsourced += 1;
+      continue;
+    }
+    try {
+      await rederiveImageVariants(tenantId, ref.id, await readFile(path.join(dir, fileName)));
+      result.healed += 1;
+    } catch (error) {
+      if (error instanceof SourceMismatchError) {
+        result.unsourced += 1;
+      } else {
+        result.failed += 1;
+        log.warn(`Photo ${ref.id} from ${fileName}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+  log.warn(
+    `Photo files missing for ${result.missing} photo(s): ${result.healed} written again from the shipped photos, ` +
+      `${result.unsourced} with no shipped source (shown as no photo), ${result.failed} failed`,
+  );
+  return result;
+}
+
 /** Null when there is nothing to do: no photos shipped, or this set already ran. */
 export async function attachCataloguePhotos(
   dir: string = config.cataloguePhotosDir,
 ): Promise<CataloguePhotosResult | null> {
   const names = (await readdir(dir).catch(() => [] as string[])).filter((name) => /\.(jpe?g|png|webp)$/i.test(name));
+  const tenantId = await resolveDefaultTenantId();
+  await healMissingImageFiles(tenantId, dir, names);
   if (names.length === 0) return null;
 
   const fingerprint = createHash('sha256');
@@ -65,7 +133,6 @@ export async function attachCataloguePhotos(
   }
   const digest = fingerprint.digest('hex');
 
-  const tenantId = await resolveDefaultTenantId();
   const rows = await settingsRepo.readSettingRows(tenantId);
   const marker = rows.find((row) => row.key === CATALOGUE_PHOTOS_MARKER)?.value as { fingerprint?: string } | undefined;
   if (marker?.fingerprint === digest) return null;
