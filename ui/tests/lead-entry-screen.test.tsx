@@ -154,19 +154,32 @@ function makeTransport() {
         );
         return { items };
       }
-      return { items: catalogue.products };
+      // By name when something is typed — how the Master matches a product — else all of them.
+      return {
+        items: term
+          ? catalogue.products.filter((row) => row.name.toLowerCase().includes(term))
+          : catalogue.products,
+      };
     },
   );
+  /** An older Master has no live-ids read: the form is told it cannot tell. */
+  const master = { older: false };
+  const liveProducts = vi.fn(async (ids: string[]) => ({
+    live: master.older
+      ? null
+      : ids.filter((id) => catalogue.products.some((product) => product.id === id)),
+  }));
   const createLead = vi.fn(async (_input: unknown) => ({ id: 'L-1' }));
   const updateLead = vi.fn(async (_id: string, _input: unknown): Promise<unknown> => undefined);
   const transport = {
     pick,
+    liveProducts,
     createLead,
     updateLead,
     createParty: vi.fn(async () => ({ id: 'party-new' })),
     updateParty: vi.fn(async () => undefined),
   } as unknown as LeadEntryTransport;
-  return { transport, pick, createLead, updateLead, catalogue };
+  return { transport, pick, createLead, updateLead, catalogue, master, liveProducts };
 }
 
 type Fake = ReturnType<typeof makeTransport>;
@@ -948,7 +961,114 @@ describe('the catalogue changing while the entry is open', () => {
     expect(document.activeElement).toBe(again);
   });
 
-  it('flags a product that was deleted, keeps it on the order and lets it save', async () => {
+  it('does not flag a product that is still in the catalogue when something else changed', async () => {
+    const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    await enterOneLine();
+
+    fake.catalogue.products.push(NEW_SUB as never);
+    await act(async () => {
+      fake.catalogueChanged();
+      await wait(0);
+    });
+    // The check asks the Master about the product's id once the change has been heard.
+    await waitFor(() => {
+      expect(fake.liveProducts.mock.calls.some(([ids]) => ids.includes(FIXED.id))).toBe(true);
+    });
+    await act(async () => wait(50));
+    expect(document.querySelector('[data-catalogue-gone]')).toBeNull();
+  });
+
+  it('does not flag or block a product that was renamed on the Master while it was on the order', async () => {
+    const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    await enterOneLine();
+
+    // Same product, a name that starts differently: a lookup by the captured name would miss it.
+    fake.catalogue.products = fake.catalogue.products.map((product) =>
+      product.id === FIXED.id ? { ...product, name: 'ZZ Renamed Closet' } : product,
+    );
+    await act(async () => {
+      fake.catalogueChanged();
+      await wait(0);
+    });
+    await waitFor(() => expect(fake.liveProducts.mock.calls.length).toBeGreaterThan(1));
+    await act(async () => wait(50));
+    expect(document.querySelector('[data-catalogue-gone]')).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
+      await wait(0);
+    });
+    expect(fake.createLead).toHaveBeenCalledTimes(1);
+  });
+
+  it('catches a deleted product on the 31st line: no cap on how many are checked', async () => {
+    const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    const extra = Array.from({ length: 30 }, (_, index) => ({
+      ...FIXED,
+      id: `prod-x${index}`,
+      name: `Bulk Closet ${String(index).padStart(2, '0')}`,
+      sortOrder: 20 + index,
+      variants: [{ id: `var-x${index}`, label: 'White', code: `OPT-X${index}`, weightKg: 25, isActive: true }],
+    }));
+    fake.catalogue.products.push(...(extra as never[]));
+    await enterOneLine();
+    for (const product of extra) {
+      fireEvent.focus(searchBox());
+      // After an add the bar may already be on the category's sub products.
+      const category = screen.queryByRole('button', { name: new RegExp(CATEGORY.name) });
+      if (category) fireEvent.mouseDown(category);
+      fireEvent.mouseDown(await screen.findByRole('button', { name: new RegExp(product.name) }));
+      const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — White`);
+      fireEvent.change(qty, { target: { value: '1' } });
+      await pressEnter(qty);
+      await finishCard('White');
+    }
+
+    const last = extra[extra.length - 1]!;
+
+    // Every id reaches the Master, the 31st included, and a live one is not flagged.
+    await act(async () => {
+      fake.catalogueChanged();
+      await wait(0);
+    });
+    await waitFor(() => expect(fake.liveProducts.mock.calls.flat(2)).toContain(last.id));
+    await act(async () => wait(50));
+    expect(document.querySelector('[data-catalogue-gone]')).toBeNull();
+
+    fake.catalogue.products = fake.catalogue.products.filter((product) => product.id !== last.id);
+    await act(async () => {
+      fake.catalogueChanged();
+      await wait(0);
+    });
+    const note = await waitFor(() => {
+      const found = document.querySelector('[data-catalogue-gone]');
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(note.textContent).toContain(last.name);
+  }, 120_000);
+
+  it('does not block when the Master cannot say (an older Master), and lets the save go', async () => {
+    const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    fake.master.older = true;
+    await enterOneLine();
+    fake.catalogue.products = fake.catalogue.products.filter((product) => product.id !== FIXED.id);
+    await act(async () => {
+      fake.catalogueChanged();
+      await wait(0);
+    });
+    await waitFor(() => expect(fake.liveProducts.mock.calls.length).toBeGreaterThan(1));
+    await act(async () => wait(50));
+    expect(document.querySelector('[data-catalogue-gone]')).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
+      await wait(0);
+    });
+    expect(fake.createLead).toHaveBeenCalledTimes(1);
+  });
+
+  it('flags a product that was deleted and blocks the save, naming the line and keeping the draft', async () => {
     const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
     await enterOneLine();
     expect(document.querySelector('[data-catalogue-gone]')).toBeNull();
@@ -967,15 +1087,16 @@ describe('the catalogue changing while the entry is open', () => {
     });
     expect(note.textContent).toContain(FIXED.name);
 
-    // The line already on the order saves as it was.
+    // The Master would refuse the whole order, so nothing is sent: the form stays open
+    // with its line, and the message names the product.
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
       await wait(0);
     });
-    const { items } = created(fake);
-    expect(items.map(({ variantId, quantity }) => ({ variantId, quantity }))).toEqual([
-      { variantId: 'var-1', quantity: 5 },
-    ]);
+    expect(fake.createLead).not.toHaveBeenCalled();
+    expect(fake.onSaved).not.toHaveBeenCalled();
+    expect(await screen.findByText(t('lead.add.errors.goneLines', { names: FIXED.name }))).toBeTruthy();
+    expect(screen.getAllByText(new RegExp(FIXED.name)).length).toBeGreaterThan(0);
   });
 });
 
@@ -1266,6 +1387,50 @@ describe('what the shared copy adds', () => {
         await wait(0);
       });
     };
+
+    /** A line added in this edit: the dedicated sub product, at 3. */
+    async function addDedicatedLine(): Promise<void> {
+      fireEvent.focus(searchBox());
+      fireEvent.mouseDown(await screen.findByRole('button', { name: new RegExp(CATEGORY.name) }));
+      fireEvent.mouseDown(await screen.findByRole('button', { name: new RegExp(DEDICATED.name) }));
+      const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — OPT-0003`);
+      fireEvent.change(qty, { target: { value: '3' } });
+      await pressEnter(qty);
+      await finishCard('OPT-0003');
+    }
+
+    it('blocks the save when a line ADDED in this edit names a deleted product, keeping the draft', async () => {
+      const fake = await openForm({ optionLists: [...COLOURS, ...SOURCES] }, { lead: opened });
+      await addDedicatedLine();
+
+      fake.catalogue.products = fake.catalogue.products.filter((product) => product.id !== DEDICATED.id);
+      await act(async () => {
+        fake.catalogueChanged();
+        await wait(0);
+      });
+      await waitFor(() => expect(document.querySelector('[data-catalogue-gone]')).not.toBeNull());
+
+      await save();
+      expect(fake.updateLead).not.toHaveBeenCalled();
+      expect(fake.onSaved).not.toHaveBeenCalled();
+      expect(await screen.findByText(t('lead.add.errors.goneLines', { names: DEDICATED.name }))).toBeTruthy();
+      expect(screen.getAllByText(new RegExp(DEDICATED.name)).length).toBeGreaterThan(0);
+    });
+
+    it('leaves a line that was already saved on the lead alone when its product was deleted since', async () => {
+      const fake = await openForm({ optionLists: [...COLOURS, ...SOURCES] }, { lead: opened });
+      fake.catalogue.products = fake.catalogue.products.filter((product) => product.id !== FIXED.id);
+      await act(async () => {
+        fake.catalogueChanged();
+        await wait(0);
+      });
+      await act(async () => wait(50));
+      expect(document.querySelector('[data-catalogue-gone]')).toBeNull();
+
+      fireEvent.change(notesBox(), { target: { value: 'changed' } });
+      await save();
+      expect(fake.updateLead).toHaveBeenCalledTimes(1);
+    });
 
     it('turns a 409 stale edit into the notice, and Keep mine saves over their version', async () => {
       const fake = await openForm({ optionLists: [...COLOURS, ...SOURCES] }, { lead: opened });

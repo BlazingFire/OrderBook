@@ -870,6 +870,9 @@ export const api = {
     );
   },
 
+  /** Which product ids are still in the catalogue — the entry form's save check. */
+  liveProducts: (ids: string[]) => post<{ live: string[] | null }>('/api/pick/live-products', { ids }),
+
   recycleBin: (query: RecycleBinQuery = {}) => {
     const params = new URLSearchParams();
     if (query.types?.length) params.set('types', query.types.join(','));

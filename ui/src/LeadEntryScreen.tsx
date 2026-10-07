@@ -163,11 +163,16 @@ export type LeadEntryView = Pick<
 export interface LeadEntryTransport extends PartyFormTransport {
   pick<T>(
     kind: PickKind,
-    q: { term: string; categoryId?: string; limit?: number; include?: string[] },
+    q: { term: string; categoryId?: string; limit?: number },
   ): Promise<{ items: T[] }>;
   /** The Master answers with the lead, PO number and all. */
   createLead(input: LeadInput): Promise<{ id: string; poNumber?: string | null }>;
   updateLead(id: string, input: LeadUpdateInput): Promise<unknown>;
+  /**
+   * Which of these product ids are still in the catalogue; `live: null` when that cannot be told
+   * (Master off or too old). Absent on a transport that cannot ask.
+   */
+  liveProducts?(ids: string[]): Promise<{ live: string[] | null }>;
 }
 
 interface Props {
@@ -409,6 +414,9 @@ function linesOf(lead: Lead, view: LeadEntryView): DraftLine[] {
  * The form, opened again from scratch by Reload theirs: a new mount reads the
  * lead as it is now, which no amount of resetting state in place does reliably.
  */
+/** How many products on the order are checked against the catalogue after a change. */
+const LIVE_CHECK_BATCH = 200;
+
 export function LeadEntryScreen(props: Props) {
   const [opening, setOpening] = useState(0);
   return <LeadEntryForm key={opening} {...props} onReload={() => setOpening((n) => n + 1)} />;
@@ -785,11 +793,14 @@ function LeadEntryForm({
    * has, found again each time the catalogue changes. They are flagged, not
    * dropped: a lead already in progress keeps working and saves as it was.
    */
-  const [goneNames, setGoneNames] = useState<string[]>([]);
+  const [gone, setGone] = useState<Array<{ id: string; name: string }>>([]);
+  const goneNames = gone.map((product) => product.name);
 
   const checkedProducts = useMemo(() => {
     const byId = new Map<string, string>();
-    for (const line of lines) byId.set(line.productId, line.productName);
+    // On an existing lead its saved lines may legitimately name a product deleted since; only
+    // what this edit adds is checked, because only that can make the Master refuse the save.
+    for (const line of lines) if (!line.key.startsWith('saved-')) byId.set(line.productId, line.productName);
     if (draft) byId.set(draft.productId, draft.productName);
     return [...byId];
   }, [lines, draft]);
@@ -797,20 +808,27 @@ function LeadEntryForm({
 
   useEffect(() => {
     if (checkedProducts.length === 0) {
-      setGoneNames([]);
+      setGone([]);
       return;
     }
     let cancelled = false;
     void (async () => {
       try {
-        const page = await transportRef.current.pick<Product>('product', {
-          term: '',
-          limit: 1,
-          include: checkedProducts.map(([id]) => id),
-        });
+        // Ask the Master which of the ids are still live, in batches so no order is too long
+        // for it. `null` is "cannot tell" (Master off or too old): say nothing, block nothing.
+        const ids = checkedProducts.map(([id]) => id);
+        const answers = await Promise.all(
+          Array.from({ length: Math.ceil(ids.length / LIVE_CHECK_BATCH) }, (_, index) =>
+            transportRef.current.liveProducts?.(ids.slice(index * LIVE_CHECK_BATCH, (index + 1) * LIVE_CHECK_BATCH)),
+          ),
+        );
         if (cancelled) return;
-        const live = new Set(page.items.map((product) => product.id));
-        setGoneNames(checkedProducts.filter(([id]) => !live.has(id)).map(([, name]) => name));
+        if (answers.some((answer) => !answer || !answer.live)) {
+          setGone([]);
+          return;
+        }
+        const live = new Set(answers.flatMap((answer) => answer!.live!));
+        setGone(checkedProducts.filter(([id]) => !live.has(id)).map(([id, name]) => ({ id, name })));
       } catch {
         // Unreachable or refused: say nothing rather than flag everything.
       }
@@ -1160,6 +1178,11 @@ function LeadEntryForm({
     if (!partyId) return t('lead.add.errors.partyRequired');
     if (lines.length === 0) return t('lead.add.errors.noProducts');
     if (draft) return t('lead.add.errors.draftOpen');
+    // The Master refuses a whole new order that names a deleted product: stop here, keep the form.
+    const goneLines = lines.filter((line) => gone.some((product) => product.id === line.productId));
+    if (goneLines.length > 0) {
+      return t('lead.add.errors.goneLines', { names: [...new Set(goneLines.map((line) => line.productName))].join(', ') });
+    }
     return null;
   }
 

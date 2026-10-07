@@ -37,6 +37,7 @@ export const leadEntryTransport: LeadEntryTransport = {
   pick: (kind, query) => api.pick(kind, query),
   createLead: (input) => api.createLead(input),
   updateLead: (id, input) => api.updateLead(id, input),
+  liveProducts: (ids) => api.liveProducts(ids),
 };
 
 export const catalogueTransport: CatalogueTransport = {

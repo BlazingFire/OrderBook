@@ -1113,6 +1113,9 @@ export const api = {
     );
   },
 
+  /** Which product ids are still in the catalogue — the entry form's save check. */
+  liveProducts: (ids: string[]) => post<{ live: string[] | null }>('/api/pick/live-products', { ids }),
+
   conflicts: (includeResolved = false) =>
     request<SyncConflict[]>(`/api/conflicts${includeResolved ? '?includeResolved=true' : ''}`),
   resolveConflict: (id: number, action: 'keepWinner' | 'restoreLoser') =>

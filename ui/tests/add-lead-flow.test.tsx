@@ -163,6 +163,8 @@ const SOURCES = ['walk-in', 'phone'].map((value, index) => ({
 const live = {
   categories: [WASH_BASIN, CATEGORY] as Array<typeof CATEGORY>,
   products: [MULTI, DEDICATED, FIXED] as Array<Record<string, unknown>>,
+  /** An older Master (or none): the live-ids read answers `null`, "cannot tell". */
+  older: false,
 };
 
 function snapshot(overrides: Record<string, unknown> = {}) {
@@ -196,7 +198,7 @@ async function sendSnapshot(view: ReturnType<typeof snapshot>): Promise<void> {
 
 /** Boots the Office panel on the New lead form and returns every request it made. */
 async function openForm(view: Record<string, unknown> = {}): Promise<Call[]> {
-  const calls = routeFetch(({ method, url }) => {
+  const calls = routeFetch(({ method, url, body }) => {
     const path = url.split('?')[0] ?? url;
     if (path === '/api/connection') return json(CONNECTION);
     if (path === '/api/session') {
@@ -229,7 +231,17 @@ async function openForm(view: Record<string, unknown> = {}): Promise<Call[]> {
       return json({ items, truncated: false });
     }
     if (path === '/api/pick/product') {
-      return json({ items: live.products, truncated: false });
+      const term = (new URL(url, 'http://panel').searchParams.get('q') ?? '').toLowerCase();
+      const items = term
+        ? live.products.filter((row) => String(row.name).toLowerCase().includes(term))
+        : live.products;
+      return json({ items, truncated: false });
+    }
+    if (path === '/api/pick/live-products' && method === 'POST') {
+      const ids = ((body as { ids?: string[] } | undefined)?.ids ?? []) as string[];
+      return json({
+        live: live.older ? null : ids.filter((id) => live.products.some((row) => row.id === id)),
+      });
     }
     if (path === '/api/leads' && method === 'POST') {
       return json({ queued: true, id: 'L-TMP-1', mutationId: 'mut-1', pendingCount: 1 });
@@ -339,6 +351,7 @@ beforeEach(() => {
   installBrowserStubs();
   live.categories = [WASH_BASIN, CATEGORY];
   live.products = [MULTI, DEDICATED, FIXED];
+  live.older = false;
 });
 
 afterEach(() => {
@@ -891,6 +904,64 @@ describe('Office: the catalogue changing while the entry is open', () => {
 
     expect(searchBox().value).toBe('NPR');
     expect(await screen.findByRole('button', { name: new RegExp(NEW_CATEGORY.name) })).toBeTruthy();
+  });
+
+  it('blocks the save when a product on the order was deleted, sending nothing and keeping the draft', async () => {
+    const calls = await openForm();
+    await enterOneLine();
+    expect(document.querySelector('[data-catalogue-gone]')).toBeNull();
+
+    live.products = live.products.filter((product) => product.id !== FIXED.id);
+    await masterAddsCategory();
+
+    await waitFor(() => expect(document.querySelector('[data-catalogue-gone]')).not.toBeNull());
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
+      await wait(0);
+    });
+    expect(leadPosts(calls)).toHaveLength(0);
+    expect(await screen.findByText(t('lead.add.errors.goneLines', { names: FIXED.name }))).toBeTruthy();
+    expect(screen.getAllByText(new RegExp(FIXED.name)).length).toBeGreaterThan(0);
+  });
+
+  it('does not flag or block a product renamed on the Master while it was on the order', async () => {
+    const calls = await openForm();
+    await enterOneLine();
+
+    live.products = live.products.map((product) =>
+      product.id === FIXED.id ? { ...product, name: 'ZZ Renamed Closet' } : product,
+    );
+    await masterAddsCategory();
+    await waitFor(() =>
+      expect(calls.filter((call) => call.url === '/api/pick/live-products').length).toBeGreaterThan(1),
+    );
+    await act(async () => wait(50));
+    expect(document.querySelector('[data-catalogue-gone]')).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
+      await wait(0);
+    });
+    expect(leadPosts(calls)).toHaveLength(1);
+  });
+
+  it('does not block when the Master cannot say (an older Master), and the save goes', async () => {
+    const calls = await openForm();
+    live.older = true;
+    await enterOneLine();
+    live.products = live.products.filter((product) => product.id !== FIXED.id);
+    await masterAddsCategory();
+    await waitFor(() =>
+      expect(calls.filter((call) => call.url === '/api/pick/live-products').length).toBeGreaterThan(1),
+    );
+    await act(async () => wait(50));
+    expect(document.querySelector('[data-catalogue-gone]')).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
+      await wait(0);
+    });
+    expect(leadPosts(calls)).toHaveLength(1);
   });
 
   it('keeps the draft, the typed quantity and the caret through a catalogue change', async () => {

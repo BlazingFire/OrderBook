@@ -247,6 +247,8 @@ export const COMMAND_MIN_PROTOCOL: Partial<Record<keyof ClientToServerEvents, nu
   // An Office that unpairs itself tells its Master (Connection audit): the row is marked removed with
   // reason "left" instead of staying active and offline for ever.
   'panel:leave': 9,
+  // Which product ids are still live, for the lead entry's save check (U14).
+  'product:live': 10,
 };
 
 /**
@@ -747,6 +749,15 @@ export interface ClientToServerEvents {
     payload: { kind: PickKind; query: PickQuery },
     ack: CommandAck<CategoryPickPage | ProductPickPage | PartyPickPage>,
   ) => void;
+
+  /**
+   * Which of these products are still in the catalogue (active, not deleted).
+   *
+   * A lead that names a deleted product is refused whole by the Master, so the entry form asks
+   * before it saves. Ids only, no rows; online only, and an older Master that lacks the event
+   * never answers, which the Office reads as "cannot tell" and does not block on.
+   */
+  'product:live': (payload: { ids: string[] }, ack: CommandAck<{ live: string[] }>) => void;
 
   /*
    * Categories — the owner's Products (`docs/catalogue/CATALOGUE_MODEL.md`

@@ -820,6 +820,10 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
 
   on('pick', ({ kind, query }, ack) => run(ack, (actor) => searchService.pick(kind, query, actor)));
 
+  on('product:live', ({ ids }, ack) =>
+    run(ack, (actor) => searchService.liveProducts(ids, actor)),
+  );
+
   on('category:list', (query, ack) =>
     run(ack, (actor) => catalogService.listCategories(actor, query ?? {})),
   );
