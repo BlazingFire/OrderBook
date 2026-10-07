@@ -106,6 +106,7 @@ import type {
   PresenceLastWrite,
   Product,
   ProductCategory,
+  ProductImage,
   ProductVariant,
   SyncSnapshot,
 } from '@orderbook/shared';
@@ -119,6 +120,7 @@ import {
 
 import { Button } from './Button.js';
 import { AddedProductsPanel } from './order/AddedProductsPanel.js';
+import { ProductThumb } from './order/ProductThumb.js';
 import { FollowUpField, OrderDetailsBar, OrderField } from './order/OrderDetailsBar.js';
 import { Card } from './Card.js';
 import { ColourChip, ColourName, StatusPill, useColourHex } from './DataDisplay.js';
@@ -250,6 +252,8 @@ interface DraftProduct extends ProductFacts {
   rows: DraftRow[];
   /** What a colour added to a `selectable` card is ordered in — one row per variant here. */
   variants: VariantFacts[];
+  /** The product's primary photo, when the picker sent one: the 48 px thumbnail on the card. */
+  image?: ProductImage;
   /** Where the line goes back to when the draft is a `Modify` of a saved one. */
   at: number | null;
   /** The saved line's key, kept so a modified line stays the same line. */
@@ -901,6 +905,7 @@ function LeadEntryForm({
     setDraft({
       productId: product.id,
       productName: partyRecord?.productName ?? product.name,
+      image: product.images?.[0],
       categoryName: product.categoryName,
       categoryCode: product.categoryCode,
       brand: product.brand,
@@ -1741,6 +1746,7 @@ function LeadEntryForm({
                 <div style={{ position: 'relative' }}>
                   {draft ? (
                     <div className="ob-picked">
+                      <ProductThumb image={draft.image} size={48} />
                       <span
                         className="ob-mono ob-body-strong"
                         style={{ fontSize: rem(14), color: 'var(--accent)' }}
@@ -1978,21 +1984,33 @@ function LeadEntryForm({
                                 ? t('lead.add.products.variantCount', { count: active.length })
                                 : (first?.code ?? '—')}
                             </span>
-                            <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                            <span
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: rem(8),
+                                minWidth: 0,
+                              }}
+                            >
+                              <ProductThumb image={row.images?.[0]} size={32} />
                               <span
-                                className="ob-ellipsis"
-                                style={{ display: 'flex', alignItems: 'center', gap: rem(6) }}
+                                style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}
                               >
-                                {swatch && first?.label && (
-                                  <ColourChip name={first.label} hex={swatch} />
-                                )}
-                                {row.name}
-                              </span>
-                              <span
-                                className="ob-mono ob-micro"
-                                style={{ color: 'var(--fg-tertiary)' }}
-                              >
-                                {row.size ?? ''}
+                                <span
+                                  className="ob-ellipsis"
+                                  style={{ display: 'flex', alignItems: 'center', gap: rem(6) }}
+                                >
+                                  {swatch && first?.label && (
+                                    <ColourChip name={first.label} hex={swatch} />
+                                  )}
+                                  {row.name}
+                                </span>
+                                <span
+                                  className="ob-mono ob-micro"
+                                  style={{ color: 'var(--fg-tertiary)' }}
+                                >
+                                  {row.size ?? ''}
+                                </span>
                               </span>
                             </span>
                             <span className="ob-small ob-ellipsis" style={{ minWidth: 0 }}>
