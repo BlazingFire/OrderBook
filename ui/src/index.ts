@@ -93,6 +93,7 @@ export * from './ImportDialog.js';
 export * from './PartyImportModal.js';
 export * from './ReportsScreen.js';
 export * from './ProductImportModal.js';
+export * from './ProductZipModal.js';
 export * from './Popover.js';
 export * from './PresenceRail.js';
 export * from './ProgressiveImage.js';

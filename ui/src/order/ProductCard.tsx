@@ -40,7 +40,7 @@ export interface SubGridLabels {
 }
 
 /**
- * The header row and the scrolling body of the grid. `bodyRef` is the screen's handle on the rows
+ * The header row and the body of the grid. `bodyRef` is the screen's handle on the rows
  * (the Enter walk reads the fields inside it in DOM order).
  */
 export function SubGrid({

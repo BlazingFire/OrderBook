@@ -561,10 +561,9 @@
   min-width: 0;
 }
 
+/* No scroll box: the card holds one sub product's rows, and a scrolling body would clip the
+   colour, packaging and grade lists that open below its last row. */
 .ob-order-table__body {
-  max-height: clamp(8rem, calc(100vh - 36rem), 24rem);
-  overflow-y: auto;
-  overflow-x: hidden;
   padding-bottom: 0.286rem;
 }
 
