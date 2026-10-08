@@ -364,7 +364,7 @@ async function press(key: string): Promise<boolean> {
   return unclaimed;
 }
 
-/** The card is gone and the caret is back in the bar (it is put there a tick after the add). */
+/** The card is gone and the caret is back in the bar (put there in the commit that closes the card). */
 async function backInTheBar(): Promise<void> {
   await waitFor(() => expect(document.activeElement).toBe(searchBox()));
   expect(document.querySelector('[data-product-card]')).toBeNull();
@@ -774,7 +774,9 @@ describe('the sub product card', () => {
         grade,
         quantity,
       })),
-    ).toEqual([{ variantId: 'var-2', colour: 'White', packaging: 'Grass', grade: 'B', quantity: 10 }]);
+    ).toEqual([
+      { variantId: 'var-2', colour: 'White', packaging: 'Grass', grade: 'B', quantity: 10 },
+    ]);
   });
 
   it('then takes the next sub product straight from the bar, and adds it as a line of its own', async () => {
@@ -797,6 +799,29 @@ describe('the sub product card', () => {
     await backInTheBar();
 
     expect(aside().querySelectorAll('[data-added-line]')).toHaveLength(2);
+  });
+
+  it('puts the caret in the bar in the commit that mounts it again, not a tick after it', async () => {
+    await openForm(OPTIONS);
+    await pickSubProduct(FIXED.name);
+    fireEvent.change(qtyBox('OPT-0001'), { target: { value: '5' } });
+    await pressEnter(qtyBox('OPT-0001'));
+    await pressEnter(packagingBox('OPT-0001'));
+
+    // The walk's last Enter adds from a passive effect, whose render a timer can beat: a focus
+    // left to a timer could find the bar not mounted yet, and the caret was lost.
+    let focusedAtClose: boolean | null = null;
+    const observer = new MutationObserver(() => {
+      if (focusedAtClose !== null || document.querySelector('[data-product-card]')) return;
+      const bar = screen.queryByLabelText(t('lead.add.products.searchLabel'));
+      focusedAtClose = bar !== null && document.activeElement === bar;
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    await pressEnter(gradeBox('OPT-0001'));
+    observer.disconnect();
+
+    expect(focusedAtClose).toBe(true);
+    expect(aside().querySelectorAll('[data-added-line]')).toHaveLength(1);
   });
 
   it('opens on the quantity of a fixed colour, the colour shown and not asked', async () => {
@@ -962,6 +987,29 @@ describe('the sub product card', () => {
     // The product's lines are rows again, quantity as it was, and off the lead meanwhile.
     expect(qtyBox('OPT-0001').value).toBe('5');
     expect(aside().querySelectorAll('[data-added-group]')).toHaveLength(0);
+  });
+
+  it('never throws away a card lifted from the list on Escape, even with its quantity cleared', async () => {
+    await openForm();
+    await enterOneLine();
+    await act(async () => {
+      fireEvent.click(
+        within(aside()).getByRole('button', {
+          name: t('lead.add.line.modifyProduct', { product: CATEGORY.name }),
+        }),
+      );
+      await wait(0);
+    });
+    fireEvent.change(qtyBox('OPT-0001'), { target: { value: '' } });
+    qtyBox('OPT-0001').focus();
+    await press('Escape');
+
+    // The lines left the order with the card: it stays open, and adds them back.
+    expect(document.querySelector('[data-product-card]')).not.toBeNull();
+    fireEvent.change(qtyBox('OPT-0001'), { target: { value: '5' } });
+    await pressEnter(qtyBox('OPT-0001'));
+    await backInTheBar();
+    expect(aside().querySelectorAll('[data-added-line]')).toHaveLength(1);
   });
 
   it('removes a product from the lead with its remove button', async () => {

@@ -4803,7 +4803,7 @@ each with a reason in `ALLOWED_UNCALLED.office`).
   steps on by itself); Enter on the last field adds the card as Add product
   (`data-add-card`) does — or, short of something, puts the caret on what it lacks —
   and the caret is back in the sub-product bar of the same product, its list open.
-  Escape walks back (from the first field of an untouched card, to the sub-product
+  Escape walks back (from the first field of an untouched new card, to the sub-product
   bar); on the empty sub-product bar Escape or Backspace goes to the product bar.
   Shift+Q (a document listener scoped to the products section) adds a ready card and
   goes to the product bar; Ctrl+Enter opens the review and Ctrl+Enter there saves

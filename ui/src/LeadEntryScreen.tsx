@@ -865,8 +865,18 @@ function LeadEntryForm({
     setQuery('');
     setSel(0);
     setSearchOpen(true);
-    window.setTimeout(() => searchRef.current?.focus(), 0);
+    setBarFocus((n) => n + 1);
   }
+
+  /*
+   * The caret into the bar in the commit that closes the card, as `cardOpened` does for the card:
+   * the box is disabled while a card is open, and a timer could fire before the render that enables
+   * it — the walk's last Enter saves from a passive effect, whose render is not flushed at once.
+   */
+  const [barFocus, setBarFocus] = useState(0);
+  useLayoutEffect(() => {
+    if (barFocus > 0) searchRef.current?.focus();
+  }, [barFocus]);
 
   // --- Draft --------------------------------------------------------------
 
@@ -1108,7 +1118,8 @@ function LeadEntryForm({
    * Escape walks back over the same stops the forward walk uses: a row with no quantity has no
    * packaging or grade stop, so Escape from the row below lands on its quantity. Heard after a list
    * has closed itself (which spends the key) and before the screen's general step back. From the
-   * first field of an untouched card it goes back to the sub-product bar the card came from.
+   * first field of an untouched new card it goes back to the sub-product bar the card came from; a
+   * card lifted from the list is never thrown away by Escape, since its lines left the order with it.
    */
   function escapeBack(event: ReactKeyboardEvent<HTMLElement>): void {
     if (event.key !== 'Escape' || event.defaultPrevented || chorded(event)) return;
@@ -1120,9 +1131,9 @@ function LeadEntryForm({
     if (index < 0) return;
     const previous = index === 0 ? null : prevWalkStop(found.stops, index, (key) => rowOf(key));
     if (previous === null) {
-      const untouched = draft?.rows.every(
-        (row) => !row.qty && !row.colour && !row.packaging && !row.grade,
-      );
+      const untouched =
+        draft?.at === null &&
+        draft.rows.every((row) => !row.qty && !row.colour && !row.packaging && !row.grade);
       if (untouched) {
         event.preventDefault();
         backToBar();

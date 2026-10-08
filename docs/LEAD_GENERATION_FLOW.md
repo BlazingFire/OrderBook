@@ -133,7 +133,8 @@ Master's `ui/src/LeadEntryScreen.tsx`, the same chain; owner's flow of 2026-10-0
    and the caret is back in the sub-product bar of the same product, its list open and empty,
    for the next sub product. A card still short of something does not add: the caret goes to
    what it lacks (a counted row's colour or packaging, else the quantity). **Escape** walks back
-   one field; from the first field of an untouched card it goes back to the sub-product bar.
+   one field; from the first field of an untouched new card it goes back to the sub-product bar
+   (never from a card lifted from the Added list, whose lines left the order with it).
    The card's ✕ also goes back there, adding nothing. **Shift+Q** adds a ready card and moves to
    the product bar (the next product); with no card open and an empty sub-product box it just
    goes there. A capital Q still types in any other field, the colour and packaging boxes

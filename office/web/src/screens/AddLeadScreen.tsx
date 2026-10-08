@@ -786,8 +786,19 @@ function AddLeadForm({
     setQuery('');
     setSel(0);
     setSearchOpen(true);
-    window.setTimeout(() => searchRef.current?.focus(), 0);
+    setBarFocus((n) => n + 1);
   }
+
+  /*
+   * The caret into the bar in the commit that mounts it again, as the card does for its first
+   * field: the bar is not mounted while a card is open, and a timer could fire before the render
+   * that mounts it — the walk's last Enter saves from a passive effect, whose render is not flushed
+   * at once.
+   */
+  const [barFocus, setBarFocus] = useState(0);
+  useLayoutEffect(() => {
+    if (barFocus > 0) searchRef.current?.focus();
+  }, [barFocus]);
 
   // --- The sub product's card ----------------------------------------------
 
@@ -2303,8 +2314,9 @@ function GridCard({
    * Escape goes back the way Enter came: the stop before, without the packaging and grade of a
    * row with no quantity (`prevWalkStop`). Run before the screen's document-level Escape walk,
    * which only gets what is left: an Escape a field already used (a list closing) arrives
-   * `defaultPrevented`. The first field has nothing before it: an untouched card goes back to the
-   * sub-product bar it came from, and one with anything typed is left to the screen's walk.
+   * `defaultPrevented`. The first field has nothing before it: an untouched new card goes back to
+   * the sub-product bar it came from, and one with anything typed is left to the screen's walk. So
+   * is a card lifted from the list: its lines left the order with it, and Escape never drops them.
    */
   function stepBack(event: ReactKeyboardEvent<HTMLElement>): void {
     if (event.key !== 'Escape' || event.defaultPrevented || chorded(event)) return;
@@ -2312,7 +2324,10 @@ function GridCard({
     if (!found) return;
     const previous = prevWalkStop(found.stops, found.index, found.rowOf);
     if (previous === null) {
-      if (rows.every((row) => !row.qty && !row.colour && !row.packaging && !row.grade)) {
+      if (
+        !editing &&
+        rows.every((row) => !row.qty && !row.colour && !row.packaging && !row.grade)
+      ) {
         event.preventDefault();
         onClear();
       }
