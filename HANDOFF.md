@@ -52,7 +52,7 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
-## Product zip, shipped catalogue, Office setup in the Master, notice board, Escape, New Order chain (2026-10-08)
+## Product zip, shipped catalogue, Office setup in the Master, notice board, Escape, New Order chain, Sell today, person screen (2026-10-08)
 
 **State:** on `main`, not built and not released (the owner did not ask for a build). Version is still 1.4.6, so the
 next build must be bumped first (1.4.7). One session did this batch ("single session mode"): five builders in
@@ -68,6 +68,21 @@ adversarially and fixed. Plan and evidence: `CLAUDE_HELPER_OCT8.md` (untracked).
 | R7 | settings: one notice board on Basic Home, another at sign-in | Basic Home always shows the band (every current notice placed there, unread first; "No notices" when empty); the pop-up lists every unread notice placed at sign-in. Settings › Company › Notice board: `notices.showOnHome`, `notices.showAtSignIn`. Per notice: "Show on Basic Home" / "Show at sign-in" (migration `20261016000000_notice_placement`, additive). The owner's "Notice board management" tile art is in. |
 | R8 | Esc goes back in every menu, without breaking New Order | One `window` listener in `AppShell`: dialogs/popovers/lists close first; a record's back button is clicked (it asks before dropping typed work — 8 screens now ask); otherwise Home (landing). New Order is left alone unless the form is blank (`data-esc-home`). |
 | R9 | New Order: product → sub product → colour → qty → packaging → grade → back to sub product; Shift+Q new product | Both panels: the product list, then the product's sub-product dropdown, then a card for that one sub product; Enter on the last field adds and returns to the sub-product dropdown; Shift+Q to the product dropdown; Esc/Backspace on an empty sub-product box back to products. Empty lists (grades ship empty) are skipped. |
+
+**Second message (same day), R10–R15:**
+
+| ID | Owner asked | Result |
+|---|---|---|
+| R10 | New Order: after picking a sub product, Enter opens colour (fixed colour → qty), then the packaging list, the grade list, then the caret on Add sub product; Enter adds; then a new sub product | Each list opens as the walk arrives (`arriveAt` in `ui/src/SuggestInput.tsx`); empty lists are skipped (grades ship empty); the walk stops on **Add sub product**, whose Enter adds and reopens the same product's sub-product dropdown. Packaging/grade open on "—" so three Enters never pick Box by accident (a required packaging opens on a real choice). |
+| R11 | better sub-product dropdown, plus a collapse button | `ui/src/order/SubProductList.tsx` (both panels): sticky header with count, aligned columns (photo, code, name + size, colour, weight), 48 px rows, key hint; **Collapse/Expand** beside the search box, remembered per PC. |
+| R12 | product slideshow on Basic Home, in less space | `ui/src/ProductSlideshow.tsx`: a 77 px band beside the notice band from about 1366 px (stacked at 1024); today's Sell today products, else sub products with photos; pause, previous, next; setting `basicHome.productSlideshow`. |
+| R13 | "what to sell today" pop-up, closable or closing by itself after chosen seconds, managed in Notice board management | Notice board management › **Sell today** tab (headline, products, message, close after 0/5–120 s, days, audience). `ui/src/SellTodayPopup.tsx` after sign-in, once per person per day per PC, never stacked on the unread-notices pop-up, countdown ring. Additive migration `20261018000000_notice_sell_today` (a notice `kind`); panel protocol **11** (own commands, so an older Master refuses instead of posting it as a notice). Setting `notices.showSellToday`. |
+| R15 | Roles & users person screen as in the owner's screenshot, fully working | `master/web/src/screens/PersonScreen.tsx`: header (avatar change, status/tier pills, role, ID + copy, last sign-in), Edit details, Reset password, ⋯ Deactivate/Activate and Delete (Recycle Bin); role cards with permission bars and people counts; gained/kept/lost matrix by module and action, group rows current → selected; the change bar (+N, lost) with Keep / Change role; Identity, Activity (Open in activity log filtered to the person), Picture. |
+| R14 | check everything | Each part reviewed adversarially and fixed; full gate; browser pass on a scratch Master + Office (below). |
+
+Also fixed: the activity log sentence for a new account read "created the account for {name}" (the row stores `displayName`; `renderActivity` now fills `{name}` from it).
+
+**Gate (second message):** `npm run lint` 0, `npm run typecheck` 0, `npm run build` 0, `npm run test` 0 (398 files + 1 skipped, the Windows-only release-workflow; 5,310 tests + 17 skipped; integration suites ran on PostgreSQL) on `s0/merge2` before the activity-log fix, then `shared/tests` (44 files, 547) and lint/typecheck on that fix. Browser pass on the scratch Master + paired Office: the person screen (role change Office → Management "+8 permissions, none lost" and back, ⋯ menu, Esc closes the menu only), the New Order walk (colour list open on arrival → qty → packaging list open → Add sub product → Enter adds and reopens the sub-product list), both Basic Home bands at 77 px side by side at 1366, a Sell today entry with 3 products and 10 s popping up on the Office after sign-in and closing by itself, and the product band then showing those products.
 
 **Found in the browser pass and fixed:** the one-row card's body was a scroll box, so the packaging/grade/colour lists
 were clipped and scrolled the row away; a photo a restore brought in read as "replaced" on the next import of the same

@@ -190,6 +190,13 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-08 (later) - New Order walk to Add sub product, Sell today, product band, person screen (Claude, Opus, single session)
+
+- **Ask (owner, R10–R15 in `CLAUDE_HELPER_OCT8.md`):** after a sub product, each dropdown opens as the walk arrives (colour, or qty for a fixed colour; packaging; grade), the caret stops on Add sub product, Enter adds and goes to a new sub product; a better sub-product dropdown with a collapse button; a compact product slideshow on Basic Home; a "what to sell today" pop-up closable or closing by itself, managed in Notice board management; the Roles & users person screen from the owner's screenshot, fully working; "make everything perfect".
+- **Built:** `arriveAt` (`ui/src/SuggestInput.tsx`), `ui/src/order/SubProductList.tsx`; `ui/src/ProductSlideshow.tsx`, `ui/src/SellTodayPopup.tsx`, the Sell today tab in `NoticeManageView.tsx`, migration `20261018000000_notice_sell_today`, protocol 11, settings `notices.showSellToday` and `basicHome.productSlideshow`; `master/web/src/screens/PersonScreen.tsx` with `ui/src/roleSummary.ts`, `AvatarPicker.tsx`, `TierPill.tsx`. Worktrees `../OrderBook-s1`…`s3` (`sN/oct8b`), each reviewed adversarially and fixed, merged in `../OrderBook-s0` (`s0/merge2`).
+- **Also fixed:** the activity log's "created the account for {name}" (`renderActivity`).
+- **Verified:** `npm run lint` 0, `npm run typecheck` 0, `npm run build` 0, `npm run test` 0 (398 files + 1 skipped, the Windows-only release-workflow; 5,310 tests + 17 skipped; integration suites ran on PostgreSQL) on `s0/merge2` before the activity-log fix, then `shared/tests` (44 files, 547) and lint/typecheck on that fix; browser pass as in `HANDOFF.md`. **Not verified:** 125–157 % scale on the new screens, the Electron shell, a real two-PC pass.
+
 ### 2026-10-08 - Product zip, shipped catalogue, Office setup in the Master, notice board, Escape, New Order chain (Claude, Opus, single session)
 
 - **Ask (owner, one message, numbered R1–R9 in `CLAUDE_HELPER_OCT8.md`):** one product backup/restore zip with the images,

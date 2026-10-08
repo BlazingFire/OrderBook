@@ -31,7 +31,11 @@ Basic Home and at sign-in, Escape goes back, and the New Order dropdown chain. W
      typist could lose that one Enter.
    - The card's ✕ on a product lifted from the Added list for editing closes it without putting its lines back
      (unchanged from 1.4.6); owner's call.
-5. Then the 1.4.6 leftovers below.
+5. Second message (R10–R15) is on `main` too: Sell today, the product band, the person screen, the New Order walk to Add sub product. Panel protocol is now **11**, so every Office must update with the Master.
+   - Sell today's "once a day" is per person per PC; pausing its countdown on hover is not built.
+   - Office: the Notice board badge can come back after "Mark as read" on an offline reload (seen by the Sell today builder, not investigated).
+   - Dates on the new screens use the PC's locale (dd-mm-yyyy on an Indian-English PC, as in the owner's screenshot).
+6. Then the 1.4.6 leftovers below.
 
 ## Then: 1.4.6 is released; what comes next (2026-10-07)
 
