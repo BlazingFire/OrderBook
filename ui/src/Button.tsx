@@ -87,6 +87,7 @@ export function ButtonLink({
   variant = 'primary',
   size = 'md',
   target,
+  download,
 }: {
   href: string;
   children: ReactNode;
@@ -94,13 +95,21 @@ export function ButtonLink({
   size?: ButtonSize;
   /** `_blank` for a document that opens beside the app — a lead's PDF. */
   target?: '_blank';
+  /** Save the file rather than open it: the desktop shell asks where (a USB drive). */
+  download?: boolean;
 }) {
   const classes = ['ob-btn', `ob-btn--${variant}`, size !== 'md' ? `ob-btn--${size}` : '']
     .filter(Boolean)
     .join(' ');
   return (
     // `noopener`: the new window gets no handle back to the app that opened it.
-    <a href={href} className={classes} target={target} rel={target ? 'noopener' : undefined}>
+    <a
+      href={href}
+      className={classes}
+      target={target}
+      rel={target ? 'noopener' : undefined}
+      download={download || undefined}
+    >
       {children}
     </a>
   );

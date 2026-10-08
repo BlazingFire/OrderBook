@@ -16,11 +16,13 @@ import type {
 import { api } from '../api';
 import {
   Button,
+  ButtonLink,
   Card,
   ConflictBanner,
   DataTable,
   EditorScreen,
   EmptyState,
+  formatBytes,
   formatElapsed,
   FormField,
   IdField,
@@ -653,6 +655,40 @@ export function PanelsScreen({ panels, onRefresh, onOpenSettings }: Props) {
             <p className="ob-small" style={{ margin: 'var(--s-8) 0 0' }}>
               {t('panels.add.reinstallNote')}
             </p>
+          </div>
+        )}
+        {windowState && windowState.officeSetups.length > 0 && (
+          <div style={{ marginTop: 'var(--s-16)' }}>
+            <span className="ob-body-strong">{t('panels.add.officeSetupTitle')}</span>
+            <p className="ob-small" style={{ margin: 'var(--s-4) 0' }}>
+              {t('panels.add.officeSetupBody')}
+            </p>
+            {windowState.officeSetups.map((setup, index) => {
+              // The first is what the route answers with no `?platform=`: the shortest address to type.
+              const route = `/api/updates/office/setup${index === 0 ? '' : `?platform=${setup.platform}`}`;
+              return (
+                <div key={setup.platform} style={{ marginTop: 'var(--s-8)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)', flexWrap: 'wrap' }}>
+                    <ButtonLink href={route} variant="secondary" size="sm" download>
+                      {setup.platform === 'win7'
+                        ? t('panels.add.officeSetupSaveWin7')
+                        : t('panels.add.officeSetupSave')}
+                    </ButtonLink>
+                    <span className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
+                      {t('panels.add.officeSetupFile', { file: setup.file, size: formatBytes(setup.sizeBytes) })}
+                    </span>
+                  </div>
+                  <ul className="ob-small ob-mono" style={{ margin: 'var(--s-4) 0 0', paddingLeft: 'var(--s-16)' }}>
+                    {windowState.addresses.map((entry) => (
+                      <li key={`${entry.name}-${entry.address}`}>
+                        http://{entry.address}:{windowState.port}
+                        {route}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
           </div>
         )}
       </Card>
