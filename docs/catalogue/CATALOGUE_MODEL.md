@@ -207,15 +207,16 @@ Never edit a shipped migration.
    changes and after a save; quick chips stay.
 4. **Product bar** — product name or code; rows `CODE · Name · Brand`.
 5. **Sub product bar** — every sub product of the product in catalogue order,
-   filtered as you type; rows show the printed name, size, and a swatch for
-   colour-named ones.
+   filtered as you type; rows show the photo, code, printed name with its size,
+   colour or variants (a swatch for colour-named ones) and weight, under a count
+   and column header; **Collapse** shrinks it to one short line a row (kept per PC).
 6. **Colour / quantity** — `fixed`: colour shown locked + qty; `dedicated`: qty
    only; `selectable`: colour-range list, several colours each with a qty.
    Packaging and grade sit beside each qty, the same box each; grade is
    optional, packaging required only while the company requires it.
-7. **Enter** walks qty → packaging → grade, row by row, then lands on **Add
-   product**, whose Enter adds the sub product and returns to the sub-product
-   bar. **Shift+Q** or **Complete sub product** adds a pending valid sub product
+7. **Enter** walks colour → qty → packaging → grade, row by row, each pick list
+   open as the walk reaches it (2026-10-08), then lands on **Add sub product**,
+   whose Enter adds the sub product and returns to the sub-product bar. **Shift+Q** or **Complete sub product** adds a pending valid sub product
    and moves to the product bar; with nothing pending and an empty sub-product
    box it just finishes the product. A capital Q still types anywhere else.
 8. **Ctrl+Enter** opens a review when the lead is ready; Ctrl+Enter again saves;

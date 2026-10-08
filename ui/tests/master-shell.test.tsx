@@ -1132,7 +1132,10 @@ describe('New Order', () => {
 
   const searchBox = () => screen.getByLabelText(t('lead.add.products.searchLabel'));
 
-  /** Party, product, sub product, a quantity — then Shift+Q adds the card. */
+  /**
+   * Party, product, sub product, a quantity — then Enter walks on (through any packaging and
+   * grade list) to Add sub product, and the Enter there adds the card.
+   */
   async function fillOneLine(): Promise<void> {
     fireEvent.change(screen.getByLabelText(t('lead.add.party.search')), { target: { value: 'Sha' } });
     fireEvent.click(await screen.findByRole('button', { name: /Sharma Traders/ }));
@@ -1141,11 +1144,23 @@ describe('New Order', () => {
     // The same box is then the product's sub-product bar: the sub product opens its card.
     fireEvent.mouseDown(await screen.findByRole('button', { name: /Aqua Closet/ }));
     const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — OPT-0001`);
+    expect(document.activeElement).toBe(qty);
     fireEvent.change(qty, { target: { value: '5' } });
+    const add = document.querySelector<HTMLElement>('[data-add-card]')!;
+    for (let step = 0; step < 3 && document.activeElement !== add; step += 1) {
+      const here = document.activeElement as HTMLElement;
+      await act(async () => {
+        fireEvent.keyDown(here, { key: 'Enter' });
+        await wait(0);
+      });
+    }
+    expect(document.activeElement).toBe(add);
+    expect(add.textContent).toContain(t('lead.add.draft.saveProduct'));
     await act(async () => {
-      fireEvent.keyDown(qty, { key: 'Q', shiftKey: true });
+      fireEvent.keyDown(add, { key: 'Enter' });
       await wait(0);
     });
+    expect(document.querySelector('[data-product-card]')).toBeNull();
   }
 
   it('shows a product the catalogue gained while the form is open, with the party and the caret kept', async () => {

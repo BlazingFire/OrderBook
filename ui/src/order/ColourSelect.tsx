@@ -3,9 +3,11 @@
  *
  * Closed it shows the chosen colour (a dot and its name) or the placeholder, dashed amber until a
  * colour is chosen on a row that needs one. Open it lists the company's colours with their dots;
- * typing narrows the list, the arrows move, Enter picks and goes on, Escape closes. Not the kit's
- * `Combobox` (it takes the first row on any Enter) and not a native select (on Windows it commits a
- * value on every arrow press).
+ * typing narrows the list, the arrows move, Enter picks and goes on, Escape closes. The list opens
+ * by itself when the Enter walk arrives here (`arriveAt`; owner, 2026-10-08), the chosen colour or
+ * else the first one highlighted; a click, typing or an arrow opens it too, a plain focus does not.
+ * Not the kit's `Combobox` (it takes the first row on any Enter) and not a native select (on
+ * Windows it commits a value on every arrow press).
  *
  * Presentational: it owns only what is typed and whether the list is down. The screen owns the
  * value, the Enter walk (`onAdvance` is "the walk's next stop") and all strings.
@@ -26,6 +28,7 @@ import type { OptionListItem } from '@orderbook/shared';
 import { ColourChip } from '../DataDisplay.js';
 import { Icon } from '../icons.js';
 import { Input } from '../Form.js';
+import { isArriving } from '../SuggestInput.js';
 import './order.css';
 
 export function ColourSelect({
@@ -178,6 +181,11 @@ export function ColourSelect({
         aria-autocomplete="list"
         className="ob-order-colour__input"
         onClick={() => setOpen(true)}
+        onFocus={(event) => {
+          if (!isArriving(event.target)) return;
+          setSel(Math.max(0, options.findIndex((option) => option.value === value)));
+          setOpen(true);
+        }}
         onBlur={() => {
           setOpen(false);
           setQuery('');

@@ -468,7 +468,7 @@ block on a deleted product, offline saves, drafts, follow-up chips, party and ow
    a 36 px product search; below it the picked product's header (code in mono accent, name 14 / 550, group eyebrow "Closets") or the empty state "No product picked"; then the sub
    product table with a seven-column grid `82px | minmax(0,1fr) | 124px | 50px | 56px | 96px | 80px` = **Code, Sub product, Colour, Weight, Qty, Packaging, Grade**; the colour
    combobox opens as a 220 px popover (rows 28 px, "Type to filter", footer hint "up/down move, Enter picks"). Footer of the card: "This product" count, a hint "Shift+Q adds and goes to the next", and the
-   secondary **Add product** button with an `Enter` kbd. **Notes** (optional) sits at the bottom of the card.
+   secondary **Add product** button with an `Enter` kbd (since 2026-10-08 **Add sub product**). **Notes** (optional) sits at the bottom of the card.
 4. **Added products panel:** header (44 px) "Added products" with the count; an empty state ("Nothing added yet", padding 24); a search field (28 px) over the list; each product block
    shows its sub-product rows in a grid `minmax(0,1fr) | 96 | 72 | 64 | 40` (name and colour, packaging, grade, quantity with the unit **pcs**, remove); a footer (padding 12 16 16) with the total quantity.
 5. **Bottom bar:** secondary **Cancel** (36 px) and primary **Save pending order** (36 px, with a `Ctrl S` kbd that tints with the button; disabled until there is a line).
@@ -484,13 +484,23 @@ total: Party, Products), `CartEntry` and `CartLines` (one added product that ope
 - **The product search is a chain of two dropdowns (owner, 2026-10-08; it replaced the 1.4.6 card of every sub product).** The product list opens on focus; picking a product keeps the caret in the
   same box, the product a chip in front of it, and opens that product's sub-product list (name, alias, code or colour; an exact match first); picking a sub product opens its card, one row per variant
   (code, sub product, colour, weight, Qty, Packaging, Grade).
-- **Colour.** A multicolour sub product's card opens on its colour select: the first Enter opens the company colour list with the first colour highlighted, the next takes it and goes on to the quantity.
+- **The sub-product list (`SubProductList`, `order.css` `.ob-subpick*`, owner 2026-10-08).** A frame of three parts on the `.ob-suggest` popover: a `--bg-canvas` header that stays put (the count,
+  "56 sub products" or "3 of 56 sub products", in micro `--fg-secondary`, then the column eyebrows), the rows scrolling under it (max height `min(28rem, 62vh)`, both halves keep a stable scrollbar
+  gutter so Weight sits over the weights) and a key line ("up/down move · Enter opens the card · Esc closes the list"). One grid for header and rows: `2.29rem | 7.5rem | minmax(0,1fr) | minmax(0,0.75fr) | 6rem`
+  = photo (32 px `ProductThumb`, an initial tile without one), **Code** (mono 12, `--fg-secondary`), **Sub product** (550, the size under it in mono micro), **Colour / variant** (swatch and name; a
+  multicolour one an accent-tint "Any colour" pill), **Weight** (right, tabular). Rows are 40 px at least, 48 px with the size line; the highlighted row is `--bg-selected` with a 3 px accent bar on its left and its code in accent.
+  **Collapse / Expand** (`.ob-subpick-toggle`, 28 px, a chevron and the word, pressed = accent tint and border) sits at the right of the box while the sub-product list is the bar's; collapsed, rows
+  are 28 px with no photo column and the size beside the name. Opened low on a 768 px screen, the list scrolls the page just enough to show itself whole.
+- **Colour.** A multicolour sub product's card opens on its colour select with the company colour list already open and the first colour highlighted; Enter takes it and goes on to the quantity.
   "+ Same sub product, another colour" adds a row for a second colour, or the sub product is picked again from the list; each colour is its own line. A fixed colour shows and is skipped; closets show
   "White", the trap closets "Any colour". Saving stores one line per colour.
-- **Keys on the card:** Enter walks colour, quantity, packaging and grade (a pick moves on by itself; a pick box whose list is empty is no step), and Enter on the last field adds the card exactly as
-  **Add product** does and opens the same product's sub-product list again, so the next sub product is typed at once; a card short of something keeps the caret on what it lacks. Shift+Q adds a ready
-  card and moves to the next product (the product list); Backspace or Escape on the empty sub-product box goes back to the product list, and Escape walks the card back field by field; Ctrl+S
-  saves. (No key focuses the product search: the artboard's `F2` chip was never built.)
+- **Keys on the card:** Enter walks colour, quantity, packaging and grade, each list open as the walk arrives (a pick, by key or mouse, moves on by itself; a pick box whose list is empty is no step;
+  a Tab or the Escape walk back leaves a list shut, a click opens it; a required packaging list has no "—"),
+  then **Add sub product**, and Enter there adds the card and opens the same product's sub-product list again, so the next sub product is typed at once; a card short of something sends the caret to
+  what it lacks instead. Add sub product is drawn as the disabled secondary button while the card is short of something (it keeps the caret), and **filled accent with the caret on it** when ready,
+  its `Enter` kbd tinted like Save's; it keeps to the right of the footer when the footer wraps. Shift+Q adds a ready card and moves to the next product (the product list); Backspace or Escape on the
+  empty sub-product box goes back to the product list; Escape closes a list the walk opened, then walks the card back field by field; Ctrl+S saves. (No key focuses the product search: the artboard's
+  `F2` chip was never built.)
 - **Quantity unit (owner decision, 2026-10-07): pcs everywhere; Box = a packaging value.** A quantity is always pieces ("pcs"): the entry screens, details, lists, reports, the dashboard, the activity log and the printed Filling and Dispatch notes
   all say pcs. "Box" is only a value of the Packaging field (like the other packaging types), never a unit of quantity.
 
@@ -517,6 +527,6 @@ Lead wording becomes **pending order**. The quantity unit is "pcs" everywhere, a
 | Overlays | `ui/src/Modal.tsx`, `ConfirmDialog.tsx`, `Popover.tsx`, `CommandPalette.tsx`, `useOverlay`; `ui/tests/overlays-restyle`, `overlay-focus-return`, `popover-menu-keys` |
 | Notices on Basic Home and at sign-in | `ui/src/NoticeSlideshow.tsx`, `ui/src/SignInNotices.tsx`, `ui/src/NoticeDashboardCard.tsx`, `NoticeBoardView.tsx`; `master/web/src/useNotices.ts` |
 | Product band and "Sell today" (7.2) | `ui/src/ProductSlideshow.tsx`, `ui/src/SellTodayPopup.tsx`, the Sell today tab in `ui/src/NoticeManageView.tsx`, `.ob-home-bands` / `.ob-prodshow` / `.ob-selltoday-*` in `base.css`; `ui/tests/product-slideshow.test.tsx`, `sell-today-popup.test.tsx`, `sell-today-manage.test.tsx` |
-| New Order screen | `ui/src/LeadEntryScreen.tsx` (Master) and `office/web/src/screens/AddLeadScreen.tsx` (Office) on the `ui/src/order/` kit (`OrderDetailsBar`, `OrderField`, `FollowUpField`, `PartyChip`, `AddedProductsPanel`, `OrderChecks`, `CartEntry`, `order.css`); `ui/tests/lead-entry-screen.test.tsx`, `add-lead-flow.test.tsx` |
+| New Order screen | `ui/src/LeadEntryScreen.tsx` (Master) and `office/web/src/screens/AddLeadScreen.tsx` (Office) on the `ui/src/order/` kit (`OrderDetailsBar`, `OrderField`, `FollowUpField`, `PartyChip`, `AddedProductsPanel`, `OrderChecks`, `CartEntry`, `SubProductList`, `ColourSelect`, `order.css`; `arriveAt` in `SuggestInput.tsx`); `ui/tests/lead-entry-screen.test.tsx`, `add-lead-flow.test.tsx` |
 | Notes (three codes to a line, colour labels) | `shared/src/domain/order-note.ts` (`NOTE_LAYOUT.codesPerRow`), `ui/src/OrderNote.tsx`, `ui/src/order-note.css`; `master/src/services/print.service.ts` |
 | Colour chain (server) | `master/src/services/lead.service.ts` (`buildLines`, `matchExistingLines`), the Dispatches report in `report.service.ts` |

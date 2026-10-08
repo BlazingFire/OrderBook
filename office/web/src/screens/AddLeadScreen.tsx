@@ -30,13 +30,14 @@
  * is always optional. A pick box whose list is empty is not a step.
  *
  * Keys, the way the counter works (owner, 2026-10-08):
- *  · **Enter** walks colour (multicolour only; the first Enter opens the list,
- *    the next takes the colour), quantity, packaging and grade (a pick in either
- *    moves on by itself); a row with no quantity is passed over
- *    (`nextWalkStop`). Enter on the last field adds the card, as Add product
- *    does, and the caret is back in the sub-product bar of the same product,
- *    its list open. **Escape** walks back one field; on the empty sub-product
- *    bar, Escape or Backspace goes back to the product bar;
+ *  · **Enter** walks colour (multicolour only), quantity, packaging and grade,
+ *    each pick list open as the caret arrives (`arriveAt`): Enter takes the
+ *    highlighted value and moves on, as a mouse pick does; a row with no
+ *    quantity is passed over (`nextWalkStop`). After the last field comes
+ *    **Add sub product**, and Enter there adds the card and puts the caret back
+ *    in the sub-product bar of the same product, its list open. **Escape**
+ *    closes a list the walk opened, then walks back one field; on the empty
+ *    sub-product bar, Escape or Backspace goes back to the product bar;
  *  · **Shift+Q** adds a ready card and goes to the product bar (the next
  *    product). Anywhere it would do nothing it is a capital Q;
  *  · **Ctrl+Enter** opens a review of the finished lead, and Ctrl+Enter there
@@ -115,7 +116,10 @@ import {
   SubGrid,
   SubRow,
   StatusPill,
+  SubListCompactToggle,
+  SubProductList,
   Textarea,
+  arriveAt,
   changedLeadFields,
   type CreatedParty,
   type GridLine,
@@ -133,6 +137,7 @@ import {
   prevWalkStop,
   rowProblem,
   rowsToLines,
+  useSubListCompact,
   type LeadFormValues,
   type OrderCheck,
   formatKg,
@@ -760,6 +765,7 @@ function AddLeadForm({
   const pick = rows.length ? Math.min(sel, rows.length - 1) : 0;
   const listOpen = !card && searchOpen;
   const listRef = useRef<HTMLDivElement>(null);
+  const [compactList, toggleCompactList] = useSubListCompact();
 
   // Keep the highlighted row on screen as the arrows walk past the list's
   // visible rows. `?.()`: jsdom has no `scrollIntoView`.
@@ -843,9 +849,11 @@ function AddLeadForm({
     // The caret goes into the new row's colour box, as on the Master: Enter on the button must not
     // leave it on the page.
     window.setTimeout(() => {
-      productsRef.current
-        ?.querySelector<HTMLElement>(`[data-walk="colour"][data-row="${added}"]`)
-        ?.focus();
+      arriveAt(
+        productsRef.current?.querySelector<HTMLElement>(
+          `[data-walk="colour"][data-row="${added}"]`,
+        ),
+      );
     }, 0);
   }
 
@@ -1673,6 +1681,9 @@ function AddLeadForm({
                           }
                         }}
                       />
+                      {category && (
+                        <SubListCompactToggle compact={compactList} onToggle={toggleCompactList} />
+                      )}
                     </div>
                   )}
 
@@ -1740,118 +1751,16 @@ function AddLeadForm({
                   )}
 
                   {listOpen && category && (
-                    <div role="listbox" className="ob-suggest" ref={listRef}>
-                      <div
-                        className="ob-suggest-row ob-eyebrow"
-                        style={{
-                          gridTemplateColumns: SUGGEST_GRID,
-                          color: 'var(--fg-tertiary)',
-                          fontSize: 'var(--t-eyebrow-size)',
-                          fontWeight: 600,
-                          letterSpacing: '0.07em',
-                        }}
-                      >
-                        <span />
-                        <span>{t('lead.add.products.col.code')}</span>
-                        <span>{t('lead.add.products.col.product')}</span>
-                        <span>{t('lead.add.products.col.variant')}</span>
-                        <span style={{ textAlign: 'right' }}>
-                          {t('lead.add.products.col.weight')}
-                        </span>
-                      </div>
-                      {subMatches.map((row, index) => {
-                        const active = row.variants.filter((variant) => variant.isActive);
-                        const first = active[0] ?? row.variants[0];
-                        const weights = active.map((variant) => variant.weightKg);
-                        const rule = colourRuleOf(row);
-                        // A colour-named sub product (a fixed colour, or MAGENTA
-                        // sold in Magenta) carries its swatch beside the name.
-                        const swatch =
-                          rule === 'fixed' && first?.label ? colourHex(first.label) : undefined;
-                        return (
-                          <button
-                            key={row.id}
-                            type="button"
-                            /*
-                             * Out of the Tab order: the rows are for the pointer,
-                             * the box's arrows and Enter are the keyboard's. A Tab
-                             * from an empty bar landed on the first row, the box's
-                             * blur then closed the list under it, and the caret
-                             * was left on nothing at all.
-                             */
-                            tabIndex={-1}
-                            className="ob-suggest-row"
-                            style={{
-                              gridTemplateColumns: SUGGEST_GRID,
-                              background: index === pick ? 'var(--bg-selected)' : undefined,
-                            }}
-                            onMouseEnter={() => setSel(index)}
-                            onMouseDown={(event) => {
-                              event.preventDefault();
-                              openCard(row, query);
-                            }}
-                          >
-                            <ProductThumb
-                              images={row.images}
-                              size={32}
-                              fallback="initial"
-                              alt=""
-                              name={row.name}
-                            />
-                            <span
-                              className="ob-mono ob-body-strong"
-                              style={{
-                                fontSize: rem(12),
-                                color: index === pick ? 'var(--accent)' : undefined,
-                              }}
-                            >
-                              {active.length > 1
-                                ? t('lead.add.products.variantCount', { count: active.length })
-                                : (first?.code ?? '—')}
-                            </span>
-                            <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                              <span
-                                className="ob-ellipsis"
-                                style={{ display: 'flex', alignItems: 'center', gap: rem(6) }}
-                              >
-                                {swatch && first?.label && (
-                                  <ColourChip name={first.label} hex={swatch} />
-                                )}
-                                {row.name}
-                              </span>
-                              <span
-                                className="ob-mono ob-micro"
-                                style={{ color: 'var(--fg-tertiary)' }}
-                              >
-                                {row.size ?? ''}
-                              </span>
-                            </span>
-                            <span className="ob-small ob-ellipsis" style={{ minWidth: 0 }}>
-                              {active.length > 1
-                                ? active.map((variant) => variant.label ?? variant.code).join(', ')
-                                : rule === 'selectable'
-                                  ? t('product.multiColour.pill')
-                                  : (shownColour(first?.label, row.name) ?? '')}
-                            </span>
-                            <span
-                              className="ob-small"
-                              style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                            >
-                              {weights.length === 1
-                                ? formatKg(weights[0] ?? null)
-                                : weights.some((weight) => weight === null)
-                                  ? t('product.weight.missingShort')
-                                  : formatKg(weights.reduce<number>((sum, w) => sum + (w ?? 0), 0))}
-                            </span>
-                          </button>
-                        );
-                      })}
-                      {subMatches.length === 0 && (
-                        <p className="ob-small" style={{ margin: 0, padding: 'var(--s-8)' }}>
-                          {t('lead.add.products.noProduct')}
-                        </p>
-                      )}
-                    </div>
+                    <SubProductList
+                      rows={subMatches}
+                      total={subRows.length}
+                      pick={pick}
+                      compact={compactList}
+                      colourHex={colourHex}
+                      listRef={listRef}
+                      onHover={setSel}
+                      onPick={(row) => openCard(row, query)}
+                    />
                   )}
 
                   {!card && (
@@ -2142,9 +2051,6 @@ function AddLeadForm({
 
 // --- Pieces ---------------------------------------------------------------
 
-/** The sub-product list's columns: photo, code, name and size, variants or colour, weight. */
-const SUGGEST_GRID = `${rem(32)} ${rem(84)} minmax(0, 1fr) minmax(0, 0.7fr) ${rem(84)}`;
-
 /** The weight cell: a figure, or the pill that says there is none to show. */
 function WeightCell({ kg }: { kg: number | null }) {
   if (kg === null)
@@ -2166,10 +2072,12 @@ function WeightCell({ kg }: { kg: number | null }) {
  * guess at a disabled button.
  *
  * Enter walks a row's colour (a multicolour row), quantity, packaging and grade, then the next
- * row; a row with no quantity is skipped past its packaging and grade (`nextWalkStop`). Enter on
- * the last field adds the card, as Add product does, and the screen returns to the sub-product
- * bar; a card still short of something puts the caret on what it lacks. Escape walks the same
- * stops back, and from the first field of an untouched card goes back to the sub-product bar.
+ * row, each pick list open as the caret arrives (`arriveAt`); a row with no quantity is skipped
+ * past its packaging and grade (`nextWalkStop`). After the last field comes Add sub product, and
+ * Enter there adds the card and the screen returns to the sub-product bar; a card still short of
+ * something puts the caret on what it lacks instead. Escape closes a list the walk opened, then
+ * walks the same stops back, and from the first field of an untouched card goes back to the
+ * sub-product bar.
  */
 function GridCard({
   rows,
@@ -2211,15 +2119,14 @@ function GridCard({
   const bodyRef = useRef<HTMLDivElement>(null);
   const first = rows[0];
 
-  // The card opens on its first field — the first row's colour box, else its quantity — so the
-  // Enter walk has somewhere to start from. In the layout phase, in the commit that mounts the
-  // card: a passive effect ran a tick later, after whatever a fast keystroke had already done,
-  // and took the caret back to this field.
+  // The card opens on its first field — the first row's colour box, its list open, else its
+  // quantity — so the Enter walk has somewhere to start from. In the layout phase, in the commit
+  // that mounts the card: a passive effect ran a tick later, after whatever a fast keystroke had
+  // already done, and took the caret back to this field.
   useLayoutEffect(() => {
-    bodyRef.current
-      ?.closest('[data-product-card]')
-      ?.querySelector<HTMLElement>('[data-walk]')
-      ?.focus();
+    arriveAt(
+      bodyRef.current?.closest('[data-product-card]')?.querySelector<HTMLElement>('[data-walk]'),
+    );
   }, []);
   const counted = rows.filter(isCounted);
   const pieces = cardPieces(rows);
@@ -2263,25 +2170,47 @@ function GridCard({
   }
 
   /**
-   * The walk's last Enter adds the card, as Add product does (owner, 2026-10-08) — run after the
-   * render that holds what was just picked, so a grade taken by that very Enter is on the line. A
-   * card still short of something puts the caret on what it lacks: a counted row's colour or
-   * packaging, else the first quantity.
+   * The walk's last Enter goes to Add sub product, where the next Enter adds (owner, 2026-10-08:
+   * the last field no longer adds by itself) — run after the render that holds what was just
+   * picked, so a grade taken by that very Enter counts. A card still short of something goes to
+   * what it lacks instead: a counted row's colour or packaging, else the first quantity. Add
+   * itself, by Enter or click, does the same when the card is not ready.
    */
   const [finishing, setFinishing] = useState(0);
   useEffect(() => {
     if (finishing === 0) return;
     if (ready) {
-      onSave();
+      bodyRef.current
+        ?.closest('[data-product-card]')
+        ?.querySelector<HTMLElement>('[data-walk="add"]')
+        ?.focus();
       return;
     }
     const lacking = rows.find((row) => rowProblem(row, readyOptions) !== null);
     const field = lacking ? rowProblem(lacking, readyOptions) : 'qty';
-    bodyRef.current
-      ?.querySelector<HTMLElement>(`[data-walk="${field}"][data-row="${(lacking ?? first)?.key}"]`)
-      ?.focus();
+    arriveAt(
+      bodyRef.current?.querySelector<HTMLElement>(
+        `[data-walk="${field}"][data-row="${(lacking ?? first)?.key}"]`,
+      ),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [finishing]);
+
+  /** Add sub product, by click or Enter: a ready card is added, any other goes to what it lacks. */
+  function addCard(): void {
+    if (ready) onSave();
+    else setFinishing((n) => n + 1);
+  }
+
+  /** Enter on Add sub product adds, claimed with the browser's own Enter-click; Escape walks back. */
+  function addKey(event: ReactKeyboardEvent<HTMLButtonElement>): void {
+    if (event.key === 'Enter' && !chorded(event)) {
+      event.preventDefault();
+      if (!event.repeat) addCard();
+      return;
+    }
+    stepBack(event);
+  }
 
   /** One stop on: an empty row is passed over (`nextWalkStop`); past the last field, Add. */
   function stepOn(from: Element | null, started?: string): void {
@@ -2290,7 +2219,7 @@ function GridCard({
     const next = nextWalkStop(found.stops, found.index, found.rowOf);
     if (next === null) return;
     if (found.stops[next]?.field === 'add') setFinishing((n) => n + 1);
-    else found.nodes[next]?.focus();
+    else arriveAt(found.nodes[next]);
   }
 
   /** The card's stops in DOM order — the whole card, the Add button in the footer being the last. */
@@ -2441,13 +2370,11 @@ function GridCard({
         </>
       }
       footer={
-        <>
-          <span
-            className="ob-small"
-            style={{ flex: '1 1 0', minWidth: 0, color: 'var(--fg-tertiary)' }}
-          >
-            <span className="ob-mono ob-micro">{t('lead.add.card.shiftQ')}</span>
-          </span>
+        // The Master's footer row: the key hint, then the pieces and Add sub product, which keeps
+        // to the right when the row wraps.
+        <div className="ob-order-product__footrow">
+          <span className="ob-order-hint">{t('lead.add.card.shiftQ')}</span>
+          <span style={{ flex: 1, minWidth: 0 }} />
           <span
             className="ob-small"
             style={{ color: 'var(--fg-secondary)', whiteSpace: 'nowrap', flex: 'none' }}
@@ -2459,28 +2386,29 @@ function GridCard({
             {t('unit.pieces')}
           </span>
           {/*
-           * The end of the card's Enter walk: Enter on the last field does what this button does,
-           * and Enter over it (reached by Tab) is a click. `data-field` makes it a stop of the
-           * screen's Escape walk too, back to the last field. While the card is short of something
-           * the button is disabled, which takes it out of both.
+           * The end of the card's Enter walk: Enter on the last field comes here and Enter here
+           * adds. `data-field` makes it a stop of the screen's Escape walk too, back to the last
+           * field. Short of something it is drawn disabled but keeps the caret: Enter or a click on
+           * it goes to what the card lacks.
            */}
           <Button
             variant="secondary"
+            className="ob-order-add"
             data-field
             data-add-card
             data-walk="add"
-            onKeyDown={stepBack}
-            disabled={!ready}
+            onKeyDown={addKey}
+            aria-disabled={!ready || undefined}
             style={{ flex: 'none', whiteSpace: 'nowrap' }}
             aria-label={editing ? t('lead.add.draft.saveChanges') : t('lead.add.draft.saveProduct')}
-            onClick={onSave}
+            onClick={addCard}
           >
             {editing ? t('lead.add.draft.saveChanges') : t('lead.add.draft.saveProduct')}
             <span className="ob-order-kbd" aria-hidden="true">
               Enter
             </span>
           </Button>
-        </>
+        </div>
       }
     >
       {colourOptions.length === 0 && rows.some((row) => row.rule === 'selectable') && (
@@ -2572,7 +2500,8 @@ function GridCard({
                         element.dataset.walk = 'colour';
                         element.dataset.row = row.key;
                       }}
-                      // `openOnEnter` left on: the first Enter opens the list, the next takes it.
+                      // Open as the walk arrives; reached by Tab or Escape, the first Enter opens
+                      // it (`openOnEnter`).
                       onPick={(colour) => onRow(row.key, { colour })}
                       onAdvance={(picked) =>
                         stepOn(document.activeElement, picked ? row.key : undefined)
@@ -2605,11 +2534,14 @@ function GridCard({
                   {/*
                    * Packaging and grade beside the quantity, the same box (owner's instructions,
                    * 2026-09-30): the kit's pick-only `Select` is an `Input` with a list under it.
-                   * Type a letter or arrow down, Enter takes it and steps on; "—" is none. A box
-                   * whose list is empty (a shop with no grades) is no step of the walk.
+                   * Type a letter or arrow down, Enter takes it and steps on; "—" is none, and no
+                   * choice at all while packaging is required — the list then opens on the first
+                   * real one, not on a "—" Add would turn back. A box whose list is empty (a shop
+                   * with no grades) is no step of the walk.
                    */}
                   <span style={{ minWidth: 0 }} onKeyDown={pickKey}>
                     <Select
+                      openOnArrivalOnly
                       value={row.packaging}
                       aria-label={`${t('lead.add.draft.packaging')} — ${rowName(row)}`}
                       aria-required={packagingRequired || undefined}
@@ -2622,7 +2554,7 @@ function GridCard({
                       data-row={row.key}
                       onChange={(event) => picked(row.key, { packaging: event.target.value })}
                     >
-                      <option value="">—</option>
+                      {!packagingRequired && <option value="">—</option>}
                       {valuesFor(packagingOptions, row.packaging).map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
@@ -2632,6 +2564,7 @@ function GridCard({
                   </span>
                   <span style={{ minWidth: 0 }} onKeyDown={pickKey}>
                     <Select
+                      openOnArrivalOnly
                       value={row.grade}
                       aria-label={`${t('lead.add.draft.grade')} — ${rowName(row)}`}
                       data-walk={gradeOptions.length > 0 || row.grade ? 'grade' : undefined}

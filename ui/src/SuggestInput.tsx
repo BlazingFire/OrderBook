@@ -37,6 +37,33 @@ function useHighlightInView(
   }, [listRef, highlighted, listOpen]);
 }
 
+/** The field an `arriveAt` is focusing, for the length of that one `focus()` call. */
+const arriving = new WeakSet<Element>();
+
+/**
+ * Focus a field as the Enter walk's arrival (owner, 2026-10-08): a pick list there — the colour,
+ * a packaging or grade `Select` — opens at once, and its first Escape only closes it. A focus by
+ * click, Tab or the Escape walk back is a plain focus. The focus event fires inside `focus()`, so
+ * the field's own `onFocus` asks `isArriving` while the mark is still on. A field that already has
+ * the caret (the walk sending it back to what the card lacks) fires no focus event, so it is left
+ * first and its list opens all the same.
+ */
+export function arriveAt(field: HTMLElement | null | undefined): void {
+  if (!field) return;
+  if (field === field.ownerDocument.activeElement) field.blur();
+  arriving.add(field);
+  try {
+    field.focus();
+  } finally {
+    arriving.delete(field);
+  }
+}
+
+/** True inside the focus event an `arriveAt` caused. */
+export function isArriving(field: EventTarget | null): boolean {
+  return field instanceof Element && arriving.has(field);
+}
+
 /**
  * A field somebody can type into *or* pick from — the two halves of one
  * control rather than a `<select>` and a text box chosen between by whether the
@@ -267,10 +294,27 @@ export function SuggestInput({
  * puts the chosen label back. `onChange` receives an object whose only real
  * property is `target.value` — every caller in the tree reads exactly that and
  * nothing else.
+ *
+ * `openOnArrivalOnly` (the New Order card, owner 2026-10-08): the list opens as the Enter walk
+ * arrives (`arriveAt`) or on a click, as the card's colour box does — a Tab or the Escape walk
+ * back leaves it shut. Without it the list opens on every focus.
  */
-export const Select = forwardRef<HTMLInputElement, SelectHTMLAttributes<HTMLSelectElement>>(
+export const Select = forwardRef<
+  HTMLInputElement,
+  SelectHTMLAttributes<HTMLSelectElement> & { openOnArrivalOnly?: boolean }
+>(
   function Select(
-    { value, defaultValue, onChange, children, className, style, disabled, ...rest },
+    {
+      value,
+      defaultValue,
+      onChange,
+      children,
+      className,
+      style,
+      disabled,
+      openOnArrivalOnly,
+      ...rest
+    },
     ref,
   ) {
     const options = optionsOf(children);
@@ -336,8 +380,20 @@ export const Select = forwardRef<HTMLInputElement, SelectHTMLAttributes<HTMLSele
             event.target.select();
             setFiltering(false);
             setActive(Math.max(0, options.findIndex((option) => option.value === current)));
-            setOpen(true);
+            // The walk brought the caret here: the list counts as asked for, so Escape closes it
+            // before it walks back (`arriveAt`).
+            const arrived = isArriving(event.target);
+            if (arrived || !openOnArrivalOnly) setOpen(true);
+            setSummoned(arrived);
           }}
+          onClick={
+            openOnArrivalOnly
+              ? () => {
+                  setOpen(true);
+                  setSummoned(true);
+                }
+              : undefined
+          }
           onBlur={() => {
             setOpen(false);
             setFiltering(false);
