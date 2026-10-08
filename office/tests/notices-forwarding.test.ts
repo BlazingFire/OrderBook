@@ -262,4 +262,25 @@ describe('"Sell today" (2026-10-08)', () => {
     const none = await request(createApp()).get('/api/snapshot').expect(200);
     expect(none.body.sellToday).toEqual([]);
   });
+
+  it('shows the product cards only to somebody with products.view, whoever the cache was built for', async () => {
+    vi.spyOn(masterConnection, 'getStatus').mockReturnValue({ state: 'disconnected' } as never);
+    const card = { id: 'PR1', name: 'DAMRU', code: 'TTB-0001', size: '600 x 400', mainProduct: 'Basin', image: null };
+    const cached = [entry('push', { title: 'Push', productIds: ['PR1'], products: [card] })];
+    const products = async () =>
+      (await request(createApp()).get('/api/snapshot').expect(200)).body.sellToday.map(
+        (e: SellToday) => [e.title, e.products.map((p) => p.id)],
+      );
+
+    // Built for an administrator; read offline by somebody without products.view.
+    vi.spyOn(localStore, 'getView').mockResolvedValue(view({ builtForUserId: 'US-ADMIN', sellToday: cached }));
+    expect(await products()).toEqual([['Push', []]]);
+
+    vi.spyOn(userSession, 'sessionPermissions').mockReturnValue(['notices.view', 'products.view']);
+    expect(await products()).toEqual([['Push', ['PR1']]]);
+
+    // Their own cache: the Master resolved the cards under their permissions already.
+    vi.spyOn(localStore, 'getView').mockResolvedValue(view({ builtForUserId: SESSION.userId, sellToday: cached }));
+    expect(await products()).toEqual([['Push', ['PR1']]]);
+  });
 });

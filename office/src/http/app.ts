@@ -2504,11 +2504,19 @@ function noticesFor(view: LocalView, permissions: readonly string[], ownCache: b
 
 /**
  * The "Sell today" entries this person may be shown, by the rule of `noticesFor`: nothing without
- * `notices.view`, and from a cache built for somebody else only the entries for everybody.
+ * `notices.view`, and from a cache built for somebody else only the entries for everybody. The
+ * product cards follow the Master's rule (`productCards`): nobody is shown a product they could
+ * not open, so without `products.view` an entry keeps its headline and message and no cards. A
+ * cache built for somebody else carries cards resolved under that person's permissions.
  */
 function sellTodayFor(view: LocalView, permissions: readonly string[], ownCache: boolean) {
   if (!view.sellToday || !permissions.includes('notices.view')) return view.sellToday ? [] : undefined;
-  return ownCache ? view.sellToday : view.sellToday.filter((entry) => entry.audience.kind === 'all');
+  const entries = ownCache
+    ? view.sellToday
+    : view.sellToday.filter((entry) => entry.audience.kind === 'all');
+  return permissions.includes('products.view')
+    ? entries
+    : entries.map((entry) => ({ ...entry, products: [] }));
 }
 
 function forCurrentUser(view: LocalView): LocalView {
