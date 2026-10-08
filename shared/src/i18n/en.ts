@@ -3512,6 +3512,7 @@ export const EN_MESSAGES = {
   'updates.saveAll.mainProduct': 'Main product {name}',
   'updates.saveAll.chatGroup': 'Chat group {name}',
   'updates.saveAll.chatMessage': 'Chat message not sent: "{text}"',
+  'updates.saveAll.chatEdit': 'Chat message edit not saved: "{text}"',
   'updates.saveAll.password': 'Password change (it signs you out, so it is not applied for you)',
   'updates.saveAll.recordNote': 'Note not added: "{text}"',
   'updates.saveAll.storagePath':

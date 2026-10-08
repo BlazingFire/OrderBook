@@ -159,6 +159,14 @@ function MessageRow(props: MessageRowProps) {
   const [receiptsOpen, setReceiptsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  // A changed edit is unsaved work: the room's Back (and Escape) asks before it goes.
+  useUnsavedWork(
+    `chat-edit:${message.id}`,
+    editing !== null && editing !== message.body
+      ? { label: t('updates.saveAll.chatEdit', { text: editing.trim().slice(0, 40) }) }
+      : null,
+  );
+
   if (message.kind === 'system' && message.system) {
     return (
       <div className="ob-chat-system" data-seq={message.seq}>
@@ -221,6 +229,12 @@ function MessageRow(props: MessageRowProps) {
               rows={3}
               aria-label={t('chat.message.edit')}
               onChange={(event) => setEditing(event.target.value)}
+              onKeyDown={(event) => {
+                // Escape here is the edit's Cancel, not the room's Back.
+                if (event.key !== 'Escape' || event.nativeEvent.isComposing) return;
+                event.preventDefault();
+                setEditing(null);
+              }}
             />
             <div className="ob-chat-edit-actions">
               <Button
@@ -681,7 +695,7 @@ export function ChatConversation(props: ChatConversationProps) {
 
   const toast = useToast();
   const confirm = useConfirm();
-  // Back (and Escape, which clicks it) asks before a half-written message is thrown away.
+  // Back (and Escape, which clicks it) asks before a half-written message or edit is thrown away.
   const { scope: draftScope, back } = useGuardedBack(props.onBack);
 
   const [detail, setDetail] = useState<ChatRoomDetail | null>(null);
@@ -1066,7 +1080,7 @@ export function ChatConversation(props: ChatConversationProps) {
   const title = roomTitle(detail);
   const days = groupByDay(messages);
 
-  return (
+  const room = (
     <div className="ob-chat-room">
       <header className="ob-chat-roomhead">
         <Button variant="ghost" size="sm" icon="collapse" data-esc-back onClick={back}>
@@ -1186,17 +1200,17 @@ export function ChatConversation(props: ChatConversationProps) {
       ) : detail.myRole && !canPost ? (
         <p className="ob-small ob-chat-note">{t('chat.composer.announceOnly')}</p>
       ) : canPost ? (
-        <UnsavedScope.Provider value={draftScope}>
-          <Composer
-            key={roomId}
-            members={detail.members}
-            viewer={viewer}
-            findRecords={props.findRecords}
-            onSend={send}
-            roomKey={roomId}
-          />
-        </UnsavedScope.Provider>
+        <Composer
+          key={roomId}
+          members={detail.members}
+          viewer={viewer}
+          findRecords={props.findRecords}
+          onSend={send}
+          roomKey={roomId}
+        />
       ) : null}
     </div>
   );
+  // The draft and any message being edited are what the room's Back asks about.
+  return <UnsavedScope.Provider value={draftScope}>{room}</UnsavedScope.Provider>;
 }

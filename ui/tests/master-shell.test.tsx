@@ -222,6 +222,14 @@ async function open(label: string): Promise<void> {
   });
 }
 
+/** Escape, pressed on `target` the way a person presses it; it reaches `window` (R8). */
+async function pressEscape(target: Element = document.body): Promise<void> {
+  await act(async () => {
+    fireEvent.keyDown(target, { key: 'Escape' });
+    await wait(0);
+  });
+}
+
 const gets = (calls: Call[], path: string) =>
   calls.filter((call) => call.method === 'GET' && call.url.split('?')[0] === path).length;
 
@@ -723,14 +731,6 @@ describe('Pending Orders and Final Orders', () => {
     expect(screen.queryByRole('button', { name: t('action.backToList') })).toBeNull();
   });
 
-  /** Escape, pressed on `target` the way a person presses it; it reaches `window` (R8). */
-  async function pressEscape(target: Element = document.body): Promise<void> {
-    await act(async () => {
-      fireEvent.keyDown(target, { key: 'Escape' });
-      await wait(0);
-    });
-  }
-
   it('R8: Escape goes back from an open row to the list, and a second Escape to the landing screen', async () => {
     await openList(ADMIN, t('nav.leads'));
     fireEvent.click(await screen.findByText(LEAD.id));
@@ -866,6 +866,48 @@ describe('Conflicts', () => {
     cleanup();
     await boot(['leads.view', 'sync.resolveConflicts']);
     expect(screen.getByTitle(t('nav.master.conflicts'))).toBeTruthy();
+  });
+});
+
+describe('Integrations', () => {
+  it("R8: Escape leaves a connector's field mapping for the list, asking first while a change is unsaved", async () => {
+    const connector = { id: 'conn-1', label: 'Shop feed', baseUrl: 'http://shop.test', scheduleKind: 'manual', resources: [] };
+    const calls = await boot(['api.manage'], (call) => {
+      const path = call.url.split('?')[0];
+      if (path === '/api/integrations/keys') return json([]);
+      if (path === '/api/integrations/connectors') return json([connector]);
+      if (path === '/api/integrations/connectors/conn-1/mapping') return json(connector);
+      return undefined;
+    });
+    await open(t('nav.master.integrations'));
+    fireEvent.click(
+      await screen.findByRole('button', { name: t('integrations.tab.connectors'), pressed: false }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: t('integrations.connectors.mapping') }));
+    const pathField = await screen.findByLabelText(new RegExp(t('integrations.mapping.path')));
+
+    // A changed mapping: Escape asks, and the dialog's own Escape keeps it.
+    fireEvent.change(pathField, { target: { value: '/products' } });
+    await pressEscape(pathField);
+    expect(await screen.findByText(t('action.back.discardTitle'))).toBeTruthy();
+    await pressEscape();
+    await waitFor(() => expect(screen.queryByText(t('action.back.discardTitle'))).toBeNull());
+    expect(screen.getByLabelText(new RegExp(t('integrations.mapping.path')))).toHaveProperty('value', '/products');
+
+    // Saved, it goes back to the list without asking; a second Escape goes to the landing screen.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('common.save') }));
+      await wait(0);
+    });
+    expect(calls.some((call) => call.method === 'PUT' && call.url.endsWith('/conn-1/mapping'))).toBe(true);
+    await pressEscape();
+    expect(screen.queryByText(t('action.back.discardTitle'))).toBeNull();
+    expect(screen.queryByLabelText(new RegExp(t('integrations.mapping.path')))).toBeNull();
+    expect(await screen.findByRole('button', { name: t('integrations.connectors.mapping') })).toBeTruthy();
+    expect(topbarTitle()).toBe(t('integrations.tab.connectors'));
+
+    await pressEscape();
+    expect(topbarTitle()).toBe(t('nav.master.dashboard'));
   });
 });
 

@@ -130,6 +130,8 @@ export function ChatGroupSettings(props: ChatGroupSettingsProps) {
           description: description.trim() === '' ? null : description,
           announceOnly: announce,
         });
+        // What was just saved is the new starting point: Back no longer asks about it.
+        baseline.mark({ name, description, announce, members: [] });
         toast.push(t('chat.group.saved'), { tone: 'ok' });
         await refresh();
       }

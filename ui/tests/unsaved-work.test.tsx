@@ -6,7 +6,9 @@
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Lead, Order } from '@orderbook/shared';
 
+import { LeadRecordView } from '../src/LeadRecordView.js';
 import {
   ConfirmProvider,
   __resetUnsavedWorkForTests,
@@ -133,5 +135,56 @@ describe('useSaveAllBeforeUpdate', () => {
     fireEvent.click(screen.getByRole('button', { name: 'go' }));
     fireEvent.click(await screen.findByRole('button', { name: t('updates.saveAll.updateAnyway') }));
     await waitFor(() => expect(onResult).toHaveBeenCalledWith(true));
+  });
+});
+
+describe("a pending order's Convert fields (LeadRecordView, R8)", () => {
+  const lead = {
+    id: 'LD0000000001',
+    partyId: 'PT0000000001',
+    partyName: 'Patel Tiles',
+    stageId: 's1',
+    stageName: 'New',
+    items: [],
+    timeline: [],
+    convertedOrderId: null,
+  } as unknown as Lead;
+  const convertLead = vi.fn(async () => ({ id: 'OR0000000001' }) as Order);
+
+  const view = (shown: Lead) => (
+    <LeadRecordView
+      lead={shown}
+      stages={[]}
+      optionLists={[]}
+      packagingRequired={false}
+      party={null}
+      canEdit={false}
+      canConvert
+      transport={{ addLeadRemark: vi.fn(), setLeadStage: vi.fn(), convertLead }}
+      onConverted={() => undefined}
+      onOpenOrder={() => undefined}
+      onError={() => undefined}
+    />
+  );
+
+  it('count as unsaved while typed, and not once Convert has used them', async () => {
+    render(view(lead));
+    fireEvent.change(screen.getByLabelText(t('lead.detail.dispatchLabel')), {
+      target: { value: 'Gate 2' },
+    });
+    expect(listUnsavedWork()).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: t('lead.detail.convertAction') }));
+    await waitFor(() => expect(convertLead).toHaveBeenCalled());
+    await waitFor(() => expect(listUnsavedWork()).toEqual([]));
+  });
+
+  it('do not count once the lead shows as converted (here or on another PC)', () => {
+    const shown = render(view(lead));
+    fireEvent.change(screen.getByLabelText(t('lead.detail.dispatchLabel')), {
+      target: { value: 'Gate 2' },
+    });
+    shown.rerender(view({ ...lead, convertedOrderId: 'OR0000000001' } as Lead));
+    expect(listUnsavedWork()).toEqual([]);
   });
 });

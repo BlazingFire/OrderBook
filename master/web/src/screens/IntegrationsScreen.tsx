@@ -44,6 +44,7 @@ import {
   t,
   useSubNav,
   useFormBaseline,
+  useGuardedBack,
   useToast,
   useTopbarActions,
   PasswordInput,
@@ -955,6 +956,7 @@ function MappingEditor({
     setBusy(true);
     try {
       onSaved(await api.setConnectorMapping(connector.id, resources));
+      baseline.mark(resources);
       toast.push(t('integrations.mapping.saved'), { tone: 'ok' });
       return true;
     } catch (error) {
@@ -968,12 +970,13 @@ function MappingEditor({
   }
 
   // "Save all and update": a changed field mapping is saved if the Master accepts it.
+  const dirty = baseline.dirty(resources);
   useUnsavedWork(
     'connector-mapping',
-    baseline.dirty(resources)
-      ? { label: t('updates.saveAll.mapping', { name: connector.label }), save }
-      : null,
+    dirty ? { label: t('updates.saveAll.mapping', { name: connector.label }), save } : null,
   );
+  // Close (and Escape, which clicks it: R8) asks before a changed mapping is thrown away.
+  const { back: close } = useGuardedBack(onClose, dirty);
 
   return (
     <div className="ob-pane">
@@ -1009,7 +1012,7 @@ function MappingEditor({
           <Button variant="primary" busy={busy} onClick={() => void save()}>
             {t('common.save')}
           </Button>
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" data-esc-back onClick={close}>
             {t('common.close')}
           </Button>
         </div>
