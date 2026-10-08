@@ -445,11 +445,16 @@ total: Party, Products), `CartEntry` and `CartLines` (one added product that ope
 - **Photos.** `ProductThumb` shows a product's primary photo: **32 px in a sub-product picker row, 48 px on the picked product's card** (blurhash first, then the `thumb` variant); with no photo it draws
   nothing, or, when given a name, an initial-letter tile of the same size. `GET /api/pick/product` rows now carry the product's primary image for this (a thumbnail, not the gallery). The first-stage
   list (the Products, i.e. categories) has no photos; the Added products rows show none (the artboard has none).
-- **Colour (verified live on the Master).** A multicolour sub product's card opens with the company colour list down and the first colour highlighted: Enter adds a colour and stays for the next, Enter on the
-  empty box goes to the quantities; each colour is its own row (code, variant, weight, Qty, Packaging, Grade). A fixed colour shows and is skipped; closets show "White", the trap closets "Any colour". Saving stores
-  one line per colour (checked: White 10 and Ivory 5 came back from the API as two lines with their colour names).
-- **Keys on the card:** Enter walks quantity, packaging and grade to **Add product**, which adds the sub product and returns to the list; Shift+Q adds it and moves to the next product; Backspace on the empty
-  sub-product box goes back to the product bar; F2 focuses the product search; Ctrl+S saves.
+- **The product search is a chain of two dropdowns (owner, 2026-10-08; it replaced the 1.4.6 card of every sub product).** The product list opens on focus; picking a product keeps the caret in the
+  same box, the product a chip in front of it, and opens that product's sub-product list (name, alias, code or colour; an exact match first); picking a sub product opens its card, one row per variant
+  (code, sub product, colour, weight, Qty, Packaging, Grade).
+- **Colour.** A multicolour sub product's card opens on its colour select: the first Enter opens the company colour list with the first colour highlighted, the next takes it and goes on to the quantity.
+  "+ Same sub product, another colour" adds a row for a second colour, or the sub product is picked again from the list; each colour is its own line. A fixed colour shows and is skipped; closets show
+  "White", the trap closets "Any colour". Saving stores one line per colour.
+- **Keys on the card:** Enter walks colour, quantity, packaging and grade (a pick moves on by itself; a pick box whose list is empty is no step), and Enter on the last field adds the card exactly as
+  **Add product** does and opens the same product's sub-product list again, so the next sub product is typed at once; a card short of something keeps the caret on what it lacks. Shift+Q adds a ready
+  card and moves to the next product (the product list); Backspace or Escape on the empty sub-product box goes back to the product list, and Escape walks the card back field by field; Ctrl+S
+  saves. (No key focuses the product search: the artboard's `F2` chip was never built.)
 - **Quantity unit (owner decision, 2026-10-07): pcs everywhere; Box = a packaging value.** A quantity is always pieces ("pcs"): the entry screens, details, lists, reports, the dashboard, the activity log and the printed Filling and Dispatch notes
   all say pcs. "Box" is only a value of the Packaging field (like the other packaging types), never a unit of quantity.
 

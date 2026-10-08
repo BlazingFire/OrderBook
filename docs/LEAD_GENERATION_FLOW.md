@@ -91,14 +91,15 @@ Picking a variant snapshots these onto the line **at that moment**:
 | `categoryName`, `categoryCode`, `brandName` | Copied from the product's category (the owner's Product) — its name, code and brand — unless the panel sent them with the line, as its catalogue had them (`categoryCode` and `brandName` since 2026-09-29) |
 | `colour` | **Chosen manually**, from the company's colour list, and only on a `selectable` (multi-colour) sub product; several colours are several lines, one per colour with its own quantity. Sent for any other product it is **dropped** (`colour = null`), not refused — a queued offline lead must not bounce on it (until catalogue v2 it was refused with `validation.lead.colourUnexpected`). Blank means the variant's own colour |
 | `quantity` | **Required**, greater than zero (`validation.lead.quantityRequired`) |
-| `packaging` | **Chosen manually** — never auto-filled, even in `partyWiseMode`. The form shows the field only while the company requires packaging on convert (`leads.packagingRequiredOnConvert`, **off** unless switched on) |
+| `packaging` | **Chosen manually** — never auto-filled, even in `partyWiseMode`. The form always shows the field beside the quantity; it is required only while the company requires packaging on convert (`leads.packagingRequiredOnConvert`, **off** unless switched on) |
 | `grade` | **Chosen manually**, from the company's `line.grade` list. Allowed on any product — a grade says what this line was sold as, not what the article is. Blank is a legal answer |
 | `sequence` | Display order, auto-assigned |
 | `fromPartyVariant` | Auto-set `true` when the values came from a party variant |
 | `imagePath`, `notes` | Optional |
 
-**How a lead is entered, on the screen** (the Office's `AddLeadScreen`, catalogue v2; the Master
-still has no New lead page). The keyboard path, in order:
+**How a lead is entered, on the screen** (the New Order form: the Office's `AddLeadScreen` and the
+Master's `ui/src/LeadEntryScreen.tsx`, the same chain; owner's flow of 2026-10-08, which replaced the
+1.4.6 card of every sub product). The keyboard path, in order:
 
 1. **Party** — a typeahead; the list appears only once something is typed.
 2. **Source** — the active `lead.sourcePlatform` values (§3.1). A source the company stops
@@ -109,25 +110,36 @@ still has no New lead page). The keyboard path, in order:
    `CODE · Name · Brand`; an exact code match comes first, then catalogue order. Matched on the
    panel over every Product, like the sub-product bar, so a code and Enter typed at speed take
    that code rather than the list from before it.
-5. **Sub-product bar** — lists **every** sub product of the chosen Product in catalogue order
-   (`sort_order`), filtered as you type; a row shows the printed name, the size and, for a
-   colour-named one, a swatch. The pick limit is `PICK_MAX_LIMIT` (1000; it was 50), because
-   the largest SWISWARE product, Table Top Vitrosa Basin, holds 69 and One Piece Toilet 56.
+5. **Sub-product bar** — the same box, the chosen Product a chip in front of it, its list open at
+   once: **every** sub product of the chosen Product in catalogue order (`sort_order`), filtered
+   as you type on name, alias, code and colour (an exact match first, then a prefix, then
+   anywhere); a row shows the printed name, the size and, for a colour-named one, a swatch.
+   Enter (or Tab once something is typed, or a click) opens that one sub product's card; a code
+   typed in full opens only that variant. The pick limit is `PICK_MAX_LIMIT` (1000; it was 50),
+   because the largest SWISWARE product, Table Top Vitrosa Basin, holds 69 and One Piece
+   Toilet 56. **Backspace** or **Escape** on the empty box goes back to the product bar (an open
+   list closes on the first Escape).
 6. **Colour and quantity**, by the sub product's rule — `fixed`: the colour shown locked and a
-   quantity; `dedicated`: a quantity only; `selectable`: the colour range, several colours each
-   with its own quantity (one line per colour). **Packaging** and **Grade** sit right beside each
-   quantity, the same box each (owner's instructions, 2026-09-30): picks from `line.packaging`
-   (Box, Grass, Paper to start) and `line.grade`; "—" is none. Packaging is required only while
-   the company requires it; grade is always optional.
-7. **Enter** walks each row's quantity, packaging and grade (a letter narrows a list; Enter takes
-   the highlighted one and steps on — a mouse pick steps on too), then the next row; after the
-   last grade it lands on **Add product**, whose Enter adds the sub product and returns to the
-   sub-product bar. A card still short of something keeps the caret on its last grade (Add
-   product is disabled). **Escape** walks back one field, Add product included.
-   **Shift+Q**, or the **Complete sub product** button, adds a pending valid sub product and
-   moves to the product bar; with nothing pending and an empty sub-product box it just finishes
-   the product. A capital Q still types in any other field, the colour and packaging boxes
-   included.
+   quantity; `dedicated`: a quantity only; `selectable`: a colour select first (its first Enter
+   opens the colour list with the first colour ready, the next takes it), and "+ Same sub
+   product, another colour" for a second colour with its own quantity (one line per colour).
+   **Packaging** and **Grade** sit right beside each quantity, the same box each (owner's
+   instructions, 2026-09-30): picks from `line.packaging` (Box, Grass, Paper to start) and
+   `line.grade`; "—" is none. Packaging is required only while the company requires it; grade
+   is always optional. A pick box whose list is empty (a shop with no grades) is not a step.
+7. **Enter** walks colour, quantity, packaging and grade (a letter narrows a list; Enter takes
+   the highlighted one and steps on — a mouse pick steps on too); a variant row with no quantity
+   is passed over. **Enter on the last field adds the card**, exactly as **Add product** does,
+   and the caret is back in the sub-product bar of the same product, its list open and empty,
+   for the next sub product. A card still short of something does not add: the caret goes to
+   what it lacks (a counted row's colour or packaging, else the quantity). **Escape** walks back
+   one field; from the first field of an untouched card it goes back to the sub-product bar.
+   The card's ✕ also goes back there, adding nothing. **Shift+Q** adds a ready card and moves to
+   the product bar (the next product); with no card open and an empty sub-product box it just
+   goes there. A capital Q still types in any other field, the colour and packaging boxes
+   included. The form claims every Escape it uses (an open list closing included); the page
+   root says `data-esc-home="true"` only on a new order that holds nothing at all, the shell's
+   cue that an unclaimed Escape may go Home.
 8. **Ctrl+Enter** opens a review of the lead once it is ready (the lines of one sub product
    grouped back into one row); Ctrl+Enter again saves it, once (key repeat is swallowed).
    Ctrl+S still saves directly. The form resets after a save.
