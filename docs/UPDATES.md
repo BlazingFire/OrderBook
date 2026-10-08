@@ -25,7 +25,10 @@ the other is the Master's outbound connectors, which call whatever URL an
 administrator configures under Integrations.) A shop floor with no route to the
 outside world still updates every till from one PC, and a site with no
 internet at all keeps working exactly as before: copy the releases folder in on
-a USB stick and nothing else changes.
+a USB stick and nothing else changes. Since 2026-10-08 the Master's own setup
+file also carries the Office setup, so installing the Master alone is enough
+for the Offices to follow, and a new office PC gets its setup from the Master
+([The Office setup inside the Master](#the-office-setup-inside-the-master-2026-10-08)).
 
 ## Setting it up, once
 
@@ -454,7 +457,51 @@ Master is updated.
 
 A release by hand needs both builds: `npm run release -- --os win` and
 `npm run release -- --os win7`, on Windows, into the same releases folder. The
-second builds the Office only.
+second builds the Office only. Run the `win7` one first when the Master should
+carry the Windows 7 Office too (next section).
+
+## The Office setup inside the Master (2026-10-08)
+
+The Master's setup file carries the Office setup of its own version, with its
+signed manifest: the Office for the same operating system, and on Windows also
+the Windows 7 Office when one of the same version was already in the releases
+folder when the Master was built. It makes the Master's setup file about 85 MB
+larger (another 140 MB with the Windows 7 Office).
+
+**Building it.** `npm run release` builds and publishes the Office first, then
+the Master, which copies the Office setup out of the releases folder. A Master
+built alone (`--panel master`) refuses to start unless the Office of the same
+version is already published into the same `ORDERBOOK_RELEASES_DIR`, and says
+how: run without `--panel`, or `--panel office` and then `--panel master`. That
+holds on every operating system. In CI each leg builds both panels in one run,
+so it never refuses there; the `win7` leg runs on its own runner, so a Master
+from CI carries the Windows 10/11 Office only, and Windows 7 PCs keep getting
+their build through the `win7` channel above.
+
+**Updating the Offices with no internet.** Each time the Master starts, it puts
+the Office build it carries into `office-panel/` in its releases folder, when
+that build is newer than what the folder already offers for that operating
+system: the signature is checked, the setup is copied under a `.part` name and
+renamed, the manifest is written last, and older Office builds for that
+operating system are cleared away. A newer build already there, from GitHub or
+copied in, is left alone. So installing a new Master, however it reached the
+PC, is enough: the Office Panels then update from it over the LAN as usual. The
+folder holds a second copy of the Office setup (about 85 MB).
+
+**A new office PC.** It cannot pair before the Office is installed, so the
+Master hands the setup out without pairing or sign-in:
+
+- On the Master, open **Office panels**. The Add Office Panel card shows
+  **Save Office setup…**: save it to a USB drive and run it on the new PC.
+- Or, on the new PC, open the address the card shows in a browser:
+  `http://<Master address>:<port>/api/updates/office/setup` (with
+  `?platform=win7` for the Windows 7 Office, when the Master carries it).
+
+Then pair the new PC as usual. The address answers each PC at most ten times a
+minute. A Master that carries no Office setup (running from source, or one
+installed from a build older than this) shows no such button and answers the
+address with "This Master has no Office setup to hand out"; copy the setup to
+the new PC by hand.
 
 ## What stops a bad update
 

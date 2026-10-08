@@ -859,7 +859,7 @@ last four rows. 1.4.3 also added `StageCounts` to `inputs.ts` (below the table).
 | `shared/src/domain/pending-order-number.ts` | 1.3 Phase 4. Pending order numbers, `PO/2026-27/00042`: one series per Indian financial year in the company's time zone, minted only by the Master. | `PO_NUMBER_PATTERN` (`^PO/[0-9]{4}-[0-9]{2}/[0-9]{5,}$`), `financialYearLabel(at, timeZone = 'Asia/Kolkata')` (through `Intl` `formatToParts`, so it runs on Node 16), `formatPendingOrderNumber(fy, seq)` (padded to five, never truncated), `recordNumber({id, poNumber?})` (the number, else the id). Test: `shared/tests/pending-order-number.test.ts` |
 | `shared/src/domain/version.ts` | Version comparison and the release manifest. | `parseVersion`, `compareVersions`, `isNewer`, `standing`, `VersionStanding`, `PanelKind`, `ReleasePlatform` (`win32`/`darwin`/`linux`, plus `win7` for the Electron 22 Office line), `releasePlatformFor(platform, electronVersion)` (`win7` for Windows on an Electron major below `LEGACY_ELECTRON_CEILING` = 23), `LEGACY_RELEASE_PLATFORM` (`'win32'`: a manifest with no `platform` is a Windows build), `ReleaseManifest`, `UpdateAvailability` |
 | `shared/src/domain/release-signature.ts` | Exactly which bytes an Ed25519 release signature covers. Browser-safe (no `node:crypto`). | `SIGNED_MANIFEST_FIELDS` (`panel`, `platform`, `version`, `file`, `sizeBytes`, `sha256`, `releasedAt`), `canonicalManifestPayload()` (`field=value` lines joined by newlines, `sha256` lower-cased), `ManifestSignature`, `isManifestSigned` |
-| `shared/src/domain/release-keys.ts` | The public keys a build trusts; rewritten by `tools/make-release-key.mjs`. **`TRUSTED_RELEASE_KEYS` is currently empty.** | `TrustedReleaseKey`, `TRUSTED_RELEASE_KEYS`, `trustedKeyById`, `allowUnsignedReleases(env)` |
+| `shared/src/domain/release-keys.ts` | The public keys a build trusts; rewritten by `tools/make-release-key.mjs`. `TRUSTED_RELEASE_KEYS` holds one key, `release-2026-10-01`. | `TrustedReleaseKey`, `TRUSTED_RELEASE_KEYS`, `trustedKeyById`, `allowUnsignedReleases(env)` |
 | `shared/src/domain/device.ts` | 1.4.3 (R6/R7). What a panel's own server says about its PC: hardware only, no names or addresses, so it is safe to serve before anybody has signed in. `GET /api/device` on both servers answers a `DeviceInfo`. Memory below 7.5 GiB (a machine sold as "8 GB" reports a little less) or at most 2 logical processors warns; unknown or zero figures warn nothing. Tests: `shared/tests/device.test.ts` | `DeviceInfo` (`totalMemoryBytes`, `cpuCount`), `LOW_MEMORY_BYTES` (7.5 x 1024^3), `FEW_CORES_MAX` (2), `DeviceWarnings`, `isDeviceInfo`, `deviceWarnings`, `formatGigabytes` |
 | `shared/src/domain/crash-guard.ts` | 1.4.3 (R18). What a server process does with an error nobody caught: log it and keep serving; past more than `max` (5) such errors inside `windowMs` (one minute) call `onRepeated`, which both servers wire to their clean `shutdown`, so the desktop shell starts a fresh process. Takes a `ProcessLike` and a clock, so a test passes an `EventEmitter`. Test: `shared/tests/crash-guard.test.ts` | `CrashLogger`, `ProcessLike`, `CrashGuardOptions`, `installCrashGuard` |
 | `shared/src/domain/body-errors.ts` | 1.4.3 (R18). A request body the JSON parser refused, as the answer it deserves: `entity.too.large` is 413 `payload_too_large` (`error.generic.tooLarge`); any other `entity.*` or `*.unsupported` parser failure is 400 `invalid_request` (`error.generic.malformedBody`); anything else is `null`. Both servers' error handlers call it, so neither answers 500 for the caller's mistake. Test: `shared/tests/body-errors.test.ts` | `BodyFailureAnswer`, `bodyParserFailure` |
@@ -1250,8 +1250,8 @@ and the one it added show their `it(` count instead, marked `it(`.
   `master/src/services/connector-run.service.ts` (`fetch(url` at line 162) can call
   any http(s) host configured as a connector's `baseUrl`, and nothing limits it to
   the LAN (`assertReachableUrl` refuses only non-http(s) schemes and the Master's own
-  port on localhost). `TRUSTED_RELEASE_KEYS` is empty, so no signed manifest verifies
-  until `npm run release:keygen` has run.
+  port on localhost). `TRUSTED_RELEASE_KEYS` holds one key, `release-2026-10-01`
+  (since 2026-10-01); a manifest signed with any other key is refused.
 - **Fixed 2026-09-25 — hard-coded English:** `renderActivity` filled `{actor}` with
   `'Somebody'`; it reads `logs.actor.unknown`.
 - **22 of the 84 client→server events have no caller in `office/src`** (a grep for
@@ -1347,7 +1347,7 @@ never talks to a server** (§4.10). (`ui/tests/panel-harness.ts` is the one plac
 
 | File | Exports | Notes |
 |---|---|---|
-| `ui/src/Button.tsx` | `ButtonVariant`, `ButtonSize`, `Button`, `IconButton`, `ButtonLink` | only combines `.ob-btn*` classes; `busy` disables and sets `aria-busy` |
+| `ui/src/Button.tsx` | `ButtonVariant`, `ButtonSize`, `Button`, `IconButton`, `ButtonLink` | only combines `.ob-btn*` classes; `busy` disables and sets `aria-busy`; `ButtonLink`'s `download` saves rather than opens (the Office setup on the Panels screen) |
 | `ui/src/Card.tsx` | `Card`, `Section` | `.ob-card` (hairline, no shadow) |
 | `ui/src/Tabs.tsx` | `TabItem`, `Tabs`, `Segmented` | underline tabs with roving focus; `Segmented<T>` pill switcher. 1.4.0 (Party Access): `Segmented` takes `label` (its accessible name, the group's `aria-label`) and a per-item `disabled` |
 | `ui/src/icons.tsx` | `IconName`, `Icon` | the one inline icon set (V1, UI batch): flat line drawings on a 24-unit grid, 1.75 round stroke in `currentColor`, no fill, drawn from the design artifact's Sidebar and Navigation artboards; circles are written as paths so every icon is one `d` |
@@ -2521,19 +2521,21 @@ exercised only through service integration tests.
   `prepareMasterUpdate`, then `pendingAutoUpdate()` for the shell, 30 min lifetime),
   `announceNewVersion` (one `update.available` notice per version to every active account),
   `updateAutoUpdateConfig` (`master_update.schedule_updated`). Tests: `master/tests/auto-update.test.ts`.
-- `master/src/services/update.service.ts` (509) — `releaseDirFor`, `releaseFileFor`,
+- `master/src/services/update.service.ts` (679) — `releaseDirFor`, `releaseFileFor`,
   `readManifest`, `availability` (waits on a GitHub sync for `GITHUB_WAIT_MS` = 5 s
   at most, then answers from the folder), `masterAvailability`, `verifyRelease`,
   `preparedInstaller`, `prepareMasterUpdate` (pins the build the moment the
   manifest names it, before hashing), `startReleasePolling` (every 2 min since 1.4;
   takes an after-sync hook), `syncAll`, `checkNow` (Check now: forgets the cached release,
-  answers within `GITHUB_WAIT_MS`, 10 s cool-down), `lastChecked`, `downloadStatus`.
+  answers within `GITHUB_WAIT_MS`, 10 s cool-down), `lastChecked`, `downloadStatus`,
+  `bundledOfficeSetups` and `seedBundledOfficeRelease` (the Office setup the Master carries, §10.8 item 7).
   Never runs an installer; the shell does (§10.8). Tests: `master/tests/update-check.test.ts`.
-- `master/src/services/github-releases.ts` (664) — `syncFromGitHub`, `isConfigured`, 1.4: a shared
+- `master/src/services/github-releases.ts` (760) — `syncFromGitHub`, `isConfigured`, 1.4: a shared
   20 s cache of the release listing with its etag (`forgetLatestRelease` keeps the etag), and an
   `UpdateProgressTracker` per panel and OS (`downloadProgress`);
   off unless `ORDERBOOK_RELEASES_GITHUB_REPO` is set. Writes the manifest names
-  `release.mjs` writes and sweeps per OS (§10.8).
+  `release.mjs` writes and sweeps per OS (§10.8); `writeManifest`, `sweep` and `supersededBy` are
+  exported for `seedBundledOfficeRelease`.
 - `master/src/services/developer-gate.ts` — `createDeveloperGate` (password, lockout,
   short-lived tokens); kept free of first-run setup so `master-key.service.ts` can
   build on it without an import cycle.
@@ -2735,6 +2737,7 @@ mount runs `requirePanel`, then both routers pass the path on). `notFoundHandler
   | `GET /api/reports/:report/pdf` and `/export` | source address | 60 |
   | any `multipart/form-data` request under `/api` | source address | 120 |
   | `/api/v1`, before the per-key limit | source address | 1,200 |
+  | `GET /api/updates/office/setup` (the Office setup a Master carries, 85 MB or more; 2026-10-08) | source address | 10 |
   | every Socket.IO command, panel and browser sockets alike | connection | 1,200 |
 
   Over a limit an HTTP caller gets 429 `rate_limited` with `Retry-After` and
@@ -2775,7 +2778,7 @@ mount runs `requirePanel`, then both routers pass the path on). `notFoundHandler
 | `/api/pairing` | `pairingRoutes` (`panel.routes.ts`) | none |
 | `/api/panels` | `panelRoutes` (`panel.routes.ts`) | `requireAuth` |
 | `/api/access` | `accessRoutes` | `requireAuth` |
-| `/api/updates` | `publicUpdateRoutes`, **then** `updateRoutes` (`update.routes.ts`) | `requirePanel` on each panel route (`/office/latest`, `/office/download`), `requireAuth` on the rest — see defect 3, fixed |
+| `/api/updates` | `publicUpdateRoutes`, **then** `updateRoutes` (`update.routes.ts`) | `requirePanel` on each panel route (`/office/latest`, `/office/download`); `/office/setup` open (a new PC is not paired yet) and limited per address; `requireAuth` on the rest — see defect 3, fixed |
 | `/api/party-access` | `partyAccessRoutes` | `requireAuth` |
 | `/api/recycle-bin` | `recycleBinRoutes` | `requireAuth` |
 | `/api/fields` | `fieldsRoutes` | `requireAuth` |
@@ -2841,7 +2844,9 @@ the service checks.
   `POST /users/:id/reveal-password` (`users.viewPassword`); `POST /me/password`.
 - `master/src/http/routes/update.routes.ts` (`/api/updates`): `publicUpdateRoutes`
   (`requirePanel`) — `GET /office/latest`, `GET /office/download`
-  (`?platform=darwin|linux|win32`); `updateRoutes` (`requireAuth`) — `GET /status`,
+  (`?platform=darwin|linux|win32|win7`), and, open but limited per address,
+  `GET /office/setup` (the Office setup the Master carries, for a new PC; §10.8 item 7);
+  `updateRoutes` (`requireAuth`) — `GET /status`,
   `POST /master/install` (`settings.manage`; verifies the installer and returns its
   path, never runs it).
 - `master/src/http/routes/party-access.routes.ts` (`/api/party-access`, 6): `GET /`,
@@ -3863,7 +3868,7 @@ Settings and Updates.
 | Screen (lines) | What it shows and does | `api` calls | Permissions checked inside |
 |---|---|---|---|
 | `master/web/src/screens/DashboardScreen.tsx` | a `StatTile` row (1.3 Phase 1; `StatTileSkeleton` while the summary loads), counts only, a tile only for each figure the summary carries: Pending Orders → `leads`, converted today, dispatched today, follow-ups due, Final Orders → `orders`, dispatched this week, panels online (`panels.manage`), conflicts → Conflicts, pending sync. Optional `printPending` and `chatUnread` props draw a tile only when given (for later phases). There is no low-stock card (`lowStockCount` is gone from `DashboardSummary`); stage bars with "Open board"; follow-ups due (`leads.view` only; a row opens the lead); active panels (`panels.manage`). Not ported: the Office's recent-activity box | `leads` (follow-ups) | `panels.manage`, `leads.view` |
-| `master/web/src/screens/PanelsScreen.tsx` (417) | "Add Office Panel" opens the pairing window and waits until a new row arrives over the socket (the window is also closed on effect cleanup); table of status, name, device code, LAN IP, paired, last seen; detail is an `EditorScreen` sub-screen (sub-nav `panels.detail`) that loads `api.panel(id)` for the acting role and work counts, with **Rename** and **Remove** (modal confirms) only | `openPairingWindow`, `closePairingWindow`, `panel`, `renamePanel`, `revokePanel` | none (nav needs `panels.manage`) |
+| `master/web/src/screens/PanelsScreen.tsx` (731) | "Add Office Panel" opens the pairing window and waits until a new row arrives over the socket (the window is also closed on effect cleanup); when the Master carries an Office setup (`PairingWindowState.officeSetups`, §10.8 item 7) the card offers "Save Office setup…" (a `ButtonLink` with `download`, one per carried platform) and `http://<address>:<port>/api/updates/office/setup` per LAN address for a new PC's browser; table of status, name, device code, LAN IP, paired, last seen; detail is an `EditorScreen` sub-screen (sub-nav `panels.detail`) that loads `api.panel(id)` for the acting role and work counts, with **Rename** and **Remove** (modal confirms) only | `openPairingWindow`, `closePairingWindow`, `panel`, `renamePanel`, `revokePanel` | none (nav needs `panels.manage`) |
 | `master/web/src/screens/LeadsScreen.tsx` | Pending Orders (leads), 2026-10-01 (parity plan P2). List: server `search` (debounced, `data-screen-search`), All / My parties, stage chips whose counts come from `GET /api/leads/stage-counts` (every stage under the current search and scope, the same on every page; All is its `total`; refreshed with the revision), and since 1.4.3 numbered paging with `PageBar` (`usePageSize('leads')`, default 50: the list asks the server for `limit`/`offset` and shows `total`; the stage chip goes to the server as `stageIds`, so it narrows every page; a new view, search, stage or page size starts on page 1, and when records vanish under the current page it lands on the last page that exists; `LoadMorePager` is gone), no actions column; `view` `list` or `converted` (`convertedOnly`). A row opens `EditorScreen` as a sub-screen (back button, `useSubNav('leads', ...)`): Filling note and Dispatch note (`leads.export`, a not-yet-converted lead only; `OrderNoteScreen` with `source="lead"`, sub-nav `leads.note`, party via `api.party`; 1.3 H3), Preview PDF (`leads.export`), Delete (`leads.delete`, 409 `blockedBy` named), then `LeadRecordView`; party card via `api.party` only with `parties.view`. `openId` not in the loaded rows falls back to `api.lead(id)` (a 404 clears it). | `leads`, `lead`, `party`, `optionLists`, `deleteLead` (+ the transport's `addLeadRemark`, `setLeadStage`, `convertLead`) | `leads.edit`, `lead.convert`, `leads.delete`, `leads.export`, `parties.view` |
 | `master/web/src/screens/LeadEntry.tsx` | New / Edit pending order, 2026-10-01 (P3). Host of `ui/LeadEntryScreen`: reads `api.leadEntryView()` (`GET /api/lead-entry`) on mount and whenever `revision` moves, shows a busy mark only until the first answer and never unmounts the form afterwards, so a half-typed draft survives. Mounted by `App.tsx` as the nav-less `addLead` screen and by `LeadsScreen` inside an `EditorScreen` (`lead` prop) for Edit pending order. | `leadEntryView` (+ the transport's `pick`, `createLead`, `updateLead`, `createParty`, `updateParty`) | `canCreateParty` prop (`parties.create`) |
 | `master/web/src/screens/OrdersScreen.tsx` | Final Orders, 2026-10-01 (P2). Same list shape as Pending Orders, including `PageBar` (`usePageSize('orders')`) and stage-count chips from `GET /api/orders/stage-counts`; stage chips follow the sidebar's `stage:<id>` pages (`stageId`/`onStageChange`); columns Final Order, Party, From pending order (a link that opens the lead), Qty, Weight (`*` = manual), Stage. A row opens the order as a sub-screen: Filling / Dispatch note (`orders.export`, `OrderNoteScreen`, sub-nav `orders.note`, party loaded with `parties.view`), Delete (`orders.delete`, 409 named), then `OrderRecordView`. `openId` not loaded falls back to `api.order(id)`. | `orders`, `order`, `party`, `optionLists`, `updateOrder`, `deleteOrder` (+ the transport's `setOrderStage`, `dispatchOrder`) | `orders.edit`, `orders.dispatch`, `orders.export`, `orders.delete`, `parties.view` |
@@ -5204,7 +5209,7 @@ targets equal to what `release.mjs` picks up.
 | `directories` | `output: ../build/<panel>`, `buildResources: installer` |
 | `npmRebuild` / `buildDependenciesFromSource` | both `false` (electron-builder never runs `npm install --omit=dev` on the workspace) |
 | `files` | `electron/dist/**/*`, `package.json`, `!**/node_modules/**/*` — the asar holds only the shell |
-| `extraResources` | `staging` → `panel` (the whole server as real files); `../tools/uninstall` → `uninstall` |
+| `extraResources` | `staging` → `panel` (the whole server as real files); `../tools/uninstall` → `uninstall`. The Master's `staging` also holds `office-setup/`: the Office setup of the same version for the target's OS (on Windows the Win7 Office too, when one of that version was published first) with its signed `latest-<platform>.json` (§10.6 step 6.5), so the Master's setup file is about 85 MB larger (140 MB more with the Win7 Office). No yml change: it rides in `panel` |
 | `icon` | `installer/icon.png` (`.icns` derived); on Windows `win.icon: installer/icon.ico` (7 sizes, `tools/make-icons.mjs`), used for the exe stamp and the NSIS setup and uninstaller |
 
 | OS | Targets | Artifacts | Notes |
@@ -5240,7 +5245,7 @@ targets equal to what `release.mjs` picks up.
 
 | File | Lines | Purpose |
 |---|---|---|
-| `tools/release.mjs` | 966 | the release pipeline (§10.6) |
+| `tools/release.mjs` | 956 | the release pipeline (§10.6) |
 | `tools/build-web.mjs` | 90 | the web apps' `build` (§2.3) |
 | `tools/copy-shell.mjs` | 38 | copies `electron/dist` into `master/electron/dist` and `office/electron/dist`; `--legacy` copies `build/shell-legacy` into `office/electron/dist` only and writes the `{"type":"commonjs"}` marker |
 | `tools/legacy-electron.mjs` | 19 | `LEGACY_ELECTRON = '22.3.27'` and `LEGACY_NODE = '16.17.1'`, the one pin for the Windows 7 build. Not an npm dependency: an `electron` alias would put the 22 binary behind `npx electron` and add a 100 MB download to every `npm ci` |
@@ -5259,10 +5264,11 @@ IPC), both NSIS uninstallers, and the Clean Install tool.
 
 Usage `npm run release [-- X.Y.Z] [--panel master|office|cleaner] [--os
 win|mac|linux|win7]`. `RELEASES_DIR` = `ORDERBOOK_RELEASES_DIR` or
-`<filesystem root>/OrderBook-Releases`. `PANELS`: `master` (`vendorPostgres: true`,
-`extras: ['assets']`, `native: true` — it stages binaries built for one
-architecture), `office`, `cleaner` (`serverless`, `publish: false`,
-`artifact: 'CleanInstall'`).
+`<filesystem root>/OrderBook-Releases`. `PANELS`, in build order: `office`, then
+`master` (`vendorPostgres: true`, `extras: ['assets']`, `native: true` — it stages
+binaries built for one architecture), `cleaner` (`serverless`, `publish: false`,
+`artifact: 'CleanInstall'`). The Office comes first (since 2026-10-08) because the
+Master's setup file carries the Office setup of its own version (step 6.5).
 
 | `--os` | `builderFlag` | `platform` | `ext` | `arch` | `postgres` packages | Builds on |
 |---|---|---|---|---|---|---|
@@ -5289,14 +5295,21 @@ fresh `build/shell-legacy`, copies it into `office/electron/dist` and writes
    included (§10.10 item 1).
 3. `currentVersion()` reads the root `package.json`; notes from
    `ORDERBOOK_RELEASE_NOTES`.
-4. Panels: `--panel`, or every `publish !== false` entry (master, office). Then
+4. Panels: `--panel`, or every `publish !== false` entry (office, master). Then
    **`assertHostArch(panels)`**, before the first command: a single-arch target
    (`win`, `linux`: x64) on a machine of another architecture is refused only when
    the run includes a `native` panel — the Master — because staging copies the build
    machine's own `sharp` and PostgreSQL; the Office and the cleaner build their x64
-   files anywhere.
+   files anywhere. Then, when the run has the Master and not the Office
+   (`--panel master`), **`officeSetups(version)`** must find the same-version Office
+   already published (step 6.5), or the run stops before its first command with
+   `Build the Office first: …` (how to: no `--panel`, or `--panel office` then
+   `--panel master` into the same `ORDERBOOK_RELEASES_DIR`). Required on every
+   target, not only Windows: a default run, CI's included, always builds the Office
+   first, so it only stops a Master built alone.
 5. `npm run build:shared`.
-6. **Per panel, `build(panel, version)`:**
+6. **Per panel, in `PANELS` order, `build(panel, version)` and then `publish()`
+   (step 7):**
    1. `npm run build --workspace @orderbook/<panel>` (skipped when serverless).
    2. `npx tsc -p electron/tsconfig.json`, then replace `<panel>/electron/dist`.
    3. **`ensureUniversalPackages()`** (macOS only): for every top-level non-dev
@@ -5320,7 +5333,15 @@ fresh `build/shell-legacy`, copies it into `office/electron/dist` and writes
       macOS **`universalSiblings(tree)`** adds the other-architecture twin of every
       `darwin-*` path (throws if missing); each package copied with
       `dereference: true`; the built `shared/` copied to
-      `staging/node_modules/@orderbook/shared`.
+      `staging/node_modules/@orderbook/shared`. **Master only, then
+      `bundleOfficeSetups(version)`:** `officeSetups()` reads
+      `RELEASES_DIR/office-panel/latest-<target platform>.json` (required: same
+      version, setup file present, else the throw of step 4) and, on `win`, also
+      `latest-win7.json` (taken only when it is the same version; CI's win7 leg is a
+      separate runner, so a CI Master carries the Windows Office alone); each setup
+      and its signed manifest are copied into `master/staging/office-setup/`, which
+      installs as `resources/panel/office-setup` (`config.officeSetupDir`, §10.8
+      item 7).
    6. `npx electron-builder <builderFlag> --config electron-builder.yml
       --config.electronVersion=<installed>` from the panel's directory.
    7. Requires the exact `OrderBook-<label>-<version>-Setup.<ext>` in
@@ -5389,7 +5410,8 @@ packages nothing; the Release workflow runs no tests.
 1. **Filling the Master's releases folder** (`config.releasesDir`, subfolders
    `master-panel/` and `office-panel/`, `releaseDirFor` in
    `master/src/services/update.service.ts`): **by hand** (copy a folder produced by
-   `release.mjs`; no network) or **from GitHub**, only if
+   `release.mjs`; no network), **from the Office setup the Master's own setup file
+   carried** (the Office build only, at boot; item 7) or **from GitHub**, only if
    `ORDERBOOK_RELEASES_GITHUB_REPO` is set and `ORDERBOOK_RELEASES_POLL_MINUTES` is above 0
    (`isConfigured()`). `startReleasePolling()` polls 2 min after
    boot and then every `ORDERBOOK_RELEASES_POLL_MINUTES`; every `availability()` call
@@ -5452,13 +5474,13 @@ packages nothing; the Release workflow runs no tests.
    with `installerDir = updatesDir()`.
 5. **Signatures and the draft rule:** Ed25519 over `canonicalManifestPayload`
    (`SIGNED_MANIFEST_FIELDS`); `release.mjs` keeps its own `SIGNED_FIELDS`, checked
-   equal by `master/tests/release-signed-fields.test.ts`. **`TRUSTED_RELEASE_KEYS` is
-   empty today**, so every signed manifest is refused as `unknownKey`; an unsigned one
-   is accepted only where that machine sets `ORDERBOOK_ALLOW_UNSIGNED_RELEASES=1`.
-   A missing `RELEASE_KEY` secret makes the CI release a draft; build-only runs are
-   draft pre-releases; `latestRelease()` ignores both. **Net effect today:** nothing
-   reaches a panel from GitHub, and in-app installs work only from a hand-filled
-   folder on machines that set `ORDERBOOK_ALLOW_UNSIGNED_RELEASES=1`.
+   equal by `master/tests/release-signed-fields.test.ts`. **`TRUSTED_RELEASE_KEYS`
+   holds one key, `release-2026-10-01`** (since 2026-10-01; the 1.4.6 manifests are
+   signed with it). A manifest signed with any other key is refused as `unknownKey`;
+   an unsigned one is accepted only where that machine sets
+   `ORDERBOOK_ALLOW_UNSIGNED_RELEASES=1`. A missing `RELEASE_KEY` secret makes the CI
+   release a draft; build-only runs are draft pre-releases; `latestRelease()` ignores
+   both.
 6. **Per OS:** Windows — the NSIS setup via ShellExecute (UAC); the standalone `.exe`
    refuses in-app updates and the Updates screen says to replace the file by hand.
    macOS — `openPath` mounts the `.dmg` (the only mac artefact since the `.zip` was
@@ -5471,6 +5493,36 @@ packages nothing; the Release workflow runs no tests.
    is installed by hand. **No real AppImage has been updated end to end yet**; the
    path is covered by `electron/tests/appimage.test.ts` and
    `electron/tests/installer.test.ts` only.
+7. **The Office setup a Master carries** (since 2026-10-08; `release.mjs` step 6.5):
+   `config.officeSetupDir` = `<packageRoot>/office-setup`, i.e.
+   `resources/panel/office-setup` installed and absent from source.
+   `bundledOfficeSetups()` (`update.service.ts`) lists each `latest-<platform>.json`
+   there whose setup file is present at its size. Two uses:
+   - **Seeding at boot** (`master/src/index.ts`, not awaited, a failure is a WARN):
+     `seedBundledOfficeRelease()` puts each carried build into `office-panel/` when
+     it is newer than what `readManifest('office', platform)` already offers there —
+     signature checked (`verifyManifest`), the setup copied to `<file>.part` and
+     renamed, the manifest written last with `writeManifest` (exported from
+     `github-releases.ts`, so `latest-win32.json` plus `latest.json` on Windows), then
+     superseded Office builds of that OS swept with `sweep`/`supersededBy` as a
+     GitHub sync does. A newer build already there (from GitHub or by hand) is left
+     alone. So updating the Master is enough for its Offices to update over the LAN,
+     with no internet and nothing copied by hand.
+   - **Hand-out to a new, unpaired PC:** `GET /api/updates/office/setup[?platform=
+     win32|win7|darwin|linux]` on `publicUpdateRoutes`, **without `requirePanel`**
+     (the PC cannot pair before the Office is installed) and limited to
+     `LIMITS.officeSetupPerIp` (10 a minute) per address; `res.download` streams the
+     carried file with `Content-Disposition: attachment; filename="<file>"`. No
+     `?platform=` means the first carried (Windows: the Windows 10/11 Office); none
+     carried → 404 `error.officeSetupMissing`. `/office/latest` and `/office/download`
+     keep `requirePanel`. `PairingWindowState.officeSetups` (filled by
+     `pairingWindowState()` in `panel.routes.ts`) carries platform, version, file and
+     size, and the Panels screen's Add Office Panel card shows "Save Office setup…"
+     (a `ButtonLink` with `download`, so the shell's Save As dialog can pick a USB
+     drive) and the address `http://<address>:<port>/api/updates/office/setup` per
+     LAN address. Tests: UPD-69…72 in `master/tests/updates.test.ts`,
+     `ui/tests/panels-screen.test.tsx`, and the release side in
+     `master/tests/packaging-invariants.test.ts`.
 
 ### 10.9 The macOS build: state and traps
 
