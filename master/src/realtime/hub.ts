@@ -97,6 +97,7 @@ import * as panelService from '../services/panel.service.js';
 import * as partyAccessService from '../services/party-access.service.js';
 import * as presenceService from '../services/presence.service.js';
 import * as noticeService from '../services/notice.service.js';
+import * as todoService from '../services/todo.service.js';
 import * as printService from '../services/print.service.js';
 import type { PrintOrigin } from '../services/print.service.js';
 import type { PresenceChange } from './presence-store.js';
@@ -1101,6 +1102,12 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   on('sellToday:update', ({ id, ...input }, ack) =>
     run(ack, (actor) => noticeService.updateSellToday(id, input, actor)),
   );
+
+  // The To-do list. A mark is the acting person's own.
+  on('todo:list', (ack) => run(ack, (actor) => todoService.listTodos(actor)));
+  on('todo:create', (input, ack) => run(ack, (actor) => todoService.createTodo(input, actor)));
+  on('todo:mark', (input, ack) => run(ack, (actor) => todoService.markTodo(input, actor)));
+  on('todo:delete', (id, ack) => run(ack, (actor) => todoService.deleteTodo(id, actor)));
 
   // The one live pull; everything else rides on `SyncSnapshot.dashboard` and
   // the `dashboard:changed` push both extended below.

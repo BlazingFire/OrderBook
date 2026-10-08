@@ -117,7 +117,7 @@ describe.skipIf(!canRunIntegrationTests)('archive restore across schema levels (
     const level = migrations.map((migration) => migration.name);
     const keep = new Set(level.slice(0, level.indexOf(PO_MIGRATION)));
     await rewriteArchive(exported.path, older, {
-      // Tables from the Chatroom, Printroom and notice board migrations, which come after this level.
+      // Tables from the Chatroom, Printroom, notice board and To-do list migrations, which come after this level.
       dropTables: [
         'chat_rooms',
         'chat_members',
@@ -127,6 +127,8 @@ describe.skipIf(!canRunIntegrationTests)('archive restore across schema levels (
         'notice_reads',
         'notice_audiences',
         'notices',
+        'todo_marks',
+        'todos',
       ],
       entries: {
         // The column the migration adds, and the counters it seeds.

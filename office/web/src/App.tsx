@@ -103,7 +103,6 @@ import {
   useToast,
   splitSubPage,
   withSubPages,
-  type CatalogListsPage,
   type ChatPage,
   type PrintPage,
   type ChatRecordOption,
@@ -120,10 +119,11 @@ import {
 } from '@orderbook/ui';
 /** The real components are loaded on first visit (below); these are only for their prop types. */
 import type {
-  CatalogListsScreen as CatalogListsScreenImpl,
   ChatroomScreen as ChatroomScreenImpl,
   PrintroomScreen as PrintroomScreenImpl,
   ReportsScreen as ReportsScreenImpl,
+  TodoListView as TodoListViewImpl,
+  TodoTransport,
 } from '@orderbook/ui';
 import { dispatchChat, officeChatTransport } from './chatTransport';
 import { dispatchPrint, officePrintroomTransport } from './printroomTransport';
@@ -133,7 +133,6 @@ import { reportsTransport } from './reportsTransport';
 import { AddLeadScreen } from './screens/AddLeadScreen';
 import { CatalogScreen } from './screens/CatalogScreen';
 import { BrandsScreen, MainProductsScreen } from './screens/MainProductsScreen';
-import { optionListTransport } from './optionListTransport';
 import { ConnectionUnpair } from './components/ConnectionUnpair';
 import { ConnectionScreen } from './screens/ConnectionScreen';
 import { SetupScreen } from './screens/SetupScreen';
@@ -168,10 +167,10 @@ const GalleryScreen = lazyScreen<'GalleryScreen', object>(
   () => import('@orderbook/ui/lazy/GalleryScreen'),
   'GalleryScreen',
 );
-const CatalogListsScreen = lazyScreen<
-  'CatalogListsScreen',
-  ComponentProps<typeof CatalogListsScreenImpl>
->(() => import('@orderbook/ui/lazy/CatalogListsScreen'), 'CatalogListsScreen');
+const TodoListView = lazyScreen<'TodoListView', ComponentProps<typeof TodoListViewImpl>>(
+  () => import('@orderbook/ui/lazy/TodoListView'),
+  'TodoListView',
+);
 const ConflictsScreen = lazyScreen(() => import('./screens/ConflictsScreen'), 'ConflictsScreen');
 const PartyAccessScreen = lazyScreen(
   () => import('./screens/PartyAccessScreen'),
@@ -225,6 +224,14 @@ const CLOCK_SKEW_BANNER_MS = 2 * 60_000;
 const notificationTransport: NotificationTransport = {
   list: () => api.notifications(),
   markRead: (which) => api.markNotificationsRead(which),
+};
+
+/** The To-do list, read and written through the Master (online only). */
+const todoTransport: TodoTransport = {
+  list: () => api.todos(),
+  create: (input) => api.createTodo(input),
+  mark: ({ id, status, marked }) => api.markTodo(id, status, marked),
+  remove: (id) => api.deleteTodo(id),
 };
 
 /** "10:42" today, the full date and time on an earlier day. */
@@ -411,6 +418,8 @@ function OfficePanel() {
   const [streamEpoch, setStreamEpoch] = useState(0);
   /** Moves with each notice pushed to the signed-in person, so the bell re-reads. */
   const [noticeRevision, setNoticeRevision] = useState(0);
+  /** Moves with each `todo` change, so an open To-do list re-reads. */
+  const [todoRevision, setTodoRevision] = useState(0);
 
   /*
    * An hour without the Master. One timer to the hour mark, re-armed when the
@@ -670,6 +679,7 @@ function OfficePanel() {
       if (frames.some((change) => REPORT_ENTITIES.includes(change.entity))) {
         setViewRevision((count) => count + 1);
       }
+      if (frames.some((change) => change.entity === 'todo')) setTodoRevision((count) => count + 1);
       setView((current) => {
         if (!current) return current;
         // A shallow copy is enough: `applyChangeToSnapshot` replaces whole
@@ -1085,11 +1095,6 @@ function OfficePanel() {
       label: t(REPORT_META[kind].titleToken),
       icon: REPORT_META[kind].icon,
     })),
-    lists: [
-      { key: 'grades', label: t('lists.nav.grades'), icon: 'edit' },
-      { key: 'packaging', label: t('lists.nav.packaging'), icon: 'edit' },
-      { key: 'brands', label: t('lists.nav.brands'), icon: 'edit' },
-    ],
     partyAccess: [
       { key: 'all', label: t('partyAccess.filter.all'), icon: 'parties' },
       { key: 'restricted', label: t('partyAccess.filter.restricted'), icon: 'shield' },
@@ -1251,8 +1256,9 @@ function OfficePanel() {
           can('party.assign') || can('party.accessAll')
             ? { id: 'partyAccess', label: t('nav.partyAccess'), icon: NAV_ICONS.partyAccess }
             : null,
-          // Everyone reads the three lists; editing is gated inside the page.
-          { id: 'lists', label: t('nav.lists'), icon: NAV_ICONS.lists },
+          // The To-do list (id `lists` since it replaced the grade/packaging/brand lists).
+          // Writing and deleting tasks is gated inside the page.
+          can('todos.view') ? { id: 'lists', label: t('nav.lists'), icon: NAV_ICONS.lists } : null,
         ] satisfies Array<NavItem | null>
       ).filter((item): item is NonNullable<typeof item> => item !== null),
     },
@@ -2031,11 +2037,11 @@ function OfficePanel() {
         {
           id: 'lists',
           render: () => (
-            <CatalogListsScreen
-              page={subKeyOf('lists') as CatalogListsPage}
-              permissions={view.permissions}
-              transport={optionListTransport}
-              revision={optionListsRevision}
+            <TodoListView
+              transport={todoTransport}
+              canManage={can('todos.manage')}
+              userId={session?.userId ?? null}
+              revision={streamEpoch + todoRevision}
             />
           ),
         },

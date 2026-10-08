@@ -836,6 +836,20 @@ export function createApp(): Express {
   );
   app.delete('/api/notices/:id', (req, res) => forward(res, 'notice:delete', req.params.id));
 
+  // The To-do list (protocol 11): online only, the Master's own answers for the acting person.
+  app.get('/api/todos', (_req, res) => forward(res, 'todo:list'));
+  app.post('/api/todos', async (req, res) => {
+    try {
+      res.status(201).json(await masterConnection.command('todo:create', req.body ?? {}));
+    } catch (error) {
+      failForward(res, error);
+    }
+  });
+  app.post('/api/todos/:id/mark', (req, res) =>
+    forward(res, 'todo:mark', { ...(req.body ?? {}), id: req.params.id }),
+  );
+  app.delete('/api/todos/:id', (req, res) => forward(res, 'todo:delete', req.params.id));
+
   /*
    * One record by id, for a chat chip or a bell entry that points past the 500
    * rows this panel keeps. The local view first (it also holds work queued here

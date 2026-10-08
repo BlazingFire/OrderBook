@@ -46,7 +46,7 @@ import { useNotices } from './useNotices';
 import { dispatchChat, masterChatTransport } from './chatTransport';
 import { attachPrintSocket, dispatchPrint, masterPrintroomTransport } from './printroomTransport';
 import { presenceChannel } from './presence';
-import { optionListTransport, reportsTransport } from './transports';
+import { reportsTransport, todoTransport } from './transports';
 import {
   AppShell,
   Avatar,
@@ -98,7 +98,6 @@ import {
   useSubNavState,
   splitSubPage,
   withSubPages,
-  type CatalogListsPage,
   type ChatPage,
   type PrintPage,
   type ChatRecordOption,
@@ -115,10 +114,10 @@ import {
 } from '@orderbook/ui';
 /** The real components are loaded on first visit (below); these are only for their prop types. */
 import type {
-  CatalogListsScreen as CatalogListsScreenImpl,
   ChatroomScreen as ChatroomScreenImpl,
   PrintroomScreen as PrintroomScreenImpl,
   ReportsScreen as ReportsScreenImpl,
+  TodoListView as TodoListViewImpl,
 } from '@orderbook/ui';
 import { ChangePasswordDialog } from './components/ChangePasswordDialog';
 import { DashboardScreen } from './screens/DashboardScreen';
@@ -168,12 +167,9 @@ const GalleryScreen = lazyScreen<
   () => import('@orderbook/ui/lazy/GalleryScreen'),
   'GalleryScreen',
 );
-const CatalogListsScreen = lazyScreen<
-  'CatalogListsScreen',
-  ComponentProps<typeof CatalogListsScreenImpl>
->(
-  () => import('@orderbook/ui/lazy/CatalogListsScreen'),
-  'CatalogListsScreen',
+const TodoListView = lazyScreen<'TodoListView', ComponentProps<typeof TodoListViewImpl>>(
+  () => import('@orderbook/ui/lazy/TodoListView'),
+  'TodoListView',
 );
 const ConflictsScreen = lazyScreen(() => import('./screens/ConflictsScreen'), 'ConflictsScreen');
 const FieldsScreen = lazyScreen(() => import('./screens/FieldsScreen'), 'FieldsScreen');
@@ -266,6 +262,8 @@ const SCREEN_ENTITIES: Record<string, readonly string[]> = {
   access: ['user', 'role'],
   /** The notice board and its management screen, and the Dashboard card and the sidebar badge built from them. */
   notices: ['notice'],
+  /** The To-do list. */
+  todos: ['todo'],
   partyAccess: ['party', 'party_bulk'],
   parties: ['party', 'party_bulk', 'party_variant'],
   recycleBin: [
@@ -1029,13 +1027,6 @@ function MasterPanel() {
         icon: 'chevron-right' as const,
       })),
     ],
-    // Brands is always offered, as on the Office: without `fields.view` the
-    // page says so itself rather than the sidebar quietly dropping it.
-    lists: [
-      { key: 'grades', label: t('lists.nav.grades'), icon: 'edit' },
-      { key: 'packaging', label: t('lists.nav.packaging'), icon: 'edit' },
-      { key: 'brands', label: t('lists.nav.brands'), icon: 'edit' },
-    ],
     products: [
       { key: 'sub', label: t('catalog.nav.subProducts'), icon: 'products' },
       { key: 'main', label: t('catalog.nav.mainProducts'), icon: 'inventory' },
@@ -1225,8 +1216,11 @@ function MasterPanel() {
         canViewPartyAccess
           ? { id: 'partyAccess', label: t('nav.master.partyAccess'), icon: NAV_ICONS.partyAccess }
           : null,
-        // Everyone reads the three lists; editing is gated inside the page.
-        { id: 'lists', label: t('nav.lists'), icon: NAV_ICONS.lists },
+        // The To-do list (id `lists` since it replaced the grade/packaging/brand lists, which
+        // Fields edits). Writing and deleting tasks is gated inside the page.
+        user.permissions.includes('todos.view')
+          ? { id: 'lists', label: t('nav.lists'), icon: NAV_ICONS.lists }
+          : null,
       ] satisfies Array<NavItem | null>,
     },
     {
@@ -1772,11 +1766,11 @@ function MasterPanel() {
     {
       id: 'lists',
       render: () => (
-        <CatalogListsScreen
-          page={subKeyOf('lists') as CatalogListsPage}
-          permissions={user.permissions}
-          transport={optionListTransport}
-          revision={revisionOf(revisions, 'catalogueLists')}
+        <TodoListView
+          transport={todoTransport}
+          canManage={user.permissions.includes('todos.manage')}
+          userId={user.id}
+          revision={revisionOf(revisions, 'todos')}
         />
       ),
     },

@@ -70,12 +70,13 @@ export async function createRole(input: RoleInput, actor: ActorContext): Promise
   // The Server Master tier has its one reserved role; nobody makes another.
   assertTierAssignable(tier);
   assertTierWithinActor(actor, tier);
-  // Everybody reads the notice board: a role made after the migration that granted it to the
-  // roles of the day is given it too, unless the caller says otherwise.
+  // Everybody reads the notice board and the To-do list: a role made after the migrations that
+  // granted them to the roles of the day is given them too, unless the caller says otherwise.
   const granted = [
     ...new Set([
       ...(input.permissions ?? []),
       ...(input.noticeBoard === false ? [] : ['notices.view']),
+      ...((input.todoList ?? input.noticeBoard) === false ? [] : ['todos.view']),
     ]),
   ];
   assertPermissionsWithinTier(granted, tier);

@@ -121,5 +121,7 @@
   "activity.notice.created",
   "activity.notice.updated",
   "activity.notice.deleted",
-  "activity.notice.restored"
+  "activity.notice.restored",
+  "activity.todo.created",
+  "activity.todo.deleted"
 ]

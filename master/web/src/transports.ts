@@ -15,6 +15,7 @@ import type {
   OrderRecordTransport,
   PartyImportTransport,
   ReportsTransport,
+  TodoTransport,
 } from '@orderbook/ui';
 
 import { api, ApiError } from './api';
@@ -75,6 +76,14 @@ export const reportsTransport: ReportsTransport = {
   options: (signal) => api.reportOptions(signal),
   table: (kind, query, signal) => api.reportTable(kind, query, signal),
   exportFile: (kind, query) => api.reportExport(kind, query),
+};
+
+/** The To-do list (`ui/src/TodoListView.tsx`). */
+export const todoTransport: TodoTransport = {
+  list: () => api.todos(),
+  create: (input) => api.createTodo(input),
+  mark: ({ id, status, marked }) => api.markTodo(id, status, marked),
+  remove: (id) => api.deleteTodo(id),
 };
 
 /**
