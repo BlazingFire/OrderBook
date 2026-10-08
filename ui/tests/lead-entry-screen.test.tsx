@@ -4,10 +4,13 @@
  * rendered directly over a fake transport, the way the Master mounts it.
  *
  * Ported from `add-lead-flow.test.tsx`, which boots the whole Office panel and
- * stays as it is: the same cases, a different way in. On top of those, the cases
- * the shared copy adds — a view-only grant hides the party, Create party needs
- * `parties.create`, edit opens on the saved lead and sends its whole line set,
- * and a new transport object does not re-query.
+ * stays as it is: the same cases, a different way in — the product bar, the same
+ * box as the sub-product bar, the sub product's card and its Enter walk, whose
+ * last Enter adds the card and opens the sub-product bar again (owner,
+ * 2026-10-08). On top of those, the cases the shared copy adds — a view-only
+ * grant hides the party, Create party needs `parties.create`, edit opens on the
+ * saved lead and sends its whole line set, and a new transport object does not
+ * re-query.
  */
 
 import { StrictMode } from 'react';
@@ -279,21 +282,38 @@ function searchBox(): HTMLInputElement {
   return screen.getByLabelText(t('lead.add.products.searchLabel'));
 }
 
-/**
- * Party, then the product: its card opens on every sub product at once, so `subProduct` is only
- * waited for (its row is on the card), not picked.
- */
-async function pickSubProduct(subProduct: string): Promise<void> {
+/** The product's row in the product bar: `OPT · ONE PIECE TOILET · …`. */
+const productRow = (): Promise<HTMLElement> =>
+  screen.findByRole('button', { name: new RegExp(`^${CATEGORY.code} `) });
+
+/** The party, so the form has one. */
+async function chooseParty(): Promise<void> {
   fireEvent.change(screen.getByLabelText(t('lead.add.party.search')), {
     target: { value: 'Sha' },
   });
   fireEvent.click(await screen.findByRole('button', { name: new RegExp(PARTY.name) }));
+}
 
+/** The product off the product bar: the same box is then its sub-product bar, the list down. */
+async function chooseProduct(): Promise<void> {
   fireEvent.focus(searchBox());
+  fireEvent.mouseDown(await productRow());
+  await screen.findByRole('button', { name: new RegExp(MULTI.name) });
+}
+
+/** A sub product off the open sub-product bar: its card opens. */
+async function takeSubProduct(subProduct: string): Promise<void> {
   fireEvent.mouseDown(
-    await screen.findByRole('button', { name: new RegExp(`^${CATEGORY.code} `) }),
+    within(screen.getByRole('listbox')).getByRole('button', { name: new RegExp(subProduct) }),
   );
-  await screen.findByTitle(subProduct);
+  await waitFor(() => expect(document.querySelector('[data-product-card]')).not.toBeNull());
+}
+
+/** Party, then the product, then `subProduct` picked off the sub-product bar: its card opens. */
+async function pickSubProduct(subProduct: string): Promise<void> {
+  await chooseParty();
+  await chooseProduct();
+  await takeSubProduct(subProduct);
 }
 
 /** A row's packaging box, found the way its quantity is: by the variant or colour it is for. */
@@ -306,17 +326,9 @@ function gradeBox(named: string): HTMLInputElement {
   return screen.getByLabelText(`${t('lead.add.draft.grade')} — ${named}`);
 }
 
-/** The draft card's Add product button — the last stop of its Enter walk. */
+/** The card's Add product button. */
 function addButton(): HTMLButtonElement {
   return document.querySelector<HTMLButtonElement>('[data-add-card]')!;
-}
-
-/** Add product: a click on the card's button (the walk to it is tested on its own). */
-async function finishCard(_named?: string): Promise<void> {
-  await act(async () => {
-    fireEvent.click(addButton());
-    await wait(0);
-  });
 }
 
 /** Enter on a field, with the renders it causes let through. */
@@ -327,16 +339,52 @@ async function pressEnter(field: HTMLElement): Promise<void> {
   });
 }
 
+/** A key on whatever has the caret; true when nothing claimed it (`preventDefault`). */
+async function press(key: string): Promise<boolean> {
+  let unclaimed = true;
+  await act(async () => {
+    unclaimed = fireEvent.keyDown(document.activeElement!, { key });
+    await wait(0);
+  });
+  return unclaimed;
+}
+
+/** The card is gone and the caret is back in the bar (put there in the commit that closes the card). */
+async function backInTheBar(): Promise<void> {
+  await waitFor(() => expect(document.activeElement).toBe(searchBox()));
+  expect(document.querySelector('[data-product-card]')).toBeNull();
+}
+
+/** Add product: a click on the card's button (the Enter walk to the end is tested on its own). */
+async function finishCard(_named?: string): Promise<void> {
+  await act(async () => {
+    fireEvent.click(addButton());
+    await wait(0);
+  });
+  await backInTheBar();
+}
+
+/** From the open sub-product bar: `name` typed and taken with Enter, `qty` on its row, Add. */
+async function addFromBar(name: string, code: string, qty: string): Promise<void> {
+  fireEvent.change(searchBox(), { target: { value: name } });
+  await pressEnter(searchBox());
+  fireEvent.change(await screen.findByLabelText(qtyLabel(code)), { target: { value: qty } });
+  await finishCard();
+}
+
 /**
- * The fixed sub product at 5, added with Enter on its quantity, its packaging
- * and its grade (both left at none), then Add product.
+ * The fixed sub product at 5, added by Enter to the end of the walk: the quantity's Enter adds it
+ * when the company lists no packaging or grade, else the Enters on those do.
  */
 async function enterOneLine(): Promise<void> {
   await pickSubProduct(FIXED.name);
-  const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — OPT-0001`);
+  const qty = qtyBox('OPT-0001');
   fireEvent.change(qty, { target: { value: '5' } });
   await pressEnter(qty);
-  await finishCard('White');
+  for (let step = 0; step < 2 && document.querySelector('[data-product-card]'); step += 1) {
+    await pressEnter(document.activeElement as HTMLElement);
+  }
+  await backInTheBar();
 }
 
 /** The one `createLead` call, as the body the Master would receive. */
@@ -347,6 +395,38 @@ function created(fake: Fake): {
   expect(fake.createLead).toHaveBeenCalledTimes(1);
   return fake.createLead.mock.calls[0]![0] as never;
 }
+
+/** The qty box of a card row, found by the variant or colour it is for. */
+const qtyLabel = (named: string): string => `${t('lead.add.draft.col.quantity')} — ${named}`;
+const qtyBox = (named: string): HTMLInputElement => screen.getByLabelText(qtyLabel(named));
+
+const colourBoxLabel = (productName: string, code: string): string =>
+  `${t('lead.add.draft.colour')} — ${code}`;
+
+/** The colour select of a multicolour row. */
+const colourBoxOf = (productName: string, code: string): HTMLInputElement =>
+  screen.getByLabelText(colourBoxLabel(productName, code));
+
+/** The card's rows, in order, by the code in their first cell. */
+const gridCodes = (): string[] =>
+  [...document.querySelectorAll<HTMLElement>('[data-row-key] .ob-order-cell--code')].map(
+    (cell) => cell.textContent ?? '',
+  );
+
+const aside = (): HTMLElement => document.querySelector<HTMLElement>('.ob-order-aside')!;
+const page = (): HTMLElement => document.querySelector<HTMLElement>('.ob-order-page')!;
+
+/** A fixed-colour sub product sold in two variants, so its card has two rows. */
+const PAIR = {
+  ...FIXED,
+  id: 'prod-5',
+  name: 'Twin Basin',
+  sortOrder: 5,
+  variants: [
+    { id: 'var-5w', label: 'White', code: 'OPT-0005', weightKg: 9, isActive: true },
+    { id: 'var-5i', label: 'Ivory', code: 'OPT-0006', weightKg: 9, isActive: true },
+  ],
+};
 
 beforeEach(() => {
   installBrowserStubs();
@@ -397,10 +477,7 @@ describe('the party', () => {
 
   it('after Change party, takes the same text typed again on an Enter faster than the search', async () => {
     await openForm();
-    fireEvent.change(screen.getByLabelText(t('lead.add.party.search')), {
-      target: { value: 'Sha' },
-    });
-    fireEvent.click(await screen.findByRole('button', { name: new RegExp(PARTY.name) }));
+    await chooseParty();
     fireEvent.click(await screen.findByRole('button', { name: t('lead.add.party.change') }));
     await act(async () => wait(300)); // the empty box's rows are cleared
 
@@ -450,25 +527,8 @@ describe('the source', () => {
   });
 });
 
-/** The qty box of a grid row, found by the variant or colour it is for. */
-const qtyBox = (named: string): HTMLInputElement =>
-  screen.getByLabelText(`${t('lead.add.draft.col.quantity')} — ${named}`);
-
-const colourBoxLabel = (productName: string, code: string): string =>
-  `${t('lead.add.draft.colour')} — ${code}`;
-
-/** The colour select of a multicolour row. */
-const colourBoxOf = (productName: string, code: string): HTMLInputElement =>
-  screen.getByLabelText(colourBoxLabel(productName, code));
-
-/** The card's rows, in order, by the code in their first cell. */
-const gridCodes = (): string[] =>
-  [...document.querySelectorAll<HTMLElement>('[data-row-key] .ob-order-cell--code')].map(
-    (cell) => cell.textContent ?? '',
-  );
-
 describe('the product bar', () => {
-  it('opens the product on every sub product when its code was typed, on an Enter faster than the search', async () => {
+  it('opens on the product whose code was typed, on an Enter faster than the search, as its sub-product bar', async () => {
     await openForm();
     fireEvent.focus(searchBox());
     await screen.findByRole('button', { name: new RegExp(WASH_BASIN.name) });
@@ -477,20 +537,29 @@ describe('the product bar', () => {
     fireEvent.change(searchBox(), { target: { value: 'opt' } });
     fireEvent.keyDown(searchBox(), { key: 'Enter' });
 
-    expect(await screen.findByTitle(FIXED.name)).toBeTruthy();
-    expect(document.querySelector('[data-product-card]')).not.toBeNull();
+    expect(searchBox().placeholder).toBe(
+      t('lead.add.products.productPlaceholder', { category: CATEGORY.name }),
+    );
+    expect(await screen.findByRole('button', { name: new RegExp(FIXED.name) })).toBeTruthy();
+    expect(document.querySelector('[data-product-card]')).toBeNull();
   });
 
-  it('keeps its rows out of the Tab order', async () => {
+  it('keeps its rows, and the sub products after them, out of the Tab order', async () => {
     await openForm();
     // A Tab onto a row blurred the box, whose blur closed the list — the row
     // with the caret on it included.
+    const tabbable = (): HTMLElement[] =>
+      within(screen.getByRole('listbox'))
+        .getAllByRole('button')
+        .filter((row) => row.tabIndex >= 0);
+
     fireEvent.focus(searchBox());
     await screen.findByRole('button', { name: new RegExp(WASH_BASIN.name) });
-    const tabbable = within(screen.getByRole('listbox'))
-      .getAllByRole('button')
-      .filter((row) => row.tabIndex >= 0);
-    expect(tabbable).toEqual([]);
+    expect(tabbable()).toEqual([]);
+
+    fireEvent.mouseDown(await productRow());
+    await screen.findByRole('button', { name: new RegExp(MULTI.name) });
+    expect(tabbable()).toEqual([]);
   });
 
   it('keeps the caret in the bar on an Enter with nothing to take, not in the notes', async () => {
@@ -506,16 +575,227 @@ describe('the product bar', () => {
   });
 });
 
-describe('the product card', () => {
-  it('lists every sub product of the product, a row for each variant, in catalogue order, asking for all of them', async () => {
+describe('the sub-product bar', () => {
+  it('lists every sub product of the product, in catalogue order, asking for all of them', async () => {
     const fake = await openForm();
-    await pickSubProduct(FIXED.name);
+    await chooseProduct();
 
     // The Master answered MULTI first; `sortOrder` puts FIXED first.
-    expect(gridCodes()).toEqual(['OPT-0001', 'OPT-0002', 'OPT-0003']);
+    const rows = within(screen.getByRole('listbox')).getAllByRole('button');
+    expect(rows.map((row) => row.textContent)).toEqual([
+      expect.stringContaining(FIXED.name),
+      expect.stringContaining(MULTI.name),
+      expect.stringContaining(DEDICATED.name),
+    ]);
     const request = fake.pick.mock.calls.find(([kind]) => kind === 'product')!;
     expect(request[1].limit).toBe(PICK_MAX_LIMIT);
     expect(request[1].categoryId).toBe(CATEGORY.id);
+  });
+
+  it('names the chosen product by its name, never with its main-product code (R14)', async () => {
+    await openForm();
+    await chooseProduct();
+
+    // The chip that stands for the product says "ONE PIECE TOILET", not "OPT · ONE PIECE TOILET".
+    expect(document.body.textContent).toContain(CATEGORY.name);
+    expect(document.body.textContent).not.toContain(`${CATEGORY.code} · ${CATEGORY.name}`);
+    expect(searchBox().disabled).toBe(false);
+  });
+
+  it('narrows to what is typed, an exact name, code or colour first, then a prefix', async () => {
+    const fake = await openForm();
+    // Ahead of FIXED in catalogue order, and only a prefix match for `white`.
+    fake.catalogue.products.push({
+      ...FIXED,
+      id: 'prod-4',
+      name: 'Whitewash Pan',
+      sortOrder: 0,
+      variants: [{ id: 'var-4', label: 'Ivory', code: 'OPT-0004', weightKg: 9, isActive: true }],
+    });
+    await chooseProduct();
+
+    fireEvent.change(searchBox(), { target: { value: 'white' } });
+    const rows = within(screen.getByRole('listbox')).getAllByRole('button');
+    expect(rows.map((row) => row.textContent)).toEqual([
+      expect.stringContaining(FIXED.name),
+      expect.stringContaining('Whitewash Pan'),
+    ]);
+  });
+
+  it('keeps the caret in the bar on an Enter with nothing to take, not in the notes', async () => {
+    await openForm();
+    await chooseProduct();
+
+    searchBox().focus();
+    fireEvent.change(searchBox(), { target: { value: 'zzz' } });
+    fireEvent.keyDown(searchBox(), { key: 'Enter' });
+
+    expect(document.activeElement).toBe(searchBox());
+    expect(document.querySelector('[data-product-card]')).toBeNull();
+  });
+
+  it('opens the sub product typed and taken with Enter, on its quantity, and only that one', async () => {
+    await openForm();
+    await chooseProduct();
+
+    fireEvent.change(searchBox(), { target: { value: FIXED.name } });
+    await pressEnter(searchBox());
+
+    const qty = await screen.findByLabelText(qtyLabel('OPT-0001'));
+    expect(document.activeElement).toBe(qty);
+    expect(gridCodes()).toEqual(['OPT-0001']);
+  });
+
+  it('opens on the one variant whose code was typed in full', async () => {
+    const fake = await openForm();
+    fake.catalogue.products.push(PAIR);
+    await chooseProduct();
+
+    fireEvent.change(searchBox(), { target: { value: 'opt-0006' } });
+    await pressEnter(searchBox());
+
+    await screen.findByLabelText(qtyLabel('OPT-0006'));
+    expect(gridCodes()).toEqual(['OPT-0006']);
+  });
+
+  it('goes back to the product bar on Backspace in the empty box', async () => {
+    await openForm();
+    await chooseProduct();
+
+    expect(await press('Backspace')).toBe(false);
+    expect(searchBox().placeholder).toBe(t('lead.add.products.categoryPlaceholder'));
+    expect(await screen.findByRole('button', { name: new RegExp(WASH_BASIN.name) })).toBeTruthy();
+  });
+
+  it('closes its list on the first Escape and goes back to the product bar on the next, claiming both', async () => {
+    await openForm();
+    await chooseProduct();
+    searchBox().focus();
+
+    expect(await press('Escape')).toBe(false);
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(searchBox().placeholder).toBe(
+      t('lead.add.products.productPlaceholder', { category: CATEGORY.name }),
+    );
+
+    expect(await press('Escape')).toBe(false);
+    expect(searchBox().placeholder).toBe(t('lead.add.products.categoryPlaceholder'));
+    expect(document.activeElement).toBe(searchBox());
+    expect(await screen.findByRole('button', { name: new RegExp(WASH_BASIN.name) })).toBeTruthy();
+  });
+});
+
+describe('the sub product card', () => {
+  const OPTIONS = { optionLists: [...COLOURS, ...PACKAGING, ...GRADES] };
+
+  it('walks colour, quantity, packaging and grade; Enter on the grade adds it and the sub-product bar of the same product is open again', async () => {
+    const fake = await openForm(OPTIONS);
+    await pickSubProduct(MULTI.name);
+
+    // Colour first: the first Enter opens the list with the first colour ready, the next takes it.
+    const colourBox = colourBoxOf(MULTI.name, 'OPT-0002');
+    expect(document.activeElement).toBe(colourBox);
+    await pressEnter(colourBox);
+    const list = within(screen.getByRole('listbox', { name: /Colour/ }));
+    expect(list.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'White',
+      'Ivory',
+    ]);
+    expect(list.getAllByRole('option')[0]!.getAttribute('aria-selected')).toBe('true');
+    await pressEnter(colourBox);
+
+    // The quantity.
+    const qty = qtyBox('OPT-0002 · White');
+    expect(document.activeElement).toBe(qty);
+    fireEvent.change(qty, { target: { value: '10' } });
+    await pressEnter(qty);
+
+    // The packaging, the company's list after "—": typed and taken with Enter, which moves on.
+    expect(document.activeElement).toBe(packagingBox('OPT-0002 · White'));
+    expect(
+      within(screen.getByRole('listbox'))
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual(['—', 'Box', 'Grass', 'Paper']);
+    fireEvent.change(packagingBox('OPT-0002 · White'), { target: { value: 'gr' } });
+    await pressEnter(packagingBox('OPT-0002 · White'));
+
+    // The grade, the last field: Enter takes it and adds the card.
+    expect(document.activeElement).toBe(gradeBox('OPT-0002 · White'));
+    fireEvent.change(gradeBox('OPT-0002 · White'), { target: { value: 'b' } });
+    await pressEnter(gradeBox('OPT-0002 · White'));
+    await backInTheBar();
+
+    expect(within(aside()).getByText(MULTI.name)).toBeTruthy();
+    // Back in the sub-product bar of the same product, its list open and nothing typed.
+    expect(searchBox().value).toBe('');
+    expect(searchBox().placeholder).toBe(
+      t('lead.add.products.productPlaceholder', { category: CATEGORY.name }),
+    );
+    expect(
+      within(screen.getByRole('listbox')).getByRole('button', { name: new RegExp(FIXED.name) }),
+    ).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
+      await wait(0);
+    });
+    const { items } = created(fake);
+    expect(
+      items.map(({ variantId, colour, packaging, grade, quantity }) => ({
+        variantId,
+        colour,
+        packaging,
+        grade,
+        quantity,
+      })),
+    ).toEqual([
+      { variantId: 'var-2', colour: 'White', packaging: 'Grass', grade: 'B', quantity: 10 },
+    ]);
+  });
+
+  it('then takes the next sub product straight from the bar, and adds it as a line of its own', async () => {
+    await openForm(OPTIONS);
+    await pickSubProduct(FIXED.name);
+    fireEvent.change(qtyBox('OPT-0001'), { target: { value: '5' } });
+    await pressEnter(qtyBox('OPT-0001'));
+    await pressEnter(packagingBox('OPT-0001'));
+    await pressEnter(gradeBox('OPT-0001'));
+    await backInTheBar();
+
+    fireEvent.change(searchBox(), { target: { value: DEDICATED.name } });
+    await pressEnter(searchBox());
+    const qty = await screen.findByLabelText(qtyLabel('OPT-0003'));
+    expect(document.activeElement).toBe(qty);
+    fireEvent.change(qty, { target: { value: '3' } });
+    await pressEnter(qty);
+    await pressEnter(packagingBox('OPT-0003'));
+    await pressEnter(gradeBox('OPT-0003'));
+    await backInTheBar();
+
+    expect(aside().querySelectorAll('[data-added-line]')).toHaveLength(2);
+  });
+
+  it('puts the caret in the bar in the commit that closes the card, not a tick after it', async () => {
+    await openForm(OPTIONS);
+    await pickSubProduct(FIXED.name);
+    fireEvent.change(qtyBox('OPT-0001'), { target: { value: '5' } });
+    await pressEnter(qtyBox('OPT-0001'));
+    await pressEnter(packagingBox('OPT-0001'));
+
+    // The walk's last Enter adds from a passive effect, whose render a timer can beat: a focus
+    // left to a timer could find the box still disabled, and the caret was lost.
+    let focusedAtClose: boolean | null = null;
+    const observer = new MutationObserver(() => {
+      if (focusedAtClose !== null || document.querySelector('[data-product-card]')) return;
+      focusedAtClose = document.activeElement === searchBox();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    await pressEnter(gradeBox('OPT-0001'));
+    observer.disconnect();
+
+    expect(focusedAtClose).toBe(true);
+    expect(aside().querySelectorAll('[data-added-line]')).toHaveLength(1);
   });
 
   it('names the product by its name in the bar, never with its main-product code (R14), and heads the card with both', async () => {
@@ -530,189 +810,89 @@ describe('the product card', () => {
     expect(head.querySelector('.ob-order-product__name')!.textContent).toBe(CATEGORY.name);
   });
 
-  it('shows each row by its colour rule: a fixed colour as text, a multicolour one as a select, a numbered one as a dash', async () => {
-    await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
-    await pickSubProduct(FIXED.name);
+  it('shows a row by its colour rule: a fixed colour as text, a multicolour one as a select, a numbered one as a dash', async () => {
+    await openForm(OPTIONS);
+    const row = (): HTMLElement => document.querySelector<HTMLElement>('[data-row-key]')!;
+    const close = async (): Promise<void> => {
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: t('lead.add.products.clear') }));
+        await wait(0);
+      });
+      await backInTheBar();
+    };
 
-    const rows = [...document.querySelectorAll<HTMLElement>('[data-row-key]')];
-    const [fixed, multi, dedicated] = rows;
-    expect(fixed!.querySelector('.ob-order-colour__input')).toBeNull();
-    expect(fixed!.textContent).toContain('White');
-    expect(multi!.querySelector('.ob-order-colour__input')).not.toBeNull();
-    expect(multi!.querySelector('.ob-order-colour')!.getAttribute('data-state')).toBe('needed');
-    expect(dedicated!.querySelector('.ob-order-colour__input')).toBeNull();
-    expect(dedicated!.textContent).toContain('—');
+    await pickSubProduct(FIXED.name);
+    expect(row().querySelector('.ob-order-colour__input')).toBeNull();
+    expect(row().textContent).toContain('White');
+    await close();
+
+    await takeSubProduct(MULTI.name);
+    expect(row().querySelector('.ob-order-colour__input')).not.toBeNull();
+    expect(row().querySelector('.ob-order-colour')!.getAttribute('data-state')).toBe('needed');
+    await close();
+
+    await takeSubProduct(DEDICATED.name);
+    expect(row().querySelector('.ob-order-colour__input')).toBeNull();
+    expect(row().textContent).toContain('—');
   });
 
-  it("opens on the first row's first field: the quantity of a fixed colour", async () => {
-    await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+  it('opens on its first field: the quantity of a fixed colour', async () => {
+    await openForm(OPTIONS);
     await pickSubProduct(FIXED.name);
     expect(document.activeElement).toBe(qtyBox('OPT-0001'));
   });
 
   it('focuses the first field in the commit that mounts the card, not a tick after it', async () => {
-    await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
-    fireEvent.change(screen.getByLabelText(t('lead.add.party.search')), {
-      target: { value: 'Sha' },
-    });
-    fireEvent.click(await screen.findByRole('button', { name: new RegExp(PARTY.name) }));
-    fireEvent.focus(searchBox());
-    const category = await screen.findByRole('button', {
-      name: new RegExp(`^${CATEGORY.code} `),
+    await openForm(OPTIONS);
+    await chooseParty();
+    await chooseProduct();
+    const row = within(screen.getByRole('listbox')).getByRole('button', {
+      name: new RegExp(FIXED.name),
     });
 
-    // The card mounts when the sub products arrive, outside any act. A focus left to a later
-    // passive effect lands after whatever a fast keystroke (or a test) did meanwhile, and takes the
-    // caret back to the first field; so it must already be there when the DOM appears.
+    // A focus left to a later passive effect lands after whatever a fast keystroke (or a test) did
+    // meanwhile, and takes the caret back to the first field; so it must already be there when the
+    // DOM appears.
     let focusedAtMount: boolean | null = null;
     const observer = new MutationObserver(() => {
       const box = document.querySelector<HTMLElement>('input[data-kind="qty"]');
       if (box && focusedAtMount === null) focusedAtMount = document.activeElement === box;
     });
     observer.observe(document.body, { childList: true, subtree: true });
-    fireEvent.mouseDown(category);
-    await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — OPT-0001`);
+    fireEvent.mouseDown(row);
+    await screen.findByLabelText(qtyLabel('OPT-0001'));
     observer.disconnect();
 
     expect(focusedAtMount).toBe(true);
   });
 
-  it('walks a row with a quantity through packaging and grade, then on to the next row', async () => {
-    await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
-    await pickSubProduct(FIXED.name);
-    const qty = qtyBox('OPT-0001');
-    fireEvent.change(qty, { target: { value: '5' } });
+  it('keeps the caret on an empty quantity: Enter there adds nothing', async () => {
+    await openForm(OPTIONS);
+    await pickSubProduct(DEDICATED.name);
+    const qty = qtyBox('OPT-0003');
 
     await pressEnter(qty);
-    expect(document.activeElement).toBe(packagingBox('OPT-0001'));
-    // The company's list, in its order, after "—" for none.
-    expect(
-      within(screen.getByRole('listbox'))
-        .getAllByRole('option')
-        .map((option) => option.textContent),
-    ).toEqual(['—', 'Box', 'Grass', 'Paper']);
+    await act(async () => wait(0));
 
-    await pressEnter(packagingBox('OPT-0001'));
-    expect(document.activeElement).toBe(gradeBox('OPT-0001'));
-    expect(
-      within(screen.getByRole('listbox'))
-        .getAllByRole('option')
-        .map((option) => option.textContent),
-    ).toEqual(['—', 'A', 'B']);
-
-    // The next row is the multicolour one: its colour select is the next stop.
-    await pressEnter(gradeBox('OPT-0001'));
-    expect(document.activeElement).toBe(colourBoxOf(MULTI.name, 'OPT-0002'));
-
-    for (const back of [gradeBox('OPT-0001'), packagingBox('OPT-0001'), qty]) {
-      await act(async () => {
-        fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
-        await wait(0);
-      });
-      // The first Escape only closes a list that was opened; walk until the caret lands.
-      if (document.activeElement !== back) {
-        await act(async () => {
-          fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
-          await wait(0);
-        });
-      }
-      expect(document.activeElement).toBe(back);
-    }
+    expect(document.activeElement).toBe(qty);
+    expect(addButton().disabled).toBe(true);
+    expect(aside().querySelectorAll('[data-added-line]')).toHaveLength(0);
   });
 
-  it('skips the packaging and grade of a row with no quantity, on to the next row', async () => {
-    await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+  it('with no packaging or grade list, adds the card on Enter in the quantity', async () => {
+    await openForm();
     await pickSubProduct(FIXED.name);
+    fireEvent.change(qtyBox('OPT-0001'), { target: { value: '5' } });
 
     await pressEnter(qtyBox('OPT-0001'));
-    expect(document.activeElement).toBe(colourBoxOf(MULTI.name, 'OPT-0002'));
+    await backInTheBar();
+
+    expect(within(aside()).getByText(FIXED.name)).toBeTruthy();
   });
 
-  it('ends the walk on Add product, which takes no caret while the card is not ready', async () => {
-    await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
-    await pickSubProduct(DEDICATED.name);
-    const dedicatedQty = qtyBox('OPT-0003');
-    dedicatedQty.focus();
-
-    // An empty last row goes straight to Add — which is off, so the caret stays.
-    await pressEnter(dedicatedQty);
-    expect(addButton().disabled).toBe(true);
-    expect(document.activeElement).toBe(dedicatedQty);
-
-    // With a quantity somewhere the card is ready: the walk through the last row ends on Add.
-    fireEvent.change(dedicatedQty, { target: { value: '3' } });
-    await pressEnter(dedicatedQty);
-    await pressEnter(packagingBox('OPT-0003'));
-    await pressEnter(gradeBox('OPT-0003'));
-    expect(document.activeElement).toBe(addButton());
-  });
-
-  it('adds the counted rows from Add product, closes the card and puts the caret back in the product bar', async () => {
-    await openForm();
-    await enterOneLine();
-
-    // The card is gone, the line is on the lead, the product is cleared, the caret is in the bar.
-    expect(screen.queryByLabelText(`${t('lead.add.draft.col.quantity')} — OPT-0001`)).toBeNull();
-    expect(document.querySelector('[data-product-card]')).toBeNull();
-    const aside = within(document.querySelector<HTMLElement>('.ob-order-aside')!);
-    expect(aside.getByText(CATEGORY.name)).toBeTruthy();
-    expect(aside.getByText(FIXED.name)).toBeTruthy();
-    expect(searchBox().disabled).toBe(false);
-    expect(document.activeElement).toBe(searchBox());
-    expect(searchBox().placeholder).toBe(t('lead.add.products.categoryPlaceholder'));
-  });
-
-  it('clears the card from its close button without adding anything', async () => {
-    await openForm();
-    await pickSubProduct(FIXED.name);
-    fireEvent.change(qtyBox('OPT-0001'), { target: { value: '4' } });
-
-    fireEvent.click(screen.getByRole('button', { name: t('lead.add.products.clear') }));
-    expect(document.querySelector('[data-product-card]')).toBeNull();
-    expect(screen.queryByRole('button', { name: t('lead.add.panel.title') })).toBeNull();
-    await act(async () => wait(0));
-    expect(document.activeElement).toBe(searchBox());
-    // Nothing went onto the lead.
-    expect(
-      within(document.querySelector<HTMLElement>('.ob-order-aside')!).queryByText(FIXED.name),
-    ).toBeNull();
-  });
-
-  it('moves on to the grade once packaging is picked, and takes the picks into the line', async () => {
-    const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
-    await pickSubProduct(FIXED.name);
-    const qty = qtyBox('OPT-0001');
-    fireEvent.change(qty, { target: { value: '5' } });
-    await pressEnter(qty);
-
-    // Typed and taken with Enter.
-    fireEvent.change(packagingBox('OPT-0001'), { target: { value: 'gr' } });
-    await pressEnter(packagingBox('OPT-0001'));
-    expect(document.activeElement).toBe(gradeBox('OPT-0001'));
-
-    // Picked with the mouse: on to the next row.
-    await act(async () => {
-      fireEvent.mouseDown(await screen.findByRole('option', { name: 'B' }));
-      await wait(0);
-    });
-    expect(document.activeElement).toBe(colourBoxOf(MULTI.name, 'OPT-0002'));
-
-    await finishCard();
-    expect(document.activeElement).toBe(searchBox());
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
-      await wait(0);
-    });
-
-    const { items } = created(fake);
-    expect(
-      items.map(({ variantId, packaging, grade }) => ({ variantId, packaging, grade })),
-    ).toEqual([{ variantId: 'var-1', packaging: 'Grass', grade: 'B' }]);
-  });
-
-  it('holds a counted row without packaging back while the company requires it', async () => {
+  it('holds a counted row without packaging back while the company requires it, and Enter on the grade goes back to the packaging', async () => {
     await openForm({
-      optionLists: [...COLOURS, ...PACKAGING],
+      optionLists: [...COLOURS, ...PACKAGING, ...GRADES],
       features: { packagingRequiredOnConvert: true },
     });
     await pickSubProduct(FIXED.name);
@@ -725,62 +905,155 @@ describe('the product card', () => {
     // Add product is off until the row has its packaging.
     expect(addButton().disabled).toBe(true);
 
+    // Nothing picked: the walk goes on to the grade, and the grade's Enter back to the packaging.
+    await pressEnter(packagingBox('OPT-0001'));
+    await pressEnter(gradeBox('OPT-0001'));
+    await act(async () => wait(0));
+    expect(document.activeElement).toBe(packagingBox('OPT-0001'));
+    expect(aside().querySelectorAll('[data-added-line]')).toHaveLength(0);
+
     fireEvent.change(packagingBox('OPT-0001'), { target: { value: 'bo' } });
     await pressEnter(packagingBox('OPT-0001'));
     expect(packagingBox('OPT-0001').getAttribute('aria-invalid')).toBeNull();
     expect(addButton().disabled).toBe(false);
+    await pressEnter(gradeBox('OPT-0001'));
+    await backInTheBar();
+    expect(within(aside()).getByText(FIXED.name)).toBeTruthy();
+  });
+
+  it('adds from Add product too, back to the sub-product bar of the same product', async () => {
+    await openForm();
+    await pickSubProduct(FIXED.name);
+    fireEvent.change(qtyBox('OPT-0001'), { target: { value: '5' } });
     await finishCard();
-    expect(screen.queryByLabelText(`${t('lead.add.draft.col.quantity')} — OPT-0001`)).toBeNull();
-    expect(
-      within(document.querySelector<HTMLElement>('.ob-order-aside')!).getByText(FIXED.name),
-    ).toBeTruthy();
+
+    const lines = within(aside());
+    expect(lines.getByText(CATEGORY.name)).toBeTruthy();
+    expect(lines.getByText(FIXED.name)).toBeTruthy();
+    expect(searchBox().disabled).toBe(false);
+    expect(searchBox().placeholder).toBe(
+      t('lead.add.products.productPlaceholder', { category: CATEGORY.name }),
+    );
+  });
+
+  it('clears the card from its close button without adding anything, back to the sub-product bar', async () => {
+    await openForm();
+    await pickSubProduct(FIXED.name);
+    fireEvent.change(qtyBox('OPT-0001'), { target: { value: '4' } });
+
+    fireEvent.click(screen.getByRole('button', { name: t('lead.add.products.clear') }));
+    await backInTheBar();
+    expect(within(aside()).queryByText(FIXED.name)).toBeNull();
+    expect(searchBox().placeholder).toBe(
+      t('lead.add.products.productPlaceholder', { category: CATEGORY.name }),
+    );
+  });
+
+  it('goes back to the sub-product bar on Escape from the first field of a card nothing was typed into', async () => {
+    await openForm(OPTIONS);
+    await pickSubProduct(FIXED.name);
+
+    expect(await press('Escape')).toBe(false);
+    await backInTheBar();
+    expect(searchBox().placeholder).toBe(
+      t('lead.add.products.productPlaceholder', { category: CATEGORY.name }),
+    );
+  });
+
+  it('never throws away a card lifted from the list on Escape, even with its quantity cleared', async () => {
+    await openForm(OPTIONS);
+    await pickSubProduct(FIXED.name);
+    fireEvent.change(qtyBox('OPT-0001'), { target: { value: '5' } });
+    await finishCard();
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: t('lead.add.line.modifyProduct', { product: CATEGORY.name }),
+      }),
+    );
+    fireEvent.change(qtyBox('OPT-0001'), { target: { value: '' } });
+    qtyBox('OPT-0001').focus();
+    await press('Escape');
+
+    // The lines left the order with the card: it stays open, and adds them back.
+    expect(document.querySelector('[data-product-card]')).not.toBeNull();
+    fireEvent.change(qtyBox('OPT-0001'), { target: { value: '5' } });
+    await finishCard();
+    expect(within(aside()).getByText(FIXED.name)).toBeTruthy();
   });
 });
 
 describe('Escape walks back over the stops Enter uses', () => {
   const OPTIONS = { optionLists: [...COLOURS, ...PACKAGING, ...GRADES] };
 
-  async function escape(): Promise<void> {
-    await act(async () => {
-      fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
-      await wait(0);
-    });
+  async function pickPair(): Promise<void> {
+    const fake = await openForm(OPTIONS);
+    fake.catalogue.products.push(PAIR);
+    await pickSubProduct(PAIR.name);
   }
 
-  it('lands on the quantity of an empty row above, not on its packaging or grade', async () => {
-    await openForm(OPTIONS);
-    await pickSubProduct(MULTI.name);
-    // The first row (fixed colour) is empty; the caret is in the row below it.
-    const box = colourBoxOf(MULTI.name, 'OPT-0002');
-    box.focus();
+  it('walks a counted row back through its grade and packaging to its quantity', async () => {
+    await pickPair();
+    const qty = qtyBox('OPT-0005');
+    fireEvent.change(qty, { target: { value: '5' } });
+    await pressEnter(qty);
+    await pressEnter(packagingBox('OPT-0005'));
+    expect(document.activeElement).toBe(gradeBox('OPT-0005'));
 
-    await escape();
-    expect(document.activeElement).toBe(qtyBox('OPT-0001'));
+    for (const back of [packagingBox('OPT-0005'), qty]) {
+      expect(await press('Escape')).toBe(false);
+      expect(document.activeElement).toBe(back);
+    }
+  });
+
+  it('skips the packaging and grade of a row with no quantity, on to the next row', async () => {
+    await pickPair();
+
+    await pressEnter(qtyBox('OPT-0005'));
+    expect(document.activeElement).toBe(qtyBox('OPT-0006'));
+  });
+
+  it('lands on the quantity of an empty row above, not on its packaging or grade', async () => {
+    await pickPair();
+    qtyBox('OPT-0006').focus();
+
+    await press('Escape');
+    expect(document.activeElement).toBe(qtyBox('OPT-0005'));
   });
 
   it('goes through the packaging and grade of a row that has a quantity', async () => {
-    await openForm(OPTIONS);
-    await pickSubProduct(MULTI.name);
-    fireEvent.change(qtyBox('OPT-0001'), { target: { value: '5' } });
-    const box = colourBoxOf(MULTI.name, 'OPT-0002');
-    box.focus();
+    await pickPair();
+    fireEvent.change(qtyBox('OPT-0005'), { target: { value: '5' } });
+    qtyBox('OPT-0006').focus();
 
-    await escape();
-    expect(document.activeElement).toBe(gradeBox('OPT-0001'));
-    await escape();
-    expect(document.activeElement).toBe(packagingBox('OPT-0001'));
-    await escape();
-    expect(document.activeElement).toBe(qtyBox('OPT-0001'));
+    await press('Escape');
+    expect(document.activeElement).toBe(gradeBox('OPT-0005'));
+    await press('Escape');
+    expect(document.activeElement).toBe(packagingBox('OPT-0005'));
+    await press('Escape');
+    expect(document.activeElement).toBe(qtyBox('OPT-0005'));
   });
 
   it("from Add product goes back to the last row's quantity when that row is empty", async () => {
-    await openForm(OPTIONS);
-    await pickSubProduct(MULTI.name);
-    fireEvent.change(qtyBox('OPT-0001'), { target: { value: '5' } });
+    await pickPair();
+    fireEvent.change(qtyBox('OPT-0005'), { target: { value: '5' } });
     addButton().focus();
 
-    await escape();
-    expect(document.activeElement).toBe(qtyBox('OPT-0003'));
+    await press('Escape');
+    expect(document.activeElement).toBe(qtyBox('OPT-0006'));
+  });
+
+  it('adds a two-row card from the Enter on the last row, the empty one left out', async () => {
+    await pickPair();
+    fireEvent.change(qtyBox('OPT-0005'), { target: { value: '5' } });
+    await pressEnter(qtyBox('OPT-0005'));
+    await pressEnter(packagingBox('OPT-0005'));
+    await pressEnter(gradeBox('OPT-0005'));
+    expect(document.activeElement).toBe(qtyBox('OPT-0006'));
+
+    await pressEnter(qtyBox('OPT-0006'));
+    await backInTheBar();
+    expect(aside().querySelectorAll('[data-added-line]')).toHaveLength(1);
   });
 });
 
@@ -790,8 +1063,8 @@ describe('the Added products count', () => {
     await pickSubProduct(FIXED.name);
     // Two lines on the one product.
     fireEvent.change(qtyBox('OPT-0001'), { target: { value: '5' } });
-    fireEvent.change(qtyBox('OPT-0003'), { target: { value: '3' } });
     await finishCard();
+    await addFromBar(DEDICATED.name, 'OPT-0003', '3');
 
     expect(document.querySelectorAll('[data-added-line]')).toHaveLength(2);
     const count = document.querySelector('.ob-order-aside .ob-order-count')!;
@@ -800,22 +1073,22 @@ describe('the Added products count', () => {
 });
 
 describe('the rows are named by their code', () => {
-  it('tells apart four rows of the same colour by their sub product code', async () => {
+  it('tells apart two rows of the same colour by their code', async () => {
     const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
-    const twin = {
+    fake.catalogue.products.push({
       ...FIXED,
       id: 'prod-twin',
       name: 'Twin Closet',
       sortOrder: 5,
       variants: [
-        { id: 'var-twin', label: 'White', code: 'OPT-0009', weightKg: 30, isActive: true },
+        { id: 'var-t1', label: 'White', code: 'OPT-0008', weightKg: 30, isActive: true },
+        { id: 'var-t2', label: 'White', code: 'OPT-0009', weightKg: 30, isActive: true },
       ],
-    };
-    fake.catalogue.products.push(twin as never);
-    await pickSubProduct(FIXED.name);
+    });
+    await pickSubProduct('Twin Closet');
 
     // Two white rows, two different labels.
-    expect(qtyBox('OPT-0001')).toBeTruthy();
+    expect(qtyBox('OPT-0008')).toBeTruthy();
     expect(qtyBox('OPT-0009')).toBeTruthy();
     expect(packagingBox('OPT-0009')).toBeTruthy();
     expect(gradeBox('OPT-0009')).toBeTruthy();
@@ -843,23 +1116,9 @@ describe('colour in the card', () => {
     expect(document.querySelector('.ob-order-colour[data-state="set"]')).not.toBeNull();
   });
 
-  it('goes straight on to the next row on Enter in the closed colour select of a row nobody has started, opening nothing', async () => {
+  it('opens the list on Enter in the colour select, with the colours and the key hint, and does not walk on', async () => {
     await openForm(OPTIONS);
     await pickSubProduct(MULTI.name);
-    const box = colourBoxOf(MULTI.name, 'OPT-0002');
-    box.focus();
-
-    await pressEnter(box);
-    expect(screen.queryByRole('listbox', { name: /Colour/ })).toBeNull();
-    expect(box.value).toBe('');
-    // The next row is the numbered one: its quantity.
-    expect(document.activeElement).toBe(qtyBox('OPT-0003'));
-  });
-
-  it('opens the list on Enter in the colour select of a row with a quantity, with the colours and the key hint, and does not walk on', async () => {
-    await openForm(OPTIONS);
-    await pickSubProduct(MULTI.name);
-    fireEvent.change(qtyBox('OPT-0002'), { target: { value: '4' } });
     const box = colourBoxOf(MULTI.name, 'OPT-0002');
     box.focus();
 
@@ -886,8 +1145,7 @@ describe('colour in the card', () => {
     fireEvent.change(qty, { target: { value: '10' } });
     await finishCard();
 
-    const aside = document.querySelector<HTMLElement>('.ob-order-aside')!;
-    expect(aside.textContent).toContain('Pearl Ivory');
+    expect(aside().textContent).toContain('Pearl Ivory');
   });
 
   it('wants a colour before a counted multicolour row can be added', async () => {
@@ -916,7 +1174,7 @@ describe('colour in the card', () => {
       fireEvent.click(screen.getByRole('button', { name: t('lead.add.card.anotherColour') }));
       await wait(0);
     });
-    expect(gridCodes()).toEqual(['OPT-0001', 'OPT-0002', 'OPT-0002', 'OPT-0003']);
+    expect(gridCodes()).toEqual(['OPT-0002', 'OPT-0002']);
     const boxes = screen.getAllByLabelText(
       `${t('lead.add.draft.colour')} — OPT-0002`,
     ) as HTMLInputElement[];
@@ -924,10 +1182,7 @@ describe('colour in the card', () => {
     expect(document.activeElement).toBe(boxes[1]);
 
     await pickColour(boxes[1]!, 'Whi');
-    // The new row is White; FIXED's own row is White too, so find this one by its row.
-    const rows = [...document.querySelectorAll<HTMLElement>('[data-row-key]')];
-    const whiteMulti = rows[2]!.querySelector<HTMLInputElement>('input[data-kind="qty"]')!;
-    fireEvent.change(whiteMulti, { target: { value: '10' } });
+    fireEvent.change(qtyBox('OPT-0002 · White'), { target: { value: '10' } });
     await finishCard();
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
@@ -943,11 +1198,10 @@ describe('colour in the card', () => {
     ]);
   });
 
-  it('gives each colour its own packaging and grade', async () => {
+  it('gives each colour its own packaging and grade, one card after the other', async () => {
     const fake = await openForm(OPTIONS);
     await pickSubProduct(MULTI.name);
     const first = colourBoxOf(MULTI.name, 'OPT-0002');
-    first.focus();
     await pickColour(first, 'Ivo');
     fireEvent.change(qtyBox('OPT-0002 · Ivory'), { target: { value: '10' } });
     await pressEnter(qtyBox('OPT-0002 · Ivory'));
@@ -955,10 +1209,14 @@ describe('colour in the card', () => {
     await pressEnter(packagingBox('OPT-0002 · Ivory'));
     fireEvent.change(gradeBox('OPT-0002 · Ivory'), { target: { value: 'a' } });
     await pressEnter(gradeBox('OPT-0002 · Ivory'));
-    // On to the next row (the numbered one): it has no colour select, so its quantity.
-    expect(document.activeElement).toBe(qtyBox('OPT-0003'));
+    await backInTheBar();
 
-    fireEvent.change(qtyBox('OPT-0003'), { target: { value: '2' } });
+    // The same sub product again, from the bar the add left open: another colour, its own picks.
+    fireEvent.change(searchBox(), { target: { value: MULTI.name } });
+    await pressEnter(searchBox());
+    const second = await screen.findByLabelText(colourBoxLabel(MULTI.name, 'OPT-0002'));
+    await pickColour(second, 'Whi');
+    fireEvent.change(qtyBox('OPT-0002 · White'), { target: { value: '2' } });
     await finishCard();
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
@@ -968,23 +1226,19 @@ describe('colour in the card', () => {
     const { items } = created(fake);
     expect(items.map(({ colour, packaging, grade }) => ({ colour, packaging, grade }))).toEqual([
       { colour: 'Ivory', packaging: 'Box', grade: 'A' },
-      { colour: null, packaging: '', grade: null },
+      { colour: 'White', packaging: '', grade: null },
     ]);
   });
 
-  it('has no colour select for a numbered sub product, and none at all for a fixed colour', async () => {
+  it('has no colour select for a numbered sub product, nor for a fixed colour', async () => {
     await openForm(OPTIONS);
     await pickSubProduct(DEDICATED.name);
+    expect(document.querySelector('.ob-order-colour__input')).toBeNull();
 
-    expect(
-      screen.queryByLabelText(`${t('lead.add.draft.colour')} — ${DEDICATED.name} OPT-0003`),
-    ).toBeNull();
-    expect(
-      screen.queryByLabelText(`${t('lead.add.draft.colour')} — ${FIXED.name} OPT-0001`),
-    ).toBeNull();
-    expect(screen.getAllByLabelText(new RegExp(`^${t('lead.add.draft.colour')} —`))).toHaveLength(
-      1,
-    );
+    fireEvent.click(screen.getByRole('button', { name: t('lead.add.products.clear') }));
+    await backInTheBar();
+    await takeSubProduct(FIXED.name);
+    expect(document.querySelector('.ob-order-colour__input')).toBeNull();
   });
 
   it('falls back to a plain row for a multicolour sub product when the company has no colour list', async () => {
@@ -1011,13 +1265,6 @@ describe('the catalogue changing while the entry is open', () => {
     sortOrder: 9,
     variants: [{ id: 'var-new', label: 'Black', code: 'OPT-0099', weightKg: 25, isActive: true }],
   };
-
-  async function chooseParty(): Promise<void> {
-    fireEvent.change(screen.getByLabelText(t('lead.add.party.search')), {
-      target: { value: 'Sha' },
-    });
-    fireEvent.click(await screen.findByRole('button', { name: new RegExp(PARTY.name) }));
-  }
 
   it('offers a product added on the Master at once, with nothing reopened', async () => {
     const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
@@ -1054,7 +1301,7 @@ describe('the catalogue changing while the entry is open', () => {
     expect(await screen.findByRole('button', { name: new RegExp(NEW_CATEGORY.name) })).toBeTruthy();
   });
 
-  it('opens the next card on the sub products the catalogue has now, an added one and an edited one included', async () => {
+  it('lists the sub products the catalogue has now, an added one and an edited one included', async () => {
     const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
     fake.catalogue.products.push(NEW_SUB as never);
     await act(async () => {
@@ -1063,9 +1310,10 @@ describe('the catalogue changing while the entry is open', () => {
     });
 
     await pickSubProduct(NEW_SUB.name);
-    expect(gridCodes()).toContain('OPT-0099');
+    expect(gridCodes()).toEqual(['OPT-0099']);
 
     fireEvent.click(screen.getByRole('button', { name: t('lead.add.products.clear') }));
+    await backInTheBar();
     fake.catalogue.products[fake.catalogue.products.indexOf(NEW_SUB as never)] = {
       ...NEW_SUB,
       name: 'Fresh Closet Plus',
@@ -1074,18 +1322,15 @@ describe('the catalogue changing while the entry is open', () => {
       fake.catalogueChanged();
       await wait(0);
     });
-    await act(async () => wait(0));
-    fireEvent.focus(searchBox());
-    fireEvent.mouseDown(
-      await screen.findByRole('button', { name: new RegExp(`^${CATEGORY.code} `) }),
-    );
-    expect(await screen.findByTitle('Fresh Closet Plus')).toBeTruthy();
+    expect(
+      await screen.findByRole('button', { name: new RegExp('Fresh Closet Plus') }),
+    ).toBeTruthy();
   });
 
   it('keeps the draft, the typed quantity and the caret through a catalogue change', async () => {
     const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
     await pickSubProduct(FIXED.name);
-    const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — OPT-0001`);
+    const qty = await screen.findByLabelText(qtyLabel('OPT-0001'));
     fireEvent.change(qty, { target: { value: '7' } });
     qty.focus();
     expect(document.activeElement).toBe(qty);
@@ -1097,9 +1342,7 @@ describe('the catalogue changing while the entry is open', () => {
     });
 
     // The same card, the same typed quantity, the caret where it was.
-    const again = screen.getByLabelText(
-      `${t('lead.add.draft.col.quantity')} — OPT-0001`,
-    ) as HTMLInputElement;
+    const again = screen.getByLabelText(qtyLabel('OPT-0001')) as HTMLInputElement;
     expect(again).toBe(qty);
     expect(again.value).toBe('7');
     expect(document.activeElement).toBe(again);
@@ -1146,7 +1389,7 @@ describe('the catalogue changing while the entry is open', () => {
   });
 
   it('catches a deleted product on the 31st line: no cap on how many are checked', async () => {
-    const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    const fake = await openForm();
     const extra = Array.from({ length: 30 }, (_, index) => ({
       ...FIXED,
       id: `prod-x${index}`,
@@ -1163,17 +1406,19 @@ describe('the catalogue changing while the entry is open', () => {
       ],
     }));
     fake.catalogue.products.push(...(extra as never[]));
-    await pickSubProduct(FIXED.name);
-    // One card holds every sub product: count a piece on the fixed ones, thirty-one lines in all.
-    for (const row of document.querySelectorAll<HTMLElement>('[data-row-key]')) {
-      // The fixed-colour rows only: a multicolour row wants a colour first, the numbered one is left out.
-      if (row.querySelector('.ob-order-colour__input') || row.textContent?.includes('OPT-0003'))
-        continue;
-      fireEvent.change(row.querySelector<HTMLInputElement>('input[data-kind="qty"]')!, {
-        target: { value: '1' },
-      });
+    // Thirty-one lines: the fixed sub product, then each bulk one typed into the bar the add left
+    // open — its code, Enter, a quantity, Enter (no packaging or grade list, so that adds it).
+    await enterOneLine();
+    for (const product of extra) {
+      const code = product.variants[0]!.code;
+      fireEvent.change(searchBox(), { target: { value: code } });
+      await pressEnter(searchBox());
+      const qty = await screen.findByLabelText(qtyLabel(code));
+      fireEvent.change(qty, { target: { value: '1' } });
+      await pressEnter(qty);
+      await backInTheBar();
     }
-    await finishCard();
+    expect(document.querySelectorAll('[data-added-line]')).toHaveLength(31);
 
     const last = extra[extra.length - 1]!;
 
@@ -1304,7 +1549,7 @@ describe('the catalogue changing while the entry is open', () => {
 });
 
 describe('the Added products list, grouped by product', () => {
-  /** A sub product of another product (WASH BASIN), so a card can add lines to two groups. */
+  /** A sub product of another product (WASH BASIN), so the order has lines in two groups. */
   const BASIN = {
     ...FIXED,
     id: 'prod-9',
@@ -1318,21 +1563,16 @@ describe('the Added products list, grouped by product', () => {
 
   async function twoGroups() {
     const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
+    // The fake answers every product's sub products alike, so the basin is in OPT's bar too.
     fake.catalogue.products.push(BASIN as never);
     await pickSubProduct(FIXED.name);
     fireEvent.change(qtyBox('OPT-0001'), { target: { value: '5' } });
-    fireEvent.change(qtyBox('OPT-0003'), { target: { value: '3' } });
-    const basin = [...document.querySelectorAll<HTMLElement>('[data-row-key]')].find((row) =>
-      row.textContent?.includes('WB-0001'),
-    )!;
-    fireEvent.change(basin.querySelector<HTMLInputElement>('input[data-kind="qty"]')!, {
-      target: { value: '7' },
-    });
     await finishCard();
+    await addFromBar(DEDICATED.name, 'OPT-0003', '3');
+    await addFromBar(BASIN.name, 'WB-0001', '7');
     return fake;
   }
 
-  const aside = (): HTMLElement => document.querySelector<HTMLElement>('.ob-order-aside')!;
   const groupNames = (): string[] =>
     [...aside().querySelectorAll('[data-added-group] .ob-order-group__name')].map(
       (name) => name.textContent ?? '',
@@ -1453,7 +1693,7 @@ describe('product photos', () => {
     await screen.findByLabelText(t('lead.add.party.search'), {}, { timeout: 10_000 });
 
     await pickSubProduct(FIXED.name);
-    // A product has no photo of its own: its card shows its first sub product's, at 48 px.
+    // A product has no photo of its own: its card shows the sub product's, at 48 px.
     expect(document.querySelector('.ob-order-product__head .ob-thumb')).not.toBeNull();
 
     fireEvent.change(qtyBox('OPT-0001'), { target: { value: '5' } });
@@ -1471,10 +1711,7 @@ describe('product photos', () => {
 describe('the party box and the chosen party', () => {
   it('shows the chosen party by name, code and city (owner, 2026-10-07)', async () => {
     await openForm();
-    fireEvent.change(screen.getByLabelText(t('lead.add.party.search')), {
-      target: { value: 'Sha' },
-    });
-    fireEvent.click(await screen.findByRole('button', { name: new RegExp(PARTY.name) }));
+    await chooseParty();
     await screen.findByRole('button', { name: t('lead.add.party.change') });
 
     const chip = document.querySelector<HTMLElement>('[data-party-chip]')!;
@@ -1576,12 +1813,13 @@ describe('a dedicated sub product', () => {
     await pickSubProduct(DEDICATED.name);
 
     // The owner's numbered designer pieces: no colour is chosen or shown (§2).
-    const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — OPT-0003`);
+    const qty = await screen.findByLabelText(qtyLabel('OPT-0003'));
     expect(screen.queryByLabelText(t('lead.add.flow.addColour'))).toBeNull();
+    expect(document.querySelector('.ob-order-colour__input')).toBeNull();
 
     fireEvent.change(qty, { target: { value: '3' } });
     await pressEnter(qty);
-    await finishCard('OPT-0003');
+    await backInTheBar();
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
       await wait(0);
@@ -1595,21 +1833,45 @@ describe('a dedicated sub product', () => {
 });
 
 describe('Shift+Q', () => {
-  it('after an Add product, the card is closed and the key is just a Q in the product bar', async () => {
+  /** Shift+Q on `target`; true when nothing claimed it (a Q is typed). */
+  async function shiftQ(target: HTMLElement): Promise<boolean> {
+    let typed = true;
+    await act(async () => {
+      typed = fireEvent.keyDown(target, { key: 'Q', shiftKey: true });
+      await wait(0);
+    });
+    return typed;
+  }
+
+  it('from the empty sub-product bar after an add, goes to the product bar, its list down', async () => {
     await openForm();
     await enterOneLine();
 
-    // Nothing pending: the bar's capital Q is typed, not swallowed.
-    expect(fireEvent.keyDown(searchBox(), { key: 'Q', shiftKey: true })).toBe(true);
+    expect(await shiftQ(searchBox())).toBe(false);
+    expect(searchBox().placeholder).toBe(t('lead.add.products.categoryPlaceholder'));
+    expect(await screen.findByRole('button', { name: new RegExp(WASH_BASIN.name) })).toBeTruthy();
+  });
+
+  it('is only a capital Q in the product bar, with no product chosen', async () => {
+    await openForm();
+    fireEvent.focus(searchBox());
+
+    expect(await shiftQ(searchBox())).toBe(true);
     expect(searchBox().placeholder).toBe(t('lead.add.products.categoryPlaceholder'));
   });
 
-  it('is a capital Q in the notes', async () => {
+  it('is a capital Q in the notes, and in a sub-product box with text in it', async () => {
     await openForm();
     await enterOneLine();
 
     const notes = screen.getByLabelText(t('lead.add.details.notes'));
     expect(fireEvent.keyDown(notes, { key: 'Q', shiftKey: true })).toBe(true);
+
+    fireEvent.change(searchBox(), { target: { value: 'A' } });
+    expect(fireEvent.keyDown(searchBox(), { key: 'Q', shiftKey: true })).toBe(true);
+    expect(searchBox().placeholder).toBe(
+      t('lead.add.products.productPlaceholder', { category: CATEGORY.name }),
+    );
   });
 
   it("from a ready card's quantity, adds the card and goes to the product bar", async () => {
@@ -1618,17 +1880,10 @@ describe('Shift+Q', () => {
     const qty = qtyBox('OPT-0001');
     fireEvent.change(qty, { target: { value: '5' } });
 
-    let typed = true;
-    await act(async () => {
-      typed = fireEvent.keyDown(qty, { key: 'Q', shiftKey: true });
-      await wait(0);
-    });
+    expect(await shiftQ(qty)).toBe(false);
+    await backInTheBar();
 
-    expect(typed).toBe(false);
-    expect(
-      within(document.querySelector<HTMLElement>('.ob-order-aside')!).getByText(FIXED.name),
-    ).toBeTruthy();
-    expect(document.querySelector('[data-product-card]')).toBeNull();
+    expect(within(aside()).getByText(FIXED.name)).toBeTruthy();
     expect(searchBox().placeholder).toBe(t('lead.add.products.categoryPlaceholder'));
   });
 
@@ -1637,31 +1892,85 @@ describe('Shift+Q', () => {
     await pickSubProduct(FIXED.name);
     const qty = qtyBox('OPT-0001');
 
-    let typed = false;
-    await act(async () => {
-      typed = fireEvent.keyDown(qty, { key: 'Q', shiftKey: true });
-      await wait(0);
-    });
-
-    expect(typed).toBe(true);
+    expect(await shiftQ(qty)).toBe(true);
     expect(qtyBox('OPT-0001')).toBe(qty);
 
-    // The card, once filled, adds as usual.
+    // The card, once filled, adds as usual, back to its product's bar.
     fireEvent.change(qty, { target: { value: '5' } });
     await finishCard();
-    expect(document.querySelector('[data-product-card]')).toBeNull();
+    expect(searchBox().placeholder).toBe(
+      t('lead.add.products.productPlaceholder', { category: CATEGORY.name }),
+    );
   });
 
   it('is a capital Q in the colour box, even on a card ready to add', async () => {
     await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
     await pickSubProduct(MULTI.name);
-
-    fireEvent.change(qtyBox('OPT-0001'), { target: { value: '10' } });
     const colourBox = colourBoxOf(MULTI.name, 'OPT-0002');
+    fireEvent.change(colourBox, { target: { value: 'Whi' } });
+    await pressEnter(colourBox);
+    fireEvent.change(qtyBox('OPT-0002 · White'), { target: { value: '10' } });
 
     expect(fireEvent.keyDown(colourBox, { key: 'Q', shiftKey: true })).toBe(true);
     // The card is still open: the Q did not add it.
     expect(colourBoxOf(MULTI.name, 'OPT-0002')).toBe(colourBox);
+  });
+});
+
+describe('Escape and the shell', () => {
+  it('is claimed by the party box when it closes its list, and left alone when there is none', async () => {
+    await openForm();
+    const partyBox = screen.getByLabelText(t('lead.add.party.search'));
+    partyBox.focus();
+    fireEvent.change(partyBox, { target: { value: 'Sha' } });
+    await screen.findByRole('button', { name: new RegExp(PARTY.name) });
+
+    expect(await press('Escape')).toBe(false);
+    expect(screen.queryByRole('button', { name: new RegExp(PARTY.name) })).toBeNull();
+    // Nothing left to close, and the party is the first field: the shell may have this one.
+    expect(await press('Escape')).toBe(true);
+  });
+
+  it('marks the page Home-able only while a new order holds nothing at all', async () => {
+    await openForm();
+    expect(page().getAttribute('data-esc-home')).toBe('true');
+
+    // A product chosen is work; Backspace back to the product bar leaves none.
+    await chooseProduct();
+    expect(page().getAttribute('data-esc-home')).toBe('false');
+    await press('Backspace');
+    await waitFor(() => expect(page().getAttribute('data-esc-home')).toBe('true'));
+
+    // Typed text in the bar, a note, a party: each is work.
+    fireEvent.change(searchBox(), { target: { value: 'op' } });
+    expect(page().getAttribute('data-esc-home')).toBe('false');
+    fireEvent.change(searchBox(), { target: { value: '' } });
+    expect(page().getAttribute('data-esc-home')).toBe('true');
+    const notes = screen.getByLabelText(t('lead.add.details.notes'));
+    fireEvent.change(notes, { target: { value: 'ring back' } });
+    expect(page().getAttribute('data-esc-home')).toBe('false');
+    fireEvent.change(notes, { target: { value: '' } });
+    expect(page().getAttribute('data-esc-home')).toBe('true');
+    await chooseParty();
+    expect(page().getAttribute('data-esc-home')).toBe('false');
+  });
+
+  it('never marks an edit Home-able, untouched or not', async () => {
+    const saved = {
+      id: 'L-13',
+      partyId: PARTY.id,
+      partyName: PARTY.name,
+      ownerId: 'user-1',
+      sourcePlatform: 'phone',
+      followUpDate: isoDate(2),
+      partyWiseMode: false,
+      notes: null,
+      convertedOrderId: null,
+      sync: { version: 1, hlc: 'h1', fieldHlc: {}, temporaryId: null },
+      items: [],
+    } as unknown as Lead;
+    await openForm({}, { lead: saved });
+    expect(page().getAttribute('data-esc-home')).toBe('false');
   });
 });
 
@@ -1831,11 +2140,10 @@ describe('what the shared copy adds', () => {
     /** A line added in this edit: the dedicated sub product, at 3. */
     async function addDedicatedLine(): Promise<void> {
       searchBox().focus();
-      fireEvent.mouseDown(
-        await screen.findByRole('button', { name: new RegExp(`^${CATEGORY.code} `) }),
-      );
-      const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — OPT-0003`);
-      fireEvent.change(qty, { target: { value: '3' } });
+      fireEvent.mouseDown(await productRow());
+      await screen.findByRole('button', { name: new RegExp(MULTI.name) });
+      await takeSubProduct(DEDICATED.name);
+      fireEvent.change(qtyBox('OPT-0003'), { target: { value: '3' } });
       await finishCard('OPT-0003');
     }
 

@@ -1138,6 +1138,8 @@ describe('New Order', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Sharma Traders/ }));
     fireEvent.focus(searchBox());
     fireEvent.mouseDown(await screen.findByRole('button', { name: /ONE PIECE TOILET/ }));
+    // The same box is then the product's sub-product bar: the sub product opens its card.
+    fireEvent.mouseDown(await screen.findByRole('button', { name: /Aqua Closet/ }));
     const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — OPT-0001`);
     fireEvent.change(qty, { target: { value: '5' } });
     await act(async () => {

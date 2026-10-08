@@ -28,11 +28,13 @@
  *
  * Products are found the way the catalogue is organised — **Brand → Product →
  * Sub product** (`docs/catalogue/CATALOGUE_MODEL.md` §6; in code a product is
- * a *category* and a sub product a *model*). The search box is the **product
- * bar**: a product by name or code, rows `CODE · Name · Brand`. Choosing one
- * opens the **product card** under it with EVERY sub product of that product,
- * one row for each variant on sale, in catalogue order. A row says what its
- * sub product's colour rule (`colourRuleOf`) leaves to ask:
+ * a *category* and a sub product a *model*). One search box is a chain of two
+ * dropdowns: the **product bar** (a product by name or code, rows
+ * `CODE · Name · Brand`), then, with the product as a chip in front of the same
+ * box, the **sub-product bar** (its sub products, by name, alias, code or
+ * colour). Picking a sub product opens the **card** under it, one row for each
+ * variant on sale. A row says what the colour rule (`colourRuleOf`) leaves to
+ * ask:
  *  · `fixed` — the colour is the variant's label, shown and not chosen;
  *  · `dedicated` — nothing about colour at all (a dash);
  *  · `selectable` (multicolour) — a colour from the company's colour list in
@@ -40,19 +42,20 @@
  *    blank row under it, so White ×10 and Ivory ×5 are two rows.
  * A row is a line once it has a quantity. Each row's packaging sits beside its
  * quantity, a pick from the company's `line.packaging` list (required only
- * while the company requires it), and grade beside that, always optional.
+ * while the company requires it), and grade beside that, always optional. A
+ * pick box whose list is empty is not a step.
  *
- * Keys, the way the counter works (the model is `ui/src/order/gridModel.ts`):
- *  · **Enter** walks a row's colour select (a multicolour row), quantity,
- *    packaging and grade (a pick moves on by itself), then the next row; after
- *    the last row it lands on Add product, whose Enter adds every counted row
- *    and returns to the product bar. A row nobody has started is skipped: from
- *    an empty quantity the walk goes past that row's packaging and grade, and
- *    from the closed colour select of a row with no quantity it goes on to the
- *    next row without opening the list. **Escape** walks back over the same
- *    stops;
- *  · **Shift+Q** adds a ready card and goes to the product bar. Anywhere it
- *    would do nothing it is a capital Q;
+ * Keys, the way the counter works (owner, 2026-10-08; the model is
+ * `ui/src/order/gridModel.ts`):
+ *  · **Enter** walks colour (multicolour only; the first Enter opens the list,
+ *    the next takes the colour), quantity, packaging and grade (a pick moves on
+ *    by itself). A row nobody has started is skipped. Enter on the last field
+ *    adds the card, as Add product does, and the caret is back in the
+ *    sub-product bar of the same product, its list open. **Escape** walks back
+ *    over the same stops; on the empty sub-product bar, Escape or Backspace
+ *    goes back to the product bar;
+ *  · **Shift+Q** adds a ready card and goes to the product bar (the next
+ *    product). Anywhere it would do nothing it is a capital Q;
  *  · **Ctrl+Enter** opens a review of the finished lead, and Ctrl+Enter there
  *    saves it — once, however the key repeats. Ctrl+S still saves directly.
  *
@@ -110,6 +113,7 @@ import {
   colourRuleOf,
   lineColourText,
   resolveCompanyFeatures,
+  shownColour,
 } from '@orderbook/shared';
 
 import { Button } from './Button.js';
@@ -127,6 +131,7 @@ import {
   linesToRows,
   nextWalkStop,
   prevWalkStop,
+  rowProblem,
   rowsToLines,
   type GridLine,
   type GridRow,
@@ -225,8 +230,8 @@ interface Props {
 type DraftLine = GridLine;
 
 /**
- * The product card, open: the chosen product and a row for each variant of each of its sub
- * products. A card lifted from the Added products list (an edit) holds that product's lines only.
+ * The card, open: the chosen sub product's product and a row for each of its variants. A card
+ * lifted from the Added products list (an edit) holds that product's lines.
  */
 interface DraftCard {
   categoryName: string;
@@ -264,6 +269,35 @@ function isoDate(daysFromToday: number): string {
 function lineWeight(line: { weightKg: number | null; quantity: number }): number | null {
   if (line.weightKg === null) return null;
   return Math.round(line.weightKg * line.quantity * 1000) / 1000;
+}
+
+/**
+ * The sub products matching what is typed in the bar: an exact name or code
+ * first, then a prefix, then anywhere in the name, alias, code or colour —
+ * catalogue order inside each, the sort being stable.
+ *
+ * Local, over every sub product fetched once per product, so a fast Enter never
+ * lands on the rows of a search that has not come back yet.
+ */
+function subProductMatches(rows: readonly Product[], term: string): Product[] {
+  if (!term) return rows.slice();
+  const ranked: Array<{ row: Product; rank: number }> = [];
+  for (const row of rows) {
+    const words = [
+      row.name,
+      row.alias ?? '',
+      ...row.variants.flatMap((variant) => [variant.code, variant.label ?? '']),
+    ].map((word) => word.toLowerCase());
+    const rank = words.includes(term)
+      ? 0
+      : words.some((word) => word.startsWith(term))
+        ? 1
+        : words.some((word) => word.includes(term))
+          ? 2
+          : -1;
+    if (rank >= 0) ranked.push({ row, rank });
+  }
+  return ranked.sort((a, b) => a.rank - b.rank).map((entry) => entry.row);
 }
 
 /**
@@ -412,7 +446,7 @@ function LeadEntryForm({
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [sel, setSel] = useState(0);
-  /** The product bar's answer. Cleared with the chip's ✕, Backspace on an empty box, or Shift+Q. */
+  /** The product bar's answer. Cleared by its chip's ✕, Backspace or Escape when empty, Shift+Q. */
   const [category, setCategory] = useState<ProductCategory | null>(null);
   /** Every product the bar can offer, in catalogue order; narrowed locally as somebody types. */
   const [allCategories, setAllCategories] = useState<ProductCategory[]>([]);
@@ -420,8 +454,6 @@ function LeadEntryForm({
   const [subRows, setSubRows] = useState<Product[]>([]);
   const [lines, setLines] = useState<DraftLine[]>(() => (lead ? linesOf(lead, view) : []));
   const [draft, setDraft] = useState<DraftCard | null>(null);
-  /** The product's sub products have arrived, so the card can open on them. */
-  const [subsLoaded, setSubsLoaded] = useState(false);
   /** The row the caret was last in: the "another colour" button works on it. */
   const [activeRow, setActiveRow] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -705,7 +737,6 @@ function LeadEntryForm({
    */
   useEffect(() => {
     setSubRows([]);
-    setSubsLoaded(false);
   }, [categoryId]);
 
   useEffect(() => {
@@ -719,15 +750,9 @@ function LeadEntryForm({
           categoryId,
           limit: PICK_MAX_LIMIT,
         });
-        if (!cancelled) {
-          setSubRows(inCatalogueOrder(page.items));
-          setSubsLoaded(true);
-        }
+        if (!cancelled) setSubRows(inCatalogueOrder(page.items));
       } catch {
-        if (!cancelled) {
-          setSubRows([]);
-          setSubsLoaded(true);
-        }
+        if (!cancelled) setSubRows([]);
       }
     })();
 
@@ -735,6 +760,11 @@ function LeadEntryForm({
       cancelled = true;
     };
   }, [categoryId, catalogueRevision]);
+
+  const subMatches = useMemo(
+    () => subProductMatches(subRows, query.trim().toLowerCase()),
+    [subRows, query],
+  );
 
   /*
    * Products on this order (lines and the open card) that the catalogue no longer
@@ -795,9 +825,9 @@ function LeadEntryForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkedKey, catalogueRevision]);
 
-  const rows: ProductCategory[] = categoryRows;
+  const rows: Array<ProductCategory | Product> = category ? subMatches : categoryRows;
   const pick = rows.length ? Math.min(sel, rows.length - 1) : 0;
-  const listOpen = !draft && !category && searchOpen;
+  const listOpen = !draft && searchOpen;
   const listRef = useRef<HTMLDivElement>(null);
 
   // Keep the highlighted row on screen as the arrows walk past the list's
@@ -813,22 +843,40 @@ function LeadEntryForm({
     return `row-${nextKey.current++}`;
   }
 
+  /** Choosing a product turns the same box into its sub-product bar, the list already down. */
   function chooseCategory(next: ProductCategory): void {
     setCategory(next);
-    setQuery('');
-    setSel(0);
-    // The card opens by itself once the product's sub products have arrived (the effect below).
-    setSearchOpen(false);
+    backToBar();
   }
 
-  /** The card, closed — added, cleared, or Shift+Q — and the caret back in the product bar. */
-  function closeCard(): void {
-    setDraft(null);
+  /** Back to the product bar, its list down: the chip's ✕, Backspace or Escape, Shift+Q. */
+  function clearCategory(): void {
     setCategory(null);
+    backToBar();
+  }
+
+  /**
+   * The card, closed — added or cleared — and the caret back in the bar with its list open: the
+   * sub-product bar of the same product, for the next sub product (owner, 2026-10-08), or the
+   * product bar when no product is chosen (a card lifted from the list).
+   */
+  function backToBar(): void {
+    setDraft(null);
     setQuery('');
     setSel(0);
-    window.setTimeout(() => searchRef.current?.focus(), 0);
+    setSearchOpen(true);
+    setBarFocus((n) => n + 1);
   }
+
+  /*
+   * The caret into the bar in the commit that closes the card, as `cardOpened` does for the card:
+   * the box is disabled while a card is open, and a timer could fire before the render that enables
+   * it — the walk's last Enter saves from a passive effect, whose render is not flushed at once.
+   */
+  const [barFocus, setBarFocus] = useState(0);
+  useLayoutEffect(() => {
+    if (barFocus > 0) searchRef.current?.focus();
+  }, [barFocus]);
 
   // --- Draft --------------------------------------------------------------
 
@@ -842,26 +890,30 @@ function LeadEntryForm({
       ?.focus();
   }
 
-  /*
-   * The chosen product's sub products have arrived: open the card on all of them. Only once per
-   * choice (`draft` guards it), so a catalogue change mid-entry never rebuilds a card somebody has
-   * typed into; `subRows` is read again only when the card is next opened.
+  /**
+   * A sub product picked off its bar opens its card: a row for each variant on sale. A code typed
+   * in full names one variant, so the card opens on that one alone. The card is built once, so a
+   * catalogue change mid-entry never rebuilds a card somebody has typed into.
    */
-  useEffect(() => {
-    if (!category || !subsLoaded || draft) return;
+  function openCard(product: Product, typed = ''): void {
+    const all = buildRows([product], {
+      nextKey: newRowKey,
+      partyRecordFor: (id) => partyRecordFor.get(id),
+    });
+    const code = typed.trim().toLowerCase();
+    const exact = all.filter((row) => row.code.toLowerCase() === code);
     setDraft({
-      categoryName: category.name,
-      categoryCode: category.code ?? null,
-      brand: category.brand ?? null,
-      rows: buildRows(subRows, {
-        nextKey: newRowKey,
-        partyRecordFor: (id) => partyRecordFor.get(id),
-      }),
+      categoryName: category?.name ?? product.categoryName,
+      categoryCode: category?.code ?? product.categoryCode ?? null,
+      brand: category?.brand ?? product.brand ?? null,
+      rows: exact.length > 0 ? exact : all,
       at: null,
     });
+    setQuery('');
+    setSel(0);
+    setSearchOpen(false);
     setCardOpened((n) => n + 1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, subsLoaded, draft]);
+  }
 
   /*
    * A layout effect: the caret must be on the first field in the commit that mounts the card. A
@@ -911,6 +963,7 @@ function LeadEntryForm({
   /**
    * One line per row with a quantity — per variant, and per colour: White ×10 and Ivory ×5 are
    * two lines on the same variant. A card lifted from the list puts its lines back where they were.
+   * Then back to the sub-product bar (`backToBar`).
    */
   function saveDraft(): void {
     if (!draft || !draftIsReady(draft)) return;
@@ -924,7 +977,7 @@ function LeadEntryForm({
       else next.splice(Math.min(at, next.length), 0, ...added);
       return next;
     });
-    closeCard();
+    backToBar();
   }
 
   /** Lift one product's lines back into the card, on their own; Add puts them back in place. */
@@ -1019,11 +1072,10 @@ function LeadEntryForm({
   }
 
   /**
-   * One stop on, row by row: each row's colour (a multicolour one), quantity, packaging and grade,
-   * then Add product. A row nobody has started — no quantity and no colour — is skipped whole, and
-   * from a row with no quantity the walk skips its packaging and grade (`nextWalkStop`). A disabled
-   * Add takes no focus, so a card still short of something keeps the caret where it is and the
-   * footer says what is missing.
+   * One stop on, row by row: each row's colour (a multicolour one), quantity, packaging and grade.
+   * A row nobody has started — no quantity and no colour — is skipped whole, and from a row with no
+   * quantity the walk skips its packaging and grade (`nextWalkStop`). Past the last field the card
+   * is added, as Add product does (`finishing`).
    */
   function stepOn(from: Element | null, started?: string): void {
     const found = cardStops();
@@ -1032,13 +1084,42 @@ function LeadEntryForm({
     if (index < 0) return;
     const next = nextWalkStop(found.stops, index, (key) => rowOf(key, started));
     if (next === null) return;
-    (next < found.fields.length ? found.fields[next] : found.add)?.focus();
+    if (next < found.fields.length) found.fields[next]?.focus();
+    else setFinishing((n) => n + 1);
   }
+
+  /*
+   * The walk's last Enter adds the card (owner, 2026-10-08) — after the render that holds what was
+   * just picked, so a grade taken by that very Enter is on the line. A card still short of
+   * something puts the caret on what it lacks: a counted row's colour or packaging, else the first
+   * quantity.
+   */
+  const [finishing, setFinishing] = useState(0);
+  useEffect(() => {
+    if (finishing === 0 || !draft) return;
+    if (draftIsReady(draft)) {
+      saveDraft();
+      return;
+    }
+    const options = { packagingRequired, colourListNonEmpty: colourOptions.length > 0 };
+    const lacking = draft.rows.find((row) => rowProblem(row, options) !== null);
+    const row = gridRef.current?.querySelector(
+      `[data-row-key="${(lacking ?? draft.rows[0])?.key}"]`,
+    );
+    const field =
+      lacking && rowProblem(lacking, options) === 'colour'
+        ? '.ob-order-colour__input'
+        : `input[data-kind="${lacking ? 'packaging' : 'qty'}"]`;
+    row?.querySelector<HTMLElement>(field)?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finishing]);
 
   /**
    * Escape walks back over the same stops the forward walk uses: a row with no quantity has no
    * packaging or grade stop, so Escape from the row below lands on its quantity. Heard after a list
-   * has closed itself (which spends the key) and before the screen's general step back.
+   * has closed itself (which spends the key) and before the screen's general step back. From the
+   * first field of an untouched new card it goes back to the sub-product bar the card came from; a
+   * card lifted from the list is never thrown away by Escape, since its lines left the order with it.
    */
   function escapeBack(event: ReactKeyboardEvent<HTMLElement>): void {
     if (event.key !== 'Escape' || event.defaultPrevented || chorded(event)) return;
@@ -1047,9 +1128,18 @@ function LeadEntryForm({
     const target = event.target as Element;
     const index =
       target === found.add ? found.fields.length : found.fields.indexOf(target as HTMLInputElement);
-    if (index <= 0) return;
-    const previous = prevWalkStop(found.stops, index, (key) => rowOf(key));
-    if (previous === null) return;
+    if (index < 0) return;
+    const previous = index === 0 ? null : prevWalkStop(found.stops, index, (key) => rowOf(key));
+    if (previous === null) {
+      const untouched =
+        draft?.at === null &&
+        draft.rows.every((row) => !row.qty && !row.colour && !row.packaging && !row.grade);
+      if (untouched) {
+        event.preventDefault();
+        backToBar();
+      }
+      return;
+    }
     event.preventDefault();
     (previous < found.fields.length ? found.fields[previous] : found.add)?.focus();
   }
@@ -1176,14 +1266,19 @@ function LeadEntryForm({
   // --- Complete sub product (Shift+Q) --------------------------------------
 
   /**
-   * Adds a pending valid sub product and goes to the product bar; with nothing
-   * pending and an empty sub-product box, just finishes the product (§6.7).
-   * False when it did nothing — a half-filled card, text in the box, no
+   * Adds a pending valid sub product and goes to the product bar — the next
+   * product; with nothing pending and an empty sub-product box, just goes there
+   * (§6.7). False when it did nothing — a half-filled card, text in the box, no
    * product chosen — so the key it came from is left to type its Q.
    */
   function completeSubProduct(): boolean {
-    if (!draft || !draftIsReady(draft)) return false;
-    saveDraft();
+    if (draft) {
+      if (!draftIsReady(draft)) return false;
+      saveDraft();
+    } else if (!category || query.trim() !== '') {
+      return false;
+    }
+    clearCategory();
     return true;
   }
 
@@ -1422,10 +1517,9 @@ function LeadEntryForm({
 
   /*
    * Enter forward, Escape back — one field at a time, down the whole column:
-   * party, source, follow-up, the product search, the draft card's colours,
-   * then each row's quantity, packaging and grade (the card claims those
-   * Enters, and after the last grade lands on Add product), then the notes and
-   * any custom fields.
+   * party, source, follow-up, the product search, the card's colour, then each
+   * row's quantity, packaging and grade (the card claims those Enters, and the
+   * last one adds the card), then the notes and any custom fields.
    *
    * A select opens its list on Enter instead of skipping past it, and the
    * native popup then owns the arrows and its own Enter; the Enter after it
@@ -1443,6 +1537,11 @@ function LeadEntryForm({
    * never needs restoring.
    */
   const blank = !partyId && !partyQuery && lines.length === 0 && !draft && !notes.trim();
+  /*
+   * The shell's Escape goes Home from a New order only while it holds nothing at all, and only an
+   * Escape nobody on the form claimed (`data-esc-home`, read by the shell). Never from an edit.
+   */
+  const escHome = !lead && blank && !category && query === '';
   useEffect(() => {
     if (focusNonce === 0 || !blank) return;
     const timer = window.setTimeout(() => partyRef.current?.focus(), 0);
@@ -1502,7 +1601,7 @@ function LeadEntryForm({
         });
 
   return (
-    <div ref={rootRef} className="ob-order-page">
+    <div ref={rootRef} className="ob-order-page" data-esc-home={escHome ? 'true' : 'false'}>
       {/* --- Header ------------------------------------------------------ */}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
@@ -1586,6 +1685,8 @@ function LeadEntryForm({
                     }}
                     onKeyDown={(event) => {
                       if (event.key === 'Escape') {
+                        // Claimed only when it closed a list, so the shell's Escape sees the rest.
+                        if (partyListOpen) event.preventDefault();
                         setPartyOpen(false);
                         return;
                       }
@@ -1771,14 +1872,32 @@ function LeadEntryForm({
                   </span>
                 </div>
 
-                {/* The product bar: the product first; its sub products open below as a grid. */}
+                {/* The product bar, then (its product a chip in front) the sub-product bar. */}
                 <div style={{ position: 'relative' }}>
                   <div className="ob-lead-search">
+                    {category && !draft && (
+                      <span className="ob-chip" aria-pressed="true" style={{ cursor: 'default' }}>
+                        <span className="ob-ellipsis">{category.name}</span>
+                        <button
+                          type="button"
+                          className="ob-chip__clear"
+                          aria-label={t('lead.add.products.changeCategory')}
+                          title={t('lead.add.products.changeCategory')}
+                          onClick={clearCategory}
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    )}
                     <Input
                       ref={searchRef}
                       value={draft ? cardTitle : query}
                       disabled={Boolean(draft)}
-                      placeholder={t('lead.add.products.categoryPlaceholder')}
+                      placeholder={
+                        category
+                          ? t('lead.add.products.productPlaceholder', { category: category.name })
+                          : t('lead.add.products.categoryPlaceholder')
+                      }
                       aria-label={t('lead.add.products.searchLabel')}
                       autoComplete="off"
                       style={{ flex: 1, minWidth: rem(160) }}
@@ -1793,6 +1912,17 @@ function LeadEntryForm({
                         if (event.key === 'Escape' && searchOpen) {
                           event.preventDefault();
                           setSearchOpen(false);
+                          return;
+                        }
+                        // Backspace on an empty box steps back a stage, the way a token in a
+                        // search field is deleted; so does Escape once the list is closed.
+                        if (
+                          (event.key === 'Backspace' || event.key === 'Escape') &&
+                          query === '' &&
+                          category
+                        ) {
+                          event.preventDefault();
+                          clearCategory();
                           return;
                         }
                         if (event.key === 'ArrowDown') {
@@ -1815,17 +1945,19 @@ function LeadEntryForm({
                           // Claimed, so the Enter walk does not step past a choice that has only
                           // just been made.
                           event.preventDefault();
-                          chooseCategory(rows[pick]!);
+                          if (category) openCard(rows[pick] as Product, query);
+                          else chooseCategory(rows[pick] as ProductCategory);
                         } else if (takes && listOpen && event.key === 'Enter') {
-                          // Nothing to take (a typo): the caret stays in the bar. Escape closes
-                          // the list for somebody who does mean to walk on.
+                          // Nothing to take — a typo, or `opt⏎41⏎` typed before the product's sub
+                          // products arrived: the caret stays in the bar. Escape closes the list
+                          // for somebody who does mean to walk on.
                           event.preventDefault();
                         }
                       }}
                     />
                   </div>
 
-                  {listOpen && (
+                  {listOpen && !category && (
                     <div role="listbox" className="ob-suggest" ref={listRef}>
                       <div
                         className="ob-suggest-row ob-eyebrow"
@@ -1888,13 +2020,140 @@ function LeadEntryForm({
                     </div>
                   )}
 
+                  {listOpen && category && (
+                    <div role="listbox" className="ob-suggest" ref={listRef}>
+                      <div
+                        className="ob-suggest-row ob-eyebrow"
+                        style={{
+                          gridTemplateColumns: SUGGEST_GRID,
+                          color: 'var(--fg-tertiary)',
+                          fontSize: 'var(--t-eyebrow-size)',
+                          fontWeight: 600,
+                          letterSpacing: '0.07em',
+                        }}
+                      >
+                        <span>{t('lead.add.products.col.code')}</span>
+                        <span>{t('lead.add.products.col.product')}</span>
+                        <span>{t('lead.add.products.col.variant')}</span>
+                        <span style={{ textAlign: 'right' }}>
+                          {t('lead.add.products.col.weight')}
+                        </span>
+                      </div>
+                      {subMatches.map((row, index) => {
+                        const active = row.variants.filter((variant) => variant.isActive);
+                        const first = active[0] ?? row.variants[0];
+                        const weights = active.map((variant) => variant.weightKg);
+                        const rule = colourRuleOf(row);
+                        // A colour-named sub product (a fixed colour, or MAGENTA
+                        // sold in Magenta) carries its swatch beside the name.
+                        const swatch =
+                          rule === 'fixed' && first?.label ? colourHex(first.label) : undefined;
+                        return (
+                          <button
+                            key={row.id}
+                            type="button"
+                            /*
+                             * Out of the Tab order: the rows are for the pointer,
+                             * the box's arrows and Enter are the keyboard's. A Tab
+                             * from an empty bar landed on the first row, the box's
+                             * blur then closed the list under it, and the caret
+                             * was left on nothing at all.
+                             */
+                            tabIndex={-1}
+                            className="ob-suggest-row"
+                            style={{
+                              gridTemplateColumns: SUGGEST_GRID,
+                              background: index === pick ? 'var(--bg-selected)' : undefined,
+                            }}
+                            onMouseEnter={() => setSel(index)}
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              openCard(row, query);
+                            }}
+                          >
+                            <span
+                              className="ob-mono ob-body-strong"
+                              style={{
+                                fontSize: rem(12),
+                                color: index === pick ? 'var(--accent)' : undefined,
+                              }}
+                            >
+                              {active.length > 1
+                                ? t('lead.add.products.variantCount', { count: active.length })
+                                : (first?.code ?? '—')}
+                            </span>
+                            <span
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: rem(8),
+                                minWidth: 0,
+                              }}
+                            >
+                              <ProductThumb
+                                images={row.images}
+                                name={row.name}
+                                size={32}
+                                fallback="none"
+                                alt=""
+                              />
+                              <span
+                                style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}
+                              >
+                                <span
+                                  className="ob-ellipsis"
+                                  style={{ display: 'flex', alignItems: 'center', gap: rem(6) }}
+                                >
+                                  {swatch && first?.label && (
+                                    <ColourChip name={first.label} hex={swatch} />
+                                  )}
+                                  {row.name}
+                                </span>
+                                <span
+                                  className="ob-mono ob-micro"
+                                  style={{ color: 'var(--fg-tertiary)' }}
+                                >
+                                  {row.size ?? ''}
+                                </span>
+                              </span>
+                            </span>
+                            <span className="ob-small ob-ellipsis" style={{ minWidth: 0 }}>
+                              {active.length > 1
+                                ? active.map((variant) => variant.label ?? variant.code).join(', ')
+                                : rule === 'selectable'
+                                  ? t('product.multiColour.pill')
+                                  : (shownColour(first?.label, row.name) ?? '')}
+                            </span>
+                            <span
+                              className="ob-small"
+                              style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                            >
+                              {weights.length === 1
+                                ? formatKg(weights[0] ?? null)
+                                : weights.some((weight) => weight === null)
+                                  ? t('product.weight.missingShort')
+                                  : formatKg(weights.reduce<number>((sum, w) => sum + (w ?? 0), 0))}
+                            </span>
+                          </button>
+                        );
+                      })}
+                      {subMatches.length === 0 && (
+                        <p className="ob-small" style={{ margin: 0, padding: 'var(--s-8)' }}>
+                          {t('lead.add.products.noProduct')}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   <p
                     className="ob-micro"
                     style={{ margin: `${rem(7)} 0 0`, color: 'var(--fg-tertiary)' }}
                   >
                     {draft
                       ? t('lead.add.products.pickedHint')
-                      : t('lead.add.products.categoryHint')}
+                      : category
+                        ? t('lead.add.products.productHint')
+                        : t('lead.add.products.categoryHint')}
                   </p>
                 </div>
 
@@ -1920,7 +2179,7 @@ function LeadEntryForm({
                   </p>
                 )}
 
-                {/* The product card: every sub product of the chosen product, a row each. */}
+                {/* The sub product's card: a row for each of its variants. */}
                 {draft && (
                   <div style={{ marginTop: 'var(--s-12)' }} onKeyDown={escapeBack}>
                     <ProductCard
@@ -1944,7 +2203,7 @@ function LeadEntryForm({
                             size="sm"
                             aria-label={t('lead.add.products.clear')}
                             title={t('lead.add.products.clear')}
-                            onClick={closeCard}
+                            onClick={backToBar}
                           >
                             ✕
                           </Button>
@@ -1958,10 +2217,11 @@ function LeadEntryForm({
                             {`${t('lead.add.card.thisProduct')} ${cardPieces(draft.rows).toLocaleString('en-IN')} ${t('unit.pieces')}`}
                           </span>
                           {/*
-                           * The last stop of the card's Enter walk, after the last row: Enter over a
-                           * button is a click. `data-field` makes it a stop of the screen's Escape
-                           * walk too, back to that row's grade. While the card is short of something
-                           * the button is disabled, which takes it out of both.
+                           * The end of the card's Enter walk: Enter on the last field does what
+                           * this button does, and Enter over it (reached by Tab) is a click.
+                           * `data-field` makes it a stop of the screen's Escape walk too, back to
+                           * the last field. While the card is short of something the button is
+                           * disabled, which takes it out of both.
                            */}
                           <Button
                             variant="secondary"
@@ -2053,8 +2313,9 @@ function LeadEntryForm({
                                       filterHint={t('lead.add.card.filterHint')}
                                       noMatches={t('common.noMatches')}
                                       attention
+                                      // `openOnEnter` left on: the first Enter opens the list,
+                                      // the next takes the colour.
                                       onPick={(colour) => patchRow(row.key, { colour })}
-                                      openOnEnter={Number(row.qty) > 0}
                                       onAdvance={(picked) =>
                                         stepOn(document.activeElement, picked ? row.key : undefined)
                                       }
@@ -2093,10 +2354,15 @@ function LeadEntryForm({
                                    * Packaging and grade beside the quantity and the same box: the
                                    * kit's pick-only `Select` is an `Input` with a list under it. Type
                                    * a letter or arrow down, Enter takes it and steps on; "—" is none.
+                                   * A box whose list is empty (a shop with no grades) is no step.
                                    */}
                                   <span style={{ minWidth: 0 }} onKeyDown={pickKey}>
                                     <Select
-                                      data-kind="packaging"
+                                      data-kind={
+                                        packagingOptions.length > 0 || row.packaging
+                                          ? 'packaging'
+                                          : undefined
+                                      }
                                       value={row.packaging}
                                       aria-label={`${t('lead.add.draft.packaging')} — ${named}`}
                                       aria-required={packagingRequired || undefined}
@@ -2115,7 +2381,9 @@ function LeadEntryForm({
                                   </span>
                                   <span style={{ minWidth: 0 }} onKeyDown={pickKey}>
                                     <Select
-                                      data-kind="grade"
+                                      data-kind={
+                                        gradeOptions.length > 0 || row.grade ? 'grade' : undefined
+                                      }
                                       value={row.grade}
                                       aria-label={`${t('lead.add.draft.grade')} — ${named}`}
                                       onChange={(event) =>
@@ -2461,6 +2729,9 @@ function LeadEntryForm({
 }
 
 // --- Pieces ---------------------------------------------------------------
+
+/** The sub-product list's columns: code, photo with name and size, variants or colour, weight. */
+const SUGGEST_GRID = `${rem(84)} minmax(0, 1fr) minmax(0, 0.7fr) ${rem(84)}`;
 
 /** The small upper-case label that names a row without becoming a heading. */
 function Eyebrow({ children }: { children: ReactNode }) {
