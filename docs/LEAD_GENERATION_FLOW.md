@@ -113,28 +113,45 @@ Master's `ui/src/LeadEntryScreen.tsx`, the same chain; owner's flow of 2026-10-0
 5. **Sub-product bar** — the same box, the chosen Product a chip in front of it, its list open at
    once: **every** sub product of the chosen Product in catalogue order (`sort_order`), filtered
    as you type on name, alias, code and colour (an exact match first, then a prefix, then
-   anywhere); a row shows the printed name, the size and, for a colour-named one, a swatch.
+   anywhere). The list (`ui/src/order/SubProductList.tsx`, both panels) heads its rows with how
+   many are shown ("56 sub products", "3 of 56 sub products") and the column names — photo,
+   **Code**, **Sub product** (the size under the name), **Colour / variant** (a colour-named one
+   with its swatch, a multicolour one marked "Any colour"), **Weight** — and ends with a line of
+   keys; the highlighted row is tinted with an accent bar. **Collapse** at the right of the box
+   (owner, 2026-10-08) draws one short line a row, no photo, the size beside the name; **Expand**
+   brings the full rows back. The choice is the PC's (`localStorage` `ob.order.subList.compact`).
    Enter (or Tab once something is typed, or a click) opens that one sub product's card; a code
    typed in full opens only that variant. The pick limit is `PICK_MAX_LIMIT` (1000; it was 50),
    because the largest SWISWARE product, Table Top Vitrosa Basin, holds 69 and One Piece
    Toilet 56. **Backspace** or **Escape** on the empty box goes back to the product bar (an open
    list closes on the first Escape).
 6. **Colour and quantity**, by the sub product's rule — `fixed`: the colour shown locked and a
-   quantity; `dedicated`: a quantity only; `selectable`: a colour select first (its first Enter
-   opens the colour list with the first colour ready, the next takes it), and "+ Same sub
-   product, another colour" for a second colour with its own quantity (one line per colour).
+   quantity, where the caret lands; `dedicated`: a quantity only; `selectable`: a colour select
+   first, its list **already open** as the card opens with the first colour highlighted (Enter
+   takes it), and "+ Same sub product, another colour" for a second colour with its own quantity
+   (one line per colour).
    **Packaging** and **Grade** sit right beside each quantity, the same box each (owner's
    instructions, 2026-09-30): picks from `line.packaging` (Box, Grass, Paper to start) and
    `line.grade`; "—" is none. Packaging is required only while the company requires it; grade
    is always optional. A pick box whose list is empty (a shop with no grades) is not a step.
-7. **Enter** walks colour, quantity, packaging and grade (a letter narrows a list; Enter takes
-   the highlighted one and steps on — a mouse pick steps on too); a variant row with no quantity
-   is passed over. **Enter on the last field adds the card**, exactly as **Add product** does,
-   and the caret is back in the sub-product bar of the same product, its list open and empty,
-   for the next sub product. A card still short of something does not add: the caret goes to
-   what it lacks (a counted row's colour or packaging, else the quantity). **Escape** walks back
-   one field; from the first field of an untouched new card it goes back to the sub-product bar
-   (never from a card lifted from the Added list, whose lines left the order with it).
+7. **Enter** walks colour, quantity, packaging and grade, and **each pick list opens as the walk
+   reaches it** (owner, 2026-10-08): packaging and grade open with their current value
+   highlighted — "—" while none is chosen, since packaging is never auto-filled — a letter
+   narrows the list, and Enter takes the highlighted one and steps on; a mouse pick steps on the
+   same way and opens the next list. Lists open on the walk's arrival, not on a plain focus: a
+   Tab or a click into the colour box leaves it closed until asked (Enter, an arrow, typing or
+   a click opens it; the packaging and grade boxes open on any focus, as everywhere). A variant
+   row with no quantity is passed over, and so is an empty pick list (no grades listed: packaging
+   goes straight on). **After the last field comes Add sub product** (the card's button, its
+   `Enter` chip kept): the last field no longer adds by itself. **Enter on Add sub product adds
+   the card**, and the caret is back in the sub-product bar of the same product, its list open
+   and empty, for the next sub product. A card still short of something never reaches it: the
+   walk goes to what it lacks instead (a counted row's colour or packaging, its list open, else
+   the quantity), and so does Enter or a click on Add sub product, which is drawn disabled but
+   still takes the caret. **Escape** on a list the walk opened closes it and leaves the caret
+   there; the next Escape walks back one field; from the first field of an untouched new card it
+   goes back to the sub-product bar (never from a card lifted from the Added list, whose lines
+   left the order with it).
    The card's ✕ also goes back there, adding nothing. **Shift+Q** adds a ready card and moves to
    the product bar (the next product); with no card open and an empty sub-product box it just
    goes there. A capital Q still types in any other field, the colour and packaging boxes

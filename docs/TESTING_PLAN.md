@@ -284,10 +284,15 @@ database with parties and a few leads from §8, so the reload and the lead PDF h
    - [ ] Packaging and then Grade sit beside every quantity, the same box each. Packaging offers
          Box, Grass and Paper only; it is marked required (*) and blocks the card only while the
          Master's Settings → Leads requires packaging. Grade is always optional.
-   - [ ] Enter goes quantity → packaging → grade → next row; typing `g` in packaging narrows to
-         Grass and Enter takes it and moves to Grade (a mouse pick moves on too). After the last
-         grade Enter lands on **Add product**; Enter there adds the sub product and returns to
-         the sub-product bar. Escape walks back: Add product → grade → packaging → quantity.
+   - [ ] Enter goes colour → quantity → packaging → grade → next row, each list already open as
+         the caret arrives (the colour list on a multicolour card as it opens); typing `g` in
+         packaging narrows to Grass and Enter takes it and moves to Grade, its list open (a mouse
+         pick moves on too). After the last grade Enter lands on **Add sub product**; Enter there
+         adds the sub product and returns to the sub-product bar. Escape closes an open list
+         first, then walks back: Add sub product → grade → packaging → quantity.
+   - [ ] The sub-product list shows a count ("56 sub products"), column names, photo, code,
+         name with size, colour and weight; **Collapse** at the right of the box makes it one
+         short line a row and **Expand** brings it back; the choice survives a reload on that PC.
          Shift+Q (or **Complete sub product**) adds a pending sub product and returns to the
          product bar; with nothing pending it just finishes the product. A capital Q still types
          in the notes and in the party box.
