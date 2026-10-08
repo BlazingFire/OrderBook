@@ -29,7 +29,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -184,9 +184,17 @@ function declaredTargets(): Record<string, DeclaredTarget> {
  * message. `panel` is `--panel`; without it the run is the default one, both
  * panels.
  */
-function releaseAs(platform: string, arch: string, target: string, panel?: string): string {
+function releaseAs(
+  platform: string,
+  arch: string,
+  target: string,
+  panel?: string,
+  /** Fills the releases folder the run reads, before it starts. */
+  prepare?: (releasesDir: string) => void,
+): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'orderbook-release-host-'));
   try {
+    prepare?.(dir);
     const preload = path.join(dir, 'host.mjs');
     writeFileSync(
       preload,
@@ -221,6 +229,18 @@ function releaseAs(platform: string, arch: string, target: string, panel?: strin
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+/** What `publish()` leaves for an Office build: its setup file and the manifest naming it. */
+function publishOffice(releasesDir: string, platform: string, version: string): void {
+  const folder = path.join(releasesDir, 'office-panel');
+  const file = `OrderBook-Office-${version}-Setup.exe`;
+  mkdirSync(folder, { recursive: true });
+  writeFileSync(path.join(folder, file), 'setup');
+  writeFileSync(
+    path.join(folder, `latest-${platform}.json`),
+    JSON.stringify({ panel: 'office', platform, version, file }),
+  );
 }
 
 /**
@@ -296,7 +316,7 @@ describe('release targets', () => {
     // ones matching its `cpu`), so an arm64 machine building the x64 AppImage
     // ships arm64 `sharp` and no x64 PostgreSQL at all. Refused up front, by
     // name, rather than an hour later as "binaries are missing" — asked for
-    // alone, and as part of the default run, which builds it first.
+    // alone, and as part of the default run, before the Office built ahead of it.
     for (const panel of ['master', undefined]) {
       const linux = releaseAs('linux', 'arm64', 'linux', panel);
       expect(linux).toMatch(/Release failed: .*x64/);
@@ -376,6 +396,57 @@ describe('release targets', () => {
     );
     // Only a Windows machine makes a Windows setup file.
     expect(releaseAs('linux', 'x64', 'win7')).toMatch(/Release failed: .*only be built on win32/);
+  });
+
+  it('builds and publishes the Office before the Master, which carries it', () => {
+    // The default run walks `PANELS` in order, and the Master's staging copies
+    // the Office setup of its own version out of the releases folder — so the
+    // Office has to be published by then.
+    const start = RELEASE.indexOf('const PANELS = {');
+    const block = RELEASE.slice(start, RELEASE.indexOf('\n};', start));
+    const order = [...block.matchAll(/^ {2}(\w+): \{$/gm)].map((match) => match[1]);
+    expect(order.indexOf('office')).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf('office')).toBeLessThan(order.indexOf('master'));
+    expect(bodyOf('async function main(')).toMatch(/Object\.keys\(PANELS\)\.filter/);
+
+    // Into the Master's staging (`resources/panel/office-setup`), after `stage()`
+    // has emptied and rebuilt it, and for the Master only.
+    const build = bodyOf('async function build(');
+    const bundling = build.indexOf("if (panel === 'master') await bundleOfficeSetups(version);");
+    expect(bundling).toBeGreaterThan(build.indexOf('await stage(panel);'));
+    expect(bundling).toBeLessThan(build.indexOf("'electron-builder'"));
+    const bundle = bodyOf('async function bundleOfficeSetups(');
+    expect(bundle).toContain("path.join(ROOT, PANELS.master.dir, 'staging', 'office-setup')");
+    // The setup and its signed manifest, which is what the Master offers its Offices.
+    expect(bundle).toContain('await cp(path.join(from, file), path.join(to, file));');
+    expect(bundle).toContain('await cp(path.join(from, manifest), path.join(to, manifest));');
+  });
+
+  it('refuses a Master built alone until its Office is published, and says how', () => {
+    const version = (JSON.parse(readText('package.json')) as { version: string }).version;
+    for (const [platform, target] of [
+      ['win32', 'win'],
+      ['linux', 'linux'],
+    ] as const) {
+      const alone = releaseAs(platform, 'x64', target, 'master');
+      expect(alone).toContain('Build the Office first');
+      expect(alone).toContain(`latest-${platform}.json`);
+      expect(alone).not.toContain('STOP before');
+
+      // An Office of another version is not the one this Master carries.
+      const stale = releaseAs(platform, 'x64', target, 'master', (dir) =>
+        publishOffice(dir, platform, '0.0.1'),
+      );
+      expect(stale).toContain('Build the Office first');
+
+      // The same version published first: through to the build.
+      const ready = releaseAs(platform, 'x64', target, 'master', (dir) =>
+        publishOffice(dir, platform, version),
+      );
+      expect(ready).toContain('Release failed: STOP before npm');
+    }
+    // The default run builds the Office in the same run, so it never asks.
+    expect(releaseAs('win32', 'x64', 'win')).toContain('Release failed: STOP before npm');
   });
 
   it('stages the CommonJS shell, with its marker, for the Windows 7 target', () => {

@@ -6,6 +6,8 @@
  *   npm run release              -- current version, both panels, this OS
  *   npm run release -- 1.1.0     -- bump every package.json first
  *   npm run release -- --panel office
+ *   npm run release -- --panel master -- needs the same version's Office published
+ *                                   first: the Master's setup file carries it
  *   npm run release -- --os mac  -- macOS .dmg (only runs on a Mac)
  *   npm run release -- --os linux -- x64 AppImage (the Master only on x64 Linux)
  *   npm run release -- --os win7 -- the Windows 7 Office Panel (Electron 22, x64 + ia32);
@@ -18,7 +20,9 @@
  * uploads its output to a GitHub Release; a Master configured with
  * `ORDERBOOK_RELEASES_GITHUB_REPO` fetches each manifest there, and the setup
  * file it names, into that folder itself (`docs/UPDATES.md`). A site with no
- * internet copies the folder by hand.
+ * internet copies the folder by hand. The Master's setup file also carries the
+ * Office setup of its own version, so installing the Master alone is enough for
+ * its Offices to follow (`bundleOfficeSetups()`).
  *
  * Each panel comes out as one setup file and nothing else: the `-Setup.exe`
  * on Windows, the `-Setup.AppImage` on Linux, the `-Setup.dmg` on macOS. There
@@ -58,7 +62,20 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const RELEASES_DIR =
   process.env.ORDERBOOK_RELEASES_DIR ?? path.join(path.parse(ROOT).root, 'OrderBook-Releases');
 
+/*
+ * The order here is the build order of a default run, and the Office comes
+ * first on purpose: the Master's setup file carries the Office setup of its
+ * own version (`bundleOfficeSetups()`), so that setup has to be published
+ * before the Master is packaged.
+ */
 const PANELS = {
+  office: {
+    dir: 'office',
+    folder: 'office-panel',
+    label: 'Office',
+    vendorPostgres: false,
+    extras: [],
+  },
   master: {
     dir: 'master',
     folder: 'master-panel',
@@ -76,13 +93,6 @@ const PANELS = {
      * holds the mark to what `npm ls` finds in each panel's tree.
      */
     native: true,
-  },
-  office: {
-    dir: 'office',
-    folder: 'office-panel',
-    label: 'Office',
-    vendorPostgres: false,
-    extras: [],
   },
   /*
    * The standalone clean-install tool. Not a panel, and the flags say so.
@@ -684,6 +694,66 @@ async function stage(panel) {
   return staging;
 }
 
+/**
+ * The Office setups a Master of `version` carries, from the releases folder:
+ * this target's own, which is required, and on Windows the Windows 7 Office
+ * too when one of the same version has been published there.
+ *
+ * Required on every target, not only Windows. A default run builds the Office
+ * first (see `PANELS`), CI's included, so this only stops `--panel master`
+ * run without the Office, and a Master that quietly shipped without it would
+ * have no Office setup to hand a new PC and nothing to update its Offices
+ * from offline.
+ */
+async function officeSetups(version) {
+  const folder = path.join(RELEASES_DIR, PANELS.office.folder);
+  const own = RELEASE_TARGET.platform;
+  const platforms = own === 'win32' ? [own, 'win7'] : [own];
+  const found = [];
+
+  for (const platform of platforms) {
+    const manifest = `latest-${platform}.json`;
+    const published = await readJson(path.join(folder, manifest)).catch(() => null);
+    const file = published ? path.basename(String(published.file)) : null;
+    if (published?.version === version && existsSync(path.join(folder, file))) {
+      found.push({ manifest, file });
+    } else if (platform === own) {
+      throw new Error(
+        [
+          `The Master ${version} carries the Office setup of the same version, and`,
+          `${path.join(folder, manifest)} does not name one.`,
+          'Build the Office first: run without --panel (it builds the Office, then the Master),',
+          'or run --panel office and then --panel master into the same ORDERBOOK_RELEASES_DIR.',
+          ...(own === 'win32'
+            ? ['Run --os win7 before the Master as well to carry the Windows 7 Office.']
+            : []),
+        ].join('\n'),
+      );
+    }
+  }
+
+  return found;
+}
+
+/**
+ * Copy those setups, each with its signed manifest, into the Master's staging
+ * folder: `resources/panel/office-setup` once installed. The Master copies them
+ * into its releases folder on boot, which is what lets the Office panels
+ * update from a Master that was updated with no internet, and hands them to a
+ * new office PC (`master/src/services/update.service.ts`).
+ */
+async function bundleOfficeSetups(version) {
+  const from = path.join(RELEASES_DIR, PANELS.office.folder);
+  const to = path.join(ROOT, PANELS.master.dir, 'staging', 'office-setup');
+  await mkdir(to, { recursive: true });
+
+  for (const { manifest, file } of await officeSetups(version)) {
+    await cp(path.join(from, file), path.join(to, file));
+    await cp(path.join(from, manifest), path.join(to, manifest));
+    console.log(`  bundled ${file} into the Master`);
+  }
+}
+
 async function build(panel, version) {
   const config = PANELS[panel];
   const panelRoot = path.join(ROOT, config.dir);
@@ -727,6 +797,7 @@ async function build(panel, version) {
   if (RELEASE_TARGET.universal) ensureUniversalPackages();
   if (config.vendorPostgres) await vendorPostgres();
   if (!config.serverless) await stage(panel);
+  if (panel === 'master') await bundleOfficeSetups(version);
 
   /*
    * `electronVersion` is passed rather than written into the yml.
@@ -860,6 +931,9 @@ async function main() {
     }
   }
   assertHostArch(panels);
+  // A Master asked for alone needs its Office published already: said here,
+  // not after an hour of building the Master.
+  if (panels.includes('master') && !panels.includes('office')) await officeSetups(version);
 
   console.log(`Releasing ${version} to ${RELEASES_DIR}`);
   run('npm', ['run', 'build:shared']);
