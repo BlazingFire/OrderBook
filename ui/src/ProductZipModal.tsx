@@ -1,0 +1,567 @@
+/**
+ * Restore products from a product backup zip (Master only): choose the file,
+ * read what it would do, tick the two removals if wanted, Apply, watch it run,
+ * read what it did.
+ *
+ * The preview is the Master's own dry run of the same restore
+ * (`master/src/services/product-zip.service.ts`), so what is listed here is
+ * what Apply does. Apply uploads the zip again and starts the restore as a job
+ * on the Master; this dialog only follows it, so closing it stops nothing, and
+ * opening it again while a restore runs shows that one.
+ *
+ * Not `ImportDialog`: that one is shared with the party import and has no
+ * opt-ins, no job and no photos, and the party import stays as it is.
+ */
+
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import type {
+  ProductCellChange,
+  ProductRestoreJob,
+  ProductRestoreOptions,
+  ProductZipReport,
+} from '@orderbook/shared';
+import { MAX_PRODUCT_ZIP_BYTES } from '@orderbook/shared';
+
+import { BusyMark } from './BusyMark.js';
+import { Button } from './Button.js';
+import type { ProductZipTransport } from './catalogueSummary.js';
+import { apiErrorText } from './errorText.js';
+import { Checkbox } from './Form.js';
+import { t } from './i18n.js';
+import { Modal } from './Modal.js';
+import { rem } from './rem.js';
+import { ProgressBar } from './TopProgress.js';
+
+/** How often a running restore is asked where it is. */
+const POLL_MS = 1000;
+
+/** What a phase is called on screen, written out so each key is checked against the catalogue. */
+const PHASE_KEY: Record<ProductRestoreJob['phase'], string> = {
+  checking: 'productZip.phase.checking',
+  products: 'productZip.phase.products',
+  photos: 'productZip.phase.photos',
+  removing: 'productZip.phase.removing',
+  done: 'productZip.phase.removing',
+  failed: 'productZip.phase.removing',
+};
+
+type Step = 'pick' | 'preview' | 'running' | 'done';
+
+const cells = (fields: ProductCellChange[]): string =>
+  fields
+    .map((field) =>
+      t('productZip.cellChange', {
+        column: field.column,
+        from: field.from || '—',
+        to: field.to || '—',
+      }),
+    )
+    .join('; ');
+
+/** One line of a section: a count, and the names behind it when there are any. */
+function Item({ label, items }: { label: string; items?: string[] }) {
+  if (!items || items.length === 0) return <li>{label}</li>;
+  return (
+    <li>
+      <details>
+        <summary style={{ cursor: 'pointer' }}>{label}</summary>
+        <ul
+          className="ob-small"
+          style={{ margin: 'var(--s-4) 0 0', maxHeight: rem(180), overflow: 'auto' }}
+        >
+          {items.map((item, index) => (
+            <li key={`${index}:${item}`}>{item}</li>
+          ))}
+        </ul>
+      </details>
+    </li>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
+      <h3 className="ob-body-strong" style={{ margin: 0 }}>
+        {title}
+      </h3>
+      <ul
+        style={{
+          margin: 0,
+          paddingLeft: 'var(--s-20)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 'var(--s-4)',
+        }}
+      >
+        {children}
+      </ul>
+    </section>
+  );
+}
+
+/** What the zip changes; a count of 0 is left out, except where saying "unchanged" is the point. */
+function ReportView({ report }: { report: ProductZipReport }) {
+  const { mainProducts, products, rows, colours, photos, problems } = report;
+  const some = (count: number, node: ReactNode) => (count > 0 ? node : null);
+  return (
+    <>
+      {some(
+        mainProducts.added.length + mainProducts.renamed.length,
+        <Section title={t('productZip.section.mainProducts')}>
+          {some(
+            mainProducts.added.length,
+            <Item
+              label={t('productZip.item.added', { count: mainProducts.added.length })}
+              items={mainProducts.added.map(
+                (main) => `${main.code} — ${main.name}${main.brand ? ` (${main.brand})` : ''}`,
+              )}
+            />,
+          )}
+          {some(
+            mainProducts.renamed.length,
+            <Item
+              label={t('productZip.item.renamed', { count: mainProducts.renamed.length })}
+              items={mainProducts.renamed.map((main) => `${main.code}: ${cells(main.fields)}`)}
+            />,
+          )}
+        </Section>,
+      )}
+      <Section title={t('productZip.section.rows')}>
+        {some(
+          rows.added.length,
+          <Item
+            label={t('productZip.item.added', { count: rows.added.length })}
+            items={rows.added.map((row) => `${row.code} — ${row.name}`)}
+          />,
+        )}
+        {some(
+          rows.changed.length,
+          <Item
+            label={t('productZip.item.changed', { count: rows.changed.length })}
+            items={rows.changed.map((row) => `${row.code} — ${row.name}: ${cells(row.fields)}`)}
+          />,
+        )}
+        <Item label={t('productZip.item.unchanged', { count: products.unchanged ?? 0 })} />
+        {some(
+          rows.notInFile.length,
+          <Item
+            label={t('productZip.item.notInFile', { count: rows.notInFile.length })}
+            items={rows.notInFile.map((row) => `${row.code} — ${row.name}`)}
+          />,
+        )}
+        {some(
+          products.failed + products.skipped,
+          <Item
+            label={t('productZip.item.issues', { count: products.failed + products.skipped })}
+            items={products.issues.map(
+              (issue) =>
+                `${t('import.column.row')} ${issue.row}${issue.column ? ` (${issue.column})` : ''}: ${t(issue.messageKey, issue.params)}`,
+            )}
+          />,
+        )}
+      </Section>
+      {some(
+        colours.added.length + colours.changed.length,
+        <Section title={t('productZip.section.colours')}>
+          {some(
+            colours.added.length,
+            <Item
+              label={t('productZip.item.added', { count: colours.added.length })}
+              items={colours.added}
+            />,
+          )}
+          {some(
+            colours.changed.length,
+            <Item
+              label={t('productZip.item.changed', { count: colours.changed.length })}
+              items={colours.changed.map(
+                (change) => `${change.column}: ${change.from || '—'} → ${change.to}`,
+              )}
+            />,
+          )}
+        </Section>,
+      )}
+      <Section title={t('productZip.section.photos')}>
+        {some(
+          photos.added.length,
+          <Item
+            label={t('productZip.item.added', { count: photos.added.length })}
+            items={photos.added}
+          />,
+        )}
+        {some(
+          photos.replaced.length,
+          <Item
+            label={t('productZip.item.replaced', { count: photos.replaced.length })}
+            items={photos.replaced}
+          />,
+        )}
+        <Item label={t('productZip.item.unchanged', { count: photos.unchanged })} />
+        {some(
+          photos.notInZip.length,
+          <Item
+            label={t('productZip.item.notInZip', { count: photos.notInZip.length })}
+            items={photos.notInZip}
+          />,
+        )}
+        {some(
+          photos.unmatched.length,
+          <Item
+            label={t('productZip.item.unmatched', { count: photos.unmatched.length })}
+            items={photos.unmatched}
+          />,
+        )}
+        {some(
+          photos.duplicate.length,
+          <Item
+            label={t('productZip.item.duplicate', { count: photos.duplicate.length })}
+            items={photos.duplicate}
+          />,
+        )}
+        {some(
+          photos.notImage.length,
+          <Item
+            label={t('productZip.item.notImage', { count: photos.notImage.length })}
+            items={photos.notImage}
+          />,
+        )}
+      </Section>
+      {some(
+        problems.length,
+        <Section title={t('import.preview.issues')}>
+          <Item
+            label={t('productZip.item.problems', { count: problems.length })}
+            items={problems.map(
+              (problem) => `${problem.subject}: ${t(problem.messageKey, problem.params)}`,
+            )}
+          />
+        </Section>,
+      )}
+    </>
+  );
+}
+
+/** Anything for Apply to do, with these opt-ins. */
+function changes(report: ProductZipReport, options: ProductRestoreOptions): number {
+  return (
+    report.mainProducts.added.length +
+    report.mainProducts.renamed.length +
+    report.products.created +
+    report.products.updated +
+    report.colours.added.length +
+    report.colours.changed.length +
+    report.photos.added.length +
+    report.photos.replaced.length +
+    (options.binMissingProducts ? report.rows.notInFile.length : 0) +
+    (options.removeMissingPhotos ? report.photos.notInZip.length : 0)
+  );
+}
+
+export function ProductZipModal({
+  open,
+  transport,
+  canDelete,
+  onClose,
+  onRestored,
+}: {
+  open: boolean;
+  transport: ProductZipTransport;
+  /** `products.delete`: without it the Recycle Bin opt-in is not offered. */
+  canDelete: boolean;
+  onClose: () => void;
+  /** A restore finished; the catalogue should refetch. */
+  onRestored: () => void;
+}) {
+  // Held in refs: a host that rebuilds its transport or callback per render must not restart the poll.
+  const transportRef = useRef(transport);
+  transportRef.current = transport;
+  const restoredRef = useRef(onRestored);
+  restoredRef.current = onRestored;
+
+  const [step, setStep] = useState<Step>('pick');
+  const [file, setFile] = useState<File | null>(null);
+  const [report, setReport] = useState<ProductZipReport | null>(null);
+  const [options, setOptions] = useState<ProductRestoreOptions>({});
+  const [job, setJob] = useState<ProductRestoreJob | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function reset(): void {
+    setStep('pick');
+    setFile(null);
+    setReport(null);
+    setOptions({});
+    setJob(null);
+    setFailure(null);
+  }
+
+  /** A running restore is kept to follow on the next open; anything else starts over. */
+  function close(): void {
+    if (step !== 'running') reset();
+    onClose();
+  }
+
+  // Opened while a restore runs (started here earlier, or by somebody else): follow that one.
+  useEffect(() => {
+    if (!open) return undefined;
+    let stopped = false;
+    transportRef.current
+      .job()
+      .then((current) => {
+        if (!stopped && current && !current.finishedAt) {
+          setJob(current);
+          setStep('running');
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      stopped = true;
+    };
+  }, [open]);
+
+  const running = open && step === 'running';
+  useEffect(() => {
+    if (!running) return undefined;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = (): void => {
+      timer = setTimeout(() => {
+        transportRef.current.job().then(
+          (next) => {
+            if (stopped) return;
+            if (!next) {
+              // The Master restarted, and the restore with it.
+              setFailure(t('productZip.failed'));
+              setStep('done');
+              return;
+            }
+            setJob(next);
+            if (!next.finishedAt) {
+              poll();
+              return;
+            }
+            if (next.phase === 'done' && next.result) {
+              setReport(next.result);
+              restoredRef.current();
+            } else {
+              setFailure(
+                next.message
+                  ? t(next.message.messageKey, next.message.params)
+                  : t('productZip.failed'),
+              );
+            }
+            setStep('done');
+          },
+          () => {
+            if (!stopped) poll();
+          },
+        );
+      }, POLL_MS);
+    };
+    poll();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [running]);
+
+  async function choose(chosen: File): Promise<void> {
+    if (busy) return;
+    if (!/\.zip$/i.test(chosen.name)) {
+      setFailure(t('validation.productZip.notAZip'));
+      return;
+    }
+    if (chosen.size > MAX_PRODUCT_ZIP_BYTES) {
+      setFailure(t('validation.productZip.tooLarge'));
+      return;
+    }
+    setFile(chosen);
+    setFailure(null);
+    setBusy(true);
+    try {
+      setReport(await transportRef.current.preview(chosen));
+      setOptions({});
+      setStep('preview');
+    } catch (caught) {
+      setFailure(apiErrorText(caught, 'productZip.failed'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function apply(): Promise<void> {
+    if (!file || busy) return;
+    setBusy(true);
+    setFailure(null);
+    try {
+      setJob(await transportRef.current.start(file, options));
+      setStep('running');
+    } catch (caught) {
+      setFailure(apiErrorText(caught, 'productZip.failed'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const toDo = report ? changes(report, options) : 0;
+  const note = (text: ReactNode) => (
+    <p className="ob-small" style={{ margin: 0, color: 'var(--fg-secondary)' }}>
+      {text}
+    </p>
+  );
+
+  const footer =
+    step === 'preview' ? (
+      <>
+        <Button variant="secondary" onClick={reset} disabled={busy}>
+          {t('common.cancel')}
+        </Button>
+        <Button variant="primary" busy={busy} disabled={toDo === 0} onClick={() => void apply()}>
+          {t('productZip.apply')}
+        </Button>
+      </>
+    ) : step === 'done' ? (
+      <>
+        <Button variant="secondary" onClick={reset}>
+          {t('productZip.another')}
+        </Button>
+        <Button variant="primary" onClick={close}>
+          {t('common.close')}
+        </Button>
+      </>
+    ) : (
+      <Button variant="secondary" onClick={close} disabled={busy}>
+        {t('common.close')}
+      </Button>
+    );
+
+  const phase = job?.phase;
+  return (
+    <Modal
+      open={open}
+      onClose={busy ? () => undefined : close}
+      size="lg"
+      title={t('productZip.title')}
+      footer={footer}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-16)' }}>
+        {step === 'pick' && (
+          <>
+            {note(t('productZip.intro'))}
+            <div>
+              <Button
+                variant="secondary"
+                icon="upload"
+                busy={busy}
+                disabled={busy}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {t('productZip.choose')}
+              </Button>
+            </div>
+            {busy && (
+              <p
+                className="ob-small"
+                style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}
+              >
+                <BusyMark size={16} label="" />
+                {t('productZip.checking')}
+              </p>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".zip,application/zip"
+              hidden
+              data-testid="product-zip-file"
+              onChange={(event) => {
+                const chosen = event.target.files?.[0];
+                event.target.value = '';
+                if (chosen) void choose(chosen);
+              }}
+            />
+          </>
+        )}
+
+        {step === 'preview' && report && (
+          <>
+            <p className="ob-body-strong" style={{ margin: 0 }}>
+              {report.fileName}
+            </p>
+            <ReportView report={report} />
+            {(report.rows.notInFile.length > 0 || report.photos.notInZip.length > 0) && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
+                {note(t('productZip.reportOnly'))}
+                {canDelete && report.rows.notInFile.length > 0 && (
+                  <Checkbox
+                    checked={options.binMissingProducts === true}
+                    onChange={(checked) =>
+                      setOptions((current) => ({ ...current, binMissingProducts: checked }))
+                    }
+                    label={t('productZip.opt.bin', { count: report.rows.notInFile.length })}
+                  />
+                )}
+                {report.photos.notInZip.length > 0 && (
+                  <>
+                    <Checkbox
+                      checked={options.removeMissingPhotos === true}
+                      onChange={(checked) =>
+                        setOptions((current) => ({ ...current, removeMissingPhotos: checked }))
+                      }
+                      label={t('productZip.opt.photos', { count: report.photos.notInZip.length })}
+                    />
+                    {options.removeMissingPhotos && note(t('productZip.opt.photos.hint'))}
+                  </>
+                )}
+              </div>
+            )}
+            {toDo === 0 && note(t('productZip.nothing'))}
+          </>
+        )}
+
+        {step === 'running' && (
+          <>
+            <ProgressBar
+              value={phase === 'photos' && job && job.total > 0 ? job.done / job.total : null}
+              label={t(PHASE_KEY[phase ?? 'checking'])}
+              detail={
+                phase === 'photos' && job
+                  ? t('productZip.photoProgress', { done: job.done, total: job.total })
+                  : undefined
+              }
+            />
+            {note(t('productZip.runningHint'))}
+          </>
+        )}
+
+        {step === 'done' && (
+          <>
+            {report && !failure && (
+              <>
+                <p className="ob-body-strong" style={{ margin: 0 }}>
+                  {t('productZip.done')}
+                </p>
+                {(report.binned ?? 0) > 0 &&
+                  note(t('productZip.done.binned', { count: report.binned ?? 0 }))}
+                {(report.photosRemoved ?? 0) > 0 &&
+                  note(t('productZip.done.photosRemoved', { count: report.photosRemoved ?? 0 }))}
+                <ReportView report={report} />
+              </>
+            )}
+          </>
+        )}
+
+        {failure && (
+          <p
+            className="ob-small"
+            role="alert"
+            style={{ margin: 0, color: 'var(--danger, #b42318)' }}
+          >
+            {failure}
+          </p>
+        )}
+      </div>
+    </Modal>
+  );
+}

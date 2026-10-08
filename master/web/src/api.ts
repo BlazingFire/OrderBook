@@ -116,6 +116,9 @@ import type {
   ProductCategory,
   ProductCategoryListRow,
   ProductImageUpdateInput,
+  ProductRestoreJob,
+  ProductRestoreOptions,
+  ProductZipReport,
   PartyImportFormat,
   PartyImportMode,
   PartyImportResult,
@@ -878,6 +881,23 @@ export const api = {
     form.append('mode', options.mode);
     return requestForm<ProductImportResult>('/api/products/import', form);
   },
+
+  // The product backup zip (`products.export` to back up; the restore checks the bulk keys).
+  exportProductZip: () => requestFile('/api/products/export.zip', 'products.zip'),
+  previewProductZip: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('dryRun', 'true');
+    return requestForm<ProductZipReport>('/api/products/restore', form);
+  },
+  startProductRestore: (file: File, options: ProductRestoreOptions) => {
+    const form = new FormData();
+    form.append('file', file);
+    if (options.binMissingProducts) form.append('binMissingProducts', 'true');
+    if (options.removeMissingPhotos) form.append('removeMissingPhotos', 'true');
+    return requestForm<ProductRestoreJob>('/api/products/restore', form);
+  },
+  productRestoreJob: () => request<ProductRestoreJob | null>('/api/products/restore/job'),
 
   // Bulk party import and export (`parties.bulk` / `parties.view`, checked by the service).
   partyImportTemplate: (format: PartyImportFormat) =>

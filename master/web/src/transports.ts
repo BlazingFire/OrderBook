@@ -57,6 +57,12 @@ export const catalogueTransport: CatalogueTransport = {
   productImportTemplate: (format) => api.productImportTemplate(format),
   exportProducts: (format, level) => api.exportProducts(format, level),
   importProducts: (file, options) => api.importProducts(file, options),
+  productZip: {
+    exportZip: () => api.exportProductZip(),
+    preview: (file) => api.previewProductZip(file),
+    start: (file, options) => api.startProductRestore(file, options),
+    job: () => api.productRestoreJob(),
+  },
 };
 
 export const partyImportTransport: PartyImportTransport = {
