@@ -990,7 +990,10 @@ describe('the catalogue a Master build ships', () => {
       expect(run(['--catalogue', text])).toMatch(/Release failed: --catalogue: .*is not a zip/);
       expect(run(['--catalogue', bad])).toMatch(/Release failed: --catalogue: .*has no products.csv/);
       expect(run(['--catalogue', good], 'office')).toContain('ships with the Master');
+      expect(run(['--catalogue'])).toMatch(/Release failed: --catalogue: \(no file named\) does not exist/);
       expect(run([], undefined, { ORDERBOOK_CATALOGUE_ZIP: bad })).toMatch(/has no products.csv/);
+      // The variable may be set for every run: an Office-only one ignores it rather than failing.
+      expect(run([], 'office', { ORDERBOOK_CATALOGUE_ZIP: bad })).toContain('Release failed: STOP before npm');
       // A good zip passes the check and the run reaches its first command; the stub stops it before the copy.
       expect(run(['--catalogue', good])).toContain('Release failed: STOP before npm');
     } finally {

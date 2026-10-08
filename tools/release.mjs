@@ -128,11 +128,10 @@ const requestedVersion = args.find((arg) => /^\d+\.\d+\.\d+$/.test(arg)) ?? null
  * a build carries the company's current product database. Checked before
  * anything is built, and copied to `SHIPPED_CATALOGUE` before staging; without
  * it, whatever `master/assets/catalogue` holds ships as it is. The copy is
- * git-ignored: committing one is the owner's call.
+ * git-ignored: committing one is the owner's call. `--catalogue` with no file
+ * after it is refused, not ignored.
  */
-const catalogueZip = args.includes('--catalogue')
-  ? args[args.indexOf('--catalogue') + 1]
-  : process.env.ORDERBOOK_CATALOGUE_ZIP || null;
+const catalogueFlag = args.includes('--catalogue') ? (args[args.indexOf('--catalogue') + 1] ?? '') : null;
 const SHIPPED_CATALOGUE = path.join(ROOT, 'master', 'assets', 'catalogue', 'products.zip');
 
 /**
@@ -298,7 +297,7 @@ function assertHostArch(panels) {
  * zip the folder). A broken one would fail on every new install's first boot.
  */
 async function assertCatalogueZip(file) {
-  if (!file || !existsSync(file)) throw new Error(`--catalogue: ${file ?? '(no file named)'} does not exist`);
+  if (!file || !existsSync(file)) throw new Error(`--catalogue: ${file || '(no file named)'} does not exist`);
   const names = await new Promise((resolve, reject) => {
     yauzl.open(file, { lazyEntries: true }, (error, zip) => {
       if (error || !zip) {
@@ -910,12 +909,16 @@ async function main() {
     }
   }
   assertHostArch(panels);
-  if (catalogueZip) {
-    if (!panels.includes('master')) {
+  let catalogueZip = catalogueFlag ?? (process.env.ORDERBOOK_CATALOGUE_ZIP || null);
+  if (catalogueZip !== null && !panels.includes('master')) {
+    // The flag names this run; the variable may be set for every run, Office-only ones included.
+    if (catalogueFlag !== null) {
       throw new Error('--catalogue ships with the Master, and this run does not build the Master');
     }
-    await assertCatalogueZip(catalogueZip);
+    console.log('  ORDERBOOK_CATALOGUE_ZIP is ignored: this run does not build the Master');
+    catalogueZip = null;
   }
+  if (catalogueZip !== null) await assertCatalogueZip(catalogueZip);
 
   console.log(`Releasing ${version} to ${RELEASES_DIR}`);
   run('npm', ['run', 'build:shared']);
