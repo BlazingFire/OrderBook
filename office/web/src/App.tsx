@@ -1581,12 +1581,19 @@ function OfficePanel() {
     <>
       {/* V6: unread notices placed at sign-in, once per sign-in, from this person's own snapshot,
           unless the company turned it off (read when it decides); a read made while the link is
-          down waits in their queue (`noticeReads.ts`). */}
+          down waits in their queue (`noticeReads.ts`). A cache built for the person before reads
+          every notice for everybody as unread (`noticesFor`): while the link is up this person's
+          own snapshot is on its way, so it waits for that; offline the cache is all there is. */}
       {canViewNotices && session && (
         <SignInNotices
           key={session.userId}
           sessionKey={`${session.userId}:${session.signedInAt}`}
-          loaded={view !== null}
+          loaded={
+            view !== null &&
+            (view.builtForUserId === undefined ||
+              view.builtForUserId === session.userId ||
+              connection.state !== 'connected')
+          }
           notices={myNotices}
           today={todayForNotices()}
           onMarkRead={noticeReads.markRead}

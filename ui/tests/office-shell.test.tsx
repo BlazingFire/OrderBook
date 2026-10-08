@@ -2621,6 +2621,36 @@ describe('V6: unread notices pop up on sign-in', () => {
     expect(within(band).getAllByRole('button', { name: /^Show notice/ })).toHaveLength(5);
   });
 
+  it('waits for this person’s own snapshot while the link is up, not the last person’s cache', async () => {
+    // The cache on this PC was built for somebody else, so every notice in it reads as unread.
+    const cached = notices.map((notice) => ({ ...notice, readByMe: false }));
+    await boot({ permissions: ['notices.view'], view: { notices: cached, builtForUserId: 'user-0' } });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(popUp()).toBeNull();
+
+    // Their own: NT2 read as well as NT4.
+    const own = notices.map((notice) => (notice.id === 'NT2' ? { ...notice, readByMe: true } : notice));
+    await sendSnapshot(snapshot({ notices: own, builtForUserId: 'user-1' }));
+    await waitFor(() => expect(popUp()).not.toBeNull());
+    expect(
+      within(popUp()!)
+        .getAllByRole('listitem')
+        .map((item) => item.getAttribute('data-notice')),
+    ).toEqual(['NT1', 'NT3']);
+  });
+
+  it('decides on the last person’s cache when the link is down: it is all there is', async () => {
+    await boot({
+      permissions: ['notices.view'],
+      view: { notices, builtForUserId: 'user-0' },
+      route: (call) =>
+        call.url === '/api/connection' ? json({ ...CONNECTION, state: 'disconnected' }) : undefined,
+    });
+    await waitFor(() => expect(popUp()).not.toBeNull());
+  });
+
   it('never shows without notices.view, even with notices in the snapshot', async () => {
     await boot({ permissions: [], view: { notices } });
     await act(async () => {
