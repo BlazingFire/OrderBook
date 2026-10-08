@@ -26,13 +26,13 @@
  */
 
 import { createWriteStream } from 'node:fs';
-import { mkdir, readdir, realpath, rename, rm, stat } from 'node:fs/promises';
+import { mkdir, readdir, readFile, realpath, rename, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
 import type { PanelKind, ReleaseManifest, ReleasePlatform } from '@orderbook/shared';
-import { LEGACY_RELEASE_PLATFORM, UpdateProgressTracker } from '@orderbook/shared';
+import { isNewer, LEGACY_RELEASE_PLATFORM, UpdateProgressTracker } from '@orderbook/shared';
 
 import { config } from '../config/index.js';
 import { createLogger } from '../lib/logger.js';
@@ -311,12 +311,47 @@ export function syncFromGitHub(
   const existing = inFlight.get(key);
   if (existing) return existing;
 
-  const run = runSync(panel, releaseDir, pinned, platform).finally(() => inFlight.delete(key));
+  return hold(key, () => runSync(panel, releaseDir, pinned, platform));
+}
+
+const inFlight = new Map<string, Promise<ReleaseManifest | null>>();
+
+/** Register `work` as the one run writing `key`'s files, until it ends. */
+function hold(
+  key: string,
+  work: () => Promise<ReleaseManifest | null>,
+): Promise<ReleaseManifest | null> {
+  const run = work().finally(() => inFlight.delete(key));
   inFlight.set(key, run);
   return run;
 }
 
-const inFlight = new Map<string, Promise<ReleaseManifest | null>>();
+/**
+ * Run `work` as the only writer of one panel's files for one OS: once the sync
+ * already writing them has finished, and with every sync asked for meanwhile
+ * sharing `work` rather than starting its own.
+ *
+ * How the Office setup a Master carries goes into the folder
+ * (`seedBundledOfficeRelease` in `update.service.ts`). It starts at boot, just
+ * as the Offices reconnect and ask for an update — and a sync clears this OS's
+ * `.part` files before it downloads (`isDebrisOf`), which would take a setup
+ * being copied in, while the seed's sweep could take a build a sync had renamed
+ * into place and not yet named in a manifest.
+ *
+ * A loop, not one wait: two waiters can wake for the same run, and the first to
+ * take the folder makes the second wait again.
+ */
+export async function aloneInFolder(
+  panel: PanelKind,
+  platform: ReleasePlatform,
+  work: () => Promise<ReleaseManifest | null>,
+): Promise<ReleaseManifest | null> {
+  const key = `${panel}:${platform}`;
+  for (let held = inFlight.get(key); held; held = inFlight.get(key)) {
+    await held.catch(() => null);
+  }
+  return hold(key, work);
+}
 
 /**
  * One setup file to spare, fixed when the sync starts, or a way to ask for
@@ -380,6 +415,13 @@ async function runSync(
     );
     return null;
   }
+
+  // Never backwards. GitHub's newest release is not always the newest build
+  // the folder holds: a Master installed from a local build seeds the Office it
+  // carries (`seedBundledOfficeRelease`), and an operator can copy one in. This
+  // manifest written over it would stop it being offered and sweep it as
+  // superseded — and the next boot would copy it back in, 85 MB, to lose again.
+  if (await offersNewer(releaseDir, panel, platform, manifest.version)) return null;
 
   const asset = release.assets.find((candidate) => candidate.name === path.basename(manifest.file));
   if (!asset) {
@@ -577,6 +619,43 @@ export async function writeManifest(
   for (const name of manifestNames(platform)) {
     await writeDurable(path.join(releaseDir, name), bytes);
   }
+}
+
+/**
+ * Whether the folder already offers this panel on this OS a build newer than
+ * `version`. Read as `readManifest` reads it — the first manifest name there is
+ * wins — and only an offer the panels would be given counts: signed, for this
+ * panel, its setup file here at its size. Anything less must not keep a real
+ * release out.
+ */
+async function offersNewer(
+  releaseDir: string,
+  panel: PanelKind,
+  platform: ReleasePlatform,
+  version: string,
+): Promise<boolean> {
+  for (const name of manifestNames(platform)) {
+    let held: ReleaseManifest;
+    try {
+      held = JSON.parse(await readFile(path.join(releaseDir, name), 'utf8')) as ReleaseManifest;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      return false;
+    }
+
+    try {
+      const { size } = await stat(path.join(releaseDir, path.basename(held.file)));
+      return (
+        held.panel === panel &&
+        size === held.sizeBytes &&
+        verifyManifest(held).ok &&
+        isNewer(held.version, version)
+      );
+    } catch {
+      return false; // Its setup file is not here: no offer.
+    }
+  }
+  return false;
 }
 
 /**

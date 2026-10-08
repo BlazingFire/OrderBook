@@ -2521,7 +2521,7 @@ exercised only through service integration tests.
   `prepareMasterUpdate`, then `pendingAutoUpdate()` for the shell, 30 min lifetime),
   `announceNewVersion` (one `update.available` notice per version to every active account),
   `updateAutoUpdateConfig` (`master_update.schedule_updated`). Tests: `master/tests/auto-update.test.ts`.
-- `master/src/services/update.service.ts` (679) — `releaseDirFor`, `releaseFileFor`,
+- `master/src/services/update.service.ts` (687) — `releaseDirFor`, `releaseFileFor`,
   `readManifest`, `availability` (waits on a GitHub sync for `GITHUB_WAIT_MS` = 5 s
   at most, then answers from the folder), `masterAvailability`, `verifyRelease`,
   `preparedInstaller`, `prepareMasterUpdate` (pins the build the moment the
@@ -2530,11 +2530,13 @@ exercised only through service integration tests.
   answers within `GITHUB_WAIT_MS`, 10 s cool-down), `lastChecked`, `downloadStatus`,
   `bundledOfficeSetups` and `seedBundledOfficeRelease` (the Office setup the Master carries, §10.8 item 7).
   Never runs an installer; the shell does (§10.8). Tests: `master/tests/update-check.test.ts`.
-- `master/src/services/github-releases.ts` (760) — `syncFromGitHub`, `isConfigured`, 1.4: a shared
+- `master/src/services/github-releases.ts` (839) — `syncFromGitHub`, `isConfigured`, 1.4: a shared
   20 s cache of the release listing with its etag (`forgetLatestRelease` keeps the etag), and an
   `UpdateProgressTracker` per panel and OS (`downloadProgress`);
   off unless `ORDERBOOK_RELEASES_GITHUB_REPO` is set. Writes the manifest names
-  `release.mjs` writes and sweeps per OS (§10.8); `writeManifest`, `sweep` and `supersededBy` are
+  `release.mjs` writes and sweeps per OS (§10.8); never writes over a newer signed build the
+  folder already offers (`offersNewer`); `writeManifest`, `sweep`, `supersededBy` and
+  `aloneInFolder` (one writer per panel and OS, sharing the sync's in-flight key) are
   exported for `seedBundledOfficeRelease`.
 - `master/src/services/developer-gate.ts` — `createDeveloperGate` (password, lockout,
   short-lived tokens); kept free of first-run setup so `master-key.service.ts` can
@@ -5421,7 +5423,11 @@ packages nothing; the Release workflow runs no tests.
    (drafts and pre-releases = nothing to do) → asset `latest-<panel>.json` for win32
    else `latest-<panel>-<platform>.json` → `guardedFetch` (manual redirects, ≤ 5 hops,
    4 allowed hosts; every hop has 15 s to answer, and a listing or manifest 15 s in
-   all) → `verifyManifest` **before** downloading → panel/platform/size checks →
+   all) → `verifyManifest` **before** downloading → panel/platform checks → nothing
+   to do when the folder already offers that panel and OS a newer build that is
+   signed and present at its size (`offersNewer`, since 2026-10-08: a Master
+   installed from a local build carries an Office newer than GitHub's newest
+   release, §10.8 item 7) → size check →
    download to `<file>.part` with a byte cap, rename → write the manifest with
    `writeDurable` under **the names `release.mjs` writes**: `latest-<platform>.json`,
    plus `latest.json` for a Windows build → sweep superseded
@@ -5506,7 +5512,13 @@ packages nothing; the Release workflow runs no tests.
      `github-releases.ts`, so `latest-win32.json` plus `latest.json` on Windows), then
      superseded Office builds of that OS swept with `sweep`/`supersededBy` as a
      GitHub sync does. A newer build already there (from GitHub or by hand) is left
-     alone. So updating the Master is enough for its Offices to update over the LAN,
+     alone. Each OS's seed runs inside `aloneInFolder('office', platform)`, the
+     in-flight key a sync uses: it waits for a sync already writing that OS's files
+     (whose debris sweep would otherwise take the seed's `.part`, and whose renamed
+     file the seed's sweep could take), and a sync asked for meanwhile shares the
+     seed instead of starting. The version check runs inside, and the sync's own
+     `offersNewer` keeps a later sync from writing GitHub's older release over it.
+     So updating the Master is enough for its Offices to update over the LAN,
      with no internet and nothing copied by hand.
    - **Hand-out to a new, unpaired PC:** `GET /api/updates/office/setup[?platform=
      win32|win7|darwin|linux]` on `publicUpdateRoutes`, **without `requirePanel`**
@@ -5520,7 +5532,8 @@ packages nothing; the Release workflow runs no tests.
      size, and the Panels screen's Add Office Panel card shows "Save Office setup…"
      (a `ButtonLink` with `download`, so the shell's Save As dialog can pick a USB
      drive) and the address `http://<address>:<port>/api/updates/office/setup` per
-     LAN address. Tests: UPD-69…72 in `master/tests/updates.test.ts`,
+     LAN address. Tests: UPD-69…72 in `master/tests/updates.test.ts`, UPD-73…75
+     (never backwards, one writer at a time) in `master/tests/github-releases.test.ts`,
      `ui/tests/panels-screen.test.tsx`, and the release side in
      `master/tests/packaging-invariants.test.ts`.
 
@@ -6628,7 +6641,9 @@ They read files and assert on the text; they need no database and cannot skip.
 - **Releases and updates (5):** `github-releases` (UPD-48…63 added on 2026-09-25: the
   platform-named manifest, per-OS sweeps, the AppImage sweep and the running one
   spared, download timing with a real local server and a fake clock, pinning while
-  verifying, polling every OS asked for), `release-signature`, `updates`,
+  verifying, polling every OS asked for; UPD-73…75 on 2026-10-08: never writing an older
+  release over a newer build, and the carried Office's seed and a sync never writing at
+  once), `release-signature`, `updates`,
   `release-folder-besides` (the sweep leaves hand-copied `.deb` and standalone `.exe` files, and
   their `.sha256` alone) and `release-workflow` (the Release workflow's `check` step
   lifted out of the yml and run under bash with `gh` and `git` stubbed; skipped on

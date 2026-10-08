@@ -484,7 +484,12 @@ that build is newer than what the folder already offers for that operating
 system: the signature is checked, the setup is copied under a `.part` name and
 renamed, the manifest is written last, and older Office builds for that
 operating system are cleared away. A newer build already there, from GitHub or
-copied in, is left alone. So installing a new Master, however it reached the
+copied in, is left alone. The other way round holds too: a GitHub sync never
+writes an older release over a newer build in the folder, so a Master installed
+from a local build, newer than GitHub's newest release, keeps offering the
+Office it carries. While the Master copies that build in, a GitHub sync for the
+same operating system waits for it, and the copy waits for a sync already
+running. So installing a new Master, however it reached the
 PC, is enough: the Office Panels then update from it over the LAN as usual. The
 folder holds a second copy of the Office setup (about 85 MB).
 

@@ -46,6 +46,7 @@ import { createLogger } from '../lib/logger.js';
 import { verifyManifest } from '../lib/release-signature.js';
 import { recordDetachedActivity } from '../repositories/activity-log.repository.js';
 import {
+  aloneInFolder,
   downloadProgress,
   forgetLatestRelease,
   supersededBy,
@@ -653,27 +654,34 @@ export async function bundledOfficeSetups(
  * under a `.part` name and is renamed, and the manifest is written last, as a
  * GitHub sync does, so the folder never names a file that is not all there.
  * The builds it supersedes are swept after that, as a sync sweeps them.
+ *
+ * Alone in that OS's files (`aloneInFolder`): a GitHub sync an Office starts
+ * by asking would otherwise clear the `.part` mid-copy, and the version is
+ * checked inside, so a newer build a sync landed first stays.
  */
 export async function seedBundledOfficeRelease(dir: string = config.officeSetupDir): Promise<void> {
   const releaseDir = releaseDirFor('office');
 
   for (const bundled of await bundledOfficeSetups(dir)) {
-    const current = await readManifest('office', bundled.platform);
-    if (current && !isNewer(bundled.version, current.version)) continue;
+    await aloneInFolder('office', bundled.platform, async () => {
+      const current = await readManifest('office', bundled.platform);
+      if (current && !isNewer(bundled.version, current.version)) return null;
 
-    const verdict = verifyManifest(bundled);
-    if (!verdict.ok) {
-      log.warn(`Not offering the bundled Office ${bundled.version}: ${verdict.reason}`);
-      continue;
-    }
+      const verdict = verifyManifest(bundled);
+      if (!verdict.ok) {
+        log.warn(`Not offering the bundled Office ${bundled.version}: ${verdict.reason}`);
+        return null;
+      }
 
-    const file = path.basename(bundled.file);
-    const target = path.join(releaseDir, file);
-    await mkdir(releaseDir, { recursive: true });
-    await copyFile(path.join(dir, file), `${target}.part`);
-    await rename(`${target}.part`, target);
-    await writeManifest(releaseDir, bundled, bundled.platform);
-    await sweep(releaseDir, supersededBy(file, pinnedInstaller));
-    log.info(`Offering the Office ${bundled.version} this Master carried (${file})`);
+      const file = path.basename(bundled.file);
+      const target = path.join(releaseDir, file);
+      await mkdir(releaseDir, { recursive: true });
+      await copyFile(path.join(dir, file), `${target}.part`);
+      await rename(`${target}.part`, target);
+      await writeManifest(releaseDir, bundled, bundled.platform);
+      await sweep(releaseDir, supersededBy(file, pinnedInstaller));
+      log.info(`Offering the Office ${bundled.version} this Master carried (${file})`);
+      return bundled;
+    });
   }
 }
