@@ -10,6 +10,9 @@
  *   npm run release -- --os linux -- x64 AppImage (the Master only on x64 Linux)
  *   npm run release -- --os win7 -- the Windows 7 Office Panel (Electron 22, x64 + ia32);
  *                                   Office only, on Windows (docs/WINDOWS7.md)
+ *   npm run release -- --catalogue D:\OrderBook-Products-x.zip
+ *                                -- ship this product backup as the catalogue a new
+ *                                   install loads (also ORDERBOOK_CATALOGUE_ZIP)
  *
  * The output folder is the whole distribution story: copy it to the Master PC
  * and the Master installs its own build from it and serves the office build to
@@ -50,6 +53,8 @@ import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import yauzl from 'yauzl';
 
 import { LEGACY_ELECTRON } from './legacy-electron.mjs';
 
@@ -115,6 +120,20 @@ const PANELS = {
 const args = process.argv.slice(2);
 const only = args.includes('--panel') ? args[args.indexOf('--panel') + 1] : null;
 const requestedVersion = args.find((arg) => /^\d+\.\d+\.\d+$/.test(arg)) ?? null;
+
+/**
+ * A product backup zip (Products > Sub products > Backup products on a Master)
+ * to ship as the catalogue a new install loads on its first boot
+ * (`loadShippedCatalogue` in `master/src/services/product-zip.service.ts`), so
+ * a build carries the company's current product database. Checked before
+ * anything is built, and copied to `SHIPPED_CATALOGUE` before staging; without
+ * it, whatever `master/assets/catalogue` holds ships as it is. The copy is
+ * git-ignored: committing one is the owner's call.
+ */
+const catalogueZip = args.includes('--catalogue')
+  ? args[args.indexOf('--catalogue') + 1]
+  : process.env.ORDERBOOK_CATALOGUE_ZIP || null;
+const SHIPPED_CATALOGUE = path.join(ROOT, 'master', 'assets', 'catalogue', 'products.zip');
 
 /**
  * What each target OS needs, keyed by the `--os` name a person types.
@@ -272,6 +291,37 @@ function assertHostArch(panels) {
       '`--panel office` builds the Office panel here, which carries nothing native.',
     ].join('\n'),
   );
+}
+
+/**
+ * A zip the restore would read: one `products.csv`, at any depth (a person may
+ * zip the folder). A broken one would fail on every new install's first boot.
+ */
+async function assertCatalogueZip(file) {
+  if (!file || !existsSync(file)) throw new Error(`--catalogue: ${file ?? '(no file named)'} does not exist`);
+  const names = await new Promise((resolve, reject) => {
+    yauzl.open(file, { lazyEntries: true }, (error, zip) => {
+      if (error || !zip) {
+        reject(new Error(`--catalogue: ${file} is not a zip (${error?.message ?? 'unreadable'})`));
+        return;
+      }
+      const found = [];
+      zip.on('entry', (entry) => {
+        found.push(entry.fileName);
+        zip.readEntry();
+      });
+      zip.once('end', () => {
+        zip.close();
+        resolve(found);
+      });
+      zip.once('error', reject);
+      zip.readEntry();
+    });
+  });
+  // yauzl reads a backslash in a name as a slash, so a Compress-Archive zip passes too.
+  if (!names.some((name) => name.split('/').pop().toLowerCase() === 'products.csv')) {
+    throw new Error(`--catalogue: ${file} has no products.csv, so it is not a product backup`);
+  }
 }
 
 function run(command, commandArgs, cwd = ROOT) {
@@ -860,9 +910,25 @@ async function main() {
     }
   }
   assertHostArch(panels);
+  if (catalogueZip) {
+    if (!panels.includes('master')) {
+      throw new Error('--catalogue ships with the Master, and this run does not build the Master');
+    }
+    await assertCatalogueZip(catalogueZip);
+  }
 
   console.log(`Releasing ${version} to ${RELEASES_DIR}`);
   run('npm', ['run', 'build:shared']);
+
+  if (catalogueZip) await cp(catalogueZip, SHIPPED_CATALOGUE);
+  if (panels.includes('master')) {
+    // Said every time: a copy left by an earlier --catalogue run ships too.
+    console.log(
+      existsSync(SHIPPED_CATALOGUE)
+        ? `  catalogue: ${path.relative(ROOT, SHIPPED_CATALOGUE)}${catalogueZip ? ` (from ${catalogueZip})` : ''}`
+        : '  catalogue: master/assets/catalogue/swisware-plus-2026.md (no products.zip)',
+    );
+  }
 
   for (const panel of panels) {
     const built = await build(panel, version);

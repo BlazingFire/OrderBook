@@ -35,6 +35,8 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import { createZipWriter } from '../src/lib/archive-zip.js';
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 /**
@@ -182,9 +184,15 @@ function declaredTargets(): Record<string, DeclaredTarget> {
  * run that clears every check stops at its first command with
  * `Release failed: STOP before npm`, and a refusal stops earlier with its own
  * message. `panel` is `--panel`; without it the run is the default one, both
- * panels.
+ * panels. `more` adds arguments and environment, for `--catalogue`.
  */
-function releaseAs(platform: string, arch: string, target: string, panel?: string): string {
+function releaseAs(
+  platform: string,
+  arch: string,
+  target: string,
+  panel?: string,
+  more: { args?: string[]; env?: Record<string, string> } = {},
+): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'orderbook-release-host-'));
   try {
     const preload = path.join(dir, 'host.mjs');
@@ -211,8 +219,9 @@ function releaseAs(platform: string, arch: string, target: string, panel?: strin
         '--os',
         target,
         ...(panel ? ['--panel', panel] : []),
+        ...(more.args ?? []),
       ],
-      { cwd: ROOT, encoding: 'utf8', env: { ...process.env, ORDERBOOK_RELEASES_DIR: dir } },
+      { cwd: ROOT, encoding: 'utf8', env: { ...process.env, ORDERBOOK_RELEASES_DIR: dir, ...more.env } },
     );
 
     // Every run here ends in a refusal or the stub; neither is a success.
@@ -950,4 +959,54 @@ describe('the Windows executable carries the OrderBook icon (U11)', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 60_000);
+});
+
+describe('the catalogue a Master build ships', () => {
+  const masterPanel = (): string =>
+    code(RELEASE.slice(RELEASE.indexOf('  master: {'), RELEASE.indexOf('  office: {'))).join('\n');
+
+  it('stages the assets folder, catalogue included, with the Master', () => {
+    expect(masterPanel()).toMatch(/extras: \[[^\]]*'assets'/);
+  });
+
+  it('checks a --catalogue zip (or ORDERBOOK_CATALOGUE_ZIP) before anything is built', async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'orderbook-release-catalogue-'));
+    try {
+      const zip = async (name: string, entry: string): Promise<string> => {
+        const file = path.join(dir, name);
+        const writer = createZipWriter(file);
+        await writer.appendEntry(entry, ['Brand,Code\r\n']);
+        await writer.finalize();
+        return file;
+      };
+      const good = await zip('good.zip', 'Backup/products.csv');
+      const bad = await zip('bad.zip', 'images/OPT-0001.webp');
+      const text = path.join(dir, 'text.zip');
+      writeFileSync(text, 'not a zip');
+
+      const run = (args: string[], panel?: string, env?: Record<string, string>) =>
+        releaseAs('win32', 'x64', 'win', panel, { args, env });
+      expect(run(['--catalogue', path.join(dir, 'missing.zip')])).toMatch(/Release failed: --catalogue: .*does not exist/);
+      expect(run(['--catalogue', text])).toMatch(/Release failed: --catalogue: .*is not a zip/);
+      expect(run(['--catalogue', bad])).toMatch(/Release failed: --catalogue: .*has no products.csv/);
+      expect(run(['--catalogue', good], 'office')).toContain('ships with the Master');
+      expect(run([], undefined, { ORDERBOOK_CATALOGUE_ZIP: bad })).toMatch(/has no products.csv/);
+      // A good zip passes the check and the run reaches its first command; the stub stops it before the copy.
+      expect(run(['--catalogue', good])).toContain('Release failed: STOP before npm');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('copies the zip to the path the Master boots from, after the check and before any build', () => {
+    expect(RELEASE).toContain("path.join(ROOT, 'master', 'assets', 'catalogue', 'products.zip')");
+    const main = bodyOf('async function main()');
+    expect(main.indexOf('assertCatalogueZip(catalogueZip)')).toBeGreaterThan(-1);
+    expect(main.indexOf('assertCatalogueZip(catalogueZip)')).toBeLessThan(main.indexOf("run('npm'"));
+    expect(main.indexOf('cp(catalogueZip, SHIPPED_CATALOGUE)')).toBeGreaterThan(main.indexOf("run('npm'"));
+    expect(main.indexOf('cp(catalogueZip, SHIPPED_CATALOGUE)')).toBeLessThan(main.indexOf('build(panel, version)'));
+    expect(readText('master', 'src', 'config', 'index.ts')).toContain(
+      "catalogueZip: path.join(packageRoot, 'assets', 'catalogue', 'products.zip')",
+    );
+  });
 });

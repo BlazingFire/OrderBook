@@ -49,6 +49,12 @@ Thumbs.db
 CATA.pdf
 dummy-data/
 
+# The product backup zip `npm run release -- --catalogue <zip>` copies in, so a
+# build ships the company's current catalogue (docs/UPDATES.md). Generated from
+# a live Master, so never committed by accident; committing one is the owner's
+# call (`git add -f`).
+master/assets/catalogue/products.zip
+
 # Stray local test-run logs, not source.
 vitest-out.txt
 .tmp/
