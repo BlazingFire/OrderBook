@@ -2264,11 +2264,14 @@ function LeadEntryForm({
                                   {/*
                                    * Packaging and grade beside the quantity and the same box: the
                                    * kit's pick-only `Select` is an `Input` with a list under it. Type
-                                   * a letter or arrow down, Enter takes it and steps on; "—" is none.
+                                   * a letter or arrow down, Enter takes it and steps on; "—" is none,
+                                   * and no choice at all while packaging is required — the list then
+                                   * opens on the first real one, not on a "—" Add would turn back.
                                    * A box whose list is empty (a shop with no grades) is no step.
                                    */}
                                   <span style={{ minWidth: 0 }} onKeyDown={pickKey}>
                                     <Select
+                                      openOnArrivalOnly
                                       data-kind={
                                         packagingOptions.length > 0 || row.packaging
                                           ? 'packaging'
@@ -2282,7 +2285,7 @@ function LeadEntryForm({
                                         picked(row.key, { packaging: event.target.value })
                                       }
                                     >
-                                      <option value="">—</option>
+                                      {!packagingRequired && <option value="">—</option>}
                                       {valuesFor(packagingOptions, row.packaging).map((option) => (
                                         <option key={option.value} value={option.value}>
                                           {option.label}
@@ -2292,6 +2295,7 @@ function LeadEntryForm({
                                   </span>
                                   <span style={{ minWidth: 0 }} onKeyDown={pickKey}>
                                     <Select
+                                      openOnArrivalOnly
                                       data-kind={
                                         gradeOptions.length > 0 || row.grade ? 'grade' : undefined
                                       }

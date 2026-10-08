@@ -939,10 +939,20 @@ describe('the sub product card', () => {
     expect(document.activeElement).toBe(gradeBox('OPT-0001'));
     expect(screen.queryByRole('listbox')).toBeNull();
 
+    // Walked back to, a list stays shut: it opens as the walk arrives or on a click, not on a focus.
     for (const back of [packagingBox('OPT-0001'), qty]) {
       expect(await press('Escape')).toBe(false);
       expect(document.activeElement).toBe(back);
+      expect(screen.queryByRole('listbox')).toBeNull();
     }
+    act(() => gradeBox('OPT-0001').focus());
+    expect(screen.queryByRole('listbox')).toBeNull();
+    fireEvent.click(gradeBox('OPT-0001'));
+    expect(
+      within(screen.getByRole('listbox'))
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual(['—', 'A', 'B']);
   });
 
   it('goes back to the sub-product bar on Escape from the first field of a card nothing was typed into', async () => {
@@ -992,12 +1002,22 @@ describe('the sub product card', () => {
     expect(packagingBox('OPT-0001').getAttribute('aria-required')).toBe('true');
     expect(packagingBox('OPT-0001').getAttribute('aria-invalid')).toBe('true');
     expect(addOff()).toBe(true);
+    // Required, the list offers no "—": it opens on the first real packaging, not on a none.
+    expect(
+      within(screen.getByRole('listbox'))
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual(['Box', 'Grass', 'Paper']);
 
-    // Nothing picked: the walk goes on to the grade, and the grade's Enter back to the packaging.
+    // The list shut and nothing picked: the walk goes on to the grade, and the grade's Enter back
+    // to the packaging, its list open.
+    expect(await press('Escape')).toBe(false);
     await pressEnter(packagingBox('OPT-0001'));
+    expect(document.activeElement).toBe(gradeBox('OPT-0001'));
     await pressEnter(gradeBox('OPT-0001'));
     await act(async () => wait(0));
     expect(document.activeElement).toBe(packagingBox('OPT-0001'));
+    expect(within(screen.getByRole('listbox')).getAllByRole('option')).toHaveLength(3);
     expect(aside().querySelectorAll('[data-added-line]')).toHaveLength(0);
 
     // Add sub product, reached by Tab and pressed, does the same: the caret back on the packaging.
@@ -1011,6 +1031,40 @@ describe('the sub product card', () => {
     await pressEnter(packagingBox('OPT-0001'));
     expect(addOff()).toBe(false);
     await pressEnter(gradeBox('OPT-0001'));
+    expect(document.activeElement).toBe(addButton());
+    await pressEnter(addButton());
+    await backInTheBar();
+    expect(within(aside()).getByText(FIXED.name)).toBeTruthy();
+  });
+
+  it('with packaging required and no grades, reopens a shut packaging list on Enter, and takes the first packaging on to Add sub product', async () => {
+    await openForm({
+      optionLists: [...COLOURS, ...PACKAGING],
+      features: { packagingRequiredOnConvert: true },
+    });
+    await pickSubProduct(FIXED.name);
+    fireEvent.change(qtyBox('OPT-0001'), { target: { value: '5' } });
+    await pressEnter(qtyBox('OPT-0001'));
+    const packaging = packagingBox('OPT-0001');
+    expect(document.activeElement).toBe(packaging);
+
+    // Shut with Escape and nothing picked: Enter has nowhere to go but back here, and the list is
+    // open again — the caret is never left on a shut box that no Enter opens.
+    expect(await press('Escape')).toBe(false);
+    expect(screen.queryByRole('listbox')).toBeNull();
+    await pressEnter(packaging);
+    await act(async () => wait(0));
+    expect(document.activeElement).toBe(packaging);
+    expect(
+      within(screen.getByRole('listbox'))
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual(['Box', 'Grass', 'Paper']);
+
+    // Enter takes the first packaging and goes on to Add sub product, whose Enter adds.
+    await pressEnter(packaging);
+    await act(async () => wait(0));
+    expect(packaging.value).toBe('Box');
     expect(document.activeElement).toBe(addButton());
     await pressEnter(addButton());
     await backInTheBar();

@@ -2534,11 +2534,14 @@ function GridCard({
                   {/*
                    * Packaging and grade beside the quantity, the same box (owner's instructions,
                    * 2026-09-30): the kit's pick-only `Select` is an `Input` with a list under it.
-                   * Type a letter or arrow down, Enter takes it and steps on; "—" is none. A box
-                   * whose list is empty (a shop with no grades) is no step of the walk.
+                   * Type a letter or arrow down, Enter takes it and steps on; "—" is none, and no
+                   * choice at all while packaging is required — the list then opens on the first
+                   * real one, not on a "—" Add would turn back. A box whose list is empty (a shop
+                   * with no grades) is no step of the walk.
                    */}
                   <span style={{ minWidth: 0 }} onKeyDown={pickKey}>
                     <Select
+                      openOnArrivalOnly
                       value={row.packaging}
                       aria-label={`${t('lead.add.draft.packaging')} — ${rowName(row)}`}
                       aria-required={packagingRequired || undefined}
@@ -2551,7 +2554,7 @@ function GridCard({
                       data-row={row.key}
                       onChange={(event) => picked(row.key, { packaging: event.target.value })}
                     >
-                      <option value="">—</option>
+                      {!packagingRequired && <option value="">—</option>}
                       {valuesFor(packagingOptions, row.packaging).map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
@@ -2561,6 +2564,7 @@ function GridCard({
                   </span>
                   <span style={{ minWidth: 0 }} onKeyDown={pickKey}>
                     <Select
+                      openOnArrivalOnly
                       value={row.grade}
                       aria-label={`${t('lead.add.draft.grade')} — ${rowName(row)}`}
                       data-walk={gradeOptions.length > 0 || row.grade ? 'grade' : undefined}
