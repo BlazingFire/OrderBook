@@ -2259,12 +2259,17 @@ exercised only through service integration tests.
   `buildProductExport`, main-products.csv `Brand, Main product code, Main product, Order`,
   colours.csv `Colour, Hex` of the active colours, README.txt, `images/<CODE>[_N].webp`
   = each photo's stored `master.webp`, stored, named by the variant its caption names
-  else the first live code) and one `catalog.exported` row. `previewProductZip` /
+  else the first live code, a file-name-unsafe character as `%XX` (`fileSafe`); a photo
+  whose `CODE_N` is another code, or whose sub product has no live code, is left out and
+  listed in the README) and one `catalog.exported` row. `previewProductZip` /
   `restoreProductZip` are one `runZip`: `products.bulk` + `.create` + `.edit` (+
   `.delete` to bin; `catalog.lists.manage` when the colours change), entries found by
-  base name (a top folder is fine), `products.csv` header checked before any write,
-  main products planned like `ensureCategories` (created with code, brand, order;
-  renamed through `catalog.updateCategory`), colours through `upsertOptions`, rows
+  base name (a top folder is fine), `products.csv` header and at least one row checked
+  before any write, a `products.csv` main product cell that disagrees with
+  `main-products.csv` listed as a problem, duplicate colours read once,
+  colours written first (one transaction), then main products planned like
+  `ensureCategories` (created with code, brand, order;
+  renamed through `catalog.updateCategory`), rows
   through `importProducts` with `restore`, photos through `planPhotoImport` and
   `runPhotoImport` ('replace') with the ordinary `uploadImage`, compared by sha256 to
   `product_images.checksum`, then each gallery reordered to the zip's slots. Missing
@@ -2272,7 +2277,9 @@ exercised only through service integration tests.
   `catalog.deleteProduct`, `removeMissingPhotos` `deleteImage`. One `catalog.imported`
   row and one `catalog` change event. `startProductRestore` runs the real run detached
   as the one product restore (its own slot, not `backup-job.ts`; a second start is
-  `error.conflict.productRestoreBusy`), `productRestoreJob` reports it.
+  `error.conflict.productRestoreBusy`, one while a full backup restore runs
+  `error.conflict.backupBusy`, and `data.routes.ts` refuses a full restore while
+  `isProductRestoreRunning()`), `productRestoreJob` reports it.
   `loadShippedCatalogue` is the boot load (§11.5).
 - `master/src/services/party-import.service.ts` — `partyImportTemplate`, `exportParties`, `importParties({dryRun, mode})` (1.3 H1). `parties.bulk` + `parties.create` (add) or `parties.edit` (update); export `parties.view` **and** `parties.export` through `resolvePartyScope`. Party Access holds: a code the caller cannot view is "unknown", one they cannot manage is `validation.import.partyOutOfScope`, and a bulk add skips a name and city held by a party outside their view (`party.repository#listLivePartyNameCities` ignores scope on purpose, returning only the two strings). Chunks of 200, a failed chunk replayed row by row; one `party_list` activity row and one `party_bulk` change event (snapshot-forcing; `hub.ts#emitGatedChange` sends a panel whose `socket.data.protocol` is below `PARTY_BULK_MIN_PROTOCOL` a snapshot instead). Routes: `partyImportRoutes` in `panel-catalog.routes.ts`, on `dataRoutes` before `/parties/:id` and on `/api/panel`; the Office proxies them (`proxyDownload` / `proxyImport` in `office/src/http/app.ts`).
 - `master/src/services/catalogue-seed.service.ts` (398) — catalogue v2 (2026-09-29):
@@ -6000,9 +6007,12 @@ rewritten. Tests: `shared/tests/apply-party-rename.test.ts`,
   when the internal setting `internal.shippedCatalogueLoaded` is absent and
   `product_categories` has no row at all (binned included), it loads
   `config.catalogueZip` through `restoreProductZip` if the build carries one, else
-  `config.catalogueFile` through `loadCatalogue`, as System with the product keys; then
-  it writes the marker either way (an install with products only gets the marker). A
-  load that throws is a warning and is not recorded. Before or after setup alike; no
+  `config.catalogueFile` through `loadCatalogue`, as System with the product keys. The
+  marker is `{ state: 'loading' }` before the first write and `{ state: 'done' }` after
+  (an install with products only gets `done`, `loaded: 'none'`). A load that throws, or
+  that the Master stopped halfway (the window closed during the photos), is a warning and
+  stays `loading`; the next boot runs it again over what it left, rows upserted by code
+  and a photo already in its slot kept (`keepPhotos`). Before or after setup alike; no
   test suite runs `main()`, so the suites' empty catalogues stay empty.
 - **The product backup zip (2026-10-08, Master only).** Products → Sub products →
   **Backup products (.zip)** → `api.exportProductZip` → `GET /api/products/export.zip`
@@ -6115,7 +6125,8 @@ rewritten. Tests: `shared/tests/apply-party-rename.test.ts`,
   `MagicRestoreFlow` → `POST /api/setup/archive/preview` then `/restore`
   (`requireLoopback`, `refuseAfterSetup`), or Settings' **Restore…** → `POST
   /api/storage/archive/preview` then `/restore` (`storage.backupAll`, CONFIRM, the
-  master-key token). Both run `restoreArchive` as the job: check every hash and
+  master-key token; refused while a product restore runs, `error.conflict.productRestoreBusy`,
+  because maintenance does not stop its direct service calls). Both run `restoreArchive` as the job: check every hash and
   stage the photos, write a safety copy (Settings only, `<dataDir>/backups/pre-restore-*.zip`),
   `enterMaintenance()` (sessions and sockets end; `maintenance-gate.ts` and `hub.ts`
   answer 503 `error.unavailable.maintenance`), drop the schema and migrate to the
@@ -6402,7 +6413,7 @@ Rules: `docs/schema/06-tenancy-permissions-and-sync.md` section 2c, `docs/ROLES_
   or many files; `shared/src/domain/photo-import.ts` (`planPhotoImport`, `runPhotoImport`; pure, tested in
   `shared/tests/photo-import.test.ts`) matches and runs. A file is matched by its name without the extension, ignoring case,
   to a variant code (`OPT-0011.jpg`) and, failing that, to a sub product's alias when that alias is unique; `OPT-0011_2.jpg` is a
-  second photo of the same code. Status per file: `new`, `hasPhoto`, `unmatched`, `duplicate` (same name twice), `notImage`
+  second photo of the same code, unless `OPT-0011_2` is itself a code (then it is that code's photo 1). Status per file: `new`, `hasPhoto`, `unmatched`, `duplicate` (same name twice), `notImage`
   (jpg, jpeg, png, webp are read). Photos belong to the sub product (`product_images` has no variant column), so a file matched
   through a colour's code lands in the sub product's gallery captioned with that colour. The screen previews the plan, lets
   the person choose **skip** or **replace** for sub products that already have a photo, then uploads one photo at a time through
@@ -6594,7 +6605,7 @@ They read files and assert on the text; they need no database and cannot skip.
 
 | File | Reads | Protects |
 |---|---|---|
-| `master/tests/packaging-invariants.test.ts` | `tools/release.mjs`, both panel ymls, root `allowScripts`, `tools/uninstall/uninstall-orderbook.sh` | three `TARGETS` with literal per-arch PostgreSQL packages; `vendorPostgres` uses `RELEASE_TARGET.postgres`; every `@embedded-postgres` package in `allowScripts`; mac vendors both darwin packages; `verbatimSymlinks: true` in `vendorPostgres` and `stage`; `ensureUniversalPackages()` before `vendorPostgres()`; `win:`/`mac:`/`linux:` blocks with `artifactName` ending `.${ext}`; the yml targets, read in every shape a target can be written, equal to what `release.mjs` picks up (so the mac `.zip` cannot come back unnoticed); `x64ArchFiles`; `executableName: orderbook-<panel>`; the host-arch refusal, run as an arm64 machine against what `npm ls` finds native in each panel; the `.deb` sweep. Since Phase 0 also the fourth target, `win7`: Office only (the Master and the cleaner refused by name), any Windows machine, its yml (`office/electron-builder.legacy.yml`: same `appId`, `productName`, data rule and NSIS hook as the main Office yml, `include` of `installer-legacy.nsh` with the UCRT check), its `x64`+`ia32` archs and `Win7`-tagged file names, the CommonJS shell stage with its `{"type":"commonjs"}` marker in `build()` and `copy-shell.mjs`, and `LEGACY_ELECTRON` from `tools/legacy-electron.mjs` matching `22.3.x`. **The mac-build guard.** Since 2026-10-08 the shipped catalogue: `PANELS.master.extras` includes `assets`; `--catalogue` (and `ORDERBOOK_CATALOGUE_ZIP`) refuses a missing file, a non-zip, a zip with no `products.csv` and a run without the Master before the first command, and copies to `master/assets/catalogue/products.zip` (the path `config.catalogueZip` reads) after the check and before any build. |
+| `master/tests/packaging-invariants.test.ts` | `tools/release.mjs`, both panel ymls, root `allowScripts`, `tools/uninstall/uninstall-orderbook.sh` | three `TARGETS` with literal per-arch PostgreSQL packages; `vendorPostgres` uses `RELEASE_TARGET.postgres`; every `@embedded-postgres` package in `allowScripts`; mac vendors both darwin packages; `verbatimSymlinks: true` in `vendorPostgres` and `stage`; `ensureUniversalPackages()` before `vendorPostgres()`; `win:`/`mac:`/`linux:` blocks with `artifactName` ending `.${ext}`; the yml targets, read in every shape a target can be written, equal to what `release.mjs` picks up (so the mac `.zip` cannot come back unnoticed); `x64ArchFiles`; `executableName: orderbook-<panel>`; the host-arch refusal, run as an arm64 machine against what `npm ls` finds native in each panel; the `.deb` sweep. Since Phase 0 also the fourth target, `win7`: Office only (the Master and the cleaner refused by name), any Windows machine, its yml (`office/electron-builder.legacy.yml`: same `appId`, `productName`, data rule and NSIS hook as the main Office yml, `include` of `installer-legacy.nsh` with the UCRT check), its `x64`+`ia32` archs and `Win7`-tagged file names, the CommonJS shell stage with its `{"type":"commonjs"}` marker in `build()` and `copy-shell.mjs`, and `LEGACY_ELECTRON` from `tools/legacy-electron.mjs` matching `22.3.x`. **The mac-build guard.** Since 2026-10-08 the shipped catalogue: `PANELS.master.extras` includes `assets`; `--catalogue` (and `ORDERBOOK_CATALOGUE_ZIP`) refuses a missing file (or none named), a non-zip and a zip with no `products.csv`, and an explicit `--catalogue` refuses a run without the Master, before the first command (an Office-only run ignores the variable and goes on), and copies to `master/assets/catalogue/products.zip` (the path `config.catalogueZip` reads) after the check and before any build. |
 | `master/tests/web-reachability.test.ts` | both `App.tsx` and `api.ts` | every Tab reachable (`NAV_LESS`); every `api.*` member has a caller or an `ALLOWED_UNCALLED` reason, none stale |
 | `master/tests/screen-reachability.test.ts` | both `App.tsx`, `COMMANDS` | nav entries, `ScreenSpec`s and the Tab union agree; one-panel screens need a `PANEL_ONLY` reason; every `command.tab` resolves |
 | `master/tests/migration-registry.test.ts` | `master/src/db/migrations/` | §6.1 |

@@ -2893,13 +2893,14 @@ Shared types: `shared/src/domain/product-import.ts` (`ProductZipReport`, `Produc
 |---|---|---|
 | `GET /api/products/export.zip` | `products.view` + `products.export` | `application/zip`, `attachment; filename="OrderBook-Products-<company>-<date>.zip"`, streamed from a file in `<dataDir>/tmp` that is deleted when the response closes. One `catalog.exported` activity row (`format: 'zip'`) |
 | `POST /api/products/restore` (multipart `file`, written to disk, over 1 GiB `400 validation.productZip.tooLarge`) with `dryRun=true` | `products.bulk` + `.create` + `.edit` (+ `catalog.lists.manage` when the colours change) | `200 ProductZipReport` (`dryRun: true`); nothing written; the upload deleted |
-| `POST /api/products/restore` without `dryRun`; `binMissingProducts=true`, `removeMissingPhotos=true` opt in | the same, + `products.delete` with `binMissingProducts` | `202 ProductRestoreJob` (`phase: 'checking'`); the run continues detached and deletes the upload when it ends. A second start while one runs: `409 error.conflict.productRestoreBusy` |
+| `POST /api/products/restore` without `dryRun`; `binMissingProducts=true`, `removeMissingPhotos=true` opt in | the same, + `products.delete` with `binMissingProducts` | `202 ProductRestoreJob` (`phase: 'checking'`); the run continues detached and deletes the upload when it ends. A second start while one runs: `409 error.conflict.productRestoreBusy`; a start while a full backup restore runs: `409 error.conflict.backupBusy`. The other way round, `POST /api/storage/archive/restore` answers `409 error.conflict.productRestoreBusy` while this job runs |
 | `GET /api/products/restore/job` | `products.bulk` | the latest `ProductRestoreJob` (`phase` `checking` → `products` → `photos` (`done`/`total` photos) → `removing` → `done` with `result: ProductZipReport`, or `failed` with `message`), or `null` since the Master started |
 
 Refusals before anything is written: `validation.productZip.notAZip`, `.entryRejected` (`{entry}`: an absolute or `..`
 name), `.noProductsCsv`, `.manyFiles` (`{file}`), and the import's own `validation.import.missingColumn` /
-`.unreadable` / `.emptyFile` for `products.csv`. A row or photo that fails is listed in the report (`products.issues`,
-`problems`), never a refusal of the whole zip. A real run that changed anything writes one `catalog.imported` activity row
+`.unreadable` / `.emptyFile` (no header, or a header and no rows) for `products.csv`. A row or photo that fails is listed
+in the report (`products.issues`, `problems`), never a refusal of the whole zip; so is a `products.csv` main product cell
+that disagrees with `main-products.csv` (`validation.productZip.mainDiffers`, `{column, value, main}`: the latter is read). A real run that changed anything writes one `catalog.imported` activity row
 and one `catalog` change event; the photos and renames it makes announce themselves as a single edit would.
 
 ## Appendix — new permission keys

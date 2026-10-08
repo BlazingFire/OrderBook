@@ -138,7 +138,9 @@ products (.zip)** on the live Master and build with it:
 npm run release -- --catalogue D:/Backups/OrderBook-Products-Acme-2026-10-08.zip
 ```
 
-(or set `ORDERBOOK_CATALOGUE_ZIP`). The release checks the zip holds a
+(or set `ORDERBOOK_CATALOGUE_ZIP`; a run that does not build the Master, such as
+`--panel office` or `--os win7`, ignores the variable and says so, but refuses an
+explicit `--catalogue`). The release checks the zip holds a
 `products.csv` before it builds anything, then copies it to
 `master/assets/catalogue/products.zip`, which the Master build stages with the
 rest of `assets/`. The run prints which catalogue it ships; a `products.zip`
@@ -150,7 +152,11 @@ The shipped catalogue is loaded **once**, and only into an install whose
 catalogue has never held a main product (the Recycle Bin counts): a fresh
 install, before or after first-run setup, or a Master whose data was erased. An
 update never touches an existing catalogue; the internal setting
-`internal.shippedCatalogueLoaded` records that the check was made.
+`internal.shippedCatalogueLoaded` records that the check was made. A load is
+recorded as under way (`state: 'loading'`) before it writes anything and as done
+when it ends, so one that fails, or that a closed window stops while the photos
+go in, carries on at the next boot: rows are upserted by code and a photo already
+in its slot stays, so nothing is loaded twice.
 
 ## When a new build shows up
 
