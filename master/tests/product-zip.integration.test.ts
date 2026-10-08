@@ -38,7 +38,14 @@ import {
 import * as roleService from '../src/services/role.service.js';
 import * as userService from '../src/services/user.service.js';
 import { canRunIntegrationTests } from './helpers/db.js';
-import { actorWith, resetData, setupDatabase, teardownDatabase, testActor, testTenantId } from './helpers/fixtures.js';
+import {
+  actorWith,
+  resetData,
+  setupDatabase,
+  teardownDatabase,
+  testActor,
+  testTenantId,
+} from './helpers/fixtures.js';
 
 let admin: ActorContext;
 let dir: string;
@@ -46,7 +53,9 @@ let tenantImagesDir: string;
 const SUB_PRODUCTS = 549;
 
 const jpeg = (background: string) =>
-  sharp({ create: { width: 48, height: 32, channels: 3, background } }).jpeg().toBuffer();
+  sharp({ create: { width: 48, height: 32, channels: 3, background } })
+    .jpeg()
+    .toBuffer();
 
 async function productByCode(code: string) {
   const { items } = await productRepo.listProducts(admin.tenantId, { limit: 100_000, offset: 0 });
@@ -105,14 +114,23 @@ function editCell(rows: string[][], code: string, column: string, value: string)
   const [header, ...body] = rows;
   const codeAt = header!.indexOf('Code');
   const at = header!.indexOf(column);
-  const edited = body.map((row) => (row[codeAt] === code ? row.map((cell, index) => (index === at ? value : cell)) : row));
+  const edited = body.map((row) =>
+    row[codeAt] === code ? row.map((cell, index) => (index === at ? value : cell)) : row,
+  );
   return Buffer.from('﻿' + toCsv(header!, edited), 'utf8');
 }
 
 function withoutRow(rows: string[][], code: string): Buffer {
   const [header, ...body] = rows;
   const codeAt = header!.indexOf('Code');
-  return Buffer.from('﻿' + toCsv(header!, body.filter((row) => row[codeAt] !== code)), 'utf8');
+  return Buffer.from(
+    '﻿' +
+      toCsv(
+        header!,
+        body.filter((row) => row[codeAt] !== code),
+      ),
+    'utf8',
+  );
 }
 
 describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)', () => {
@@ -171,17 +189,30 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
     const opt1 = await productByCode('OPT-0001');
     const primary = opt1.images.find((image) => image.isPrimary)!;
     const { createHash } = await import('node:crypto');
-    expect(createHash('sha256').update(entries.get('images/OPT-0001.webp')!).digest('hex')).toBe(primary.checksum);
+    expect(createHash('sha256').update(entries.get('images/OPT-0001.webp')!).digest('hex')).toBe(
+      primary.checksum,
+    );
   });
 
   it('needs products.export to back up, and the bulk permissions to restore', async () => {
-    await expect(exportProductZip(await actorWith(['products.view']))).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(exportProductZip(await actorWith(['products.view']))).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
     const { file } = await exported();
     await expect(
-      previewProductZip(file, 'p.zip', await actorWith(['products.view', 'products.create', 'products.edit'])),
+      previewProductZip(
+        file,
+        'p.zip',
+        await actorWith(['products.view', 'products.create', 'products.edit']),
+      ),
     ).rejects.toBeInstanceOf(ForbiddenError);
     await expect(
-      restoreProductZip(file, 'p.zip', { binMissingProducts: true }, await actorWith(['products.bulk', 'products.create', 'products.edit'])),
+      restoreProductZip(
+        file,
+        'p.zip',
+        { binMissingProducts: true },
+        await actorWith(['products.bulk', 'products.create', 'products.edit']),
+      ),
     ).rejects.toBeInstanceOf(ForbiddenError);
   });
 
@@ -189,7 +220,12 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
     const { file } = await exported();
     const preview = await previewProductZip(file, 'p.zip', admin);
 
-    expect(preview.products).toMatchObject({ created: 0, updated: 0, unchanged: SUB_PRODUCTS, failed: 0 });
+    expect(preview.products).toMatchObject({
+      created: 0,
+      updated: 0,
+      unchanged: SUB_PRODUCTS,
+      failed: 0,
+    });
     expect(preview.mainProducts).toEqual({ added: [], renamed: [] });
     expect(preview.rows).toEqual({ added: [], changed: [], notInFile: [] });
     expect(preview.colours).toEqual({ added: [], changed: [] });
@@ -219,9 +255,18 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
     const preview = await previewProductZip(file, 'p.zip', admin);
     expect(preview.products).toMatchObject({ created: 0, updated: 1, unchanged: SUB_PRODUCTS - 1 });
     expect(preview.rows.changed).toEqual([
-      { code: 'OPT-0003', name: expect.any(String), fields: [{ column: 'Size', from: sizeBefore ?? '', to: '99x99' }] },
+      {
+        code: 'OPT-0003',
+        name: expect.any(String),
+        fields: [{ column: 'Size', from: sizeBefore ?? '', to: '99x99' }],
+      },
     ]);
-    expect(preview.photos).toMatchObject({ added: ['OPT-0001_3.jpg'], replaced: ['OPT-0002.jpg'], unchanged: 2, notInZip: [] });
+    expect(preview.photos).toMatchObject({
+      added: ['OPT-0001_3.jpg'],
+      replaced: ['OPT-0002.jpg'],
+      unchanged: 2,
+      notInZip: [],
+    });
 
     const oldOpt2 = (await productByCode('OPT-0002')).images[0]!;
     const done = await restoreProductZip(file, 'p.zip', {}, admin);
@@ -253,11 +298,18 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
     const before = (await productByCode('OPT-0001')).images;
     const edited = new Map(entries);
     edited.delete('images/OPT-0001_2.webp');
-    edited.set('images/OPT-0001_2.png', await sharp({ create: { width: 40, height: 40, channels: 3, background: '#123456' } }).png().toBuffer());
+    edited.set(
+      'images/OPT-0001_2.png',
+      await sharp({ create: { width: 40, height: 40, channels: 3, background: '#123456' } })
+        .png()
+        .toBuffer(),
+    );
     await restoreProductZip(await zipOf(edited), 'p.zip', {}, admin);
 
     const after = await productByCode('OPT-0001');
-    const order = [...after.images].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary) || a.sequence - b.sequence);
+    const order = [...after.images].sort(
+      (a, b) => Number(b.isPrimary) - Number(a.isPrimary) || a.sequence - b.sequence,
+    );
     expect(order).toHaveLength(2);
     expect(order[0]!.id).toBe(before.find((image) => image.isPrimary)!.id);
     expect(before.map((image) => image.id)).not.toContain(order[1]!.id);
@@ -280,7 +332,12 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
     expect(await productByCode('OPT-0004')).toBeDefined();
     expect((await productByCode('OPT-0001')).images).toHaveLength(2);
 
-    const opted = await restoreProductZip(file, 'p.zip', { binMissingProducts: true, removeMissingPhotos: true }, admin);
+    const opted = await restoreProductZip(
+      file,
+      'p.zip',
+      { binMissingProducts: true, removeMissingPhotos: true },
+      admin,
+    );
     expect(opted).toMatchObject({ binned: 1, photosRemoved: 1 });
     expect(await productByCode('OPT-0004')).toBeUndefined();
     // In the Recycle Bin, not gone: the ordinary delete.
@@ -298,7 +355,11 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
     expect(preview.mainProducts.added).toHaveLength(41);
     expect(preview.products).toMatchObject({ created: SUB_PRODUCTS, failed: 0 });
     expect(preview.colours.added.length).toBeGreaterThan(0);
-    expect(preview.photos.added.sort()).toEqual(['OPT-0001.webp', 'OPT-0001_2.webp', 'OPT-0002.webp']);
+    expect(preview.photos.added.sort()).toEqual([
+      'OPT-0001.webp',
+      'OPT-0001_2.webp',
+      'OPT-0002.webp',
+    ]);
 
     const done = await restoreProductZip(original.file, 'p.zip', {}, admin);
     expect(done.products).toMatchObject({ created: SUB_PRODUCTS, failed: 0 });
@@ -306,7 +367,9 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
 
     const again = await exported();
     for (const name of ['products.csv', 'main-products.csv', 'colours.csv']) {
-      expect(again.entries.get(name)!.toString('utf8'), name).toBe(original.entries.get(name)!.toString('utf8'));
+      expect(again.entries.get(name)!.toString('utf8'), name).toBe(
+        original.entries.get(name)!.toString('utf8'),
+      );
     }
     expect([...again.entries.keys()].filter((name) => name.startsWith('images/')).sort()).toEqual([
       'images/OPT-0001.webp',
@@ -374,8 +437,15 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
     expect(started.phase).toBe('checking');
     expect(() => startProductRestore(second, 'second.zip', {}, admin)).toThrow(ConflictError);
 
-    await vi.waitFor(() => expect(productRestoreJob()?.finishedAt).toBeDefined(), { timeout: 60_000, interval: 100 });
-    expect(productRestoreJob()).toMatchObject({ id: started.id, phase: 'done', result: { products: { unchanged: SUB_PRODUCTS } } });
+    await vi.waitFor(() => expect(productRestoreJob()?.finishedAt).toBeDefined(), {
+      timeout: 60_000,
+      interval: 100,
+    });
+    expect(productRestoreJob()).toMatchObject({
+      id: started.id,
+      phase: 'done',
+      result: { products: { unchanged: SUB_PRODUCTS } },
+    });
     // The upload goes when the job ends.
     await vi.waitFor(async () => expect(await readdir(dir)).not.toContain('first.zip'));
   });
@@ -387,10 +457,19 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
     });
 
     async function agentWith(permissions: string[], username: string) {
-      const role = await roleService.createRole({ name: `Role ${username}`, tier: 'management', permissions }, admin);
-      await userService.createUser({ username, displayName: username, roleId: role.id, password: 'correct-horse' }, admin);
+      const role = await roleService.createRole(
+        { name: `Role ${username}`, tier: 'management', permissions },
+        admin,
+      );
+      await userService.createUser(
+        { username, displayName: username, roleId: role.id, password: 'correct-horse' },
+        admin,
+      );
       const agent = request.agent(app);
-      await agent.post('/api/auth/sign-in').send({ username, password: 'correct-horse' }).expect(200);
+      await agent
+        .post('/api/auth/sign-in')
+        .send({ username, password: 'correct-horse' })
+        .expect(200);
       return agent;
     }
 
@@ -411,7 +490,9 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
         })
         .expect(200);
       expect(download.headers['content-type']).toBe('application/zip');
-      expect(download.headers['content-disposition']).toMatch(/^attachment; filename="OrderBook-Products-.+\.zip"$/);
+      expect(download.headers['content-disposition']).toMatch(
+        /^attachment; filename="OrderBook-Products-.+\.zip"$/,
+      );
       const zip = download.body as Buffer;
 
       const preview = await agent
@@ -419,9 +500,16 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
         .field('dryRun', 'true')
         .attach('file', zip, 'backup.zip')
         .expect(200);
-      expect(preview.body).toMatchObject({ dryRun: true, fileName: 'backup.zip', products: { unchanged: SUB_PRODUCTS } });
+      expect(preview.body).toMatchObject({
+        dryRun: true,
+        fileName: 'backup.zip',
+        products: { unchanged: SUB_PRODUCTS },
+      });
 
-      const started = await agent.post('/api/products/restore').attach('file', zip, 'backup.zip').expect(202);
+      const started = await agent
+        .post('/api/products/restore')
+        .attach('file', zip, 'backup.zip')
+        .expect(202);
       expect(started.body).toMatchObject({ phase: 'checking' });
       await vi.waitFor(
         async () => {

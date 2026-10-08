@@ -64,11 +64,23 @@ import {
 import { config } from '../config/index.js';
 import { requirePermission, systemActor, type ActorContext } from '../domain/actor.js';
 import { companySlug, MAX_ARCHIVE_ENTRIES } from '../domain/archive.js';
-import { IMPORT_COLUMNS, isBlankRow, matchHeaders, normalizeHeader, type ImportField } from '../domain/product-import.js';
+import {
+  IMPORT_COLUMNS,
+  isBlankRow,
+  matchHeaders,
+  normalizeHeader,
+  type ImportField,
+} from '../domain/product-import.js';
 import { db } from '../db/knex.js';
 import { createZipWriter, openZipReader, type ZipReader } from '../lib/archive-zip.js';
 import { toCsv } from '../lib/csv.js';
-import { AppError, BackupError, ConflictError, toErrorMessage, ValidationError } from '../lib/errors.js';
+import {
+  AppError,
+  BackupError,
+  ConflictError,
+  toErrorMessage,
+  ValidationError,
+} from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import { readSheetRows } from '../lib/spreadsheet.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
@@ -194,7 +206,9 @@ function readme(company: string, date: string): string {
  * Needs `products.export` on top of seeing the catalogue: this is the whole
  * catalogue with every photo, the export the key is for.
  */
-export async function exportProductZip(actor: ActorContext): Promise<{ filePath: string; fileName: string }> {
+export async function exportProductZip(
+  actor: ActorContext,
+): Promise<{ filePath: string; fileName: string }> {
   requirePermission(actor, 'products.view');
   requirePermission(actor, 'products.export');
   const { tenantId } = actor;
@@ -225,7 +239,9 @@ export async function exportProductZip(actor: ActorContext): Promise<{ filePath:
 
     // The values in use: one switched off is not offered, and restoring it would switch it back on.
     const colours = await customFieldRepo.listOptionsForKey(tenantId, 'stock.colour');
-    const colourRows = colours.filter((option) => option.isActive).map((option) => [option.value, option.hex ?? '']);
+    const colourRows = colours
+      .filter((option) => option.isActive)
+      .map((option) => [option.value, option.hex ?? '']);
     await writer.appendEntry(COLOURS_CSV, ['﻿' + toCsv(COLOUR_HEADERS, colourRows)]);
 
     await writer.appendEntry('README.txt', [readme(company ?? 'this company', date)]);
@@ -236,7 +252,13 @@ export async function exportProductZip(actor: ActorContext): Promise<{ filePath:
         const name = photoBaseName(product, image, index + 1);
         const source = masterFile(tenantId, image.id);
         // A row whose files are gone (healed on the next boot, if it was shipped) has nothing to write.
-        if (!name || !(await access(source).then(() => true, () => false))) {
+        if (
+          !name ||
+          !(await access(source).then(
+            () => true,
+            () => false,
+          ))
+        ) {
           log.warn(`Photo ${image.id} of ${product.name} has no file to back up`);
           continue;
         }
@@ -277,7 +299,9 @@ export async function exportProductZip(actor: ActorContext): Promise<{ filePath:
 /** The library's refusal as the product zip's own sentence. */
 function zipRefusal(error: unknown): unknown {
   if (error instanceof BackupError && error.reason === 'entryRejected') {
-    return new ValidationError('validation.productZip.entryRejected', { entry: String(error.params.entry ?? '') });
+    return new ValidationError('validation.productZip.entryRejected', {
+      entry: String(error.params.entry ?? ''),
+    });
   }
   if (error instanceof BackupError) return new ValidationError('validation.productZip.notAZip');
   return error;
@@ -285,20 +309,36 @@ function zipRefusal(error: unknown): unknown {
 
 /** One fixed file, found by its name wherever it sits, case aside. Two of them is a question only the person can answer. */
 function findEntry(reader: ZipReader, file: string): string | null {
-  const hits = reader.entries.filter((entry) => !entry.name.endsWith('/') && baseName(entry.name).toLowerCase() === file);
+  const hits = reader.entries.filter(
+    (entry) => !entry.name.endsWith('/') && baseName(entry.name).toLowerCase() === file,
+  );
   if (hits.length > 1) throw new ValidationError('validation.productZip.manyFiles', { file });
   return hits[0]?.name ?? null;
 }
 
-async function entryBytes(reader: ZipReader, name: string, maxBytes: number, tooLarge: MessageKey): Promise<Buffer> {
-  if ((reader.entries.find((entry) => entry.name === name)?.bytes ?? 0) > maxBytes) throw new ValidationError(tooLarge);
+async function entryBytes(
+  reader: ZipReader,
+  name: string,
+  maxBytes: number,
+  tooLarge: MessageKey,
+): Promise<Buffer> {
+  if ((reader.entries.find((entry) => entry.name === name)?.bytes ?? 0) > maxBytes)
+    throw new ValidationError(tooLarge);
   const chunks: Buffer[] = [];
   for await (const chunk of await reader.openStream(name)) chunks.push(chunk as Buffer);
   return Buffer.concat(chunks);
 }
 
-async function sheetOf(reader: ZipReader, name: string): Promise<{ bytes: Buffer; rows: string[][] }> {
-  const bytes = await entryBytes(reader, name, MAX_PRODUCT_IMPORT_BYTES, 'validation.import.tooLarge');
+async function sheetOf(
+  reader: ZipReader,
+  name: string,
+): Promise<{ bytes: Buffer; rows: string[][] }> {
+  const bytes = await entryBytes(
+    reader,
+    name,
+    MAX_PRODUCT_IMPORT_BYTES,
+    'validation.import.tooLarge',
+  );
   try {
     return { bytes, rows: await readSheetRows(bytes) };
   } catch {
@@ -344,10 +384,14 @@ async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promis
   if (headerAt === -1) throw new ValidationError('validation.import.emptyFile');
   const match = matchHeaders((products.rows[headerAt] ?? []).map((cell) => cell.trim()));
   if (match.missing.length > 0) {
-    throw new ValidationError('validation.import.missingColumn', { column: labelOf(match.missing[0] as ImportField) });
+    throw new ValidationError('validation.import.missingColumn', {
+      column: labelOf(match.missing[0] as ImportField),
+    });
   }
-  const at = (field: ImportField): number => match.byIndex.findIndex((column) => column?.field === field);
-  const cell = (row: readonly string[], index: number): string => (index >= 0 ? (row[index] ?? '').trim() : '');
+  const at = (field: ImportField): number =>
+    match.byIndex.findIndex((column) => column?.field === field);
+  const cell = (row: readonly string[], index: number): string =>
+    index >= 0 ? (row[index] ?? '').trim() : '';
 
   const fileCodes = new Set<string>();
   // A main product products.csv names by a code main-products.csv does not list: its first row says what it is.
@@ -358,7 +402,12 @@ async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promis
     if (code) fileCodes.add(code.toLowerCase());
     const mainCode = cell(row, at('categoryCode'));
     if (mainCode && !named.some((main) => main.code?.toLowerCase() === mainCode.toLowerCase())) {
-      named.push({ code: mainCode, name: cell(row, at('categoryName')), brand: cell(row, at('categoryBrand')) || undefined, order: null });
+      named.push({
+        code: mainCode,
+        name: cell(row, at('categoryName')),
+        brand: cell(row, at('categoryBrand')) || undefined,
+        order: null,
+      });
     }
   }
 
@@ -368,8 +417,11 @@ async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promis
     const { rows } = await sheetOf(reader, mainEntry);
     const header = rows[0] ?? [];
     const mainMatch = matchHeaders(header);
-    const mainAt = (field: ImportField): number => mainMatch.byIndex.findIndex((column) => column?.field === field);
-    const orderAt = header.findIndex((text) => ['order', 'sortorder'].includes(normalizeHeader(text ?? '')));
+    const mainAt = (field: ImportField): number =>
+      mainMatch.byIndex.findIndex((column) => column?.field === field);
+    const orderAt = header.findIndex((text) =>
+      ['order', 'sortorder'].includes(normalizeHeader(text ?? '')),
+    );
     for (const row of rows.slice(1)) {
       if (isBlankRow(row)) continue;
       const order = Number.parseInt(cell(row, orderAt), 10);
@@ -382,7 +434,8 @@ async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promis
     }
   }
   for (const main of named) {
-    if (!mainProducts.some((listed) => listed.code?.toLowerCase() === main.code?.toLowerCase())) mainProducts.push(main);
+    if (!mainProducts.some((listed) => listed.code?.toLowerCase() === main.code?.toLowerCase()))
+      mainProducts.push(main);
   }
 
   const colours: ZipContents['colours'] = [];
@@ -396,7 +449,12 @@ async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promis
       const value = cell(row, valueAt);
       if (!value) continue;
       const hex = cell(row, hexAt);
-      if (hex && !HEX.test(hex)) problems.push({ subject: value, messageKey: 'validation.productZip.hexInvalid', params: { hex } });
+      if (hex && !HEX.test(hex))
+        problems.push({
+          subject: value,
+          messageKey: 'validation.productZip.hexInvalid',
+          params: { hex },
+        });
       colours.push({ value, hex: HEX.test(hex) ? hex : null });
     }
   }
@@ -405,7 +463,14 @@ async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promis
   const photos: ZipPhoto[] = [];
   const extraPhotos: string[] = [];
   for (const { name: entry } of reader.entries) {
-    if (entry.endsWith('/') || !entry.split('/').slice(0, -1).some((folder) => folder.toLowerCase() === 'images')) continue;
+    if (
+      entry.endsWith('/') ||
+      !entry
+        .split('/')
+        .slice(0, -1)
+        .some((folder) => folder.toLowerCase() === 'images')
+    )
+      continue;
     const name = baseName(entry);
     if (photos.some((photo) => photo.name === name)) {
       extraPhotos.push(name);
@@ -415,7 +480,8 @@ async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promis
     let head = Buffer.alloc(0);
     for await (const chunk of await reader.openStream(entry)) {
       hash.update(chunk as Buffer);
-      if (head.length < 16) head = Buffer.concat([head, (chunk as Buffer).subarray(0, 16 - head.length)]);
+      if (head.length < 16)
+        head = Buffer.concat([head, (chunk as Buffer).subarray(0, 16 - head.length)]);
     }
     photos.push({ name, entry, head, sha256: hash.digest('hex') });
   }
@@ -427,7 +493,13 @@ async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promis
 
 interface MainPlan {
   added: productRepo.CategorySeed[];
-  renamed: Array<{ id: string; code: string; name: string; brand: string | null | undefined; fields: ProductCellChange[] }>;
+  renamed: Array<{
+    id: string;
+    code: string;
+    name: string;
+    brand: string | null | undefined;
+    fields: ProductCellChange[];
+  }>;
 }
 
 /**
@@ -435,10 +507,15 @@ interface MainPlan {
  * live matches by code or by (brand, name) — `ensureCategories`' own rule, so
  * the preview and the run agree. A brand is spelled as the Brands list does.
  */
-async function planMainProducts(rows: readonly MainRow[], tenantId: string, problems: ProductZipProblem[]): Promise<MainPlan> {
+async function planMainProducts(
+  rows: readonly MainRow[],
+  tenantId: string,
+  problems: ProductZipProblem[],
+): Promise<MainPlan> {
   const live = await productRepo.listCategories(tenantId);
   const brandByLower = new Map<string, string>();
-  for (const category of live) if (category.brand) brandByLower.set(category.brand.toLowerCase(), category.brand);
+  for (const category of live)
+    if (category.brand) brandByLower.set(category.brand.toLowerCase(), category.brand);
   for (const option of await customFieldRepo.listOptionsForKey(tenantId, 'product.brand')) {
     brandByLower.set(option.value.toLowerCase(), option.value);
   }
@@ -448,25 +525,51 @@ async function planMainProducts(rows: readonly MainRow[], tenantId: string, prob
   rows.forEach((row, index) => {
     if (!row.name) return;
     if (row.code && !CATEGORY_CODE_PATTERN.test(row.code)) {
-      problems.push({ subject: row.code, messageKey: 'validation.productZip.codeInvalid', params: { code: row.code } });
+      problems.push({
+        subject: row.code,
+        messageKey: 'validation.productZip.codeInvalid',
+        params: { code: row.code },
+      });
       return;
     }
     const brand = row.brand ? (brandByLower.get(row.brand.toLowerCase()) ?? row.brand) : row.brand;
 
-    const byCode = row.code ? live.find((category) => lower(category.code) === lower(row.code)) : undefined;
+    const byCode = row.code
+      ? live.find((category) => lower(category.code) === lower(row.code))
+      : undefined;
     if (byCode) {
       const fields: ProductCellChange[] = [];
-      if (byCode.name !== row.name) fields.push({ column: labelOf('categoryName'), from: byCode.name, to: row.name });
+      if (byCode.name !== row.name)
+        fields.push({ column: labelOf('categoryName'), from: byCode.name, to: row.name });
       if (brand !== undefined && (byCode.brand ?? null) !== brand) {
-        fields.push({ column: labelOf('categoryBrand'), from: byCode.brand ?? '', to: brand ?? '' });
+        fields.push({
+          column: labelOf('categoryBrand'),
+          from: byCode.brand ?? '',
+          to: brand ?? '',
+        });
       }
-      if (fields.length > 0) plan.renamed.push({ id: byCode.id, code: byCode.code as string, name: row.name, brand, fields });
+      if (fields.length > 0)
+        plan.renamed.push({
+          id: byCode.id,
+          code: byCode.code as string,
+          name: row.name,
+          brand,
+          fields,
+        });
       return;
     }
     const byName = live.some(
-      (category) => lower(category.name) === lower(row.name) && (!brand || lower(category.brand) === lower(brand)),
+      (category) =>
+        lower(category.name) === lower(row.name) &&
+        (!brand || lower(category.brand) === lower(brand)),
     );
-    if (!byName) plan.added.push({ code: row.code, name: row.name, brand: brand ?? null, sortOrder: row.order ?? index + 1 });
+    if (!byName)
+      plan.added.push({
+        code: row.code,
+        name: row.name,
+        brand: brand ?? null,
+        sortOrder: row.order ?? index + 1,
+      });
   });
   return plan;
 }
@@ -474,15 +577,28 @@ async function planMainProducts(rows: readonly MainRow[], tenantId: string, prob
 function problemOf(subject: string, error: unknown): ProductZipProblem {
   return error instanceof AppError
     ? { subject, messageKey: error.messageKey, params: error.params }
-    : { subject, messageKey: 'validation.import.rowFailed', params: { reason: toErrorMessage(error) } };
+    : {
+        subject,
+        messageKey: 'validation.import.rowFailed',
+        params: { reason: toErrorMessage(error) },
+      };
 }
 
 /** Create, then rename one by one through the ordinary edit (its checks, its event); answers the renames that went through. */
-async function applyMainProducts(plan: MainPlan, actor: ActorContext, problems: ProductZipProblem[]): Promise<MainPlan['renamed']> {
+async function applyMainProducts(
+  plan: MainPlan,
+  actor: ActorContext,
+  problems: ProductZipProblem[],
+): Promise<MainPlan['renamed']> {
   const { tenantId } = actor;
   const listed = await customFieldRepo.listOptionsForKey(tenantId, 'product.brand');
   await db().transaction(async (trx) => {
-    await registerBrands(tenantId, [...plan.added, ...plan.renamed].map((main) => main.brand ?? ''), listed, trx);
+    await registerBrands(
+      tenantId,
+      [...plan.added, ...plan.renamed].map((main) => main.brand ?? ''),
+      listed,
+      trx,
+    );
     await productRepo.ensureCategories(tenantId, plan.added, trx);
   });
   customFieldRepo.invalidateFieldCache(tenantId);
@@ -490,7 +606,11 @@ async function applyMainProducts(plan: MainPlan, actor: ActorContext, problems: 
   const done: MainPlan['renamed'] = [];
   for (const rename of plan.renamed) {
     try {
-      await catalog.updateCategory(rename.id, { name: rename.name, ...(rename.brand !== undefined ? { brand: rename.brand } : {}) }, actor);
+      await catalog.updateCategory(
+        rename.id,
+        { name: rename.name, ...(rename.brand !== undefined ? { brand: rename.brand } : {}) },
+        actor,
+      );
       done.push(rename);
     } catch (error) {
       problems.push(problemOf(rename.code, error));
@@ -500,14 +620,20 @@ async function applyMainProducts(plan: MainPlan, actor: ActorContext, problems: 
 }
 
 /** `upsertOptions`' own reading: a value missing, binned or switched off is added; a different hex is a change. */
-async function planColours(colours: ZipContents['colours'], tenantId: string): Promise<ProductZipReport['colours']> {
-  const existing = await customFieldRepo.listOptionsForKey(tenantId, 'stock.colour', { includeDeleted: true });
+async function planColours(
+  colours: ZipContents['colours'],
+  tenantId: string,
+): Promise<ProductZipReport['colours']> {
+  const existing = await customFieldRepo.listOptionsForKey(tenantId, 'stock.colour', {
+    includeDeleted: true,
+  });
   const report: ProductZipReport['colours'] = { added: [], changed: [] };
   for (const { value, hex } of colours) {
     const matches = existing.filter((option) => option.value === value);
     const hit = matches.find((option) => !option.deletedAt) ?? matches[0];
     if (!hit || hit.deletedAt || !hit.isActive) report.added.push(value);
-    else if (hex !== null && hit.hex !== hex) report.changed.push({ column: value, from: hit.hex ?? '', to: hex });
+    else if (hex !== null && hit.hex !== hex)
+      report.changed.push({ column: value, from: hit.hex ?? '', to: hex });
   }
   return report;
 }
@@ -526,7 +652,9 @@ interface PhotoPlan {
 
 function planPhotos(zip: ZipContents, products: readonly Product[]): PhotoPlan {
   const plan = planPhotoImport(zip.photos, products);
-  const checksumOf = new Map(products.flatMap((product) => product.images.map((image) => [image.id, image.checksum])));
+  const checksumOf = new Map(
+    products.flatMap((product) => product.images.map((image) => [image.id, image.checksum])),
+  );
   const report: ProductZipReport['photos'] = {
     added: [],
     replaced: [],
@@ -559,9 +687,14 @@ function planPhotos(zip: ZipContents, products: readonly Product[]): PhotoPlan {
   const named = new Set(plan.flatMap((row) => (row.slotImageId ? [row.slotImageId] : [])));
   const notInZip: PhotoPlan['notInZip'] = [];
   for (const product of products) {
-    if (!product.variants.some((variant) => zip.fileCodes.has(variant.code.toLowerCase()))) continue;
+    if (!product.variants.some((variant) => zip.fileCodes.has(variant.code.toLowerCase())))
+      continue;
     galleryImages(product).forEach((image, index) => {
-      if (!named.has(image.id)) notInZip.push({ imageId: image.id, name: photoBaseName(product, image, index + 1) ?? image.id });
+      if (!named.has(image.id))
+        notInZip.push({
+          imageId: image.id,
+          name: photoBaseName(product, image, index + 1) ?? image.id,
+        });
     });
   }
   report.notInZip = notInZip.map((photo) => photo.name);
@@ -587,7 +720,12 @@ async function runPhotos(
   const outcomes = await runPhotoImport(plan.toRun, 'replace', {
     upload: async (productId, file, caption) => {
       try {
-        const bytes = await entryBytes(reader, file.entry, MAX_IMAGE_SOURCE_BYTES, 'validation.image.tooLarge');
+        const bytes = await entryBytes(
+          reader,
+          file.entry,
+          MAX_IMAGE_SOURCE_BYTES,
+          'validation.image.tooLarge',
+        );
         const product = await uploadImage(
           {
             productId,
@@ -620,10 +758,19 @@ async function runPhotos(
     if (outcome.result === 'imported') {
       (outcome.row.status === 'new' ? landed.added : landed.replaced).push(outcome.row.fileName);
       touched.add(outcome.row.productId as string);
-      if (outcome.error) problems.push({ subject: outcome.row.fileName, messageKey: 'productZip.problem.photo', params: { reason: outcome.error } });
+      if (outcome.error)
+        problems.push({
+          subject: outcome.row.fileName,
+          messageKey: 'productZip.problem.photo',
+          params: { reason: outcome.error },
+        });
     } else if (outcome.result === 'failed') {
       problems.push(
-        refusals.get(outcome.row.file) ?? { subject: outcome.row.fileName, messageKey: 'productZip.problem.photo', params: { reason: outcome.error ?? '' } },
+        refusals.get(outcome.row.file) ?? {
+          subject: outcome.row.fileName,
+          messageKey: 'productZip.problem.photo',
+          params: { reason: outcome.error ?? '' },
+        },
       );
     }
   }
@@ -636,7 +783,9 @@ async function runPhotos(
     const place = (id: string): number => slots.get(id) ?? 1_000_000 + gallery.indexOf(id);
     const wanted = [...gallery].sort((a, b) => place(a) - place(b));
     if (wanted.some((id, index) => id !== gallery[index])) {
-      await reorderImages({ productId, ids: wanted }, actor).catch((error: unknown) => problems.push(problemOf(product.name, error)));
+      await reorderImages({ productId, ids: wanted }, actor).catch((error: unknown) =>
+        problems.push(problemOf(product.name, error)),
+      );
     }
   }
   return landed;
@@ -681,7 +830,8 @@ async function runZip(
     const main = await planMainProducts(zip.mainProducts, tenantId, problems);
     const colours = await planColours(zip.colours, tenantId);
     // Changing the colour list is the lists' own permission, asked before anything is written.
-    if (colours.added.length + colours.changed.length > 0) requirePermission(actor, 'catalog.lists.manage');
+    if (colours.added.length + colours.changed.length > 0)
+      requirePermission(actor, 'catalog.lists.manage');
 
     let renamed = main.renamed;
     if (!dryRun) {
@@ -702,7 +852,9 @@ async function runZip(
 
     const live = (await productRepo.listProducts(tenantId, { limit: 100_000, offset: 0 })).items;
     const missing = live.filter((product) => {
-      const codes = product.variants.filter((variant) => variant.isActive).map((variant) => variant.code.toLowerCase());
+      const codes = product.variants
+        .filter((variant) => variant.isActive)
+        .map((variant) => variant.code.toLowerCase());
       return codes.length > 0 && !codes.some((code) => zip.fileCodes.has(code));
     });
 
@@ -728,14 +880,21 @@ async function runZip(
       dryRun,
       fileName,
       mainProducts: {
-        added: main.added.map((seed) => ({ code: seed.code ?? '', name: seed.name, brand: seed.brand ?? null })),
+        added: main.added.map((seed) => ({
+          code: seed.code ?? '',
+          name: seed.name,
+          brand: seed.brand ?? null,
+        })),
         renamed: renamed.map((rename) => ({ code: rename.code, fields: rename.fields })),
       },
       products: imported,
       rows: {
         added,
         changed: rows?.changed ?? [],
-        notInFile: missing.map((product) => ({ code: product.variants.find((variant) => variant.isActive)?.code ?? '', name: product.name })),
+        notInFile: missing.map((product) => ({
+          code: product.variants.find((variant) => variant.isActive)?.code ?? '',
+          name: product.name,
+        })),
       },
       colours,
       photos,
@@ -744,7 +903,9 @@ async function runZip(
     if (dryRun) return report;
 
     progress({ phase: 'photos', done: 0, total: photoPlan.toRun.length });
-    const landed = await runPhotos(reader, photoPlan, actor, problems, (done, total) => progress({ done, total }));
+    const landed = await runPhotos(reader, photoPlan, actor, problems, (done, total) =>
+      progress({ done, total }),
+    );
     photos.added = landed.added;
     photos.replaced = landed.replaced;
 
@@ -776,8 +937,16 @@ async function runZip(
 
     const { created, updated } = imported;
     const changed =
-      main.added.length + renamed.length + created + updated + colours.added.length + colours.changed.length +
-      photos.added.length + photos.replaced.length + binned + photosRemoved;
+      main.added.length +
+      renamed.length +
+      created +
+      updated +
+      colours.added.length +
+      colours.changed.length +
+      photos.added.length +
+      photos.replaced.length +
+      binned +
+      photosRemoved;
     if (changed > 0) {
       await db().transaction((trx) =>
         activityLog.recordActivity(
@@ -826,7 +995,11 @@ async function runZip(
 }
 
 /** What the zip would do: nothing is written. */
-export function previewProductZip(filePath: string, fileName: string, actor: ActorContext): Promise<ProductZipReport> {
+export function previewProductZip(
+  filePath: string,
+  fileName: string,
+  actor: ActorContext,
+): Promise<ProductZipReport> {
   return runZip(filePath, fileName, { dryRun: true }, actor);
 }
 
@@ -863,9 +1036,17 @@ export function startProductRestore(
   requireRestorePermissions(actor, options);
   if (job && !job.finishedAt) throw new ConflictError('error.conflict.productRestoreBusy');
 
-  const current: ProductRestoreJob = { id: randomUUID(), phase: 'checking', done: 0, total: 0, startedAt: new Date().toISOString() };
+  const current: ProductRestoreJob = {
+    id: randomUUID(),
+    phase: 'checking',
+    done: 0,
+    total: 0,
+    startedAt: new Date().toISOString(),
+  };
   job = current;
-  void restoreProductZip(filePath, fileName, options, actor, (progress) => Object.assign(current, progress))
+  void restoreProductZip(filePath, fileName, options, actor, (progress) =>
+    Object.assign(current, progress),
+  )
     .then(
       (result) => {
         current.result = result;
@@ -914,7 +1095,12 @@ export async function loadShippedCatalogue(
   progress?: Progress,
 ): Promise<'zip' | 'markdown' | 'none' | null> {
   const tenantId = await resolveDefaultTenantId();
-  if ((await settingsRepo.readSettingRows(tenantId)).some((row) => row.key === SHIPPED_CATALOGUE_MARKER)) return null;
+  if (
+    (await settingsRepo.readSettingRows(tenantId)).some(
+      (row) => row.key === SHIPPED_CATALOGUE_MARKER,
+    )
+  )
+    return null;
 
   let loaded: 'zip' | 'markdown' | 'none' = 'none';
   if (!(await db()('product_categories').where({ tenant_id: tenantId }).first('id'))) {
@@ -924,11 +1110,22 @@ export async function loadShippedCatalogue(
         roleId: null,
         roleName: 'System',
         tier: 'admin',
-        permissions: ['products.view', 'products.bulk', 'products.create', 'products.edit', 'catalog.lists.manage'],
+        permissions: [
+          'products.view',
+          'products.bulk',
+          'products.create',
+          'products.edit',
+          'catalog.lists.manage',
+        ],
       },
     };
     const zip = sources.zip ?? config.catalogueZip;
-    if (await access(zip).then(() => true, () => false)) {
+    if (
+      await access(zip).then(
+        () => true,
+        () => false,
+      )
+    ) {
       await restoreProductZip(zip, path.basename(zip), {}, actor, progress);
       loaded = 'zip';
     } else {
@@ -938,7 +1135,15 @@ export async function loadShippedCatalogue(
   }
 
   await db().transaction((trx) =>
-    settingsRepo.upsertSetting(tenantId, SHIPPED_CATALOGUE_MARKER, { loaded, at: new Date().toISOString() }, false, 1, null, trx),
+    settingsRepo.upsertSetting(
+      tenantId,
+      SHIPPED_CATALOGUE_MARKER,
+      { loaded, at: new Date().toISOString() },
+      false,
+      1,
+      null,
+      trx,
+    ),
   );
   return loaded;
 }
