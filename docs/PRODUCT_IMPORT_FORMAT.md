@@ -59,6 +59,102 @@ log can say which format arrived. It does not change how the file is read, becau
 no column changed. **Raise the number only when a column's meaning changes**, and
 then add the reader for the old meaning before the writer for the new one.
 
+## The product backup zip (2026-10-08)
+
+One file for the whole catalogue, photos included, that a person can open, edit and put
+back; the Master works out what changed. **Products → Sub products → Backup products
+(.zip)** writes it (`products.view` + `products.export`); **Restore from .zip** reads it
+(`products.bulk` + `products.create` + `products.edit`). Master only: the Office has
+neither button. Code: `master/src/services/product-zip.service.ts`; wire types:
+`ProductZipReport` and `ProductRestoreJob` in `shared/src/domain/product-import.ts`.
+It is also what a build can ship as the catalogue of a new install (`release
+--catalogue`, `docs/UPDATES.md`).
+
+### What is in it
+
+`OrderBook-Products-<company>-<YYYY-MM-DD>.zip`:
+
+| Entry | What it is |
+|---|---|
+| `products.csv` | The sub product export above (`level=sub`): the ten template columns, one row per live variant, catalogue order, UTF-8 with a BOM. The import reads it as an **upsert** |
+| `main-products.csv` | `Brand, Main product code, Main product, Order`: every main product, `Order` being its place in the catalogue (1, 2, …) |
+| `colours.csv` | `Colour, Hex`: the colours in use, with their hex (`#1A2B3C`) |
+| `images/<CODE>.webp`, `images/<CODE>_<N>.webp` | Every product photo, as the stored `master.webp`, byte for byte. `CODE` is photo 1 (the main photo) and `CODE_N` photo N, in gallery order. `CODE` is the code of the variant whose colour the photo's caption names, else the sub product's first code — the name the bulk photo import reads back (§11.13 of `docs/STRUCTURE.md`). A character no file name can hold (`/ \ : * ? " < > \|`, and `%` itself) is written as `%` and its two hex digits: `SW/101` is `SW%2F101.webp`, read back as `SW/101` |
+| `README.txt` | The same rules in plain English, for whoever opens the zip; it also lists any photo left out (below) |
+
+Brands are not a file of their own: they come from the `Brand` columns.
+
+A photo is left out, and listed in the README, when no name would bring it back to its
+own sub product: its sub product has no live code, or its `CODE_N` is another sub
+product's code (with `OPT-0002` and `OPT-0002_2` both in use, `OPT-0002_2.webp` is the
+latter's photo 1, so `OPT-0002`'s photo 2 has no name). A restore leaves such a photo as
+it is, and never lists it as missing.
+
+### Editing it
+
+- Change a cell to change that value. The `Code` is how a row finds its sub product,
+  so a changed code reads as a new sub product.
+- A new row with a new `Code` adds a sub product. A new main product code in
+  `products.csv` (with its name in `Main product`) is created too; listing it in
+  `main-products.csv` as well sets its order.
+- A main product is renamed, or its brand changed, in `main-products.csv` (a code
+  listed there wins over what `products.csv` says about it, and the preview lists a
+  `Main product` or `Brand` cell of `products.csv` that disagrees, as
+  `validation.productZip.mainDiffers`). Without a `Brand` column every brand stays as
+  it is; an empty `Brand` cell clears that one. `Order` only places a main product the
+  restore adds: an existing one keeps its place (reorder on the Main products screen).
+- A colour listed twice in `colours.csv` is one colour; the first row's hex is read.
+- A photo is replaced by a file with the same name (`OPT-0001.jpg` replaces
+  `OPT-0001.webp`; delete the old file, or the two are duplicates and one is left out);
+  `OPT-0001_2.jpg` adds photo 2. jpg, jpeg, png and webp are read.
+- Excel can turn a size like `10-12` into a date and drop leading zeros: check those
+  cells and save as **CSV UTF-8**.
+
+### Reading it back
+
+Entries are found by their name, wherever they sit: a zip of the unpacked folder (with
+the folder inside it) reads the same, and so does one written by PowerShell's
+`Compress-Archive` with backslashes in its names. An absolute or climbing (`..`) name
+refuses the whole zip (`validation.productZip.entryRejected`), as does a file that is no
+zip, a zip with no `products.csv`, a `products.csv` with a header and no rows
+(`validation.import.emptyFile`, before anything is written), or one with two
+`products.csv` (or two of either other CSV). Photos are the files in a folder named
+`images`; anything else is not looked at. A name that is itself a sub product's code is
+that sub product's photo 1, before any `_N` is read as a photo number (the bulk photo
+import reads names the same way).
+
+The preview is the restore run as a dry run, so what it lists is what Apply does:
+
+1. **Main products** — a code no live main product has, whose brand and name do not
+   match one either, is **added** with its code, brand and order; one whose name or
+   brand differs is **renamed** (through the ordinary edit, its checks and its event).
+2. **Colours** — a value the list lacks, or has binned or switched off, is added; a
+   different hex is a change (`catalog.lists.manage`).
+3. **Sub products** — `products.csv` through the upsert import: rows added, rows
+   changed with each changed cell old → new, rows unchanged, the row problems. A new
+   row takes its place in the file as its catalogue order.
+4. **Photos** — compared by sha256 with the photo's stored checksum: the same is
+   **unchanged**, any other **replaced**, an empty slot **new**; also listed, files
+   that match no code, duplicates and files that are no image. A replaced photo keeps
+   its slot.
+5. **Missing** — sub products none of whose codes are in `products.csv`, and photos of
+   the file's sub products with no file, are **listed only**. Two opt-ins, both off,
+   act on them: *Move sub products missing from the file to the Recycle Bin* (the
+   ordinary delete, so it can be undone; `products.delete`) and *Remove photos missing
+   from the zip* (deleted; a photo cannot be restored). A zip carrying only
+   `products.csv` therefore never removes a photo unless asked.
+
+The real run is a job on the Master (minutes for a few hundred new photos, each
+encoded like an upload), followed by the dialog's progress bar; one runs at a time, and
+never beside a full backup restore (Settings → Storage), which replaces the database:
+whichever starts second is refused. It writes the colours first, then the main
+products, sub products and photos, one activity row and one catalogue change event.
+
+**Photos are compared by their exact bytes.** A Master that restores a zip stores its
+photos again through the image pipeline, so their bytes, and checksums, are its own:
+take a new backup on that Master before editing again, or the old zip's photos read
+as replaced there.
+
 ## Tests and fixtures
 
 - `master/tests/product-import-compat.integration.test.ts` — the promise above.
@@ -71,3 +167,8 @@ then add the reader for the old meaning before the writer for the new one.
 - `master/tests/product-import-roundtrip.integration.test.ts`,
   `product-import.integration.test.ts`, `product-import-domain.test.ts` — the
   catalogue-wide round trip and the row-level rules.
+- `master/tests/product-zip.integration.test.ts` — the zip: an unedited export reads
+  as unchanged, photos included; an edited cell, a swapped and an added photo are
+  found and applied exactly; missing rows and photos are only reported unless opted
+  in; an emptied catalogue comes back whole; top folders and backslash names; the
+  refusals; the job; the routes.

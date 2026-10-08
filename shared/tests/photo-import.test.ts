@@ -155,6 +155,17 @@ describe('planPhotoImport', () => {
     expect(second?.slotImageId).toBeUndefined();
   });
 
+  it('reads a whole name that is a code as photo 1 of that code, not as photo 2 of a shorter code', () => {
+    const both = [product('A', [['OPT-0002', null]]), product('B', [['OPT-0002_2', null]])];
+    const plan = planPhotoImport([file('OPT-0002_2.webp'), file('OPT-0002_2_2.webp'), file('OPT-0002_3.webp')], both);
+    const at = (name: string) => plan.find((entry) => entry.fileName === name);
+    expect(at('OPT-0002_2.webp')).toMatchObject({ status: 'new', productId: 'B', matchedAs: 'OPT-0002_2', slot: 1 });
+    expect(at('OPT-0002_2_2.webp')).toMatchObject({ status: 'new', productId: 'B', slot: 2 });
+    expect(at('OPT-0002_3.webp')).toMatchObject({ status: 'new', productId: 'A', slot: 3 });
+    // Without that code, the same name is photo 2 of the shorter one, as before.
+    expect(planPhotoImport([file('OPT-0002_2.webp')], [both[0]!])).toMatchObject([{ productId: 'A', slot: 2 }]);
+  });
+
   it('matches nothing through an alias two sub products share', () => {
     expect(row('twin.jpg')?.status).toBe('unmatched');
   });

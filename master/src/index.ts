@@ -36,6 +36,7 @@ import { toErrorMessage } from './lib/errors.js';
 import { loadOrCreateKey } from './lib/secret-box.js';
 import { sweepOrphanImageVariants } from './services/image.service.js';
 import { attachCataloguePhotos } from './services/catalogue-photos.service.js';
+import { loadShippedCatalogue } from './services/product-zip.service.js';
 import { assertFontsPresent } from './pdf/fonts.js';
 import { listLanAddresses } from './lib/network.js';
 import { createRealtimeHub, type RealtimeHub } from './realtime/hub.js';
@@ -269,6 +270,25 @@ async function main(): Promise<void> {
      */
     await sweepOrphanImageVariants().catch((error: unknown) => {
       log.warn(`Could not sweep orphaned image folders: ${toErrorMessage(error)}`);
+    });
+
+    /*
+     * Once per install, and only into a catalogue that has never held a main
+     * product: the catalogue this build ships, before or after setup. Awaited,
+     * before the panel serves, so nobody sees a half-loaded list and the photo
+     * attach below already finds its sub products. After the sweep, for the
+     * reason given there: a shipped zip's photos are uploaded here. A load is
+     * marked as under way before it writes anything, so one that fails, or that
+     * a closed window stops halfway, is a warning here and carries on over what
+     * it left on the next boot; the panel still starts.
+     */
+    bootStep('Loading the product catalogue');
+    await loadShippedCatalogue({}, (progress) => {
+      if (progress.phase === undefined && progress.total) {
+        bootStep(`Loading the product catalogue (${progress.done ?? 0} of ${progress.total} photos)`);
+      }
+    }).catch((error: unknown) => {
+      log.warn(`Could not load the shipped product catalogue: ${toErrorMessage(error)}`);
     });
 
     bootStep('Starting the panel');

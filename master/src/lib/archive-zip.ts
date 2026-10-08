@@ -166,11 +166,27 @@ function readFailure(error: Error): BackupError {
   return new BackupError('notAnArchive', 'error.validation.archiveNotAnArchive');
 }
 
-export async function openZipReader(filePath: string, maxEntries = MAX_ARCHIVE_ENTRIES): Promise<ZipReader> {
+/**
+ * `windowsNames` reads an entry name written with backslashes, as Windows
+ * PowerShell's `Compress-Archive` writes them, as the same name with forward
+ * slashes. Only the product zip asks: a person zips that folder by hand. An
+ * absolute or climbing (`..`) name is still refused either way.
+ */
+export async function openZipReader(
+  filePath: string,
+  maxEntries = MAX_ARCHIVE_ENTRIES,
+  options: { windowsNames?: boolean } = {},
+): Promise<ZipReader> {
   const zipfile = await new Promise<yauzl.ZipFile>((resolve, reject) => {
     yauzl.open(
       filePath,
-      { lazyEntries: true, autoClose: false, decodeStrings: true, validateEntrySizes: true, strictFileNames: true },
+      {
+        lazyEntries: true,
+        autoClose: false,
+        decodeStrings: true,
+        validateEntrySizes: true,
+        strictFileNames: options.windowsNames !== true,
+      },
       (error, opened) => (error || !opened ? reject(readFailure(error ?? new Error('no zip'))) : resolve(opened)),
     );
   });

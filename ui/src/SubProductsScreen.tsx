@@ -72,7 +72,9 @@ import { LoadMorePager } from './CursorPager.js';
 import { ProductDetail, SubProductColour } from './ProductDetail.js';
 import { useCommand } from './KeyboardProvider.js';
 import { ProductDrawer, type CreatedProduct } from './ProductDrawer.js';
+import { saveBlob } from './ImportDialog.js';
 import { ProductImportModal, exportCatalogueCsv } from './ProductImportModal.js';
+import { ProductZipModal } from './ProductZipModal.js';
 import { rem } from './rem.js';
 import { Select } from './SuggestInput.js';
 import { EmptyState, ErrorState, SkeletonTable } from './States.js';
@@ -123,6 +125,11 @@ export function SubProductsScreen({
   useCommand('product.new', canCreate ? () => setDrawerOpen(true) : null);
   const canEdit = view.permissions.includes('products.edit');
   const canImport = view.permissions.includes('products.bulk');
+  // The product backup zip, where the panel offers it (the Master): backing up
+  // is the export permission, restoring writes like an upsert import.
+  const productZip = transport.productZip;
+  const canBackup = Boolean(productZip) && view.permissions.includes('products.export');
+  const canRestore = Boolean(productZip) && canImport && canCreate && canEdit;
 
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<ProductFilters>(NO_FILTERS);
@@ -142,6 +149,8 @@ export function SubProductsScreen({
   const [photoPatch, setPhotoPatch] = useState<Product | null>(null);
   const [editing, setEditing] = useState<Product | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [zipOpen, setZipOpen] = useState(false);
+  const [backingUp, setBackingUp] = useState(false);
 
   const [page, setPage] = useState<ProductPage | null>(null);
   const [loading, setLoading] = useState(false);
@@ -336,6 +345,32 @@ export function SubProductsScreen({
         >
           {t('catalog.export')}
         </Button>
+        {canBackup && (
+          <Button
+            variant="secondary"
+            size="sm"
+            icon="upload"
+            busy={backingUp}
+            disabled={backingUp}
+            onClick={() => {
+              const zip = transportRef.current.productZip;
+              if (!zip) return;
+              setBackingUp(true);
+              void zip
+                .exportZip()
+                .then(({ blob, fileName }) => saveBlob(blob, fileName))
+                .catch((caught) => toast.push(apiErrorText(caught, 'productZip.backupFailed'), { tone: 'error' }))
+                .finally(() => setBackingUp(false));
+            }}
+          >
+            {t('productZip.backup')}
+          </Button>
+        )}
+        {canRestore && (
+          <Button variant="secondary" size="sm" icon="download" onClick={() => setZipOpen(true)}>
+            {t('productZip.restore')}
+          </Button>
+        )}
         {canImport && (
           <Button variant="secondary" size="sm" icon="download" onClick={() => setImportOpen(true)}>
             {t('catalog.products.import')}
@@ -615,6 +650,18 @@ export function SubProductsScreen({
         }}
         onError={onDrawerError}
       />
+      {productZip && canRestore && (
+        <ProductZipModal
+          open={zipOpen}
+          transport={productZip}
+          canDelete={view.permissions.includes('products.delete')}
+          onClose={() => setZipOpen(false)}
+          onRestored={() => {
+            setRefetch((current) => current + 1);
+            onImported?.();
+          }}
+        />
+      )}
     </>
   );
 }

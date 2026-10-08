@@ -15,7 +15,9 @@
  * first, then by sequence). A file whose slot is empty adds a photo. A file
  * whose slot is taken is skipped, or with "replace" swaps that one photo and
  * no other: a `_2` never touches the primary, and a new photo 1 becomes the
- * primary.
+ * primary. A whole name that is itself a code is that code's photo 1:
+ * `OPT-0002_2.jpg` belongs to the sub product coded `OPT-0002_2` when there
+ * is one, and is photo 2 of `OPT-0002` only when there is not.
  *
  * Pure: the screen hands in the files and the products it already loaded, and
  * the uploader as functions, so the matching and the run are tested here
@@ -125,8 +127,8 @@ function targetsByName(products: readonly Product[]): Map<string, Target> {
   return targets;
 }
 
-/** The gallery's own order: the primary first, then by sequence. */
-function galleryOrder(product: Product): string[] {
+/** The gallery's own order, as ids: the primary first, then by sequence. Slot N is entry N - 1. */
+export function galleryOrder(product: Pick<Product, 'images'>): string[] {
   return [...product.images]
     .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary) || a.sequence - b.sequence)
     .map((image) => image.id);
@@ -145,8 +147,10 @@ export function planPhotoImport<F extends PhotoFileLike>(
   products: readonly Product[],
 ): PhotoPlanRow<F>[] {
   const targets = targetsByName(products);
+  const codes = new Set(products.flatMap((product) => product.variants.map((variant) => variant.code.toLowerCase())));
   const keyed = files.map((file) => {
-    const key = photoFileKey(file.name);
+    const parsed = photoFileKey(file.name);
+    const key = parsed && parsed.slot > 1 && codes.has(parsed.full) ? { ...parsed, code: parsed.full, slot: 1 } : parsed;
     const target = key ? targets.get(key.code) : undefined;
     const exact = Boolean(key && target && key.base === `${target.matchedAs}${key.slot > 1 ? key.full.slice(key.code.length) : ''}`);
     return { file, key, target, exact };

@@ -140,6 +140,13 @@ export const config = {
    */
   officeSetupDir: path.join(packageRoot, 'office-setup'),
 
+  /**
+   * A product backup zip a build carries (`release --catalogue`), loaded on the
+   * first boot of an empty install in place of `catalogueFile`
+   * (`services/product-zip.service.ts#loadShippedCatalogue`). Absent unless shipped.
+   */
+  catalogueZip: path.join(packageRoot, 'assets', 'catalogue', 'products.zip'),
+
   session: {
     cookieName: 'orderbook_session',
     /** Sessions live in memory; restarting the Master signs admins out. */

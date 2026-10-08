@@ -13,7 +13,14 @@
 
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { OptionListItem, Product, ProductCategory, ProductImage } from '@orderbook/shared';
+import type {
+  OptionListItem,
+  Product,
+  ProductCategory,
+  ProductImage,
+  ProductRestoreJob,
+  ProductZipReport,
+} from '@orderbook/shared';
 
 import type { CatalogueTransport, CatalogueView } from '../src/catalogueSummary.js';
 import { FilterBarOutlet, FilterBarProvider } from '../src/FilterBarSlot.js';
@@ -793,5 +800,168 @@ describe('the detail', () => {
 
     rerender(<ProductDetail {...common} canEdit />);
     expect(screen.getByRole('button', { name: t('product.detail.editAction') })).toBeTruthy();
+  });
+});
+
+describe('the product backup zip (Master only)', () => {
+  const ALL = ['products.view', 'products.export', 'products.bulk', 'products.create', 'products.edit', 'products.delete'];
+
+  function zipReport(overrides: Partial<ProductZipReport> = {}): ProductZipReport {
+    return {
+      dryRun: true,
+      fileName: 'backup.zip',
+      mainProducts: { added: [{ code: 'NEW', name: 'New range', brand: null }], renamed: [] },
+      products: {
+        dryRun: true,
+        mode: 'upsert',
+        fileName: 'products.csv',
+        totalRows: 549,
+        created: 0,
+        updated: 1,
+        unchanged: 548,
+        skipped: 0,
+        failed: 0,
+        issues: [],
+        issuesTruncated: false,
+        ignoredColumns: [],
+        sample: [],
+      },
+      rows: {
+        added: [],
+        changed: [{ code: 'OPT-0003', name: '103', fields: [{ column: 'Size', from: '10x10', to: '99x99' }] }],
+        notInFile: [{ code: 'OPT-0004', name: '104' }],
+      },
+      colours: { added: [], changed: [] },
+      photos: {
+        added: [],
+        replaced: ['OPT-0002.jpg'],
+        unchanged: 2,
+        unmatched: [],
+        duplicate: [],
+        notImage: [],
+        notInZip: ['OPT-0001_2'],
+      },
+      problems: [],
+      ...overrides,
+    };
+  }
+
+  function zipTransport() {
+    return {
+      exportZip: vi.fn(async () => ({ blob: new Blob(['PK']), fileName: 'OrderBook-Products-x.zip' })),
+      preview: vi.fn(async (_file: File) => zipReport()),
+      start: vi.fn(async (_file: File, _options: unknown) => ({
+        id: 'job-1',
+        phase: 'checking' as const,
+        done: 0,
+        total: 0,
+        startedAt: STAMP,
+      })),
+      job: vi.fn(async (): Promise<ProductRestoreJob | null> => null),
+    };
+  }
+
+  it('offers Backup with products.export and Restore with the import permissions, on a panel that has the zip', async () => {
+    const productZip = zipTransport();
+    const { unmount } = renderList(viewOf({ permissions: ALL }), makeTransport({ productZip }));
+    expect(await screen.findByRole('button', { name: t('productZip.backup') })).toBeTruthy();
+    expect(screen.getByRole('button', { name: t('productZip.restore') })).toBeTruthy();
+    unmount();
+
+    // A viewer, and a panel without the zip (the Office), see neither.
+    const viewer = renderList(viewOf({ permissions: ['products.view'] }), makeTransport({ productZip }));
+    await screen.findByRole('button', { name: t('catalog.export') });
+    expect(screen.queryByRole('button', { name: t('productZip.backup') })).toBeNull();
+    expect(screen.queryByRole('button', { name: t('productZip.restore') })).toBeNull();
+    viewer.unmount();
+
+    renderList(viewOf({ permissions: ALL }), makeTransport());
+    await screen.findByRole('button', { name: t('catalog.export') });
+    expect(screen.queryByRole('button', { name: t('productZip.backup') })).toBeNull();
+    expect(screen.queryByRole('button', { name: t('productZip.restore') })).toBeNull();
+  });
+
+  it('saves the backup the Master builds', async () => {
+    const createObjectURL = vi.fn(() => 'blob:x');
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
+    const productZip = zipTransport();
+    renderList(viewOf({ permissions: ALL }), makeTransport({ productZip }));
+
+    fireEvent.click(await screen.findByRole('button', { name: t('productZip.backup') }));
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
+    expect(productZip.exportZip).toHaveBeenCalledTimes(1);
+  });
+
+  it('previews the zip, applies it with the opt-in ticked, follows the job and refetches', async () => {
+    const productZip = zipTransport();
+    productZip.job
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'job-1', phase: 'photos', done: 1, total: 2, startedAt: STAMP })
+      .mockResolvedValue({
+        id: 'job-1',
+        phase: 'done',
+        done: 2,
+        total: 2,
+        startedAt: STAMP,
+        finishedAt: STAMP,
+        result: zipReport({ dryRun: false, binned: 1, photosRemoved: 0 }),
+      });
+    const transport = makeTransport({ productZip });
+    renderList(viewOf({ permissions: ALL }), transport);
+
+    fireEvent.click(await screen.findByRole('button', { name: t('productZip.restore') }));
+    const input = await screen.findByTestId('product-zip-file');
+
+    // Not a zip: refused here, the Master never asked.
+    fireEvent.change(input, { target: { files: [new File(['x'], 'products.csv')] } });
+    expect(await screen.findByText(t('validation.productZip.notAZip'))).toBeTruthy();
+    expect(productZip.preview).not.toHaveBeenCalled();
+
+    const file = new File(['PK'], 'backup.zip', { type: 'application/zip' });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    expect(await screen.findByText(t('productZip.item.changed', { count: 1 }))).toBeTruthy();
+    expect(screen.getByText('OPT-0003 — 103: Size: 10x10 → 99x99')).toBeTruthy();
+    expect(screen.getByText('NEW — New range')).toBeTruthy();
+    expect(screen.getByText(t('productZip.item.replaced', { count: 1 }))).toBeTruthy();
+    expect(screen.getByText(t('productZip.reportOnly'))).toBeTruthy();
+
+    // Both removals are off until ticked.
+    const bin = screen.getByLabelText(t('productZip.opt.bin', { count: 1 })) as HTMLInputElement;
+    const photos = screen.getByLabelText(t('productZip.opt.photos', { count: 1 })) as HTMLInputElement;
+    expect(bin.checked).toBe(false);
+    expect(photos.checked).toBe(false);
+    fireEvent.click(bin);
+
+    const listCalls = transport.listProducts.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: t('productZip.apply') }));
+    await waitFor(() => expect(productZip.start).toHaveBeenCalledWith(file, { binMissingProducts: true }));
+
+    expect(await screen.findByText(t('productZip.photoProgress', { done: 1, total: 2 }))).toBeTruthy();
+    expect(await screen.findByText(t('productZip.done'))).toBeTruthy();
+    expect(screen.getByText(t('productZip.done.binned', { count: 1 }))).toBeTruthy();
+    await waitFor(() => expect(transport.listProducts.mock.calls.length).toBeGreaterThan(listCalls));
+  });
+
+  it('offers no Recycle Bin opt-in without products.delete, and no Apply when the zip changes nothing', async () => {
+    const productZip = zipTransport();
+    productZip.preview.mockResolvedValue(
+      zipReport({
+        mainProducts: { added: [], renamed: [] },
+        products: { ...zipReport().products, updated: 0, unchanged: 549 },
+        rows: { added: [], changed: [], notInFile: [{ code: 'OPT-0004', name: '104' }] },
+        photos: { ...zipReport().photos, replaced: [], notInZip: [] },
+      }),
+    );
+    renderList(viewOf({ permissions: ALL.filter((key) => key !== 'products.delete') }), makeTransport({ productZip }));
+
+    fireEvent.click(await screen.findByRole('button', { name: t('productZip.restore') }));
+    fireEvent.change(await screen.findByTestId('product-zip-file'), {
+      target: { files: [new File(['PK'], 'backup.zip')] },
+    });
+
+    expect(await screen.findByText(t('productZip.nothing'))).toBeTruthy();
+    expect(screen.queryByLabelText(t('productZip.opt.bin', { count: 1 }))).toBeNull();
+    expect((screen.getByRole('button', { name: t('productZip.apply') }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
