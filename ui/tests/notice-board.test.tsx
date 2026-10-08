@@ -263,14 +263,28 @@ describe('NoticeManageView', () => {
 
   it('says where else each notice shows, and keeps a notice in at least one of the two places', async () => {
     const { created, updated } = manage({
-      notices: [notice('a', { version: 3 }), notice('b', { showOnHome: false, updatedAt: '2026-10-04T10:00:00.000Z' })],
+      notices: [
+        notice('a', { version: 3 }),
+        notice('b', { showOnHome: false, updatedAt: '2026-10-04T10:00:00.000Z' }),
+        notice('c', { showAtSignIn: false, updatedAt: '2026-10-03T10:00:00.000Z' }),
+      ],
     });
-    // The tags: "a" in both places, "b" at sign-in only.
+    // One tag for a notice kept off one place, in the audience cell; none for one in both (the default).
     const row = (id: string) => screen.getByText(`Notice ${id}`).closest('[role="row"]') as HTMLElement;
-    expect(within(row('a')).getByText(t('notices.placement.homeTag'))).toBeTruthy();
-    expect(within(row('a')).getByText(t('notices.placement.signInTag'))).toBeTruthy();
-    expect(within(row('b')).queryByText(t('notices.placement.homeTag'))).toBeNull();
-    expect(within(row('b')).getByText(t('notices.placement.signInTag'))).toBeTruthy();
+    const tags = [t('notices.placement.homeOnlyTag'), t('notices.placement.signInOnlyTag')];
+    const tagsOf = (id: string) => tags.filter((tag) => within(row(id)).queryByText(tag));
+    expect(tagsOf('a')).toEqual([]);
+    expect(tagsOf('b')).toEqual([t('notices.placement.signInOnlyTag')]);
+    expect(tagsOf('c')).toEqual([t('notices.placement.homeOnlyTag')]);
+    // Not a column of its own, which took the title's room.
+    expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
+      t('notices.manage.col.notice'),
+      t('notices.manage.col.audience'),
+      t('notices.manage.col.until'),
+      t('notices.manage.col.reads'),
+      t('notices.manage.col.updated'),
+      '',
+    ]);
 
     // A new one with both unticked is refused before it is sent.
     fireEvent.click(screen.getByRole('button', { name: t('notices.manage.new') }));

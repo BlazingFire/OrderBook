@@ -138,27 +138,22 @@ export function NoticeManageView({
       header: t('notices.manage.col.audience'),
       width: '1.2fr',
       priority: 2,
+      // A notice kept off Basic Home or off sign-in says so here, in one tag; one in both places (the
+      // default) carries none. Not a column of its own: that came out of the title's room
+      // (`fitColumns` counts a `fr` column as 120 px, so it never dropped), and a pinned important
+      // notice's title was down to its first letters at 1280 px. Two tags on every row would cut
+      // "Everyone" short here at 1280 px; one fits.
       render: (notice) => (
-        <span
-          className="ob-small"
-          title={audienceText(notice)}
-          style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-        >
-          {audienceText(notice)}
-        </span>
-      ),
-    },
-    {
-      key: 'placement',
-      header: t('notices.manage.col.placement'),
-      // Short tags in a narrow column, dropped first on a narrow screen (the editor says the same):
-      // the title, with its own pills, needs the room more.
-      width: '9.5rem',
-      priority: 3,
-      render: (notice) => (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-4)', flex: 'none' }}>
-          {noticeOnHome(notice) && <StatusPill>{t('notices.placement.homeTag')}</StatusPill>}
-          {noticeAtSignIn(notice) && <StatusPill>{t('notices.placement.signInTag')}</StatusPill>}
+        <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-6)', minWidth: 0, width: '100%' }}>
+          <span
+            className="ob-small"
+            title={audienceText(notice)}
+            style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          >
+            {audienceText(notice)}
+          </span>
+          {!noticeAtSignIn(notice) && <StatusPill>{t('notices.placement.homeOnlyTag')}</StatusPill>}
+          {!noticeOnHome(notice) && <StatusPill>{t('notices.placement.signInOnlyTag')}</StatusPill>}
         </span>
       ),
     },
