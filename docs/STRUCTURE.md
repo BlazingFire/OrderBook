@@ -1416,8 +1416,9 @@ removed on 2026-09-25.
 | `ui/src/printPortal.ts` | 1.3 H3: `printOnly(portal, run)` — marks the one note portal meant for the paper (`ob-note-print-portal--active` on it, `ob-printing` on `<body>`) for as long as `run` (a print or a Save PDF) takes, and restores the page in a `finally` whatever `run` does; with no portal it runs `run` as it is, because marking nothing would hide every note. The CSS half is one rule in `order-note.css` (`body.ob-printing .ob-note-print-portal:not(.ob-note-print-portal--active) { display: none !important }`), which jsdom cannot see: the real-printer check is owed (HANDOFF) | `OrderNoteScreen` |
 | `ui/src/LeadEntryScreen.tsx` | 2026-10-01 (P3): the New / Edit pending order form, a port of `office/web/src/screens/AddLeadScreen.tsx` — keep in step; the Office still has its own copy (HANDOFF owed work). `LeadEntryView` (`optionLists`, `partyVariants`, `partyGrants`, `features`, optional `products`), `LeadEntryTransport extends PartyFormTransport { pick, createLead, updateLead }` read through `transportRef`. Differences: Master wording keys (`lead.add.savingHintOnline`, `…draft.packagingEmptyFields`/`gradeEmptyFields`), `canCreateParty` hides Create party, `onSaved(id, saved?)`, errors through `apiErrorText`, edit seeds the picker with the lead's own party. Since 1.3 Phase 4 (both copies): an edit sends only what changed plus `baseFieldHlc` and shows `StaleEditNotice` (`remoteChange` prop); Reload theirs remounts the form from the newest lead (the exported component is a thin wrapper keyed on it). This copy only: an **Owner** picker when `view.owners` is present (`record.reassignOwner`; a Server Master is marked in the list), `ownerId` sent on create, or on edit when changed; `createLead` answers `{id, poNumber?}`, and `onSaved(id, created)` hands the created lead on when it has a number. | `LeadEntry` (Master) |
 | `ui/src/LeadStaleEdit.tsx` | 1.3 Phase 4: stale-edit protection shared by both lead forms. `changedLeadFields(opened, values, base)` (only what changed since the form opened, `items` only when `sameLines` says they differ, plus `baseFieldHlc`; null when nothing changed), `useLeadEditBase(lead)` (the opened lead, the clocks the next save is checked against, `conflicted` when somebody else's save reached the open form or a save came back 409 `error.conflict.staleEdit`, `refused(error)`, `keepMine()`), and `StaleEditNotice` ("Ravi saved this at 10:42" from the presence push's `lastWrite`, else `error.conflict.staleEdit`, with Reload theirs / Keep mine through `ConflictNotice`'s new `overwriteLabel`). In the strict-i18n lint list. Tests: `ui/tests/lead-entry-screen.test.tsx`, `ui/tests/office-shell.test.tsx` | `LeadEntryScreen`, `office/web/src/screens/AddLeadScreen.tsx` |
-| `ui/src/catalogueSummary.ts` | 2026-10-01 (P4): `productLabel`, `byCatalogueOrder`, `shownColours`, `codesOf`, `weightLabel` (verbatim from `office/web/src/productSummary.ts` — keep in step) and the two types the catalogue ports share: `CatalogueView` (`permissions`, `optionLists`, `categories` and `products`; its `stock` member was removed in 1.4) and `CatalogueTransport` (list/paging, category and product writes, photos, import) | the six catalogue ports below |
-| `ui/src/SubProductsScreen.tsx` | 2026-10-01 (P4): Products → Sub products, the products half of `office/web/src/screens/CatalogScreen.tsx` — keep in step. Brand chips, the Product picker above the table, search, `LoadMorePager`; refetch on the host's `revision` and after its own writes. Dropped from the Office copy: parties, not-synced rows, snapshot overlay, "cached page". New / Import / Edit / photo controls absent without `products.create` / `products.bulk` / `products.edit`. There is no Stock column on either panel since 1.4. | `ProductsScreen` (Master) |
+| `ui/src/catalogueSummary.ts` | 2026-10-01 (P4): `productLabel`, `byCatalogueOrder`, `shownColours`, `codesOf`, `weightLabel` (verbatim from `office/web/src/productSummary.ts` — keep in step) and the two types the catalogue ports share: `CatalogueView` (`permissions`, `optionLists`, `categories` and `products`; its `stock` member was removed in 1.4) and `CatalogueTransport` (list/paging, category and product writes, photos, import; since 2026-10-08 an optional `productZip: ProductZipTransport` — `exportZip`, `preview`, `start`, `job` — that only the Master's transport fills) | the six catalogue ports below |
+| `ui/src/SubProductsScreen.tsx` | 2026-10-01 (P4): Products → Sub products, the products half of `office/web/src/screens/CatalogScreen.tsx` — keep in step. Brand chips, the Product picker above the table, search, `LoadMorePager`; refetch on the host's `revision` and after its own writes. Dropped from the Office copy: parties, not-synced rows, snapshot overlay, "cached page". New / Import / Edit / photo controls absent without `products.create` / `products.bulk` / `products.edit`. There is no Stock column on either panel since 1.4. 2026-10-08: **Backup products (.zip)** (with `transport.productZip` and `products.export`; saves what `exportZip` answers) and **Restore from .zip** (with `transport.productZip` and `products.bulk` + `.create` + `.edit`; opens `ProductZipModal`). | `ProductsScreen` (Master) |
+| `ui/src/ProductZipModal.tsx` | 2026-10-08: the product backup zip's restore — choose a `.zip` → the Master's dry run (`ProductZipReport`: main products added/renamed, sub product rows added/changed with each cell old → new, unchanged, not in the file, the import's row problems; colours; photos new/replaced/unchanged/not in the zip/unmatched/duplicate/not an image; problems) in native `<details>` lists → two opt-ins, both off (Recycle Bin only with `products.delete`) → Apply (`start`) → polls `job` every second with `ProgressBar` → the final report. Closing it leaves the job running; reopening follows it. Not `ImportDialog`, which the party import shares. Tests: "the product backup zip" in `ui/tests/master-catalogue.test.tsx` | `SubProductsScreen` |
 | `ui/src/MainProductsScreen.tsx` | 2026-10-01 (P4): `MainProductsScreen` (Products page: list, detail with sub products from `view.products` in catalogue order, `MainProductForm`; a brand retired since it was set is not re-sent) and `BrandsScreen({ permissions, transport, revision })` (the shared `OptionListEditor` on `product.brand`; no-access message without `fields.view`). Port of `office/web/src/screens/MainProductsScreen.tsx`. | `ProductsScreen` (Master) |
 | `ui/src/ProductDetail.tsx`, `ui/src/ProductDrawer.tsx`, `ui/src/ProductImages.tsx`, `ui/src/ProductImportModal.tsx` | 2026-10-01 (P4): ports of the Office's `ProductDetail`, `ProductDrawer`, `ProductImages`, `ProductImportModal` — keep in step. Every one reads the `CatalogueTransport` through `transportRef`; `ProductDetail` and `ProductImages` take `canEdit`; the import shows `apiErrorText`. `ProductImages` is in the strict-i18n lint list. Photos load through `ProgressiveImage` → `/uploads/images/:id/:variant`, which the Master now serves. | `SubProductsScreen`, `MainProductsScreen` |
 | `ui/src/ImportDialog.tsx`, `ui/src/PartyImportModal.tsx` | 1.3 H1: `ImportDialog` is the three-step import dialog (pick → preview → done) extracted from `ProductImportModal` with its DOM and behaviour unchanged; `ProductImportModal` and `PartyImportModal` are the words, modes, calls and sample columns of each. `PartyImportControls` is the Export CSV and Import buttons with their dialog, mounted on the Master's Parties screen and the Office's Catalog Parties tab; each button is absent without `parties.view` / `parties.bulk`. Takes a `PartyImportTransport`, never an api client. | `PartiesScreen` (Master), `CatalogScreen` (Office) |
@@ -1935,6 +1936,7 @@ data-directory mismatch). Read by `http/boot-app.ts` and by `bootHealth()`/
 | `releases.githubRepo` / `.githubToken` / `.pollMinutes` | `null` / `null` / `2` | `ORDERBOOK_RELEASES_GITHUB_REPO` / `ORDERBOOK_RELEASES_GITHUB_TOKEN` / `ORDERBOOK_RELEASES_POLL_MINUTES` |
 | `pdf.fontsDir` | `<packageRoot>/assets/fonts` | — |
 | `catalogueFile` | `<packageRoot>/assets/catalogue/swisware-plus-2026.md` (catalogue v2: what the loader parses) | — |
+| `catalogueZip` | `<packageRoot>/assets/catalogue/products.zip` (a product backup zip a build ships, `release --catalogue`; absent unless shipped) | — |
 | `session.cookieName` / `.ttlMs` | `orderbook_session` / 12 h | — |
 | `locale.timeZone` | `Asia/Kolkata` | `ORDERBOOK_TIMEZONE` |
 
@@ -2055,7 +2057,7 @@ primaryLanAddress() ?? '127.0.0.1', httpPort: config.http.port, acceptingPairing
 |---|---|---|---|
 | `master/src/lib/app-version.ts` | 33 | `appVersion()` from `<packageRoot>/package.json`, falls back to `0.0.0` | 8 |
 | `master/src/lib/backup-crypto.ts` | 137 | `.obbackup` envelope `[u32 manifest length][manifest JSON][salt16][iv12][tag16][ciphertext]`, AES-256-GCM with a scrypt key; `encryptBackup`, `readManifest`, `verifyContentHash`, `decryptBackup`, `BackupFileError`. Near-duplicated in `office/src/lib/backup-crypto.ts`. | 2 |
-| `master/src/lib/archive-zip.ts` | 251 | 1.3 Phase 8. `createZipWriter` (archiver, zip64, entries strictly in sequence, each resolving `{bytes, sha256}`; EFBIG becomes `fat32TooLarge`) and `openZipReader` (yauzl with `decodeStrings`, `validateEntrySizes`, `strictFileNames`; a zip listing more than `MAX_ARCHIVE_ENTRIES` is refused before its entries are read; duplicates kept so the domain refuses them; encrypted entries refused). Each entry stream goes through a `PassThrough`, because a stored entry's raw stream never ends under `for await` | 3 |
+| `master/src/lib/archive-zip.ts` | 251 | 1.3 Phase 8. `createZipWriter` (archiver, zip64, entries strictly in sequence, each resolving `{bytes, sha256}`; EFBIG becomes `fat32TooLarge`) and `openZipReader` (yauzl with `decodeStrings`, `validateEntrySizes`, `strictFileNames` — off only with `{ windowsNames: true }`, which the product zip passes so a Compress-Archive backslash name reads as a slash, an absolute or `..` name still refused; a zip listing more than `MAX_ARCHIVE_ENTRIES` is refused before its entries are read; duplicates kept so the domain refuses them; encrypted entries refused). Each entry stream goes through a `PassThrough`, because a stored entry's raw stream never ends under `for await` | 3 |
 | `master/src/lib/csv.ts` | 37 | `toCsv()` — CRLF, quoting, leading apostrophe against formula injection for `= + - @` | 4 |
 | `master/src/lib/durable-file.ts` | 42 | `writeDurable()` — temp, fsync, rename | 1 |
 | `master/src/lib/env-file.ts` | 53 | `loadEnvFiles(...files)` | 1 |
@@ -2245,7 +2247,33 @@ exercised only through service integration tests.
   single-product rule — a `categoryCode` must name a live product (refused per row
   with `validation.product.categoryCodeUnknown`, never created), a name is read with
   its `categoryBrand` — and `ensureCategories` only creates the unmatched names, keyed
-  by (brand, name) through `categorySeedKey`.
+  by (brand, name) through `categorySeedKey`. `isUnchanged` became `changedCells`
+  (empty exactly when a row changes nothing; otherwise each cell, old → new, by column
+  name). Option `restore` (the product zip only): `pendingCategories` read as live on a
+  dry run, new rows take their position in the file as `sortOrder`, the result carries
+  `rows: { added, changed }`, and no activity row or change event of its own.
+  `buildProductExport` and `registerBrands` are exported for the zip.
+- `master/src/services/product-zip.service.ts` — 2026-10-08, the product backup zip.
+  `exportProductZip(actor)` (`products.view` + `products.export`) writes
+  `OrderBook-Products-<company>-<date>.zip` to `<dataDir>/tmp` (products.csv from
+  `buildProductExport`, main-products.csv `Brand, Main product code, Main product, Order`,
+  colours.csv `Colour, Hex` of the active colours, README.txt, `images/<CODE>[_N].webp`
+  = each photo's stored `master.webp`, stored, named by the variant its caption names
+  else the first live code) and one `catalog.exported` row. `previewProductZip` /
+  `restoreProductZip` are one `runZip`: `products.bulk` + `.create` + `.edit` (+
+  `.delete` to bin; `catalog.lists.manage` when the colours change), entries found by
+  base name (a top folder is fine), `products.csv` header checked before any write,
+  main products planned like `ensureCategories` (created with code, brand, order;
+  renamed through `catalog.updateCategory`), colours through `upsertOptions`, rows
+  through `importProducts` with `restore`, photos through `planPhotoImport` and
+  `runPhotoImport` ('replace') with the ordinary `uploadImage`, compared by sha256 to
+  `product_images.checksum`, then each gallery reordered to the zip's slots. Missing
+  sub products and photos are reported; `binMissingProducts` runs
+  `catalog.deleteProduct`, `removeMissingPhotos` `deleteImage`. One `catalog.imported`
+  row and one `catalog` change event. `startProductRestore` runs the real run detached
+  as the one product restore (its own slot, not `backup-job.ts`; a second start is
+  `error.conflict.productRestoreBusy`), `productRestoreJob` reports it.
+  `loadShippedCatalogue` is the boot load (§11.5).
 - `master/src/services/party-import.service.ts` — `partyImportTemplate`, `exportParties`, `importParties({dryRun, mode})` (1.3 H1). `parties.bulk` + `parties.create` (add) or `parties.edit` (update); export `parties.view` **and** `parties.export` through `resolvePartyScope`. Party Access holds: a code the caller cannot view is "unknown", one they cannot manage is `validation.import.partyOutOfScope`, and a bulk add skips a name and city held by a party outside their view (`party.repository#listLivePartyNameCities` ignores scope on purpose, returning only the two strings). Chunks of 200, a failed chunk replayed row by row; one `party_list` activity row and one `party_bulk` change event (snapshot-forcing; `hub.ts#emitGatedChange` sends a panel whose `socket.data.protocol` is below `PARTY_BULK_MIN_PROTOCOL` a snapshot instead). Routes: `partyImportRoutes` in `panel-catalog.routes.ts`, on `dataRoutes` before `/parties/:id` and on `/api/panel`; the Office proxies them (`proxyDownload` / `proxyImport` in `office/src/http/app.ts`).
 - `master/src/services/catalogue-seed.service.ts` (398) — catalogue v2 (2026-09-29):
   `readCatalogueFile` (parse `config.catalogueFile` before anything is touched),
@@ -2258,7 +2286,8 @@ exercised only through service integration tests.
   lines, timelines, leads, orders, their sync conflicts, party-wise records, photo
   rows, product connector links, variants, sub products, categories). One
   `catalog.reloaded` or `catalog.imported` activity row and one `catalog` change
-  event per load. `seedCatalogue` (additive, as the first administrator unless an
+  event per load. `upsertOptions` is exported for the product zip's colours.
+  `seedCatalogue` (additive, as the first administrator unless an
   actor is given — the Developer tab, `seed:catalogue`, the sample data);
   `otherDatabaseClients` (the reload's refusal). Returns `LoadCatalogueResult`
   (`brands`, `colours`, `products`, `subProducts`, `skipped`, `removedLeads`,
@@ -2872,11 +2901,17 @@ the service checks.
   mount's `requirePanel`): `POST /products/:productId/images`, `GET
   /avatars/:avatarId/:variant`, `GET /images/:imageId/:variant`.
 - `master/src/http/routes/panel-catalog.routes.ts`: the factory
-  `productImportRoutes(actorOf)` — `GET /products/import/template.:format`, `POST
+  `productImportRoutes(actorOf, { zip })` — `GET /products/import/template.:format`, `POST
   /products/import` (multipart; `dryRun`, `mode`; the service checks
   `products.bulk`). `panelCatalogRoutes = productImportRoutes(panelActorFromRequest)`
   is mounted at `/api/panel` behind `requirePanel`; `dataRoutes` mounts
-  `productImportRoutes(actorFromRequest)` for a signed-in user (`/api/products/import…`).
+  `productImportRoutes(actorFromRequest, { zip: true })` for a signed-in user
+  (`/api/products/import…`). `zip` (Master users only) adds `GET /products/export.zip`
+  (streamed from the temp file, deleted when the response closes), `POST
+  /products/restore` (multer **disk** storage in `<dataDir>/tmp`, 1 GiB
+  `MAX_PRODUCT_ZIP_BYTES`; `dryRun=true` answers the preview and deletes the upload,
+  otherwise 202 with the job, which deletes it; `binMissingProducts`,
+  `removeMissingPhotos`) and `GET /products/restore/job` (`products.bulk`).
 - `master/src/http/routes/avatar.routes.ts`: `avatarRoutes` — `POST /`, `DELETE /`
   (no route guard; `avatar.service.ts#assertMayEdit`); `avatarFilesRoutes` — `GET
   /:avatarId/:variant` (immutable-cached WebP).
@@ -3043,7 +3078,10 @@ the service checks.
   41 products with their codes, 549 sub products with size and colour rule), with
   its transcription decisions. Shipped with the Master so Settings → Developer →
   *Load catalogue* works on an installed copy; read through `config.catalogueFile`
-  and parsed by `master/src/domain/catalogue-markdown.ts`.
+  and parsed by `master/src/domain/catalogue-markdown.ts`. Since 2026-10-08 it is also
+  what a new install loads on its first boot, unless the build carries
+  `master/assets/catalogue/products.zip` (a product backup copied in by `release
+  --catalogue`; git-ignored, so committing one is the owner's call), which then wins.
 - `master/Launch Master Panel.bat` — Windows dev launcher: `npm run dev` on 4100,
   Vite on 5100, then an Edge `--app` window.
 - `master/electron-builder.yml` and `master/installer/` (3 files) — §10.4:
@@ -3833,7 +3871,7 @@ The `NotificationBell` sits beside the palette button: `api.notifications()` /
 | Fields (17) | `fieldsCatalogue` … `restoreFieldStage` | `fields/*` |
 | Panels (12) | `panels`, `openPairingWindow`, `closePairingWindow`, `revokePanel`, `renamePanel`, `panel`, `updatePanel`, `refreshPanel`, `rotatePanelSecret`, `setPanelStoragePath`, `disconnectPanel`, `panelActivity` | `panels/*` |
 | Parties, products | `parties`, `createParty`, `updateParty` (optional `baseFieldHlc`), `deleteParty`, `createProduct`, `updateProduct`, `listProducts`, `categories`, `createCategory`, `updateCategory`, `deleteCategory` (`deleteProduct` removed: the Office has no sub-product delete either) | `parties`, `products`, `categories` |
-| Catalogue import and photos (6) | `productImportTemplate` (GET blob via `requestFile`), `importProducts`, `uploadProductImage` (both `requestForm`), `updateProductImage` (PATCH), `reorderProductImages`, `deleteProductImage` | `products/import…`, `products/:id/images…` |
+| Catalogue import and photos (10) | `productImportTemplate` (GET blob via `requestFile`), `importProducts`, `uploadProductImage` (both `requestForm`), `updateProductImage` (PATCH), `reorderProductImages`, `deleteProductImage`; the product zip (2026-10-08): `exportProductZip` (`requestFile`), `previewProductZip`, `startProductRestore` (both `requestForm`), `productRestoreJob` — `catalogueTransport.productZip` | `products/import…`, `products/:id/images…`, `products/export.zip`, `products/restore…` |
 
 The five stock members (`stock`, `stockMovements`, `stockInbound`, `stockAdjust`,
 `setReorderLevel`) were deleted with the Inventory screen in 1.3 Phase 1; the `stock/*`
@@ -5956,6 +5994,25 @@ rewritten. Tests: `shared/tests/apply-party-rename.test.ts`,
   `catalog.imported` row and one `catalog` change event. `npm run reload:catalog`
   (Master stopped) is the same loader with `replace: true`, which first clears the
   catalogue and what quotes it (§5.3).
+- **The catalogue on a new install (2026-10-08).** `master/src/index.ts`, after the orphan
+  sweep and before `createApp()`, awaits `loadShippedCatalogue()` under the boot step
+  "Loading the product catalogue" (photo progress in the step text). Once per install:
+  when the internal setting `internal.shippedCatalogueLoaded` is absent and
+  `product_categories` has no row at all (binned included), it loads
+  `config.catalogueZip` through `restoreProductZip` if the build carries one, else
+  `config.catalogueFile` through `loadCatalogue`, as System with the product keys; then
+  it writes the marker either way (an install with products only gets the marker). A
+  load that throws is a warning and is not recorded. Before or after setup alike; no
+  test suite runs `main()`, so the suites' empty catalogues stay empty.
+- **The product backup zip (2026-10-08, Master only).** Products → Sub products →
+  **Backup products (.zip)** → `api.exportProductZip` → `GET /api/products/export.zip`
+  → `exportProductZip`; **Restore from .zip** → `ProductZipModal` → `POST
+  /api/products/restore` with `dryRun=true` (the preview) → Apply → the same upload
+  without it (202, the job) → `GET /api/products/restore/job` polled. Format and
+  behaviour: `docs/PRODUCT_IMPORT_FORMAT.md` ("The product backup zip"); code:
+  `master/src/services/product-zip.service.ts`. Tests:
+  `master/tests/product-zip.integration.test.ts`. The Office has neither: its
+  `proxyDownload` buffers a whole download in memory, and the restore is a Master job.
 
 ### 11.6 Company settings reaching the panels
 
@@ -6364,8 +6421,15 @@ Rules: `docs/schema/06-tenancy-permissions-and-sync.md` section 2c, `docs/ROLES_
   names it, so no screen or snapshot shows it); an update that ships a changed set runs once more. A run with a failed photo is
   not recorded, so the next boot retries; neither is a run where nothing matched any sub product (the catalogue is not loaded yet).
   Offline: the files are on disk beside the program.
+- **The catalogue on a new install, and the product zip's photos (2026-10-08).** On an install whose catalogue
+  was empty, `loadShippedCatalogue` (§11.5) loads the sub products first, awaited, so `attachCataloguePhotos`
+  finds them on the same boot. When the build ships `products.zip`, its own `images/` are uploaded by that load
+  (awaited, behind the boot step), and the shipped `photos/` still fill only sub products with no photo after it.
+  The product zip names photos the way this import reads them (`CODE.webp` photo 1, `CODE_N` photo N) and uses
+  `planPhotoImport` / `runPhotoImport` server-side, comparing a file's sha256 with the photo's checksum.
 - **Tests.** `shared/tests/photo-import.test.ts`, `master/tests/photo-import-route.integration.test.ts`,
-  `master/tests/catalogue-photos.integration.test.ts`, "Photo import" in `ui/tests/master-shell.test.tsx`.
+  `master/tests/catalogue-photos.integration.test.ts`, "Photo import" in `ui/tests/master-shell.test.tsx`,
+  `master/tests/product-zip.integration.test.ts`, "on boot" in `master/tests/catalogue-seed.integration.test.ts`.
 
 ### 11.10 Caching, limits and stability (1.4.3)
 
@@ -6530,7 +6594,7 @@ They read files and assert on the text; they need no database and cannot skip.
 
 | File | Reads | Protects |
 |---|---|---|
-| `master/tests/packaging-invariants.test.ts` | `tools/release.mjs`, both panel ymls, root `allowScripts`, `tools/uninstall/uninstall-orderbook.sh` | three `TARGETS` with literal per-arch PostgreSQL packages; `vendorPostgres` uses `RELEASE_TARGET.postgres`; every `@embedded-postgres` package in `allowScripts`; mac vendors both darwin packages; `verbatimSymlinks: true` in `vendorPostgres` and `stage`; `ensureUniversalPackages()` before `vendorPostgres()`; `win:`/`mac:`/`linux:` blocks with `artifactName` ending `.${ext}`; the yml targets, read in every shape a target can be written, equal to what `release.mjs` picks up (so the mac `.zip` cannot come back unnoticed); `x64ArchFiles`; `executableName: orderbook-<panel>`; the host-arch refusal, run as an arm64 machine against what `npm ls` finds native in each panel; the `.deb` sweep. Since Phase 0 also the fourth target, `win7`: Office only (the Master and the cleaner refused by name), any Windows machine, its yml (`office/electron-builder.legacy.yml`: same `appId`, `productName`, data rule and NSIS hook as the main Office yml, `include` of `installer-legacy.nsh` with the UCRT check), its `x64`+`ia32` archs and `Win7`-tagged file names, the CommonJS shell stage with its `{"type":"commonjs"}` marker in `build()` and `copy-shell.mjs`, and `LEGACY_ELECTRON` from `tools/legacy-electron.mjs` matching `22.3.x`. **The mac-build guard.** |
+| `master/tests/packaging-invariants.test.ts` | `tools/release.mjs`, both panel ymls, root `allowScripts`, `tools/uninstall/uninstall-orderbook.sh` | three `TARGETS` with literal per-arch PostgreSQL packages; `vendorPostgres` uses `RELEASE_TARGET.postgres`; every `@embedded-postgres` package in `allowScripts`; mac vendors both darwin packages; `verbatimSymlinks: true` in `vendorPostgres` and `stage`; `ensureUniversalPackages()` before `vendorPostgres()`; `win:`/`mac:`/`linux:` blocks with `artifactName` ending `.${ext}`; the yml targets, read in every shape a target can be written, equal to what `release.mjs` picks up (so the mac `.zip` cannot come back unnoticed); `x64ArchFiles`; `executableName: orderbook-<panel>`; the host-arch refusal, run as an arm64 machine against what `npm ls` finds native in each panel; the `.deb` sweep. Since Phase 0 also the fourth target, `win7`: Office only (the Master and the cleaner refused by name), any Windows machine, its yml (`office/electron-builder.legacy.yml`: same `appId`, `productName`, data rule and NSIS hook as the main Office yml, `include` of `installer-legacy.nsh` with the UCRT check), its `x64`+`ia32` archs and `Win7`-tagged file names, the CommonJS shell stage with its `{"type":"commonjs"}` marker in `build()` and `copy-shell.mjs`, and `LEGACY_ELECTRON` from `tools/legacy-electron.mjs` matching `22.3.x`. **The mac-build guard.** Since 2026-10-08 the shipped catalogue: `PANELS.master.extras` includes `assets`; `--catalogue` (and `ORDERBOOK_CATALOGUE_ZIP`) refuses a missing file, a non-zip, a zip with no `products.csv` and a run without the Master before the first command, and copies to `master/assets/catalogue/products.zip` (the path `config.catalogueZip` reads) after the check and before any build. |
 | `master/tests/web-reachability.test.ts` | both `App.tsx` and `api.ts` | every Tab reachable (`NAV_LESS`); every `api.*` member has a caller or an `ALLOWED_UNCALLED` reason, none stale |
 | `master/tests/screen-reachability.test.ts` | both `App.tsx`, `COMMANDS` | nav entries, `ScreenSpec`s and the Tab union agree; one-panel screens need a `PANEL_ONLY` reason; every `command.tab` resolves |
 | `master/tests/migration-registry.test.ts` | `master/src/db/migrations/` | §6.1 |
@@ -7000,6 +7064,7 @@ also imports `masterConnection`.
 | Change the Chatroom | `shared/src/domain/chat.ts` (types, limits, `cleanChatPost`), `master/src/services/chat.service.ts` (every rule: membership, announcement, the five-minute window, chips resolved per viewer, audit), `master/src/repositories/chat.repository.ts`, `master/src/http/routes/chat.routes.ts` and the twinned `chat:*` commands in `master/src/realtime/hub.ts`; the Office forwards in `office/src/http/app.ts` and the held-post rule in `office/src/sync/sync.service.ts`; `ui/src/Chat*.tsx` and `ui/src/chatModel.ts`; both `chatTransport.ts` and `App.tsx`; a new right needs the permission steps above plus the grant in a new migration | `master/tests/chat.integration.test.ts`, `master/tests/chat-fanout.integration.test.ts`, `master/tests/sync.integration.test.ts`, `master/tests/credential-invariants.test.ts`, `office/tests/chat-forwarding.test.ts`, `office/tests/sync-hold.test.ts`, `shared/tests/chat.test.ts`, `ui/tests/chatroom.test.tsx` |
 | Change the Printroom or the auto-print station | `shared/src/domain/printroom.ts` (types, limits, `cleanPrintJobInput`), `master/src/services/print.service.ts` (every rule: who sees what, the claim, mark / cancel, audit, retention), `master/src/repositories/print.repository.ts`, `master/src/http/routes/print.routes.ts` and the twinned `print:*` commands, the push and the claim release in `master/src/realtime/hub.ts`; the Office forwards in `office/src/http/app.ts`; `ui/src/PrintroomScreen.tsx`, `SendToPrintroomDialog.tsx`, `PrintStationRunner.tsx`, `NoteDocumentPortal.tsx`, `printroomModel.ts`; both `printroomTransport.ts` and `App.tsx`; the shell half in `electron/lib/station-mode.ts`, `electron/shell.ts`, `electron/preload.cts`; plan `docs/ORDER_NOTES_PLAN.md` section 11 | `master/tests/printroom.integration.test.ts`, `master/tests/printroom-push.test.ts`, `master/tests/credential-invariants.test.ts`, `office/tests/print-forwarding.test.ts`, `shared/tests/printroom.test.ts`, `electron/tests/station-mode.test.ts`, `ui/tests/printroom-screen.test.tsx`, `ui/tests/print-station-runner.test.tsx`, `ui/tests/send-to-printroom.test.tsx` |
 | Change a report | `shared/src/domain/reports.ts` (columns, meta), `master/src/repositories/report.repository.ts` (the SQL), `master/src/services/report.service.ts` (access, table, export), `ui/src/ReportsScreen.tsx`, `shared/src/domain/report-access.ts` | `master/tests/reports.integration.test.ts` (legacy), `master/tests/report-tables.integration.test.ts`, `master/tests/report-hub.integration.test.ts`, `master/tests/report-range.test.ts`, `master/tests/report-range-periods.test.ts`, `master/tests/report-export-streaming.test.ts`, `shared/tests/report-query.test.ts`, `shared/tests/report-access.test.ts`, `ui/tests/reports-screen.test.tsx`, `master/tests/report-pdf-route.integration.test.ts` (the inline PDF route), `office/tests/module-forwarding.test.ts` |
+| Change the product backup zip (layout, change detection, the opt-ins, the boot load) | `master/src/services/product-zip.service.ts`, the `restore` option of `importProducts`, `panel-catalog.routes.ts` (`{ zip }`), `ui/src/ProductZipModal.tsx`, `shared/src/domain/product-import.ts` (`ProductZipReport`, `ProductRestoreJob`), `docs/PRODUCT_IMPORT_FORMAT.md` | `master/tests/product-zip.integration.test.ts`, "on boot" in `master/tests/catalogue-seed.integration.test.ts`, "the product backup zip" in `ui/tests/master-catalogue.test.tsx` |
 | Change the product import format | `master/src/domain/product-import.ts` (`IMPORT_COLUMNS`), `master/src/services/product-import.service.ts`, `master/src/lib/spreadsheet.ts`, `shared/src/domain/product-import.ts`, `docs/PRODUCT_IMPORT_FORMAT.md` | `master/tests/product-import-compat.integration.test.ts` (1.2.5 fixtures in `master/tests/fixtures/`, ignored stock columns, the format marker), `master/tests/product-import-domain.test.ts`, `master/tests/product-import.integration.test.ts`, `master/tests/spreadsheet.test.ts`, `master/tests/import-category-gate.test.ts` |
 | Change the party import format | `shared/src/domain/party-import.ts` (`PARTY_IMPORT_COLUMNS`), `master/src/domain/party-import.ts`, `master/src/services/party-import.service.ts`, `docs/PARTY_IMPORT_FORMAT.md` | `master/tests/party-import-domain.test.ts`, `master/tests/party-import.integration.test.ts`, `office/tests/module-forwarding.test.ts` |
 | Change the faces on the Pending / Final boards | `shared/src/protocol/presence.ts` (`BoardPresence`), `master/src/realtime/presence-store.ts` (`board`, `sweep`, `onBoardChange`), `master/src/services/presence.service.ts` (`boardFor`), the throttled push and `presence:board` command in `master/src/realtime/hub.ts`, `GET /api/presence/board` in `data.routes.ts` and the Office's `app.ts` / `master-connection.ts`; `ui/src/useBoardPresence.ts`, `AvatarStack`, and the four list/board screens | `master/tests/presence-store.test.ts`, `master/tests/presence.integration.test.ts`, `office/tests/presence-route.test.ts`, `ui/tests/use-board-presence.test.tsx`, `ui/tests/master-shell.test.tsx`, `ui/tests/office-shell.test.tsx` |
@@ -7009,7 +7074,7 @@ also imports `masterConnection`.
 | Change sync merge rules | `shared/src/sync/merge.ts`, `MERGEABLE_COLUMNS` in `shared/src/domain/columns.ts`, `sync.service.ts#mergeUpdate` | `shared/tests/sync.test.ts`, `master/tests/sync.integration.test.ts` |
 | Change the backup format | `shared/src/protocol/backup.ts`, **both** `master/src/lib/backup-crypto.ts` and `office/src/lib/backup-crypto.ts`, `master/src/repositories/backup.repository.ts` | `master/tests/backup-crypto.test.ts`, `master/tests/backup-domain.test.ts`, `master/tests/backup-chain.integration.test.ts`, `master/tests/backup-sequences.integration.test.ts`, `master/tests/password-vault-invariants.test.ts` |
 | Change how PostgreSQL is found or started | `master/src/db/postgres-server.ts` (`candidateBinDirs`), and `vendorPostgres()` in `tools/release.mjs` for the vendor layout | `master/tests/postgres-launcher.test.ts`, `master/tests/packaging-invariants.test.ts` |
-| Change the release pipeline, packaging or the mac build | `tools/release.mjs` (`TARGETS`, `native`), `master/electron-builder.yml`, `office/electron-builder.yml`, `office/electron-builder.legacy.yml` (the Windows 7 build, kept in step with the main Office yml), `cleaner/electron-builder.yml`, `.github/workflows/release.yml`, root `allowScripts`; every yml target must be one `release.mjs` publishes | `master/tests/packaging-invariants.test.ts`, `master/tests/release-signed-fields.test.ts`, `master/tests/release-workflow.test.ts`, `master/tests/release-folder-besides.test.ts` |
+| Change the release pipeline, packaging or the mac build | `tools/release.mjs` (`TARGETS`, `native`), `master/electron-builder.yml`, `office/electron-builder.yml`, `office/electron-builder.legacy.yml` (the Windows 7 build, kept in step with the main Office yml), `cleaner/electron-builder.yml`, `.github/workflows/release.yml`, root `allowScripts`; every yml target must be one `release.mjs` publishes; `--catalogue` (the product zip a Master build ships) | `master/tests/packaging-invariants.test.ts`, `master/tests/release-signed-fields.test.ts`, `master/tests/release-workflow.test.ts`, `master/tests/release-folder-besides.test.ts` |
 | Change which fields a release signature covers | `SIGNED_MANIFEST_FIELDS` in `shared/src/domain/release-signature.ts` **and** `SIGNED_FIELDS` in `tools/release.mjs` together; the verifier is duplicated byte for byte in `master/src/lib/release-signature.ts` and `office/src/lib/release-signature.ts` — change both | `master/tests/release-signed-fields.test.ts`, `master/tests/release-signature.test.ts` (Master copy only; nothing pins the two copies equal) |
 | Change what an uninstall removes | `tools/uninstall/uninstall-orderbook.ps1` (PowerShell 2.0 only: Windows 7 runs it) and `tools/uninstall/uninstall-orderbook.sh` — one copy, four callers; if you touch a flag, also `electron/lib/uninstall.ts` and both `installer/installer.nsh` | `electron/tests/uninstall.test.ts` (pins the spelling in five places), `master/tests/packaging-invariants.test.ts`, `electron/tests/cleaner-detect.test.ts` |
 | Change the desktop shell | `electron/shell.ts` and the pure helpers in `electron/lib/` (keep logic there so it stays testable); a server's environment in its entrypoint or `electron/lib/office-env.ts`, and only variables that server reads; anything that names the log uses `openLogPath()` | `electron/tests/*` (`health`, `supervisor`, `installer`, `appimage`, `standalone`, `uninstall`, `office-env`, `server-env`, `shell-log`) |

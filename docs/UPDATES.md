@@ -126,6 +126,32 @@ To build locally instead, `npm run release` with `ORDERBOOK_RELEASE_KEY` and
 `ORDERBOOK_RELEASE_KEY_ID` set. It writes the same folder the USB-stick workflow
 has always used.
 
+### Shipping the product database with a build (2026-10-08)
+
+Every Master build carries a product catalogue, which a **new install** loads on
+its first boot: the printed catalogue (`master/assets/catalogue/swisware-plus-2026.md`
+and its photos) unless the build carries a product backup zip. To ship the
+company's current products instead, take **Products → Sub products → Backup
+products (.zip)** on the live Master and build with it:
+
+```bash
+npm run release -- --catalogue D:/Backups/OrderBook-Products-Acme-2026-10-08.zip
+```
+
+(or set `ORDERBOOK_CATALOGUE_ZIP`). The release checks the zip holds a
+`products.csv` before it builds anything, then copies it to
+`master/assets/catalogue/products.zip`, which the Master build stages with the
+rest of `assets/`. The run prints which catalogue it ships; a `products.zip`
+left there by an earlier `--catalogue` run ships too until it is deleted. That
+path is git-ignored, so the CI release ships the committed catalogue unless the
+owner commits a zip there (`git add -f`), which is his decision.
+
+The shipped catalogue is loaded **once**, and only into an install whose
+catalogue has never held a main product (the Recycle Bin counts): a fresh
+install, before or after first-run setup, or a Master whose data was erased. An
+update never touches an existing catalogue; the internal setting
+`internal.shippedCatalogueLoaded` records that the check was made.
+
 ## When a new build shows up
 
 A Master with `ORDERBOOK_RELEASES_GITHUB_REPO` set looks for a new release two

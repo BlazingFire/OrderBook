@@ -44,6 +44,7 @@ this batch; the web i18n layer is deferred to the UI phase (`02-FILE-STRUCTURE.m
 | 14 | Pending order numbers, presence and stale edits (1.3 Phase 4) |
 | 17 | Party Access: list, summary and people (1.4.0) |
 | 18 | Adding an Office panel: pairing, leaving, the window (1.4.1) |
+| 23 | The product backup zip (2026-10-08) — 3 endpoints, Master users only |
 
 ---
 
@@ -2103,6 +2104,7 @@ not read as an omission:
 | `/api/setup/*`, `/api/pairing/*`, `/api/panels/*` | Installation and pairing. A panel cannot pair itself through a Master it has not paired with |
 | `/api/storage` | Disk usage of the Master's own machine |
 | `/uploads/*` | `express.static` on the Master's disk (`master/src/http/app.ts:44`). Document assets deliberately do **not** use it (§6.3) |
+| `/api/products/export.zip`, `/api/products/restore*` (§23) | The Office's `proxyDownload` buffers a whole download in memory, and a restore is minutes of photo encoding run as a Master job; the paired-panel surface (`/api/panel`) does not mount them |
 
 ---
 
@@ -2878,6 +2880,27 @@ left out, reads shown from the last snapshot) and every write and "mark read" ne
 `notice` event (`created`, `updated`, `deleted`, `restored`) whose payload names only the audience, before and after
 (the title and body never ride the change ring); it is snapshot-forcing, and reaches only a recipient whose role is in
 the audience, or who holds `notices.manage`, so an edit that moves a notice off a role still tells that role.
+
+## 23. The product backup zip (2026-10-08)
+
+Shared types: `shared/src/domain/product-import.ts` (`ProductZipReport`, `ProductRowChange`, `ProductCellChange`,
+`ProductZipProblem`, `ProductRestoreOptions`, `ProductRestoreJob`, `MAX_PRODUCT_ZIP_BYTES` 1 GiB). Service:
+`master/src/services/product-zip.service.ts`; routes: `productImportRoutes(actorFromRequest, { zip: true })` in
+`master/src/http/routes/panel-catalog.routes.ts`, on `dataRoutes` (a signed-in Master user) only. The file format is
+`docs/PRODUCT_IMPORT_FORMAT.md`, "The product backup zip".
+
+| Route (Master) | Keys | Answer |
+|---|---|---|
+| `GET /api/products/export.zip` | `products.view` + `products.export` | `application/zip`, `attachment; filename="OrderBook-Products-<company>-<date>.zip"`, streamed from a file in `<dataDir>/tmp` that is deleted when the response closes. One `catalog.exported` activity row (`format: 'zip'`) |
+| `POST /api/products/restore` (multipart `file`, written to disk, over 1 GiB `400 validation.productZip.tooLarge`) with `dryRun=true` | `products.bulk` + `.create` + `.edit` (+ `catalog.lists.manage` when the colours change) | `200 ProductZipReport` (`dryRun: true`); nothing written; the upload deleted |
+| `POST /api/products/restore` without `dryRun`; `binMissingProducts=true`, `removeMissingPhotos=true` opt in | the same, + `products.delete` with `binMissingProducts` | `202 ProductRestoreJob` (`phase: 'checking'`); the run continues detached and deletes the upload when it ends. A second start while one runs: `409 error.conflict.productRestoreBusy` |
+| `GET /api/products/restore/job` | `products.bulk` | the latest `ProductRestoreJob` (`phase` `checking` → `products` → `photos` (`done`/`total` photos) → `removing` → `done` with `result: ProductZipReport`, or `failed` with `message`), or `null` since the Master started |
+
+Refusals before anything is written: `validation.productZip.notAZip`, `.entryRejected` (`{entry}`: an absolute or `..`
+name), `.noProductsCsv`, `.manyFiles` (`{file}`), and the import's own `validation.import.missingColumn` /
+`.unreadable` / `.emptyFile` for `products.csv`. A row or photo that fails is listed in the report (`products.issues`,
+`problems`), never a refusal of the whole zip. A real run that changed anything writes one `catalog.imported` activity row
+and one `catalog` change event; the photos and renames it makes announce themselves as a single edit would.
 
 ## Appendix — new permission keys
 
