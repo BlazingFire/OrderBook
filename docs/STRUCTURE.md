@@ -6348,14 +6348,15 @@ Rules: `docs/schema/06-tenancy-permissions-and-sync.md` section 2c, `docs/ROLES_
   `SignInNotices.tsx` (V6: every unread notice placed at sign-in, important first then newest, the Important pill on
   the important ones only, in a dialog once right after sign-in; `enabled` is the company switch as it stood when it
   decided; Mark as read goes through the panel's read path, the Office queuing per person while offline; Later only
-  closes it), `NoticeManageView.tsx` (list with an "Also shown" column of Home / Sign-in tags, dropped first on a narrow screen, editor with the two
-  placement checkboxes, audience picker, pin, expire, delete, read counts and the readers dialog, the 409 conflict with
-  Reload); the Master's
+  closes it), `NoticeManageView.tsx` (list with a "Home only" or "Sign-in only" tag in the audience cell of a notice
+  kept off one of the two places, none for one in both; editor with the two placement checkboxes, audience picker,
+  pin, expire, delete, read counts and the readers dialog, the 409 conflict with Reload); the Master's
   `NoticeBoardScreen.tsx`, `NoticeManageScreen.tsx`, `useNotices.ts`; the Office mounts the same views. Text is plain:
   line breaks kept, no markup, no links.
 - **Office.** `office/src/http/app.ts` forwards `/api/notices`; the reader's list is served offline from the snapshot of
-  the person signed in (`forCurrentUser`), filtered for expiry on the PC; a cache built for somebody else carries no
-  notices.
+  the person signed in (`forCurrentUser`, `noticesFor`), filtered for expiry on the PC. From a cache built for somebody
+  else only the notices for everybody are shown, all as unread (the read marks are the other person's); so the sign-in
+  pop-up waits for the person's own snapshot while the link is up (`office/web/src/App.tsx`).
 - **Tests.** `master/tests/notices.integration.test.ts`, `notice-fan-out.test.ts`, `notice-screens-contract.integration.test.ts`,
   `migration-notice-board.integration.test.ts`, `migration-notice-placement.integration.test.ts`,
   `company-settings.integration.test.ts` (the two switches on `/me` and in the snapshot), `office/tests/notices-forwarding.test.ts`,
