@@ -812,6 +812,67 @@ function NoticeBoardTile({ size = 80 }: TileProps) {
   );
 }
 
+function NoticeBoardManageTile({ size = 80 }: TileProps) {
+  const u = useTileId();
+  return (
+    <svg viewBox="0 0 96 96" width={size} height={size} aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id={`${u}-g`} x1="0" y1="0" x2="0.35" y2="1">
+          <stop offset="0" stopColor="#F2925E" />
+          <stop offset="1" stopColor="#B5452A" />
+        </linearGradient>
+        <radialGradient id={`${u}-h`} cx="0.3" cy="0" r="0.9">
+          <stop offset="0" stopColor="#fff" stopOpacity=".28" />
+          <stop offset="1" stopColor="#fff" stopOpacity="0" />
+        </radialGradient>
+        <filter id={`${u}-s`} x="-30%" y="-30%" width="160%" height="160%">
+          <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" floodColor="#000" floodOpacity=".22" />
+        </filter>
+        <filter id={`${u}-d`} x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="#B5452A" floodOpacity=".55" />
+        </filter>
+      </defs>
+      <rect width="96" height="96" rx="22" fill={`url(#${u}-g)`} />
+      <rect width="96" height="96" rx="22" fill={`url(#${u}-h)`} />
+      <rect
+        x=".75"
+        y=".75"
+        width="94.5"
+        height="94.5"
+        rx="21.25"
+        fill="none"
+        stroke="#fff"
+        strokeOpacity=".22"
+        strokeWidth="1.5"
+      />
+      <g filter={`url(#${u}-d)`}>
+        <path
+          d="M30 60l-5 14M58 60l5 14"
+          stroke="#FFFFFF"
+          strokeOpacity=".65"
+          strokeWidth="5"
+          strokeLinecap="round"
+        />
+        <rect x="14" y="18" width="60" height="44" rx="7" fill="#FFFFFF" />
+        <g transform="rotate(-5 32 36)">
+          <rect x="21" y="25" width="22" height="22" rx="3" fill="#FFD54F" />
+          <rect x="25" y="31" width="14" height="3" rx="1.5" fill="#B8860B" />
+          <rect x="25" y="37" width="9" height="3" rx="1.5" fill="#B8860B" />
+        </g>
+        <rect x="48" y="25" width="19" height="4" rx="2" fill="#B5452A" opacity=".4" />
+        <rect x="48" y="33" width="14" height="4" rx="2" fill="#B5452A" opacity=".4" />
+        <rect x="48" y="41" width="17" height="4" rx="2" fill="#B5452A" opacity=".4" />
+        <circle cx="32" cy="26" r="2.2" fill="#B5452A" />
+        <g filter={`url(#${u}-s)`}>
+          <circle cx="68" cy="68" r="14" fill="#FFFFFF" />
+        </g>
+        <path d="M62.5 74.5l1.2-4.6 8.4-8.4a2.4 2.4 0 0 1 3.4 3.4l-8.4 8.4z" fill="#B5452A" />
+        <path d="M70.4 63.2l3.4 3.4" stroke="#FFFFFF" strokeWidth="1.4" />
+      </g>
+    </svg>
+  );
+}
+
 function OfficePanelsTile({ size = 80 }: TileProps) {
   const u = useTileId();
   return (
@@ -1184,6 +1245,7 @@ export const TILE_ICONS: Partial<Record<NavIconId | 'newLead', ComponentType<Til
   settings: SettingsTile,
   updates: AppUpdateTile,
   notices: NoticeBoardTile,
+  noticesManage: NoticeBoardManageTile,
   panels: OfficePanelsTile,
   access: RolesUsersTile,
   fields: FieldsTile,

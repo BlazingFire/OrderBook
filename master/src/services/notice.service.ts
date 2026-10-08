@@ -67,6 +67,8 @@ function forReader(row: noticeRepo.NoticeRow, viewerRoleId: string | null = null
     priority: row.priority,
     pinned: row.pinned,
     showUntil: row.showUntil,
+    showOnHome: row.showOnHome,
+    showAtSignIn: row.showAtSignIn,
     audience: row.audienceAll
       ? { kind: 'all' }
       : {
@@ -118,6 +120,7 @@ const PROBLEM_KEY = {
   bad_date: 'validation.notice.dateInvalid',
   audience_empty: 'validation.notice.audienceEmpty',
   audience_too_big: 'validation.notice.audienceTooBig',
+  no_placement: 'validation.notice.placementEmpty',
 } as const satisfies Record<NoticeProblem, string>;
 
 /**
@@ -154,6 +157,11 @@ function parseInput(
   if (raw.pinned !== undefined) {
     if (typeof raw.pinned !== 'boolean') return bad();
     out.pinned = raw.pinned;
+  }
+  for (const key of ['showOnHome', 'showAtSignIn'] as const) {
+    if (raw[key] === undefined) continue;
+    if (typeof raw[key] !== 'boolean') return bad();
+    out[key] = raw[key];
   }
   if (raw.showUntil !== undefined && raw.showUntil !== null) {
     if (typeof raw.showUntil !== 'string') return bad();
@@ -301,6 +309,9 @@ export async function createNotice(body: unknown, actor: ActorContext): Promise<
         priority: input.priority ?? 'normal',
         pinned: input.pinned ?? false,
         showUntil: input.showUntil ?? null,
+        // An older panel's editor sends neither: shown in both places, as every notice was.
+        showOnHome: input.showOnHome ?? true,
+        showAtSignIn: input.showAtSignIn ?? true,
         audienceAll: !input.audience || input.audience.kind === 'all',
         roleIds,
         authorId: actorUserId(actor),
@@ -349,6 +360,15 @@ export async function updateNotice(
   const existing = await noticeRepo.findById(actor.tenantId, id);
   if (!existing) throw new NotFoundError('Notice');
   assertVersionMatches(existing.version, input.expectedVersion);
+  // An edit may send one placement alone (or neither): the one it leaves out is the stored one,
+  // and the pair still has to keep the notice somewhere.
+  assertValid(
+    {
+      showOnHome: input.showOnHome ?? existing.showOnHome,
+      showAtSignIn: input.showAtSignIn ?? existing.showAtSignIn,
+    },
+    'update',
+  );
 
   const roleIds = await assertRoles(actor, input.audience);
   const audienceChanged = input.audience !== undefined;
@@ -364,6 +384,8 @@ export async function updateNotice(
         ...(input.priority !== undefined ? { priority: input.priority } : {}),
         ...(input.pinned !== undefined ? { pinned: input.pinned } : {}),
         ...(input.showUntil !== undefined ? { showUntil: input.showUntil } : {}),
+        ...(input.showOnHome !== undefined ? { showOnHome: input.showOnHome } : {}),
+        ...(input.showAtSignIn !== undefined ? { showAtSignIn: input.showAtSignIn } : {}),
         ...(audienceChanged ? { audienceAll: input.audience?.kind === 'all', roleIds } : {}),
       },
       trx,

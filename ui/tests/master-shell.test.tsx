@@ -2868,13 +2868,22 @@ describe('Notice board screens in the Master shell (Oct 7)', () => {
     expect(await screen.findByRole('button', { name: t('notices.board.markAllRead') })).toBeTruthy();
   });
 
-  /** An office-tier sign-in, which lands on Basic Home. */
-  const asOffice = (permissions: string[], inner = noticeRoutes({ n: 0 })) => ({ url, method, body }: Call) =>
-    url === '/api/auth/me'
-      ? json({ user: user(permissions, 'office'), sessionToken: 'session-1' })
-      : inner({ url, method, body });
+  /** An office-tier sign-in, which lands on Basic Home, with the company switches as given. */
+  const asOffice =
+    (permissions: string[], inner = noticeRoutes({ n: 0 }), features: () => Record<string, unknown> = () => ({})) =>
+    ({ url, method, body }: Call) =>
+      url === '/api/auth/me'
+        ? json({ user: { ...user(permissions, 'office'), features: features() }, sessionToken: 'session-1' })
+        : inner({ url, method, body });
 
-  it('turns over the important and pinned notices above Basic Home, for the roles that land there', async () => {
+  /** The board's read answering with these notices. */
+  const board = (notices: unknown[]) => ({ url, method }: Call): Response | undefined =>
+    url.split('?')[0] === '/api/notices' && method === 'GET'
+      ? json({ notices, unreadCount: notices.length })
+      : undefined;
+  const band = () => screen.queryByRole('region', { name: t('notices.slideshow.label') });
+
+  it('turns over the notices above Basic Home, for the roles that land there', async () => {
     await boot(['notices.view'], asOffice(['notices.view']));
     expect(topbarTitle()).toBe(t('nav.basicHome'));
     // The unread important notice also pops up on sign-in (V6); Later leaves the card to be seen.
@@ -2890,6 +2899,37 @@ describe('Notice board screens in the Master shell (Oct 7)', () => {
     await boot([], asOffice([]));
     expect(topbarTitle()).toBe(t('nav.basicHome'));
     expect(screen.queryByText('Godown closed on Friday')).toBeNull();
+    expect(band()).toBeNull();
+  });
+
+  it('shows an ordinary, unpinned notice on Basic Home (2026-10-08), and not one placed at sign-in only', async () => {
+    const plain = { ...NOTICE, id: 'n-2', title: 'Canteen menu', priority: 'normal', pinned: false, readByMe: true };
+    const signInOnly = { ...plain, id: 'n-3', title: 'Sign-in only', showOnHome: false };
+    await boot(['notices.view'], asOffice(['notices.view'], board([plain, signInOnly])));
+    await waitFor(() => expect(band()).not.toBeNull());
+    expect(within(band()!).getByText('Canteen menu')).toBeTruthy();
+    expect(within(band()!).queryAllByRole('button', { name: /^Show notice/ })).toHaveLength(0);
+  });
+
+  it('says there are no notices when there are none, and opens the board from there', async () => {
+    await boot(['notices.view'], asOffice(['notices.view'], board([])));
+    await waitFor(() => expect(band()).not.toBeNull());
+    expect(within(band()!).getByText(t('notices.board.emptyTitle'))).toBeTruthy();
+    fireEvent.click(within(band()!).getByRole('button', { name: t('notices.card.open') }));
+    await waitFor(() => expect(topbarTitle()).toBe(t('nav.notices')));
+  });
+
+  it('follows the company switch for the band, re-read from /me when a setting changes', async () => {
+    let features: Record<string, unknown> = { noticesOnHome: false };
+    const plain = { ...NOTICE, title: 'Canteen menu', priority: 'normal', pinned: false, readByMe: true };
+    await boot(['notices.view'], asOffice(['notices.view'], board([plain]), () => features));
+    await screen.findByTitle(t('nav.notices'));
+    await wait(20);
+    expect(band()).toBeNull();
+
+    features = {};
+    await changed('setting');
+    await waitFor(() => expect(band()).not.toBeNull());
   });
 
   it('opens the management screen from its row, for a manager', async () => {
@@ -2911,7 +2951,7 @@ describe('Notice board screens in the Master shell (Oct 7)', () => {
   });
 });
 
-describe('V6: important notices pop up on sign-in', () => {
+describe('V6: unread notices pop up on sign-in', () => {
   const IMPORTANT = {
     id: 'NT1', tenantId: 'tenant-1', title: 'Office closed Friday', body: 'Holiday.', priority: 'important',
     pinned: false, showUntil: null, audience: { kind: 'all' }, authorId: null, authorName: null,
@@ -2944,5 +2984,35 @@ describe('V6: important notices pop up on sign-in', () => {
     await wait(50);
     expect(popUp()).toBeNull();
     expect(calls.some((call) => call.url.split('?')[0] === '/api/notices')).toBe(false);
+  });
+
+  /** Signs in as an administrator holding the board, with these notices and company switches. */
+  const bootWithNotices = (notices: unknown[], features: Record<string, unknown> = {}) =>
+    boot([...ADMIN, 'notices.view'], (call) => {
+      const path = call.url.split('?')[0];
+      if (path === '/api/auth/me') {
+        return json({ user: { ...user([...ADMIN, 'notices.view']), features }, sessionToken: 'session-1' });
+      }
+      if (path === '/api/notices' && call.method !== 'POST') return json({ notices, unreadCount: notices.length });
+      return undefined;
+    });
+
+  it('lists an ordinary unread notice too, after the important one and without its pill, and not one kept for Basic Home', async () => {
+    const ordinary = { ...IMPORTANT, id: 'NT2', title: 'Canteen menu', priority: 'normal', createdAt: '2026-10-06T09:00:00.000Z' };
+    const homeOnly = { ...IMPORTANT, id: 'NT3', title: 'Basic Home only', showAtSignIn: false };
+    await bootWithNotices([ordinary, IMPORTANT, homeOnly]);
+    await waitFor(() => expect(popUp()).not.toBeNull());
+    expect(within(popUp()!).getAllByRole('listitem').map((item) => item.getAttribute('data-notice'))).toEqual([
+      'NT1',
+      'NT2',
+    ]);
+    expect(within(popUp()!).getAllByText(t('notices.priority.important'))).toHaveLength(1);
+  });
+
+  it('shows nothing when the company turned it off', async () => {
+    await bootWithNotices([IMPORTANT], { noticesAtSignIn: false });
+    await screen.findByTitle(t('nav.notices'));
+    await wait(50);
+    expect(popUp()).toBeNull();
   });
 });

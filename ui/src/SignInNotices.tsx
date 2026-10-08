@@ -1,9 +1,10 @@
 /**
- * Important notices, once, right after somebody signs in (V6, both panels).
+ * Unread notices, once, right after somebody signs in (V6, both panels).
  *
  * The panel mounts this inside its signed-in shell, so the sign-in screen never shows it and a
  * sign-out unmounts it: the next sign-in decides afresh. It decides once, the first time the
- * person's notices have arrived (`loaded`): the important ones they have not read, newest first.
+ * person's notices have arrived (`loaded`): every notice placed at sign-in that they have not
+ * read, important first and then newest (2026-10-08: it used to take the important ones only).
  * None, or no notices for them at all, and nothing shows. A notice that arrives later in the
  * session waits for the board and the next sign-in, it does not interrupt.
  *
@@ -16,7 +17,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import type { Notice } from '@orderbook/shared';
+import { noticeAtSignIn, type Notice } from '@orderbook/shared';
 
 import { Button } from './Button.js';
 import { StatusPill } from './DataDisplay.js';
@@ -51,11 +52,17 @@ function rememberDecided(key: string | undefined): void {
   }
 }
 
-/** What the pop-up lists: on the board today, important, not read by this person, newest first. */
+/** Important first, then newest. */
+function signInOrder(a: Notice, b: Notice): number {
+  if (a.priority !== b.priority) return a.priority === 'important' ? -1 : 1;
+  return b.createdAt.localeCompare(a.createdAt);
+}
+
+/** What the pop-up lists: on the board today, placed at sign-in, not read by this person. */
 export function signInNotices(notices: readonly Notice[], today?: string): Notice[] {
   return boardNotices(notices, today)
-    .filter((notice) => notice.priority === 'important' && notice.readByMe === false)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    .filter((notice) => notice.readByMe === false && noticeAtSignIn(notice))
+    .sort(signInOrder);
 }
 
 export interface SignInNoticesProps {
@@ -67,9 +74,22 @@ export interface SignInNoticesProps {
   onMarkRead: (ids: string[]) => void | Promise<void>;
   /** Unique to this sign-in (the person and the session), so a reload does not ask again. */
   sessionKey?: string;
+  /**
+   * The company's switch (`notices.showAtSignIn`), read when it decides: off then, and this
+   * sign-in shows nothing, even if the switch is turned on later in the session; turned off
+   * while it is open, it closes.
+   */
+  enabled?: boolean;
 }
 
-export function SignInNotices({ loaded, notices, today, onMarkRead, sessionKey }: SignInNoticesProps) {
+export function SignInNotices({
+  loaded,
+  notices,
+  today,
+  onMarkRead,
+  sessionKey,
+  enabled = true,
+}: SignInNoticesProps) {
   const decided = useRef(false);
   const [ids, setIds] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -80,15 +100,14 @@ export function SignInNotices({ loaded, notices, today, onMarkRead, sessionKey }
     decided.current = true;
     if (decidedBefore(sessionKey)) return;
     rememberDecided(sessionKey);
+    if (!enabled) return;
     const unread = signInNotices(notices, today).map((notice) => notice.id);
     if (unread.length > 0) setIds(unread);
-  }, [loaded, notices, today, sessionKey]);
+  }, [loaded, notices, today, sessionKey, enabled]);
 
-  if (!ids) return null;
-  // The ones picked at sign-in, as they stand now (an edit shows), still newest first.
-  const listed = notices
-    .filter((notice) => ids.includes(notice.id))
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  if (!ids || !enabled) return null;
+  // The ones picked at sign-in, as they stand now (an edit shows), in the same order.
+  const listed = notices.filter((notice) => ids.includes(notice.id)).sort(signInOrder);
   if (listed.length === 0) return null;
 
   const close = () => setIds(null);
@@ -137,7 +156,9 @@ export function SignInNotices({ loaded, notices, today, onMarkRead, sessionKey }
               <span className="ob-body-strong" style={{ overflowWrap: 'anywhere' }}>
                 {notice.title}
               </span>
-              <StatusPill tone="conflict">{t('notices.priority.important')}</StatusPill>
+              {notice.priority === 'important' && (
+                <StatusPill tone="conflict">{t('notices.priority.important')}</StatusPill>
+              )}
             </span>
             <span className="ob-small" style={{ color: 'var(--fg-secondary)', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
               {notice.body}

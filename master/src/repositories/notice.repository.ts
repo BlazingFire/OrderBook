@@ -27,6 +27,8 @@ export interface NoticeRow {
   priority: NoticePriority;
   pinned: boolean;
   showUntil: string | null;
+  showOnHome: boolean;
+  showAtSignIn: boolean;
   audienceAll: boolean;
   /** Role ids, in a stable order; empty when the notice is for everybody. */
   roleIds: string[];
@@ -64,6 +66,8 @@ function selectNotices(runner: Runner, viewerId: string | null) {
       'n.priority',
       'n.pinned',
       runner.raw('n.show_until::text AS show_until'),
+      'n.show_on_home',
+      'n.show_at_sign_in',
       'n.audience_all',
       'n.author_id',
       'au.display_name as author_name',
@@ -102,6 +106,8 @@ interface RawRow {
   priority: NoticePriority;
   pinned: boolean;
   show_until: string | null;
+  show_on_home: boolean;
+  show_at_sign_in: boolean;
   audience_all: boolean;
   author_id: string | null;
   author_name: string | null;
@@ -125,6 +131,8 @@ function map(row: RawRow): NoticeRow {
     priority: row.priority,
     pinned: row.pinned,
     showUntil: row.show_until,
+    showOnHome: row.show_on_home,
+    showAtSignIn: row.show_at_sign_in,
     audienceAll: row.audience_all,
     roleIds: row.role_ids ?? [],
     authorId: row.author_id,
@@ -213,6 +221,8 @@ export interface NoticeInsert {
   priority: NoticePriority;
   pinned: boolean;
   showUntil: string | null;
+  showOnHome: boolean;
+  showAtSignIn: boolean;
   audienceAll: boolean;
   roleIds: readonly string[];
   authorId: string | null;
@@ -227,6 +237,8 @@ export async function insert(input: NoticeInsert, trx: TransactionContext): Prom
       priority: input.priority,
       pinned: input.pinned,
       show_until: input.showUntil,
+      show_on_home: input.showOnHome,
+      show_at_sign_in: input.showAtSignIn,
       audience_all: input.audienceAll,
       author_id: input.authorId,
     })
@@ -255,6 +267,8 @@ export interface NoticePatch {
   priority?: NoticePriority;
   pinned?: boolean;
   showUntil?: string | null;
+  showOnHome?: boolean;
+  showAtSignIn?: boolean;
   audienceAll?: boolean;
   roleIds?: readonly string[];
 }
@@ -273,6 +287,8 @@ export async function update(
   if (patch.priority !== undefined) columns.priority = patch.priority;
   if (patch.pinned !== undefined) columns.pinned = patch.pinned;
   if (patch.showUntil !== undefined) columns.show_until = patch.showUntil;
+  if (patch.showOnHome !== undefined) columns.show_on_home = patch.showOnHome;
+  if (patch.showAtSignIn !== undefined) columns.show_at_sign_in = patch.showAtSignIn;
   if (patch.audienceAll !== undefined) columns.audience_all = patch.audienceAll;
 
   const changed = await trx('notices')

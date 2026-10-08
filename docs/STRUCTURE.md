@@ -903,7 +903,7 @@ is: **`undefined` = not asserted, `null` = clear it.**
 Each setting is one row per key in the Master's `settings` table. **An absent row
 means the declared `fallback`, so adding a key needs no migration.** Each entry
 declares `labelToken`, `descriptionToken`, a `group` (one of
-`SETTING_GROUPS = ['access','products','leads','reports','integrations']`), a `control`
+`SETTING_GROUPS = ['access','products','leads','reports','notices','integrations']`), a `control`
 (`boolean`, or `number` with min/max/step, optional `nullable` and a `unitToken`),
 a `fallback`, and one `parse(raw)` validator used on both write and read (a stored
 value that no longer parses reads back as the fallback). Every setting is stored on
@@ -913,7 +913,7 @@ signed-in user (`settings:save`). A `secret?: boolean`
 flag exists (sealed with AES-256-GCM, read back only as `{configured}`), but **no
 current key sets it**.
 
-The 12 keys, in declaration order (the three `inventory.*` keys and the `stock` group were
+The 14 keys, in declaration order (the three `inventory.*` keys and the `stock` group were
 removed in 1.4; the group that held `catalog.importCreatesCategories` is now `products`):
 
 | Key | Group | Control | Fallback |
@@ -921,6 +921,8 @@ removed in 1.4; the group that held `catalog.importCreatesCategories` is now `pr
 | `security.passwordRevealEnabled` | access | boolean | `false` |
 | `reports.visibleToOffice` | reports | boolean | `true` |
 | `reports.visibleToManagement` | reports | boolean | `true` |
+| `notices.showOnHome` | notices | boolean | `true` (2026-10-08: the notice band on Basic Home) |
+| `notices.showAtSignIn` | notices | boolean | `true` (2026-10-08: the unread-notices pop-up after sign-in) |
 | `externalApi.enabled` | integrations | boolean | `false` |
 | `panels.autoPairingEnabled` | access | boolean | `true` |
 | `security.developerModeEnabled` | access | boolean | `true` (ignored while `ORDERBOOK_DEVELOPER_PASSWORD` is set) |
@@ -933,7 +935,7 @@ removed in 1.4; the group that held `catalog.importCreatesCategories` is now `pr
 
 Group headings: `settingGroup.access` "Who can get in", `settingGroup.products` "Products",
 `settingGroup.leads` "Pending Orders and follow-up", `settingGroup.reports` "Reports",
-`settingGroup.integrations` "Other software".
+`settingGroup.notices` "Notice board", `settingGroup.integrations` "Other software".
 
 ### 3.5 Company features
 
@@ -941,7 +943,8 @@ Group headings: `settingGroup.access` "Who can get in", `settingGroup.products` 
 and an offline Office panel need. It travels in `SyncSnapshot.features` and
 `SignedInUser.features`: `offlineSignInEnabled?`,
 `followUpDefaultDays?`, `packagingRequiredOnConvert?`, `reportsVisibleToOffice?`,
-`reportsVisibleToManagement?` (`freeToSell` and `adjustmentNoteRequired` were removed in 1.4).
+`reportsVisibleToManagement?`, `noticesOnHome?` and `noticesAtSignIn?` (2026-10-08, from
+`notices.showOnHome` / `notices.showAtSignIn`; `freeToSell` and `adjustmentNoteRequired` were removed in 1.4).
 **Every field added after the 1.0.2 core must be optional**, because a Master and a
 panel on different versions is normal mid-update; `shared/tests/wire-optionality.test.ts`
 enforces it. The Master builds the object in
@@ -949,7 +952,8 @@ enforces it. The Master builds the object in
 fields from `SETTINGS[key].fallback`. Call sites: `master/web/src/App.tsx`, and on
 the Office four screens — `office/web/src/screens/AddLeadScreen.tsx`,
 `office/web/src/screens/LeadBoardScreen.tsx`, `office/web/src/screens/LeadDetail.tsx`,
-`office/web/src/screens/OrderBoardScreen.tsx`.
+`office/web/src/screens/OrderBoardScreen.tsx` — and `office/web/src/App.tsx` itself for the two
+notice switches (the Basic Home band and the sign-in pop-up are mounted there).
 
 ### 3.6 Permissions and tiers (`shared/src/domain/permissions.ts`)
 
@@ -6450,27 +6454,47 @@ everyone; a party created by a person without `party.accessAll` gets that person
 Rules: `docs/schema/06-tenancy-permissions-and-sync.md` section 2c, `docs/ROLES_AND_USERS.md` section 15c,
 `docs/backend-modules/04-API-CONTRACT.md` section 22.
 
-- **Master.** `20261014000000_notice_board.ts` (tables, grants); `repositories/notice.repository.ts` (the audience filter
+- **Where a notice shows (2026-10-08).** Always on the board. Besides that, per notice, `show_on_home` (the Basic Home
+  band) and `show_at_sign_in` (the pop-up after sign-in), both default true and at least one true (`noticeProblem`
+  `no_placement` in the editor; the Master checks an edit that sends one alone against the stored other); and per
+  company, `notices.showOnHome` / `notices.showAtSignIn` (Settings → Company → Notice board, both on by default),
+  carried as `CompanyFeatures.noticesOnHome` / `noticesAtSignIn`. On the wire `Notice.showOnHome?` / `showAtSignIn?`
+  are optional and absent reads as true (`noticeOnHome`, `noticeAtSignIn`), so no protocol bump: an older Master's
+  notices show in both places, and an older panel's editor sends neither (a create is shown in both, an edit keeps
+  what is stored).
+- **Master.** `20261014000000_notice_board.ts` (tables, grants), `20261016000000_notice_placement.ts` (the two
+  placement columns); `repositories/notice.repository.ts` (the audience filter
   is SQL, by the reader's role); `services/notice.service.ts` (`listBoard`, `snapshotNotices`, `listManage`,
   `getReaders`, `markRead`, `createNotice`, `updateNotice`, `deleteNotice`, `restoreNotice`, one `publishChange` each);
   `http/routes/notice.routes.ts` (`/api/notices`); `realtime/fan-out.ts#noticeAudienceIncludes` (the per-recipient
   gate; `audienceRoleOf` gives a person their role and a panel acting as itself, with nobody signed in or not yet re-attached, none, so it hears
   and reads only the notices for everybody and `markRead` for it answers 409); `hub.ts` (`notice:*` commands, on panel sockets); the snapshot's `notices`; the Recycle Bin branch `notice`.
 - **Shared.** `shared/src/domain/notices.ts` (types, `noticeProblem`, `compareNotices`, `isNoticeExpired`,
-  `noticeToday`), `permissions.ts` (`notices.view`, `notices.manage`, group `notices`), `keys/commands.ts`
+  `noticeToday`, `noticeOnHome`, `noticeAtSignIn`), `settings.ts` (`notices.showOnHome`, `notices.showAtSignIn`),
+  `permissions.ts` (`notices.view`, `notices.manage`, group `notices`), `keys/commands.ts`
   (Notice board Alt+N, Notice board management Alt+M on both panels).
 - **Screens.** `ui/src/NoticeBoardView.tsx` (reader's list, unread marker, mark read, offline note),
-  `NoticeDashboardCard.tsx` (important and pinned unread notices on the Dashboard), `SignInNotices.tsx` (V6: the
-  important unread notices in a dialog once right after sign-in, newest first; Mark as read goes through the panel's
-  read path, the Office queuing per person while offline; Later only closes it), `NoticeManageView.tsx` (list, editor,
-  audience picker, pin, expire, delete, read counts and the readers dialog, the 409 conflict with Reload); the Master's
+  `NoticeDashboardCard.tsx` (important and pinned unread notices on the Dashboard), `NoticeSlideshow.tsx` (V5, the
+  band at the top of Basic Home on both panels: `homeNotices`, every notice on the board today placed on Basic Home,
+  unread first then board order, turning over every 6 s; with none, a short "No notices" band with Open the notice
+  board; drawn when the person holds `notices.view`, the company switch is on and the first read has answered),
+  `SignInNotices.tsx` (V6: every unread notice placed at sign-in, important first then newest, the Important pill on
+  the important ones only, in a dialog once right after sign-in; `enabled` is the company switch as it stood when it
+  decided; Mark as read goes through the panel's read path, the Office queuing per person while offline; Later only
+  closes it), `NoticeManageView.tsx` (list with a "Home only" or "Sign-in only" tag in the audience cell of a notice
+  kept off one of the two places, none for one in both; editor with the two placement checkboxes, audience picker,
+  pin, expire, delete, read counts and the readers dialog, the 409 conflict with Reload); the Master's
   `NoticeBoardScreen.tsx`, `NoticeManageScreen.tsx`, `useNotices.ts`; the Office mounts the same views. Text is plain:
   line breaks kept, no markup, no links.
 - **Office.** `office/src/http/app.ts` forwards `/api/notices`; the reader's list is served offline from the snapshot of
-  the person signed in (`forCurrentUser`), filtered for expiry on the PC; a cache built for somebody else carries no
-  notices.
+  the person signed in (`forCurrentUser`, `noticesFor`), filtered for expiry on the PC. From a cache built for somebody
+  else only the notices for everybody are shown, all as unread (the read marks are the other person's); so the sign-in
+  pop-up waits for the person's own snapshot while the link is up (`office/web/src/App.tsx`).
 - **Tests.** `master/tests/notices.integration.test.ts`, `notice-fan-out.test.ts`, `notice-screens-contract.integration.test.ts`,
-  `migration-notice-board.integration.test.ts`, `office/tests/notices-forwarding.test.ts`, `ui/tests/notice-board.test.tsx`.
+  `migration-notice-board.integration.test.ts`, `migration-notice-placement.integration.test.ts`,
+  `company-settings.integration.test.ts` (the two switches on `/me` and in the snapshot), `office/tests/notices-forwarding.test.ts`,
+  `ui/tests/notice-board.test.tsx`, `notice-slideshow.test.tsx`, `sign-in-notices.test.tsx`, `office-notices.test.tsx`, and
+  the notice blocks of `master-shell.test.tsx` and `office-shell.test.tsx`.
 
 ### 11.13 Product photos in bulk, and the catalogue photos (Oct 2026)
 

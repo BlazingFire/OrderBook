@@ -56,7 +56,6 @@ import {
   createBurstBatcher,
   BasicHome,
   BP_NARROW,
-  cardNotices,
   NoticeSlideshow,
   SignInNotices,
   BusyMark,
@@ -623,6 +622,9 @@ function OfficePanel() {
     noticeReads.readHere,
   );
   const noticeUnread = unreadOnBoard(myNotices, todayForNotices()).length;
+  // Where else the board shows (`notices.showOnHome`, `notices.showAtSignIn`), from the snapshot's
+  // switches: a setting change forces a fresh snapshot, so a flip on the Master lands here.
+  const { noticesOnHome, noticesAtSignIn } = resolveCompanyFeatures(view?.features);
   const printWaiting = usePrintWaiting(officePrintroomTransport, canPrintroom);
 
   useEffect(() => {
@@ -1577,16 +1579,25 @@ function OfficePanel() {
 
   const overlays = (
     <>
-      {/* V6: important unread notices, once per sign-in, from this person's own snapshot; a read made
-          while the link is down waits in their queue (`noticeReads.ts`). */}
+      {/* V6: unread notices placed at sign-in, once per sign-in, from this person's own snapshot,
+          unless the company turned it off (read when it decides); a read made while the link is
+          down waits in their queue (`noticeReads.ts`). A cache built for the person before reads
+          every notice for everybody as unread (`noticesFor`): while the link is up this person's
+          own snapshot is on its way, so it waits for that; offline the cache is all there is. */}
       {canViewNotices && session && (
         <SignInNotices
           key={session.userId}
           sessionKey={`${session.userId}:${session.signedInAt}`}
-          loaded={view !== null}
+          loaded={
+            view !== null &&
+            (view.builtForUserId === undefined ||
+              view.builtForUserId === session.userId ||
+              connection.state !== 'connected')
+          }
           notices={myNotices}
           today={todayForNotices()}
           onMarkRead={noticeReads.markRead}
+          enabled={noticesAtSignIn}
         />
       )}
       <KeyboardOverlays
@@ -1758,11 +1769,12 @@ function OfficePanel() {
   const alwaysAvailable: ScreenSpec[] = [
     {
       id: 'basicHome',
-      // Where Office and Management land, so the important and pinned notices turn over here
-      // (owner add-on V5), from this person's own cache; nothing until the first snapshot has some.
+      // Where Office and Management land, so the notice board turns over here (owner add-on V5):
+      // every notice placed on Basic Home from this person's own cache, or a band saying there are
+      // none, unless the company turned it off. Nothing before the first snapshot.
       render: () => (
         <>
-          {canViewNotices && cardNotices(myNotices, todayForNotices()).length > 0 && (
+          {canViewNotices && noticesOnHome && view !== null && (
             // Inset like the launcher's own sections, so the band lines up with the tiles, and no
             // wider than the Dashboard's content: full width at 4K ran each line across 3,500 px.
             <div className="ob-measure-wide" style={{ padding: 'var(--s-8) var(--s-12) 0' }}>
@@ -1773,6 +1785,7 @@ function OfficePanel() {
                   setNoticeFocus({ id, nonce: Date.now() });
                   goToTab('notices');
                 }}
+                onOpenBoard={() => goToTab('notices')}
               />
             </div>
           )}

@@ -291,8 +291,8 @@ A module the role cannot open has no Basic Home tile, as it has no sidebar row: 
 - **Face:** `.ob-tile-face--art` drops the plain face's border, fill and padding so the art fills the 80 px. Hover lifts it 2 px (`--s-2`, `--d-fast`,
   `--e-standard`) with no colour change; pressed returns it; reduced motion (the OS setting or the app's motion switch) keeps it still. The focus ring, the label,
   the count badge and the shortcut chip are unchanged.
-- **Fallback:** a module with no tile (today only **Notice board management**, `noticesManage`) keeps its line icon in `--accent` on the plain `--bg-surface` face with a
-  `--line` border, which turns `--accent-tint` on hover.
+- **Fallback:** a module with no tile (none today: Notice board management got its art on 2026-10-08; a module added later until its art is drawn) keeps its
+  line icon in `--accent` on the plain `--bg-surface` face with a `--line` border, which turns `--accent-tint` on hover.
 - **The tile that opens the New Order screen** (until 2026-10-07 "New pending order", `basicHome.newLead`) leads the Work group.
 
 | Module (id) | Tile | Gradient, top to bottom |
@@ -303,6 +303,7 @@ A module the role cannot open has no Basic Home tile, as it has no sidebar row: 
 | Final Orders (`orders`) | final-orders | blue `#4C8CF8` to `#1F54D4` |
 | Conflicts | conflicts | red `#FF6474` to `#D42A4A` |
 | Notice board (`notices`) | notice-board | coral `#FF9466` to `#E8562F` |
+| Notice board management (`noticesManage`) | notice-board-manage | orange `#F2925E` to `#B5452A` (the board with a pencil badge) |
 | Chatroom | chatroom | violet `#9D82FF` to `#6443E0` |
 | Printroom | printroom | clay `#E39A66` to `#A65A2E` |
 | Reports | reports | yellow `#FFCC48` to `#E5960F` |
@@ -351,9 +352,13 @@ Say what is loading; say what failed and what to do next; no spinners.
 
 A band at the top of Basic Home on both panels (`ui/src/NoticeSlideshow.tsx`), inset like the launcher's sections and no wider than the Dashboard's content
 (`ob-measure-wide`). It uses a surface band like the Feedback banners, the Data pills (`StatusPill`: conflict for Important, accent for Pinned) and the icon set's chevrons.
-- **What it shows:** the reader's important and pinned notices that are not expired, **unread first**, then read ones, at most 8 (`cardNotices`, the same selection as the Dashboard card,
-  from the same list the board shows, so the same audience). A slide is the title, the pills, the date and the start of the body (plain text). Pressing a slide opens that notice on the board
-  (the board scrolls to it, opens it in full and focuses it). With nothing to show, nothing is drawn.
+- **When:** for anybody with `notices.view`, unless the company switch `notices.showOnHome` (Settings > Company > Notice board) is off, once the board list (Master) or the person's
+  snapshot (Office) has been read.
+- **What it shows:** every notice on the reader's board today (not expired) that is placed on Basic Home (`showOnHome`, ticked by default in the editor), **unread first**, then
+  read ones, each group in board order, at most 8 (`homeNotices`; from the same list the board shows, so the same audience). Important and pinned are not a filter here: those
+  are the Dashboard card's selection (`cardNotices`). A slide is the title, the pills, the date and the start of the body (plain text). Pressing a slide opens that notice on the
+  board (the board scrolls to it, opens it in full and focuses it).
+- **Empty:** with no notice placed there, a short band ("No notices", one line under it) with "Open the notice board", so Basic Home never reads as if the board were missing.
 - **Rotation (WAI-ARIA carousel):** 6 s a slide; paused while the pointer is over it or focus is inside it; a stop/start button first, then previous, the dots and next. The slides region is silent
   while it rotates by itself and polite once the reader is driving. Under reduced motion (the OS setting or the app's motion switch) it never advances by itself and the stop button is not shown.
 - **Source:** on the Master the board list from `GET /api/notices`; on the Office the signed-in person's own cached list (the per-viewer, fail-closed cache), with reads recorded here overlaid.
@@ -412,12 +417,17 @@ trigger has `aria-haspopup` and `aria-expanded`, with `menu` / `menuitem` roles;
 ### 9.1 The sign-in notice pop-up (owner add-on V6; no artboard, built on the modal)
 
 `ui/src/SignInNotices.tsx`, mounted inside each panel's signed-in shell (so the sign-in screen never shows it and a sign-out unmounts it), keyed by the person so each sign-in decides afresh.
-- **When:** once, the first time that person's notices have arrived after signing in: the notices on their board today that are **important** and **not read by them**, newest first. None,
-  or no notices for them at all, and nothing shows. A notice that arrives later in the session waits for the board and the next sign-in; it never interrupts.
-- **What:** a medium modal ("Important notices", an intro line), each notice's title with the Important pill and its full plain text (line breaks kept). **Mark as read** hands the ids to the panel's
-  own read path: the Master posts them; the Office queues them per person while the link is down. A failure shows a field error inside the dialog and leaves it open. **Later** and Escape only close it; it shows again at the next sign-in.
-- **Source:** Master, the board list (`useNotices`, which now forgets the previous person's list when signed out, so nothing of theirs shows to the next person); Office, the person's own cached list
-  (`loaded` once their snapshot exists). Tests: `ui/tests/sign-in-notices.test.tsx`, `master-use-notices.test.tsx`, and cases in the two shell tests.
+- **When:** once, the first time that person's notices have arrived after signing in: **every** notice on their board today that is placed at sign-in (`showAtSignIn`, ticked by default
+  in the editor) and **not read by them**, important first, then newest (`signInNotices`). None, or no notices for them at all, and nothing shows. A notice that arrives later in the
+  session waits for the board and the next sign-in; it never interrupts. The company switch `notices.showAtSignIn` (`enabled`) is read when it decides: off then, nothing this sign-in;
+  turned off while it is open, it closes.
+- **What:** a medium modal ("Unread notices", "You have not read these notices yet."), each notice's title, the Important pill on the important ones only, and its full plain text (line
+  breaks kept). **Mark as read** hands the ids to the panel's own read path: the Master posts them; the Office queues them per person while the link is down. A failure shows a field
+  error inside the dialog and leaves it open. **Later** and Escape only close it; it shows again at the next sign-in.
+- **Source:** Master, the board list (`useNotices`, which now forgets the previous person's list when signed out, so nothing of theirs shows to the next person); Office, the person's
+  own snapshot. `loaded` waits for it while the link is up: a cache built for the person before reads every notice for everybody as unread, so deciding on it would list notices this
+  person has read. With the link down that cache is all there is, and it decides on it. Tests: `ui/tests/sign-in-notices.test.tsx`, `master-use-notices.test.tsx`, and cases in the two
+  shell tests.
 
 ## 10. The New Order screen (artboards: NewOrder, NewOrderFilled; 1440 x 900)
 

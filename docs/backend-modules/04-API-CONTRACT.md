@@ -2868,8 +2868,8 @@ Shared types: `shared/src/domain/notices.ts` (`Notice`, `NoticeInput`, `NoticeUp
 | `GET /api/notices/manage` | `notices.manage` | every notice, expired ones too, with `audienceRoleNames`, `expired`, `readCount`, `audienceSize` |
 | `GET /api/notices/audiences` | `notices.manage` | the roles an audience can be made of |
 | `GET /api/notices/:id/readers` | `notices.manage` | everybody in the audience with `readAt` (null = not yet) |
-| `POST /api/notices` | `notices.manage` | create; 201 with the notice. Audience `{kind:'all'}` (default) or `{kind:'roles', roleIds}` of live roles |
-| `PATCH /api/notices/:id` | `notices.manage` | edit; the body carries `expectedVersion`, a stale one is 409 `conflict` |
+| `POST /api/notices` | `notices.manage` | create; 201 with the notice. Audience `{kind:'all'}` (default) or `{kind:'roles', roleIds}` of live roles. `showOnHome`, `showAtSignIn` (booleans, each true when omitted); both false is 400 `validation.notice.placementEmpty` |
+| `PATCH /api/notices/:id` | `notices.manage` | edit; the body carries `expectedVersion`, a stale one is 409 `conflict`. A placement left out keeps what is stored, and the pair after the edit must keep one true (400 `validation.notice.placementEmpty`) |
 | `DELETE /api/notices/:id` | `notices.manage` | soft delete; restore is the Recycle Bin (`entity notice`) |
 
 Socket (Office panels): `notice:list`, `notice:manageList`, `notice:audiences`, `notice:readers`, `notice:create`,
@@ -2881,6 +2881,13 @@ left out, reads shown from the last snapshot) and every write and "mark read" ne
 `notice` event (`created`, `updated`, `deleted`, `restored`) whose payload names only the audience, before and after
 (the title and body never ride the change ring); it is snapshot-forcing, and reaches only a recipient whose role is in
 the audience, or who holds `notices.manage`, so an edit that moves a notice off a role still tells that role.
+
+**Placement (2026-10-08).** Every `Notice` answer (reader, manager, snapshot) carries `showOnHome` and `showAtSignIn`:
+whether the panels show it in the Basic Home band and in the pop-up after sign-in. Both are optional on the wire and
+absent means true (`noticeOnHome`, `noticeAtSignIn`), so a Master from before them reads as "everywhere" on a newer panel,
+and a newer Master's extra fields are ignored by an older one. No new command, so `PANEL_PROTOCOL_VERSION` did not move.
+The company switches `notices.showOnHome` / `notices.showAtSignIn` travel as `CompanyFeatures.noticesOnHome` /
+`noticesAtSignIn` on `/me` and in the snapshot; a setting change is snapshot-forcing, and the Master's browser re-reads `/me`.
 
 ## 23. The product backup zip (2026-10-08)
 

@@ -12,7 +12,9 @@
  *    sent when the status turns connected, and the badge has already dropped;
  *  · a read queued by one person is never sent, or counted, for the next person;
  *  · the management screen reads the manage list and writes through the panel's API;
- *  · the Dashboard shows an important notice and opens the board.
+ *  · the Dashboard shows an important notice and opens the board;
+ *  · Basic Home turns over every notice placed there, says so when there are none, and follows
+ *    the company's switch (2026-10-08).
  */
 
 import { StrictMode } from 'react';
@@ -62,8 +64,9 @@ function notice(id: string, overrides: Record<string, unknown> = {}) {
   };
 }
 
-function snapshot(notices: unknown[]) {
+function snapshot(notices: unknown[], features: Record<string, unknown> = {}) {
   return {
+    features,
     parties: [],
     products: [],
     categories: [],
@@ -90,6 +93,12 @@ interface Boot {
   roleTier?: string;
   connection?: Partial<typeof CONNECTION>;
   route?: (call: Call) => Response | undefined;
+  /**
+   * The company's switches in the snapshot. The sign-in pop-up is off unless a test turns it on:
+   * since 2026-10-08 it lists every unread notice, so it would stand over the board these tests
+   * read. It has its own tests (`sign-in-notices.test.tsx`, the V6 block in `office-shell`).
+   */
+  features?: Record<string, unknown>;
 }
 
 async function boot({
@@ -99,6 +108,7 @@ async function boot({
   roleTier = 'admin',
   connection = {},
   route,
+  features = { noticesAtSignIn: false },
 }: Boot) {
   const calls = routeFetch((call) => {
     const answer = route?.(call);
@@ -135,7 +145,7 @@ async function boot({
   await waitFor(() => expect(document.querySelector('.ob-footer')).not.toBeNull());
   await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(0));
   await act(async () => {
-    FakeEventSource.instances.at(-1)!.emit('snapshot', snapshot(notices));
+    FakeEventSource.instances.at(-1)!.emit('snapshot', snapshot(notices, features));
   });
   return calls;
 }
@@ -378,8 +388,6 @@ describe('Office notice board: management and the Dashboard', () => {
       permissions: ['notices.view', 'leads.view'],
       notices: [notice('n1', { priority: 'important', title: 'Stock count Saturday' })],
     });
-    // The unread important notice also pops up on sign-in (V6); Later leaves the Dashboard to be used.
-    fireEvent.click(await screen.findByRole('button', { name: t('notices.signIn.later') }));
     fireEvent.click(await screen.findByTitle(t('nav.dashboard')));
     await screen.findByText('Stock count Saturday');
     fireEvent.click(screen.getByRole('button', { name: t('notices.card.open') }));
@@ -387,18 +395,20 @@ describe('Office notice board: management and the Dashboard', () => {
   });
 
   // Owner add-on V5: the slideshow, from this person's cache, opening the notice it shows.
-  it('turns over the important and pinned notices on Basic Home and opens the one pressed', async () => {
+  it('turns over every notice placed on Basic Home, pinned first, and opens the one pressed', async () => {
     await boot({
       permissions: ['notices.view', 'leads.view'],
       roleTier: 'office',
       notices: [
         notice('n1', { pinned: true, title: 'Pinned rule' }),
         notice('n2', { title: 'Plain chatter' }),
+        notice('n3', { title: 'Sign-in only', showOnHome: false }),
       ],
     });
     const band = await screen.findByRole('region', { name: t('notices.slideshow.label') });
     expect(within(band).getByText('Pinned rule')).toBeTruthy();
-    expect(within(band).queryByText('Plain chatter')).toBeNull();
+    // Two slides: the ordinary notice is one of them (2026-10-08), the sign-in-only one is not.
+    expect(within(band).getAllByRole('button', { name: /^Show notice/ })).toHaveLength(2);
     fireEvent.click(within(band).getByText('Pinned rule'));
     await screen.findByRole('button', { name: t('notices.board.markAllRead') });
     await waitFor(() =>
@@ -406,13 +416,56 @@ describe('Office notice board: management and the Dashboard', () => {
     );
   });
 
-  it('shows no slideshow when nothing important or pinned is up', async () => {
+  it('shows an ordinary, unpinned notice on Basic Home', async () => {
     await boot({
       permissions: ['notices.view', 'leads.view'],
       roleTier: 'office',
       notices: [notice('n2', { title: 'Plain chatter' })],
     });
+    const band = await screen.findByRole('region', { name: t('notices.slideshow.label') });
+    expect(within(band).getByText('Plain chatter')).toBeTruthy();
+  });
+
+  it('says there are no notices on Basic Home when there are none, and opens the board from there', async () => {
+    await boot({
+      permissions: ['notices.view', 'leads.view'],
+      roleTier: 'office',
+      notices: [notice('n1', { title: 'Sign-in only', showOnHome: false })],
+    });
+    const band = await screen.findByRole('region', { name: t('notices.slideshow.label') });
+    expect(within(band).getByText(t('notices.board.emptyTitle'))).toBeTruthy();
+    fireEvent.click(within(band).getByRole('button', { name: t('notices.card.open') }));
+    await screen.findByRole('button', { name: t('notices.board.markAllRead') });
+  });
+
+  it('shows no band on Basic Home when the company turned it off', async () => {
+    await boot({
+      permissions: ['notices.view', 'leads.view'],
+      roleTier: 'office',
+      notices: [notice('n2', { title: 'Plain chatter' })],
+      features: { noticesOnHome: false, noticesAtSignIn: false },
+    });
     await screen.findByTitle(t('nav.notices'));
+    expect(screen.queryByRole('region', { name: t('notices.slideshow.label') })).toBeNull();
+    // The board itself is still there.
+    fireEvent.click(screen.getByTitle(t('nav.notices')));
+    expect(await screen.findByText('Plain chatter')).toBeTruthy();
+  });
+
+  it('drops the band when the switch is turned off on the Master: a setting change brings a fresh snapshot', async () => {
+    await boot({
+      permissions: ['notices.view', 'leads.view'],
+      roleTier: 'office',
+      notices: [notice('n2', { title: 'Plain chatter' })],
+    });
+    await screen.findByRole('region', { name: t('notices.slideshow.label') });
+
+    // `setting` is snapshot-forcing (`SNAPSHOT_FORCING_ENTITIES`): what arrives next is this.
+    await act(async () => {
+      FakeEventSource.instances
+        .at(-1)!
+        .emit('snapshot', snapshot([notice('n2', { title: 'Plain chatter' })], { noticesOnHome: false }));
+    });
     expect(screen.queryByRole('region', { name: t('notices.slideshow.label') })).toBeNull();
   });
 

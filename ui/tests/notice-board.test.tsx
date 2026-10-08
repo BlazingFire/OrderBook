@@ -255,8 +255,58 @@ describe('NoticeManageView', () => {
       priority: 'important',
       pinned: true,
       showUntil: null,
+      showOnHome: true,
+      showAtSignIn: true,
       audience: { kind: 'all' },
     });
+  });
+
+  it('says where else each notice shows, and keeps a notice in at least one of the two places', async () => {
+    const { created, updated } = manage({
+      notices: [
+        notice('a', { version: 3 }),
+        notice('b', { showOnHome: false, updatedAt: '2026-10-04T10:00:00.000Z' }),
+        notice('c', { showAtSignIn: false, updatedAt: '2026-10-03T10:00:00.000Z' }),
+      ],
+    });
+    // One tag for a notice kept off one place, in the audience cell; none for one in both (the default).
+    const row = (id: string) => screen.getByText(`Notice ${id}`).closest('[role="row"]') as HTMLElement;
+    const tags = [t('notices.placement.homeOnlyTag'), t('notices.placement.signInOnlyTag')];
+    const tagsOf = (id: string) => tags.filter((tag) => within(row(id)).queryByText(tag));
+    expect(tagsOf('a')).toEqual([]);
+    expect(tagsOf('b')).toEqual([t('notices.placement.signInOnlyTag')]);
+    expect(tagsOf('c')).toEqual([t('notices.placement.homeOnlyTag')]);
+    // Not a column of its own, which took the title's room.
+    expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
+      t('notices.manage.col.notice'),
+      t('notices.manage.col.audience'),
+      t('notices.manage.col.until'),
+      t('notices.manage.col.reads'),
+      t('notices.manage.col.updated'),
+      '',
+    ]);
+
+    // A new one with both unticked is refused before it is sent.
+    fireEvent.click(screen.getByRole('button', { name: t('notices.manage.new') }));
+    fireEvent.change(screen.getByLabelText(new RegExp(t('notices.editor.titleLabel'))), { target: { value: 'Home only' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: t('notices.placement.home') }));
+    fireEvent.click(screen.getByRole('checkbox', { name: t('notices.placement.signIn') }));
+    fireEvent.click(screen.getByRole('button', { name: t('notices.editor.save') }));
+    expect(await screen.findByText(t('notices.problem.no_placement'))).toBeTruthy();
+    expect(created).toEqual([]);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: t('notices.placement.home') }));
+    fireEvent.click(screen.getByRole('button', { name: t('notices.editor.save') }));
+    await waitFor(() => expect(created).toHaveLength(1));
+    expect(created[0]).toMatchObject({ showOnHome: true, showAtSignIn: false });
+
+    // Editing opens on what is stored.
+    fireEvent.click(within(row('b')).getByRole('button', { name: t('notices.manage.edit') }));
+    expect((screen.getByRole('checkbox', { name: t('notices.placement.home') }) as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByRole('checkbox', { name: t('notices.placement.signIn') }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: t('notices.editor.save') }));
+    await waitFor(() => expect(updated).toHaveLength(1));
+    expect(updated[0]![1]).toMatchObject({ showOnHome: false, showAtSignIn: true });
   });
 
   it('asks for at least one role when the audience is chosen roles, and sends the chosen ones', async () => {

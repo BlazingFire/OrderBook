@@ -564,4 +564,60 @@ describe.skipIf(!canRunIntegrationTests)('the notice board (integration)', () =>
       expect(edited.permissions).toEqual(['leads.view']);
     });
   });
+
+  describe('placement: Basic Home and sign-in (2026-10-08)', () => {
+    it('NB-27: a notice shows in both places unless told otherwise, and the reader and snapshot say where', async () => {
+      await noticeService.createNotice({ title: 'Both', body: '' }, manager.actor);
+      await noticeService.createNotice(
+        { title: 'Home only', body: '', showAtSignIn: false },
+        manager.actor,
+      );
+      await noticeService.createNotice(
+        { title: 'Sign-in only', body: '', showOnHome: false },
+        manager.actor,
+      );
+
+      const placed = (notices: Array<{ title: string; showOnHome?: boolean; showAtSignIn?: boolean }>) =>
+        Object.fromEntries(
+          notices.map((notice) => [notice.title, [notice.showOnHome, notice.showAtSignIn]]),
+        );
+      const expected = {
+        Both: [true, true],
+        'Home only': [true, false],
+        'Sign-in only': [false, true],
+      };
+      expect(placed((await noticeService.listBoard(sales.actor)).notices)).toEqual(expected);
+      expect(placed((await buildSnapshot(sales.actor)).notices ?? [])).toEqual(expected);
+      expect(placed(await noticeService.listManage(manager.actor))).toEqual(expected);
+    });
+
+    it('NB-28: refuses a notice shown in neither place, on create and on an edit that sends one alone', async () => {
+      await expect(
+        noticeService.createNotice(
+          { title: 'Nowhere', body: '', showOnHome: false, showAtSignIn: false },
+          manager.actor,
+        ),
+      ).rejects.toMatchObject({ statusCode: 400, messageKey: 'validation.notice.placementEmpty' });
+
+      const notice = await noticeService.createNotice(
+        { title: 'Home only', body: '', showAtSignIn: false },
+        manager.actor,
+      );
+      // Only the other one is sent: with the stored one already off, that is neither.
+      await expect(
+        noticeService.updateNotice(notice.id, { expectedVersion: 1, showOnHome: false }, manager.actor),
+      ).rejects.toMatchObject({ statusCode: 400, messageKey: 'validation.notice.placementEmpty' });
+      await expect(
+        noticeService.updateNotice(notice.id, { expectedVersion: 1, showOnHome: 'no' }, manager.actor),
+      ).rejects.toMatchObject({ statusCode: 400, messageKey: 'validation.notice.malformed' });
+
+      // Swapping both in one edit is fine.
+      const swapped = await noticeService.updateNotice(
+        notice.id,
+        { expectedVersion: 1, showOnHome: false, showAtSignIn: true },
+        manager.actor,
+      );
+      expect(swapped).toMatchObject({ showOnHome: false, showAtSignIn: true, version: 2 });
+    });
+  });
 });

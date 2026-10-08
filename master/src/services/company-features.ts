@@ -13,7 +13,7 @@ import { getSetting } from './settings.service.js';
  * Resolved in one place, for both channels.
  *
  * `getSetting` is cached per tenant, so once the cache is warm the reads
- * cost no query at all (on a cold cache the five run in parallel and each
+ * cost no query at all (on a cold cache they all run in parallel and each
  * loads the tenant's settings — nothing de-duplicates a load in flight). And
  * one function is what stops the Master's `/me` and the panel's snapshot
  * answering differently about the same company.
@@ -44,6 +44,8 @@ export async function companyFeatures(tenantId: string): Promise<CompanyFeatures
       read('leads.packagingRequiredOnConvert'),
       read('reports.visibleToOffice'),
       read('reports.visibleToManagement'),
+      read('notices.showOnHome'),
+      read('notices.showAtSignIn'),
     ]),
   ) as {
     'security.offlineSignInEnabled': boolean;
@@ -51,6 +53,8 @@ export async function companyFeatures(tenantId: string): Promise<CompanyFeatures
     'leads.packagingRequiredOnConvert': boolean;
     'reports.visibleToOffice': boolean;
     'reports.visibleToManagement': boolean;
+    'notices.showOnHome': boolean;
+    'notices.showAtSignIn': boolean;
   };
 
   return {
@@ -59,5 +63,7 @@ export async function companyFeatures(tenantId: string): Promise<CompanyFeatures
     packagingRequiredOnConvert: values['leads.packagingRequiredOnConvert'],
     reportsVisibleToOffice: values['reports.visibleToOffice'],
     reportsVisibleToManagement: values['reports.visibleToManagement'],
+    noticesOnHome: values['notices.showOnHome'],
+    noticesAtSignIn: values['notices.showAtSignIn'],
   };
 }

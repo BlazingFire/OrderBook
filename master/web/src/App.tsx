@@ -50,7 +50,6 @@ import {
   AppShell,
   Avatar,
   BasicHome,
-  cardNotices,
   NoticeSlideshow,
   SignInNotices,
   createBurstBatcher,
@@ -1501,11 +1500,12 @@ function MasterPanel() {
   const screens: ScreenSpec[] = [
     {
       id: 'basicHome',
-      // Where Office and Management land, so the important and pinned notices are here as well as
-      // on the Dashboard; the card draws nothing while there are none.
+      // Where Office and Management land, so the notice board is here too: every notice placed on
+      // Basic Home, or a band saying there are none, unless the company turned it off
+      // (`notices.showOnHome`). Drawn once the first read has answered, never as "none" before it.
       render: () => (
         <>
-          {canViewNotices && cardNotices(noticeBoard.notices, todayForNotices()).length > 0 && (
+          {canViewNotices && companyFeatures.noticesOnHome && noticeBoard.loaded && (
             // The notice slideshow (owner add-on V5), inset like the launcher's sections so it lines
             // up with the tiles, and no wider than the Dashboard's content.
             <div className="ob-measure-wide" style={{ padding: 'var(--s-8) var(--s-12) 0' }}>
@@ -1516,6 +1516,7 @@ function MasterPanel() {
                   setNoticeFocus({ id, nonce: Date.now() });
                   navigate('notices');
                 }}
+                onOpenBoard={() => navigate('notices')}
               />
             </div>
           )}
@@ -1840,7 +1841,8 @@ function MasterPanel() {
 
   const overlays = (
     <>
-      {/* V6: important unread notices, once per sign-in; keyed by person so a new one decides afresh. */}
+      {/* V6: unread notices placed at sign-in, once per sign-in, unless the company turned it off
+          (`notices.showAtSignIn`, read when it decides); keyed by person so a new one decides afresh. */}
       {canViewNotices && (
         <SignInNotices
           key={user?.id ?? ''}
@@ -1849,6 +1851,7 @@ function MasterPanel() {
           notices={noticeBoard.notices}
           today={todayForNotices()}
           onMarkRead={noticeBoard.markRead}
+          enabled={companyFeatures.noticesAtSignIn}
         />
       )}
       <KeyboardOverlays

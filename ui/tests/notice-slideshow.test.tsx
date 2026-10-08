@@ -1,5 +1,6 @@
 /**
- * The notice slideshow on Basic Home (owner add-on V5): which notices it turns over, the 6 s
+ * The notice slideshow on Basic Home (owner add-on V5): which notices it turns over (every one
+ * placed on Basic Home, 2026-10-08), the band that says there are none, the 6 s
  * rotation, pausing on hover and focus, the stop button, no auto-advance under reduced motion,
  * the carousel ARIA, and a slide opening its notice.
  */
@@ -10,7 +11,7 @@ import type { Notice } from '@orderbook/shared';
 
 import { t } from '../src/i18n.js';
 import { NoticeBoardView } from '../src/NoticeBoardView.js';
-import { NoticeSlideshow, SLIDE_MS } from '../src/NoticeSlideshow.js';
+import { NoticeSlideshow, SLIDE_MS, homeNotices } from '../src/NoticeSlideshow.js';
 
 const TODAY = '2026-10-07';
 
@@ -64,37 +65,47 @@ afterEach(() => {
 });
 
 describe('which notices it shows', () => {
-  it('turns over the important and pinned ones still up today, unread first, and nothing else', () => {
+  const MIXED = [
+    notice('read', { readByMe: true }),
+    notice('plain', { priority: 'normal' }),
+    notice('pinned', { priority: 'normal', pinned: true }),
+    notice('gone', { showUntil: '2026-10-01' }),
+    notice('sign-in-only', { showOnHome: false }),
+    notice('new'),
+  ];
+
+  it('turns over every notice placed on Basic Home and still up today, unread first, then board order', () => {
+    // 2026-10-08: an ordinary unpinned notice is on Basic Home too; before, only important or pinned ones were.
+    expect(homeNotices(MIXED, TODAY).map((n) => n.id)).toEqual(['pinned', 'new', 'plain', 'read']);
+
+    render(<NoticeSlideshow today={TODAY} onOpen={() => undefined} notices={MIXED} />);
+    expect(screen.getAllByRole('button', { name: /^Show notice/ })).toHaveLength(4);
+    expect(shownTitle()).toBe('Notice pinned');
+  });
+
+  it('shows an ordinary notice on its own', () => {
+    render(
+      <NoticeSlideshow today={TODAY} onOpen={() => undefined} notices={[notice('plain', { priority: 'normal' })]} />,
+    );
+    expect(shownTitle()).toBe('Notice plain');
+  });
+
+  it('says there are none, and offers the board, when nothing is placed on Basic Home', () => {
+    const onOpenBoard = vi.fn();
     render(
       <NoticeSlideshow
         today={TODAY}
         onOpen={() => undefined}
-        notices={[
-          notice('read', { readByMe: true }),
-          notice('plain', { priority: 'normal' }),
-          notice('pinned', { priority: 'normal', pinned: true }),
-          notice('gone', { showUntil: '2026-10-01' }),
-          notice('new'),
-        ]}
+        onOpenBoard={onOpenBoard}
+        notices={[notice('x', { showOnHome: false }), notice('gone', { showUntil: '2026-10-01' })]}
       />,
     );
-    const dots = screen.getAllByRole('button', { name: /^Show notice/ });
-    expect(dots).toHaveLength(3);
-    // Unread first: the read important notice comes last.
-    expect(shownTitle()).not.toBe('Notice read');
-    expect(screen.queryByText('Notice plain')).toBeNull();
-    expect(screen.queryByText('Notice gone')).toBeNull();
-  });
-
-  it('draws nothing when there is nothing worth turning over', () => {
-    const { container } = render(
-      <NoticeSlideshow
-        today={TODAY}
-        onOpen={() => undefined}
-        notices={[notice('x', { priority: 'normal' })]}
-      />,
-    );
-    expect(container.innerHTML).toBe('');
+    const band = screen.getByRole('region', { name: t('notices.slideshow.label') });
+    expect(band.getAttribute('aria-roledescription')).toBeNull();
+    expect(within(band).getByText(t('notices.board.emptyTitle'))).toBeTruthy();
+    expect(within(band).queryByText('Notice x')).toBeNull();
+    fireEvent.click(within(band).getByRole('button', { name: t('notices.card.open') }));
+    expect(onOpenBoard).toHaveBeenCalledTimes(1);
   });
 
   it('shows one notice still, with no controls', () => {

@@ -2518,7 +2518,7 @@ describe('Notice board in the Office sidebar (Oct 7)', () => {
   });
 });
 
-describe('V6: important notices pop up on sign-in', () => {
+describe('V6: unread notices pop up on sign-in', () => {
   const base = {
     tenantId: 'tenant-1',
     body: 'Read me.',
@@ -2563,21 +2563,33 @@ describe('V6: important notices pop up on sign-in', () => {
       createdAt: '2026-09-23T09:00:00.000Z',
       readByMe: true,
     },
+    {
+      ...base,
+      id: 'NT5',
+      title: 'Basic Home only',
+      priority: 'important',
+      createdAt: '2026-09-24T09:00:00.000Z',
+      readByMe: false,
+      showAtSignIn: false,
+    },
   ];
   const popUp = () => screen.queryByRole('dialog', { name: t('notices.signIn.title') });
 
-  it('lists this person’s unread important notices from the snapshot, newest first, and marks them read', async () => {
+  it('lists this person’s unread notices placed at sign-in, important first then newest, and marks them read', async () => {
     const calls = await boot({
       permissions: ['notices.view'],
       view: { notices },
       route: (call) => (call.url === '/api/notices/read' ? json({ unreadCount: 0 }) : undefined),
     });
     await waitFor(() => expect(popUp()).not.toBeNull());
+    // The ordinary one too (2026-10-08); the read one and the Basic Home only one not.
     expect(
       within(popUp()!)
         .getAllByRole('listitem')
         .map((item) => item.getAttribute('data-notice')),
-    ).toEqual(['NT2', 'NT1']);
+    ).toEqual(['NT2', 'NT1', 'NT3']);
+    // The Important pill on the important ones only.
+    expect(within(popUp()!).getAllByText(t('notices.priority.important'))).toHaveLength(2);
 
     await act(async () => {
       fireEvent.click(within(popUp()!).getByRole('button', { name: t('notices.signIn.markRead') }));
@@ -2586,9 +2598,57 @@ describe('V6: important notices pop up on sign-in', () => {
     expect(popUp()).toBeNull();
     await waitFor(() =>
       expect(calls.find((call) => call.url === '/api/notices/read')?.body).toEqual({
-        ids: ['NT2', 'NT1'],
+        ids: ['NT2', 'NT1', 'NT3'],
       }),
     );
+  });
+
+  it('shows nothing when the company turned it off, and the band on Basic Home leaves out the sign-in only one', async () => {
+    await boot({
+      permissions: ['notices.view'],
+      view: {
+        notices: [...notices, { ...notices[0], id: 'NT6', title: 'Sign-in only', showOnHome: false }],
+        features: { noticesAtSignIn: false },
+      },
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(popUp()).toBeNull();
+    // An office-tier person lands on Basic Home: the band is there, with every notice placed on it.
+    const band = await screen.findByRole('region', { name: t('notices.slideshow.label') });
+    // NT1, NT2, NT3 and NT5 unread, NT4 read; NT6 is for sign-in only.
+    expect(within(band).getAllByRole('button', { name: /^Show notice/ })).toHaveLength(5);
+  });
+
+  it('waits for this person’s own snapshot while the link is up, not the last person’s cache', async () => {
+    // The cache on this PC was built for somebody else, so every notice in it reads as unread.
+    const cached = notices.map((notice) => ({ ...notice, readByMe: false }));
+    await boot({ permissions: ['notices.view'], view: { notices: cached, builtForUserId: 'user-0' } });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(popUp()).toBeNull();
+
+    // Their own: NT2 read as well as NT4.
+    const own = notices.map((notice) => (notice.id === 'NT2' ? { ...notice, readByMe: true } : notice));
+    await sendSnapshot(snapshot({ notices: own, builtForUserId: 'user-1' }));
+    await waitFor(() => expect(popUp()).not.toBeNull());
+    expect(
+      within(popUp()!)
+        .getAllByRole('listitem')
+        .map((item) => item.getAttribute('data-notice')),
+    ).toEqual(['NT1', 'NT3']);
+  });
+
+  it('decides on the last person’s cache when the link is down: it is all there is', async () => {
+    await boot({
+      permissions: ['notices.view'],
+      view: { notices, builtForUserId: 'user-0' },
+      route: (call) =>
+        call.url === '/api/connection' ? json({ ...CONNECTION, state: 'disconnected' }) : undefined,
+    });
+    await waitFor(() => expect(popUp()).not.toBeNull());
   });
 
   it('never shows without notices.view, even with notices in the snapshot', async () => {
