@@ -462,13 +462,14 @@ total: Party, Products), `CartEntry` and `CartLines` (one added product that ope
   "56 sub products" or "3 of 56 sub products", in micro `--fg-secondary`, then the column eyebrows), the rows scrolling under it (max height `min(28rem, 62vh)`, both halves keep a stable scrollbar
   gutter so Weight sits over the weights) and a key line ("up/down move · Enter opens the card · Esc closes the list"). One grid for header and rows: `2.29rem | 7.5rem | minmax(0,1fr) | minmax(0,0.75fr) | 6rem`
   = photo (32 px `ProductThumb`, an initial tile without one), **Code** (mono 12, `--fg-secondary`), **Sub product** (550, the size under it in mono micro), **Colour / variant** (swatch and name; a
-  multicolour one an accent-tint "Any colour" pill), **Weight** (right, tabular). Rows are 40 px; the highlighted row is `--bg-selected` with a 3 px accent bar on its left and its code in accent.
+  multicolour one an accent-tint "Any colour" pill), **Weight** (right, tabular). Rows are 40 px at least, 48 px with the size line; the highlighted row is `--bg-selected` with a 3 px accent bar on its left and its code in accent.
   **Collapse / Expand** (`.ob-subpick-toggle`, 28 px, a chevron and the word, pressed = accent tint and border) sits at the right of the box while the sub-product list is the bar's; collapsed, rows
   are 28 px with no photo column and the size beside the name. Opened low on a 768 px screen, the list scrolls the page just enough to show itself whole.
-- **Colour.** A multicolour sub product's card opens on its colour select: the first Enter opens the company colour list with the first colour highlighted, the next takes it and goes on to the quantity.
+- **Colour.** A multicolour sub product's card opens on its colour select with the company colour list already open and the first colour highlighted; Enter takes it and goes on to the quantity.
   "+ Same sub product, another colour" adds a row for a second colour, or the sub product is picked again from the list; each colour is its own line. A fixed colour shows and is skipped; closets show
   "White", the trap closets "Any colour". Saving stores one line per colour.
-- **Keys on the card:** Enter walks colour, quantity, packaging and grade, each list open as the walk arrives (a pick, by key or mouse, moves on by itself; a pick box whose list is empty is no step),
+- **Keys on the card:** Enter walks colour, quantity, packaging and grade, each list open as the walk arrives (a pick, by key or mouse, moves on by itself; a pick box whose list is empty is no step;
+  a Tab or the Escape walk back leaves a list shut, a click opens it; a required packaging list has no "—"),
   then **Add sub product**, and Enter there adds the card and opens the same product's sub-product list again, so the next sub product is typed at once; a card short of something sends the caret to
   what it lacks instead. Add sub product is drawn as the disabled secondary button while the card is short of something (it keeps the caret), and **filled accent with the caret on it** when ready,
   its `Enter` kbd tinted like Save's; it keeps to the right of the footer when the footer wraps. Shift+Q adds a ready card and moves to the next product (the product list); Backspace or Escape on the

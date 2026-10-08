@@ -132,15 +132,18 @@ Master's `ui/src/LeadEntryScreen.tsx`, the same chain; owner's flow of 2026-10-0
    (one line per colour).
    **Packaging** and **Grade** sit right beside each quantity, the same box each (owner's
    instructions, 2026-09-30): picks from `line.packaging` (Box, Grass, Paper to start) and
-   `line.grade`; "—" is none. Packaging is required only while the company requires it; grade
-   is always optional. A pick box whose list is empty (a shop with no grades) is not a step.
+   `line.grade`; "—" is none. Packaging is required only while the company requires it, and
+   then its list has no "—" (none is not an answer); grade is always optional. A pick box whose
+   list is empty (a shop with no grades) is not a step.
 7. **Enter** walks colour, quantity, packaging and grade, and **each pick list opens as the walk
    reaches it** (owner, 2026-10-08): packaging and grade open with their current value
-   highlighted — "—" while none is chosen, since packaging is never auto-filled — a letter
-   narrows the list, and Enter takes the highlighted one and steps on; a mouse pick steps on the
-   same way and opens the next list. Lists open on the walk's arrival, not on a plain focus: a
-   Tab or a click into the colour box leaves it closed until asked (Enter, an arrow, typing or
-   a click opens it; the packaging and grade boxes open on any focus, as everywhere). A variant
+   highlighted — "—" while none is chosen, since packaging is never auto-filled, or the first
+   packaging while one is required — a letter narrows the list, and Enter takes the highlighted
+   one and steps on; a mouse pick steps on the same way and opens the next list. Lists open on
+   the walk's arrival, not on a plain focus: a Tab or the Escape walk back leaves a list closed
+   until asked (an arrow, typing or a click opens it; the colour box opens on Enter too). A walk
+   sent back to the box it is already on (a required packaging left empty) opens its list
+   again, so the caret is never stranded on a closed box. A variant
    row with no quantity is passed over, and so is an empty pick list (no grades listed: packaging
    goes straight on). **After the last field comes Add sub product** (the card's button, its
    `Enter` chip kept): the last field no longer adds by itself. **Enter on Add sub product adds

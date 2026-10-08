@@ -1367,7 +1367,7 @@ never talks to a server** (§4.10). (`ui/tests/panel-harness.ts` is the one plac
 |---|---|---|
 | `ui/src/Form.tsx` | `Label`, `HelperText`, `FieldError`, `FormField`, `Input` (forwardRef), `NumberInput`, `Textarea`, `DateField`, `Checkbox`, `Switch`, `Slider` | `FormField` takes `children(id)` and wires the label with `useId()`. `NumberInput` is `type="text" inputMode="decimal"`. `Switch` is `role="switch"`. |
 | `ui/src/FieldGrid.tsx` | `FieldGrid`, `FieldGroup`, `Field` | dense multi-column form grid, `span` 1–3 |
-| `ui/src/SuggestInput.tsx` | `SuggestInput`, `Select` (forwardRef), `arriveAt`, `isArriving` | `SuggestInput`: type or pick, off-list values accepted. `Select`: pick-only with the `<select>` API (reads `<option>` children, emits `{ target: { value } }`). Neither calls `preventDefault` on Enter, so `useEnterToAdvance` moves on in the same keypress; Escape is claimed only when the list was "summoned". `arriveAt(field)` (2026-10-08) focuses a field as the New Order walk's arrival: `isArriving` is true inside that one focus event, a `Select` counts its focus-opened list as summoned (the first Escape closes it, the next walks back) and the order kit's `ColourSelect` opens its list. |
+| `ui/src/SuggestInput.tsx` | `SuggestInput`, `Select` (forwardRef), `arriveAt`, `isArriving` | `SuggestInput`: type or pick, off-list values accepted. `Select`: pick-only with the `<select>` API (reads `<option>` children, emits `{ target: { value } }`). Neither calls `preventDefault` on Enter, so `useEnterToAdvance` moves on in the same keypress; Escape is claimed only when the list was "summoned". `arriveAt(field)` (2026-10-08) focuses a field as the New Order walk's arrival: `isArriving` is true inside that one focus event, a `Select` counts its focus-opened list as summoned (the first Escape closes it, the next walks back) and the order kit's `ColourSelect` opens its list; a field that already has the caret is blurred first, so its list opens all the same. `Select`'s `openOnArrivalOnly` (the New Order card's packaging and grade) opens the list only on an arrival or a click, not on a Tab or the Escape walk back. |
 | `ui/src/Combobox.tsx` | `ComboboxOption<T>`, `Combobox` | typeahead that adds a row; renders ≤ 200 matches (`RENDER_CAP`). Filters label and hint; list placed below/above the field inside whatever clips it (`comboboxPlacement.ts#placeListbox`); full keyboard (Arrows/Home/End/PageUp/PageDown, Enter only on an open list, Escape claims the key only while a list is open, Tab closes); `emptyLabel`, `loading`, `filter={false}` + `onQueryChange` for a host that searches; `quietFocusRef` for a focus from code that must not open the list |
 | `ui/src/comboboxPlacement.ts` | `placeListbox`, `clippingSpan` | pure arithmetic for where a combobox list goes (tested without layout) |
 | `ui/src/MultiPicker.tsx` | `MultiPicker` | searchable tick-list with Select all / Clear; used by the Party Access "Add several people" panel |
@@ -4867,10 +4867,11 @@ each with a reason in `ALLOWED_UNCALLED.office`).
   first ("+ Same sub product, another colour" adds a row) — each row's packaging and
   grade right beside its quantity: the kit's pick-only `Select` over `line.packaging`
   and `line.grade`, packaging required only while `packagingRequiredOnConvert` is on
-  (never auto-filled; the party's saved packaging is a "Use …" button), grade always
-  optional; a pick box whose list is empty is no step. Enter walks colour, quantity,
-  packaging, grade, each pick list open as the caret arrives (`arriveAt`; a pick, by
-  Enter or mouse, steps on by itself), then **Add sub product** (`data-add-card`,
+  (never auto-filled, and no "—" in its list then; the party's saved packaging is a
+  "Use …" button), grade always optional; a pick box whose list is empty is no step.
+  Enter walks colour, quantity, packaging, grade, each pick list open as the caret
+  arrives (`arriveAt`; a pick, by Enter or mouse, steps on by itself; a Tab or the
+  Escape walk back leaves a list shut, `openOnArrivalOnly`), then **Add sub product** (`data-add-card`,
   `.ob-order-add`; owner, 2026-10-08 — the last field no longer adds): Enter there
   adds the card and the caret is back in the sub-product bar of the same product, its
   list open. Short of something, the walk (and Enter or a click on Add sub product,
