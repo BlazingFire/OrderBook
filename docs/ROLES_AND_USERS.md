@@ -624,6 +624,12 @@ see on their next sign-in (a role change ends their session). On an Office PC th
 one the Master built for that person; it is not shared with whoever signs in next. Management of notices is on the Master
 and, for holders of `notices.manage`, on the Office (online only).
 
+Where a holder of `notices.view` meets the notices (2026-10-08): the **Notice board** itself (sidebar row and Basic Home
+tile, Alt+N); a band at the top of **Basic Home** with every notice placed there, or "No notices" with a way to the
+board; and, right after signing in, a pop-up of the **unread** notices placed at sign-in, important first. Each notice
+says whether it goes on Basic Home, at sign-in, or both, and the company can turn either surface off for everybody in
+Settings → Company → Notice board. No key is involved in either choice; the Dashboard card is unchanged.
+
 ## 16. Where this deliberately differs from the supplied documents
 
 | Document says | Here | Why |

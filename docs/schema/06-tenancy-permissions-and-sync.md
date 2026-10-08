@@ -291,7 +291,7 @@ touched and no column is dropped.
 
 | Table | One row is | Notes |
 |---|---|---|
-| `notices` | a notice | `title` (1 to 120 characters after trimming, a CHECK), `body` (plain text, at most 4000, a CHECK, default empty), `priority` (`normal` or `important`), `pinned`, `show_until` (a calendar `DATE`, the last day it is shown, compared by the Master in the company's time zone, null = until removed), `audience_all`, `author_id` (a user; users are soft-deleted and restorable, so the reference cannot dangle), `version` (rises on every edit, so two administrators cannot overwrite each other), `created_at`, `updated_at`, `deleted_at`, `deleted_by`. Index `notices_board_idx (tenant_id, pinned DESC, created_at DESC, id)` over live rows |
+| `notices` | a notice | `title` (1 to 120 characters after trimming, a CHECK), `body` (plain text, at most 4000, a CHECK, default empty), `priority` (`normal` or `important`), `pinned`, `show_until` (a calendar `DATE`, the last day it is shown, compared by the Master in the company's time zone, null = until removed), `audience_all`, `author_id` (a user; users are soft-deleted and restorable, so the reference cannot dangle), `version` (rises on every edit, so two administrators cannot overwrite each other), `created_at`, `updated_at`, `deleted_at`, `deleted_by`; and, since `20261016000000_notice_placement`, `show_on_home` and `show_at_sign_in` (see below). Index `notices_board_idx (tenant_id, pinned DESC, created_at DESC, id)` over live rows |
 | `notice_audiences` | one role a notice is for | Used only when `audience_all` is false. Primary key `(notice_id, role_id)`; `role_id` references `roles`, which are soft-deleted too, so it never dangles. A notice for roles with none left alive is seen by nobody but managers |
 | `notice_reads` | one person has read one notice | Primary key `(notice_id, user_id)`, so reading twice is a no-op. It is what the unread badge counts and what a manager sees as "read by" |
 
@@ -307,6 +307,15 @@ server. The key lists are inline in the migration, never read from `@orderbook/s
 
 **Delete and restore.** A notice is soft-deleted and comes back from the Recycle Bin (`notices.manage`, entity
 `notice`). A restored notice keeps who has read it.
+
+**Where else it shows (`20261016000000_notice_placement`, 2026-10-08).** Two columns, `show_on_home BOOLEAN NOT NULL
+DEFAULT true` (the band at the top of Basic Home) and `show_at_sign_in BOOLEAN NOT NULL DEFAULT true` (the pop-up of
+unread notices right after sign-in). Every notice is on the board whatever they say. The defaults keep a notice that was
+up before the update showing in both places, and a create from an older panel that sends neither gets both. At least
+one stays true: the Master refuses both false (`validation.notice.placementEmpty`), checking an edit that sends one alone
+against the stored other; that rule is the service's, not a constraint. Additive and safe to run twice; `down()` drops the
+two columns. The company can also turn either surface off as a whole (`notices.showOnHome`, `notices.showAtSignIn` in
+`settings`), which needs no column.
 
 ---
 
