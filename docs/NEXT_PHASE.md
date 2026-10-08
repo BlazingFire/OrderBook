@@ -10,7 +10,30 @@ This file assumes both.
 
 ---
 
-## First: 1.4.6 is released; what comes next (2026-10-07)
+## First: the 2026-10-08 batch is on `main`, not built yet
+
+Product backup zip, a build that carries its product database, the Office setup inside the Master, the notice board on
+Basic Home and at sign-in, Escape goes back, and the New Order dropdown chain. What is true is in `HANDOFF.md`, under
+"Product zip, shipped catalogue, Office setup in the Master, …". In order:
+
+1. Build: bump to 1.4.7 first (`node tools/release.mjs 1.4.7`, into a scratch `ORDERBOOK_RELEASES_DIR`). The default
+   run now builds the Office first and packs it into the Master, so build both in one run. To ship the owner's own
+   products, export them on the Master (Products › Sub products › Backup products (.zip)) and pass `--catalogue <zip>`.
+   Build `--os win7` into the same folder first if the Master should also carry the Windows 7 Office (+140 MB).
+2. Install it on this PC: the installed Master here is still 1.4.4, which is why the notice board looked missing.
+3. Check on the real program: the Master Setup's size (about 85 MB more), Office panels › Add panel › Save Office setup…
+   (Electron's Save As dialog), a new PC downloading `http://<master>:4100/api/updates/office/setup`, and the New Order
+   chain with a real keyboard.
+4. Not done here, and why:
+   - Product zip on the Office: its download proxy holds a whole file in memory, and the restore needs the job screen
+     only the Master has.
+   - Enter pressed in the sub-product box before that product's list has arrived is ignored (as in 1.4.5); a very fast
+     typist could lose that one Enter.
+   - The card's ✕ on a product lifted from the Added list for editing closes it without putting its lines back
+     (unchanged from 1.4.6); owner's call.
+5. Then the 1.4.6 leftovers below.
+
+## Then: 1.4.6 is released; what comes next (2026-10-07)
 
 1.4.6 (the new look, New Order grid, note layout for the pending-order PDF, pcs everywhere) is described in
 `docs/releases/1.4.6.md` and `docs/DESIGN_SYSTEM.md`. Left for later, in order:

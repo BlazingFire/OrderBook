@@ -190,6 +190,40 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-08 - Product zip, shipped catalogue, Office setup in the Master, notice board, Escape, New Order chain (Claude, Opus, single session)
+
+- **Ask (owner, one message, numbered R1–R9 in `CLAUDE_HELPER_OCT8.md`):** one product backup/restore zip with the images,
+  editable and re-importable with the changes detected, a proper CSV and an images folder named by code; every build
+  carries the product database; the Master build carries the Office setup; the notice board "not available", with a
+  setting for a board on Basic Home and one at sign-in; Esc goes back in every menu without breaking New Order; New Order
+  back to the dropdown chain (product → sub product → colour → qty → packaging → grade → sub product; Shift+Q new product).
+  "Single session mode": no other session was used; subagents built in worktrees `../OrderBook-s1`…`s5` and were each
+  reviewed adversarially and fixed, then merged in `../OrderBook-s0`.
+- **Product zip (R1–R3):** `master/src/services/product-zip.service.ts`, `ui/src/ProductZipModal.tsx`; `GET
+  /api/products/export.zip`, `POST /api/products/restore` (dry run, then a job), `GET /api/products/restore/job`
+  (`docs/backend-modules/04-API-CONTRACT.md` §23, `docs/PRODUCT_IMPORT_FORMAT.md`). Photo names: `photoFileKey` now reads
+  a name that is itself a code as that code's photo 1. Additive migration `20261017000000_product_image_source_checksum`
+  so a photo a restore brought in reads back as unchanged (only when the stored picture is the whole file).
+- **Shipped catalogue (R4):** `loadShippedCatalogue` at boot, once, into a catalogue that never had a main product
+  (`internal.shippedCatalogueLoaded`); `release.mjs --catalogue <zip>` / `ORDERBOOK_CATALOGUE_ZIP`.
+- **Office setup (R5):** `release.mjs` builds the Office first and packs it into `master/staging/office-setup`; boot
+  seeds the releases folder (`seedBundledOfficeRelease`, never over a newer build; a GitHub sync no longer goes
+  backwards); `GET /api/updates/office/setup` (no sign-in, rate-limited); Panels › Add panel › Save Office setup….
+- **Notice board (R6, R7):** cause found — the installed Master on this PC is 1.4.4. Band on Basic Home shows every notice
+  placed there (empty state when none), the pop-up every unread notice placed at sign-in; settings `notices.showOnHome`,
+  `notices.showAtSignIn`; per-notice placement (additive migration `20261016000000_notice_placement`, optional wire
+  fields, no protocol bump); the owner's Notice board management tile.
+- **Escape (R8):** one `window` listener in `ui/src/AppShell.tsx`; `data-esc-back` on back buttons; eight back buttons
+  now ask before dropping typed work; New Order only on a blank form (`data-esc-home`).
+- **New Order (R9):** both `ui/src/LeadEntryScreen.tsx` and `office/web/src/screens/AddLeadScreen.tsx`; the 1.4.6 kit stays,
+  the card holds the one sub product picked; its body is no longer a scroll box (the lists were clipped — found in the
+  browser pass).
+- **Verified:** `npm run lint` 0 (2 warnings already on main), `npm run typecheck` 0, `npm run build` 0, `npm run test` 0 (392 files + 1 skipped, the Windows-only release-workflow; 5,218 tests + 17 skipped; integration suites ran on PostgreSQL), `npm run smoke:legacy` 0, on `s0/merge` before the docs commit. Browser pass on a scratch Master + paired Office (s0, ports 4600/4700): fresh install loaded
+  41 products / 549 sub products / photos; New Order chain on both panels; Shift+Q; Esc back and the New Order guard;
+  zip round trip unchanged (549 rows, 549 photos), an edited zip (2 cells, 1 photo swapped, 1 added, 1 row removed)
+  previewed and applied exactly, then re-read as unchanged; notice band, empty state, pop-up, settings group.
+  **Not verified:** a real release build, the Electron Save As dialog, a two-PC pass, the installed program.
+
 ### 2026-10-06 - Filling note and Dispatch note: revised artifact format (Claude, Opus)
 
 - **Ask:** "update filling note and dispatch note format using this artifact" (the revised

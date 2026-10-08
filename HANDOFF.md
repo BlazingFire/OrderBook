@@ -52,6 +52,33 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
+## Product zip, shipped catalogue, Office setup in the Master, notice board, Escape, New Order chain (2026-10-08)
+
+**State:** on `main`, not built and not released (the owner did not ask for a build). Version is still 1.4.6, so the
+next build must be bumped first (1.4.7). One session did this batch ("single session mode"): five builders in
+worktrees `../OrderBook-s1`…`s5` (branches `sN/oct8`), merged in `../OrderBook-s0` (`s0/merge`), each reviewed
+adversarially and fixed. Plan and evidence: `CLAUDE_HELPER_OCT8.md` (untracked).
+
+| ID | Owner asked | Result |
+|---|---|---|
+| R1–R3 | one product backup and restore in a single zip with the images; edit it and put it back; the software finds what changed; a proper CSV and an images folder named after the products | Products › Sub products › **Backup products (.zip)**: `products.csv` (the import's own columns), `main-products.csv`, `colours.csv`, `README.txt`, `images/<code>.webp` and `<code>_N` for photo N. **Restore from .zip**: a dry-run preview (main products added or renamed; rows added, changed cell by cell, unchanged, not in the file; colours; photos new, replaced, unchanged by hash, unmatched), two opt-ins (missing sub products to the Recycle Bin, missing photos removed), then a background job with progress. Master only. `docs/PRODUCT_IMPORT_FORMAT.md`. |
+| R4 | every build contains the product database | An install whose catalogue has never had a main product loads the shipped catalogue once at boot (marker setting `internal.shippedCatalogueLoaded`; a load stopped halfway resumes on the next boot): `master/assets/catalogue/products.zip` when the build carries one, else the printed catalogue `.md` + photos. `node tools/release.mjs --catalogue <zip>` (or `ORDERBOOK_CATALOGUE_ZIP`) ships the owner's own export. |
+| R5 | the Master build contains the Office setup | `release.mjs` builds the Office first and packs its same-version Setup (and the Win7 one when present) into the Master as `resources/panel/office-setup`. On boot the Master copies it into its releases folder when newer (Offices update with no internet; a GitHub sync never goes backwards). A new PC downloads it from Office panels › Add panel (**Save Office setup…**) or `http://<master>:<port>/api/updates/office/setup` (no sign-in, rate-limited). |
+| R6 | notice board "not available" | The Master installed on this PC is **1.4.4** (`C:\Program Files\OrderBook Master Panel`); the notice board arrived in 1.4.5. Also, the Basic Home band showed only important/pinned notices and the sign-in pop-up only important ones, and nothing otherwise. |
+| R7 | settings: one notice board on Basic Home, another at sign-in | Basic Home always shows the band (every current notice placed there, unread first; "No notices" when empty); the pop-up lists every unread notice placed at sign-in. Settings › Company › Notice board: `notices.showOnHome`, `notices.showAtSignIn`. Per notice: "Show on Basic Home" / "Show at sign-in" (migration `20261016000000_notice_placement`, additive). The owner's "Notice board management" tile art is in. |
+| R8 | Esc goes back in every menu, without breaking New Order | One `window` listener in `AppShell`: dialogs/popovers/lists close first; a record's back button is clicked (it asks before dropping typed work — 8 screens now ask); otherwise Home (landing). New Order is left alone unless the form is blank (`data-esc-home`). |
+| R9 | New Order: product → sub product → colour → qty → packaging → grade → back to sub product; Shift+Q new product | Both panels: the product list, then the product's sub-product dropdown, then a card for that one sub product; Enter on the last field adds and returns to the sub-product dropdown; Shift+Q to the product dropdown; Esc/Backspace on an empty sub-product box back to products. Empty lists (grades ship empty) are skipped. |
+
+**Found in the browser pass and fixed:** the one-row card's body was a scroll box, so the packaging/grade/colour lists
+were clipped and scrolled the row away; a photo a restore brought in read as "replaced" on the next import of the same
+zip (now `product_images.source_checksum`, migration `20261017000000_product_image_source_checksum`, kept only
+when the stored picture is the whole uploaded file); `ProductZipModal` was missing from the ui barrel.
+
+**Gate:** `npm run lint` 0 (2 warnings already on main), `npm run typecheck` 0, `npm run build` 0, `npm run test` 0 (392 files + 1 skipped, the Windows-only release-workflow; 5,218 tests + 17 skipped; integration suites ran on PostgreSQL), `npm run smoke:legacy` 0, on `s0/merge` before the docs commit.
+
+**Not verified:** a real `release.mjs` build (the Master installer with the Office inside, about 85 MB larger), the
+Electron Save As dialog for the Office setup, a real two-PC pass, the installed program.
+
 ## Notes, notice board, photos, catalogue, screen sizes + 1.4.5 (2026-10-07)
 
 **State:** released. `main` @ `590609b` (the 1.4.5 bump on the final RC `7a75565`, built by the
