@@ -96,6 +96,19 @@ describe('renderActivity()', () => {
     );
   });
 
+  it("fills a new account's {name} from its displayName, then its username", () => {
+    const created = { entityType: 'user', action: 'created', actorName: 'Karan' };
+    expect(
+      renderActivity(createTranslator('en'), {
+        ...created,
+        details: { username: 'ayush', displayName: 'Ayush' },
+      }),
+    ).toBe('Karan created the account for Ayush');
+    expect(
+      renderActivity(createTranslator('en'), { ...created, details: { username: 'ayush' } }),
+    ).toBe('Karan created the account for ayush');
+  });
+
   it('uses the recorded name when there is one', () => {
     expect(renderActivity(createTranslator('en'), { ...row, actorName: 'Karan' })).toBe(
       'Karan added the party Sharma Tiles',

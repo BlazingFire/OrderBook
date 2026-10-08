@@ -55,6 +55,12 @@ export function renderActivity(t: Translator, input: ActivityRenderInput): strin
   for (const [field, value] of Object.entries(input.details ?? {})) {
     if (typeof value === 'string' || typeof value === 'number') params[field] = value;
   }
+  // A new account's row carries `displayName` (and `username`), not `name`; the rows are
+  // immutable, so the sentence's `{name}` is filled from them here.
+  if (!('name' in params)) {
+    const named = params.displayName ?? params.username;
+    if (named !== undefined) params.name = named;
+  }
   // A detail named `<x>Token` holds a message key (`labelToken`, `toToken`),
   // translated here into `{x}` so the sentence reads in the reader's language.
   for (const [field, value] of Object.entries(input.details ?? {})) {
