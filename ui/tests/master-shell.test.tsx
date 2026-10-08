@@ -40,7 +40,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { buildPermissionCatalogue } from '@orderbook/shared';
 
-import { formatElapsed } from '../src/format.js';
+import { formatElapsed, formatRelative } from '../src/format.js';
 import { t } from '../src/i18n.js';
 import { publishSessionEnded } from '../src/sessionEnded.js';
 import {
@@ -2690,42 +2690,6 @@ describe('Assigning and editing roles (1.4.3)', () => {
     return calls;
   }
 
-  it('shows what each role allows on its card, and changes nothing until the change is confirmed', async () => {
-    const calls = await openAccess((call) =>
-      call.method === 'PUT' && call.url === '/api/access/users/user-7'
-        ? json({ ...PERSON, roleId: 'role-b', roleName: 'Dispatcher', roleTier: 'management' })
-        : undefined,
-    );
-
-    fireEvent.click(await screen.findByTitle(t('access.tab.users')));
-    fireEvent.click((await screen.findAllByText('Meera'))[0]!);
-    const group = await screen.findByRole('radiogroup', { name: t('access.users.colRole') });
-
-    // The card for Dispatcher says how much it grants, and what it can change.
-    const card = within(group).getByText('Dispatcher').closest('label')!;
-    expect(card.textContent).toContain(t('access.rolePicker.changes'));
-    expect(card.textContent).toMatch(/Pending Orders/);
-    expect(within(group).getByText(t('access.rolePicker.current'))).toBeTruthy();
-
-    // Choosing a card saves nothing: the old drop-down saved on the first click.
-    fireEvent.click(within(card).getByRole('radio'));
-    expect(calls.some((call) => call.method === 'PUT')).toBe(false);
-
-    fireEvent.click(screen.getByRole('button', { name: t('access.users.roleChangeApply') }));
-    const dialog = await screen.findByRole('dialog');
-    // Four keys gained (Packer holds one of Dispatcher's five), none lost.
-    expect(dialog.textContent).toContain('Meera');
-    expect(dialog.textContent).toContain('Permissions gained: 4. Permissions lost: 0.');
-    expect(calls.some((call) => call.method === 'PUT')).toBe(false);
-
-    fireEvent.click(within(dialog).getByRole('button', { name: t('access.users.roleChangeApply') }));
-    await waitFor(() =>
-      expect(
-        calls.find((call) => call.method === 'PUT' && call.url === '/api/access/users/user-7')?.body,
-      ).toMatchObject({ roleId: 'role-b' }),
-    );
-  });
-
   it('puts party creation and editing in plain view on an office role, and a card says what a role holds for parties', async () => {
     await openAccess((call) =>
       call.url === '/api/access/roles/role-a' ? json({ ...ROLE_A, permissions: ['leads.view', 'parties.view', 'parties.create'] }) : undefined,
@@ -2746,16 +2710,6 @@ describe('Assigning and editing roles (1.4.3)', () => {
     fireEvent.click(edit);
     expect(screen.getByText(`● ${t('access.roleEditor.unsaved')}`)).toBeTruthy();
     expect((screen.getByLabelText('Parties — Edit') as HTMLInputElement).checked).toBe(true);
-  });
-
-  it('offers "Change role" only for a different role', async () => {
-    await openAccess();
-    fireEvent.click(await screen.findByTitle(t('access.tab.users')));
-    fireEvent.click((await screen.findAllByText('Meera'))[0]!);
-    await screen.findByRole('radiogroup', { name: t('access.users.colRole') });
-    const apply = screen.getByRole('button', { name: t('access.users.roleChangeApply') });
-    expect((apply as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(t('access.users.roleChangeUnchanged'))).toBeTruthy();
   });
 
   it('role editor: search narrows the permissions, an edit shows the unsaved marker, and closing asks in a themed dialog', async () => {
@@ -2854,6 +2808,252 @@ describe('Notice board in the sidebar and in roles (Oct 7)', () => {
   });
 });
 
+describe('The person screen (Oct 8)', () => {
+  const SYNC = { version: 3, hlc: 'h', fieldHlc: {}, temporaryId: null };
+  const stamp = { createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-02T00:00:00.000Z' };
+  const ROLE_A = {
+    id: 'role-a', tenantId: 't', name: 'Packer', tier: 'office', permissions: ['leads.view', 'notices.view'],
+    isSystem: false, userCount: 1, deletedAt: null, ...stamp, sync: SYNC,
+  };
+  const ROLE_B = {
+    id: 'role-b', tenantId: 't', name: 'Dispatcher', tier: 'management',
+    permissions: ['leads.view', 'leads.edit', 'orders.view', 'orders.edit', 'lead.convert', 'notices.view'],
+    isSystem: false, userCount: 2, deletedAt: null, ...stamp, sync: SYNC,
+  };
+  const ROLE_C = {
+    id: 'role-c', tenantId: 't', name: 'Viewer', tier: 'office', permissions: ['orders.view'],
+    isSystem: false, userCount: 0, deletedAt: null, ...stamp, sync: SYNC,
+  };
+  const PERSON = {
+    id: 'US0000000007', tenantId: 't', username: 'meera', displayName: 'Meera', roleId: 'role-a',
+    roleName: 'Packer', roleTier: 'office', isActive: true, lastSignInAt: null, avatar: null,
+    deletedAt: null, ...stamp, sync: SYNC,
+  };
+  const PERMS = [...ADMIN, 'roles.assign', 'roles.edit', 'users.manage', 'logs.view'];
+
+  /** Boots, opens Meera, and answers writes the way the Master would, so a refetch sees them. */
+  async function openPerson(start: Partial<typeof PERSON> = {}): Promise<Call[]> {
+    let person: typeof PERSON | null = { ...PERSON, ...start };
+    const calls = await boot(PERMS, (call) => {
+      const path = call.url.split('?')[0];
+      if (path === '/api/access/users' && call.method === 'GET') return json(person ? [person] : []);
+      if (path === '/api/access/roles' && call.method === 'GET') return json([ROLE_A, ROLE_B, ROLE_C]);
+      if (path === '/api/access/permission-catalogue') return json(buildPermissionCatalogue());
+      if (path === `/api/access/users/${PERSON.id}` && call.method === 'PUT' && person) {
+        const body = call.body as { roleId?: string; isActive?: boolean };
+        const role = [ROLE_A, ROLE_B, ROLE_C].find((r) => r.id === body.roleId);
+        person = {
+          ...person,
+          ...(role ? { roleId: role.id, roleName: role.name, roleTier: role.tier } : {}),
+          ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
+          sync: { ...person.sync, version: person.sync.version + 1 },
+        };
+        return json(person);
+      }
+      if (path === `/api/access/users/${PERSON.id}` && call.method === 'DELETE' && person) {
+        const gone = person;
+        person = null;
+        return json({ ...gone, deletedAt: '2026-10-08T00:00:00.000Z' });
+      }
+      if (path === '/api/logs') return json({ items: [], nextCursor: null, prevCursor: null, limit: 50 });
+      if (path === '/api/logs/facets') return json({ actors: [], entityTypes: [], actions: [] });
+      return undefined;
+    });
+    await open(t('nav.master.access'));
+    fireEvent.click(await screen.findByTitle(t('access.tab.users')));
+    fireEvent.click((await screen.findAllByText('Meera'))[0]!);
+    await screen.findByRole('radiogroup', { name: t('access.users.colRole') });
+    return calls;
+  }
+
+  const head = () => document.querySelector('.ob-person-head') as HTMLElement;
+  const card = (name: string) =>
+    within(screen.getByRole('radiogroup', { name: t('access.users.colRole') }))
+      .getByText(name)
+      .closest('label')!;
+  const cell = (module: string, action: string, state: string) =>
+    screen.getByRole('img', { name: t('access.person.cell', { module, action, state }) });
+  const group = (key: string) => document.querySelector(`[data-group="${key}"]`) as HTMLElement;
+  const puts = (calls: Call[]) => calls.filter((call) => call.method === 'PUT');
+
+  it('heads the screen with the face, state, tier, role, id and last sign-in, and lists the facts', async () => {
+    await openPerson();
+    const top = head();
+    expect(within(top).getByRole('heading', { name: 'Meera' })).toBeTruthy();
+    expect(top.textContent).toContain(t('access.users.statusActive'));
+    expect(top.textContent).toContain(t('access.person.tierPill', { tier: t('tier.office') }));
+    expect(top.textContent).toContain(`${t('access.users.colRole')} Packer`);
+    expect(top.textContent).toContain(PERSON.id);
+    expect(top.textContent).toContain(t('access.person.neverSignedIn'));
+    // The initial stands in for a face nobody uploaded.
+    expect(within(top).getByText('M')).toBeTruthy();
+
+    const aside = document.querySelector('.ob-person-aside') as HTMLElement;
+    expect(aside.textContent).toContain(t('access.person.versionValue', { version: 3 }));
+    expect(aside.textContent).toContain(t('access.person.never'));
+    expect(aside.textContent).toContain('meera');
+    expect(aside.textContent).toContain(t('access.person.pictureHelp', { px: 1080, max: '5 MB' }));
+
+    // Each role card: how much it grants, who holds it, and which one is theirs.
+    expect(card('Packer').textContent).toContain(t('access.rolePicker.current'));
+    expect(card('Packer').textContent).toContain(t('access.person.people.one'));
+    expect(card('Dispatcher').textContent).toContain(t('access.person.people.other', { count: 2 }));
+    expect(card('Dispatcher').textContent).toContain(t('access.rolePicker.total', { held: 6, total: 61 }));
+
+    // With nothing picked the matrix is Packer's own: allowed, or not.
+    expect(cell('Pending Orders', 'View', t('access.person.cell.held'))).toBeTruthy();
+    expect(cell('Pending Orders', 'Edit', t('access.person.cell.none'))).toBeTruthy();
+    expect(group('notices').textContent).toBe('Notice board1/2');
+    expect(document.querySelector('.ob-person-changebar')).toBeNull();
+  });
+
+  it('says how long ago they last signed in', async () => {
+    const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+    expect(formatRelative(ago(30_000))).toBe(t('time.justNow'));
+    expect(formatRelative(ago(26 * 3_600_000))).toBe('yesterday');
+    expect(formatRelative(ago(3 * 7 * 86_400_000))).toBe('3 weeks ago');
+
+    await openPerson({ lastSignInAt: ago(3 * 3_600_000) } as unknown as Partial<typeof PERSON>);
+    expect(head().textContent).toContain(t('access.person.lastSignedIn', { when: '3 hours ago' }));
+  });
+
+  it('copies the id from the header', async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    await openPerson();
+    fireEvent.click(within(head()).getByRole('button', { name: t('common.copy') }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(PERSON.id));
+  });
+
+  it('shows what a picked role keeps, adds and takes away, saves nothing until Change role, and Keep puts it back', async () => {
+    const calls = await openPerson();
+
+    fireEvent.click(within(card('Dispatcher')).getByRole('radio'));
+    expect(document.querySelector('.ob-person-comparehead')!.textContent).toContain('Packer → Dispatcher');
+    expect(cell('Pending Orders', 'View', t('access.person.cell.kept'))).toBeTruthy();
+    expect(cell('Pending Orders', 'Edit', t('access.person.cell.gained'))).toBeTruthy();
+    expect(cell('Final Orders', 'Edit', t('access.person.cell.gained'))).toBeTruthy();
+    expect(cell('Parties', 'View', t('access.person.cell.none'))).toBeTruthy();
+    // Workflow goes 0/5 -> 1/5 (lead.convert) and is marked; the notice board stays.
+    expect(group('workflow').textContent).toBe('Workflow0/5→1/5');
+    expect(group('workflow').querySelector('[data-change="up"]')).not.toBeNull();
+    expect(group('notices').querySelector('[data-change]')).toBeNull();
+
+    const bar = document.querySelector('.ob-person-changebar') as HTMLElement;
+    expect(bar.textContent).toContain(
+      `${t('access.person.changeBar.lead', { name: 'Meera' })} Dispatcher — ${t('access.person.changeBar.gained', { count: 4 })}, ${t('access.person.changeBar.noneLost')}.`,
+    );
+    expect(puts(calls)).toHaveLength(0);
+
+    // Going the other way loses what Packer had: Viewer drops Pending Orders and the notice board.
+    fireEvent.click(within(card('Viewer')).getByRole('radio'));
+    expect(cell('Pending Orders', 'View', t('access.person.cell.lost'))).toBeTruthy();
+    expect(group('notices').querySelector('[data-change="down"]')).not.toBeNull();
+    expect(document.querySelector('.ob-person-changebar')!.textContent).toContain(
+      t('access.person.changeBar.lost', { count: 2 }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: t('access.person.keep', { role: 'Packer' }) }));
+    expect(document.querySelector('.ob-person-changebar')).toBeNull();
+    expect((within(card('Packer')).getByRole('radio') as HTMLInputElement).checked).toBe(true);
+    expect(puts(calls)).toHaveLength(0);
+  });
+
+  it('Change role saves with the version, says so, and moves Current', async () => {
+    const calls = await openPerson();
+    fireEvent.click(within(card('Dispatcher')).getByRole('radio'));
+    fireEvent.click(screen.getByRole('button', { name: t('access.users.roleChangeApply') }));
+
+    await waitFor(() =>
+      expect(puts(calls).at(-1)?.body).toMatchObject({ roleId: 'role-b', expectedVersion: 3 }),
+    );
+    expect(
+      await screen.findByText(t('access.person.roleChanged', { name: 'Meera', role: 'Dispatcher' })),
+    ).toBeTruthy();
+    await waitFor(() => expect(card('Dispatcher').textContent).toContain(t('access.rolePicker.current')));
+    expect(card('Packer').textContent).not.toContain(t('access.rolePicker.current'));
+    expect(document.querySelector('.ob-person-changebar')).toBeNull();
+  });
+
+  it('the ⋯ menu deactivates after asking, activates without asking, and deletes after asking', async () => {
+    const calls = await openPerson();
+    const menu = async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('access.person.more') }));
+      return screen.findByRole('menu');
+    };
+
+    // Deactivate says what it does, and asks first.
+    let items = await menu();
+    expect(items.textContent).toContain(t('access.person.deactivateHint'));
+    expect(items.textContent).toContain(t('access.person.deleteHint'));
+    fireEvent.click(within(items).getByRole('menuitem', { name: new RegExp(`^${t('access.users.deactivate')}`) }));
+    let dialog = await screen.findByRole('dialog');
+    expect(puts(calls)).toHaveLength(0);
+    fireEvent.click(within(dialog).getByRole('button', { name: t('access.users.deactivate') }));
+    await waitFor(() => expect(puts(calls).at(-1)?.body).toMatchObject({ isActive: false, expectedVersion: 3 }));
+    await waitFor(() => expect(head().textContent).toContain(t('access.users.statusInactive')));
+
+    // Activate goes straight through.
+    items = await menu();
+    fireEvent.click(within(items).getByRole('menuitem', { name: new RegExp(`^${t('access.users.activate')}`) }));
+    await waitFor(() => expect(puts(calls).at(-1)?.body).toMatchObject({ isActive: true, expectedVersion: 4 }));
+    await waitFor(() => expect(head().textContent).toContain(t('access.users.statusActive')));
+
+    // Delete asks, then the person goes to the recycle bin and the list comes back.
+    items = await menu();
+    fireEvent.click(within(items).getByRole('menuitem', { name: new RegExp(`^${t('access.person.delete')}`) }));
+    dialog = await screen.findByRole('dialog');
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false);
+    fireEvent.click(within(dialog).getByRole('button', { name: t('access.users.delete') }));
+    await waitFor(() =>
+      expect(calls.some((call) => call.method === 'DELETE' && call.url === `/api/access/users/${PERSON.id}`)).toBe(true),
+    );
+    await waitFor(() => expect(document.querySelector('.ob-person-head')).toBeNull());
+  });
+
+  it('will not deactivate or delete the person signed in', async () => {
+    // The shell's own user is `user-1`.
+    await openPerson({ id: 'user-1' } as Partial<typeof PERSON>);
+    fireEvent.click(screen.getByRole('button', { name: t('access.person.more') }));
+    const items = await screen.findByRole('menu');
+    for (const item of within(items).getAllByRole('menuitem')) {
+      expect((item as HTMLButtonElement).disabled).toBe(true);
+      expect(item.textContent).toContain(t('access.users.thisIsYou'));
+    }
+  });
+
+  it('Edit details and Reset password open their flows', async () => {
+    await openPerson();
+    fireEvent.click(screen.getByRole('button', { name: t('access.person.editDetails') }));
+    expect(await screen.findByLabelText(t('access.userEdit.username'))).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: t('access.userEdit.cancel') }));
+
+    fireEvent.click(await screen.findByRole('button', { name: t('access.users.resetPassword') }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.textContent).toContain(t('access.users.setPasswordTitle', { name: 'Meera' }));
+  });
+
+  it('Escape goes back to the list without asking, even with a role picked', async () => {
+    const calls = await openPerson();
+    fireEvent.click(within(card('Dispatcher')).getByRole('radio'));
+    await pressEscape();
+    await waitFor(() => expect(document.querySelector('.ob-person-head')).toBeNull());
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(puts(calls)).toHaveLength(0);
+  });
+
+  it('opens the Activity log searching for the person', async () => {
+    const calls = await openPerson();
+    fireEvent.click(screen.getByRole('button', { name: t('access.person.openLog') }));
+    await waitFor(() =>
+      expect(calls.some((call) => call.url.startsWith('/api/logs?') && call.url.includes(`q=${PERSON.id}`))).toBe(true),
+    );
+    expect((screen.getByPlaceholderText(t('logs.filter.searchPlaceholder')) as HTMLInputElement).value).toBe(
+      PERSON.id,
+    );
+  });
+});
+
 describe('Notices in the role cards and the role editor (Oct 7)', () => {
   const SYNC = { version: 1, hlc: 'h', fieldHlc: {}, temporaryId: null };
   const stamp = { createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' };
@@ -2882,11 +3082,11 @@ describe('Notices in the role cards and the role editor (Oct 7)', () => {
     return calls;
   }
 
-  it('says on each role card whether the role reads or also manages the notice board', async () => {
+  it('says on each role card of the Add user form whether the role reads or also manages the notice board', async () => {
     await openAccess();
     fireEvent.click(await screen.findByTitle(t('access.tab.users')));
-    fireEvent.click((await screen.findAllByText('Dev'))[0]!);
-    const group = await screen.findByRole('radiogroup', { name: t('access.users.colRole') });
+    fireEvent.click(await screen.findByRole('button', { name: t('access.users.add') }));
+    const group = await screen.findByRole('radiogroup', { name: t('access.userForm.role') });
 
     const line = (name: string) => within(group).getByText(name).closest('label')!.textContent ?? '';
     expect(line('Reader')).toContain(`${t('access.rolePicker.notices')} ${t('access.rolePicker.noticesRead')}`);

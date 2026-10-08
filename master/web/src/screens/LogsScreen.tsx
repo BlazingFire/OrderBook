@@ -15,6 +15,13 @@ const transport: LogsTransport = {
   logsExportUrl: (query) => api.logsExportUrl(query),
 };
 
-export function LogsScreen({ permissions }: { permissions: string[] }) {
-  return <SharedLogsScreen permissions={permissions} transport={transport} />;
+export function LogsScreen({
+  permissions,
+  search,
+}: {
+  permissions: string[];
+  /** A person's id, from their screen's "Open in activity log". */
+  search?: { q: string; nonce: number } | null;
+}) {
+  return <SharedLogsScreen permissions={permissions} transport={transport} search={search} />;
 }

@@ -20,13 +20,12 @@ import { SERVER_MASTER_MIN_ACTIVE, SERVER_MASTER_TIER, tierRank } from '@orderbo
 
 import { api, ApiError, type FieldDifference } from '../api';
 import { useMasterKeyPrompt } from '../components/MasterKeyPrompt';
+import { PersonScreen } from './PersonScreen';
 import {
   Avatar,
-  AvatarPicker,
   Button,
   capabilityLabel,
   Card,
-  ConfirmDialog,
   ConflictBanner,
   DataTable,
   EditorScreen,
@@ -50,7 +49,6 @@ import {
   TierPill,
   copyText,
   formatDateTime,
-  permissionChange,
   rem,
   t,
   tierLabel,
@@ -88,6 +86,8 @@ interface Props {
   /** Which tab is showing — chosen here or from the sidebar's sub-pages. */
   tab: Tab;
   onTabChange: (tab: Tab) => void;
+  /** Opens the Activity log searching for a person's id; absent where the log is not offered. */
+  onOpenActivityLog?: (userId: string) => void;
 }
 
 type Tab = 'users' | 'roles';
@@ -99,6 +99,7 @@ export function AccessScreen({
   currentUserTier,
   tab,
   onTabChange,
+  onOpenActivityLog,
 }: Props) {
   const [catalogue, setCatalogue] = useState<PermissionCatalogue | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -389,7 +390,7 @@ export function AccessScreen({
       {/* Delete is soft everywhere in this product, but until now nothing in the
           UI could undo one — `api.restoreRole`/`api.restoreUser` were declared,
           routed, and called by nobody. A mis-click had no in-product recovery. */}
-      {(can('roles.delete') || can('users.manage')) && (
+      {(can('roles.delete') || can('users.manage')) && !personOpen && (
         <RecycleBin
           canRestoreRoles={can('roles.delete')}
           canRestoreUsers={can('users.manage')}
@@ -410,6 +411,8 @@ export function AccessScreen({
           loading={loading}
           openUserId={openUserId}
           onOpenUser={setOpenUserId}
+          onManageRoles={tabItems.some((item) => item.value === 'roles') ? () => onTabChange('roles') : undefined}
+          onOpenActivityLog={onOpenActivityLog}
           onEdit={setEditingUser}
           onSecret={setSecret}
           onRun={run}
@@ -447,6 +450,8 @@ function UsersTab({
   loading,
   openUserId,
   onOpenUser,
+  onManageRoles,
+  onOpenActivityLog,
   onEdit,
   onSecret,
   onRun,
@@ -467,6 +472,8 @@ function UsersTab({
   /** The person whose detail screen is open — held by the screen so its sidebar entry can name it. */
   openUserId: string | null;
   onOpenUser: (id: string | null) => void;
+  onManageRoles?: () => void;
+  onOpenActivityLog?: (userId: string) => void;
   /** Opens the person's own editor screen — this tab does not host it. */
   onEdit: (user: User) => void;
   onSecret: (secret: OneTimeSecret) => void;
@@ -548,8 +555,9 @@ function UsersTab({
   const assignableFor = (user: User): Role[] =>
     roles.filter((role) => role.id === user.roleId || tierRank(role.tier) <= tierRank(actorTier));
 
+  // Not over one person's screen: there is no list there to search, filter or sort.
   useFilterBar(
-    !loading && users.length > 0 ? (
+    !loading && users.length > 0 && !users.some((user) => user.id === openUserId) ? (
       <>
         <div className="ob-search">
           <Input
@@ -711,207 +719,6 @@ function UsersTab({
   ];
 
   const openUser = users.find((user) => user.id === openUserId) ?? null;
-
-  /** The facts about one person, and the one control that changes their access. */
-  function renderUserDetail(user: User) {
-    return (
-      <div className="ob-detail">
-        <section className="ob-detail-section">
-          <div className="ob-eyebrow">{t('avatar.section')}</div>
-          <AvatarPicker
-            user={user}
-            // Your own face needs no permission; somebody else's is a roster
-            // edit. The server checks the same thing again either way.
-            canEdit={(canManage && mayManage(user)) || user.id === currentUserId}
-            onUpload={async (file) => {
-              await onRun(() => api.uploadAvatar(user.id, file), t('avatar.error.uploadFailed'));
-            }}
-            onRemove={async () => {
-              await onRun(() => api.removeAvatar(user.id), t('avatar.error.removeFailed'));
-            }}
-          />
-        </section>
-
-        <section className="ob-detail-section">
-          <div className="ob-eyebrow">{t('access.users.detail.identity')}</div>
-          <dl className="ob-detail-grid">
-            <div>
-              <dt>{t('access.users.colId')}</dt>
-              <dd>
-                <IdField value={user.id} />
-              </dd>
-            </div>
-            <div>
-              <dt>{t('access.users.colName')}</dt>
-              <dd>{user.displayName}</dd>
-            </div>
-            <div>
-              <dt>{t('access.users.colUsername')}</dt>
-              <dd className="ob-mono">{user.username}</dd>
-            </div>
-          </dl>
-        </section>
-
-        <section className="ob-detail-section">
-          <div className="ob-eyebrow">{t('access.users.detail.access')}</div>
-          {canAssign && mayManage(user) ? (
-            <UserRoleAssign
-              user={user}
-              roles={assignableFor(user)}
-              catalogue={catalogue}
-              onApply={(roleId) =>
-                onRun(
-                  () =>
-                    withKey((token) =>
-                      api.updateUser(
-                        user.id,
-                        {
-                          roleId,
-                          // Without this the save is last-write-wins: two
-                          // administrators reassigning the same person would
-                          // both "succeed" and one would silently lose.
-                          expectedVersion: user.sync.version,
-                        },
-                        token,
-                      ),
-                    ),
-                  t('access.users.roleChangeFailed'),
-                )
-              }
-            />
-          ) : (
-            <dl className="ob-detail-grid">
-              <div>
-                <dt>{t('access.users.colRole')}</dt>
-                <dd>{user.roleName}</dd>
-              </div>
-            </dl>
-          )}
-          <dl className="ob-detail-grid">
-            <div>
-              <dt>{t('access.roles.colTier')}</dt>
-              <dd>
-                <TierPill tier={user.roleTier} />
-              </dd>
-            </div>
-            <div>
-              <dt>{t('access.users.colStatus')}</dt>
-              <dd>
-                {user.isActive ? t('access.users.statusActive') : t('access.users.statusInactive')}
-              </dd>
-            </div>
-          </dl>
-        </section>
-
-        <section className="ob-detail-section">
-          <div className="ob-eyebrow">{t('access.users.detail.activity')}</div>
-          <dl className="ob-detail-grid">
-            <div>
-              <dt>{t('access.users.colLastSignIn')}</dt>
-              <dd>{formatDateTime(user.lastSignInAt)}</dd>
-            </div>
-            <div>
-              <dt>{t('access.users.detail.created')}</dt>
-              <dd>{formatDateTime(user.createdAt)}</dd>
-            </div>
-            <div>
-              <dt>{t('access.users.detail.updated')}</dt>
-              <dd>{formatDateTime(user.updatedAt)}</dd>
-            </div>
-            <div>
-              {/* The number a stale save is rejected against — worth showing
-                  when two administrators are editing the same roster. */}
-              <dt>{t('access.users.detail.version')}</dt>
-              <dd className="ob-mono">{user.sync.version}</dd>
-            </div>
-          </dl>
-        </section>
-      </div>
-    );
-  }
-
-  /** The dialog's actions. Destructive first and set apart, then the rest. */
-  function renderUserActions(user: User) {
-    const blocked = lastAdminReason(user);
-    return (
-      <>
-        {canManage && mayManage(user) && (
-          <>
-            <Button
-              variant="danger"
-              disabled={Boolean(blocked) || user.id === currentUserId}
-              title={
-                blocked ?? (user.id === currentUserId ? t('access.users.thisIsYou') : undefined)
-              }
-              onClick={() => {
-                setConfirmDelete(user);
-              }}
-            >
-              {t('access.users.delete')}
-            </Button>
-            {canReveal && (
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setConfirmPassword('');
-                  setRevealing(user);
-                }}
-              >
-                {t('access.users.revealPassword')}
-              </Button>
-            )}
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setPasswordValue('');
-                setSettingPassword(user);
-              }}
-            >
-              {t('access.users.resetPassword')}
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={Boolean(blocked)}
-              title={blocked}
-              onClick={() => {
-                // Deactivation is not a delete, and the difference is
-                // load-bearing enough that §4.2 asks for it to be spelled out
-                // at the moment somebody acts — not discovered afterwards.
-                // Only deactivating asks first; reactivating never needs a
-                // confirmation.
-                if (user.isActive) {
-                  setConfirmDeactivate(user);
-                } else {
-                  void onRun(
-                    () =>
-                      withKey((token) =>
-                        api.updateUser(
-                          user.id,
-                          { isActive: true, expectedVersion: user.sync.version },
-                          token,
-                        ),
-                      ),
-                    t('access.users.statusChangeFailed'),
-                  );
-                }
-              }}
-            >
-              {user.isActive ? t('access.users.deactivate') : t('access.users.activate')}
-            </Button>
-            <Button
-              variant="secondary"
-              icon="edit"
-              onClick={() => {
-                onEdit(user);
-              }}
-            >
-              {t('access.users.edit')}
-            </Button>
-          </>
-        )}
-      </>
-    );
-  }
 
   const dialogs = (
     <>
@@ -1107,10 +914,12 @@ function UsersTab({
                 const target = confirmDelete;
                 setConfirmDelete(null);
                 if (target)
-                  void onRun(
-                    () => withKey((token) => api.deleteUser(target.id, token)),
-                    t('access.users.deleteFailed'),
-                  );
+                  void onRun(async () => {
+                    await withKey((token) => api.deleteUser(target.id, token));
+                    // Gone to the recycle bin: back to the list, not to a
+                    // screen that reopens if the person is ever restored.
+                    onOpenUser(null);
+                  }, t('access.users.deleteFailed'));
               }}
             >
               {t('access.users.delete')}
@@ -1124,25 +933,76 @@ function UsersTab({
   );
 
   if (openUser) {
+    const manage = canManage && mayManage(openUser);
+    const assign = canAssign && mayManage(openUser);
     return (
       <>
-        <EditorScreen
-          meta={
-            <>
-              <span className="ob-mono ob-small">{openUser.username}</span>
-              <span className="ob-small">{openUser.roleName}</span>
-              {isServerMaster(openUser) && <ServerMasterBadge />}
-            </>
-          }
-          actions={renderUserActions(openUser)}
-          onBack={() => {
-            onOpenUser(null);
-            return true;
+        <PersonScreen
+          user={openUser}
+          roles={roles}
+          assignable={assign ? assignableFor(openUser) : []}
+          catalogue={catalogue}
+          canManage={manage}
+          // Your own face needs no permission; somebody else's is a roster
+          // edit. The server checks the same thing again either way.
+          canEditPicture={manage || openUser.id === currentUserId}
+          canReveal={manage && canReveal}
+          isSelf={openUser.id === currentUserId}
+          blockedReason={lastAdminReason(openUser)}
+          onBack={() => onOpenUser(null)}
+          onEdit={() => onEdit(openUser)}
+          onResetPassword={() => {
+            setPasswordValue('');
+            setSettingPassword(openUser);
           }}
-          backLabel={t('access.editor.backToList')}
-        >
-          {renderUserDetail(openUser)}
-        </EditorScreen>
+          onRevealPassword={() => {
+            setConfirmPassword('');
+            setRevealing(openUser);
+          }}
+          // Deactivation is not a delete, and the difference is load-bearing
+          // enough that §4.2 asks for it to be spelled out at the moment
+          // somebody acts. Reactivating never needs a confirmation.
+          onDeactivate={() => setConfirmDeactivate(openUser)}
+          onActivate={() =>
+            void onRun(
+              () =>
+                withKey((token) =>
+                  api.updateUser(
+                    openUser.id,
+                    { isActive: true, expectedVersion: openUser.sync.version },
+                    token,
+                  ),
+                ),
+              t('access.users.statusChangeFailed'),
+            )
+          }
+          onDelete={() => setConfirmDelete(openUser)}
+          onChangeRole={async (roleId) => {
+            let changed = false;
+            await onRun(async () => {
+              await withKey((token) =>
+                api.updateUser(
+                  openUser.id,
+                  // Without the version the save is last-write-wins: two
+                  // administrators reassigning the same person would both
+                  // "succeed" and one would silently lose.
+                  { roleId, expectedVersion: openUser.sync.version },
+                  token,
+                ),
+              );
+              changed = true;
+            }, t('access.users.roleChangeFailed'));
+            return changed;
+          }}
+          onUploadPicture={(file) =>
+            onRun(() => api.uploadAvatar(openUser.id, file), t('avatar.error.uploadFailed'))
+          }
+          onRemovePicture={() =>
+            onRun(() => api.removeAvatar(openUser.id), t('avatar.error.removeFailed'))
+          }
+          onManageRoles={onManageRoles}
+          onOpenActivityLog={onOpenActivityLog ? () => onOpenActivityLog(openUser.id) : undefined}
+        />
         {dialogs}
       </>
     );
@@ -1207,95 +1067,6 @@ function UsersTab({
 
       {dialogs}
     </Card>
-  );
-}
-
-/**
- * Changing the role of somebody who already has one.
- *
- * The cards only choose; nothing is saved until "Change role" and its
- * confirmation, which says how many permissions the person gains and loses.
- * The old drop-down saved on the first click of an option, so a slip of the
- * mouse re-graded a person's access with no question asked.
- */
-function UserRoleAssign({
-  user,
-  roles,
-  catalogue,
-  onApply,
-}: {
-  user: User;
-  /** The roles this actor may hand out, plus the one the person already has. */
-  roles: Role[];
-  catalogue: PermissionCatalogue | null;
-  onApply: (roleId: string) => Promise<void>;
-}) {
-  const [picked, setPicked] = useState(user.roleId ?? '');
-  const [asking, setAsking] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  // The row can change underneath (a refresh after a save, another
-  // administrator): the picker follows the stored role, not a stale draft.
-  useEffect(() => setPicked(user.roleId ?? ''), [user.roleId]);
-
-  const from = roles.find((role) => role.id === user.roleId);
-  const to = roles.find((role) => role.id === picked);
-  const changed = picked !== (user.roleId ?? '') && Boolean(to);
-  const change = from && to ? permissionChange(from.permissions, to.permissions) : null;
-
-  return (
-    <>
-      <FormField label={t('access.users.colRole')} hint={t('access.users.roleHint')}>
-        {() => (
-          <RolePicker
-            name={`role-${user.id}`}
-            label={t('access.users.colRole')}
-            roles={roles}
-            catalogue={catalogue}
-            value={picked}
-            currentRoleId={user.roleId}
-            disabled={busy}
-            onChange={setPicked}
-          />
-        )}
-      </FormField>
-
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--s-8)',
-          marginTop: 'var(--s-12)',
-        }}
-      >
-        <Button variant="primary" disabled={!changed || busy} onClick={() => setAsking(true)}>
-          {t('access.users.roleChangeApply')}
-        </Button>
-        {!changed && <span className="ob-help">{t('access.users.roleChangeUnchanged')}</span>}
-      </div>
-
-      <ConfirmDialog
-        open={asking && Boolean(to)}
-        title={t('access.users.roleChangeTitle', { name: user.displayName })}
-        body={t('access.users.roleChangeBody', {
-          name: user.displayName,
-          from: from?.name ?? user.roleName ?? '',
-          to: to?.name ?? '',
-          gained: change?.gained ?? 0,
-          lost: change?.lost ?? 0,
-        })}
-        confirmLabel={t('access.users.roleChangeApply')}
-        busy={busy}
-        onCancel={() => setAsking(false)}
-        onConfirm={() => {
-          setBusy(true);
-          void onApply(picked).finally(() => {
-            setBusy(false);
-            setAsking(false);
-          });
-        }}
-      />
-    </>
   );
 }
 
