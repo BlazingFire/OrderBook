@@ -105,7 +105,8 @@ const PATHS: Record<IconName, string> = {
   search: `${circle(11, 11, 6)}M20 20l-4.5-4.5`,
   plus: 'M12 5v14M5 12h14',
   minus: 'M5 12h14',
-  more: 'M6 12h.01M12 12h.01M18 12h.01',
+  // Three small rings, not three stroke-wide dots: at 16 px a dot was barely 1 px and the ⋯ read as faint.
+  more: `${circle(6, 12, 1)}${circle(12, 12, 1)}${circle(18, 12, 1)}`,
   'chevron-down': 'M6 9l6 6 6-6',
   'chevron-up': 'M6 15l6-6 6 6',
   'chevron-left': 'M15 6l-6 6 6 6',
