@@ -317,6 +317,21 @@ against the stored other; that rule is the service's, not a constraint. Additive
 two columns. The company can also turn either surface off as a whole (`notices.showOnHome`, `notices.showAtSignIn` in
 `settings`), which needs no column.
 
+**"Sell today" (`20261018000000_notice_sell_today`, 2026-10-08).** Four more columns make a row either a notice or the
+day's "what to sell" entry, so an entry shares the audience (`notice_audiences`), `version`, the soft delete, the Recycle
+Bin and the activity log with a notice:
+
+| Column | Type | Meaning |
+|---|---|---|
+| `kind` | `TEXT NOT NULL DEFAULT 'notice'`, CHECK `notices_kind` (`'notice'`, `'sellToday'`) | Every row already up, and every row an older panel writes, is a notice. The board, its unread count, the management list and the snapshot's `notices` read `'notice'` rows only |
+| `product_ids` | `JSONB NOT NULL DEFAULT '[]'`, CHECK `notices_product_ids` (a JSON array) | The sub products (`products.id`) to push, in the manager's order, at most 12 (the service's rule). A JSON array, not a join table: a dozen ids, always read and written whole. Products are soft-deleted, so an id never points at a reused row; a deleted one is left off the cards |
+| `auto_close_seconds` | `INTEGER NULL`, CHECK `notices_auto_close` (null, 0, or 5 to 120) | Null for a notice. For an entry, 0 = the pop-up stays until closed; otherwise it closes by itself after that many seconds |
+| `show_from` | `DATE NULL` | The first day an entry applies, in the company's time zone; with `show_until` its window. Null = from the day it was written. Readers are sent entries that have not ended, including one that starts later |
+
+A notice keeps `[]`, null and null. One entry a day is the intent; when several cover a day the panels show the newest
+(`sellTodayFor`). "Shown today" is not stored here: each panel remembers per person per day in its own browser storage.
+Additive and safe to run twice (a column that already exists is skipped with its constraint); `down()` drops the four.
+
 ---
 
 ## 3. Configurable pipelines

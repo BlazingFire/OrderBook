@@ -363,6 +363,32 @@ A band at the top of Basic Home on both panels (`ui/src/NoticeSlideshow.tsx`), i
   while it rotates by itself and polite once the reader is driving. Under reduced motion (the OS setting or the app's motion switch) it never advances by itself and the stop button is not shown.
 - **Source:** on the Master the board list from `GET /api/notices`; on the Office the signed-in person's own cached list (the per-viewer, fail-closed cache), with reads recorded here overlaid.
   It follows the `notice` change event, so a new notice appears without a reload.
+- **Size (2026-10-08, "in less space"):** 8 px top and bottom (about 74 px tall). It shares Basic Home's top row with the product band (7.2): both in one `.ob-home-bands` grid,
+  side by side where each gets 34rem (1366 px and up at 100 %), one above the other below that (1024 x 768). In a band narrower than 44rem (a container query, so it follows the
+  band and the scale, not the window) the date and the dots give way and the title keeps its room; previous and next stay, and each slide still says "2 of 3" to a screen reader.
+
+### 7.2 The product band and the "Sell today" pop-up (2026-10-08; no artboard, built from the system's parts)
+
+**The product band** (`ui/src/ProductSlideshow.tsx`), beside the notice band on Basic Home, the same surface, accent edge and controls, one row about 77 px tall:
+- **Left:** an eyebrow, "Sell today" with the entry's headline under it (two lines at most) when the band shows today's entry, "Products" otherwise.
+- **Cards:** a 56 px photo (`micro`, square, 4 px radius, the blurhash first; the neutral tile with the name's first letter when there is no photo), the name (body, 550, one line)
+  and the code (mono, small, secondary). No size: it does not fit a card this small; the pop-up shows it. As many whole cards as the band holds at 10rem each, never a cut one.
+  Hover tints the card and turns the name accent; a card opens the sub product.
+- **Movement:** by one card every 4 s when there are more than fit, paused under the pointer and while focus is inside, a stop button, previous and next (the notice band's
+  WAI-ARIA carousel rules); never by itself under reduced motion (the OS or the app's switch). With everything in view, no controls.
+- **Content:** today's "Sell today" products, else up to 24 sub products that have a photo, a different selection each day. Off with `basicHome.productSlideshow`
+  (Settings > Company > Notice board); absent without `products.view`.
+
+**The "Sell today" pop-up** (`ui/src/SellTodayPopup.tsx`): a `Modal` of size `lg`. Title = the headline, "Sell today" as the eyebrow under it; the message in body text,
+secondary; the products as photo cards in a centred grid of 10 to 14rem columns (square photo, name in body 550, code and size in mono small, the main product in small tertiary;
+a hairline border that turns accent on hover). The footer: when it closes by itself, a 22 px ring (accent on a hairline track, drawn down second by second, no animation under
+reduced motion) and "Closes in N s" in small tabular figures, then **Start work** (primary, focused, so Enter starts work). Never on top of another dialog: it waits for the
+unread notices pop-up. Once per person per day; off with `notices.showSellToday`.
+
+**Management** (Notice board management, Sell today tab): the kit's `Tabs` over the page (Notices / Sell today, each with its count); the tab's one-line intro beside its primary
+"New “Sell today”" button; a `DataTable` whose headline cell carries one status pill (Today = ok, Upcoming = accent, Newer one shows / Ended = offline), the products as 28 px thumbnails
+and "N picked", the days, the audience and how it closes. The editor (`Modal` `lg`): headline, a `Combobox` that searches sub products with their thumbnails, the picked list as hairline
+rows (32 px photo, name, code · size · main product, a remove button), the message, then one row of three fields (Close by itself after, First day, Last day), then the audience.
 
 **Stage tones and colour labels (as built).** `stageTone()` (`ui/src/DataDisplay.tsx`) maps a pipeline stage's own colour (set in Fields > Pipeline stages) by hue to the five pill tones
 (red, amber, green, accent; greys neutral) and keeps the stage flags only as the fallback for a stage with no colour: Cancelled shows red, Postpone amber, Dispatched green, In progress accent.
@@ -490,6 +516,7 @@ Lead wording becomes **pending order**. The quantity unit is "pcs" everywhere, a
 | Data, stage tones, colour labels, product photos | `ui/src/DataTable.tsx`, `ui/src/DataDisplay.tsx` (StatusPill, `stageTone`, ColourChip, `useColourLabel`, IdField, Timeline, `recordTimelineEntries`, ProductThumb), `ui/src/PageBar.tsx`, `shared/src/domain/colour-rule.ts` (`colourLabeller`); `ui/tests/data-timeline.test.tsx` |
 | Overlays | `ui/src/Modal.tsx`, `ConfirmDialog.tsx`, `Popover.tsx`, `CommandPalette.tsx`, `useOverlay`; `ui/tests/overlays-restyle`, `overlay-focus-return`, `popover-menu-keys` |
 | Notices on Basic Home and at sign-in | `ui/src/NoticeSlideshow.tsx`, `ui/src/SignInNotices.tsx`, `ui/src/NoticeDashboardCard.tsx`, `NoticeBoardView.tsx`; `master/web/src/useNotices.ts` |
+| Product band and "Sell today" (7.2) | `ui/src/ProductSlideshow.tsx`, `ui/src/SellTodayPopup.tsx`, the Sell today tab in `ui/src/NoticeManageView.tsx`, `.ob-home-bands` / `.ob-prodshow` / `.ob-selltoday-*` in `base.css`; `ui/tests/product-slideshow.test.tsx`, `sell-today-popup.test.tsx`, `sell-today-manage.test.tsx` |
 | New Order screen | `ui/src/LeadEntryScreen.tsx` (Master) and `office/web/src/screens/AddLeadScreen.tsx` (Office) on the `ui/src/order/` kit (`OrderDetailsBar`, `OrderField`, `FollowUpField`, `PartyChip`, `AddedProductsPanel`, `OrderChecks`, `CartEntry`, `order.css`); `ui/tests/lead-entry-screen.test.tsx`, `add-lead-flow.test.tsx` |
 | Notes (three codes to a line, colour labels) | `shared/src/domain/order-note.ts` (`NOTE_LAYOUT.codesPerRow`), `ui/src/OrderNote.tsx`, `ui/src/order-note.css`; `master/src/services/print.service.ts` |
 | Colour chain (server) | `master/src/services/lead.service.ts` (`buildLines`, `matchExistingLines`), the Dispatches report in `report.service.ts` |
