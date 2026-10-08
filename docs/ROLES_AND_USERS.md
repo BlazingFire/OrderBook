@@ -611,8 +611,9 @@ What an administrator should know:
 
 ## 15c. The notice board keys (Oct 2026)
 
-Two keys, group `notices`, shown in the role editor under **Notice board** and on each role card as **Read** or
-**Read and manage**:
+Two keys, group `notices`, shown in the role editor under **Notice board**, on each role card of the **Add user** form
+as **Read** or **Read and manage**, and on a person's screen (§15d) as the **Notice board** count under the role's
+permissions (1/2 reads, 2/2 also manages):
 
 | Key | Minimum tier | Meaning |
 |---|---|---|
@@ -650,7 +651,8 @@ Inactive, the tier ("Office tier"), the role, the user id with a copy button, an
 | ⋯ **Delete person** | "Moves to recycle bin." Asks first, then returns to the list (§14) |
 
 Deactivate and Delete are disabled, with the reason as their second line, for the last active administrator, the last
-two active Server Masters (§3.2), and the person signed in.
+two active Server Masters (§3.2), and the person signed in. The last is this screen's alone, as it was on the list
+before it: the server refuses the first two, not the third.
 
 **Access.** "Everything this person can do comes from their role." One card per role the caller may give (at or below
 their own tier, plus the person's own): its tier, a bar and "N of M permissions", how many people hold it, and
