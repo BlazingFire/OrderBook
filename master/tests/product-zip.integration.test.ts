@@ -26,13 +26,17 @@ import { toCsv } from '../src/lib/csv.js';
 import { ConflictError, ForbiddenError, ValidationError } from '../src/lib/errors.js';
 import { readSheetRows } from '../src/lib/spreadsheet.js';
 import * as productRepo from '../src/repositories/product.repository.js';
+import { startJob } from '../src/services/backup-job.js';
 import { seedCatalogue } from '../src/services/catalogue-seed.service.js';
 import * as imageService from '../src/services/image.service.js';
 import {
   exportProductZip,
+  isProductRestoreRunning,
+  loadShippedCatalogue,
   previewProductZip,
   productRestoreJob,
   restoreProductZip,
+  SHIPPED_CATALOGUE_MARKER,
   startProductRestore,
 } from '../src/services/product-zip.service.js';
 import * as roleService from '../src/services/role.service.js';
@@ -424,7 +428,156 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
     const refusal = await previewProductZip(bare, 'p.zip', admin).catch((error: unknown) => error);
     expect(refusal).toBeInstanceOf(ValidationError);
     expect(refusal).toMatchObject({ messageKey: 'validation.productZip.noProductsCsv' });
+
+    // A header and no rows: refused before a main product is written, not half applied.
+    const headerOnly = new Map(entries);
+    headerOnly.set('products.csv', Buffer.from('﻿' + toCsv([...IMPORT_HEADERS], []), 'utf8'));
+    const empty = await zipOf(headerOnly);
+    await resetData();
+    await expect(restoreProductZip(empty, 'p.zip', {}, admin)).rejects.toMatchObject({
+      messageKey: 'validation.import.emptyFile',
+    });
+    expect(await db()('product_categories').count('* as n').first()).toEqual({ n: '0' });
   });
+
+  it('names every photo so a restore brings it back to its own sub product, whatever the code', async () => {
+    // OPT-0005 recoded to read like "photo 2 of OPT-0002", OPT-0006 to a code no file name can hold.
+    await db()('product_variants').where({ code: 'OPT-0005' }).update({ code: 'OPT-0002_2' });
+    await db()('product_variants').where({ code: 'OPT-0006' }).update({ code: 'OPT/0006' });
+    await addPhoto('OPT-0002_2', '#aa0000');
+    await addPhoto('OPT/0006', '#00aa00');
+    // OPT-0002's photo 2 would go out as OPT-0002_2, the other one's name: it is left out, and never "missing".
+    await addPhoto('OPT-0002', '#0000aa');
+
+    const { file, entries } = await exported();
+    expect([...entries.keys()].filter((name) => name.startsWith('images/')).sort()).toEqual(
+      [
+        'images/OPT%2F0006.webp',
+        'images/OPT-0001.webp',
+        'images/OPT-0001_2.webp',
+        'images/OPT-0002.webp',
+        'images/OPT-0002_2.webp',
+      ].sort(),
+    );
+    expect(entries.get('README.txt')!.toString('utf8')).toMatch(/NOT IN THIS ZIP[\s\S]*, photo 2/);
+
+    const preview = await previewProductZip(file, 'p.zip', admin);
+    expect(preview.photos).toMatchObject({
+      added: [],
+      replaced: [],
+      unchanged: 5,
+      unmatched: [],
+      notInZip: [],
+    });
+    const done = await restoreProductZip(file, 'p.zip', { removeMissingPhotos: true }, admin);
+    expect(done).toMatchObject({ photosRemoved: 0 });
+    expect((await productByCode('OPT-0002')).images).toHaveLength(2);
+    expect((await productByCode('OPT-0002_2')).images).toHaveLength(1);
+    expect((await productByCode('OPT/0006')).images).toHaveLength(1);
+
+    // Into an emptied catalogue, each photo lands on its own sub product.
+    await resetData();
+    await restoreProductZip(file, 'p.zip', {}, admin);
+    expect((await productByCode('OPT-0002')).images).toHaveLength(1);
+    expect((await productByCode('OPT-0002_2')).images).toHaveLength(1);
+    expect((await productByCode('OPT/0006')).images).toHaveLength(1);
+  });
+
+  it('says where products.csv and main-products.csv disagree, reads a brand only from a Brand column, and a colour once', async () => {
+    const { entries } = await exported();
+    const [header, ...body] = await readSheetRows(entries.get('products.csv')!);
+    const codeAt = header!.indexOf('Main product code');
+    const nameAt = header!.indexOf('Main product');
+    const main = body[0]![codeAt]!;
+    const mainName = body[0]![nameAt]!;
+    const csv = (head: string[], rows: string[][]) => Buffer.from('﻿' + toCsv(head, rows), 'utf8');
+    const edited = new Map(entries);
+    edited.set(
+      'products.csv',
+      csv(
+        header!,
+        body.map((row) =>
+          row[codeAt] === main
+            ? row.map((cell, index) => (index === nameAt ? 'Renamed here' : cell))
+            : row,
+        ),
+      ),
+    );
+    // main-products.csv without its Brand column: every brand stays as it is.
+    const [mainHeader, ...mainRows] = await readSheetRows(entries.get('main-products.csv')!);
+    expect(mainHeader![0]).toBe('Brand');
+    edited.set(
+      'main-products.csv',
+      csv(
+        mainHeader!.slice(1),
+        mainRows.map((row) => row.slice(1)),
+      ),
+    );
+    const [colourHeader, ...colourRows] = await readSheetRows(entries.get('colours.csv')!);
+    edited.set(
+      'colours.csv',
+      csv(colourHeader!, [
+        ...colourRows,
+        colourRows[0]!,
+        ['Zzz New', '#123456'],
+        ['Zzz New', '#654321'],
+      ]),
+    );
+    const file = await zipOf(edited);
+
+    const preview = await previewProductZip(file, 'p.zip', admin);
+    expect(preview.mainProducts).toEqual({ added: [], renamed: [] });
+    expect(preview.colours).toEqual({ added: ['Zzz New'], changed: [] });
+    expect(preview.problems).toEqual([
+      {
+        subject: main,
+        messageKey: 'validation.productZip.mainDiffers',
+        params: { column: 'Main product', value: 'Renamed here', main: mainName },
+      },
+    ]);
+
+    const done = await restoreProductZip(file, 'p.zip', {}, admin);
+    expect(done.colours.added).toEqual(['Zzz New']);
+    const categories = await productRepo.listCategories(admin.tenantId);
+    expect(categories.find((category) => category.code === main)?.name).toBe(mainName);
+    expect(categories.every((category) => category.brand === 'Swisware+')).toBe(true);
+  });
+
+  it('carries on a boot load that threw or was stopped halfway, adding only what is missing', async () => {
+    const { file, entries } = await exported();
+    await resetData();
+    const marker = async () =>
+      (await db()('settings').where({ key: SHIPPED_CATALOGUE_MARKER }).first())?.value as
+        { state: string; loaded: string } | undefined;
+
+    // A first boot whose zip cannot be read: under way, not done, and nothing written.
+    const broken = path.join(dir, 'broken.zip');
+    await writeFile(broken, 'not a zip');
+    await expect(loadShippedCatalogue({ zip: broken })).rejects.toMatchObject({
+      messageKey: 'validation.productZip.notAZip',
+    });
+    expect(await marker()).toMatchObject({ state: 'loading' });
+
+    // A second, stopped in the photo phase: every row in, one photo of three.
+    const partial = new Map(entries);
+    partial.delete('images/OPT-0001_2.webp');
+    partial.delete('images/OPT-0002.webp');
+    await restoreProductZip(await zipOf(partial), 'p.zip', {}, admin);
+    const kept = (await productByCode('OPT-0001')).images[0]!.id;
+
+    expect(await loadShippedCatalogue({ zip: file })).toBe('zip');
+    expect(await marker()).toMatchObject({ state: 'done', loaded: 'zip' });
+    expect(await db()('products').whereNull('deleted_at').count('* as n').first()).toEqual({
+      n: String(SUB_PRODUCTS),
+    });
+    const opt1 = (await productByCode('OPT-0001')).images;
+    expect(opt1).toHaveLength(2);
+    // The photo already in slot 1 stays, though its bytes are its own encoding now, not the zip's.
+    expect(opt1.find((image) => image.isPrimary)?.id).toBe(kept);
+    expect((await productByCode('OPT-0002')).images).toHaveLength(1);
+
+    expect(await loadShippedCatalogue({ zip: file })).toBeNull();
+  }, 120_000);
 
   it('runs the restore as one job at a time and keeps its report', async () => {
     const { file } = await exported();
@@ -436,11 +589,14 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
     const started = startProductRestore(first, 'first.zip', {}, admin);
     expect(started.phase).toBe('checking');
     expect(() => startProductRestore(second, 'second.zip', {}, admin)).toThrow(ConflictError);
+    // What a full backup restore asks before it starts (`data.routes.ts`).
+    expect(isProductRestoreRunning()).toBe(true);
 
     await vi.waitFor(() => expect(productRestoreJob()?.finishedAt).toBeDefined(), {
       timeout: 60_000,
       interval: 100,
     });
+    expect(isProductRestoreRunning()).toBe(false);
     expect(productRestoreJob()).toMatchObject({
       id: started.id,
       phase: 'done',
@@ -448,6 +604,25 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
     });
     // The upload goes when the job ends.
     await vi.waitFor(async () => expect(await readdir(dir)).not.toContain('first.zip'));
+
+    // Nor beside a full backup restore, which would replace the database under it.
+    let release = (): void => undefined;
+    const { finished } = startJob(
+      'restore',
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    let refusal: unknown;
+    try {
+      startProductRestore(second, 'second.zip', {}, admin);
+    } catch (error) {
+      refusal = error;
+    }
+    release();
+    await finished;
+    expect(refusal).toMatchObject({ messageKey: 'error.conflict.backupBusy' });
   });
 
   describe('over HTTP, for a signed-in Master user', () => {

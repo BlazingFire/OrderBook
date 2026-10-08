@@ -88,6 +88,7 @@ import * as customFieldRepo from '../repositories/custom-field.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
 import * as settingsRepo from '../repositories/settings.repository.js';
 import { resolveDefaultTenantId } from '../repositories/tenant.repository.js';
+import { currentJob, isJobRunning } from './backup-job.js';
 import * as catalog from './catalog.service.js';
 import { loadCatalogue, readCatalogueFile, upsertOptions } from './catalogue-seed.service.js';
 import { publishChange } from './change-bus.js';
@@ -122,12 +123,25 @@ function today(): string {
 
 // --- Export ------------------------------------------------------------------
 
+/** Every code the photo planner matches a name against, lower-cased. */
+const codesOf = (products: readonly Product[]): Set<string> =>
+  new Set(
+    products.flatMap((product) => product.variants.map((variant) => variant.code.toLowerCase())),
+  );
+
 /**
  * The name a photo goes out under: the code of the variant its caption names
  * (a sub product with several colours), else of its first live variant, and
- * `_N` past the first slot. Null for a sub product with no live code.
+ * `_N` past the first slot. Null for a sub product with no live code, and for
+ * a photo N whose `CODE_N` is another sub product's code: the planner reads
+ * that name as the other one's photo 1, so this photo has no name to go under.
  */
-function photoBaseName(product: Product, image: ProductImage, slot: number): string | null {
+function photoBaseName(
+  product: Product,
+  image: ProductImage,
+  slot: number,
+  codes: ReadonlySet<string>,
+): string | null {
   const live = product.variants.filter((variant) => variant.isActive);
   const caption = image.caption?.trim().toLowerCase();
   const variant =
@@ -135,8 +149,27 @@ function photoBaseName(product: Product, image: ProductImage, slot: number): str
       ? live.find((candidate) => (candidate.label ?? '').trim().toLowerCase() === caption)
       : undefined) ?? live[0];
   if (!variant) return null;
-  return slot === 1 ? variant.code : `${variant.code}_${slot}`;
+  if (slot === 1) return variant.code;
+  const name = `${variant.code}_${slot}`;
+  return codes.has(name.toLowerCase()) ? null : name;
 }
+
+/** What a file name cannot hold on Windows, and `%`, which marks one written as `%2F`. */
+const UNSAFE = /["%*/:<>?\\|]/;
+
+/** A code as a file name: `SW/101` goes out as `SW%2F101`. */
+const fileSafe = (code: string): string =>
+  code.replace(
+    new RegExp(UNSAFE.source, 'g'),
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}`,
+  );
+
+/** And back; a `%` the export would not have written stays as it is. */
+const fromFileSafe = (name: string): string =>
+  name.replace(/%([0-9A-Fa-f]{2})/g, (text, hex: string) => {
+    const char = String.fromCharCode(Number.parseInt(hex, 16));
+    return UNSAFE.test(char) ? char : text;
+  });
 
 /** A sub product's photos in gallery order: entry N - 1 is slot N. */
 function galleryImages(product: Product): ProductImage[] {
@@ -147,7 +180,8 @@ function galleryImages(product: Product): ProductImage[] {
 const masterFile = (tenantId: string, imageId: string): string =>
   path.join(config.imagesDir, tenantId, imageId, 'master.webp');
 
-function readme(company: string, date: string): string {
+/** `unnamed`: the photos left out because no name would bring them back, as "sub product, photo N". */
+function readme(company: string, date: string, unnamed: readonly string[]): string {
   return [
     'OrderBook product backup',
     '========================',
@@ -163,6 +197,8 @@ function readme(company: string, date: string): string {
     '  images             Every product photo, named by the sub product Code:',
     '                     OPT-0001.webp is the first (main) photo of OPT-0001,',
     '                     OPT-0001_2.webp its second photo, OPT-0001_3.webp its third.',
+    '                     A Code holding a character a file name cannot (/ \\ : * ? " < > | %)',
+    '                     has it written as % and two digits: SW/101 is SW%2F101.webp.',
     '',
     'HOW TO EDIT',
     '',
@@ -170,7 +206,10 @@ function readme(company: string, date: string): string {
     '  2. Change a cell to change that value. Leave the Code column as it is: the Code is how',
     '     each row finds its sub product.',
     '  3. To add a sub product, add a row with a new Code that no other row uses.',
-    '  4. To rename a main product or change its brand, change it in main-products.csv.',
+    '  4. To rename a main product or change its brand, change it in main-products.csv: the',
+    '     Main product and Brand cells of products.csv are not read for a main product listed',
+    '     there. Order only places a main product the restore adds; to reorder the ones you',
+    '     have, use the Main products screen.',
     '  5. To replace a photo, put the new picture in the images folder under the same name and',
     '     delete the old file, even when the ending differs: OPT-0001.jpg replaces OPT-0001.webp.',
     '     jpg, png and webp pictures are accepted.',
@@ -197,6 +236,18 @@ function readme(company: string, date: string): string {
     '  restores this zip stores the photos again in its own way, so take a new backup there',
     '  before you edit again.',
     '',
+    ...(unnamed.length > 0
+      ? [
+          'NOT IN THIS ZIP',
+          '',
+          '  These photos are not in the images folder: their sub product has no Code in use, or',
+          '  the name the photo would take is the Code of another sub product. Restoring this zip',
+          '  leaves them as they are.',
+          '',
+          ...unnamed.map((photo) => `  ${photo}`),
+          '',
+        ]
+      : []),
   ].join('\r\n');
 }
 
@@ -244,16 +295,19 @@ export async function exportProductZip(
       .map((option) => [option.value, option.hex ?? '']);
     await writer.appendEntry(COLOURS_CSV, ['﻿' + toCsv(COLOUR_HEADERS, colourRows)]);
 
-    await writer.appendEntry('README.txt', [readme(company ?? 'this company', date)]);
-
     const { items } = await productRepo.listProducts(tenantId, { limit: 100_000, offset: 0 });
+    const codes = codesOf(items);
+    const unnamed: string[] = [];
     for (const product of items) {
       for (const [index, image] of galleryImages(product).entries()) {
-        const name = photoBaseName(product, image, index + 1);
+        const name = photoBaseName(product, image, index + 1, codes);
+        if (name === null) {
+          unnamed.push(`${product.name}, photo ${index + 1}`);
+          continue;
+        }
         const source = masterFile(tenantId, image.id);
         // A row whose files are gone (healed on the next boot, if it was shipped) has nothing to write.
         if (
-          !name ||
           !(await access(source).then(
             () => true,
             () => false,
@@ -263,11 +317,16 @@ export async function exportProductZip(
           continue;
         }
         // Already compressed: stored, so the bytes in the zip are the bytes on disk.
-        await writer.appendEntry(`images/${name}.webp`, createReadStream(source), { store: true });
+        await writer.appendEntry(`images/${fileSafe(name)}.webp`, createReadStream(source), {
+          store: true,
+        });
         photos += 1;
       }
     }
+    if (unnamed.length > 0)
+      log.warn(`${unnamed.length} photos have no name to go under, so the backup leaves them out`);
 
+    await writer.appendEntry('README.txt', [readme(company ?? 'this company', date, unnamed)]);
     await writer.finalize();
   } catch (error) {
     writer.abort();
@@ -356,7 +415,7 @@ interface MainRow {
 
 /** One photo in `images/`, hashed on the way in. */
 interface ZipPhoto {
-  /** The file name the planner reads: `OPT-0001_2.jpg`. */
+  /** The file name the planner reads: `OPT-0001_2.jpg`, and `SW/101.jpg` for `SW%2F101.jpg`. */
   name: string;
   entry: string;
   head: Uint8Array;
@@ -396,20 +455,24 @@ async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promis
   const fileCodes = new Set<string>();
   // A main product products.csv names by a code main-products.csv does not list: its first row says what it is.
   const named: MainRow[] = [];
+  // Every row's own main product cells, to say where main-products.csv, the one read, disagrees.
+  const cells: Array<{ code: string; name: string; brand: string }> = [];
   for (const row of products.rows.slice(headerAt + 1)) {
     if (isBlankRow(row)) continue;
     const code = cell(row, at('code'));
     if (code) fileCodes.add(code.toLowerCase());
     const mainCode = cell(row, at('categoryCode'));
-    if (mainCode && !named.some((main) => main.code?.toLowerCase() === mainCode.toLowerCase())) {
-      named.push({
-        code: mainCode,
-        name: cell(row, at('categoryName')),
-        brand: cell(row, at('categoryBrand')) || undefined,
-        order: null,
-      });
+    if (!mainCode) continue;
+    const name = cell(row, at('categoryName'));
+    const brand = cell(row, at('categoryBrand'));
+    cells.push({ code: mainCode.toLowerCase(), name, brand });
+    if (!named.some((main) => main.code?.toLowerCase() === mainCode.toLowerCase())) {
+      named.push({ code: mainCode, name, brand: brand || undefined, order: null });
     }
   }
+  // A header and nothing else: refused here, before a main product is written, not by the import after.
+  if (products.rows.slice(headerAt + 1).every(isBlankRow))
+    throw new ValidationError('validation.import.emptyFile');
 
   const mainProducts: MainRow[] = [];
   const mainEntry = findEntry(reader, MAIN_PRODUCTS_CSV);
@@ -419,6 +482,7 @@ async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promis
     const mainMatch = matchHeaders(header);
     const mainAt = (field: ImportField): number =>
       mainMatch.byIndex.findIndex((column) => column?.field === field);
+    const brandAt = mainAt('categoryBrand');
     const orderAt = header.findIndex((text) =>
       ['order', 'sortorder'].includes(normalizeHeader(text ?? '')),
     );
@@ -428,9 +492,29 @@ async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promis
       mainProducts.push({
         code: cell(row, mainAt('categoryCode')) || null,
         name: cell(row, mainAt('categoryName')),
-        brand: cell(row, mainAt('categoryBrand')) || null,
+        // No Brand column leaves every brand as it is; an empty cell clears that one.
+        brand: brandAt === -1 ? undefined : cell(row, brandAt) || null,
         order: Number.isInteger(order) && order >= 0 ? order : null,
       });
+    }
+
+    const differs = (code: string, field: ImportField, value: string, listed: string): void => {
+      problems.push({
+        subject: code,
+        messageKey: 'validation.productZip.mainDiffers',
+        params: { column: labelOf(field), value, main: listed },
+      });
+    };
+    for (const main of mainProducts) {
+      if (!main.code) continue;
+      const own = cells.filter((row) => row.code === main.code?.toLowerCase());
+      const name = own.find((row) => row.name !== main.name);
+      if (name && at('categoryName') !== -1)
+        differs(main.code, 'categoryName', name.name, main.name);
+      const listed = main.brand === undefined ? undefined : (main.brand ?? '').toLowerCase();
+      const brand = own.find((row) => listed !== undefined && row.brand.toLowerCase() !== listed);
+      if (brand && at('categoryBrand') !== -1)
+        differs(main.code, 'categoryBrand', brand.brand, main.brand ?? '');
     }
   }
   for (const main of named) {
@@ -447,7 +531,8 @@ async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promis
     const hexAt = header.indexOf('hex');
     for (const row of rows.slice(1)) {
       const value = cell(row, valueAt);
-      if (!value) continue;
+      // A value listed twice is one colour: the first row says its hex.
+      if (!value || colours.some((colour) => colour.value === value)) continue;
       const hex = cell(row, hexAt);
       if (hex && !HEX.test(hex))
         problems.push({
@@ -471,7 +556,7 @@ async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promis
         .some((folder) => folder.toLowerCase() === 'images')
     )
       continue;
-    const name = baseName(entry);
+    const name = fromFileSafe(baseName(entry));
     if (photos.some((photo) => photo.name === name)) {
       extraPhotos.push(name);
       continue;
@@ -650,7 +735,12 @@ interface PhotoPlan {
   notInZip: Array<{ imageId: string; name: string }>;
 }
 
-function planPhotos(zip: ZipContents, products: readonly Product[]): PhotoPlan {
+/**
+ * `keepPhotos`: a photo already in a slot stays, whatever its bytes. The boot
+ * load asks for it: it only ever fills an empty catalogue, so a photo there is
+ * one an interrupted load already put in, stored by now in its own encoding.
+ */
+function planPhotos(zip: ZipContents, products: readonly Product[], keepPhotos = false): PhotoPlan {
   const plan = planPhotoImport(zip.photos, products);
   const checksumOf = new Map(
     products.flatMap((product) => product.images.map((image) => [image.id, image.checksum])),
@@ -672,7 +762,7 @@ function planPhotos(zip: ZipContents, products: readonly Product[]): PhotoPlan {
       report.added.push(row.fileName);
       toRun.push(row);
     } else if (row.status === 'hasPhoto') {
-      if (checksumOf.get(row.slotImageId as string) === row.file.sha256) {
+      if (keepPhotos || checksumOf.get(row.slotImageId as string) === row.file.sha256) {
         report.unchanged += 1;
         keptSlots.set(row.slotImageId as string, row.slot ?? 1);
       } else {
@@ -685,16 +775,15 @@ function planPhotos(zip: ZipContents, products: readonly Product[]): PhotoPlan {
   }
 
   const named = new Set(plan.flatMap((row) => (row.slotImageId ? [row.slotImageId] : [])));
+  const codes = codesOf(products);
   const notInZip: PhotoPlan['notInZip'] = [];
   for (const product of products) {
     if (!product.variants.some((variant) => zip.fileCodes.has(variant.code.toLowerCase())))
       continue;
     galleryImages(product).forEach((image, index) => {
-      if (!named.has(image.id))
-        notInZip.push({
-          imageId: image.id,
-          name: photoBaseName(product, image, index + 1) ?? image.id,
-        });
+      // A photo with no name to go under is in no zip, so never missing from one (the README lists it).
+      const name = photoBaseName(product, image, index + 1, codes);
+      if (name !== null && !named.has(image.id)) notInZip.push({ imageId: image.id, name });
     });
   }
   report.notInZip = notInZip.map((photo) => photo.name);
@@ -802,10 +891,13 @@ function requireRestorePermissions(actor: ActorContext, options: ProductRestoreO
   if (options.binMissingProducts) requirePermission(actor, 'products.delete');
 }
 
+/** `keepPhotos` is the boot load's alone (`planPhotos`); no request can ask for it. */
+type RunOptions = ProductRestoreOptions & { keepPhotos?: boolean };
+
 async function runZip(
   filePath: string,
   fileName: string,
-  options: ProductRestoreOptions & { dryRun: boolean },
+  options: RunOptions & { dryRun: boolean },
   actor: ActorContext,
   progress: Progress = () => undefined,
 ): Promise<ProductZipReport> {
@@ -836,11 +928,12 @@ async function runZip(
     let renamed = main.renamed;
     if (!dryRun) {
       progress({ phase: 'products' });
-      renamed = await applyMainProducts(main, actor, problems);
+      // The colours first: one transaction, so a refusal there leaves nothing half written.
       if (colours.added.length + colours.changed.length > 0) {
         await db().transaction((trx) => upsertOptions(tenantId, 'stock.colour', zip.colours, trx));
         customFieldRepo.invalidateFieldCache(tenantId);
       }
+      renamed = await applyMainProducts(main, actor, problems);
     }
 
     const { rows, ...imported } = await importProducts(
@@ -873,7 +966,7 @@ async function runZip(
             }) as unknown as Product,
         )
       : [];
-    const photoPlan = planPhotos(zip, [...live, ...pending]);
+    const photoPlan = planPhotos(zip, [...live, ...pending], options.keepPhotos);
     const photos = photoPlan.report;
 
     const report: ProductZipReport = {
@@ -1007,7 +1100,7 @@ export function previewProductZip(
 export function restoreProductZip(
   filePath: string,
   fileName: string,
-  options: ProductRestoreOptions,
+  options: RunOptions,
   actor: ActorContext,
   progress?: Progress,
 ): Promise<ProductZipReport> {
@@ -1023,9 +1116,15 @@ export function productRestoreJob(): ProductRestoreJob | null {
   return job ? { ...job } : null;
 }
 
+/** A full backup restore asks before it starts: it would replace the database under this one. */
+export function isProductRestoreRunning(): boolean {
+  return Boolean(job && !job.finishedAt);
+}
+
 /**
  * Start the real run detached and answer at once; the upload at `filePath` is
- * deleted when it ends. A second start while one runs is refused, not queued.
+ * deleted when it ends. A second start while one runs is refused, not queued,
+ * and so is one while a full backup restore runs, whichever came first.
  */
 export function startProductRestore(
   filePath: string,
@@ -1034,7 +1133,9 @@ export function startProductRestore(
   actor: ActorContext,
 ): ProductRestoreJob {
   requireRestorePermissions(actor, options);
-  if (job && !job.finishedAt) throw new ConflictError('error.conflict.productRestoreBusy');
+  if (isProductRestoreRunning()) throw new ConflictError('error.conflict.productRestoreBusy');
+  if (isJobRunning() && currentJob()?.kind === 'restore')
+    throw new ConflictError('error.conflict.backupBusy');
 
   const current: ProductRestoreJob = {
     id: randomUUID(),
@@ -1072,7 +1173,8 @@ export function startProductRestore(
 
 /**
  * Where the boot load is recorded: a settings row no `SETTINGS` definition
- * names, so no screen shows it (as `internal.cataloguePhotosAttached`).
+ * names, so no screen shows it (as `internal.cataloguePhotosAttached`):
+ * `state: 'loading'` before the load writes anything, `'done'` once it ends.
  */
 export const SHIPPED_CATALOGUE_MARKER = 'internal.shippedCatalogueLoaded';
 
@@ -1086,64 +1188,85 @@ export const SHIPPED_CATALOGUE_MARKER = 'internal.shippedCatalogueLoaded';
  *
  * Recorded under the marker whatever it found, so an install that already has
  * products only gets the marker, and a catalogue a company later empties on
- * purpose is never filled again. A load that throws is not recorded: the next
- * boot tries again. Answers what it loaded, `none` for the marker alone, and
- * null when the marker was already there.
+ * purpose is never filled again. A load is marked `loading` before its first
+ * write, so one the Master stopped in the middle of (the window closed while
+ * the photos went in) or one that threw runs again on the next boot, without
+ * loading anything twice: rows are upserted by code, and a photo already in
+ * its slot stays (`keepPhotos`). Answers what it loaded, `none` for the
+ * marker alone, and null when it had already run.
  */
 export async function loadShippedCatalogue(
   sources: { zip?: string; markdown?: string } = {},
   progress?: Progress,
 ): Promise<'zip' | 'markdown' | 'none' | null> {
   const tenantId = await resolveDefaultTenantId();
-  if (
-    (await settingsRepo.readSettingRows(tenantId)).some(
-      (row) => row.key === SHIPPED_CATALOGUE_MARKER,
-    )
-  )
-    return null;
+  const marker = (await settingsRepo.readSettingRows(tenantId)).find(
+    (row) => row.key === SHIPPED_CATALOGUE_MARKER,
+  )?.value as { state?: string } | undefined;
+  if (marker && marker.state !== 'loading') return null;
 
-  let loaded: 'zip' | 'markdown' | 'none' = 'none';
-  if (!(await db()('product_categories').where({ tenant_id: tenantId }).first('id'))) {
-    const actor: ActorContext = {
-      ...systemActor(tenantId),
-      permissions: {
-        roleId: null,
-        roleName: 'System',
-        tier: 'admin',
-        permissions: [
-          'products.view',
-          'products.bulk',
-          'products.create',
-          'products.edit',
-          'catalog.lists.manage',
-        ],
-      },
-    };
-    const zip = sources.zip ?? config.catalogueZip;
-    if (
-      await access(zip).then(
-        () => true,
-        () => false,
-      )
-    ) {
-      await restoreProductZip(zip, path.basename(zip), {}, actor, progress);
-      loaded = 'zip';
-    } else {
-      await loadCatalogue(await readCatalogueFile(sources.markdown), actor, { replace: false });
-      loaded = 'markdown';
-    }
+  const mark = (value: { state: 'loading' | 'done'; loaded: 'zip' | 'markdown' | 'none' }) =>
+    db().transaction((trx) =>
+      settingsRepo.upsertSetting(
+        tenantId,
+        SHIPPED_CATALOGUE_MARKER,
+        { ...value, at: new Date().toISOString() },
+        false,
+        1,
+        null,
+        trx,
+      ),
+    );
+
+  // A load already under way carries on over what it wrote; otherwise only into a catalogue never used.
+  if (!marker && (await db()('product_categories').where({ tenant_id: tenantId }).first('id'))) {
+    await mark({ state: 'done', loaded: 'none' });
+    return 'none';
   }
 
-  await db().transaction((trx) =>
-    settingsRepo.upsertSetting(
-      tenantId,
-      SHIPPED_CATALOGUE_MARKER,
-      { loaded, at: new Date().toISOString() },
-      false,
-      1,
-      null,
-      trx,
-    ),
-  );
+  const actor: ActorContext = {
+    ...systemActor(tenantId),
+    permissions: {
+      roleId: null,
+      roleName: 'System',
+      tier: 'admin',
+      permissions: [
+        'products.view',
+        'products.bulk',
+        'products.create',
+        'products.edit',
+        'catalog.lists.manage',
+      ],
+    },
+  };
+  const zip = sources.zip ?? config.catalogueZip;
+  const loaded = (await access(zip).then(
+    () => true,
+    () => false,
+  ))
+    ? 'zip'
+    : 'markdown';
+  await mark({ state: 'loading', loaded });
+  if (loaded === 'zip') {
+    const report = await restoreProductZip(
+      zip,
+      path.basename(zip),
+      { keepPhotos: true },
+      actor,
+      progress,
+    );
+    if (report.problems.length > 0) {
+      log.warn(
+        `The shipped catalogue loaded, but ${report.problems.length} things could not be done: ` +
+          report.problems
+            .slice(0, 5)
+            .map((problem) => `${problem.subject} (${problem.messageKey})`)
+            .join(', '),
+      );
+    }
+  } else {
+    await loadCatalogue(await readCatalogueFile(sources.markdown), actor, { replace: false });
+  }
+  await mark({ state: 'done', loaded });
   return loaded;
 }

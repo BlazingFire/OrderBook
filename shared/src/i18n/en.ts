@@ -426,6 +426,8 @@ export const EN_MESSAGES = {
     'This zip holds a file it should not ({entry}), so nothing was read from it',
   'validation.productZip.codeInvalid': 'The main product code {code} must be letters and digits only',
   'validation.productZip.hexInvalid': '{hex} is not a colour like #1A2B3C, so the colour was left as it is',
+  'validation.productZip.mainDiffers':
+    'products.csv gives the {column} as "{value}" but main-products.csv as "{main}". Only main-products.csv is read, so change it there.',
   'import.skip.codeExists': 'Product code "{productCode}" already exists — skipped',
   // --- Bulk party import (docs/PARTY_IMPORT_FORMAT.md) -----------------------
   'validation.party.pincodeInvalid': 'Pincode must be six digits',

@@ -277,8 +277,10 @@ async function main(): Promise<void> {
      * product: the catalogue this build ships, before or after setup. Awaited,
      * before the panel serves, so nobody sees a half-loaded list and the photo
      * attach below already finds its sub products. After the sweep, for the
-     * reason given there: a shipped zip's photos are uploaded here. A failure
-     * is a warning and the next boot tries again; the panel still starts.
+     * reason given there: a shipped zip's photos are uploaded here. A load is
+     * marked as under way before it writes anything, so one that fails, or that
+     * a closed window stops halfway, is a warning here and carries on over what
+     * it left on the next boot; the panel still starts.
      */
     bootStep('Loading the product catalogue');
     await loadShippedCatalogue({}, (progress) => {

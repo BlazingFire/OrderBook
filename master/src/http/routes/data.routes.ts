@@ -8,7 +8,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { isPickKind, MASTER_KEY_TOKEN_HEADER } from '@orderbook/shared';
 
-import { ValidationError } from '../../lib/errors.js';
+import { ConflictError, ValidationError } from '../../lib/errors.js';
 import { exportArchive } from '../../services/archive-export.service.js';
 import { previewArchive, restoreArchive } from '../../services/archive-restore.service.js';
 import { currentJob, startJob } from '../../services/backup-job.js';
@@ -28,6 +28,7 @@ import * as dashboardService from '../../services/dashboard.service.js';
 import * as duplicateService from '../../services/duplicate-products.service.js';
 import * as fieldsService from '../../services/fields.service.js';
 import * as productShareService from '../../services/product-share.service.js';
+import { isProductRestoreRunning } from '../../services/product-zip.service.js';
 import * as leadService from '../../services/lead.service.js';
 import * as orderService from '../../services/order.service.js';
 import * as presenceService from '../../services/presence.service.js';
@@ -219,6 +220,8 @@ dataRoutes.post(
     masterKeyGate.assertUnlocked(req.header(MASTER_KEY_TOKEN_HEADER));
     const file = requireLocalPath(req.body?.path);
     const actor = actorFromRequest(req);
+    // A product restore writes through the ordinary services, which maintenance does not stop.
+    if (isProductRestoreRunning()) throw new ConflictError('error.conflict.productRestoreBusy');
     const { status } = startJob('restore', async (update, jobId) => {
       await restoreArchive(file, { mode: 'replace', actor, progress: update, jobId });
     });
