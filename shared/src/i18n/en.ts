@@ -868,6 +868,11 @@ export const EN_MESSAGES = {
   'access.users.title': '{count} people',
   'access.users.titleLoading': 'People',
   'action.backToList': 'Back to list',
+  /** Asked by a way back (a record's Back, a chat room's Back, Escape) that would throw typed work away. */
+  'action.back.discardTitle': 'Discard your changes?',
+  'action.back.discardBody': 'What you typed here has not been saved. Going back throws it away.',
+  'action.back.discard': 'Discard changes',
+  'action.back.keep': 'Keep editing',
   'action.cancel': 'Cancel',
   'action.close': 'Close',
   'action.dismiss': 'Dismiss',

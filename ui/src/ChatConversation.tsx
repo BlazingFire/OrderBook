@@ -55,7 +55,7 @@ import { ServerMasterBadge } from './TierPill.js';
 import { chatCacheFor } from './chatCache.js';
 import { useDebounced } from './useDebounced.js';
 import { useToast } from './Toast.js';
-import { useUnsavedWork } from './unsavedWork.js';
+import { UnsavedScope, useGuardedBack, useUnsavedWork } from './unsavedWork.js';
 
 /** How long a person must have a room open at the bottom before it counts as read. */
 const READ_DELAY_MS = 1_000;
@@ -681,6 +681,8 @@ export function ChatConversation(props: ChatConversationProps) {
 
   const toast = useToast();
   const confirm = useConfirm();
+  // Back (and Escape, which clicks it) asks before a half-written message is thrown away.
+  const { scope: draftScope, back } = useGuardedBack(props.onBack);
 
   const [detail, setDetail] = useState<ChatRoomDetail | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -1067,7 +1069,7 @@ export function ChatConversation(props: ChatConversationProps) {
   return (
     <div className="ob-chat-room">
       <header className="ob-chat-roomhead">
-        <Button variant="ghost" size="sm" icon="collapse" onClick={props.onBack}>
+        <Button variant="ghost" size="sm" icon="collapse" data-esc-back onClick={back}>
           {t('chat.room.back')}
         </Button>
         <h2 className="ob-title ob-chat-roomtitle">{title}</h2>
@@ -1184,14 +1186,16 @@ export function ChatConversation(props: ChatConversationProps) {
       ) : detail.myRole && !canPost ? (
         <p className="ob-small ob-chat-note">{t('chat.composer.announceOnly')}</p>
       ) : canPost ? (
-        <Composer
-          key={roomId}
-          members={detail.members}
-          viewer={viewer}
-          findRecords={props.findRecords}
-          onSend={send}
-          roomKey={roomId}
-        />
+        <UnsavedScope.Provider value={draftScope}>
+          <Composer
+            key={roomId}
+            members={detail.members}
+            viewer={viewer}
+            findRecords={props.findRecords}
+            onSend={send}
+            roomKey={roomId}
+          />
+        </UnsavedScope.Provider>
       ) : null}
     </div>
   );

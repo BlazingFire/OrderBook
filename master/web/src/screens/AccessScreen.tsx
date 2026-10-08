@@ -305,6 +305,8 @@ export function AccessScreen({
           )
         }
         onBack={() => editorCloseRef.current()}
+        // The role editor's own cancel asks, naming the role; asking twice helps nobody.
+        askBeforeBack={false}
         backLabel={t('access.editor.backToList')}
       >
         {error && (

@@ -142,17 +142,20 @@ export function ChatGroupSettings(props: ChatGroupSettingsProps) {
     }
   }
 
+  const dirty =
+    mayEdit &&
+    baseline.dirty({
+      name,
+      description,
+      announce,
+      members: newMembers.map((person) => person.id),
+    });
+
   // "Save all and update": a group being created or renamed is saved if it has a
-  // name, and named if it has not.
+  // name, and named if it has not. Back asks before throwing it away.
   useUnsavedWork(
     'chat-group',
-    mayEdit &&
-      baseline.dirty({
-        name,
-        description,
-        announce,
-        members: newMembers.map((person) => person.id),
-      })
+    dirty
       ? {
           label: t('updates.saveAll.chatGroup', { name: name.trim() || '…' }),
           save: async () => (name.trim() ? save() : false),
@@ -212,6 +215,7 @@ export function ChatGroupSettings(props: ChatGroupSettingsProps) {
         props.onBack();
         return true;
       }}
+      unsaved={dirty}
       actions={
         mayEdit ? (
           <Button variant="primary" busy={busy} disabled={name.trim() === ''} onClick={() => void save()}>

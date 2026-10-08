@@ -585,6 +585,8 @@ export function LeadsScreen({
           setEditingId(null);
           return true;
         }}
+        // The order form's Cancel stays as it was; Escape never reaches it (`.ob-order-page`).
+        askBeforeBack={false}
         backLabel={t('action.cancel')}
       >
         <LeadEntry

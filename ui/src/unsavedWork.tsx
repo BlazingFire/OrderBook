@@ -15,9 +15,12 @@
  * The registry holds a function per screen rather than a copy of its state, so
  * it can never be out of date. A screen registers with {@link useUnsavedWork}
  * and the entry goes away when it unmounts.
+ *
+ * The same registrations, scoped to one way back, are what lets that back ask
+ * before it throws the work away ({@link useGuardedBack}).
  */
 
-import { useCallback, useEffect, useRef } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
 import { useConfirm } from './ConfirmDialog.js';
 import { t } from './i18n.js';
@@ -35,6 +38,13 @@ export interface UnsavedWorkItem {
 type Provider = () => UnsavedWorkItem | null;
 
 const providers = new Map<string, Provider>();
+
+/**
+ * The work registered under one way back — an `EditorScreen`, a chat room — so
+ * that back can ask before it throws the work away (R8: Escape clicks it). Set
+ * by {@link useGuardedBack}'s caller; `useUnsavedWork` below joins the nearest.
+ */
+export const UnsavedScope = createContext<Set<Provider> | null>(null);
 let bridgeHooked = false;
 
 /** What is open and unsaved right now, one entry per screen that has some. */
@@ -93,14 +103,50 @@ function hookDesktopShell(): void {
 export function useUnsavedWork(id: string, item: UnsavedWorkItem | null): void {
   const latest = useRef<UnsavedWorkItem | null>(item);
   latest.current = item;
+  const scope = useContext(UnsavedScope);
 
   useEffect(() => {
-    providers.set(id, () => latest.current);
+    const provider: Provider = () => latest.current;
+    providers.set(id, provider);
+    scope?.add(provider);
     hookDesktopShell();
     return () => {
       providers.delete(id);
+      scope?.delete(provider);
     };
-  }, [id]);
+  }, [id, scope]);
+}
+
+/**
+ * A way back that asks "Discard your changes?" before it throws typed work
+ * away, rather than doing it silently — the question the role editor asks.
+ *
+ * The work is what was registered under `scope` (render the screen inside
+ * `<UnsavedScope.Provider value={scope}>`), plus `held` for work the caller
+ * keeps itself, above the provider. Nothing to lose: `onBack` runs at once.
+ */
+export function useGuardedBack(
+  onBack: () => unknown,
+  held = false,
+): { scope: Set<Provider>; back: () => void } {
+  const [scope] = useState(() => new Set<Provider>());
+  const confirm = useConfirm();
+  const back = (): void => {
+    if (!held && ![...scope].some((work) => work() !== null)) {
+      void onBack();
+      return;
+    }
+    void confirm({
+      title: t('action.back.discardTitle'),
+      body: t('action.back.discardBody'),
+      confirmLabel: t('action.back.discard'),
+      cancelLabel: t('action.back.keep'),
+      tone: 'danger',
+    }).then((discard) => {
+      if (discard) void onBack();
+    });
+  };
+  return { scope, back };
 }
 
 /**
