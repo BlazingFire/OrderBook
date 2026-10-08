@@ -441,8 +441,9 @@ dataRoutes.get(
 );
 
 // Bulk import for a signed-in user — the same handlers the paired-panel path
-// uses (`panel-catalog.routes.ts`); the service checks `products.bulk`.
-dataRoutes.use(productImportRoutes(actorFromRequest));
+// uses (`panel-catalog.routes.ts`); the service checks `products.bulk`. The
+// product backup zip is offered here only, to the Master's own users.
+dataRoutes.use(productImportRoutes(actorFromRequest, { zip: true }));
 
 dataRoutes.get(
   '/products/by-code/:code',

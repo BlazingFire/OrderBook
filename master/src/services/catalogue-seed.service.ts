@@ -357,7 +357,7 @@ async function clearCatalogueData(
  * unique index skips deleted rows, so a second row would go in and split the
  * value's label and history across two ids.
  */
-async function upsertOptions(
+export async function upsertOptions(
   tenantId: string,
   listKey: string,
   values: ReadonlyArray<{ value: string; hex: string | null }>,

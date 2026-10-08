@@ -132,6 +132,13 @@ export const config = {
   /** The catalogue's photos, `<sub product code>.jpg`, attached on boot (`services/catalogue-photos.service.ts`). */
   cataloguePhotosDir: path.join(packageRoot, 'assets', 'catalogue', 'photos'),
 
+  /**
+   * A product backup zip a build carries (`release --catalogue`), loaded on the
+   * first boot of an empty install in place of `catalogueFile`
+   * (`services/product-zip.service.ts#loadShippedCatalogue`). Absent unless shipped.
+   */
+  catalogueZip: path.join(packageRoot, 'assets', 'catalogue', 'products.zip'),
+
   session: {
     cookieName: 'orderbook_session',
     /** Sessions live in memory; restarting the Master signs admins out. */

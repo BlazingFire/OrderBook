@@ -98,3 +98,94 @@ export interface ProductImportResult {
   /** The first few rows as they were understood, for the preview. */
   sample: ProductInput[];
 }
+
+// --- The product backup zip -------------------------------------------------
+//
+// `OrderBook-Products-<company>-<date>.zip`: `products.csv` (the export above),
+// `main-products.csv`, `colours.csv` and `images/<CODE>.<ext>`, one file per
+// photo (`docs/PRODUCT_IMPORT_FORMAT.md`, "The product backup zip"). Restored on
+// the Master only, by `master/src/services/product-zip.service.ts`.
+
+/** Refused above this before the zip is opened: it carries every photo. */
+export const MAX_PRODUCT_ZIP_BYTES = 1024 * 1024 * 1024;
+
+/** One changed cell, by the file's own column name. */
+export interface ProductCellChange {
+  column: string;
+  from: string;
+  to: string;
+}
+
+/** One `products.csv` row the restore adds or changes, by its code. */
+export interface ProductRowChange {
+  code: string;
+  name: string;
+  /** Empty for an added row. */
+  fields: ProductCellChange[];
+}
+
+/** Something the restore could not do, named by what it was about (a code, a file name). */
+export interface ProductZipProblem {
+  subject: string;
+  messageKey: MessageKey;
+  params?: MessageParams;
+}
+
+/** The opt-ins on the preview; both off unless the person ticks them. */
+export interface ProductRestoreOptions {
+  /** Move sub products whose codes are missing from `products.csv` to the Recycle Bin. */
+  binMissingProducts?: boolean;
+  /** Delete photos of the file's sub products that have no file in `images/`. */
+  removeMissingPhotos?: boolean;
+}
+
+/**
+ * What a product zip would do (a dry run) or did. Photos are named by their
+ * file name in the zip; a photo in the catalogue with no file is named by the
+ * file name an export would give it (`OPT-0001_2`).
+ */
+export interface ProductZipReport {
+  dryRun: boolean;
+  fileName: string;
+  mainProducts: {
+    added: Array<{ code: string; name: string; brand: string | null }>;
+    renamed: Array<{ code: string; fields: ProductCellChange[] }>;
+  };
+  /** `products.csv` through the ordinary upsert import: counts, issues, ignored columns. */
+  products: ProductImportResult;
+  rows: {
+    added: ProductRowChange[];
+    changed: ProductRowChange[];
+    /** Live sub products none of whose codes the file names. */
+    notInFile: Array<{ code: string; name: string }>;
+  };
+  colours: { added: string[]; changed: ProductCellChange[] };
+  photos: {
+    added: string[];
+    replaced: string[];
+    unchanged: number;
+    unmatched: string[];
+    duplicate: string[];
+    notImage: string[];
+    notInZip: string[];
+  };
+  /** After a real run with the opt-ins: what went to the Recycle Bin and what was deleted. */
+  binned?: number;
+  photosRemoved?: number;
+  problems: ProductZipProblem[];
+}
+
+/** The one product restore the Master runs at a time, polled by the screen. */
+export interface ProductRestoreJob {
+  id: string;
+  phase: 'checking' | 'products' | 'photos' | 'removing' | 'done' | 'failed';
+  /** Photos uploaded so far, of `total`, in the `photos` phase. */
+  done: number;
+  total: number;
+  startedAt: string;
+  finishedAt?: string;
+  /** The finished report, when `phase` is `done`. */
+  result?: ProductZipReport;
+  /** Why it failed. Only when `phase` is `failed`. */
+  message?: { messageKey: MessageKey; params?: MessageParams };
+}

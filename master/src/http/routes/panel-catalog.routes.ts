@@ -9,16 +9,27 @@
  * the person and the audit trail names them.
  */
 
+import { createReadStream } from 'node:fs';
+import { mkdir, rm } from 'node:fs/promises';
+import path from 'node:path';
+
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';
-import { MAX_PARTY_IMPORT_BYTES, MAX_PRODUCT_IMPORT_BYTES } from '@orderbook/shared';
+import {
+  MAX_PARTY_IMPORT_BYTES,
+  MAX_PRODUCT_IMPORT_BYTES,
+  MAX_PRODUCT_ZIP_BYTES,
+  type MessageKey,
+} from '@orderbook/shared';
 
+import { config } from '../../config/index.js';
 import { ValidationError } from '../../lib/errors.js';
 import * as partyImportService from '../../services/party-import.service.js';
 import * as productImportService from '../../services/product-import.service.js';
+import * as productZipService from '../../services/product-zip.service.js';
 import { asyncHandler } from '../async-handler.js';
 import { panelActorFromRequest } from '../middleware/require-panel.js';
-import type { ActorContext } from '../../domain/actor.js';
+import { requirePermission, type ActorContext } from '../../domain/actor.js';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -30,12 +41,30 @@ const partyUpload = multer({
   limits: { fileSize: MAX_PARTY_IMPORT_BYTES },
 });
 
+/**
+ * The product backup zip carries every photo, so it is written to the data
+ * folder's `tmp` as it arrives, never held in memory. Whoever handles it
+ * deletes it: the preview when it answers, the restore job when it ends.
+ */
+const zipUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, done) => {
+      const dir = path.join(config.dataDir, 'tmp');
+      mkdir(dir, { recursive: true }).then(
+        () => done(null, dir),
+        (error: Error) => done(error, dir),
+      );
+    },
+  }),
+  limits: { fileSize: MAX_PRODUCT_ZIP_BYTES },
+});
+
 /** The file, or — for one past the size ceiling — the import's own named refusal, not a generic 400. */
-function uploader(single: ReturnType<typeof multer>) {
+function uploader(single: ReturnType<typeof multer>, tooLarge: MessageKey = 'validation.import.tooLarge') {
   return (req: Request, res: Response, next: NextFunction): void => {
     single.single('file')(req, res, (error: unknown) => {
       if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
-        next(new ValidationError('validation.import.tooLarge'));
+        next(new ValidationError(tooLarge));
         return;
       }
       next(error);
@@ -45,14 +74,23 @@ function uploader(single: ReturnType<typeof multer>) {
 
 const uploadFile = uploader(upload);
 const uploadPartyFile = uploader(partyUpload);
+const uploadZip = uploader(zipUpload, 'validation.productZip.tooLarge');
 
 /**
  * The import handlers, parameterised on who is acting: a paired Office panel
  * (`panelActorFromRequest`, behind `requirePanel`) or a signed-in Master user
  * (`actorFromRequest`, behind the session guard on `dataRoutes`). The service
  * checks `products.bulk` / `.create` / `.edit` against that actor either way.
+ *
+ * `zip` adds the product backup zip — `export.zip`, and the restore with its
+ * job — for the Master's own users only. The Office's proxy buffers a download
+ * whole, and a restore is minutes of photo encoding behind a progress bar the
+ * Office has no screen for, so a paired panel is not offered either.
  */
-export function productImportRoutes(actorOf: (req: Request) => ActorContext): Router {
+export function productImportRoutes(
+  actorOf: (req: Request) => ActorContext,
+  options: { zip?: boolean } = {},
+): Router {
   const routes: Router = Router();
 
   routes.get(
@@ -75,6 +113,20 @@ export function productImportRoutes(actorOf: (req: Request) => ActorContext): Ro
     '/products/export.:format',
     asyncHandler(async (req, res) => {
       const format = String(req.params.format);
+      if (format === 'zip' && options.zip) {
+        // Streamed from the file the service wrote, then deleted, however the response ends.
+        const file = await productZipService.exportProductZip(actorOf(req));
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
+        const stream = createReadStream(file.filePath);
+        res.on('close', () => {
+          stream.destroy();
+          void rm(file.filePath, { force: true });
+        });
+        stream.on('error', (error) => res.destroy(error));
+        stream.pipe(res);
+        return;
+      }
       if (format !== 'csv' && format !== 'xlsx') {
         throw new ValidationError('validation.import.unsupportedFormat');
       }
@@ -110,6 +162,54 @@ export function productImportRoutes(actorOf: (req: Request) => ActorContext): Ro
       );
     }),
   );
+
+  if (!options.zip) return routes;
+
+  /**
+   * The zip, as a dry run (the preview) or the real run (202 and the job's
+   * first status; `GET /products/restore/job` follows it). The opt-ins ride as
+   * form fields, `true` or absent.
+   */
+  routes.post(
+    '/products/restore',
+    uploadZip,
+    asyncHandler(async (req, res) => {
+      if (!req.file) throw new ValidationError('validation.productZip.fileRequired');
+      const { path: filePath, originalname } = req.file;
+      const fileName = originalname || 'products.zip';
+      const body = (req.body ?? {}) as Record<string, unknown>;
+
+      if (String(body.dryRun ?? '') === 'true') {
+        try {
+          res.json(await productZipService.previewProductZip(filePath, fileName, actorOf(req)));
+        } finally {
+          await rm(filePath, { force: true });
+        }
+        return;
+      }
+
+      try {
+        const status = productZipService.startProductRestore(
+          filePath,
+          fileName,
+          {
+            binMissingProducts: String(body.binMissingProducts ?? '') === 'true',
+            removeMissingPhotos: String(body.removeMissingPhotos ?? '') === 'true',
+          },
+          actorOf(req),
+        );
+        res.status(202).json(status);
+      } catch (error) {
+        await rm(filePath, { force: true });
+        throw error;
+      }
+    }),
+  );
+
+  routes.get('/products/restore/job', (req, res) => {
+    requirePermission(actorOf(req), 'products.bulk');
+    res.json(productZipService.productRestoreJob());
+  });
 
   return routes;
 }

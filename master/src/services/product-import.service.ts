@@ -33,10 +33,12 @@
 
 import type {
   Product,
+  ProductCellChange,
   ProductImportIssue,
   ProductImportMode,
   ProductImportResult,
   ProductInput,
+  ProductRowChange,
   ProductVariantInput,
 } from '@orderbook/shared';
 import {
@@ -181,7 +183,7 @@ export async function exportProducts(
   return file;
 }
 
-async function buildProductExport(
+export async function buildProductExport(
   format: 'csv' | 'xlsx',
   actor: ActorContext,
   level: 'sub' | 'main',
@@ -224,15 +226,14 @@ async function buildProductExport(
     // A variant taken off the form while history still quotes it stays in the
     // database, inactive; it is not part of the catalogue a person would edit.
     const live = { ...product, variants: product.variants.filter((variant) => variant.isActive) };
-    const rule = colourRuleOf(live);
-    const ruleName = rule === 'selectable' ? 'multicolour' : rule;
+    const rule = ruleName(live);
     return live.variants.map((variant) => [
       product.brand ?? '',
       product.categoryCode ?? '',
       product.categoryName,
       product.name,
       product.size ?? '',
-      ruleName,
+      rule,
       rule === 'fixed' ? (variant.label ?? '') : '',
       variant.code,
       variant.weightKg ?? '',
@@ -270,15 +271,26 @@ interface ImportFile {
 interface ImportOptions {
   dryRun: boolean;
   mode: ProductImportMode;
+  /**
+   * Set by the product zip restore (`product-zip.service.ts`), which writes its
+   * own one activity row and change event, so this run writes neither. A new
+   * sub product takes its place in the file as its catalogue order, and the
+   * result lists the rows added and the cells changed. `pendingCategories` are
+   * the main products the zip will create first: a dry run reads them as there.
+   */
+  restore?: { pendingCategories?: readonly productRepo.CategorySeed[] };
 }
 
 type UpdateGroup = ImportGroup & { existing: Product };
+
+/** The rows a restore lists, by code; only with `restore`. */
+export type ImportedRows = { added: ProductRowChange[]; changed: ProductRowChange[] };
 
 export async function importProducts(
   file: ImportFile,
   options: ImportOptions,
   actor: ActorContext,
-): Promise<ProductImportResult> {
+): Promise<ProductImportResult & { rows?: ImportedRows }> {
   requirePermission(actor, 'products.bulk');
   requirePermission(actor, 'products.create');
   if (options.mode === 'upsert') requirePermission(actor, 'products.edit');
@@ -325,6 +337,20 @@ export async function importProducts(
   // a brand nobody listed is a new brand: kept as typed and, on a real import,
   // added to the Brands list so the catalogue's brand filter can find it.
   const liveCategories = await productRepo.listCategories(actor.tenantId);
+  for (const seed of options.restore?.pendingCategories ?? []) {
+    liveCategories.push({
+      id: `pending:${seed.code ?? seed.name}`,
+      tenantId: actor.tenantId,
+      name: seed.name,
+      code: seed.code ?? null,
+      brand: seed.brand ?? null,
+      sortOrder: null,
+      createdAt: '',
+      updatedAt: '',
+      deletedAt: null,
+      subProductCount: 0,
+    });
+  }
   const [brandOptions, colourOptions] = await Promise.all([
     customFieldRepo.listOptionsForKey(actor.tenantId, 'product.brand'),
     customFieldRepo.listOptionsForKey(actor.tenantId, 'stock.colour'),
@@ -504,9 +530,44 @@ export async function importProducts(
 
   // An upsert row whose product already says exactly this is not an update:
   // an export uploaded back unedited must read "nothing to do", not "N updated".
-  const unchangedGroups = updates.filter((group) => isUnchanged(group, existingCategoryOf(group)));
+  const changes = new Map(
+    updates.map((group) => [group, changedCells(group, existingCategoryOf(group), liveCategories, labelOf)]),
+  );
+  const unchangedGroups = updates.filter((group) => changes.get(group)?.length === 0);
   updates = updates.filter((group) => !unchangedGroups.includes(group));
   const unchanged = rowCount(unchangedGroups);
+
+  if (options.restore) {
+    // A restored catalogue keeps the file's order: a new sub product takes its
+    // place among its main product's rows, as the export wrote them.
+    const position = new Map<string, number>();
+    const creating = new Set(creates);
+    for (const group of grouped.groups) {
+      const main = group.key.slice(0, group.key.lastIndexOf('\u001f'));
+      const at = (position.get(main) ?? 0) + 1;
+      position.set(main, at);
+      if (creating.has(group)) group.input.sortOrder = at;
+    }
+  }
+
+  // What a restore lists: on the real run, without the rows that then failed.
+  const restoreRows = (): { rows?: ImportedRows } => {
+    if (!options.restore) return {};
+    const failedRows = new Set(issues.filter((issue) => issue.kind === 'error').map((issue) => issue.row));
+    const landed = (group: ImportGroup): boolean => group.rows.every((entry) => !failedRows.has(entry.row));
+    return {
+      rows: {
+        added: creates.filter(landed).flatMap((group) =>
+          group.rows.map((entry) => ({ code: entry.input.variant.code.trim(), name: group.input.name, fields: [] })),
+        ),
+        changed: updates.filter(landed).map((group) => ({
+          code: group.input.variants?.[0]?.code ?? '',
+          name: group.input.name,
+          fields: changes.get(group) ?? [],
+        })),
+      },
+    };
+  };
 
   const sample = [...creates, ...updates]
     .sort((a, b) => (a.rows[0]?.row ?? 0) - (b.rows[0]?.row ?? 0))
@@ -514,19 +575,22 @@ export async function importProducts(
     .map((group) => group.input);
 
   if (options.dryRun) {
-    return finish({
-      dryRun: true,
-      mode: options.mode,
-      fileName: file.fileName,
-      totalRows,
-      created: rowCount(creates),
-      updated: rowCount(updates),
-      unchanged,
-      issues,
-      sample,
-      ignoredColumns: match.ignored,
-      formatVersion,
-    });
+    return {
+      ...finish({
+        dryRun: true,
+        mode: options.mode,
+        fileName: file.fileName,
+        totalRows,
+        created: rowCount(creates),
+        updated: rowCount(updates),
+        unchanged,
+        issues,
+        sample,
+        ignoredColumns: match.ignored,
+        formatVersion,
+      }),
+      ...restoreRows(),
+    };
   }
 
   let created = 0;
@@ -660,7 +724,7 @@ export async function importProducts(
     formatVersion,
   });
 
-  if (created + updated > 0) {
+  if (created + updated > 0 && !options.restore) {
     await db().transaction((trx) =>
       activityLog.recordActivity(
         {
@@ -685,7 +749,13 @@ export async function importProducts(
     });
   }
 
-  return result;
+  return { ...result, ...restoreRows() };
+}
+
+/** The Colour rule cell as the template spells it. */
+function ruleName(product: { multiColour: boolean; variants: ReadonlyArray<{ label: string | null }> }): string {
+  const rule = colourRuleOf(product);
+  return rule === 'selectable' ? 'multicolour' : rule;
 }
 
 
@@ -744,35 +814,62 @@ function mergedUpdate(group: UpdateGroup): ProductInput {
 }
 
 /**
- * True when applying `mergedUpdate` would change nothing the product already
- * holds. Compared on what the sheet asserts (an absent key is untouched, as
- * `columnPatch` reads it), against the live variants only.
+ * The cells applying `mergedUpdate` would change, by the file's column names:
+ * empty exactly when the row changes nothing the product already holds, and
+ * otherwise what the product zip's preview lists, old to new. Compared on what
+ * the sheet asserts (an absent key is untouched, as `columnPatch` reads it),
+ * against the live variants only.
  */
-function isUnchanged(group: UpdateGroup, categoryId: string | undefined): boolean {
+function changedCells(
+  group: UpdateGroup,
+  categoryId: string | undefined,
+  categories: ReadonlyArray<{ id: string; code: string | null; name: string }>,
+  labelOf: (field: ImportField) => string,
+): ProductCellChange[] {
   const { existing } = group;
   const input = mergedUpdate(group);
+  const cells: ProductCellChange[] = [];
+  const cell = (field: ImportField, from: unknown, to: unknown): void => {
+    cells.push({ column: labelOf(field), from: from == null ? '' : String(from), to: to == null ? '' : String(to) });
+  };
 
-  if (categoryId === undefined || categoryId !== existing.categoryId) return false;
-  for (const key of ['name', 'alias', 'size'] as const) {
-    if (input[key] !== undefined && (input[key] ?? null) !== (existing[key] ?? null)) return false;
+  if (categoryId === undefined || categoryId !== existing.categoryId) {
+    const moved = categories.find((category) => category.id === categoryId);
+    cell('categoryCode', existing.categoryCode ?? existing.categoryName, moved ? (moved.code ?? moved.name) : '');
   }
-  if (input.multiColour !== undefined && input.multiColour !== existing.multiColour) return false;
-  if (input.hasVariants !== existing.hasVariants) return false;
+  for (const key of ['name', 'alias', 'size'] as const) {
+    if (input[key] !== undefined && (input[key] ?? null) !== (existing[key] ?? null)) {
+      cell(key, existing[key], input[key]);
+    }
+  }
 
   const live = existing.variants.filter((variant) => variant.isActive);
   const next = input.variants ?? [];
-  return (
-    next.length === live.length &&
-    next.every((variant, index) => {
-      const was = live[index];
-      return (
-        was !== undefined &&
-        variant.code === was.code &&
-        (variant.label ?? null) === (was.label ?? null) &&
-        (variant.weightKg ?? null) === (was.weightKg ?? null)
-      );
-    })
-  );
+  if (
+    (input.multiColour !== undefined && input.multiColour !== existing.multiColour) ||
+    input.hasVariants !== existing.hasVariants
+  ) {
+    cell(
+      'colourRule',
+      ruleName({ multiColour: existing.multiColour, variants: live }),
+      ruleName({
+        multiColour: input.multiColour ?? existing.multiColour,
+        variants: next.map((variant) => ({ label: variant.label ?? null })),
+      }),
+    );
+  }
+
+  if (next.length !== live.length) {
+    cell('code', live.map((variant) => variant.code).join(', '), next.map((variant) => variant.code).join(', '));
+    return cells;
+  }
+  next.forEach((variant, index) => {
+    const was = live[index] as (typeof live)[number];
+    if (variant.code !== was.code) cell('code', was.code, variant.code);
+    if ((variant.label ?? null) !== (was.label ?? null)) cell('variant', was.label, variant.label);
+    if ((variant.weightKg ?? null) !== (was.weightKg ?? null)) cell('weightKg', was.weightKg, variant.weightKg);
+  });
+  return cells;
 }
 
 /**
@@ -801,7 +898,7 @@ async function applyUpdate(
 }
 
 /** Brands the file introduces, added to the Brands list (`product.brand`) beside the ones already there. */
-async function registerBrands(
+export async function registerBrands(
   tenantId: string,
   brands: readonly string[],
   listed: ReadonlyArray<{ value: string; sequence: number }>,

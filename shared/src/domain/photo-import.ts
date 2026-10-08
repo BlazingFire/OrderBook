@@ -125,8 +125,8 @@ function targetsByName(products: readonly Product[]): Map<string, Target> {
   return targets;
 }
 
-/** The gallery's own order: the primary first, then by sequence. */
-function galleryOrder(product: Product): string[] {
+/** The gallery's own order, as ids: the primary first, then by sequence. Slot N is entry N - 1. */
+export function galleryOrder(product: Pick<Product, 'images'>): string[] {
   return [...product.images]
     .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary) || a.sequence - b.sequence)
     .map((image) => image.id);
