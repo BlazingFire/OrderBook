@@ -106,8 +106,7 @@ the folder inside it) reads the same, and so does one written by PowerShell's
 `Compress-Archive` with backslashes in its names. An absolute or climbing (`..`) name
 refuses the whole zip (`validation.productZip.entryRejected`), as does a file that is no
 zip, a zip with no `products.csv`, or one with two `products.csv` (or two of either other
-CSV). Photos are the files
-in a folder named `images`; anything else is not looked at.
+CSV). Photos are the files in a folder named `images`; anything else is not looked at.
 
 The preview is the restore run as a dry run, so what it lists is what Apply does:
 
