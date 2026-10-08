@@ -18,6 +18,8 @@ const SIZES = {
   xs: { px: 16, variant: 'micro' },
   sm: { px: 24, variant: 'micro' },
   md: { px: 40, variant: 'thumb' },
+  /** The person screen's header. */
+  ml: { px: 56, variant: 'thumb' },
   lg: { px: 96, variant: 'thumb' },
   xl: { px: 160, variant: 'full' },
 } as const;

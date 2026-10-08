@@ -4139,6 +4139,445 @@ button.ob-bell-item:hover {
   font-size: var(--t-micro-size);
 }
 
+/* ===========================================================================
+ * One person (Roles & users > a person; `master/web/src/screens/PersonScreen.tsx`)
+ *
+ * A header card across the top (face, name, state, the account's actions), then
+ * the role and what it allows on the left and the facts on the right. Below 76rem
+ * of main column (1024 px at 100 %, 1366 px from 125 %) the facts drop under the role, so
+ * the matrix keeps room for its six action columns; below 46rem of
+ * card the role cards sit above the matrix instead of beside it.
+ * ======================================================================== */
+
+.ob-person-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-12) var(--s-16);
+}
+.ob-person-face {
+  position: relative;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+.ob-person-face:disabled {
+  cursor: default;
+}
+.ob-person-face:focus-visible {
+  outline: 2px solid var(--line-focus);
+  outline-offset: 2px;
+}
+.ob-person-face-badge {
+  position: absolute;
+  right: calc(var(--s-2) * -1);
+  bottom: calc(var(--s-2) * -1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5714rem;
+  height: 1.5714rem;
+  border-radius: 50%;
+  background: var(--fg-primary);
+  color: var(--bg-surface);
+  box-shadow: 0 0 0 2px var(--bg-surface);
+}
+.ob-person-who {
+  display: flex;
+  flex: 1 1 20rem;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-width: 0;
+}
+.ob-person-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-8);
+  min-width: 0;
+}
+.ob-person-name h1 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.ob-person-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-4) var(--s-8);
+}
+.ob-person-sub strong {
+  color: var(--fg-primary);
+  font-weight: 600;
+}
+.ob-person-sub-sep {
+  color: var(--fg-tertiary);
+}
+.ob-person-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-8);
+  margin-left: auto;
+}
+.ob-person-actions .ob-btn {
+  flex: none;
+}
+.ob-person-more {
+  position: relative;
+}
+
+/* The two columns under the header: the role's card takes the width, the facts keep theirs. */
+.ob-person-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(19rem, 27%, 25rem);
+  gap: var(--s-16);
+  align-items: start;
+}
+.ob-person-aside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-16);
+  min-width: 0;
+}
+.ob-person-aside .ob-eyebrow {
+  margin-bottom: var(--s-8);
+}
+.ob-person-kv {
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--s-8) var(--s-16);
+  font-size: var(--t-body-size);
+  line-height: var(--t-body-line);
+}
+.ob-person-kv dd {
+  min-width: 0;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.ob-person-aside .ob-linkbtn {
+  margin-top: var(--s-12);
+}
+@container ob-main (max-width: 76rem) {
+  .ob-person-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ob-person-aside {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    align-items: start;
+  }
+}
+
+.ob-person-access {
+  container-type: inline-size;
+  container-name: ob-person-access;
+}
+.ob-person-access-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-4) var(--s-12);
+  padding: var(--s-12) var(--s-16);
+  border-bottom: 1px solid var(--line);
+}
+.ob-person-access-body {
+  display: grid;
+  grid-template-columns: minmax(15rem, 19rem) minmax(0, 1fr);
+}
+.ob-person-roles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+  padding: var(--s-16);
+  border-right: 1px solid var(--line);
+}
+.ob-person-rolelist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+}
+.ob-person-roles > .ob-linkbtn {
+  align-self: flex-start;
+  margin-top: auto;
+  padding-top: var(--s-8);
+}
+.ob-person-compare {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+  min-width: 0;
+  padding: var(--s-16);
+}
+@container ob-person-access (max-width: 46rem) {
+  .ob-person-access-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ob-person-roles {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .ob-person-rolelist {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  }
+}
+
+/* One role, as a radio card: name and tier, how much of the catalogue it grants, who holds it. */
+.ob-personrole {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-6) var(--s-8);
+  padding: var(--s-8) var(--s-12) var(--s-12);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  color: var(--fg-primary);
+  cursor: pointer;
+  transition: border-color var(--d-fast) var(--e-standard);
+}
+.ob-personrole:hover {
+  border-color: var(--line-strong);
+}
+.ob-personrole[data-on] {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.ob-personrole[data-readonly] {
+  cursor: default;
+}
+.ob-personrole:has(input:focus-visible) {
+  outline: 2px solid var(--line-focus);
+  outline-offset: 2px;
+}
+.ob-personrole-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-4) var(--s-8);
+  min-width: 0;
+}
+.ob-personrole-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.ob-personrole-current {
+  margin-left: auto;
+  color: var(--fg-secondary);
+  font-size: var(--t-small-size);
+}
+.ob-personrole-bar {
+  grid-column: 2;
+  height: 0.2857rem;
+  overflow: hidden;
+  border-radius: var(--r-sm);
+  background: var(--bg-sunken);
+}
+.ob-personrole-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--fg-tertiary);
+}
+.ob-personrole[data-on] .ob-personrole-bar > span {
+  background: var(--accent);
+}
+.ob-personrole-meta {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--s-4) var(--s-8);
+  color: var(--fg-secondary);
+  font-size: var(--t-small-size);
+  line-height: var(--t-small-line);
+  font-variant-numeric: tabular-nums;
+}
+
+/* "Office -> Management" and the legend. */
+.ob-person-comparehead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-6) var(--s-16);
+}
+.ob-person-legend {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-4) var(--s-12);
+  color: var(--fg-secondary);
+  font-size: var(--t-small-size);
+}
+.ob-person-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-4);
+}
+
+/* The module x action matrix, every cell one of kept / gained / lost / neither. */
+.ob-permcompare {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.ob-permcompare th {
+  overflow: hidden;
+  padding: var(--s-8) var(--s-2);
+  background: var(--bg-sunken);
+  color: var(--fg-tertiary);
+  font-size: var(--t-eyebrow-size);
+  line-height: var(--t-eyebrow-line);
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-align: center;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.ob-permcompare th:first-child {
+  width: 32%;
+  padding-left: var(--s-12);
+  text-align: left;
+}
+.ob-permcompare td {
+  height: 2.5714rem;
+  padding: 0 var(--s-2);
+  border-bottom: 1px solid var(--line);
+  text-align: center;
+}
+.ob-permcompare td:first-child {
+  padding-left: var(--s-12);
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.ob-permcell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4286rem;
+  height: 1.4286rem;
+  border-radius: var(--r-sm);
+  color: var(--fg-primary);
+  vertical-align: middle;
+}
+.ob-permcell[data-state='gained'] {
+  background: var(--state-ok-tint);
+  color: var(--state-ok);
+}
+.ob-permcell[data-state='lost'] {
+  background: var(--state-conflict-tint);
+  color: var(--state-conflict);
+}
+.ob-permcell[data-state='none'] {
+  color: var(--fg-disabled);
+}
+
+/* Capability groups as counts, two to a row where there is room. */
+.ob-permgroups {
+  display: grid;
+  /* Never more than two to a row (each at least 40 %): four across a 1080p card read as one long line. */
+  grid-template-columns: repeat(auto-fit, minmax(max(14rem, 40%), 1fr));
+  gap: 0 var(--s-24);
+}
+.ob-permgroup {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: var(--s-8);
+  min-height: 2.5714rem;
+  padding: 0 var(--s-12);
+  border-bottom: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+.ob-permgroup-count {
+  min-width: 2.5rem;
+  color: var(--fg-secondary);
+  text-align: right;
+}
+.ob-permgroup-count[data-change='up'] {
+  color: var(--state-ok);
+  font-weight: 600;
+}
+.ob-permgroup-count[data-change='down'] {
+  color: var(--state-conflict);
+  font-weight: 600;
+}
+.ob-permgroup-arrow {
+  color: var(--fg-tertiary);
+}
+
+/* What "Change role" will do, and the two ways out of it. */
+.ob-person-changebar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-8) var(--s-12);
+  margin-top: auto;
+  padding: var(--s-12) var(--s-16);
+  border-radius: var(--r-md);
+  background: var(--accent-tint);
+}
+.ob-person-changebar p {
+  flex: 1 1 16rem;
+  margin: 0;
+}
+/* The two buttons move as one: Keep never sits on a line above Change role. */
+.ob-person-changebar-actions {
+  display: flex;
+  flex: none;
+  gap: var(--s-8);
+  margin-left: auto;
+}
+.ob-gain {
+  color: var(--state-ok);
+  font-weight: 600;
+}
+.ob-loss {
+  color: var(--state-conflict);
+  font-weight: 600;
+}
+
+/* A button that reads as a link: "Manage roles", "Open in activity log". */
+.ob-linkbtn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 550;
+  text-align: left;
+  cursor: pointer;
+}
+.ob-linkbtn:hover {
+  text-decoration: underline;
+}
+.ob-linkbtn:focus-visible {
+  border-radius: var(--r-sm);
+  outline: 2px solid var(--line-focus);
+  outline-offset: 2px;
+}
+
+/* A menu item with a line under it saying what it does ("Blocks sign-in. Records stay."). */
+.ob-menu-item--twoline {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: var(--s-2);
+  height: auto;
+  min-height: var(--ctl-h-md);
+  padding: var(--s-6) var(--s-8);
+}
+.ob-menu-item-sub {
+  color: var(--fg-tertiary);
+  font-size: var(--t-small-size);
+  line-height: var(--t-small-line);
+}
+
 /* Pushes the section's select-all to the far edge, away from the heading. */
 .ob-permsection-head .ob-permtoggle {
   margin-left: auto;

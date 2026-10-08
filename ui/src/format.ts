@@ -39,6 +39,29 @@ export function formatDateTime(iso: string | null): string {
   });
 }
 
+/**
+ * How long ago, in words: "just now" under a minute, then "5 minutes ago",
+ * "yesterday", "3 weeks ago". English only, like the rest of the interface.
+ */
+export function formatRelative(iso: string, now: number = Date.now()): string {
+  const seconds = (new Date(iso).getTime() - now) / 1000;
+  if (Math.abs(seconds) < 60) return t('time.justNow');
+  const steps: Array<[Intl.RelativeTimeFormatUnit, number]> = [
+    ['minute', 60],
+    ['hour', 3600],
+    ['day', 86_400],
+    ['week', 604_800],
+    ['month', 2_629_800],
+    ['year', 31_557_600],
+  ];
+  let [unit, size] = steps[0]!;
+  for (const step of steps) if (Math.abs(seconds) >= step[1]) [unit, size] = step;
+  return new Intl.RelativeTimeFormat('en', { numeric: 'auto' }).format(
+    Math.round(seconds / size),
+    unit,
+  );
+}
+
 /** The date alone, for a column that says when something began. */
 export function formatDate(iso: string | null): string {
   if (!iso) return '—';

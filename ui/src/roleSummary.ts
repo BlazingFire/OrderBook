@@ -91,6 +91,66 @@ export function permissionChange(
   };
 }
 
+/** One key across two roles: held by both, only the new one, only the old one, or neither. */
+export type PermissionCellState = 'kept' | 'gained' | 'lost' | 'none';
+
+export interface RoleComparison {
+  /** One row per module; a cell is null where the module declares no such action. */
+  modules: Array<{
+    key: string;
+    label: string;
+    cells: Array<{ action: string; key: string; state: PermissionCellState | null }>;
+  }>;
+  /** Capability groups as counts: held before, held after, out of the group's size. */
+  groups: Array<{ key: string; label: string; total: number; from: number; to: number }>;
+  gained: number;
+  lost: number;
+}
+
+/**
+ * The person screen's matrix: what moving from one role's keys to another's
+ * keeps, adds and takes away, laid out by the catalogue. Comparing a role with
+ * itself is how the screen shows a role on its own (every held key "kept").
+ */
+export function compareRoles(
+  from: readonly string[],
+  to: readonly string[],
+  catalogue: PermissionCatalogue,
+): RoleComparison {
+  const before = new Set(from);
+  const after = new Set(to);
+  const stateOf = (key: string): PermissionCellState =>
+    before.has(key)
+      ? after.has(key)
+        ? 'kept'
+        : 'lost'
+      : after.has(key)
+        ? 'gained'
+        : 'none';
+
+  const modules = catalogue.modules.map((module) => ({
+    key: module.key,
+    label: moduleLabel(module.key),
+    cells: catalogue.actions.map((action) => {
+      const key = `${module.key}.${action}`;
+      return { action, key, state: module.actions.includes(action) ? stateOf(key) : null };
+    }),
+  }));
+
+  const groups = catalogue.groups.map((group) => {
+    const keys = catalogue.capabilities.filter((c) => c.group === group.key).map((c) => c.key);
+    return {
+      key: group.key,
+      label: groupLabel(group.key),
+      total: keys.length,
+      from: keys.filter((key) => before.has(key)).length,
+      to: keys.filter((key) => after.has(key)).length,
+    };
+  });
+
+  return { modules, groups, ...permissionChange(from, to) };
+}
+
 /** True when a catalogue entry (module, capability or group) matches what was typed. */
 export function matchesQuery(query: string, ...haystack: string[]): boolean {
   const needle = query.trim().toLowerCase();

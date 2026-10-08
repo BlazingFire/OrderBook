@@ -59,6 +59,8 @@ export type IconName =
   | 'print'
   | 'sign-out'
   | 'key'
+  | 'lock'
+  | 'camera'
   | 'plug'
   | 'log';
 
@@ -127,6 +129,8 @@ const PATHS: Record<IconName, string> = {
   pin: 'M14.5 4l5.5 5.5-3 1.5-3 3 .5 4-1.5 1.5-9-9L5.5 9l4 .5 3-3zM8 16l-4 4',
   'sign-out': 'M10 4H5v16h5M9 12h11M16 8l4 4-4 4',
   key: `${circle(8, 15, 4)}M11 12l9-9M17 6l2 2M14.5 8.5l1.5 1.5`,
+  lock: 'M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3',
+  camera: `M4 8h3l1.5-2h7L17 8h3v11H4z${circle(12, 13, 3.2)}`,
 };
 
 /**
