@@ -69,6 +69,17 @@ interface Refusal {
   message: string;
 }
 
+/**
+ * The Detail column. A notice's is a token, not words (`recycle-bin.repository.ts`): its
+ * priority, or `sellToday` for a "Sell today" entry, translated here.
+ */
+function binDetail(entry: BinEntry): string | null {
+  if (entry.entityType !== 'notice' || !entry.sublabel) return entry.sublabel;
+  return entry.sublabel === 'sellToday'
+    ? t('notices.manage.tab.sellToday')
+    : t(`notices.priority.${entry.sublabel}`);
+}
+
 /** Two entity types can share an id, so neither alone identifies a row. */
 function rowKey(entry: BinEntry): string {
   return `${entry.entityType}:${entry.id}`;
@@ -362,7 +373,7 @@ export function RecycleBinScreen({ permissions, revision, type, onTypeChange }: 
     {
       key: 'detail',
       header: t('recycleBin.column.detail'),
-      render: (entry) => <Truncated className="ob-small">{entry.sublabel ?? '—'}</Truncated>,
+      render: (entry) => <Truncated className="ob-small">{binDetail(entry) ?? '—'}</Truncated>,
     },
     {
       key: 'deletedAt',

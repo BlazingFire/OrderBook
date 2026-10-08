@@ -215,7 +215,8 @@ describe.skipIf(!canRunIntegrationTests)('"Sell today" (integration)', () => {
     await noticeService.deleteNotice(entry.id, manager.actor);
     expect((await noticeService.listBoard(sales.actor)).sellToday).toEqual([]);
     const bin = await recycleBin.listBin({ types: ['notice'], limit: 25 } as never, manager.actor);
-    expect(bin.items.map((item) => [item.label, item.sublabel])).toEqual([['Push today', 'Sell today']]);
+    // A token, not English: the Recycle Bin screen translates it (`binDetail`).
+    expect(bin.items.map((item) => [item.label, item.sublabel])).toEqual([['Push today', 'sellToday']]);
 
     await recycleBin.restoreEntity({ entityType: 'notice', id: entry.id } as never, manager.actor);
     expect((await noticeService.listBoard(sales.actor)).sellToday?.map((e) => e.id)).toEqual([entry.id]);

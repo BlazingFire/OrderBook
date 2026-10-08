@@ -2905,7 +2905,7 @@ is 404 (as `PATCH /api/notices/sell-today/:id` on a notice is). Types: `SellToda
 | `GET /api/notices/sell-today` | `notices.manage` | every entry, ended ones too (`expired`), newest first, with `audienceRoleNames` |
 | `POST /api/notices/sell-today` | `notices.manage` | create; 201 with the entry. `title` (the headline, 1 to 120), `body` (0 to 4000), `productIds` (at most 12 live sub products, in order), `autoCloseSeconds` (0 = only when closed, or a whole 5 to 120; 15 when omitted), `showFrom` / `showUntil` (`YYYY-MM-DD` or null; the last not before the first), `audience` as for a notice. A product or a message is required |
 | `PATCH /api/notices/sell-today/:id` | `notices.manage` | edit with `expectedVersion` (stale: 409). The window and "something to sell" are checked against what the edit leaves out |
-| `DELETE /api/notices/:id` | `notices.manage` | the notice's own delete; the Recycle Bin lists it as `notice` with the sublabel `Sell today` |
+| `DELETE /api/notices/:id` | `notices.manage` | the notice's own delete; the Recycle Bin lists it as `notice` with the sublabel `sellToday` (a token; a notice's is its priority), which the screen puts into words |
 
 Refusals (400): `validation.sellToday.malformed` (a field of the wrong type), `.nothingToSell`, `.tooManyProducts`
 (`{max}`), `.autoCloseInvalid` (`{min, max}`), `.datesReversed`, `.unknownProduct` (an id that is not a live sub

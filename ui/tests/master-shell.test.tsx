@@ -3235,4 +3235,24 @@ describe('"Sell today" and the Basic Home product band (2026-10-08)', () => {
     await wait(50);
     expect(screen.queryByRole('region', { name: t('productShow.label') })).toBeNull();
   });
+
+  it('names a deleted entry and a deleted notice in words in the Recycle Bin, not by their tokens', async () => {
+    const binned = (id: string, label: string, sublabel: string) => ({
+      entityType: 'notice', id, label, sublabel, deletedAt: '2026-10-08T10:00:00.000Z',
+      deletedBy: null, deletedByName: null, version: 2, cursor: id,
+    });
+    await boot(ADMIN, (call) =>
+      call.url.split('?')[0] === '/api/recycle-bin'
+        ? json({
+            items: [binned('ST9', 'Wrong push', 'sellToday'), binned('NT9', 'Old holiday', 'important')],
+            nextCursor: null,
+          })
+        : undefined,
+    );
+    await open(t('nav.master.recycleBin'));
+    const row = async (label: string) => (await screen.findByText(label)).closest('tr, [role="row"]') as HTMLElement;
+    expect(within(await row('Wrong push')).getByText(t('notices.manage.tab.sellToday'))).toBeTruthy();
+    expect(within(await row('Old holiday')).getByText(t('notices.priority.important'))).toBeTruthy();
+    expect(screen.queryByText('sellToday')).toBeNull();
+  });
 });
