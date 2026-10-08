@@ -157,7 +157,9 @@ file. The row also keeps the sha256 of the file it was uploaded from
 (`product_images.source_checksum`, `20261016000000`), so a jpg, png or webp put in a zip
 and restored reads back as unchanged from that same zip, on that Master: restoring a zip
 twice uploads nothing the second time. A photo uploaded before that migration has no
-source hash and matches only by its export.
+source hash and matches only by its export. So does one cropped or rotated on screen:
+its stored picture is not what a restore would make from the file it came from, so that
+file in the zip reads as **replaced** and a restore puts the whole, unrotated picture in.
 
 ## Tests and fixtures
 

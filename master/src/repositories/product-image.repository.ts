@@ -85,8 +85,8 @@ export interface NewImageRow {
   width: number;
   height: number;
   checksum: string;
-  /** sha256 of the bytes it was uploaded from; never on the wire. */
-  sourceChecksum: string;
+  /** sha256 of the bytes it was uploaded from, null when cropped or rotated; never on the wire. */
+  sourceChecksum: string | null;
   blurhash: string;
   byteSize: number;
 }

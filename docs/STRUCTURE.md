@@ -3299,7 +3299,7 @@ are recounted in the 1.3 Phase 9 reconciliation.
   Admin role's stored permissions, so Admin's seeded key set tracks whatever the
   catalogue is when that migration first runs on a database.
 
-### 6.2 All 41 migrations, in the order they are applied
+### 6.2 All 48 migrations, in the order they are applied
 
 | # | Migration | Lines | What it does / leaves behind |
 |---|---|---|---|
@@ -3346,7 +3346,11 @@ are recounted in the 1.3 Phase 9 reconciliation.
 | 41 | `master/src/db/migrations/20261005000000_chatroom.ts` | — | **Pinned last, additive, idempotent** (1.3 Phase 6, migration #5). `chat_rooms`, `chat_members`, `chat_messages` (every user column `TEXT REFERENCES users(id)`), their partial unique and lookup indexes, and a union grant of the six `chat.*` keys to `admin` / `server_master` roles and `chat.use` + `chat.shareRecords` to `office` / `management` roles. `down()` drops the tables only |
 | 42 | `master/src/db/migrations/20261006000000_printroom.ts` | — | **Pinned last, additive, idempotent** (1.3 Phase 7, migration #6). `print_stations` and `print_jobs` (every user column `TEXT REFERENCES users(id)`; a job's `status` is `queued` / `printing` / `printed` / `cancelled`, its claim held by `claim_socket`; `UNIQUE (tenant_id, sender_id, request_id)` makes a retried send idempotent), their indexes, and a union grant of `print.send` + `print.station` to `admin` / `server_master` roles. `down()` drops the tables only |
 | 43 | `master/src/db/migrations/20261007000000_backup_all_permission_grant.ts` | 59 | **Pinned last, additive, idempotent** (1.3 Phase 8). A frozen inline union grant of `storage.backupAll` to every role with `tier = 'server_master'`, deleted roles included, the array kept sorted. It also removes the key from every role of any other tier, because the `20260303000000` live-catalogue seed gives it to Administrator; still UPDATE only, `down()` a no-op. `master/tests/migration-backup-all-grant.integration.test.ts` |
-| 48 | `master/src/db/migrations/20261016000000_product_image_source_checksum.ts` | 24 | **Pinned last, additive, idempotent** (2026-10-08). `ADD COLUMN IF NOT EXISTS product_images.source_checksum TEXT NULL`, no backfill; `down()` drops it. `uploadImage` fills it with the sha256 of the uploaded file; the product zip reads a photo as unchanged on it or `checksum`. `master/tests/migration-product-image-source-checksum.integration.test.ts` |
+| 44 | `master/src/db/migrations/20261012000000_catalog_lists_grant.ts` | 48 | **Pinned, additive, idempotent** (1.4 D3, R5). A frozen inline union grant of `catalog.lists.manage` to every `admin` / `server_master` role and every role that holds `fields.manage`; UPDATE only, `down()` a no-op. `master/tests/catalog-lists.integration.test.ts` |
+| 45 | `master/src/db/migrations/20261013000000_printroom_office_management_grant.ts` | 49 | **Pinned, additive, idempotent** (1.4 D4, R9). A frozen inline union grant of `print.send` to every `office` / `management` role; `print.station` stays an explicit grant. UPDATE only, `down()` a no-op. `master/tests/migration-printroom-grant.integration.test.ts` |
+| 46 | `master/src/db/migrations/20261014000000_notice_board.ts` | 120 | **Pinned, additive, idempotent** (Oct 2026). `notices`, `notice_audiences`, `notice_reads` and their indexes, `notices.view` to every role and `notices.manage` to `admin` / `server_master` roles (union). `down()` drops the tables only. `master/tests/migration-notice-board.integration.test.ts` |
+| 47 | `master/src/db/migrations/20261015000000_catalogue_corrections.ts` | 245 | **Pinned, additive, idempotent** (U8, U13, 2026-10-07). Brings an installed catalogue to the shipped `swisware-plus-2026.md` in place: page-4 toilets as numbered models, page-13 colour rules, `14x14 NEW CORNER` moved to Table Top Wash Basin. Touches a row only while it still holds what shipped; UPDATE only, `down()` a no-op. `master/tests/migration-catalogue-corrections.integration.test.ts` |
+| 48 | `master/src/db/migrations/20261016000000_product_image_source_checksum.ts` | 24 | **Pinned last, additive, idempotent** (2026-10-08). `ADD COLUMN IF NOT EXISTS product_images.source_checksum TEXT NULL`, no backfill; `down()` drops it. `uploadImage` fills it with the sha256 of the uploaded file (null when cropped or rotated); the product zip reads a photo as unchanged on it or `checksum`. `master/tests/migration-product-image-source-checksum.integration.test.ts` |
 
 ### 6.3 Conventions across the schema
 
@@ -6441,8 +6445,9 @@ Rules: `docs/schema/06-tenancy-permissions-and-sync.md` section 2c, `docs/ROLES_
   (awaited, behind the boot step), and the shipped `photos/` still fill only sub products with no photo after it.
   The product zip names photos the way this import reads them (`CODE.webp` photo 1, `CODE_N` photo N) and uses
   `planPhotoImport` / `runPhotoImport` server-side, comparing a file's sha256 with the photo's checksum and with
-  its `source_checksum`, the hash of the file every upload (screen, photo import, these shipped photos, a zip)
-  was made from, so a picture is never read as replaced by the very file it came from.
+  its `source_checksum`, the hash of the file every whole-picture upload (screen, photo import, these shipped
+  photos, a zip) was made from, so a picture is never read as replaced by the very file it came from. A photo
+  cropped or rotated on screen keeps none, so its original file reads as replaced.
 - **Tests.** `shared/tests/photo-import.test.ts`, `master/tests/photo-import-route.integration.test.ts`,
   `master/tests/catalogue-photos.integration.test.ts`, "Photo import" in `ui/tests/master-shell.test.tsx`,
   `master/tests/product-zip.integration.test.ts`, "on boot" in `master/tests/catalogue-seed.integration.test.ts`.

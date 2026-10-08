@@ -348,6 +348,30 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
     expect(await photoIds()).toEqual(ids);
   });
 
+  it('reads the original of a photo cropped or rotated on screen as replaced, and of one left whole as unchanged', async () => {
+    const original = await sharp({ create: { width: 60, height: 30, channels: 3, background: '#336699' } })
+      .jpeg()
+      .toBuffer();
+    const onScreen = async (code: string, crop: { cropWidth: number; cropHeight: number; rotationDeg: number }) =>
+      imageService.uploadImage(
+        { productId: (await productByCode(code)).id, fileBuffer: original, crop: { cropX: 0, cropY: 0, ...crop } },
+        admin,
+      );
+    await onScreen('OPT-0003', { cropWidth: 30, cropHeight: 30, rotationDeg: 0 });
+    await onScreen('OPT-0004', { cropWidth: 30, cropHeight: 60, rotationDeg: 90 });
+    // The editor's rect over the whole picture, unrotated: what a restore of the file makes.
+    await onScreen('OPT-0005', { cropWidth: 60, cropHeight: 30, rotationDeg: 0 });
+
+    const edited = new Map((await exported()).entries);
+    for (const code of ['OPT-0003', 'OPT-0004', 'OPT-0005']) {
+      edited.delete(`images/${code}.webp`);
+      edited.set(`images/${code}.jpg`, original);
+    }
+    const preview = await previewProductZip(await zipOf(edited), 'p.zip', admin);
+    expect([...preview.photos.replaced].sort()).toEqual(['OPT-0003.jpg', 'OPT-0004.jpg']);
+    expect(preview.photos).toMatchObject({ added: [], unchanged: 4, notInZip: [] });
+  });
+
   it('only reports a deleted row and a deleted photo, unless the opt-ins are ticked', async () => {
     const { entries } = await exported();
     const rows = await readSheetRows(entries.get('products.csv')!);
