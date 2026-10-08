@@ -6544,8 +6544,9 @@ or that closes by itself after a set number of seconds; and a product slideshow 
 `docs/DESIGN_SYSTEM.md` section 7.2.
 
 - **Storage.** `20261018000000_notice_sell_today.ts`: `notices.kind`, `product_ids` (JSONB array of sub product ids,
-  in order), `auto_close_seconds`, `show_from`. An entry shares the audience, version, soft delete, Recycle Bin (sublabel
-  "Sell today"), activity log (`entityType notice`, `details.kind sellToday`) and `notice` change event with a notice.
+  in order), `auto_close_seconds`, `show_from`. An entry shares the audience, version, soft delete, Recycle Bin (its
+  Detail is the token `sellToday`, put into words by `RecycleBinScreen` with the notices' priorities), activity log
+  (`entityType notice`, `details.kind sellToday`) and `notice` change event with a notice.
 - **Master.** `notice.repository.ts` (`listForReader` / `listAll` take the kind); `notice.service.ts`
   (`readerSellToday`, on the board read and as `SyncSnapshot.sellToday`; `listSellTodayManage`, `createSellToday`,
   `updateSellToday`: `parseSellToday` type-checks, `sellTodayProblem` validates, every product must be a live sub product,
@@ -6553,6 +6554,9 @@ or that closes by itself after a set number of seconds; and a product slideshow 
   `sellTodayProductOf`, none for a reader without `products.view`); `notice.routes.ts` (`/api/notices/sell-today`);
   `hub.ts` (`sellToday:*`). Entries reach readers until their last day, including ones that start later, so an Office
   offline overnight has the next day's.
+- **Office.** The snapshot's entries are gated like its notices (`sellTodayFor` in `office/src/http/app.ts`): none
+  without `notices.view`, only the ones for everybody from a cache built for somebody else, and no product cards for
+  somebody without `products.view` (such a cache carries cards resolved under the other person's permissions).
 - **Protocol.** 11: the three `sellToday:*` commands (`SELL_TODAY_MIN_PROTOCOL`). A create through `notice:create` would
   have been stored by an older Master as an ordinary notice; its own commands make an older Master refuse (426 on the
   Office), and the Office's management screen then hides the tab. The snapshot field is optional both ways.
@@ -6569,7 +6573,8 @@ or that closes by itself after a set number of seconds; and a product slideshow 
   of those that apply (`sellTodayFor`). It opens when `ready` (the unread notices pop-up has settled for this sign-in),
   the company switch is on, and this person has not been shown it today on this PC (`localStorage`
   `orderbook.sellToday.seen.<userId>`, written when it opens; reloads, navigation and a second sign-in the same day do
-  not bring it back). An entry put up while somebody is signed in opens as it arrives. It shows the headline, the
+  not bring it back). An entry put up while somebody is signed in opens as it arrives; one that goes while it is open
+  (deleted, ended, moved out of their audience) closes it, and the next one may open. It shows the headline, the
   message and the products as photo cards (photo, name, code and size, main product); "Start work" (focused), Escape
   and the close button close it; with seconds set a ring and "Closes in N s" count down and it closes itself. A card
   opens the sub product (the Master's Sub products detail through `ProductsScreen` / `SubProductsScreen` `focus`; the
