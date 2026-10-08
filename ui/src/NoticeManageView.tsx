@@ -151,8 +151,10 @@ export function NoticeManageView({
     {
       key: 'placement',
       header: t('notices.manage.col.placement'),
-      width: '11rem',
-      priority: 2,
+      // Short tags in a narrow column, dropped first on a narrow screen (the editor says the same):
+      // the title, with its own pills, needs the room more.
+      width: '9.5rem',
+      priority: 3,
       render: (notice) => (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-4)', flex: 'none' }}>
           {noticeOnHome(notice) && <StatusPill>{t('notices.placement.homeTag')}</StatusPill>}

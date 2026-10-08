@@ -3861,7 +3861,7 @@ export const EN_MESSAGES = {
   'notices.editor.placementHint': 'It is always on the Notice board. Keep at least one of these.',
   'notices.placement.home': 'Show on Basic Home',
   'notices.placement.signIn': 'Show at sign-in',
-  'notices.placement.homeTag': 'Basic Home',
+  'notices.placement.homeTag': 'Home',
   'notices.placement.signInTag': 'Sign-in',
   'notices.editor.audienceLabel': 'Who sees it',
   'notices.editor.audienceAll': 'Everyone',

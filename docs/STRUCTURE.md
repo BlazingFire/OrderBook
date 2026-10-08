@@ -6348,7 +6348,7 @@ Rules: `docs/schema/06-tenancy-permissions-and-sync.md` section 2c, `docs/ROLES_
   `SignInNotices.tsx` (V6: every unread notice placed at sign-in, important first then newest, the Important pill on
   the important ones only, in a dialog once right after sign-in; `enabled` is the company switch as it stood when it
   decided; Mark as read goes through the panel's read path, the Office queuing per person while offline; Later only
-  closes it), `NoticeManageView.tsx` (list with an "Also shown" column of Basic Home / Sign-in tags, editor with the two
+  closes it), `NoticeManageView.tsx` (list with an "Also shown" column of Home / Sign-in tags, dropped first on a narrow screen, editor with the two
   placement checkboxes, audience picker, pin, expire, delete, read counts and the readers dialog, the 409 conflict with
   Reload); the Master's
   `NoticeBoardScreen.tsx`, `NoticeManageScreen.tsx`, `useNotices.ts`; the Office mounts the same views. Text is plain:
