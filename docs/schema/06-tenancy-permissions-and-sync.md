@@ -332,6 +332,27 @@ A notice keeps `[]`, null and null. One entry a day is the intent; when several 
 (`sellTodayFor`). "Shown today" is not stored here: each panel remembers per person per day in its own browser storage.
 Additive and safe to run twice (a column that already exists is skipped with its constraint); `down()` drops the four.
 
+## 2d. The To-do list: `todos`, `todo_marks`
+
+Added by `20261019000000_todo_list` (2026-10-08): two tables and two grants, all additive and safe to run twice.
+
+| Table | One row is | Notes |
+|---|---|---|
+| `todos` | a task an administrator wrote | `tenant_id`, `text` (1 to 500 characters after trimming, CHECK `todos_text`), `expires_at` (`TIMESTAMPTZ NULL`, a fixed time it leaves the list), `expire_after_hours` (`INTEGER NULL`, 1 to 8760, CHECK `todos_expire_after_hours`: it leaves the list that many hours after its earliest Completed mark), never both (CHECK `todos_one_expiry`), `created_by`, `created_at`, `deleted_at`, `deleted_by`. Index `todos_tenant_live_idx (tenant_id, created_at)` over live rows |
+| `todo_marks` | one person's In progress or Completed mark on one task | Primary key `(todo_id, user_id, status)`, so marking twice is a no-op and a person's In progress mark stays beside their Completed one; `status` is `in_progress` or `completed` (CHECK `todo_marks_status`); `marked_at`. Removing a mark deletes its row. `todo_id` cascades from `todos`. No `tenant_id`: a selected-scope backup reaches it through `todos` (`TRANSITIVELY_SCOPED` in `backup.repository.ts`) |
+
+**Expiry is read, not swept.** The list query works it out with `now()`: a task is live while not deleted, `expires_at`
+is null or later than now, and, for `expire_after_hours`, while nobody has marked it completed or its earliest Completed
+mark plus that many hours is later than now. Removing every Completed mark makes it not completed again. An expired task
+stays in the table and is shown to nobody (administrators included).
+
+**Delete.** Soft (`deleted_at`, `deleted_by`) and final: there is no Recycle Bin branch for a task.
+
+**The grants.** `todos.view` (read the list, mark) to **every** role; `todos.manage` (write, delete; minimum tier
+`admin`) to every role of the `admin` and `server_master` tiers. Union, never replace, as the notice board's. A role
+created later gets `todos.view` from the role form's default (`RoleInput.todoList`, which follows `noticeBoard` when left
+out).
+
 ---
 
 ## 3. Configurable pipelines

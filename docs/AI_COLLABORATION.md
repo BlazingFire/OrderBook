@@ -190,6 +190,12 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-08 (s6) - Lists became the To-do list (Claude, Opus, branch `s6/todo`)
+
+- **Ask (owner):** Lists and Fields do the same thing; Lists becomes a to-do list where the admin writes tasks, office users mark In progress or Completed (who and when shown, several people may mark), the admin deletes tasks and sets an auto expiry at creation or after completion.
+- **Built:** `shared/src/domain/todos.ts`, `todos.view` / `todos.manage` (group `todos`), migration `20261019000000_todo_list` (`todos`, `todo_marks`, grants), `master/src/services/todo.service.ts`, `/api/todos`, `todo:*` socket commands (protocol 11, no bump), `todo` change event (gated by `todos.view`, `PANEL_IRRELEVANT_ENTITIES`), Office forwarding, `ui/src/TodoListView.tsx` on both panels in the `lists` module; `CatalogListsScreen` and its sub-pages removed; `RoleInput.todoList` (new roles get `todos.view`); activity log `todo` created/deleted; `todo_marks` transitively scoped in backups.
+- **Verified:** `npm run lint` 0, `npm run typecheck` 0, `npm run build` 0, `npm run test` 0 (400 files + 1 skipped; 5,331 tests + 17 skipped; integration suites ran). TD-7 was seen failing with the completion-expiry clause removed. **Not verified:** no browser or Electron pass.
+
 ### 2026-10-08 (later) - New Order walk to Add sub product, Sell today, product band, person screen (Claude, Opus, single session)
 
 - **Ask (owner, R10–R15 in `CLAUDE_HELPER_OCT8.md`):** after a sub product, each dropdown opens as the walk arrives (colour, or qty for a fixed colour; packaging; grade), the caret stops on Add sub product, Enter adds and goes to a new sub product; a better sub-product dropdown with a collapse button; a compact product slideshow on Basic Home; a "what to sell today" pop-up closable or closing by itself, managed in Notice board management; the Roles & users person screen from the owner's screenshot, fully working; "make everything perfect".

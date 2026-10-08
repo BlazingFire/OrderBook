@@ -52,6 +52,27 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
+## Lists became the To-do list (2026-10-08, branch `s6/todo`)
+
+**State:** on `s6/todo` (cut from `main` @ `ad15b2a2`), not merged, not built. The owner: the Lists and Fields menus
+did the same job, so Lists becomes a to-do list. The sidebar module keeps id `lists` and Alt+G on both panels, is labelled
+"To-do list", has no sub-pages, and shows only with `todos.view`; `CatalogListsScreen` is gone and Fields (which still
+edits grades, packaging and brands under `catalog.lists.manage`) is unchanged.
+
+- An administrator (`todos.manage`, admin tier) writes a task (1–500 characters) with an auto expiry chosen then: never,
+  at a date and time, or 1 hour / 1 day / 7 days / N hours or days after completion; and deletes it (soft delete,
+  gone for everybody, **no Recycle Bin**). Everybody with `todos.view` (every role via the migration, and new roles by
+  default) marks a task In progress or Completed and can take their own mark back; several people can mark, and each
+  task lists who marked what and when. Completed counts from the earliest Completed mark; expiry is computed in SQL at
+  read time and expired tasks are hidden from everybody.
+- Migration `20261019000000_todo_list` (additive); `todo:*` socket commands at protocol **11** (not bumped: 11 is the
+  unreleased Oct 8 protocol, so this must ship in the same release as "Sell today" or the minimum must move to 12);
+  live updates through a `todo` change event gated by `todos.view`. Details: `docs/STRUCTURE.md` §11.12b, schema §2d.
+
+**Gate (s6/todo):** lint 0, typecheck 0, build 0, test 0 (400 files + 1 skipped, the Windows-only release-workflow; 5,331
+tests + 17 skipped; integration suites ran on PostgreSQL, incl. `todos.integration.test.ts`). **Not verified:** no
+browser or Electron pass, no real two-PC pass.
+
 ## Product zip, shipped catalogue, Office setup in the Master, notice board, Escape, New Order chain, Sell today, person screen (2026-10-08)
 
 **State:** on `main`, not built and not released (the owner did not ask for a build). Version is still 1.4.6, so the

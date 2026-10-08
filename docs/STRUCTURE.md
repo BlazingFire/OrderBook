@@ -1297,7 +1297,7 @@ never talks to a server** (§4.10). (`ui/tests/panel-harness.ts` is the one plac
   `"sideEffects": ["*.css"]`; `exports` `"."` → `./src/index.ts`, `"./lazy/*"` →
   `./src/*.tsx` (1.4.3: a deep import of one screen file, so a panel can load it on first
   visit as its own chunk: both `App.tsx` files import `@orderbook/ui/lazy/ChatroomScreen`,
-  `PrintroomScreen`, `ReportsScreen`, `GalleryScreen` and `CatalogListsScreen` through
+  `PrintroomScreen`, `ReportsScreen`, `GalleryScreen` and `TodoListView` (`CatalogListsScreen` until 2026-10-08) through
   `lazyScreen`), `"./styles.css"` → `./src/styles.css`; only script `typecheck`; deps `@orderbook/shared`, `blurhash`;
   peer deps `react`/`react-dom` ^19.2.8.
 - `ui/tsconfig.json`: extends base; DOM libs, `jsx: react-jsx`,
@@ -1433,6 +1433,7 @@ removed on 2026-09-25.
 | `ui/src/OptionListEditor.tsx` | `OptionListEditor`, `OptionListEditorProps`, `OptionListTransport`, `FieldDifference`, `ConflictNotice`, `HexField`, `HEX_PATTERN`, `HEX_EXAMPLE` | Catalogue v2 (2026-09-29): one option list's values — add, relabel, hex, reorder, remove to the Recycle Bin, "used by" counts, the stale-save conflict with Overwrite — lifted out of the Master's Fields screen so a Settings tab can edit the lead sources and the brands. Props `{ listKey, canManage, transport, revision?, compact? }`; it reads its list descriptors from `buildFieldCatalogue()`, as the server does. Transport `{ fieldValues, fieldUsage, createFieldValue, updateFieldValue, deleteFieldValue, reorderFieldValues, conflictOf(error) }`; the Master's is `optionListTransport` in `master/web/src/screens/FieldsScreen.tsx`. Test: `ui/tests/option-list-editor.test.tsx`. |
 | `ui/src/LogsScreen.tsx` | `LogsScreen`, `LogsTransport` | 1.3 Phase 2, moved from `master/web/src/screens/LogsScreen.tsx` so both panels mount it. The activity log: text/actor/entity/action/date filters (entity and action names through `logsEntityLabelKey`/`logsActionLabelKey`, raw for a token this build does not know; the search `Input` carries `data-screen-search`), `NewerOlderPager`, rows rendered with `renderActivity(createTranslator(DEFAULT_LOCALE), …)`, entry detail as an `EditorScreen` sub-screen (sub-nav `logs.entry`), "Verify chain" (`VerificationVerdict`), CSV export with `?locale=`. A Server Master's rows are highlighted (`rowHighlight` on `actor.tier`) and badged. Transport `{ logs, logFacets, verifyLogChain, logsExportUrl }`, read through `transportRef`; each panel's `screens/LogsScreen.tsx` is a thin mount building it from its own `api`. An optional `search` prop (`{ q, nonce }`, 2026-10-08) starts a fresh set of filters with that search each time its nonce changes: the Master's person screen opens the log this way with the person's id. Test: `ui/tests/logs-screen.test.tsx`. | `logs` on both panels |
 | `ui/src/NotificationBell.tsx` | `NotificationBell`, `NotificationTransport`, `LocalNotice`, `notificationText` | 1.3 Phase 3. The topbar bell on both panels: an icon with the unread count (stored unread plus the panel's own `local` notices), a list popover anchored under it (newest first, unread in bold, Mark all as read, an empty state, a "may be out of date" note when the read fails), closed by Escape or a click elsewhere. Opening a notice marks it read and hands its link to `onOpen(link)`. It re-reads when `revision` moves and each time it is opened. `notificationText` renders a notice from an explicit kind → key map. Transport `{ list(), markRead({ids} \| {all:true}) }` read through a ref; each panel builds it from its own `api`. In the strict-i18n lint list. Test: `ui/tests/notification-bell.test.tsx`. | the topbar of both `App.tsx` |
+| `ui/src/TodoListView.tsx` | `TodoListView`, `TodoListViewProps`, `TodoTransport` | 2026-10-08. The To-do list module on both panels (nav id `lists`, Alt+G; §11.12b): the Add task form with its expiry choice and Delete for `canManage` (`todos.manage`), each task with its creator, expiry, the In progress / Completed buttons (pressed for the viewer's own mark) and who marked each and when. Re-reads when `revision` moves and after each write. Transport `{ list, create, mark, remove }` through a ref. Test: `ui/tests/todo-list.test.tsx`. | `lists` in both `App.tsx` |
 | `ui/src/ShortcutSettings.tsx` | `ShortcutSettings` | rebinding by capture (`chordFromEvent`, `isReservedChord`), stored via `keyboard.setBinding(id, formatChord(chord))`; the recording button carries `data-key-capture` (the shell's Escape-back stands aside); a fixed last row names Escape's "Go back" (`keys.help.back`, R8) |
 | `ui/src/GalleryScreen.tsx` | `GalleryScreen` | token and component gallery, reached only at `#/gallery` (footer link), rendered outside `ScreenHost` |
 | `ui/src/AvatarPicker.tsx` | `AvatarPicker`, `avatarFileProblem` | upload/replace/clear a profile picture, checks type and `MAX_AVATAR_SOURCE_BYTES` (`avatarFileProblem`, which the person screen's header face reuses). Master only. |
@@ -3370,7 +3371,8 @@ are recounted in the 1.3 Phase 9 reconciliation.
 | 47 | `master/src/db/migrations/20261015000000_catalogue_corrections.ts` | 245 | **Pinned, additive, idempotent** (U8, U13, 2026-10-07). Brings an installed catalogue to the shipped `swisware-plus-2026.md` in place: page-4 toilets as numbered models, page-13 colour rules, `14x14 NEW CORNER` moved to Table Top Wash Basin. Touches a row only while it still holds what shipped; UPDATE only, `down()` a no-op. `master/tests/migration-catalogue-corrections.integration.test.ts` |
 | 48 | `master/src/db/migrations/20261016000000_notice_placement.ts` | 29 | **Pinned, additive, idempotent** (2026-10-08). `ADD COLUMN IF NOT EXISTS notices.show_on_home` and `notices.show_at_sign_in`, `BOOLEAN NOT NULL DEFAULT true`: where a notice shows besides the board (Basic Home band, sign-in pop-up). Test: `migration-notice-placement.integration.test.ts`. |
 | 49 | `master/src/db/migrations/20261017000000_product_image_source_checksum.ts` | 24 | **Pinned, additive, idempotent** (2026-10-08). `ADD COLUMN IF NOT EXISTS product_images.source_checksum TEXT NULL`, no backfill; `down()` drops it. `uploadImage` fills it with the sha256 of the uploaded file (null when cropped or rotated); the product zip reads a photo as unchanged on it or `checksum`. `master/tests/migration-product-image-source-checksum.integration.test.ts` |
-| 50 | `master/src/db/migrations/20261018000000_notice_sell_today.ts` | 47 | **Pinned last, additive, idempotent** (2026-10-08). `notices.kind` (`'notice'` default, or `'sellToday'`, CHECK), `product_ids JSONB` (an array, default `[]`), `auto_close_seconds` (null, 0 or 5 to 120, CHECK), `show_from DATE`: a "Sell today" entry is a kind of notice (§11.12a). `down()` drops the four. `master/tests/migration-notice-sell-today.integration.test.ts` |
+| 50 | `master/src/db/migrations/20261018000000_notice_sell_today.ts` | 47 | **Pinned, additive, idempotent** (2026-10-08). `notices.kind` (`'notice'` default, or `'sellToday'`, CHECK), `product_ids JSONB` (an array, default `[]`), `auto_close_seconds` (null, 0 or 5 to 120, CHECK), `show_from DATE`: a "Sell today" entry is a kind of notice (§11.12a). `down()` drops the four. `master/tests/migration-notice-sell-today.integration.test.ts` |
+| 51 | `master/src/db/migrations/20261019000000_todo_list.ts` | 89 | **Pinned last, additive, idempotent** (2026-10-08). `todos` and `todo_marks` (the To-do list, §11.12b), `todos.view` to every role and `todos.manage` to `admin` / `server_master` roles (union). `down()` drops the tables only. Test: `master/tests/todos.integration.test.ts` (TD-10 for the grants) |
 
 ### 6.3 Conventions across the schema
 
@@ -3667,7 +3669,7 @@ files of its own** — §7.6 lists the tests that read or boot this source.
   `setLive(false)` on its loss; every reconnect drops the cache. Five screens load on first
   visit from the shared kit through `lazyScreen` and the `@orderbook/ui/lazy/*` export:
   `ChatroomScreen`, `PrintroomScreen`, `ReportsScreen`, `GalleryScreen` and
-  `CatalogListsScreen` (own chunks; the Master's start-up bundle went from 871,924 to 796,312
+  `TodoListView` (`CatalogListsScreen` until 2026-10-08; own chunks; the Master's start-up bundle went from 871,924 to 796,312
   bytes, D4's measurement). The sidebar's unread and waiting counts come from
   `useChatUnread` / `usePrintWaiting` (`ui/src/chatUnread.ts`, `printWaiting.ts`), which live
   outside the lazy screens. The Products sidebar offers a **Duplicates** page only with
@@ -4781,7 +4783,7 @@ never reads "All synced" while offline or catching up.
 `createBurstBatcher` of `CHANGE_BATCH_MS` = 60 (one render per window, every frame still
 applied in order through `applyChangeToSnapshot`; a `snapshot` frame discards the queue), the
 five heavy screens (`ChatroomScreen`, `PrintroomScreen`, `ReportsScreen`, `GalleryScreen`,
-`CatalogListsScreen`) load on first visit through `lazyScreen` and `@orderbook/ui/lazy/*`
+`TodoListView`, which replaced `CatalogListsScreen` on 2026-10-08) load on first visit through `lazyScreen` and `@orderbook/ui/lazy/*`
 (the Office start-up bundle went from 824,172 to 750,191 bytes, D4's measurement), and the
 sidebar counts come from `useChatUnread` / `usePrintWaiting`.
 
@@ -6602,6 +6604,38 @@ or that closes by itself after a set number of seconds; and a product slideshow 
   `ui/tests/sell-today-popup.test.tsx`, `sell-today-manage.test.tsx`, `product-slideshow.test.tsx`, the "Sell today"
   blocks of `master-shell.test.tsx` and `office-notices.test.tsx`, and `sign-in-notices.test.tsx` (`onSettled`).
 
+### 11.12b The To-do list (2026-10-08)
+
+The owner's ask: the Lists module served the same purpose as Fields, so it became a to-do list. The sidebar module keeps
+its id `lists` and Alt+G on both panels; its label is "To-do list" (`nav.lists`) and it has no sub-pages. Fields is
+unchanged. Schema: `docs/schema/06-tenancy-permissions-and-sync.md` section 2d.
+
+- **Rules.** `todos.manage` (admin tier) writes a task (1 to 500 characters) with an optional auto expiry chosen then:
+  none, a fixed time (`expiresAt`), or hours after completion (`expireAfterHours`, 1 to 8760; the form offers 1 hour,
+  1 day, 7 days, or a number of hours or days), and deletes a task (soft, gone for everybody, no Recycle Bin).
+  `todos.view` (every role, and new roles by default) reads the list and puts the reader's own In progress or
+  Completed mark on a task or takes it off; several people can mark, and a Completed mark keeps the same person's In
+  progress one. A mark needs a signed-in person (`error.conflict.noTodoMarker` for a panel acting as itself). A task is
+  completed from its earliest Completed mark; expired tasks are hidden from everybody, worked out in SQL at read time.
+- **Shared.** `shared/src/domain/todos.ts` (`TodoTask`, `TodoMark`, `TodoInput`, `TodoMarkInput`, `TODO_MIN_PROTOCOL` =
+  11, limits), `permissions.ts` (`todos.view`, `todos.manage`, group `todos`), `protocol/socket.ts` (`todo:list`,
+  `todo:create`, `todo:mark`, `todo:delete`; the `todo` `ChangedEntity`, in `PANEL_IRRELEVANT_ENTITIES`). No protocol
+  bump: 11 ("Sell today") was not yet released, and the protocol rises once per release.
+- **Master.** `20261019000000_todo_list.ts`; `services/todo.service.ts` (`listTodos`, `createTodo`, `markTodo`,
+  `deleteTodo`; queries inline, activity log `todo` created/deleted with the text as `{title}`); `http/routes/todo.routes.ts`
+  (`GET /api/todos`, `POST /api/todos`, `POST /api/todos/:id/mark` `{status, marked}`, `DELETE /api/todos/:id`); `hub.ts`
+  (`todo:*` on panel sockets). **Live:** every write publishes `{entity: 'todo', payload: null}`; `fan-out.ts` gates it
+  by `todos.view` (`REQUIRED_PERMISSION`), so it goes per recipient through `emitGatedChange` to Master browsers and
+  panels. The Master browser counts it under `SCREEN_ENTITIES.todos`; the Office relays it down its event stream as a
+  `change` frame and its `App.tsx` bumps `todoRevision`; `TodoListView` re-reads on either, and after its own writes.
+- **Office.** `office/src/http/app.ts` forwards the four routes (online only; nothing is cached for offline).
+- **Screen.** `ui/src/TodoListView.tsx` (`TodoListView`, `TodoTransport { list, create, mark, remove }`), lazy-loaded on
+  both panels; the Master's transport is `todoTransport` in `master/web/src/transports.ts`, the Office's is in its
+  `App.tsx`. The Add task form and Delete (with a confirm) only for `todos.manage`.
+- **Tests.** `master/tests/todos.integration.test.ts` (TD-1..TD-10), `office/tests/todos-forwarding.test.ts`,
+  `ui/tests/todo-list.test.tsx`, the To-do blocks of `master-shell.test.tsx` and `office-shell.test.tsx` (the latter
+  also the re-read on a `todo` change frame), `change-ring.test.ts` (the bucket), `migration-registry.test.ts`.
+
 ### 11.13 Product photos in bulk, and the catalogue photos (Oct 2026)
 
 - **Photo import (Master, Products > Photo import, `products.edit`).** `master/web/src/screens/PhotoImportScreen.tsx` picks a folder
@@ -7359,7 +7393,7 @@ stock and inventory code (R15; the tables stay), see the notes in sections 3-9.
 | File | What it is |
 |---|---|
 | `master/src/db/migrations/20261012000000_catalog_lists_grant.ts` | R5. Add-only: `catalog.lists.manage` to the admin and Server Master tiers and to every role that held `fields.manage`; pinned after `20261007...` in `index.ts` and `migration-registry.test.ts` |
-| `ui/src/CatalogListsScreen.tsx` | R3-R5. The Lists module (nav id `lists`, Alt+G): Grades, Packaging and Brands pages on the shared `OptionListEditor`; everyone reads, `catalog.lists.manage` writes |
+| ~~`ui/src/CatalogListsScreen.tsx`~~ | R3-R5. The Lists module (nav id `lists`, Alt+G): Grades, Packaging and Brands pages on the shared `OptionListEditor`. **Removed 2026-10-08**: the module is now the To-do list (§11.12b); Fields still edits the three lists under `catalog.lists.manage` |
 | `ui/src/ListFilters.tsx` | R17. `useStoredSort` (kept per machine in localStorage under `ob.listSort.<table>`), `ProductFilterRow` (size, photo), `PartyFilterRow` (city, state, GST); both take `extraActive` and `onClearAll` so Clear filters clears the search and chips too |
 | `ui/src/ProductShare.tsx` | R16. The "N selected - Create product share" bar and the Save PDF / Print dialog; `printPdfBlob`. The tick boxes are `selectedIds` / `onSelectionChange` on `DataTable` |
 | `master/src/domain/product-share.ts` | R16. Pure: `chunkPages` (4 per page), `shareCard` (every product field but money; never the main-product code), `shareText()` (the fixed words from `productShare.pdf.*`), `SHARE_MAX_PRODUCTS` = 400 |
