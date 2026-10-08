@@ -62,6 +62,7 @@ import * as catalogListsGrant from './20261012000000_catalog_lists_grant.js';
 import * as printroomOfficeManagementGrant from './20261013000000_printroom_office_management_grant.js';
 import * as noticeBoard from './20261014000000_notice_board.js';
 import * as catalogueCorrections from './20261015000000_catalogue_corrections.js';
+import * as productImageSourceChecksum from './20261016000000_product_image_source_checksum.js';
 
 export interface Migration {
   name: string;
@@ -284,6 +285,11 @@ export const migrations: Migration[] = [
   {
     name: '20261015000000_catalogue_corrections',
     ...catalogueCorrections,
+  },
+  // `product_images.source_checksum`, so a restored zip's own photos read back as unchanged.
+  {
+    name: '20261016000000_product_image_source_checksum',
+    ...productImageSourceChecksum,
   },
 ];
 

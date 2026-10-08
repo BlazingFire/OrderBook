@@ -273,6 +273,9 @@ export async function uploadImage(request: UploadImageRequest, actor: ActorConte
         width: derived.width,
         height: derived.height,
         checksum: derived.checksum,
+        // The file it came from, as given: the master above is a re-encode, so
+        // only this matches that file again (the product backup zip's compare).
+        sourceChecksum: createHash('sha256').update(request.fileBuffer).digest('hex'),
         blurhash: derived.blurhash,
         byteSize: derived.byteSize,
       },

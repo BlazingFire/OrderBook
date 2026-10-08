@@ -116,6 +116,8 @@ describe('the migration registry matches the directory', () => {
     '20261014000000_notice_board',
     // U8, U13: the owner's catalogue corrections.
     '20261015000000_catalogue_corrections',
+    // `product_images.source_checksum` (the product backup zip's photo compare).
+    '20261016000000_product_image_source_checksum',
   ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {

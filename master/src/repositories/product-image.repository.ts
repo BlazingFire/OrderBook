@@ -85,6 +85,8 @@ export interface NewImageRow {
   width: number;
   height: number;
   checksum: string;
+  /** sha256 of the bytes it was uploaded from; never on the wire. */
+  sourceChecksum: string;
   blurhash: string;
   byteSize: number;
 }
@@ -100,6 +102,7 @@ export async function insertImage(tenantId: string, image: NewImageRow, trx: Tra
     width: image.width,
     height: image.height,
     checksum: image.checksum,
+    source_checksum: image.sourceChecksum,
     blurhash: image.blurhash,
     byte_size: image.byteSize,
   });
@@ -147,6 +150,15 @@ export async function imageRefsForTenant(
     .where({ tenant_id: tenantId })
     .select<Array<{ id: string; product_id: string }>>('id', 'product_id');
   return rows.map((row) => ({ id: String(row.id), productId: String(row.product_id) }));
+}
+
+/** Each photo's `source_checksum`, by image id, where one was recorded (not before `20261016`). */
+export async function sourceChecksumsForTenant(tenantId: string, runner: Runner = db()): Promise<Map<string, string>> {
+  const rows = await runner(TABLE)
+    .where({ tenant_id: tenantId })
+    .whereNotNull('source_checksum')
+    .select<Array<{ id: string; source_checksum: string }>>('id', 'source_checksum');
+  return new Map(rows.map((row) => [String(row.id), row.source_checksum]));
 }
 
 /** Unsets every other image on the product, then marks this one primary — kept in one transaction so exactly one is ever true. */
