@@ -1,6 +1,7 @@
 /**
  * Notice board management (Oct 7, U5): the list of every notice, with a form to write one, an
- * audience picker, pin and "show until" controls, who has read each, and delete.
+ * audience picker, pin and "show until" controls, where else it shows (Basic Home, sign-in), who
+ * has read each, and delete.
  *
  * Props in, callbacks out, like the reading view: the panel decides how a write reaches the Master.
  * A write that fails is thrown from its callback and shown here in the words the transport gave it;
@@ -12,6 +13,8 @@ import {
   NOTICE_BODY_MAX,
   NOTICE_TITLE_MAX,
   isNoticeExpired,
+  noticeAtSignIn,
+  noticeOnHome,
   noticeProblem,
   type Notice,
   type NoticeAudience,
@@ -142,6 +145,18 @@ export function NoticeManageView({
           style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
         >
           {audienceText(notice)}
+        </span>
+      ),
+    },
+    {
+      key: 'placement',
+      header: t('notices.manage.col.placement'),
+      width: '11rem',
+      priority: 2,
+      render: (notice) => (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--s-4)', flex: 'none' }}>
+          {noticeOnHome(notice) && <StatusPill>{t('notices.placement.homeTag')}</StatusPill>}
+          {noticeAtSignIn(notice) && <StatusPill>{t('notices.placement.signInTag')}</StatusPill>}
         </span>
       ),
     },
@@ -280,6 +295,8 @@ function NoticeEditor({
   const [priority, setPriority] = useState<NoticePriority>(notice?.priority ?? 'normal');
   const [pinned, setPinned] = useState(notice?.pinned ?? false);
   const [showUntil, setShowUntil] = useState(notice?.showUntil ?? '');
+  const [showOnHome, setShowOnHome] = useState(notice ? noticeOnHome(notice) : true);
+  const [showAtSignIn, setShowAtSignIn] = useState(notice ? noticeAtSignIn(notice) : true);
   const [audienceKind, setAudienceKind] = useState<'all' | 'roles'>(notice?.audience.kind ?? 'all');
   const [roleIds, setRoleIds] = useState<string[]>(notice?.audience.kind === 'roles' ? notice.audience.roleIds : []);
   const [problem, setProblem] = useState<NoticeProblem | null>(null);
@@ -296,6 +313,8 @@ function NoticeEditor({
       priority,
       pinned,
       showUntil: showUntil || null,
+      showOnHome,
+      showAtSignIn,
       audience,
     };
     const found = noticeProblem(input, 'create');
@@ -398,6 +417,19 @@ function NoticeEditor({
         </FormField>
 
         <Checkbox checked={pinned} onChange={setPinned} label={t('notices.editor.pinned')} />
+
+        <FormField
+          label={t('notices.editor.placementLabel')}
+          hint={t('notices.editor.placementHint')}
+          error={problemFor('no_placement')}
+        >
+          {() => (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
+              <Checkbox checked={showOnHome} onChange={setShowOnHome} label={t('notices.placement.home')} />
+              <Checkbox checked={showAtSignIn} onChange={setShowAtSignIn} label={t('notices.placement.signIn')} />
+            </div>
+          )}
+        </FormField>
 
         <FormField label={t('notices.editor.untilLabel')} hint={t('notices.editor.untilHint')} error={problemFor('bad_date')}>
           {(id) => (

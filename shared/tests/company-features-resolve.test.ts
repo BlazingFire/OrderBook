@@ -22,6 +22,8 @@ describe('resolveCompanyFeatures', () => {
       packagingRequiredOnConvert: SETTINGS['leads.packagingRequiredOnConvert'].fallback,
       reportsVisibleToOffice: SETTINGS['reports.visibleToOffice'].fallback,
       reportsVisibleToManagement: SETTINGS['reports.visibleToManagement'].fallback,
+      noticesOnHome: SETTINGS['notices.showOnHome'].fallback,
+      noticesAtSignIn: SETTINGS['notices.showAtSignIn'].fallback,
     });
   });
 
@@ -41,6 +43,16 @@ describe('resolveCompanyFeatures', () => {
     expect(resolved.packagingRequiredOnConvert).toBe(false);
     expect(resolved.offlineSignInEnabled).toBe(true);
     expect(resolved.followUpDefaultDays).toBe(3);
+    // A Master from before the notice switches (1.4.6 and older): both surfaces stay on.
+    expect(resolved.noticesOnHome).toBe(true);
+    expect(resolved.noticesAtSignIn).toBe(true);
+  });
+
+  it('keeps a notice surface a company switched off', () => {
+    const resolved = resolveCompanyFeatures({ noticesOnHome: false, noticesAtSignIn: false });
+
+    expect(resolved.noticesOnHome).toBe(false);
+    expect(resolved.noticesAtSignIn).toBe(false);
   });
 
   it('keeps a false that was actually sent, rather than coalescing it away', () => {

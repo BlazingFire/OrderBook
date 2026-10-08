@@ -14,6 +14,8 @@ import {
   compareNotices,
   isNoticeExpired,
   isPermittedForTier,
+  noticeAtSignIn,
+  noticeOnHome,
   noticeProblem,
   noticeToday,
   type Notice,
@@ -63,6 +65,24 @@ describe('noticeProblem', () => {
       'audience_empty',
     );
     expect(noticeProblem({ title: 't', audience: { kind: 'all' } }, 'create')).toBeNull();
+  });
+
+  it('keeps a notice on Basic Home, at sign-in, or both, never neither', () => {
+    expect(noticeProblem({ title: 't', showOnHome: false, showAtSignIn: false }, 'create')).toBe(
+      'no_placement',
+    );
+    expect(noticeProblem({ showOnHome: false, showAtSignIn: false }, 'update')).toBe(
+      'no_placement',
+    );
+    expect(noticeProblem({ title: 't', showOnHome: false }, 'create')).toBeNull();
+    expect(noticeProblem({ title: 't', showAtSignIn: false }, 'create')).toBeNull();
+  });
+
+  it('reads a placement an older Master never sent as shown', () => {
+    expect(noticeOnHome({})).toBe(true);
+    expect(noticeAtSignIn({})).toBe(true);
+    expect(noticeOnHome({ showOnHome: false })).toBe(false);
+    expect(noticeAtSignIn({ showAtSignIn: false })).toBe(false);
   });
 });
 

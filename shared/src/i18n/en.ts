@@ -127,6 +127,7 @@ export const EN_MESSAGES = {
   'settingGroup.products': 'Products',
   'settingGroup.leads': 'Pending Orders and follow-up',
   'settingGroup.reports': 'Reports',
+  'settingGroup.notices': 'Notice board',
   'settingGroup.integrations': 'Other software',
 
   // --- Units rendered beside a number setting's field.
@@ -163,6 +164,12 @@ export const EN_MESSAGES = {
   'setting.reports.visibleToManagement.label': 'Show Reports to Management users',
   'setting.reports.visibleToManagement.help':
     'On, people in the Management tier see the Reports module and get their own figures in it. Off, it is hidden from them and refused if they ask. Administrators always see it.',
+  'setting.notices.showOnHome.label': 'Show the notice board on Basic Home',
+  'setting.notices.showOnHome.help':
+    'On, Basic Home starts with a band of the notices meant for the person signed in, one at a time, or says there are none. Off, Basic Home shows only its tiles. The Notice board itself is not affected.',
+  'setting.notices.showAtSignIn.label': 'Show unread notices when someone signs in',
+  'setting.notices.showAtSignIn.help':
+    'On, right after signing in each person sees the notices they have not read yet, important ones first, and can mark them read or leave them for later. Off, nothing pops up and the notices wait on the Notice board.',
 
   'setting.security.passwordRevealEnabled.label': 'Remember passwords so they can be shown again',
   'setting.security.passwordRevealEnabled.help':
@@ -513,6 +520,7 @@ export const EN_MESSAGES = {
   'validation.notice.dateInvalid': 'Enter a real date for the last day to show it',
   'validation.notice.audienceEmpty': 'Choose at least one role, or send it to everybody',
   'validation.notice.audienceTooBig': 'Too many roles chosen',
+  'validation.notice.placementEmpty': 'Show the notice on Basic Home, at sign-in, or both',
   'validation.notice.audienceUnknownRole': 'One of the chosen roles does not exist',
   'validation.fields.valueImmutable':
     'The value cannot be changed once created — rename the label instead',
@@ -3808,8 +3816,8 @@ export const EN_MESSAGES = {
   'notices.slideshow.goTo': 'Show notice {index}',
   'notices.card.open': 'Open the notice board',
   'notices.card.unreadCount': '{count} unread',
-  'notices.signIn.title': 'Important notices',
-  'notices.signIn.intro': 'These important notices have not been read yet.',
+  'notices.signIn.title': 'Unread notices',
+  'notices.signIn.intro': 'You have not read these notices yet.',
   'notices.signIn.markRead': 'Mark as read',
   'notices.signIn.later': 'Later',
   'notices.signIn.markFailed': 'Could not mark them as read. They are still here; try again.',
@@ -3823,6 +3831,7 @@ export const EN_MESSAGES = {
   'notices.manage.col.until': 'Shown until',
   'notices.manage.col.reads': 'Read by',
   'notices.manage.col.updated': 'Updated',
+  'notices.manage.col.placement': 'Also shown',
   'notices.manage.audienceAll': 'Everyone',
   'notices.manage.audienceRoles': 'Roles: {roles}',
   'notices.manage.noEnd': 'Until removed',
@@ -3848,6 +3857,12 @@ export const EN_MESSAGES = {
   'notices.editor.untilHint':
     'The last day it is shown. Leave empty to keep it up until you remove it.',
   'notices.editor.clearDate': 'No end date',
+  'notices.editor.placementLabel': 'Where else it shows',
+  'notices.editor.placementHint': 'It is always on the Notice board. Keep at least one of these.',
+  'notices.placement.home': 'Show on Basic Home',
+  'notices.placement.signIn': 'Show at sign-in',
+  'notices.placement.homeTag': 'Basic Home',
+  'notices.placement.signInTag': 'Sign-in',
   'notices.editor.audienceLabel': 'Who sees it',
   'notices.editor.audienceAll': 'Everyone',
   'notices.editor.audienceRoles': 'Chosen roles',
@@ -3865,6 +3880,7 @@ export const EN_MESSAGES = {
   'notices.problem.bad_date': 'Enter a real date',
   'notices.problem.audience_empty': 'Choose at least one role',
   'notices.problem.audience_too_big': 'Too many roles chosen',
+  'notices.problem.no_placement': 'Show it on Basic Home, at sign-in, or both',
   'notices.readers.title': 'Who has read "{title}"',
   'notices.readers.summary': '{read} of {total} have read it',
   'notices.readers.read': 'Read {when}',

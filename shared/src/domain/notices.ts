@@ -46,6 +46,14 @@ export interface Notice {
   pinned: boolean;
   /** `YYYY-MM-DD` in the company's business time zone: the last day it is shown. Null: until removed. */
   showUntil: string | null;
+  /**
+   * Where it shows besides the board (2026-10-08): the band on Basic Home, and the pop-up right
+   * after sign-in. At least one is true. Optional on the wire: a Master older than these fields
+   * sends neither, and absent reads as true (`noticeOnHome`, `noticeAtSignIn`), which is how
+   * every notice showed before.
+   */
+  showOnHome?: boolean;
+  showAtSignIn?: boolean;
   audience: NoticeAudience;
   /**
    * Role names for `audience.roleIds`, in the same order. Present only on what a manager reads
@@ -77,6 +85,9 @@ export interface NoticeInput {
   priority?: NoticePriority;
   pinned?: boolean;
   showUntil?: string | null;
+  /** Omitted on a create: true. Both false is refused (`no_placement`). */
+  showOnHome?: boolean;
+  showAtSignIn?: boolean;
   audience?: NoticeAudience;
 }
 
@@ -129,6 +140,16 @@ export function isNoticeExpired(showUntil: string | null, today: string): boolea
   return showUntil !== null && showUntil < today;
 }
 
+/** Whether a notice goes in the Basic Home band. Absent (an older Master) is yes. */
+export function noticeOnHome(notice: Pick<Notice, 'showOnHome'>): boolean {
+  return notice.showOnHome !== false;
+}
+
+/** Whether a notice goes in the pop-up after sign-in. Absent (an older Master) is yes. */
+export function noticeAtSignIn(notice: Pick<Notice, 'showAtSignIn'>): boolean {
+  return notice.showAtSignIn !== false;
+}
+
 /** Pinned first, then important, then newest. The order of both lists. */
 export function compareNotices(a: Notice, b: Notice): number {
   if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
@@ -143,7 +164,8 @@ export type NoticeProblem =
   | 'bad_priority'
   | 'bad_date'
   | 'audience_empty'
-  | 'audience_too_big';
+  | 'audience_too_big'
+  | 'no_placement';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -175,5 +197,8 @@ export function noticeProblem(
     if (input.audience.roleIds.length === 0) return 'audience_empty';
     if (input.audience.roleIds.length > NOTICE_AUDIENCE_MAX_ROLES) return 'audience_too_big';
   }
+  // Shown nowhere but the board is what the board alone is for: one of the two stays on. An edit
+  // that sends only one of them is checked against the stored other by the Master.
+  if (input.showOnHome === false && input.showAtSignIn === false) return 'no_placement';
   return null;
 }

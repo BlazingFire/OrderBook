@@ -159,6 +159,10 @@ export interface CompanyFeatures {
   reportsVisibleToOffice?: boolean;
   /** `reports.visibleToManagement`: the same for the Management tier. */
   reportsVisibleToManagement?: boolean;
+  /** `notices.showOnHome`: whether Basic Home carries the notice band. */
+  noticesOnHome?: boolean;
+  /** `notices.showAtSignIn`: whether unread notices pop up after sign-in. */
+  noticesAtSignIn?: boolean;
 }
 
 export interface SignedInUser extends User {

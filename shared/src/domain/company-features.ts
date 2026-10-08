@@ -31,6 +31,8 @@ export interface ResolvedCompanyFeatures {
   packagingRequiredOnConvert: boolean;
   reportsVisibleToOffice: boolean;
   reportsVisibleToManagement: boolean;
+  noticesOnHome: boolean;
+  noticesAtSignIn: boolean;
 }
 
 export function resolveCompanyFeatures(
@@ -48,5 +50,7 @@ export function resolveCompanyFeatures(
       features?.reportsVisibleToOffice ?? SETTINGS['reports.visibleToOffice'].fallback,
     reportsVisibleToManagement:
       features?.reportsVisibleToManagement ?? SETTINGS['reports.visibleToManagement'].fallback,
+    noticesOnHome: features?.noticesOnHome ?? SETTINGS['notices.showOnHome'].fallback,
+    noticesAtSignIn: features?.noticesAtSignIn ?? SETTINGS['notices.showAtSignIn'].fallback,
   };
 }

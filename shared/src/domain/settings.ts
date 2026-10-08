@@ -36,7 +36,14 @@ import type { MessageKey } from '../i18n/keys.js';
  * shopkeeper would use over the phone, not the module names the keys are built
  * from.
  */
-export const SETTING_GROUPS = ['access', 'products', 'leads', 'reports', 'integrations'] as const;
+export const SETTING_GROUPS = [
+  'access',
+  'products',
+  'leads',
+  'reports',
+  'notices',
+  'integrations',
+] as const;
 export type SettingGroup = (typeof SETTING_GROUPS)[number];
 
 /**
@@ -158,6 +165,30 @@ export const SETTINGS = {
     labelToken: 'setting.reports.visibleToManagement.label',
     descriptionToken: 'setting.reports.visibleToManagement.help',
     group: 'reports',
+    control: { kind: 'boolean' },
+    fallback: true,
+    parse: (raw: unknown): boolean => asBoolean(raw),
+  },
+
+  /**
+   * The notice board's band at the top of Basic Home (2026-10-08). Only where it shows: the
+   * board itself, its sidebar row and the Dashboard card are unchanged either way, and a
+   * notice can still be kept off the band one at a time (`notices.show_on_home`).
+   */
+  'notices.showOnHome': {
+    labelToken: 'setting.notices.showOnHome.label',
+    descriptionToken: 'setting.notices.showOnHome.help',
+    group: 'notices',
+    control: { kind: 'boolean' },
+    fallback: true,
+    parse: (raw: unknown): boolean => asBoolean(raw),
+  },
+
+  /** The pop-up of unread notices right after somebody signs in, on both panels. */
+  'notices.showAtSignIn': {
+    labelToken: 'setting.notices.showAtSignIn.label',
+    descriptionToken: 'setting.notices.showAtSignIn.help',
+    group: 'notices',
     control: { kind: 'boolean' },
     fallback: true,
     parse: (raw: unknown): boolean => asBoolean(raw),

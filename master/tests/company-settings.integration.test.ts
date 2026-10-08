@@ -364,6 +364,24 @@ describe.skipIf(!canRunIntegrationTests)('company settings, end to end (integrat
       expect((await buildSnapshot(actor)).features).toMatchObject({ followUpDefaultDays: 7 });
     });
 
+    it('carries the notice board switches both ways, on by default (2026-10-08)', async () => {
+      const credentials = await setUpFirstRun();
+      expect((await buildSnapshot(actor)).features).toMatchObject({
+        noticesOnHome: true,
+        noticesAtSignIn: true,
+      });
+
+      await settings.writeSetting(actor, 'notices.showOnHome', false);
+      await settings.writeSetting(actor, 'notices.showAtSignIn', false);
+
+      const signedIn = await auth.signIn(credentials.username, credentials.password, 'browser', { onMasterPc: true });
+      expect(signedIn.user.features).toMatchObject({ noticesOnHome: false, noticesAtSignIn: false });
+      expect((await buildSnapshot(actor)).features).toMatchObject({
+        noticesOnHome: false,
+        noticesAtSignIn: false,
+      });
+    });
+
     it('answers the declared fallback when nothing has been set', async () => {
       const credentials = await setUpFirstRun();
 

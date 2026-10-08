@@ -3,33 +3,45 @@
  * for it, so it is built from the design system's parts: a surface band like the Feedback
  * banners, the Data pills, and the icon set's chevrons.
  *
- * It cycles the reader's important and pinned notices, unread first (`cardNotices`, the same
- * audience the board and the Dashboard card show). A slide shows the title, the pills, the
+ * It cycles every notice on the reader's board today that is placed on Basic Home (2026-10-08:
+ * it used to take only the important and pinned ones, so an ordinary notice never showed here),
+ * unread first and then in board order (`homeNotices`). A slide shows the title, the pills, the
  * start of the body and the date; pressing it opens that notice on the board.
  *
  * Rotation follows the WAI-ARIA carousel pattern: 6 s a slide; paused while the pointer is
  * over it or focus is inside it; a stop / start button first, then previous, the dots and
  * next. The slides region is silent while it rotates on its own and polite once the reader
  * is driving. Under reduced motion (the OS setting or the app's motion switch) it never
- * advances by itself. With nothing to show it draws nothing.
+ * advances by itself. With nothing to show it is a short band that says so, with the way to
+ * the board, so Basic Home never looks as if the notice board were missing.
  */
 
 import { useEffect, useId, useState } from 'react';
-import type { Notice } from '@orderbook/shared';
+import { noticeOnHome, type Notice } from '@orderbook/shared';
 
+import { Button } from './Button.js';
 import { StatusPill } from './DataDisplay.js';
 import { formatDate } from './format.js';
 import { t } from './i18n.js';
 import { Icon } from './icons.js';
-import { cardNotices } from './NoticeDashboardCard.js';
+import { boardNotices } from './NoticeBoardView.js';
 
 export const SLIDE_MS = 6000;
+
+/** The slides: on the board today and placed on Basic Home, unread before read, then board order. */
+export function homeNotices(notices: readonly Notice[], today?: string, limit = 8): Notice[] {
+  const placed = boardNotices(notices, today).filter(noticeOnHome);
+  const unreadFirst = [...placed.filter((n) => n.readByMe === false), ...placed.filter((n) => n.readByMe !== false)];
+  return unreadFirst.slice(0, limit);
+}
 
 export interface NoticeSlideshowProps {
   notices: Notice[];
   today?: string;
   /** Opens this notice on the board. */
   onOpen: (id: string) => void;
+  /** Opens the board itself: the empty band's button. */
+  onOpenBoard?: () => void;
   /** How many slides at most; the rest are on the board. */
   limit?: number;
 }
@@ -41,8 +53,8 @@ function motionReduced(): boolean {
     : false;
 }
 
-export function NoticeSlideshow({ notices, today, onOpen, limit = 8 }: NoticeSlideshowProps) {
-  const slides = cardNotices(notices, today, limit);
+export function NoticeSlideshow({ notices, today, onOpen, onOpenBoard, limit = 8 }: NoticeSlideshowProps) {
+  const slides = homeNotices(notices, today, limit);
   const [index, setIndex] = useState(0);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -60,7 +72,21 @@ export function NoticeSlideshow({ notices, today, onOpen, limit = 8 }: NoticeSli
     return () => clearTimeout(timer);
   }, [rotating, current, count]);
 
-  if (count === 0) return null;
+  if (count === 0) {
+    return (
+      <section className="ob-slideshow ob-slideshow--empty" aria-label={t('notices.slideshow.label')}>
+        <span className="ob-slideshow-empty">
+          <span className="ob-slideshow-title">{t('notices.board.emptyTitle')}</span>
+          <span className="ob-slideshow-body">{t('notices.board.emptyBody')}</span>
+        </span>
+        {onOpenBoard && (
+          <Button variant="secondary" size="sm" onClick={onOpenBoard}>
+            {t('notices.card.open')}
+          </Button>
+        )}
+      </section>
+    );
+  }
   const notice = slides[current]!;
   const go = (next: number) => setIndex(((next % count) + count) % count);
 

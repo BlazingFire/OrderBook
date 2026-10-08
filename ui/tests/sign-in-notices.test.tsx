@@ -1,5 +1,6 @@
 /**
- * V6: important unread notices pop up once, right after somebody signs in.
+ * V6: unread notices pop up once, right after somebody signs in. Since 2026-10-08 that is every
+ * unread notice placed at sign-in, important first, not the important ones alone.
  */
 
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
@@ -43,30 +44,61 @@ const NEW = notice('N2', { createdAt: '2026-10-05T09:00:00.000Z' });
 const NORMAL = notice('N3', { priority: 'normal' });
 const READ = notice('N4', { readByMe: true });
 const EXPIRED = notice('N5', { showUntil: '2026-10-02' });
+const HOME_ONLY = notice('N6', { showAtSignIn: false });
 const TODAY = '2026-10-07';
 
 const dialog = () => screen.queryByRole('dialog', { name: t('notices.signIn.title') });
 const listed = () => within(dialog()!).getAllByRole('listitem').map((item) => item.getAttribute('data-notice'));
 
 describe('signInNotices', () => {
-  it('lists only the important ones not read and still on the board, newest first', () => {
-    expect(signInNotices([OLD, NORMAL, NEW, READ, EXPIRED], TODAY).map((n) => n.id)).toEqual(['N2', 'N1']);
+  it('lists every unread one placed at sign-in and still on the board, important first, then newest', () => {
+    expect(signInNotices([OLD, NORMAL, NEW, READ, EXPIRED, HOME_ONLY], TODAY).map((n) => n.id)).toEqual([
+      'N2',
+      'N1',
+      'N3',
+    ]);
   });
 });
 
 describe('SignInNotices', () => {
-  it('shows the important unread notices, newest first, once they have loaded', () => {
+  it('shows the unread notices, important first, once they have loaded, with the pill only on the important ones', () => {
     const view = render(<SignInNotices loaded={false} notices={[]} today={TODAY} onMarkRead={vi.fn()} />);
     expect(dialog()).toBeNull();
 
-    view.rerender(<SignInNotices loaded notices={[OLD, NORMAL, NEW, READ, EXPIRED]} today={TODAY} onMarkRead={vi.fn()} />);
+    view.rerender(
+      <SignInNotices loaded notices={[OLD, NORMAL, NEW, READ, EXPIRED, HOME_ONLY]} today={TODAY} onMarkRead={vi.fn()} />,
+    );
 
     expect(dialog()).not.toBeNull();
-    expect(listed()).toEqual(['N2', 'N1']);
+    expect(listed()).toEqual(['N2', 'N1', 'N3']);
+    const pills = (id: string) =>
+      within(dialog()!.querySelector(`[data-notice="${id}"]`) as HTMLElement).queryAllByText(t('notices.priority.important'));
+    expect(pills('N2')).toHaveLength(1);
+    expect(pills('N3')).toHaveLength(0);
   });
 
-  it('shows nothing to somebody with no important unread notice, or none at all', () => {
-    render(<SignInNotices loaded notices={[NORMAL, READ, EXPIRED]} today={TODAY} onMarkRead={vi.fn()} />);
+  it('follows the company switch as it stood when it decided, and closes when the switch goes off', () => {
+    const props = { loaded: true, notices: [NEW], today: TODAY, onMarkRead: vi.fn() };
+    const off = render(<SignInNotices key="sign-in-1" {...props} enabled={false} />);
+    expect(dialog()).toBeNull();
+    // Turned on later in the same sign-in: nothing pops up until the next one.
+    off.rerender(<SignInNotices key="sign-in-1" {...props} enabled />);
+    expect(dialog()).toBeNull();
+    cleanup();
+
+    const on = render(<SignInNotices key="sign-in-2" {...props} enabled />);
+    expect(dialog()).not.toBeNull();
+    on.rerender(<SignInNotices key="sign-in-2" {...props} enabled={false} />);
+    expect(dialog()).toBeNull();
+  });
+
+  it('shows an ordinary unread notice on its own', () => {
+    render(<SignInNotices loaded notices={[NORMAL]} today={TODAY} onMarkRead={vi.fn()} />);
+    expect(listed()).toEqual(['N3']);
+  });
+
+  it('shows nothing to somebody with no unread notice placed at sign-in, or none at all', () => {
+    render(<SignInNotices loaded notices={[READ, EXPIRED, HOME_ONLY]} today={TODAY} onMarkRead={vi.fn()} />);
     expect(dialog()).toBeNull();
     cleanup();
     render(<SignInNotices loaded notices={[]} today={TODAY} onMarkRead={vi.fn()} />);
@@ -90,9 +122,9 @@ describe('SignInNotices', () => {
   });
 
   it('does not interrupt the session for a notice that arrives after sign-in', () => {
-    const view = render(<SignInNotices loaded notices={[NORMAL]} today={TODAY} onMarkRead={vi.fn()} />);
+    const view = render(<SignInNotices loaded notices={[READ]} today={TODAY} onMarkRead={vi.fn()} />);
     expect(dialog()).toBeNull();
-    view.rerender(<SignInNotices loaded notices={[NORMAL, NEW]} today={TODAY} onMarkRead={vi.fn()} />);
+    view.rerender(<SignInNotices loaded notices={[READ, NEW]} today={TODAY} onMarkRead={vi.fn()} />);
     expect(dialog()).toBeNull();
   });
 

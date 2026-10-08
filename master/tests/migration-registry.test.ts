@@ -116,6 +116,8 @@ describe('the migration registry matches the directory', () => {
     '20261014000000_notice_board',
     // U8, U13: the owner's catalogue corrections.
     '20261015000000_catalogue_corrections',
+    // 2026-10-08: a notice's placement (Basic Home, sign-in).
+    '20261016000000_notice_placement',
   ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {
