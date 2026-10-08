@@ -239,7 +239,7 @@ afterEach(() => {
   delete (window as { orderbook?: unknown }).orderbook;
 });
 
-/** The panel's own lead form, as far as a draft card with one quantity typed. */
+/** The panel's own lead form, as far as a sub product's card with one quantity typed. */
 async function draftOneProduct(): Promise<void> {
   // The first test to open the New lead screen also pays for compiling it,
   // which under a full run takes longer than `findBy`'s one-second default.
@@ -255,6 +255,8 @@ async function draftOneProduct(): Promise<void> {
   const search = screen.getByLabelText(t('lead.add.products.searchLabel'));
   fireEvent.focus(search);
   fireEvent.mouseDown(await screen.findByRole('button', { name: CATEGORY.name }));
+  // The same box is then the product's sub-product bar: the sub product opens its card.
+  fireEvent.mouseDown(await screen.findByRole('button', { name: new RegExp(PRODUCT.name) }));
 
   fireEvent.change(await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — AQ-W`), {
     target: { value: '5' },
