@@ -1919,7 +1919,7 @@ function MasterPanel() {
           notices pop-up, unless the company turned it off (`notices.showSellToday`). */}
       {canViewNotices && user && (
         <SellTodayPopup
-          key={user.id}
+          key={`sellToday:${user.id}`}
           entries={noticeBoard.sellToday}
           today={todayForNotices()}
           userId={user.id}

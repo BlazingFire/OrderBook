@@ -1618,7 +1618,7 @@ function OfficePanel() {
           unless the company turned it off (`notices.showSellToday`). */}
       {canViewNotices && session && (
         <SellTodayPopup
-          key={session.userId}
+          key={`sellToday:${session.userId}`}
           entries={mySellToday}
           today={todayForNotices()}
           userId={session.userId}

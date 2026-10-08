@@ -141,6 +141,39 @@ describe('SellTodayPopup', () => {
     expect(within(dialog()!).getByText('Push newer')).toBeTruthy();
   });
 
+  it('lets the next entry open when the one showing goes away (deleted, then posted again)', () => {
+    const view = show({ entries: [entry('wrong', { autoCloseSeconds: 0 })] });
+    expect(within(dialog()!).getByText('Push wrong')).toBeTruthy();
+
+    // Deleted while still open: it closes.
+    view.rerender(<SellTodayPopup entries={[]} today={TODAY} userId="U1" ready />);
+    expect(dialog()).toBeNull();
+
+    // The corrected one arrives in the same session, and opens.
+    view.rerender(
+      <SellTodayPopup
+        entries={[entry('fixed', { createdAt: '2026-10-08T09:00:00.000Z' })]}
+        today={TODAY}
+        userId="U1"
+        ready
+      />,
+    );
+    expect(within(dialog()!).getByText('Push fixed')).toBeTruthy();
+  });
+
+  it('opens the newer entry at once when the one showing is swapped for it in one update', () => {
+    const view = show({ entries: [entry('A', { autoCloseSeconds: 0 })] });
+    view.rerender(
+      <SellTodayPopup
+        entries={[entry('B', { createdAt: '2026-10-08T09:00:00.000Z' })]}
+        today={TODAY}
+        userId="U1"
+        ready
+      />,
+    );
+    expect(within(dialog()!).getByText('Push B')).toBeTruthy();
+  });
+
   it('never opens when the company turned it off', () => {
     show({ enabled: false });
     expect(dialog()).toBeNull();

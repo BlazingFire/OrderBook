@@ -111,6 +111,12 @@ export function SellTodayPopup({
   const total = entry?.autoCloseSeconds ?? 0;
   const open = Boolean(entry) && enabled;
 
+  // Gone while open (deleted, ended, out of their audience) or switched off: it is closed, so the
+  // next entry may open. A stale `openId` would hold every later one back until a reload.
+  useEffect(() => {
+    if (openId && !open) setOpenId(null);
+  }, [openId, open]);
+
   useEffect(() => {
     if (!open || total <= 0) return undefined;
     const timer = setInterval(() => setLeft((value) => value - 1), 1000);
