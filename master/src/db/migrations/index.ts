@@ -63,6 +63,7 @@ import * as printroomOfficeManagementGrant from './20261013000000_printroom_offi
 import * as noticeBoard from './20261014000000_notice_board.js';
 import * as catalogueCorrections from './20261015000000_catalogue_corrections.js';
 import * as noticePlacement from './20261016000000_notice_placement.js';
+import * as productImageSourceChecksum from './20261017000000_product_image_source_checksum.js';
 
 export interface Migration {
   name: string;
@@ -290,6 +291,11 @@ export const migrations: Migration[] = [
   {
     name: '20261016000000_notice_placement',
     ...noticePlacement,
+  },
+  // `product_images.source_checksum`, so a restored zip's own photos read back as unchanged.
+  {
+    name: '20261017000000_product_image_source_checksum',
+    ...productImageSourceChecksum,
   },
 ];
 

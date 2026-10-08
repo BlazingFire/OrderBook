@@ -352,6 +352,7 @@ CREATE TABLE product_images (
   width        INTEGER NOT NULL,                     -- of the stored `master` variant
   height       INTEGER NOT NULL,
   checksum     TEXT NOT NULL,                        -- sha256 of the `master` variant's bytes
+  source_checksum TEXT,                              -- sha256 of the file it was uploaded from; null before 20261016 or when cropped/rotated
   blurhash     TEXT NOT NULL,                        -- placeholder while the image loads
   byte_size    INTEGER NOT NULL,
   uploaded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -386,3 +387,8 @@ everything** drops the whole schema.
 *History:* the initial schema stored a relative `file_path` and nothing else about the
 image. `20260307000000_product_images_pipeline` dropped `file_path` and added the
 metadata columns — safe because no code had ever written a row.
+`20261017000000_product_image_source_checksum` added `source_checksum`, nullable and not
+backfilled: the upload re-encodes every photo, so `checksum` matches only the photo's own
+export, and the product backup zip reads a slot as unchanged when its file hashes to
+either (`product-zip.service.ts`). A photo cropped or rotated on upload keeps null: its
+master is not what the whole file makes. Server-side only; not on the wire `ProductImage`.

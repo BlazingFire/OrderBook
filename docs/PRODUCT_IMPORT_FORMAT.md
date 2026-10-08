@@ -133,8 +133,9 @@ The preview is the restore run as a dry run, so what it lists is what Apply does
 3. **Sub products** — `products.csv` through the upsert import: rows added, rows
    changed with each changed cell old → new, rows unchanged, the row problems. A new
    row takes its place in the file as its catalogue order.
-4. **Photos** — compared by sha256 with the photo's stored checksum: the same is
-   **unchanged**, any other **replaced**, an empty slot **new**; also listed, files
+4. **Photos** — compared by sha256 with the photo's stored checksum and with the hash
+   of the file it was uploaded from (`source_checksum`): either is **unchanged**, any
+   other **replaced**, an empty slot **new**; also listed, files
    that match no code, duplicates and files that are no image. A replaced photo keeps
    its slot.
 5. **Missing** — sub products none of whose codes are in `products.csv`, and photos of
@@ -150,10 +151,15 @@ never beside a full backup restore (Settings → Storage), which replaces the da
 whichever starts second is refused. It writes the colours first, then the main
 products, sub products and photos, one activity row and one catalogue change event.
 
-**Photos are compared by their exact bytes.** A Master that restores a zip stores its
-photos again through the image pipeline, so their bytes, and checksums, are its own:
-take a new backup on that Master before editing again, or the old zip's photos read
-as replaced there.
+**Photos are compared by their exact bytes.** A Master stores every photo again through
+the image pipeline, so its `master.webp`, and `checksum`, are its own encoding of the
+file. The row also keeps the sha256 of the file it was uploaded from
+(`product_images.source_checksum`, `20261016000000`), so a jpg, png or webp put in a zip
+and restored reads back as unchanged from that same zip, on that Master: restoring a zip
+twice uploads nothing the second time. A photo uploaded before that migration has no
+source hash and matches only by its export. So does one cropped or rotated on screen:
+its stored picture is not what a restore would make from the file it came from, so that
+file in the zip reads as **replaced** and a restore puts the whole, unrotated picture in.
 
 ## Tests and fixtures
 
@@ -169,6 +175,7 @@ as replaced there.
   catalogue-wide round trip and the row-level rules.
 - `master/tests/product-zip.integration.test.ts` — the zip: an unedited export reads
   as unchanged, photos included; an edited cell, a swapped and an added photo are
-  found and applied exactly; missing rows and photos are only reported unless opted
-  in; an emptied catalogue comes back whole; top folders and backslash names; the
+  found and applied exactly; photos a restore brought in from other files read back
+  as unchanged and a second run uploads nothing; missing rows and photos are only
+  reported unless opted in; an emptied catalogue comes back whole; top folders and backslash names; the
   refusals; the job; the routes.

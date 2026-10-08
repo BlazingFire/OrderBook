@@ -133,7 +133,15 @@ async function normalizeAndStore(
   wholeFrame = false,
   /** Write nothing unless the source's blurhash passes: how a heal proves the source is that photo. */
   accept?: (blurhash: string) => boolean,
-): Promise<{ width: number; height: number; checksum: string; blurhash: string; byteSize: number }> {
+): Promise<{
+  width: number;
+  height: number;
+  checksum: string;
+  blurhash: string;
+  byteSize: number;
+  /** Unrotated and uncropped: the picture a whole-frame upload of the same file would make. */
+  wholePicture: boolean;
+}> {
   if (fileBuffer.length === 0) throw new ValidationError('validation.image.fileRequired');
   if (fileBuffer.length > MAX_SOURCE_BYTES) throw new ValidationError('validation.image.tooLarge');
 
@@ -213,7 +221,15 @@ async function normalizeAndStore(
   // and a second trip to the disk.
   const checksum = createHash('sha256').update(masterBytes).digest('hex');
 
-  return { width: masterMeta.width, height: masterMeta.height, checksum, blurhash, byteSize: masterMeta.byteSize };
+  return {
+    width: masterMeta.width,
+    height: masterMeta.height,
+    checksum,
+    blurhash,
+    byteSize: masterMeta.byteSize,
+    wholePicture:
+      rotationDeg === 0 && rect.x === 0 && rect.y === 0 && rect.width === rotatedWidth && rect.height === rotatedHeight,
+  };
 }
 
 /** A heal's source decoded to a different picture than the row's: nothing was written. */
@@ -273,6 +289,11 @@ export async function uploadImage(request: UploadImageRequest, actor: ActorConte
         width: derived.width,
         height: derived.height,
         checksum: derived.checksum,
+        // The file it came from, as given: the master above is a re-encode, so
+        // only this matches that file again (the product backup zip's compare).
+        // Only when the photo is that whole file: a cropped or rotated upload is
+        // not what a zip restore of the same file would make, so it stays null.
+        sourceChecksum: derived.wholePicture ? createHash('sha256').update(request.fileBuffer).digest('hex') : null,
         blurhash: derived.blurhash,
         byteSize: derived.byteSize,
       },

@@ -2280,7 +2280,9 @@ exercised only through service integration tests.
   renamed through `catalog.updateCategory`), rows
   through `importProducts` with `restore`, photos through `planPhotoImport` and
   `runPhotoImport` ('replace') with the ordinary `uploadImage`, compared by sha256 to
-  `product_images.checksum`, then each gallery reordered to the zip's slots. Missing
+  `product_images.checksum` or `source_checksum` (the file it was uploaded from, so a
+  picture a restore brought in reads as unchanged next time), then each gallery
+  reordered to the zip's slots. Missing
   sub products and photos are reported; `binMissingProducts` runs
   `catalog.deleteProduct`, `removeMissingPhotos` `deleteImage`. One `catalog.imported`
   row and one `catalog` change event. `startProductRestore` runs the real run detached
@@ -3312,7 +3314,7 @@ are recounted in the 1.3 Phase 9 reconciliation.
   Admin role's stored permissions, so Admin's seeded key set tracks whatever the
   catalogue is when that migration first runs on a database.
 
-### 6.2 All 41 migrations, in the order they are applied
+### 6.2 All 49 migrations, in the order they are applied
 
 | # | Migration | Lines | What it does / leaves behind |
 |---|---|---|---|
@@ -3359,6 +3361,12 @@ are recounted in the 1.3 Phase 9 reconciliation.
 | 41 | `master/src/db/migrations/20261005000000_chatroom.ts` | — | **Pinned last, additive, idempotent** (1.3 Phase 6, migration #5). `chat_rooms`, `chat_members`, `chat_messages` (every user column `TEXT REFERENCES users(id)`), their partial unique and lookup indexes, and a union grant of the six `chat.*` keys to `admin` / `server_master` roles and `chat.use` + `chat.shareRecords` to `office` / `management` roles. `down()` drops the tables only |
 | 42 | `master/src/db/migrations/20261006000000_printroom.ts` | — | **Pinned last, additive, idempotent** (1.3 Phase 7, migration #6). `print_stations` and `print_jobs` (every user column `TEXT REFERENCES users(id)`; a job's `status` is `queued` / `printing` / `printed` / `cancelled`, its claim held by `claim_socket`; `UNIQUE (tenant_id, sender_id, request_id)` makes a retried send idempotent), their indexes, and a union grant of `print.send` + `print.station` to `admin` / `server_master` roles. `down()` drops the tables only |
 | 43 | `master/src/db/migrations/20261007000000_backup_all_permission_grant.ts` | 59 | **Pinned last, additive, idempotent** (1.3 Phase 8). A frozen inline union grant of `storage.backupAll` to every role with `tier = 'server_master'`, deleted roles included, the array kept sorted. It also removes the key from every role of any other tier, because the `20260303000000` live-catalogue seed gives it to Administrator; still UPDATE only, `down()` a no-op. `master/tests/migration-backup-all-grant.integration.test.ts` |
+| 44 | `master/src/db/migrations/20261012000000_catalog_lists_grant.ts` | 48 | **Pinned, additive, idempotent** (1.4 D3, R5). A frozen inline union grant of `catalog.lists.manage` to every `admin` / `server_master` role and every role that holds `fields.manage`; UPDATE only, `down()` a no-op. `master/tests/catalog-lists.integration.test.ts` |
+| 45 | `master/src/db/migrations/20261013000000_printroom_office_management_grant.ts` | 49 | **Pinned, additive, idempotent** (1.4 D4, R9). A frozen inline union grant of `print.send` to every `office` / `management` role; `print.station` stays an explicit grant. UPDATE only, `down()` a no-op. `master/tests/migration-printroom-grant.integration.test.ts` |
+| 46 | `master/src/db/migrations/20261014000000_notice_board.ts` | 120 | **Pinned, additive, idempotent** (Oct 2026). `notices`, `notice_audiences`, `notice_reads` and their indexes, `notices.view` to every role and `notices.manage` to `admin` / `server_master` roles (union). `down()` drops the tables only. `master/tests/migration-notice-board.integration.test.ts` |
+| 47 | `master/src/db/migrations/20261015000000_catalogue_corrections.ts` | 245 | **Pinned, additive, idempotent** (U8, U13, 2026-10-07). Brings an installed catalogue to the shipped `swisware-plus-2026.md` in place: page-4 toilets as numbered models, page-13 colour rules, `14x14 NEW CORNER` moved to Table Top Wash Basin. Touches a row only while it still holds what shipped; UPDATE only, `down()` a no-op. `master/tests/migration-catalogue-corrections.integration.test.ts` |
+| 48 | `master/src/db/migrations/20261016000000_notice_placement.ts` | 29 | **Pinned, additive, idempotent** (2026-10-08). `ADD COLUMN IF NOT EXISTS notices.show_on_home` and `notices.show_at_sign_in`, `BOOLEAN NOT NULL DEFAULT true`: where a notice shows besides the board (Basic Home band, sign-in pop-up). Test: `migration-notice-placement.integration.test.ts`. |
+| 49 | `master/src/db/migrations/20261017000000_product_image_source_checksum.ts` | 24 | **Pinned last, additive, idempotent** (2026-10-08). `ADD COLUMN IF NOT EXISTS product_images.source_checksum TEXT NULL`, no backfill; `down()` drops it. `uploadImage` fills it with the sha256 of the uploaded file (null when cropped or rotated); the product zip reads a photo as unchanged on it or `checksum`. `master/tests/migration-product-image-source-checksum.integration.test.ts` |
 
 ### 6.3 Conventions across the schema
 
@@ -3463,7 +3471,7 @@ digest of each user's `password_hash`, never the hash.
 | `product_categories` | `id` (PC…), `name`, `code`, `brand`, `sort_order`, `created_at`, `updated_at`, `deleted_at` (the last five since catalogue v2) | `idx_categories_brand_name UNIQUE (tenant_id, lower(coalesce(brand,'')), lower(name)) WHERE deleted_at IS NULL`; `idx_categories_code UNIQUE (tenant_id, lower(code)) WHERE code IS NOT NULL AND deleted_at IS NULL` | the owner's **Product** (e.g. `OPT` One Piece Toilet): an alphanumeric code, a `product.brand` value, catalogue order; no sync columns; `product.repository.ts` (`ensureCategories`, `listCategories`, `findLiveCategoryByCode`) |
 | `products` | `id` (PR…), `category_id` **NOT NULL**, `name`, `alias`, `size`, `has_variants`, `multi_colour`, `sort_order` (catalogue v2), `is_active`, `custom_fields`, soft delete, sync columns, `search_vector` | FK `category_id`; index `(tenant_id, category_id)` | a model (e.g. DAMRU) — the owner's **Sub product**, one variant each in the SWISWARE catalogue — 20 columns; **no code, weight, colour, pricing or trade attributes**; `multi_colour` lets a line pick a colour from `stock.colour`; `product.repository.ts` |
 | `product_variants` | `id` (VR…), `product_id`, `code`, `label` (null = the single plain variant), `weight_kg` (CHECK > 0), `sequence`, `is_active`, `deleted_at` | FK CASCADE; `idx_product_variants_code_tenant (tenant_id, lower(code)) WHERE deleted_at IS NULL`; UNIQUE `(product_id, lower(coalesce(label,'')))` | **every code and weight**; every product has ≥ 1 variant; a variant removed from the form is deactivated if referenced, else hard-deleted; `product-variant.repository.ts` |
-| `product_images` | `id` UUID, `product_id`, `is_primary`, `caption`, `sequence`, `width`, `height`, `checksum`, `blurhash`, `byte_size`, `uploaded_at` | FK CASCADE | metadata only; files at `<imagesDir>/<tenantId>/<imageId>/<variant>.webp`; `product-image.repository.ts` |
+| `product_images` | `id` UUID, `product_id`, `is_primary`, `caption`, `sequence`, `width`, `height`, `checksum`, `source_checksum` (nullable, `20261016`), `blurhash`, `byte_size`, `uploaded_at` | FK CASCADE | metadata only; files at `<imagesDir>/<tenantId>/<imageId>/<variant>.webp`; `checksum` hashes the stored master, `source_checksum` the uploaded file (server-side only, read by the product zip); `product-image.repository.ts` |
 
 ### 6.9 Leads, orders, line items, pipelines
 
@@ -6545,7 +6553,10 @@ Rules: `docs/schema/06-tenancy-permissions-and-sync.md` section 2c, `docs/ROLES_
   finds them on the same boot. When the build ships `products.zip`, its own `images/` are uploaded by that load
   (awaited, behind the boot step), and the shipped `photos/` still fill only sub products with no photo after it.
   The product zip names photos the way this import reads them (`CODE.webp` photo 1, `CODE_N` photo N) and uses
-  `planPhotoImport` / `runPhotoImport` server-side, comparing a file's sha256 with the photo's checksum.
+  `planPhotoImport` / `runPhotoImport` server-side, comparing a file's sha256 with the photo's checksum and with
+  its `source_checksum`, the hash of the file every whole-picture upload (screen, photo import, these shipped
+  photos, a zip) was made from, so a picture is never read as replaced by the very file it came from. A photo
+  cropped or rotated on screen keeps none, so its original file reads as replaced.
 - **Tests.** `shared/tests/photo-import.test.ts`, `master/tests/photo-import-route.integration.test.ts`,
   `master/tests/catalogue-photos.integration.test.ts`, "Photo import" in `ui/tests/master-shell.test.tsx`,
   `master/tests/product-zip.integration.test.ts`, "on boot" in `master/tests/catalogue-seed.integration.test.ts`.

@@ -319,6 +319,59 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
     expect(before.map((image) => image.id)).not.toContain(order[1]!.id);
   });
 
+  it('reads photos a restore brought in from its own files back as unchanged, so a second run uploads nothing', async () => {
+    const { entries } = await exported();
+    const picture = (background: string) =>
+      sharp({ create: { width: 40, height: 40, channels: 3, background } });
+    const edited = new Map(entries);
+    // Each is re-encoded on upload, so none of these bytes is ever a stored master.
+    edited.set('images/OPT-0001_2.webp', await picture('#abcdef').webp().toBuffer());
+    edited.delete('images/OPT-0002.webp');
+    edited.set('images/OPT-0002.png', await picture('#123456').png().toBuffer());
+    edited.set('images/OPT-0003.webp', await picture('#654321').webp().toBuffer());
+    const file = await zipOf(edited);
+
+    const first = await restoreProductZip(file, 'p.zip', {}, admin);
+    expect(first.photos.added).toEqual(['OPT-0003.webp']);
+    expect([...first.photos.replaced].sort()).toEqual(['OPT-0001_2.webp', 'OPT-0002.png']);
+    expect(first.photos.unchanged).toBe(1);
+    const photoIds = async () => db()('product_images').orderBy('id').pluck('id');
+    const ids = await photoIds();
+    expect(ids).toHaveLength(4);
+
+    const preview = await previewProductZip(file, 'p.zip', admin);
+    expect(preview.photos).toMatchObject({ added: [], replaced: [], unchanged: 4, notInZip: [] });
+
+    const second = await restoreProductZip(file, 'p.zip', {}, admin);
+    expect(second.photos).toMatchObject({ added: [], replaced: [], unchanged: 4 });
+    expect(second.problems).toEqual([]);
+    expect(await photoIds()).toEqual(ids);
+  });
+
+  it('reads the original of a photo cropped or rotated on screen as replaced, and of one left whole as unchanged', async () => {
+    const original = await sharp({ create: { width: 60, height: 30, channels: 3, background: '#336699' } })
+      .jpeg()
+      .toBuffer();
+    const onScreen = async (code: string, crop: { cropWidth: number; cropHeight: number; rotationDeg: number }) =>
+      imageService.uploadImage(
+        { productId: (await productByCode(code)).id, fileBuffer: original, crop: { cropX: 0, cropY: 0, ...crop } },
+        admin,
+      );
+    await onScreen('OPT-0003', { cropWidth: 30, cropHeight: 30, rotationDeg: 0 });
+    await onScreen('OPT-0004', { cropWidth: 30, cropHeight: 60, rotationDeg: 90 });
+    // The editor's rect over the whole picture, unrotated: what a restore of the file makes.
+    await onScreen('OPT-0005', { cropWidth: 60, cropHeight: 30, rotationDeg: 0 });
+
+    const edited = new Map((await exported()).entries);
+    for (const code of ['OPT-0003', 'OPT-0004', 'OPT-0005']) {
+      edited.delete(`images/${code}.webp`);
+      edited.set(`images/${code}.jpg`, original);
+    }
+    const preview = await previewProductZip(await zipOf(edited), 'p.zip', admin);
+    expect([...preview.photos.replaced].sort()).toEqual(['OPT-0003.jpg', 'OPT-0004.jpg']);
+    expect(preview.photos).toMatchObject({ added: [], unchanged: 4, notInZip: [] });
+  });
+
   it('only reports a deleted row and a deleted photo, unless the opt-ins are ticked', async () => {
     const { entries } = await exported();
     const rows = await readSheetRows(entries.get('products.csv')!);

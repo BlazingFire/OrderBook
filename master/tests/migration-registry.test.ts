@@ -118,6 +118,8 @@ describe('the migration registry matches the directory', () => {
     '20261015000000_catalogue_corrections',
     // 2026-10-08: a notice's placement (Basic Home, sign-in).
     '20261016000000_notice_placement',
+    // `product_images.source_checksum` (the product backup zip's photo compare).
+    '20261017000000_product_image_source_checksum',
   ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {

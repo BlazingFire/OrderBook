@@ -18,8 +18,10 @@
  * renamed, the colour list with its hex, and photos compared by content.
  *
  * **Change detection is exact.** A photo is written as its stored `master.webp`,
- * byte for byte, so its sha256 is `product_images.checksum`: the same hash is
- * an unchanged photo, any other a replaced one. A row is unchanged by the
+ * byte for byte, so its sha256 is `product_images.checksum`. A photo put in
+ * the zip (any jpg, png or webp) is re-encoded on upload, so the row also keeps
+ * the hash of the file it came from, `source_checksum`. Either hash is an
+ * unchanged photo, any other a replaced one. A row is unchanged by the
  * import's own test (`changedCells`), which also names each changed cell.
  *
  * **Missing is reported, not removed.** A sub product whose codes the file no
@@ -85,6 +87,7 @@ import { createLogger } from '../lib/logger.js';
 import { readSheetRows } from '../lib/spreadsheet.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as customFieldRepo from '../repositories/custom-field.repository.js';
+import * as imageRepo from '../repositories/product-image.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
 import * as settingsRepo from '../repositories/settings.repository.js';
 import { resolveDefaultTenantId } from '../repositories/tenant.repository.js';
@@ -232,9 +235,8 @@ function readme(company: string, date: string, unnamed: readonly string[]): stri
     '',
     'PHOTOS',
     '',
-    '  A photo you did not touch is recognised as unchanged by its exact bytes. A Master that',
-    '  restores this zip stores the photos again in its own way, so take a new backup there',
-    '  before you edit again.',
+    '  A photo is recognised as unchanged by its exact bytes: one you did not touch, and one you',
+    '  put in that a restore has already brought in. Restoring the same zip twice adds nothing.',
     '',
     ...(unnamed.length > 0
       ? [
@@ -736,15 +738,26 @@ interface PhotoPlan {
 }
 
 /**
+ * `sourceOf`: each photo's `source_checksum`, by image id. A photo is
+ * unchanged when its file hashes to its master's checksum or to that.
+ *
  * `keepPhotos`: a photo already in a slot stays, whatever its bytes. The boot
  * load asks for it: it only ever fills an empty catalogue, so a photo there is
- * one an interrupted load already put in, stored by now in its own encoding.
+ * one an interrupted load already put in (its source hash matches anyway), or
+ * one the shipped catalogue photos or a person put in while it was stopped.
  */
-function planPhotos(zip: ZipContents, products: readonly Product[], keepPhotos = false): PhotoPlan {
+function planPhotos(
+  zip: ZipContents,
+  products: readonly Product[],
+  sourceOf: ReadonlyMap<string, string>,
+  keepPhotos = false,
+): PhotoPlan {
   const plan = planPhotoImport(zip.photos, products);
   const checksumOf = new Map(
     products.flatMap((product) => product.images.map((image) => [image.id, image.checksum])),
   );
+  const unchanged = (imageId: string, sha256: string) =>
+    checksumOf.get(imageId) === sha256 || sourceOf.get(imageId) === sha256;
   const report: ProductZipReport['photos'] = {
     added: [],
     replaced: [],
@@ -762,7 +775,7 @@ function planPhotos(zip: ZipContents, products: readonly Product[], keepPhotos =
       report.added.push(row.fileName);
       toRun.push(row);
     } else if (row.status === 'hasPhoto') {
-      if (keepPhotos || checksumOf.get(row.slotImageId as string) === row.file.sha256) {
+      if (keepPhotos || unchanged(row.slotImageId as string, row.file.sha256)) {
         report.unchanged += 1;
         keptSlots.set(row.slotImageId as string, row.slot ?? 1);
       } else {
@@ -966,7 +979,12 @@ async function runZip(
             }) as unknown as Product,
         )
       : [];
-    const photoPlan = planPhotos(zip, [...live, ...pending], options.keepPhotos);
+    const photoPlan = planPhotos(
+      zip,
+      [...live, ...pending],
+      await imageRepo.sourceChecksumsForTenant(tenantId),
+      options.keepPhotos,
+    );
     const photos = photoPlan.report;
 
     const report: ProductZipReport = {
