@@ -5,8 +5,9 @@
  *
  * Ported from `add-lead-flow.test.tsx`, which boots the whole Office panel and
  * stays as it is: the same cases, a different way in — the product bar, the same
- * box as the sub-product bar, the sub product's card and its Enter walk, whose
- * last Enter adds the card and opens the sub-product bar again (owner,
+ * box as the sub-product bar (its count, columns and Collapse), the sub product's
+ * card and its Enter walk — each list open as it is reached, then Add sub
+ * product, whose Enter adds the card and opens the sub-product bar again (owner,
  * 2026-10-08). On top of those, the cases the shared copy adds — a view-only
  * grant hides the party, Create party needs `parties.create`, edit opens on the
  * saved lead and sends its whole line set, and a new transport object does not
@@ -326,10 +327,13 @@ function gradeBox(named: string): HTMLInputElement {
   return screen.getByLabelText(`${t('lead.add.draft.grade')} — ${named}`);
 }
 
-/** The card's Add product button. */
+/** The card's Add sub product button. */
 function addButton(): HTMLButtonElement {
   return document.querySelector<HTMLButtonElement>('[data-add-card]')!;
 }
+
+/** Add sub product drawn disabled: the card is short of something (it still takes the caret). */
+const addOff = (): boolean => addButton().getAttribute('aria-disabled') === 'true';
 
 /** Enter on a field, with the renders it causes let through. */
 async function pressEnter(field: HTMLElement): Promise<void> {
@@ -355,7 +359,7 @@ async function backInTheBar(): Promise<void> {
   expect(document.querySelector('[data-product-card]')).toBeNull();
 }
 
-/** Add product: a click on the card's button (the Enter walk to the end is tested on its own). */
+/** Add sub product: a click on the card's button (the Enter walk to it is tested on its own). */
 async function finishCard(_named?: string): Promise<void> {
   await act(async () => {
     fireEvent.click(addButton());
@@ -373,15 +377,15 @@ async function addFromBar(name: string, code: string, qty: string): Promise<void
 }
 
 /**
- * The fixed sub product at 5, added by Enter to the end of the walk: the quantity's Enter adds it
- * when the company lists no packaging or grade, else the Enters on those do.
+ * The fixed sub product at 5, added by Enter to the end of the walk: Enter on the quantity, on the
+ * packaging and grade when the company lists them, then on Add sub product, which adds it.
  */
 async function enterOneLine(): Promise<void> {
   await pickSubProduct(FIXED.name);
   const qty = qtyBox('OPT-0001');
   fireEvent.change(qty, { target: { value: '5' } });
   await pressEnter(qty);
-  for (let step = 0; step < 2 && document.querySelector('[data-product-card]'); step += 1) {
+  for (let step = 0; step < 3 && document.querySelector('[data-product-card]'); step += 1) {
     await pressEnter(document.activeElement as HTMLElement);
   }
   await backInTheBar();
@@ -405,7 +409,7 @@ const colourBoxLabel = (productName: string, code: string): string =>
 
 /** The colour select of a multicolour row. */
 const colourBoxOf = (productName: string, code: string): HTMLInputElement =>
-  screen.getByLabelText(colourBoxLabel(productName, code));
+  screen.getByLabelText(colourBoxLabel(productName, code), { selector: 'input' });
 
 /** The card's rows, in order, by the code in their first cell. */
 const gridCodes = (): string[] =>
@@ -592,6 +596,77 @@ describe('the sub-product bar', () => {
     expect(request[1].categoryId).toBe(CATEGORY.id);
   });
 
+  it('heads its rows with the count and the columns, and says the keys at its foot', async () => {
+    await openForm();
+    await chooseProduct();
+    const pick = document.querySelector<HTMLElement>('.ob-subpick')!;
+    expect(pick.querySelector('.ob-subpick__count')!.textContent).toBe(
+      t('lead.add.products.count', { count: 3 }),
+    );
+    expect(pick.querySelector('.ob-subpick__cols')!.textContent).toContain(
+      t('lead.add.products.col.variant'),
+    );
+    expect(pick.querySelector('.ob-subpick__hint')!.textContent).toBe(
+      t('lead.add.products.listHint'),
+    );
+    // A multicolour sub product says so in the colour column; a fixed one shows its colour.
+    const row = (name: string): HTMLElement =>
+      within(screen.getByRole('listbox')).getByRole('button', { name: new RegExp(name) });
+    expect(row(MULTI.name).textContent).toContain(t('product.multiColour.pill'));
+    expect(row(FIXED.name).querySelector('.ob-subpick__colour')!.textContent).toBe('White');
+    expect(row(FIXED.name).querySelector('.ob-subpick__size')!.textContent).toBe('L-27');
+
+    fireEvent.change(searchBox(), { target: { value: 'orissa' } });
+    expect(pick.querySelector('.ob-subpick__count')!.textContent).toBe(
+      t('lead.add.products.countFiltered', { shown: 1, total: 3 }),
+    );
+  });
+
+  it('collapses to one short line a row and expands again, the choice kept on this PC', async () => {
+    await openForm();
+    await chooseProduct();
+    searchBox().focus();
+    const pick = (): HTMLElement => document.querySelector<HTMLElement>('.ob-subpick')!;
+    expect(pick().dataset.compact).toBeUndefined();
+    expect(pick().querySelector('.ob-thumb')).not.toBeNull();
+
+    // Pressed, it leaves the caret in the box (its mousedown is spent), so the list stays open.
+    const collapse = screen.getByRole('button', { name: t('lead.add.products.collapse') });
+    expect(fireEvent.mouseDown(collapse)).toBe(false);
+    fireEvent.click(collapse);
+    expect(document.activeElement).toBe(searchBox());
+    expect(pick().dataset.compact).toBe('true');
+    expect(pick().querySelector('.ob-thumb')).toBeNull();
+    expect(collapse.getAttribute('aria-pressed')).toBe('true');
+    expect(collapse.textContent).toBe(t('lead.add.products.expand'));
+    expect(window.localStorage.getItem('ob.order.subList.compact')).toBe('true');
+
+    // The next form on this PC opens compact.
+    cleanup();
+    await openForm();
+    await chooseProduct();
+    expect(pick().dataset.compact).toBe('true');
+
+    fireEvent.click(screen.getByRole('button', { name: t('lead.add.products.expand') }));
+    expect(pick().dataset.compact).toBeUndefined();
+    expect(window.localStorage.getItem('ob.order.subList.compact')).toBe('false');
+  });
+
+  it('keeps its Collapse button out of the Enter walk: Enter in the bar still opens the card', async () => {
+    await openForm();
+    await chooseProduct();
+    expect(
+      screen
+        .getByRole('button', { name: t('lead.add.products.collapse') })
+        .hasAttribute('data-field'),
+    ).toBe(false);
+    fireEvent.change(searchBox(), { target: { value: FIXED.name } });
+    await pressEnter(searchBox());
+    expect(document.activeElement).toBe(await screen.findByLabelText(qtyLabel('OPT-0001')));
+    // No Collapse while a card is open: it belongs to the sub-product list.
+    expect(screen.queryByRole('button', { name: t('lead.add.products.collapse') })).toBeNull();
+  });
+
   it('names the chosen product by its name, never with its main-product code (R14)', async () => {
     await openForm();
     await chooseProduct();
@@ -688,14 +763,13 @@ describe('the sub-product bar', () => {
 describe('the sub product card', () => {
   const OPTIONS = { optionLists: [...COLOURS, ...PACKAGING, ...GRADES] };
 
-  it('walks colour, quantity, packaging and grade; Enter on the grade adds it and the sub-product bar of the same product is open again', async () => {
+  it('walks colour, quantity, packaging and grade, each list open as it is reached, then Add sub product, whose Enter adds and opens the sub-product bar of the same product again', async () => {
     const fake = await openForm(OPTIONS);
     await pickSubProduct(MULTI.name);
 
-    // Colour first: the first Enter opens the list with the first colour ready, the next takes it.
+    // Colour first, its list already open with the first colour highlighted: Enter takes it.
     const colourBox = colourBoxOf(MULTI.name, 'OPT-0002');
     expect(document.activeElement).toBe(colourBox);
-    await pressEnter(colourBox);
     const list = within(screen.getByRole('listbox', { name: /Colour/ }));
     expect(list.getAllByRole('option').map((option) => option.textContent)).toEqual([
       'White',
@@ -710,7 +784,8 @@ describe('the sub product card', () => {
     fireEvent.change(qty, { target: { value: '10' } });
     await pressEnter(qty);
 
-    // The packaging, the company's list after "—": typed and taken with Enter, which moves on.
+    // The packaging, its list already open: the company's list after "—" (nothing chosen yet, and
+    // never chosen for anybody). Typed and taken with Enter, which moves on.
     expect(document.activeElement).toBe(packagingBox('OPT-0002 · White'));
     expect(
       within(screen.getByRole('listbox'))
@@ -720,10 +795,22 @@ describe('the sub product card', () => {
     fireEvent.change(packagingBox('OPT-0002 · White'), { target: { value: 'gr' } });
     await pressEnter(packagingBox('OPT-0002 · White'));
 
-    // The grade, the last field: Enter takes it and adds the card.
+    // The grade, its list open on arrival too: Enter takes it and goes on to Add sub product.
     expect(document.activeElement).toBe(gradeBox('OPT-0002 · White'));
+    expect(
+      within(screen.getByRole('listbox'))
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual(['—', 'A', 'B']);
     fireEvent.change(gradeBox('OPT-0002 · White'), { target: { value: 'b' } });
     await pressEnter(gradeBox('OPT-0002 · White'));
+
+    // Not added yet: the caret is on Add sub product, and Enter there adds.
+    expect(document.activeElement).toBe(addButton());
+    expect(addButton().textContent).toContain(t('lead.add.draft.saveProduct'));
+    expect(t('lead.add.draft.saveProduct')).toBe('Add sub product');
+    expect(aside().querySelectorAll('[data-added-line]')).toHaveLength(0);
+    await pressEnter(addButton());
     await backInTheBar();
 
     expect(within(aside()).getByText(MULTI.name)).toBeTruthy();
@@ -761,6 +848,7 @@ describe('the sub product card', () => {
     await pressEnter(qtyBox('OPT-0001'));
     await pressEnter(packagingBox('OPT-0001'));
     await pressEnter(gradeBox('OPT-0001'));
+    await pressEnter(addButton());
     await backInTheBar();
 
     fireEvent.change(searchBox(), { target: { value: DEDICATED.name } });
@@ -771,6 +859,7 @@ describe('the sub product card', () => {
     await pressEnter(qty);
     await pressEnter(packagingBox('OPT-0003'));
     await pressEnter(gradeBox('OPT-0003'));
+    await pressEnter(addButton());
     await backInTheBar();
 
     expect(aside().querySelectorAll('[data-added-line]')).toHaveLength(2);
@@ -782,16 +871,16 @@ describe('the sub product card', () => {
     fireEvent.change(qtyBox('OPT-0001'), { target: { value: '5' } });
     await pressEnter(qtyBox('OPT-0001'));
     await pressEnter(packagingBox('OPT-0001'));
+    await pressEnter(gradeBox('OPT-0001'));
 
-    // The walk's last Enter adds from a passive effect, whose render a timer can beat: a focus
-    // left to a timer could find the box still disabled, and the caret was lost.
+    // A focus left to a timer could find the box still disabled, and the caret was lost.
     let focusedAtClose: boolean | null = null;
     const observer = new MutationObserver(() => {
       if (focusedAtClose !== null || document.querySelector('[data-product-card]')) return;
       focusedAtClose = document.activeElement === searchBox();
     });
     observer.observe(document.body, { childList: true, subtree: true });
-    await pressEnter(gradeBox('OPT-0001'));
+    await pressEnter(addButton());
     observer.disconnect();
 
     expect(focusedAtClose).toBe(true);
@@ -875,19 +964,72 @@ describe('the sub product card', () => {
     await act(async () => wait(0));
 
     expect(document.activeElement).toBe(qty);
-    expect(addButton().disabled).toBe(true);
+    expect(addOff()).toBe(true);
     expect(aside().querySelectorAll('[data-added-line]')).toHaveLength(0);
   });
 
-  it('with no packaging or grade list, adds the card on Enter in the quantity', async () => {
+  it('with no packaging or grade list, goes from the quantity straight to Add sub product', async () => {
     await openForm();
     await pickSubProduct(FIXED.name);
     fireEvent.change(qtyBox('OPT-0001'), { target: { value: '5' } });
 
     await pressEnter(qtyBox('OPT-0001'));
+    expect(document.activeElement).toBe(addButton());
+    expect(aside().querySelectorAll('[data-added-line]')).toHaveLength(0);
+    await pressEnter(addButton());
     await backInTheBar();
 
     expect(within(aside()).getByText(FIXED.name)).toBeTruthy();
+  });
+
+  it('skips an empty grade list: packaging goes straight to Add sub product', async () => {
+    await openForm({ optionLists: [...COLOURS, ...PACKAGING] });
+    await pickSubProduct(FIXED.name);
+    fireEvent.change(qtyBox('OPT-0001'), { target: { value: '5' } });
+    await pressEnter(qtyBox('OPT-0001'));
+    expect(document.activeElement).toBe(packagingBox('OPT-0001'));
+
+    await pressEnter(packagingBox('OPT-0001'));
+    expect(document.activeElement).toBe(addButton());
+  });
+
+  it('opens the next list on a mouse pick, as Enter does', async () => {
+    await openForm(OPTIONS);
+    await pickSubProduct(FIXED.name);
+    fireEvent.change(qtyBox('OPT-0001'), { target: { value: '5' } });
+    await pressEnter(qtyBox('OPT-0001'));
+
+    await act(async () => {
+      fireEvent.mouseDown(within(screen.getByRole('listbox')).getByRole('option', { name: 'Box' }));
+      await wait(0);
+    });
+    expect(document.activeElement).toBe(gradeBox('OPT-0001'));
+    expect(
+      within(screen.getByRole('listbox'))
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual(['—', 'A', 'B']);
+
+    await act(async () => {
+      fireEvent.mouseDown(within(screen.getByRole('listbox')).getByRole('option', { name: 'A' }));
+      await wait(0);
+    });
+    expect(document.activeElement).toBe(addButton());
+  });
+
+  it('opens the colour list on an arrival only: Escape closes it, and a plain focus leaves it closed', async () => {
+    await openForm(OPTIONS);
+    await pickSubProduct(MULTI.name);
+    // The colour list the card opened with closes on Escape, the caret staying on the box.
+    const colourBox = colourBoxOf(MULTI.name, 'OPT-0002');
+    expect(await press('Escape')).toBe(false);
+    expect(document.activeElement).toBe(colourBox);
+    expect(screen.queryByRole('listbox', { name: /Colour/ })).toBeNull();
+
+    // Focused again by hand, it stays closed until asked.
+    act(() => qtyBox('OPT-0002').focus());
+    act(() => colourBox.focus());
+    expect(screen.queryByRole('listbox', { name: /Colour/ })).toBeNull();
   });
 
   it('holds a counted row without packaging back while the company requires it, and Enter on the grade goes back to the packaging', async () => {
@@ -903,20 +1045,29 @@ describe('the sub product card', () => {
     expect(packagingBox('OPT-0001').getAttribute('aria-required')).toBe('true');
     expect(packagingBox('OPT-0001').getAttribute('aria-invalid')).toBe('true');
     // Add product is off until the row has its packaging.
-    expect(addButton().disabled).toBe(true);
+    expect(addOff()).toBe(true);
 
-    // Nothing picked: the walk goes on to the grade, and the grade's Enter back to the packaging.
+    // Nothing picked: the walk goes on to the grade, and the grade's Enter back to the packaging,
+    // its list open, rather than to Add sub product.
     await pressEnter(packagingBox('OPT-0001'));
     await pressEnter(gradeBox('OPT-0001'));
     await act(async () => wait(0));
+    expect(document.activeElement).toBe(packagingBox('OPT-0001'));
+    expect(within(screen.getByRole('listbox')).getAllByRole('option')).toHaveLength(4);
+    expect(aside().querySelectorAll('[data-added-line]')).toHaveLength(0);
+
+    // Add sub product, reached by Tab and pressed, does the same: the caret back on the packaging.
+    act(() => addButton().focus());
+    await pressEnter(addButton());
     expect(document.activeElement).toBe(packagingBox('OPT-0001'));
     expect(aside().querySelectorAll('[data-added-line]')).toHaveLength(0);
 
     fireEvent.change(packagingBox('OPT-0001'), { target: { value: 'bo' } });
     await pressEnter(packagingBox('OPT-0001'));
     expect(packagingBox('OPT-0001').getAttribute('aria-invalid')).toBeNull();
-    expect(addButton().disabled).toBe(false);
+    expect(addOff()).toBe(false);
     await pressEnter(gradeBox('OPT-0001'));
+    await pressEnter(addButton());
     await backInTheBar();
     expect(within(aside()).getByText(FIXED.name)).toBeTruthy();
   });
@@ -992,13 +1143,19 @@ describe('Escape walks back over the stops Enter uses', () => {
     await pickSubProduct(PAIR.name);
   }
 
-  it('walks a counted row back through its grade and packaging to its quantity', async () => {
+  it('walks a counted row back through its grade and packaging to its quantity, the list the walk opened closing first', async () => {
     await pickPair();
     const qty = qtyBox('OPT-0005');
     fireEvent.change(qty, { target: { value: '5' } });
     await pressEnter(qty);
     await pressEnter(packagingBox('OPT-0005'));
     expect(document.activeElement).toBe(gradeBox('OPT-0005'));
+
+    // The grade's list opened as the walk arrived: the first Escape closes it, the caret stays.
+    expect(screen.getByRole('listbox')).toBeTruthy();
+    expect(await press('Escape')).toBe(false);
+    expect(document.activeElement).toBe(gradeBox('OPT-0005'));
+    expect(screen.queryByRole('listbox')).toBeNull();
 
     for (const back of [packagingBox('OPT-0005'), qty]) {
       expect(await press('Escape')).toBe(false);
@@ -1043,7 +1200,7 @@ describe('Escape walks back over the stops Enter uses', () => {
     expect(document.activeElement).toBe(qtyBox('OPT-0006'));
   });
 
-  it('adds a two-row card from the Enter on the last row, the empty one left out', async () => {
+  it('adds a two-row card from Add sub product after the last row, the empty one left out', async () => {
     await pickPair();
     fireEvent.change(qtyBox('OPT-0005'), { target: { value: '5' } });
     await pressEnter(qtyBox('OPT-0005'));
@@ -1052,6 +1209,8 @@ describe('Escape walks back over the stops Enter uses', () => {
     expect(document.activeElement).toBe(qtyBox('OPT-0006'));
 
     await pressEnter(qtyBox('OPT-0006'));
+    expect(document.activeElement).toBe(addButton());
+    await pressEnter(addButton());
     await backInTheBar();
     expect(aside().querySelectorAll('[data-added-line]')).toHaveLength(1);
   });
@@ -1116,11 +1275,13 @@ describe('colour in the card', () => {
     expect(document.querySelector('.ob-order-colour[data-state="set"]')).not.toBeNull();
   });
 
-  it('opens the list on Enter in the colour select, with the colours and the key hint, and does not walk on', async () => {
+  it('opens the list as the card opens, with the colours and the key hint; closed by Escape, Enter opens it again and does not walk on', async () => {
     await openForm(OPTIONS);
     await pickSubProduct(MULTI.name);
     const box = colourBoxOf(MULTI.name, 'OPT-0002');
-    box.focus();
+    expect(screen.getByRole('listbox', { name: /Colour/ })).toBeTruthy();
+    await press('Escape');
+    expect(screen.queryByRole('listbox', { name: /Colour/ })).toBeNull();
 
     await pressEnter(box);
     expect(document.activeElement).toBe(box);
@@ -1153,12 +1314,12 @@ describe('colour in the card', () => {
     await pickSubProduct(MULTI.name);
     const qty = qtyBox('OPT-0002');
     fireEvent.change(qty, { target: { value: '10' } });
-    expect(addButton().disabled).toBe(true);
+    expect(addOff()).toBe(true);
 
     const box = colourBoxOf(MULTI.name, 'OPT-0002');
     box.focus();
     await pickColour(box, 'Ivo');
-    expect(addButton().disabled).toBe(false);
+    expect(addOff()).toBe(false);
   });
 
   it('adds another colour of the same sub product as a row of its own, under it, and takes two colours as two lines on one variant', async () => {
@@ -1175,11 +1336,13 @@ describe('colour in the card', () => {
       await wait(0);
     });
     expect(gridCodes()).toEqual(['OPT-0002', 'OPT-0002']);
-    const boxes = screen.getAllByLabelText(
-      `${t('lead.add.draft.colour')} — OPT-0002`,
-    ) as HTMLInputElement[];
+    const boxes = screen.getAllByLabelText(`${t('lead.add.draft.colour')} — OPT-0002`, {
+      selector: 'input',
+    }) as HTMLInputElement[];
     expect(boxes).toHaveLength(2);
     expect(document.activeElement).toBe(boxes[1]);
+    // Its list open at once, as on any arrival of the walk.
+    expect(screen.getByRole('listbox', { name: /Colour/ })).toBeTruthy();
 
     await pickColour(boxes[1]!, 'Whi');
     fireEvent.change(qtyBox('OPT-0002 · White'), { target: { value: '10' } });
@@ -1209,12 +1372,15 @@ describe('colour in the card', () => {
     await pressEnter(packagingBox('OPT-0002 · Ivory'));
     fireEvent.change(gradeBox('OPT-0002 · Ivory'), { target: { value: 'a' } });
     await pressEnter(gradeBox('OPT-0002 · Ivory'));
+    await pressEnter(addButton());
     await backInTheBar();
 
     // The same sub product again, from the bar the add left open: another colour, its own picks.
     fireEvent.change(searchBox(), { target: { value: MULTI.name } });
     await pressEnter(searchBox());
-    const second = await screen.findByLabelText(colourBoxLabel(MULTI.name, 'OPT-0002'));
+    const second = await screen.findByLabelText(colourBoxLabel(MULTI.name, 'OPT-0002'), {
+      selector: 'input',
+    });
     await pickColour(second, 'Whi');
     fireEvent.change(qtyBox('OPT-0002 · White'), { target: { value: '2' } });
     await finishCard();
@@ -1246,7 +1412,7 @@ describe('colour in the card', () => {
     await pickSubProduct(MULTI.name);
     expect(document.querySelector('.ob-order-colour__input')).toBeNull();
     fireEvent.change(qtyBox('OPT-0002'), { target: { value: '4' } });
-    expect(addButton().disabled).toBe(false);
+    expect(addOff()).toBe(false);
   });
 });
 
@@ -1407,7 +1573,8 @@ describe('the catalogue changing while the entry is open', () => {
     }));
     fake.catalogue.products.push(...(extra as never[]));
     // Thirty-one lines: the fixed sub product, then each bulk one typed into the bar the add left
-    // open — its code, Enter, a quantity, Enter (no packaging or grade list, so that adds it).
+    // open — its code, Enter, a quantity, Enter (no packaging or grade list, so on to Add sub
+    // product), Enter.
     await enterOneLine();
     for (const product of extra) {
       const code = product.variants[0]!.code;
@@ -1416,6 +1583,7 @@ describe('the catalogue changing while the entry is open', () => {
       const qty = await screen.findByLabelText(qtyLabel(code));
       fireEvent.change(qty, { target: { value: '1' } });
       await pressEnter(qty);
+      await pressEnter(addButton());
       await backInTheBar();
     }
     expect(document.querySelectorAll('[data-added-line]')).toHaveLength(31);
@@ -1701,10 +1869,15 @@ describe('product photos', () => {
     expect(document.querySelector('.ob-order-aside .ob-thumb')).not.toBeNull();
   });
 
-  it('draws nothing for a product with no photo', async () => {
+  it('draws nothing for a product with no photo, but its initial in the sub-product list', async () => {
     await openForm();
     await enterOneLine();
-    expect(document.querySelector('.ob-thumb')).toBeNull();
+    expect(document.querySelector('.ob-order-aside .ob-thumb')).toBeNull();
+    // The list keeps its photo column straight: an initial tile where there is no photo.
+    const row = within(screen.getByRole('listbox')).getByRole('button', {
+      name: new RegExp(FIXED.name),
+    });
+    expect(row.querySelector('.ob-thumb--empty')!.textContent).toBe('A');
   });
 });
 
@@ -1819,6 +1992,7 @@ describe('a dedicated sub product', () => {
 
     fireEvent.change(qty, { target: { value: '3' } });
     await pressEnter(qty);
+    await pressEnter(addButton());
     await backInTheBar();
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
@@ -2296,7 +2470,9 @@ describe('what the shared copy adds', () => {
         { lead: multiLead },
       );
       await modifyTheLine();
-      expect(await screen.findByLabelText(colourBoxLabel(MULTI.name, 'OPT-0002'))).toBeTruthy();
+      expect(
+        await screen.findByLabelText(colourBoxLabel(MULTI.name, 'OPT-0002'), { selector: 'input' }),
+      ).toBeTruthy();
     });
 
     it('falls back to what the line itself shows without it: no colour, so no colour to choose', async () => {

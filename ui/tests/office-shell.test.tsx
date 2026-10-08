@@ -258,10 +258,14 @@ async function draftOneProduct(): Promise<void> {
   // The same box is then the product's sub-product bar: the sub product opens its card.
   fireEvent.mouseDown(await screen.findByRole('button', { name: new RegExp(PRODUCT.name) }));
 
-  fireEvent.change(await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — AQ-W`), {
-    target: { value: '5' },
-  });
+  const qty = await screen.findByLabelText(`${t('lead.add.draft.col.quantity')} — AQ-W`);
+  expect(document.activeElement).toBe(qty);
+  fireEvent.change(qty, { target: { value: '5' } });
 }
+
+/** The card's Add sub product button. */
+const addSubProduct = (): HTMLElement =>
+  screen.getAllByRole('button', { name: t('lead.add.draft.saveProduct') })[0]!;
 
 describe('the event stream', () => {
   it('stays one stream when the link reports it is connected', async () => {
@@ -989,7 +993,21 @@ describe('the New lead form', () => {
 
     fireEvent.click(newLeadButton());
     await draftOneProduct();
-    fireEvent.click(screen.getAllByRole('button', { name: t('lead.add.draft.saveProduct') })[0]!);
+    // Enter walks on from the quantity (through any packaging and grade list) to Add sub product,
+    // and the Enter there adds the card.
+    for (let step = 0; step < 3 && document.activeElement !== addSubProduct(); step += 1) {
+      const here = document.activeElement as HTMLElement;
+      await act(async () => {
+        fireEvent.keyDown(here, { key: 'Enter' });
+        await wait(0);
+      });
+    }
+    expect(document.activeElement).toBe(addSubProduct());
+    await act(async () => {
+      fireEvent.keyDown(addSubProduct(), { key: 'Enter' });
+      await wait(0);
+    });
+    expect(document.querySelector('[data-product-card]')).toBeNull();
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
       await wait(0);
@@ -1022,7 +1040,7 @@ describe('the New lead form', () => {
     });
     fireEvent.click(newLeadButton());
     await draftOneProduct();
-    fireEvent.click(screen.getAllByRole('button', { name: t('lead.add.draft.saveProduct') })[0]!);
+    fireEvent.click(addSubProduct());
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: t('lead.add.save') }));
       await wait(0);
@@ -1062,9 +1080,7 @@ describe('the New lead form', () => {
     const packaging = screen.getByLabelText(`${t('lead.add.draft.packaging')} — AQ-W`);
     expect(packaging.getAttribute('aria-required')).toBeNull();
     // Nothing picked and nothing required: the card adds as it is.
-    expect(
-      screen.getAllByRole('button', { name: t('lead.add.draft.saveProduct') })[0],
-    ).toHaveProperty('disabled', false);
+    expect(addSubProduct().getAttribute('aria-disabled')).toBeNull();
   });
 
   it('still marks packaging required when the company requires it', async () => {
@@ -1078,10 +1094,8 @@ describe('the New lead form', () => {
 
     const packaging = screen.getByLabelText(`${t('lead.add.draft.packaging')} — AQ-W`);
     expect(packaging.getAttribute('aria-required')).toBe('true');
-    // Counted but not packed: the card cannot be added yet.
-    expect(
-      screen.getAllByRole('button', { name: t('lead.add.draft.saveProduct') })[0],
-    ).toHaveProperty('disabled', true);
+    // Counted but not packed: the card cannot be added yet (drawn disabled; it keeps the caret).
+    expect(addSubProduct().getAttribute('aria-disabled')).toBe('true');
   });
 
   it('asks before a reset throws a half-typed lead away, in the themed dialog', async () => {
