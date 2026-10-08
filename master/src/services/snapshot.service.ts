@@ -146,6 +146,7 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
     builtForUserId: partyScope.userId,
     partyAccessCounts,
     notices: await noticeService.snapshotNotices(actor),
+    sellToday: await noticeService.readerSellToday(actor),
     openPartyIds: parties.map((party) => party.id).filter((id) => !(id in partyAccessCounts)),
     serverHlc,
     serverTime: new Date().toISOString(),

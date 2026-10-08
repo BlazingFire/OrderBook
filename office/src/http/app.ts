@@ -806,6 +806,19 @@ export function createApp(): Express {
     res.json({ notices, unreadCount: notices.filter((notice) => !notice.readByMe).length });
   });
   app.get('/api/notices/manage', (_req, res) => forward(res, 'notice:manageList'));
+  // "Sell today" (protocol 11): online only, like the rest of management. The reader's entries
+  // ride on the snapshot (`sellToday`), so the pop-up and the product band need no route here.
+  app.get('/api/notices/sell-today', (_req, res) => forward(res, 'sellToday:manageList'));
+  app.post('/api/notices/sell-today', async (req, res) => {
+    try {
+      res.status(201).json(await masterConnection.command('sellToday:create', req.body ?? {}));
+    } catch (error) {
+      failForward(res, error);
+    }
+  });
+  app.patch('/api/notices/sell-today/:id', (req, res) =>
+    forward(res, 'sellToday:update', { ...(req.body ?? {}), id: req.params.id }),
+  );
   app.get('/api/notices/audiences', (_req, res) => forward(res, 'notice:audiences'));
   app.post('/api/notices/read', (req, res) =>
     forward(res, 'notice:markRead', Array.isArray(req.body?.ids) ? { ids: req.body.ids } : {}),
@@ -2374,6 +2387,8 @@ export const SNAPSHOT_POLICY: Record<keyof SyncSnapshot, SnapshotPolicy> = {
   openPartyIds: 'passthrough',
   // The reader's own notices, scoped by the Master to their role: gone from a cache built for somebody else.
   notices: 'gate',
+  // The reader's "Sell today" entries, scoped the same way and gated the same way (`sellTodayFor`).
+  sellToday: 'gate',
   partyAccessCounts: 'passthrough',
   // Not company data — just says whether `products` above is the complete
   // catalogue or one clamped/permission-emptied page.
@@ -2487,6 +2502,15 @@ function noticesFor(view: LocalView, permissions: readonly string[], ownCache: b
     .map((notice) => ({ ...notice, readByMe: false }));
 }
 
+/**
+ * The "Sell today" entries this person may be shown, by the rule of `noticesFor`: nothing without
+ * `notices.view`, and from a cache built for somebody else only the entries for everybody.
+ */
+function sellTodayFor(view: LocalView, permissions: readonly string[], ownCache: boolean) {
+  if (!view.sellToday || !permissions.includes('notices.view')) return view.sellToday ? [] : undefined;
+  return ownCache ? view.sellToday : view.sellToday.filter((entry) => entry.audience.kind === 'all');
+}
+
 function forCurrentUser(view: LocalView): LocalView {
   const permissions = userSession.sessionPermissions();
   const { ownQueuedPartyIds: _own, ...scoped } = withoutAnotherPersonsParties(view);
@@ -2496,6 +2520,7 @@ function forCurrentUser(view: LocalView): LocalView {
   return {
     ...scoped,
     notices: noticesFor(view, permissions, ownCache),
+    sellToday: sellTodayFor(view, permissions, ownCache),
     permissions,
     dashboard: filterDashboardForCurrentUser(scoped.dashboard, permissions),
   };

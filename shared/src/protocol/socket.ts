@@ -112,12 +112,16 @@ import { CHAT_MIN_PROTOCOL } from '../domain/chat.js';
 import { PRINTROOM_MIN_PROTOCOL } from '../domain/printroom.js';
 import {
   NOTICE_MIN_PROTOCOL,
+  SELL_TODAY_MIN_PROTOCOL,
   type Notice,
   type NoticeAudienceRole,
   type NoticeBoard,
   type NoticeInput,
   type NoticeReaders,
   type NoticeUpdate,
+  type SellToday,
+  type SellTodayInput,
+  type SellTodayUpdate,
 } from '../domain/notices.js';
 import type {
   PrintJob,
@@ -187,7 +191,7 @@ export interface PanelAuthPayload {
  * socket command, so either side can tell the other is too old for one before
  * sending it, instead of waiting out a timeout.
  */
-export const PANEL_PROTOCOL_VERSION = 10;
+export const PANEL_PROTOCOL_VERSION = 11;
 
 /**
  * The lowest Master protocol each command needs. A command not listed has
@@ -236,6 +240,11 @@ export const COMMAND_MIN_PROTOCOL: Partial<Record<keyof ClientToServerEvents, nu
   'notice:update': NOTICE_MIN_PROTOCOL,
   'notice:delete': NOTICE_MIN_PROTOCOL,
   'notice:markRead': NOTICE_MIN_PROTOCOL,
+  // "Sell today" (2026-10-08, protocol 11). Its own commands, so a Master older than them refuses
+  // at once instead of storing the entry as an ordinary notice. Delete is `notice:delete`.
+  'sellToday:manageList': SELL_TODAY_MIN_PROTOCOL,
+  'sellToday:create': SELL_TODAY_MIN_PROTOCOL,
+  'sellToday:update': SELL_TODAY_MIN_PROTOCOL,
   'presence:beat': 4,
   // 1.4 D3: Create product share. All four 1.4 sessions take protocol 7.
   'product:sharePdf': 7,
@@ -623,6 +632,12 @@ export interface SyncSnapshot {
    * an older Master's snapshot (before protocol 10): the panel then shows no board.
    */
   notices?: Notice[];
+  /**
+   * The "Sell today" entries meant for the same user, not ended (one may start on a later day,
+   * so a panel offline overnight still has the next day's), with their products resolved.
+   * Empty without `notices.view`; absent from a Master older than protocol 11.
+   */
+  sellToday?: SellToday[];
   /**
    * The user this snapshot was scoped for, so a panel can tell whether the
    * copy on its disk is still the right one for whoever is signed in now.
@@ -1083,6 +1098,10 @@ export interface ClientToServerEvents {
     input: { ids?: string[] },
     ack: CommandAck<{ unreadCount: number }>,
   ) => void;
+  /** Every "Sell today" entry, ended ones included, with audience role names. `notices.manage`. */
+  'sellToday:manageList': (ack: CommandAck<SellToday[]>) => void;
+  'sellToday:create': (input: SellTodayInput, ack: CommandAck<SellToday>) => void;
+  'sellToday:update': (input: { id: string } & SellTodayUpdate, ack: CommandAck<SellToday>) => void;
 
   // --- Dashboard (docs/backend-modules/04-API-CONTRACT.md §7) ---------------
   /** The one live pull — everything else rides on `SyncSnapshot.dashboard` and the `dashboard:changed` push. */

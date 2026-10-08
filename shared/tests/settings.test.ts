@@ -52,6 +52,8 @@ describe('every parser rejects a wrong shape', () => {
     'reports.visibleToManagement': 'yes',
     'notices.showOnHome': 'yes',
     'notices.showAtSignIn': 0,
+    'notices.showSellToday': 'no',
+    'basicHome.productSlideshow': 1,
     // Below their floors rather than the wrong type: for a bounded number the
     // interesting refusal is the in-range-looking value that is out of range —
     // 0 hours signs the administrator out on their next request, and 0 quiet

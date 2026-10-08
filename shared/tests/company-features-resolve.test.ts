@@ -24,6 +24,8 @@ describe('resolveCompanyFeatures', () => {
       reportsVisibleToManagement: SETTINGS['reports.visibleToManagement'].fallback,
       noticesOnHome: SETTINGS['notices.showOnHome'].fallback,
       noticesAtSignIn: SETTINGS['notices.showAtSignIn'].fallback,
+      sellTodayPopup: SETTINGS['notices.showSellToday'].fallback,
+      productSlideshow: SETTINGS['basicHome.productSlideshow'].fallback,
     });
   });
 

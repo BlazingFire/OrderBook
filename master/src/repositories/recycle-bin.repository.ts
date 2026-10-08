@@ -149,7 +149,8 @@ const BRANCHES: BranchDefinition[] = [
   // The notice board (Oct 2026): a UUID key like Fields, so `::text`.
   {
     entityType: 'notice',
-    sql: `SELECT 'notice' AS entity_type, id::text AS id, title AS label, priority AS sublabel,
+    sql: `SELECT 'notice' AS entity_type, id::text AS id, title AS label,
+                 CASE WHEN kind = 'sellToday' THEN 'Sell today' ELSE priority END AS sublabel,
                  deleted_at, ${CURSOR_TEXT} AS deleted_at_text, deleted_by, version
             FROM notices
            WHERE tenant_id = ? AND deleted_at IS NOT NULL`,

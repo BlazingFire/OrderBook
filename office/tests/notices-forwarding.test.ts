@@ -7,14 +7,14 @@
 
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Notice, SyncSnapshot } from '@orderbook/shared';
+import type { Notice, SellToday, SyncSnapshot } from '@orderbook/shared';
 
 vi.mock('../src/lib/master-fetch.js', () => ({
   masterFetch: vi.fn().mockRejectedValue(new Error('This panel is not paired with a Master')),
 }));
 
 import { createApp } from '../src/http/app.js';
-import { masterConnection } from '../src/realtime/master-connection.js';
+import { MasterCommandError, masterConnection } from '../src/realtime/master-connection.js';
 import * as userSession from '../src/services/user-session.service.js';
 import * as localStore from '../src/sync/local-store.js';
 
@@ -191,5 +191,75 @@ describe('the board while the Master is not reachable', () => {
       .send({ ids: ['N1'] });
 
     expect(response.status).toBeGreaterThanOrEqual(500);
+  });
+});
+
+describe('"Sell today" (2026-10-08)', () => {
+  const entry = (id: string, over: Partial<SellToday> = {}): SellToday => ({
+    id,
+    tenantId: 't1',
+    title: id,
+    body: '',
+    productIds: [],
+    products: [],
+    autoCloseSeconds: 15,
+    showFrom: null,
+    showUntil: null,
+    audience: { kind: 'all' },
+    authorId: null,
+    authorName: null,
+    createdAt: '2026-10-08T00:00:00.000Z',
+    updatedAt: '2026-10-08T00:00:00.000Z',
+    version: 1,
+    ...over,
+  });
+
+  it('forwards its three routes to its own commands, and deletes through notice:delete', async () => {
+    vi.spyOn(masterConnection, 'getStatus').mockReturnValue({ state: 'connected' } as never);
+    const command = vi.spyOn(masterConnection, 'command').mockResolvedValue({} as never);
+    const app = createApp();
+
+    await request(app).get('/api/notices/sell-today').expect(200);
+    await request(app).post('/api/notices/sell-today').send({ title: 'Push', productIds: ['PR1'] }).expect(201);
+    await request(app)
+      .patch('/api/notices/sell-today/S1')
+      .send({ expectedVersion: 1, autoCloseSeconds: 0 })
+      .expect(200);
+    await request(app).delete('/api/notices/S1').expect(200);
+
+    expect(command.mock.calls).toEqual([
+      ['sellToday:manageList'],
+      ['sellToday:create', { title: 'Push', productIds: ['PR1'] }],
+      ['sellToday:update', { expectedVersion: 1, autoCloseSeconds: 0, id: 'S1' }],
+      ['notice:delete', 'S1'],
+    ]);
+  });
+
+  it('says a Master too old for it needs an update (426), not that it failed', async () => {
+    vi.spyOn(masterConnection, 'command').mockRejectedValue(
+      new MasterCommandError('The Master Panel needs an update', 'updateNeeded', undefined, false),
+    );
+
+    const response = await request(createApp()).get('/api/notices/sell-today');
+
+    expect(response.status).toBe(426);
+    expect(response.body.error).toBe('updateNeeded');
+  });
+
+  it('gates the cached entries like the notices: the person’s own, everybody’s from another cache, none without notices.view', async () => {
+    vi.spyOn(masterConnection, 'getStatus').mockReturnValue({ state: 'disconnected' } as never);
+    const cached = [entry('for all'), entry('admins only', { audience: { kind: 'roles', roleIds: ['RL-ADMIN'] } })];
+
+    vi.spyOn(localStore, 'getView').mockResolvedValue(view({ builtForUserId: SESSION.userId, sellToday: cached }));
+    const own = await request(createApp()).get('/api/snapshot').expect(200);
+    expect(own.body.sellToday.map((e: SellToday) => e.id)).toEqual(['for all', 'admins only']);
+
+    vi.spyOn(localStore, 'getView').mockResolvedValue(view({ builtForUserId: 'US-ADMIN', sellToday: cached }));
+    const other = await request(createApp()).get('/api/snapshot').expect(200);
+    expect(other.body.sellToday.map((e: SellToday) => e.id)).toEqual(['for all']);
+
+    vi.spyOn(userSession, 'sessionPermissions').mockReturnValue([]);
+    const none = await request(createApp()).get('/api/snapshot').expect(200);
+    expect(none.body.sellToday).toEqual([]);
   });
 });

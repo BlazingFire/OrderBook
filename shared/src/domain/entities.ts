@@ -164,6 +164,10 @@ export interface CompanyFeatures {
   noticesOnHome?: boolean;
   /** `notices.showAtSignIn`: whether unread notices pop up after sign-in. */
   noticesAtSignIn?: boolean;
+  /** `notices.showSellToday`: whether the day's "Sell today" entry pops up. */
+  sellTodayPopup?: boolean;
+  /** `basicHome.productSlideshow`: whether Basic Home carries the product band. */
+  productSlideshow?: boolean;
 }
 
 export interface SignedInUser extends User {

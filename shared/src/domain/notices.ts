@@ -10,6 +10,7 @@
  * manager can see who has read what.
  */
 
+import type { Product, ProductImage } from './entities.js';
 import type { Permission } from './permissions.js';
 
 /**
@@ -117,6 +118,11 @@ export interface NoticeReaders {
 export interface NoticeBoard {
   notices: Notice[];
   unreadCount: number;
+  /**
+   * The reader's "Sell today" entries that have not ended (some may start later), never counted
+   * in `unreadCount`. Absent from a Master older than `SELL_TODAY_MIN_PROTOCOL`.
+   */
+  sellToday?: SellToday[];
 }
 
 /** The permission keys. `view` is held by every role; `manage` is the administrator's. */
@@ -201,4 +207,167 @@ export function noticeProblem(
   // that sends only one of them is checked against the stored other by the Master.
   if (input.showOnHome === false && input.showAtSignIn === false) return 'no_placement';
   return null;
+}
+
+// --- Sell today (2026-10-08) -----------------------------------------------------------------
+
+/*
+ * "What to sell today": a headline, an optional message and the sub products the company wants
+ * pushed, put up by a notice manager for chosen days. It pops up once per person per day after
+ * sign-in (or when it first appears while signed in) and closes by itself after
+ * `autoCloseSeconds`, and its products lead the product band on Basic Home.
+ *
+ * Stored as a row of `notices` with `kind = 'sellToday'`, so it shares the audience, the
+ * version, the soft delete and the Recycle Bin with a notice. It is never one on the wire: the
+ * board, its badge, the Basic Home notice band and the sign-in pop-up only ever see `kind =
+ * 'notice'` rows, and sell-today entries travel in their own lists (`NoticeBoard.sellToday`,
+ * `SyncSnapshot.sellToday`) and their own commands (`sellToday:*`), so a panel older than them
+ * shows nothing of them rather than showing them as notices.
+ */
+
+/** The first panel protocol with the `sellToday:*` commands and the snapshot's `sellToday`. */
+export const SELL_TODAY_MIN_PROTOCOL = 11;
+
+/** At most this many products in one entry: a pop-up of photo cards, not a catalogue. */
+export const SELL_TODAY_PRODUCTS_MAX = 12;
+/** "Close by itself after" is 0 (only when closed) or 5 to 120 seconds. */
+export const SELL_TODAY_AUTO_CLOSE_MIN = 5;
+export const SELL_TODAY_AUTO_CLOSE_MAX = 120;
+export const SELL_TODAY_AUTO_CLOSE_DEFAULT = 15;
+
+/** One product of an entry, resolved by the Master so a panel needs no catalogue to draw the card. */
+export interface SellTodayProduct {
+  /** The sub product (`products.id`). */
+  id: string;
+  name: string;
+  /** Its code (the first active variant's), or null. */
+  code: string | null;
+  size: string | null;
+  /** The main product it sits under (its category's name). */
+  mainProduct: string | null;
+  /** The primary photo, or null for a sub product without one. */
+  image: ProductImage | null;
+}
+
+export interface SellToday {
+  id: string;
+  tenantId: string;
+  /** The headline. */
+  title: string;
+  /** The optional message; plain text, line breaks kept. */
+  body: string;
+  /** In the order the manager picked them, including any since deleted (left out of `products`). */
+  productIds: string[];
+  /** The live ones of `productIds`, in that order. Empty for a reader without `products.view`. */
+  products: SellTodayProduct[];
+  /** 0: stays until closed. Otherwise closes by itself after this many seconds. */
+  autoCloseSeconds: number;
+  /** `YYYY-MM-DD`, the first day it applies, in the company's time zone. */
+  showFrom: string | null;
+  /** `YYYY-MM-DD`, the last day it applies. Null: until removed. */
+  showUntil: string | null;
+  audience: NoticeAudience;
+  /** Manager's list only, as on `Notice`. */
+  audienceRoleNames?: string[];
+  authorId: string | null;
+  authorName: string | null;
+  createdAt: string;
+  updatedAt: string;
+  version: number;
+  /** Manager's list only: past its last day. */
+  expired?: boolean;
+}
+
+/** What a manager sends to create or change an entry. */
+export interface SellTodayInput {
+  title: string;
+  body?: string;
+  productIds?: string[];
+  autoCloseSeconds?: number;
+  showFrom?: string | null;
+  showUntil?: string | null;
+  audience?: NoticeAudience;
+}
+
+export type SellTodayUpdate = Partial<SellTodayInput> & { expectedVersion: number };
+
+export type SellTodayProblem =
+  | 'title_required'
+  | 'title_too_long'
+  | 'body_too_long'
+  | 'bad_date'
+  | 'dates_reversed'
+  | 'audience_empty'
+  | 'audience_too_big'
+  | 'nothing_to_sell'
+  | 'too_many_products'
+  | 'bad_auto_close';
+
+/** Whether a number of seconds is one "Close by itself after" accepts. */
+export function isSellTodayAutoClose(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isInteger(value) &&
+    (value === 0 || (value >= SELL_TODAY_AUTO_CLOSE_MIN && value <= SELL_TODAY_AUTO_CLOSE_MAX))
+  );
+}
+
+/**
+ * Checks a create or edit, as `noticeProblem` does. A create needs a headline and something to
+ * sell (a product or a message); an edit is checked on what it sends, and the Master checks the
+ * merged result of the dates and of "something to sell" against what is stored.
+ */
+export function sellTodayProblem(
+  input: Partial<SellTodayInput>,
+  mode: 'create' | 'update',
+): SellTodayProblem | null {
+  if (mode === 'create' || input.title !== undefined) {
+    const title = (input.title ?? '').trim();
+    if (!title) return 'title_required';
+    if (title.length > NOTICE_TITLE_MAX) return 'title_too_long';
+  }
+  if (input.body !== undefined && input.body.length > NOTICE_BODY_MAX) return 'body_too_long';
+  if (input.productIds !== undefined && new Set(input.productIds).size > SELL_TODAY_PRODUCTS_MAX)
+    return 'too_many_products';
+  if (mode === 'create' && (input.productIds ?? []).length === 0 && !(input.body ?? '').trim())
+    return 'nothing_to_sell';
+  if (input.autoCloseSeconds !== undefined && !isSellTodayAutoClose(input.autoCloseSeconds))
+    return 'bad_auto_close';
+  if (input.showFrom != null && !isNoticeDay(input.showFrom)) return 'bad_date';
+  if (input.showUntil != null && !isNoticeDay(input.showUntil)) return 'bad_date';
+  if (input.showFrom != null && input.showUntil != null && input.showUntil < input.showFrom)
+    return 'dates_reversed';
+  if (input.audience?.kind === 'roles') {
+    if (input.audience.roleIds.length === 0) return 'audience_empty';
+    if (input.audience.roleIds.length > NOTICE_AUDIENCE_MAX_ROLES) return 'audience_too_big';
+  }
+  return null;
+}
+
+/** Whether an entry applies on `today`: on or after its first day and not past its last. */
+export function sellTodayApplies(entry: Pick<SellToday, 'showFrom' | 'showUntil'>, today: string): boolean {
+  return (entry.showFrom === null || entry.showFrom <= today) && !isNoticeExpired(entry.showUntil, today);
+}
+
+/** Today's entry: of those that apply today, the newest. One a day is the rule; overlap shows the newest. */
+export function sellTodayFor(entries: readonly SellToday[] | undefined, today: string): SellToday | null {
+  let newest: SellToday | null = null;
+  for (const entry of entries ?? []) {
+    if (!sellTodayApplies(entry, today)) continue;
+    if (!newest || entry.createdAt > newest.createdAt) newest = entry;
+  }
+  return newest;
+}
+
+/** A sub product as a card: its first active code, its main product, its primary photo. */
+export function sellTodayProductOf(product: Product): SellTodayProduct {
+  const variant = product.variants.find((each) => each.isActive) ?? product.variants[0];
+  return {
+    id: product.id,
+    name: product.name,
+    code: variant?.code ?? null,
+    size: product.size,
+    mainProduct: product.categoryName || null,
+    image: product.images.find((image) => image.isPrimary) ?? product.images[0] ?? null,
+  };
 }

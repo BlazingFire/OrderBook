@@ -46,6 +46,8 @@ export async function companyFeatures(tenantId: string): Promise<CompanyFeatures
       read('reports.visibleToManagement'),
       read('notices.showOnHome'),
       read('notices.showAtSignIn'),
+      read('notices.showSellToday'),
+      read('basicHome.productSlideshow'),
     ]),
   ) as {
     'security.offlineSignInEnabled': boolean;
@@ -55,6 +57,8 @@ export async function companyFeatures(tenantId: string): Promise<CompanyFeatures
     'reports.visibleToManagement': boolean;
     'notices.showOnHome': boolean;
     'notices.showAtSignIn': boolean;
+    'notices.showSellToday': boolean;
+    'basicHome.productSlideshow': boolean;
   };
 
   return {
@@ -65,5 +69,7 @@ export async function companyFeatures(tenantId: string): Promise<CompanyFeatures
     reportsVisibleToManagement: values['reports.visibleToManagement'],
     noticesOnHome: values['notices.showOnHome'],
     noticesAtSignIn: values['notices.showAtSignIn'],
+    sellTodayPopup: values['notices.showSellToday'],
+    productSlideshow: values['basicHome.productSlideshow'],
   };
 }
