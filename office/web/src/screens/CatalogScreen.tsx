@@ -171,11 +171,14 @@ export function CatalogScreen({
   view,
   tab,
   canImport = false,
+  focus,
 }: {
   view: LocalView;
   tab: 'parties' | 'products';
   /** Holds `products.bulk`. Absent rather than disabled, like every gated control. */
   canImport?: boolean;
+  /** A sub product another screen asked to open (Basic Home's product band, "Sell today"). */
+  focus?: { id: string; nonce: number };
 }) {
   const toast = useToast();
   /*
@@ -208,6 +211,11 @@ export function CatalogScreen({
   const [partyListFilters, setPartyListFilters] = useState<PartyListFilters>(NO_PARTY_LIST_FILTERS);
   const [productDrawerOpen, setProductDrawerOpen] = useState(false);
   const [openProductId, setOpenProductId] = useState<string | null>(null);
+  // Each ask opens it, even the same product twice (the nonce moves).
+  useEffect(() => {
+    if (focus) setOpenProductId(focus.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus?.nonce]);
   /*
    * The open product's photos as the last photo write left them. A write comes
    * back with the whole product, but the snapshot only catches up a frame or

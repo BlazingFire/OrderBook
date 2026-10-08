@@ -42,6 +42,8 @@ interface Props {
   catalogueRevision: number;
   /** Moves when an option list changed. */
   listsRevision: number;
+  /** A sub product to open (Basic Home's product band, the "Sell today" pop-up). */
+  focus?: { id: string; nonce: number };
 }
 
 export function ProductsScreen({
@@ -49,6 +51,7 @@ export function ProductsScreen({
   permissions,
   catalogueRevision,
   listsRevision,
+  focus,
 }: Props) {
   const canViewProducts = permissions.includes('products.view');
 
@@ -112,6 +115,7 @@ export function ProductsScreen({
           transport={catalogueTransport}
           revision={catalogueRevision + importBump}
           onImported={() => setImportBump((current) => current + 1)}
+          focus={focus}
         />
       </Activity>
       <Activity mode={page === 'main' ? 'visible' : 'hidden'}>

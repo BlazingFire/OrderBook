@@ -57,7 +57,10 @@ import {
   BasicHome,
   BP_NARROW,
   NoticeSlideshow,
+  ProductSlideshow,
+  SellTodayPopup,
   SignInNotices,
+  homeProducts,
   BusyMark,
   PrintStationRunner,
   Avatar,
@@ -381,6 +384,10 @@ function OfficePanel() {
   const [chatOpen, setChatOpen] = useState<{ id: string; seq?: number } | null>(null);
   // The notice a Basic Home slide opened, for the board to bring into view.
   const [noticeFocus, setNoticeFocus] = useState<{ id: string; nonce: number } | null>(null);
+  // The sub product a Basic Home card or the "Sell today" pop-up opened, for the catalogue to show.
+  const [productFocus, setProductFocus] = useState<{ id: string; nonce: number } | null>(null);
+  // The sign-in the unread notices pop-up is done with: the "Sell today" pop-up waits for it.
+  const [signInSettledFor, setSignInSettledFor] = useState<string | null>(null);
   const [chatShare, setChatShare] = useState<ChatRecordChip | null>(null);
   /** Bumped when the sidebar picks a Chatroom page, so a settings sub-screen left open closes. */
   const [chatResetNonce, setChatResetNonce] = useState(0);
@@ -624,7 +631,12 @@ function OfficePanel() {
   const noticeUnread = unreadOnBoard(myNotices, todayForNotices()).length;
   // Where else the board shows (`notices.showOnHome`, `notices.showAtSignIn`), from the snapshot's
   // switches: a setting change forces a fresh snapshot, so a flip on the Master lands here.
-  const { noticesOnHome, noticesAtSignIn } = resolveCompanyFeatures(view?.features);
+  const { noticesOnHome, noticesAtSignIn, sellTodayPopup, productSlideshow } = resolveCompanyFeatures(
+    view?.features,
+  );
+  // "Sell today" (2026-10-08), from the same snapshot, so the pop-up and the product band work offline.
+  const mySellToday = canViewNotices ? view?.sellToday : undefined;
+  const signInKey = session ? `${session.userId}:${session.signedInAt}` : '';
   const printWaiting = usePrintWaiting(officePrintroomTransport, canPrintroom);
 
   useEffect(() => {
@@ -1599,6 +1611,20 @@ function OfficePanel() {
           today={todayForNotices()}
           onMarkRead={noticeReads.markRead}
           enabled={noticesAtSignIn}
+          onSettled={() => setSignInSettledFor(signInKey)}
+        />
+      )}
+      {/* "Sell today": the day's entry once per person per day, after the unread notices pop-up,
+          unless the company turned it off (`notices.showSellToday`). */}
+      {canViewNotices && session && (
+        <SellTodayPopup
+          key={session.userId}
+          entries={mySellToday}
+          today={todayForNotices()}
+          userId={session.userId}
+          ready={signInSettledFor === signInKey}
+          enabled={sellTodayPopup}
+          onOpenProduct={can('products.view') ? openProduct : undefined}
         />
       )}
       <KeyboardOverlays
@@ -1767,6 +1793,18 @@ function OfficePanel() {
    * `addLead` is a screen here rather than a mode, which is what stops a
    * half-filled lead being thrown away by navigating to another tab.
    */
+  /** Opens a sub product on Products → Sub products (a Basic Home card, a "Sell today" card). */
+  function openProduct(id: string): void {
+    setProductFocus({ id, nonce: Date.now() });
+    goToTab('products.sub');
+  }
+  // Basic Home's top row, from this person's own cache: the notice band unless the company turned
+  // it off, and the product band (`basicHome.productSlideshow`): today's "Sell today" products,
+  // else sub products with photos. Nothing before the first snapshot.
+  const showNoticeBand = canViewNotices && noticesOnHome && view !== null;
+  const homeBand = homeProducts(mySellToday, can('products.view') ? (view?.products ?? []) : [], todayForNotices());
+  const showProductBand = productSlideshow && view !== null && homeBand.products.length > 0;
+
   const alwaysAvailable: ScreenSpec[] = [
     {
       id: 'basicHome',
@@ -1775,19 +1813,24 @@ function OfficePanel() {
       // none, unless the company turned it off. Nothing before the first snapshot.
       render: () => (
         <>
-          {canViewNotices && noticesOnHome && view !== null && (
-            // Inset like the launcher's own sections, so the band lines up with the tiles, and no
-            // wider than the Dashboard's content: full width at 4K ran each line across 3,500 px.
-            <div className="ob-measure-wide" style={{ padding: 'var(--s-8) var(--s-12) 0' }}>
-              <NoticeSlideshow
-                notices={myNotices}
-                today={todayForNotices()}
-                onOpen={(id) => {
-                  setNoticeFocus({ id, nonce: Date.now() });
-                  goToTab('notices');
-                }}
-                onOpenBoard={() => goToTab('notices')}
-              />
+          {(showNoticeBand || showProductBand) && (
+            // Inset like the launcher's own sections, so the bands line up with the tiles, side by
+            // side where both fit, and no wider than the Dashboard's content.
+            <div className="ob-home-bands ob-measure-wide">
+              {showNoticeBand && (
+                <NoticeSlideshow
+                  notices={myNotices}
+                  today={todayForNotices()}
+                  onOpen={(id) => {
+                    setNoticeFocus({ id, nonce: Date.now() });
+                    goToTab('notices');
+                  }}
+                  onOpenBoard={() => goToTab('notices')}
+                />
+              )}
+              {showProductBand && (
+                <ProductSlideshow products={homeBand.products} sellToday={homeBand.sellToday} onOpen={openProduct} />
+              )}
             </div>
           )}
           <BasicHome
@@ -2004,7 +2047,12 @@ function OfficePanel() {
           render: () => (
             <>
               <Activity mode={subKeyOf('products') === 'sub' ? 'visible' : 'hidden'}>
-                <CatalogScreen view={view} tab="products" canImport={can('products.bulk')} />
+                <CatalogScreen
+                  view={view}
+                  tab="products"
+                  canImport={can('products.bulk')}
+                  focus={productFocus ?? undefined}
+                />
               </Activity>
               <Activity mode={subKeyOf('products') === 'main' ? 'visible' : 'hidden'}>
                 <MainProductsScreen view={view} />

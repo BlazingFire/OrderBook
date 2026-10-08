@@ -106,6 +106,7 @@ export function SubProductsScreen({
   transport,
   revision,
   onImported,
+  focus,
 }: {
   view: CatalogueView;
   transport: CatalogueTransport;
@@ -113,6 +114,11 @@ export function SubProductsScreen({
   onImported?: () => void;
   /** Moves when the catalogue changed anywhere; the list is read again. */
   revision: number;
+  /**
+   * A sub product another screen asked to open (Basic Home's product band, the "Sell today"
+   * pop-up, 2026-10-08): its detail opens whether or not it is on the page the list shows.
+   */
+  focus?: { id: string; nonce: number };
 }) {
   const toast = useToast();
   // Held in a ref so a host that builds the object inline cannot re-run an
@@ -140,6 +146,11 @@ export function SubProductsScreen({
   const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+  // Each ask opens it, even the same product twice (the nonce moves).
+  useEffect(() => {
+    if (focus) setOpenId(focus.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus?.nonce]);
   /*
    * The open product's photos as the last photo write left them. A write comes
    * back with the whole product, but the list is read again only a moment
@@ -284,7 +295,10 @@ export function SubProductsScreen({
   }
 
   const products = page?.items ?? [];
-  const openRow = products.find((product) => product.id === openId) ?? null;
+  const openRow =
+    products.find((product) => product.id === openId) ??
+    view.products.find((product) => product.id === openId) ??
+    null;
   const open =
     openRow && photoPatch?.id === openRow.id ? { ...openRow, images: photoPatch.images } : openRow;
 

@@ -14,7 +14,9 @@
  *  · the management screen reads the manage list and writes through the panel's API;
  *  · the Dashboard shows an important notice and opens the board;
  *  · Basic Home turns over every notice placed there, says so when there are none, and follows
- *    the company's switch (2026-10-08).
+ *    the company's switch (2026-10-08);
+ *  · "Sell today" pops up from the snapshot after the unread notices, offline too, and its
+ *    products (or the snapshot's sub products with photos) fill the product band (2026-10-08).
  */
 
 import { StrictMode } from 'react';
@@ -64,8 +66,9 @@ function notice(id: string, overrides: Record<string, unknown> = {}) {
   };
 }
 
-function snapshot(notices: unknown[], features: Record<string, unknown> = {}) {
+function snapshot(notices: unknown[], features: Record<string, unknown> = {}, extra: Record<string, unknown> = {}) {
   return {
+    ...extra,
     features,
     parties: [],
     products: [],
@@ -83,6 +86,7 @@ function snapshot(notices: unknown[], features: Record<string, unknown> = {}) {
     serverTime: '2026-10-06T00:00:00.000Z',
     pendingCount: 0,
     notices,
+    ...extra,
   };
 }
 
@@ -99,6 +103,8 @@ interface Boot {
    * read. It has its own tests (`sign-in-notices.test.tsx`, the V6 block in `office-shell`).
    */
   features?: Record<string, unknown>;
+  /** Anything else the snapshot carries (`sellToday`, `products`). */
+  extra?: Record<string, unknown>;
 }
 
 async function boot({
@@ -109,6 +115,7 @@ async function boot({
   connection = {},
   route,
   features = { noticesAtSignIn: false },
+  extra = {},
 }: Boot) {
   const calls = routeFetch((call) => {
     const answer = route?.(call);
@@ -145,7 +152,7 @@ async function boot({
   await waitFor(() => expect(document.querySelector('.ob-footer')).not.toBeNull());
   await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(0));
   await act(async () => {
-    FakeEventSource.instances.at(-1)!.emit('snapshot', snapshot(notices, features));
+    FakeEventSource.instances.at(-1)!.emit('snapshot', snapshot(notices, features, extra));
   });
   return calls;
 }
@@ -474,5 +481,94 @@ describe('Office notice board: management and the Dashboard', () => {
     await screen.findByTitle(t('nav.leads'));
     expect(screen.queryByTitle(t('nav.notices'))).toBeNull();
     expect(screen.queryByText('Notice n1')).toBeNull();
+  });
+});
+
+describe('Office "Sell today" and the Basic Home product band (2026-10-08)', () => {
+  const DAMRU = {
+    id: 'prod-9', tenantId: 'tenant-1', name: 'DAMRU', alias: null, categoryId: 'cat-1', categoryName: 'Table Top Basin',
+    categoryCode: 'TTB', brand: 'Swisware+', sortOrder: 1, size: '600 x 400', hasVariants: false, multiColour: false,
+    variants: [{ id: 'var-9', productId: 'prod-9', label: null, code: 'TTB-0009', weightKg: null, sequence: 0, isActive: true }],
+    customFields: {}, isActive: true, createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z',
+    sync: { version: 1, hlc: '', fieldHlc: {} },
+    images: [{ id: 'img-9', productId: 'prod-9', caption: null, isPrimary: true, sequence: 0, width: 800, height: 800, checksum: 'x', blurhash: '', byteSize: 1, uploadedAt: '2026-10-01T00:00:00.000Z' }],
+  };
+  const ENTRY = {
+    id: 'ST1', tenantId: 'tenant-1', title: 'Push the Damru range', body: '', productIds: ['prod-9'],
+    products: [{ id: 'prod-9', name: 'DAMRU', code: 'TTB-0009', size: '600 x 400', mainProduct: 'Table Top Basin', image: null }],
+    autoCloseSeconds: 0, showFrom: null, showUntil: null, audience: { kind: 'all' }, authorId: null, authorName: null,
+    createdAt: '2026-10-08T08:00:00.000Z', updatedAt: '2026-10-08T08:00:00.000Z', version: 1,
+  };
+  const sellPopup = () => screen.queryByRole('dialog', { name: 'Push the Damru range' });
+  const noticePopup = () => screen.queryByRole('dialog', { name: t('notices.signIn.title') });
+
+  beforeEach(() => window.localStorage.clear());
+
+  it('pops up from the snapshot after the unread notices, offline too, and not twice', async () => {
+    await boot({
+      permissions: ['notices.view', 'products.view'],
+      notices: [notice('n1', { priority: 'important' })],
+      connection: { state: 'disconnected' },
+      features: {},
+      extra: { sellToday: [ENTRY] },
+    });
+    await waitFor(() => expect(noticePopup()).not.toBeNull());
+    expect(sellPopup()).toBeNull();
+
+    fireEvent.click(within(noticePopup()!).getByRole('button', { name: t('notices.signIn.later') }));
+    await waitFor(() => expect(sellPopup()).not.toBeNull());
+    // Set to stay until closed: no countdown.
+    expect(screen.queryByRole('timer')).toBeNull();
+    fireEvent.click(within(sellPopup()!).getByRole('button', { name: t('sellToday.popup.start') }));
+
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('snapshot', snapshot([], {}, { sellToday: [ENTRY] }));
+    });
+    expect(sellPopup()).toBeNull();
+  });
+
+  it('never pops up when the company turned it off', async () => {
+    await boot({
+      permissions: ['notices.view'],
+      notices: [],
+      features: { sellTodayPopup: false },
+      extra: { sellToday: [ENTRY] },
+    });
+    await screen.findByTitle(t('nav.notices'));
+    expect(sellPopup()).toBeNull();
+  });
+
+  it('fills the product band with the day’s products, opening one in the catalogue', async () => {
+    await boot({
+      permissions: ['notices.view', 'products.view', 'leads.view'],
+      roleTier: 'office',
+      notices: [],
+      features: { noticesAtSignIn: false, sellTodayPopup: false },
+      extra: { sellToday: [ENTRY], products: [DAMRU] },
+    });
+    const band = await screen.findByRole('region', { name: t('productShow.sellToday') });
+    expect(band.closest('.ob-home-bands')?.querySelector('.ob-slideshow')).not.toBeNull();
+
+    fireEvent.click(within(band).getByTitle(t('productShow.open', { name: 'DAMRU' })));
+    expect(await screen.findByRole('button', { name: t('action.backToList') })).toBeTruthy();
+  });
+
+  it('features the snapshot’s sub products with photos without an entry, and follows its switch', async () => {
+    await boot({
+      permissions: ['notices.view', 'products.view', 'leads.view'],
+      roleTier: 'office',
+      notices: [],
+      extra: { products: [DAMRU, { ...DAMRU, id: 'prod-10', name: 'NO PHOTO', images: [] }] },
+    });
+    const band = await screen.findByRole('region', { name: t('productShow.label') });
+    expect(within(band).getByText('DAMRU')).toBeTruthy();
+    expect(within(band).queryByText('NO PHOTO')).toBeNull();
+
+    await act(async () => {
+      FakeEventSource.instances
+        .at(-1)!
+        .emit('snapshot', snapshot([], { productSlideshow: false }, { products: [DAMRU] }));
+    });
+    expect(screen.queryByRole('region', { name: t('productShow.label') })).toBeNull();
   });
 });

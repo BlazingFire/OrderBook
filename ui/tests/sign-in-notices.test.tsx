@@ -176,4 +176,20 @@ describe('SignInNotices', () => {
     expect(stored).not.toContain('secret-token');
     expect(stored).not.toContain('user-1');
   });
+
+  it('says it is out of the way once it decided on nothing, or once its dialog closed, never while open (2026-10-08)', () => {
+    const onSettled = vi.fn();
+    const view = render(<SignInNotices loaded={false} notices={[]} today={TODAY} onMarkRead={vi.fn()} onSettled={onSettled} />);
+    expect(onSettled).not.toHaveBeenCalled();
+    view.rerender(<SignInNotices loaded notices={[READ]} today={TODAY} onMarkRead={vi.fn()} onSettled={onSettled} />);
+    expect(onSettled).toHaveBeenCalledTimes(1);
+    cleanup();
+
+    const later = vi.fn();
+    render(<SignInNotices loaded notices={[NEW]} today={TODAY} onMarkRead={vi.fn()} onSettled={later} />);
+    expect(dialog()).not.toBeNull();
+    expect(later).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: t('notices.signIn.later') }));
+    expect(later).toHaveBeenCalledTimes(1);
+  });
 });

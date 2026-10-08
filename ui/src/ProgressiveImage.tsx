@@ -24,7 +24,7 @@
  * photo, and it must never stand in for one that is not coming.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { variantForSlot, type ImageVariant, type ProductImage } from '@orderbook/shared';
 import { decode } from 'blurhash';
 
@@ -88,16 +88,14 @@ export function ProgressiveImage({
       ? variant
       : variantForSlot(slotPx, typeof window === 'undefined' ? 1 : window.devicePixelRatio);
 
-  const [loaded, setLoaded] = useState(false);
-  const [failed, setFailed] = useState(false);
+  // What the last load or error said, and for which photo. A different `imageId` means a different
+  // photo, not a slow-loading one, so the answer counts only for its own id. Not a reset in an
+  // effect: a photo already in the browser's cache fires `load` before passive effects run, and the
+  // reset then hid it for good (opacity 0 over the blur), which the Basic Home product band showed.
+  const [settled, setSettled] = useState<{ id: string; ok: boolean } | null>(null);
+  const loaded = settled?.id === imageId && settled.ok;
+  const failed = settled?.id === imageId && !settled.ok;
   const placeholder = useMemo(() => placeholderDataUrl(blurhash), [blurhash]);
-
-  // A different `imageId` means a different photo, not a slow-loading one —
-  // reset so the old picture's placeholder doesn't flash in front of the new one.
-  useEffect(() => {
-    setLoaded(false);
-    setFailed(false);
-  }, [imageId]);
 
   return (
     <span
@@ -127,8 +125,8 @@ export function ProgressiveImage({
           alt={alt}
           loading="lazy"
           decoding="async"
-          onLoad={() => setLoaded(true)}
-          onError={() => setFailed(true)}
+          onLoad={() => setSettled({ id: imageId, ok: true })}
+          onError={() => setSettled({ id: imageId, ok: false })}
           style={{
             position: 'absolute',
             inset: 0,
