@@ -1149,6 +1149,9 @@ tier, editing, since}` (one per person, tabs merged), `PresenceLastWrite`,
 (only records somebody has open and the reader may read) and `BOARD_PRESENCE_MIN_PROTOCOL` (7);
 `PANEL_PROTOCOL_VERSION` is 7, with one command `presence:board` (`kind` → `BoardPresence`) and
 one push `presence:board` (`BoardPresence & {forUserId}`), the whole board each time.
+**2026-10-08 "Sell today":** `PANEL_PROTOCOL_VERSION` is 11, for `sellToday:manageList`, `sellToday:create` and
+`sellToday:update` (`SELL_TODAY_MIN_PROTOCOL`, `shared/src/domain/notices.ts`) and the snapshot's optional
+`sellToday` (§11.12a).
 
 **`shared/src/protocol/discovery.ts` — custom UDP discovery (not mDNS).**
 `DISCOVERY_PORT = 45789`, `DISCOVERY_MAGIC = 'ORDERBOOK'`,
@@ -3314,7 +3317,7 @@ are recounted in the 1.3 Phase 9 reconciliation.
   Admin role's stored permissions, so Admin's seeded key set tracks whatever the
   catalogue is when that migration first runs on a database.
 
-### 6.2 All 49 migrations, in the order they are applied
+### 6.2 All 50 migrations, in the order they are applied
 
 | # | Migration | Lines | What it does / leaves behind |
 |---|---|---|---|
@@ -3366,7 +3369,8 @@ are recounted in the 1.3 Phase 9 reconciliation.
 | 46 | `master/src/db/migrations/20261014000000_notice_board.ts` | 120 | **Pinned, additive, idempotent** (Oct 2026). `notices`, `notice_audiences`, `notice_reads` and their indexes, `notices.view` to every role and `notices.manage` to `admin` / `server_master` roles (union). `down()` drops the tables only. `master/tests/migration-notice-board.integration.test.ts` |
 | 47 | `master/src/db/migrations/20261015000000_catalogue_corrections.ts` | 245 | **Pinned, additive, idempotent** (U8, U13, 2026-10-07). Brings an installed catalogue to the shipped `swisware-plus-2026.md` in place: page-4 toilets as numbered models, page-13 colour rules, `14x14 NEW CORNER` moved to Table Top Wash Basin. Touches a row only while it still holds what shipped; UPDATE only, `down()` a no-op. `master/tests/migration-catalogue-corrections.integration.test.ts` |
 | 48 | `master/src/db/migrations/20261016000000_notice_placement.ts` | 29 | **Pinned, additive, idempotent** (2026-10-08). `ADD COLUMN IF NOT EXISTS notices.show_on_home` and `notices.show_at_sign_in`, `BOOLEAN NOT NULL DEFAULT true`: where a notice shows besides the board (Basic Home band, sign-in pop-up). Test: `migration-notice-placement.integration.test.ts`. |
-| 49 | `master/src/db/migrations/20261017000000_product_image_source_checksum.ts` | 24 | **Pinned last, additive, idempotent** (2026-10-08). `ADD COLUMN IF NOT EXISTS product_images.source_checksum TEXT NULL`, no backfill; `down()` drops it. `uploadImage` fills it with the sha256 of the uploaded file (null when cropped or rotated); the product zip reads a photo as unchanged on it or `checksum`. `master/tests/migration-product-image-source-checksum.integration.test.ts` |
+| 49 | `master/src/db/migrations/20261017000000_product_image_source_checksum.ts` | 24 | **Pinned, additive, idempotent** (2026-10-08). `ADD COLUMN IF NOT EXISTS product_images.source_checksum TEXT NULL`, no backfill; `down()` drops it. `uploadImage` fills it with the sha256 of the uploaded file (null when cropped or rotated); the product zip reads a photo as unchanged on it or `checksum`. `master/tests/migration-product-image-source-checksum.integration.test.ts` |
+| 50 | `master/src/db/migrations/20261018000000_notice_sell_today.ts` | 47 | **Pinned last, additive, idempotent** (2026-10-08). `notices.kind` (`'notice'` default, or `'sellToday'`, CHECK), `product_ids JSONB` (an array, default `[]`), `auto_close_seconds` (null, 0 or 5 to 120, CHECK), `show_from DATE`: a "Sell today" entry is a kind of notice (§11.12a). `down()` drops the four. `master/tests/migration-notice-sell-today.integration.test.ts` |
 
 ### 6.3 Conventions across the schema
 
@@ -6517,11 +6521,76 @@ Rules: `docs/schema/06-tenancy-permissions-and-sync.md` section 2c, `docs/ROLES_
   the person signed in (`forCurrentUser`, `noticesFor`), filtered for expiry on the PC. From a cache built for somebody
   else only the notices for everybody are shown, all as unread (the read marks are the other person's); so the sign-in
   pop-up waits for the person's own snapshot while the link is up (`office/web/src/App.tsx`).
+- **Kinds (2026-10-08).** A `notices` row is a notice or a "Sell today" entry (`kind`, §11.12a). Everything above reads
+  and writes `kind = 'notice'` only: the board, its unread count, `listManage`, `snapshotNotices`, `markRead`, and
+  `updateNotice` (404 for an entry). Delete, restore and the change event take either kind.
+- **Basic Home's top row (2026-10-08).** Both panels draw the notice band and the product band (§11.12a) in one
+  `.ob-home-bands` grid inside `ob-measure-wide`: side by side where both get 34rem (1366 px and up at 100 %), stacked
+  below that (1024). The notice band's padding is 8 px top and bottom, and in a band narrower than 44rem (a container
+  query) its date and dots give way so the title is not cut to a few letters. `SignInNotices` gained `onSettled`, called
+  once it decided on nothing or its dialog closed, so the "Sell today" pop-up opens after it, never on top of it.
 - **Tests.** `master/tests/notices.integration.test.ts`, `notice-fan-out.test.ts`, `notice-screens-contract.integration.test.ts`,
   `migration-notice-board.integration.test.ts`, `migration-notice-placement.integration.test.ts`,
   `company-settings.integration.test.ts` (the two switches on `/me` and in the snapshot), `office/tests/notices-forwarding.test.ts`,
-  `ui/tests/notice-board.test.tsx`, `notice-slideshow.test.tsx`, `sign-in-notices.test.tsx`, `office-notices.test.tsx`, and
-  the notice blocks of `master-shell.test.tsx` and `office-shell.test.tsx`.
+  `ui/tests/notice-board.test.tsx`, `notice-slideshow.test.tsx`, `sign-in-notices.test.tsx`, `office-notices.test.tsx`,
+  `basic-home.test.tsx` (the top row's CSS and both panels' wrapper), and the notice blocks of `master-shell.test.tsx` and
+  `office-shell.test.tsx`.
+
+### 11.12a "Sell today" and the Basic Home product band (2026-10-08)
+
+The owner's ask: a pop-up of what to sell today, managed in Notice board management, that people close to start work
+or that closes by itself after a set number of seconds; and a product slideshow on Basic Home in little space. Rules:
+`docs/schema/06-tenancy-permissions-and-sync.md` section 2c, `docs/backend-modules/04-API-CONTRACT.md` section 22.1,
+`docs/DESIGN_SYSTEM.md` section 7.2.
+
+- **Storage.** `20261018000000_notice_sell_today.ts`: `notices.kind`, `product_ids` (JSONB array of sub product ids,
+  in order), `auto_close_seconds`, `show_from`. An entry shares the audience, version, soft delete, Recycle Bin (its
+  Detail is the token `sellToday`, put into words by `RecycleBinScreen` with the notices' priorities), activity log
+  (`entityType notice`, `details.kind sellToday`) and `notice` change event with a notice.
+- **Master.** `notice.repository.ts` (`listForReader` / `listAll` take the kind); `notice.service.ts`
+  (`readerSellToday`, on the board read and as `SyncSnapshot.sellToday`; `listSellTodayManage`, `createSellToday`,
+  `updateSellToday`: `parseSellToday` type-checks, `sellTodayProblem` validates, every product must be a live sub product,
+  the window and "something to sell" are checked against what an edit leaves out; products resolved to cards by
+  `sellTodayProductOf`, none for a reader without `products.view`); `notice.routes.ts` (`/api/notices/sell-today`);
+  `hub.ts` (`sellToday:*`). Entries reach readers until their last day, including ones that start later, so an Office
+  offline overnight has the next day's.
+- **Office.** The snapshot's entries are gated like its notices (`sellTodayFor` in `office/src/http/app.ts`): none
+  without `notices.view`, only the ones for everybody from a cache built for somebody else, and no product cards for
+  somebody without `products.view` (such a cache carries cards resolved under the other person's permissions).
+- **Protocol.** 11: the three `sellToday:*` commands (`SELL_TODAY_MIN_PROTOCOL`). A create through `notice:create` would
+  have been stored by an older Master as an ordinary notice; its own commands make an older Master refuse (426 on the
+  Office), and the Office's management screen then hides the tab. The snapshot field is optional both ways.
+- **Settings.** `notices.showSellToday` (the pop-up) and `basicHome.productSlideshow` (the band), both on, in
+  Settings → Company → Notice board; `CompanyFeatures.sellTodayPopup` / `productSlideshow`.
+- **Management.** `NoticeManageView` has two tabs, Notices and Sell today (offered when the panel passes
+  `onCreateSellToday` / `onUpdateSellToday`). The tab lists each entry with a status (`sellTodayStatus`: Today, Newer one
+  shows, Upcoming, Ended), its product thumbnails and count (or "Message only"), its days, audience and how it closes,
+  with Edit and Delete. The editor: headline, products picked by search (`Combobox` over the panel's
+  `searchProducts`, the `/api/pick/product` endpoint, at most 12, each removable), message, "Close by itself after"
+  (Never, 5 to 120 s, default 15), first and last day (today and today for a new one), audience. The Master's and the
+  Office's `NoticeManageScreen.tsx` read and write it; the Office hides the tab on `updateNeeded`.
+- **The pop-up.** `ui/src/SellTodayPopup.tsx`, mounted by both shells beside `SignInNotices`. Today's entry is the newest
+  of those that apply (`sellTodayFor`). It opens when `ready` (the unread notices pop-up has settled for this sign-in),
+  the company switch is on, and this person has not been shown it today on this PC (`localStorage`
+  `orderbook.sellToday.seen.<userId>`, written when it opens; reloads, navigation and a second sign-in the same day do
+  not bring it back). An entry put up while somebody is signed in opens as it arrives; one that goes while it is open
+  (deleted, ended, moved out of their audience) closes it, and the next one may open. It shows the headline, the
+  message and the products as photo cards (photo, name, code and size, main product); "Start work" (focused), Escape
+  and the close button close it; with seconds set a ring and "Closes in N s" count down and it closes itself. A card
+  opens the sub product (the Master's Sub products detail through `ProductsScreen` / `SubProductsScreen` `focus`; the
+  Office's `CatalogScreen` `focus`).
+- **The product band.** `ui/src/ProductSlideshow.tsx`: `homeProducts` gives today's entry's products, else
+  `featuredProducts` (live sub products with a photo, a day-stable selection of 24: the Master reads
+  `api.listProducts({ hasPhoto: true, limit: 200 })`, the Office its snapshot's products); as many whole 10rem cards as
+  fit (measured with a `ResizeObserver`), turning over by one every 4 s when there are more, paused on hover or focus,
+  a stop button, previous and next, never moving by itself under reduced motion; a card opens the product. Photos are
+  `/uploads/images/:id/micro`, so the Office serves them from its image cache offline.
+- **`ProgressiveImage` (found live).** Its loaded state is keyed by image id instead of reset in an effect: a photo
+  already in the browser cache fired `load` before the effect ran and stayed hidden behind its blur.
+- **Tests.** `master/tests/sell-today.integration.test.ts` (ST-1 to ST-9), `migration-notice-sell-today.integration.test.ts`,
+  `shared/tests/sell-today.test.ts`, `office/tests/notices-forwarding.test.ts` ("Sell today" block),
+  `ui/tests/sell-today-popup.test.tsx`, `sell-today-manage.test.tsx`, `product-slideshow.test.tsx`, the "Sell today"
+  blocks of `master-shell.test.tsx` and `office-notices.test.tsx`, and `sign-in-notices.test.tsx` (`onSettled`).
 
 ### 11.13 Product photos in bulk, and the catalogue photos (Oct 2026)
 

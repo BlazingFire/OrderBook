@@ -2485,7 +2485,9 @@ html[data-motion='off'] .ob-progress-fill--indeterminate {
   display: flex;
   align-items: center;
   gap: var(--s-12);
-  padding: var(--s-12) var(--s-16);
+  /* 8 px top and bottom since 2026-10-08 ("in less space"): the band is about 74 px tall, the
+   * product band's height, so the two sit level in one row. */
+  padding: var(--s-8) var(--s-12) var(--s-8) var(--s-16);
   border: 1px solid var(--line);
   border-left: 3px solid var(--slideshow-edge);
   border-radius: var(--r-md);
@@ -2494,6 +2496,18 @@ html[data-motion='off'] .ob-progress-fill--indeterminate {
 }
 .ob-slideshow--important {
   --slideshow-edge: var(--state-conflict);
+}
+/* Beside the product band (half a 1366 px row) the title would be cut to a few letters:
+   there the date and the dots give way. The slide still says "2 of 3" to a screen reader,
+   and previous and next stay. Container query, so it follows the band's own width. */
+.ob-slideshow {
+  container: ob-slideshow / inline-size;
+}
+@container ob-slideshow (max-width: 44rem) {
+  .ob-slideshow .ob-slideshow-date,
+  .ob-slideshow .ob-slideshow-dots {
+    display: none;
+  }
 }
 /* Nothing on the board for Basic Home: a quiet edge, a short note saying so, and the way to the board. */
 .ob-slideshow--empty {
@@ -2598,6 +2612,287 @@ html[data-motion='off'] .ob-progress-fill--indeterminate {
   outline: 2px solid var(--line-focus);
   outline-offset: -2px;
   border-radius: var(--r-sm);
+}
+
+/* ===========================================================================
+ * Basic Home's top row (2026-10-08): the notice band and the product band side by side
+ * where both fit at 34rem (about 476 px) or more each (1366 px and up at 100 %), one
+ * above the other below that (1024 x 768), where side by side left the notice title a
+ * few letters long. Inset like the launcher's sections, so the bands line up with the tiles.
+ * ======================================================================== */
+
+.ob-home-bands {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 34rem), 1fr));
+  gap: var(--s-8) var(--s-12);
+  padding: var(--s-8) var(--s-12) 0;
+}
+
+/* ===========================================================================
+ * The product band (ProductSlideshow.tsx): the notice band's surface and edge, a
+ * label on the left, a row of whole cards (56 px photo, name and code; as many as
+ * fit at 10rem each) and the carousel controls on the right. One row tall, so it
+ * never pushes the tiles.
+ * ======================================================================== */
+
+.ob-prodshow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-12);
+  min-width: 0;
+  padding: var(--s-8) var(--s-12) var(--s-8) var(--s-16);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+}
+.ob-prodshow-head {
+  flex: 0 1 6.5rem;
+  min-width: 5rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.ob-prodshow-headline {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: var(--t-small-size);
+  line-height: var(--t-small-line);
+  font-weight: 550;
+}
+.ob-prodshow-track {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: var(--s-8);
+}
+.ob-prodshow-slide {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 18rem;
+}
+.ob-prodshow-card {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  width: 100%;
+  min-width: 0;
+  padding: var(--s-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+button.ob-prodshow-card {
+  cursor: pointer;
+}
+button.ob-prodshow-card:hover {
+  background: var(--bg-hover);
+}
+button.ob-prodshow-card:hover .ob-prodshow-name {
+  color: var(--accent);
+}
+button.ob-prodshow-card:focus-visible {
+  outline: 2px solid var(--line-focus);
+  outline-offset: 0;
+}
+.ob-prodshow-photo {
+  flex: none;
+  width: 4rem !important; /* 56 px; ProgressiveImage sets 100% on itself */
+  height: 4rem;
+  border-radius: var(--r-sm);
+}
+.ob-prodshow-photo--empty,
+.ob-prodshow-photo[data-photo-missing] {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  background: var(--bg-sunken);
+  color: var(--fg-tertiary);
+  font-weight: 600;
+}
+.ob-prodshow-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ob-prodshow-name,
+.ob-prodshow-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ob-prodshow-name {
+  font-size: var(--t-body-size);
+  line-height: var(--t-body-line);
+  font-weight: 550;
+}
+.ob-prodshow-meta {
+  font-family: var(--font-mono);
+  font-size: var(--t-small-size);
+  line-height: var(--t-small-line);
+  color: var(--fg-secondary);
+}
+
+/* ===========================================================================
+ * "Sell today" (SellTodayPopup.tsx and its editor in NoticeManageView.tsx): the
+ * pop-up's message and photo cards, its countdown ring, and the editor's picked list.
+ * ======================================================================== */
+
+.ob-selltoday-message {
+  margin: 0 0 var(--s-16);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--t-body-size);
+  line-height: var(--t-body-line);
+  color: var(--fg-secondary);
+}
+.ob-selltoday-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  /* Photo cards of 10 to 14rem, centred: three products read as a row, not a corner. */
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 14rem));
+  justify-content: center;
+  gap: var(--s-12);
+}
+.ob-selltoday-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: var(--s-8);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+button.ob-selltoday-card {
+  cursor: pointer;
+  transition: border-color var(--d-fast) var(--e-standard);
+}
+button.ob-selltoday-card:hover {
+  border-color: var(--accent);
+}
+button.ob-selltoday-card:focus-visible {
+  outline: 2px solid var(--line-focus);
+  outline-offset: 2px;
+}
+.ob-selltoday-photo {
+  margin-bottom: var(--s-6);
+  aspect-ratio: 1 / 1;
+}
+.ob-selltoday-photo--empty {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  border-radius: var(--r-sm);
+  background: var(--bg-sunken);
+  color: var(--fg-tertiary);
+  font-size: var(--t-title-size);
+  font-weight: 600;
+}
+.ob-selltoday-name {
+  font-size: var(--t-body-size);
+  line-height: var(--t-body-line);
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.ob-selltoday-meta {
+  font-family: var(--font-mono);
+  font-size: var(--t-small-size);
+  line-height: var(--t-small-line);
+  color: var(--fg-secondary);
+}
+.ob-selltoday-main {
+  font-size: var(--t-small-size);
+  line-height: var(--t-small-line);
+  color: var(--fg-tertiary);
+}
+.ob-selltoday-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-16);
+  width: 100%;
+}
+.ob-selltoday-countdown {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-8);
+  font-size: var(--t-small-size);
+  color: var(--fg-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.ob-selltoday-countdown > svg {
+  transform: rotate(-90deg);
+}
+.ob-selltoday-ring-track,
+.ob-selltoday-ring {
+  fill: none;
+  stroke-width: 4;
+}
+.ob-selltoday-ring-track {
+  stroke: var(--line);
+}
+.ob-selltoday-ring {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s linear;
+}
+html[data-motion='off'] .ob-selltoday-ring {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ob-selltoday-ring {
+    transition: none;
+  }
+}
+.ob-selltoday-picked {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.ob-selltoday-picked > li {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  padding: var(--s-6) var(--s-8);
+}
+.ob-selltoday-picked > li + li {
+  border-top: 1px solid var(--line);
+}
+.ob-selltoday-picked-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ob-selltoday-picked-text > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ob-selltoday-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-12);
+  align-items: start;
 }
 
 /* ===========================================================================

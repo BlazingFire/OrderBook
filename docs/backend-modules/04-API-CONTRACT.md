@@ -2889,6 +2889,41 @@ and a newer Master's extra fields are ignored by an older one. No new command, s
 The company switches `notices.showOnHome` / `notices.showAtSignIn` travel as `CompanyFeatures.noticesOnHome` /
 `noticesAtSignIn` on `/me` and in the snapshot; a setting change is snapshot-forcing, and the Master's browser re-reads `/me`.
 
+### 22.1 "Sell today" (2026-10-08, protocol 11)
+
+What to sell today: a headline, an optional message and the sub products to push, for chosen days and an audience. It
+is a row of `notices` with `kind = 'sellToday'` (migration `20261018000000_notice_sell_today`), so it shares the
+audience, the version, the soft delete, the Recycle Bin, the activity log and the `notice` change event with a notice,
+and it is **never** a notice on the wire: `GET /api/notices`' `notices` and `unreadCount`, `notice:manageList`,
+`SyncSnapshot.notices` and `notice:markRead` see `kind = 'notice'` rows only, and `PATCH /api/notices/:id` on an entry
+is 404 (as `PATCH /api/notices/sell-today/:id` on a notice is). Types: `SellToday`, `SellTodayInput`, `SellTodayUpdate`,
+`SellTodayProduct`, `sellTodayProblem`, `sellTodayFor` in `shared/src/domain/notices.ts`.
+
+| Route (Master) | Key | Answer |
+|---|---|---|
+| `GET /api/notices` | `notices.view` | gains `sellToday`: the caller's entries that have not ended (one that starts on a later day is included), each with `products`, the live ones of `productIds` resolved to cards `{ id, name, code, size, mainProduct, image }` (none for a caller without `products.view`) |
+| `GET /api/notices/sell-today` | `notices.manage` | every entry, ended ones too (`expired`), newest first, with `audienceRoleNames` |
+| `POST /api/notices/sell-today` | `notices.manage` | create; 201 with the entry. `title` (the headline, 1 to 120), `body` (0 to 4000), `productIds` (at most 12 live sub products, in order), `autoCloseSeconds` (0 = only when closed, or a whole 5 to 120; 15 when omitted), `showFrom` / `showUntil` (`YYYY-MM-DD` or null; the last not before the first), `audience` as for a notice. A product or a message is required |
+| `PATCH /api/notices/sell-today/:id` | `notices.manage` | edit with `expectedVersion` (stale: 409). The window and "something to sell" are checked against what the edit leaves out |
+| `DELETE /api/notices/:id` | `notices.manage` | the notice's own delete; the Recycle Bin lists it as `notice` with the sublabel `sellToday` (a token; a notice's is its priority), which the screen puts into words |
+
+Refusals (400): `validation.sellToday.malformed` (a field of the wrong type), `.nothingToSell`, `.tooManyProducts`
+(`{max}`), `.autoCloseInvalid` (`{min, max}`), `.datesReversed`, `.unknownProduct` (an id that is not a live sub
+product), and the notice's own `validation.notice.titleRequired` / `.titleTooLong` / `.bodyTooLong` / `.dateInvalid` /
+`.audienceEmpty` / `.audienceTooBig` / `.audienceUnknownRole`.
+
+Socket (Office panels): `sellToday:manageList`, `sellToday:create`, `sellToday:update`, each at
+`SELL_TODAY_MIN_PROTOCOL` (11) in `COMMAND_MIN_PROTOCOL`, so an Office refuses them at once (426 `updateNeeded` from its
+server) against an older Master, and its management screen then does not offer the tab. **Why the protocol moved
+(10 to 11):** a create sent as `notice:create` to an older Master would have been stored as an ordinary notice and shown
+on everybody's board; new commands make an older Master say no instead. Reading needs no command: the entries ride on
+`SyncSnapshot.sellToday` (optional, so an older Master's snapshot has none and an older Office ignores it), gated on the
+Office like `notices` (nothing without `notices.view`; from a cache built for somebody else only the entries for
+everybody).
+
+The company switches `notices.showSellToday` (the pop-up) and `basicHome.productSlideshow` (the Basic Home product
+band), both on by default, travel as `CompanyFeatures.sellTodayPopup` / `productSlideshow`.
+
 ## 23. The product backup zip (2026-10-08)
 
 Shared types: `shared/src/domain/product-import.ts` (`ProductZipReport`, `ProductRowChange`, `ProductCellChange`,

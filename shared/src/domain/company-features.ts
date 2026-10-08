@@ -33,6 +33,8 @@ export interface ResolvedCompanyFeatures {
   reportsVisibleToManagement: boolean;
   noticesOnHome: boolean;
   noticesAtSignIn: boolean;
+  sellTodayPopup: boolean;
+  productSlideshow: boolean;
 }
 
 export function resolveCompanyFeatures(
@@ -52,5 +54,8 @@ export function resolveCompanyFeatures(
       features?.reportsVisibleToManagement ?? SETTINGS['reports.visibleToManagement'].fallback,
     noticesOnHome: features?.noticesOnHome ?? SETTINGS['notices.showOnHome'].fallback,
     noticesAtSignIn: features?.noticesAtSignIn ?? SETTINGS['notices.showAtSignIn'].fallback,
+    sellTodayPopup: features?.sellTodayPopup ?? SETTINGS['notices.showSellToday'].fallback,
+    productSlideshow:
+      features?.productSlideshow ?? SETTINGS['basicHome.productSlideshow'].fallback,
   };
 }

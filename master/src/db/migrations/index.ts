@@ -64,6 +64,7 @@ import * as noticeBoard from './20261014000000_notice_board.js';
 import * as catalogueCorrections from './20261015000000_catalogue_corrections.js';
 import * as noticePlacement from './20261016000000_notice_placement.js';
 import * as productImageSourceChecksum from './20261017000000_product_image_source_checksum.js';
+import * as noticeSellToday from './20261018000000_notice_sell_today.js';
 
 export interface Migration {
   name: string;
@@ -296,6 +297,11 @@ export const migrations: Migration[] = [
   {
     name: '20261017000000_product_image_source_checksum',
     ...productImageSourceChecksum,
+  },
+  // 2026-10-08: "Sell today", a kind of notice with products, an auto-close and a first day.
+  {
+    name: '20261018000000_notice_sell_today',
+    ...noticeSellToday,
   },
 ];
 

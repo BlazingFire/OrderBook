@@ -15,11 +15,21 @@
  * A change is published as one `notice` event whose payload names only the audience (before and
  * after): the title and body never ride the change ring. It is snapshot-forcing, so a panel in
  * the audience pulls its own scoped snapshot.
+ *
+ * "Sell today" entries (2026-10-08) are rows of the same table with `kind = 'sellToday'`, read
+ * and written by the `*SellToday` functions at the end. The same audience rule, keys, events,
+ * delete and Recycle Bin apply; the notice functions never list, count or edit one.
  */
 
 import {
+  SELL_TODAY_AUTO_CLOSE_DEFAULT,
+  SELL_TODAY_AUTO_CLOSE_MAX,
+  SELL_TODAY_AUTO_CLOSE_MIN,
+  SELL_TODAY_PRODUCTS_MAX,
   compareNotices,
   noticeProblem,
+  sellTodayProblem,
+  sellTodayProductOf,
   type Notice,
   type NoticeAudience,
   type NoticeAudienceRole,
@@ -28,6 +38,10 @@ import {
   type NoticeProblem,
   type NoticeReaders,
   type NoticeUpdate,
+  type SellToday,
+  type SellTodayInput,
+  type SellTodayProblem,
+  type SellTodayProduct,
 } from '@orderbook/shared';
 
 import { db } from '../db/knex.js';
@@ -36,6 +50,7 @@ import { assertVersionMatches } from '../domain/access.js';
 import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as noticeRepo from '../repositories/notice.repository.js';
+import * as productRepo from '../repositories/product.repository.js';
 import { publishChange } from './change-bus.js';
 
 /** A notice id is a UUID; anything else is not a notice (and must not reach the database as one). */
@@ -223,7 +238,11 @@ export async function listBoard(actor: ActorContext): Promise<NoticeBoard> {
   const reader = readerOf(actor);
   const rows = await noticeRepo.listForReader(actor.tenantId, reader);
   const notices = rows.map((row) => forReader(row, reader.roleId));
-  return { notices, unreadCount: notices.filter((notice) => !notice.readByMe).length };
+  return {
+    notices,
+    unreadCount: notices.filter((notice) => !notice.readByMe).length,
+    sellToday: await readerSellToday(actor),
+  };
 }
 
 /** The reader's list for a snapshot: empty without the right, rather than an error. */
@@ -358,7 +377,8 @@ export async function updateNotice(
   assertValid(input, 'update');
 
   const existing = await noticeRepo.findById(actor.tenantId, id);
-  if (!existing) throw new NotFoundError('Notice');
+  // A "Sell today" entry is edited as one (`updateSellToday`), never as a notice.
+  if (!existing || existing.kind !== 'notice') throw new NotFoundError('Notice');
   assertVersionMatches(existing.version, input.expectedVersion);
   // An edit may send one placement alone (or neither): the one it leaves out is the stored one,
   // and the pair still has to keep the notice somewhere.
@@ -488,4 +508,301 @@ export async function restoreNotice(id: string, actor: ActorContext): Promise<No
     payload: { audience: audienceOf(row) },
   });
   return forManager(row, await noticeRepo.roleNames(actor.tenantId, row.roleIds));
+}
+
+// --- Sell today (2026-10-08) -----------------------------------------------------------------
+
+const SELL_TODAY_PROBLEM_KEY = {
+  title_required: 'validation.notice.titleRequired',
+  title_too_long: 'validation.notice.titleTooLong',
+  body_too_long: 'validation.notice.bodyTooLong',
+  bad_date: 'validation.notice.dateInvalid',
+  dates_reversed: 'validation.sellToday.datesReversed',
+  audience_empty: 'validation.notice.audienceEmpty',
+  audience_too_big: 'validation.notice.audienceTooBig',
+  nothing_to_sell: 'validation.sellToday.nothingToSell',
+  too_many_products: 'validation.sellToday.tooManyProducts',
+  bad_auto_close: 'validation.sellToday.autoCloseInvalid',
+} as const satisfies Record<SellTodayProblem, string>;
+
+function assertSellTodayValid(input: Partial<SellTodayInput>, mode: 'create' | 'update'): void {
+  const problem = sellTodayProblem(input, mode);
+  if (!problem) return;
+  const max =
+    problem === 'body_too_long'
+      ? 4000
+      : problem === 'too_many_products'
+        ? SELL_TODAY_PRODUCTS_MAX
+        : problem === 'bad_auto_close'
+          ? SELL_TODAY_AUTO_CLOSE_MAX
+          : 120;
+  throw new ValidationError(SELL_TODAY_PROBLEM_KEY[problem], { max, min: SELL_TODAY_AUTO_CLOSE_MIN });
+}
+
+/**
+ * The request body as an entry's input, or a 400. The fields it shares with a notice are read by
+ * `parseInput` (a notice's own fields, if sent, are ignored); the rest are type-checked here.
+ */
+function parseSellToday(
+  body: unknown,
+  mode: 'create' | 'update',
+): Partial<SellTodayInput> & { expectedVersion?: number } {
+  const base = parseInput(body, mode);
+  const raw = body as Record<string, unknown>;
+  const bad = (): never => {
+    throw new ValidationError('validation.sellToday.malformed');
+  };
+
+  const out: Partial<SellTodayInput> & { expectedVersion?: number } = {
+    ...(base.title !== undefined ? { title: base.title } : {}),
+    ...(base.body !== undefined ? { body: base.body } : {}),
+    ...(base.showUntil !== undefined ? { showUntil: base.showUntil } : {}),
+    ...(base.audience !== undefined ? { audience: base.audience } : {}),
+    ...(base.expectedVersion !== undefined ? { expectedVersion: base.expectedVersion } : {}),
+  };
+  if (raw.productIds !== undefined) {
+    if (
+      !Array.isArray(raw.productIds) ||
+      raw.productIds.some((id) => typeof id !== 'string' || !id)
+    )
+      return bad();
+    out.productIds = [...new Set(raw.productIds as string[])];
+  }
+  if (raw.autoCloseSeconds !== undefined) {
+    if (typeof raw.autoCloseSeconds !== 'number') return bad();
+    out.autoCloseSeconds = raw.autoCloseSeconds;
+  }
+  if (raw.showFrom === null) {
+    out.showFrom = null;
+  } else if (raw.showFrom !== undefined) {
+    if (typeof raw.showFrom !== 'string') return bad();
+    out.showFrom = raw.showFrom;
+  }
+  return out;
+}
+
+/** Every product named must be a live sub product of this company. */
+async function assertProducts(
+  actor: ActorContext,
+  ids: readonly string[] | undefined,
+): Promise<void> {
+  if (!ids || ids.length === 0) return;
+  const found = await productRepo.findProductsByIds(actor.tenantId, [...ids], db(), {
+    includeDeleted: false,
+  });
+  if (ids.some((id) => !found.get(id)?.isActive))
+    throw new ValidationError('validation.sellToday.unknownProduct');
+}
+
+/**
+ * The cards for these rows' products, live ones only. Nobody is shown a product they could not
+ * open: without `products.view` an entry carries its headline and message and no cards.
+ */
+async function productCards(
+  actor: ActorContext,
+  rows: readonly noticeRepo.NoticeRow[],
+): Promise<Map<string, SellTodayProduct>> {
+  const ids = [...new Set(rows.flatMap((row) => row.productIds))];
+  if (ids.length === 0 || !actorCan(actor, 'products.view')) return new Map();
+  const found = await productRepo.findProductsByIds(actor.tenantId, ids, db(), {
+    includeDeleted: false,
+  });
+  return new Map(
+    [...found.values()]
+      .filter((product) => product.isActive)
+      .map((product) => [product.id, sellTodayProductOf(product)]),
+  );
+}
+
+function sellTodayOf(
+  row: noticeRepo.NoticeRow,
+  cards: Map<string, SellTodayProduct>,
+  audience: NoticeAudience,
+): SellToday {
+  return {
+    id: row.id,
+    tenantId: row.tenantId,
+    title: row.title,
+    body: row.body,
+    productIds: row.productIds,
+    products: row.productIds.flatMap((id) => cards.get(id) ?? []),
+    autoCloseSeconds: row.autoCloseSeconds ?? SELL_TODAY_AUTO_CLOSE_DEFAULT,
+    showFrom: row.showFrom,
+    showUntil: row.showUntil,
+    audience,
+    authorId: row.authorId,
+    authorName: row.authorName,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    version: row.version,
+  };
+}
+
+/** The reader's entries, for the board and the snapshot: empty without `notices.view`. */
+export async function readerSellToday(actor: ActorContext): Promise<SellToday[]> {
+  if (!actorCan(actor, 'notices.view')) return [];
+  const reader = readerOf(actor);
+  const rows = await noticeRepo.listForReader(actor.tenantId, reader, 'sellToday');
+  const cards = await productCards(actor, rows);
+  // Of the audience, a reader learns only what `forReader` tells them of a notice's.
+  return rows.map((row) => sellTodayOf(row, cards, forReader(row, reader.roleId).audience));
+}
+
+async function forSellTodayManager(
+  actor: ActorContext,
+  rows: noticeRepo.NoticeRow[],
+): Promise<SellToday[]> {
+  const [cards, names] = await Promise.all([
+    productCards(actor, rows),
+    noticeRepo.roleNames(
+      actor.tenantId,
+      rows.flatMap((row) => row.roleIds),
+    ),
+  ]);
+  return rows.map((row) => ({
+    ...sellTodayOf(row, cards, audienceOf(row)),
+    audienceRoleNames: row.roleIds.map((id) => names.get(id) ?? id),
+    expired: row.expired,
+  }));
+}
+
+/** Every entry, ended ones included, newest first. */
+export async function listSellTodayManage(actor: ActorContext): Promise<SellToday[]> {
+  requirePermission(actor, 'notices.manage');
+  const rows = await noticeRepo.listAll(actor.tenantId, 'sellToday');
+  rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+  return forSellTodayManager(actor, rows);
+}
+
+async function oneSellToday(actor: ActorContext, id: string): Promise<SellToday> {
+  const row = await noticeRepo.findById(actor.tenantId, id);
+  if (!row || row.kind !== 'sellToday') throw new NotFoundError('Notice');
+  const [entry] = await forSellTodayManager(actor, [row]);
+  return entry!;
+}
+
+export async function createSellToday(body: unknown, actor: ActorContext): Promise<SellToday> {
+  requirePermission(actor, 'notices.manage');
+  const input = parseSellToday(body, 'create') as SellTodayInput;
+  assertSellTodayValid(input, 'create');
+  const roleIds = await assertRoles(actor, input.audience);
+  await assertProducts(actor, input.productIds);
+
+  const id = await db().transaction(async (trx) => {
+    const created = await noticeRepo.insert(
+      {
+        tenantId: actor.tenantId,
+        kind: 'sellToday',
+        title: input.title.trim(),
+        body: input.body ?? '',
+        // The board's own fields keep their defaults: an entry is never on the board.
+        priority: 'normal',
+        pinned: false,
+        showOnHome: true,
+        showAtSignIn: true,
+        showFrom: input.showFrom ?? null,
+        showUntil: input.showUntil ?? null,
+        productIds: input.productIds ?? [],
+        autoCloseSeconds: input.autoCloseSeconds ?? SELL_TODAY_AUTO_CLOSE_DEFAULT,
+        audienceAll: !input.audience || input.audience.kind === 'all',
+        roleIds,
+        authorId: actorUserId(actor),
+      },
+      trx,
+    );
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'notice',
+        entityId: created,
+        action: 'created',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { title: input.title.trim(), kind: 'sellToday' },
+      },
+      actor,
+      trx,
+    );
+    return created;
+  });
+
+  const entry = await oneSellToday(actor, id);
+  publishChange({ entity: 'notice', action: 'created', id, payload: { audience: entry.audience } });
+  return entry;
+}
+
+export async function updateSellToday(
+  id: string,
+  body: unknown,
+  actor: ActorContext,
+): Promise<SellToday> {
+  requirePermission(actor, 'notices.manage');
+  assertNoticeId(id);
+  const input = parseSellToday(body, 'update') as Partial<SellTodayInput> & {
+    expectedVersion: number;
+  };
+  assertSellTodayValid(input, 'update');
+
+  const existing = await noticeRepo.findById(actor.tenantId, id);
+  if (!existing || existing.kind !== 'sellToday') throw new NotFoundError('Notice');
+  assertVersionMatches(existing.version, input.expectedVersion);
+  // What an edit leaves out is what is stored: the window and "something to sell" are checked whole.
+  assertSellTodayValid(
+    {
+      showFrom: input.showFrom !== undefined ? input.showFrom : existing.showFrom,
+      showUntil: input.showUntil !== undefined ? input.showUntil : existing.showUntil,
+    },
+    'update',
+  );
+  if ((input.productIds ?? existing.productIds).length === 0 && !(input.body ?? existing.body).trim())
+    assertSellTodayValid({ title: '-', productIds: [], body: '' }, 'create');
+
+  const roleIds = await assertRoles(actor, input.audience);
+  await assertProducts(actor, input.productIds);
+
+  await db().transaction(async (trx) => {
+    const ok = await noticeRepo.update(
+      actor.tenantId,
+      id,
+      input.expectedVersion,
+      {
+        ...(input.title !== undefined ? { title: input.title.trim() } : {}),
+        ...(input.body !== undefined ? { body: input.body } : {}),
+        ...(input.showUntil !== undefined ? { showUntil: input.showUntil } : {}),
+        ...(input.showFrom !== undefined ? { showFrom: input.showFrom } : {}),
+        ...(input.productIds !== undefined ? { productIds: input.productIds } : {}),
+        ...(input.autoCloseSeconds !== undefined
+          ? { autoCloseSeconds: input.autoCloseSeconds }
+          : {}),
+        ...(input.audience !== undefined
+          ? { audienceAll: input.audience.kind === 'all', roleIds }
+          : {}),
+      },
+      trx,
+    );
+    if (!ok) assertVersionMatches(existing.version + 1, input.expectedVersion);
+
+    await activityLog.recordActivity(
+      {
+        tenantId: actor.tenantId,
+        entityType: 'notice',
+        entityId: id,
+        action: 'updated',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { title: input.title?.trim() ?? existing.title, kind: 'sellToday' },
+      },
+      actor,
+      trx,
+    );
+  });
+
+  const entry = await oneSellToday(actor, id);
+  publishChange({
+    entity: 'notice',
+    action: 'updated',
+    id,
+    payload: { audience: unionAudience(audienceOf(existing), entry.audience) },
+  });
+  return entry;
 }

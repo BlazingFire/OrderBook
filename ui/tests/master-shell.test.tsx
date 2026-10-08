@@ -3129,3 +3129,130 @@ describe('V6: unread notices pop up on sign-in', () => {
     expect(popUp()).toBeNull();
   });
 });
+
+describe('"Sell today" and the Basic Home product band (2026-10-08)', () => {
+  const DAMRU = {
+    id: 'prod-9', tenantId: 'tenant-1', name: 'DAMRU', alias: null, categoryId: 'cat-1', categoryName: 'Table Top Basin',
+    categoryCode: 'TTB', brand: 'Swisware+', sortOrder: 1, size: '600 x 400', hasVariants: false, multiColour: false,
+    variants: [{ id: 'var-9', productId: 'prod-9', label: null, code: 'TTB-0009', weightKg: null, sequence: 0, isActive: true }],
+    customFields: {}, isActive: true, createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z',
+    sync: { version: 1, hlc: '', fieldHlc: {} },
+    images: [{ id: 'img-9', productId: 'prod-9', caption: null, isPrimary: true, sequence: 0, width: 800, height: 800, checksum: 'x', blurhash: '', byteSize: 1, uploadedAt: '2026-10-01T00:00:00.000Z' }],
+  };
+  const ENTRY = {
+    id: 'ST1', tenantId: 'tenant-1', title: 'Push the Damru range', body: 'All day today.', productIds: ['prod-9'],
+    products: [{ id: 'prod-9', name: 'DAMRU', code: 'TTB-0009', size: '600 x 400', mainProduct: 'Table Top Basin', image: null }],
+    autoCloseSeconds: 10, showFrom: null, showUntil: null, audience: { kind: 'all' }, authorId: null, authorName: null,
+    createdAt: '2026-10-08T08:00:00.000Z', updatedAt: '2026-10-08T08:00:00.000Z', version: 1,
+  };
+  const IMPORTANT = {
+    id: 'NT1', tenantId: 'tenant-1', title: 'Office closed Friday', body: 'Holiday.', priority: 'important',
+    pinned: false, showUntil: null, audience: { kind: 'all' }, authorId: null, authorName: null,
+    createdAt: '2026-10-05T09:00:00.000Z', updatedAt: '2026-10-05T09:00:00.000Z', version: 1, readByMe: false,
+  };
+
+  beforeEach(() => window.localStorage.clear());
+
+  /** Signs in with these notices, entries and company switches; `office` lands on Basic Home. */
+  const bootWith = (
+    options: { notices?: unknown[]; sellToday?: unknown[]; features?: Record<string, unknown>; tier?: string } = {},
+  ) => {
+    const permissions = [...ADMIN, 'notices.view'];
+    return boot(permissions, (call) => {
+      const path = call.url.split('?')[0];
+      if (path === '/api/auth/me') {
+        return json({
+          user: { ...user(permissions, options.tier ?? 'admin'), features: options.features ?? {} },
+          sessionToken: 'session-1',
+        });
+      }
+      if (path === '/api/notices' && call.method !== 'POST') {
+        const notices = options.notices ?? [];
+        return json({ notices, unreadCount: notices.length, sellToday: options.sellToday ?? [] });
+      }
+      if (path === '/api/products') return json({ items: [DAMRU], total: 1, limit: 200, offset: 0 });
+      return undefined;
+    });
+  };
+  const sellPopup = () => screen.queryByRole('dialog', { name: 'Push the Damru range' });
+  const noticePopup = () => screen.queryByRole('dialog', { name: t('notices.signIn.title') });
+
+  it('waits for the unread notices pop-up, then shows the day’s products once, closed by Start work', async () => {
+    await bootWith({ notices: [IMPORTANT], sellToday: [ENTRY] });
+    await waitFor(() => expect(noticePopup()).not.toBeNull());
+    // Never two at once: the notices first.
+    expect(sellPopup()).toBeNull();
+
+    fireEvent.click(within(noticePopup()!).getByRole('button', { name: t('notices.signIn.later') }));
+    await waitFor(() => expect(sellPopup()).not.toBeNull());
+    expect(within(sellPopup()!).getByText('DAMRU')).toBeTruthy();
+    expect(within(sellPopup()!).getByText(t('sellToday.popup.closesIn', { seconds: 10 }))).toBeTruthy();
+
+    fireEvent.click(within(sellPopup()!).getByRole('button', { name: t('sellToday.popup.start') }));
+    expect(sellPopup()).toBeNull();
+    // A re-read (a notice changed) does not bring it back the same day.
+    await changed('notice');
+    await wait(20);
+    expect(sellPopup()).toBeNull();
+  });
+
+  it('opens straight away with no unread notices, and never when the company turned it off', async () => {
+    await bootWith({ sellToday: [ENTRY] });
+    await waitFor(() => expect(sellPopup()).not.toBeNull());
+    cleanup();
+    window.localStorage.clear();
+
+    await bootWith({ sellToday: [ENTRY], features: { sellTodayPopup: false } });
+    await screen.findByTitle(t('nav.notices'));
+    await wait(50);
+    expect(sellPopup()).toBeNull();
+  });
+
+  it('puts the day’s products on Basic Home beside the notices, and a card opens the sub product', async () => {
+    await bootWith({ sellToday: [ENTRY], tier: 'office' });
+    expect(topbarTitle()).toBe(t('nav.basicHome'));
+    fireEvent.click(await screen.findByRole('button', { name: t('sellToday.popup.start') }));
+
+    const band = await screen.findByRole('region', { name: t('productShow.sellToday') });
+    expect(band.closest('.ob-home-bands')?.querySelector('.ob-slideshow')).not.toBeNull();
+    expect(within(band).getByText('Push the Damru range')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(within(band).getByTitle(t('productShow.open', { name: 'DAMRU' })));
+      await wait(0);
+    });
+    await waitFor(() => expect(topbarTitle()).toBe('DAMRU'));
+  });
+
+  it('features sub products with photos when there is no entry, and draws no band when turned off', async () => {
+    await bootWith({ tier: 'office' });
+    const band = await screen.findByRole('region', { name: t('productShow.label') });
+    expect(within(band).getByText('DAMRU')).toBeTruthy();
+    cleanup();
+
+    await bootWith({ tier: 'office', features: { productSlideshow: false } });
+    expect(topbarTitle()).toBe(t('nav.basicHome'));
+    await wait(50);
+    expect(screen.queryByRole('region', { name: t('productShow.label') })).toBeNull();
+  });
+
+  it('names a deleted entry and a deleted notice in words in the Recycle Bin, not by their tokens', async () => {
+    const binned = (id: string, label: string, sublabel: string) => ({
+      entityType: 'notice', id, label, sublabel, deletedAt: '2026-10-08T10:00:00.000Z',
+      deletedBy: null, deletedByName: null, version: 2, cursor: id,
+    });
+    await boot(ADMIN, (call) =>
+      call.url.split('?')[0] === '/api/recycle-bin'
+        ? json({
+            items: [binned('ST9', 'Wrong push', 'sellToday'), binned('NT9', 'Old holiday', 'important')],
+            nextCursor: null,
+          })
+        : undefined,
+    );
+    await open(t('nav.master.recycleBin'));
+    const row = async (label: string) => (await screen.findByText(label)).closest('tr, [role="row"]') as HTMLElement;
+    expect(within(await row('Wrong push')).getByText(t('notices.manage.tab.sellToday'))).toBeTruthy();
+    expect(within(await row('Old holiday')).getByText(t('notices.priority.important'))).toBeTruthy();
+    expect(screen.queryByText('sellToday')).toBeNull();
+  });
+});

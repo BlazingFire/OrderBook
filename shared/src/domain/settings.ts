@@ -195,6 +195,33 @@ export const SETTINGS = {
   },
 
   /**
+   * The "Sell today" pop-up (2026-10-08): the day's entry, once per person per day, on both
+   * panels. Off, it never pops up; the entry's products still lead the Basic Home product band.
+   */
+  'notices.showSellToday': {
+    labelToken: 'setting.notices.showSellToday.label',
+    descriptionToken: 'setting.notices.showSellToday.help',
+    group: 'notices',
+    control: { kind: 'boolean' },
+    fallback: true,
+    parse: (raw: unknown): boolean => asBoolean(raw),
+  },
+
+  /**
+   * The product band on Basic Home (2026-10-08): today's "Sell today" products, or else sub
+   * products with photos, turning over. In the notice board's group because it shares Basic
+   * Home's top row with the notice band.
+   */
+  'basicHome.productSlideshow': {
+    labelToken: 'setting.basicHome.productSlideshow.label',
+    descriptionToken: 'setting.basicHome.productSlideshow.help',
+    group: 'notices',
+    control: { kind: 'boolean' },
+    fallback: true,
+    parse: (raw: unknown): boolean => asBoolean(raw),
+  },
+
+  /**
    * The public API's master switch.
    *
    * There was a second key beside this one — a list of `{slug, label, baseUrl}`

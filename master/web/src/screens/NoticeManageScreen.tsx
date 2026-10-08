@@ -2,10 +2,13 @@
  * Notice board management on the Master Panel (U5): every notice, with the editor, the audience picker,
  * pin and expiry, who has read each, and delete. The kit's `NoticeManageView` draws it; this reads and
  * writes through the Master. A write that fails is thrown to the view, which says why.
+ *
+ * Its "Sell today" tab (2026-10-08) reads and writes the entries the same way, and searches sub
+ * products for the editor through the picker's endpoint.
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import type { Notice, NoticeInput, NoticeUpdate } from '@orderbook/shared';
+import type { Notice, NoticeInput, NoticeUpdate, Product, SellToday } from '@orderbook/shared';
 
 import { api } from '../api';
 import { NoticeManageView, apiErrorText } from '@orderbook/ui';
@@ -18,6 +21,8 @@ interface Props {
 
 export function NoticeManageScreen({ revision }: Props) {
   const [notices, setNotices] = useState<Notice[]>([]);
+  const [sellToday, setSellToday] = useState<SellToday[]>([]);
+  const [sellTodayError, setSellTodayError] = useState<string | null>(null);
   const [roles, setRoles] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +32,14 @@ export function NoticeManageScreen({ revision }: Props) {
 
   useEffect(() => {
     let live = true;
+    api
+      .sellTodayManageList()
+      .then((entries) => {
+        if (!live) return;
+        setSellToday(entries);
+        setSellTodayError(null);
+      })
+      .catch((caught) => live && setSellTodayError(apiErrorText(caught, 'sellToday.manage.loadFailed')));
     Promise.all([api.noticeManageList(), api.noticeAudiences().catch(() => [])])
       .then(([list, audiences]) => {
         if (!live) return;
@@ -44,7 +57,9 @@ export function NoticeManageScreen({ revision }: Props) {
   /** A write, then the list as the Master now has it (the change event arrives too; this is for the writer's own screen). */
   const afterWrite = useCallback(async (write: () => Promise<unknown>) => {
     await write();
-    setNotices(await api.noticeManageList());
+    const [list, entries] = await Promise.all([api.noticeManageList(), api.sellTodayManageList()]);
+    setNotices(list);
+    setSellToday(entries);
   }, []);
 
   return (
@@ -59,6 +74,11 @@ export function NoticeManageScreen({ revision }: Props) {
       onDelete={(id: string) => afterWrite(() => api.deleteNotice(id))}
       loadReaders={(id) => api.noticeReaders(id)}
       today={todayForNotices()}
+      sellToday={sellToday}
+      sellTodayError={sellTodayError}
+      onCreateSellToday={(input) => afterWrite(() => api.createSellToday(input))}
+      onUpdateSellToday={(id, update) => afterWrite(() => api.updateSellToday(id, update))}
+      searchProducts={async (term) => (await api.pick<Product>('product', { term, limit: 20 })).items}
     />
   );
 }

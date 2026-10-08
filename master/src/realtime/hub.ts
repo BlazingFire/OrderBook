@@ -1093,6 +1093,14 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   );
   on('notice:delete', (id, ack) => run(ack, (actor) => noticeService.deleteNotice(id, actor)));
   on('notice:markRead', (input, ack) => run(ack, (actor) => noticeService.markRead(input, actor)));
+  // "Sell today" (protocol 11); deleted through `notice:delete`.
+  on('sellToday:manageList', (ack) => run(ack, (actor) => noticeService.listSellTodayManage(actor)));
+  on('sellToday:create', (input, ack) =>
+    run(ack, (actor) => noticeService.createSellToday(input, actor)),
+  );
+  on('sellToday:update', ({ id, ...input }, ack) =>
+    run(ack, (actor) => noticeService.updateSellToday(id, input, actor)),
+  );
 
   // The one live pull; everything else rides on `SyncSnapshot.dashboard` and
   // the `dashboard:changed` push both extended below.

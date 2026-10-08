@@ -23,6 +23,9 @@ import type {
   NoticeReaders,
   NoticeUpdate,
   PickKind,
+  SellToday,
+  SellTodayInput,
+  SellTodayUpdate,
   ChatAccessCapability,
   PrintJob,
   PrintJobInput,
@@ -1217,6 +1220,12 @@ export const api = {
   updateNotice: (id: string, update: NoticeUpdate) => patch<Notice>(`/api/notices/${id}`, update),
   deleteNotice: (id: string) => request<{ id: string }>(`/api/notices/${id}`, { method: 'DELETE' }),
   markNoticesRead: (ids: string[]) => post<{ unreadCount: number }>('/api/notices/read', { ids }),
+  // "Sell today" (protocol 11): management online through the Master; a Master older than it
+  // answers 426. The reader's entries ride on `snapshot().sellToday`.
+  sellTodayManage: () => request<SellToday[]>('/api/notices/sell-today'),
+  createSellToday: (input: SellTodayInput) => post<SellToday>('/api/notices/sell-today', input),
+  updateSellToday: (id: string, update: SellTodayUpdate) =>
+    patch<SellToday>(`/api/notices/sell-today/${id}`, update),
 
   // --- Product images (7-IMAGE-PIPELINE.md) --------------------------------
   // Online-only like the Recycle Bin, and — unlike every write above —

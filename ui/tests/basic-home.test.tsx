@@ -4,6 +4,8 @@
  * open. Also where people land after signing in.
  */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BINDINGS_STORAGE_KEY } from '@orderbook/shared';
@@ -153,5 +155,32 @@ describe('landingScreen', () => {
     expect(landingScreen('server_master')).toBe('dashboard');
     // A tier this build has never heard of gets the safe default.
     expect(landingScreen('something_new')).toBe('dashboard');
+  });
+});
+
+describe('Basic Home’s top row (2026-10-08, "in less space")', () => {
+  const css = () => readFileSync(join(process.cwd(), 'ui', 'src', 'base.css'), 'utf8');
+  const rule = (selector: string) => {
+    const text = css();
+    const start = text.indexOf(`${selector} {`);
+    return start < 0 ? '' : text.slice(start, text.indexOf('}', start));
+  };
+
+  it('sets the notice band and the product band side by side where both fit, stacked below that', () => {
+    expect(rule('.ob-home-bands')).toContain('grid-template-columns: repeat(auto-fit, minmax(min(100%, 34rem), 1fr))');
+  });
+
+  it('keeps both bands one short row: 8 px top and bottom, a 56 px photo', () => {
+    expect(rule('.ob-slideshow')).toContain('padding: var(--s-8) var(--s-12) var(--s-8) var(--s-16)');
+    expect(rule('.ob-prodshow')).toContain('padding: var(--s-8) var(--s-12) var(--s-8) var(--s-16)');
+    expect(rule('.ob-prodshow-photo')).toContain('height: 4rem');
+  });
+
+  it('is laid out the same way by both panels', () => {
+    for (const panel of ['master', 'office']) {
+      const app = readFileSync(join(process.cwd(), panel, 'web', 'src', 'App.tsx'), 'utf8');
+      expect(app).toContain('<div className="ob-home-bands ob-measure-wide">');
+      expect(app).toContain('<ProductSlideshow');
+    }
   });
 });

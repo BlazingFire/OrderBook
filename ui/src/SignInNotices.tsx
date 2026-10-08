@@ -14,6 +14,9 @@
  * A reload while still signed in (F5, an Electron reload) is not a new sign-in: given a
  * `sessionKey`, the decision is remembered in sessionStorage for that sign-in, as a hash of the
  * key in one slot that the next sign-in overwrites.
+ *
+ * `onSettled` tells the panel when it is out of the way (it decided to show nothing, or its dialog
+ * closed), so the "Sell today" pop-up opens after it rather than on top of it (2026-10-08).
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -80,6 +83,8 @@ export interface SignInNoticesProps {
    * while it is open, it closes.
    */
   enabled?: boolean;
+  /** Called once it has decided and nothing of it is open (again after its dialog closes). */
+  onSettled?: () => void;
 }
 
 export function SignInNotices({
@@ -89,8 +94,10 @@ export function SignInNotices({
   onMarkRead,
   sessionKey,
   enabled = true,
+  onSettled,
 }: SignInNoticesProps) {
   const decided = useRef(false);
+  const [settledYet, setSettledYet] = useState(false);
   const [ids, setIds] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -98,6 +105,7 @@ export function SignInNotices({
   useEffect(() => {
     if (!loaded || decided.current) return;
     decided.current = true;
+    setSettledYet(true);
     if (decidedBefore(sessionKey)) return;
     rememberDecided(sessionKey);
     if (!enabled) return;
@@ -105,10 +113,16 @@ export function SignInNotices({
     if (unread.length > 0) setIds(unread);
   }, [loaded, notices, today, sessionKey, enabled]);
 
-  if (!ids || !enabled) return null;
   // The ones picked at sign-in, as they stand now (an edit shows), in the same order.
-  const listed = notices.filter((notice) => ids.includes(notice.id)).sort(signInOrder);
-  if (listed.length === 0) return null;
+  const listed = ids && enabled ? notices.filter((notice) => ids.includes(notice.id)).sort(signInOrder) : [];
+  const showing = listed.length > 0;
+  const settledRef = useRef(onSettled);
+  settledRef.current = onSettled;
+  useEffect(() => {
+    if (settledYet && !showing) settledRef.current?.();
+  }, [settledYet, showing]);
+
+  if (!showing) return null;
 
   const close = () => setIds(null);
   const markRead = async () => {

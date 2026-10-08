@@ -90,6 +90,9 @@ import type {
   NoticeInput,
   NoticeReaders,
   NoticeUpdate,
+  SellToday,
+  SellTodayInput,
+  SellTodayUpdate,
   Paginated,
   StageCounts,
   Party,
@@ -1222,6 +1225,14 @@ export const api = {
     request<{ id: string }>(`/api/notices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   /** Marks the given notices read (all of them when `ids` is left out) and answers the new unread count. */
   markNoticesRead: (ids?: string[]) => post<{ unreadCount: number }>('/api/notices/read', ids ? { ids } : {}),
+  /** Every "Sell today" entry, ended ones included. `notices.manage`. Deleted with `deleteNotice`. */
+  sellTodayManageList: () => request<SellToday[]>('/api/notices/sell-today'),
+  createSellToday: (input: SellTodayInput) => post<SellToday>('/api/notices/sell-today', input),
+  updateSellToday: (id: string, update: SellTodayUpdate) =>
+    request<SellToday>(`/api/notices/sell-today/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(update),
+    }),
 
   // --- The Chatroom (`/api/chat`). Background reads, so the loading strip stays still. ---
   chatPeople: () => requestUntracked<ChatPerson[]>('/api/chat/people'),

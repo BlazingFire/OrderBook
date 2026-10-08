@@ -146,10 +146,12 @@ const BRANCHES: BranchDefinition[] = [
             FROM product_categories
            WHERE tenant_id = ? AND deleted_at IS NOT NULL`,
   },
-  // The notice board (Oct 2026): a UUID key like Fields, so `::text`.
+  // The notice board (Oct 2026): a UUID key like Fields, so `::text`. The detail is a token the
+  // screen translates (`noticeBinDetail`): the priority, or `sellToday` for a "Sell today" entry.
   {
     entityType: 'notice',
-    sql: `SELECT 'notice' AS entity_type, id::text AS id, title AS label, priority AS sublabel,
+    sql: `SELECT 'notice' AS entity_type, id::text AS id, title AS label,
+                 CASE WHEN kind = 'sellToday' THEN 'sellToday' ELSE priority END AS sublabel,
                  deleted_at, ${CURSOR_TEXT} AS deleted_at_text, deleted_by, version
             FROM notices
            WHERE tenant_id = ? AND deleted_at IS NOT NULL`,

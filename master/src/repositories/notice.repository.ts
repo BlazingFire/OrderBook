@@ -7,6 +7,9 @@
  *
  * "Today" is always the company's business day: `(now() AT TIME ZONE tz)::date`, never the
  * host's, so a notice that says "until 31 October" is gone on 1 November where the shop is.
+ *
+ * A row is a notice or a "Sell today" entry (`kind`, 2026-10-08). Every list names the kind it
+ * wants and defaults to `'notice'`, so the board and its counts never see an entry.
  */
 
 import type { NoticePriority } from '@orderbook/shared';
@@ -19,6 +22,8 @@ import type { TransactionContext } from './transaction.js';
 
 type Runner = Knex | Knex.Transaction;
 
+export type NoticeKind = 'notice' | 'sellToday';
+
 export interface NoticeRow {
   id: string;
   tenantId: string;
@@ -29,6 +34,13 @@ export interface NoticeRow {
   showUntil: string | null;
   showOnHome: boolean;
   showAtSignIn: boolean;
+  kind: NoticeKind;
+  /** "Sell today" only: the sub products to push, in order. Empty for a notice. */
+  productIds: string[];
+  /** "Sell today" only: 0 or 5 to 120. Null for a notice. */
+  autoCloseSeconds: number | null;
+  /** "Sell today" only: the first day it applies. */
+  showFrom: string | null;
   audienceAll: boolean;
   /** Role ids, in a stable order; empty when the notice is for everybody. */
   roleIds: string[];
@@ -68,6 +80,10 @@ function selectNotices(runner: Runner, viewerId: string | null) {
       runner.raw('n.show_until::text AS show_until'),
       'n.show_on_home',
       'n.show_at_sign_in',
+      'n.kind',
+      'n.product_ids',
+      'n.auto_close_seconds',
+      runner.raw('n.show_from::text AS show_from'),
       'n.audience_all',
       'n.author_id',
       'au.display_name as author_name',
@@ -108,6 +124,10 @@ interface RawRow {
   show_until: string | null;
   show_on_home: boolean;
   show_at_sign_in: boolean;
+  kind: NoticeKind;
+  product_ids: unknown;
+  auto_close_seconds: number | null;
+  show_from: string | null;
   audience_all: boolean;
   author_id: string | null;
   author_name: string | null;
@@ -133,6 +153,12 @@ function map(row: RawRow): NoticeRow {
     showUntil: row.show_until,
     showOnHome: row.show_on_home,
     showAtSignIn: row.show_at_sign_in,
+    kind: row.kind,
+    productIds: Array.isArray(row.product_ids)
+      ? row.product_ids.filter((id): id is string => typeof id === 'string')
+      : [],
+    autoCloseSeconds: row.auto_close_seconds,
+    showFrom: row.show_from,
     audienceAll: row.audience_all,
     roleIds: row.role_ids ?? [],
     authorId: row.author_id,
@@ -152,14 +178,20 @@ async function run(query: Knex.QueryBuilder): Promise<NoticeRow[]> {
   return ((await query) as RawRow[]).map(map);
 }
 
-/** Notices meant for a reader: not deleted, not expired, in their audience. Pinned and newest first. */
+/**
+ * Notices (or "Sell today" entries) meant for a reader: not deleted, not expired, in their
+ * audience. Pinned and newest first. An entry whose first day is still ahead is included: the
+ * panel picks the day's own, and an Office offline overnight still has tomorrow's.
+ */
 export async function listForReader(
   tenantId: string,
   reader: Reader,
+  kind: NoticeKind = 'notice',
   runner: Runner = db(),
 ): Promise<NoticeRow[]> {
   const query = selectNotices(runner, reader.userId)
     .where('n.tenant_id', tenantId)
+    .where('n.kind', kind)
     .whereNull('n.deleted_at')
     .whereRaw('(n.show_until IS NULL OR n.show_until >= (now() AT TIME ZONE ?)::date)', [TZ()])
     .where((audience) => {
@@ -183,10 +215,15 @@ export async function listForReader(
   return run(query);
 }
 
-/** Every notice for a manager, expired ones included, deleted ones left out. */
-export async function listAll(tenantId: string, runner: Runner = db()): Promise<NoticeRow[]> {
+/** Every notice (or entry) for a manager, expired ones included, deleted ones left out. */
+export async function listAll(
+  tenantId: string,
+  kind: NoticeKind = 'notice',
+  runner: Runner = db(),
+): Promise<NoticeRow[]> {
   const query = selectNotices(runner, null)
     .where('n.tenant_id', tenantId)
+    .where('n.kind', kind)
     .whereNull('n.deleted_at')
     .orderBy([
       { column: 'n.pinned', order: 'desc' },
@@ -226,6 +263,11 @@ export interface NoticeInsert {
   audienceAll: boolean;
   roleIds: readonly string[];
   authorId: string | null;
+  /** Absent: a notice. */
+  kind?: NoticeKind;
+  productIds?: readonly string[];
+  autoCloseSeconds?: number | null;
+  showFrom?: string | null;
 }
 
 export async function insert(input: NoticeInsert, trx: TransactionContext): Promise<string> {
@@ -241,6 +283,10 @@ export async function insert(input: NoticeInsert, trx: TransactionContext): Prom
       show_at_sign_in: input.showAtSignIn,
       audience_all: input.audienceAll,
       author_id: input.authorId,
+      kind: input.kind ?? 'notice',
+      product_ids: JSON.stringify(input.productIds ?? []),
+      auto_close_seconds: input.autoCloseSeconds ?? null,
+      show_from: input.showFrom ?? null,
     })
     .returning<Array<{ id: string }>>('id');
 
@@ -271,6 +317,9 @@ export interface NoticePatch {
   showAtSignIn?: boolean;
   audienceAll?: boolean;
   roleIds?: readonly string[];
+  productIds?: readonly string[];
+  autoCloseSeconds?: number;
+  showFrom?: string | null;
 }
 
 /** Changes a notice and raises its version. Resolves to false when the version moved under us. */
@@ -290,6 +339,9 @@ export async function update(
   if (patch.showOnHome !== undefined) columns.show_on_home = patch.showOnHome;
   if (patch.showAtSignIn !== undefined) columns.show_at_sign_in = patch.showAtSignIn;
   if (patch.audienceAll !== undefined) columns.audience_all = patch.audienceAll;
+  if (patch.productIds !== undefined) columns.product_ids = JSON.stringify(patch.productIds);
+  if (patch.autoCloseSeconds !== undefined) columns.auto_close_seconds = patch.autoCloseSeconds;
+  if (patch.showFrom !== undefined) columns.show_from = patch.showFrom;
 
   const changed = await trx('notices')
     .where({ tenant_id: tenantId, id, version: expectedVersion })

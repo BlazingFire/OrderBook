@@ -22,6 +22,7 @@ import type {
   OfficePanelWithPresence,
   Pipeline,
   RecycleBinEntityType,
+  Product,
   ReportKind,
   ServerToClientEvents,
   SignedInUser,
@@ -51,7 +52,10 @@ import {
   Avatar,
   BasicHome,
   NoticeSlideshow,
+  ProductSlideshow,
+  SellTodayPopup,
   SignInNotices,
+  homeProducts,
   createBurstBatcher,
   BP_NARROW,
   PrintStationRunner,
@@ -743,6 +747,32 @@ function MasterPanel() {
   const noticeBoard = useNotices(revisionOf(revisions, 'notices'), canViewNotices);
   // The notice a Basic Home slide opened, for the board to bring into view.
   const [noticeFocus, setNoticeFocus] = useState<{ id: string; nonce: number } | null>(null);
+  // This sign-in, and whether the unread notices pop-up is done with it: the "Sell today" pop-up
+  // opens after it, never on top of it (2026-10-08).
+  const signInKey = user ? (sessionToken ? `${user.id}:${sessionToken}` : user.id) : '';
+  const [signInSettledFor, setSignInSettledFor] = useState<string | null>(null);
+  // The product a Basic Home card or the "Sell today" pop-up opened, for Sub products to show.
+  const [productFocus, setProductFocus] = useState<{ id: string; nonce: number } | null>(null);
+  // Sub products with photos, for Basic Home's product band on a day with no "Sell today" products.
+  const canSeeProductBand =
+    phase === 'ready' && companyFeatures.productSlideshow && (user?.permissions.includes('products.view') ?? false);
+  const catalogueRevision = revisionOf(revisions, 'catalogue');
+  const [bandCatalogue, setBandCatalogue] = useState<Product[]>([]);
+  useEffect(() => {
+    if (!canSeeProductBand) {
+      setBandCatalogue([]);
+      return undefined;
+    }
+    let live = true;
+    api
+      .listProducts({ hasPhoto: true, limit: 200 })
+      .then((page) => live && setBandCatalogue(page.items))
+      // No band of featured products is better than an error on Basic Home.
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [canSeeProductBand, catalogueRevision]);
   const noticeUnread = noticeBoard.unread;
   const chatUnread = useChatUnread(masterChatTransport, canChat);
 
@@ -1511,27 +1541,42 @@ function MasterPanel() {
    * its half-typed form. This was a `switch (tab)` returning a single element,
    * which unmounted the outgoing screen and threw all of that away.
    */
+  /** Opens a sub product on Products → Sub products (a Basic Home card, a "Sell today" card). */
+  const openProduct = (id: string) => {
+    setProductFocus({ id, nonce: Date.now() });
+    navigate('products.sub');
+  };
+  // Basic Home's top row: the notice band unless the company turned it off (`notices.showOnHome`),
+  // drawn once the first read has answered, never as "none" before it; and the product band
+  // (`basicHome.productSlideshow`): today's "Sell today" products, else sub products with photos.
+  const showNoticeBand = canViewNotices && companyFeatures.noticesOnHome && noticeBoard.loaded;
+  const homeBand = homeProducts(noticeBoard.sellToday, bandCatalogue, todayForNotices());
+  const showProductBand = canSeeProductBand && homeBand.products.length > 0;
+
   const screens: ScreenSpec[] = [
     {
       id: 'basicHome',
-      // Where Office and Management land, so the notice board is here too: every notice placed on
-      // Basic Home, or a band saying there are none, unless the company turned it off
-      // (`notices.showOnHome`). Drawn once the first read has answered, never as "none" before it.
+      // Where Office and Management land, so the notice board is here too.
       render: () => (
         <>
-          {canViewNotices && companyFeatures.noticesOnHome && noticeBoard.loaded && (
-            // The notice slideshow (owner add-on V5), inset like the launcher's sections so it lines
-            // up with the tiles, and no wider than the Dashboard's content.
-            <div className="ob-measure-wide" style={{ padding: 'var(--s-8) var(--s-12) 0' }}>
-              <NoticeSlideshow
-                notices={noticeBoard.notices}
-                today={todayForNotices()}
-                onOpen={(id) => {
-                  setNoticeFocus({ id, nonce: Date.now() });
-                  navigate('notices');
-                }}
-                onOpenBoard={() => navigate('notices')}
-              />
+          {(showNoticeBand || showProductBand) && (
+            // Inset like the launcher's sections so the bands line up with the tiles, side by side
+            // where both fit, and no wider than the Dashboard's content.
+            <div className="ob-home-bands ob-measure-wide">
+              {showNoticeBand && (
+                <NoticeSlideshow
+                  notices={noticeBoard.notices}
+                  today={todayForNotices()}
+                  onOpen={(id) => {
+                    setNoticeFocus({ id, nonce: Date.now() });
+                    navigate('notices');
+                  }}
+                  onOpenBoard={() => navigate('notices')}
+                />
+              )}
+              {showProductBand && (
+                <ProductSlideshow products={homeBand.products} sellToday={homeBand.sellToday} onOpen={openProduct} />
+              )}
             </div>
           )}
           <BasicHome
@@ -1741,6 +1786,7 @@ function MasterPanel() {
           permissions={user.permissions}
           catalogueRevision={revisionOf(revisions, 'catalogue')}
           listsRevision={revisionOf(revisions, 'catalogueLists')}
+          focus={productFocus ?? undefined}
         />
       ),
     },
@@ -1866,6 +1912,20 @@ function MasterPanel() {
           today={todayForNotices()}
           onMarkRead={noticeBoard.markRead}
           enabled={companyFeatures.noticesAtSignIn}
+          onSettled={() => setSignInSettledFor(signInKey)}
+        />
+      )}
+      {/* "Sell today" (2026-10-08): the day's entry once per person per day, after the unread
+          notices pop-up, unless the company turned it off (`notices.showSellToday`). */}
+      {canViewNotices && user && (
+        <SellTodayPopup
+          key={`sellToday:${user.id}`}
+          entries={noticeBoard.sellToday}
+          today={todayForNotices()}
+          userId={user.id}
+          ready={signInSettledFor === signInKey}
+          enabled={companyFeatures.sellTodayPopup}
+          onOpenProduct={canViewProducts ? openProduct : undefined}
         />
       )}
       <KeyboardOverlays
