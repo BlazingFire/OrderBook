@@ -291,8 +291,8 @@ A module the role cannot open has no Basic Home tile, as it has no sidebar row: 
 - **Face:** `.ob-tile-face--art` drops the plain face's border, fill and padding so the art fills the 80 px. Hover lifts it 2 px (`--s-2`, `--d-fast`,
   `--e-standard`) with no colour change; pressed returns it; reduced motion (the OS setting or the app's motion switch) keeps it still. The focus ring, the label,
   the count badge and the shortcut chip are unchanged.
-- **Fallback:** a module with no tile (today only **Notice board management**, `noticesManage`) keeps its line icon in `--accent` on the plain `--bg-surface` face with a
-  `--line` border, which turns `--accent-tint` on hover.
+- **Fallback:** a module with no tile (none today: Notice board management got its art on 2026-10-08; a module added later until its art is drawn) keeps its
+  line icon in `--accent` on the plain `--bg-surface` face with a `--line` border, which turns `--accent-tint` on hover.
 - **The tile that opens the New Order screen** (until 2026-10-07 "New pending order", `basicHome.newLead`) leads the Work group.
 
 | Module (id) | Tile | Gradient, top to bottom |
@@ -303,6 +303,7 @@ A module the role cannot open has no Basic Home tile, as it has no sidebar row: 
 | Final Orders (`orders`) | final-orders | blue `#4C8CF8` to `#1F54D4` |
 | Conflicts | conflicts | red `#FF6474` to `#D42A4A` |
 | Notice board (`notices`) | notice-board | coral `#FF9466` to `#E8562F` |
+| Notice board management (`noticesManage`) | notice-board-manage | orange `#F2925E` to `#B5452A` (the board with a pencil badge) |
 | Chatroom | chatroom | violet `#9D82FF` to `#6443E0` |
 | Printroom | printroom | clay `#E39A66` to `#A65A2E` |
 | Reports | reports | yellow `#FFCC48` to `#E5960F` |

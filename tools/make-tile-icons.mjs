@@ -27,6 +27,7 @@ const TILES = {
   settings: 'settings',
   'app-update': 'updates',
   'notice-board': 'notices',
+  'notice-board-manage': 'noticesManage',
   'office-panels': 'panels',
   'roles-users': 'access',
   fields: 'fields',

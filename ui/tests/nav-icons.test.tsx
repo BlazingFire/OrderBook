@@ -109,11 +109,13 @@ describe('one icon per module in the sidebar, a colour tile or the same icon on 
 });
 
 describe('Basic Home colour tiles', () => {
-  it('has art for every module but the notices manager, which keeps its line icon', () => {
+  it('has art for every module, Notice board management included (2026-10-08)', () => {
     const missing = Object.keys(NAV_ICONS).filter(
       (id) => !TILE_ICONS[id as keyof typeof TILE_ICONS],
     );
-    expect(missing.sort()).toEqual(['basicHome', 'noticesManage']);
+    // Basic Home is never a tile of its own launcher.
+    expect(missing.sort()).toEqual(['basicHome']);
+    expect(TILE_ICONS.noticesManage).toBeDefined();
     expect(TILE_ICONS.newLead).toBeDefined();
   });
 

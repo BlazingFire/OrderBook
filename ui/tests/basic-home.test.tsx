@@ -105,7 +105,8 @@ describe('BasicHome', () => {
       onNewLead: () => undefined,
       groups: [
         ...groups,
-        { label: 'Admin', items: [{ id: 'noticesManage', label: 'Manage notices', icon: 'noticeEdit' }] },
+        // Every shipped module has art now, so a module added later without any stands in here.
+        { label: 'Admin', items: [{ id: 'futureModule', label: 'Future module', icon: 'noticeEdit' }] },
       ],
     });
     const tiles = screen.getAllByRole('button').filter((button) => button.classList.contains('ob-tile'));
@@ -118,7 +119,7 @@ describe('BasicHome', () => {
       expect(face.querySelector('svg')?.getAttribute('viewBox'), id).toBe(art ? '0 0 96 96' : '0 0 24 24');
     }
     expect(TILE_ICONS.newLead).toBeDefined();
-    expect(tile('Manage notices').querySelector('.ob-tile-face--art')).toBeNull();
+    expect(tile('Future module').querySelector('.ob-tile-face--art')).toBeNull();
   });
 
   it('offers New Order first in Work only when it is given', () => {
