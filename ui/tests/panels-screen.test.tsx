@@ -52,6 +52,7 @@ function state(over: Partial<PairingWindowState> = {}): PairingWindowState {
     port: 4100,
     addresses: [{ name: 'Ethernet', address: '192.168.1.10' }],
     discovery: { listening: true, port: 45789, reason: null },
+    officeSetups: [],
     ...over,
   };
 }
@@ -159,6 +160,35 @@ describe('the Add Office Panel card', () => {
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain('EADDRINUSE');
     expect(alert.textContent).toContain(t('panels.add.discoveryDown', { reason: 'bind EADDRINUSE 0.0.0.0:45789' }));
+  });
+
+  it('offers the Office setup this Master carries, to save and at an address a new PC can open', async () => {
+    const officeSetups = [
+      { platform: 'win32', version: '1.4.7', file: 'OrderBook-Office-1.4.7-Setup.exe', sizeBytes: 85_451_175 },
+      { platform: 'win7', version: '1.4.7', file: 'OrderBook-Office-Win7-1.4.7-Setup.exe', sizeBytes: 140_181_230 },
+    ] satisfies PairingWindowState['officeSetups'];
+    await mount([], state({ officeSetups }));
+
+    expect(await screen.findByText(t('panels.add.officeSetupTitle'))).toBeTruthy();
+    // A download link, not a request the screen makes: the shell's Save As dialog picks the USB drive.
+    const save = screen.getByRole('link', { name: t('panels.add.officeSetupSave') });
+    expect(save.getAttribute('href')).toBe('/api/updates/office/setup');
+    expect(save.hasAttribute('download')).toBe(true);
+    const win7 = screen.getByRole('link', { name: t('panels.add.officeSetupSaveWin7') });
+    expect(win7.getAttribute('href')).toBe('/api/updates/office/setup?platform=win7');
+    expect(screen.getByText(/OrderBook-Office-1\.4\.7-Setup\.exe, 81\.5 MB/)).toBeTruthy();
+
+    // What to type on the new PC, from this Master's own address and port.
+    const text = document.body.textContent ?? '';
+    expect(text).toContain('http://192.168.1.10:4100/api/updates/office/setup');
+    expect(text).toContain('http://192.168.1.10:4100/api/updates/office/setup?platform=win7');
+  });
+
+  it('offers no Office setup when this Master carries none', async () => {
+    await mount([], state());
+    await screen.findByText(t('panels.add.manualTitle'));
+    expect(screen.queryByText(t('panels.add.officeSetupTitle'))).toBeNull();
+    expect(screen.queryByRole('link', { name: t('panels.add.officeSetupSave') })).toBeNull();
   });
 });
 

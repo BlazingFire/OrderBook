@@ -12,6 +12,7 @@
  */
 
 import type { RoleTier } from './permissions.js';
+import type { ReleaseManifest } from './version.js';
 
 export type Uuid = string;
 
@@ -284,6 +285,12 @@ export interface PairingWindowState {
   addresses: { name: string; address: string }[];
   /** Whether the UDP search that lets panels find this Master is running, and why not if it is not. */
   discovery: { listening: boolean; port: number; reason: string | null };
+  /**
+   * The Office setups this Master's own setup file carried, one per platform,
+   * for a new office PC (`GET /api/updates/office/setup`). Empty when it carried
+   * none: running from source, or installed from a build older than that.
+   */
+  officeSetups: Pick<ReleaseManifest, 'platform' | 'version' | 'file' | 'sizeBytes'>[];
 }
 
 /** Live connection state, derived at runtime — not a database column. */

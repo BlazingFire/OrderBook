@@ -13,7 +13,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import express from 'express';
@@ -377,5 +377,121 @@ describe('the releases folder', () => {
     const asked = await request(app).get('/api/updates/office/latest?platform=win7').expect(200);
     expect(asked.body.available).toBeNull();
     expect(asked.body.reason).toBe('noRelease');
+  });
+});
+
+describe('the Office setup a Master carries', () => {
+  let bundle: string;
+
+  beforeEach(async () => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'orderbook-releases-'));
+    bundle = path.join(root, 'bundle');
+    await mkdir(bundle);
+  });
+
+  afterEach(async () => {
+    delete process.env.ORDERBOOK_RELEASES_DIR;
+    await rm(root, { recursive: true, force: true });
+  });
+
+  /** What `bundleOfficeSetups()` in `tools/release.mjs` puts in `resources/panel/office-setup`. */
+  async function carry(platform: 'win32' | 'win7', version: string): Promise<ReleaseManifest> {
+    const body = `office-setup-for-${platform}-${version}`;
+    const file = `OrderBook-Office-${platform === 'win7' ? 'Win7-' : ''}${version}-Setup.exe`;
+    const manifest: ReleaseManifest = {
+      panel: 'office',
+      platform,
+      version,
+      file,
+      sizeBytes: body.length,
+      sha256: createHash('sha256').update(body).digest('hex'),
+      releasedAt: '2026-10-08T00:00:00.000Z',
+    };
+    await writeFile(path.join(bundle, `latest-${platform}.json`), JSON.stringify(manifest));
+    await writeFile(path.join(bundle, file), body);
+    return manifest;
+  }
+
+  /** The public update routes as mounted, the setup folder pointed at `dir`, pairing NOT waved through. */
+  async function routes(dir: string): Promise<express.Express> {
+    await loadService();
+    const { config } = await import('../src/config/index.js');
+    (config as { officeSetupDir: string }).officeSetupDir = dir;
+    const { publicUpdateRoutes } = await import('../src/http/routes/update.routes.js');
+    const { errorHandler } = await import('../src/http/middleware/error-handler.js');
+    const app = express();
+    app.use('/api/updates', publicUpdateRoutes);
+    app.use(errorHandler);
+    return app;
+  }
+
+  it('UPD-69: puts it in an empty releases folder under every name the panels read', async () => {
+    const windows = await carry('win32', '2.0.0');
+    const win7 = await carry('win7', '2.0.0');
+    const service = await loadService();
+
+    await service.seedBundledOfficeRelease(bundle);
+
+    const folder = path.join(root, 'office-panel');
+    expect((await readdir(folder)).sort()).toEqual(
+      [windows.file, win7.file, 'latest-win32.json', 'latest-win7.json', 'latest.json'].sort(),
+    );
+    // Offered to the paired Offices exactly as a release copied in by hand would be.
+    expect((await service.readManifest('office', 'win32'))?.version).toBe('2.0.0');
+    expect((await service.readManifest('office', 'win7'))?.file).toBe(win7.file);
+    expect(JSON.parse(await readFile(path.join(folder, 'latest.json'), 'utf8')).file).toBe(
+      windows.file,
+    );
+  });
+
+  it('UPD-70: never replaces a release that is as new or newer, and replaces an older one', async () => {
+    const newer = await publishFor('office', 'win32', '3.0.0');
+    await carry('win32', '2.0.0');
+    const service = await loadService();
+
+    await service.seedBundledOfficeRelease(bundle);
+    expect((await service.readManifest('office', 'win32'))?.file).toBe(newer.file);
+    expect(await readdir(path.join(root, 'office-panel'))).not.toContain(
+      'OrderBook-Office-2.0.0-Setup.exe',
+    );
+
+    // An older one is superseded: the carried build is offered and the old file swept.
+    await rm(path.join(root, 'office-panel'), { recursive: true });
+    const older = await publishFor('office', 'win32', '1.0.0');
+    await service.seedBundledOfficeRelease(bundle);
+    expect((await service.readManifest('office', 'win32'))?.version).toBe('2.0.0');
+    expect(await readdir(path.join(root, 'office-panel'))).not.toContain(older.file);
+  });
+
+  it('UPD-71: running from source carries none, and seeding is a no-op', async () => {
+    const service = await loadService();
+    await service.seedBundledOfficeRelease(path.join(root, 'not-there'));
+    expect(await service.bundledOfficeSetups(path.join(root, 'not-there'))).toEqual([]);
+    expect(await readdir(root)).toEqual(['bundle']);
+  });
+
+  it('UPD-72: hands a new, unpaired PC the setup, named, and still keeps the update routes paired', async () => {
+    const windows = await carry('win32', '2.0.0');
+    const win7 = await carry('win7', '2.0.0');
+    const app = await routes(bundle);
+
+    // No panel credentials at all: the PC has not paired, and cannot until this is installed.
+    const plain = await request(app).get('/api/updates/office/setup').expect(200);
+    expect(plain.headers['content-disposition']).toBe(`attachment; filename="${windows.file}"`);
+    expect(Number(plain.headers['content-length'])).toBe(windows.sizeBytes);
+
+    const legacy = await request(app).get('/api/updates/office/setup?platform=win7').expect(200);
+    expect(legacy.headers['content-disposition']).toContain(win7.file);
+    await request(app).get('/api/updates/office/setup?platform=darwin').expect(404);
+
+    // The routes a paired panel updates through are not opened by it.
+    await request(app).get('/api/updates/office/latest').expect(401);
+    await request(app).get('/api/updates/office/download').expect(401);
+  });
+
+  it('UPD-72: says plainly that there is no setup on a Master that carries none', async () => {
+    const app = await routes(path.join(root, 'not-there'));
+    const response = await request(app).get('/api/updates/office/setup').expect(404);
+    expect(response.body.messageKey).toBe('error.officeSetupMissing');
   });
 });

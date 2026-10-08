@@ -25,7 +25,7 @@
 
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, readFile, rename, stat } from 'node:fs/promises';
 import path from 'node:path';
 
 import type {
@@ -45,7 +45,15 @@ import { appVersion } from '../lib/app-version.js';
 import { createLogger } from '../lib/logger.js';
 import { verifyManifest } from '../lib/release-signature.js';
 import { recordDetachedActivity } from '../repositories/activity-log.repository.js';
-import { downloadProgress, forgetLatestRelease, syncFromGitHub } from './github-releases.js';
+import {
+  aloneInFolder,
+  downloadProgress,
+  forgetLatestRelease,
+  supersededBy,
+  sweep,
+  syncFromGitHub,
+  writeManifest,
+} from './github-releases.js';
 import { ValidationError } from '../lib/errors.js';
 
 const log = createLogger('updates');
@@ -603,4 +611,77 @@ export function startReleasePolling(afterPoll?: () => Promise<void>): () => void
     clearTimeout(first);
     clearInterval(timer);
   };
+}
+
+/**
+ * The Office setups this Master's own setup file carried, one per platform:
+ * each `latest-<platform>.json` in `dir` whose setup file is there at the size
+ * it names. Empty when running from source, or from a Master built before
+ * `tools/release.mjs` bundled them.
+ *
+ * Not signature-checked here: the folder is part of this Master's own program
+ * files, as trusted as the code reading it. `seedBundledOfficeRelease` checks
+ * the signature before anything goes into the releases folder, where it is
+ * offered to paired panels as an update.
+ */
+export async function bundledOfficeSetups(
+  dir: string = config.officeSetupDir,
+): Promise<ReleaseManifest[]> {
+  const names = await readdir(dir).catch(() => [] as string[]);
+  const found: ReleaseManifest[] = [];
+
+  for (const name of names.filter((entry) => /^latest-\w+\.json$/.test(entry)).sort()) {
+    try {
+      const manifest = JSON.parse(await readFile(path.join(dir, name), 'utf8')) as unknown;
+      if (!isManifest(manifest) || manifest.panel !== 'office' || !manifest.platform) continue;
+      const { size } = await stat(path.join(dir, path.basename(manifest.file)));
+      if (size === manifest.sizeBytes) found.push(manifest);
+    } catch (error) {
+      log.warn(`Ignoring the bundled ${name}: ${String(error)}`);
+    }
+  }
+
+  return found;
+}
+
+/**
+ * Put the bundled Office setups into the releases folder, so the Office panels
+ * update from a Master that was itself updated with no internet and nothing
+ * copied by hand.
+ *
+ * Only a build newer than what the folder already offers that platform: a
+ * newer one fetched from GitHub or copied in stays. The setup file goes in
+ * under a `.part` name and is renamed, and the manifest is written last, as a
+ * GitHub sync does, so the folder never names a file that is not all there.
+ * The builds it supersedes are swept after that, as a sync sweeps them.
+ *
+ * Alone in that OS's files (`aloneInFolder`): a GitHub sync an Office starts
+ * by asking would otherwise clear the `.part` mid-copy, and the version is
+ * checked inside, so a newer build a sync landed first stays.
+ */
+export async function seedBundledOfficeRelease(dir: string = config.officeSetupDir): Promise<void> {
+  const releaseDir = releaseDirFor('office');
+
+  for (const bundled of await bundledOfficeSetups(dir)) {
+    await aloneInFolder('office', bundled.platform, async () => {
+      const current = await readManifest('office', bundled.platform);
+      if (current && !isNewer(bundled.version, current.version)) return null;
+
+      const verdict = verifyManifest(bundled);
+      if (!verdict.ok) {
+        log.warn(`Not offering the bundled Office ${bundled.version}: ${verdict.reason}`);
+        return null;
+      }
+
+      const file = path.basename(bundled.file);
+      const target = path.join(releaseDir, file);
+      await mkdir(releaseDir, { recursive: true });
+      await copyFile(path.join(dir, file), `${target}.part`);
+      await rename(`${target}.part`, target);
+      await writeManifest(releaseDir, bundled, bundled.platform);
+      await sweep(releaseDir, supersededBy(file, pinnedInstaller));
+      log.info(`Offering the Office ${bundled.version} this Master carried (${file})`);
+      return bundled;
+    });
+  }
 }

@@ -2586,7 +2586,7 @@ export const EN_MESSAGES = {
     'Your data stays exactly where it is. The setup replaces the program only — parties, pending orders, final orders and settings are untouched.',
   'updates.downloading': 'Getting it from the Master…',
   'updates.howBody':
-    'Copy a new build into the releases folder on this PC. This Master installs its own from there; every Office Panel pulls its own copy from this Master over the office network. Update the Master first — a panel on the previous version keeps working and syncing in the meantime.',
+    "Copy a new build into the releases folder on this PC. This Master installs its own from there; every Office Panel pulls its own copy from this Master over the office network. Update the Master first — a panel on the previous version keeps working and syncing in the meantime. The Master's setup file also carries the Office setup of its version, so once the Master is updated the Office Panels can follow with nothing else copied. To install the Office on a new PC, use Save Office setup on the Office panels screen.",
   'updates.howHint':
     'This network has no internet by design, so nothing here checks an update server or downloads anything on its own.',
   'updates.howTitle': 'How updates reach this software',
@@ -3727,6 +3727,15 @@ export const EN_MESSAGES = {
   'panels.add.autoOffLink': 'Change this in Settings',
   'panels.add.descriptionAutoOff':
     'Press this to open a 5-minute window. A new office PC then joins with manual connection, the Master address below and the pairing password.',
+  // The Office setup the Master carries (2026-10-08)
+  'panels.add.officeSetupTitle': 'To install the Office on a new PC',
+  'panels.add.officeSetupBody':
+    'The Office setup comes with this Master. Save it to a USB drive, or open one of these addresses in a browser on the new PC:',
+  'panels.add.officeSetupSave': 'Save Office setup…',
+  'panels.add.officeSetupSaveWin7': 'Save Office setup for Windows 7…',
+  'panels.add.officeSetupFile': '{file}, {size}',
+  'error.officeSetupMissing':
+    'This Master has no Office setup to hand out: its own setup file did not carry one. Copy the Office setup to the new PC by hand.',
   // Save to .txt (1.4.3)
   'saveText.button': 'Save to .txt',
   'saveText.done': 'Saved to this PC (your Downloads folder).',

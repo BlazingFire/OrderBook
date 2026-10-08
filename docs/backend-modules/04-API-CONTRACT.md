@@ -2711,9 +2711,10 @@ The Office sends it on its own authenticated panel socket when the person unpair
 
 | Route | Gate | Notes |
 |---|---|---|
-| `GET /api/panels/pairing-window` | `panels.manage` (was any signed-in user) | `PairingWindowState`: `open`, `closesAt` (epoch ms or null), `autoPairingEnabled`, `accepting`, `port`, `addresses[]`, `discovery { listening, port, reason }` |
+| `GET /api/panels/pairing-window` | `panels.manage` (was any signed-in user) | `PairingWindowState`: `open`, `closesAt` (epoch ms or null), `autoPairingEnabled`, `accepting`, `port`, `addresses[]`, `discovery { listening, port, reason }`, `officeSetups[] { platform, version, file, sizeBytes }` (the Office setups this Master's setup file carried; empty when none, 2026-10-08) |
 | `POST /api/panels/pairing-window/open`, `/close` | `panels.manage` | 5 minutes, in memory; a successful auto pairing closes it |
 | `POST /api/panels/:id/rotate-secret` | `panels.manage` | Now has a "Reissue secret" button, shown only for a connected panel |
+| `GET /api/updates/office/setup` (2026-10-08) | **none**: no session and no panel credentials, because the PC asking has not paired and cannot until the Office is installed. `limitByIp('office-setup')`, 10 a minute per address | Streams the Office setup the Master carries (`config.officeSetupDir`) with `Content-Disposition: attachment; filename="<file>"` and its `Content-Length`. `?platform=` is `win32`, `win7`, `darwin` or `linux`; without it, the first carried (on Windows the Windows 10/11 Office). None carried, or none for that platform: 404 `not_found`, `messageKey: error.officeSetupMissing`. `/api/updates/office/latest` and `/office/download` are unchanged and still answer 401 without panel credentials |
 
 **Discovery.** The discovery responder replies with the address of the interface whose subnet
 contains the asker. Failing that, it uses the best-ranked address: physical adapters come

@@ -5,7 +5,8 @@
  * `/status` and, if an administrator says so, `/master/install`. A **paired
  * Office Panel** asks `/office/latest` and `/office/download` — that pair is
  * the whole reason an office PC can update over the LAN instead of by USB
- * stick.
+ * stick. A **new office PC** asks `/office/setup` for its first install, the
+ * one route here open to a caller that is not paired (see that route).
  *
  * The office routes are reachable by a **paired panel**, authenticated on its
  * pairing credentials rather than on a user session.
@@ -25,17 +26,20 @@
  */
 
 import { createReadStream } from 'node:fs';
+import path from 'node:path';
 
 import { Router } from 'express';
 
 import type { ReleasePlatform } from '@orderbook/shared';
 import { LEGACY_RELEASE_PLATFORM } from '@orderbook/shared';
 
+import { config } from '../../config/index.js';
 import * as autoUpdate from '../../services/auto-update.js';
 import * as updateService from '../../services/update.service.js';
 import { appVersion } from '../../lib/app-version.js';
 import { asyncHandler } from '../async-handler.js';
-import { NotFoundError } from '../../lib/errors.js';
+import { AppError, NotFoundError } from '../../lib/errors.js';
+import { LIMITS, limitByIp } from '../middleware/rate-limit.js';
 import {
   actorFromRequest,
   requireAuth,
@@ -103,6 +107,33 @@ publicUpdateRoutes.get(
     // Streamed, never buffered: these files are 100–200 MB and the Master is
     // also serving every panel's live socket while this download runs.
     createReadStream(file).pipe(res);
+  }),
+);
+
+/**
+ * The Office setup this Master's own setup file carried, for a new office PC:
+ * the Panels screen's "Save Office setup…", or the address it shows typed into
+ * a browser on that PC.
+ *
+ * No `requirePanel`, deliberately and unlike the two routes above: the PC
+ * asking has not paired, and cannot until an Office is installed on it. What
+ * it is handed is the setup file every copy of this version ships, nothing of
+ * this shop's. `?platform=` picks one (`win7` for the Windows 7 Office); with
+ * none, the first carried, which on Windows is the Windows 10/11 Office.
+ * Limited per address, because each answer is 85 MB or more.
+ */
+publicUpdateRoutes.get(
+  '/office/setup',
+  limitByIp('office-setup', LIMITS.officeSetupPerIp),
+  asyncHandler(async (req, res) => {
+    const setups = await updateService.bundledOfficeSetups();
+    const asked = req.query.platform;
+    const setup = asked ? setups.find((m) => m.platform === asked) : setups[0];
+    if (!setup) throw new AppError('error.officeSetupMissing', {}, 404, 'not_found');
+
+    // `res.download` streams the file and names it in the Content-Disposition.
+    const file = path.basename(setup.file);
+    res.download(path.join(config.officeSetupDir, file), file);
   }),
 );
 

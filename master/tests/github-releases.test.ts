@@ -1750,3 +1750,103 @@ describe('1.4: Check now and the download bar (R6, R7a)', () => {
     expect(downloadProgress('master', 'win32').error).toBeTruthy();
   });
 });
+
+describe('the Office setup a Master carries, and GitHub', () => {
+  afterEach(() => {
+    delete process.env.ORDERBOOK_RELEASES_DIR;
+  });
+
+  /** A carried Office build where `tools/release.mjs` puts it: manifest and setup file. */
+  async function carry(bundle: string, version: string): Promise<ReleaseManifest> {
+    const build = officeBuild('win32', version);
+    await mkdir(bundle, { recursive: true });
+    await writeFile(path.join(bundle, 'latest-win32.json'), JSON.stringify(build));
+    await writeFile(path.join(bundle, build.file), PAYLOAD);
+    return build;
+  }
+
+  it('UPD-73: a sync never writes an older release over a newer build in the folder', async () => {
+    // A Master installed from a local build carries an Office newer than
+    // GitHub's newest release. The sync wrote GitHub's manifest over it, swept
+    // it as superseded, and the next boot copied 85 MB back in to lose again.
+    const officeDir = path.join(dir, 'office-panel');
+    const carried = await carry(officeDir, '3.0.0');
+    await writeFile(path.join(officeDir, 'latest.json'), JSON.stringify(carried));
+    const github = officeBuild('win32', '2.0.0');
+    serve(publishedTogether(github));
+
+    const { syncFromGitHub } = await loadService();
+    expect(await syncFromGitHub('office', officeDir, null, 'win32')).toBeNull();
+    expect(requested).not.toContain(`${DOWNLOADS}/${github.file}`);
+    expect((await readdir(officeDir)).sort()).toEqual(
+      [carried.file, 'latest-win32.json', 'latest.json'].sort(),
+    );
+
+    // Only an offer the panels would be given holds it back: a newer manifest
+    // whose setup file is gone names nothing, and GitHub's release fills it.
+    await rm(path.join(officeDir, carried.file));
+    expect(await syncFromGitHub('office', officeDir, null, 'win32')).toMatchObject({
+      version: '2.0.0',
+    });
+  });
+
+  it('UPD-74: the seed waits for a sync already writing the folder, and keeps its newer build after', async () => {
+    // The seed runs at boot, just as the Offices reconnect and ask — each ask
+    // can start a sync, and a sync clears this OS's `.part` files before it
+    // downloads, the seed's copy among them.
+    const github = officeBuild('win32', '2.0.0');
+    const body = openBody();
+    serve({ ...publishedTogether(github), [`${DOWNLOADS}/${github.file}`]: body.response });
+    const bundle = path.join(dir, 'bundle');
+    const carried = await carry(bundle, '3.0.0');
+
+    const { syncFromGitHub } = await loadService({ ORDERBOOK_RELEASES_DIR: dir });
+    const { readManifest, seedBundledOfficeRelease } =
+      await import('../src/services/update.service.js');
+    const officeDir = path.join(dir, 'office-panel');
+
+    const syncing = syncFromGitHub('office', officeDir, null, 'win32');
+    await vi.waitFor(() => expect(requested).toContain(`${DOWNLOADS}/${github.file}`), {
+      timeout: 5_000,
+    });
+
+    const seeding = seedBundledOfficeRelease(bundle);
+    await settle(200);
+    const meanwhile = await readdir(officeDir);
+    expect(meanwhile).not.toContain(carried.file); // the seed has not started
+    expect(meanwhile).not.toContain(`${carried.file}.part`);
+
+    body.push(PAYLOAD);
+    body.end();
+    expect(await syncing).toMatchObject({ version: '2.0.0' });
+    await seeding;
+    expect((await readManifest('office', 'win32'))?.version).toBe('3.0.0');
+    expect((await readdir(officeDir)).sort()).toEqual(
+      [carried.file, 'latest-win32.json', 'latest.json'].sort(),
+    );
+
+    // And the next sync leaves it: GitHub's newest is older than what it carried.
+    serve(publishedTogether(github));
+    expect(await syncFromGitHub('office', officeDir, null, 'win32')).toBeNull();
+    expect((await readManifest('office', 'win32'))?.version).toBe('3.0.0');
+  });
+
+  it('UPD-75: a sync asked for while the seed writes the folder shares it, and asks GitHub nothing', async () => {
+    serve(publishedTogether(officeBuild('win32')));
+    const { aloneInFolder, syncFromGitHub } = await loadService();
+    const seeded = officeBuild('win32', '3.0.0');
+
+    let finish!: () => void;
+    const seeding = aloneInFolder(
+      'office',
+      'win32',
+      () => new Promise<ReleaseManifest>((resolve) => (finish = () => resolve(seeded))),
+    );
+    const asked = syncFromGitHub('office', dir, null, 'win32');
+    finish();
+
+    expect(await asked).toBe(seeded);
+    expect(await seeding).toBe(seeded);
+    expect(requested).toEqual([]);
+  });
+});
