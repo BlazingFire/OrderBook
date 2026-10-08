@@ -222,6 +222,14 @@ async function open(label: string): Promise<void> {
   });
 }
 
+/** Escape, pressed on `target` the way a person presses it; it reaches `window` (R8). */
+async function pressEscape(target: Element = document.body): Promise<void> {
+  await act(async () => {
+    fireEvent.keyDown(target, { key: 'Escape' });
+    await wait(0);
+  });
+}
+
 const gets = (calls: Call[], path: string) =>
   calls.filter((call) => call.method === 'GET' && call.url.split('?')[0] === path).length;
 
@@ -723,6 +731,50 @@ describe('Pending Orders and Final Orders', () => {
     expect(screen.queryByRole('button', { name: t('action.backToList') })).toBeNull();
   });
 
+  it('R8: Escape goes back from an open row to the list, and a second Escape to the landing screen', async () => {
+    await openList(ADMIN, t('nav.leads'));
+    fireEvent.click(await screen.findByText(LEAD.id));
+    await screen.findByRole('button', { name: t('action.backToList') });
+
+    await pressEscape();
+    expect(await screen.findByText(LEAD.id)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: t('action.backToList') })).toBeNull();
+    expect(topbarTitle()).toBe(t('lead.board.tab.list'));
+
+    await pressEscape();
+    expect(topbarTitle()).toBe(t('nav.master.dashboard'));
+
+    // At the landing screen there is nowhere further back to go.
+    await pressEscape();
+    expect(topbarTitle()).toBe(t('nav.master.dashboard'));
+  });
+
+  it('R8: back asks before throwing away a typed remark, and Escape is the same back', async () => {
+    await openList([...ADMIN, 'leads.edit'], t('nav.leads'));
+    fireEvent.click(await screen.findByText(LEAD.id));
+    const remark = await screen.findByPlaceholderText(t('lead.detail.addNotePlaceholder'));
+    fireEvent.change(remark, { target: { value: 'Call before loading' } });
+
+    await pressEscape(remark);
+    expect(await screen.findByText(t('action.back.discardTitle'))).toBeTruthy();
+    // The dialog's own Escape keeps the remark and the record.
+    await pressEscape();
+    await waitFor(() => expect(screen.queryByText(t('action.back.discardTitle'))).toBeNull());
+    expect(screen.getByPlaceholderText(t('lead.detail.addNotePlaceholder'))).toHaveProperty(
+      'value',
+      'Call before loading',
+    );
+
+    // A click on Back asks the same; Discard goes back to the list.
+    fireEvent.click(screen.getByRole('button', { name: t('action.backToList') }));
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: t('action.back.discard') }));
+      await wait(0);
+    });
+    expect(screen.queryByRole('button', { name: t('action.backToList') })).toBeNull();
+    expect(await screen.findByText(LEAD.id)).toBeTruthy();
+  });
+
   it('are offered only with leads.view and orders.view', async () => {
     await boot(['leads.view']);
     expect(screen.queryByTitle(t('nav.orders'))).toBeNull();
@@ -814,6 +866,48 @@ describe('Conflicts', () => {
     cleanup();
     await boot(['leads.view', 'sync.resolveConflicts']);
     expect(screen.getByTitle(t('nav.master.conflicts'))).toBeTruthy();
+  });
+});
+
+describe('Integrations', () => {
+  it("R8: Escape leaves a connector's field mapping for the list, asking first while a change is unsaved", async () => {
+    const connector = { id: 'conn-1', label: 'Shop feed', baseUrl: 'http://shop.test', scheduleKind: 'manual', resources: [] };
+    const calls = await boot(['api.manage'], (call) => {
+      const path = call.url.split('?')[0];
+      if (path === '/api/integrations/keys') return json([]);
+      if (path === '/api/integrations/connectors') return json([connector]);
+      if (path === '/api/integrations/connectors/conn-1/mapping') return json(connector);
+      return undefined;
+    });
+    await open(t('nav.master.integrations'));
+    fireEvent.click(
+      await screen.findByRole('button', { name: t('integrations.tab.connectors'), pressed: false }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: t('integrations.connectors.mapping') }));
+    const pathField = await screen.findByLabelText(new RegExp(t('integrations.mapping.path')));
+
+    // A changed mapping: Escape asks, and the dialog's own Escape keeps it.
+    fireEvent.change(pathField, { target: { value: '/products' } });
+    await pressEscape(pathField);
+    expect(await screen.findByText(t('action.back.discardTitle'))).toBeTruthy();
+    await pressEscape();
+    await waitFor(() => expect(screen.queryByText(t('action.back.discardTitle'))).toBeNull());
+    expect(screen.getByLabelText(new RegExp(t('integrations.mapping.path')))).toHaveProperty('value', '/products');
+
+    // Saved, it goes back to the list without asking; a second Escape goes to the landing screen.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('common.save') }));
+      await wait(0);
+    });
+    expect(calls.some((call) => call.method === 'PUT' && call.url.endsWith('/conn-1/mapping'))).toBe(true);
+    await pressEscape();
+    expect(screen.queryByText(t('action.back.discardTitle'))).toBeNull();
+    expect(screen.queryByLabelText(new RegExp(t('integrations.mapping.path')))).toBeNull();
+    expect(await screen.findByRole('button', { name: t('integrations.connectors.mapping') })).toBeTruthy();
+    expect(topbarTitle()).toBe(t('integrations.tab.connectors'));
+
+    await pressEscape();
+    expect(topbarTitle()).toBe(t('nav.master.dashboard'));
   });
 });
 
@@ -1255,6 +1349,23 @@ describe('New Order', () => {
     await boot(CREATE);
     await openFormByKey();
     expect(screen.getAllByTitle(t('lead.add.title'))).toHaveLength(1);
+  });
+
+  it('R8: Escape does not leave a form with a party being typed, from the field or from anywhere', async () => {
+    await boot(CREATE);
+    await openFormByKey();
+    const party = screen.getByLabelText(t('lead.add.party.search'));
+    fireEvent.change(party, { target: { value: 'Sha' } });
+
+    for (const target of [party, document.body]) {
+      await act(async () => {
+        fireEvent.keyDown(target, { key: 'Escape' });
+        await wait(0);
+      });
+    }
+
+    expect(topbarTitle()).toBe(t('lead.add.title'));
+    expect(screen.getByLabelText(t('lead.add.party.search'))).toBeTruthy();
   });
 
   it('returns to the Pending list on Cancel, even after a record was open', async () => {

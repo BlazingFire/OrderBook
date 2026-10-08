@@ -785,6 +785,20 @@ function MasterPanel() {
     };
   }, []);
 
+  /*
+   * Escape closes the sync popover, as on the Office. It is not a
+   * `[role="dialog"]`, so `useOverlay` never sees it; it is an `.ob-popover`,
+   * so the shell's Escape-back (R8) leaves this press to it.
+   */
+  useEffect(() => {
+    if (!syncPopover) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSyncPopover(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [syncPopover]);
+
   async function signOut() {
     await api.signOut();
     setUser(null);

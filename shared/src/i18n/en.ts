@@ -888,6 +888,11 @@ export const EN_MESSAGES = {
   'access.users.title': '{count} people',
   'access.users.titleLoading': 'People',
   'action.backToList': 'Back to list',
+  /** Asked by a way back (a record's Back, a chat room's Back, Escape) that would throw typed work away. */
+  'action.back.discardTitle': 'Discard your changes?',
+  'action.back.discardBody': 'What you typed here has not been saved. Going back throws it away.',
+  'action.back.discard': 'Discard changes',
+  'action.back.keep': 'Keep editing',
   'action.cancel': 'Cancel',
   'action.close': 'Close',
   'action.dismiss': 'Dismiss',
@@ -1840,11 +1845,13 @@ export const EN_MESSAGES = {
   'keys.settings.press': 'Press a key…',
   'keys.settings.clear': 'Clear shortcut',
   'keys.settings.reserved':
-    'Escape and Tab are reserved for closing dialogs and moving between fields.',
+    'Escape and Tab are reserved: Escape closes a dialog or list, or goes back a step; Tab moves between fields.',
   'keys.settings.title': 'Keyboard shortcuts',
   'keys.help.title': 'Keyboard shortcuts',
   'keys.help.unbound': 'Not bound',
   'keys.help.conflict': 'Shared with another command',
+  /** The fixed row under the rebindable ones: what Escape does outside a dialog or list. */
+  'keys.help.back': 'Go back (a record to its list, a page to Home)',
   'nav.catalogue': 'Catalogue',
   'nav.collapse': 'Collapse',
   'nav.collapseSidebar': 'Collapse sidebar',
@@ -3570,6 +3577,7 @@ export const EN_MESSAGES = {
   'updates.saveAll.mainProduct': 'Main product {name}',
   'updates.saveAll.chatGroup': 'Chat group {name}',
   'updates.saveAll.chatMessage': 'Chat message not sent: "{text}"',
+  'updates.saveAll.chatEdit': 'Chat message edit not saved: "{text}"',
   'updates.saveAll.password': 'Password change (it signs you out, so it is not applied for you)',
   'updates.saveAll.recordNote': 'Note not added: "{text}"',
   'updates.saveAll.storagePath':

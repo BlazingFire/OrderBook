@@ -614,6 +614,34 @@ describe('messages', () => {
     expect(await screen.findByText(/second draft/)).toBeTruthy();
   });
 
+  it('R8: Escape in an edit cancels the edit, not the room; Back asks before a changed edit is lost', async () => {
+    const onBack = vi.fn();
+    room(
+      makeTransport({
+        messages: vi.fn(async () => [message({ id: 'CM1', seq: 1, author: ME, body: 'first draft' })]),
+      }),
+      { onBack },
+    );
+    await screen.findByText('first draft');
+    const startEdit = (): HTMLElement => {
+      fireEvent.click(screen.getByRole('button', { name: t('chat.message.actions') }));
+      fireEvent.click(screen.getByRole('menuitem', { name: t('chat.message.edit') }));
+      const field = screen.getByRole('textbox', { name: t('chat.message.edit') });
+      fireEvent.change(field, { target: { value: 'second draft' } });
+      return field;
+    };
+
+    // Claimed (defaultPrevented), so the shell's Escape-back never sees it.
+    expect(fireEvent.keyDown(startEdit(), { key: 'Escape' })).toBe(false);
+    expect(screen.queryByRole('textbox', { name: t('chat.message.edit') })).toBeNull();
+    expect(screen.getByText('first draft')).toBeTruthy();
+
+    startEdit();
+    fireEvent.click(screen.getByRole('button', { name: t('chat.room.back') }));
+    expect(await screen.findByText(t('action.back.discardTitle'))).toBeTruthy();
+    expect(onBack).not.toHaveBeenCalled();
+  });
+
   it('loads older messages on request and shows day separators', async () => {
     const page = Array.from({ length: 50 }, (_, index) => message({ id: `CM${100 + index}`, seq: 100 + index }));
     const messages = vi
@@ -845,5 +873,29 @@ describe('group settings', () => {
     expect(screen.queryByRole('button', { name: t('common.save') })).toBeNull();
     expect(screen.queryByRole('button', { name: t('chat.group.makeAdmin') })).toBeNull();
     expect(screen.getByRole('button', { name: t('chat.group.leave') })).toBeTruthy();
+  });
+
+  it('R8: Back asks about a rename not yet saved, and not once it is saved', async () => {
+    const transport = makeTransport({ room: vi.fn(async () => detail({ myRole: 'admin' })) });
+    const onBack = vi.fn();
+    render(
+      wrap(
+        <ChatGroupSettings transport={transport} roomId="room-1" viewer={viewer(['chat.use'])} onBack={onBack} onSaved={() => undefined} onLeft={() => undefined} />,
+      ),
+    );
+    const save = await screen.findByRole('button', { name: t('common.save') });
+    fireEvent.change(screen.getByLabelText(new RegExp(t('chat.group.name'))), { target: { value: 'New name' } });
+
+    fireEvent.click(screen.getByRole('button', { name: t('chat.room.back') }));
+    fireEvent.click(await screen.findByRole('button', { name: t('action.back.keep') }));
+    await waitFor(() => expect(screen.queryByText(t('action.back.discardTitle'))).toBeNull());
+    expect(onBack).not.toHaveBeenCalled();
+
+    // Saved: the refresh that follows the save is the sign it is done.
+    fireEvent.click(save);
+    await waitFor(() => expect(transport.room).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole('button', { name: t('chat.room.back') }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(t('action.back.discardTitle'))).toBeNull();
   });
 });

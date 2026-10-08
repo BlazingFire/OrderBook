@@ -24,6 +24,10 @@
  * and Tab are refused as chords (`isReservedChord`), so this provider and
  * `useOverlay` never contend for the same key — that, not listener ordering, is
  * what keeps the two apart.
+ *
+ * Escape outside a dialog or list is not this provider's either: `AppShell`
+ * hears it on `window`, after every `document` listener has had its say, and
+ * goes back a step (R8) — a record to its list, a page to Home.
  */
 
 import {

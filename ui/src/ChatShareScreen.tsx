@@ -100,6 +100,8 @@ export function ChatShareScreen(props: ChatShareScreenProps) {
         props.onBack();
         return true;
       }}
+      // A note typed to go with the record is asked about before back throws it away.
+      unsaved={note.trim() !== ''}
       actions={
         <Button variant="primary" busy={busy} disabled={!choice} onClick={() => void share()}>
           {t('chat.share.send')}

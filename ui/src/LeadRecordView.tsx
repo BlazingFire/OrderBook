@@ -93,10 +93,16 @@ export function LeadRecordView({
   const colourHex = useColourHex(optionLists);
   const labelOf = useColourLabel(optionLists);
 
-  // "Save all and update": a remark typed on the pending order and not yet added is named.
+  // "Save all and update": a remark, a dispatch label or a date typed on the pending
+  // order and not yet used is named, as the Office's `LeadDetail` does. Back asks first.
+  // The label and date count only while the Convert card shows them: once the lead is
+  // converted (here, or on another PC) they were used or can no longer be.
+  const typed =
+    remark.trim() ||
+    (canConvert && !lead.convertedOrderId ? dispatchLabel.trim() || expectedDate.trim() : '');
   useUnsavedWork(
     `lead-remark:${lead.id}`,
-    remark.trim() ? { label: t('updates.saveAll.recordNote', { text: remark.trim().slice(0, 40) }) } : null,
+    typed ? { label: t('updates.saveAll.recordNote', { text: typed.slice(0, 40) }) } : null,
   );
 
   async function run(action: () => Promise<unknown>, failure: MessageKey): Promise<void> {
@@ -381,6 +387,9 @@ export function LeadRecordView({
                           dispatchAddressLabel: dispatchLabel.trim() || null,
                           expectedDispatchDate: expectedDate || null,
                         });
+                        // Used up: this view stays mounted behind the new order.
+                        setDispatchLabel('');
+                        setExpectedDate('');
                         onConverted(order);
                       }, 'lead.error.convert')
                     }

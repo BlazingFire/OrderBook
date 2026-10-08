@@ -13,11 +13,17 @@
  * topbar reads its label. A screen that prints the same name again an inch
  * lower is saying it twice; one that has nothing else in the head is left with
  * the back button alone, which is the whole point of the head.
+ *
+ * Back asks "Discard your changes?" before it throws typed work away: whatever
+ * the screen's children registered with `useUnsavedWork` (a remark, a note, a
+ * name being edited), plus `unsaved` for work the screen holds itself. It is
+ * marked `data-esc-back`, so Escape clicks it (`AppShell`) and asks the same.
  */
 
 import type { ReactNode } from 'react';
 
 import { Button } from './Button.js';
+import { UnsavedScope, useGuardedBack } from './unsavedWork.js';
 
 export interface EditorScreenProps {
   /** Omit where the topbar already names the record. */
@@ -28,14 +34,37 @@ export interface EditorScreenProps {
   /** Resolves false when the operation refused to close — an unsaved draft. May ask first (a themed dialog), hence the promise. */
   onBack: () => boolean | Promise<boolean>;
   backLabel: string;
+  /** Typed work the screen itself holds (not a child) that back would throw away. */
+  unsaved?: boolean;
+  /**
+   * False where back must not ask: `onBack` asks for itself (the role editor),
+   * or it is the order form's Cancel, which stays exactly as it was.
+   */
+  askBeforeBack?: boolean;
   children: ReactNode;
 }
 
-export function EditorScreen({ title, meta, actions, onBack, backLabel, children }: EditorScreenProps) {
+export function EditorScreen({
+  title,
+  meta,
+  actions,
+  onBack,
+  backLabel,
+  unsaved = false,
+  askBeforeBack = true,
+  children,
+}: EditorScreenProps) {
+  const { scope, back } = useGuardedBack(onBack, unsaved);
   return (
     <div className="ob-editorscreen">
       <header className="ob-editorscreen-head">
-        <Button variant="ghost" size="sm" icon="collapse" onClick={() => void onBack()}>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon="collapse"
+          data-esc-back
+          onClick={askBeforeBack ? back : () => void onBack()}
+        >
           {backLabel}
         </Button>
         {title && (
@@ -46,7 +75,9 @@ export function EditorScreen({ title, meta, actions, onBack, backLabel, children
         {meta && <div className="ob-editorscreen-meta">{meta}</div>}
         {actions && <div className="ob-editorscreen-actions">{actions}</div>}
       </header>
-      <div className="ob-editorscreen-body">{children}</div>
+      <UnsavedScope.Provider value={scope}>
+        <div className="ob-editorscreen-body">{children}</div>
+      </UnsavedScope.Provider>
     </div>
   );
 }

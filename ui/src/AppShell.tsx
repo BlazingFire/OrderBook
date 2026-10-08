@@ -9,7 +9,7 @@
  * anchor to the working area rather than the window.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { t } from './i18n.js';
 import { Icon, type IconName } from './icons';
@@ -171,6 +171,51 @@ export function AppShell({
    * shows.
    */
   useCommand('view.toggleSidebar', onToggleCollapsed);
+
+  /*
+   * Escape goes back one step (R8): an open dialog or list closes first (their
+   * own handlers), then an open record goes back to its list by clicking its
+   * `data-esc-back` button — so whatever that back asks about unsaved work, it
+   * asks here too — then any other page goes Home, as the brand mark does.
+   *
+   * On `window`, bubble: everything that stops the key (`useOverlay`, popovers,
+   * the colour list, a shortcut being recorded) never reaches it, and every
+   * `document` listener that claims it has already marked it `defaultPrevented`.
+   * Hidden panes stay mounted (`<Activity>`), so only what is visible counts.
+   *
+   * The order form is left alone, wherever focus is: Escape walks its fields
+   * back, and editing a pending order sits inside an `EditorScreen` whose back
+   * is Cancel. Only a pristine New Order form says `data-esc-home="true"`.
+   */
+  const escape = useRef({ activeId, homeId, onNavigate });
+  escape.current = { activeId, homeId, onNavigate };
+  useEffect(() => {
+    const visible = (selector: string): HTMLElement[] =>
+      [...document.querySelectorAll<HTMLElement>(selector)].filter(
+        (element) => element.checkVisibility?.() ?? true,
+      );
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.repeat || event.isComposing) return;
+      if (event.ctrlKey || event.altKey || event.shiftKey || event.metaKey) return;
+      if (visible('[role="dialog"], .ob-popover, [role="listbox"], [data-key-capture]').length) return;
+      const orderPages = visible('.ob-order-page');
+      if (orderPages.some((page) => page.dataset.escHome !== 'true')) return;
+      const back = orderPages.length ? undefined : visible('[data-esc-back]').at(-1);
+      if (back) {
+        event.preventDefault();
+        // Focus first, as a mouse would: a field that saves when it is left saves now.
+        back.focus();
+        back.click();
+        return;
+      }
+      const { activeId: here, homeId: home, onNavigate: go } = escape.current;
+      if (here === home) return;
+      event.preventDefault();
+      go(home);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   function renderNavItem(item: NavItem, depth: number) {
     const hasChildren = Boolean(item.children?.length);
