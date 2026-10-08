@@ -328,6 +328,7 @@ export default tseslint.config(
       'office/web/src/components/ProductImages.tsx',
       'master/web/src/components/BackupAllSection.tsx',
       'master/web/src/components/AutoBackupSection.tsx',
+      'master/web/src/screens/PersonScreen.tsx',
     ],
     plugins: { 'orderbook-i18n': orderbookI18n },
     rules: {

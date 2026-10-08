@@ -59,6 +59,8 @@ export type IconName =
   | 'print'
   | 'sign-out'
   | 'key'
+  | 'lock'
+  | 'camera'
   | 'plug'
   | 'log';
 
@@ -103,7 +105,8 @@ const PATHS: Record<IconName, string> = {
   search: `${circle(11, 11, 6)}M20 20l-4.5-4.5`,
   plus: 'M12 5v14M5 12h14',
   minus: 'M5 12h14',
-  more: 'M6 12h.01M12 12h.01M18 12h.01',
+  // Three small rings, not three stroke-wide dots: at 16 px a dot was barely 1 px and the ⋯ read as faint.
+  more: `${circle(6, 12, 1)}${circle(12, 12, 1)}${circle(18, 12, 1)}`,
   'chevron-down': 'M6 9l6 6 6-6',
   'chevron-up': 'M6 15l6-6 6 6',
   'chevron-left': 'M15 6l-6 6 6 6',
@@ -127,6 +130,8 @@ const PATHS: Record<IconName, string> = {
   pin: 'M14.5 4l5.5 5.5-3 1.5-3 3 .5 4-1.5 1.5-9-9L5.5 9l4 .5 3-3zM8 16l-4 4',
   'sign-out': 'M10 4H5v16h5M9 12h11M16 8l4 4-4 4',
   key: `${circle(8, 15, 4)}M11 12l9-9M17 6l2 2M14.5 8.5l1.5 1.5`,
+  lock: 'M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3',
+  camera: `M4 8h3l1.5-2h7L17 8h3v11H4z${circle(12, 13, 3.2)}`,
 };
 
 /**

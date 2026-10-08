@@ -32,9 +32,10 @@ export function tierLabel(tier: string): string {
   return key ? t(key) : tier;
 }
 
-export function TierPill({ tier }: { tier: string }) {
+/** `label` replaces the tier's name, in the tier's colour ("Office tier" on the person screen). */
+export function TierPill({ tier, label }: { tier: string; label?: string }) {
   const tone = (TIER_TONES as Record<string, PillTone | undefined>)[tier] ?? 'default';
-  return <StatusPill tone={tone}>{tierLabel(tier)}</StatusPill>;
+  return <StatusPill tone={tone}>{label ?? tierLabel(tier)}</StatusPill>;
 }
 
 /** Shown beside a Server Master's name wherever users appear. */

@@ -67,6 +67,12 @@ interface Props {
   /** The signed-in user's resolved permissions, as the shell already holds them. */
   permissions: string[];
   transport: LogsTransport;
+  /**
+   * A search another screen opened the log with — a person's id, from their
+   * screen's "Open in activity log". Applied each time `nonce` changes, as a
+   * fresh set of filters; the box shows it and clearing it is one click.
+   */
+  search?: { q: string; nonce: number } | null;
 }
 
 /** The interface is English only, so one translator for the module's life is enough. */
@@ -160,7 +166,7 @@ function ActorCell({ entry }: { entry: ActivityLogEntry }) {
   );
 }
 
-export function LogsScreen({ permissions, transport }: Props) {
+export function LogsScreen({ permissions, transport, search }: Props) {
   // Held in a ref so a transport rebuilt on every panel render never re-runs
   // the fetch effects.
   const transportRef = useRef(transport);
@@ -191,6 +197,15 @@ export function LogsScreen({ permissions, transport }: Props) {
   const [verifyError, setVerifyError] = useState<string | null>(null);
 
   const query = useMemo(() => toQuery(filters), [filters]);
+
+  useEffect(() => {
+    if (!search) return;
+    setFilters({ ...NO_FILTERS, q: search.q });
+    setCursor(null);
+    setOpenEntry(null);
+    // Keyed on the nonce: the same person opened twice is two requests.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search?.nonce]);
 
   useEffect(() => {
     if (!canView) return;

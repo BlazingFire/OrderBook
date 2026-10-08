@@ -16,6 +16,13 @@ import { t } from './i18n.js';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 
+/** Why a chosen file cannot be a profile picture, or null when it can be sent. */
+export function avatarFileProblem(file: File): string | null {
+  if (!file.type.startsWith('image/')) return t('avatar.error.notAnImage');
+  if (file.size > MAX_AVATAR_SOURCE_BYTES) return t('avatar.error.tooLarge');
+  return null;
+}
+
 export function AvatarPicker({
   user,
   canEdit,
@@ -33,16 +40,9 @@ export function AvatarPicker({
 
   async function choose(file: File | undefined): Promise<void> {
     if (!file) return;
-    setFailure(null);
-
-    if (!file.type.startsWith('image/')) {
-      setFailure(t('avatar.error.notAnImage'));
-      return;
-    }
-    if (file.size > MAX_AVATAR_SOURCE_BYTES) {
-      setFailure(t('avatar.error.tooLarge'));
-      return;
-    }
+    const problem = avatarFileProblem(file);
+    setFailure(problem);
+    if (problem) return;
 
     setBusy(true);
     try {

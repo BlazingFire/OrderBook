@@ -389,6 +389,8 @@ function MasterPanel() {
   /** The Printroom job open as a sub-screen (the bell can open one), and the nonce the sidebar bumps to close it. */
   const [printOpen, setPrintOpen] = useState<string | null>(null);
   const [printResetNonce, setPrintResetNonce] = useState(0);
+  /** The search a person's "Open in activity log" hands the Activity log; the nonce repeats it. */
+  const [logsSearch, setLogsSearch] = useState<{ q: string; nonce: number } | null>(null);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [settingsTab, setSettingsTab] = useSettingsTab(
     'ob.settings.tab.master',
@@ -1811,6 +1813,14 @@ function MasterPanel() {
           currentUserTier={user.roleTier}
           tab={subKeyOf('access') as 'users' | 'roles'}
           onTabChange={(next) => selectSubPage('access', next)}
+          onOpenActivityLog={
+            offered('logs')
+              ? (userId: string) => {
+                  setLogsSearch((current) => ({ q: userId, nonce: (current?.nonce ?? 0) + 1 }));
+                  navigate('logs');
+                }
+              : undefined
+          }
         />
       ),
     },
@@ -1836,7 +1846,10 @@ function MasterPanel() {
         />
       ),
     },
-    { id: 'logs', render: () => <LogsScreen permissions={user.permissions} /> },
+    {
+      id: 'logs',
+      render: () => <LogsScreen permissions={user.permissions} search={logsSearch} />,
+    },
     {
       id: 'recycleBin',
       render: () => (

@@ -611,8 +611,9 @@ What an administrator should know:
 
 ## 15c. The notice board keys (Oct 2026)
 
-Two keys, group `notices`, shown in the role editor under **Notice board** and on each role card as **Read** or
-**Read and manage**:
+Two keys, group `notices`, shown in the role editor under **Notice board**, on each role card of the **Add user** form
+as **Read** or **Read and manage**, and on a person's screen (§15d) as the **Notice board** count under the role's
+permissions (1/2 reads, 2/2 also manages):
 
 | Key | Minimum tier | Meaning |
 |---|---|---|
@@ -629,6 +630,47 @@ tile, Alt+N); a band at the top of **Basic Home** with every notice placed there
 board; and, right after signing in, a pop-up of the **unread** notices placed at sign-in, important first. Each notice
 says whether it goes on Basic Home, at sign-in, or both, and the company can turn either surface off for everybody in
 Settings → Company → Notice board. No key is involved in either choice; the Dashboard card is unchanged.
+
+## 15d. One person's screen (2026-10-08)
+
+Roles & users → a person opens one screen (`master/web/src/screens/PersonScreen.tsx`), built to the owner's design.
+It adds no rule: every action is the existing call, refused again by the server, and a refusal shows in the banner
+above the screen.
+
+**Header.** The face (initials on a tint until somebody uploads a picture; with the right to change it, clicking it
+opens the file chooser: JPEG, PNG or WebP up to 5 MB, squared and resized to 1080 px on the Master), the name, Active or
+Inactive, the tier ("Office tier"), the role, the user id with a copy button, and "Never signed in" or "Last signed in
+3 hours ago". On the right, for a caller with `users.manage` on somebody at or below their own tier:
+
+| Control | Does |
+|---|---|
+| **Edit details** | the name and username form (`UserEditForm`) |
+| **Reset password** | type a new password or generate one; it is shown once |
+| ⋯ **Show password** | only with `users.viewPassword` and the vault switched on (§4.2) |
+| ⋯ **Deactivate** / **Activate** | "Blocks sign-in. Records stay." Deactivating asks first; activating does not (§14) |
+| ⋯ **Delete person** | "Moves to recycle bin." Asks first, then returns to the list (§14) |
+
+Deactivate and Delete are disabled, with the reason as their second line, for the last active administrator, the last
+two active Server Masters (§3.2), and the person signed in. The last is this screen's alone, as it was on the list
+before it: the server refuses the first two, not the third.
+
+**Access.** "Everything this person can do comes from their role." One card per role the caller may give (at or below
+their own tier, plus the person's own): its tier, a bar and "N of M permissions", how many people hold it, and
+"Current" on theirs. Without `roles.assign` on that person only their own role shows, and it cannot be changed here.
+Beside the cards, the permission matrix: modules down, View · Create · Edit · Delete · Export · Bulk across, from the
+catalogue (§5), a blank cell where a module has no such action. With nothing picked it shows the current role (✓ or ·);
+picking another role turns it into "Office → Management": ✓ kept, + gained (green), − lost (red), · in neither. Under
+it the capability groups as counts, before and after ("Workflow 2/5 → 4/5"). A bar then says "Change ayush to
+Management — +8 permissions, none lost. Takes effect on their next sync." with **Keep Office** and **Change role**.
+Only Change role saves (`roleId` with `expectedVersion`, so a second administrator's change in between is refused
+rather than overwritten); the change is logged as an `updated` user entry and takes effect as §13 describes. A picked
+role is not unsaved work: Back or Escape leaves without a question. **Manage roles** opens the Roles tab.
+
+**Side.** Identity (name, username, user id, tier, status), Activity (last sign-in, added, last changed, record version,
+and **Open in activity log**, which opens the Activity log searching for the person's id, so it lists the entries about
+their account), and Picture (the rules, and Remove when there is one).
+
+The Office Panel has no Roles & users screen (§16), so this screen is the Master's alone.
 
 ## 16. Where this deliberately differs from the supplied documents
 

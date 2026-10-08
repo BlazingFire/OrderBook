@@ -108,3 +108,25 @@ describe('panel-scoped keys', () => {
     expect(PANEL_SCOPED_KEYS.filter((key) => key in catalogue)).toEqual([]);
   });
 });
+
+/*
+ * The other direction, for the Roles & users strings: a key nothing names is what a rewritten
+ * screen leaves behind (the person screen, Oct 8, left eight). Repo-wide this cannot hold —
+ * `permission.*`, `module.*` and the activity tokens are looked up by built names — so it covers
+ * only the namespaces that are always written out whole.
+ */
+describe('Roles & users message keys', () => {
+  it('are each still named somewhere outside the catalogue', () => {
+    const source = ['shared/src', 'ui/src', 'master/src', 'master/web/src', 'office/src', 'office/web/src']
+      .flatMap((dir) => sourceFiles(path.join(ROOT, dir)))
+      .filter((file) => !file.endsWith(path.join('i18n', 'en.ts')))
+      .map((file) => readFileSync(file, 'utf8'))
+      .join('\n');
+    const unread = Object.keys(catalogue).filter(
+      (key) =>
+        /^(access|avatar)\./.test(key) && !source.includes(`'${key}'`) && !source.includes(`"${key}"`),
+    );
+
+    expect(unread).toEqual([]);
+  });
+});
