@@ -251,6 +251,10 @@ function KeyboardHelp() {
             </dd>,
           ];
         })}
+        {/* Not a command: Escape is reserved, and outside a dialog or list it
+            goes back a step (`AppShell`, R8). */}
+        <dt>{t('keys.help.back')}</dt>
+        <dd>{displayChord({ key: 'Escape' })}</dd>
       </dl>
     </Modal>
   );

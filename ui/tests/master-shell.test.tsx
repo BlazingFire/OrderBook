@@ -723,6 +723,58 @@ describe('Pending Orders and Final Orders', () => {
     expect(screen.queryByRole('button', { name: t('action.backToList') })).toBeNull();
   });
 
+  /** Escape, pressed on `target` the way a person presses it; it reaches `window` (R8). */
+  async function pressEscape(target: Element = document.body): Promise<void> {
+    await act(async () => {
+      fireEvent.keyDown(target, { key: 'Escape' });
+      await wait(0);
+    });
+  }
+
+  it('R8: Escape goes back from an open row to the list, and a second Escape to the landing screen', async () => {
+    await openList(ADMIN, t('nav.leads'));
+    fireEvent.click(await screen.findByText(LEAD.id));
+    await screen.findByRole('button', { name: t('action.backToList') });
+
+    await pressEscape();
+    expect(await screen.findByText(LEAD.id)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: t('action.backToList') })).toBeNull();
+    expect(topbarTitle()).toBe(t('lead.board.tab.list'));
+
+    await pressEscape();
+    expect(topbarTitle()).toBe(t('nav.master.dashboard'));
+
+    // At the landing screen there is nowhere further back to go.
+    await pressEscape();
+    expect(topbarTitle()).toBe(t('nav.master.dashboard'));
+  });
+
+  it('R8: back asks before throwing away a typed remark, and Escape is the same back', async () => {
+    await openList([...ADMIN, 'leads.edit'], t('nav.leads'));
+    fireEvent.click(await screen.findByText(LEAD.id));
+    const remark = await screen.findByPlaceholderText(t('lead.detail.addNotePlaceholder'));
+    fireEvent.change(remark, { target: { value: 'Call before loading' } });
+
+    await pressEscape(remark);
+    expect(await screen.findByText(t('action.back.discardTitle'))).toBeTruthy();
+    // The dialog's own Escape keeps the remark and the record.
+    await pressEscape();
+    await waitFor(() => expect(screen.queryByText(t('action.back.discardTitle'))).toBeNull());
+    expect(screen.getByPlaceholderText(t('lead.detail.addNotePlaceholder'))).toHaveProperty(
+      'value',
+      'Call before loading',
+    );
+
+    // A click on Back asks the same; Discard goes back to the list.
+    fireEvent.click(screen.getByRole('button', { name: t('action.backToList') }));
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: t('action.back.discard') }));
+      await wait(0);
+    });
+    expect(screen.queryByRole('button', { name: t('action.backToList') })).toBeNull();
+    expect(await screen.findByText(LEAD.id)).toBeTruthy();
+  });
+
   it('are offered only with leads.view and orders.view', async () => {
     await boot(['leads.view']);
     expect(screen.queryByTitle(t('nav.orders'))).toBeNull();
@@ -1255,6 +1307,23 @@ describe('New Order', () => {
     await boot(CREATE);
     await openFormByKey();
     expect(screen.getAllByTitle(t('lead.add.title'))).toHaveLength(1);
+  });
+
+  it('R8: Escape does not leave a form with a party being typed, from the field or from anywhere', async () => {
+    await boot(CREATE);
+    await openFormByKey();
+    const party = screen.getByLabelText(t('lead.add.party.search'));
+    fireEvent.change(party, { target: { value: 'Sha' } });
+
+    for (const target of [party, document.body]) {
+      await act(async () => {
+        fireEvent.keyDown(target, { key: 'Escape' });
+        await wait(0);
+      });
+    }
+
+    expect(topbarTitle()).toBe(t('lead.add.title'));
+    expect(screen.getByLabelText(t('lead.add.party.search'))).toBeTruthy();
   });
 
   it('returns to the Pending list on Cancel, even after a record was open', async () => {

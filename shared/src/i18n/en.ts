@@ -1825,11 +1825,13 @@ export const EN_MESSAGES = {
   'keys.settings.press': 'Press a key…',
   'keys.settings.clear': 'Clear shortcut',
   'keys.settings.reserved':
-    'Escape and Tab are reserved for closing dialogs and moving between fields.',
+    'Escape and Tab are reserved: Escape closes a dialog or list, or goes back a step; Tab moves between fields.',
   'keys.settings.title': 'Keyboard shortcuts',
   'keys.help.title': 'Keyboard shortcuts',
   'keys.help.unbound': 'Not bound',
   'keys.help.conflict': 'Shared with another command',
+  /** The fixed row under the rebindable ones: what Escape does outside a dialog or list. */
+  'keys.help.back': 'Go back (a record to its list, a page to Home)',
   'nav.catalogue': 'Catalogue',
   'nav.collapse': 'Collapse',
   'nav.collapseSidebar': 'Collapse sidebar',

@@ -893,7 +893,8 @@ function OfficePanel() {
    * `/` used to live here too, focusing a topbar search box; it is
    * `palette.search` now, resolved by `KeyboardProvider` against the same
    * bindings as every other chord. The popover keeps its own Escape because it
-   * is not a `[role="dialog"]` and so `useOverlay` never sees it.
+   * is not a `[role="dialog"]` and so `useOverlay` never sees it. It is an
+   * `.ob-popover`, so the shell's Escape-back (R8) leaves that press to it.
    */
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

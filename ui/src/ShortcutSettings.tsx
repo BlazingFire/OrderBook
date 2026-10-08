@@ -69,6 +69,8 @@ export function ShortcutSettings() {
                 type="button"
                 className="ob-btn ob-btn--ghost"
                 aria-label={t('keys.settings.change')}
+                // While recording, the shell's Escape-back stands aside (`AppShell`).
+                data-key-capture={active || undefined}
                 onClick={() => {
                   setRefused(false);
                   setCapturing(active ? null : command.id);
@@ -113,6 +115,13 @@ export function ShortcutSettings() {
             </dd>,
           ];
         })}
+        {/* Not a command and not rebindable: Escape is reserved, and outside a
+            dialog or list it goes back a step (`AppShell`, R8). */}
+        <dt>{t('keys.help.back')}</dt>
+        <dd style={{ display: 'flex' }}>
+          <span style={{ flex: 1 }} />
+          {formatChord({ key: 'Escape' })}
+        </dd>
       </dl>
     </div>
   );

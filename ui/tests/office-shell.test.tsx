@@ -1111,6 +1111,85 @@ describe('the New lead form', () => {
   });
 });
 
+describe('Escape (R8)', () => {
+  async function openOrder(): Promise<Call[]> {
+    const calls = await boot({
+      permissions: ['orders.view'],
+      view: { orders: [ORDER], pipelines: [ORDER_PIPELINE] },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTitle(t('nav.orders')));
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByText(ORDER.id));
+    });
+    await screen.findByRole('button', { name: t('action.backToList') });
+    return calls;
+  }
+
+  /** Escape, pressed on `target` the way a person presses it; it reaches `window`. */
+  async function pressEscape(target: Element = document.body): Promise<void> {
+    await act(async () => {
+      fireEvent.keyDown(target, { key: 'Escape' });
+      await wait(0);
+    });
+  }
+
+  it('goes back from an open order to the list, then to Basic Home, then nowhere', async () => {
+    await openOrder();
+
+    await pressEscape();
+    expect(screen.queryByRole('button', { name: t('action.backToList') })).toBeNull();
+    expect(await screen.findByText(ORDER.id)).toBeTruthy();
+
+    await pressEscape();
+    expect(topbarTitle()).toBe(t('nav.basicHome'));
+
+    await pressEscape();
+    expect(topbarTitle()).toBe(t('nav.basicHome'));
+  });
+
+  it('asks before throwing away a dispatch note, and its own Escape keeps the note', async () => {
+    await openOrder();
+    const note = screen.getByLabelText(t('orders.detail.dispatchNoteLabel'));
+    fireEvent.change(note, { target: { value: 'Load first' } });
+
+    await pressEscape(note);
+    expect(await screen.findByText(t('action.back.discardTitle'))).toBeTruthy();
+
+    await pressEscape();
+    await waitFor(() => expect(screen.queryByText(t('action.back.discardTitle'))).toBeNull());
+    expect(screen.getByLabelText(t('orders.detail.dispatchNoteLabel'))).toHaveProperty('value', 'Load first');
+    expect(screen.getByRole('button', { name: t('action.backToList') })).toBeTruthy();
+  });
+
+  it('saves a weight override typed before Escape, as leaving the field by mouse does', async () => {
+    const calls = await openOrder();
+    const field = screen.getByLabelText<HTMLInputElement>(t('orders.detail.weightOverrideLabel'));
+    // Real focus, so the shell moving it to Back is a real blur.
+    act(() => field.focus());
+    fireEvent.change(field, { target: { value: '175' } });
+
+    await pressEscape(field);
+
+    expect(
+      calls.filter((call) => call.method === 'PUT' && call.url === `/api/orders/${ORDER.id}`),
+    ).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: t('action.backToList') })).toBeNull();
+  });
+
+  it('does not leave the New lead form once something is typed on it', async () => {
+    await boot({ permissions: ['leads.view', 'leads.create'] });
+    fireEvent.click(newLeadButton());
+    await draftOneProduct();
+
+    await pressEscape();
+
+    expect(topbarTitle()).toBe(t('lead.add.title'));
+    expect(screen.getByLabelText(`${t('lead.add.draft.col.quantity')} — AQ-W`)).toBeTruthy();
+  });
+});
+
 describe('the order weight override', () => {
   /*
    * A write here is queued and answered at once, and no snapshot follows it —
