@@ -9,6 +9,7 @@ import { config } from '../../config/index.js';
 import { listLanInterfaces } from '../../lib/network.js';
 import { resolvePartyScope } from '../../domain/party-scope.js';
 import * as panelService from '../../services/panel.service.js';
+import { bundledOfficeSetups } from '../../services/update.service.js';
 import { queryInt } from '../query.js';
 import { asyncHandler } from '../async-handler.js';
 import { consume } from '../middleware/api-key-rate-limit.js';
@@ -124,6 +125,12 @@ async function pairingWindowState(tenantId: string): Promise<PairingWindowState>
     port: config.http.port,
     addresses: listLanInterfaces().map(({ name, address }) => ({ name, address })),
     discovery: discoveryStatus(),
+    officeSetups: (await bundledOfficeSetups()).map(({ platform, version, file, sizeBytes }) => ({
+      platform,
+      version,
+      file,
+      sizeBytes,
+    })),
   };
 }
 

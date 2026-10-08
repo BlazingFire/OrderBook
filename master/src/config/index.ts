@@ -132,6 +132,14 @@ export const config = {
   /** The catalogue's photos, `<sub product code>.jpg`, attached on boot (`services/catalogue-photos.service.ts`). */
   cataloguePhotosDir: path.join(packageRoot, 'assets', 'catalogue', 'photos'),
 
+  /**
+   * The Office setups this Master's own setup file carried, each with its signed
+   * manifest (`bundleOfficeSetups()` in `tools/release.mjs`). Copied into the
+   * releases folder on boot and handed to a new office PC
+   * (`services/update.service.ts`). Absent when running from source.
+   */
+  officeSetupDir: path.join(packageRoot, 'office-setup'),
+
   session: {
     cookieName: 'orderbook_session',
     /** Sessions live in memory; restarting the Master signs admins out. */

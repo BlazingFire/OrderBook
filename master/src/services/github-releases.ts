@@ -565,9 +565,10 @@ function manifestNames(platform: ReleasePlatform): string[] {
  * produces a correctly-named empty file every later read believes.
  *
  * A `latest-win32.json.tmp` stranded by a crash is swept as debris by the next
- * sync for that OS (`isDebrisOf`).
+ * sync for that OS (`isDebrisOf`). Also how the Office setup a Master carries
+ * goes into the folder (`seedBundledOfficeRelease` in `update.service.ts`).
  */
-async function writeManifest(
+export async function writeManifest(
   releaseDir: string,
   manifest: ReleaseManifest,
   platform: ReleasePlatform,
@@ -655,7 +656,7 @@ const isDebrisOf = (file: string, platform: ReleasePlatform) => {
  * Asked entry by entry rather than once per sweep, so a build pinned while the
  * sweep is already under way is still spared.
  */
-const supersededBy =
+export const supersededBy =
   (keep: string, spared: () => readonly string[]) =>
   (entry: string): boolean =>
     isOurArtefact(entry) && sameOs(entry, keep) && entry !== keep && !spared().includes(entry);
@@ -731,7 +732,10 @@ async function runningAppImageIn(releaseDir: string): Promise<string | null> {
  * @returns how many entries were removed, so the log can say so rather than
  * being a silent sweep somebody has to trust.
  */
-async function sweep(releaseDir: string, doomed: (entry: string) => boolean): Promise<number> {
+export async function sweep(
+  releaseDir: string,
+  doomed: (entry: string) => boolean,
+): Promise<number> {
   let entries: string[];
   try {
     entries = await readdir(releaseDir);

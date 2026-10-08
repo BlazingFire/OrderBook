@@ -44,7 +44,7 @@ import { startBackupScheduler } from './services/backup-scheduler.js';
 import { startConnectorScheduler } from './services/connector-scheduler.js';
 import { startNotificationPruner } from './services/notification.service.js';
 import { announceNewVersion, startAutoUpdateScheduler } from './services/auto-update.js';
-import { startReleasePolling } from './services/update.service.js';
+import { seedBundledOfficeRelease, startReleasePolling } from './services/update.service.js';
 import { isSetupComplete, refreshStoredLanIp } from './services/setup.service.js';
 import { startMemoryMonitor } from './lib/memory-monitor.js';
 
@@ -279,6 +279,11 @@ async function main(): Promise<void> {
     // takes minutes, and the panel serves meanwhile.
     void attachCataloguePhotos().catch((error: unknown) => {
       log.warn(`Could not attach the catalogue photos: ${toErrorMessage(error)}`);
+    });
+    // The Office setup this Master's setup file carried, into the releases
+    // folder the Offices update from. Not awaited either: 85 MB or more to copy.
+    void seedBundledOfficeRelease().catch((error: unknown) => {
+      log.warn(`Could not offer the bundled Office setup: ${toErrorMessage(error)}`);
     });
     hub = createRealtimeHub(server);
 

@@ -478,6 +478,8 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
         expect(Array.isArray(state.body.addresses)).toBe(true);
         expect(typeof state.body.port).toBe('number');
         expect(state.body.discovery).toHaveProperty('listening');
+        // Running from source carries no Office setup to hand a new PC.
+        expect(state.body.officeSetups).toEqual([]);
 
         await stranger.get('/api/panels/pairing-window').expect(403);
       });

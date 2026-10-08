@@ -25,6 +25,8 @@ export const LIMITS = {
   uploadPerIp: 120,
   /** `/api/v1` before the key's own limit applies; stops key-guessing floods. */
   publicApiPerIp: 1_200,
+  /** The Office setup a new PC downloads (85 MB or more each); one or two is a person. */
+  officeSetupPerIp: 10,
   /** Socket.IO commands per connection; a panel flushing its outbox sends a batch per push. */
   socketPerConnection: 1_200,
 } as const;
