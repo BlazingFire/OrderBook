@@ -293,12 +293,15 @@ interface ImportOptions {
    * Recycle Bin, as it leaves them: a dry run reads them as there.
    * `exactVariants` makes each file sub product's codes exactly its rows: a
    * code the file leaves out is removed (deactivated while history quotes it),
-   * not only listed.
+   * not only listed. `leaving` are the live sub products the exact run moves
+   * to the Recycle Bin before it writes: a dry run reads them as gone, so the
+   * name one holds is free for a file row, as it is by the time the run writes.
    */
   restore?: {
     pendingCategories?: readonly productRepo.CategorySeed[];
     plannedCategories?: ReadonlyArray<{ id: string; code: string | null; name: string; brand: string | null }>;
     exactVariants?: boolean;
+    leaving?: readonly string[];
   };
 }
 
@@ -710,7 +713,8 @@ export async function importProducts(
   }
 
   const bySheet = (a: ImportGroup, b: ImportGroup): number => (a.rows[0]?.row ?? 0) - (b.rows[0]?.row ?? 0);
-  const liveSubs = await liveSubProducts(actor.tenantId);
+  const leaving = new Set(options.restore?.leaving);
+  const liveSubs = (await liveSubProducts(actor.tenantId)).filter((sub) => !leaving.has(sub.id));
   const nameKey = (categoryId: string, name: string): string => `${categoryId}\u001f${name.trim().toLowerCase()}`;
 
   if (restore && options.mode === 'upsert') {

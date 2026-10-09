@@ -43,14 +43,21 @@
  * (`exactCatalogue`) does both, moves the main products, colours and brands to
  * the Recycle Bin the same way, and removes those codes: the catalogue made
  * exactly the file, nothing of the one shipped with a new install left beside
- * it. Without one of the last two ticked, no photo is ever erased.
+ * it. A colour goes to the Recycle Bin only for someone who may delete one; for
+ * anyone else it is switched off. A file with no photo at all says nothing
+ * about photos, and one with no colours.csv nothing about colours: none is
+ * listed missing, so those stay. Without one of the last two ticked, no photo
+ * is ever erased. The exact run takes out first, before it writes, the sub
+ * products it bins and the main products they leave empty that no row names
+ * (`clearedFirst`), so a name or code they hold is free for the file's own.
  *
  * **One function answers "what would this zip do" and "do it"** (`runZip`), as
- * the spreadsheet import does: the preview a person approves and the run that
- * follows cannot disagree. The real run encodes every new photo, which takes
- * minutes for a few hundred, so it runs detached as the one product restore
- * (`startProductRestore`), polled by the screen. It is its own slot, never the
- * backup/restore one: it replaces nothing wholesale and needs no maintenance.
+ * the spreadsheet import does: the preview, run with the opt-ins the person
+ * ticks, and the run that follows cannot disagree. The real run encodes every
+ * new photo, which takes minutes for a few hundred, so it runs detached as the
+ * one product restore (`startProductRestore`), polled by the screen. It is its
+ * own slot, never the backup/restore one: it replaces nothing wholesale and
+ * needs no maintenance.
  */
 
 import { createHash, randomUUID } from 'node:crypto';
@@ -894,12 +901,16 @@ async function binnedCategories(
  * With an Order column a main product's Order is the file's; without one (an
  * earlier version's file) one already there keeps its place, and a new one
  * goes after the last.
+ *
+ * `clearing`: the live main products the exact run moves to the Recycle Bin
+ * before it writes (`clearedFirst`). The names and codes they hold are free.
  */
 async function planMainProducts(
   rows: readonly MainRow[],
   brands: ListPlan | null,
   actor: ActorContext,
   problems: ProductZipProblem[],
+  clearing: ReadonlySet<string>,
 ): Promise<MainPlan> {
   const { tenantId } = actor;
   const live = await productRepo.listCategories(tenantId);
@@ -1069,9 +1080,10 @@ async function planMainProducts(
   // One by one, as the run makes them: a change waits until the name and code it takes are let
   // go. One that never is (two that swap names, or one a main product the file leaves as it is
   // holds) clashes, in the preview as in the run. New ones go in last, into what is left.
-  const names = new Map(live.map((category) => [nameKey(category), category.id]));
+  const staying = live.filter((category) => !clearing.has(category.id));
+  const names = new Map(staying.map((category) => [nameKey(category), category.id]));
   const codes = new Map(
-    live.flatMap((category) =>
+    staying.flatMap((category) =>
       category.code ? [[lower(category.code), category.id] as const] : [],
     ),
   );
@@ -1642,6 +1654,53 @@ function unusedBrands(
   return options.filter((option) => !used.has(lower(option.value)));
 }
 
+/** A live sub product with a code, none of whose codes the file names. */
+function codesNotInFile(product: Product, fileCodes: ReadonlySet<string>): boolean {
+  const codes = product.variants
+    .filter((variant) => variant.isActive)
+    .map((variant) => variant.code.toLowerCase());
+  return codes.length > 0 && !codes.some((code) => fileCodes.has(code));
+}
+
+/**
+ * The live main products the exact run moves to the Recycle Bin before it
+ * writes, so the file may give the names and codes they hold to its own: no
+ * row of either file names one, by its code, or by its (brand, name) where the
+ * row's code is none a live main product has (`planMainProducts` reads it so),
+ * and every sub product of it goes too, none of its codes in the file. Each is
+ * one the run takes out anyway (`mainGone`); the others go after the rows.
+ */
+function clearedFirst(
+  mains: ReadonlyArray<{ id: string; code: string | null; name: string; brand: string | null }>,
+  products: readonly Product[],
+  zip: ZipContents,
+): Set<string> {
+  const liveCodes = new Set(mains.map((main) => lower(main.code)));
+  const rows: Array<{ code?: string | null; name: string; brand?: string | null }> = [
+    ...zip.mainProducts,
+    ...zip.mainNames,
+  ];
+  const kept = new Set(
+    products
+      .filter((product) => !codesNotInFile(product, zip.fileCodes))
+      .map((product) => product.categoryId),
+  );
+  return new Set(
+    mains
+      .filter(
+        (main) =>
+          !kept.has(main.id) &&
+          !rows.some((row) =>
+            row.code && liveCodes.has(lower(row.code))
+              ? lower(row.code) === lower(main.code)
+              : lower(row.name) === lower(main.name) &&
+                (!row.brand || lower(row.brand) === lower(main.brand)),
+          ),
+      )
+      .map((main) => main.id),
+  );
+}
+
 /** `{ [key]: list }`, or nothing for an empty list: the report leaves out a list with nothing in it. */
 const ifAny = <K extends string, T>(key: K, list: readonly T[]): Partial<Record<K, T[]>> =>
   (list.length > 0 ? { [key]: [...list] } : {}) as Partial<Record<K, T[]>>;
@@ -1667,11 +1726,15 @@ async function runZip(
       throw zipRefusal(error);
     });
 
-    const brands = zip.brands && (await planList(tenantId, 'product.brand', zip.brands));
-    const planned = await planMainProducts(zip.mainProducts, brands, actor, problems);
-    const colours = zip.colours && (await planList(tenantId, 'stock.colour', zip.colours));
     // As they stand before anything is written: what the exact catalogue can take out.
     const mainsBefore = await productRepo.listCategories(tenantId);
+    const liveBefore = exact
+      ? (await productRepo.listProducts(tenantId, { limit: 100_000, offset: 0 })).items
+      : [];
+    const clearing = exact ? clearedFirst(mainsBefore, liveBefore, zip) : new Set<string>();
+    const brands = zip.brands && (await planList(tenantId, 'product.brand', zip.brands));
+    const planned = await planMainProducts(zip.mainProducts, brands, actor, problems, clearing);
+    const colours = zip.colours && (await planList(tenantId, 'stock.colour', zip.colours));
     const brandsBefore = brands
       ? []
       : await customFieldRepo.listOptionsForKey(tenantId, 'product.brand');
@@ -1695,12 +1758,84 @@ async function runZip(
       requirePermission(actor, 'catalog.lists.manage');
     const exactNeedsLists = mayTakeOut > 0 && !actorCan(actor, 'catalog.lists.manage');
 
+    // A dry run reads the main products the run creates, recodes or brings back from the Bin as it
+    // leaves them, and (`leaving`) the sub products the exact run bins first as gone.
+    const importRows = (dry: boolean, leaving?: readonly Product[]) =>
+      importProducts(
+        { buffer: zip.productsCsv, fileName: PRODUCTS_CSV },
+        {
+          dryRun: dry,
+          mode: 'upsert',
+          restore: {
+            ...(dry
+              ? {
+                  pendingCategories: planned.added,
+                  plannedCategories: planned.changed.map((change) => ({
+                    id: change.id,
+                    ...change.final,
+                  })),
+                }
+              : {}),
+            exactVariants: exact,
+            ...(leaving ? { leaving: leaving.map((product) => product.id) } : {}),
+          },
+        },
+        actor,
+      );
+    // The live sub products none of whose codes the file names and no row read by its name.
+    const missingOf = (products: readonly Product[], matchedIds: readonly string[] = []) => {
+      const matched = new Set(matchedIds);
+      return products.filter(
+        (product) => !matched.has(product.id) && codesNotInFile(product, zip.fileCodes),
+      );
+    };
+    // The exact run takes out first, before it writes, what holds a name or a code the file may
+    // give another: those sub products, which a dry run of the import tells, then the main
+    // products they leave empty (`clearing`). Its preview reads them as gone the same way.
+    const missingFirst = exact
+      ? missingOf(liveBefore, (await importRows(true)).rows?.matchedIds)
+      : [];
+
+    /** Each through the ordinary delete, a refusal said and not thrown: how many went. */
+    const binEach = async <T>(
+      items: readonly T[],
+      bin: (item: T) => Promise<unknown>,
+      subject: (item: T) => string,
+    ): Promise<number> => {
+      let count = 0;
+      for (const item of items) {
+        try {
+          await bin(item);
+          count += 1;
+        } catch (error) {
+          problems.push(problemOf(subject(item), error));
+        }
+      }
+      return count;
+    };
+    const binProducts = (products: readonly Product[]) =>
+      binEach(
+        products,
+        (product) => catalog.deleteProduct(product.id, actor),
+        (product) => product.variants[0]?.code ?? product.name,
+      );
+    const binMains = (mains: typeof mainsBefore) =>
+      binEach(
+        mains,
+        (gone) => catalog.deleteCategory(gone.id, actor),
+        (gone) => gone.code ?? gone.name,
+      );
+
     let main = planned;
+    let binned = 0;
+    const removed = { mainProducts: 0, colours: 0, brands: 0 };
     if (!dryRun) {
       // The first write: from here on the catalogue is the company's own, and the shipped photos
       // never come back on a later boot. A run refused before this only stopped them.
       if (!options.keepPhotos) await retireCataloguePhotos();
       progress({ phase: 'products' });
+      binned = await binProducts(missingFirst);
+      removed.mainProducts = await binMains(mainsBefore.filter((gone) => clearing.has(gone.id)));
       main = await applyMainProducts(planned, brands, actor, problems);
       // The colours after the main products, in one transaction: nothing is half written before a refusal there.
       if (colours && listChanges(colours) > 0) {
@@ -1709,42 +1844,13 @@ async function runZip(
       }
     }
 
-    // A dry run reads the main products the run creates, recodes or brings back from the Bin as it leaves them.
-    const { rows, ...imported } = await importProducts(
-      { buffer: zip.productsCsv, fileName: PRODUCTS_CSV },
-      {
-        dryRun,
-        mode: 'upsert',
-        restore: {
-          ...(dryRun
-            ? {
-                pendingCategories: planned.added,
-                plannedCategories: planned.changed.map((change) => ({
-                  id: change.id,
-                  ...change.final,
-                })),
-              }
-            : {}),
-          exactVariants: exact,
-        },
-      },
-      actor,
-    );
+    const { rows, ...imported } = await importRows(dryRun, dryRun && exact ? missingFirst : undefined);
     const added = rows?.added ?? [];
     // Every sub product a row read, by its codes or (another install's codes) by its name: none is missing.
     const matched = new Set(rows?.matchedIds ?? []);
 
     const live = (await productRepo.listProducts(tenantId, { limit: 100_000, offset: 0 })).items;
-    const missing = live.filter((product) => {
-      const codes = product.variants
-        .filter((variant) => variant.isActive)
-        .map((variant) => variant.code.toLowerCase());
-      return (
-        codes.length > 0 &&
-        !matched.has(product.id) &&
-        !codes.some((code) => zip.fileCodes.has(code))
-      );
-    });
+    const missing = exact ? missingFirst : missingOf(live, rows?.matchedIds);
 
     // What `exactCatalogue` takes out besides, the same for the preview and the run. A main product
     // neither file names goes once its sub products have: kept only by one the file names but whose
@@ -1775,18 +1881,21 @@ async function runZip(
     // (`rows.subProducts`): a new one, one back from the Bin, one a code is added to.
     // So does the exact run, with the codes `exactVariants` removed, as its preview
     // read them: a photo the zip names by one is kept or replaced, never removed
-    // unlisted. The planner reads only their id, codes and gallery.
+    // unlisted. The sub products the exact run bins first are not there for either.
+    // The planner reads only their id, codes and gallery.
     let products = live;
     if (dryRun || exact) {
       // The run's new ones are live already.
       const subs = (rows?.subProducts ?? []).filter((sub) => dryRun || sub.id);
       const held = new Map(live.map((product) => [product.id, product]));
-      const binned = subs.flatMap((sub) => (sub.id && !held.has(sub.id) ? [sub.id] : []));
-      for (const [id, product] of await productRepo.findProductsByIds(tenantId, binned))
+      const inBin = subs.flatMap((sub) => (sub.id && !held.has(sub.id) ? [sub.id] : []));
+      for (const [id, product] of await productRepo.findProductsByIds(tenantId, inBin))
         held.set(id, product);
       const changing = new Set(subs.map((sub) => sub.id));
       products = [
-        ...live.filter((product) => !changing.has(product.id)),
+        ...live.filter(
+          (product) => !changing.has(product.id) && !(exact && leaving.has(product.id)),
+        ),
         ...subs.map(
           (sub, index) =>
             ({
@@ -1877,40 +1986,19 @@ async function runZip(
     photos.reordered = landed.reordered;
 
     progress({ phase: 'removing', done: 0, total: 0 });
-    let binned = 0;
-    if (options.binMissingProducts || exact) {
-      for (const product of missing) {
-        try {
-          await catalog.deleteProduct(product.id, actor);
-          binned += 1;
-        } catch (error) {
-          problems.push(problemOf(product.variants[0]?.code ?? product.name, error));
-        }
-      }
-    }
+    // The exact run's went first.
+    if (options.binMissingProducts && !exact) binned = await binProducts(missing);
     // After the sub products: a main product with one left is refused, and said.
-    const removed = { mainProducts: 0, colours: 0, brands: 0 };
     if (exact) {
-      for (const gone of mainGone) {
-        try {
-          await catalog.deleteCategory(gone.id, actor);
-          removed.mainProducts += 1;
-        } catch (error) {
-          problems.push(problemOf(gone.code ?? gone.name, error));
-        }
-      }
-      const binValues = async (values: readonly OptionListItem[], list: 'colours' | 'brands') => {
-        for (const option of values) {
-          try {
-            await fields.deleteValue(option.id, actor);
-            removed[list] += 1;
-          } catch (error) {
-            problems.push(problemOf(option.value, error));
-          }
-        }
-      };
-      await binValues(brandsGone, 'brands');
-      if (binColours) await binValues(coloursGone, 'colours');
+      removed.mainProducts += await binMains(mainGone.filter((gone) => !clearing.has(gone.id)));
+      const binValues = (values: readonly OptionListItem[]) =>
+        binEach(
+          values,
+          (option) => fields.deleteValue(option.id, actor),
+          (option) => option.value,
+        );
+      removed.brands = await binValues(brandsGone);
+      if (binColours) removed.colours = await binValues(coloursGone);
       else if (coloursGone.length > 0) {
         await db().transaction(async (trx) => {
           for (const option of coloursGone)
@@ -1926,17 +2014,14 @@ async function runZip(
       }
       report.exactRemoved = removed;
     }
-    let photosRemoved = 0;
-    if (options.removeMissingPhotos || exact) {
-      for (const photo of photoPlan.notInZip) {
-        try {
-          await deleteImage(photo.imageId, actor);
-          photosRemoved += 1;
-        } catch (error) {
-          problems.push(problemOf(photo.name, error));
-        }
-      }
-    }
+    const photosRemoved =
+      options.removeMissingPhotos || exact
+        ? await binEach(
+            photoPlan.notInZip,
+            (photo) => deleteImage(photo.imageId, actor),
+            (photo) => photo.name,
+          )
+        : 0;
     report.binned = binned;
     report.photosRemoved = photosRemoved;
 
@@ -2015,13 +2100,14 @@ async function runZip(
   }
 }
 
-/** What the zip would do: nothing is written. */
+/** What the zip would do with these opt-ins: nothing is written. */
 export function previewProductZip(
   filePath: string,
   fileName: string,
   actor: ActorContext,
+  options: ProductRestoreOptions = {},
 ): Promise<ProductZipReport> {
-  return runZip(filePath, fileName, { dryRun: true }, actor);
+  return runZip(filePath, fileName, { ...options, dryRun: true }, actor);
 }
 
 /** Do it, here and now: the job below, and the shipped catalogue on boot. */

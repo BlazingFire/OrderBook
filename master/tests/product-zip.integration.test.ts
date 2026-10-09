@@ -744,6 +744,13 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
         fileName: 'backup.zip',
         products: { unchanged: SUB_PRODUCTS },
       });
+      // The preview is of the run its opt-ins ask for: the exact catalogue asks products.delete.
+      await agent
+        .post('/api/products/restore')
+        .field('dryRun', 'true')
+        .field('exactCatalogue', 'true')
+        .attach('file', zip, 'backup.zip')
+        .expect(403);
 
       const started = await agent
         .post('/api/products/restore')
