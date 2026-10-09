@@ -93,11 +93,17 @@ import * as settingsRepo from '../repositories/settings.repository.js';
 import { resolveDefaultTenantId } from '../repositories/tenant.repository.js';
 import { currentJob, isJobRunning } from './backup-job.js';
 import * as catalog from './catalog.service.js';
-import { loadCatalogue, readCatalogueFile, upsertOptions } from './catalogue-seed.service.js';
+import { retireCataloguePhotos } from './catalogue-photos.service.js';
+import {
+  loadCatalogue,
+  readCatalogueFile,
+  SHIPPED_CATALOGUE_MARKER,
+  upsertOptions,
+} from './catalogue-seed.service.js';
 import { publishChange } from './change-bus.js';
 import { deleteImage, reorderImages, updateImageCaption, uploadImage } from './image.service.js';
 import { buildProductExport, importProducts, registerBrands } from './product-import.service.js';
-import { getIdentity } from './setup.service.js';
+import { getIdentity, isSetupComplete } from './setup.service.js';
 
 const log = createLogger('product-zip');
 
@@ -1115,13 +1121,18 @@ export function previewProductZip(
 }
 
 /** Do it, here and now: the job below, and the shipped catalogue on boot. */
-export function restoreProductZip(
+export async function restoreProductZip(
   filePath: string,
   fileName: string,
   options: RunOptions,
   actor: ActorContext,
   progress?: Progress,
 ): Promise<ProductZipReport> {
+  // The company's own catalogue from here on, whether this run ends well or
+  // not: the shipped photos still being attached stop before the plan reads a
+  // gallery, and never come back on a later boot. The boot load's zip is the
+  // shipped catalogue itself, so it is the one run that does not.
+  if (!options.keepPhotos) await retireCataloguePhotos();
   return runZip(filePath, fileName, { ...options, dryRun: false }, actor, progress);
 }
 
@@ -1142,7 +1153,9 @@ export function isProductRestoreRunning(): boolean {
 /**
  * Start the real run detached and answer at once; the upload at `filePath` is
  * deleted when it ends. A second start while one runs is refused, not queued,
- * and so is one while a full backup restore runs, whichever came first.
+ * and so is one while a full backup restore runs, whichever came first. The
+ * shipped photos' attach is not a reason to refuse: the run stops it, and waits
+ * for it, before it reads anything (`restoreProductZip`).
  */
 export function startProductRestore(
   filePath: string,
@@ -1189,28 +1202,28 @@ export function startProductRestore(
 
 // --- The catalogue every build ships ------------------------------------------------
 
-/**
- * Where the boot load is recorded: a settings row no `SETTINGS` definition
- * names, so no screen shows it (as `internal.cataloguePhotosAttached`):
- * `state: 'loading'` before the load writes anything, `'done'` once it ends.
- */
-export const SHIPPED_CATALOGUE_MARKER = 'internal.shippedCatalogueLoaded';
+/** Where the boot load is recorded (`catalogue-seed.service.ts`). */
+export { SHIPPED_CATALOGUE_MARKER };
 
 /**
- * The catalogue this build carries, loaded once, on boot, into an install
- * whose catalogue has never held anything: not one main product, the Recycle
- * Bin included, before setup or after it. `assets/catalogue/products.zip` when
+ * The catalogue this build carries, loaded once, on boot, into a brand-new
+ * install: not yet set up, and its catalogue has never held anything, not one
+ * main product, the Recycle Bin included. `assets/catalogue/products.zip` when
  * the build carries one (`release --catalogue`), through the restore above;
  * else the printed catalogue (`swisware-plus-2026.md`). Either way as System:
- * nobody may exist yet to act as.
+ * nobody exists yet to act as.
  *
  * Recorded under the marker whatever it found, so an install that already has
  * products only gets the marker, and a catalogue a company later empties on
- * purpose is never filled again. A load is marked `loading` before its first
- * write, so one the Master stopped in the middle of (the window closed while
- * the photos went in) or one that threw runs again on the next boot, without
+ * purpose is never filled again. An install already set up (one an update
+ * reaches, or one a full backup restored) only gets the marker too, even with
+ * an empty catalogue: an update never changes an install's data. A load is
+ * marked `loading` before its first write, so one the Master stopped in the
+ * middle of (the window closed while the photos went in) or one that threw
+ * runs again on the next boot while the install is still not set up, without
  * loading anything twice: rows are upserted by code, and a photo already in
- * its slot stays (`keepPhotos`). Answers what it loaded, `none` for the
+ * its slot stays (`keepPhotos`). Once it is set up the company's own data may
+ * be there, so it is never carried on. Answers what it loaded, `none` for the
  * marker alone, and null when it had already run.
  */
 export async function loadShippedCatalogue(
@@ -1236,6 +1249,12 @@ export async function loadShippedCatalogue(
       ),
     );
 
+  // Before the carry-on below: a load that failed on the first boot must not
+  // land on what the company has set up or restored since.
+  if (await isSetupComplete()) {
+    await mark({ state: 'done', loaded: 'none' });
+    return 'none';
+  }
   // A load already under way carries on over what it wrote; otherwise only into a catalogue never used.
   if (!marker && (await db()('product_categories').where({ tenant_id: tenantId }).first('id'))) {
     await mark({ state: 'done', loaded: 'none' });

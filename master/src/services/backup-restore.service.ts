@@ -32,6 +32,7 @@ import {
 import { backfillPendingOrderNumbers } from '../repositories/identity.repository.js';
 import { clearNotifications } from '../repositories/notification.repository.js';
 import { clearVault } from '../repositories/password-vault.repository.js';
+import { stopCataloguePhotos } from './catalogue-photos.service.js';
 import { resetProcessCaches } from './process-caches.js';
 import { ensureServerMasterRole } from './server-master.service.js';
 import { generateReadableSecret, isSetupComplete } from './setup.service.js';
@@ -99,6 +100,9 @@ export async function restoreBackup(
 
   const newPairingPassword = generateReadableSecret();
   const newPairingHash = await bcrypt.hash(newPairingPassword, BCRYPT_ROUNDS);
+
+  // A photo the attach on a new install writes after the load would land on the restored catalogue.
+  await stopCataloguePhotos();
 
   await db().transaction(async (trx) => {
     const tables = await listUserTables(trx);

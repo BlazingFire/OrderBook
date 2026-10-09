@@ -1,6 +1,8 @@
 /**
  * The catalogue photos attached on boot (`services/catalogue-photos.service.ts`):
- * only where a sub product has no photo, once per shipped set.
+ * only where a sub product has no photo, once per install, on the printed
+ * catalogue it loaded. `product-backup-boot.integration.test.ts` has the
+ * installs that never get them, and the restores that stop them.
  */
 
 import { access, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
@@ -11,10 +13,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import type { ActorContext } from '../src/domain/actor.js';
 import { config } from '../src/config/index.js';
+import { db } from '../src/db/knex.js';
 import * as catalog from '../src/services/catalog.service.js';
 import { attachCataloguePhotos, healMissingImageFiles } from '../src/services/catalogue-photos.service.js';
+import { SHIPPED_CATALOGUE_MARKER } from '../src/services/catalogue-seed.service.js';
 import * as imageService from '../src/services/image.service.js';
 import * as productRepo from '../src/repositories/product.repository.js';
+import * as settingsRepo from '../src/repositories/settings.repository.js';
 import { canRunIntegrationTests } from './helpers/db.js';
 import { resetData, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
 
@@ -44,6 +49,10 @@ describe.skipIf(!canRunIntegrationTests)('catalogue photos on boot (integration)
     actor = await testActor();
     if (dir) await rm(dir, { recursive: true, force: true });
     dir = await mkdtemp(path.join(os.tmpdir(), 'catalogue-photos-'));
+    // What the printed catalogue's load records, which is what lets the attach run.
+    await db().transaction((trx) =>
+      settingsRepo.upsertSetting(actor.tenantId, SHIPPED_CATALOGUE_MARKER, { state: 'done', loaded: 'markdown' }, false, 1, null, trx),
+    );
   });
 
   it('attaches a photo only where there is none, and leaves the company photo alone', async () => {
@@ -89,27 +98,25 @@ describe.skipIf(!canRunIntegrationTests)('catalogue photos on boot (integration)
     expect(await imagesOf(bare.id)).toHaveLength(0);
   });
 
-  it('runs a changed set once more, adding only where a photo is still missing', async () => {
+  it('never runs a changed set: a later build adds no photo where the company has none', async () => {
     const first = await catalog.createProduct({ categoryName: 'Basins', variants: [{ code: 'BAS-0004' }], name: 'Wide' }, actor);
     const second = await catalog.createProduct({ categoryName: 'Basins', variants: [{ code: 'BAS-0005' }], name: 'Narrow' }, actor);
     await writeFile(path.join(dir, 'BAS-0004.jpg'), await jpeg('#00ff00'));
     await attachCataloguePhotos(dir);
 
     await writeFile(path.join(dir, 'BAS-0005.jpg'), await jpeg('#0000ff'));
-    const rerun = await attachCataloguePhotos(dir);
-
-    expect(rerun).toMatchObject({ attached: 1, skipped: 1 });
+    expect(await attachCataloguePhotos(dir)).toBeNull();
     expect(await imagesOf(first.id)).toHaveLength(1);
-    expect(await imagesOf(second.id)).toHaveLength(1);
+    expect(await imagesOf(second.id)).toHaveLength(0);
   });
 
-  it('tries again on the next boot when no photo matched, as before the catalogue is loaded', async () => {
+  it('counts a run that matched nothing as the one run too', async () => {
     await writeFile(path.join(dir, 'BAS-0006.jpg'), await jpeg('#00ff00'));
     expect(await attachCataloguePhotos(dir)).toMatchObject({ attached: 0, skipped: 1 });
 
     const later = await catalog.createProduct({ categoryName: 'Basins', variants: [{ code: 'BAS-0006' }], name: 'Late' }, actor);
-    expect(await attachCataloguePhotos(dir)).toMatchObject({ attached: 1 });
-    expect(await imagesOf(later.id)).toHaveLength(1);
+    expect(await attachCataloguePhotos(dir)).toBeNull();
+    expect(await imagesOf(later.id)).toHaveLength(0);
   });
 
   it('writes missing photo files again on boot, under the same id, even after the set already ran', async () => {
@@ -120,7 +127,7 @@ describe.skipIf(!canRunIntegrationTests)('catalogue photos on boot (integration)
     const folder = path.join(tenantImagesDir, before!.id);
     await rm(folder, { recursive: true, force: true });
 
-    // The set's marker is recorded, so nothing is attached; the files still come back.
+    // The run is recorded, so nothing is attached; the files still come back.
     expect(await attachCataloguePhotos(dir)).toBeNull();
     expect((await readdir(folder)).sort()).toEqual(['large.webp', 'master.webp', 'micro.webp', 'thumb.webp']);
     const [after] = await imagesOf(bare.id);
