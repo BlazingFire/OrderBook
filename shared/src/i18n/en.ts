@@ -434,7 +434,7 @@ export const EN_MESSAGES = {
     '"{column}" differs from row {firstRow}, which is also {name} — the rows of one sub product must agree, so this row is another sub product of the same name. Give it its own name.',
   'validation.import.binnedNeedsDelete':
     '{name} is in the Recycle Bin — bringing it back needs the Delete products permission',
-  'validation.productZip.fileRequired': 'Choose a .zip file',
+  'validation.productZip.fileRequired': 'Choose a .zip, .csv or .xlsx file',
   'validation.productZip.tooLarge': 'That zip is larger than 1 GB',
   'validation.productZip.notAZip': 'That file could not be opened as a zip',
   'validation.productZip.noProductsCsv': 'This zip has no products.csv, so it is not an OrderBook product backup',
@@ -442,9 +442,13 @@ export const EN_MESSAGES = {
   'validation.productZip.entryRejected':
     'This zip holds a file it should not ({entry}), so nothing was read from it',
   'validation.productZip.codeInvalid': 'The main product code {code} must be letters and digits only',
-  'validation.productZip.hexInvalid': '{hex} is not a colour like #1A2B3C, so the colour was left as it is',
+  'validation.productZip.hexInvalid': '{hex} is not a colour like #1A2B3C, so its hex was left as it is',
   'validation.productZip.mainDiffers':
     'products.csv gives the {column} as "{value}" but main-products.csv as "{main}". Only main-products.csv is read, so change it there.',
+  'validation.productZip.mainDuplicate':
+    'Another row already lists this main product ({first}), so this row was not read',
+  'validation.productZip.unknownFile':
+    '{file} is none of the files a product backup holds (products, main-products, colours, brands, photos), so it was not read',
   'import.skip.codeExists': 'Product code "{productCode}" already exists — skipped',
   // --- Bulk party import (docs/PARTY_IMPORT_FORMAT.md) -----------------------
   'validation.party.pincodeInvalid': 'Pincode must be six digits',
@@ -2233,16 +2237,18 @@ export const EN_MESSAGES = {
   'productZip.restore': 'Restore from .zip',
   'productZip.title': 'Restore products from a .zip',
   'productZip.intro':
-    'Choose a product backup zip, edited or not. Nothing changes until you have seen what it would do and pressed Apply.',
-  'productZip.choose': 'Choose a .zip file',
+    'Choose a product backup zip, edited or not, or the products .csv or .xlsx an earlier version exported. Nothing changes until you have seen what it would do and pressed Apply.',
+  'productZip.choose': 'Choose a file',
   'productZip.checking': 'Reading the zip…',
   'productZip.section.mainProducts': 'Main products',
   'productZip.section.rows': 'Sub products',
   'productZip.section.colours': 'Colours',
+  'productZip.section.brands': 'Brands',
   'productZip.section.photos': 'Photos',
   'productZip.item.added': 'New: {count}',
-  'productZip.item.renamed': 'Renamed: {count}',
   'productZip.item.changed': 'Changed: {count}',
+  'productZip.item.restoredFromBin': 'Brought back from the Recycle Bin: {count}',
+  'productZip.item.listReordered': 'Put in the order of the file',
   'productZip.item.unchanged': 'Unchanged: {count}',
   'productZip.item.notInFile': 'In the catalogue but not in products.csv: {count}',
   'productZip.item.replaced': 'Replaced: {count}',
@@ -2263,7 +2269,7 @@ export const EN_MESSAGES = {
   'productZip.nothing': 'The zip matches the catalogue. There is nothing to change.',
   'productZip.apply': 'Apply',
   'productZip.phase.checking': 'Reading the zip',
-  'productZip.phase.products': 'Saving main products, sub products and colours',
+  'productZip.phase.products': 'Saving brands, main products, colours and sub products',
   'productZip.phase.photos': 'Adding photos',
   'productZip.phase.removing': 'Removing what you ticked',
   'productZip.photoProgress': '{done} of {total} photos',

@@ -288,12 +288,18 @@ interface ImportOptions {
    * whose sub products the file lists in another order is renumbered.
    *
    * The result lists the rows added and the cells changed (`ImportedRows`).
-   * `pendingCategories` are the main products the zip will create first: a dry
-   * run reads them as there. `exactVariants` makes each file sub product's
-   * codes exactly its rows: a code the file leaves out is removed (deactivated
-   * while history quotes it), not only listed.
+   * `pendingCategories` are the main products the zip will create first, and
+   * `plannedCategories` the ones it will recode, rename or bring back from the
+   * Recycle Bin, as it leaves them: a dry run reads them as there.
+   * `exactVariants` makes each file sub product's codes exactly its rows: a
+   * code the file leaves out is removed (deactivated while history quotes it),
+   * not only listed.
    */
-  restore?: { pendingCategories?: readonly productRepo.CategorySeed[]; exactVariants?: boolean };
+  restore?: {
+    pendingCategories?: readonly productRepo.CategorySeed[];
+    plannedCategories?: ReadonlyArray<{ id: string; code: string | null; name: string; brand: string | null }>;
+    exactVariants?: boolean;
+  };
 }
 
 type UpdateGroup = ImportGroup & {
@@ -416,6 +422,21 @@ export async function importProducts(
       deletedAt: null,
       subProductCount: 0,
     });
+  }
+  for (const planned of options.restore?.plannedCategories ?? []) {
+    const live = liveCategories.find((category) => category.id === planned.id);
+    if (live) Object.assign(live, planned);
+    else {
+      liveCategories.push({
+        ...planned,
+        tenantId: actor.tenantId,
+        sortOrder: null,
+        createdAt: '',
+        updatedAt: '',
+        deletedAt: null,
+        subProductCount: 0,
+      });
+    }
   }
   const [brandOptions, colourOptions] = await Promise.all([
     customFieldRepo.listOptionsForKey(actor.tenantId, 'product.brand'),

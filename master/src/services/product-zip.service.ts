@@ -4,10 +4,16 @@
  *
  *     products.csv         the sub product export, the import's own columns
  *     main-products.csv    Brand, Main product code, Main product, Order
- *     colours.csv          Colour, Hex
+ *     colours.csv          Colour, Label, Hex, Active: the colour list, in its order
+ *     brands.csv           Brand, Label, Active: the Brands list, in its order
  *     images/OPT-0001.webp photo 1 of OPT-0001; OPT-0001_2.webp is photo 2
  *     photos.csv           File, Caption: each photo's caption, by its name in images/
  *     README.txt
+ *
+ * A bare products sheet restores too, as a zip holding only `products.csv`:
+ * the CSV or XLSX the Products export saved before the zip existed
+ * (`products-2026-10-07.csv`, 1.2.4–1.4.6) and the import template. In a zip,
+ * the files those versions downloaded keep their dated names.
  *
  * **Nothing here is a second importer.** `products.csv` goes back through the
  * upsert import (`importProducts`, with `restore`), the photos through the bulk
@@ -16,7 +22,8 @@
  * the screens would. What the zip adds is the parts the CSV cannot carry: main
  * products created with their code, brand and order (a code never creates one
  * in the import, so an empty catalogue could not be restored), main products
- * renamed, the colour list with its hex, and photos compared by content.
+ * renamed, recoded, reordered or brought back from the Recycle Bin, the colour
+ * and brand lists, and photos compared by content.
  *
  * **Change detection is exact.** A photo is written as its stored `master.webp`,
  * byte for byte, so its sha256 is `product_images.checksum`, and another
@@ -43,8 +50,9 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { access, mkdir, rm } from 'node:fs/promises';
+import { access, mkdir, open, readFile, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 
 import {
   CATEGORY_CODE_PATTERN,
@@ -57,18 +65,20 @@ import {
   runPhotoImport,
   type MessageKey,
   type MessageParams,
+  type OptionListItem,
   type PhotoPlanRow,
   type Product,
   type ProductCellChange,
   type ProductImage,
   type ProductRestoreJob,
   type ProductRestoreOptions,
+  type ProductZipList,
   type ProductZipProblem,
   type ProductZipReport,
 } from '@orderbook/shared';
 
 import { config } from '../config/index.js';
-import { requirePermission, systemActor, type ActorContext } from '../domain/actor.js';
+import { actorCan, requirePermission, systemActor, type ActorContext } from '../domain/actor.js';
 import { companySlug, MAX_ARCHIVE_ENTRIES } from '../domain/archive.js';
 import {
   IMPORT_COLUMNS,
@@ -88,13 +98,14 @@ import {
   ValidationError,
 } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
-import { readSheetRows } from '../lib/spreadsheet.js';
+import { readSheetRows, sheetKindOf } from '../lib/spreadsheet.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as customFieldRepo from '../repositories/custom-field.repository.js';
 import * as imageRepo from '../repositories/product-image.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
 import * as settingsRepo from '../repositories/settings.repository.js';
 import { resolveDefaultTenantId } from '../repositories/tenant.repository.js';
+import type { TransactionContext } from '../repositories/transaction.js';
 import { currentJob, isJobRunning } from './backup-job.js';
 import * as catalog from './catalog.service.js';
 import { retireCataloguePhotos } from './catalogue-photos.service.js';
@@ -102,7 +113,6 @@ import {
   loadCatalogue,
   readCatalogueFile,
   SHIPPED_CATALOGUE_MARKER,
-  upsertOptions,
 } from './catalogue-seed.service.js';
 import { publishChange } from './change-bus.js';
 import { deleteImage, reorderImages, updateImageCaption, uploadImage } from './image.service.js';
@@ -114,11 +124,17 @@ const log = createLogger('product-zip');
 const PRODUCTS_CSV = 'products.csv';
 const MAIN_PRODUCTS_CSV = 'main-products.csv';
 const COLOURS_CSV = 'colours.csv';
+const BRANDS_CSV = 'brands.csv';
 const PHOTOS_CSV = 'photos.csv';
+/** The names the Products export saved under from 1.2.4 on, a dated one or not, CSV or XLSX. */
+const PRODUCT_SHEETS = /^products(-\d{4}-\d{2}-\d{2})?\.(csv|xlsx)$/i;
+const MAIN_SHEETS = /^main-products(-\d{4}-\d{2}-\d{2})?\.(csv|xlsx)$/i;
 const MAIN_HEADERS = ['Brand', 'Main product code', 'Main product', 'Order'];
-const COLOUR_HEADERS = ['Colour', 'Hex'];
+const COLOUR_HEADERS = ['Colour', 'Label', 'Hex', 'Active'];
+const BRAND_HEADERS = ['Brand', 'Label', 'Active'];
 const PHOTO_HEADERS = ['File', 'Caption'];
 const HEX = /^#[0-9a-f]{6}$/i;
+const BOM = '﻿';
 
 const labelOf = (field: ImportField): string =>
   IMPORT_COLUMNS.find((column) => column.field === field)?.label ?? field;
@@ -217,8 +233,11 @@ function readme(company: string, date: string, unnamed: readonly string[]): stri
     '',
     '  products.csv       One row per sub product, in catalogue order: Brand, Main product code,',
     '                     Main product, Sub product, Size, Colour rule, Colour, Code, Weight (kg), Alias.',
-    '  main-products.csv  The main products: their code, brand and order.',
-    '  colours.csv        The colour list, with the hex value of each colour.',
+    '  main-products.csv  The main products: their code, brand and Order, their place in the',
+    '                     catalogue (a blank Order lists after the numbered ones, by name).',
+    '  colours.csv        The colour list in its order: each colour, its label, its hex value',
+    '                     and Active (yes, or no for one switched off).',
+    '  brands.csv         The Brands list in its order: each brand, its label and Active.',
     '  images             Every product photo, named by the sub product Code:',
     '                     OPT-0001.webp is the first (main) photo of OPT-0001,',
     '                     OPT-0001_2.webp its second photo, OPT-0001_3.webp its third.',
@@ -232,16 +251,19 @@ function readme(company: string, date: string, unnamed: readonly string[]): stri
     '  2. Change a cell to change that value. Leave the Code column as it is: the Code is how',
     '     each row finds its sub product.',
     '  3. To add a sub product, add a row with a new Code that no other row uses.',
-    '  4. To rename a main product or change its brand, change it in main-products.csv: the',
-    '     Main product and Brand cells of products.csv are not read for a main product listed',
-    '     there. Order only places a main product the restore adds; to reorder the ones you',
-    '     have, use the Main products screen.',
-    '  5. To replace a photo, put the new picture in the images folder under the same name and',
+    '  4. To rename a main product, or change its brand or Order, change it in main-products.csv:',
+    '     the Main product and Brand cells of products.csv are not read for a main product listed',
+    '     there. One listed with the brand and name of a main product you have, under another',
+    '     code, is that main product: it takes the code of the file.',
+    '  5. colours.csv and brands.csv are those lists as they are: change a Label, a Hex or Active',
+    '     there, or the order of the rows. One the list lacks is added; one the file leaves out',
+    '     stays as it is.',
+    '  6. To replace a photo, put the new picture in the images folder under the same name and',
     '     delete the old file, even when the ending differs: OPT-0001.jpg replaces OPT-0001.webp.',
     '     jpg, png and webp pictures are accepted.',
-    '  6. To add a second photo, name it OPT-0001_2.jpg (a third: OPT-0001_3.jpg, and so on).',
-    "  7. To change a photo's caption, change it in photos.csv.",
-    '  8. On the Master, open Products > Sub products > Restore from .zip and choose the zip.',
+    '  7. To add a second photo, name it OPT-0001_2.jpg (a third: OPT-0001_3.jpg, and so on).',
+    "  8. To change a photo's caption, change it in photos.csv.",
+    '  9. On the Master, open Products > Sub products > Restore from .zip and choose the zip.',
     '     It lists every change first; nothing is saved until you press Apply.',
     '',
     'WHAT REMOVING DOES',
@@ -249,7 +271,8 @@ function readme(company: string, date: string, unnamed: readonly string[]): stri
     '  A row deleted from products.csv, or a photo deleted from the images folder, is only',
     '  listed when you restore. Nothing is removed unless you tick "Move sub products missing',
     '  from the file to the Recycle Bin" or "Remove photos missing from the zip". Sub products',
-    '  in the Recycle Bin can be brought back from there; a removed photo cannot.',
+    '  in the Recycle Bin can be brought back from there; a removed photo cannot. A main',
+    '  product or sub product in the Recycle Bin whose code the zip names comes back from there.',
     '',
     'EXCEL',
     '',
@@ -306,21 +329,28 @@ export async function exportProductZip(
     count = productsCsv.count;
     await writer.appendEntry(PRODUCTS_CSV, [productsCsv.bytes]);
 
+    // Order is the stored one, blank where it has none: the list sorts by it, then by name.
     const categories = await productRepo.listCategories(tenantId);
-    const mainRows = categories.map((category, index) => [
+    const mainRows = categories.map((category) => [
       category.brand ?? '',
       category.code ?? '',
       category.name,
-      index + 1,
+      category.sortOrder ?? '',
     ]);
-    await writer.appendEntry(MAIN_PRODUCTS_CSV, ['﻿' + toCsv(MAIN_HEADERS, mainRows)]);
+    await writer.appendEntry(MAIN_PRODUCTS_CSV, [BOM + toCsv(MAIN_HEADERS, mainRows)]);
 
-    // The values in use: one switched off is not offered, and restoring it would switch it back on.
+    // Every value in the list, one switched off too, in the list's order.
     const colours = await customFieldRepo.listOptionsForKey(tenantId, 'stock.colour');
-    const colourRows = colours
-      .filter((option) => option.isActive)
-      .map((option) => [option.value, option.hex ?? '']);
-    await writer.appendEntry(COLOURS_CSV, ['﻿' + toCsv(COLOUR_HEADERS, colourRows)]);
+    const colourRows = colours.map((option) => [
+      option.value,
+      option.label,
+      option.hex ?? '',
+      yesNo(option.isActive),
+    ]);
+    await writer.appendEntry(COLOURS_CSV, [BOM + toCsv(COLOUR_HEADERS, colourRows)]);
+    const brands = await customFieldRepo.listOptionsForKey(tenantId, 'product.brand');
+    const brandRows = brands.map((option) => [option.value, option.label, yesNo(option.isActive)]);
+    await writer.appendEntry(BRANDS_CSV, [BOM + toCsv(BRAND_HEADERS, brandRows)]);
 
     const { items } = await productRepo.listProducts(tenantId, { limit: 100_000, offset: 0 });
     const codes = codesOf(items);
@@ -350,7 +380,7 @@ export async function exportProductZip(
     if (unnamed.length > 0)
       log.warn(`${unnamed.length} photos are left out of the backup; its README lists them`);
 
-    await writer.appendEntry(PHOTOS_CSV, ['﻿' + toCsv(PHOTO_HEADERS, captions)]);
+    await writer.appendEntry(PHOTOS_CSV, [BOM + toCsv(PHOTO_HEADERS, captions)]);
     await writer.appendEntry('README.txt', [readme(company ?? 'this company', date, unnamed)]);
     await writer.finalize();
   } catch (error) {
@@ -391,17 +421,68 @@ function zipRefusal(error: unknown): unknown {
   return error;
 }
 
-/** One fixed file, found by its name wherever it sits, case aside. Two of them is a question only the person can answer. */
-function findEntry(reader: ZipReader, file: string): string | null {
-  const hits = reader.entries.filter(
-    (entry) => !entry.name.endsWith('/') && baseName(entry.name).toLowerCase() === file,
-  );
+/** What this module reads of a zip: a bare sheet is one too (`sheetFiles`). */
+type ZipFiles = Pick<ZipReader, 'entries' | 'openStream' | 'close'>;
+
+/** A bare sheet as a zip holding only `products.csv`, whatever its bytes: `readSheetRows` tells a CSV from an XLSX. */
+async function sheetFiles(filePath: string): Promise<ZipFiles> {
+  if ((await stat(filePath)).size > MAX_PRODUCT_IMPORT_BYTES)
+    throw new ValidationError('validation.import.tooLarge');
+  const bytes = await readFile(filePath);
+  return {
+    entries: [{ name: PRODUCTS_CSV, bytes: bytes.length }],
+    openStream: async () => Readable.from([bytes]),
+    close: () => undefined,
+  };
+}
+
+/**
+ * The upload, as the zip it is or as a bare products sheet: no zip's first
+ * bytes is a CSV, and an XLSX is a zip itself, one whose `[Content_Types].xml`
+ * sits beside no products file.
+ */
+async function openUpload(filePath: string): Promise<ZipFiles> {
+  const handle = await open(filePath);
+  const head = Buffer.alloc(4);
+  try {
+    await handle.read(head, 0, head.length, 0);
+  } finally {
+    await handle.close();
+  }
+  if (sheetKindOf(head) === 'csv') return sheetFiles(filePath);
+
+  let reader: ZipReader;
+  try {
+    reader = await openZipReader(filePath, MAX_ARCHIVE_ENTRIES, { windowsNames: true });
+  } catch (error) {
+    throw zipRefusal(error);
+  }
+  const names = reader.entries.map((entry) => entry.name);
+  if (
+    names.includes('[Content_Types].xml') &&
+    !names.some((name) => PRODUCT_SHEETS.test(baseName(name)))
+  ) {
+    reader.close();
+    return sheetFiles(filePath);
+  }
+  return reader;
+}
+
+/**
+ * One fixed file, found by its name wherever it sits, case aside; else, with
+ * `names`, by a name an earlier version saved it under. Two of them is a
+ * question only the person can answer.
+ */
+function findEntry(reader: ZipFiles, file: string, names?: RegExp): string | null {
+  const files = reader.entries.filter((entry) => !entry.name.endsWith('/'));
+  let hits = files.filter((entry) => baseName(entry.name).toLowerCase() === file);
+  if (hits.length === 0 && names) hits = files.filter((entry) => names.test(baseName(entry.name)));
   if (hits.length > 1) throw new ValidationError('validation.productZip.manyFiles', { file });
   return hits[0]?.name ?? null;
 }
 
 async function entryBytes(
-  reader: ZipReader,
+  reader: ZipFiles,
   name: string,
   maxBytes: number,
   tooLarge: MessageKey,
@@ -414,7 +495,7 @@ async function entryBytes(
 }
 
 async function sheetOf(
-  reader: ZipReader,
+  reader: ZipFiles,
   name: string,
 ): Promise<{ bytes: Buffer; rows: string[][] }> {
   const bytes = await entryBytes(
@@ -430,12 +511,69 @@ async function sheetOf(
   }
 }
 
-/** A main product as a file asks for it. `brand` undefined leaves the brand as it is. */
+const cell = (row: readonly string[], index: number): string =>
+  index >= 0 ? (row[index] ?? '').trim() : '';
+
+/**
+ * A main product as a file asks for it. `brand` undefined leaves the brand as
+ * it is; `order` undefined (no Order column) leaves its place, and null is none.
+ */
 interface MainRow {
   code: string | null;
   name: string;
   brand: string | null | undefined;
-  order: number | null;
+  order: number | null | undefined;
+}
+
+/** A `colours.csv` or `brands.csv` row. A field left undefined is a column the file lacks: that value stays. */
+interface ListRow {
+  value: string;
+  label?: string;
+  hex?: string | null;
+  active: boolean;
+}
+
+/**
+ * `colours.csv` or `brands.csv`, a value listed twice, case aside, read once:
+ * the first row says it. A colours.csv with only Colour and Hex (an earlier
+ * build's) reads as it always did: a blank hex leaves the colour's own, and
+ * every colour it lists is switched on.
+ */
+async function readList(
+  reader: ZipFiles,
+  entry: string,
+  valueHeaders: readonly string[],
+  problems: ProductZipProblem[],
+): Promise<ListRow[]> {
+  const { rows } = await sheetOf(reader, entry);
+  const header = (rows[0] ?? []).map((text) => normalizeHeader(text ?? ''));
+  const valueAt = header.findIndex((text) => valueHeaders.includes(text));
+  const labelAt = header.indexOf('label');
+  const hexAt = header.indexOf('hex');
+  const activeAt = header.indexOf('active');
+  const whole = labelAt !== -1 || activeAt !== -1;
+  const list: ListRow[] = [];
+  for (const row of rows.slice(1)) {
+    const value = cell(row, valueAt);
+    if (!value || list.some((listed) => listed.value.toLowerCase() === value.toLowerCase()))
+      continue;
+    const read: ListRow = {
+      value,
+      active: activeAt === -1 || !/^(no|n|false|0)$/i.test(cell(row, activeAt)),
+    };
+    // A blank label is the value's own, as the Fields screen saves one.
+    if (labelAt !== -1) read.label = cell(row, labelAt) || value;
+    const hex = cell(row, hexAt);
+    if (hex && !HEX.test(hex))
+      problems.push({
+        subject: value,
+        messageKey: 'validation.productZip.hexInvalid',
+        params: { hex },
+      });
+    else if (hex || (whole && hexAt !== -1)) read.hex = hex || null;
+    list.push(read);
+  }
+  return list;
 }
 
 /** One photo in `images/`, hashed on the way in. */
@@ -452,7 +590,9 @@ interface ZipContents {
   /** Every code `products.csv` names, lower-cased, a row with problems included. */
   fileCodes: Set<string>;
   mainProducts: MainRow[];
-  colours: Array<{ value: string; hex: string | null }>;
+  colours: ListRow[];
+  /** Null for a zip without `brands.csv`: the brands main products name are added as before (`registerBrands`). */
+  brands: ListRow[] | null;
   photos: ZipPhoto[];
   /** A second file under the very same name, in another folder: never planned. */
   extraPhotos: string[];
@@ -460,15 +600,15 @@ interface ZipContents {
   captions: Map<string, string> | null;
 }
 
-async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promise<ZipContents> {
-  const productsEntry = findEntry(reader, PRODUCTS_CSV);
+async function readZip(reader: ZipFiles, problems: ProductZipProblem[]): Promise<ZipContents> {
+  const productsEntry = findEntry(reader, PRODUCTS_CSV, PRODUCT_SHEETS);
   if (!productsEntry) throw new ValidationError('validation.productZip.noProductsCsv');
   const products = await sheetOf(reader, productsEntry);
 
   // The header is checked here, before anything is written, with the import's own words.
   const headerAt = products.rows.findIndex((row) => !isBlankRow(row));
   if (headerAt === -1) throw new ValidationError('validation.import.emptyFile');
-  const match = matchHeaders((products.rows[headerAt] ?? []).map((cell) => cell.trim()));
+  const match = matchHeaders((products.rows[headerAt] ?? []).map((text) => text.trim()));
   if (match.missing.length > 0) {
     throw new ValidationError('validation.import.missingColumn', {
       column: labelOf(match.missing[0] as ImportField),
@@ -476,8 +616,6 @@ async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promis
   }
   const at = (field: ImportField): number =>
     match.byIndex.findIndex((column) => column?.field === field);
-  const cell = (row: readonly string[], index: number): string =>
-    index >= 0 ? (row[index] ?? '').trim() : '';
 
   const fileCodes = new Set<string>();
   // A main product products.csv names by a code main-products.csv does not list: its first row says what it is.
@@ -494,7 +632,7 @@ async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promis
     const brand = cell(row, at('categoryBrand'));
     cells.push({ code: mainCode.toLowerCase(), name, brand });
     if (!named.some((main) => main.code?.toLowerCase() === mainCode.toLowerCase())) {
-      named.push({ code: mainCode, name, brand: brand || undefined, order: null });
+      named.push({ code: mainCode, name, brand: brand || undefined, order: undefined });
     }
   }
   // A header and nothing else: refused here, before a main product is written, not by the import after.
@@ -502,7 +640,8 @@ async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promis
     throw new ValidationError('validation.import.emptyFile');
 
   const mainProducts: MainRow[] = [];
-  const mainEntry = findEntry(reader, MAIN_PRODUCTS_CSV);
+  // 1.2.5–1.4.6 saved it as main-products-2026-10-07.csv, with no Order column.
+  const mainEntry = findEntry(reader, MAIN_PRODUCTS_CSV, MAIN_SHEETS);
   if (mainEntry) {
     const { rows } = await sheetOf(reader, mainEntry);
     const header = rows[0] ?? [];
@@ -515,13 +654,21 @@ async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promis
     );
     for (const row of rows.slice(1)) {
       if (isBlankRow(row)) continue;
-      const order = Number.parseInt(cell(row, orderAt), 10);
+      const code = cell(row, mainAt('categoryCode')) || null;
+      const name = cell(row, mainAt('categoryName'));
+      // No Order column leaves every place as it is; an empty cell is no Order.
+      const text = cell(row, orderAt);
+      let order = orderAt === -1 ? undefined : text === '' ? null : Number(text);
+      if (typeof order === 'number' && !(Number.isInteger(order) && order >= 0)) {
+        problems.push({ subject: code ?? name, messageKey: 'validation.category.sortOrder' });
+        order = undefined;
+      }
       mainProducts.push({
-        code: cell(row, mainAt('categoryCode')) || null,
-        name: cell(row, mainAt('categoryName')),
+        code,
+        name,
         // No Brand column leaves every brand as it is; an empty cell clears that one.
         brand: brandAt === -1 ? undefined : cell(row, brandAt) || null,
-        order: Number.isInteger(order) && order >= 0 ? order : null,
+        order,
       });
     }
 
@@ -532,8 +679,11 @@ async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promis
         params: { column: labelOf(field), value, main: listed },
       });
     };
+    const checked = new Set<string>();
     for (const main of mainProducts) {
-      if (!main.code) continue;
+      // A code listed again is not read at all (`planMainProducts` says so), so only its first row is compared.
+      if (!main.code || checked.has(main.code.toLowerCase())) continue;
+      checked.add(main.code.toLowerCase());
       const own = cells.filter((row) => row.code === main.code?.toLowerCase());
       const name = own.find((row) => row.name !== main.name);
       if (name && at('categoryName') !== -1)
@@ -549,27 +699,12 @@ async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promis
       mainProducts.push(main);
   }
 
-  const colours: ZipContents['colours'] = [];
   const colourEntry = findEntry(reader, COLOURS_CSV);
-  if (colourEntry) {
-    const { rows } = await sheetOf(reader, colourEntry);
-    const header = (rows[0] ?? []).map((text) => normalizeHeader(text ?? ''));
-    const valueAt = header.findIndex((text) => text === 'colour' || text === 'color');
-    const hexAt = header.indexOf('hex');
-    for (const row of rows.slice(1)) {
-      const value = cell(row, valueAt);
-      // A value listed twice is one colour: the first row says its hex.
-      if (!value || colours.some((colour) => colour.value === value)) continue;
-      const hex = cell(row, hexAt);
-      if (hex && !HEX.test(hex))
-        problems.push({
-          subject: value,
-          messageKey: 'validation.productZip.hexInvalid',
-          params: { hex },
-        });
-      colours.push({ value, hex: HEX.test(hex) ? hex : null });
-    }
-  }
+  const colours = colourEntry
+    ? await readList(reader, colourEntry, ['colour', 'color'], problems)
+    : [];
+  const brandsEntry = findEntry(reader, BRANDS_CSV);
+  const brands = brandsEntry ? await readList(reader, brandsEntry, ['brand'], problems) : null;
 
   let captions: ZipContents['captions'] = null;
   const captionsEntry = findEntry(reader, PHOTOS_CSV);
@@ -586,19 +721,29 @@ async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promis
     }
   }
 
-  // Photos are the files in a folder named `images`, at any depth; anything else in the zip is not looked at.
+  // Photos are the files in a folder named `images`, at any depth. Of the rest only a sheet is
+  // looked at: one that is none of the files above was meant to be read, so it is said, not skipped.
+  const sheets = new Set([productsEntry, mainEntry, colourEntry, brandsEntry, captionsEntry]);
   const photos: ZipPhoto[] = [];
   const extraPhotos: string[] = [];
   for (const { name: entry } of reader.entries) {
+    if (sheets.has(entry) || entry.endsWith('/')) continue;
     if (
-      entry === captionsEntry ||
-      entry.endsWith('/') ||
       !entry
         .split('/')
         .slice(0, -1)
         .some((folder) => folder.toLowerCase() === 'images')
-    )
+    ) {
+      if (/\.(csv|xlsx)$/i.test(entry)) {
+        const file = baseName(entry);
+        problems.push({
+          subject: file,
+          messageKey: 'validation.productZip.unknownFile',
+          params: { file },
+        });
+      }
       continue;
+    }
     const name = fromFileSafe(baseName(entry));
     if (photos.some((photo) => photo.name === name)) {
       extraPhotos.push(name);
@@ -619,35 +764,102 @@ async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promis
     fileCodes,
     mainProducts,
     colours,
+    brands,
     photos,
     extraPhotos,
     captions,
   };
 }
 
-// --- Main products and colours ---------------------------------------------------
+// --- Main products, colours and brands ---------------------------------------------
+
+/** A main product as it stands, live or in the Recycle Bin. */
+interface MainHeld {
+  id: string;
+  code: string | null;
+  name: string;
+  brand: string | null;
+  sortOrder: number | null;
+}
+
+/** What the run does to one main product there already, through the ordinary edit. */
+interface MainChange {
+  id: string;
+  /** How the report names it: its code before the run, else its name. */
+  code: string;
+  /** In the Recycle Bin: brought back first, as the Bin's own Restore does. */
+  binned: boolean;
+  was: MainHeld;
+  final: { code: string | null; name: string; brand: string | null };
+  patch: { name?: string; code?: string; brand?: string | null; sortOrder?: number | null };
+  fields: ProductCellChange[];
+}
 
 interface MainPlan {
   added: productRepo.CategorySeed[];
-  renamed: Array<{
-    id: string;
-    code: string;
-    name: string;
-    brand: string | null | undefined;
-    fields: ProductCellChange[];
-  }>;
+  /** In an order the run can make them one by one: none takes a name or a code before its holder lets it go. */
+  changed: MainChange[];
+}
+
+const lower = (value: string | null | undefined): string => (value ?? '').toLowerCase();
+/** What `idx_categories_brand_name` keeps unique. */
+const nameKey = (main: { brand: string | null; name: string }): string =>
+  `${lower(main.brand)}\u0000${lower(main.name)}`;
+
+/** The main products in the Recycle Bin under these codes, the one binned last of each, by lower-cased code. */
+async function binnedCategories(
+  tenantId: string,
+  codes: readonly string[],
+): Promise<Map<string, MainHeld>> {
+  const found = new Map<string, MainHeld>();
+  if (codes.length === 0) return found;
+  const rows = await db()('product_categories')
+    .where({ tenant_id: tenantId })
+    .whereNotNull('deleted_at')
+    .whereRaw('lower(code) = ANY(?)', [codes.map(lower)])
+    .orderBy('deleted_at', 'desc')
+    .select<
+      Array<{
+        id: string;
+        code: string;
+        name: string;
+        brand: string | null;
+        sort_order: number | null;
+      }>
+    >('id', 'code', 'name', 'brand', 'sort_order');
+  for (const row of rows) {
+    if (!found.has(lower(row.code)))
+      found.set(lower(row.code), {
+        id: String(row.id),
+        code: row.code,
+        name: row.name,
+        brand: row.brand,
+        sortOrder: row.sort_order,
+      });
+  }
+  return found;
 }
 
 /**
- * Which main products the zip adds and renames. Created only where nothing
- * live matches by code or by (brand, name) — `ensureCategories`' own rule, so
- * the preview and the run agree. A brand is spelled as the Brands list does.
+ * Which main products the zip adds, changes or brings back, read against the
+ * live ones and against each other. A row is the live main product of its
+ * code; else the one of its (brand, name), which takes the row's code; else
+ * the one in the Recycle Bin under its code (for a person who may delete
+ * products, as the Bin asks); else a new one, created where `ensureCategories`
+ * finds nothing, so the preview and the run agree. A row whose code, or whose
+ * (brand, name), a row before it already took is reported and not read. A
+ * brand is spelled as the Brands list does.
+ *
+ * With an Order column a main product's Order is the file's; without one (an
+ * earlier version's file) one already there keeps its place, and a new one
+ * goes after the last.
  */
 async function planMainProducts(
   rows: readonly MainRow[],
-  tenantId: string,
+  actor: ActorContext,
   problems: ProductZipProblem[],
 ): Promise<MainPlan> {
+  const { tenantId } = actor;
   const live = await productRepo.listCategories(tenantId);
   const brandByLower = new Map<string, string>();
   for (const category of live)
@@ -655,57 +867,204 @@ async function planMainProducts(
   for (const option of await customFieldRepo.listOptionsForKey(tenantId, 'product.brand')) {
     brandByLower.set(option.value.toLowerCase(), option.value);
   }
-  const lower = (value: string | null | undefined): string => (value ?? '').toLowerCase();
+  const duplicate = (row: MainRow, first: MainRow): void => {
+    problems.push({
+      subject: row.code ?? row.name,
+      messageKey: 'validation.productZip.mainDuplicate',
+      params: { first: first.code ? `${first.code} — ${first.name}` : first.name },
+    });
+  };
 
-  const plan: MainPlan = { added: [], renamed: [] };
-  rows.forEach((row, index) => {
-    if (!row.name) return;
+  const read: MainRow[] = [];
+  const byCode = new Map<string, MainRow>();
+  for (const row of rows) {
+    if (!row.name) continue;
     if (row.code && !CATEGORY_CODE_PATTERN.test(row.code)) {
       problems.push({
         subject: row.code,
         messageKey: 'validation.productZip.codeInvalid',
         params: { code: row.code },
       });
-      return;
+      continue;
     }
-    const brand = row.brand ? (brandByLower.get(row.brand.toLowerCase()) ?? row.brand) : row.brand;
+    const first = row.code ? byCode.get(lower(row.code)) : undefined;
+    if (first) {
+      duplicate(row, first);
+      continue;
+    }
+    if (row.code) byCode.set(lower(row.code), row);
+    read.push(row);
+  }
 
-    const byCode = row.code
+  // By code first, every row: a row read by its name never takes the main product another names by code.
+  const target = new Map<MainRow, MainHeld>();
+  for (const row of read) {
+    const hit = row.code
       ? live.find((category) => lower(category.code) === lower(row.code))
       : undefined;
-    if (byCode) {
-      const fields: ProductCellChange[] = [];
-      if (byCode.name !== row.name)
-        fields.push({ column: labelOf('categoryName'), from: byCode.name, to: row.name });
-      if (brand !== undefined && (byCode.brand ?? null) !== brand) {
-        fields.push({
-          column: labelOf('categoryBrand'),
-          from: byCode.brand ?? '',
-          to: brand ?? '',
-        });
+    if (hit) target.set(row, hit);
+  }
+  const claimed = new Set([...target.values()].map((category) => category.id));
+  const binned = await binnedCategories(
+    tenantId,
+    read.flatMap((row) => (row.code && !target.has(row) ? [row.code] : [])),
+  );
+
+  const plan: MainPlan = { added: [], changed: [] };
+  const taken = new Map<string, MainRow>();
+  let last = Math.max(
+    0,
+    ...live.map((category) => category.sortOrder ?? 0),
+    ...read.map((row) => row.order ?? 0),
+  );
+  for (const row of read) {
+    const brand = row.brand ? (brandByLower.get(row.brand.toLowerCase()) ?? row.brand) : row.brand;
+    let was = target.get(row);
+    let inBin = false;
+    let finalBrand = brand !== undefined ? brand : (was?.brand ?? null);
+    if (!was) {
+      const named = live.filter(
+        (category) =>
+          !claimed.has(category.id) &&
+          lower(category.name) === lower(row.name) &&
+          (!brand || lower(category.brand) === lower(brand)),
+      );
+      was =
+        named.find((category) => !category.brand) ?? (named.length === 1 ? named[0] : undefined);
+      // Brands share the name and the row names none: `ensureCategories` would add nothing.
+      if (!was && named.length > 0) continue;
+      if (was) {
+        claimed.add(was.id);
+        finalBrand = was.brand;
+      } else if (row.code) {
+        was = binned.get(lower(row.code));
+        inBin = was !== undefined;
+        if (was && brand === undefined) finalBrand = was.brand;
       }
-      if (fields.length > 0)
-        plan.renamed.push({
-          id: byCode.id,
-          code: byCode.code as string,
-          name: row.name,
-          brand,
-          fields,
-        });
-      return;
     }
-    const byName = live.some(
-      (category) =>
-        lower(category.name) === lower(row.name) &&
-        (!brand || lower(category.brand) === lower(brand)),
-    );
-    if (!byName)
+    if (was && inBin && !actorCan(actor, 'products.delete')) {
+      problems.push({
+        subject: row.code ?? row.name,
+        messageKey: 'validation.import.binnedNeedsDelete',
+        params: { name: was.name },
+      });
+      continue;
+    }
+    const final = {
+      code: row.code ?? was?.code ?? null,
+      name: row.name,
+      brand: finalBrand ?? null,
+    };
+    const first = taken.get(nameKey(final));
+    if (first) {
+      duplicate(row, first);
+      continue;
+    }
+    taken.set(nameKey(final), row);
+
+    const order = row.order !== undefined ? row.order : was ? undefined : (last += 1);
+    if (!was) {
       plan.added.push({
         code: row.code,
         name: row.name,
-        brand: brand ?? null,
-        sortOrder: row.order ?? index + 1,
+        brand: final.brand,
+        sortOrder: order ?? null,
       });
+      continue;
+    }
+    const patch: MainChange['patch'] = {};
+    const fields: ProductCellChange[] = [];
+    if (final.name !== was.name) {
+      patch.name = final.name;
+      fields.push({ column: labelOf('categoryName'), from: was.name, to: final.name });
+    }
+    if (lower(final.code) !== lower(was.code)) {
+      patch.code = final.code as string;
+      fields.push({ column: labelOf('categoryCode'), from: was.code ?? '', to: final.code ?? '' });
+    }
+    if (final.brand !== was.brand) {
+      patch.brand = final.brand;
+      fields.push({
+        column: labelOf('categoryBrand'),
+        from: was.brand ?? '',
+        to: final.brand ?? '',
+      });
+    }
+    if (order !== undefined && order !== was.sortOrder) {
+      patch.sortOrder = order;
+      fields.push({ column: 'Order', from: String(was.sortOrder ?? ''), to: String(order ?? '') });
+    }
+    if (inBin || fields.length > 0)
+      plan.changed.push({
+        id: was.id,
+        code: was.code ?? was.name,
+        binned: inBin,
+        was,
+        final,
+        patch,
+        fields,
+      });
+  }
+
+  // One by one, as the run makes them: a change waits until the name and code it takes are let
+  // go. One that never is (two that swap names, or one a main product the file leaves as it is
+  // holds) clashes, in the preview as in the run. New ones go in last, into what is left.
+  const names = new Map(live.map((category) => [nameKey(category), category.id]));
+  const codes = new Map(
+    live.flatMap((category) =>
+      category.code ? [[lower(category.code), category.id] as const] : [],
+    ),
+  );
+  const free = (held: Map<string, string>, key: string, id: string): boolean =>
+    (held.get(key) ?? id) === id;
+  let waiting = plan.changed;
+  plan.changed = [];
+  for (let moved = true; moved;) {
+    moved = false;
+    waiting = waiting.filter((change) => {
+      const code = lower(change.final.code);
+      if (!free(names, nameKey(change.final), change.id) || (code && !free(codes, code, change.id)))
+        return true;
+      if (!change.binned) {
+        names.delete(nameKey(change.was));
+        codes.delete(lower(change.was.code));
+      }
+      names.set(nameKey(change.final), change.id);
+      if (code) codes.set(code, change.id);
+      plan.changed.push(change);
+      moved = true;
+      return false;
+    });
+  }
+  for (const change of waiting) {
+    problems.push(
+      free(names, nameKey(change.final), change.id)
+        ? {
+            subject: change.code,
+            messageKey: 'error.conflict.categoryCodeTaken',
+            params: { code: change.final.code ?? '' },
+          }
+        : {
+            subject: change.code,
+            messageKey: 'error.conflict.categoryNameTaken',
+            params: { name: change.final.name },
+          },
+    );
+  }
+  // A new one with no brand would be filed under any main product of its name: `ensureCategories`
+  // reads the ones there before it, not the other new ones, which were told apart above.
+  const held = (seed: productRepo.CategorySeed): boolean =>
+    seed.brand
+      ? names.has(nameKey({ brand: seed.brand, name: seed.name }))
+      : [...names.keys()].some((key) => key.endsWith(`\u0000${lower(seed.name)}`));
+  plan.added = plan.added.filter((seed) => {
+    if (!held(seed)) return true;
+    problems.push({
+      subject: seed.code ?? seed.name,
+      messageKey: 'error.conflict.categoryNameTaken',
+      params: { name: seed.name },
+    });
+    return false;
   });
   return plan;
 }
@@ -720,59 +1079,176 @@ function problemOf(subject: string, error: unknown): ProductZipProblem {
       };
 }
 
-/** Create, then rename one by one through the ordinary edit (its checks, its event); answers the renames that went through. */
+/**
+ * The plan, through the ordinary edits (their checks, their events): the
+ * Brands list first, so every brand a main product takes is listed; then each
+ * change in the plan's order, one in the Recycle Bin brought back as the Bin's
+ * own Restore does; then the new ones, into the names the changes let go. A
+ * refusal is reported, never thrown. Answers what went through.
+ */
 async function applyMainProducts(
   plan: MainPlan,
+  brands: ListPlan | null,
   actor: ActorContext,
   problems: ProductZipProblem[],
-): Promise<MainPlan['renamed']> {
+): Promise<MainPlan> {
   const { tenantId } = actor;
-  const listed = await customFieldRepo.listOptionsForKey(tenantId, 'product.brand');
   await db().transaction(async (trx) => {
+    if (brands) await writeList(tenantId, brands, trx);
     await registerBrands(
       tenantId,
-      [...plan.added, ...plan.renamed].map((main) => main.brand ?? ''),
-      listed,
+      [...plan.added, ...plan.changed.map((change) => change.final)].map(
+        (main) => main.brand ?? '',
+      ),
+      await customFieldRepo.listOptionsForKey(tenantId, 'product.brand', {}, trx),
       trx,
     );
-    await productRepo.ensureCategories(tenantId, plan.added, trx);
   });
   customFieldRepo.invalidateFieldCache(tenantId);
 
-  const done: MainPlan['renamed'] = [];
-  for (const rename of plan.renamed) {
+  const changed: MainChange[] = [];
+  for (const change of plan.changed) {
     try {
-      await catalog.updateCategory(
-        rename.id,
-        { name: rename.name, ...(rename.brand !== undefined ? { brand: rename.brand } : {}) },
-        actor,
-      );
-      done.push(rename);
+      if (change.binned) await catalog.restoreCategory(change.id, actor, change.patch.name);
+      if (Object.keys(change.patch).length > 0)
+        await catalog.updateCategory(change.id, change.patch, actor);
+      changed.push(change);
     } catch (error) {
-      problems.push(problemOf(rename.code, error));
+      problems.push(problemOf(change.code, error));
     }
   }
-  return done;
+  try {
+    await db().transaction((trx) => productRepo.ensureCategories(tenantId, plan.added, trx));
+    return { added: plan.added, changed };
+  } catch (error) {
+    // The plan checked them; a clash only the write meets (a screen saving the same name) is said, not thrown.
+    for (const seed of plan.added) problems.push(problemOf(seed.code ?? seed.name, error));
+    return { added: [], changed };
+  }
 }
 
-/** `upsertOptions`' own reading: a value missing, binned or switched off is added; a different hex is a change. */
-async function planColours(
-  colours: ZipContents['colours'],
+const yesNo = (active: boolean): string => (active ? 'yes' : 'no');
+
+/** What `colours.csv` or `brands.csv` does to its list, and the writes that do exactly that. */
+interface ListPlan {
+  listKey: string;
+  report: ProductZipList;
+  /** Each row that changes the list: a value it adds (no `hit`), or the one it matched, in the Bin or not. */
+  writes: Array<{ row: ListRow; hit?: OptionListItem }>;
+  /** The whole list in its new order, when the file reorders it: an id, or a value the run adds. */
+  order: Array<{ id?: string; value: string }> | null;
+  /** The last sequence in use: a value added takes the next. */
+  sequence: number;
+}
+
+/**
+ * The file is the truth for each value it lists: one the list lacks is added,
+ * out of the Recycle Bin if it is there; one it has, matched case aside (its
+ * own spelling kept, an exact one first where the list holds two), takes the
+ * file's label, hex and Active. When the values it lists stand in another
+ * order than the list's, the list is numbered in the file's, the ones it does
+ * not list after them. A value the file leaves out stays as it is.
+ */
+async function planList(
   tenantId: string,
-): Promise<ProductZipReport['colours']> {
-  const existing = await customFieldRepo.listOptionsForKey(tenantId, 'stock.colour', {
+  listKey: string,
+  rows: readonly ListRow[],
+): Promise<ListPlan> {
+  const existing = await customFieldRepo.listOptionsForKey(tenantId, listKey, {
     includeDeleted: true,
   });
-  const report: ProductZipReport['colours'] = { added: [], changed: [] };
-  for (const { value, hex } of colours) {
-    const matches = existing.filter((option) => option.value === value);
-    const hit = matches.find((option) => !option.deletedAt) ?? matches[0];
-    if (!hit || hit.deletedAt || !hit.isActive) report.added.push(value);
-    else if (hex !== null && hit.hex !== hex)
-      report.changed.push({ column: value, from: hit.hex ?? '', to: hex });
+  const live = existing.filter((option) => !option.deletedAt);
+  const find = (value: string): OptionListItem | undefined => {
+    const matches = (pool: readonly OptionListItem[]) =>
+      pool.find((option) => option.value === value) ??
+      pool.find((option) => option.value.toLowerCase() === value.toLowerCase());
+    return matches(live) ?? matches(existing.filter((option) => option.deletedAt));
+  };
+  const sequence = Math.max(0, ...existing.map((option) => option.sequence));
+  const plan: ListPlan = {
+    listKey,
+    report: { added: [], changed: [] },
+    writes: [],
+    order: null,
+    sequence,
+  };
+
+  // Where each value the file lists stands once written: its own place, an added one after the last.
+  let next = sequence;
+  const listed: Array<{ id?: string; value: string; at: number }> = [];
+  for (const row of rows) {
+    const hit = find(row.value);
+    listed.push({ id: hit?.id, value: row.value, at: hit ? hit.sequence : (next += 1) });
+    if (!hit || hit.deletedAt) plan.report.added.push(hit?.value ?? row.value);
+    const fields: ProductCellChange[] = [];
+    if (hit) {
+      const change = (column: string, from: string, to: string): void => {
+        fields.push({ column: `${hit.value} — ${column}`, from, to });
+      };
+      if (row.label !== undefined && row.label !== hit.label) change('Label', hit.label, row.label);
+      // A hex is the same colour in either case: the shipped list writes #FEFEFE, the Fields screen #fefefe.
+      if (row.hex !== undefined && lower(row.hex) !== lower(hit.hex))
+        change('Hex', hit.hex ?? '', row.hex ?? '');
+      if (row.active !== hit.isActive) change('Active', yesNo(hit.isActive), yesNo(row.active));
+      if (!hit.deletedAt) plan.report.changed.push(...fields);
+    }
+    if (!hit || hit.deletedAt || fields.length > 0) plan.writes.push({ row, hit });
   }
-  return report;
+  if (listed.some((entry, index) => index > 0 && entry.at <= (listed[index - 1]?.at ?? 0))) {
+    const ids = new Set(listed.map((entry) => entry.id));
+    plan.order = [...listed, ...live.filter((option) => !ids.has(option.id))];
+    plan.report.reordered = true;
+  }
+  return plan;
 }
+
+async function writeList(tenantId: string, plan: ListPlan, trx: TransactionContext): Promise<void> {
+  let sequence = plan.sequence;
+  const added = new Map<string, string>();
+  for (const { row, hit } of plan.writes) {
+    let id = hit?.id;
+    if (!id) {
+      id = await customFieldRepo.insertOption(
+        {
+          tenantId,
+          listKey: plan.listKey,
+          value: row.value,
+          label: row.label ?? row.value,
+          hex: row.hex ?? null,
+          sequence: (sequence += 1),
+          createdBy: null,
+        },
+        trx,
+      );
+      added.set(row.value, id);
+      // Inserted switched on.
+      if (row.active) continue;
+    } else if (hit?.deletedAt) {
+      await customFieldRepo.restoreOption(tenantId, id, trx);
+    }
+    await customFieldRepo.updateOptionColumns(
+      tenantId,
+      id,
+      { label: row.label, hex: row.hex, isActive: row.active, updatedBy: null },
+      trx,
+    );
+  }
+  if (plan.order)
+    await customFieldRepo.reorderOptions(
+      tenantId,
+      plan.order.map((entry, index) => ({
+        id: entry.id ?? (added.get(entry.value) as string),
+        sequence: index + 1,
+      })),
+      trx,
+    );
+}
+
+/** Anything a list plan writes. */
+const listChanges = (plan: ListPlan | null): number =>
+  plan
+    ? plan.report.added.length + plan.report.changed.length + Number(plan.report.reordered === true)
+    : 0;
 
 // --- Photos ------------------------------------------------------------------------
 
@@ -955,7 +1431,7 @@ async function planPhotos(
  * another slot than the zip's.
  */
 async function runPhotos(
-  reader: ZipReader,
+  reader: ZipFiles,
   plan: PhotoPlan,
   actor: ActorContext,
   problems: ProductZipProblem[],
@@ -1083,39 +1559,47 @@ async function runZip(
   const { dryRun } = options;
   const problems: ProductZipProblem[] = [];
 
-  let reader: ZipReader;
-  try {
-    reader = await openZipReader(filePath, MAX_ARCHIVE_ENTRIES, { windowsNames: true });
-  } catch (error) {
-    throw zipRefusal(error);
-  }
-
+  const reader = await openUpload(filePath);
   try {
     progress({ phase: 'checking' });
     const zip = await readZip(reader, problems).catch((error: unknown) => {
       throw zipRefusal(error);
     });
 
-    const main = await planMainProducts(zip.mainProducts, tenantId, problems);
-    const colours = await planColours(zip.colours, tenantId);
-    // Changing the colour list is the lists' own permission, asked before anything is written.
-    if (colours.added.length + colours.changed.length > 0)
+    const planned = await planMainProducts(zip.mainProducts, actor, problems);
+    const colours = await planList(tenantId, 'stock.colour', zip.colours);
+    const brands = zip.brands && (await planList(tenantId, 'product.brand', zip.brands));
+    // Changing the colour or brand list is the lists' own permission, asked before anything is written.
+    if (listChanges(colours) + listChanges(brands) > 0)
       requirePermission(actor, 'catalog.lists.manage');
 
-    let renamed = main.renamed;
+    let main = planned;
     if (!dryRun) {
       progress({ phase: 'products' });
-      // The colours first: one transaction, so a refusal there leaves nothing half written.
-      if (colours.added.length + colours.changed.length > 0) {
-        await db().transaction((trx) => upsertOptions(tenantId, 'stock.colour', zip.colours, trx));
+      main = await applyMainProducts(planned, brands, actor, problems);
+      // The colours after the main products, in one transaction: nothing is half written before a refusal there.
+      if (listChanges(colours) > 0) {
+        await db().transaction((trx) => writeList(tenantId, colours, trx));
         customFieldRepo.invalidateFieldCache(tenantId);
       }
-      renamed = await applyMainProducts(main, actor, problems);
     }
 
+    // A dry run reads the main products the run creates, recodes or brings back from the Bin as it leaves them.
     const { rows, ...imported } = await importProducts(
       { buffer: zip.productsCsv, fileName: PRODUCTS_CSV },
-      { dryRun, mode: 'upsert', restore: dryRun ? { pendingCategories: main.added } : {} },
+      {
+        dryRun,
+        mode: 'upsert',
+        restore: dryRun
+          ? {
+              pendingCategories: planned.added,
+              plannedCategories: planned.changed.map((change) => ({
+                id: change.id,
+                ...change.final,
+              })),
+            }
+          : {},
+      },
       actor,
     );
     const added = rows?.added ?? [];
@@ -1152,6 +1636,13 @@ async function runZip(
     );
     const photos = photoPlan.report;
 
+    const restored = main.changed
+      .filter((change) => change.binned)
+      .map((change) => ({
+        code: change.final.code ?? '',
+        name: change.final.name,
+        brand: change.final.brand,
+      }));
     const report: ProductZipReport = {
       dryRun,
       fileName,
@@ -1161,7 +1652,10 @@ async function runZip(
           name: seed.name,
           brand: seed.brand ?? null,
         })),
-        renamed: renamed.map((rename) => ({ code: rename.code, fields: rename.fields })),
+        renamed: main.changed
+          .filter((change) => change.fields.length > 0)
+          .map((change) => ({ code: change.code, fields: change.fields })),
+        ...(restored.length > 0 ? { restoredFromBin: restored } : {}),
       },
       products: imported,
       rows: {
@@ -1172,7 +1666,8 @@ async function runZip(
           name: product.name,
         })),
       },
-      colours,
+      colours: colours.report,
+      brands: brands?.report ?? { added: [], changed: [] },
       photos,
       problems,
     };
@@ -1216,11 +1711,11 @@ async function runZip(
     const { created, updated } = imported;
     const changed =
       main.added.length +
-      renamed.length +
+      main.changed.length +
       created +
       updated +
-      colours.added.length +
-      colours.changed.length +
+      listChanges(colours) +
+      listChanges(brands) +
       photos.added.length +
       photos.replaced.length +
       landed.recaptioned.length +
@@ -1244,8 +1739,9 @@ async function runZip(
               created,
               updated,
               mainProductsAdded: main.added.length,
-              mainProductsRenamed: renamed.length,
-              coloursChanged: colours.added.length + colours.changed.length,
+              mainProductsRenamed: main.changed.length,
+              coloursChanged: listChanges(colours),
+              brandsChanged: listChanges(brands),
               photosAdded: photos.added.length,
               photosReplaced: photos.replaced.length,
               photosRecaptioned: landed.recaptioned.length,

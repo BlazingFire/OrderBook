@@ -102,9 +102,9 @@ export interface ProductImportResult {
 // --- The product backup zip -------------------------------------------------
 //
 // `OrderBook-Products-<company>-<date>.zip`: `products.csv` (the export above),
-// `main-products.csv`, `colours.csv` and `images/<CODE>.<ext>`, one file per
-// photo (`docs/PRODUCT_IMPORT_FORMAT.md`, "The product backup zip"). Restored on
-// the Master only, by `master/src/services/product-zip.service.ts`.
+// `main-products.csv`, `colours.csv`, `brands.csv` and `images/<CODE>.<ext>`,
+// one file per photo (`docs/PRODUCT_IMPORT_FORMAT.md`, "The product backup zip").
+// Restored on the Master only, by `master/src/services/product-zip.service.ts`.
 
 /** Refused above this before the zip is opened: it carries every photo. */
 export const MAX_PRODUCT_ZIP_BYTES = 1024 * 1024 * 1024;
@@ -140,6 +140,17 @@ export interface ProductRestoreOptions {
 }
 
 /**
+ * What `colours.csv` or `brands.csv` does to its list. A change's `column` is
+ * the value and the file's column, `White — Label`.
+ */
+export interface ProductZipList {
+  added: string[];
+  changed: ProductCellChange[];
+  /** True when the list is put in the file's order; absent when it is in it already. */
+  reordered?: boolean;
+}
+
+/**
  * What a product zip would do (a dry run) or did. Photos are named by their
  * file name in the zip; a photo in the catalogue with no file is named by the
  * file name an export would give it (`OPT-0001_2`).
@@ -149,7 +160,10 @@ export interface ProductZipReport {
   fileName: string;
   mainProducts: {
     added: Array<{ code: string; name: string; brand: string | null }>;
+    /** Main products whose name, brand, code or Order the file changes, by their code (a code-less one by its name). */
     renamed: Array<{ code: string; fields: ProductCellChange[] }>;
+    /** Main products in the Recycle Bin the file names by code: brought back. Absent when there are none. */
+    restoredFromBin?: Array<{ code: string; name: string; brand: string | null }>;
   };
   /** `products.csv` through the ordinary upsert import: counts, issues, ignored columns. */
   products: ProductImportResult;
@@ -159,7 +173,9 @@ export interface ProductZipReport {
     /** Live sub products none of whose codes the file names. */
     notInFile: Array<{ code: string; name: string }>;
   };
-  colours: { added: string[]; changed: ProductCellChange[] };
+  colours: ProductZipList;
+  /** `brands.csv`, empty for a zip without one. Absent from a Master older than 1.4.7. */
+  brands?: ProductZipList;
   photos: {
     added: string[];
     replaced: string[];
