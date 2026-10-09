@@ -182,8 +182,8 @@ export interface CatalogueTransport {
 /** The product backup zip's calls (`master/src/services/product-zip.service.ts`). */
 export interface ProductZipTransport {
   exportZip(): Promise<{ blob: Blob; fileName: string }>;
-  /** What the zip would do: a dry run, nothing written. */
-  preview(file: File): Promise<ProductZipReport>;
+  /** What the zip would do with these opt-ins: a dry run, nothing written. */
+  preview(file: File, options: ProductRestoreOptions): Promise<ProductZipReport>;
   /** Start the real run; it carries on without the screen. */
   start(file: File, options: ProductRestoreOptions): Promise<ProductRestoreJob>;
   /** The latest restore, running or finished; null since the Master started. */

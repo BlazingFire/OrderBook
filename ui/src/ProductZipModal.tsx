@@ -5,8 +5,10 @@
  * the file), Apply, watch it run, read what it did.
  *
  * The preview is the Master's own dry run of the same restore
- * (`master/src/services/product-zip.service.ts`), so what is listed here is
- * what Apply does. Apply uploads the zip again and starts the restore as a job
+ * (`master/src/services/product-zip.service.ts`), with the exact catalogue
+ * ticked or not as it is here (it reads the file otherwise, so ticking it reads
+ * the file again), so what is listed here is what Apply does. Apply uploads the
+ * zip again and starts the restore as a job
  * on the Master; this dialog only follows it, so closing it stops nothing, and
  * opening it again while a restore runs shows that one.
  *
@@ -470,6 +472,26 @@ export function ProductZipModal({
     };
   }, [running]);
 
+  /**
+   * The preview of the run these opt-ins ask for. The opt-ins take effect with
+   * their report, so what is listed is always what Apply does; a refused one
+   * leaves both as they were.
+   */
+  async function check(chosen: File, next: ProductRestoreOptions): Promise<boolean> {
+    setFailure(null);
+    setBusy(true);
+    try {
+      setReport(await transportRef.current.preview(chosen, next));
+      setOptions(next);
+      return true;
+    } catch (caught) {
+      setFailure(apiErrorText(caught, 'productZip.failed'));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function choose(chosen: File): Promise<void> {
     if (busy) return;
     // A backup zip, or the products sheet an earlier version exported.
@@ -482,17 +504,7 @@ export function ProductZipModal({
       return;
     }
     setFile(chosen);
-    setFailure(null);
-    setBusy(true);
-    try {
-      setReport(await transportRef.current.preview(chosen));
-      setOptions({});
-      setStep('preview');
-    } catch (caught) {
-      setFailure(apiErrorText(caught, 'productZip.failed'));
-    } finally {
-      setBusy(false);
-    }
+    if (await check(chosen, {})) setStep('preview');
   }
 
   async function apply(): Promise<void> {
@@ -514,6 +526,15 @@ export function ProductZipModal({
   const note = (text: ReactNode) => (
     <p className="ob-small" style={{ margin: 0, color: 'var(--fg-secondary)' }}>
       {text}
+    </p>
+  );
+  const reading = busy && (
+    <p
+      className="ob-small"
+      style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}
+    >
+      <BusyMark size={16} label="" />
+      {t('productZip.checking')}
     </p>
   );
 
@@ -566,15 +587,7 @@ export function ProductZipModal({
                 {t('productZip.choose')}
               </Button>
             </div>
-            {busy && (
-              <p
-                className="ob-small"
-                style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}
-              >
-                <BusyMark size={16} label="" />
-                {t('productZip.checking')}
-              </p>
-            )}
+            {reading}
             <input
               ref={fileInputRef}
               type="file"
@@ -603,7 +616,7 @@ export function ProductZipModal({
                 {canDelete && report.rows.notInFile.length > 0 && (
                   <Checkbox
                     checked={options.binMissingProducts === true || exact}
-                    disabled={exact}
+                    disabled={exact || busy}
                     onChange={(checked) =>
                       setOptions((current) => ({ ...current, binMissingProducts: checked }))
                     }
@@ -614,7 +627,7 @@ export function ProductZipModal({
                   <>
                     <Checkbox
                       checked={options.removeMissingPhotos === true || exact}
-                      disabled={exact}
+                      disabled={exact || busy}
                       onChange={(checked) =>
                         setOptions((current) => ({ ...current, removeMissingPhotos: checked }))
                       }
@@ -624,15 +637,16 @@ export function ProductZipModal({
                   </>
                 )}
                 {/* Sub products, main products, colours and brands go to the Bin: the delete
-                    permission, and the lists' own one for a colour or brand (`exactNeedsLists`). */}
+                    permission, and the lists' own one for a colour or brand (`exactNeedsLists`).
+                    Ticked or not, it is previewed again: the exact run reads the file otherwise. */}
                 {canDelete && (
                   <>
                     <Checkbox
                       checked={exact}
-                      disabled={report.exactNeedsLists === true}
-                      onChange={(checked) =>
-                        setOptions((current) => ({ ...current, exactCatalogue: checked }))
-                      }
+                      disabled={busy || report.exactNeedsLists === true}
+                      onChange={(checked) => {
+                        if (file) void check(file, { ...options, exactCatalogue: checked });
+                      }}
                       label={t('productZip.opt.exact')}
                     />
                     {note(t('productZip.opt.exact.hint'))}
@@ -642,6 +656,7 @@ export function ProductZipModal({
                 )}
               </div>
             )}
+            {reading}
             {toDo === 0 && note(t('productZip.nothing'))}
           </>
         )}
