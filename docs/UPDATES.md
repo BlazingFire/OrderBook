@@ -151,15 +151,28 @@ left there by an earlier `--catalogue` run ships too until it is deleted. That
 path is git-ignored, so the CI release ships the committed catalogue unless the
 owner commits a zip there (`git add -f`), which is his decision.
 
-The shipped catalogue is loaded **once**, and only into an install whose
-catalogue has never held a main product (the Recycle Bin counts): a fresh
-install, before or after first-run setup, or a Master whose data was erased. An
-update never touches an existing catalogue; the internal setting
-`internal.shippedCatalogueLoaded` records that the check was made. A load is
-recorded as under way (`state: 'loading'`) before it writes anything and as done
-when it ends, so one that fails, or that a closed window stops while the photos
-go in, carries on at the next boot: rows are upserted by code and a photo already
-in its slot stays, so nothing is loaded twice.
+The shipped catalogue is loaded **once**, and only into a brand-new install: one
+whose first-run setup is not done yet and whose catalogue has never held a main
+product (the Recycle Bin counts). **An update never changes an install's
+catalogue** (2026-10-09): an install already set up, whether an update reaches it
+or a full backup restored it, only records that the check was made, even when its
+catalogue is empty (the internal setting `internal.shippedCatalogueLoaded`, as
+`loaded: 'none'`). A load is recorded as under way (`state: 'loading'`) before it
+writes anything and as done when it ends, so one that fails, or that a closed
+window stops while the photos go in, carries on at the next boot: rows are upserted
+by code and a photo already in its slot stays, so nothing is loaded twice. It
+carries on only while setup is still not done; once the company has set up, the
+next boot marks it done and loads nothing over what may be the company's own data.
+
+The **shipped catalogue photos** (`master/assets/catalogue/photos/`) follow the
+same rule. They are attached once per install, on the boot after the printed
+catalogue went in, and only to sub products with no photo: an install that never
+loaded the printed catalogue (a build that shipped `products.zip`, whose photos it
+carries; an install updated from 1.4.4 or earlier, which has no record of either
+load) never gets them, and any record of a run means done, whatever a later build
+ships, so an update never attaches a photo or brings back one the company removed.
+A product restore stops the attach and, once it writes, ends it for good; a full
+backup restore stops it and lets the restored settings decide.
 
 ## When a new build shows up
 
@@ -403,7 +416,8 @@ directory precisely so an installer cannot delete them), and migrations run on
 next boot. Downgrading is not supported — a migration that has run is not
 expected to un-run.
 
-Two more things hold that line from 1.2.0 on, the version customers run:
+Three more things hold that line from 1.2.0 on, the version customers run
+(the third since 2026-10-09):
 
 - **Migrations only add.** `master/tests/migration-data-safety.test.ts` fails
   `npm run verify` on any migration after `20260324000000_product_master_trim`
@@ -421,6 +435,14 @@ Two more things hold that line from 1.2.0 on, the version customers run:
   machine with `ORDERBOOK_UPGRADE_SNAPSHOT=0`; a copy that cannot be taken is
   logged and the boot goes on. External databases (`DATABASE_URL`) are not
   copied — whoever runs them keeps their backups.
+- **No shipped product data on an update.** The catalogue and the photos a
+  build ships reach a brand-new install only, never one already set up
+  ("Shipping the product database with a build", above). The one exception
+  already shipped is the 1.4.5 catalogue corrections migration
+  (`20261015000000_catalogue_corrections`, owner-approved on 2026-10-07): an
+  install still on 1.4.4 or earlier gets it on its update. It changes only
+  products that still hold exactly the shipped values, and the lead and order
+  lines that quote them.
 
 To go back after a bad update: quit the Master, rename `<data>\postgres` aside,
 copy the `postgres` folder out of the newest `backups\before-…`, and reinstall

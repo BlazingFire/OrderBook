@@ -172,12 +172,17 @@ with the Master again.
 
 Version 1 runs the whole load in one PostgreSQL transaction and verifies the
 activity hash chain before it commits; any failure rolls back to exactly what
-was there.
+was there. After decrypting and before that transaction it stops the shipped
+catalogue photos still being attached, as version 2 does (step 1).
 
 Version 2 (`archive-restore.service.ts`) works in this order:
 
 1. Checks the manifest and the entry list (§4.1), hashes every data file, and
-   unpacks and hashes every photo into `<dataDir>/tmp/restore-<id>`.
+   unpacks and hashes every photo into `<dataDir>/tmp/restore-<id>`. Then it
+   stops the shipped catalogue photos still being attached on a new install
+   (`stopCataloguePhotos`, after the photo it is on), since they write through
+   the services, which maintenance does not stop. It does not end them for good:
+   the restored settings decide the next boot (2026-10-09).
 2. Settings restore only: writes a data-only safety copy to
    `<dataDir>/backups/pre-restore-<time>.zip` (the newest two are kept).
 3. Maintenance: everyone is signed out, sockets close, queued pushes are

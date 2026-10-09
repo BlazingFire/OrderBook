@@ -133,7 +133,12 @@ Never edit a shipped migration.
 - Sub product create/update: category by id, then `categoryCode`, then (brand,
   name) — never silently creates a category when a code was given; a live name
   clash inside the category → `ConflictError`; a blank variant code → next
-  `CODE-####` for that category.
+  `CODE-####` for that category. Since 2026-10-09 the bulk import keeps the same
+  name rule (`validation.product.nameTaken`) for a create, a rename or a move,
+  checked against where every sub product ends up, so two names a file swaps
+  both land; twins made before that stay editable. A product backup restore
+  reads a sub product under codes the catalogue lacks as the one of that name in
+  its main product, recoded (`docs/PRODUCT_IMPORT_FORMAT.md`).
 - Picks: `category` matches code prefix, name substring or brand, exact code
   first, then `sort_order`; rows carry `code`, `brand`. `product` with
   `categoryId` returns **every** live sub product of that category in
@@ -169,8 +174,11 @@ Never edit a shipped migration.
     breaks; blank lines keep their row number so reported rows match Excel. The export's formula-guard
     apostrophe (`'=…`, `'-…`) is removed on read. Every cell is text — `0012` and `18x12` are never
     coerced; Excel number cells become their digits, dates `YYYY-MM-DD`; a Guide sheet in front of the
-    data is skipped. Weights accept `18.5`, `1,200.50`, `12,5` (decimal comma) and `12.5 kg`; `0x10`/`1e3`
-    are refused. Inner whitespace in names is folded to one space (codes are left as typed).
+    data is skipped. Weights accept `18.5`, `1,200.50`, `12,5` and `12.5 kg`; `0x10`/`1e3`
+    are refused. Since 2026-10-09 a lone comma is the decimal mark whatever the digits after it (`0,125`,
+    `1,125` and `1,200` are 0.125, 1.125 and 1.2 kg — a piece's weight), and `1.234,5` reads as 1234.5.
+    Inner whitespace in names is folded to one space (codes are left as typed; a product backup restore
+    keeps every cell as written).
   - *Matching.* Brand, Main product, Sub product and Colour match case-insensitively. A listed brand or
     colour takes the list's own spelling; an unlisted colour stays as typed; an unlisted brand is a new
     brand and, on a real import, is added to the Brands list in the same transaction.

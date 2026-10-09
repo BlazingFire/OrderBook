@@ -52,6 +52,93 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
+## Product backup and restore made exact (2026-10-09)
+
+**State:** on branch `s7/product-backup` (worktree `../OrderBook-s7`), with these docs on `s12/docs` on top of it.
+**Not merged to `main`:** the main checkout holds someone else's uncommitted party-screen work, so the merge waits
+for that to be committed. **Not built**; the version is still 1.4.6, so the next build is 1.4.7 and carries the
+2026-10-08 batch as well. Rules and format: `docs/PRODUCT_IMPORT_FORMAT.md` ("The product backup zip").
+
+**Owner asked:** make sure the product backup and restore works with the current and earlier versions — colours,
+photos, weights, variants — double-check and fix; he will share two product backups to be combined into one (no
+product twice, each getting the other's data); he will upload that into the current software, with no shipped
+(embedded) product or other data left; and an update must leave all data as it was.
+
+**How it was run:** an audit in five lenses (fields, photos, older files, embedded data, restore semantics), each
+finding reproduced by a probe and verified; then builders in worktrees `../OrderBook-s8`…`s11` (the boot, the
+import, the photos, the zip and the exact catalogue), each reviewed adversarially and fixed; then the lead's own
+commits (`cf861c70`: an empty photo folder is the one run, and the run's own photo 2 lands; `b6a9d919`: a file with
+no photos leaves the photos as they are; `1a0dd4b5`: the audit probes removed, each finding now has its test in
+`master/tests/product-backup-*`).
+
+| Area | Result |
+|---|---|
+| The backup file | `main-products.csv` carries the stored Order (blank for none); `colours.csv` is `Colour, Label, Hex, Active` with switched-off colours; new `brands.csv` (`Brand, Label, Active`) and `photos.csv` (`File, Caption`); `products.csv` writes the colours of a multicolour sub product too; photo N whose `CODE_N` is another sub product's code goes out under another of its codes; a photo whose file is missing is listed in the README. |
+| Older files | **Restore from .zip** also takes the bare products `.csv`/`.xlsx` that 1.2.4–1.4.6 exported (and the import template), and their dated names inside a zip. |
+| What comes back | cells exactly as stored (inner spacing, colour spelling); a blank Alias, Size or Weight clears; `fixed` → `dedicated`/`multicolour` without a "Standard" colour; the decimal comma (`0,125` kg); a value starting `'-`; main product and sub product order; the colour and brand lists (labels, hex, switched off, order); photo captions, order and main photo, and their exact bytes from Master to Master. An unedited backup reads as nothing to do; the same zip twice changes nothing. |
+| Matching | main product by code, then by brand and name (recoded to the file's code), then from the Recycle Bin; sub product by code, then from the Recycle Bin, then by name inside its main product (recoded) — so two backups combined restore with no sub product twice. The bulk import now refuses a second sub product of one name in a main product; rows of one sub product that disagree are reported, not merged. |
+| New install | **Make the catalogue exactly this file** (off by default; needs Delete products): what the file does not list goes to the Recycle Bin (sub products, main products, colours, brands); photos missing from the zip and codes the rows leave out are removed for good. His backup onto a new install then equals his export, CSV by CSV and photo byte by photo byte. |
+| Updates | The shipped catalogue loads only on an install not yet set up; an update or a restored install only gets the marker, even with an empty catalogue. The shipped photos attach once per install and only after a printed-catalogue load, never on an update, and never bring back a photo the company removed. A product restore stops the attach and ends it at its first write; a full backup restore stops it. |
+
+**Decisions taken (the owner can overrule):** an update changes no data, which reverses U7 for installs updated
+from 1.4.4 or earlier (question 1 below); the exact option is off by default and moves to the Recycle Bin rather
+than deleting, except photos and leftover codes; a file with no photo at all (an old products sheet) leaves every
+photo as it is, opt-ins included; a restore puts back a main product's brand even when the Brands list has it
+switched off; bringing anything back from the Recycle Bin needs Delete products (otherwise a reported problem,
+never a copy); changing the Brands list from `brands.csv` needs "manage catalogue lists", as the colour list did.
+
+**Owner decisions waiting:**
+
+1. **Shipped photos on your own Master's update.** Your installed Master is 1.4.4 (R6 above). Under "an update
+   changes no data" it will no longer get the shipped catalogue photos when it updates — the opposite of U7
+   (2026-10-07). Keep that, or attach them once on an update from 1.4.4 or earlier?
+2. **Brand capitals.** A brand spelled with other capitals than one already on the install (say `SWISWARE+` against
+   the shipped `Swisware+`) takes the install's spelling, even with "Make the catalogue exactly this file": the
+   software treats them as one brand and never renames a list value. Does the spelling matter to you? If it does,
+   a restore can rename the brand to your file's spelling.
+3. **The exact option.** Should "Make the catalogue exactly this file" be ticked by default on a new install whose
+   catalogue nobody has touched since it was loaded? And should it also empty the Recycle Bin of the shipped items
+   it moved there (nothing uses them), so the Bin is clean after your upload?
+4. **Twins with identical cells.** Two sub products with one name in one main product (made by older imports),
+   whose Size, Alias and Colour rule all match, come back as one sub product holding both colours when restored into
+   a catalogue without them (no code, colour or weight is lost). Add a "sub product key" column to `products.csv`,
+   or run Products → Duplicates before every backup (the advice for now)?
+5. **Photo 2 of a one-colour sub product.** If a sub product with a single code (`OPT-0016`) has a photo 2 while
+   another sub product's code is exactly `OPT-0016_2`, that photo has no name in the zip: the README lists it, and a
+   restore into an empty install loses it. Your catalogue has no such codes today. Should `photos.csv` carry Code
+   and Photo columns so even this comes back?
+6. **The 1.4.5 catalogue corrections on your update.** Because your Master is on 1.4.4, its update runs the
+   2026-10-07 catalogue corrections (`20261015000000_catalogue_corrections`: 15 toilet models renamed with their
+   sizes, 4 concealed closets made White, 14x14 NEW CORNER moved to TTW-0016, old lines renamed to match), on rows
+   still exactly as shipped. You approved that on 2026-10-07; does it still stand under "an update keeps all data
+   the same"? The migration is in released builds and cannot be changed; restoring your own backup after the update
+   with the exact option puts the catalogue back, though not the renamed lines of old orders.
+
+Smaller ones, each with a default taken: a full backup restore only stops the shipped-photo attach (the restored
+settings decide the next boot), it does not end it; a new install's attach cut short by closing the Master records
+nothing, so the next boot carries on where there is still no photo; a first-boot load that failed is never carried
+on once setup is done; with the exact option ticked, the preview's "Changed" count leaves out sub products whose
+only change is losing codes (they are listed and counted in Apply); a sub product matched by name takes the
+backup's codes, which staff see; an unreleased 2026-10-08 development zip wrote Order as 1..n, and restoring one
+sets those numbers.
+
+**Owed:** combine the owner's two backup files when he shares them (not received yet), then restore the result
+onto a new install with the exact option and compare it with both; merge `s7/product-backup` and `s12/docs` into
+`main` once the party-screen work there is committed; build 1.4.7.
+
+**Gate:** each builder's suites ran on PostgreSQL, none skipped. The full suite without the probes passed on
+`4cb607f0`, before the lead's three commits (404 files + 1 skipped, the Windows-only release-workflow; 5,413
+tests + 17 skipped); `npm run typecheck` 0 and eslint 0 on the touched files. A full gate on the final head was
+running in `../OrderBook-s7` when these docs were written; its result is not recorded here.
+
+**Not verified:** the owner's real backup files, a browser or Electron pass of the restore dialog, a real build, an
+update of a real 1.4.4 install.
+
+**Traps:** a test that calls `restoreProductZip` leaves `{ retired: true }` in `internal.cataloguePhotosAttached`,
+so a later `attachCataloguePhotos` in the same test does nothing; `loadShippedCatalogue` answers `none` whenever
+setup is complete, so a test that wants it to load must not call `setUpFirstRun` first; `SHIPPED_CATALOGUE_MARKER`
+now lives in `catalogue-seed.service.ts` (re-exported from `product-zip.service.ts`).
+
 ## Product zip, shipped catalogue, Office setup in the Master, notice board, Escape, New Order chain, Sell today, person screen (2026-10-08)
 
 **State:** on `main`, not built and not released (the owner did not ask for a build). Version is still 1.4.6, so the
@@ -62,7 +149,7 @@ adversarially and fixed. Plan and evidence: `CLAUDE_HELPER_OCT8.md` (untracked).
 | ID | Owner asked | Result |
 |---|---|---|
 | R1–R3 | one product backup and restore in a single zip with the images; edit it and put it back; the software finds what changed; a proper CSV and an images folder named after the products | Products › Sub products › **Backup products (.zip)**: `products.csv` (the import's own columns), `main-products.csv`, `colours.csv`, `README.txt`, `images/<code>.webp` and `<code>_N` for photo N. **Restore from .zip**: a dry-run preview (main products added or renamed; rows added, changed cell by cell, unchanged, not in the file; colours; photos new, replaced, unchanged by hash, unmatched), two opt-ins (missing sub products to the Recycle Bin, missing photos removed), then a background job with progress. Master only. `docs/PRODUCT_IMPORT_FORMAT.md`. |
-| R4 | every build contains the product database | An install whose catalogue has never had a main product loads the shipped catalogue once at boot (marker setting `internal.shippedCatalogueLoaded`; a load stopped halfway resumes on the next boot): `master/assets/catalogue/products.zip` when the build carries one, else the printed catalogue `.md` + photos. `node tools/release.mjs --catalogue <zip>` (or `ORDERBOOK_CATALOGUE_ZIP`) ships the owner's own export. |
+| R4 | every build contains the product database | (Narrowed 2026-10-09, above: only an install not yet set up.) An install whose catalogue has never had a main product loads the shipped catalogue once at boot (marker setting `internal.shippedCatalogueLoaded`; a load stopped halfway resumes on the next boot): `master/assets/catalogue/products.zip` when the build carries one, else the printed catalogue `.md` + photos. `node tools/release.mjs --catalogue <zip>` (or `ORDERBOOK_CATALOGUE_ZIP`) ships the owner's own export. |
 | R5 | the Master build contains the Office setup | `release.mjs` builds the Office first and packs its same-version Setup (and the Win7 one when present) into the Master as `resources/panel/office-setup`. On boot the Master copies it into its releases folder when newer (Offices update with no internet; a GitHub sync never goes backwards). A new PC downloads it from Office panels › Add panel (**Save Office setup…**) or `http://<master>:<port>/api/updates/office/setup` (no sign-in, rate-limited). |
 | R6 | notice board "not available" | The Master installed on this PC is **1.4.4** (`C:\Program Files\OrderBook Master Panel`); the notice board arrived in 1.4.5. Also, the Basic Home band showed only important/pinned notices and the sign-in pop-up only important ones, and nothing otherwise. |
 | R7 | settings: one notice board on Basic Home, another at sign-in | Basic Home always shows the band (every current notice placed there, unread first; "No notices" when empty); the pop-up lists every unread notice placed at sign-in. Settings › Company › Notice board: `notices.showOnHome`, `notices.showAtSignIn`. Per notice: "Show on Basic Home" / "Show at sign-in" (migration `20261016000000_notice_placement`, additive). The owner's "Notice board management" tile art is in. |
@@ -110,7 +197,7 @@ skipped), `smoke:legacy` 0. Panel protocol **10** (notice commands, `product:liv
 | U1 | the new A4 Filling/Dispatch note design | Built by the "Note and dispatch format update" session, fixed by D7. Matches the design's page counts (2/5/12); coded grid 3/7 columns; no orphan last page; Inter + IBM Plex Mono bundled; "box"; coded group headers kept and no colour in coded cells (owner). |
 | U3 | colours in the pending-order Enter flow | The colour list opens with the first colour ready (Enter, Enter); Enter reopens it after Escape; the hint fits. |
 | U4, U5 | a notice board and its own management menu | Tables `notices`, `notice_audiences`, `notice_reads` (migration `20261014000000_notice_board`); `notices.view` (every role, and new roles by default) and `notices.manage` (admin); both panels have board, badge, Dashboard and Basic Home cards, management, Alt+N/Alt+M; per-person offline reads. Audited by D6 and D10: F-N1..F-N6, NB1/NB2, D9-1 fixed. |
-| U6, U7 | photos of all products, from the catalogue | Products › Photo import (code or alias; `CODE_N` = photo N; skip/replace per slot). The 549 catalogue photos ship in `master/assets/catalogue/photos` and attach once on boot, only to sub products with no photo. |
+| U6, U7 | photos of all products, from the catalogue | Products › Photo import (code or alias; `CODE_N` = photo N; skip/replace per slot). The 549 catalogue photos ship in `master/assets/catalogue/photos` and attach once on boot, only to sub products with no photo. Since 2026-10-09 (above) only once per install, after the printed catalogue was loaded: an update attaches nothing. |
 | U8, U9, U13 | numeric models fixed; a "perfect" catalogue | Three readings reconciled. Migration `20261015000000_catalogue_corrections`: OPT 102…118 and 204 become numbers with the trap size in Size (old lines renamed too, owner); four concealed closets White-fixed; 14x14 NEW CORNER moves to Table Top as TTW-0016. Only rows still as shipped are changed, and nothing is deleted. |
 | U10 | no UI glitch, HD to 4K, 1080p first | Audited on both panels at 1280–3840 and 100–157 %; about 40 fixes; 4K starts at 150 % on new installs only. |
 | U11 | the OrderBook icon, not Electron's | The exe resource is stamped in afterPack (`tools/exe-icon.cjs`); 7-size .ico; installer and uninstaller. |
