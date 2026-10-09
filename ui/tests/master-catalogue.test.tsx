@@ -912,9 +912,10 @@ describe('the product backup zip (Master only)', () => {
     fireEvent.click(await screen.findByRole('button', { name: t('productZip.restore') }));
     const input = await screen.findByTestId('product-zip-file');
 
-    // Not a zip: refused here, the Master never asked.
-    fireEvent.change(input, { target: { files: [new File(['x'], 'products.csv')] } });
-    expect(await screen.findByText(t('validation.productZip.notAZip'))).toBeTruthy();
+    // Neither a zip nor a products sheet: refused here, the Master never asked.
+    expect(input.getAttribute('accept')).toBe('.zip,.csv,.xlsx,application/zip');
+    fireEvent.change(input, { target: { files: [new File(['x'], 'notes.txt')] } });
+    expect(await screen.findByText(t('validation.productZip.fileRequired'))).toBeTruthy();
     expect(productZip.preview).not.toHaveBeenCalled();
 
     const file = new File(['PK'], 'backup.zip', { type: 'application/zip' });
@@ -992,6 +993,50 @@ describe('the product backup zip (Master only)', () => {
     expect(screen.getByText('PRB-0009.webp')).toBeTruthy();
     expect(screen.getByText(t('productZip.item.reordered', { count: 1 }))).toBeTruthy();
     expect(screen.getByText('PRB-0010')).toBeTruthy();
+    expect(screen.queryByText(t('productZip.nothing'))).toBeNull();
+    expect((screen.getByRole('button', { name: t('productZip.apply') }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('previews an earlier version\'s products sheet, and lists main products back from the Bin and each list it changes or reorders', async () => {
+    const productZip = zipTransport();
+    const nothing = zipReport({
+      mainProducts: { added: [], renamed: [] },
+      products: { ...zipReport().products, updated: 0, unchanged: 549 },
+      rows: { added: [], changed: [], notInFile: [] },
+      photos: { ...zipReport().photos, replaced: [], notInZip: [] },
+    });
+    productZip.preview
+      .mockResolvedValueOnce({
+        ...nothing,
+        mainProducts: {
+          added: [],
+          renamed: [{ code: 'WBX', fields: [{ column: 'Main product code', from: 'WBX', to: 'WB' }] }],
+          restoredFromBin: [{ code: 'UR', name: 'Urinal', brand: null }],
+        },
+        brands: { added: ['Zeta'], changed: [{ column: 'Alpha — Label', from: 'Alpha', to: 'Alpha Ware' }] },
+      })
+      .mockResolvedValueOnce({ ...nothing, colours: { added: [], changed: [], reordered: true } });
+    renderList(viewOf({ permissions: ALL }), makeTransport({ productZip }));
+
+    fireEvent.click(await screen.findByRole('button', { name: t('productZip.restore') }));
+    const sheet = new File(['Brand,Code'], 'products-2026-10-07.csv', { type: 'text/csv' });
+    fireEvent.change(await screen.findByTestId('product-zip-file'), { target: { files: [sheet] } });
+
+    expect(await screen.findByText(t('productZip.item.restoredFromBin', { count: 1 }))).toBeTruthy();
+    expect(productZip.preview).toHaveBeenCalledWith(sheet);
+    expect(screen.getByText('UR — Urinal')).toBeTruthy();
+    expect(screen.getByText('WBX: Main product code: WBX → WB')).toBeTruthy();
+    expect(screen.getByText(t('productZip.section.brands'))).toBeTruthy();
+    expect(screen.getByText('Zeta')).toBeTruthy();
+    expect(screen.getByText('Alpha — Label: Alpha → Alpha Ware')).toBeTruthy();
+    expect((screen.getByRole('button', { name: t('productZip.apply') }) as HTMLButtonElement).disabled).toBe(false);
+
+    // A list put in the file's order, and nothing else: still something for Apply to do.
+    fireEvent.click(screen.getByRole('button', { name: t('common.cancel') }));
+    fireEvent.change(await screen.findByTestId('product-zip-file'), {
+      target: { files: [new File(['PK'], 'backup.zip')] },
+    });
+    expect(await screen.findByText(t('productZip.item.listReordered'))).toBeTruthy();
     expect(screen.queryByText(t('productZip.nothing'))).toBeNull();
     expect((screen.getByRole('button', { name: t('productZip.apply') }) as HTMLButtonElement).disabled).toBe(false);
   });

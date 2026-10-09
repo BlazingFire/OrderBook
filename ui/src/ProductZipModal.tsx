@@ -1,7 +1,8 @@
 /**
- * Restore products from a product backup zip (Master only): choose the file,
- * read what it would do, tick the two removals if wanted, Apply, watch it run,
- * read what it did.
+ * Restore products from a product backup zip (Master only), or from the
+ * products .csv or .xlsx an earlier version exported: choose the file, read
+ * what it would do, tick the two removals if wanted, Apply, watch it run, read
+ * what it did.
  *
  * The preview is the Master's own dry run of the same restore
  * (`master/src/services/product-zip.service.ts`), so what is listed here is
@@ -18,6 +19,7 @@ import type {
   ProductCellChange,
   ProductRestoreJob,
   ProductRestoreOptions,
+  ProductZipList,
   ProductZipReport,
 } from '@orderbook/shared';
 import { MAX_PRODUCT_ZIP_BYTES } from '@orderbook/shared';
@@ -99,17 +101,49 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+const some = (count: number, node: ReactNode) => (count > 0 ? node : null);
+
+/** What a list file does; absent (`brands`) from a Master older than 1.4.7. */
+const listCount = (list?: ProductZipList): number =>
+  list ? list.added.length + list.changed.length + (list.reordered ? 1 : 0) : 0;
+
+/** `colours.csv` or `brands.csv`: the values it adds and changes, and the list put in its order. */
+function ListSection({ title, list }: { title: string; list?: ProductZipList }) {
+  if (!list || listCount(list) === 0) return null;
+  return (
+    <Section title={title}>
+      {some(
+        list.added.length,
+        <Item
+          label={t('productZip.item.added', { count: list.added.length })}
+          items={list.added}
+        />,
+      )}
+      {some(
+        list.changed.length,
+        <Item
+          label={t('productZip.item.changed', { count: list.changed.length })}
+          items={list.changed.map(
+            (change) => `${change.column}: ${change.from || '—'} → ${change.to || '—'}`,
+          )}
+        />,
+      )}
+      {list.reordered && <Item label={t('productZip.item.listReordered')} />}
+    </Section>
+  );
+}
+
 /** What the zip changes; a count of 0 is left out, except where saying "unchanged" is the point. */
 function ReportView({ report }: { report: ProductZipReport }) {
-  const { mainProducts, products, rows, colours, photos, problems } = report;
+  const { mainProducts, products, rows, colours, brands, photos, problems } = report;
   // Absent from a Master older than 1.4.7.
+  const restored = mainProducts.restoredFromBin ?? [];
   const recaptioned = photos.recaptioned ?? [];
   const reordered = photos.reordered ?? [];
-  const some = (count: number, node: ReactNode) => (count > 0 ? node : null);
   return (
     <>
       {some(
-        mainProducts.added.length + mainProducts.renamed.length,
+        mainProducts.added.length + mainProducts.renamed.length + restored.length,
         <Section title={t('productZip.section.mainProducts')}>
           {some(
             mainProducts.added.length,
@@ -123,8 +157,15 @@ function ReportView({ report }: { report: ProductZipReport }) {
           {some(
             mainProducts.renamed.length,
             <Item
-              label={t('productZip.item.renamed', { count: mainProducts.renamed.length })}
+              label={t('productZip.item.changed', { count: mainProducts.renamed.length })}
               items={mainProducts.renamed.map((main) => `${main.code}: ${cells(main.fields)}`)}
+            />,
+          )}
+          {some(
+            restored.length,
+            <Item
+              label={t('productZip.item.restoredFromBin', { count: restored.length })}
+              items={restored.map((main) => `${main.code} — ${main.name}`)}
             />,
           )}
         </Section>,
@@ -163,27 +204,8 @@ function ReportView({ report }: { report: ProductZipReport }) {
           />,
         )}
       </Section>
-      {some(
-        colours.added.length + colours.changed.length,
-        <Section title={t('productZip.section.colours')}>
-          {some(
-            colours.added.length,
-            <Item
-              label={t('productZip.item.added', { count: colours.added.length })}
-              items={colours.added}
-            />,
-          )}
-          {some(
-            colours.changed.length,
-            <Item
-              label={t('productZip.item.changed', { count: colours.changed.length })}
-              items={colours.changed.map(
-                (change) => `${change.column}: ${change.from || '—'} → ${change.to}`,
-              )}
-            />,
-          )}
-        </Section>,
-      )}
+      <ListSection title={t('productZip.section.colours')} list={colours} />
+      <ListSection title={t('productZip.section.brands')} list={brands} />
       <Section title={t('productZip.section.photos')}>
         {some(
           photos.added.length,
@@ -263,10 +285,11 @@ function changes(report: ProductZipReport, options: ProductRestoreOptions): numb
   return (
     report.mainProducts.added.length +
     report.mainProducts.renamed.length +
+    (report.mainProducts.restoredFromBin?.length ?? 0) +
     report.products.created +
     report.products.updated +
-    report.colours.added.length +
-    report.colours.changed.length +
+    listCount(report.colours) +
+    listCount(report.brands) +
     report.photos.added.length +
     report.photos.replaced.length +
     (report.photos.recaptioned?.length ?? 0) +
@@ -387,8 +410,9 @@ export function ProductZipModal({
 
   async function choose(chosen: File): Promise<void> {
     if (busy) return;
-    if (!/\.zip$/i.test(chosen.name)) {
-      setFailure(t('validation.productZip.notAZip'));
+    // A backup zip, or the products sheet an earlier version exported.
+    if (!/\.(zip|csv|xlsx)$/i.test(chosen.name)) {
+      setFailure(t('validation.productZip.fileRequired'));
       return;
     }
     if (chosen.size > MAX_PRODUCT_ZIP_BYTES) {
@@ -491,7 +515,7 @@ export function ProductZipModal({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".zip,application/zip"
+              accept=".zip,.csv,.xlsx,application/zip"
               hidden
               data-testid="product-zip-file"
               onChange={(event) => {
