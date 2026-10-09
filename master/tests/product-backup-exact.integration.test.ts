@@ -12,6 +12,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promi
 import os from 'node:os';
 import path from 'node:path';
 
+import type { ProductZipReport } from '@orderbook/shared';
 import sharp from 'sharp';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
@@ -115,15 +116,16 @@ async function exported(): Promise<{ file: string; entries: Map<string, Buffer> 
   return { file, entries: await entriesOf(file) };
 }
 
-/** The export's products.csv with its rows passed through `edit`. */
+/** The export's products.csv (or `name`) with its rows passed through `edit`. */
 async function editRows(
   entries: Map<string, Buffer>,
   edit: (rows: string[][], at: (column: string) => number) => string[][],
+  name = 'products.csv',
 ): Promise<string> {
-  const [header, ...body] = await readSheetRows(entries.get('products.csv')!);
+  const [header, ...body] = await readSheetRows(entries.get(name)!);
   const edited = new Map(entries);
   edited.set(
-    'products.csv',
+    name,
     csv(
       header!,
       edit(body, (column) => header!.indexOf(column)),
@@ -602,6 +604,45 @@ describe.skipIf(!canRunIntegrationTests)(
         expect((await productByCode('BAS-0005'))!.images).toHaveLength(2);
       });
 
+      it('plans the photos of a code it removes as the preview did: one the zip still holds is kept or replaced, never removed', async () => {
+        await addPhoto('BAS-0001', '#aa0000', 'Zz White');
+        await addPhoto('BAS-0001', '#00aa00', 'Zz Ivory');
+        await addPhoto('BAS-0001', '#0000aa', 'Zz Ivory');
+        const { entries } = await exported();
+        expect([...entries.keys()].filter((name) => name.startsWith('images/BAS-0002'))).toEqual([
+          'images/BAS-0002_2.webp',
+          'images/BAS-0002_3.webp',
+        ]);
+        // The Ivory row left out, its photos kept, the second of them changed.
+        const edited = new Map(entries);
+        edited.delete('images/BAS-0002_3.webp');
+        edited.set('images/BAS-0002_3.jpg', await jpeg('#ffff00'));
+        const file = await editRows(edited, (rows, at) =>
+          rows.filter((row) => row[at('Code')] !== 'BAS-0002'),
+        );
+        const photosOf = ({ photos }: ProductZipReport) => ({
+          added: photos.added,
+          replaced: photos.replaced,
+          unchanged: photos.unchanged,
+          unmatched: photos.unmatched,
+          notInZip: photos.notInZip,
+        });
+
+        const preview = await previewProductZip(file, 'p.zip', admin);
+        expect(photosOf(preview)).toEqual({
+          added: [],
+          replaced: ['BAS-0002_3.jpg'],
+          unchanged: 2,
+          unmatched: [],
+          notInZip: [],
+        });
+        const done = await restoreProductZip(file, 'p.zip', { exactCatalogue: true }, admin);
+        expect(photosOf(done)).toEqual(photosOf(preview));
+        expect(done.photosRemoved).toBe(0);
+        expect(await liveCodes()).not.toContain('BAS-0002');
+        expect((await productByCode('BAS-0001'))!.images).toHaveLength(3);
+      });
+
       it('takes out a main product neither file names, and a colour or brand the files do not list, only when asked', async () => {
         await catalog.createCategory({ name: 'Spare', code: 'SPR' }, admin);
         const { entries } = await exported();
@@ -655,6 +696,66 @@ describe.skipIf(!canRunIntegrationTests)(
         });
       });
 
+      it('keeps a main product main-products.csv lists by its code with no name, and says that row was not read', async () => {
+        await catalog.createCategory({ name: 'Spare', code: 'SPR' }, admin);
+        const { entries } = await exported();
+        const file = await editRows(
+          entries,
+          (rows, at) =>
+            rows.map((row) =>
+              row[at('Main product code')] === 'SPR'
+                ? row.map((value, index) => (index === at('Main product') ? '' : value))
+                : row,
+            ),
+          'main-products.csv',
+        );
+
+        const preview = await previewProductZip(file, 'p.zip', admin);
+        expect({ gone: preview.mainProducts.notInFile, problems: preview.problems }).toEqual({
+          gone: undefined,
+          problems: [{ subject: 'SPR', messageKey: 'validation.category.nameRequired' }],
+        });
+        const done = await restoreProductZip(file, 'p.zip', { exactCatalogue: true }, admin);
+        expect(done.exactRemoved?.mainProducts).toBe(0);
+        expect(
+          (await productRepo.listCategories(admin.tenantId)).map((main) => main.code).sort(),
+        ).toEqual(['BAS', 'SPR']);
+      });
+
+      it('reads a colours.csv or brands.csv with no value column as no file, and says so', async () => {
+        const { entries } = await exported();
+        await fields.createValue(
+          { listKey: 'stock.colour', value: 'Zz Later', label: 'Zz Later', hex: null },
+          admin,
+        );
+        const colours = await customFieldRepo.listOptionsForKey(admin.tenantId, 'stock.colour');
+        const edited = new Map(entries);
+        edited.set('colours.csv', csv(['Name', 'Hex'], [['Zz White', '']]));
+        edited.set('brands.csv', csv(['Name'], [['Nobody']]));
+        const file = await zipOf(edited);
+
+        const preview = await previewProductZip(file, 'p.zip', admin);
+        expect({ problems: preview.problems, colours: preview.colours }).toEqual({
+          problems: [
+            {
+              subject: 'colours.csv',
+              messageKey: 'validation.import.missingColumn',
+              params: { column: 'Colour' },
+            },
+            {
+              subject: 'brands.csv',
+              messageKey: 'validation.import.missingColumn',
+              params: { column: 'Brand' },
+            },
+          ],
+          colours: { added: [], changed: [], noFile: true },
+        });
+        await restoreProductZip(file, 'p.zip', { exactCatalogue: true }, admin);
+        expect(await customFieldRepo.listOptionsForKey(admin.tenantId, 'stock.colour')).toEqual(
+          colours,
+        );
+      });
+
       it('switches a colour off for a person who may not delete one, and asks for each permission before anything is written', async () => {
         const { entries } = await exported();
         await fields.createValue(
@@ -678,20 +779,20 @@ describe.skipIf(!canRunIntegrationTests)(
         await expect(
           restoreProductZip(file, 'p.zip', { exactCatalogue: true }, await actorWith([...keys])),
         ).rejects.toBeInstanceOf(ForbiddenError);
-        // The lists' own permission, asked before the first write: nothing changed, the shipped photos not retired.
+        // The lists' own permission, asked before the first write: nothing changed, the shipped photos
+        // not retired. The preview says so first.
+        const deleter = await actorWith([...keys, 'products.delete']);
+        expect((await previewProductZip(file, 'p.zip', deleter)).exactNeedsLists).toBe(true);
         await expect(
-          restoreProductZip(
-            file,
-            'p.zip',
-            { exactCatalogue: true },
-            await actorWith([...keys, 'products.delete']),
-          ),
+          restoreProductZip(file, 'p.zip', { exactCatalogue: true }, deleter),
         ).rejects.toBeInstanceOf(ForbiddenError);
         expect((await productByCode('BAS-0003'))!.size).not.toBe('9x9');
         expect(await marker(CATALOGUE_PHOTOS_MARKER)).toBeUndefined();
 
         const lists = await actorWith([...keys, 'products.delete', 'catalog.lists.manage']);
-        expect((await previewProductZip(file, 'p.zip', lists)).colours).toEqual({
+        const seen = await previewProductZip(file, 'p.zip', lists);
+        expect(seen.exactNeedsLists).toBeUndefined();
+        expect(seen.colours).toEqual({
           added: [],
           changed: [],
           notInFile: ['Zz Later'],

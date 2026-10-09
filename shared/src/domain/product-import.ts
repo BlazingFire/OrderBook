@@ -164,7 +164,7 @@ export interface ProductZipList {
   notInFile?: string[];
   /** Colours: `exactCatalogue` switches `notInFile` off instead, for a person who may not delete a colour (`fields.manage`). */
   switchedOff?: boolean;
-  /** Colours: the zip has no `colours.csv`, so the colour list stays as it is, `exactCatalogue` or not. */
+  /** Colours: the zip has no `colours.csv` (or none with a Colour column), so the colour list stays as it is, `exactCatalogue` or not. */
   noFile?: boolean;
 }
 
@@ -230,6 +230,11 @@ export interface ProductZipReport {
   photosRemoved?: number;
   /** After a real run with `exactCatalogue`: the main products, colours and brands it took out. */
   exactRemoved?: { mainProducts: number; colours: number; brands: number };
+  /**
+   * A preview for a person without `catalog.lists.manage`: `exactCatalogue`
+   * would take colours or brands out, which needs it, so that run is refused.
+   */
+  exactNeedsLists?: boolean;
   problems: ProductZipProblem[];
 }
 

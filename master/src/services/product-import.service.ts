@@ -304,7 +304,7 @@ interface ImportOptions {
 
 type UpdateGroup = ImportGroup & {
   existing: Product;
-  /** The file's rows are the whole variant set: matched by name, or `exactVariants`. */
+  /** The file's rows are the whole variant set: matched by name (`MergeRules.exactVariants` makes every group so). */
   exact?: boolean;
   /** In the Recycle Bin: the update brings it back first. */
   binned?: boolean;
@@ -334,7 +334,9 @@ export type ImportedRows = {
   /**
    * Each sub product the run adds, changes or brings back from the Bin, as it
    * leaves it: the live one's id (null for a new one) and every code with its
-   * colour — what a dry run plans those rows' photos against.
+   * colour — what a dry run plans those rows' photos against. A code
+   * `exactVariants` removes is still here, as a dry run without it reads it,
+   * so that run plans the photos against the same codes its preview did.
    */
   subProducts: Array<{
     id: string | null;
@@ -356,6 +358,8 @@ interface MergeRules {
    * the row's problem says what is wrong with it.
    */
   refusedCodes: Set<string>;
+  /** `restore.exactVariants`: every group's rows are its whole variant set, as one matched by name. */
+  exactVariants: boolean;
 }
 
 export async function importProducts(
@@ -464,6 +468,7 @@ export async function importProducts(
     restore,
     clearsWeight: restore && match.byIndex.some((column) => column?.field === 'weightKg'),
     refusedCodes: new Set(),
+    exactVariants: Boolean(options.restore?.exactVariants),
   };
 
   const issues: ProductImportIssue[] = [];
@@ -589,7 +594,7 @@ export async function importProducts(
       claimedOwners.add(existing.id);
       // One back from the Bin keeps the codes the file does not name, as a
       // live one does: listed, and removed only under `exactVariants`.
-      updates.push({ ...group, existing, exact: Boolean(options.restore?.exactVariants), binned: fromBin });
+      updates.push({ ...group, existing, binned: fromBin });
     } else {
       for (const entry of group.rows) {
         issues.push({
@@ -893,11 +898,12 @@ export async function importProducts(
         ),
         reordered,
         matchedIds: kept.map((group) => group.existing.id),
+        // With the codes `exactVariants` removes: what the preview, run without it, read.
         subProducts: [
           ...creates.filter(landed).map((group) => subProduct(null, group.input)),
           ...updates
             .filter(landed)
-            .map((group) => subProduct(group.existing.id, mergedUpdate(group, rules).input)),
+            .map((group) => subProduct(group.existing.id, mergedUpdate(group, { ...rules, exactVariants: false }).input)),
         ],
       },
     };
@@ -1188,7 +1194,7 @@ function mergedUpdate(
 
   const untouched = merged.filter((variant) => variant.active && !variant.touched);
   const onRefusedRow = (variant: { code: string }): boolean => rules.refusedCodes.has(variant.code.toLowerCase());
-  const leftAlone = untouched.filter((variant) => !group.exact || onRefusedRow(variant));
+  const leftAlone = untouched.filter((variant) => !(group.exact || rules.exactVariants) || onRefusedRow(variant));
   const kept = merged.filter((variant) => variant.touched || leftAlone.includes(variant));
   // The file decides whether it has colours once it names every live code;
   // while codes it never named remain, a switch that was on stays on. Then an

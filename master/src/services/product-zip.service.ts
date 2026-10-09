@@ -286,7 +286,7 @@ function readme(company: string, date: string, unnamed: readonly string[]): stri
     '  neither CSV names, and the colours and brands colours.csv and brands.csv do not list',
     '  (with no brands.csv: the brands no main product has), go to the Recycle Bin too. A zip',
     '  with no colours.csv leaves the colours as they are. A Code of a sub product that its',
-    '  rows no longer list is removed for good.',
+    '  rows no longer list is removed for good; a photo the images folder holds under it stays.',
     '',
     'EXCEL',
     '',
@@ -551,17 +551,27 @@ interface ListRow {
  * `colours.csv` or `brands.csv`, a value listed twice, case aside, read once:
  * the first row says it. A colours.csv with only Colour and Hex (an earlier
  * build's) reads as it always did: a blank hex leaves the colour's own, and
- * every colour it lists is switched on.
+ * every colour it lists is switched on. One with no `column` is said and read
+ * as no file (null): misread as listing nothing, it would take every value out.
  */
 async function readList(
   reader: ZipFiles,
   entry: string,
+  column: string,
   valueHeaders: readonly string[],
   problems: ProductZipProblem[],
-): Promise<ListRow[]> {
+): Promise<ListRow[] | null> {
   const { rows } = await sheetOf(reader, entry);
   const header = (rows[0] ?? []).map((text) => normalizeHeader(text ?? ''));
   const valueAt = header.findIndex((text) => valueHeaders.includes(text));
+  if (valueAt === -1) {
+    problems.push({
+      subject: baseName(entry),
+      messageKey: 'validation.import.missingColumn',
+      params: { column },
+    });
+    return null;
+  }
   const labelAt = header.indexOf('label');
   const hexAt = header.indexOf('hex');
   const activeAt = header.indexOf('active');
@@ -606,9 +616,9 @@ interface ZipContents {
   mainProducts: MainRow[];
   /** Main products `products.csv` names by name alone, on a row with no main product code. */
   mainNames: Array<{ name: string; brand: string }>;
-  /** Null for a zip without `colours.csv`: the colour list stays as it is. */
+  /** Null for a zip without a `colours.csv` it can read (`readList`): the colour list stays as it is. */
   colours: ListRow[] | null;
-  /** Null for a zip without `brands.csv`: the brands main products name are added as before (`registerBrands`). */
+  /** Null for a zip without a `brands.csv` it can read: the brands main products name are added as before (`registerBrands`). */
   brands: ListRow[] | null;
   photos: ZipPhoto[];
   /** A second file under the very same name, in another folder: never planned. */
@@ -726,10 +736,12 @@ async function readZip(reader: ZipFiles, problems: ProductZipProblem[]): Promise
 
   const colourEntry = findEntry(reader, COLOURS_CSV);
   const colours = colourEntry
-    ? await readList(reader, colourEntry, ['colour', 'color'], problems)
+    ? await readList(reader, colourEntry, 'Colour', ['colour', 'color'], problems)
     : null;
   const brandsEntry = findEntry(reader, BRANDS_CSV);
-  const brands = brandsEntry ? await readList(reader, brandsEntry, ['brand'], problems) : null;
+  const brands = brandsEntry
+    ? await readList(reader, brandsEntry, 'Brand', ['brand'], problems)
+    : null;
 
   let captions: ZipContents['captions'] = null;
   const captionsEntry = findEntry(reader, PHOTOS_CSV);
@@ -910,10 +922,18 @@ async function planMainProducts(
     });
   };
 
+  const plan: MainPlan = { added: [], changed: [], listed: new Map() };
   const read: MainRow[] = [];
   const byCode = new Map<string, MainRow>();
   for (const row of rows) {
-    if (!row.name) continue;
+    if (!row.name) {
+      // Not read, and said; the main product of its code is still the file's, never one it leaves out.
+      if (!row.code) continue;
+      problems.push({ subject: row.code, messageKey: 'validation.category.nameRequired' });
+      const hit = live.find((category) => lower(category.code) === lower(row.code));
+      if (hit) plan.listed.set(hit.id, hit.brand);
+      continue;
+    }
     if (row.code && !CATEGORY_CODE_PATTERN.test(row.code)) {
       problems.push({
         subject: row.code,
@@ -945,7 +965,6 @@ async function planMainProducts(
     read.flatMap((row) => (row.code && !target.has(row) ? [row.code] : [])),
   );
 
-  const plan: MainPlan = { added: [], changed: [], listed: new Map() };
   const taken = new Map<string, MainRow>();
   let last = Math.max(
     0,
@@ -1656,14 +1675,19 @@ async function runZip(
       ...planned.listed.values(),
       ...planned.added.map((seed) => seed.brand ?? null),
     ];
+    // A colour goes to the Recycle Bin for a person who may delete one; for anyone else it is
+    // switched off, as the restore may already do to a colour the file lists.
+    const binColours = actorCan(actor, 'fields.manage');
+    const coloursGone = (colours?.gone ?? []).filter((option) => binColours || option.isActive);
     // Changing the colour or brand list is the lists' own permission, asked before anything is
-    // written: under `exactCatalogue` for every value it may take out too.
-    const mayTakeOut = exact
-      ? (colours?.gone.length ?? 0) +
-        (brands ? brands.gone.length : unusedBrands(brandsBefore, filedBrands).length)
-      : 0;
-    if (listChanges(colours) + listChanges(brands) + mayTakeOut > 0)
+    // written: under `exactCatalogue` for every value it may take out too, which a preview
+    // tells a person without it.
+    const mayTakeOut =
+      coloursGone.length +
+      (brands ? brands.gone.length : unusedBrands(brandsBefore, filedBrands).length);
+    if (listChanges(colours) + listChanges(brands) + (exact ? mayTakeOut : 0) > 0)
       requirePermission(actor, 'catalog.lists.manage');
+    const exactNeedsLists = mayTakeOut > 0 && !actorCan(actor, 'catalog.lists.manage');
 
     let main = planned;
     if (!dryRun) {
@@ -1740,17 +1764,16 @@ async function runZip(
           ...filedBrands,
           ...unlisted.filter((main) => !mainGone.includes(main)).map((main) => main.brand),
         ]);
-    // A colour goes to the Recycle Bin for a person who may delete one; for anyone else it is
-    // switched off, as the restore may already do to a colour the file lists.
-    const binColours = actorCan(actor, 'fields.manage');
-    const coloursGone = (colours?.gone ?? []).filter((option) => binColours || option.isActive);
 
     // A dry run plans photos against the sub products as the import leaves them
     // (`rows.subProducts`): a new one, one back from the Bin, one a code is added to.
-    // The planner reads only their id, codes and gallery.
+    // So does the exact run, with the codes `exactVariants` removed, as its preview
+    // read them: a photo the zip names by one is kept or replaced, never removed
+    // unlisted. The planner reads only their id, codes and gallery.
     let products = live;
-    if (dryRun) {
-      const subs = rows?.subProducts ?? [];
+    if (dryRun || exact) {
+      // The run's new ones are live already.
+      const subs = (rows?.subProducts ?? []).filter((sub) => dryRun || sub.id);
       const held = new Map(live.map((product) => [product.id, product]));
       const binned = subs.flatMap((sub) => (sub.id && !held.has(sub.id) ? [sub.id] : []));
       for (const [id, product] of await productRepo.findProductsByIds(tenantId, binned))
@@ -1833,6 +1856,7 @@ async function runZip(
         ),
       },
       photos,
+      ...(dryRun && exactNeedsLists ? { exactNeedsLists } : {}),
       problems,
     };
     if (dryRun) return report;
