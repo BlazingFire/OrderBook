@@ -46,6 +46,12 @@ export interface UploadImageRequest {
    * know the size sharp sees after EXIF orientation to send a rect for it.
    */
   wholeFrame?: boolean;
+  /**
+   * Add nothing (`GalleryTakenError`) when the sub product has a photo by the
+   * time the row would be written: the shipped photos' attach
+   * (`catalogue-photos.service.ts`) planned from galleries it read minutes ago.
+   */
+  onlyIfEmpty?: boolean;
 }
 
 /*
@@ -250,6 +256,13 @@ async function encodeBlurhashFrom(cropped: sharp.Sharp): Promise<string> {
   return encodeBlurhash(new Uint8ClampedArray(data), info.width, info.height, 4, 4);
 }
 
+/** An `onlyIfEmpty` upload found a photo already there: nothing was added. */
+export class GalleryTakenError extends Error {
+  constructor() {
+    super('the sub product already has a photo');
+  }
+}
+
 export async function uploadImage(request: UploadImageRequest, actor: ActorContext): Promise<Product> {
   requirePermission(actor, 'products.edit');
 
@@ -261,7 +274,7 @@ export async function uploadImage(request: UploadImageRequest, actor: ActorConte
     normalizeAndStore(actor.tenantId, imageId, request.fileBuffer, request.crop, request.wholeFrame),
   );
 
-  await db().transaction(async (trx) => {
+  const added = await db().transaction(async (trx) => {
     // The product row is locked before the gallery is read, so two uploads
     // racing to the same product serialize here rather than both reading an
     // empty gallery and both inserting `isPrimary: true` — `imagesForProduct`
@@ -274,6 +287,8 @@ export async function uploadImage(request: UploadImageRequest, actor: ActorConte
     // has no tiebreak beyond `sequence` to order the collision by.
     await productRepo.lockProduct(actor.tenantId, request.productId, trx);
     const existing = await imageRepo.imagesForProduct(actor.tenantId, request.productId, trx);
+    // From the same locked read, so a photo that landed after the caller looked is seen here.
+    if (request.onlyIfEmpty && existing.length > 0) return false;
     const nextSequence = existing.reduce((next, image) => Math.max(next, image.sequence + 1), 0);
 
     await imageRepo.insertImage(
@@ -313,7 +328,13 @@ export async function uploadImage(request: UploadImageRequest, actor: ActorConte
       actor,
       trx,
     );
+    return true;
   });
+  if (!added) {
+    // Its variant files were written above, before the row; no row names them now.
+    await rm(imageDir(actor.tenantId, imageId), { recursive: true, force: true });
+    throw new GalleryTakenError();
+  }
 
   const updated = await reloadProduct(actor.tenantId, request.productId);
   return publishUpdated(updated);
