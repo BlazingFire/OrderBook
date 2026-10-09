@@ -217,10 +217,28 @@ was verified, so the next agent can trust the state without re-auditing.
   `docs/7-STORAGE-BACKUP-RESTORE.md`, `docs/catalogue/CATALOGUE_MODEL.md`, `docs/schema/02-parties-and-products.md`,
   `docs/backend-modules/04-API-CONTRACT.md` §23, `HANDOFF.md` (the batch and six owner decisions), `docs/NEXT_PHASE.md`.
   There is no `7-IMAGE-PIPELINE.md` in `docs/`; the byte-for-byte master and `onlyIfEmpty` are in `docs/STRUCTURE.md` §5.6.
+- **Fix round (2026-10-10, `cad9b92a`…`adf9799f` on `s7/product-backup`, merged with these docs as `d92ebe5b`):** a
+  sub product matched by name keeps its left-out codes unless the exact option is ticked; the exact option keeps
+  the brand of a main product named by name alone; the exact run does a dry run of the import, bins the sub products
+  it takes out and the main products they leave empty (`clearedFirst`) before it writes, so a rename onto one of
+  their names lands in one run (a sub product a live lead or order quotes is read as staying; a main product emptied
+  only by the rows is binned at the end, so a rename onto its name lands on a second run); the preview takes the
+  opt-ins (`previewProductZip(…, options)`, the route, the transport) and the modal previews again on the exact box;
+  notes under the box for no `colours.csv` and no photos; a sheet with no Colour column changes no colour
+  (`MergeRules.colours`, `findDuplicatesInFile(…, byCode)`); `UploadImageRequest.keepWebpMaster`, the product
+  restore's alone; modal wording ("file", the no-tick sentence, the done line at zero); helpers reused
+  (`isValidOption(…, includeInactive)`). Tests: `product-backup-exact` 12 → 18, `product-backup-import` 36 (each
+  `it.each` case counted), `product-backup-photos`, `product-zip` and `ui/tests/master-catalogue` (+3) extended;
+  the six files now hold 107 tests. Docs: `docs/PRODUCT_IMPORT_FORMAT.md` (name match, exact bytes, the opt-ins and
+  the preview, "How the exact run clears the way", refusals, the run, no Colour column, tests),
+  `docs/STRUCTURE.md` (the modal, image, product-import and product-zip entries, the restore flow, §11.13, the test
+  map), `docs/backend-modules/04-API-CONTRACT.md` §23 (the dry run takes the opt-ins), `HANDOFF.md` (the fix round,
+  owner questions 7–9: L3 colours with no `colours.csv`, the exact option's second run, sub products with no
+  position on an empty restore), `docs/NEXT_PHASE.md`.
 - **Verified:** each builder's suites on PostgreSQL, none skipped; full suite without probes on `4cb607f0` exit 0
-  (404 files + 1 skipped; 5,413 tests + 17 skipped); typecheck 0; eslint 0 on touched files. **Not verified:** the
-  full gate on the final head (running in `../OrderBook-s7` when this was written), the owner's real files, a
-  browser or Electron pass, a real build.
+  (404 files + 1 skipped; 5,413 tests + 17 skipped); typecheck 0; eslint 0 on touched files. Full gate re-run on
+  the final branch: see the lead's report. **Not verified:** the owner's real files, a browser or Electron pass, a
+  real build.
 
 ### 2026-10-08 (later) - New Order walk to Add sub product, Sell today, product band, person screen (Claude, Opus, single session)
 

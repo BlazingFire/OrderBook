@@ -15,18 +15,24 @@ This file assumes both.
 The product backup and restore made exact: every colour, weight, code, photo and caption comes back, older product
 files are read, two installs' backups combine with no sub product twice, "Make the catalogue exactly this file"
 leaves nothing shipped beside the owner's data, and an update changes no data. What is true is in `HANDOFF.md`,
-under "Product backup and restore made exact (2026-10-09)"; the rules are in `docs/PRODUCT_IMPORT_FORMAT.md`. In
-order:
+under "Product backup and restore made exact (2026-10-09)", with its 2026-10-10 fix round (the exact run clears
+the way before it writes, the preview takes the opt-ins, a sheet with no Colour column changes no colour); the rules
+are in `docs/PRODUCT_IMPORT_FORMAT.md`. In order:
 
 1. Merge `s7/product-backup` and `s12/docs` into `main` once the uncommitted party-screen work in the main checkout
    is committed (it is someone else's; do not touch it). Run `npm run verify` on the merge.
-2. Ask the owner the six decisions listed in `HANDOFF.md` ("Owner decisions waiting"): shipped photos on an update
+2. Ask the owner the nine decisions listed in `HANDOFF.md` ("Owner decisions waiting"): shipped photos on an update
    from 1.4.4 or earlier (his own Master), brand capitals, the exact option's default and emptying the Recycle Bin of
-   what it moved, twins with identical cells, photo 2 of a one-colour sub product, and the 1.4.5 catalogue
-   corrections on his update.
+   what it moved, twins with identical cells, photo 2 of a one-colour sub product, the 1.4.5 catalogue
+   corrections on his update, and, from the 2026-10-10 fix round: the colour list with no `colours.csv` under the
+   exact option (L3), the exact option's second run when a main product it takes out only at the end holds a name
+   the file gives another, and sub products with no stored position coming back numbered on a restore into an
+   empty catalogue.
 3. When he shares his two product backups: combine them into one zip (one row per sub product, each taking the
    other's data; main products, colours, brands and photos merged the same way), restore it onto a scratch new
-   install with "Make the catalogue exactly this file", and check its export against both files.
+   install with "Make the catalogue exactly this file", and check its export against both files. If the preview
+   lists a main product rename refused for a name the run takes out only at the end, restore the same file a second
+   time (`HANDOFF.md` question 8).
 4. Build 1.4.7 with this and the 2026-10-08 batch together (the steps below), then a browser or Electron pass of
    the restore dialog, which is not recorded for this batch.
 

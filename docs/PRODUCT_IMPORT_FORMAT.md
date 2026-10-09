@@ -79,7 +79,7 @@ and Order, the colour and brand lists, photos, their captions and their order. A
 unedited backup restored over the catalogue it came from reads as nothing to do, and
 restoring the same zip a second time changes nothing. A file combined from two installs'
 backups restores as one catalogue: a sub product the catalogue already holds under other
-codes is matched by its name and recoded, never created a second time. Onto a new install, **Make the catalogue exactly this file** leaves
+codes is matched by its name, never created a second time. Onto a new install, **Make the catalogue exactly this file** leaves
 nothing of the shipped catalogue beside it.
 
 ### What is in it
@@ -224,6 +224,8 @@ in an order that never meets a clash; one that can never land (two main products
 swap names, or a name held by a main product the file leaves alone) is refused
 (`error.conflict.categoryNameTaken` / `categoryCodeTaken`) in the preview and the run
 alike. So is a new brandless main product whose name a live one holds under any brand.
+Under **Make the catalogue exactly this file**, a name or code held by a main product the
+run takes out before it writes is free (below, "How the exact run clears the way").
 
 **Sub products** (the rows of `products.csv` grouped by main product and Sub product
 name, case aside):
@@ -238,8 +240,13 @@ name, case aside):
    on another sub product now or on another row of the file. A refused one stays in the
    Bin, and no copy is made beside it;
 3. else by name: the live sub product of that name in that main product, unless a row
-   already names it by its own codes. It is updated and recoded to the file's rows, so
-   one sub product numbered differently on two installs restores as one;
+   already names it by its own codes. It is updated with the file's rows, so one sub
+   product numbered differently on two installs restores as one: a row whose colour a
+   live code of it has takes that code over (recodes it), a row of another colour adds
+   its code, and the live codes its rows leave out are kept and listed
+   (`rows.variantsNotInFile`), as a code-matched sub product's are. Only **Make the
+   catalogue exactly this file** removes them (since 2026-10-10; before, they were
+   dropped with nothing ticked);
 4. else a new one.
 
 No two live sub products of one name in one main product (`docs/catalogue/CATALOGUE_MODEL.md`
@@ -274,13 +281,17 @@ Products → Duplicates before taking a backup.
   uploaded photo takes it; a kept photo whose caption differs gets it back ("Caption put
   back from photos.csv", `photos.recaptioned`). A zip with no `photos.csv` captions as
   before: a photo matched through a colour's code takes that colour's label, else none.
-- **Exact bytes, Master to Master.** A whole, unrotated upload of a still, lossy WebP
-  that carries no EXIF, ICC or XMP, ends where its RIFF payload ends and is 2048 px or
-  less on its long edge — a `master.webp` the pipeline wrote — is stored as the new
-  `master.webp` byte for byte, the smaller sizes made from it. So a backup restored on
-  another Master keeps its checksums there, and a backup of that Master reads as
-  unchanged on the first. Any other file (a jpg, a png, a webp a person made) is encoded
-  like every upload, and the row keeps the sha256 of the file it came from
+- **Exact bytes, Master to Master.** A photo the product restore puts in that is a
+  whole, unrotated, still, lossy WebP carrying no EXIF, ICC or XMP, ending where its RIFF
+  payload ends and 2048 px or less on its long edge — a `master.webp` the pipeline wrote
+  — is stored as the new `master.webp` byte for byte, the smaller sizes made from it. So
+  a backup restored on another Master keeps its checksums there, and a backup of that
+  Master reads as unchanged on the first. Only the product restore asks for this
+  (`UploadImageRequest.keepWebpMaster`, passed by `runPhotos`; the shipped `products.zip`
+  load is one): since 2026-10-10 a single upload, the bulk Photo import and the heal
+  encode every file, such a WebP saved from anywhere else too. Any other file in a zip
+  (a jpg, a png, a webp a person made) is encoded like every upload, and the row keeps
+  the sha256 of the file it came from
   (`product_images.source_checksum`, migration `20261017000000`), so that file reads as
   unchanged the next time, on that Master. A photo uploaded before that migration has no
   source hash and matches only by its export. So does one cropped or rotated on screen:
@@ -306,7 +317,7 @@ after the run (`mainProducts.notInFile`); and colours and brands the files do no
 |---|---|---|
 | *Move sub products missing from the file to the Recycle Bin* (`binMissingProducts`) | `products.delete` | the sub products in `rows.notInFile`, through the ordinary delete: **Recycle Bin**, so they can be brought back |
 | *Remove photos missing from the zip* (`removeMissingPhotos`) | — | the photos in `photos.notInZip`: **removed for good**; a photo cannot be brought back |
-| *Make the catalogue exactly this file* (`exactCatalogue`) | `products.delete`; `catalog.lists.manage` too when a colour or brand would be taken out | both of the above, and then, through the ordinary deletes: the main products in `mainProducts.notInFile` (one still holding a sub product, kept by a refused row, is refused and reported); the colours `colours.csv` does not list (switched off instead for a person without `fields.manage`; with no `colours.csv` it can read, the colours stay as they are); and the brands `brands.csv` does not list (with no `brands.csv`, the brands no remaining main product has) — all to the **Recycle Bin**. The codes in `rows.variantsNotInFile` are **removed for good**: deleted, or switched off while history quotes one; never in the Recycle Bin |
+| *Make the catalogue exactly this file* (`exactCatalogue`) | `products.delete`; `catalog.lists.manage` too when a colour or brand would be taken out | both of the above, and then, through the ordinary deletes: the main products in `mainProducts.notInFile` (one still holding a sub product, kept by a refused row, is refused and reported); the colours `colours.csv` does not list (switched off instead for a person without `fields.manage`, one already off then not listed; with no `colours.csv` it can read, the colours stay as they are, an open owner question); and the brands `brands.csv` does not list (with no `brands.csv`, the brands no remaining main product has, a main product `products.csv` names by name alone counting with its row's brand) — all to the **Recycle Bin**. The codes in `rows.variantsNotInFile` are **removed for good**: deleted, or switched off while history quotes one; never in the Recycle Bin |
 
 The modal offers the third only to a person with `products.delete`; ticking it ticks and
 locks the other two. When the preview says that person lacks `catalog.lists.manage` and
@@ -315,9 +326,41 @@ off with a note. With it, a photo in `images/` named by a code the option remove
 colour row left out of `products.csv`) is kept or replaced as the preview listed it,
 never removed unlisted. A bare 1.2.4–1.4.6 products sheet restored with it moves the
 main products and sub products it does not name, and unused brands, to the Recycle Bin,
-and leaves the colours and the photos as they are. The preview runs without the
-opt-ins, so a sub product whose only change is losing codes counts as unchanged there;
-its codes are listed under `rows.variantsNotInFile` and counted in what Apply does.
+and leaves the colours and the photos as they are; under the box the modal says so, one
+note for a file with no `colours.csv` (the colour list stays) and one for a file with no
+photos (the photos stay).
+
+**The preview takes the opt-ins** (since 2026-10-10). Ticking or unticking the third
+reads the file again with it (the dialog says it is reading; the other two ticks are
+kept, and a refused preview leaves the ticks and the list as they were), so with it
+ticked the lists and counts are the exact run's: a sub product whose only change is
+losing codes counts as changed, and what the run takes out first reads as gone. The
+other two change nothing the preview lists. "Nothing is removed unless you tick it
+below" is shown only where a box is; with none (no `products.delete` and no missing
+photos) the dialog says that nothing is removed, offering no tick.
+
+### How the exact run clears the way
+
+Under **Make the catalogue exactly this file** a name or a code the file gives one thing
+may be held by another the same run takes out. So the exact run first does a dry run of
+the import, which tells it which live sub products the file reads, and then, before it
+writes anything else, moves to the Recycle Bin the sub products it takes out
+(`rows.notInFile`) and the main products no row of either file names whose sub products
+all go with them (`clearedFirst`): none has a code in the file (a switched-off one
+included, which the import still reads) or is quoted by a live lead or order. Only
+then does it write the lists, the main products, the rows and the photos, and last the
+rest of what it takes out: the main products the rows emptied (one whose first bin was
+refused is tried again), brands, colours and photos. A main product renamed onto the name
+of one the file leaves out (`categoryNameTaken` before), or a sub product renamed onto
+the name of one the file leaves out (`nameTaken` before), lands in one run, and a second
+run changes nothing. The exact preview reads those names as free the same way
+(`restore.leaving`), except one a live lead or order quotes: the ordinary delete refuses
+that sub product, so its name stays taken, in the preview as in the run.
+
+**Known limit.** A main product the file leaves out whose sub products the file moves to
+other main products is not empty until the rows are written, so it is binned only at the
+end. A main product renamed onto its name is refused on the first run (the preview says
+so too) and lands on a second run of the same file (an open owner question, `HANDOFF.md`).
 
 ### Refusals and problems
 
@@ -332,9 +375,11 @@ Refused as a whole, before anything is written:
   fixed file (`validation.productZip.manyFiles`), a `products.csv` missing a required
   column (`validation.import.missingColumn`), or one with a header and no rows
   (`validation.import.emptyFile`);
-- a missing permission, checked before the first write. The preview, which runs
-  without the opt-ins, is refused the same way when the file changes a list; what the
-  exact option alone would need is reported instead (`exactNeedsLists`).
+- a missing permission, checked before the first write. The preview is checked with
+  the opt-ins it is sent, the same way: refused when the file changes a list, and the
+  exact preview without `products.delete`, or without `catalog.lists.manage` when it
+  would take a colour or brand out. The preview without the exact option reports that
+  last need instead (`exactNeedsLists`), and the modal keeps the box switched off.
 
 Listed under "Could not be done" or as row problems, while the rest is restored: a
 `products.csv` main product cell that disagrees with `main-products.csv`; a main product
@@ -352,8 +397,9 @@ named `images`, at any depth; a file there that is no image is listed as such.
 
 ### The preview and the run
 
-The preview is the restore run as a dry run (one function, `runZip`), so what it lists
-is what Apply does. Its report (`ProductZipReport`) holds: main products added, changed
+The preview is the restore run as a dry run (one function, `runZip`), with the opt-ins
+ticked in the dialog, so what it lists is what Apply does. Its report
+(`ProductZipReport`) holds: main products added, changed
 (name, code, brand or Order, old → new), back from the Recycle Bin and not in the file;
 sub product rows added, changed cell by cell (old → new), unchanged, back from the Bin,
 not in the file, their codes not in the file, main products put in the file's order, and
@@ -368,12 +414,19 @@ beside a full backup restore (Settings → Storage), which replaces the database
 whichever starts second is refused. It first stops the shipped photos still being
 attached on a new install and waits for the photo it is on; at its first write it
 retires them for good, so a restore refused before writing leaves them to carry on at
-the next boot (`docs/UPDATES.md`). Then it writes the Brands list, the main products one
-by one (Bin returns, then edits through `catalog.updateCategory`), the new main products,
-the colour list, the sub products, the photos (uploads, captions, order) and last what
-the opt-ins take out (sub products, main products, brands, colours, then photos). One
-`catalog.imported` activity row (its details count each kind of change, every main
-product change in `mainProductsRenamed`) and one catalogue change event.
+the next boot (`docs/UPDATES.md`). Under the exact option it then takes out what clears
+the way (above). Then it writes the Brands list, the main products one by one (Bin
+returns, then edits through `catalog.updateCategory`), the new main products, the colour
+list, the sub products, the photos (uploads, captions, order) and last what the opt-ins
+take out (sub products unless the exact run took them first, main products, brands,
+colours, then photos). One `catalog.imported` activity row (its details count each kind
+of change, every main product change in `mainProductsRenamed`) and one catalogue change
+event. The done screen says what the exact option took out only when it took something.
+
+The dialog says "file", not "zip", wherever the upload may be a products sheet (reading
+it, nothing to change, no `colours.csv`, what is only listed), and the codes a file sub
+product's rows leave out read "Codes in the catalogue but not in products.csv", beside
+the sub products' "In the catalogue but not in products.csv".
 
 ### Where the plain Import differs
 
@@ -385,7 +438,7 @@ Products → Import reads a sheet a person typed with the same columns, through 
 | Inner spacing | kept as written | folded to one space; a stored name, alias, size, colour, main product or brand that differs only in spacing reads as unchanged |
 | A blank Alias, Size or Weight | clears the stored value | leaves the stored value |
 | Colour spelling | the file's | one the colour list has is kept as written; another spelling takes the list's, the first in list order when two differ only in case |
-| A sub product name its main product already has, under new codes | that sub product, recoded | refused (`validation.product.nameTaken`), for a create, a rename or a move |
+| A sub product name its main product already has, under new codes | that sub product, its codes taken over by colour, the others kept | refused (`validation.product.nameTaken`), for a create, a rename or a move |
 | A code only a sub product in the Recycle Bin has | that sub product comes back | not matched: Recycle Bin products are neither exported nor matched |
 | Rows of one sub product that disagree | reported | the first row wins |
 | Sub product order | the file's (above) | not read from the file |
@@ -395,6 +448,17 @@ Both read the Colour of a `multicolour` row as one of its colours, both read the
 comma the same way, and both take the export's formula-guard apostrophe off again, one
 exactly, so a value that starts with its own apostrophe before `-`, `=`, `+` or `@`
 comes back as written (`lib/csv.ts`, `lib/spreadsheet.ts`).
+
+Both read a sheet with **no Colour column** (say `Main product code, Sub product, Code,
+Weight (kg)`, to change weights) as saying nothing about colours (since 2026-10-10;
+`MergeRules.colours`): each code keeps its colour and each sub product whether it has
+colours, where before a one-colour sub product lost its colour and the second code of a
+two-colour one was refused. Two rows of one sub product are duplicates only by their
+codes when every row of it names a live code; a new code beside them is still checked by
+its blank colour, so the later of the two rows is refused
+(`validation.import.duplicateInFile`) and the sub product is left as it is, no live code
+recoded onto the new one (`findDuplicatesInFile(…, byCode)`), in the restore of such a
+sheet too.
 
 ## Tests and fixtures
 
@@ -428,3 +492,12 @@ comes back as written (`lib/csv.ts`, `lib/spreadsheet.ts`).
   `product-backup-boot.integration.test.ts` (the update boot, the shipped photos once per
   install, a restore stopping them). "The product backup zip" in
   `ui/tests/master-catalogue.test.tsx` covers the modal.
+- 2026-10-10, the fix round: `product-backup-exact` adds a rename onto the name of a main
+  product or a sub product the file leaves out (one run, preview alike, a second run
+  writes nothing), a sub product a live lead quotes read as staying, a switched-off code
+  keeping its main product, a name-only main product's brand, and the codes of a sub
+  product read by name; `product-backup-import` a sheet with no Colour column (weights
+  only, and a new code beside live ones in three cases); `product-backup-photos` the WebP
+  kept only for the product restore; `product-zip` the exact preview's `products.delete`
+  check on the route; the modal tests a preview again on the exact box, its two notes,
+  and the done line only when something went.

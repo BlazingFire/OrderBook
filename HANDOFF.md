@@ -71,13 +71,29 @@ commits (`cf861c70`: an empty photo folder is the one run, and the run's own pho
 no photos leaves the photos as they are; `1a0dd4b5`: the audit probes removed, each finding now has its test in
 `master/tests/product-backup-*`).
 
+**Fix round (2026-10-10, `cad9b92a`…`adf9799f` on `s7/product-backup`):** a sub product matched by name keeps the
+codes its rows leave out (listed as "Codes in the catalogue but not in products.csv") unless the exact option is
+ticked; the exact option keeps the brand of a main product `products.csv` names by name alone; the exact run clears
+the way before it writes — a dry run of the import first, then the sub products it takes out and the main products
+they leave empty (`clearedFirst`) to the Recycle Bin, then lists, main products, rows, photos and the rest of the
+removals — so a main product or sub product renamed onto the name of one it takes out lands in one run (a sub
+product a live lead or order quotes is not read as leaving: its bin is refused); the preview takes the opt-ins and
+the dialog previews again when the exact box is ticked or unticked, so its lists and counts are the run's; under the
+box the dialog says that a file with no `colours.csv` keeps the colour list and one with no photos keeps the photos;
+a sheet with no Colour column (the plain Import too) changes no colour, and a new code beside live ones in it is
+refused rather than recoding one; only the product restore (and the shipped `products.zip` load) keeps a WebP master
+byte for byte (`UploadImageRequest.keepWebpMaster`), every other upload encodes it; the dialog says "file" where the
+upload may be a sheet, hides the exact option's done line at zero, and offers no tick where no box is. **Known
+limit:** a main product the file leaves out whose sub products the file moves elsewhere is binned only at the end,
+so a rename onto its name is refused on the first run (preview and run agree) and lands on a second (question 8).
+
 | Area | Result |
 |---|---|
 | The backup file | `main-products.csv` carries the stored Order (blank for none); `colours.csv` is `Colour, Label, Hex, Active` with switched-off colours; new `brands.csv` (`Brand, Label, Active`) and `photos.csv` (`File, Caption`); `products.csv` writes the colours of a multicolour sub product too; photo N whose `CODE_N` is another sub product's code goes out under another of its codes; a photo whose file is missing is listed in the README. |
 | Older files | **Restore from .zip** also takes the bare products `.csv`/`.xlsx` that 1.2.4–1.4.6 exported (and the import template), and their dated names inside a zip. |
 | What comes back | cells exactly as stored (inner spacing, colour spelling); a blank Alias, Size or Weight clears; `fixed` → `dedicated`/`multicolour` without a "Standard" colour; the decimal comma (`0,125` kg); a value starting `'-`; main product and sub product order; the colour and brand lists (labels, hex, switched off, order); photo captions, order and main photo, and their exact bytes from Master to Master. An unedited backup reads as nothing to do; the same zip twice changes nothing. |
-| Matching | main product by code, then by brand and name (recoded to the file's code), then from the Recycle Bin; sub product by code, then from the Recycle Bin, then by name inside its main product (recoded) — so two backups combined restore with no sub product twice. The bulk import now refuses a second sub product of one name in a main product; rows of one sub product that disagree are reported, not merged. |
-| New install | **Make the catalogue exactly this file** (off by default; needs Delete products): what the file does not list goes to the Recycle Bin (sub products, main products, colours, brands); photos missing from the zip and codes the rows leave out are removed for good. His backup onto a new install then equals his export, CSV by CSV and photo byte by photo byte. |
+| Matching | main product by code, then by brand and name (recoded to the file's code), then from the Recycle Bin; sub product by code, then from the Recycle Bin, then by name inside its main product (its codes taken over by colour, the others kept unless the exact option is ticked) — so two backups combined restore with no sub product twice. The bulk import now refuses a second sub product of one name in a main product; rows of one sub product that disagree are reported, not merged. |
+| New install | **Make the catalogue exactly this file** (off by default; needs Delete products): what the file does not list goes to the Recycle Bin (sub products, main products, colours, brands); photos missing from the zip and codes the rows leave out are removed for good. It takes out first what holds a name the file gives another, so a rename onto it lands in one run; its preview is the exact run's. His backup onto a new install then equals his export, CSV by CSV and photo byte by photo byte. |
 | Updates | The shipped catalogue loads only on an install not yet set up; an update or a restored install only gets the marker, even with an empty catalogue. The shipped photos attach once per install and only after a printed-catalogue load, never on an update, and never bring back a photo the company removed. A product restore stops the attach and ends it at its first write; a full backup restore stops it. |
 
 **Decisions taken (the owner can overrule):** an update changes no data, which reverses U7 for installs updated
@@ -113,13 +129,29 @@ never a copy); changing the Brands list from `brands.csv` needs "manage catalogu
    still exactly as shipped. You approved that on 2026-10-07; does it still stand under "an update keeps all data
    the same"? The migration is in released builds and cannot be changed; restoring your own backup after the update
    with the exact option puts the catalogue back, though not the renamed lines of old orders.
+7. **Colours with no `colours.csv` (L3).** Your own files, the bare products sheets 1.2.4–1.4.6 exported, carry no
+   `colours.csv`, so "Make the catalogue exactly this file" leaves the colour list as it is: shipped colours none of
+   your sub products uses stay in the list (the dialog says so under the box). Keep that, or have the exact option
+   move to the Recycle Bin the colours no remaining code uses, as it already does for brands when there is no
+   `brands.csv`?
+8. **The exact option's second run.** A main product your file leaves out, whose sub products the file moves into
+   other main products, is only moved to the Recycle Bin at the end of the run, when the rows have emptied it. If
+   the file also renames another main product to its name, that rename is refused on the first run (the preview
+   says so) and lands when the same file is restored a second time. Accept restoring twice in that case, or have
+   the run try such a refused rename again after its removals?
+9. **Sub products with no position, on a restore into an empty catalogue.** A sub product with no stored position
+   (listed after the numbered ones, by name) comes back numbered: every sub product a restore adds takes the numbers
+   1, 2, … in the file's order within its main product, which is the same order, so every screen and the export read the same, but the
+   blank is not kept (`products.csv` has no position column; `main-products.csv`'s Order keeps a main product's
+   blank). Keep that, or carry the blank through the zip?
 
 Smaller ones, each with a default taken: a full backup restore only stops the shipped-photo attach (the restored
 settings decide the next boot), it does not end it; a new install's attach cut short by closing the Master records
 nothing, so the next boot carries on where there is still no photo; a first-boot load that failed is never carried
-on once setup is done; with the exact option ticked, the preview's "Changed" count leaves out sub products whose
-only change is losing codes (they are listed and counted in Apply); a sub product matched by name takes the
-backup's codes, which staff see; an unreleased 2026-10-08 development zip wrote Order as 1..n, and restoring one
+on once setup is done; a sub product matched by name takes the backup's code for each colour the backup gives it
+(staff see the new codes) and keeps its other codes unless the exact option is ticked; a sheet with no Colour
+column changes no colour; a WebP put in through a single upload or the bulk Photo import is encoded like any photo,
+only the product restore keeps a backup's master as it is; an unreleased 2026-10-08 development zip wrote Order as 1..n, and restoring one
 sets those numbers.
 
 **Owed:** combine the owner's two backup files when he shares them (not received yet), then restore the result
@@ -128,8 +160,8 @@ onto a new install with the exact option and compare it with both; merge `s7/pro
 
 **Gate:** each builder's suites ran on PostgreSQL, none skipped. The full suite without the probes passed on
 `4cb607f0`, before the lead's three commits (404 files + 1 skipped, the Windows-only release-workflow; 5,413
-tests + 17 skipped); `npm run typecheck` 0 and eslint 0 on the touched files. A full gate on the final head was
-running in `../OrderBook-s7` when these docs were written; its result is not recorded here.
+tests + 17 skipped); `npm run typecheck` 0 and eslint 0 on the touched files. Full gate re-run on the final
+branch: see the lead's report.
 
 **Not verified:** the owner's real backup files, a browser or Electron pass of the restore dialog, a real build, an
 update of a real 1.4.4 install.
