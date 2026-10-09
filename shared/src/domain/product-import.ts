@@ -131,12 +131,20 @@ export interface ProductZipProblem {
   params?: MessageParams;
 }
 
-/** The opt-ins on the preview; both off unless the person ticks them. */
+/** The opt-ins on the preview; all off unless the person ticks them. */
 export interface ProductRestoreOptions {
   /** Move sub products whose codes are missing from `products.csv` to the Recycle Bin. */
   binMissingProducts?: boolean;
   /** Delete photos of the file's sub products that have no file in `images/`. */
   removeMissingPhotos?: boolean;
+  /**
+   * Make the catalogue exactly this file: both of the above, and every other
+   * `notInFile` of the report acted on. Main products, colours and brands go
+   * to the Recycle Bin (colours are switched off instead where
+   * `colours.switchedOff`); `rows.variantsNotInFile` are removed for good,
+   * deactivated where history quotes one.
+   */
+  exactCatalogue?: boolean;
 }
 
 /**
@@ -148,6 +156,16 @@ export interface ProductZipList {
   changed: ProductCellChange[];
   /** True when the list is put in the file's order; absent when it is in it already. */
   reordered?: boolean;
+  /**
+   * Values the list holds that the file does not list (brands without
+   * `brands.csv`: that no main product uses after the run), which
+   * `exactCatalogue` moves to the Recycle Bin. Absent when there are none.
+   */
+  notInFile?: string[];
+  /** Colours: `exactCatalogue` switches `notInFile` off instead, for a person who may not delete a colour (`fields.manage`). */
+  switchedOff?: boolean;
+  /** Colours: the zip has no `colours.csv`, so the colour list stays as it is, `exactCatalogue` or not. */
+  noFile?: boolean;
 }
 
 /**
@@ -164,6 +182,12 @@ export interface ProductZipReport {
     renamed: Array<{ code: string; fields: ProductCellChange[] }>;
     /** Main products in the Recycle Bin the file names by code: brought back. Absent when there are none. */
     restoredFromBin?: Array<{ code: string; name: string; brand: string | null }>;
+    /**
+     * Live main products neither file names, with no sub product the run
+     * leaves under them, which `exactCatalogue` moves to the Recycle Bin.
+     * Absent when there are none.
+     */
+    notInFile?: Array<{ code: string; name: string; brand: string | null }>;
   };
   /** `products.csv` through the ordinary upsert import: counts, issues, ignored columns. */
   products: ProductImportResult;
@@ -172,6 +196,12 @@ export interface ProductZipReport {
     changed: ProductRowChange[];
     /** Live sub products none of whose codes the file names. */
     notInFile: Array<{ code: string; name: string }>;
+    /** Live codes of a file sub product that its rows leave out: kept, or removed by `exactCatalogue`. Absent when there are none. */
+    variantsNotInFile?: Array<{ code: string; name: string }>;
+    /** Sub products a code brings back from the Recycle Bin, with the cells the file changes; counted in `products.updated`. Absent when there are none. */
+    restoredFromBin?: ProductRowChange[];
+    /** Main products whose sub products are put in the file's order. Absent when there are none. */
+    reordered?: Array<{ code: string; name: string }>;
   };
   colours: ProductZipList;
   /** `brands.csv`, empty for a zip without one. Absent from a Master older than 1.4.7. */
@@ -198,6 +228,8 @@ export interface ProductZipReport {
   /** After a real run with the opt-ins: what went to the Recycle Bin and what was deleted. */
   binned?: number;
   photosRemoved?: number;
+  /** After a real run with `exactCatalogue`: the main products, colours and brands it took out. */
+  exactRemoved?: { mainProducts: number; colours: number; brands: number };
   problems: ProductZipProblem[];
 }
 

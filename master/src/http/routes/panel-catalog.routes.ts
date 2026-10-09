@@ -195,6 +195,7 @@ export function productImportRoutes(
           {
             binMissingProducts: String(body.binMissingProducts ?? '') === 'true',
             removeMissingPhotos: String(body.removeMissingPhotos ?? '') === 'true',
+            exactCatalogue: String(body.exactCatalogue ?? '') === 'true',
           },
           actorOf(req),
         );

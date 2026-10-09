@@ -35,10 +35,15 @@
  * (`changedCells`), which also names each changed cell.
  *
  * **Missing is reported, not removed.** A sub product whose codes the file no
- * longer names, or a photo of the file's sub products with no file, is listed.
- * Only the two opt-ins act on them: the first moves sub products to the Recycle
- * Bin through the ordinary delete (so it can be undone), the second deletes the
- * photos. A zip that carries only `products.csv` therefore never erases a photo.
+ * longer names, a photo of the file's sub products with no file, a main
+ * product, colour or brand the files do not list, and a code of a file sub
+ * product that its rows leave out, are listed. Only the opt-ins act on them:
+ * the first moves sub products to the Recycle Bin through the ordinary delete
+ * (so it can be undone), the second deletes the photos, and the third
+ * (`exactCatalogue`) does both, moves the main products, colours and brands to
+ * the Recycle Bin the same way, and removes those codes: the catalogue made
+ * exactly the file, nothing of the one shipped with a new install left beside
+ * it. Without one of the last two ticked, no photo is ever erased.
  *
  * **One function answers "what would this zip do" and "do it"** (`runZip`), as
  * the spreadsheet import does: the preview a person approves and the run that
@@ -108,13 +113,14 @@ import { resolveDefaultTenantId } from '../repositories/tenant.repository.js';
 import type { TransactionContext } from '../repositories/transaction.js';
 import { currentJob, isJobRunning } from './backup-job.js';
 import * as catalog from './catalog.service.js';
-import { retireCataloguePhotos } from './catalogue-photos.service.js';
+import { retireCataloguePhotos, stopCataloguePhotos } from './catalogue-photos.service.js';
 import {
   loadCatalogue,
   readCatalogueFile,
   SHIPPED_CATALOGUE_MARKER,
 } from './catalogue-seed.service.js';
 import { publishChange } from './change-bus.js';
+import * as fields from './fields.service.js';
 import { deleteImage, reorderImages, updateImageCaption, uploadImage } from './image.service.js';
 import { buildProductExport, importProducts, registerBrands } from './product-import.service.js';
 import { getIdentity, isSetupComplete } from './setup.service.js';
@@ -233,8 +239,9 @@ function readme(company: string, date: string, unnamed: readonly string[]): stri
     '',
     '  products.csv       One row per sub product, in catalogue order: Brand, Main product code,',
     '                     Main product, Sub product, Size, Colour rule, Colour, Code, Weight (kg), Alias.',
-    '  main-products.csv  The main products: their code, brand and Order, their place in the',
-    '                     catalogue (a blank Order lists after the numbered ones, by name).',
+    '  main-products.csv  Every main product, one with no sub product too: its code, brand and',
+    '                     Order, its place in the catalogue (a blank Order lists after the',
+    '                     numbered ones, by name).',
     '  colours.csv        The colour list in its order: each colour, its label, its hex value',
     '                     and Active (yes, or no for one switched off).',
     '  brands.csv         The Brands list in its order: each brand, its label and Active.',
@@ -257,7 +264,7 @@ function readme(company: string, date: string, unnamed: readonly string[]): stri
     '     code, is that main product: it takes the code of the file.',
     '  5. colours.csv and brands.csv are those lists as they are: change a Label, a Hex or Active',
     '     there, or the order of the rows. One the list lacks is added; one the file leaves out',
-    '     stays as it is.',
+    '     stays as it is, unless you tick "Make the catalogue exactly this file".',
     '  6. To replace a photo, put the new picture in the images folder under the same name and',
     '     delete the old file, even when the ending differs: OPT-0001.jpg replaces OPT-0001.webp.',
     '     jpg, png and webp pictures are accepted.',
@@ -273,6 +280,13 @@ function readme(company: string, date: string, unnamed: readonly string[]): stri
     '  from the file to the Recycle Bin" or "Remove photos missing from the zip". Sub products',
     '  in the Recycle Bin can be brought back from there; a removed photo cannot. A main',
     '  product or sub product in the Recycle Bin whose code the zip names comes back from there.',
+    '',
+    '  "Make the catalogue exactly this file" does both, and leaves nothing beside what the',
+    '  zip holds, so a new install keeps nothing of the catalogue it came with. Main products',
+    '  neither CSV names, and the colours and brands colours.csv and brands.csv do not list',
+    '  (with no brands.csv: the brands no main product has), go to the Recycle Bin too. A zip',
+    '  with no colours.csv leaves the colours as they are. A Code of a sub product that its',
+    '  rows no longer list is removed for good.',
     '',
     'EXCEL',
     '',
@@ -590,7 +604,10 @@ interface ZipContents {
   /** Every code `products.csv` names, lower-cased, a row with problems included. */
   fileCodes: Set<string>;
   mainProducts: MainRow[];
-  colours: ListRow[];
+  /** Main products `products.csv` names by name alone, on a row with no main product code. */
+  mainNames: Array<{ name: string; brand: string }>;
+  /** Null for a zip without `colours.csv`: the colour list stays as it is. */
+  colours: ListRow[] | null;
   /** Null for a zip without `brands.csv`: the brands main products name are added as before (`registerBrands`). */
   brands: ListRow[] | null;
   photos: ZipPhoto[];
@@ -620,6 +637,7 @@ async function readZip(reader: ZipFiles, problems: ProductZipProblem[]): Promise
   const fileCodes = new Set<string>();
   // A main product products.csv names by a code main-products.csv does not list: its first row says what it is.
   const named: MainRow[] = [];
+  const mainNames: ZipContents['mainNames'] = [];
   // Every row's own main product cells, to say where main-products.csv, the one read, disagrees.
   const cells: Array<{ code: string; name: string; brand: string }> = [];
   for (const row of products.rows.slice(headerAt + 1)) {
@@ -627,9 +645,12 @@ async function readZip(reader: ZipFiles, problems: ProductZipProblem[]): Promise
     const code = cell(row, at('code'));
     if (code) fileCodes.add(code.toLowerCase());
     const mainCode = cell(row, at('categoryCode'));
-    if (!mainCode) continue;
     const name = cell(row, at('categoryName'));
     const brand = cell(row, at('categoryBrand'));
+    if (!mainCode) {
+      if (name) mainNames.push({ name, brand });
+      continue;
+    }
     cells.push({ code: mainCode.toLowerCase(), name, brand });
     if (!named.some((main) => main.code?.toLowerCase() === mainCode.toLowerCase())) {
       named.push({ code: mainCode, name, brand: brand || undefined, order: undefined });
@@ -706,7 +727,7 @@ async function readZip(reader: ZipFiles, problems: ProductZipProblem[]): Promise
   const colourEntry = findEntry(reader, COLOURS_CSV);
   const colours = colourEntry
     ? await readList(reader, colourEntry, ['colour', 'color'], problems)
-    : [];
+    : null;
   const brandsEntry = findEntry(reader, BRANDS_CSV);
   const brands = brandsEntry ? await readList(reader, brandsEntry, ['brand'], problems) : null;
 
@@ -768,6 +789,7 @@ async function readZip(reader: ZipFiles, problems: ProductZipProblem[]): Promise
     productsCsv: products.bytes,
     fileCodes,
     mainProducts,
+    mainNames,
     colours,
     brands,
     photos,
@@ -804,6 +826,8 @@ interface MainPlan {
   added: productRepo.CategorySeed[];
   /** In an order the run can make them one by one: none takes a name or a code before its holder lets it go. */
   changed: MainChange[];
+  /** Each main product there already that a row names, changed or not, and its brand after the run: never one the file leaves out. */
+  listed: Map<string, string | null>;
 }
 
 const lower = (value: string | null | undefined): string => (value ?? '').toLowerCase();
@@ -921,7 +945,7 @@ async function planMainProducts(
     read.flatMap((row) => (row.code && !target.has(row) ? [row.code] : [])),
   );
 
-  const plan: MainPlan = { added: [], changed: [] };
+  const plan: MainPlan = { added: [], changed: [], listed: new Map() };
   const taken = new Map<string, MainRow>();
   let last = Math.max(
     0,
@@ -943,7 +967,10 @@ async function planMainProducts(
       was =
         named.find((category) => !category.brand) ?? (named.length === 1 ? named[0] : undefined);
       // Brands share the name and the row names none: `ensureCategories` would add nothing.
-      if (!was && named.length > 0) continue;
+      if (!was && named.length > 0) {
+        for (const category of named) plan.listed.set(category.id, category.brand);
+        continue;
+      }
       if (was) {
         claimed.add(was.id);
         finalBrand = was.brand;
@@ -966,12 +993,15 @@ async function planMainProducts(
       name: row.name,
       brand: finalBrand ?? null,
     };
+    // Named by the file even when this row is not read: its sub products may still be filed under it.
+    if (was) plan.listed.set(was.id, was.brand);
     const first = taken.get(nameKey(final));
     if (first) {
       duplicate(row, first);
       continue;
     }
     taken.set(nameKey(final), row);
+    if (was) plan.listed.set(was.id, final.brand);
 
     const order = row.order !== undefined ? row.order : was ? undefined : (last += 1);
     if (!was) {
@@ -1146,11 +1176,11 @@ async function applyMainProducts(
   }
   try {
     await db().transaction((trx) => productRepo.ensureCategories(tenantId, plan.added, trx));
-    return { added: plan.added, changed };
+    return { ...plan, changed };
   } catch (error) {
     // The plan checked them; a clash only the write meets (a screen saving the same name) is said, not thrown.
     for (const seed of plan.added) problems.push(problemOf(seed.code ?? seed.name, error));
-    return { added: [], changed };
+    return { ...plan, added: [], changed };
   }
 }
 
@@ -1166,6 +1196,8 @@ interface ListPlan {
   order: Array<{ id?: string; value: string }> | null;
   /** The last sequence in use: a value added takes the next. */
   sequence: number;
+  /** The live values the file does not list: what `exactCatalogue` takes out. */
+  gone: OptionListItem[];
 }
 
 /**
@@ -1198,6 +1230,7 @@ async function planList(
     writes: [],
     order: null,
     sequence,
+    gone: [],
   };
 
   // Where each value the file lists stands once written: its place in the list, an added one
@@ -1222,9 +1255,10 @@ async function planList(
     }
     if (!hit || hit.deletedAt || fields.length > 0) plan.writes.push({ row, hit });
   }
+  const ids = new Set(listed.map((entry) => entry.id));
+  plan.gone = live.filter((option) => !ids.has(option.id));
   if (listed.some((entry, index) => index > 0 && entry.at <= (listed[index - 1]?.at ?? 0))) {
-    const ids = new Set(listed.map((entry) => entry.id));
-    plan.order = [...listed, ...live.filter((option) => !ids.has(option.id))];
+    plan.order = [...listed, ...plan.gone];
     plan.report.reordered = true;
   }
   return plan;
@@ -1569,11 +1603,25 @@ function requireRestorePermissions(actor: ActorContext, options: ProductRestoreO
   requirePermission(actor, 'products.bulk');
   requirePermission(actor, 'products.create');
   requirePermission(actor, 'products.edit');
-  if (options.binMissingProducts) requirePermission(actor, 'products.delete');
+  if (options.binMissingProducts || options.exactCatalogue)
+    requirePermission(actor, 'products.delete');
 }
 
 /** `keepPhotos` is the boot load's alone (`planPhotos`); no request can ask for it. */
 type RunOptions = ProductRestoreOptions & { keepPhotos?: boolean };
+
+/** The brand values none of these brands is, case aside. */
+function unusedBrands(
+  options: readonly OptionListItem[],
+  brands: Iterable<string | null>,
+): OptionListItem[] {
+  const used = new Set([...brands].map(lower));
+  return options.filter((option) => !used.has(lower(option.value)));
+}
+
+/** `{ [key]: list }`, or nothing for an empty list: the report leaves out a list with nothing in it. */
+const ifAny = <K extends string, T>(key: K, list: readonly T[]): Partial<Record<K, T[]>> =>
+  (list.length > 0 ? { [key]: [...list] } : {}) as Partial<Record<K, T[]>>;
 
 async function runZip(
   filePath: string,
@@ -1585,6 +1633,8 @@ async function runZip(
   requireRestorePermissions(actor, options);
   const { tenantId } = actor;
   const { dryRun } = options;
+  // The catalogue made exactly the file: both removals, and every other thing the file does not list.
+  const exact = options.exactCatalogue === true;
   const problems: ProductZipProblem[] = [];
 
   const reader = await openUpload(filePath);
@@ -1596,17 +1646,34 @@ async function runZip(
 
     const brands = zip.brands && (await planList(tenantId, 'product.brand', zip.brands));
     const planned = await planMainProducts(zip.mainProducts, brands, actor, problems);
-    const colours = await planList(tenantId, 'stock.colour', zip.colours);
-    // Changing the colour or brand list is the lists' own permission, asked before anything is written.
-    if (listChanges(colours) + listChanges(brands) > 0)
+    const colours = zip.colours && (await planList(tenantId, 'stock.colour', zip.colours));
+    // As they stand before anything is written: what the exact catalogue can take out.
+    const mainsBefore = await productRepo.listCategories(tenantId);
+    const brandsBefore = brands
+      ? []
+      : await customFieldRepo.listOptionsForKey(tenantId, 'product.brand');
+    const filedBrands = [
+      ...planned.listed.values(),
+      ...planned.added.map((seed) => seed.brand ?? null),
+    ];
+    // Changing the colour or brand list is the lists' own permission, asked before anything is
+    // written: under `exactCatalogue` for every value it may take out too.
+    const mayTakeOut = exact
+      ? (colours?.gone.length ?? 0) +
+        (brands ? brands.gone.length : unusedBrands(brandsBefore, filedBrands).length)
+      : 0;
+    if (listChanges(colours) + listChanges(brands) + mayTakeOut > 0)
       requirePermission(actor, 'catalog.lists.manage');
 
     let main = planned;
     if (!dryRun) {
+      // The first write: from here on the catalogue is the company's own, and the shipped photos
+      // never come back on a later boot. A run refused before this only stopped them.
+      if (!options.keepPhotos) await retireCataloguePhotos();
       progress({ phase: 'products' });
       main = await applyMainProducts(planned, brands, actor, problems);
       // The colours after the main products, in one transaction: nothing is half written before a refusal there.
-      if (listChanges(colours) > 0) {
+      if (colours && listChanges(colours) > 0) {
         await db().transaction((trx) => writeList(tenantId, colours, trx));
         customFieldRepo.invalidateFieldCache(tenantId);
       }
@@ -1618,46 +1685,93 @@ async function runZip(
       {
         dryRun,
         mode: 'upsert',
-        restore: dryRun
-          ? {
-              pendingCategories: planned.added,
-              plannedCategories: planned.changed.map((change) => ({
-                id: change.id,
-                ...change.final,
-              })),
-            }
-          : {},
+        restore: {
+          ...(dryRun
+            ? {
+                pendingCategories: planned.added,
+                plannedCategories: planned.changed.map((change) => ({
+                  id: change.id,
+                  ...change.final,
+                })),
+              }
+            : {}),
+          exactVariants: exact,
+        },
       },
       actor,
     );
     const added = rows?.added ?? [];
+    // Every sub product a row read, by its codes or (another install's codes) by its name: none is missing.
+    const matched = new Set(rows?.matchedIds ?? []);
 
     const live = (await productRepo.listProducts(tenantId, { limit: 100_000, offset: 0 })).items;
     const missing = live.filter((product) => {
       const codes = product.variants
         .filter((variant) => variant.isActive)
         .map((variant) => variant.code.toLowerCase());
-      return codes.length > 0 && !codes.some((code) => zip.fileCodes.has(code));
+      return (
+        codes.length > 0 &&
+        !matched.has(product.id) &&
+        !codes.some((code) => zip.fileCodes.has(code))
+      );
     });
 
-    // A dry run plans the photos of the rows it would add against stand-ins:
-    // the planner reads only their id, codes and (empty) gallery.
-    const pending = dryRun
-      ? added.map(
-          (row) =>
+    // What `exactCatalogue` takes out besides, the same for the preview and the run. A main product
+    // neither file names goes once its sub products have: kept only by one the file names but whose
+    // row was refused, which stays where it is. A brand goes when brands.csv leaves it out, or, with
+    // none, when no main product left has it.
+    const leaving = new Set(missing.map((product) => product.id));
+    const holding = new Set(
+      live
+        .filter((product) => !leaving.has(product.id) && !matched.has(product.id))
+        .map((product) => product.categoryId),
+    );
+    const namedByName = (main: { name: string; brand: string | null }): boolean =>
+      zip.mainNames.some(
+        (row) =>
+          lower(row.name) === lower(main.name) &&
+          (!row.brand || lower(row.brand) === lower(main.brand)),
+      );
+    const unlisted = mainsBefore.filter((main) => !planned.listed.has(main.id));
+    const mainGone = unlisted.filter((main) => !holding.has(main.id) && !namedByName(main));
+    const brandsGone = brands
+      ? brands.gone
+      : unusedBrands(brandsBefore, [
+          ...filedBrands,
+          ...unlisted.filter((main) => !mainGone.includes(main)).map((main) => main.brand),
+        ]);
+    // A colour goes to the Recycle Bin for a person who may delete one; for anyone else it is
+    // switched off, as the restore may already do to a colour the file lists.
+    const binColours = actorCan(actor, 'fields.manage');
+    const coloursGone = (colours?.gone ?? []).filter((option) => binColours || option.isActive);
+
+    // A dry run plans photos against the sub products as the import leaves them
+    // (`rows.subProducts`): a new one, one back from the Bin, one a code is added to.
+    // The planner reads only their id, codes and gallery.
+    let products = live;
+    if (dryRun) {
+      const subs = rows?.subProducts ?? [];
+      const held = new Map(live.map((product) => [product.id, product]));
+      const binned = subs.flatMap((sub) => (sub.id && !held.has(sub.id) ? [sub.id] : []));
+      for (const [id, product] of await productRepo.findProductsByIds(tenantId, binned))
+        held.set(id, product);
+      const changing = new Set(subs.map((sub) => sub.id));
+      products = [
+        ...live.filter((product) => !changing.has(product.id)),
+        ...subs.map(
+          (sub, index) =>
             ({
-              id: `pending:${row.code}`,
-              name: row.name,
-              alias: null,
-              hasVariants: false,
-              variants: [{ code: row.code, label: null, isActive: true }],
-              images: [],
+              ...(held.get(sub.id ?? '') ?? { id: `pending:${index}`, alias: null, images: [] }),
+              name: sub.name,
+              hasVariants: sub.hasVariants,
+              variants: sub.variants.map((variant) => ({ ...variant, isActive: true })),
             }) as unknown as Product,
-        )
-      : [];
+        ),
+      ];
+    }
     const photoPlan = await planPhotos(
       zip,
-      [...live, ...pending],
+      products,
       await imageRepo.sourceChecksumsForTenant(tenantId),
       tenantId,
       options.keepPhotos,
@@ -1683,7 +1797,11 @@ async function runZip(
         renamed: main.changed
           .filter((change) => change.fields.length > 0)
           .map((change) => ({ code: change.code, fields: change.fields })),
-        ...(restored.length > 0 ? { restoredFromBin: restored } : {}),
+        ...ifAny('restoredFromBin', restored),
+        ...ifAny(
+          'notInFile',
+          mainGone.map((gone) => ({ code: gone.code ?? '', name: gone.name, brand: gone.brand })),
+        ),
       },
       products: imported,
       rows: {
@@ -1693,9 +1811,27 @@ async function runZip(
           code: product.variants.find((variant) => variant.isActive)?.code ?? '',
           name: product.name,
         })),
+        ...ifAny('variantsNotInFile', rows?.variantsNotInFile ?? []),
+        ...ifAny('restoredFromBin', rows?.restoredFromBin ?? []),
+        ...ifAny('reordered', rows?.reordered ?? []),
       },
-      colours: colours.report,
-      brands: brands?.report ?? { added: [], changed: [] },
+      colours: colours
+        ? {
+            ...colours.report,
+            ...ifAny(
+              'notInFile',
+              coloursGone.map((option) => option.value),
+            ),
+            ...(coloursGone.length > 0 && !binColours ? { switchedOff: true } : {}),
+          }
+        : { added: [], changed: [], noFile: true },
+      brands: {
+        ...(brands?.report ?? { added: [], changed: [] }),
+        ...ifAny(
+          'notInFile',
+          brandsGone.map((option) => option.value),
+        ),
+      },
       photos,
       problems,
     };
@@ -1712,7 +1848,7 @@ async function runZip(
 
     progress({ phase: 'removing', done: 0, total: 0 });
     let binned = 0;
-    if (options.binMissingProducts) {
+    if (options.binMissingProducts || exact) {
       for (const product of missing) {
         try {
           await catalog.deleteProduct(product.id, actor);
@@ -1722,8 +1858,46 @@ async function runZip(
         }
       }
     }
+    // After the sub products: a main product with one left is refused, and said.
+    const removed = { mainProducts: 0, colours: 0, brands: 0 };
+    if (exact) {
+      for (const gone of mainGone) {
+        try {
+          await catalog.deleteCategory(gone.id, actor);
+          removed.mainProducts += 1;
+        } catch (error) {
+          problems.push(problemOf(gone.code ?? gone.name, error));
+        }
+      }
+      const binValues = async (values: readonly OptionListItem[], list: 'colours' | 'brands') => {
+        for (const option of values) {
+          try {
+            await fields.deleteValue(option.id, actor);
+            removed[list] += 1;
+          } catch (error) {
+            problems.push(problemOf(option.value, error));
+          }
+        }
+      };
+      await binValues(brandsGone, 'brands');
+      if (binColours) await binValues(coloursGone, 'colours');
+      else if (coloursGone.length > 0) {
+        await db().transaction(async (trx) => {
+          for (const option of coloursGone)
+            await customFieldRepo.updateOptionColumns(
+              tenantId,
+              option.id,
+              { isActive: false, updatedBy: null },
+              trx,
+            );
+        });
+        customFieldRepo.invalidateFieldCache(tenantId);
+        removed.colours = coloursGone.length;
+      }
+      report.exactRemoved = removed;
+    }
     let photosRemoved = 0;
-    if (options.removeMissingPhotos) {
+    if (options.removeMissingPhotos || exact) {
       for (const photo of photoPlan.notInZip) {
         try {
           await deleteImage(photo.imageId, actor);
@@ -1737,11 +1911,14 @@ async function runZip(
     report.photosRemoved = photosRemoved;
 
     const { created, updated } = imported;
+    // A sub product back from the Bin is in `updated`; a main product put in order is in neither.
+    const reordered = rows?.reordered.length ?? 0;
     const changed =
       main.added.length +
       main.changed.length +
       created +
       updated +
+      reordered +
       listChanges(colours) +
       listChanges(brands) +
       photos.added.length +
@@ -1749,6 +1926,9 @@ async function runZip(
       landed.recaptioned.length +
       landed.reordered.length +
       binned +
+      removed.mainProducts +
+      removed.colours +
+      removed.brands +
       photosRemoved;
     if (changed > 0) {
       await db().transaction((trx) =>
@@ -1766,6 +1946,8 @@ async function runZip(
               mode: 'upsert',
               created,
               updated,
+              subProductsRestored: rows?.restoredFromBin.length ?? 0,
+              subProductsReordered: reordered,
               mainProductsAdded: main.added.length,
               mainProductsRenamed: main.changed.length,
               coloursChanged: listChanges(colours),
@@ -1775,6 +1957,9 @@ async function runZip(
               photosRecaptioned: landed.recaptioned.length,
               photosReordered: landed.reordered.length,
               binned,
+              mainProductsBinned: removed.mainProducts,
+              coloursRemoved: removed.colours,
+              brandsBinned: removed.brands,
               photosRemoved,
             },
           },
@@ -1817,11 +2002,11 @@ export async function restoreProductZip(
   actor: ActorContext,
   progress?: Progress,
 ): Promise<ProductZipReport> {
-  // The company's own catalogue from here on, whether this run ends well or
-  // not: the shipped photos still being attached stop before the plan reads a
-  // gallery, and never come back on a later boot. The boot load's zip is the
-  // shipped catalogue itself, so it is the one run that does not.
-  if (!options.keepPhotos) await retireCataloguePhotos();
+  // The shipped photos still being attached stop before the plan reads a
+  // gallery; once the run writes, they are retired for good (`runZip`). The
+  // boot load's zip is the shipped catalogue itself, so it is the one run that
+  // does neither.
+  if (!options.keepPhotos) await stopCataloguePhotos();
   return runZip(filePath, fileName, { ...options, dryRun: false }, actor, progress);
 }
 

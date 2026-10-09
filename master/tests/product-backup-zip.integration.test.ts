@@ -828,6 +828,8 @@ describe.skipIf(!canRunIntegrationTests)(
             added: [],
             changed: [{ column: 'Alpha — Label', from: 'Alpha', to: 'Alpha Ware' }],
             reordered: true,
+            // Listed only: taken out by the exact catalogue alone.
+            notInFile: ['Unused Brand', 'Old Brand'],
           },
         };
 
@@ -856,7 +858,7 @@ describe.skipIf(!canRunIntegrationTests)(
         const again = await previewProductZip(file, 'p.zip', admin);
         expect({ colours: again.colours, brands: again.brands }).toEqual({
           colours: { added: [], changed: [] },
-          brands: { added: [], changed: [] },
+          brands: { added: [], changed: [], notInFile: ['Unused Brand', 'Old Brand'] },
         });
       });
 
@@ -882,12 +884,18 @@ describe.skipIf(!canRunIntegrationTests)(
             { column: 'Zz Retired — Hex', from: '#123456', to: '#654321' },
             { column: 'Zz Retired — Active', from: 'no', to: 'yes' },
           ],
+          notInFile: ['Zz Ivory'],
         };
 
         expect((await previewProductZip(file, 'p.zip', admin)).colours).toEqual(expected);
         const done = await restoreProductZip(file, 'p.zip', {}, admin);
         expect(done.colours).toEqual(expected);
-        expect(done.brands).toEqual({ added: [], changed: [] });
+        // No brands.csv: the brands no main product has are the ones not in the file.
+        expect(done.brands).toEqual({
+          added: [],
+          changed: [],
+          notInFile: ['Zeta', 'Unused Brand'],
+        });
         const colours = await list('stock.colour');
         expect(colours.filter(([value]) => String(value).startsWith('Zz '))).toEqual([
           ['Zz Retired', 'Zz Retired', '#654321', true],
