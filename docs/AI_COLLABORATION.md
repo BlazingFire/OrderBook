@@ -190,6 +190,38 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-09 - Product backup and restore made exact (Claude, Opus, single session)
+
+- **Ask (owner):** make the product backup and restore work with the current and earlier versions (colours, photos,
+  weights, variants), double-check and fix; combine two backups he will share (no product twice, each getting the
+  other's data); upload that into the current software with no shipped data left; an update must leave all data
+  the same.
+- **Run:** a five-lens audit with a probe per finding; builders in `../OrderBook-s8`…`s11` (boot, import, photos,
+  zip + exact catalogue), each reviewed adversarially and fixed; the lead's `cf861c70`, `b6a9d919`, `1a0dd4b5` (probes
+  removed). Branch `s7/product-backup`, docs on `s12/docs`. **Not merged to `main`** (someone else's uncommitted
+  party-screen work is in the main checkout), **not built**.
+- **Changed:** `product-zip.service.ts` (brands.csv, photos.csv, colours.csv with Label and Active, stored Order;
+  bare and dated 1.2.4–1.4.6 files; main products by code, brand + name, the Recycle Bin; list plans; content-first
+  photo matching, captions, order; `exactCatalogue`; a file with no photos leaves them), `product-import.service.ts`
+  and `domain/product-import.ts` (`restore`: exact cells, blanks clear, name match and recode, Bin returns, order,
+  `exactVariants`, `subProductCellsDiffer`, `separateTwins`; the name rule in every import; the decimal comma),
+  `image.service.ts` (byte-for-byte masters, `onlyIfEmpty`), `catalogue-photos.service.ts` (once per install, after a
+  printed-catalogue load; stop/retire), `catalogue-seed.service.ts` (`SHIPPED_CATALOGUE_MARKER`),
+  `loadShippedCatalogue` (the shipped catalogue only before setup), archive and `.obbackup` restores (stop the attach),
+  `catalog.updateCategory` (`switchedOffBrand`), `listOptionsForKey` (tiebreak), `lib/csv.ts` / `lib/spreadsheet.ts`
+  (the apostrophe guard), `ui/src/ProductZipModal.tsx`, `shared` report fields and i18n keys.
+- **Tests:** six new files `master/tests/product-backup-*` (93 tests); `catalogue-photos`, `product-zip` and
+  `ui/tests/master-catalogue` updated for the new rules (listed in `docs/STRUCTURE.md` §12.2).
+- **Docs:** `docs/PRODUCT_IMPORT_FORMAT.md` (the zip section rewritten; migration citation fixed to `20261017000000`),
+  `docs/STRUCTURE.md` (services, boot and restore flows, photos, test map), `docs/UPDATES.md`,
+  `docs/7-STORAGE-BACKUP-RESTORE.md`, `docs/catalogue/CATALOGUE_MODEL.md`, `docs/schema/02-parties-and-products.md`,
+  `docs/backend-modules/04-API-CONTRACT.md` §23, `HANDOFF.md` (the batch and six owner decisions), `docs/NEXT_PHASE.md`.
+  There is no `7-IMAGE-PIPELINE.md` in `docs/`; the byte-for-byte master and `onlyIfEmpty` are in `docs/STRUCTURE.md` §5.6.
+- **Verified:** each builder's suites on PostgreSQL, none skipped; full suite without probes on `4cb607f0` exit 0
+  (404 files + 1 skipped; 5,413 tests + 17 skipped); typecheck 0; eslint 0 on touched files. **Not verified:** the
+  full gate on the final head (running in `../OrderBook-s7` when this was written), the owner's real files, a
+  browser or Electron pass, a real build.
+
 ### 2026-10-08 (later) - New Order walk to Add sub product, Sell today, product band, person screen (Claude, Opus, single session)
 
 - **Ask (owner, R10–R15 in `CLAUDE_HELPER_OCT8.md`):** after a sub product, each dropdown opens as the walk arrives (colour, or qty for a fixed colour; packaging; grade), the caret stops on Add sub product, Enter adds and goes to a new sub product; a better sub-product dropdown with a collapse button; a compact product slideshow on Basic Home; a "what to sell today" pop-up closable or closing by itself, managed in Notice board management; the Roles & users person screen from the owner's screenshot, fully working; "make everything perfect".

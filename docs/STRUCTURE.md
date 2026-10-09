@@ -1425,7 +1425,7 @@ removed on 2026-09-25.
 | `ui/src/LeadStaleEdit.tsx` | 1.3 Phase 4: stale-edit protection shared by both lead forms. `changedLeadFields(opened, values, base)` (only what changed since the form opened, `items` only when `sameLines` says they differ, plus `baseFieldHlc`; null when nothing changed), `useLeadEditBase(lead)` (the opened lead, the clocks the next save is checked against, `conflicted` when somebody else's save reached the open form or a save came back 409 `error.conflict.staleEdit`, `refused(error)`, `keepMine()`), and `StaleEditNotice` ("Ravi saved this at 10:42" from the presence push's `lastWrite`, else `error.conflict.staleEdit`, with Reload theirs / Keep mine through `ConflictNotice`'s new `overwriteLabel`). In the strict-i18n lint list. Tests: `ui/tests/lead-entry-screen.test.tsx`, `ui/tests/office-shell.test.tsx` | `LeadEntryScreen`, `office/web/src/screens/AddLeadScreen.tsx` |
 | `ui/src/catalogueSummary.ts` | 2026-10-01 (P4): `productLabel`, `byCatalogueOrder`, `shownColours`, `codesOf`, `weightLabel` (verbatim from `office/web/src/productSummary.ts` — keep in step) and the two types the catalogue ports share: `CatalogueView` (`permissions`, `optionLists`, `categories` and `products`; its `stock` member was removed in 1.4) and `CatalogueTransport` (list/paging, category and product writes, photos, import; since 2026-10-08 an optional `productZip: ProductZipTransport` — `exportZip`, `preview`, `start`, `job` — that only the Master's transport fills) | the six catalogue ports below |
 | `ui/src/SubProductsScreen.tsx` | 2026-10-01 (P4): Products → Sub products, the products half of `office/web/src/screens/CatalogScreen.tsx` — keep in step. Brand chips, the Product picker above the table, search, `LoadMorePager`; refetch on the host's `revision` and after its own writes. Dropped from the Office copy: parties, not-synced rows, snapshot overlay, "cached page". New / Import / Edit / photo controls absent without `products.create` / `products.bulk` / `products.edit`. There is no Stock column on either panel since 1.4. 2026-10-08: **Backup products (.zip)** (with `transport.productZip` and `products.export`; saves what `exportZip` answers) and **Restore from .zip** (with `transport.productZip` and `products.bulk` + `.create` + `.edit`; opens `ProductZipModal`). | `ProductsScreen` (Master) |
-| `ui/src/ProductZipModal.tsx` | 2026-10-08: the product backup zip's restore — choose a `.zip` → the Master's dry run (`ProductZipReport`: main products added/renamed, sub product rows added/changed with each cell old → new, unchanged, not in the file, the import's row problems; colours; photos new/replaced/unchanged/not in the zip/unmatched/duplicate/not an image; problems) in native `<details>` lists → two opt-ins, both off (Recycle Bin only with `products.delete`) → Apply (`start`) → polls `job` every second with `ProgressBar` → the final report. Closing it leaves the job running; reopening follows it. Not `ImportDialog`, which the party import shares. Tests: "the product backup zip" in `ui/tests/master-catalogue.test.tsx` | `SubProductsScreen` |
+| `ui/src/ProductZipModal.tsx` | 2026-10-08: the product backup zip's restore — choose a `.zip`, or a bare products `.csv`/`.xlsx` (since 2026-10-09) → the Master's dry run (`ProductZipReport`: main products added/changed/back from the Recycle Bin/not in the file; sub product rows added/changed with each cell old → new, unchanged, back from the Bin, not in the file, their codes not in the file, main products put in the file's order, the import's row problems; the colour and brand lists added/changed/reordered/not in the file; photos new/replaced/unchanged/caption put back/order put back/not in the zip/unmatched/duplicate/not an image, or "this file has no photos"; problems) in native `<details>` lists, each counted in what Apply does → three opt-ins, all off: Recycle Bin (only with `products.delete`), remove photos, and "Make the catalogue exactly this file" (only with `products.delete`; ticking it ticks and locks the other two; shown switched off with a note when the preview sets `exactNeedsLists`) → Apply (`start`) → polls `job` every second with `ProgressBar` → the final report. Closing it leaves the job running; reopening follows it. Not `ImportDialog`, which the party import shares. Tests: "the product backup zip" in `ui/tests/master-catalogue.test.tsx` | `SubProductsScreen` |
 | `ui/src/MainProductsScreen.tsx` | 2026-10-01 (P4): `MainProductsScreen` (Products page: list, detail with sub products from `view.products` in catalogue order, `MainProductForm`; a brand retired since it was set is not re-sent) and `BrandsScreen({ permissions, transport, revision })` (the shared `OptionListEditor` on `product.brand`; no-access message without `fields.view`). Port of `office/web/src/screens/MainProductsScreen.tsx`. | `ProductsScreen` (Master) |
 | `ui/src/ProductDetail.tsx`, `ui/src/ProductDrawer.tsx`, `ui/src/ProductImages.tsx`, `ui/src/ProductImportModal.tsx` | 2026-10-01 (P4): ports of the Office's `ProductDetail`, `ProductDrawer`, `ProductImages`, `ProductImportModal` — keep in step. Every one reads the `CatalogueTransport` through `transportRef`; `ProductDetail` and `ProductImages` take `canEdit`; the import shows `apiErrorText`. `ProductImages` is in the strict-i18n lint list. Photos load through `ProgressiveImage` → `/uploads/images/:id/:variant`, which the Master now serves. | `SubProductsScreen`, `MainProductsScreen` |
 | `ui/src/ImportDialog.tsx`, `ui/src/PartyImportModal.tsx` | 1.3 H1: `ImportDialog` is the three-step import dialog (pick → preview → done) extracted from `ProductImportModal` with its DOM and behaviour unchanged; `ProductImportModal` and `PartyImportModal` are the words, modes, calls and sample columns of each. `PartyImportControls` is the Export CSV and Import buttons with their dialog, mounted on the Master's Parties screen and the Office's Catalog Parties tab; each button is absent without `parties.view` / `parties.bulk`. Takes a `PartyImportTransport`, never an api client. | `PartiesScreen` (Master), `CatalogScreen` (Office) |
@@ -2069,7 +2069,7 @@ primaryLanAddress() ?? '127.0.0.1', httpPort: config.http.port, acceptingPairing
 | `master/src/lib/app-version.ts` | 33 | `appVersion()` from `<packageRoot>/package.json`, falls back to `0.0.0` | 8 |
 | `master/src/lib/backup-crypto.ts` | 137 | `.obbackup` envelope `[u32 manifest length][manifest JSON][salt16][iv12][tag16][ciphertext]`, AES-256-GCM with a scrypt key; `encryptBackup`, `readManifest`, `verifyContentHash`, `decryptBackup`, `BackupFileError`. Near-duplicated in `office/src/lib/backup-crypto.ts`. | 2 |
 | `master/src/lib/archive-zip.ts` | 251 | 1.3 Phase 8. `createZipWriter` (archiver, zip64, entries strictly in sequence, each resolving `{bytes, sha256}`; EFBIG becomes `fat32TooLarge`) and `openZipReader` (yauzl with `decodeStrings`, `validateEntrySizes`, `strictFileNames` — off only with `{ windowsNames: true }`, which the product zip passes so a Compress-Archive backslash name reads as a slash, an absolute or `..` name still refused; a zip listing more than `MAX_ARCHIVE_ENTRIES` is refused before its entries are read; duplicates kept so the domain refuses them; encrypted entries refused). Each entry stream goes through a `PassThrough`, because a stored entry's raw stream never ends under `for await` | 3 |
-| `master/src/lib/csv.ts` | 37 | `toCsv()` — CRLF, quoting, leading apostrophe against formula injection for `= + - @` | 4 |
+| `master/src/lib/csv.ts` | 37 | `toCsv()` — CRLF, quoting, leading apostrophe against formula injection for `= + - @` (TAB and CR too), and since 2026-10-09 also for one the value's own apostrophes come before; `lib/spreadsheet.ts#parseCsv` takes exactly one apostrophe off again, so `'-90 BEND` comes back as written | 4 |
 | `master/src/lib/durable-file.ts` | 42 | `writeDurable()` — temp, fsync, rename | 1 |
 | `master/src/lib/env-file.ts` | 53 | `loadEnvFiles(...files)` | 1 |
 | `master/src/lib/errors.ts` | 157 | `AppError(messageKey, params, statusCode, code, details)` and `ValidationError` 400, `UnauthorizedError` 401, `ForbiddenError` 403, `TenantViolationError` 403, `NotFoundError` 404, `ConflictError` 409, `TooManyRequestsError` 429, `BackupError`; `toErrorMessage()`. The message is generated from the English catalogue. | 66 non-test files |
@@ -2197,7 +2197,8 @@ exercised only through service integration tests.
   (`validation.product.nameTaken`; exported `assertSubProductNameFree`, which the
   offline merge in `sync.service.ts` also runs on a rename), activity naming the category and logging
   `changes`, and `PRODUCT_PAGING` (ceiling 2000) for product lists. The most-imported service (44 importers, 11
-  non-test).
+  non-test). Since 2026-10-09 `updateCategory(id, input, actor, { switchedOffBrand })`: the 4th argument is the
+  product restore's alone and accepts a brand the Brands list holds switched off (the screens still refuse it).
 - `master/src/services/party-access.service.ts` (368) — `listAssignments`,
   `assignmentsForParty`, `replaceAssignments` (`party.assign`),
   `assignablePeople`, and **`requirePartyAccess`, the
@@ -2206,7 +2207,16 @@ exercised only through service integration tests.
   auto-orient, rotate, crop, WebP variants, blurhash with `sharp`): `uploadImage`,
   `updateImageCaption`, `reorderImages`, `deleteImage` (all `products.edit`),
   `resolveImageFile`, `sweepOrphanImageVariants`, `throughRasterGate` (serialises
-  decoding to bound memory). Publishes as `entity: 'product'`.
+  decoding to bound memory). Publishes as `entity: 'product'`. Since 2026-10-09:
+  a whole, unrotated upload that is already a master this pipeline writes (a still,
+  lossy WebP, `VP8 ` not `VP8L`, with no EXIF, ICC or XMP, nothing past its RIFF
+  payload, and a long edge of 2048 or less; private `isPipelineMaster`) is stored as
+  `master.webp` byte for byte, the smaller sizes made from it, so a product backup's
+  photo keeps its checksum from Master to Master; anything else is encoded as
+  before. `UploadImageRequest.onlyIfEmpty` adds nothing when the sub product has a
+  photo by the time the row is written (checked on the locked gallery read): the
+  variant files already written are removed and `GalleryTakenError` is thrown. Only
+  the shipped photos' attach passes it.
 - 1.4.3 request hardening (R18): `master/src/realtime/hub.ts#guardedOn` is `socket.on` for every command
   handler - a handler that throws on a malformed payload answers its ack with
   `validation.socket.badPayload` instead of reaching the process as an uncaught exception, and
@@ -2260,40 +2270,82 @@ exercised only through service integration tests.
   its `categoryBrand` — and `ensureCategories` only creates the unmatched names, keyed
   by (brand, name) through `categorySeedKey`. `isUnchanged` became `changedCells`
   (empty exactly when a row changes nothing; otherwise each cell, old → new, by column
-  name). Option `restore` (the product zip only): `pendingCategories` read as live on a
-  dry run, new rows take their position in the file as `sortOrder`, the result carries
-  `rows: { added, changed }`, and no activity row or change event of its own.
-  `buildProductExport` and `registerBrands` are exported for the zip.
-- `master/src/services/product-zip.service.ts` — 2026-10-08, the product backup zip.
+  name). Option `restore` (the product zip only; rebuilt 2026-10-09, rules in
+  `docs/PRODUCT_IMPORT_FORMAT.md`): the rows are stored values (`parseImportRow(…, {
+  restore })` keeps inner spacing and a colour's spelling, a blank Alias, Size or
+  Weight clears; `groupImportRows(…, { restore })` reports rows of one sub product
+  that disagree, `validation.import.subProductCellsDiffer`); a group whose codes the
+  catalogue lacks is the live sub product of that name in its main product, recoded
+  (`UpdateGroup.exact`); a code only a binned sub product carries brings it back from
+  the Recycle Bin (`products.delete`, else `validation.import.binnedNeedsDelete`;
+  `validation.product.restoreCodesTaken` when its codes are taken, preview too);
+  twins already in the catalogue are kept apart by `separateTwins`; the file's order
+  is the catalogue order (renumbered as an order, never as numbers);
+  `pendingCategories` and `plannedCategories` (main products the zip creates, or
+  recodes, renames or brings back) read as live on a dry run; `exactVariants`
+  (`MergeRules.exactVariants`) removes the live codes a file sub product's rows leave
+  out, never one on a row the run refused (`refusedCodes`). The result carries
+  `rows` (`ImportedRows`: `added`, `changed`, `variantsNotInFile`, `restoredFromBin`,
+  `reordered`, `matchedIds`, and `subProducts`, always as a run without
+  `exactVariants` leaves them, which the zip plans photos against), and no activity
+  row or change event of its own. Every import, typed or not: the name of a sub
+  product is unique in its main product for creates, renames and moves, checked
+  against where every one ends up (`validation.product.nameTaken`); a typed sheet's
+  spacing-only difference reads as unchanged, and a move files the sub product under
+  the main product the preview matched. `buildProductExport` (the Colour of every
+  code, a multicolour sub product's too) and `registerBrands` are exported for the zip.
+- `master/src/services/product-zip.service.ts` — 2026-10-08, the product backup zip;
+  the restore rebuilt 2026-10-09 (format and rules: `docs/PRODUCT_IMPORT_FORMAT.md`).
   `exportProductZip(actor)` (`products.view` + `products.export`) writes
   `OrderBook-Products-<company>-<date>.zip` to `<dataDir>/tmp` (products.csv from
-  `buildProductExport`, main-products.csv `Brand, Main product code, Main product, Order`,
-  colours.csv `Colour, Hex` of the active colours, README.txt, `images/<CODE>[_N].webp`
-  = each photo's stored `master.webp`, stored, named by the variant its caption names
-  else the first live code, a file-name-unsafe character as `%XX` (`fileSafe`); a photo
-  whose `CODE_N` is another code, or whose sub product has no live code, is left out and
-  listed in the README) and one `catalog.exported` row. `previewProductZip` /
-  `restoreProductZip` are one `runZip`: `products.bulk` + `.create` + `.edit` (+
-  `.delete` to bin; `catalog.lists.manage` when the colours change), entries found by
-  base name (a top folder is fine), `products.csv` header and at least one row checked
-  before any write, a `products.csv` main product cell that disagrees with
-  `main-products.csv` listed as a problem, duplicate colours read once,
-  colours written first (one transaction), then main products planned like
-  `ensureCategories` (created with code, brand, order;
-  renamed through `catalog.updateCategory`), rows
-  through `importProducts` with `restore`, photos through `planPhotoImport` and
-  `runPhotoImport` ('replace') with the ordinary `uploadImage`, compared by sha256 to
-  `product_images.checksum` or `source_checksum` (the file it was uploaded from, so a
-  picture a restore brought in reads as unchanged next time), then each gallery
-  reordered to the zip's slots. Missing
-  sub products and photos are reported; `binMissingProducts` runs
-  `catalog.deleteProduct`, `removeMissingPhotos` `deleteImage`. One `catalog.imported`
-  row and one `catalog` change event. `startProductRestore` runs the real run detached
-  as the one product restore (its own slot, not `backup-job.ts`; a second start is
-  `error.conflict.productRestoreBusy`, one while a full backup restore runs
-  `error.conflict.backupBusy`, and `data.routes.ts` refuses a full restore while
-  `isProductRestoreRunning()`), `productRestoreJob` reports it.
-  `loadShippedCatalogue` is the boot load (§11.5).
+  `buildProductExport`; main-products.csv `Brand, Main product code, Main product, Order`
+  with the stored Order, blank for none; colours.csv `Colour, Label, Hex, Active` and
+  brands.csv `Brand, Label, Active`, each whole list in its order, switched-off values
+  too; photos.csv `File, Caption`; README.txt; `images/<CODE>[_N].webp` = each photo's
+  stored `master.webp`, stored, named by the variant its caption names else the first
+  live code, photo N whose `CODE_N` is another sub product's code under the next live
+  code, a file-name-unsafe character as `%XX` (`fileSafe`); a photo with no free name,
+  or whose master file is missing, is left out and listed in the README) and one
+  `catalog.exported` row. `previewProductZip` / `restoreProductZip` are one `runZip`:
+  `openUpload` (anything not starting `PK` is a bare products sheet, `sheetFiles`, read
+  as a zip holding only products.csv), `readZip` (entries by base name, dated
+  `products-…`/`main-products-…` names as a fallback, `validation.productZip.unknownFile`
+  for any other sheet outside `images/` but `._`/`~$` ones; a colours.csv or brands.csv
+  with no value column is a problem and reads as absent), then `planList` for brands.csv,
+  `planMainProducts` (code, then brand and name and recode, then the Recycle Bin, then
+  new; duplicates and clashes refused alike in preview and run, in a clash-free order),
+  `planList` for colours.csv (matched case aside, the file wins on label, hex, Active
+  and order, compared by place), and the permission checks (`products.bulk` + `.create`
+  + `.edit`; `.delete` for `binMissingProducts` or `exactCatalogue`;
+  `catalog.lists.manage` when a list changes, or the exact run may take a value out),
+  all before the first write. A real run then retires the shipped photos
+  (`retireCataloguePhotos`, unless `keepPhotos`), writes the Brands list and
+  `registerBrands` (one transaction), the main product changes one by one
+  (`catalog.restoreCategory`, `catalog.updateCategory(…, { switchedOffBrand: true })`),
+  the new ones (`ensureCategories`, a failure a problem), the colour list (one
+  transaction), then `importProducts` with `restore` (`exactVariants` under
+  `exactCatalogue`; a dry run passes `pendingCategories` and `plannedCategories`).
+  `planPhotos` plans against the sub products as the import leaves them
+  (`rows.subProducts`, in a dry run and in the exact run) and matches each file by
+  content first (its own slot's photo, then `checksum`, then `source_checksum`), then by
+  slot; captions from photos.csv by `photoFileKey`; galleries put in the zip's order
+  (`zipOrder`, `photos.reordered`); a file with no photo at all sets `photos.noFile`
+  and lists nothing missing. `runPhotos` uploads through `planPhotoImport` /
+  `runPhotoImport` ('replace') and the ordinary `uploadImage`, puts captions back, and
+  reorders each gallery read again. Then the removals: `binMissingProducts` (or exact)
+  `catalog.deleteProduct`; exact also `catalog.deleteCategory` for main products neither
+  CSV names, `fields.deleteValue` for brands and colours the files do not list (colours
+  switched off instead without `fields.manage`); `removeMissingPhotos` (or exact)
+  `deleteImage`. One `catalog.imported` row (details also `subProductsRestored`,
+  `subProductsReordered`, `brandsChanged`, `photosRecaptioned`, `photosReordered`,
+  `mainProductsBinned`, `coloursRemoved`, `brandsBinned`) and one `catalog` change event.
+  `restoreProductZip` first awaits `stopCataloguePhotos()`. `startProductRestore` runs
+  the real run detached as the one product restore (its own slot, not `backup-job.ts`;
+  a second start is `error.conflict.productRestoreBusy`, one while a full backup
+  restore runs `error.conflict.backupBusy`, and `data.routes.ts` refuses a full restore
+  while `isProductRestoreRunning()`), `productRestoreJob` reports it.
+  `loadShippedCatalogue` is the boot load (§11.5). `SHIPPED_CATALOGUE_MARKER` is
+  re-exported from `catalogue-seed.service.ts`, where it now lives.
 - `master/src/services/party-import.service.ts` — `partyImportTemplate`, `exportParties`, `importParties({dryRun, mode})` (1.3 H1). `parties.bulk` + `parties.create` (add) or `parties.edit` (update); export `parties.view` **and** `parties.export` through `resolvePartyScope`. Party Access holds: a code the caller cannot view is "unknown", one they cannot manage is `validation.import.partyOutOfScope`, and a bulk add skips a name and city held by a party outside their view (`party.repository#listLivePartyNameCities` ignores scope on purpose, returning only the two strings). Chunks of 200, a failed chunk replayed row by row; one `party_list` activity row and one `party_bulk` change event (snapshot-forcing; `hub.ts#emitGatedChange` sends a panel whose `socket.data.protocol` is below `PARTY_BULK_MIN_PROTOCOL` a snapshot instead). Routes: `partyImportRoutes` in `panel-catalog.routes.ts`, on `dataRoutes` before `/parties/:id` and on `/api/panel`; the Office proxies them (`proxyDownload` / `proxyImport` in `office/src/http/app.ts`).
 - `master/src/services/catalogue-seed.service.ts` (398) — catalogue v2 (2026-09-29):
   `readCatalogueFile` (parse `config.catalogueFile` before anything is touched),
@@ -2306,12 +2358,30 @@ exercised only through service integration tests.
   lines, timelines, leads, orders, their sync conflicts, party-wise records, photo
   rows, product connector links, variants, sub products, categories). One
   `catalog.reloaded` or `catalog.imported` activity row and one `catalog` change
-  event per load. `upsertOptions` is exported for the product zip's colours.
+  event per load. `upsertOptions` is still exported (the product zip writes its lists
+  itself since 2026-10-09).
   `seedCatalogue` (additive, as the first administrator unless an
   actor is given — the Developer tab, `seed:catalogue`, the sample data);
   `otherDatabaseClients` (the reload's refusal). Returns `LoadCatalogueResult`
   (`brands`, `colours`, `products`, `subProducts`, `skipped`, `removedLeads`,
-  `removedOrders`).
+  `removedOrders`). Since 2026-10-09 it defines `SHIPPED_CATALOGUE_MARKER`
+  (`internal.shippedCatalogueLoaded`), and every `loadCatalogue` (the boot load, the
+  developer route, `seed:catalogue`, the sample data, `reload:catalog`) writes it as
+  `{ state: 'done', loaded: 'markdown' }` in its own transaction: the one thing that
+  lets the shipped photos attach, once (below).
+- `master/src/services/catalogue-photos.service.ts` — the shipped catalogue photos
+  (§11.13). `attachCataloguePhotos(dir)` runs on boot, not awaited; it first heals
+  missing photo files (`healMissingImageFiles`), then attaches **once per install** and
+  only when `SHIPPED_CATALOGUE_MARKER` says `{ state: 'done', loaded: 'markdown' }` and
+  no `internal.cataloguePhotosAttached` row exists. Each sub product's first shipped
+  photo goes up with `onlyIfEmpty` (a photo the company added meanwhile wins; a
+  `GalleryTakenError` counts as skipped); its later ones (`CODE_2.jpg`, a second
+  colour's code) land beside it. A completed run is recorded whatever it attached,
+  skipped or failed, a run that matched nothing or found no files included, as
+  `{ files, attached, skipped, failed, at }`; a failed photo is logged, not retried.
+  `stopCataloguePhotos()` stops a run under way after its current photo and waits; a
+  stopped run records nothing. `retireCataloguePhotos()` stops it and writes
+  `{ retired: true, at }`. `CataloguePhotosResult` has no fingerprint any more.
 - `master/src/services/catalog-reload-cli.ts` (272) — the operator CLI behind
   `reload:catalog` (`--catalogue`), `seed:demo-parties` (`--demo-parties`),
   `wipe:business` (no flag; `--with-catalog` also loads) and `seed:parties`
@@ -2630,7 +2700,7 @@ Knex.Transaction`). In practice services open transactions themselves with
 |---|---|
 | Core plumbing | `master/src/repositories/transaction.ts`; `master/src/repositories/mappers.ts` (`mapUser`, `mapParty`, `mapProduct`, `mapProductVariant`, `mapLead`, `mapOrder`, `mapLineItem`, `mapSyncConflict`, `toNumber`, `toIso`, …); `master/src/repositories/identity.repository.ts` (permanent id allocation `allocatePermanentId(s)`, `recordIdMapping`, `resolveId`, `listIdMappings`, the Master's HLC `nextHlc`, `observeAndNextHlc`, `peekHlc`; device code `'MASTER'`); `master/src/repositories/tenant.repository.ts` (`findDefaultTenantId`, a read that never creates a tenant; `resolveDefaultTenantId`, which creates one if none exists; one tenant per install); `master/src/repositories/master-config.repository.ts` (the single `master_config` row); `master/src/repositories/settings.repository.ts` (raw `settings` rows) |
 | Identity & access | `master/src/repositories/user.repository.ts` (`readCredentialForVerification` is the only path returning `password_hash`; `role_id` is not a foreign key; `panel-credential.repository.ts` also selects the column, to compute fingerprints); `master/src/repositories/role.repository.ts` (permissions as one JSONB array; `permissionSetForRole`, `permissionSetFromRow`, `roleVersion`); `master/src/repositories/access-guard.repository.ts` (`lockTenantAccessGuards`, `readAdministrativeCapability`); `master/src/repositories/party-access.repository.ts` (grants, `applyPartyScope`, `partyScopeSql`, `partyScopeLogSql`); `master/src/repositories/password-vault.repository.ts`; `master/src/repositories/panel-credential.repository.ts` (`fingerprintForUser`, `findRevokedOfflineCredentials`); `master/src/repositories/office-panel.repository.ts` (paired panels; secret hash returned separately); `master/src/repositories/api-key.repository.ts` (`mintToken`, `parseToken`, `secretMatches`, `findByPrefix`, `listKeys`, `insertKey`, `revokeKey`, `touchKeys`) |
-| Catalogue | `master/src/repositories/party.repository.ts` (reference checks before delete; `P-0001` codes from `party_code_seq`); `master/src/repositories/party-variant.repository.ts` (per-party alias/size/weight/packaging: `listForParty`, `listAll`, `upsertVariant`); `master/src/repositories/product.repository.ts` (models with variants, `ensureCategories`, `listCategories`); `master/src/repositories/product-variant.repository.ts` (every code and weight: `replaceVariants`, `findVariantByCode`, `codesTakenElsewhere`); `master/src/repositories/product-image.repository.ts` (UUID ids, online-only); `master/src/repositories/custom-field.repository.ts` (option lists + definitions); `master/src/repositories/field-usage.repository.ts` (`usageForListKey`); `master/src/repositories/pipeline.repository.ts` (stages updated/reordered/archived/restored, never created or deleted) |
+| Catalogue | `master/src/repositories/party.repository.ts` (reference checks before delete; `P-0001` codes from `party_code_seq`); `master/src/repositories/party-variant.repository.ts` (per-party alias/size/weight/packaging: `listForParty`, `listAll`, `upsertVariant`); `master/src/repositories/product.repository.ts` (models with variants, `ensureCategories`, `listCategories`); `master/src/repositories/product-variant.repository.ts` (every code and weight: `replaceVariants`, `findVariantByCode`, `codesTakenElsewhere`); `master/src/repositories/product-image.repository.ts` (UUID ids, online-only); `master/src/repositories/custom-field.repository.ts` (option lists + definitions; `listOptionsForKey` orders by sequence, then `created_at`, then id since 2026-10-09, so two values sharing a sequence read in one order everywhere, a product backup included); `master/src/repositories/field-usage.repository.ts` (`usageForListKey`); `master/src/repositories/pipeline.repository.ts` (stages updated/reordered/archived/restored, never created or deleted) |
 | Leads and orders | `master/src/repositories/lead.repository.ts` (`scope` is required; `markConverted`, `lockLead`, soft delete/restore); `master/src/repositories/order.repository.ts` (`markDispatched` — stage, `dispatched_at`, `hlc`, `field_hlc`, `version + 1`; `lockOrder` — `FOR UPDATE`, returns `dispatched_at`, `stage_id`, `field_hlc`); `master/src/repositories/line-item.repository.ts` (one `line_items` table for both parents; `replaceLines`); `master/src/repositories/timeline.repository.ts` (append-only system and remark entries). `inventory.repository.ts` and `reservation.repository.ts` were deleted in 1.4: nothing reads or writes the retired stock tables (§6.10) |
 | Read models | `master/src/repositories/search.repository.ts` (`tsvector` + GIN: `search`, `pickProducts`, `pickCategories`, `pickParties`); `master/src/repositories/dashboard.repository.ts`; `master/src/repositories/report.repository.ts` (month buckets in SQL in the business timezone); `master/src/repositories/recycle-bin.repository.ts` (`listBinEntries`: a `UNION ALL` over the 8 soft-deletable tables; `binCounts`: one count query per branch, summed) |
 | Notifications | `master/src/repositories/notification.repository.ts` (1.3 Phase 3): `insertNotifications` (multi-row insert, `ON CONFLICT … WHERE dedupe_key IS NOT NULL AND read_at IS NULL DO NOTHING RETURNING *`, so only rows added come back), `listForUser` (newest first; `before` compared at millisecond precision), `countUnread`, `markRead(ids \| 'all')` (unread rows of that person only), `prune()`. `office-panel.repository.ts` gains `findPanelProofKey`, `fillPanelProofKey` (fills a null key only) and `listActivePanels`; `user.repository.ts` gains `findActiveUserIdsWithPermission` (through the tier ceiling) |
@@ -6113,26 +6183,45 @@ rewritten. Tests: `shared/tests/apply-party-rename.test.ts`,
   catalogue and what quotes it (§5.3).
 - **The catalogue on a new install (2026-10-08).** `master/src/index.ts`, after the orphan
   sweep and before `createApp()`, awaits `loadShippedCatalogue()` under the boot step
-  "Loading the product catalogue" (photo progress in the step text). Once per install:
-  when the internal setting `internal.shippedCatalogueLoaded` is absent and
-  `product_categories` has no row at all (binned included), it loads
-  `config.catalogueZip` through `restoreProductZip` if the build carries one, else
-  `config.catalogueFile` through `loadCatalogue`, as System with the product keys. The
-  marker is `{ state: 'loading' }` before the first write and `{ state: 'done' }` after
-  (an install with products only gets `done`, `loaded: 'none'`). A load that throws, or
-  that the Master stopped halfway (the window closed during the photos), is a warning and
-  stays `loading`; the next boot runs it again over what it left, rows upserted by code
-  and a photo already in its slot kept (`keepPhotos`). Before or after setup alike; no
-  test suite runs `main()`, so the suites' empty catalogues stay empty.
-- **The product backup zip (2026-10-08, Master only).** Products → Sub products →
-  **Backup products (.zip)** → `api.exportProductZip` → `GET /api/products/export.zip`
-  → `exportProductZip`; **Restore from .zip** → `ProductZipModal` → `POST
+  "Loading the product catalogue" (photo progress in the step text). Once per install,
+  and only on a brand-new one (since 2026-10-09): when the internal setting
+  `internal.shippedCatalogueLoaded` is absent (or still `loading`), **setup is not yet
+  done**, and `product_categories` has no row at all (binned included), it loads
+  `config.catalogueZip` through `restoreProductZip` (`keepPhotos`) if the build carries
+  one, else `config.catalogueFile` through `loadCatalogue`, as System with the product
+  keys. The marker is `{ state: 'loading' }` before the first write and
+  `{ state: 'done', loaded: 'zip' | 'markdown' }` after. An install already set up — one
+  an update reaches, or one a full backup restored — only gets `{ state: 'done',
+  loaded: 'none' }`, even with an empty catalogue, and so does one with products. A load
+  that throws, or that the Master stopped halfway (the window closed during the photos),
+  is a warning and stays `loading`; the next boot runs it again over what it left, rows
+  upserted by code and a photo already in its slot kept (`keepPhotos`), **only while
+  setup is still not done**: once it is, that boot marks it `none` and loads nothing.
+  Then, not awaited, `attachCataloguePhotos()` (§11.13): once per install, only when the
+  marker says `loaded: 'markdown'` (an install updated from 1.4.4 or earlier has no
+  marker; a build that shipped `products.zip` carries its own photos), so an update
+  never attaches. A product restore started meanwhile stops it (`stopCataloguePhotos`)
+  and retires it at its first write (`retireCataloguePhotos`); a full backup restore
+  (archive or `.obbackup`) only stops it before it writes, and the restored settings
+  decide the next boot. No test suite runs `main()`, so the suites' empty catalogues
+  stay empty; `master/tests/product-backup-boot.integration.test.ts` runs the two boot
+  calls as `index.ts` does.
+- **The product backup zip (2026-10-08, Master only; restore rebuilt 2026-10-09).**
+  Products → Sub products → **Backup products (.zip)** → `api.exportProductZip` → `GET
+  /api/products/export.zip` → `exportProductZip`; **Restore from .zip** →
+  `ProductZipModal` (a `.zip`, or a bare products `.csv`/`.xlsx`) → `POST
   /api/products/restore` with `dryRun=true` (the preview) → Apply → the same upload
-  without it (202, the job) → `GET /api/products/restore/job` polled. Format and
-  behaviour: `docs/PRODUCT_IMPORT_FORMAT.md` ("The product backup zip"); code:
-  `master/src/services/product-zip.service.ts`. Tests:
-  `master/tests/product-zip.integration.test.ts`. The Office has neither: its
-  `proxyDownload` buffers a whole download in memory, and the restore is a Master job.
+  without it, with the ticked opt-ins (`binMissingProducts`, `removeMissingPhotos`,
+  `exactCatalogue` form fields; 202, the job) → `GET /api/products/restore/job` polled.
+  The run: stop the shipped photos → read and plan (brands, main products, colours,
+  permissions) → retire the shipped photos → Brands list → main products → colour list
+  → `importProducts` (`restore`) → photos (upload, captions, order) → what the opt-ins
+  take out (sub products, main products, brands, colours, photos) → one activity row
+  and one change event. Format and behaviour: `docs/PRODUCT_IMPORT_FORMAT.md` ("The
+  product backup zip"); code: `master/src/services/product-zip.service.ts`. Tests:
+  `master/tests/product-zip.integration.test.ts` and `master/tests/product-backup-*`
+  (§12.2). The Office has neither: its `proxyDownload` buffers a whole download in
+  memory, and the restore is a Master job.
 
 ### 11.6 Company settings reaching the panels
 
@@ -6622,23 +6711,34 @@ or that closes by itself after a set number of seconds; and a product slideshow 
   `master/src/services/catalogue-photos.service.ts#attachCataloguePhotos`, called from `master/src/index.ts` after the orphan sweep
   and **not awaited** (encoding a few hundred photos takes minutes; the panel serves meanwhile). It uses the same plan and run in
   skip mode and the ordinary upload, as the System actor holding only `products.edit` (the activity log says System), so it only
-  attaches to sub products with no photo and never replaces one the company added. It is recorded once per shipped set, under a
-  fingerprint of the file names and sizes, in the internal setting `internal.cataloguePhotosAttached` (no `SETTINGS` definition
-  names it, so no screen or snapshot shows it); an update that ships a changed set runs once more. A run with a failed photo is
-  not recorded, so the next boot retries; neither is a run where nothing matched any sub product (the catalogue is not loaded yet).
-  Offline: the files are on disk beside the program.
+  attaches to sub products with no photo and never replaces one the company added: each sub product's first shipped photo goes
+  up with `onlyIfEmpty`, checked again under the product lock as the row is written, and its later ones (`CODE_2.jpg`, a second
+  colour's code) land beside the photo this run put in. **Once per install, and only on the printed catalogue it loaded**
+  (2026-10-09): it runs only when `internal.shippedCatalogueLoaded` says `{ state: 'done', loaded: 'markdown' }` (every
+  `loadCatalogue` writes that) and `internal.cataloguePhotosAttached` holds nothing (no `SETTINGS` definition names either, so no
+  screen or snapshot shows them). Any row there means done, whatever a later build ships: the fingerprint re-run for a changed
+  set is gone. A completed run is recorded whatever it attached, skipped or failed (`{ files, attached, skipped, failed, at }`),
+  a run that matched nothing or found no photo files included; a failed photo is logged, not retried, so a photo the company
+  removes stays removed. A build that shipped `products.zip`, and an install updated from 1.4.4 or earlier (no marker at all),
+  never attach. A product restore stops a run under way after its current photo and retires the attach at its first write
+  (`{ retired: true, at }`); a full backup restore only stops it; a stopped run records nothing, so the next boot carries on
+  where there is still no photo. Offline: the files are on disk beside the program.
 - **The catalogue on a new install, and the product zip's photos (2026-10-08).** On an install whose catalogue
   was empty, `loadShippedCatalogue` (§11.5) loads the sub products first, awaited, so `attachCataloguePhotos`
   finds them on the same boot. When the build ships `products.zip`, its own `images/` are uploaded by that load
-  (awaited, behind the boot step), and the shipped `photos/` still fill only sub products with no photo after it.
+  (awaited, behind the boot step), and the shipped `photos/` are not attached (2026-10-09).
   The product zip names photos the way this import reads them (`CODE.webp` photo 1, `CODE_N` photo N) and uses
-  `planPhotoImport` / `runPhotoImport` server-side, comparing a file's sha256 with the photo's checksum and with
-  its `source_checksum`, the hash of the file every whole-picture upload (screen, photo import, these shipped
-  photos, a zip) was made from, so a picture is never read as replaced by the very file it came from. A photo
-  cropped or rotated on screen keeps none, so its original file reads as replaced.
+  `planPhotoImport` / `runPhotoImport` server-side, matching a file first by content against every photo of its sub
+  product (its own slot's, then the photo's checksum, then its `source_checksum`, the hash of the file every
+  whole-picture upload — screen, photo import, these shipped photos, a zip — was made from), and only then by slot,
+  so a picture is never read as replaced by the very file it came from. A photo cropped or rotated on screen keeps
+  no source hash, so its original file reads as replaced. A zip's `master.webp` is stored byte for byte on the Master
+  it is restored on (`image.service.ts`, §5.6), so its checksum holds from Master to Master.
 - **Tests.** `shared/tests/photo-import.test.ts`, `master/tests/photo-import-route.integration.test.ts`,
   `master/tests/catalogue-photos.integration.test.ts`, "Photo import" in `ui/tests/master-shell.test.tsx`,
-  `master/tests/product-zip.integration.test.ts`, "on boot" in `master/tests/catalogue-seed.integration.test.ts`.
+  `master/tests/product-zip.integration.test.ts`, "on boot" in `master/tests/catalogue-seed.integration.test.ts`,
+  `master/tests/product-backup-boot.integration.test.ts` (once per install, the update boot, a restore stopping the
+  attach, `onlyIfEmpty`) and `master/tests/product-backup-photos.integration.test.ts`.
 
 ### 11.10 Caching, limits and stability (1.4.3)
 
@@ -6796,6 +6896,27 @@ create and convert), `backup-chain` (a v1 restore numbers the leads), `http-api`
 another user's on a restricted party, both logged) were extended. The unit suite
 `presence-store` (10, pure) pins the TTL, the debounce, tab merging, the prefix drop
 on disconnect and `lastWrite` sent once.
+
+**The 2026-10-09 product backup batch added** six files, `master/tests/product-backup-*`
+(the format and rules they pin are in `docs/PRODUCT_IMPORT_FORMAT.md`):
+
+| File | What it pins |
+|---|---|
+| `product-backup-boot.integration` (14) | the update boot: a set-up install gets nothing, even with an empty catalogue, and one with products and photos stays exactly as it was (D1); a first-boot load that failed is never carried on after setup (D5); the shipped photos once per install, a changed set, a failed photo, an empty folder and no printed catalogue (D6); the run's own photo 2; an explicit load gets the photos once on the next boot; a product restore retires the attach (B9) and stops one under way (B6, Dv3); a full backup restore stops it; `onlyIfEmpty` |
+| `product-backup-import.integration` (28) | the restore's rows: an unedited export reads as unchanged; a multicolour sub product with colours; spacing kept; blanks that clear; a colour the file leaves out listed and removed only under `exactVariants`; colour spelling; a sub product under other codes matched by name and recoded; the name rule; twins; the Recycle Bin (codes kept, codes taken, permission); sub product order |
+| `product-backup-import-domain` (10, pure) | `parseImportRow`/`groupImportRows` with `restore`, the colour rule, the decimal comma, `separateTwins`, the CSV formula guard |
+| `product-backup-zip.integration` (17) | bare and dated 1.2.4–1.4.6 files, unknown sheets, `._`/`~$` names and an empty zip; main products: Order, no Order column, recode by brand and name, duplicates, name swaps and rename chains, the Recycle Bin (and its old brand), an Order out of range, a switched-off brand, `brands.csv` spelling; the colour and brand lists whole, as the truth, the old two-column `colours.csv`, and values sharing a place |
+| `product-backup-photos.integration` (12) | content-first matching (a second colour's code, a deleted middle photo, the own slot first), the main photo and an order-only preview, a gallery read again during the run, captions from `photos.csv` (and after a `.jpg` replacement), bytes kept from Master to Master and which WebP is kept as it is, the `CODE_N` fallback, a photo whose file is missing |
+| `product-backup-exact.integration` (12) | the owner's flow: his backup onto a new install, after the boot as `index.ts` runs it, with "Make the catalogue exactly this file", equals his export CSV by CSV and image byte by image byte, and a second run changes nothing (D2, E13, B7); a bare 1.2.4–1.4.6 sheet; E6; Bin returns and reorders counted; a dry run's name match; B8; photos of removed codes; main products, colours and brands taken out only when asked; a main product row with no name; a list file with no value column; colours switched off and the permissions (`exactNeedsLists`); a restore refused before its first write leaves the shipped photos to finish |
+
+`catalogue-photos.integration` changed with them: "never runs a changed set…" (was "runs a
+changed set once more…") and "counts a run that matched nothing as the one run too" (was
+"tries again on the next boot…"); its `beforeEach` records the shipped marker the attach now
+needs. `product-zip.integration` expects `brands.csv`, `photos.csv` and the new
+`colours.csv` header; a text file is now read as a sheet (`missingColumn`) and only a broken
+zip is `notAZip`. "The product backup zip" in `ui/tests/master-catalogue.test.tsx` covers a
+`.csv` upload, every new list, the recaptioned/reordered counts enabling Apply, the exact
+option and its lock.
 
 ### 12.3 Source-reading guard tests (`master/tests`, 23 files)
 
@@ -7275,7 +7396,7 @@ also imports `masterConnection`.
 | Change the Chatroom | `shared/src/domain/chat.ts` (types, limits, `cleanChatPost`), `master/src/services/chat.service.ts` (every rule: membership, announcement, the five-minute window, chips resolved per viewer, audit), `master/src/repositories/chat.repository.ts`, `master/src/http/routes/chat.routes.ts` and the twinned `chat:*` commands in `master/src/realtime/hub.ts`; the Office forwards in `office/src/http/app.ts` and the held-post rule in `office/src/sync/sync.service.ts`; `ui/src/Chat*.tsx` and `ui/src/chatModel.ts`; both `chatTransport.ts` and `App.tsx`; a new right needs the permission steps above plus the grant in a new migration | `master/tests/chat.integration.test.ts`, `master/tests/chat-fanout.integration.test.ts`, `master/tests/sync.integration.test.ts`, `master/tests/credential-invariants.test.ts`, `office/tests/chat-forwarding.test.ts`, `office/tests/sync-hold.test.ts`, `shared/tests/chat.test.ts`, `ui/tests/chatroom.test.tsx` |
 | Change the Printroom or the auto-print station | `shared/src/domain/printroom.ts` (types, limits, `cleanPrintJobInput`), `master/src/services/print.service.ts` (every rule: who sees what, the claim, mark / cancel, audit, retention), `master/src/repositories/print.repository.ts`, `master/src/http/routes/print.routes.ts` and the twinned `print:*` commands, the push and the claim release in `master/src/realtime/hub.ts`; the Office forwards in `office/src/http/app.ts`; `ui/src/PrintroomScreen.tsx`, `SendToPrintroomDialog.tsx`, `PrintStationRunner.tsx`, `NoteDocumentPortal.tsx`, `printroomModel.ts`; both `printroomTransport.ts` and `App.tsx`; the shell half in `electron/lib/station-mode.ts`, `electron/shell.ts`, `electron/preload.cts`; plan `docs/ORDER_NOTES_PLAN.md` section 11 | `master/tests/printroom.integration.test.ts`, `master/tests/printroom-push.test.ts`, `master/tests/credential-invariants.test.ts`, `office/tests/print-forwarding.test.ts`, `shared/tests/printroom.test.ts`, `electron/tests/station-mode.test.ts`, `ui/tests/printroom-screen.test.tsx`, `ui/tests/print-station-runner.test.tsx`, `ui/tests/send-to-printroom.test.tsx` |
 | Change a report | `shared/src/domain/reports.ts` (columns, meta), `master/src/repositories/report.repository.ts` (the SQL), `master/src/services/report.service.ts` (access, table, export), `ui/src/ReportsScreen.tsx`, `shared/src/domain/report-access.ts` | `master/tests/reports.integration.test.ts` (legacy), `master/tests/report-tables.integration.test.ts`, `master/tests/report-hub.integration.test.ts`, `master/tests/report-range.test.ts`, `master/tests/report-range-periods.test.ts`, `master/tests/report-export-streaming.test.ts`, `shared/tests/report-query.test.ts`, `shared/tests/report-access.test.ts`, `ui/tests/reports-screen.test.tsx`, `master/tests/report-pdf-route.integration.test.ts` (the inline PDF route), `office/tests/module-forwarding.test.ts` |
-| Change the product backup zip (layout, change detection, the opt-ins, the boot load) | `master/src/services/product-zip.service.ts`, the `restore` option of `importProducts`, `panel-catalog.routes.ts` (`{ zip }`), `ui/src/ProductZipModal.tsx`, `shared/src/domain/product-import.ts` (`ProductZipReport`, `ProductRestoreJob`), `docs/PRODUCT_IMPORT_FORMAT.md` | `master/tests/product-zip.integration.test.ts`, "on boot" in `master/tests/catalogue-seed.integration.test.ts`, "the product backup zip" in `ui/tests/master-catalogue.test.tsx` |
+| Change the product backup zip (layout, change detection, the opt-ins, the boot load, the shipped photos) | `master/src/services/product-zip.service.ts`, the `restore` option of `importProducts` (`product-import.service.ts`, `domain/product-import.ts`), `catalogue-photos.service.ts`, `catalogue-seed.service.ts` (`SHIPPED_CATALOGUE_MARKER`), `image.service.ts` (`onlyIfEmpty`, the byte-for-byte master), `panel-catalog.routes.ts` (`{ zip }`), `ui/src/ProductZipModal.tsx`, `shared/src/domain/product-import.ts` (`ProductZipReport`, `ProductRestoreOptions`, `ProductRestoreJob`), `docs/PRODUCT_IMPORT_FORMAT.md` | `master/tests/product-zip.integration.test.ts`, `master/tests/product-backup-*` (§12.2), `master/tests/catalogue-photos.integration.test.ts`, "on boot" in `master/tests/catalogue-seed.integration.test.ts`, "the product backup zip" in `ui/tests/master-catalogue.test.tsx` |
 | Change the product import format | `master/src/domain/product-import.ts` (`IMPORT_COLUMNS`), `master/src/services/product-import.service.ts`, `master/src/lib/spreadsheet.ts`, `shared/src/domain/product-import.ts`, `docs/PRODUCT_IMPORT_FORMAT.md` | `master/tests/product-import-compat.integration.test.ts` (1.2.5 fixtures in `master/tests/fixtures/`, ignored stock columns, the format marker), `master/tests/product-import-domain.test.ts`, `master/tests/product-import.integration.test.ts`, `master/tests/spreadsheet.test.ts`, `master/tests/import-category-gate.test.ts` |
 | Change the party import format | `shared/src/domain/party-import.ts` (`PARTY_IMPORT_COLUMNS`), `master/src/domain/party-import.ts`, `master/src/services/party-import.service.ts`, `docs/PARTY_IMPORT_FORMAT.md` | `master/tests/party-import-domain.test.ts`, `master/tests/party-import.integration.test.ts`, `office/tests/module-forwarding.test.ts` |
 | Change the faces on the Pending / Final boards | `shared/src/protocol/presence.ts` (`BoardPresence`), `master/src/realtime/presence-store.ts` (`board`, `sweep`, `onBoardChange`), `master/src/services/presence.service.ts` (`boardFor`), the throttled push and `presence:board` command in `master/src/realtime/hub.ts`, `GET /api/presence/board` in `data.routes.ts` and the Office's `app.ts` / `master-connection.ts`; `ui/src/useBoardPresence.ts`, `AvatarStack`, and the four list/board screens | `master/tests/presence-store.test.ts`, `master/tests/presence.integration.test.ts`, `office/tests/presence-route.test.ts`, `ui/tests/use-board-presence.test.tsx`, `ui/tests/master-shell.test.tsx`, `ui/tests/office-shell.test.tsx` |

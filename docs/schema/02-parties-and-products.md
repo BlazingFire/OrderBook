@@ -233,7 +233,8 @@ makes a model's name unique — the codes that must be unique are on its variant
 catalogue v2 the service refuses a second live sub product of the same name inside one
 category (`ConflictError`), because the name is what the lead PDF prints; the same name
 under two categories is fine (the SWISWARE catalogue has a `BLACK` sub product in eight
-products).
+products). Since 2026-10-09 the bulk import refuses one too (`validation.product.nameTaken`,
+for a create, a rename or a move); still no index, so twins made by older imports stay.
 
 ### History: how the product master got here
 
