@@ -162,7 +162,8 @@ describe.skipIf(!canRunIntegrationTests)('catalogue photos on boot (integration)
     expect((await imagesOf(pictured.id)).map((image) => image.id)).toEqual([ownId]);
   });
 
-  it('does nothing when no photos are shipped', async () => {
+  it('attaches nothing when no photos are shipped, and counts that as the one run', async () => {
+    expect(await attachCataloguePhotos(path.join(dir, 'missing'))).toMatchObject({ files: 0, attached: 0 });
     expect(await attachCataloguePhotos(path.join(dir, 'missing'))).toBeNull();
   });
 });

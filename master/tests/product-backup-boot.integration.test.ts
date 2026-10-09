@@ -232,6 +232,26 @@ describe.skipIf(!canRunIntegrationTests)('the shipped catalogue and its photos o
       expect(await photos(code(1))).toHaveLength(0);
     });
 
+    it('a run with no photo files is the one run too: a later build that ships photos attaches none on the update', async () => {
+      await basins(1);
+      await printedCatalogueLoaded();
+
+      expect(await attachCataloguePhotos(shipped)).toMatchObject({ files: 0, attached: 0 });
+      await writeFile(path.join(shipped, `${code(1)}.jpg`), await jpeg('#00ff00'));
+      expect(await attachCataloguePhotos(shipped)).toBeNull();
+      expect(await photos(code(1))).toHaveLength(0);
+    });
+
+    it("the run's own photo 2 of a sub product lands beside its photo 1", async () => {
+      await basins(1);
+      await printedCatalogueLoaded();
+      await writeFile(path.join(shipped, `${code(1)}.jpg`), await jpeg('#00ff00'));
+      await writeFile(path.join(shipped, `${code(1)}_2.jpg`), await jpeg('#0000ff'));
+
+      expect(await attachCataloguePhotos(shipped)).toMatchObject({ attached: 2, skipped: 0 });
+      expect(await photos(code(1))).toHaveLength(2);
+    });
+
     it('D6: an install that never loaded the printed catalogue gets no shipped photo', async () => {
       await basins(1);
       await writeFile(path.join(shipped, `${code(1)}.jpg`), await jpeg('#00ff00'));

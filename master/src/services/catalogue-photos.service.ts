@@ -167,7 +167,7 @@ export async function retireCataloguePhotos(): Promise<void> {
   );
 }
 
-/** Null when there is nothing to do: no photos shipped, no printed catalogue loaded, or already done. */
+/** Null when there is nothing to do: no printed catalogue loaded, or already done. */
 export async function attachCataloguePhotos(
   dir: string = config.cataloguePhotosDir,
 ): Promise<CataloguePhotosResult | null> {
@@ -184,8 +184,9 @@ async function attach(dir: string): Promise<CataloguePhotosResult | null> {
   const names = (await readdir(dir).catch(() => [] as string[])).filter((name) => /\.(jpe?g|png|webp)$/i.test(name));
   const tenantId = await resolveDefaultTenantId();
   await healMissingImageFiles(tenantId, dir, names);
-  if (names.length === 0) return null;
 
+  // No early return for an empty folder: a run with nothing to attach is still the one run, so a
+  // later build that does ship photos never attaches them on an update.
   const rows = await settingsRepo.readSettingRows(tenantId);
   const valueOf = (key: string) => rows.find((row) => row.key === key)?.value;
   const shipped = valueOf(SHIPPED_CATALOGUE_MARKER) as { state?: string; loaded?: string } | undefined;
@@ -207,8 +208,10 @@ async function attach(dir: string): Promise<CataloguePhotosResult | null> {
     names.map((name) => ({ name })),
     products,
   ).map((row) => (row.status === 'new' && (row.existingImageIds?.length ?? 0) > 0 ? { ...row, status: 'hasPhoto' as const } : row));
-  // A photo the company added after the plan was read keeps its sub product.
+  // A photo the company added after the plan was read keeps its sub product; the run's own
+  // later photos of a sub product (a `CODE_2.jpg`, a second colour's code) still land.
   let taken = 0;
+  const mine = new Set<string>();
   const outcomes = await runPhotoImport(plan, 'skip', {
     upload: async (productId, file) => {
       try {
@@ -218,10 +221,11 @@ async function attach(dir: string): Promise<CataloguePhotosResult | null> {
             fileBuffer: await readFile(path.join(dir, file.name)),
             crop: { cropX: 0, cropY: 0, cropWidth: 0, cropHeight: 0, rotationDeg: 0 },
             wholeFrame: true,
-            onlyIfEmpty: true,
+            onlyIfEmpty: !mine.has(productId),
           },
           actor,
         );
+        mine.add(productId);
       } catch (error) {
         if (!(error instanceof GalleryTakenError)) throw error;
         taken += 1;
