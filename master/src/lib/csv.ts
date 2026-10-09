@@ -11,8 +11,11 @@
  */
 
 // `=` `+` `-` `@` start a formula; a TAB or a carriage return in front of one is
-// how a cell gets past a check that looks only at the first character.
-const FORMULA_PREFIX_CHARS = new Set(['=', '+', '-', '@', '\t', '\r']);
+// how a cell gets past a check that looks only at the first character. One
+// behind apostrophes of the value's own is guarded too: the reader takes
+// exactly one apostrophe off such a cell (`lib/spreadsheet.ts#parseCsv`), so
+// "'-90 BEND" comes back as it was written.
+const FORMULA_PREFIX = /^'*[=+\-@\t\r]/;
 
 /** Renders one CSV field: quoted if needed, formula-injection-guarded. */
 function csvCell(value: unknown): string {
@@ -20,7 +23,7 @@ function csvCell(value: unknown): string {
 
   let text = typeof value === 'string' ? value : String(value);
 
-  if (text.length > 0 && FORMULA_PREFIX_CHARS.has(text[0] as string)) {
+  if (FORMULA_PREFIX.test(text)) {
     text = `'${text}`;
   }
 
