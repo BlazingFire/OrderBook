@@ -126,9 +126,7 @@ function ListSection({ title, list }: { title: string; list?: ProductZipList }) 
         list.changed.length,
         <Item
           label={t('productZip.item.changed', { count: list.changed.length })}
-          items={list.changed.map(
-            (change) => `${change.column}: ${change.from || '—'} → ${change.to || '—'}`,
-          )}
+          items={list.changed.map((change) => cells([change]))}
         />,
       )}
       {list.reordered && <Item label={t('productZip.item.listReordered')} />}
@@ -372,7 +370,7 @@ export function ProductZipModal({
 }: {
   open: boolean;
   transport: ProductZipTransport;
-  /** `products.delete`: without it the Recycle Bin opt-in is not offered. */
+  /** `products.delete`: without it the Recycle Bin and exact catalogue opt-ins are not offered. */
   canDelete: boolean;
   onClose: () => void;
   /** A restore finished; the catalogue should refetch. */
@@ -612,7 +610,12 @@ export function ProductZipModal({
             {report.rows.notInFile.length + report.photos.notInZip.length + exactOnly(report) >
               0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
-                {note(t('productZip.reportOnly'))}
+                {/* "Tick it below" only where a box is: each one asks products.delete but the photos'. */}
+                {note(
+                  canDelete || report.photos.notInZip.length > 0
+                    ? t('productZip.reportOnly')
+                    : t('productZip.reportOnly.noTick'),
+                )}
                 {canDelete && report.rows.notInFile.length > 0 && (
                   <Checkbox
                     checked={options.binMissingProducts === true || exact}
@@ -689,7 +692,9 @@ export function ProductZipModal({
                   note(t('productZip.done.binned', { count: report.binned ?? 0 }))}
                 {(report.photosRemoved ?? 0) > 0 &&
                   note(t('productZip.done.photosRemoved', { count: report.photosRemoved ?? 0 }))}
-                {report.exactRemoved && note(t('productZip.done.exact', report.exactRemoved))}
+                {report.exactRemoved &&
+                  Object.values(report.exactRemoved).some((count) => count > 0) &&
+                  note(t('productZip.done.exact', report.exactRemoved))}
                 <ReportView report={report} />
               </>
             )}

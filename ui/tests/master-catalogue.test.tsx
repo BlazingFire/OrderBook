@@ -963,7 +963,43 @@ describe('the product backup zip (Master only)', () => {
 
     expect(await screen.findByText(t('productZip.nothing'))).toBeTruthy();
     expect(screen.queryByLabelText(t('productZip.opt.bin', { count: 1 }))).toBeNull();
+    // No box to tick, so no "tick it below".
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(screen.getByText(t('productZip.reportOnly.noTick'))).toBeTruthy();
+    expect(screen.queryByText(t('productZip.reportOnly'))).toBeNull();
     expect((screen.getByRole('button', { name: t('productZip.apply') }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('says what the exact catalogue took out only when it took something out', async () => {
+    const productZip = zipTransport();
+    productZip.job
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue({
+        id: 'job-1',
+        phase: 'done',
+        done: 0,
+        total: 0,
+        startedAt: STAMP,
+        finishedAt: STAMP,
+        result: zipReport({
+          dryRun: false,
+          binned: 1,
+          photosRemoved: 0,
+          exactRemoved: { mainProducts: 0, colours: 0, brands: 0 },
+        }),
+      });
+    renderList(viewOf({ permissions: ALL }), makeTransport({ productZip }));
+    fireEvent.click(await screen.findByRole('button', { name: t('productZip.restore') }));
+    fireEvent.change(await screen.findByTestId('product-zip-file'), {
+      target: { files: [new File(['PK'], 'backup.zip')] },
+    });
+    const exact = (await screen.findByLabelText(t('productZip.opt.exact'))) as HTMLInputElement;
+    fireEvent.click(exact);
+    await waitFor(() => expect(exact.checked).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: t('productZip.apply') }));
+
+    expect(await screen.findByText(t('productZip.done.binned', { count: 1 }), {}, { timeout: 5000 })).toBeTruthy();
+    expect(screen.queryByText(t('productZip.done.exact', { mainProducts: 0, colours: 0, brands: 0 }))).toBeNull();
   });
 
   it('lists captions and main photos the zip puts back, and offers Apply for those alone', async () => {
@@ -1054,7 +1090,8 @@ describe('the product backup zip (Master only)', () => {
     // Each refusal the import can now give reads as a sentence, never as its key.
     expect(screen.getByText(`${t('import.column.row')} 4 (Code): Damru is in the Recycle Bin — bringing it back needs the Delete products permission`)).toBeTruthy();
     expect(screen.getByText(`${t('import.column.row')} 5 (Code): Cannot restore — another product now uses WB-0002`)).toBeTruthy();
-    expect(screen.getByText(new RegExp(`^${t('import.column.row')} 7 \\(Size\\): "Size" differs from row 6, which is also Duo`))).toBeTruthy();
+    // The column is said once, before the sentence.
+    expect(screen.getByText(new RegExp(`^${t('import.column.row')} 7 \\(Size\\): Differs from row 6 of Duo\\.`))).toBeTruthy();
 
     // A reorder alone is something to apply; the exact catalogue is off until ticked.
     expect((screen.getByRole('button', { name: t('productZip.apply') }) as HTMLButtonElement).disabled).toBe(false);
