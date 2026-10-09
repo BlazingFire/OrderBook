@@ -1552,6 +1552,8 @@ async function runPhotos(
             fileBuffer: bytes,
             crop: { cropX: 0, cropY: 0, cropWidth: 0, cropHeight: 0, rotationDeg: 0, caption },
             wholeFrame: true,
+            // Another Master's master.webp keeps its bytes, so its checksum (`planPhotos`).
+            keepWebpMaster: true,
           },
           actor,
         );

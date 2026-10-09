@@ -69,14 +69,20 @@ async function productByCode(code: string) {
   return items.find((product) => product.variants.some((variant) => variant.code === code))!;
 }
 
-/** Adds a photo as the bulk import does, whole; answers its id. */
-async function addPhoto(code: string, bytes: Buffer, caption?: string | null): Promise<string> {
+/** Adds a photo as the bulk import does, whole, or (`keepWebpMaster`) as the product restore does; answers its id. */
+async function addPhoto(
+  code: string,
+  bytes: Buffer,
+  caption?: string | null,
+  keepWebpMaster = false,
+): Promise<string> {
   const product = await imageService.uploadImage(
     {
       productId: (await productByCode(code)).id,
       fileBuffer: bytes,
       crop: { cropX: 0, cropY: 0, cropWidth: 0, cropHeight: 0, rotationDeg: 0, caption },
       wholeFrame: true,
+      keepWebpMaster,
     },
     admin,
   );
@@ -427,7 +433,7 @@ describe.skipIf(!canRunIntegrationTests)(
       expect(await shots()).toEqual(again);
     }, 120_000);
 
-    it('keeps only a still, lossy WebP with no metadata as it is; any other file is encoded as before', async () => {
+    it('keeps only a still, lossy WebP with no metadata as it is, and only for the product restore; any other file is encoded as before', async () => {
       const raw = sharp({ create: { width: 40, height: 30, channels: 3, background: '#336699' } });
       const lossy = await raw.clone().webp({ quality: 80 }).toBuffer();
       const lossless = await raw.clone().webp({ lossless: true }).toBuffer();
@@ -446,7 +452,9 @@ describe.skipIf(!canRunIntegrationTests)(
         ['OPT-0004', big],
         ['OPT-0005', trailing],
       ] as const)
-        await addPhoto(code, bytes);
+        await addPhoto(code, bytes, null, true);
+      // A single upload or the bulk Photo import: a WebP from anywhere is encoded like any photo.
+      await addPhoto('WB-0001', lossy);
 
       const stored = async (code: string) => {
         const image = (await gallery(code))[0]!;
@@ -459,6 +467,7 @@ describe.skipIf(!canRunIntegrationTests)(
         ['OPT-0003', withIcc],
         ['OPT-0004', big],
         ['OPT-0005', trailing],
+        ['WB-0001', lossy],
       ] as const)
         expect((await stored(code)).checksum, code).not.toBe(sha(bytes));
     });

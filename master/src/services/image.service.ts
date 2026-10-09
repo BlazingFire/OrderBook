@@ -10,9 +10,11 @@
  * frontends already have instead of teaching them a new event.
  *
  * The normalization pipeline itself (decode → auto-orient → user rotate →
- * crop → derive four `sharp`-encoded WebP sizes → blurhash) runs once, here,
- * never on a render path — see `docs/UI_REDESIGN.md`-adjacent
- * `office/web/src/ui/ProgressiveImage.tsx` for the render side of that rule.
+ * crop → derive the WebP sizes, the master kept byte for byte when the product
+ * restore hands in a whole one this pipeline wrote (`keepWebpMaster`) →
+ * blurhash) runs once, here, never on a render path — see
+ * `docs/UI_REDESIGN.md`-adjacent `office/web/src/ui/ProgressiveImage.tsx` for
+ * the render side of that rule.
  */
 
 import type { ImageCropInput, Product, ProductImageReorderInput, ProductImageUpdateInput } from '@orderbook/shared';
@@ -46,6 +48,13 @@ export interface UploadImageRequest {
    * know the size sharp sees after EXIF orientation to send a rect for it.
    */
   wholeFrame?: boolean;
+  /**
+   * The product restore's alone (`product-zip.service.ts#runPhotos`): a whole
+   * master this pipeline wrote (`isPipelineMaster`), another Master's backup,
+   * is kept byte for byte, so the photo keeps its checksum from Master to
+   * Master. Every other upload is encoded, a WebP from anywhere else too.
+   */
+  keepWebpMaster?: boolean;
   /**
    * Add nothing (`GalleryTakenError`) when the sub product has a photo by the
    * time the row would be written: the shipped photos' attach
@@ -136,7 +145,7 @@ async function normalizeAndStore(
   imageId: string,
   fileBuffer: Buffer,
   crop: ImageCropInput,
-  wholeFrame = false,
+  { wholeFrame = false, keepWebpMaster = false }: Pick<UploadImageRequest, 'wholeFrame' | 'keepWebpMaster'> = {},
   /** Write nothing unless the source's blurhash passes: how a heal proves the source is that photo. */
   accept?: (blurhash: string) => boolean,
 ): Promise<{
@@ -204,7 +213,7 @@ async function normalizeAndStore(
   // A whole master this pipeline wrote (another Master's product backup) is kept byte for byte:
   // encoding it again loses a generation each time, and the photo would no longer match the
   // checksum it has on the Master it came from. The smaller sizes are still made from it.
-  const keepAsMaster = wholePicture && (await isPipelineMaster(fileBuffer));
+  const keepAsMaster = keepWebpMaster && wholePicture && (await isPipelineMaster(fileBuffer));
 
   const dir = imageDir(tenantId, imageId);
   await mkdir(dir, { recursive: true });
@@ -302,7 +311,7 @@ export async function uploadImage(request: UploadImageRequest, actor: ActorConte
 
   const imageId = randomUUID();
   const derived = await throughRasterGate(() =>
-    normalizeAndStore(actor.tenantId, imageId, request.fileBuffer, request.crop, request.wholeFrame),
+    normalizeAndStore(actor.tenantId, imageId, request.fileBuffer, request.crop, request),
   );
 
   const added = await db().transaction(async (trx) => {
@@ -526,7 +535,7 @@ export async function rederiveImageVariants(tenantId: string, imageId: string, f
       imageId,
       fileBuffer,
       { cropX: 0, cropY: 0, cropWidth: 0, cropHeight: 0, rotationDeg: 0 },
-      true,
+      { wholeFrame: true },
       // The same source through the same pipeline gives the same blurhash. Anything else (a photo
       // the company put in that slot, a cropped upload) is refused rather than overwritten.
       (blurhash) => blurhash === image.blurhash,
