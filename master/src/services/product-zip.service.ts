@@ -1678,6 +1678,8 @@ async function runZip(
     const filedBrands = [
       ...planned.listed.values(),
       ...planned.added.map((seed) => seed.brand ?? null),
+      // A main product products.csv names by name alone is filed under its row's brand.
+      ...zip.mainNames.map((row) => row.brand || null),
     ];
     // A colour goes to the Recycle Bin for a person who may delete one; for anyone else it is
     // switched off, as the restore may already do to a colour the file lists.

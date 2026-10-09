@@ -738,6 +738,35 @@ describe.skipIf(!canRunIntegrationTests)(
         });
       });
 
+      it('keeps a brand a main product of products.csv named by name alone has', async () => {
+        await fields.createValue(
+          { listKey: 'product.brand', value: 'Acme', label: 'Acme', hex: null },
+          admin,
+        );
+        const file = await zipOf([
+          [
+            'products.csv',
+            csv(
+              ['Brand', 'Main product code', 'Main product', 'Sub product', 'Colour rule', 'Code'],
+              [['Acme', '', 'Own Range', 'Own one', 'dedicated', 'OWN-0001']],
+            ),
+          ],
+        ]);
+
+        const preview = await previewProductZip(file, 'p.zip', admin);
+        expect(preview.brands?.notInFile).toBeUndefined();
+        const done = await restoreProductZip(file, 'p.zip', { exactCatalogue: true }, admin);
+        expect(done.exactRemoved).toEqual({ mainProducts: 1, colours: 0, brands: 0 });
+        expect(
+          (await productRepo.listCategories(admin.tenantId)).map((main) => [main.name, main.brand]),
+        ).toEqual([['Own Range', 'Acme']]);
+        expect(
+          (await customFieldRepo.listOptionsForKey(admin.tenantId, 'product.brand')).map(
+            (option) => option.value,
+          ),
+        ).toEqual(['Acme']);
+      });
+
       it('keeps a main product main-products.csv lists by its code with no name, and says that row was not read', async () => {
         await catalog.createCategory({ name: 'Spare', code: 'SPR' }, admin);
         const { entries } = await exported();
