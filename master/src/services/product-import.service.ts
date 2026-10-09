@@ -304,8 +304,6 @@ interface ImportOptions {
 
 type UpdateGroup = ImportGroup & {
   existing: Product;
-  /** The file's rows are the whole variant set: matched by name (`MergeRules.exactVariants` makes every group so). */
-  exact?: boolean;
   /** In the Recycle Bin: the update brings it back first. */
   binned?: boolean;
   /**
@@ -358,7 +356,7 @@ interface MergeRules {
    * the row's problem says what is wrong with it.
    */
   refusedCodes: Set<string>;
-  /** `restore.exactVariants`: every group's rows are its whole variant set, as one matched by name. */
+  /** `restore.exactVariants`: every group's rows are its whole variant set. */
   exactVariants: boolean;
 }
 
@@ -719,7 +717,8 @@ export async function importProducts(
     // The same sub product under codes this catalogue does not have — another
     // install numbered it — is the live one of that name in that main product,
     // unless a file row already names that one by its own codes. It is updated
-    // and recoded to the file's rows, not created a second time beside itself.
+    // and recoded to the file's rows, not created a second time beside itself;
+    // its codes the rows leave out are kept and listed, as a live one's are.
     const namedByCode = new Set([...existingByCode.values()].map((hit) => hit.productId));
     const byName = new Map<string, string>();
     for (const sub of liveSubs) {
@@ -740,7 +739,7 @@ export async function importProducts(
       const existing = found.get(id);
       if (!existing) continue;
       creates = creates.filter((candidate) => candidate !== group);
-      updates.push({ ...group, existing, exact: true });
+      updates.push({ ...group, existing });
     }
   }
 
@@ -1142,9 +1141,9 @@ const spaced = (text: string): string => text.replace(/\s+/g, ' ').trim();
  * The product as the sheet leaves it: the existing sub products with the
  * file's rows folded in, and the live codes no row named (`untouched`). A
  * deactivated variant (history still quotes it) stays out unless a row names
- * its code — it is not resurrected by a sheet that never mentioned it. An
- * `exact` group keeps only its rows, and the codes of rows the run refused
- * (`MergeRules.refusedCodes`), which the file still names.
+ * its code — it is not resurrected by a sheet that never mentioned it. Under
+ * `exactVariants` a group keeps only its rows, and the codes of rows the run
+ * refused (`MergeRules.refusedCodes`), which the file still names.
  *
  * Whether it has colours follows the file once the file covers the whole sub
  * product, no live code left unnamed: a fixed sub product the file calls
@@ -1194,7 +1193,7 @@ function mergedUpdate(
 
   const untouched = merged.filter((variant) => variant.active && !variant.touched);
   const onRefusedRow = (variant: { code: string }): boolean => rules.refusedCodes.has(variant.code.toLowerCase());
-  const leftAlone = untouched.filter((variant) => !(group.exact || rules.exactVariants) || onRefusedRow(variant));
+  const leftAlone = untouched.filter((variant) => !rules.exactVariants || onRefusedRow(variant));
   const kept = merged.filter((variant) => variant.touched || leftAlone.includes(variant));
   // The file decides whether it has colours once it names every live code;
   // while codes it never named remain, a switch that was on stays on. Then an

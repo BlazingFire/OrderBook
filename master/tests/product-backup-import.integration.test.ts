@@ -421,17 +421,33 @@ describe.skipIf(!canRunIntegrationTests)('importing a product backup back (integ
   });
 
   describe('the same sub product under codes this catalogue does not have', () => {
-    it('is the live one of that name: updated and recoded, not created beside it', async () => {
+    it('is the live one of that name: updated, not created beside it, its codes the file leaves out kept unless exactVariants', async () => {
       const rows = edit(await exportRows(), 'OPT-0001', { Code: 'OPT-9001', Colour: 'Ivory' });
+      const named101 = async () =>
+        (await live())
+          .filter((product) => product.name === '101')
+          .map((product) => product.variants.filter((variant) => variant.isActive).map((variant) => [variant.code, variant.label]));
       const [preview, done] = await restore(rows);
       for (const result of [preview, done]) {
         expect(counts(result)).toEqual({ created: 0, updated: 1, unchanged: 4, failed: 0 });
         expect(result.rows?.variantsNotInFile).toEqual([{ code: 'OPT-0001', name: '101' }]);
       }
-      const named101 = (await live()).filter((product) => product.name === '101');
-      expect(named101.map((product) => product.variants.map((variant) => [variant.code, variant.label]))).toEqual([
-        [['OPT-9001', 'Ivory']],
+      // Nothing ticked removes nothing: OPT-0001 stays beside the file's code.
+      expect(await named101()).toEqual([
+        [
+          ['OPT-0001', 'White'],
+          ['OPT-9001', 'Ivory'],
+        ],
       ]);
+
+      await emptyCatalogue();
+      await seed();
+      const [exactPreview, exact] = await restore(rows, { exactVariants: true });
+      for (const result of [exactPreview, exact]) {
+        expect(counts(result)).toEqual({ created: 0, updated: 1, unchanged: 4, failed: 0 });
+        expect(result.rows?.variantsNotInFile).toEqual([{ code: 'OPT-0001', name: '101' }]);
+      }
+      expect(await named101()).toEqual([[['OPT-9001', 'Ivory']]]);
     });
 
     it('is refused by name in a typed sheet, create or update, as the screens refuse it', async () => {

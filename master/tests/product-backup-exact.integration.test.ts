@@ -527,6 +527,40 @@ describe.skipIf(!canRunIntegrationTests)(
         expect(await liveCodes()).not.toContain('BAS-0002');
       });
 
+      it('keeps the codes its rows leave out of a sub product read by its name under another code, unless the catalogue is made exactly the file', async () => {
+        const { entries } = await exported();
+        // Another install's numbering of Duo, White only.
+        const file = await editRows(entries, (rows, at) =>
+          rows
+            .filter((row) => row[at('Code')] !== 'BAS-0002')
+            .map((row) =>
+              row.map((value, index) =>
+                index === at('Code') && value === 'BAS-0001' ? 'XYZ-0001' : value,
+              ),
+            ),
+        );
+        const listed = [{ code: 'BAS-0002', name: 'Duo' }];
+        const duo = async () =>
+          (await productByCode('XYZ-0001'))!.variants
+            .filter((variant) => variant.isActive)
+            .map((variant) => [variant.code, variant.label]);
+
+        const done = await restoreProductZip(file, 'p.zip', {}, admin);
+        expect(done.rows.variantsNotInFile).toEqual(listed);
+        expect(await duo()).toEqual([
+          ['XYZ-0001', 'Zz White'],
+          ['BAS-0002', 'Zz Ivory'],
+        ]);
+
+        await resetData();
+        customFieldRepo.invalidateFieldCache();
+        admin = await testActor();
+        await restoreProductZip(await zipOf(entries), 'p.zip', {}, admin);
+        const exact =await restoreProductZip(file, 'p.zip', { exactCatalogue: true }, admin);
+        expect(exact.rows.variantsNotInFile).toEqual(listed);
+        expect(await duo()).toEqual([['XYZ-0001', 'Zz White']]);
+      });
+
       it('lists a sub product back from the Recycle Bin and a main product put in the order of the file, and counts that order alone as a change', async () => {
         const { entries } = await exported();
         await catalog.deleteProduct((await productByCode('BAS-0004'))!.id, admin);
