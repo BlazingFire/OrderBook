@@ -622,17 +622,20 @@ export function ProductZipModal({
                     {options.removeMissingPhotos && !exact && note(t('productZip.opt.photos.hint'))}
                   </>
                 )}
-                {/* Sub products, main products, colours and brands go to the Bin: the delete permission. */}
+                {/* Sub products, main products, colours and brands go to the Bin: the delete
+                    permission, and the lists' own one for a colour or brand (`exactNeedsLists`). */}
                 {canDelete && (
                   <>
                     <Checkbox
                       checked={exact}
+                      disabled={report.exactNeedsLists === true}
                       onChange={(checked) =>
                         setOptions((current) => ({ ...current, exactCatalogue: checked }))
                       }
                       label={t('productZip.opt.exact')}
                     />
                     {note(t('productZip.opt.exact.hint'))}
+                    {report.exactNeedsLists && note(t('productZip.opt.exact.needsLists'))}
                     {report.colours.switchedOff && note(t('productZip.opt.exact.switchedOff'))}
                   </>
                 )}

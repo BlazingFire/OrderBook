@@ -1104,6 +1104,30 @@ describe('the product backup zip (Master only)', () => {
     expect((screen.getByRole('button', { name: t('productZip.apply') }) as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it('shows the exact catalogue locked, and why, to a person who may not take colours or brands out', async () => {
+    const productZip = zipTransport();
+    productZip.preview.mockResolvedValue(
+      zipReport({
+        mainProducts: { added: [], renamed: [] },
+        products: { ...zipReport().products, updated: 0, unchanged: 549 },
+        rows: { added: [], changed: [], notInFile: [] },
+        brands: { added: [], changed: [], notInFile: ['Swisware+'] },
+        photos: { ...zipReport().photos, replaced: [], notInZip: [] },
+        exactNeedsLists: true,
+      }),
+    );
+    renderList(viewOf({ permissions: ALL }), makeTransport({ productZip }));
+    fireEvent.click(await screen.findByRole('button', { name: t('productZip.restore') }));
+    fireEvent.change(await screen.findByTestId('product-zip-file'), {
+      target: { files: [new File(['PK'], 'backup.zip')] },
+    });
+
+    const exact = (await screen.findByLabelText(t('productZip.opt.exact'))) as HTMLInputElement;
+    expect([exact.checked, exact.disabled]).toEqual([false, true]);
+    expect(screen.getByText(t('productZip.opt.exact.needsLists'))).toBeTruthy();
+    expect((screen.getByRole('button', { name: t('productZip.apply') }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('previews an earlier version\'s products sheet, and lists main products back from the Bin and each list it changes or reorders', async () => {
     const productZip = zipTransport();
     const nothing = zipReport({

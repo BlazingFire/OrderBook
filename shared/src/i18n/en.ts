@@ -2255,7 +2255,7 @@ export const EN_MESSAGES = {
   'productZip.item.listNotInFile': 'In the list but not in the file: {count}',
   'productZip.item.variantsNotInFile': 'Codes of these sub products that their rows leave out: {count}',
   'productZip.item.rowsReordered': 'Main products whose sub products are put in the order of the file: {count}',
-  'productZip.item.noColoursFile': 'This zip has no colours.csv, so the colour list stays as it is.',
+  'productZip.item.noColoursFile': 'This zip has no colours.csv it can read, so the colour list stays as it is.',
   'productZip.item.replaced': 'Replaced: {count}',
   'productZip.item.recaptioned': 'Caption put back from photos.csv: {count}',
   'productZip.item.reordered': 'Main photo or photo order put back: {count}',
@@ -2276,6 +2276,8 @@ export const EN_MESSAGES = {
     'Leaves nothing the file does not list. Sub products, main products, colours and brands it does not list go to the Recycle Bin. Photos missing from the zip, and the colours (codes) of a sub product that its rows leave out, are removed for good.',
   'productZip.opt.exact.switchedOff':
     'You may not delete colours, so the colours the file does not list are switched off instead.',
+  'productZip.opt.exact.needsLists':
+    'This would take colours or brands out of their lists, which your role may not do.',
   'productZip.nothing': 'The zip matches the catalogue. There is nothing to change.',
   'productZip.apply': 'Apply',
   'productZip.phase.checking': 'Reading the zip',
