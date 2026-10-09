@@ -369,10 +369,14 @@ export function parseImportRow(
  * Reported against the *later* row and pointing at the first, so the person
  * fixes the duplicate rather than the original. Case-insensitive, matching the
  * database's own `lower(code)` index.
+ *
+ * `byCode`: a row whose variant is its code, not its colour (a sheet with no
+ * Colour column naming a live code), is a duplicate only by its code.
  */
 export function findDuplicatesInFile(
   rows: readonly ParsedRow[],
   headerFor: (field: ImportField) => string,
+  byCode: (entry: ParsedRow) => boolean = () => false,
 ): ProductImportIssue[] {
   const issues: ProductImportIssue[] = [];
   const firstCode = new Map<string, number>();
@@ -388,13 +392,15 @@ export function findDuplicatesInFile(
     });
   };
 
-  for (const { row, input } of rows) {
+  for (const entry of rows) {
+    const { row, input } = entry;
     const code = input.variant.code.trim().toLowerCase();
     if (code) {
       const first = firstCode.get(code);
       if (first === undefined) firstCode.set(code, row);
       else duplicate(row, 'code', first);
     }
+    if (byCode(entry)) continue;
 
     const variantKey = `${groupKey(input)}${(input.variant.label ?? '').trim().toLowerCase()}`;
     const first = firstVariant.get(variantKey);

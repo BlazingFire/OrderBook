@@ -316,6 +316,38 @@ describe.skipIf(!canRunIntegrationTests)('importing a product backup back (integ
     });
   });
 
+  it('a typed sheet with no Colour column (codes and weights) changes the weights and leaves every colour as it is', async () => {
+    const sheet = Buffer.from(
+      '﻿' +
+        toCsv(
+          ['Main product code', 'Sub product', 'Code', 'Weight (kg)'],
+          [
+            ['WB', 'DAMRU', 'WB-0001', '7'],
+            ['WB', 'DAMRU', 'WB-0002', '7.1'],
+            ['OPT', '101', 'OPT-0001', '5.5'],
+          ],
+        ),
+      'utf8',
+    );
+    const run = (dryRun: boolean) =>
+      importProducts({ buffer: sheet, fileName: 'weights.csv' }, { dryRun, mode: 'upsert' }, admin);
+    for (const result of [await run(true), await run(false)]) {
+      expect(counts(result)).toEqual({ created: 0, updated: 3, unchanged: 0, failed: 0 });
+    }
+    const colours = async (code: string) => {
+      const product = (await byCode(code))!;
+      return [product.hasVariants, product.variants.map((variant) => [variant.code, variant.label, variant.weightKg])];
+    };
+    expect(await colours('WB-0001')).toEqual([
+      true,
+      [
+        ['WB-0001', 'White', 7],
+        ['WB-0002', 'Ivory', 7.1],
+      ],
+    ]);
+    expect(await colours('OPT-0001')).toEqual([true, [['OPT-0001', 'White', 5.5]]]);
+  });
+
   it('clears a weight, an alias and a size the backup has blank, and lists them; a typed sheet leaves them', async () => {
     const rows = edit(await exportRows(), 'OPT-0001', { 'Weight (kg)': '', Alias: '', Size: '' });
     const [preview, done] = await restore(rows);

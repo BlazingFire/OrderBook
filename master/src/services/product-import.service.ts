@@ -361,6 +361,12 @@ interface MergeRules {
   refusedCodes: Set<string>;
   /** `restore.exactVariants`: every group's rows are its whole variant set. */
   exactVariants: boolean;
+  /**
+   * The file has a Colour column. Without one (a sheet of codes and weights)
+   * it says nothing of colours: each code keeps its colour, and the sub
+   * product whether it has colours.
+   */
+  colours: boolean;
 }
 
 export async function importProducts(
@@ -470,6 +476,7 @@ export async function importProducts(
     clearsWeight: restore && match.byIndex.some((column) => column?.field === 'weightKg'),
     refusedCodes: new Set(),
     exactVariants: Boolean(options.restore?.exactVariants),
+    colours: match.byIndex.some((column) => column?.field === 'variant'),
   };
 
   const issues: ProductImportIssue[] = [];
@@ -511,7 +518,12 @@ export async function importProducts(
   );
   if (restore) separateTwins(parsed, (code) => existingByCode.get(code.trim().toLowerCase())?.productId);
 
-  const duplicateIssues = findDuplicatesInFile(parsed, headerFor);
+  // With no Colour column a live code is its own variant: two codes of one sub product are not one.
+  const duplicateIssues = findDuplicatesInFile(
+    parsed,
+    headerFor,
+    (entry) => !rules.colours && existingByCode.has(entry.input.variant.code.trim().toLowerCase()),
+  );
   const duplicateRows = new Set(duplicateIssues.map((issue) => issue.row));
   issues.push(...duplicateIssues);
 
@@ -1152,6 +1164,8 @@ const spaced = (text: string): string => text.replace(/\s+/g, ' ').trim();
  * Whether it has colours follows the file once the file covers the whole sub
  * product, no live code left unnamed: a fixed sub product the file calls
  * dedicated or multicolour becomes that, not a fixed one coloured "Standard".
+ * A file with no Colour column (`MergeRules.colours`) changes neither that nor
+ * any code's colour.
  * A typed sheet's text keeps the stored spelling where only the spacing
  * differs (`MergeRules`), so an unedited export reads as unchanged.
  */
@@ -1180,7 +1194,7 @@ function mergedUpdate(
     const target = byCode ?? byLabel;
     if (target) {
       target.code = incoming.code;
-      target.label = asStored(incoming.label, target.label) ?? null;
+      if (rules.colours) target.label = asStored(incoming.label, target.label) ?? null;
       target.touched = true;
       if (rules.clearsWeight) target.weightKg = incoming.weightKg ?? null;
       else if (incoming.weightKg !== undefined && incoming.weightKg !== null) target.weightKg = incoming.weightKg;
@@ -1204,7 +1218,9 @@ function mergedUpdate(
   // unlabelled member — the single row of a one-form product a sheet now
   // gives colours — is named "Standard", the plain member, so it has a name.
   const covered = leftAlone.length === 0;
-  const hasVariants = Boolean(group.input.hasVariants) || (!covered && group.existing.hasVariants);
+  const hasVariants = rules.colours
+    ? Boolean(group.input.hasVariants) || (!covered && group.existing.hasVariants)
+    : group.existing.hasVariants;
   return {
     input: {
       ...group.input,
