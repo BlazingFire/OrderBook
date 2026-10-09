@@ -79,9 +79,10 @@ function detectDelimiter(text: string): string {
 /**
  * RFC 4180 records, one array per line **including blank ones**, so the index
  * is the row number Excel shows. Quoted fields may hold the delimiter, quotes
- * (`""`) and line breaks. A leading apostrophe on a `=`/`+`/`-`/`@` cell is the
- * export's formula guard (`lib/csv.ts`) and is taken off again, so an export
- * re-imports unchanged.
+ * (`""`) and line breaks. A leading apostrophe on a `=`/`+`/`-`/`@` cell — or
+ * on one whose own apostrophes come before that character — is the export's
+ * formula guard (`lib/csv.ts`) and is taken off again, one apostrophe exactly,
+ * so an export re-imports unchanged.
  */
 export function parseCsv(text: string): string[][] {
   const delimiter = detectDelimiter(text);
@@ -92,7 +93,7 @@ export function parseCsv(text: string): string[][] {
   let touched = false;
 
   const endCell = (): void => {
-    row.push(cell.trim().replace(/^'(?=[=+\-@\t\r])/, ''));
+    row.push(cell.trim().replace(/^'(?='*[=+\-@\t\r])/, ''));
     cell = '';
   };
   const endRow = (): void => {
