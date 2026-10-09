@@ -224,6 +224,8 @@ export interface ProductZipReport {
     duplicate: string[];
     notImage: string[];
     notInZip: string[];
+    /** The file holds no photo at all: none is missing from it, and the photos stay as they are. */
+    noFile?: boolean;
   };
   /** After a real run with the opt-ins: what went to the Recycle Bin and what was deleted. */
   binned?: number;

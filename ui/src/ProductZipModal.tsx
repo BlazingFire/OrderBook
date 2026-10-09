@@ -287,6 +287,7 @@ function ReportView({ report }: { report: ProductZipReport }) {
           />,
         )}
         <Item label={t('productZip.item.unchanged', { count: photos.unchanged })} />
+        {photos.noFile && <Item label={t('productZip.item.noPhotosFile')} />}
         {some(
           photos.notInZip.length,
           <Item

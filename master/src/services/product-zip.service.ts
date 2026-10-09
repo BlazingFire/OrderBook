@@ -1481,7 +1481,11 @@ async function planPhotos(
 
   const codes = codesOf(products);
   const notInZip: PhotoPlan['notInZip'] = [];
-  for (const product of products) {
+  // A file with no photo at all (a products sheet from 1.2.4–1.4.6, a zip of products.csv
+  // alone) says nothing about photos, as one without colours.csv says nothing about colours:
+  // none is missing from it, so neither opt-in can take a photo out.
+  if (zip.photos.length === 0) report.noFile = true;
+  for (const product of zip.photos.length === 0 ? [] : products) {
     if (!product.variants.some((variant) => zip.fileCodes.has(variant.code.toLowerCase())))
       continue;
     const gallery = galleryImages(product);

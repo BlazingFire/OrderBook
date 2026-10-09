@@ -427,14 +427,20 @@ describe.skipIf(!canRunIntegrationTests)(
         });
       }, 600_000);
 
-      it('leaves only the main and sub products of a bare products sheet 1.2.4-1.4.6 saved, and the colours as they are', async () => {
+      it('leaves only the main and sub products of a bare products sheet 1.2.4-1.4.6 saved, and the colours and photos as they are', async () => {
         await freshInstall();
         const sheet = path.join(dir, 'products-2026-10-07.csv');
         await writeFile(sheet, await readFile(path.join(FIXTURES, 'products-export-1.2.5.csv')));
         const colours = await customFieldRepo.listOptionsForKey(admin.tenantId, 'stock.colour');
+        const photoIds = async () =>
+          (await db()('product_images').select('id').orderBy('id')).map((row) => row.id as string);
+        const photosBefore = await photoIds();
+        expect(photosBefore.length).toBeGreaterThan(0);
 
         const preview = await previewProductZip(sheet, 'products-2026-10-07.csv', admin);
         expect(preview.colours).toEqual({ added: [], changed: [], noFile: true });
+        // A sheet carries no photo, so none is missing from it: the opt-ins take none out.
+        expect(preview.photos).toMatchObject({ noFile: true, notInZip: [] });
         const done = await restoreProductZip(
           sheet,
           'products-2026-10-07.csv',
@@ -458,6 +464,8 @@ describe.skipIf(!canRunIntegrationTests)(
         expect(await customFieldRepo.listOptionsForKey(admin.tenantId, 'stock.colour')).toEqual(
           colours,
         );
+        expect(done.photosRemoved).toBe(0);
+        expect(await photoIds()).toEqual(photosBefore);
       }, 300_000);
     });
 

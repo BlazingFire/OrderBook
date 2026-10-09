@@ -2256,6 +2256,7 @@ export const EN_MESSAGES = {
   'productZip.item.variantsNotInFile': 'Codes of these sub products that their rows leave out: {count}',
   'productZip.item.rowsReordered': 'Main products whose sub products are put in the order of the file: {count}',
   'productZip.item.noColoursFile': 'This zip has no colours.csv it can read, so the colour list stays as it is.',
+  'productZip.item.noPhotosFile': 'This file has no photos, so the photos stay as they are.',
   'productZip.item.replaced': 'Replaced: {count}',
   'productZip.item.recaptioned': 'Caption put back from photos.csv: {count}',
   'productZip.item.reordered': 'Main photo or photo order put back: {count}',
