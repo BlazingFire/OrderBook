@@ -13,7 +13,7 @@ import path from 'node:path';
 
 import { galleryOrder, type ProductInput } from '@orderbook/shared';
 import sharp from 'sharp';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { config } from '../src/config/index.js';
 import type { ActorContext } from '../src/domain/actor.js';
@@ -37,6 +37,22 @@ import {
   testActor,
   testTenantId,
 } from './helpers/fixtures.js';
+
+// The ordinary upload, with a hook a test sets to act while a restore runs (a person on the screens).
+const during = vi.hoisted(() => ({ upload: null as (() => Promise<void>) | null }));
+vi.mock('../src/services/image.service.js', async (importOriginal) => {
+  const real = await importOriginal<typeof imageService>();
+  return {
+    ...real,
+    uploadImage: async (...args: Parameters<typeof real.uploadImage>) => {
+      const product = await real.uploadImage(...args);
+      const hook = during.upload;
+      during.upload = null;
+      await hook?.();
+      return product;
+    },
+  };
+});
 
 let admin: ActorContext;
 let dir: string;
@@ -200,6 +216,7 @@ describe.skipIf(!canRunIntegrationTests)(
         added: [],
         replaced: [],
         unchanged: 1,
+        reordered: ['OPT-0001'],
         notInZip: ['OPT-0001_2'],
       });
       await restoreProductZip(file, 'p.zip', {}, admin);
@@ -213,6 +230,104 @@ describe.skipIf(!canRunIntegrationTests)(
       const opted = await restoreProductZip(file, 'p.zip', { removeMissingPhotos: true }, admin);
       expect(opted.photosRemoved).toBe(1);
       expect((await gallery('OPT-0001')).map((image) => image.id)).toEqual([backedUp]);
+    });
+
+    it("previews a change of main photo or order on its own, and Apply puts the zip's back", async () => {
+      const front = await addPhoto('OPT-0001', await jpeg('#aa0000'), 'Front');
+      const back = await addPhoto('OPT-0001', await jpeg('#00aa00'), 'Back');
+      const { file } = await exported();
+      await imageService.updateImageCaption(back, { isPrimary: true }, admin);
+
+      const preview = await previewProductZip(file, 'p.zip', admin);
+      expect(preview.photos).toMatchObject({
+        added: [],
+        replaced: [],
+        unchanged: 2,
+        recaptioned: [],
+        reordered: ['OPT-0001'],
+      });
+      const done = await restoreProductZip(file, 'p.zip', {}, admin);
+      expect(done.photos.reordered).toEqual(['OPT-0001']);
+      expect((await gallery('OPT-0001')).map((image) => image.id)).toEqual([front, back]);
+      const logged = await db()('activity_log')
+        .where({ entity_type: 'catalog', action: 'imported' })
+        .whereRaw(`details->>'fileName' = 'p.zip'`)
+        .first('details');
+      expect(logged?.details).toMatchObject({ photosReordered: 1 });
+
+      expect((await previewProductZip(file, 'p.zip', admin)).photos.reordered).toEqual([]);
+    });
+
+    it("matches each file to its own slot's photo before another with the same bytes: an unedited backup changes nothing", async () => {
+      // The same picture twice, captioned apart.
+      const twice = await jpeg('#aa0000');
+      await addPhoto('OPT-0001', twice, 'Front');
+      await addPhoto('OPT-0001', twice, 'Packing');
+      // Y, and in front of it Y' made from Y's master: a photo whose source is another's master.
+      const y = await addPhoto('OPT-0002', await jpeg('#00aa00'), 'Front');
+      const yMaster = await readFile(path.join(tenantImagesDir, y, 'master.webp'));
+      const yPrime = await addPhoto(
+        'OPT-0002',
+        await sharp(yMaster).webp({ quality: 89 }).toBuffer(),
+        'Front',
+      );
+      await db()('product_images')
+        .where({ id: yPrime })
+        .update({ source_checksum: sha(yMaster) });
+      await imageService.updateImageCaption(yPrime, { isPrimary: true }, admin);
+      const shots = async () =>
+        [...(await gallery('OPT-0001')), ...(await gallery('OPT-0002'))].map((image) => ({
+          id: image.id,
+          caption: image.caption,
+          primary: image.isPrimary,
+        }));
+      const before = await shots();
+
+      for (let round = 0; round < 2; round += 1) {
+        const { file } = await exported();
+        const preview = await previewProductZip(file, 'p.zip', admin);
+        expect(preview.photos).toMatchObject({
+          added: [],
+          replaced: [],
+          unchanged: 4,
+          recaptioned: [],
+          reordered: [],
+          notInZip: [],
+        });
+        await restoreProductZip(file, 'p.zip', { removeMissingPhotos: true }, admin);
+        expect(await shots()).toEqual(before);
+      }
+    });
+
+    it('reorders a gallery as it is when the run gets there, a photo added meanwhile included', async () => {
+      const front = await addPhoto('OPT-0001', await jpeg('#aa0000'), 'Front');
+      const back = await addPhoto('OPT-0001', await jpeg('#00aa00'), 'Back');
+      const { entries } = await exported();
+      await imageService.updateImageCaption(back, { isPrimary: true }, admin);
+      const edited = new Map(entries);
+      edited.set('images/OPT-0002.jpg', await jpeg('#0000aa'));
+
+      // While OPT-0002's photo goes in, someone adds one to OPT-0001.
+      let added = '';
+      during.upload = async () => {
+        added = await addPhoto('OPT-0001', await jpeg('#aaaa00'), 'Side');
+      };
+      const done = await restoreProductZip(await zipOf(edited), 'p.zip', {}, admin);
+      expect(done.problems).toEqual([]);
+      expect(done.photos.reordered).toEqual(['OPT-0001']);
+      expect((await gallery('OPT-0001')).map((image) => image.id)).toEqual([front, back, added]);
+    });
+
+    it("captions a photo replaced under another ending by photos.csv's row for its name", async () => {
+      await addPhoto('OPT-0001', await jpeg('#aa0000'), 'Front');
+      const { entries } = await exported();
+      const edited = new Map(entries);
+      edited.delete('images/OPT-0001.webp');
+      edited.set('images/OPT-0001.jpg', await jpeg('#0000aa'));
+
+      const done = await restoreProductZip(await zipOf(edited), 'p.zip', {}, admin);
+      expect(done.photos.replaced).toEqual(['OPT-0001.jpg']);
+      expect((await gallery('OPT-0001')).map((image) => image.caption)).toEqual(['Front']);
     });
 
     it('carries every caption in photos.csv: into an empty catalogue, and back onto a photo whose caption changed', async () => {
@@ -322,11 +437,14 @@ describe.skipIf(!canRunIntegrationTests)(
       })
         .webp({ quality: 80 })
         .toBuffer();
+      // Bytes past the RIFF size, which a decoder skips: kept, they would go out in every backup.
+      const trailing = Buffer.concat([lossy, Buffer.from('<html><script></script></html>')]);
       for (const [code, bytes] of [
         ['OPT-0001', lossy],
         ['OPT-0002', lossless],
         ['OPT-0003', withIcc],
         ['OPT-0004', big],
+        ['OPT-0005', trailing],
       ] as const)
         await addPhoto(code, bytes);
 
@@ -340,6 +458,7 @@ describe.skipIf(!canRunIntegrationTests)(
         ['OPT-0002', lossless],
         ['OPT-0003', withIcc],
         ['OPT-0004', big],
+        ['OPT-0005', trailing],
       ] as const)
         expect((await stored(code)).checksum, code).not.toBe(sha(bytes));
     });

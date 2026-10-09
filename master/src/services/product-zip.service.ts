@@ -52,6 +52,7 @@ import {
   MAX_IMAGE_SOURCE_BYTES,
   MAX_PRODUCT_IMPORT_BYTES,
   newestImageId,
+  photoFileKey,
   planPhotoImport,
   runPhotoImport,
   type MessageKey,
@@ -449,7 +450,7 @@ interface ZipContents {
   photos: ZipPhoto[];
   /** A second file under the very same name, in another folder: never planned. */
   extraPhotos: string[];
-  /** `photos.csv`: each photo's caption by its file name as written, lower-cased. Null for a zip without one. */
+  /** `photos.csv`: each photo's caption by its name as the planner keys it (`photoFileKey`). Null for a zip without one. */
   captions: Map<string, string> | null;
 }
 
@@ -573,8 +574,9 @@ async function readZip(reader: ZipReader, problems: ProductZipProblem[]): Promis
     const captionAt = header.indexOf('caption');
     captions = new Map();
     for (const row of rows.slice(1)) {
-      const file = cell(row, fileAt);
-      if (file) captions.set(file.toLowerCase(), cell(row, captionAt));
+      // By name without its ending, as the planner reads a file: OPT-0001.jpg put in for OPT-0001.webp keeps its caption.
+      const key = photoFileKey(fromFileSafe(cell(row, fileAt)))?.full;
+      if (key && !captions.has(key)) captions.set(key, cell(row, captionAt));
     }
   }
 
@@ -774,13 +776,30 @@ interface PhotoPlan {
   toRun: PhotoPlanRow<ZipPhoto>[];
   /** The zip's slot of each photo it keeps as it is, by image id. */
   keptSlots: Map<string, number>;
-  /** Each sub product the zip keeps a photo of, as planned: the run puts its gallery in the zip's order. */
-  kept: Map<string, Product>;
+  /** Each sub product the zip keeps a photo of, by id: the run puts its gallery in the zip's order. */
+  kept: Set<string>;
+  /** Kept sub products whose main photo or order differs from the zip's: their first live code, by id. */
+  reordered: Map<string, string>;
   /** Kept photos whose caption `photos.csv` gives otherwise. */
   recaption: Array<{ imageId: string; caption: string | null; name: string }>;
   /** Photos of the file's sub products that no file names. */
   notInZip: Array<{ imageId: string; name: string }>;
 }
+
+/**
+ * A gallery (ids, in order) as the zip orders it: the photos it names at their
+ * slots, the others after them in their own order. The zip's photo 1 is the
+ * primary, which only `isPrimary` moves; with none named, the primary stays.
+ */
+function zipOrder(gallery: readonly string[], slots: ReadonlyMap<string, number>): string[] {
+  const place = (id: string): number => slots.get(id) ?? 1_000_000 + gallery.indexOf(id);
+  const sorted = [...gallery].sort((a, b) => place(a) - place(b));
+  const first = sorted[0] !== undefined && slots.get(sorted[0]) === 1 ? sorted[0] : gallery[0];
+  return first === undefined ? [] : [first, ...sorted.filter((id) => id !== first)];
+}
+
+const sameOrder = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((id, index) => id === b[index]);
 
 /**
  * Each file is matched by its bytes first, against every photo of its sub
@@ -790,7 +809,8 @@ interface PhotoPlan {
  * one was deleted, or one a second colour code names, is never uploaded again
  * or removed. Only a file no photo matches is compared by slot: an empty slot,
  * or one whose photo another file keeps or replaces, adds it beside; any other
- * replaces that one photo.
+ * replaces that one photo. A kept sub product whose main photo or order the
+ * zip's differs from is listed, as the run puts it back.
  *
  * `keepPhotos`: a photo already in a slot stays, whatever its bytes. The boot
  * load asks for it: it only ever fills an empty catalogue, so a photo there is
@@ -810,6 +830,7 @@ async function planPhotos(
     replaced: [],
     unchanged: 0,
     recaptioned: [],
+    reordered: [],
     unmatched: [],
     duplicate: [...zip.extraPhotos],
     notImage: [],
@@ -817,7 +838,7 @@ async function planPhotos(
   };
   const toRun: PhotoPlanRow<ZipPhoto>[] = [];
   const keptSlots = new Map<string, number>();
-  const kept = new Map<string, Product>();
+  const kept = new Set<string>();
   const recaption: PhotoPlan['recaption'] = [];
   // Every photo a row keeps or replaces: no other row may touch it.
   const claimed = new Set<string>();
@@ -825,38 +846,45 @@ async function planPhotos(
     report.unchanged += 1;
     claimed.add(imageId);
     keptSlots.set(imageId, row.slot ?? 1);
-    kept.set(product.id, product);
+    kept.add(product.id);
   };
   // The caption photos.csv gives a file it lists; undefined leaves the planner's (a colour's label).
   const captionOf = (file: ZipPhoto): string | null | undefined => {
-    const caption = zip.captions?.get(baseName(file.entry).toLowerCase());
+    const caption = zip.captions?.get(photoFileKey(file.name)?.full ?? '');
     return caption === undefined ? undefined : caption || null;
   };
 
-  const bySlot: Array<{ row: PhotoPlanRow<ZipPhoto>; product: Product }> = [];
+  let unmatched: Array<{ row: PhotoPlanRow<ZipPhoto>; product: Product }> = [];
   for (const row of planPhotoImport(zip.photos, products)) {
     if (row.status === 'unmatched') report.unmatched.push(row.fileName);
     else if (row.status === 'duplicate') report.duplicate.push(row.fileName);
     else if (row.status === 'notImage') report.notImage.push(row.fileName);
-    else {
-      const product = byId.get(row.productId as string) as Product;
+    else unmatched.push({ row, product: byId.get(row.productId as string) as Product });
+  }
+  // Its own slot's photo first, then any photo's master, then any photo's source: the planner
+  // takes OPT-0001_2 before OPT-0001, and the same picture twice, or a photo made from another's
+  // master, must not let one file take the photo the other is the very bytes of.
+  const passes: Array<(row: PhotoPlanRow<ZipPhoto>, image: ProductImage) => boolean> = [
+    (row, image) =>
+      image.id === row.slotImageId &&
+      (image.checksum === row.file.sha256 || sourceOf.get(image.id) === row.file.sha256),
+    (row, image) => image.checksum === row.file.sha256,
+    (row, image) => sourceOf.get(image.id) === row.file.sha256,
+  ];
+  for (const pass of passes) {
+    unmatched = unmatched.filter(({ row, product }) => {
       const image = product.images.find(
-        (candidate) =>
-          !claimed.has(candidate.id) &&
-          (candidate.checksum === row.file.sha256 ||
-            sourceOf.get(candidate.id) === row.file.sha256),
+        (candidate) => !claimed.has(candidate.id) && pass(row, candidate),
       );
-      if (!image) {
-        bySlot.push({ row, product });
-        continue;
-      }
+      if (!image) return true;
       keep(row, product, image.id);
       const caption = captionOf(row.file);
       if (caption !== undefined && caption !== image.caption)
         recaption.push({ imageId: image.id, caption, name: row.fileName });
-    }
+      return false;
+    });
   }
-  for (const { row, product } of bySlot) {
+  for (const { row, product } of unmatched) {
     const caption = captionOf(row.file);
     const upload = { ...row, caption: caption === undefined ? row.caption : caption };
     if (row.slotImageId && !claimed.has(row.slotImageId)) {
@@ -873,6 +901,20 @@ async function planPhotos(
     }
   }
   report.recaptioned = recaption.map((photo) => photo.name);
+
+  // The photos a replacement removes are gone by then; an upload is listed already.
+  const leaving = new Set(toRun.map((row) => row.slotImageId));
+  const reordered = new Map<string, string>();
+  for (const productId of kept) {
+    const product = byId.get(productId) as Product;
+    const gallery = galleryOrder(product).filter((id) => !leaving.has(id));
+    if (!sameOrder(zipOrder(gallery, keptSlots), gallery))
+      reordered.set(
+        productId,
+        product.variants.find((variant) => variant.isActive)?.code ?? product.name,
+      );
+  }
+  report.reordered = [...reordered.values()];
 
   const codes = codesOf(products);
   const notInZip: PhotoPlan['notInZip'] = [];
@@ -895,7 +937,7 @@ async function planPhotos(
     }
   }
   report.notInZip = notInZip.map((photo) => photo.name);
-  return { report, toRun, keptSlots, kept, recaption, notInZip };
+  return { report, toRun, keptSlots, kept, reordered, recaption, notInZip };
 }
 
 /**
@@ -912,7 +954,7 @@ async function runPhotos(
   actor: ActorContext,
   problems: ProductZipProblem[],
   progress: (done: number, total: number) => void,
-): Promise<{ added: string[]; replaced: string[]; recaptioned: string[] }> {
+): Promise<{ added: string[]; replaced: string[]; recaptioned: string[]; reordered: string[] }> {
   const slots = new Map(plan.keptSlots);
   const refusals = new Map<ZipPhoto, ProductZipProblem>();
 
@@ -951,7 +993,12 @@ async function runPhotos(
     onProgress: progress,
   });
 
-  const landed = { added: [] as string[], replaced: [] as string[], recaptioned: [] as string[] };
+  const landed = {
+    added: [] as string[],
+    replaced: [] as string[],
+    recaptioned: [] as string[],
+    reordered: [] as string[],
+  };
   const touched = new Set<string>();
   for (const outcome of outcomes) {
     if (outcome.result === 'imported') {
@@ -983,24 +1030,20 @@ async function runPhotos(
     }
   }
 
-  // A sub product nothing was uploaded to is as planned; one with an upload is read again.
-  for (const productId of new Set([...touched, ...plan.kept.keys()])) {
-    const product = touched.has(productId)
-      ? await productRepo.findProductById(actor.tenantId, productId)
-      : plan.kept.get(productId);
+  // Read again, every one: a photo added or deleted on the screens while the restore ran is in
+  // the gallery reordered, or `reorderImages` refuses the set after the primary already moved.
+  for (const productId of new Set([...touched, ...plan.kept])) {
+    const product = await productRepo.findProductById(actor.tenantId, productId);
     if (!product) continue;
     const gallery = galleryOrder(product);
-    // Photos the zip does not name keep their order, after the ones it does.
-    const place = (id: string): number => slots.get(id) ?? 1_000_000 + gallery.indexOf(id);
-    const sorted = [...gallery].sort((a, b) => place(a) - place(b));
-    // The zip's photo 1 is the primary, which only `isPrimary` moves; with none named, the primary stays.
-    const first = sorted[0] !== undefined && slots.get(sorted[0]) === 1 ? sorted[0] : gallery[0];
-    if (first === undefined) continue;
-    const wanted = [first, ...sorted.filter((id) => id !== first)];
-    if (wanted.every((id, index) => id === gallery[index])) continue;
+    const wanted = zipOrder(gallery, slots);
+    if (sameOrder(wanted, gallery)) continue;
     try {
-      if (first !== gallery[0]) await updateImageCaption(first, { isPrimary: true }, actor);
+      if (wanted[0] !== gallery[0])
+        await updateImageCaption(wanted[0] as string, { isPrimary: true }, actor);
       await reorderImages({ productId, ids: wanted }, actor);
+      const name = plan.reordered.get(productId);
+      if (name !== undefined) landed.reordered.push(name);
     } catch (error) {
       problems.push(problemOf(product.name, error));
     }
@@ -1136,6 +1179,7 @@ async function runZip(
     photos.added = landed.added;
     photos.replaced = landed.replaced;
     photos.recaptioned = landed.recaptioned;
+    photos.reordered = landed.reordered;
 
     progress({ phase: 'removing', done: 0, total: 0 });
     let binned = 0;
@@ -1174,6 +1218,7 @@ async function runZip(
       photos.added.length +
       photos.replaced.length +
       landed.recaptioned.length +
+      landed.reordered.length +
       binned +
       photosRemoved;
     if (changed > 0) {
@@ -1197,6 +1242,8 @@ async function runZip(
               coloursChanged: colours.added.length + colours.changed.length,
               photosAdded: photos.added.length,
               photosReplaced: photos.replaced.length,
+              photosRecaptioned: landed.recaptioned.length,
+              photosReordered: landed.reordered.length,
               binned,
               photosRemoved,
             },

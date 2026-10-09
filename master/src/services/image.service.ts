@@ -243,12 +243,15 @@ async function normalizeAndStore(
 
 /**
  * What the pipeline writes as a master: a still, lossy WebP (`VP8 `, not the
- * lossless `VP8L`) carrying no EXIF, ICC or XMP. Anything else, a lossless or
- * metadata-carrying WebP a person put in included, is encoded like every upload.
+ * lossless `VP8L`) carrying no EXIF, ICC or XMP and nothing past its RIFF
+ * payload. Anything else, a lossless or metadata-carrying WebP a person put in
+ * included, is encoded like every upload.
  */
 async function isPipelineMaster(fileBuffer: Buffer): Promise<boolean> {
   const meta = await sharp(fileBuffer).metadata();
   if (meta.format !== 'webp' || meta.exif || meta.icc || meta.xmp || (meta.pages ?? 1) !== 1) return false;
+  // Bytes after the payload, which a decoder skips, would be kept and go out in every backup.
+  if (fileBuffer.readUInt32LE(4) + 8 !== fileBuffer.length) return false;
   // The first image chunk says which; an animation's frames sit inside `ANMF`, so it has neither.
   for (let at = 12; at + 8 <= fileBuffer.length; ) {
     const chunk = fileBuffer.toString('latin1', at, at + 4);
