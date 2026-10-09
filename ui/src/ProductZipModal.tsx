@@ -102,6 +102,9 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 /** What the zip changes; a count of 0 is left out, except where saying "unchanged" is the point. */
 function ReportView({ report }: { report: ProductZipReport }) {
   const { mainProducts, products, rows, colours, photos, problems } = report;
+  // Absent from a Master older than 1.4.7.
+  const recaptioned = photos.recaptioned ?? [];
+  const reordered = photos.reordered ?? [];
   const some = (count: number, node: ReactNode) => (count > 0 ? node : null);
   return (
     <>
@@ -196,6 +199,20 @@ function ReportView({ report }: { report: ProductZipReport }) {
             items={photos.replaced}
           />,
         )}
+        {some(
+          recaptioned.length,
+          <Item
+            label={t('productZip.item.recaptioned', { count: recaptioned.length })}
+            items={recaptioned}
+          />,
+        )}
+        {some(
+          reordered.length,
+          <Item
+            label={t('productZip.item.reordered', { count: reordered.length })}
+            items={reordered}
+          />,
+        )}
         <Item label={t('productZip.item.unchanged', { count: photos.unchanged })} />
         {some(
           photos.notInZip.length,
@@ -252,6 +269,8 @@ function changes(report: ProductZipReport, options: ProductRestoreOptions): numb
     report.colours.changed.length +
     report.photos.added.length +
     report.photos.replaced.length +
+    (report.photos.recaptioned?.length ?? 0) +
+    (report.photos.reordered?.length ?? 0) +
     (options.binMissingProducts ? report.rows.notInFile.length : 0) +
     (options.removeMissingPhotos ? report.photos.notInZip.length : 0)
   );

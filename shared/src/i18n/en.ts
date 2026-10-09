@@ -2246,6 +2246,8 @@ export const EN_MESSAGES = {
   'productZip.item.unchanged': 'Unchanged: {count}',
   'productZip.item.notInFile': 'In the catalogue but not in products.csv: {count}',
   'productZip.item.replaced': 'Replaced: {count}',
+  'productZip.item.recaptioned': 'Caption put back from photos.csv: {count}',
+  'productZip.item.reordered': 'Main photo or photo order put back: {count}',
   'productZip.item.unmatched': 'No sub product has this code: {count}',
   'productZip.item.duplicate': 'Same name as another file, left out: {count}',
   'productZip.item.notImage': 'Not a jpg, png or webp image: {count}',

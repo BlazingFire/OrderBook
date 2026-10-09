@@ -964,4 +964,35 @@ describe('the product backup zip (Master only)', () => {
     expect(screen.queryByLabelText(t('productZip.opt.bin', { count: 1 }))).toBeNull();
     expect((screen.getByRole('button', { name: t('productZip.apply') }) as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it('lists captions and main photos the zip puts back, and offers Apply for those alone', async () => {
+    const productZip = zipTransport();
+    productZip.preview.mockResolvedValue(
+      zipReport({
+        mainProducts: { added: [], renamed: [] },
+        products: { ...zipReport().products, updated: 0, unchanged: 549 },
+        rows: { added: [], changed: [], notInFile: [] },
+        photos: {
+          ...zipReport().photos,
+          replaced: [],
+          notInZip: [],
+          recaptioned: ['PRB-0009.webp'],
+          reordered: ['PRB-0010'],
+        },
+      }),
+    );
+    renderList(viewOf({ permissions: ALL }), makeTransport({ productZip }));
+
+    fireEvent.click(await screen.findByRole('button', { name: t('productZip.restore') }));
+    fireEvent.change(await screen.findByTestId('product-zip-file'), {
+      target: { files: [new File(['PK'], 'backup.zip')] },
+    });
+
+    expect(await screen.findByText(t('productZip.item.recaptioned', { count: 1 }))).toBeTruthy();
+    expect(screen.getByText('PRB-0009.webp')).toBeTruthy();
+    expect(screen.getByText(t('productZip.item.reordered', { count: 1 }))).toBeTruthy();
+    expect(screen.getByText('PRB-0010')).toBeTruthy();
+    expect(screen.queryByText(t('productZip.nothing'))).toBeNull();
+    expect((screen.getByRole('button', { name: t('productZip.apply') }) as HTMLButtonElement).disabled).toBe(false);
+  });
 });

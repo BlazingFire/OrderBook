@@ -199,6 +199,13 @@ async function normalizeAndStore(
   const blurhash = await encodeBlurhashFrom(cropped);
   if (accept && !accept(blurhash)) throw new SourceMismatchError();
 
+  const wholePicture =
+    rotationDeg === 0 && rect.x === 0 && rect.y === 0 && rect.width === rotatedWidth && rect.height === rotatedHeight;
+  // A whole master this pipeline wrote (another Master's product backup) is kept byte for byte:
+  // encoding it again loses a generation each time, and the photo would no longer match the
+  // checksum it has on the Master it came from. The smaller sizes are still made from it.
+  const keepAsMaster = wholePicture && (await isPipelineMaster(fileBuffer));
+
   const dir = imageDir(tenantId, imageId);
   await mkdir(dir, { recursive: true });
 
@@ -207,11 +214,14 @@ async function normalizeAndStore(
 
   for (const spec of IMAGE_VARIANT_SPECS) {
     const dims = variantDimensions(rect.width, rect.height, spec.longEdge);
-    const { data, info } = await cropped
-      .clone()
-      .resize(dims.width, dims.height, { fit: 'inside', withoutEnlargement: true })
-      .webp({ quality: spec.quality })
-      .toBuffer({ resolveWithObject: true });
+    const { data, info } =
+      spec.name === 'master' && keepAsMaster && Math.max(rect.width, rect.height) <= spec.longEdge
+        ? { data: fileBuffer, info: rect }
+        : await cropped
+            .clone()
+            .resize(dims.width, dims.height, { fit: 'inside', withoutEnlargement: true })
+            .webp({ quality: spec.quality })
+            .toBuffer({ resolveWithObject: true });
 
     await writeFile(path.join(dir, `${spec.name}.webp`), data);
     if (spec.name === 'master') {
@@ -233,9 +243,30 @@ async function normalizeAndStore(
     checksum,
     blurhash,
     byteSize: masterMeta.byteSize,
-    wholePicture:
-      rotationDeg === 0 && rect.x === 0 && rect.y === 0 && rect.width === rotatedWidth && rect.height === rotatedHeight,
+    wholePicture,
   };
+}
+
+/**
+ * What the pipeline writes as a master: a still, lossy WebP (`VP8 `, not the
+ * lossless `VP8L`) carrying no EXIF, ICC or XMP and nothing past its RIFF
+ * payload. Anything else, a lossless or metadata-carrying WebP a person put in
+ * included, is encoded like every upload.
+ */
+async function isPipelineMaster(fileBuffer: Buffer): Promise<boolean> {
+  const meta = await sharp(fileBuffer).metadata();
+  if (meta.format !== 'webp' || meta.exif || meta.icc || meta.xmp || (meta.pages ?? 1) !== 1) return false;
+  // Bytes after the payload, which a decoder skips, would be kept and go out in every backup.
+  if (fileBuffer.readUInt32LE(4) + 8 !== fileBuffer.length) return false;
+  // The first image chunk says which; an animation's frames sit inside `ANMF`, so it has neither.
+  for (let at = 12; at + 8 <= fileBuffer.length; ) {
+    const chunk = fileBuffer.toString('latin1', at, at + 4);
+    if (chunk === 'VP8 ') return true;
+    if (chunk === 'VP8L') return false;
+    const size = fileBuffer.readUInt32LE(at + 4);
+    at += 8 + size + (size % 2);
+  }
+  return false;
 }
 
 /** A heal's source decoded to a different picture than the row's: nothing was written. */
