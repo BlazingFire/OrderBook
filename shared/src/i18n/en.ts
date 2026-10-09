@@ -2251,6 +2251,11 @@ export const EN_MESSAGES = {
   'productZip.item.listReordered': 'Put in the order of the file',
   'productZip.item.unchanged': 'Unchanged: {count}',
   'productZip.item.notInFile': 'In the catalogue but not in products.csv: {count}',
+  'productZip.item.mainNotInFile': 'In the catalogue but in neither main-products.csv nor products.csv: {count}',
+  'productZip.item.listNotInFile': 'In the list but not in the file: {count}',
+  'productZip.item.variantsNotInFile': 'Codes of these sub products that their rows leave out: {count}',
+  'productZip.item.rowsReordered': 'Main products whose sub products are put in the order of the file: {count}',
+  'productZip.item.noColoursFile': 'This zip has no colours.csv, so the colour list stays as it is.',
   'productZip.item.replaced': 'Replaced: {count}',
   'productZip.item.recaptioned': 'Caption put back from photos.csv: {count}',
   'productZip.item.reordered': 'Main photo or photo order put back: {count}',
@@ -2262,10 +2267,15 @@ export const EN_MESSAGES = {
   'productZip.item.problems': 'Could not be done: {count}',
   'productZip.cellChange': '{column}: {from} → {to}',
   'productZip.reportOnly':
-    'Sub products and photos missing from the zip are only listed. Nothing is removed unless you tick it below.',
+    'What the catalogue holds and the zip does not is only listed. Nothing is removed unless you tick it below.',
   'productZip.opt.bin': 'Move sub products missing from the file to the Recycle Bin ({count})',
   'productZip.opt.photos': 'Remove photos missing from the zip ({count})',
   'productZip.opt.photos.hint': 'A removed photo cannot be brought back.',
+  'productZip.opt.exact': 'Make the catalogue exactly this file',
+  'productZip.opt.exact.hint':
+    'Leaves nothing the file does not list. Sub products, main products, colours and brands it does not list go to the Recycle Bin. Photos missing from the zip, and the colours (codes) of a sub product that its rows leave out, are removed for good.',
+  'productZip.opt.exact.switchedOff':
+    'You may not delete colours, so the colours the file does not list are switched off instead.',
   'productZip.nothing': 'The zip matches the catalogue. There is nothing to change.',
   'productZip.apply': 'Apply',
   'productZip.phase.checking': 'Reading the zip',
@@ -2277,6 +2287,8 @@ export const EN_MESSAGES = {
   'productZip.done': 'The product restore is finished.',
   'productZip.done.binned': '{count} sub products moved to the Recycle Bin.',
   'productZip.done.photosRemoved': '{count} photos removed.',
+  'productZip.done.exact':
+    'Moved to the Recycle Bin: {mainProducts} main products and {brands} brands. Colours taken out: {colours}.',
   'productZip.failed': 'The product restore could not be completed',
   'productZip.another': 'Restore another zip',
   'productZip.problem.photo': 'The photo could not be added: {reason}',

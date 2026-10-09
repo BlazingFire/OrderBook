@@ -898,6 +898,7 @@ export const api = {
     form.append('file', file);
     if (options.binMissingProducts) form.append('binMissingProducts', 'true');
     if (options.removeMissingPhotos) form.append('removeMissingPhotos', 'true');
+    if (options.exactCatalogue) form.append('exactCatalogue', 'true');
     return requestForm<ProductRestoreJob>('/api/products/restore', form);
   },
   productRestoreJob: () => request<ProductRestoreJob | null>('/api/products/restore/job'),

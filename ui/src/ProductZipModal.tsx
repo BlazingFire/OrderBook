@@ -1,8 +1,8 @@
 /**
  * Restore products from a product backup zip (Master only), or from the
  * products .csv or .xlsx an earlier version exported: choose the file, read
- * what it would do, tick the two removals if wanted, Apply, watch it run, read
- * what it did.
+ * what it would do, tick the removals if wanted (or make the catalogue exactly
+ * the file), Apply, watch it run, read what it did.
  *
  * The preview is the Master's own dry run of the same restore
  * (`master/src/services/product-zip.service.ts`), so what is listed here is
@@ -107,9 +107,10 @@ const some = (count: number, node: ReactNode) => (count > 0 ? node : null);
 const listCount = (list?: ProductZipList): number =>
   list ? list.added.length + list.changed.length + (list.reordered ? 1 : 0) : 0;
 
-/** `colours.csv` or `brands.csv`: the values it adds and changes, and the list put in its order. */
+/** `colours.csv` or `brands.csv`: the values it adds and changes, the list put in its order, and the values it leaves out. */
 function ListSection({ title, list }: { title: string; list?: ProductZipList }) {
-  if (!list || listCount(list) === 0) return null;
+  const gone = list?.notInFile ?? [];
+  if (!list || listCount(list) + gone.length === 0) return null;
   return (
     <Section title={title}>
       {some(
@@ -129,21 +130,35 @@ function ListSection({ title, list }: { title: string; list?: ProductZipList }) 
         />,
       )}
       {list.reordered && <Item label={t('productZip.item.listReordered')} />}
+      {some(
+        gone.length,
+        <Item label={t('productZip.item.listNotInFile', { count: gone.length })} items={gone} />,
+      )}
     </Section>
   );
 }
 
+const named = (row: { code: string; name: string }): string =>
+  row.code ? `${row.code} — ${row.name}` : row.name;
+
 /** What the zip changes; a count of 0 is left out, except where saying "unchanged" is the point. */
 function ReportView({ report }: { report: ProductZipReport }) {
   const { mainProducts, products, rows, colours, brands, photos, problems } = report;
-  // Absent from a Master older than 1.4.7.
+  // Absent from a Master older than 1.4.7, and where there are none.
   const restored = mainProducts.restoredFromBin ?? [];
+  const mainsGone = mainProducts.notInFile ?? [];
+  const rowsBack = rows.restoredFromBin ?? [];
+  const rowsReordered = rows.reordered ?? [];
+  const variantsGone = rows.variantsNotInFile ?? [];
   const recaptioned = photos.recaptioned ?? [];
   const reordered = photos.reordered ?? [];
   return (
     <>
       {some(
-        mainProducts.added.length + mainProducts.renamed.length + restored.length,
+        mainProducts.added.length +
+          mainProducts.renamed.length +
+          restored.length +
+          mainsGone.length,
         <Section title={t('productZip.section.mainProducts')}>
           {some(
             mainProducts.added.length,
@@ -168,6 +183,13 @@ function ReportView({ report }: { report: ProductZipReport }) {
               items={restored.map((main) => `${main.code} — ${main.name}`)}
             />,
           )}
+          {some(
+            mainsGone.length,
+            <Item
+              label={t('productZip.item.mainNotInFile', { count: mainsGone.length })}
+              items={mainsGone.map(named)}
+            />,
+          )}
         </Section>,
       )}
       <Section title={t('productZip.section.rows')}>
@@ -185,12 +207,36 @@ function ReportView({ report }: { report: ProductZipReport }) {
             items={rows.changed.map((row) => `${row.code} — ${row.name}: ${cells(row.fields)}`)}
           />,
         )}
+        {some(
+          rowsBack.length,
+          <Item
+            label={t('productZip.item.restoredFromBin', { count: rowsBack.length })}
+            items={rowsBack.map(
+              (row) =>
+                `${row.code} — ${row.name}${row.fields.length > 0 ? `: ${cells(row.fields)}` : ''}`,
+            )}
+          />,
+        )}
+        {some(
+          rowsReordered.length,
+          <Item
+            label={t('productZip.item.rowsReordered', { count: rowsReordered.length })}
+            items={rowsReordered.map(named)}
+          />,
+        )}
         <Item label={t('productZip.item.unchanged', { count: products.unchanged ?? 0 })} />
         {some(
           rows.notInFile.length,
           <Item
             label={t('productZip.item.notInFile', { count: rows.notInFile.length })}
             items={rows.notInFile.map((row) => `${row.code} — ${row.name}`)}
+          />,
+        )}
+        {some(
+          variantsGone.length,
+          <Item
+            label={t('productZip.item.variantsNotInFile', { count: variantsGone.length })}
+            items={variantsGone.map((row) => `${row.code} — ${row.name}`)}
           />,
         )}
         {some(
@@ -205,6 +251,11 @@ function ReportView({ report }: { report: ProductZipReport }) {
         )}
       </Section>
       <ListSection title={t('productZip.section.colours')} list={colours} />
+      {colours.noFile && (
+        <Section title={t('productZip.section.colours')}>
+          <Item label={t('productZip.item.noColoursFile')} />
+        </Section>
+      )}
       <ListSection title={t('productZip.section.brands')} list={brands} />
       <Section title={t('productZip.section.photos')}>
         {some(
@@ -280,22 +331,32 @@ function ReportView({ report }: { report: ProductZipReport }) {
   );
 }
 
-/** Anything for Apply to do, with these opt-ins. */
+/** What only "Make the catalogue exactly this file" takes out. */
+const exactOnly = (report: ProductZipReport): number =>
+  (report.mainProducts.notInFile?.length ?? 0) +
+  (report.rows.variantsNotInFile?.length ?? 0) +
+  (report.colours.notInFile?.length ?? 0) +
+  (report.brands?.notInFile?.length ?? 0);
+
+/** Anything for Apply to do, with these opt-ins; the exact catalogue implies the other two. */
 function changes(report: ProductZipReport, options: ProductRestoreOptions): number {
+  const exact = options.exactCatalogue === true;
   return (
     report.mainProducts.added.length +
     report.mainProducts.renamed.length +
     (report.mainProducts.restoredFromBin?.length ?? 0) +
     report.products.created +
     report.products.updated +
+    (report.rows.reordered?.length ?? 0) +
     listCount(report.colours) +
     listCount(report.brands) +
     report.photos.added.length +
     report.photos.replaced.length +
     (report.photos.recaptioned?.length ?? 0) +
     (report.photos.reordered?.length ?? 0) +
-    (options.binMissingProducts ? report.rows.notInFile.length : 0) +
-    (options.removeMissingPhotos ? report.photos.notInZip.length : 0)
+    (options.binMissingProducts || exact ? report.rows.notInFile.length : 0) +
+    (options.removeMissingPhotos || exact ? report.photos.notInZip.length : 0) +
+    (exact ? exactOnly(report) : 0)
   );
 }
 
@@ -447,6 +508,7 @@ export function ProductZipModal({
     }
   }
 
+  const exact = options.exactCatalogue === true;
   const toDo = report ? changes(report, options) : 0;
   const note = (text: ReactNode) => (
     <p className="ob-small" style={{ margin: 0, color: 'var(--fg-secondary)' }}>
@@ -533,12 +595,14 @@ export function ProductZipModal({
               {report.fileName}
             </p>
             <ReportView report={report} />
-            {(report.rows.notInFile.length > 0 || report.photos.notInZip.length > 0) && (
+            {report.rows.notInFile.length + report.photos.notInZip.length + exactOnly(report) >
+              0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
                 {note(t('productZip.reportOnly'))}
                 {canDelete && report.rows.notInFile.length > 0 && (
                   <Checkbox
-                    checked={options.binMissingProducts === true}
+                    checked={options.binMissingProducts === true || exact}
+                    disabled={exact}
                     onChange={(checked) =>
                       setOptions((current) => ({ ...current, binMissingProducts: checked }))
                     }
@@ -548,13 +612,28 @@ export function ProductZipModal({
                 {report.photos.notInZip.length > 0 && (
                   <>
                     <Checkbox
-                      checked={options.removeMissingPhotos === true}
+                      checked={options.removeMissingPhotos === true || exact}
+                      disabled={exact}
                       onChange={(checked) =>
                         setOptions((current) => ({ ...current, removeMissingPhotos: checked }))
                       }
                       label={t('productZip.opt.photos', { count: report.photos.notInZip.length })}
                     />
-                    {options.removeMissingPhotos && note(t('productZip.opt.photos.hint'))}
+                    {options.removeMissingPhotos && !exact && note(t('productZip.opt.photos.hint'))}
+                  </>
+                )}
+                {/* Sub products, main products, colours and brands go to the Bin: the delete permission. */}
+                {canDelete && (
+                  <>
+                    <Checkbox
+                      checked={exact}
+                      onChange={(checked) =>
+                        setOptions((current) => ({ ...current, exactCatalogue: checked }))
+                      }
+                      label={t('productZip.opt.exact')}
+                    />
+                    {note(t('productZip.opt.exact.hint'))}
+                    {report.colours.switchedOff && note(t('productZip.opt.exact.switchedOff'))}
                   </>
                 )}
               </div>
@@ -589,6 +668,7 @@ export function ProductZipModal({
                   note(t('productZip.done.binned', { count: report.binned ?? 0 }))}
                 {(report.photosRemoved ?? 0) > 0 &&
                   note(t('productZip.done.photosRemoved', { count: report.photosRemoved ?? 0 }))}
+                {report.exactRemoved && note(t('productZip.done.exact', report.exactRemoved))}
                 <ReportView report={report} />
               </>
             )}

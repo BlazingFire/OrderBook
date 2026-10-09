@@ -997,6 +997,113 @@ describe('the product backup zip (Master only)', () => {
     expect((screen.getByRole('button', { name: t('productZip.apply') }) as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it('lists what the exact catalogue takes out, offers it with products.delete, and sends it implying both removals', async () => {
+    const productZip = zipTransport();
+    const base = zipReport();
+    productZip.preview.mockResolvedValue(
+      zipReport({
+        mainProducts: {
+          added: [],
+          renamed: [],
+          notInFile: [{ code: 'MER', name: 'Merchandise', brand: 'Swisware+' }],
+        },
+        products: {
+          ...base.products,
+          updated: 0,
+          failed: 3,
+          issues: [
+            { row: 4, kind: 'error', column: 'Code', messageKey: 'validation.import.binnedNeedsDelete', params: { name: 'Damru' } },
+            { row: 5, kind: 'error', column: 'Code', messageKey: 'validation.product.restoreCodesTaken', params: { codes: 'WB-0002' } },
+            {
+              row: 7,
+              kind: 'error',
+              column: 'Size',
+              messageKey: 'validation.import.subProductCellsDiffer',
+              params: { name: 'Duo', column: 'Size', firstRow: 6 },
+            },
+          ],
+        },
+        rows: {
+          added: [],
+          changed: [],
+          notInFile: [{ code: 'OPT-0003', name: '103' }],
+          variantsNotInFile: [{ code: 'WB-0002', name: 'Damru' }],
+          restoredFromBin: [{ code: 'OPT-0009', name: '109', fields: [] }],
+          reordered: [{ code: 'WB', name: 'Wash Basin' }],
+        },
+        colours: { added: [], changed: [], noFile: true },
+        brands: { added: [], changed: [], notInFile: ['Swisware+'] },
+        photos: { ...base.photos, replaced: [], notInZip: ['OPT-0002'] },
+      }),
+    );
+    renderList(viewOf({ permissions: ALL }), makeTransport({ productZip }));
+
+    fireEvent.click(await screen.findByRole('button', { name: t('productZip.restore') }));
+    const file = new File(['PK'], 'backup.zip');
+    fireEvent.change(await screen.findByTestId('product-zip-file'), { target: { files: [file] } });
+
+    expect(await screen.findByText(t('productZip.item.mainNotInFile', { count: 1 }))).toBeTruthy();
+    expect(screen.getByText('MER — Merchandise')).toBeTruthy();
+    expect(screen.getByText(t('productZip.item.variantsNotInFile', { count: 1 }))).toBeTruthy();
+    expect(screen.getByText(t('productZip.item.restoredFromBin', { count: 1 }))).toBeTruthy();
+    expect(screen.getByText('OPT-0009 — 109')).toBeTruthy();
+    expect(screen.getByText(t('productZip.item.rowsReordered', { count: 1 }))).toBeTruthy();
+    expect(screen.getByText('WB — Wash Basin')).toBeTruthy();
+    expect(screen.getByText(t('productZip.item.listNotInFile', { count: 1 }))).toBeTruthy();
+    expect(screen.getByText(t('productZip.item.noColoursFile'))).toBeTruthy();
+    // Each refusal the import can now give reads as a sentence, never as its key.
+    expect(screen.getByText(`${t('import.column.row')} 4 (Code): Damru is in the Recycle Bin — bringing it back needs the Delete products permission`)).toBeTruthy();
+    expect(screen.getByText(`${t('import.column.row')} 5 (Code): Cannot restore — another product now uses WB-0002`)).toBeTruthy();
+    expect(screen.getByText(new RegExp(`^${t('import.column.row')} 7 \\(Size\\): "Size" differs from row 6, which is also Duo`))).toBeTruthy();
+
+    // A reorder alone is something to apply; the exact catalogue is off until ticked.
+    expect((screen.getByRole('button', { name: t('productZip.apply') }) as HTMLButtonElement).disabled).toBe(false);
+    const exact = screen.getByLabelText(t('productZip.opt.exact')) as HTMLInputElement;
+    expect(exact.checked).toBe(false);
+    expect(screen.getByText(t('productZip.opt.exact.hint'))).toBeTruthy();
+    fireEvent.click(exact);
+    const bin = screen.getByLabelText(t('productZip.opt.bin', { count: 1 })) as HTMLInputElement;
+    const photos = screen.getByLabelText(t('productZip.opt.photos', { count: 1 })) as HTMLInputElement;
+    expect([bin.checked, bin.disabled, photos.checked, photos.disabled]).toEqual([true, true, true, true]);
+
+    fireEvent.click(screen.getByRole('button', { name: t('productZip.apply') }));
+    await waitFor(() => expect(productZip.start).toHaveBeenCalledWith(file, { exactCatalogue: true }));
+  });
+
+  it('offers no exact catalogue without products.delete, and counts what only it takes out when ticked', async () => {
+    const productZip = zipTransport();
+    const nothing = zipReport({
+      mainProducts: { added: [], renamed: [], notInFile: [{ code: 'MER', name: 'Merchandise', brand: null }] },
+      products: { ...zipReport().products, updated: 0, unchanged: 549 },
+      rows: { added: [], changed: [], notInFile: [] },
+      colours: { added: [], changed: [], notInFile: ['Rustic Alpine Blue'], switchedOff: true },
+      photos: { ...zipReport().photos, replaced: [], notInZip: [] },
+    });
+    productZip.preview.mockResolvedValue(nothing);
+    const limited = renderList(
+      viewOf({ permissions: ALL.filter((key) => key !== 'products.delete') }),
+      makeTransport({ productZip }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: t('productZip.restore') }));
+    fireEvent.change(await screen.findByTestId('product-zip-file'), {
+      target: { files: [new File(['PK'], 'backup.zip')] },
+    });
+    expect(await screen.findByText(t('productZip.nothing'))).toBeTruthy();
+    expect(screen.queryByLabelText(t('productZip.opt.exact'))).toBeNull();
+    limited.unmount();
+
+    renderList(viewOf({ permissions: ALL }), makeTransport({ productZip }));
+    fireEvent.click(await screen.findByRole('button', { name: t('productZip.restore') }));
+    fireEvent.change(await screen.findByTestId('product-zip-file'), {
+      target: { files: [new File(['PK'], 'backup.zip')] },
+    });
+    const exact = (await screen.findByLabelText(t('productZip.opt.exact'))) as HTMLInputElement;
+    expect(screen.getByText(t('productZip.opt.exact.switchedOff'))).toBeTruthy();
+    expect((screen.getByRole('button', { name: t('productZip.apply') }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(exact);
+    expect((screen.getByRole('button', { name: t('productZip.apply') }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('previews an earlier version\'s products sheet, and lists main products back from the Bin and each list it changes or reorders', async () => {
     const productZip = zipTransport();
     const nothing = zipReport({
