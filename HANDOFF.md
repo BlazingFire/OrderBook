@@ -160,11 +160,19 @@ onto a new install with the exact option and compare it with both; merge `s7/pro
 
 **Gate:** each builder's suites ran on PostgreSQL, none skipped. The full suite without the probes passed on
 `4cb607f0`, before the lead's three commits (404 files + 1 skipped, the Windows-only release-workflow; 5,413
-tests + 17 skipped); `npm run typecheck` 0 and eslint 0 on the touched files. Full gate re-run on the final
-branch: see the lead's report.
+tests + 17 skipped); `npm run typecheck` 0 and eslint 0 on the touched files. Full gate on the final branch
+(`d92ebe5b`, code as at `61477f01`): lint 0, typecheck 0, test 0 (404 files + 1 skipped; 5,426 tests + 17
+skipped, only release-workflow and the POSIX appimage cases), build 0.
 
-**Not verified:** the owner's real backup files, a browser or Electron pass of the restore dialog, a real build, an
-update of a real 1.4.4 install.
+**Browser pass (2026-10-10, scratch Master `s7.localhost:4670`, fresh data folder):** the first boot loaded the
+shipped catalogue (41 / 549); after setup, Restore took the 1.2.5 products sheet as `products-2026-10-07.csv`,
+previewed (38 main and 544 sub products not in the file; the no-colours.csv and no-photos notes), previewed again
+when "Make the catalogue exactly this file" was ticked, and applied: 544 sub and 38 main products to the Recycle
+Bin, 1 added, 5 changed. The catalogue exported afterwards has a `products.csv` equal to the sheet row for row;
+the shipped colour list and the photos on the sheet's codes stayed, as the dialog said.
+
+**Not verified:** the owner's real backup files, an Electron pass, a real build, an update of a real 1.4.4
+install.
 
 **Traps:** a test that calls `restoreProductZip` leaves `{ retired: true }` in `internal.cataloguePhotosAttached`,
 so a later `attachCataloguePhotos` in the same test does nothing; `loadShippedCatalogue` answers `none` whenever

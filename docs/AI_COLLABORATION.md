@@ -236,9 +236,11 @@ was verified, so the next agent can trust the state without re-auditing.
   owner questions 7–9: L3 colours with no `colours.csv`, the exact option's second run, sub products with no
   position on an empty restore), `docs/NEXT_PHASE.md`.
 - **Verified:** each builder's suites on PostgreSQL, none skipped; full suite without probes on `4cb607f0` exit 0
-  (404 files + 1 skipped; 5,413 tests + 17 skipped); typecheck 0; eslint 0 on touched files. Full gate re-run on
-  the final branch: see the lead's report. **Not verified:** the owner's real files, a browser or Electron pass, a
-  real build.
+  (404 files + 1 skipped; 5,413 tests + 17 skipped); typecheck 0; eslint 0 on touched files. Full gate on the
+  final branch: lint 0, typecheck 0, test 0 (404 files + 1 skipped; 5,426 tests + 17 skipped), build 0. Browser
+  pass on a fresh scratch Master: a 1.2.5 products sheet restored with "Make the catalogue exactly this file"
+  over the shipped catalogue exports back row for row. **Not verified:** the owner's real files, an Electron
+  pass, a real build.
 
 ### 2026-10-08 (later) - New Order walk to Add sub product, Sell today, product band, person screen (Claude, Opus, single session)
 
