@@ -866,11 +866,9 @@ async function cleanCategoryInput(
     const brand = typeof input.brand === 'string' ? input.brand.trim() || null : null;
     if (
       brand &&
-      !(switchedOffBrand
-        ? (await customFieldRepo.listOptions(tenantId)).some(
-            (option) => option.listKey === 'product.brand' && option.value === brand,
-          )
-        : await customFieldRepo.isValidOption(tenantId, 'product.brand', brand))
+      !(await customFieldRepo.isValidOption(tenantId, 'product.brand', brand, {
+        includeInactive: switchedOffBrand,
+      }))
     ) {
       throw new ValidationError('validation.category.brandUnknown', { brand });
     }

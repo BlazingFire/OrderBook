@@ -93,17 +93,20 @@ export async function listOptions(
  *
  * Unknown values are rejected rather than passed through: `sourcePlatform` is a
  * reporting dimension, and a typo'd "whatsap" would quietly become its own
- * category in every breakdown that groups by it.
+ * category in every breakdown that groups by it. `includeInactive` takes one
+ * switched off too.
  */
 export async function isValidOption(
   tenantId: string,
   listKey: string,
   value: string,
+  { includeInactive = false }: { includeInactive?: boolean } = {},
   runner: Runner = db(),
 ): Promise<boolean> {
   const options = await listOptions(tenantId, runner);
   return options.some(
-    (option) => option.listKey === listKey && option.value === value && option.isActive,
+    (option) =>
+      option.listKey === listKey && option.value === value && (includeInactive || option.isActive),
   );
 }
 

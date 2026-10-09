@@ -74,7 +74,7 @@ export const IMPORT_COLUMNS: readonly ImportColumn[] = [
   { field: 'name', label: 'Sub product', kind: 'text', required: true, note: 'Required. The sub product as printed — e.g. 102, DAMRU. Rows sharing a main product and sub product are one sub product.' },
   { field: 'size', label: 'Size', kind: 'text', note: 'e.g. 18x12, L-27 B-15 H-26' },
   { field: 'colourRule', label: 'Colour rule', kind: 'text', note: 'fixed = made in the one colour named in Colour; dedicated = the design is its own colour, none shown; multicolour = any colour of the colour range, picked on the lead. Blank reads the Colour column the old way.' },
-  { field: 'variant', label: 'Colour', kind: 'text', note: 'The colour of a fixed sub product — e.g. White, Magenta. Leave blank for dedicated and multicolour.' },
+  { field: 'variant', label: 'Colour', kind: 'text', note: 'The colour of a fixed sub product — e.g. White, Magenta. Leave blank for dedicated; a multicolour sub product may list its colours here too.' },
   { field: 'code', label: 'Code', kind: 'text', required: true, note: 'Required. The sub product software code — e.g. OPT-0001. Unique across the whole catalogue.' },
   { field: 'weightKg', label: 'Weight (kg)', kind: 'number', min: 0, exclusiveMin: true, note: 'Weight of one piece in kilograms. Blank until known.' },
   { field: 'alias', label: 'Alias', kind: 'text', note: 'A short name staff use at the counter.' },

@@ -2269,12 +2269,7 @@ export async function loadShippedCatalogue(
     },
   };
   const zip = sources.zip ?? config.catalogueZip;
-  const loaded = (await access(zip).then(
-    () => true,
-    () => false,
-  ))
-    ? 'zip'
-    : 'markdown';
+  const loaded = (await exists(zip)) ? 'zip' : 'markdown';
   await mark({ state: 'loading', loaded });
   if (loaded === 'zip') {
     const report = await restoreProductZip(

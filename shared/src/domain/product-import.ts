@@ -102,8 +102,9 @@ export interface ProductImportResult {
 // --- The product backup zip -------------------------------------------------
 //
 // `OrderBook-Products-<company>-<date>.zip`: `products.csv` (the export above),
-// `main-products.csv`, `colours.csv`, `brands.csv` and `images/<CODE>.<ext>`,
-// one file per photo (`docs/PRODUCT_IMPORT_FORMAT.md`, "The product backup zip").
+// `main-products.csv`, `colours.csv`, `brands.csv`, `images/<CODE>.<ext>`, one
+// file per photo, and `photos.csv`, their captions
+// (`docs/PRODUCT_IMPORT_FORMAT.md`, "The product backup zip").
 // Restored on the Master only, by `master/src/services/product-zip.service.ts`.
 
 /** Refused above this before the zip is opened: it carries every photo. */
@@ -159,7 +160,8 @@ export interface ProductZipList {
   /**
    * Values the list holds that the file does not list (brands without
    * `brands.csv`: that no main product uses after the run), which
-   * `exactCatalogue` moves to the Recycle Bin. Absent when there are none.
+   * `exactCatalogue` moves to the Recycle Bin. Colours switched off already
+   * are left out where `switchedOff`. Absent when there are none.
    */
   notInFile?: string[];
   /** Colours: `exactCatalogue` switches `notInFile` off instead, for a person who may not delete a colour (`fields.manage`). */
@@ -194,7 +196,7 @@ export interface ProductZipReport {
   rows: {
     added: ProductRowChange[];
     changed: ProductRowChange[];
-    /** Live sub products none of whose codes the file names. */
+    /** Live sub products none of whose codes the file names and that no row read by its name. */
     notInFile: Array<{ code: string; name: string }>;
     /** Live codes of a file sub product that its rows leave out: kept, or removed by `exactCatalogue`. Absent when there are none. */
     variantsNotInFile?: Array<{ code: string; name: string }>;
