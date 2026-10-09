@@ -164,6 +164,11 @@ export interface ProductZipReport {
     added: string[];
     replaced: string[];
     unchanged: number;
+    /**
+     * Unchanged photos whose caption `photos.csv` gives otherwise: the restore
+     * puts that caption back. Absent from a Master older than 1.4.7.
+     */
+    recaptioned?: string[];
     unmatched: string[];
     duplicate: string[];
     notImage: string[];
