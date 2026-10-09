@@ -466,10 +466,17 @@ export interface ImportGroup {
  * A group that names a variant on some rows and leaves it blank on others is
  * refused whole (`validation.import.mixedVariants`): it cannot be both a
  * one-form product and a model with colours.
+ *
+ * A `restore` reads a backup, which writes one sub product's cells alike on
+ * every row: a later row that disagrees with the first is a second sub
+ * product the file cannot tell apart from it (twins of one name, or a
+ * hand-combined file), so it is reported (`validation.import.subProductCellsDiffer`)
+ * rather than folded into the first and its cells lost.
  */
 export function groupImportRows(
   rows: readonly ParsedRow[],
   headerFor: (field: ImportField) => string,
+  options: { restore?: boolean } = {},
 ): { groups: ImportGroup[]; issues: ProductImportIssue[] } {
   const byKey = new Map<string, ParsedRow[]>();
   for (const entry of rows) {
@@ -482,7 +489,23 @@ export function groupImportRows(
   const groups: ImportGroup[] = [];
   const issues: ProductImportIssue[] = [];
 
-  for (const [key, members] of byKey) {
+  for (const [key, all] of byKey) {
+    const head = all[0] as ParsedRow;
+    const members = all.filter((entry) => {
+      const differs = options.restore ? differingField(head.input.product, entry.input.product) : undefined;
+      if (differs === undefined) return true;
+      // The Colour rule cell is where the template's multicolour flag lives.
+      const column = headerFor(differs === 'multiColour' ? 'colourRule' : differs);
+      issues.push({
+        row: entry.row,
+        kind: 'error',
+        column,
+        messageKey: 'validation.import.subProductCellsDiffer',
+        params: { name: head.input.product.name, column, firstRow: head.row },
+      });
+      return false;
+    });
+
     const labelled = members.filter((entry) => (entry.input.variant.label ?? '').trim() !== '');
     if (labelled.length > 0 && labelled.length < members.length) {
       for (const entry of members) {
@@ -516,6 +539,12 @@ export function groupImportRows(
   }
 
   return { groups, issues };
+}
+
+/** The first sub product cell two rows give differently, if any. */
+function differingField(a: ProductInput, b: ProductInput): ProductField | undefined {
+  const fields = new Set([...Object.keys(a), ...Object.keys(b)]) as Set<ProductField>;
+  return [...fields].find((field) => a[field] !== b[field]);
 }
 
 /**

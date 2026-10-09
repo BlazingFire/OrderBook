@@ -430,6 +430,10 @@ export const EN_MESSAGES = {
   'validation.import.mixedVariants':
     '{name} names a variant on some rows and none on others — fill in every row or leave every row blank',
   'validation.import.codesSplit': 'The codes under {name} already belong to more than one product',
+  'validation.import.subProductCellsDiffer':
+    '"{column}" differs from row {firstRow}, which is also {name} — the rows of one sub product must agree, so this row is another sub product of the same name. Give it its own name.',
+  'validation.import.binnedNeedsDelete':
+    '{name} is in the Recycle Bin — bringing it back needs the Delete products permission',
   'validation.productZip.fileRequired': 'Choose a .zip file',
   'validation.productZip.tooLarge': 'That zip is larger than 1 GB',
   'validation.productZip.notAZip': 'That file could not be opened as a zip',

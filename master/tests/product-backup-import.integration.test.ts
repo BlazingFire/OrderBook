@@ -28,8 +28,9 @@ import * as catalog from '../src/services/catalog.service.js';
 import * as fields from '../src/services/fields.service.js';
 import { buildProductExport, importProducts } from '../src/services/product-import.service.js';
 import { exportProductZip, previewProductZip, restoreProductZip } from '../src/services/product-zip.service.js';
+import * as settings from '../src/services/settings.service.js';
 import { canRunIntegrationTests } from './helpers/db.js';
-import { resetData, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
+import { actorWith, resetData, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
 
 let admin: ActorContext;
 let dir: string;
@@ -62,11 +63,20 @@ type Run = Awaited<ReturnType<typeof importProducts>>;
 async function restore(
   rows: ReadonlyArray<ReadonlyArray<string | number>>,
   options: { exactVariants?: boolean } = {},
+  actor: ActorContext = admin,
 ): Promise<[Run, Run]> {
   const run = (dryRun: boolean) =>
-    importProducts({ buffer: csv(rows), fileName: 'products.csv' }, { dryRun, mode: 'upsert', restore: options }, admin);
+    importProducts({ buffer: csv(rows), fileName: 'products.csv' }, { dryRun, mode: 'upsert', restore: options }, actor);
   return [await run(true), await run(false)];
 }
+
+/** Where a binned sub product is: still in the Recycle Bin, or not. */
+async function inBin(id: string): Promise<boolean> {
+  return (await db()('products').where({ id }).first('deleted_at')).deleted_at !== null;
+}
+
+/** Each issue's message and its params, in the order reported. */
+const problems = (result: Run) => result.issues.map((issue) => [issue.messageKey, issue.params]);
 
 /** The plain spreadsheet import ("Update them") of these rows: its preview, then the real run. */
 async function plain(rows: ReadonlyArray<ReadonlyArray<string | number>>, mode: 'create' | 'upsert' = 'upsert') {
@@ -295,6 +305,15 @@ describe.skipIf(!canRunIntegrationTests)('importing a product backup back (integ
       expect(await byCode('T-2')).toMatchObject({ name: 'TWO  SPACES', alias: 'a  b', size: 'L-27  B-15' });
       expect((await byCode('T-2'))!.variants[0]).toMatchObject({ label: 'Off  White', weightKg: 3 });
     });
+
+    it('a typed sheet moves a sub product into the main product its preview matched, not a new one of the collapsed name', async () => {
+      await settings.writeSetting(admin, 'catalog.importCreatesCategories', false);
+      const rows = edit(await exportRows(), 'OPT-0001', { Brand: 'Swis ware', 'Main product code': '', 'Main product': 'WALL HUNG' });
+      const [preview, done] = await plain(rows.filter((row) => row[column('Code')] === 'OPT-0001'));
+      for (const result of [preview, done]) expect(counts(result)).toEqual({ created: 0, updated: 1, unchanged: 0, failed: 0 });
+      expect((await mains()).filter((name) => name.toUpperCase().includes('WALL'))).toEqual(['WALL  HUNG']);
+      expect((await byCode('OPT-0001'))!.categoryName).toBe('WALL  HUNG');
+    });
   });
 
   it('clears a weight, an alias and a size the backup has blank, and lists them; a typed sheet leaves them', async () => {
@@ -355,6 +374,20 @@ describe.skipIf(!canRunIntegrationTests)('importing a product backup back (integ
     const damru = (await byCode('WB-0001'))!;
     expect(damru.variants.map((variant) => [variant.code, variant.label])).toEqual([['WB-0001', 'White']]);
     expect(damru.hasVariants).toBe(true);
+  });
+
+  it('keeps a colour whose row it refused, under exactVariants too, and does not list it as missing', async () => {
+    // A second size on DAMRU's second row: that row is another sub product the file cannot tell apart.
+    const rows = edit(await exportRows(), 'WB-0002', { Size: '60x45' });
+    const [preview, done] = await restore(rows, { exactVariants: true });
+    for (const result of [preview, done]) {
+      expect(problems(result)).toEqual([['validation.import.subProductCellsDiffer', { name: 'DAMRU', column: 'Size', firstRow: 5 }]]);
+      expect(result.rows?.variantsNotInFile).toEqual([]);
+    }
+    expect((await byCode('WB-0001'))!.variants.map((variant) => [variant.code, variant.isActive])).toEqual([
+      ['WB-0001', true],
+      ['WB-0002', true],
+    ]);
   });
 
   describe('colour spelling', () => {
@@ -454,6 +487,25 @@ describe.skipIf(!canRunIntegrationTests)('importing a product backup back (integ
         expect(result.issues.map((issue) => issue.messageKey)).toEqual(['validation.import.duplicateInFile']);
       }
     });
+
+    it('with colours and another size, into a catalogue without them: the second is reported, not folded into the first', async () => {
+      await value('stock.colour', 'Black');
+      await catalog.createProduct({ categoryCode: 'WB', name: 'PAIR', size: '10x10', hasVariants: true, variants: [{ code: 'P-W', label: 'White' }] }, admin);
+      const second = await catalog.createProduct({ categoryCode: 'WB', name: 'PAIR B', size: '20x20', hasVariants: true, variants: [{ code: 'P-B', label: 'Black' }] }, admin);
+      await db()('products').where({ id: second.id }).update({ name: 'PAIR' });
+      const rows = (await exportRows()).filter((row) => !row[column('Code')]?.startsWith('TW-'));
+      const rowOf = (code: string) => rows.findIndex((row) => row[column('Code')] === code) + 2;
+      await emptyCatalogue();
+      await seed();
+      const [preview, done] = await restore(rows);
+      for (const result of [preview, done]) {
+        expect(result.issues.map((issue) => [issue.row, issue.messageKey, issue.params])).toEqual([
+          [rowOf('P-B'), 'validation.import.subProductCellsDiffer', { name: 'PAIR', column: 'Size', firstRow: rowOf('P-W') }],
+        ]);
+      }
+      const pairs = (await live()).filter((product) => product.name === 'PAIR');
+      expect(pairs.map((product) => [product.size, product.variants.map((variant) => variant.code)])).toEqual([['10x10', ['P-W']]]);
+    });
   });
 
   it('brings a sub product back from the Recycle Bin when the backup names its code, rather than a copy beside it', async () => {
@@ -472,6 +524,52 @@ describe.skipIf(!canRunIntegrationTests)('importing a product backup back (integ
     expect(back.id).toBe(binned.id);
     expect(back.variants[0]!.weightKg).toBe(11);
     expect(await db()('products').where({ name: '102' })).toHaveLength(1);
+  });
+
+  describe('a sub product the backup brings back from the Recycle Bin', () => {
+    it('keeps a colour the file does not name: listed, as a live one keeps it', async () => {
+      const damru = (await byCode('WB-0001'))!;
+      const rows = (await exportRows()).filter((row) => row[column('Code')] !== 'WB-0002');
+      await catalog.deleteProduct(damru.id, admin);
+      const [preview, done] = await restore(rows);
+      for (const result of [preview, done]) {
+        expect(result.rows?.restoredFromBin.map((row) => row.code)).toEqual(['WB-0001']);
+        expect(result.rows?.variantsNotInFile).toEqual([{ code: 'WB-0002', name: 'DAMRU' }]);
+      }
+      const back = (await byCode('WB-0001'))!;
+      expect(back.variants.map((variant) => [variant.code, variant.label, variant.isActive])).toEqual([
+        ['WB-0001', 'White', true],
+        ['WB-0002', 'Ivory', true],
+      ]);
+    });
+
+    it('stays there when a code it holds is another sub product\'s now, preview and run alike', async () => {
+      const damru = (await byCode('WB-0001'))!;
+      const rows = (await exportRows()).filter((row) => row[column('Code')] !== 'WB-0002');
+      await catalog.deleteProduct(damru.id, admin);
+      await catalog.createProduct({ categoryCode: 'WB', name: 'OTHER', hasVariants: false, variants: [{ code: 'WB-0002', label: null }] }, admin);
+      const [preview, done] = await restore(rows);
+      for (const result of [preview, done]) {
+        expect(problems(result)).toEqual([['validation.product.restoreCodesTaken', { codes: 'WB-0002' }]]);
+        expect([result.created, result.updated, result.rows?.restoredFromBin]).toEqual([0, 0, []]);
+      }
+      expect(await inBin(damru.id)).toBe(true);
+      expect((await byCode('WB-0002'))!.name).toBe('OTHER');
+    });
+
+    it('stays there, with no copy made, for a person who may not delete products', async () => {
+      const binned = (await byCode('OPT-0002'))!;
+      const rows = await exportRows();
+      await catalog.deleteProduct(binned.id, admin);
+      const limited = await actorWith(['products.view', 'products.bulk', 'products.create', 'products.edit']);
+      const [preview, done] = await restore(rows, {}, limited);
+      for (const result of [preview, done]) {
+        expect(problems(result)).toEqual([['validation.import.binnedNeedsDelete', { name: '102' }]]);
+        expect(result.created).toBe(0);
+      }
+      expect(await inBin(binned.id)).toBe(true);
+      expect(await byCode('OPT-0002')).toBeUndefined();
+    });
   });
 
   describe('order', () => {
@@ -503,6 +601,43 @@ describe.skipIf(!canRunIntegrationTests)('importing a product backup back (integ
       const [preview, done] = await restore(await exportRows());
       expect([preview.rows?.reordered, done.rows?.reordered]).toEqual([[], []]);
       expect((await live()).filter((product) => product.categoryCode === 'OPT').map((product) => product.sortOrder)).toEqual([10, 40, null]);
+    });
+
+    const inOpt = async () =>
+      (await live()).filter((product) => product.categoryCode === 'OPT').map((product) => [product.name, product.sortOrder]);
+
+    it('files a new sub product where the file lists it between live ones, and a second run changes nothing', async () => {
+      const body = await exportRows();
+      const at = (code: string) => body.find((row) => row[column('Code')] === code)!;
+      // ZNEW sorts after 102 by name, so a number tied with 102's would put it there.
+      const fresh = edit([at('OPT-0002')], 'OPT-0002', { 'Sub product': 'ZNEW', Code: 'OPT-0015' })[0]!;
+      const rows = [at('OPT-0001'), fresh, at('OPT-0002'), at('OPT-0003'), at('WB-0001'), at('WB-0002')];
+      const [preview, done] = await restore(rows);
+      for (const result of [preview, done]) expect(result.rows?.reordered).toEqual([{ code: 'OPT', name: 'ONE PIECE TOILET' }]);
+      expect(await inOpt()).toEqual([
+        ['101', 1],
+        ['ZNEW', 2],
+        ['102', 3],
+        ['103', 4],
+      ]);
+      const [again] = await restore(rows);
+      expect([again.rows?.reordered, again.updated]).toEqual([[], 0]);
+    });
+
+    it('files one the file lists after every live one last, past gaps in the numbers, renumbering nothing', async () => {
+      await db()('products').where({ name: '101' }).update({ sort_order: 10 });
+      await db()('products').where({ name: '102' }).update({ sort_order: 40 });
+      await db()('products').where({ name: '103' }).update({ sort_order: 50 });
+      const body = await exportRows();
+      const fresh = edit(body, 'OPT-0003', { 'Sub product': '104', Code: 'OPT-0004' }).find((row) => row[column('Code')] === 'OPT-0004')!;
+      const [preview, done] = await restore([...body.slice(0, 3), fresh, ...body.slice(3)]);
+      for (const result of [preview, done]) expect(result.rows?.reordered).toEqual([]);
+      expect(await inOpt()).toEqual([
+        ['101', 10],
+        ['102', 40],
+        ['103', 50],
+        ['104', 51],
+      ]);
     });
   });
 

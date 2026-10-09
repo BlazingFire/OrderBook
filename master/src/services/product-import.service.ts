@@ -53,7 +53,7 @@ import {
   PRODUCT_COLUMNS,
 } from '@orderbook/shared';
 
-import { requirePermission, type ActorContext } from '../domain/actor.js';
+import { actorCan, requirePermission, type ActorContext } from '../domain/actor.js';
 import {
   findDuplicatesInFile,
   groupImportRows,
@@ -298,16 +298,17 @@ interface ImportOptions {
 
 type UpdateGroup = ImportGroup & {
   existing: Product;
-  /** The file's rows are the whole variant set: matched by name, back from the Bin, or `exactVariants`. */
+  /** The file's rows are the whole variant set: matched by name, or `exactVariants`. */
   exact?: boolean;
   /** In the Recycle Bin: the update brings it back first. */
   binned?: boolean;
   /**
-   * The file names the main product the sub product is already in, so the
-   * write leaves it alone rather than finding it again by a name a typed
-   * sheet spelled with its spacing collapsed.
+   * The main product the plan found for the file's cells. The write files the
+   * sub product by this id rather than finding it again by name: the write's
+   * lookup compares exactly, while a typed sheet's name was matched with its
+   * spacing collapsed, and would create a second main product beside it.
    */
-  ownMain?: boolean;
+  mainId?: string;
 };
 
 const isUpdate = (group: ImportGroup): group is UpdateGroup => 'existing' in group;
@@ -343,6 +344,12 @@ interface MergeRules {
   restore: boolean;
   /** A restore whose file has a Weight column: a blank weight clears the stored one. */
   clearsWeight: boolean;
+  /**
+   * Lower-cased codes on rows the run refused. The file still names them, so
+   * `exactVariants` does not remove them and they are not listed as missing:
+   * the row's problem says what is wrong with it.
+   */
+  refusedCodes: Set<string>;
 }
 
 export async function importProducts(
@@ -435,16 +442,20 @@ export async function importProducts(
   const rules: MergeRules = {
     restore,
     clearsWeight: restore && match.byIndex.some((column) => column?.field === 'weightKg'),
+    refusedCodes: new Set(),
   };
 
   const issues: ProductImportIssue[] = [];
   const parsed: ParsedRow[] = [];
   let totalRows = 0;
+  const codeAt = match.byIndex.findIndex((column) => column?.field === 'code');
+  const codeOfRow = new Map<number, string>();
 
   rows.slice(headerIndex + 1).forEach((cells, offset) => {
     if (isBlankRow(cells)) return;
     totalRows += 1;
     const row = headerIndex + 2 + offset;
+    codeOfRow.set(row, (cells[codeAt] ?? '').trim().toLowerCase());
     const outcome = parseImportRow(cells, match, headerRow, row, { restore });
     if (!outcome.input) {
       issues.push(...outcome.issues);
@@ -480,6 +491,7 @@ export async function importProducts(
   const grouped = groupImportRows(
     parsed.filter((entry) => !duplicateRows.has(entry.row)),
     headerFor,
+    { restore },
   );
   issues.push(...grouped.issues);
 
@@ -554,12 +566,9 @@ export async function importProducts(
         continue;
       }
       claimedOwners.add(existing.id);
-      updates.push({
-        ...group,
-        existing,
-        exact: fromBin || Boolean(options.restore?.exactVariants),
-        binned: fromBin,
-      });
+      // One back from the Bin keeps the codes the file does not name, as a
+      // live one does: listed, and removed only under `exactVariants`.
+      updates.push({ ...group, existing, exact: Boolean(options.restore?.exactVariants), binned: fromBin });
     } else {
       for (const entry of group.rows) {
         issues.push({
@@ -632,6 +641,49 @@ export async function importProducts(
   };
   creates = creates.filter(keepKnownCategory);
   updates = updates.filter(keepKnownCategory);
+
+  // A sub product comes back from the Bin as the Bin's own Restore brings it
+  // (`catalog.restoreProduct`): only for a person who may delete products, and
+  // with every code it holds — so one whose code a live product took since, or
+  // this file gives another sub product, is refused here, in the preview too,
+  // rather than first by the write. Never a copy created beside it instead.
+  const binned = updates.filter((group) => group.binned);
+  if (binned.length > 0) {
+    const mayRestore = actorCan(actor, 'products.delete');
+    // Every code it holds after the write, one deactivated there included.
+    const codesOf = (group: UpdateGroup): string[] => {
+      const after = mergedUpdate(group, rules).input.variants ?? [];
+      const kept = new Set(after.map((variant) => variant.id));
+      return [
+        ...after.map((variant) => variant.code),
+        ...group.existing.variants.filter((variant) => !kept.has(variant.id)).map((variant) => variant.code),
+      ];
+    };
+    const fileGroupOf = new Map<string, ImportGroup>();
+    for (const group of [...creates, ...updates]) {
+      for (const variant of group.input.variants ?? []) fileGroupOf.set(variant.code.toLowerCase(), group);
+    }
+    const holders = await productVariantRepo.findLiveVariantsByCodes(actor.tenantId, binned.flatMap(codesOf));
+    const stay = new Set<ImportGroup>();
+    for (const group of binned) {
+      const taken = codesOf(group).filter(
+        (code) => holders.has(code.toLowerCase()) || (fileGroupOf.get(code.toLowerCase()) ?? group) !== group,
+      );
+      if (mayRestore && taken.length === 0) continue;
+      stay.add(group);
+      for (const entry of group.rows) {
+        issues.push({
+          row: entry.row,
+          kind: 'error',
+          column: headerFor('code'),
+          ...(mayRestore
+            ? { messageKey: 'validation.product.restoreCodesTaken', params: { codes: taken.join(', ') } }
+            : { messageKey: 'validation.import.binnedNeedsDelete', params: { name: group.existing.name } }),
+        });
+      }
+    }
+    updates = updates.filter((group) => !stay.has(group));
+  }
 
   const bySheet = (a: ImportGroup, b: ImportGroup): number => (a.rows[0]?.row ?? 0) - (b.rows[0]?.row ?? 0);
   const liveSubs = await liveSubProducts(actor.tenantId);
@@ -718,7 +770,12 @@ export async function importProducts(
   creates = creates.filter((group) => !refused.has(group));
   updates = updates.filter((group) => !refused.has(group));
 
-  for (const group of updates) group.ownMain = existingCategoryOf(group) === group.existing.categoryId;
+  for (const group of updates) group.mainId = existingCategoryOf(group);
+  // Every refusal above the dry-run boundary is in by here.
+  for (const issue of issues) {
+    const code = issue.kind === 'error' ? codeOfRow.get(issue.row) : undefined;
+    if (code) rules.refusedCodes.add(code);
+  }
 
   // An upsert row whose product already says exactly this is not an update:
   // an export uploaded back unedited must read "nothing to do", not "N updated".
@@ -734,13 +791,16 @@ export async function importProducts(
   const reordered: ImportedRows['reordered'] = [];
   const renumbered: Array<{ id: string; sortOrder: number; group?: ImportGroup }> = [];
   if (restore) {
-    // A restored catalogue keeps the file's order. A new sub product, or one
-    // back from the Bin, takes its place among its main product's rows as the
-    // file lists them. A main product whose live sub products the file lists
-    // in another order is renumbered 1..n in the file's order, the ones the
-    // file does not name after them in their own. Compared as an order, never
-    // as numbers, so an unedited export — gaps and blank orders included —
-    // changes nothing.
+    // A restored catalogue keeps the file's order. A sub product already in
+    // its main product stays; every other one arrives — new, back from the
+    // Bin, or moved in. Arrivals the file lists after every staying one take
+    // the numbers after the main product's last, so they land last as listed.
+    // Otherwise — the file lists the staying ones in another order, puts an
+    // arrival between them, or a staying one has no number (sorted after any)
+    // — the main product is renumbered 1..n in the file's order, the live ones
+    // the file does not name after them in their own. Compared as an order,
+    // never as numbers, so an unedited export — gaps and blank orders
+    // included — changes nothing.
     const byMain = new Map<string, ImportGroup[]>();
     for (const group of [...creates, ...matched].sort(bySheet)) {
       const main =
@@ -752,19 +812,29 @@ export async function importProducts(
     }
     const named = new Set(matched.map((group) => group.existing.id));
     for (const [main, groups] of byMain) {
-      const place = new Map<string, number>();
-      groups.forEach((group, index) => {
-        if (!isUpdate(group) || group.binned) group.input.sortOrder = index + 1;
-        else if (group.existing.categoryId === main) place.set(group.existing.id, index + 1);
-      });
+      const stays = (group: ImportGroup): group is UpdateGroup =>
+        isUpdate(group) && !group.binned && group.existing.categoryId === main;
+      const staying = groups.filter(stays).map((group) => group.existing.id);
+      const stayingIds = new Set(staying);
       const live = liveSubs.filter((sub) => sub.categoryId === main);
-      const liveOrder = live.filter((sub) => place.has(sub.id)).map((sub) => sub.id);
-      if (liveOrder.join() === [...place.keys()].join()) continue;
+      const liveStaying = live.filter((sub) => stayingIds.has(sub.id));
+      const firstArrival = groups.findIndex((group) => !stays(group));
+      const inOrder =
+        liveStaying.map((sub) => sub.id).join() === staying.join() &&
+        (firstArrival === -1 ||
+          (groups.slice(firstArrival).every((group) => !stays(group)) &&
+            liveStaying.every((sub) => sub.sortOrder !== null)));
+      if (inOrder) {
+        let last = Math.max(0, ...live.map((sub) => sub.sortOrder ?? 0));
+        for (const group of groups) if (!stays(group)) group.input.sortOrder = last += 1;
+        continue;
+      }
 
       const category = liveCategories.find((candidate) => candidate.id === main);
       reordered.push({ code: category?.code ?? '', name: category?.name ?? '' });
       groups.forEach((group, index) => {
-        if (isUpdate(group) && !group.binned) renumbered.push({ id: group.existing.id, sortOrder: index + 1, group });
+        if (stays(group)) renumbered.push({ id: group.existing.id, sortOrder: index + 1, group });
+        else group.input.sortOrder = index + 1;
       });
       let next = groups.length;
       for (const sub of live) if (!named.has(sub.id)) renumbered.push({ id: sub.id, sortOrder: (next += 1) });
@@ -1046,7 +1116,8 @@ const spaced = (text: string): string => text.replace(/\s+/g, ' ').trim();
  * file's rows folded in, and the live codes no row named (`untouched`). A
  * deactivated variant (history still quotes it) stays out unless a row names
  * its code — it is not resurrected by a sheet that never mentioned it. An
- * `exact` group keeps only its rows.
+ * `exact` group keeps only its rows, and the codes of rows the run refused
+ * (`MergeRules.refusedCodes`), which the file still names.
  *
  * Whether it has colours follows the file once the file covers the whole sub
  * product, no live code left unnamed: a fixed sub product the file calls
@@ -1095,17 +1166,27 @@ function mergedUpdate(
   }
 
   const untouched = merged.filter((variant) => variant.active && !variant.touched);
-  const kept = merged.filter((variant) => variant.touched || (variant.active && !group.exact));
+  const onRefusedRow = (variant: { code: string }): boolean => rules.refusedCodes.has(variant.code.toLowerCase());
+  const leftAlone = untouched.filter((variant) => !group.exact || onRefusedRow(variant));
+  const kept = merged.filter((variant) => variant.touched || leftAlone.includes(variant));
   // The file decides whether it has colours once it names every live code;
   // while codes it never named remain, a switch that was on stays on. Then an
   // unlabelled member — the single row of a one-form product a sheet now
   // gives colours — is named "Standard", the plain member, so it has a name.
-  const covered = group.exact || untouched.length === 0;
+  const covered = leftAlone.length === 0;
   const hasVariants = Boolean(group.input.hasVariants) || (!covered && group.existing.hasVariants);
   return {
     input: {
       ...group.input,
-      ...(group.ownMain ? { categoryCode: undefined, categoryName: undefined, categoryBrand: undefined } : {}),
+      // Left alone where it already is; else filed by the id the plan found.
+      ...(group.mainId === undefined
+        ? {}
+        : {
+            categoryId: group.mainId === group.existing.categoryId ? undefined : group.mainId,
+            categoryCode: undefined,
+            categoryName: undefined,
+            categoryBrand: undefined,
+          }),
       name: asStored(group.input.name, group.existing.name) ?? group.input.name,
       ...(group.input.alias !== undefined ? { alias: asStored(group.input.alias, group.existing.alias) } : {}),
       ...(group.input.size !== undefined ? { size: asStored(group.input.size, group.existing.size) } : {}),
@@ -1116,7 +1197,9 @@ function mergedUpdate(
         sequence: index + 1,
       })),
     },
-    untouched: untouched.map(({ active: _active, touched: _touched, ...variant }) => variant),
+    untouched: untouched
+      .filter((variant) => !onRefusedRow(variant))
+      .map(({ active: _active, touched: _touched, ...variant }) => variant),
   };
 }
 
@@ -1217,13 +1300,23 @@ async function applyUpdate(
 /** Every live sub product, where it sits, in catalogue order within its main product (`listProducts`' order). */
 async function liveSubProducts(
   tenantId: string,
-): Promise<Array<{ id: string; name: string; categoryId: string }>> {
+): Promise<Array<{ id: string; name: string; categoryId: string; sortOrder: number | null }>> {
   const rows = await db()('products')
     .where({ tenant_id: tenantId })
     .whereNull('deleted_at')
     .orderByRaw('sort_order ASC NULLS LAST, lower(name) ASC, id ASC')
-    .select<Array<{ id: string; name: string; category_id: string }>>('id', 'name', 'category_id');
-  return rows.map((row) => ({ id: String(row.id), name: String(row.name), categoryId: String(row.category_id) }));
+    .select<Array<{ id: string; name: string; category_id: string; sort_order: number | null }>>(
+      'id',
+      'name',
+      'category_id',
+      'sort_order',
+    );
+  return rows.map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    categoryId: String(row.category_id),
+    sortOrder: row.sort_order === null ? null : Number(row.sort_order),
+  }));
 }
 
 /**
