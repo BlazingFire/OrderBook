@@ -650,6 +650,8 @@ export function ProductZipModal({
                       label={t('productZip.opt.exact')}
                     />
                     {note(t('productZip.opt.exact.hint'))}
+                    {report.colours.noFile && note(t('productZip.opt.exact.keepsColours'))}
+                    {report.photos.noFile && note(t('productZip.opt.exact.keepsPhotos'))}
                     {report.exactNeedsLists && note(t('productZip.opt.exact.needsLists'))}
                     {report.colours.switchedOff && note(t('productZip.opt.exact.switchedOff'))}
                   </>

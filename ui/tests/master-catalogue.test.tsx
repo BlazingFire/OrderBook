@@ -1061,6 +1061,9 @@ describe('the product backup zip (Master only)', () => {
     const exact = screen.getByLabelText(t('productZip.opt.exact')) as HTMLInputElement;
     expect(exact.checked).toBe(false);
     expect(screen.getByText(t('productZip.opt.exact.hint'))).toBeTruthy();
+    // The zip has photos: only the colour list stays.
+    expect(screen.getByText(t('productZip.opt.exact.keepsColours'))).toBeTruthy();
+    expect(screen.queryByText(t('productZip.opt.exact.keepsPhotos'))).toBeNull();
     fireEvent.click(exact);
     await waitFor(() => expect(exact.checked).toBe(true));
     const bin = screen.getByLabelText(t('productZip.opt.bin', { count: 1 })) as HTMLInputElement;
@@ -1105,6 +1108,27 @@ describe('the product backup zip (Master only)', () => {
     await waitFor(() =>
       expect((screen.getByRole('button', { name: t('productZip.apply') }) as HTMLButtonElement).disabled).toBe(false),
     );
+  });
+
+  it('says under the exact catalogue that a file with no colours.csv or no photos leaves those as they are', async () => {
+    const productZip = zipTransport();
+    // A bare products sheet 1.2.4-1.4.6 saved: no colours.csv, no photos.
+    productZip.preview.mockResolvedValue(
+      zipReport({
+        fileName: 'products-2026-10-07.csv',
+        colours: { added: [], changed: [], noFile: true },
+        photos: { ...zipReport().photos, replaced: [], notInZip: [], noFile: true },
+      }),
+    );
+    renderList(viewOf({ permissions: ALL }), makeTransport({ productZip }));
+    fireEvent.click(await screen.findByRole('button', { name: t('productZip.restore') }));
+    fireEvent.change(await screen.findByTestId('product-zip-file'), {
+      target: { files: [new File(['Brand'], 'products-2026-10-07.csv')] },
+    });
+
+    expect(await screen.findByLabelText(t('productZip.opt.exact'))).toBeTruthy();
+    expect(screen.getByText(t('productZip.opt.exact.keepsColours'))).toBeTruthy();
+    expect(screen.getByText(t('productZip.opt.exact.keepsPhotos'))).toBeTruthy();
   });
 
   it('previews again whenever the exact catalogue is ticked or unticked, says it is reading, and keeps the other ticks', async () => {

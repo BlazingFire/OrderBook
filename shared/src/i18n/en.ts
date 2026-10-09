@@ -2275,6 +2275,9 @@ export const EN_MESSAGES = {
   'productZip.opt.exact': 'Make the catalogue exactly this file',
   'productZip.opt.exact.hint':
     'Leaves nothing the file does not list. Sub products, main products, colours and brands it does not list go to the Recycle Bin. Photos missing from the zip, and the colours (codes) of a sub product that its rows leave out, are removed for good.',
+  'productZip.opt.exact.keepsColours':
+    'Except the colour list: this file has no colours.csv, so the colours stay as they are.',
+  'productZip.opt.exact.keepsPhotos': 'Except the photos: this file has no photos, so the photos stay as they are.',
   'productZip.opt.exact.switchedOff':
     'You may not delete colours, so the colours the file does not list are switched off instead.',
   'productZip.opt.exact.needsLists':
