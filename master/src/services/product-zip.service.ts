@@ -98,7 +98,7 @@ import {
   ValidationError,
 } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
-import { readSheetRows, sheetKindOf } from '../lib/spreadsheet.js';
+import { readSheetRows } from '../lib/spreadsheet.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as customFieldRepo from '../repositories/custom-field.repository.js';
 import * as imageRepo from '../repositories/product-image.repository.js';
@@ -437,19 +437,19 @@ async function sheetFiles(filePath: string): Promise<ZipFiles> {
 }
 
 /**
- * The upload, as the zip it is or as a bare products sheet: no zip's first
- * bytes is a CSV, and an XLSX is a zip itself, one whose `[Content_Types].xml`
- * sits beside no products file.
+ * The upload, as the zip it is or as a bare products sheet: anything not
+ * starting `PK` as every zip does (an empty one too) is a CSV, and an XLSX is
+ * a zip itself, one whose `[Content_Types].xml` sits beside no products file.
  */
 async function openUpload(filePath: string): Promise<ZipFiles> {
   const handle = await open(filePath);
-  const head = Buffer.alloc(4);
+  const head = Buffer.alloc(2);
   try {
     await handle.read(head, 0, head.length, 0);
   } finally {
     await handle.close();
   }
-  if (sheetKindOf(head) === 'csv') return sheetFiles(filePath);
+  if (head.toString('latin1') !== 'PK') return sheetFiles(filePath);
 
   let reader: ZipReader;
   try {
@@ -656,10 +656,14 @@ async function readZip(reader: ZipFiles, problems: ProductZipProblem[]): Promise
       if (isBlankRow(row)) continue;
       const code = cell(row, mainAt('categoryCode')) || null;
       const name = cell(row, mainAt('categoryName'));
-      // No Order column leaves every place as it is; an empty cell is no Order.
+      // No Order column leaves every place as it is; an empty cell is no Order. Past what
+      // the column holds (an INTEGER) is refused here, not by the write after the preview.
       const text = cell(row, orderAt);
       let order = orderAt === -1 ? undefined : text === '' ? null : Number(text);
-      if (typeof order === 'number' && !(Number.isInteger(order) && order >= 0)) {
+      if (
+        typeof order === 'number' &&
+        !(Number.isInteger(order) && order >= 0 && order <= 2_147_483_647)
+      ) {
         problems.push({ subject: code ?? name, messageKey: 'validation.category.sortOrder' });
         order = undefined;
       }
@@ -723,6 +727,7 @@ async function readZip(reader: ZipFiles, problems: ProductZipProblem[]): Promise
 
   // Photos are the files in a folder named `images`, at any depth. Of the rest only a sheet is
   // looked at: one that is none of the files above was meant to be read, so it is said, not skipped.
+  // What a Mac (`._name`) or a sheet open in Excel (`~$name`) leaves beside one is nobody's sheet.
   const sheets = new Set([productsEntry, mainEntry, colourEntry, brandsEntry, captionsEntry]);
   const photos: ZipPhoto[] = [];
   const extraPhotos: string[] = [];
@@ -734,8 +739,8 @@ async function readZip(reader: ZipFiles, problems: ProductZipProblem[]): Promise
         .slice(0, -1)
         .some((folder) => folder.toLowerCase() === 'images')
     ) {
-      if (/\.(csv|xlsx)$/i.test(entry)) {
-        const file = baseName(entry);
+      const file = baseName(entry);
+      if (/\.(csv|xlsx)$/i.test(file) && !/^(\._|~\$)/.test(file)) {
         problems.push({
           subject: file,
           messageKey: 'validation.productZip.unknownFile',
@@ -848,7 +853,7 @@ async function binnedCategories(
  * products, as the Bin asks); else a new one, created where `ensureCategories`
  * finds nothing, so the preview and the run agree. A row whose code, or whose
  * (brand, name), a row before it already took is reported and not read. A
- * brand is spelled as the Brands list does.
+ * brand is spelled as the Brands list does once `brands` is written.
  *
  * With an Order column a main product's Order is the file's; without one (an
  * earlier version's file) one already there keeps its place, and a new one
@@ -856,6 +861,7 @@ async function binnedCategories(
  */
 async function planMainProducts(
   rows: readonly MainRow[],
+  brands: ListPlan | null,
   actor: ActorContext,
   problems: ProductZipProblem[],
 ): Promise<MainPlan> {
@@ -866,6 +872,11 @@ async function planMainProducts(
     if (category.brand) brandByLower.set(category.brand.toLowerCase(), category.brand);
   for (const option of await customFieldRepo.listOptionsForKey(tenantId, 'product.brand')) {
     brandByLower.set(option.value.toLowerCase(), option.value);
+  }
+  // A brand brands.csv adds or brings back from the Bin, as it does.
+  for (const { row, hit } of brands?.writes ?? []) {
+    const value = hit?.value ?? row.value;
+    brandByLower.set(value.toLowerCase(), value);
   }
   const duplicate = (row: MainRow, first: MainRow): void => {
     problems.push({
@@ -1017,13 +1028,21 @@ async function planMainProducts(
   );
   const free = (held: Map<string, string>, key: string, id: string): boolean =>
     (held.get(key) ?? id) === id;
+  // One from the Bin comes back under its old brand (`restoreCategory`) before it takes the file's.
+  const backFree = (change: MainChange): boolean =>
+    !change.binned ||
+    free(names, nameKey({ brand: change.was.brand, name: change.final.name }), change.id);
   let waiting = plan.changed;
   plan.changed = [];
   for (let moved = true; moved;) {
     moved = false;
     waiting = waiting.filter((change) => {
       const code = lower(change.final.code);
-      if (!free(names, nameKey(change.final), change.id) || (code && !free(codes, code, change.id)))
+      if (
+        !free(names, nameKey(change.final), change.id) ||
+        (code && !free(codes, code, change.id)) ||
+        !backFree(change)
+      )
         return true;
       if (!change.binned) {
         names.delete(nameKey(change.was));
@@ -1037,18 +1056,25 @@ async function planMainProducts(
     });
   }
   for (const change of waiting) {
+    const code = lower(change.final.code);
     problems.push(
-      free(names, nameKey(change.final), change.id)
+      !free(names, nameKey(change.final), change.id)
         ? {
-            subject: change.code,
-            messageKey: 'error.conflict.categoryCodeTaken',
-            params: { code: change.final.code ?? '' },
-          }
-        : {
             subject: change.code,
             messageKey: 'error.conflict.categoryNameTaken',
             params: { name: change.final.name },
-          },
+          }
+        : code && !free(codes, code, change.id)
+          ? {
+              subject: change.code,
+              messageKey: 'error.conflict.categoryCodeTaken',
+              params: { code: change.final.code ?? '' },
+            }
+          : {
+              subject: change.code,
+              messageKey: 'error.conflict.restoreCollision',
+              params: { field: 'name' },
+            },
     );
   }
   // A new one with no brand would be filed under any main product of its name: `ensureCategories`
@@ -1110,8 +1136,9 @@ async function applyMainProducts(
   for (const change of plan.changed) {
     try {
       if (change.binned) await catalog.restoreCategory(change.id, actor, change.patch.name);
+      // The backup's brand, switched off in the list or not, as a new one is created with it.
       if (Object.keys(change.patch).length > 0)
-        await catalog.updateCategory(change.id, change.patch, actor);
+        await catalog.updateCategory(change.id, change.patch, actor, { switchedOffBrand: true });
       changed.push(change);
     } catch (error) {
       problems.push(problemOf(change.code, error));
@@ -1173,12 +1200,13 @@ async function planList(
     sequence,
   };
 
-  // Where each value the file lists stands once written: its own place, an added one after the last.
-  let next = sequence;
+  // Where each value the file lists stands once written: its place in the list, an added one
+  // after the end. A place, not its sequence: two values may share one.
+  let next = existing.length;
   const listed: Array<{ id?: string; value: string; at: number }> = [];
   for (const row of rows) {
     const hit = find(row.value);
-    listed.push({ id: hit?.id, value: row.value, at: hit ? hit.sequence : (next += 1) });
+    listed.push({ id: hit?.id, value: row.value, at: hit ? existing.indexOf(hit) : next++ });
     if (!hit || hit.deletedAt) plan.report.added.push(hit?.value ?? row.value);
     const fields: ProductCellChange[] = [];
     if (hit) {
@@ -1566,9 +1594,9 @@ async function runZip(
       throw zipRefusal(error);
     });
 
-    const planned = await planMainProducts(zip.mainProducts, actor, problems);
-    const colours = await planList(tenantId, 'stock.colour', zip.colours);
     const brands = zip.brands && (await planList(tenantId, 'product.brand', zip.brands));
+    const planned = await planMainProducts(zip.mainProducts, brands, actor, problems);
+    const colours = await planList(tenantId, 'stock.colour', zip.colours);
     // Changing the colour or brand list is the lists' own permission, asked before anything is written.
     if (listChanges(colours) + listChanges(brands) > 0)
       requirePermission(actor, 'catalog.lists.manage');

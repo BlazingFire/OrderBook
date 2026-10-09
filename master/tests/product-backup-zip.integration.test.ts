@@ -220,6 +220,29 @@ describe.skipIf(!canRunIntegrationTests)(
           'TNK',
         ]);
       });
+
+      it('names no sheet macOS or an open Excel sheet leaves in a zip, and reads an empty zip as a zip', async () => {
+        const seed = await catalog.createCategory(
+          { name: 'SEED', code: 'SD', brand: null, sortOrder: 1 },
+          admin,
+        );
+        await sub(seed.id, '1', 'SD-1');
+        const { entries } = await exported();
+        const edited = new Map(entries);
+        edited.set('__MACOSX/._products.csv', Buffer.from([0, 5, 22, 7]));
+        edited.set('~$products.xlsx', Buffer.from('lock'));
+
+        expect((await previewProductZip(await zipOf(edited), 'p.zip', admin)).problems).toEqual([]);
+
+        const empty = path.join(dir, 'empty.zip');
+        await writeFile(
+          empty,
+          Buffer.from([0x50, 0x4b, 0x05, 0x06, ...new Array<number>(18).fill(0)]),
+        );
+        await expect(previewProductZip(empty, 'empty.zip', admin)).rejects.toMatchObject({
+          messageKey: 'validation.productZip.noProductsCsv',
+        });
+      });
     });
 
     describe('main products', () => {
@@ -528,6 +551,137 @@ describe.skipIf(!canRunIntegrationTests)(
           await db()('product_categories').where({ code: 'UR' }).select('id', 'deleted_at'),
         ).toEqual([{ id: binned.id, deleted_at: null }]);
       });
+
+      it('refuses one from the Recycle Bin whose old brand holds the name it takes, in the preview as in the run', async () => {
+        await fields.createValue(
+          { listKey: 'product.brand', value: 'Alpha', label: 'Alpha', hex: null },
+          admin,
+        );
+        const pan = await catalog.createCategory(
+          { name: 'PAN', code: 'P', brand: 'Swisware+', sortOrder: 1 },
+          admin,
+        );
+        await sub(pan.id, '101', 'P-1');
+        const urinal = await catalog.createCategory(
+          { name: 'URINAL', code: 'UR', brand: 'Swisware+', sortOrder: 2 },
+          admin,
+        );
+        await catalog.deleteCategory(urinal.id, admin);
+        const { entries } = await exported();
+        const edited = new Map(entries);
+        edited.set(
+          'main-products.csv',
+          csv(MAIN_HEADERS, [
+            ['Swisware+', 'P', 'PAN', 1],
+            ['Alpha', 'UR', 'PAN', 2],
+          ]),
+        );
+        const file = await zipOf(edited);
+        // It comes back under Swisware+ before it takes Alpha, and Swisware+ has a PAN.
+        const clash = [
+          {
+            subject: 'UR',
+            messageKey: 'error.conflict.restoreCollision',
+            params: { field: 'name' },
+          },
+        ];
+
+        const preview = await previewProductZip(file, 'p.zip', admin);
+        expect(preview.mainProducts).toEqual({ added: [], renamed: [] });
+        expect(preview.problems).toEqual(clash);
+        const done = await restoreProductZip(file, 'p.zip', {}, admin);
+        expect(done.mainProducts).toEqual({ added: [], renamed: [] });
+        expect(done.problems).toEqual(clash);
+      });
+
+      it('reports an Order past what the catalogue holds, in the preview as in the run, and puts that one after the last', async () => {
+        const file = await zipOf([
+          [
+            'products.csv',
+            csv(
+              [...IMPORT_HEADERS],
+              [
+                ['', 'AA', 'FIRST', 'S1', '', 'dedicated', '', 'AA-1', '', ''],
+                ['', 'BB', 'SECOND', 'S2', '', 'dedicated', '', 'BB-1', '', ''],
+              ],
+            ),
+          ],
+          [
+            'main-products.csv',
+            csv(MAIN_HEADERS, [
+              ['', 'AA', 'FIRST', 1],
+              ['', 'BB', 'SECOND', '3000000000'],
+            ]),
+          ],
+        ]);
+        const tooFar = [{ subject: 'BB', messageKey: 'validation.category.sortOrder' }];
+
+        const preview = await previewProductZip(file, 'p.zip', admin);
+        expect(preview.problems).toEqual(tooFar);
+        expect(preview.products).toMatchObject({ created: 2, failed: 0 });
+        const done = await restoreProductZip(file, 'p.zip', {}, admin);
+        expect(done.problems).toEqual(tooFar);
+        expect(done.products).toMatchObject({ created: 2, failed: 0 });
+        expect((await mains()).map((main) => [main.code, main.order])).toEqual([
+          ['AA', 1],
+          ['BB', 2],
+        ]);
+      });
+
+      it('puts back a brand the Brands list holds switched off, as the backup had it', async () => {
+        await fields.createValue(
+          { listKey: 'product.brand', value: 'Old Brand', label: 'Old Brand', hex: null },
+          admin,
+        );
+        const old = await catalog.createCategory(
+          { name: 'O', code: 'O', brand: 'Old Brand', sortOrder: 1 },
+          admin,
+        );
+        await sub(old.id, 'S', 'O-1');
+        await switchOff('product.brand', 'Old Brand');
+        const { file } = await exported();
+        await catalog.updateCategory(old.id, { brand: 'Swisware+' }, admin);
+        const back = [
+          { code: 'O', fields: [{ column: 'Brand', from: 'Swisware+', to: 'Old Brand' }] },
+        ];
+
+        const preview = await previewProductZip(file, 'p.zip', admin);
+        expect(preview.mainProducts.renamed).toEqual(back);
+        expect(preview.problems).toEqual([]);
+        const done = await restoreProductZip(file, 'p.zip', {}, admin);
+        expect(done.mainProducts.renamed).toEqual(back);
+        expect(done.problems).toEqual([]);
+        expect((await mains()).map((main) => main.brand)).toEqual(['Old Brand']);
+        // The ordinary edit still refuses it.
+        await catalog.updateCategory(old.id, { brand: 'Swisware+' }, admin);
+        await expect(
+          catalog.updateCategory(old.id, { brand: 'Old Brand' }, admin),
+        ).rejects.toMatchObject({ messageKey: 'validation.category.brandUnknown' });
+      });
+
+      it('spells a brand as brands.csv adds it, so the same zip again changes nothing', async () => {
+        const file = await zipOf([
+          [
+            'products.csv',
+            csv(
+              [...IMPORT_HEADERS],
+              [['ACME', 'AC', 'BASIN', 'DAMRU', '', 'dedicated', '', 'AC-1', '', '']],
+            ),
+          ],
+          ['main-products.csv', csv(MAIN_HEADERS, [['ACME', 'AC', 'BASIN', 1]])],
+          ['brands.csv', csv(['Brand', 'Label', 'Active'], [['Acme', 'Acme Ltd', 'yes']])],
+        ]);
+        const added = [{ code: 'AC', name: 'BASIN', brand: 'Acme' }];
+
+        expect((await previewProductZip(file, 'p.zip', admin)).mainProducts.added).toEqual(added);
+        const done = await restoreProductZip(file, 'p.zip', {}, admin);
+        expect(done.mainProducts.added).toEqual(added);
+        expect(done.problems).toEqual([]);
+        expect((await previewProductZip(file, 'p.zip', admin)).mainProducts).toEqual({
+          added: [],
+          renamed: [],
+        });
+      });
     });
 
     describe('the colour and brand lists', () => {
@@ -740,6 +894,39 @@ describe.skipIf(!canRunIntegrationTests)(
           ['Zz Ivory', 'Zz Ivory', null, true],
           ['Zz White', 'Pure White', '#ffffff', true],
         ]);
+      });
+
+      it('read an unedited export as nothing to do when two values share a place, as a delete and an add on the Fields screen leave them', async () => {
+        const seed = await catalog.createCategory(
+          { name: 'SEED', code: 'SD', brand: null, sortOrder: 1 },
+          admin,
+        );
+        await sub(seed.id, '1', 'SD-1');
+        const colour = (value: string) =>
+          fields.createValue({ listKey: 'stock.colour', value, label: value, hex: null }, admin);
+        await colour('Zz A');
+        const b = await colour('Zz B');
+        await colour('Zz C');
+        await fields.deleteValue(b.id, admin);
+        // Numbered one past the count: Zz C's number.
+        await colour('Zz D');
+        const { file } = await exported();
+
+        expect((await previewProductZip(file, 'p.zip', admin)).colours).toEqual({
+          added: [],
+          changed: [],
+        });
+        // Nothing to write to the list, so its permission is not asked for.
+        const limited = await actorWith([
+          'products.view',
+          'products.bulk',
+          'products.create',
+          'products.edit',
+        ]);
+        expect((await previewProductZip(file, 'p.zip', limited)).colours).toEqual({
+          added: [],
+          changed: [],
+        });
       });
     });
   },
