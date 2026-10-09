@@ -10,7 +10,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { copyFile, mkdtemp, rm } from 'node:fs/promises';
+import { copyFile, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -346,6 +346,33 @@ describe.skipIf(!canRunIntegrationTests)('importing a product backup back (integ
       ],
     ]);
     expect(await colours('OPT-0001')).toEqual([true, [['OPT-0001', 'White', 5.5]]]);
+  });
+
+  it.each([
+    ['a live code, then a new one', 'OPT', '102', ['OPT-0002', 'OPT-0099']],
+    ['a new code, then a live one', 'OPT', '102', ['OPT-0099', 'OPT-0002']],
+    ['colours: a live code, then a new one', 'WB', 'DAMRU', ['WB-0001', 'WB-0099']],
+  ])('a typed sheet with no Colour column giving one sub product %s refuses the second row and recodes nothing', async (_, main, name, codes) => {
+    const sheet = Buffer.from('﻿' + toCsv(['Main product code', 'Sub product', 'Code'], codes.map((code) => [main, name, code])), 'utf8');
+    const before = await subs();
+    const run = (dryRun: boolean) =>
+      importProducts({ buffer: sheet, fileName: 'codes.csv' }, { dryRun, mode: 'upsert' }, admin);
+    const preview = await run(true);
+    const done = await run(false);
+    for (const result of [preview, done]) {
+      expect(problems(result)).toContainEqual(['validation.import.duplicateInFile', { column: 'Colour', firstRow: 2 }]);
+      expect(counts(result)).toMatchObject({ created: 0, updated: 0 });
+    }
+    expect(counts(done)).toEqual(counts(preview));
+    expect(await subs()).toEqual(before);
+
+    // The restore of the bare sheet, nothing ticked, recodes nothing either.
+    const file = path.join(dir, 'products.csv');
+    await writeFile(file, sheet);
+    for (const report of [await previewProductZip(file, 'products.csv', admin), await restoreProductZip(file, 'products.csv', {}, admin)]) {
+      expect(report.rows.changed).toEqual([]);
+    }
+    expect(await subs()).toEqual(before);
   });
 
   it('clears a weight, an alias and a size the backup has blank, and lists them; a typed sheet leaves them', async () => {

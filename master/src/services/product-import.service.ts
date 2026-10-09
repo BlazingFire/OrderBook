@@ -1189,7 +1189,9 @@ function mergedUpdate(
     const byCode = merged.find((variant) => variant.code.toLowerCase() === incoming.code.toLowerCase());
     const byLabel = merged.find(
       (variant) =>
-        variant.active && (variant.label ?? '').toLowerCase() === (incoming.label ?? '').toLowerCase(),
+        variant.active &&
+        !variant.touched &&
+        (variant.label ?? '').toLowerCase() === (incoming.label ?? '').toLowerCase(),
     );
     const target = byCode ?? byLabel;
     if (target) {

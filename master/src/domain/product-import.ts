@@ -371,7 +371,9 @@ export function parseImportRow(
  * database's own `lower(code)` index.
  *
  * `byCode`: a row whose variant is its code, not its colour (a sheet with no
- * Colour column naming a live code), is a duplicate only by its code.
+ * Colour column naming a live code), is a duplicate only by its code — when
+ * every row of its sub product is one. A new code beside them would otherwise
+ * hold the blank colour alone and recode the live code it matches.
  */
 export function findDuplicatesInFile(
   rows: readonly ParsedRow[],
@@ -381,6 +383,7 @@ export function findDuplicatesInFile(
   const issues: ProductImportIssue[] = [];
   const firstCode = new Map<string, number>();
   const firstVariant = new Map<string, number>();
+  const mixed = new Set(rows.filter((entry) => !byCode(entry)).map((entry) => groupKey(entry.input)));
 
   const duplicate = (row: number, field: ImportField, first: number): void => {
     issues.push({
@@ -400,7 +403,7 @@ export function findDuplicatesInFile(
       if (first === undefined) firstCode.set(code, row);
       else duplicate(row, 'code', first);
     }
-    if (byCode(entry)) continue;
+    if (byCode(entry) && !mixed.has(groupKey(input))) continue;
 
     const variantKey = `${groupKey(input)}${(input.variant.label ?? '').trim().toLowerCase()}`;
     const first = firstVariant.get(variantKey);
