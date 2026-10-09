@@ -34,6 +34,7 @@ import {
 import { seedCatalogue } from '../src/services/catalogue-seed.service.js';
 import * as fields from '../src/services/fields.service.js';
 import * as imageService from '../src/services/image.service.js';
+import * as leads from '../src/services/lead.service.js';
 import {
   exportProductZip,
   loadShippedCatalogue,
@@ -832,6 +833,93 @@ describe.skipIf(!canRunIntegrationTests)(
         const again = await restoreProductZip(file, 'p.zip', { exactCatalogue: true }, admin);
         expect([again.products.updated, again.products.issues]).toEqual([0, []]);
         expect(await dump()).toEqual(before);
+      });
+
+      it('reads a sub product a live lead quotes as staying, so a name it holds stays taken, preview and run alike', async () => {
+        const party = await catalog.createParty({ name: 'Patel Tiles' }, admin);
+        const quoted = (await productByCode('BAS-0004'))!;
+        await leads.createLead(
+          { partyId: party.id, items: [{ productId: quoted.id, variantId: quoted.variants[0]!.id, quantity: 1, packaging: 'Box' }] },
+          admin,
+        );
+        const { entries } = await exported();
+        // As L5: Third left out, Solo renamed Third.
+        const file = await editRows(entries, (rows, at) =>
+          rows
+            .filter((row) => row[at('Code')] !== 'BAS-0004')
+            .map((row) =>
+              row[at('Code')] === 'BAS-0003'
+                ? row.map((value, index) => (index === at('Sub product') ? 'Third' : value))
+                : row,
+            ),
+        );
+
+        const preview = await previewProductZip(file, 'p.zip', admin, { exactCatalogue: true });
+        const done = await restoreProductZip(file, 'p.zip', { exactCatalogue: true }, admin);
+        for (const result of [preview, done]) {
+          expect(result.products.issues.map((issue) => [issue.messageKey, issue.params])).toEqual([
+            ['validation.product.nameTaken', { name: 'Third', category: 'Basins' }],
+          ]);
+          expect(result.rows.changed).toEqual([]);
+          expect(result.rows.notInFile).toEqual([{ code: 'BAS-0004', name: 'Third' }]);
+        }
+        expect(done.problems.map((problem) => [problem.subject, problem.messageKey])).toEqual([
+          ['BAS-0004', 'error.conflict.blockedByLiveReferences'],
+        ]);
+        expect(done.binned).toBe(0);
+        expect((await productByCode('BAS-0004'))!.name).toBe('Third');
+        expect((await productByCode('BAS-0003'))!.name).toBe('Solo');
+      });
+
+      it('reads a main product the file leaves out as holding its name while a switched-off code the file names keeps a sub product in it', async () => {
+        await catalog.createCategory({ name: 'Old', code: 'OLD' }, admin);
+        await catalog.createProduct(
+          {
+            categoryCode: 'OLD',
+            name: 'Gone',
+            hasVariants: true,
+            variants: [
+              { code: 'OLD-0001', label: 'Zz White' },
+              { code: 'OLD-0002', label: 'Zz Ivory' },
+            ],
+          } as never,
+          admin,
+        );
+        // As the form leaves a code a lead quoted: switched off, still there.
+        await db()('product_variants').where({ code: 'OLD-0002' }).update({ is_active: false });
+        // Basins renamed Old, and OLD-0002 moved into it.
+        const file = await zipOf([
+          ['main-products.csv', csv(['Brand', 'Main product code', 'Main product', 'Order'], [['', 'BAS', 'Old', '1']])],
+          [
+            'products.csv',
+            csv(
+              ['Brand', 'Main product code', 'Main product', 'Sub product', 'Colour rule', 'Colour', 'Code'],
+              [
+                ['', 'BAS', 'Old', 'Duo', 'fixed', 'Zz White', 'BAS-0001'],
+                ['', 'BAS', 'Old', 'Duo', 'fixed', 'Zz Ivory', 'BAS-0002'],
+                ['', 'BAS', 'Old', 'Solo', 'dedicated', '', 'BAS-0003'],
+                ['', 'BAS', 'Old', 'Third', 'dedicated', '', 'BAS-0004'],
+                ['', 'BAS', 'Old', 'Moved', 'fixed', 'Zz Ivory', 'OLD-0002'],
+              ],
+            ),
+          ],
+        ]);
+
+        const preview = await previewProductZip(file, 'p.zip', admin, { exactCatalogue: true });
+        const done = await restoreProductZip(file, 'p.zip', { exactCatalogue: true }, admin);
+        for (const result of [preview, done]) {
+          expect(result.problems).toEqual([
+            { subject: 'BAS', messageKey: 'error.conflict.categoryNameTaken', params: { name: 'Old' } },
+          ]);
+          expect(result.mainProducts.renamed).toEqual([]);
+          expect(result.mainProducts.notInFile).toEqual([{ code: 'OLD', name: 'Old', brand: null }]);
+        }
+        // Emptied by the rows, it goes after them.
+        expect(done.exactRemoved).toEqual({ mainProducts: 1, colours: 0, brands: 0 });
+        expect(
+          (await productRepo.listCategories(admin.tenantId)).map((main) => [main.code, main.name]),
+        ).toEqual([['BAS', 'Basins']]);
+        expect((await productByCode('OLD-0002'))!.name).toBe('Moved');
       });
 
       it('keeps a brand a main product of products.csv named by name alone has', async () => {

@@ -1669,13 +1669,16 @@ function codesNotInFile(product: Product, fileCodes: ReadonlySet<string>): boole
  * writes, so the file may give the names and codes they hold to its own: no
  * row of either file names one, by its code, or by its (brand, name) where the
  * row's code is none a live main product has (`planMainProducts` reads it so),
- * and every sub product of it goes too, none of its codes in the file. Each is
- * one the run takes out anyway (`mainGone`); the others go after the rows.
+ * and every sub product of it goes too: none of its codes in the file, a
+ * switched-off one included (the import reads that too), and none a live lead
+ * or order quotes (`quoted`: its bin is refused). Each is one the run takes out
+ * anyway (`mainGone`); the others go after the rows.
  */
 function clearedFirst(
   mains: ReadonlyArray<{ id: string; code: string | null; name: string; brand: string | null }>,
   products: readonly Product[],
   zip: ZipContents,
+  quoted: ReadonlySet<string>,
 ): Set<string> {
   const liveCodes = new Set(mains.map((main) => lower(main.code)));
   const rows: Array<{ code?: string | null; name: string; brand?: string | null }> = [
@@ -1684,7 +1687,12 @@ function clearedFirst(
   ];
   const kept = new Set(
     products
-      .filter((product) => !codesNotInFile(product, zip.fileCodes))
+      .filter(
+        (product) =>
+          quoted.has(product.id) ||
+          !codesNotInFile(product, zip.fileCodes) ||
+          product.variants.some((variant) => zip.fileCodes.has(variant.code.toLowerCase())),
+      )
       .map((product) => product.categoryId),
   );
   return new Set(
@@ -1733,7 +1741,15 @@ async function runZip(
     const liveBefore = exact
       ? (await productRepo.listProducts(tenantId, { limit: 100_000, offset: 0 })).items
       : [];
-    const clearing = exact ? clearedFirst(mainsBefore, liveBefore, zip) : new Set<string>();
+    // The sub products a live lead or order quotes: the ordinary delete refuses them, so they stay.
+    const quoted = new Set(
+      exact
+        ? (await productRepo.listSubProductsForDuplicates(tenantId))
+            .filter((sub) => sub.lineCount > 0)
+            .map((sub) => sub.id)
+        : [],
+    );
+    const clearing = exact ? clearedFirst(mainsBefore, liveBefore, zip, quoted) : new Set<string>();
     const brands = zip.brands && (await planList(tenantId, 'product.brand', zip.brands));
     const planned = await planMainProducts(zip.mainProducts, brands, actor, problems, clearing);
     const colours = zip.colours && (await planList(tenantId, 'stock.colour', zip.colours));
@@ -1793,7 +1809,8 @@ async function runZip(
     };
     // The exact run takes out first, before it writes, what holds a name or a code the file may
     // give another: those sub products, which a dry run of the import tells, then the main
-    // products they leave empty (`clearing`). Its preview reads them as gone the same way.
+    // products they leave empty (`clearing`). Its preview reads them as gone the same way, but for
+    // one a lead or order quotes (`quoted`), whose bin is refused and said.
     const missingFirst = exact
       ? missingOf(liveBefore, (await importRows(true)).rows?.matchedIds)
       : [];
@@ -1821,10 +1838,14 @@ async function runZip(
         (product) => catalog.deleteProduct(product.id, actor),
         (product) => product.variants[0]?.code ?? product.name,
       );
+    const binnedMains = new Set<string>();
     const binMains = (mains: typeof mainsBefore) =>
       binEach(
         mains,
-        (gone) => catalog.deleteCategory(gone.id, actor),
+        async (gone) => {
+          await catalog.deleteCategory(gone.id, actor);
+          binnedMains.add(gone.id);
+        },
         (gone) => gone.code ?? gone.name,
       );
 
@@ -1846,7 +1867,10 @@ async function runZip(
       }
     }
 
-    const { rows, ...imported } = await importRows(dryRun, dryRun && exact ? missingFirst : undefined);
+    const { rows, ...imported } = await importRows(
+      dryRun,
+      dryRun && exact ? missingFirst.filter((product) => !quoted.has(product.id)) : undefined,
+    );
     const added = rows?.added ?? [];
     // Every sub product a row read, by its codes or (another install's codes) by its name: none is missing.
     const matched = new Set(rows?.matchedIds ?? []);
@@ -1990,9 +2014,10 @@ async function runZip(
     progress({ phase: 'removing', done: 0, total: 0 });
     // The exact run's went first.
     if (options.binMissingProducts && !exact) binned = await binProducts(missing);
-    // After the sub products: a main product with one left is refused, and said.
+    // After the sub products: a main product with one left is refused, and said. One whose bin
+    // before the rows was refused is tried again, now the rows may have emptied it.
     if (exact) {
-      removed.mainProducts += await binMains(mainGone.filter((gone) => !clearing.has(gone.id)));
+      removed.mainProducts += await binMains(mainGone.filter((gone) => !binnedMains.has(gone.id)));
       const binValues = (values: readonly OptionListItem[]) =>
         binEach(
           values,
