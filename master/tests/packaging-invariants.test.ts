@@ -979,6 +979,7 @@ describe('the Windows executable carries the OrderBook icon (U11)', () => {
     ['master', 'electron-builder.yml'],
     ['office', 'electron-builder.yml'],
     ['office', 'electron-builder.legacy.yml'],
+    ['cleaner', 'electron-builder.yml'],
   ] as const;
   const ICO_SIZES = [16, 24, 32, 48, 64, 128, 256];
 

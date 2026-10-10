@@ -81,7 +81,7 @@ function apps(cobalt) {
   return [
     { dir: 'master', ico: true, tile: '#ffffff', border: '#b9c1c6', ink: cobalt, ghost: 0.2 },
     { dir: 'office', ico: true, tile: cobalt, ink: '#ffffff', ghost: 0.3 },
-    { dir: 'cleaner', ico: false, tile: '#331716', ink: '#ffffff', ghost: 0.3 },
+    { dir: 'cleaner', ico: true, tile: '#331716', ink: '#ffffff', ghost: 0.3 },
   ];
 }
 

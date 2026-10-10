@@ -23,6 +23,8 @@ directories:
 # Same reasoning as the panels: electron-builder would otherwise run
 # `npm install --omit=dev` against this workspace and strip the repo's dev
 # dependencies.
+afterPack: ../tools/flip-fuses.cjs
+
 npmRebuild: false
 buildDependenciesFromSource: false
 
@@ -54,6 +56,10 @@ win:
   target:
     - target: nsis
       arch: [x64]
+  # Multi-size, from tools/make-icons.mjs. signAndEditExecutable: false also skips
+  # electron-builder's resource edit, so the afterPack hook above stamps this .ico and
+  # the name into the .exe (tools/exe-icon.cjs); without it the tool shows Electron's icon.
+  icon: installer/icon.ico
   signAndEditExecutable: false
 
 nsis:

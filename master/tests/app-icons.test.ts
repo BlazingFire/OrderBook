@@ -51,6 +51,7 @@ describe('the app icons', () => {
   it('are exactly what tools/make-icons.mjs renders from the mark', async () => {
     const rendered = await tool.renderIcons();
     expect([...rendered.keys()].sort()).toEqual([
+      'cleaner/installer/icon.ico',
       'cleaner/installer/icon.png',
       'master/installer/icon.ico',
       'master/installer/icon.png',
