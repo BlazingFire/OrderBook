@@ -93,7 +93,7 @@ export const MODULE_ACTIONS: Record<PermissionModule, readonly PermissionAction[
 
 // --- Capabilities ----------------------------------------------------------
 
-export const CAPABILITY_GROUPS = ['workflow', 'admin', 'chat', 'notices'] as const;
+export const CAPABILITY_GROUPS = ['workflow', 'admin', 'chat', 'notices', 'todos'] as const;
 
 export type CapabilityGroup = (typeof CAPABILITY_GROUPS)[number];
 
@@ -202,6 +202,12 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
   // default); `notices.manage` writes notices, sets their audience and sees who has read them.
   { key: 'notices.view', group: 'notices', labelToken: 'permission.notices.view' },
   { key: 'notices.manage', group: 'notices', labelToken: 'permission.notices.manage' },
+
+  // The To-do list (2026-10-08). `todos.view` reads the list and marks tasks in progress or
+  // completed, and is held by every role like `notices.view`; `todos.manage` writes and
+  // deletes tasks.
+  { key: 'todos.view', group: 'todos', labelToken: 'permission.todos.view' },
+  { key: 'todos.manage', group: 'todos', labelToken: 'permission.todos.manage' },
 ] as const;
 
 // --- The frozen key list ---------------------------------------------------
@@ -296,6 +302,10 @@ const MINIMUM_TIER: Record<string, RoleTier> = {
   // The notice board: reading is office tier (no entry); putting up notices for the whole
   // company is an administrator's call.
   'notices.manage': 'admin',
+
+  // The To-do list: marking is office tier (no entry); writing and deleting tasks is an
+  // administrator's call.
+  'todos.manage': 'admin',
 };
 
 /** The lowest tier permitted to hold a key. */
@@ -379,6 +389,7 @@ export const ROLE_TEMPLATES: ReadonlyArray<{
       'chat.tasks',
       'print.send',
       'notices.view',
+      'todos.view',
     ],
   },
   {
@@ -395,6 +406,7 @@ export const ROLE_TEMPLATES: ReadonlyArray<{
       'print.send',
       'print.station',
       'notices.view',
+      'todos.view',
     ],
   },
 ];

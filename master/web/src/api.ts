@@ -93,6 +93,9 @@ import type {
   SellToday,
   SellTodayInput,
   SellTodayUpdate,
+  TodoInput,
+  TodoMarkStatus,
+  TodoTask,
   Paginated,
   StageCounts,
   Party,
@@ -1238,6 +1241,14 @@ export const api = {
   markNoticesRead: (ids?: string[]) => post<{ unreadCount: number }>('/api/notices/read', ids ? { ids } : {}),
   /** Every "Sell today" entry, ended ones included. `notices.manage`. Deleted with `deleteNotice`. */
   sellTodayManageList: () => request<SellToday[]>('/api/notices/sell-today'),
+
+  // --- The To-do list (`/api/todos`) ---
+  todos: () => request<TodoTask[]>('/api/todos'),
+  createTodo: (input: TodoInput) => post<TodoTask>('/api/todos', input),
+  markTodo: (id: string, status: TodoMarkStatus, marked: boolean) =>
+    post<TodoTask>(`/api/todos/${encodeURIComponent(id)}/mark`, { status, marked }),
+  deleteTodo: (id: string) =>
+    request<{ id: string }>(`/api/todos/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   createSellToday: (input: SellTodayInput) => post<SellToday>('/api/notices/sell-today', input),
   updateSellToday: (id: string, update: SellTodayUpdate) =>
     request<SellToday>(`/api/notices/sell-today/${encodeURIComponent(id)}`, {

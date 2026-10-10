@@ -126,6 +126,7 @@ describe('every changed entity is in exactly one bucket', () => {
     'party_bulk',
     'setting',
     'notice',
+    'todo',
   ];
 
   const buckets = [REPLAYABLE_ENTITIES, SNAPSHOT_FORCING_ENTITIES, PANEL_IRRELEVANT_ENTITIES];

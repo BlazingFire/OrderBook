@@ -522,8 +522,7 @@ describe('Basic Home and the landing screen', () => {
       t('nav.master.dashboard'),
       t('nav.leads'),
       t('nav.products'),
-      // 1.4 D3: everyone reads the brand, packaging and grade lists.
-      t('nav.lists'),
+      // No To-do list without `todos.view` (2026-10-08: Lists became the To-do list).
       t('nav.master.settings'),
       t('nav.updates'),
     ]);
@@ -2843,6 +2842,46 @@ describe('Notice board in the sidebar and in roles (Oct 7)', () => {
   });
 });
 
+describe('The To-do list (2026-10-08, the Lists module)', () => {
+  const TASK = {
+    id: 'td-1',
+    text: 'Call the tile supplier',
+    createdByName: 'Owner',
+    createdAt: '2026-10-08T10:00:00.000Z',
+    expiresAt: null,
+    expireAfterHours: 24,
+    completedAt: null,
+    marks: [{ userId: 'user-1', name: 'Owner', status: 'in_progress', markedAt: '2026-10-08T10:05:00.000Z' }],
+  };
+  const todos = (call: Call) => (call.url.split('?')[0] === '/api/todos' ? json([TASK]) : undefined);
+
+  it('is offered with todos.view and opens on the tasks, with the form for todos.manage', async () => {
+    const calls = await boot([...ADMIN, 'todos.view', 'todos.manage'], todos);
+    await act(async () => {
+      fireEvent.click(screen.getByTitle(t('nav.lists')));
+      await wait(0);
+    });
+    expect(topbarTitle()).toBe(t('nav.lists'));
+    await waitFor(() => expect(screen.getByText('Call the tile supplier')).toBeTruthy());
+    expect(screen.getByRole('form', { name: t('todos.add.title') })).toBeTruthy();
+    expect(calls.some((call) => call.url === '/api/todos')).toBe(true);
+  });
+
+  it('is absent without todos.view, and has no form without todos.manage', async () => {
+    await boot(ADMIN, todos);
+    expect(screen.queryByTitle(t('nav.lists'))).toBeNull();
+    cleanup();
+
+    await boot([...ADMIN, 'todos.view'], todos);
+    await act(async () => {
+      fireEvent.click(screen.getByTitle(t('nav.lists')));
+      await wait(0);
+    });
+    await waitFor(() => expect(screen.getByText('Call the tile supplier')).toBeTruthy());
+    expect(screen.queryByRole('form', { name: t('todos.add.title') })).toBeNull();
+  });
+});
+
 describe('The person screen (Oct 8)', () => {
   const SYNC = { version: 3, hlc: 'h', fieldHlc: {}, temporaryId: null };
   const stamp = { createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-02T00:00:00.000Z' };
@@ -2933,7 +2972,7 @@ describe('The person screen (Oct 8)', () => {
     expect(card('Packer').textContent).toContain(t('access.rolePicker.current'));
     expect(card('Packer').textContent).toContain(t('access.person.people.one'));
     expect(card('Dispatcher').textContent).toContain(t('access.person.people.other', { count: 2 }));
-    expect(card('Dispatcher').textContent).toContain(t('access.rolePicker.total', { held: 6, total: 61 }));
+    expect(card('Dispatcher').textContent).toContain(t('access.rolePicker.total', { held: 6, total: 63 }));
 
     // With nothing picked the matrix is Packer's own: allowed, or not.
     expect(cell('New Orders', 'View', t('access.person.cell.held'))).toBeTruthy();

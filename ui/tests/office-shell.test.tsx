@@ -2614,6 +2614,45 @@ describe('Notice board in the Office sidebar (Oct 7)', () => {
   });
 });
 
+describe('the To-do list (2026-10-08, the Lists module)', () => {
+  const TASK = {
+    id: 'td-1',
+    text: 'Load the truck',
+    createdByName: 'Owner',
+    createdAt: '2026-10-08T10:00:00.000Z',
+    expiresAt: null,
+    expireAfterHours: null,
+    completedAt: null,
+    marks: [],
+  };
+
+  it('opens on the tasks from the Master, re-reads them on a todo change, and has no form without todos.manage', async () => {
+    const calls = await boot({
+      permissions: ['todos.view'],
+      route: (call) => (call.url.split('?')[0] === '/api/todos' ? json([TASK]) : undefined),
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByTitle(t('nav.lists')));
+    });
+    expect(await screen.findByText('Load the truck')).toBeTruthy();
+    expect(screen.queryByRole('form', { name: t('todos.add.title') })).toBeNull();
+    const reads = () => calls.filter((call) => call.url === '/api/todos').length;
+    const before = reads();
+
+    // Somebody else marked a task: the change frame reaches this panel's stream.
+    await act(async () => {
+      FakeEventSource.instances.at(-1)!.emit('change', { entity: 'todo', action: 'updated', id: 'td-1', payload: null });
+    });
+    await waitFor(() => expect(reads()).toBeGreaterThan(before));
+  });
+
+  it('is absent without todos.view', async () => {
+    await boot({ permissions: ['leads.view'] });
+    await screen.findByTitle(t('nav.leads'));
+    expect(screen.queryByTitle(t('nav.lists'))).toBeNull();
+  });
+});
+
 describe('V6: unread notices pop up on sign-in', () => {
   const base = {
     tenantId: 'tenant-1',

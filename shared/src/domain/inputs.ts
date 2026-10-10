@@ -349,6 +349,11 @@ export interface RoleInput {
    * `false`. Only on create: editing a role never adds it back.
    */
   noticeBoard?: boolean;
+  /**
+   * Likewise `todos.view` (everybody reads the To-do list). Left out, it follows `noticeBoard`,
+   * so a caller that asked for exactly the keys it named still gets exactly those.
+   */
+  todoList?: boolean;
   /** Optimistic concurrency; omit to skip the check (creates only). */
   expectedVersion?: number;
 }

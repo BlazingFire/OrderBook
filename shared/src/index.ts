@@ -5,6 +5,7 @@ export * from './domain/activity.js';
 export * from './domain/chat.js';
 export * from './domain/printroom.js';
 export * from './domain/notices.js';
+export * from './domain/todos.js';
 export * from './domain/api-keys.js';
 export * from './domain/colour-rule.js';
 export * from './domain/columns.js';

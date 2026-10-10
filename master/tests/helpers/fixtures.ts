@@ -46,6 +46,9 @@ const DATA_TABLES = [
   'notice_reads',
   'notice_audiences',
   'notices',
+  // To-do tasks and their marks name users.
+  'todo_marks',
+  'todos',
   // Print jobs name users and stations, so they go before both.
   'print_jobs',
   'print_stations',

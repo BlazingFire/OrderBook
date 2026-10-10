@@ -542,7 +542,8 @@ describe.skipIf(!canRunIntegrationTests)('the notice board (integration)', () =>
         { name: 'Later', tier: 'office', permissions: ['leads.view'] },
         admin,
       );
-      expect(made.permissions).toEqual(['leads.view', 'notices.view']);
+      // And the To-do list (2026-10-08), which follows the same default.
+      expect(made.permissions).toEqual(['leads.view', 'notices.view', 'todos.view']);
 
       const without = await roleService.createRole(
         { name: 'No board', tier: 'office', permissions: ['leads.view'], noticeBoard: false },

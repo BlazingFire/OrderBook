@@ -1504,8 +1504,8 @@ function RolesTab({
 }
 
 /** Reads the role again on open, so the editor works on the current version and not the list row. */
-/** What a new role holds before anything is ticked: reading the notice board. */
-const NEW_ROLE_DEFAULTS: readonly string[] = ['notices.view'];
+/** What a new role holds before anything is ticked: reading the notice board and the To-do list. */
+const NEW_ROLE_DEFAULTS: readonly string[] = ['notices.view', 'todos.view'];
 
 function RoleEditorLoader(props: ComponentProps<typeof RoleEditor>) {
   const roleId = props.role?.id ?? null;
@@ -1657,7 +1657,9 @@ function RoleEditor({
         // how their work disappears without anybody being told.
         expectedVersion: overwrite ? baseVersion : role?.sync.version,
         // Only on create: the server gives a new role the notice board unless this says no.
-        ...(role ? {} : { noticeBoard: selected.has('notices.view') }),
+        ...(role
+          ? {}
+          : { noticeBoard: selected.has('notices.view'), todoList: selected.has('todos.view') }),
       };
 
       if (role) await api.updateRole(role.id, input);

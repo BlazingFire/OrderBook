@@ -122,6 +122,8 @@ describe('the migration registry matches the directory', () => {
     '20261017000000_product_image_source_checksum',
     // 2026-10-08: "Sell today" (`notices.kind`, `product_ids`, `auto_close_seconds`, `show_from`).
     '20261018000000_notice_sell_today',
+    // 2026-10-08: the To-do list (`todos`, `todo_marks` and their two grants).
+    '20261019000000_todo_list',
   ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {

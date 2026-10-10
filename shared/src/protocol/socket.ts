@@ -123,6 +123,12 @@ import {
   type SellTodayInput,
   type SellTodayUpdate,
 } from '../domain/notices.js';
+import {
+  TODO_MIN_PROTOCOL,
+  type TodoInput,
+  type TodoMarkInput,
+  type TodoTask,
+} from '../domain/todos.js';
 import type {
   PrintJob,
   PrintJobInput,
@@ -245,6 +251,11 @@ export const COMMAND_MIN_PROTOCOL: Partial<Record<keyof ClientToServerEvents, nu
   'sellToday:manageList': SELL_TODAY_MIN_PROTOCOL,
   'sellToday:create': SELL_TODAY_MIN_PROTOCOL,
   'sellToday:update': SELL_TODAY_MIN_PROTOCOL,
+  // The To-do list (2026-10-08), released with "Sell today" in protocol 11.
+  'todo:list': TODO_MIN_PROTOCOL,
+  'todo:create': TODO_MIN_PROTOCOL,
+  'todo:mark': TODO_MIN_PROTOCOL,
+  'todo:delete': TODO_MIN_PROTOCOL,
   'presence:beat': 4,
   // 1.4 D3: Create product share. All four 1.4 sessions take protocol 7.
   'product:sharePdf': 7,
@@ -408,6 +419,11 @@ export type ChangedEntity =
    */
   | 'notice'
   /**
+   * A to-do task was created, marked, unmarked or deleted. `payload` is `null`: a screen that
+   * shows the list reads it again. Not in a panel's snapshot.
+   */
+  | 'todo'
+  /**
    * The whole catalogue moved at once — a bulk import. There is no single row
    * to upsert, and publishing one `product` event per imported row would push
    * a five-thousand-row file straight through the change ring and force every
@@ -563,6 +579,8 @@ export const PANEL_IRRELEVANT_ENTITIES: readonly ChangedEntity[] = [
   'office_panel',
   'role',
   'user',
+  // The To-do list is read live from the Master; the event only tells an open screen to re-read.
+  'todo',
 ];
 
 /**
@@ -1102,6 +1120,19 @@ export interface ClientToServerEvents {
   'sellToday:manageList': (ack: CommandAck<SellToday[]>) => void;
   'sellToday:create': (input: SellTodayInput, ack: CommandAck<SellToday>) => void;
   'sellToday:update': (input: { id: string } & SellTodayUpdate, ack: CommandAck<SellToday>) => void;
+
+  // --- The To-do list (protocol 11) ------------------------------------------
+  /*
+   * Twinned with the Master's `/api/todos` routes. `todo:list` and `todo:mark` need `todos.view`
+   * (a mark is the acting person's own, so it needs somebody signed in); create and delete need
+   * `todos.manage`.
+   */
+  /** The live tasks, newest first: not deleted, not expired. */
+  'todo:list': (ack: CommandAck<TodoTask[]>) => void;
+  'todo:create': (input: TodoInput, ack: CommandAck<TodoTask>) => void;
+  'todo:mark': (input: TodoMarkInput, ack: CommandAck<TodoTask>) => void;
+  /** A soft delete: gone for everybody, with no Recycle Bin. */
+  'todo:delete': (id: string, ack: CommandAck<{ id: string }>) => void;
 
   // --- Dashboard (docs/backend-modules/04-API-CONTRACT.md §7) ---------------
   /** The one live pull — everything else rides on `SyncSnapshot.dashboard` and the `dashboard:changed` push. */

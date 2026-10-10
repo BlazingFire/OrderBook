@@ -91,6 +91,8 @@ export const REQUIRED_PERMISSION: Partial<Record<ChangedEntity, Permission>> = {
   sync_conflict: 'sync.resolveConflicts',
   // The notice board: reading it is the gate; the audience is checked on top (`mayReceive`).
   notice: 'notices.view',
+  // The To-do list: an event carries no task, only that the list moved.
+  todo: 'todos.view',
 };
 
 /**

@@ -26,6 +26,9 @@ import type {
   SellToday,
   SellTodayInput,
   SellTodayUpdate,
+  TodoInput,
+  TodoMarkStatus,
+  TodoTask,
   ChatAccessCapability,
   PrintJob,
   PrintJobInput,
@@ -1226,6 +1229,14 @@ export const api = {
   createSellToday: (input: SellTodayInput) => post<SellToday>('/api/notices/sell-today', input),
   updateSellToday: (id: string, update: SellTodayUpdate) =>
     patch<SellToday>(`/api/notices/sell-today/${id}`, update),
+
+  // --- The To-do list (protocol 11): online only, through the Master. ---
+  todos: () => request<TodoTask[]>('/api/todos'),
+  createTodo: (input: TodoInput) => post<TodoTask>('/api/todos', input),
+  markTodo: (id: string, status: TodoMarkStatus, marked: boolean) =>
+    post<TodoTask>(`/api/todos/${encodeURIComponent(id)}/mark`, { status, marked }),
+  deleteTodo: (id: string) =>
+    request<{ id: string }>(`/api/todos/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   // --- Product images (7-IMAGE-PIPELINE.md) --------------------------------
   // Online-only like the Recycle Bin, and — unlike every write above —

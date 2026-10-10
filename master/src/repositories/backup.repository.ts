@@ -79,6 +79,7 @@ const EXCLUDED_TABLES = new Set([
  */
 const TRANSITIVELY_SCOPED: Record<string, { via: string; foreignKey: string }> = {
   pipeline_stages: { via: 'pipelines', foreignKey: 'pipeline_id' },
+  todo_marks: { via: 'todos', foreignKey: 'todo_id' },
 };
 
 export async function listUserTables(runner: Runner = db()): Promise<string[]> {
