@@ -192,7 +192,7 @@ describe.skipIf(!canRunIntegrationTests)('every audited operation leaves an entr
 
       const entry = await onlyEntry({ entity_type: 'lead', entity_id: lead.id, action: 'remark_added' });
       expect(entry.details).toMatchObject({ text: 'Call back on Monday' });
-      expect(rendered(entry)).toBe('Test Actor added a remark on this pending order');
+      expect(rendered(entry)).toBe('Test Actor added a remark on this new order');
     });
 
     it('deleting and restoring a pending order names its number and party', async () => {
@@ -206,8 +206,8 @@ describe.skipIf(!canRunIntegrationTests)('every audited operation leaves an entr
       const number = lead.poNumber;
       expect(number).toMatch(/^PO\//);
       expect(deleted.details).toEqual({ number, party: 'Coverage Traders' });
-      expect(rendered(deleted)).toBe(`Test Actor deleted the pending order ${number} for Coverage Traders`);
-      expect(rendered(restored)).toBe(`Test Actor restored the pending order ${number} for Coverage Traders`);
+      expect(rendered(deleted)).toBe(`Test Actor deleted the new order ${number} for Coverage Traders`);
+      expect(rendered(restored)).toBe(`Test Actor restored the new order ${number} for Coverage Traders`);
     });
 
     it('converting records lead.converted on the lead, beside order.created', async () => {
@@ -216,7 +216,7 @@ describe.skipIf(!canRunIntegrationTests)('every audited operation leaves an entr
 
       const converted = await onlyEntry({ entity_type: 'lead', entity_id: lead.id, action: 'converted' });
       expect(converted.details).toMatchObject({ orderId: order.id });
-      expect(rendered(converted)).toBe('Test Actor converted this pending order into a final order');
+      expect(rendered(converted)).toBe('Test Actor converted this new order into a final order');
       await onlyEntry({ entity_type: 'order', entity_id: order.id, action: 'created' });
     });
 
@@ -245,7 +245,7 @@ describe.skipIf(!canRunIntegrationTests)('every audited operation leaves an entr
       const entry = await onlyEntry({ entity_type: 'lead', entity_id: lead.id, action: 'conflict_kept' });
       expect(entry.details).toEqual({ field: 'items', conflictId: String(conflict.id) });
       expect(rendered(entry)).toBe(
-        'Test Actor kept the current value after a sync conflict on this pending order',
+        'Test Actor kept the current value after a sync conflict on this new order',
       );
     });
 
@@ -256,7 +256,7 @@ describe.skipIf(!canRunIntegrationTests)('every audited operation leaves an entr
       const entry = await onlyEntry({ entity_type: 'lead', entity_id: lead.id, action: 'conflict_restored' });
       expect(entry.details).toMatchObject({ field: 'items' });
       expect(rendered(entry)).toBe(
-        'Test Actor restored the overwritten value after a sync conflict on this pending order',
+        'Test Actor restored the overwritten value after a sync conflict on this new order',
       );
     });
   });
