@@ -273,14 +273,15 @@ async function main(): Promise<void> {
     });
 
     /*
-     * Once per install, and only into a catalogue that has never held a main
-     * product: the catalogue this build ships, before or after setup. Awaited,
-     * before the panel serves, so nobody sees a half-loaded list and the photo
-     * attach below already finds its sub products. After the sweep, for the
-     * reason given there: a shipped zip's photos are uploaded here. A load is
-     * marked as under way before it writes anything, so one that fails, or that
-     * a closed window stops halfway, is a warning here and carries on over what
-     * it left on the next boot; the panel still starts.
+     * Once per install, and only on a brand-new one: not set up yet, and a
+     * catalogue that has never held a main product. An update, or an install a
+     * backup restored, only records that it had nothing to do. Awaited, before
+     * the panel serves, so nobody sees a half-loaded list and the photo attach
+     * below already finds its sub products. After the sweep, for the reason
+     * given there: a shipped zip's photos are uploaded here. A load is marked as
+     * under way before it writes anything, so one that fails, or that a closed
+     * window stops halfway, is a warning here and carries on over what it left
+     * on the next boot, until setup is done; the panel still starts.
      */
     bootStep('Loading the product catalogue');
     await loadShippedCatalogue({}, (progress) => {
@@ -296,7 +297,9 @@ async function main(): Promise<void> {
 
     // After the sweep, never before it: the sweep would take a photo being
     // attached for an orphan. Not awaited — encoding a few hundred photos
-    // takes minutes, and the panel serves meanwhile.
+    // takes minutes, and the panel serves meanwhile; a restore started in that
+    // time stops it before it writes (`stopCataloguePhotos`). Once per install,
+    // and only on the printed catalogue it loaded: an update attaches nothing.
     void attachCataloguePhotos().catch((error: unknown) => {
       log.warn(`Could not attach the catalogue photos: ${toErrorMessage(error)}`);
     });

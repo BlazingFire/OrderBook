@@ -6,15 +6,24 @@
  * Through the bulk photo import's own plan and run
  * (`shared/src/domain/photo-import.ts`) in "skip" mode, and the ordinary
  * upload, so a photo lands exactly as one added by hand would — and **never**
- * over one the company added: a sub product with any photo is left alone.
+ * over one the company added: a sub product with any photo is left alone,
+ * checked again as each photo is written (`onlyIfEmpty`).
  *
- * Once per shipped set: the run is recorded under a fingerprint of the files
- * (names and sizes), so the same set is not looked at again on the next boot,
- * and an update that ships a changed set (a code moved, a photo added) runs
- * once more — still only where there is no photo. A run with a failed photo
- * is not recorded, so the next boot tries the missing ones again; nor is one
- * where no photo matched any sub product (the catalogue is not loaded yet), so
- * the photos still land on the first boot after it is.
+ * **Once per install, and only on the printed catalogue it loaded**
+ * (`SHIPPED_CATALOGUE_MARKER` says `loaded: 'markdown'`): a brand-new install,
+ * once its catalogue is in. An update never attaches: an
+ * install with any record of a run is done, whatever the next build ships, and
+ * an install that never loaded the printed catalogue (one from 1.4.4 or
+ * earlier, or a build that shipped `products.zip`, whose photos it carries)
+ * never starts. The run is recorded once it ends, whatever it attached,
+ * skipped or failed (a failed photo is logged, not retried), so a photo the
+ * company removes stays removed.
+ *
+ * **A restore comes first.** A product restore stops a run under way after the
+ * photo it is on, waits for it, and retires the attach for good
+ * (`retireCataloguePhotos`); a full backup restore stops it the same way
+ * (`stopCataloguePhotos`). A stopped run records nothing, so a restore that
+ * never got as far as replacing anything leaves the next boot to carry on.
  *
  * Every boot, before that marker is looked at, the photos' files are checked
  * (`healMissingImageFiles`): a row whose variant files are gone (a database
@@ -25,8 +34,7 @@
  * Offline: the files are on disk beside the program, nothing is fetched.
  */
 
-import { createHash } from 'node:crypto';
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { planPhotoImport, runPhotoImport, type PhotoResult } from '@orderbook/shared';
@@ -39,7 +47,14 @@ import * as imageRepo from '../repositories/product-image.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
 import * as settingsRepo from '../repositories/settings.repository.js';
 import { resolveDefaultTenantId } from '../repositories/tenant.repository.js';
-import { imageVariantsMissing, rederiveImageVariants, SourceMismatchError, uploadImage } from './image.service.js';
+import { SHIPPED_CATALOGUE_MARKER } from './catalogue-seed.service.js';
+import {
+  GalleryTakenError,
+  imageVariantsMissing,
+  rederiveImageVariants,
+  SourceMismatchError,
+  uploadImage,
+} from './image.service.js';
 
 const log = createLogger('catalogue-photos');
 
@@ -51,7 +66,6 @@ const log = createLogger('catalogue-photos');
 export const CATALOGUE_PHOTOS_MARKER = 'internal.cataloguePhotosAttached';
 
 export interface CataloguePhotosResult {
-  fingerprint: string;
   files: number;
   attached: number;
   /** Sub products that already had a photo, and files that matched nothing. */
@@ -118,24 +132,66 @@ export async function healMissingImageFiles(
   return result;
 }
 
-/** Null when there is nothing to do: no photos shipped, or this set already ran. */
+/** The run under way, if any, and whether a restore has asked it to stop. */
+let running: Promise<unknown> | null = null;
+let stopRequested = false;
+
+/**
+ * Stop a run under way after the photo it is on, and wait until it has: a
+ * restore must not write the catalogue while shipped photos land beside it.
+ */
+export async function stopCataloguePhotos(): Promise<void> {
+  if (!running) return;
+  stopRequested = true;
+  try {
+    await running.catch(() => undefined);
+  } finally {
+    stopRequested = false;
+  }
+}
+
+/** A restore of the company's own catalogue: no shipped photo is attached on this install again. */
+export async function retireCataloguePhotos(): Promise<void> {
+  await stopCataloguePhotos();
+  const tenantId = await resolveDefaultTenantId();
+  await db().transaction((trx) =>
+    settingsRepo.upsertSetting(
+      tenantId,
+      CATALOGUE_PHOTOS_MARKER,
+      { retired: true, at: new Date().toISOString() },
+      false,
+      1,
+      null,
+      trx,
+    ),
+  );
+}
+
+/** Null when there is nothing to do: no printed catalogue loaded, or already done. */
 export async function attachCataloguePhotos(
   dir: string = config.cataloguePhotosDir,
 ): Promise<CataloguePhotosResult | null> {
+  const run = attach(dir);
+  running = run;
+  try {
+    return await run;
+  } finally {
+    if (running === run) running = null;
+  }
+}
+
+async function attach(dir: string): Promise<CataloguePhotosResult | null> {
   const names = (await readdir(dir).catch(() => [] as string[])).filter((name) => /\.(jpe?g|png|webp)$/i.test(name));
   const tenantId = await resolveDefaultTenantId();
   await healMissingImageFiles(tenantId, dir, names);
-  if (names.length === 0) return null;
 
-  const fingerprint = createHash('sha256');
-  for (const name of [...names].sort()) {
-    fingerprint.update(`${name}:${(await stat(path.join(dir, name))).size}\n`);
-  }
-  const digest = fingerprint.digest('hex');
-
+  // No early return for an empty folder: a run with nothing to attach is still the one run, so a
+  // later build that does ship photos never attaches them on an update.
   const rows = await settingsRepo.readSettingRows(tenantId);
-  const marker = rows.find((row) => row.key === CATALOGUE_PHOTOS_MARKER)?.value as { fingerprint?: string } | undefined;
-  if (marker?.fingerprint === digest) return null;
+  const valueOf = (key: string) => rows.find((row) => row.key === key)?.value;
+  const shipped = valueOf(SHIPPED_CATALOGUE_MARKER) as { state?: string; loaded?: string } | undefined;
+  if (valueOf(CATALOGUE_PHOTOS_MARKER) !== undefined || shipped?.state !== 'done' || shipped.loaded !== 'markdown')
+    return null;
 
   // The program does this, not a person: the activity log says System. It
   // holds the one permission the upload asks for and nothing else.
@@ -152,30 +208,41 @@ export async function attachCataloguePhotos(
     names.map((name) => ({ name })),
     products,
   ).map((row) => (row.status === 'new' && (row.existingImageIds?.length ?? 0) > 0 ? { ...row, status: 'hasPhoto' as const } : row));
+  // A photo the company added after the plan was read keeps its sub product; the run's own
+  // later photos of a sub product (a `CODE_2.jpg`, a second colour's code) still land.
+  let taken = 0;
+  const mine = new Set<string>();
   const outcomes = await runPhotoImport(plan, 'skip', {
     upload: async (productId, file) => {
-      await uploadImage(
-        {
-          productId,
-          fileBuffer: await readFile(path.join(dir, file.name)),
-          crop: { cropX: 0, cropY: 0, cropWidth: 0, cropHeight: 0, rotationDeg: 0 },
-          wholeFrame: true,
-        },
-        actor,
-      );
+      try {
+        await uploadImage(
+          {
+            productId,
+            fileBuffer: await readFile(path.join(dir, file.name)),
+            crop: { cropX: 0, cropY: 0, cropWidth: 0, cropHeight: 0, rotationDeg: 0 },
+            wholeFrame: true,
+            onlyIfEmpty: !mine.has(productId),
+          },
+          actor,
+        );
+        mine.add(productId);
+      } catch (error) {
+        if (!(error instanceof GalleryTakenError)) throw error;
+        taken += 1;
+      }
     },
     // The service is called directly, never through the HTTP upload limit.
     removeImage: async () => undefined,
     retryAfterMs: () => null,
     errorText: (error) => (error instanceof Error ? error.message : String(error)),
+    stopped: () => stopRequested,
   });
 
   const tally = (result: PhotoResult) => outcomes.filter((outcome) => outcome.result === result).length;
   const result: CataloguePhotosResult = {
-    fingerprint: digest,
     files: names.length,
-    attached: tally('imported'),
-    skipped: tally('skipped'),
+    attached: tally('imported') - taken,
+    skipped: tally('skipped') + taken,
     failed: tally('failed'),
   };
 
@@ -183,11 +250,12 @@ export async function attachCataloguePhotos(
     if (outcome.result === 'failed') log.warn(`Catalogue photo ${outcome.row.fileName}: ${outcome.error}`);
   }
   log.info(
-    `Catalogue photos: ${result.attached} attached, ${result.skipped} skipped, ${result.failed} failed, of ${result.files}`,
+    `Catalogue photos: ${result.attached} attached, ${result.skipped} skipped, ${result.failed} failed, of ${result.files}` +
+      (stopRequested ? ' (stopped for a restore)' : ''),
   );
 
-  const matchedAny = plan.some((row) => row.productId !== undefined);
-  if (result.failed === 0 && matchedAny) {
+  // Stopped, it is not the one run: the restore that stopped it decides what comes next.
+  if (!stopRequested) {
     await db().transaction((trx) =>
       settingsRepo.upsertSetting(tenantId, CATALOGUE_PHOTOS_MARKER, { ...result, at: new Date().toISOString() }, false, 1, null, trx),
     );

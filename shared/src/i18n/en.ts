@@ -430,7 +430,11 @@ export const EN_MESSAGES = {
   'validation.import.mixedVariants':
     '{name} names a variant on some rows and none on others — fill in every row or leave every row blank',
   'validation.import.codesSplit': 'The codes under {name} already belong to more than one product',
-  'validation.productZip.fileRequired': 'Choose a .zip file',
+  'validation.import.subProductCellsDiffer':
+    'Differs from row {firstRow} of {name}. The rows of one sub product must agree, so this row was not read. Give it its own name if it is another sub product.',
+  'validation.import.binnedNeedsDelete':
+    '{name} is in the Recycle Bin — bringing it back needs the Delete products permission',
+  'validation.productZip.fileRequired': 'Choose a .zip, .csv or .xlsx file',
   'validation.productZip.tooLarge': 'That zip is larger than 1 GB',
   'validation.productZip.notAZip': 'That file could not be opened as a zip',
   'validation.productZip.noProductsCsv': 'This zip has no products.csv, so it is not an OrderBook product backup',
@@ -438,9 +442,13 @@ export const EN_MESSAGES = {
   'validation.productZip.entryRejected':
     'This zip holds a file it should not ({entry}), so nothing was read from it',
   'validation.productZip.codeInvalid': 'The main product code {code} must be letters and digits only',
-  'validation.productZip.hexInvalid': '{hex} is not a colour like #1A2B3C, so the colour was left as it is',
+  'validation.productZip.hexInvalid': '{hex} is not a colour like #1A2B3C, so its hex was left as it is',
   'validation.productZip.mainDiffers':
     'products.csv gives the {column} as "{value}" but main-products.csv as "{main}". Only main-products.csv is read, so change it there.',
+  'validation.productZip.mainDuplicate':
+    'Another row already lists this main product ({first}), so this row was not read',
+  'validation.productZip.unknownFile':
+    '{file} is none of the files a product backup holds (products, main-products, colours, brands, photos), so it was not read',
   'import.skip.codeExists': 'Product code "{productCode}" already exists — skipped',
   // --- Bulk party import (docs/PARTY_IMPORT_FORMAT.md) -----------------------
   'validation.party.pincodeInvalid': 'Pincode must be six digits',
@@ -2308,19 +2316,29 @@ export const EN_MESSAGES = {
   'productZip.restore': 'Restore from .zip',
   'productZip.title': 'Restore products from a .zip',
   'productZip.intro':
-    'Choose a product backup zip, edited or not. Nothing changes until you have seen what it would do and pressed Apply.',
-  'productZip.choose': 'Choose a .zip file',
-  'productZip.checking': 'Reading the zip…',
+    'Choose a product backup zip, edited or not, or the products .csv or .xlsx an earlier version exported. Nothing changes until you have seen what it would do and pressed Apply.',
+  'productZip.choose': 'Choose a file',
+  'productZip.checking': 'Reading the file…',
   'productZip.section.mainProducts': 'Main products',
   'productZip.section.rows': 'Sub products',
   'productZip.section.colours': 'Colours',
+  'productZip.section.brands': 'Brands',
   'productZip.section.photos': 'Photos',
   'productZip.item.added': 'New: {count}',
-  'productZip.item.renamed': 'Renamed: {count}',
   'productZip.item.changed': 'Changed: {count}',
+  'productZip.item.restoredFromBin': 'Brought back from the Recycle Bin: {count}',
+  'productZip.item.listReordered': 'Put in the order of the file',
   'productZip.item.unchanged': 'Unchanged: {count}',
   'productZip.item.notInFile': 'In the catalogue but not in products.csv: {count}',
+  'productZip.item.mainNotInFile': 'In the catalogue but in neither main-products.csv nor products.csv: {count}',
+  'productZip.item.listNotInFile': 'In the list but not in the file: {count}',
+  'productZip.item.variantsNotInFile': 'Codes in the catalogue but not in products.csv: {count}',
+  'productZip.item.rowsReordered': 'Main products whose sub products are put in the order of the file: {count}',
+  'productZip.item.noColoursFile': 'This file has no colours.csv it can read, so the colour list stays as it is.',
+  'productZip.item.noPhotosFile': 'This file has no photos, so the photos stay as they are.',
   'productZip.item.replaced': 'Replaced: {count}',
+  'productZip.item.recaptioned': 'Caption put back from photos.csv: {count}',
+  'productZip.item.reordered': 'Main photo or photo order put back: {count}',
   'productZip.item.unmatched': 'No sub product has this code: {count}',
   'productZip.item.duplicate': 'Same name as another file, left out: {count}',
   'productZip.item.notImage': 'Not a jpg, png or webp image: {count}',
@@ -2329,14 +2347,25 @@ export const EN_MESSAGES = {
   'productZip.item.problems': 'Could not be done: {count}',
   'productZip.cellChange': '{column}: {from} → {to}',
   'productZip.reportOnly':
-    'Sub products and photos missing from the zip are only listed. Nothing is removed unless you tick it below.',
+    'What the catalogue holds and the file does not is only listed. Nothing is removed unless you tick it below.',
+  'productZip.reportOnly.noTick': 'What the catalogue holds and the file does not is only listed. Nothing is removed.',
   'productZip.opt.bin': 'Move sub products missing from the file to the Recycle Bin ({count})',
   'productZip.opt.photos': 'Remove photos missing from the zip ({count})',
   'productZip.opt.photos.hint': 'A removed photo cannot be brought back.',
-  'productZip.nothing': 'The zip matches the catalogue. There is nothing to change.',
+  'productZip.opt.exact': 'Make the catalogue exactly this file',
+  'productZip.opt.exact.hint':
+    'Leaves nothing the file does not list. Sub products, main products, colours and brands it does not list go to the Recycle Bin. Photos missing from the zip, and the colours (codes) of a sub product that its rows leave out, are removed for good.',
+  'productZip.opt.exact.keepsColours':
+    'Except the colour list: this file has no colours.csv, so the colours stay as they are.',
+  'productZip.opt.exact.keepsPhotos': 'Except the photos: this file has no photos, so the photos stay as they are.',
+  'productZip.opt.exact.switchedOff':
+    'You may not delete colours, so the colours the file does not list are switched off instead.',
+  'productZip.opt.exact.needsLists':
+    'This would take colours or brands out of their lists, which your role may not do.',
+  'productZip.nothing': 'The file matches the catalogue. There is nothing to change.',
   'productZip.apply': 'Apply',
-  'productZip.phase.checking': 'Reading the zip',
-  'productZip.phase.products': 'Saving main products, sub products and colours',
+  'productZip.phase.checking': 'Reading the file',
+  'productZip.phase.products': 'Saving brands, main products, colours and sub products',
   'productZip.phase.photos': 'Adding photos',
   'productZip.phase.removing': 'Removing what you ticked',
   'productZip.photoProgress': '{done} of {total} photos',
@@ -2344,6 +2373,8 @@ export const EN_MESSAGES = {
   'productZip.done': 'The product restore is finished.',
   'productZip.done.binned': '{count} sub products moved to the Recycle Bin.',
   'productZip.done.photosRemoved': '{count} photos removed.',
+  'productZip.done.exact':
+    'Moved to the Recycle Bin: {mainProducts} main products and {brands} brands. Colours taken out: {colours}.',
   'productZip.failed': 'The product restore could not be completed',
   'productZip.another': 'Restore another zip',
   'productZip.problem.photo': 'The photo could not be added: {reason}',

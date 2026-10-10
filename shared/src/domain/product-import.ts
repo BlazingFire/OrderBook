@@ -102,9 +102,10 @@ export interface ProductImportResult {
 // --- The product backup zip -------------------------------------------------
 //
 // `OrderBook-Products-<company>-<date>.zip`: `products.csv` (the export above),
-// `main-products.csv`, `colours.csv` and `images/<CODE>.<ext>`, one file per
-// photo (`docs/PRODUCT_IMPORT_FORMAT.md`, "The product backup zip"). Restored on
-// the Master only, by `master/src/services/product-zip.service.ts`.
+// `main-products.csv`, `colours.csv`, `brands.csv`, `images/<CODE>.<ext>`, one
+// file per photo, and `photos.csv`, their captions
+// (`docs/PRODUCT_IMPORT_FORMAT.md`, "The product backup zip").
+// Restored on the Master only, by `master/src/services/product-zip.service.ts`.
 
 /** Refused above this before the zip is opened: it carries every photo. */
 export const MAX_PRODUCT_ZIP_BYTES = 1024 * 1024 * 1024;
@@ -131,12 +132,42 @@ export interface ProductZipProblem {
   params?: MessageParams;
 }
 
-/** The opt-ins on the preview; both off unless the person ticks them. */
+/** The opt-ins on the preview; all off unless the person ticks them. */
 export interface ProductRestoreOptions {
   /** Move sub products whose codes are missing from `products.csv` to the Recycle Bin. */
   binMissingProducts?: boolean;
   /** Delete photos of the file's sub products that have no file in `images/`. */
   removeMissingPhotos?: boolean;
+  /**
+   * Make the catalogue exactly this file: both of the above, and every other
+   * `notInFile` of the report acted on. Main products, colours and brands go
+   * to the Recycle Bin (colours are switched off instead where
+   * `colours.switchedOff`); `rows.variantsNotInFile` are removed for good,
+   * deactivated where history quotes one.
+   */
+  exactCatalogue?: boolean;
+}
+
+/**
+ * What `colours.csv` or `brands.csv` does to its list. A change's `column` is
+ * the value and the file's column, `White — Label`.
+ */
+export interface ProductZipList {
+  added: string[];
+  changed: ProductCellChange[];
+  /** True when the list is put in the file's order; absent when it is in it already. */
+  reordered?: boolean;
+  /**
+   * Values the list holds that the file does not list (brands without
+   * `brands.csv`: that no main product uses after the run), which
+   * `exactCatalogue` moves to the Recycle Bin. Colours switched off already
+   * are left out where `switchedOff`. Absent when there are none.
+   */
+  notInFile?: string[];
+  /** Colours: `exactCatalogue` switches `notInFile` off instead, for a person who may not delete a colour (`fields.manage`). */
+  switchedOff?: boolean;
+  /** Colours: the zip has no `colours.csv` (or none with a Colour column), so the colour list stays as it is, `exactCatalogue` or not. */
+  noFile?: boolean;
 }
 
 /**
@@ -149,29 +180,65 @@ export interface ProductZipReport {
   fileName: string;
   mainProducts: {
     added: Array<{ code: string; name: string; brand: string | null }>;
+    /** Main products whose name, brand, code or Order the file changes, by their code (a code-less one by its name). */
     renamed: Array<{ code: string; fields: ProductCellChange[] }>;
+    /** Main products in the Recycle Bin the file names by code: brought back. Absent when there are none. */
+    restoredFromBin?: Array<{ code: string; name: string; brand: string | null }>;
+    /**
+     * Live main products neither file names, with no sub product the run
+     * leaves under them, which `exactCatalogue` moves to the Recycle Bin.
+     * Absent when there are none.
+     */
+    notInFile?: Array<{ code: string; name: string; brand: string | null }>;
   };
   /** `products.csv` through the ordinary upsert import: counts, issues, ignored columns. */
   products: ProductImportResult;
   rows: {
     added: ProductRowChange[];
     changed: ProductRowChange[];
-    /** Live sub products none of whose codes the file names. */
+    /** Live sub products none of whose codes the file names and that no row read by its name. */
     notInFile: Array<{ code: string; name: string }>;
+    /** Live codes of a file sub product that its rows leave out: kept, or removed by `exactCatalogue`. Absent when there are none. */
+    variantsNotInFile?: Array<{ code: string; name: string }>;
+    /** Sub products a code brings back from the Recycle Bin, with the cells the file changes; counted in `products.updated`. Absent when there are none. */
+    restoredFromBin?: ProductRowChange[];
+    /** Main products whose sub products are put in the file's order. Absent when there are none. */
+    reordered?: Array<{ code: string; name: string }>;
   };
-  colours: { added: string[]; changed: ProductCellChange[] };
+  colours: ProductZipList;
+  /** `brands.csv`, empty for a zip without one. Absent from a Master older than 1.4.7. */
+  brands?: ProductZipList;
   photos: {
     added: string[];
     replaced: string[];
     unchanged: number;
+    /**
+     * Unchanged photos whose caption `photos.csv` gives otherwise: the restore
+     * puts that caption back. Absent from a Master older than 1.4.7.
+     */
+    recaptioned?: string[];
+    /**
+     * Sub products, by their first live code, whose main photo or photo order
+     * the restore puts back to the zip's. Absent from a Master older than 1.4.7.
+     */
+    reordered?: string[];
     unmatched: string[];
     duplicate: string[];
     notImage: string[];
     notInZip: string[];
+    /** The file holds no photo at all: none is missing from it, and the photos stay as they are. */
+    noFile?: boolean;
   };
   /** After a real run with the opt-ins: what went to the Recycle Bin and what was deleted. */
   binned?: number;
   photosRemoved?: number;
+  /** After a real run with `exactCatalogue`: the main products, colours and brands it took out. */
+  exactRemoved?: { mainProducts: number; colours: number; brands: number };
+  /**
+   * A preview for a person without `catalog.lists.manage`: `exactCatalogue`
+   * would take colours or brands out, which needs it, so that run is refused.
+   */
+  exactNeedsLists?: boolean;
   problems: ProductZipProblem[];
 }
 

@@ -93,17 +93,20 @@ export async function listOptions(
  *
  * Unknown values are rejected rather than passed through: `sourcePlatform` is a
  * reporting dimension, and a typo'd "whatsap" would quietly become its own
- * category in every breakdown that groups by it.
+ * category in every breakdown that groups by it. `includeInactive` takes one
+ * switched off too.
  */
 export async function isValidOption(
   tenantId: string,
   listKey: string,
   value: string,
+  { includeInactive = false }: { includeInactive?: boolean } = {},
   runner: Runner = db(),
 ): Promise<boolean> {
   const options = await listOptions(tenantId, runner);
   return options.some(
-    (option) => option.listKey === listKey && option.value === value && option.isActive,
+    (option) =>
+      option.listKey === listKey && option.value === value && (includeInactive || option.isActive),
   );
 }
 
@@ -123,7 +126,9 @@ export async function listOptionsForKey(
   let query = runner('option_lists').where({ tenant_id: tenantId, list_key: listKey });
   if (!options.includeDeleted) query = query.whereNull('deleted_at');
 
-  const rows = await query.orderBy('sequence').select('*');
+  // Two values can share a sequence (a new one is numbered one past the count, which a
+  // delete leaves taken): the older first, so every read, an export too, sees one order.
+  const rows = await query.orderBy(['sequence', 'created_at', 'id']).select('*');
   return rows.map(mapOptionListItem);
 }
 

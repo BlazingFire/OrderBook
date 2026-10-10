@@ -167,11 +167,13 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
     expect([...entries.keys()].sort()).toEqual(
       [
         'README.txt',
+        'brands.csv',
         'colours.csv',
         'images/OPT-0001.webp',
         'images/OPT-0001_2.webp',
         'images/OPT-0002.webp',
         'main-products.csv',
+        'photos.csv',
         'products.csv',
       ].sort(),
     );
@@ -186,7 +188,8 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
       'Main product',
       'Order',
     ]);
-    expect((await readSheetRows(entries.get('colours.csv')!))[0]).toEqual(['Colour', 'Hex']);
+    expect((await readSheetRows(entries.get('colours.csv')!))[0]).toEqual(['Colour', 'Label', 'Hex', 'Active']);
+    expect((await readSheetRows(entries.get('brands.csv')!))[0]).toEqual(['Brand', 'Label', 'Active']);
     expect(entries.get('README.txt')!.toString('utf8')).toMatch(/10-12/);
 
     // The bytes are the stored file: its hash is the row's checksum.
@@ -237,6 +240,8 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
       added: [],
       replaced: [],
       unchanged: 3,
+      recaptioned: [],
+      reordered: [],
       unmatched: [],
       duplicate: [],
       notImage: [],
@@ -457,7 +462,7 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
     expect(preview.photos).toMatchObject({ unchanged: 3, notInZip: [] });
   });
 
-  it('refuses a climbing entry name, a file that is no zip, and a zip with no products.csv', async () => {
+  it('refuses a climbing entry name, a broken zip, a sheet with no product columns, and a zip with no products.csv', async () => {
     const { entries } = await exported();
     const file = await zipOf([['xx/products.csv', entries.get('products.csv')!]]);
     const bytes = await readFile(file);
@@ -471,10 +476,16 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
       messageKey: 'validation.productZip.entryRejected',
     });
 
-    const text = path.join(dir, 'not.zip');
-    await writeFile(text, 'Brand,Code\r\n');
-    await expect(previewProductZip(text, 'not.zip', admin)).rejects.toMatchObject({
+    const broken = path.join(dir, 'broken.zip');
+    await writeFile(broken, Buffer.concat([Buffer.from('PK\u0003\u0004'), Buffer.alloc(64)]));
+    await expect(previewProductZip(broken, 'broken.zip', admin)).rejects.toMatchObject({
       messageKey: 'validation.productZip.notAZip',
+    });
+    // Not a zip's first bytes: read as a bare products sheet, refused with the import's own words.
+    const text = path.join(dir, 'not.csv');
+    await writeFile(text, 'Brand,Code\r\n');
+    await expect(previewProductZip(text, 'not.csv', admin)).rejects.toMatchObject({
+      messageKey: 'validation.import.missingColumn',
     });
 
     const bare = await zipOf([['images/OPT-0001.webp', entries.get('images/OPT-0001.webp')!]]);
@@ -572,8 +583,8 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
       csv(colourHeader!, [
         ...colourRows,
         colourRows[0]!,
-        ['Zzz New', '#123456'],
-        ['Zzz New', '#654321'],
+        ['Zzz New', 'Zzz New', '#123456', 'yes'],
+        ['Zzz New', 'Zzz New', '#654321', 'yes'],
       ]),
     );
     const file = await zipOf(edited);
@@ -605,7 +616,7 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
 
     // A first boot whose zip cannot be read: under way, not done, and nothing written.
     const broken = path.join(dir, 'broken.zip');
-    await writeFile(broken, 'not a zip');
+    await writeFile(broken, Buffer.concat([Buffer.from('PK\u0003\u0004'), Buffer.alloc(64)]));
     await expect(loadShippedCatalogue({ zip: broken })).rejects.toMatchObject({
       messageKey: 'validation.productZip.notAZip',
     });
@@ -733,6 +744,13 @@ describe.skipIf(!canRunIntegrationTests)('the product backup zip (integration)',
         fileName: 'backup.zip',
         products: { unchanged: SUB_PRODUCTS },
       });
+      // The preview is of the run its opt-ins ask for: the exact catalogue asks products.delete.
+      await agent
+        .post('/api/products/restore')
+        .field('dryRun', 'true')
+        .field('exactCatalogue', 'true')
+        .attach('file', zip, 'backup.zip')
+        .expect(403);
 
       const started = await agent
         .post('/api/products/restore')

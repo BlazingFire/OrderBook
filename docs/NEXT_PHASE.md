@@ -10,7 +10,33 @@ This file assumes both.
 
 ---
 
-## First: the 2026-10-08 batch is on `main`, not built yet
+## First: the 2026-10-09 product backup batch is on `s7/product-backup`, not merged, not built
+
+The product backup and restore made exact: every colour, weight, code, photo and caption comes back, older product
+files are read, two installs' backups combine with no sub product twice, "Make the catalogue exactly this file"
+leaves nothing shipped beside the owner's data, and an update changes no data. What is true is in `HANDOFF.md`,
+under "Product backup and restore made exact (2026-10-09)", with its 2026-10-10 fix round (the exact run clears
+the way before it writes, the preview takes the opt-ins, a sheet with no Colour column changes no colour); the rules
+are in `docs/PRODUCT_IMPORT_FORMAT.md`. In order:
+
+1. Merge `s7/product-backup` and `s12/docs` into `main` once the uncommitted party-screen work in the main checkout
+   is committed (it is someone else's; do not touch it). Run `npm run verify` on the merge.
+2. Ask the owner the nine decisions listed in `HANDOFF.md` ("Owner decisions waiting"): shipped photos on an update
+   from 1.4.4 or earlier (his own Master), brand capitals, the exact option's default and emptying the Recycle Bin of
+   what it moved, twins with identical cells, photo 2 of a one-colour sub product, the 1.4.5 catalogue
+   corrections on his update, and, from the 2026-10-10 fix round: the colour list with no `colours.csv` under the
+   exact option (L3), the exact option's second run when a main product it takes out only at the end holds a name
+   the file gives another, and sub products with no stored position coming back numbered on a restore into an
+   empty catalogue.
+3. When he shares his two product backups: combine them into one zip (one row per sub product, each taking the
+   other's data; main products, colours, brands and photos merged the same way), restore it onto a scratch new
+   install with "Make the catalogue exactly this file", and check its export against both files. If the preview
+   lists a main product rename refused for a name the run takes out only at the end, restore the same file a second
+   time (`HANDOFF.md` question 8).
+4. Build 1.4.7 with this and the 2026-10-08 batch together (the steps below), then a browser or Electron pass of
+   the restore dialog, which is not recorded for this batch.
+
+## Then: the 2026-10-08 batch is on `main`, not built yet
 
 Product backup zip, a build that carries its product database, the Office setup inside the Master, the notice board on
 Basic Home and at sign-in, Escape goes back, and the New Order dropdown chain. What is true is in `HANDOFF.md`, under
@@ -36,6 +62,8 @@ Basic Home and at sign-in, Escape goes back, and the New Order dropdown chain. W
    - Office: the Notice board badge can come back after "Mark as read" on an offline reload (seen by the Sell today builder, not investigated).
    - Dates on the new screens use the PC's locale (dd-mm-yyyy on an Indian-English PC, as in the owner's screenshot).
 6. Then the 1.4.6 leftovers below.
+7. Superseded by the 2026-10-09 batch above: the shipped catalogue now loads only on an install not yet set up,
+   and the shipped photos never attach on an update.
 
 ## Then: 1.4.6 is released; what comes next (2026-10-07)
 

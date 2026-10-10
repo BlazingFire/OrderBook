@@ -522,6 +522,16 @@ async function requestForm<T>(path: string, form: FormData): Promise<T> {
   return (await response.json()) as T;
 }
 
+/** A product restore's upload and its opt-ins, each `true` or absent. */
+function productRestoreForm(file: File, options: ProductRestoreOptions): FormData {
+  const form = new FormData();
+  form.append('file', file);
+  if (options.binMissingProducts) form.append('binMissingProducts', 'true');
+  if (options.removeMissingPhotos) form.append('removeMissingPhotos', 'true');
+  if (options.exactCatalogue) form.append('exactCatalogue', 'true');
+  return form;
+}
+
 /** What first-run setup answers: the two Server Masters it made, and how panels pair. */
 export interface FirstRunCredentials {
   masterUniqueId: string;
@@ -891,19 +901,14 @@ export const api = {
 
   // The product backup zip (`products.export` to back up; the restore checks the bulk keys).
   exportProductZip: () => requestFile('/api/products/export.zip', 'products.zip'),
-  previewProductZip: (file: File) => {
-    const form = new FormData();
-    form.append('file', file);
+  // The preview is of the run its opt-ins ask for.
+  previewProductZip: (file: File, options: ProductRestoreOptions = {}) => {
+    const form = productRestoreForm(file, options);
     form.append('dryRun', 'true');
     return requestForm<ProductZipReport>('/api/products/restore', form);
   },
-  startProductRestore: (file: File, options: ProductRestoreOptions) => {
-    const form = new FormData();
-    form.append('file', file);
-    if (options.binMissingProducts) form.append('binMissingProducts', 'true');
-    if (options.removeMissingPhotos) form.append('removeMissingPhotos', 'true');
-    return requestForm<ProductRestoreJob>('/api/products/restore', form);
-  },
+  startProductRestore: (file: File, options: ProductRestoreOptions) =>
+    requestForm<ProductRestoreJob>('/api/products/restore', productRestoreForm(file, options)),
   productRestoreJob: () => request<ProductRestoreJob | null>('/api/products/restore/job'),
 
   // Bulk party import and export (`parties.bulk` / `parties.view`, checked by the service).

@@ -75,6 +75,7 @@ import {
 import type { TransactionContext } from '../repositories/transaction.js';
 import { assertDigest, exportArchive } from './archive-export.service.js';
 import { enterMaintenance, leaveMaintenance, type JobProgress } from './backup-job.js';
+import { stopCataloguePhotos } from './catalogue-photos.service.js';
 import { scheduleLongOfflineNoticesAtBoot } from './panel.service.js';
 import { resetProcessCaches } from './process-caches.js';
 import { ensureServerMasterRole } from './server-master.service.js';
@@ -482,6 +483,11 @@ export async function restoreArchive(file: string, options: ArchiveRestoreOption
       done += upload.bytes;
       progress({ done });
     }
+
+    // The shipped photos still being attached on a new install write through
+    // the services, which maintenance does not stop: done before the safety
+    // copy, so it copies a catalogue nothing is writing to.
+    await stopCataloguePhotos();
 
     // 2. The safety copy, while the current data is still there to copy.
     if (options.mode === 'replace') safetyArchivePath = await writeSafetyArchive();

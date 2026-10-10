@@ -59,7 +59,7 @@ export const catalogueTransport: CatalogueTransport = {
   importProducts: (file, options) => api.importProducts(file, options),
   productZip: {
     exportZip: () => api.exportProductZip(),
-    preview: (file) => api.previewProductZip(file),
+    preview: (file, options) => api.previewProductZip(file, options),
     start: (file, options) => api.startProductRestore(file, options),
     job: () => api.productRestoreJob(),
   },

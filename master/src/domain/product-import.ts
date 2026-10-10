@@ -74,7 +74,7 @@ export const IMPORT_COLUMNS: readonly ImportColumn[] = [
   { field: 'name', label: 'Sub product', kind: 'text', required: true, note: 'Required. The sub product as printed — e.g. 102, DAMRU. Rows sharing a main product and sub product are one sub product.' },
   { field: 'size', label: 'Size', kind: 'text', note: 'e.g. 18x12, L-27 B-15 H-26' },
   { field: 'colourRule', label: 'Colour rule', kind: 'text', note: 'fixed = made in the one colour named in Colour; dedicated = the design is its own colour, none shown; multicolour = any colour of the colour range, picked on the lead. Blank reads the Colour column the old way.' },
-  { field: 'variant', label: 'Colour', kind: 'text', note: 'The colour of a fixed sub product — e.g. White, Magenta. Leave blank for dedicated and multicolour.' },
+  { field: 'variant', label: 'Colour', kind: 'text', note: 'The colour of a fixed sub product — e.g. White, Magenta. Leave blank for dedicated; a multicolour sub product may list its colours here too.' },
   { field: 'code', label: 'Code', kind: 'text', required: true, note: 'Required. The sub product software code — e.g. OPT-0001. Unique across the whole catalogue.' },
   { field: 'weightKg', label: 'Weight (kg)', kind: 'number', min: 0, exclusiveMin: true, note: 'Weight of one piece in kilograms. Blank until known.' },
   { field: 'alias', label: 'Alias', kind: 'text', note: 'A short name staff use at the counter.' },
@@ -189,6 +189,8 @@ export interface ImportRow {
   /** Product-level fields; `categoryName` and `name` are always present. */
   product: ProductInput;
   variant: ProductVariantInput;
+  /** The live sub product the row's code is on, set only to keep twins apart (`separateTwins`). */
+  owner?: string;
 }
 
 export interface ParsedRow {
@@ -203,13 +205,22 @@ export function isBlankRow(cells: readonly string[]): boolean {
 }
 
 /**
- * "1,200.50", "12.5 kg", "12,5" (a decimal comma, as a semicolon-separated
- * CSV writes it) → a number; anything else, including `0x10` and `1e3` which
+ * "1,200.50", "12.5 kg", "12,5" and "0,125" (a decimal comma, as a
+ * semicolon-separated CSV writes it), "1.234,5" (dot groups, then a decimal
+ * comma) → a number; anything else, including `0x10` and `1e3` which
  * `Number()` would accept, is NaN.
+ *
+ * A lone comma is the decimal mark whatever follows it: the one number column
+ * is a piece's weight, kept to three decimals, so `1,125` is 1.125 kg from a
+ * decimal-comma Excel, never a 1125 kg piece.
  */
 function parseNumber(text: string): number {
   const bare = text.replace(/\s*kgs?$/i, '').replace(/\s/g, '');
-  const plain = /^-?\d+,\d{1,2}$/.test(bare) ? bare.replace(',', '.') : bare.replace(/,/g, '');
+  const plain = /^-?\d+,\d+$/.test(bare)
+    ? bare.replace(',', '.')
+    : /^-?\d{1,3}(\.\d{3})+,\d+$/.test(bare)
+      ? bare.replace(/\./g, '').replace(',', '.')
+      : bare.replace(/,/g, '');
   return /^-?(\d+\.?\d*|\.\d+)$/.test(plain) ? Number(plain) : Number.NaN;
 }
 
@@ -219,12 +230,18 @@ function parseNumber(text: string): number {
  *
  * Every column is checked rather than stopping at the first problem, so a row
  * with three wrong cells reports three problems once, not one per upload.
+ *
+ * `restore` reads a backup of the catalogue (`product-zip.service.ts`) rather
+ * than a sheet a person typed: a cell is the stored value exactly — its ends
+ * trimmed, its inner spacing kept, since the screens keep it — and a blank
+ * Alias or Size is that value cleared (null), not left out.
  */
 export function parseImportRow(
   cells: readonly string[],
   match: HeaderMatch,
   headerRow: readonly string[],
   row: number,
+  options: { restore?: boolean } = {},
 ): { input: ImportRow | null; issues: ProductImportIssue[] } {
   const issues: ProductImportIssue[] = [];
   const product: Record<string, unknown> = {};
@@ -243,7 +260,10 @@ export function parseImportRow(
   match.byIndex.forEach((column, index) => {
     if (!column) return;
     const raw = (cells[index] ?? '').trim();
-    if (raw === '') return;
+    if (raw === '') {
+      if (options.restore && (column.field === 'alias' || column.field === 'size')) product[column.field] = null;
+      return;
+    }
 
     const header = (headerRow[index] ?? column.field).trim() || column.field;
     const target = VARIANT_FIELDS.has(column.field) ? variant : product;
@@ -252,8 +272,8 @@ export function parseImportRow(
       case 'text':
         // Inner runs of whitespace (a pasted line break, a double space, a
         // non-breaking space) would make "ONE  PIECE" a different product from
-        // "ONE PIECE"; a code is left as typed.
-        target[column.field] = column.field === 'code' ? raw : raw.replace(/\s+/g, ' ');
+        // "ONE PIECE"; a code is left as typed, and so is a restore's cell.
+        target[column.field] = column.field === 'code' || options.restore ? raw : raw.replace(/\s+/g, ' ');
         return;
 
       case 'boolean': {
@@ -300,9 +320,11 @@ export function parseImportRow(
   // Built as loose records above because the fields are chosen at runtime;
   // by here the required strings are present.
   // The colour rule decides what the Colour cell means (docs/catalogue/
-  // CATALOGUE_MODEL.md §2): only a fixed sub product carries one, and a
-  // multicolour one is the single flag the model stores. No rule at all reads
-  // the sheet the way it was read before the column existed.
+  // CATALOGUE_MODEL.md §2): a dedicated sub product carries none, and a
+  // multicolour one is the single flag the model stores — and keeps a colour
+  // it is given, because the form lets a multicolour sub product have colours
+  // too and the export writes them. No rule at all reads the sheet the way it
+  // was read before the column existed.
   const ruleText = typeof variant.colourRule === 'string' ? variant.colourRule.toLowerCase() : '';
   const rule = ruleText ? COLOUR_RULES[normalizeHeader(ruleText)] : undefined;
   const colour = typeof variant.variant === 'string' ? variant.variant : null;
@@ -320,7 +342,7 @@ export function parseImportRow(
     product: product as unknown as ProductInput,
     variant: {
       code: String(variant.code ?? ''),
-      label: rule === 'dedicated' || rule === 'multicolour' ? null : colour,
+      label: rule === 'dedicated' ? null : colour,
       weightKg: typeof variant.weightKg === 'number' ? variant.weightKg : null,
     },
   };
@@ -347,14 +369,21 @@ export function parseImportRow(
  * Reported against the *later* row and pointing at the first, so the person
  * fixes the duplicate rather than the original. Case-insensitive, matching the
  * database's own `lower(code)` index.
+ *
+ * `byCode`: a row whose variant is its code, not its colour (a sheet with no
+ * Colour column naming a live code), is a duplicate only by its code — when
+ * every row of its sub product is one. A new code beside them would otherwise
+ * hold the blank colour alone and recode the live code it matches.
  */
 export function findDuplicatesInFile(
   rows: readonly ParsedRow[],
   headerFor: (field: ImportField) => string,
+  byCode: (entry: ParsedRow) => boolean = () => false,
 ): ProductImportIssue[] {
   const issues: ProductImportIssue[] = [];
   const firstCode = new Map<string, number>();
   const firstVariant = new Map<string, number>();
+  const mixed = new Set(rows.filter((entry) => !byCode(entry)).map((entry) => groupKey(entry.input)));
 
   const duplicate = (row: number, field: ImportField, first: number): void => {
     issues.push({
@@ -366,13 +395,15 @@ export function findDuplicatesInFile(
     });
   };
 
-  for (const { row, input } of rows) {
+  for (const entry of rows) {
+    const { row, input } = entry;
     const code = input.variant.code.trim().toLowerCase();
     if (code) {
       const first = firstCode.get(code);
       if (first === undefined) firstCode.set(code, row);
       else duplicate(row, 'code', first);
     }
+    if (byCode(entry) && !mixed.has(groupKey(input))) continue;
 
     const variantKey = `${groupKey(input)}${(input.variant.label ?? '').trim().toLowerCase()}`;
     const first = firstVariant.get(variantKey);
@@ -387,7 +418,8 @@ export function findDuplicatesInFile(
  * Category and model, case-insensitively: what makes two rows one product.
  * The category is its code when the row gives one, else its (brand, name)
  * pair — two brands may share a product name. Fields are joined with a unit
- * separator, which no trimmed cell contains.
+ * separator, which no trimmed cell contains. A twin's row (`separateTwins`)
+ * also carries the sub product it is on.
  */
 function groupKey(input: ImportRow): string {
   const text = (value: string | null | undefined): string => (value ?? '').trim().toLowerCase();
@@ -395,7 +427,33 @@ function groupKey(input: ImportRow): string {
   const category = text(categoryCode)
     ? ['code', text(categoryCode)]
     : ['name', text(categoryBrand), text(categoryName)];
-  return [...category, text(name)].join('\u001f');
+  return [...category, text(name), ...(input.owner ? [input.owner] : [])].join('\u001f');
+}
+
+/**
+ * Twins: rows that read as one sub product (one main product, one name) while
+ * their codes already sit on two or more live sub products — what two imports
+ * made before the import kept the name rule. Each such row is marked with the
+ * sub product its code is on, so the rows fold back into the products they
+ * came from and an unedited backup reads as it is. A row of that name whose
+ * code is on none of them is left to the name, where the name rule refuses
+ * it: which twin it belongs to is not in the file.
+ */
+export function separateTwins(
+  rows: readonly ParsedRow[],
+  ownerOf: (code: string) => string | undefined,
+): void {
+  const owners = new Map<string, Set<string>>();
+  for (const { input } of rows) {
+    const owner = ownerOf(input.variant.code);
+    if (!owner) continue;
+    const key = groupKey(input);
+    owners.set(key, (owners.get(key) ?? new Set<string>()).add(owner));
+  }
+  for (const { input } of rows) {
+    const owner = ownerOf(input.variant.code);
+    if (owner && (owners.get(groupKey(input))?.size ?? 0) > 1) input.owner = owner;
+  }
 }
 
 /** Several sheet rows folded into one product. */
@@ -417,10 +475,17 @@ export interface ImportGroup {
  * A group that names a variant on some rows and leaves it blank on others is
  * refused whole (`validation.import.mixedVariants`): it cannot be both a
  * one-form product and a model with colours.
+ *
+ * A `restore` reads a backup, which writes one sub product's cells alike on
+ * every row: a later row that disagrees with the first is a second sub
+ * product the file cannot tell apart from it (twins of one name, or a
+ * hand-combined file), so it is reported (`validation.import.subProductCellsDiffer`)
+ * rather than folded into the first and its cells lost.
  */
 export function groupImportRows(
   rows: readonly ParsedRow[],
   headerFor: (field: ImportField) => string,
+  options: { restore?: boolean } = {},
 ): { groups: ImportGroup[]; issues: ProductImportIssue[] } {
   const byKey = new Map<string, ParsedRow[]>();
   for (const entry of rows) {
@@ -433,7 +498,23 @@ export function groupImportRows(
   const groups: ImportGroup[] = [];
   const issues: ProductImportIssue[] = [];
 
-  for (const [key, members] of byKey) {
+  for (const [key, all] of byKey) {
+    const head = all[0] as ParsedRow;
+    const members = all.filter((entry) => {
+      const differs = options.restore ? differingField(head.input.product, entry.input.product) : undefined;
+      if (differs === undefined) return true;
+      // The Colour rule cell is where the template's multicolour flag lives.
+      const column = headerFor(differs === 'multiColour' ? 'colourRule' : differs);
+      issues.push({
+        row: entry.row,
+        kind: 'error',
+        column,
+        messageKey: 'validation.import.subProductCellsDiffer',
+        params: { name: head.input.product.name, column, firstRow: head.row },
+      });
+      return false;
+    });
+
     const labelled = members.filter((entry) => (entry.input.variant.label ?? '').trim() !== '');
     if (labelled.length > 0 && labelled.length < members.length) {
       for (const entry of members) {
@@ -467,6 +548,12 @@ export function groupImportRows(
   }
 
   return { groups, issues };
+}
+
+/** The first sub product cell two rows give differently, if any. */
+function differingField(a: ProductInput, b: ProductInput): ProductField | undefined {
+  const fields = new Set([...Object.keys(a), ...Object.keys(b)]) as Set<ProductField>;
+  return [...fields].find((field) => a[field] !== b[field]);
 }
 
 /**

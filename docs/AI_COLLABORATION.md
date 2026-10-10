@@ -190,6 +190,57 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-09 - Product backup and restore made exact (Claude, Opus, single session)
+
+- **Ask (owner):** make the product backup and restore work with the current and earlier versions (colours, photos,
+  weights, variants), double-check and fix; combine two backups he will share (no product twice, each getting the
+  other's data); upload that into the current software with no shipped data left; an update must leave all data
+  the same.
+- **Run:** a five-lens audit with a probe per finding; builders in `../OrderBook-s8`…`s11` (boot, import, photos,
+  zip + exact catalogue), each reviewed adversarially and fixed; the lead's `cf861c70`, `b6a9d919`, `1a0dd4b5` (probes
+  removed). Branch `s7/product-backup`, docs on `s12/docs`. **Not merged to `main`** (someone else's uncommitted
+  party-screen work is in the main checkout), **not built**.
+- **Changed:** `product-zip.service.ts` (brands.csv, photos.csv, colours.csv with Label and Active, stored Order;
+  bare and dated 1.2.4–1.4.6 files; main products by code, brand + name, the Recycle Bin; list plans; content-first
+  photo matching, captions, order; `exactCatalogue`; a file with no photos leaves them), `product-import.service.ts`
+  and `domain/product-import.ts` (`restore`: exact cells, blanks clear, name match and recode, Bin returns, order,
+  `exactVariants`, `subProductCellsDiffer`, `separateTwins`; the name rule in every import; the decimal comma),
+  `image.service.ts` (byte-for-byte masters, `onlyIfEmpty`), `catalogue-photos.service.ts` (once per install, after a
+  printed-catalogue load; stop/retire), `catalogue-seed.service.ts` (`SHIPPED_CATALOGUE_MARKER`),
+  `loadShippedCatalogue` (the shipped catalogue only before setup), archive and `.obbackup` restores (stop the attach),
+  `catalog.updateCategory` (`switchedOffBrand`), `listOptionsForKey` (tiebreak), `lib/csv.ts` / `lib/spreadsheet.ts`
+  (the apostrophe guard), `ui/src/ProductZipModal.tsx`, `shared` report fields and i18n keys.
+- **Tests:** six new files `master/tests/product-backup-*` (93 tests); `catalogue-photos`, `product-zip` and
+  `ui/tests/master-catalogue` updated for the new rules (listed in `docs/STRUCTURE.md` §12.2).
+- **Docs:** `docs/PRODUCT_IMPORT_FORMAT.md` (the zip section rewritten; migration citation fixed to `20261017000000`),
+  `docs/STRUCTURE.md` (services, boot and restore flows, photos, test map), `docs/UPDATES.md`,
+  `docs/7-STORAGE-BACKUP-RESTORE.md`, `docs/catalogue/CATALOGUE_MODEL.md`, `docs/schema/02-parties-and-products.md`,
+  `docs/backend-modules/04-API-CONTRACT.md` §23, `HANDOFF.md` (the batch and six owner decisions), `docs/NEXT_PHASE.md`.
+  There is no `7-IMAGE-PIPELINE.md` in `docs/`; the byte-for-byte master and `onlyIfEmpty` are in `docs/STRUCTURE.md` §5.6.
+- **Fix round (2026-10-10, `cad9b92a`…`adf9799f` on `s7/product-backup`, merged with these docs as `d92ebe5b`):** a
+  sub product matched by name keeps its left-out codes unless the exact option is ticked; the exact option keeps
+  the brand of a main product named by name alone; the exact run does a dry run of the import, bins the sub products
+  it takes out and the main products they leave empty (`clearedFirst`) before it writes, so a rename onto one of
+  their names lands in one run (a sub product a live lead or order quotes is read as staying; a main product emptied
+  only by the rows is binned at the end, so a rename onto its name lands on a second run); the preview takes the
+  opt-ins (`previewProductZip(…, options)`, the route, the transport) and the modal previews again on the exact box;
+  notes under the box for no `colours.csv` and no photos; a sheet with no Colour column changes no colour
+  (`MergeRules.colours`, `findDuplicatesInFile(…, byCode)`); `UploadImageRequest.keepWebpMaster`, the product
+  restore's alone; modal wording ("file", the no-tick sentence, the done line at zero); helpers reused
+  (`isValidOption(…, includeInactive)`). Tests: `product-backup-exact` 12 → 18, `product-backup-import` 36 (each
+  `it.each` case counted), `product-backup-photos`, `product-zip` and `ui/tests/master-catalogue` (+3) extended;
+  the six files now hold 107 tests. Docs: `docs/PRODUCT_IMPORT_FORMAT.md` (name match, exact bytes, the opt-ins and
+  the preview, "How the exact run clears the way", refusals, the run, no Colour column, tests),
+  `docs/STRUCTURE.md` (the modal, image, product-import and product-zip entries, the restore flow, §11.13, the test
+  map), `docs/backend-modules/04-API-CONTRACT.md` §23 (the dry run takes the opt-ins), `HANDOFF.md` (the fix round,
+  owner questions 7–9: L3 colours with no `colours.csv`, the exact option's second run, sub products with no
+  position on an empty restore), `docs/NEXT_PHASE.md`.
+- **Verified:** each builder's suites on PostgreSQL, none skipped; full suite without probes on `4cb607f0` exit 0
+  (404 files + 1 skipped; 5,413 tests + 17 skipped); typecheck 0; eslint 0 on touched files. Full gate on the
+  final branch: lint 0, typecheck 0, test 0 (404 files + 1 skipped; 5,426 tests + 17 skipped), build 0. Browser
+  pass on a fresh scratch Master: a 1.2.5 products sheet restored with "Make the catalogue exactly this file"
+  over the shipped catalogue exports back row for row. **Not verified:** the owner's real files, an Electron
+  pass, a real build.
 ### 2026-10-09 - Final order list: Notes and Action columns (Claude, Opus)
 
 - **Ask (owner):** the final order list the same as the new order list — a Notes column with the order's notes, and an Action column.

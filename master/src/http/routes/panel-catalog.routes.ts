@@ -168,7 +168,7 @@ export function productImportRoutes(
   /**
    * The zip, as a dry run (the preview) or the real run (202 and the job's
    * first status; `GET /products/restore/job` follows it). The opt-ins ride as
-   * form fields, `true` or absent.
+   * form fields, `true` or absent, on both: the preview is of the run they ask.
    */
   routes.post(
     '/products/restore',
@@ -178,10 +178,17 @@ export function productImportRoutes(
       const { path: filePath, originalname } = req.file;
       const fileName = originalname || 'products.zip';
       const body = (req.body ?? {}) as Record<string, unknown>;
+      const options = {
+        binMissingProducts: String(body.binMissingProducts ?? '') === 'true',
+        removeMissingPhotos: String(body.removeMissingPhotos ?? '') === 'true',
+        exactCatalogue: String(body.exactCatalogue ?? '') === 'true',
+      };
 
       if (String(body.dryRun ?? '') === 'true') {
         try {
-          res.json(await productZipService.previewProductZip(filePath, fileName, actorOf(req)));
+          res.json(
+            await productZipService.previewProductZip(filePath, fileName, actorOf(req), options),
+          );
         } finally {
           await rm(filePath, { force: true });
         }
@@ -192,10 +199,7 @@ export function productImportRoutes(
         const status = productZipService.startProductRestore(
           filePath,
           fileName,
-          {
-            binMissingProducts: String(body.binMissingProducts ?? '') === 'true',
-            removeMissingPhotos: String(body.removeMissingPhotos ?? '') === 'true',
-          },
+          options,
           actorOf(req),
         );
         res.status(202).json(status);

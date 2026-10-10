@@ -51,11 +51,22 @@ import { allocatePermanentIds, nextHlc } from '../repositories/identity.reposito
 import * as productRepo from '../repositories/product.repository.js';
 import { insertVariantRows } from '../repositories/product-variant.repository.js';
 import { permissionSetForRole } from '../repositories/role.repository.js';
+import * as settingsRepo from '../repositories/settings.repository.js';
 import { resolveDefaultTenantId } from '../repositories/tenant.repository.js';
 import type { TransactionContext } from '../repositories/transaction.js';
 import { publishChange } from './change-bus.js';
 
 const log = createLogger('catalogue-seed');
+
+/**
+ * Where a load of the catalogue this build ships is recorded: a settings row no
+ * `SETTINGS` definition names, so no screen shows it (as
+ * `internal.cataloguePhotosAttached`). The boot load (`loadShippedCatalogue`)
+ * writes `state: 'loading'` before it writes anything and `'done'` once it ends;
+ * every load of the printed file below writes `loaded: 'markdown'`, which is what
+ * lets the boot's photo attach give that catalogue its shipped photos, once.
+ */
+export const SHIPPED_CATALOGUE_MARKER = 'internal.shippedCatalogueLoaded';
 
 /** The shipped file, parsed — before anything is touched, so a bad file never reaches a delete. */
 export async function readCatalogueFile(
@@ -199,6 +210,20 @@ export async function loadCatalogue(
       skipped,
       ...removed,
     };
+
+    // The printed catalogue is in, however it was asked for (the boot, the
+    // developer route, `seed:catalogue`, the sample data, `reload:catalog`): the
+    // next boot's photo attach may give it the shipped photos, once
+    // (`catalogue-photos.service.ts`), and the boot load has nothing left to do.
+    await settingsRepo.upsertSetting(
+      tenantId,
+      SHIPPED_CATALOGUE_MARKER,
+      { state: 'done', loaded: 'markdown', at: new Date().toISOString() },
+      false,
+      1,
+      null,
+      trx,
+    );
 
     // Two literal call sites rather than a ternary `action`, so
     // `i18n-tokens.test.ts` can see that both have a catalogue token.

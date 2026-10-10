@@ -53,7 +53,7 @@ import {
   PRODUCT_COLUMNS,
 } from '@orderbook/shared';
 
-import { requirePermission, type ActorContext } from '../domain/actor.js';
+import { actorCan, requirePermission, type ActorContext } from '../domain/actor.js';
 import {
   findDuplicatesInFile,
   groupImportRows,
@@ -62,6 +62,7 @@ import {
   isBlankRow,
   matchHeaders,
   parseImportRow,
+  separateTwins,
   templateGuideRows,
   type ImportField,
   type ImportGroup,
@@ -234,7 +235,9 @@ export async function buildProductExport(
       product.name,
       product.size ?? '',
       rule,
-      rule === 'fixed' ? (variant.label ?? '') : '',
+      // Every colour a sub product has, a multicolour one's too: the form lets
+      // it have both, and a blank cell would read back as one unlabelled code.
+      variant.label ?? '',
       variant.code,
       variant.weightKg ?? '',
       product.alias ?? '',
@@ -273,18 +276,98 @@ interface ImportOptions {
   mode: ProductImportMode;
   /**
    * Set by the product zip restore (`product-zip.service.ts`), which writes its
-   * own one activity row and change event, so this run writes neither. A new
-   * sub product takes its place in the file as its catalogue order, and the
-   * result lists the rows added and the cells changed. `pendingCategories` are
-   * the main products the zip will create first: a dry run reads them as there.
+   * own one activity row and change event, so this run writes neither.
+   *
+   * The file is a backup of the catalogue, read as the stored data rather than
+   * as a sheet a person typed: a cell keeps its inner spacing and its colour's
+   * own spelling, and a blank Alias, Size or Weight clears the value. A sub
+   * product the file names under codes it does not have is the live one of
+   * that name in that main product, and one whose code is only in the Recycle
+   * Bin comes back from there — neither becomes a twin. The file's order is
+   * the catalogue order: a new sub product takes its place, and a main product
+   * whose sub products the file lists in another order is renumbered.
+   *
+   * The result lists the rows added and the cells changed (`ImportedRows`).
+   * `pendingCategories` are the main products the zip will create first, and
+   * `plannedCategories` the ones it will recode, rename or bring back from the
+   * Recycle Bin, as it leaves them: a dry run reads them as there.
+   * `exactVariants` makes each file sub product's codes exactly its rows: a
+   * code the file leaves out is removed (deactivated while history quotes it),
+   * not only listed. `leaving` are the live sub products the exact run moves
+   * to the Recycle Bin before it writes: a dry run reads them as gone, so the
+   * name one holds is free for a file row, as it is by the time the run writes.
    */
-  restore?: { pendingCategories?: readonly productRepo.CategorySeed[] };
+  restore?: {
+    pendingCategories?: readonly productRepo.CategorySeed[];
+    plannedCategories?: ReadonlyArray<{ id: string; code: string | null; name: string; brand: string | null }>;
+    exactVariants?: boolean;
+    leaving?: readonly string[];
+  };
 }
 
-type UpdateGroup = ImportGroup & { existing: Product };
+type UpdateGroup = ImportGroup & {
+  existing: Product;
+  /** In the Recycle Bin: the update brings it back first. */
+  binned?: boolean;
+  /**
+   * The main product the plan found for the file's cells. The write files the
+   * sub product by this id rather than finding it again by name: the write's
+   * lookup compares exactly, while a typed sheet's name was matched with its
+   * spacing collapsed, and would create a second main product beside it.
+   */
+  mainId?: string;
+};
+
+const isUpdate = (group: ImportGroup): group is UpdateGroup => 'existing' in group;
 
 /** The rows a restore lists, by code; only with `restore`. */
-export type ImportedRows = { added: ProductRowChange[]; changed: ProductRowChange[] };
+export type ImportedRows = {
+  added: ProductRowChange[];
+  changed: ProductRowChange[];
+  /** Live codes (colours) of a file sub product that the file does not name: removed under `exactVariants`, else kept. */
+  variantsNotInFile: Array<{ code: string; name: string }>;
+  /** Sub products a code brought back from the Recycle Bin, with the cells the file changed. */
+  restoredFromBin: ProductRowChange[];
+  /** Main products whose sub products the file lists in another order: renumbered in the file's. */
+  reordered: Array<{ code: string; name: string }>;
+  /** Every live sub product a file row matched, changed or not — none of them is missing from the file. */
+  matchedIds: string[];
+  /**
+   * Each sub product the run adds, changes or brings back from the Bin, as it
+   * leaves it: the live one's id (null for a new one) and every code with its
+   * colour — what a dry run plans those rows' photos against. A code
+   * `exactVariants` removes is still here, as a dry run without it reads it,
+   * so that run plans the photos against the same codes its preview did.
+   */
+  subProducts: Array<{
+    id: string | null;
+    name: string;
+    hasVariants: boolean;
+    variants: Array<{ code: string; label: string | null }>;
+  }>;
+};
+
+/** How a run reads the file against the stored product, the same for its preview and its writes. */
+interface MergeRules {
+  /** A restore: the cells are the stored data. Otherwise a value equal to the stored one but for spacing keeps the stored spelling. */
+  restore: boolean;
+  /** A restore whose file has a Weight column: a blank weight clears the stored one. */
+  clearsWeight: boolean;
+  /**
+   * Lower-cased codes on rows the run refused. The file still names them, so
+   * `exactVariants` does not remove them and they are not listed as missing:
+   * the row's problem says what is wrong with it.
+   */
+  refusedCodes: Set<string>;
+  /** `restore.exactVariants`: every group's rows are its whole variant set. */
+  exactVariants: boolean;
+  /**
+   * The file has a Colour column. Without one (a sheet of codes and weights)
+   * it says nothing of colours: each code keeps its colour, and the sub
+   * product whether it has colours.
+   */
+  colours: boolean;
+}
 
 export async function importProducts(
   file: ImportFile,
@@ -351,26 +434,63 @@ export async function importProducts(
       subProductCount: 0,
     });
   }
+  for (const planned of options.restore?.plannedCategories ?? []) {
+    const live = liveCategories.find((category) => category.id === planned.id);
+    if (live) Object.assign(live, planned);
+    else {
+      liveCategories.push({
+        ...planned,
+        tenantId: actor.tenantId,
+        sortOrder: null,
+        createdAt: '',
+        updatedAt: '',
+        deletedAt: null,
+        subProductCount: 0,
+      });
+    }
+  }
   const [brandOptions, colourOptions] = await Promise.all([
     customFieldRepo.listOptionsForKey(actor.tenantId, 'product.brand'),
     customFieldRepo.listOptionsForKey(actor.tenantId, 'stock.colour'),
   ]);
+  const restore = options.restore !== undefined;
+  // A typed sheet's spacing was collapsed as it was read (`parseImportRow`),
+  // so a stored name is matched to it collapsed too; a restore's is exact.
+  const textKey = (text: string): string => (restore ? text.trim() : spaced(text)).toLowerCase();
   const brandByLower = new Map<string, string>();
   for (const category of liveCategories) {
-    if (category.brand) brandByLower.set(category.brand.toLowerCase(), category.brand);
+    if (category.brand) brandByLower.set(textKey(category.brand), category.brand);
   }
-  for (const option of brandOptions) brandByLower.set(option.value.toLowerCase(), option.value);
-  const colourByLower = new Map(colourOptions.map((option) => [option.value.toLowerCase(), option.value]));
+  for (const option of brandOptions) brandByLower.set(textKey(option.value), option.value);
+  // A colour already on the list is kept as written; another spelling takes
+  // the list's, the first by list order when two differ only in case (the
+  // Fields screen allows both), so a preview and its run map alike.
+  const colourValues = new Set(colourOptions.map((option) => option.value));
+  const colourByLower = new Map<string, string>();
+  for (const option of colourOptions) {
+    if (!colourByLower.has(option.value.toLowerCase())) colourByLower.set(option.value.toLowerCase(), option.value);
+  }
+
+  const rules: MergeRules = {
+    restore,
+    clearsWeight: restore && match.byIndex.some((column) => column?.field === 'weightKg'),
+    refusedCodes: new Set(),
+    exactVariants: Boolean(options.restore?.exactVariants),
+    colours: match.byIndex.some((column) => column?.field === 'variant'),
+  };
 
   const issues: ProductImportIssue[] = [];
   const parsed: ParsedRow[] = [];
   let totalRows = 0;
+  const codeAt = match.byIndex.findIndex((column) => column?.field === 'code');
+  const codeOfRow = new Map<number, string>();
 
   rows.slice(headerIndex + 1).forEach((cells, offset) => {
     if (isBlankRow(cells)) return;
     totalRows += 1;
     const row = headerIndex + 2 + offset;
-    const outcome = parseImportRow(cells, match, headerRow, row);
+    codeOfRow.set(row, (cells[codeAt] ?? '').trim().toLowerCase());
+    const outcome = parseImportRow(cells, match, headerRow, row, { restore });
     if (!outcome.input) {
       issues.push(...outcome.issues);
       return;
@@ -378,43 +498,75 @@ export async function importProducts(
 
     const { product, variant } = outcome.input;
     const brand = product.categoryBrand?.trim();
-    if (brand) product.categoryBrand = brandByLower.get(brand.toLowerCase()) ?? brand;
-    if (variant.label) variant.label = colourByLower.get(variant.label.toLowerCase()) ?? variant.label;
+    if (brand) product.categoryBrand = brandByLower.get(textKey(brand)) ?? brand;
+    // A restore's colour is the stored spelling, list or not.
+    if (variant.label && !restore && !colourValues.has(variant.label)) {
+      variant.label = colourByLower.get(variant.label.toLowerCase()) ?? variant.label;
+    }
 
     parsed.push({ row, input: outcome.input });
   });
 
   if (totalRows === 0) throw new ValidationError('validation.import.emptyFile');
 
-  const duplicateIssues = findDuplicatesInFile(parsed, headerFor);
+  // Which of the file's codes are already on a live variant — and on which
+  // product. A group whose codes all sit on one product is that product
+  // (update, or skipped); codes split across products cannot be reconciled.
+  const existingByCode = await productVariantRepo.findLiveVariantsByCodes(
+    actor.tenantId,
+    parsed.map((entry) => entry.input.variant.code),
+  );
+  if (restore) separateTwins(parsed, (code) => existingByCode.get(code.trim().toLowerCase())?.productId);
+
+  // With no Colour column a live code is its own variant: two codes of one sub product are not one.
+  const duplicateIssues = findDuplicatesInFile(
+    parsed,
+    headerFor,
+    (entry) => !rules.colours && existingByCode.has(entry.input.variant.code.trim().toLowerCase()),
+  );
   const duplicateRows = new Set(duplicateIssues.map((issue) => issue.row));
   issues.push(...duplicateIssues);
 
   const grouped = groupImportRows(
     parsed.filter((entry) => !duplicateRows.has(entry.row)),
     headerFor,
+    { restore },
   );
   issues.push(...grouped.issues);
 
-  // Which of the file's codes are already on a live variant — and on which
-  // product. A group whose codes all sit on one product is that product
-  // (update, or skipped); codes split across products cannot be reconciled.
-  const existingByCode = await productVariantRepo.findLiveVariantsByCodes(
-    actor.tenantId,
-    grouped.groups.flatMap((group) => group.input.variants?.map((variant) => variant.code) ?? []),
+  const ownersOf = (group: ImportGroup, byCode: ReadonlyMap<string, { productId: string }>): Set<string> => {
+    const owners = new Set<string>();
+    for (const variant of group.input.variants ?? []) {
+      const hit = byCode.get(variant.code.toLowerCase());
+      if (hit) owners.add(hit.productId);
+    }
+    return owners;
+  };
+  // A restore's code that only a sub product in the Recycle Bin carries is
+  // that sub product: it comes back from the Bin, as catalog.restoreProduct
+  // would bring it, instead of a copy being created beside it that would leave
+  // the binned one unable to come back (its codes taken).
+  const binnedByCode =
+    restore && options.mode === 'upsert'
+      ? await binnedVariantsByCodes(
+          actor.tenantId,
+          grouped.groups
+            .filter((group) => ownersOf(group, existingByCode).size === 0)
+            .flatMap((group) => group.input.variants?.map((variant) => variant.code) ?? []),
+        )
+      : new Map<string, { productId: string }>();
+  const existingIds = new Set(
+    [...existingByCode.values(), ...binnedByCode.values()].map((hit) => hit.productId),
   );
-  const existingIds = new Set([...existingByCode.values()].map((hit) => hit.productId));
   const existingProducts = await productRepo.findProductsByIds(actor.tenantId, [...existingIds]);
 
   let creates: ImportGroup[] = [];
   let updates: UpdateGroup[] = [];
   const claimedOwners = new Set<string>();
   for (const group of grouped.groups) {
-    const owners = new Set<string>();
-    for (const variant of group.input.variants ?? []) {
-      const hit = existingByCode.get(variant.code.toLowerCase());
-      if (hit) owners.add(hit.productId);
-    }
+    let owners = ownersOf(group, existingByCode);
+    const fromBin = owners.size === 0 && binnedByCode.size > 0;
+    if (fromBin) owners = ownersOf(group, binnedByCode);
 
     if (owners.size === 0) {
       creates.push(group);
@@ -453,7 +605,9 @@ export async function importProducts(
         continue;
       }
       claimedOwners.add(existing.id);
-      updates.push({ ...group, existing });
+      // One back from the Bin keeps the codes the file does not name, as a
+      // live one does: listed, and removed only under `exactVariants`.
+      updates.push({ ...group, existing, binned: fromBin });
     } else {
       for (const entry of group.rows) {
         issues.push({
@@ -485,13 +639,12 @@ export async function importProducts(
   const existingCategoryOf = (group: ImportGroup): string | undefined => {
     const code = categoryCodeOf(group)?.toLowerCase();
     if (code) return liveCategories.find((category) => category.code?.toLowerCase() === code)?.id;
-    const name = group.input.categoryName?.trim().toLowerCase();
+    const name = textKey(group.input.categoryName ?? '');
     if (!name) return undefined;
-    const brand = group.input.categoryBrand?.trim().toLowerCase() || null;
+    const brand = textKey(group.input.categoryBrand ?? '') || null;
     const named = liveCategories.filter(
       (category) =>
-        category.name.trim().toLowerCase() === name &&
-        (brand === null || category.brand?.trim().toLowerCase() === brand),
+        textKey(category.name) === name && (brand === null || textKey(category.brand ?? '') === brand),
     );
     return (named.find((category) => !category.brand) ?? named[0])?.id;
   };
@@ -528,49 +681,251 @@ export async function importProducts(
   creates = creates.filter(keepKnownCategory);
   updates = updates.filter(keepKnownCategory);
 
+  // A sub product comes back from the Bin as the Bin's own Restore brings it
+  // (`catalog.restoreProduct`): only for a person who may delete products, and
+  // with every code it holds — so one whose code a live product took since, or
+  // this file gives another sub product, is refused here, in the preview too,
+  // rather than first by the write. Never a copy created beside it instead.
+  const binned = updates.filter((group) => group.binned);
+  if (binned.length > 0) {
+    const mayRestore = actorCan(actor, 'products.delete');
+    // Every code it holds after the write, one deactivated there included.
+    const codesOf = (group: UpdateGroup): string[] => {
+      const after = mergedUpdate(group, rules).input.variants ?? [];
+      const kept = new Set(after.map((variant) => variant.id));
+      return [
+        ...after.map((variant) => variant.code),
+        ...group.existing.variants.filter((variant) => !kept.has(variant.id)).map((variant) => variant.code),
+      ];
+    };
+    const fileGroupOf = new Map<string, ImportGroup>();
+    for (const group of [...creates, ...updates]) {
+      for (const variant of group.input.variants ?? []) fileGroupOf.set(variant.code.toLowerCase(), group);
+    }
+    const holders = await productVariantRepo.findLiveVariantsByCodes(actor.tenantId, binned.flatMap(codesOf));
+    const stay = new Set<ImportGroup>();
+    for (const group of binned) {
+      const taken = codesOf(group).filter(
+        (code) => holders.has(code.toLowerCase()) || (fileGroupOf.get(code.toLowerCase()) ?? group) !== group,
+      );
+      if (mayRestore && taken.length === 0) continue;
+      stay.add(group);
+      for (const entry of group.rows) {
+        issues.push({
+          row: entry.row,
+          kind: 'error',
+          column: headerFor('code'),
+          ...(mayRestore
+            ? { messageKey: 'validation.product.restoreCodesTaken', params: { codes: taken.join(', ') } }
+            : { messageKey: 'validation.import.binnedNeedsDelete', params: { name: group.existing.name } }),
+        });
+      }
+    }
+    updates = updates.filter((group) => !stay.has(group));
+  }
+
+  const bySheet = (a: ImportGroup, b: ImportGroup): number => (a.rows[0]?.row ?? 0) - (b.rows[0]?.row ?? 0);
+  const leaving = new Set(options.restore?.leaving);
+  const liveSubs = (await liveSubProducts(actor.tenantId)).filter((sub) => !leaving.has(sub.id));
+  const nameKey = (categoryId: string, name: string): string => `${categoryId}\u001f${name.trim().toLowerCase()}`;
+
+  if (restore && options.mode === 'upsert') {
+    // The same sub product under codes this catalogue does not have — another
+    // install numbered it — is the live one of that name in that main product,
+    // unless a file row already names that one by its own codes. It is updated
+    // and recoded to the file's rows, not created a second time beside itself;
+    // its codes the rows leave out are kept and listed, as a live one's are.
+    const namedByCode = new Set([...existingByCode.values()].map((hit) => hit.productId));
+    const byName = new Map<string, string>();
+    for (const sub of liveSubs) {
+      const key = nameKey(sub.categoryId, sub.name);
+      if (!namedByCode.has(sub.id) && !byName.has(key)) byName.set(key, sub.id);
+    }
+    const sameName = new Map<ImportGroup, string>();
+    for (const group of creates) {
+      const categoryId = existingCategoryOf(group);
+      const key = categoryId === undefined ? '' : nameKey(categoryId, group.input.name);
+      const id = byName.get(key);
+      if (id === undefined) continue;
+      sameName.set(group, id);
+      byName.delete(key);
+    }
+    const found = await productRepo.findProductsByIds(actor.tenantId, [...sameName.values()]);
+    for (const [group, id] of sameName) {
+      const existing = found.get(id);
+      if (!existing) continue;
+      creates = creates.filter((candidate) => candidate !== group);
+      updates.push({ ...group, existing });
+    }
+  }
+
+  // No two live sub products of one name in one main product (§5): what the
+  // screens refuse (`catalog.assertSubProductNameFree`) the bulk path must not
+  // make either. Read against where every sub product ends up — a file group
+  // where the file puts it, every other one where it is — so two sub products
+  // whose names the file swaps both land. As on the screens only a group that
+  // moves (new, renamed, moved, or back from the Bin) is refused, so twins from
+  // before the rule stay editable. A refused group stays where it was, which
+  // may be where another group was going: settled again until nothing more is.
+  const refused = new Set<ImportGroup>();
+  const fileIds = new Set(updates.map((group) => group.existing.id));
+  for (let more = true; more; ) {
+    more = false;
+    const held = new Set(
+      liveSubs.filter((sub) => !fileIds.has(sub.id)).map((sub) => nameKey(sub.categoryId, sub.name)),
+    );
+    const moving: Array<[ImportGroup, string]> = [];
+    for (const group of [...creates, ...updates].sort(bySheet)) {
+      const stays =
+        isUpdate(group) && !group.binned ? nameKey(group.existing.categoryId, group.existing.name) : undefined;
+      const categoryId = existingCategoryOf(group);
+      const name = isUpdate(group) ? mergedUpdate(group, rules).input.name : group.input.name;
+      const lands = categoryId === undefined ? undefined : nameKey(categoryId, name);
+      if (refused.has(group) || lands === stays) {
+        if (stays !== undefined) held.add(stays);
+      } else if (lands !== undefined) {
+        moving.push([group, lands]);
+      }
+    }
+    for (const [group, key] of moving) {
+      if (!held.has(key)) {
+        held.add(key);
+        continue;
+      }
+      refused.add(group);
+      more = true;
+    }
+  }
+  for (const group of refused) {
+    const category = liveCategories.find((candidate) => candidate.id === existingCategoryOf(group));
+    for (const entry of group.rows) {
+      issues.push({
+        row: entry.row,
+        kind: 'error',
+        column: headerFor('name'),
+        messageKey: 'validation.product.nameTaken',
+        params: { name: group.input.name, category: category?.name ?? '' },
+      });
+    }
+  }
+  creates = creates.filter((group) => !refused.has(group));
+  updates = updates.filter((group) => !refused.has(group));
+
+  for (const group of updates) group.mainId = existingCategoryOf(group);
+  // Every refusal above the dry-run boundary is in by here.
+  for (const issue of issues) {
+    const code = issue.kind === 'error' ? codeOfRow.get(issue.row) : undefined;
+    if (code) rules.refusedCodes.add(code);
+  }
+
   // An upsert row whose product already says exactly this is not an update:
   // an export uploaded back unedited must read "nothing to do", not "N updated".
+  // A sub product back from the Bin is a change whatever its cells say.
+  const matched = updates;
   const changes = new Map(
-    updates.map((group) => [group, changedCells(group, existingCategoryOf(group), liveCategories, labelOf)]),
+    updates.map((group) => [group, changedCells(group, existingCategoryOf(group), liveCategories, labelOf, rules)]),
   );
-  const unchangedGroups = updates.filter((group) => changes.get(group)?.length === 0);
+  const unchangedGroups = updates.filter((group) => !group.binned && changes.get(group)?.length === 0);
   updates = updates.filter((group) => !unchangedGroups.includes(group));
   const unchanged = rowCount(unchangedGroups);
 
-  if (options.restore) {
-    // A restored catalogue keeps the file's order: a new sub product takes its
-    // place among its main product's rows, as the export wrote them.
-    const position = new Map<string, number>();
-    const creating = new Set(creates);
-    for (const group of grouped.groups) {
-      const main = group.key.slice(0, group.key.lastIndexOf('\u001f'));
-      const at = (position.get(main) ?? 0) + 1;
-      position.set(main, at);
-      if (creating.has(group)) group.input.sortOrder = at;
+  const reordered: ImportedRows['reordered'] = [];
+  const renumbered: Array<{ id: string; sortOrder: number; group?: ImportGroup }> = [];
+  if (restore) {
+    // A restored catalogue keeps the file's order. A sub product already in
+    // its main product stays; every other one arrives — new, back from the
+    // Bin, or moved in. Arrivals the file lists after every staying one take
+    // the numbers after the main product's last, so they land last as listed.
+    // Otherwise — the file lists the staying ones in another order, puts an
+    // arrival between them, or a staying one has no number (sorted after any)
+    // — the main product is renumbered 1..n in the file's order, the live ones
+    // the file does not name after them in their own. Compared as an order,
+    // never as numbers, so an unedited export — gaps and blank orders
+    // included — changes nothing.
+    const byMain = new Map<string, ImportGroup[]>();
+    for (const group of [...creates, ...matched].sort(bySheet)) {
+      const main =
+        existingCategoryOf(group) ??
+        `new:${productRepo.categorySeedKey({ name: group.input.categoryName ?? '', brand: group.input.categoryBrand })}`;
+      const groups = byMain.get(main);
+      if (groups) groups.push(group);
+      else byMain.set(main, [group]);
+    }
+    const named = new Set(matched.map((group) => group.existing.id));
+    for (const [main, groups] of byMain) {
+      const stays = (group: ImportGroup): group is UpdateGroup =>
+        isUpdate(group) && !group.binned && group.existing.categoryId === main;
+      const staying = groups.filter(stays).map((group) => group.existing.id);
+      const stayingIds = new Set(staying);
+      const live = liveSubs.filter((sub) => sub.categoryId === main);
+      const liveStaying = live.filter((sub) => stayingIds.has(sub.id));
+      const firstArrival = groups.findIndex((group) => !stays(group));
+      const inOrder =
+        liveStaying.map((sub) => sub.id).join() === staying.join() &&
+        (firstArrival === -1 ||
+          (groups.slice(firstArrival).every((group) => !stays(group)) &&
+            liveStaying.every((sub) => sub.sortOrder !== null)));
+      if (inOrder) {
+        let last = Math.max(0, ...live.map((sub) => sub.sortOrder ?? 0));
+        for (const group of groups) if (!stays(group)) group.input.sortOrder = last += 1;
+        continue;
+      }
+
+      const category = liveCategories.find((candidate) => candidate.id === main);
+      reordered.push({ code: category?.code ?? '', name: category?.name ?? '' });
+      groups.forEach((group, index) => {
+        if (stays(group)) renumbered.push({ id: group.existing.id, sortOrder: index + 1, group });
+        else group.input.sortOrder = index + 1;
+      });
+      let next = groups.length;
+      for (const sub of live) if (!named.has(sub.id)) renumbered.push({ id: sub.id, sortOrder: (next += 1) });
     }
   }
 
   // What a restore lists: on the real run, without the rows that then failed.
+  const failedRows = (): Set<number> =>
+    new Set(issues.filter((issue) => issue.kind === 'error').map((issue) => issue.row));
   const restoreRows = (): { rows?: ImportedRows } => {
-    if (!options.restore) return {};
-    const failedRows = new Set(issues.filter((issue) => issue.kind === 'error').map((issue) => issue.row));
-    const landed = (group: ImportGroup): boolean => group.rows.every((entry) => !failedRows.has(entry.row));
+    if (!restore) return {};
+    const failed = failedRows();
+    const landed = (group: ImportGroup): boolean => group.rows.every((entry) => !failed.has(entry.row));
+    const changedRow = (group: UpdateGroup): ProductRowChange => ({
+      code: group.input.variants?.[0]?.code ?? '',
+      name: group.input.name,
+      fields: changes.get(group) ?? [],
+    });
+    const subProduct = (id: string | null, input: ProductInput): ImportedRows['subProducts'][number] => ({
+      id,
+      name: input.name,
+      hasVariants: Boolean(input.hasVariants),
+      variants: (input.variants ?? []).map((variant) => ({ code: variant.code, label: variant.label ?? null })),
+    });
+    const kept = matched.filter(landed);
     return {
       rows: {
         added: creates.filter(landed).flatMap((group) =>
           group.rows.map((entry) => ({ code: entry.input.variant.code.trim(), name: group.input.name, fields: [] })),
         ),
-        changed: updates.filter(landed).map((group) => ({
-          code: group.input.variants?.[0]?.code ?? '',
-          name: group.input.name,
-          fields: changes.get(group) ?? [],
-        })),
+        changed: updates.filter((group) => landed(group) && !group.binned).map(changedRow),
+        restoredFromBin: updates.filter((group) => landed(group) && group.binned).map(changedRow),
+        variantsNotInFile: kept.flatMap((group) =>
+          mergedUpdate(group, rules).untouched.map((variant) => ({ code: variant.code, name: group.input.name })),
+        ),
+        reordered,
+        matchedIds: kept.map((group) => group.existing.id),
+        // With the codes `exactVariants` removes: what the preview, run without it, read.
+        subProducts: [
+          ...creates.filter(landed).map((group) => subProduct(null, group.input)),
+          ...updates
+            .filter(landed)
+            .map((group) => subProduct(group.existing.id, mergedUpdate(group, { ...rules, exactVariants: false }).input)),
+        ],
       },
     };
   };
 
   const sample = [...creates, ...updates]
-    .sort((a, b) => (a.rows[0]?.row ?? 0) - (b.rows[0]?.row ?? 0))
+    .sort(bySheet)
     .slice(0, 5)
     .map((group) => group.input);
 
@@ -667,8 +1022,15 @@ export async function importProducts(
           await db().transaction(async (trx) => {
             const hlc = await nextHlc(trx);
             await registerBrands(actor.tenantId, [group.input.categoryBrand ?? ''], brandOptions, trx);
+            // Filed where the plan found its main product, as the chunk would have.
             await productRepo.insertProduct(
-              { tenantId: actor.tenantId, input: group.input, hlc, fieldHlc: {}, temporaryId: null },
+              {
+                tenantId: actor.tenantId,
+                input: { ...group.input, categoryId: existingCategoryOf(group) },
+                hlc,
+                fieldHlc: {},
+                temporaryId: null,
+              },
               trx,
             );
           });
@@ -687,7 +1049,7 @@ export async function importProducts(
     try {
       await db().transaction(async (trx) => {
         const hlc = await nextHlc(trx);
-        for (const group of chunk) await applyUpdate(group, hlc, actor.tenantId, trx);
+        for (const group of chunk) await applyUpdate(group, rules, hlc, actor.tenantId, trx);
       });
       updated += rowCount(chunk);
     } catch (error) {
@@ -700,7 +1062,7 @@ export async function importProducts(
         try {
           await db().transaction(async (trx) => {
             const hlc = await nextHlc(trx);
-            await applyUpdate(group, hlc, actor.tenantId, trx);
+            await applyUpdate(group, rules, hlc, actor.tenantId, trx);
           });
           updated += group.rows.length;
         } catch (rowError) {
@@ -708,6 +1070,35 @@ export async function importProducts(
         }
       }
     }
+  }
+
+  // The file's order, in one transaction once every row has landed: a sub
+  // product whose row failed keeps its place.
+  const failed = failedRows();
+  const renumber = renumbered.filter(
+    (entry) => !entry.group?.rows.some((row) => failed.has(row.row)),
+  );
+  if (renumber.length > 0) {
+    await db().transaction(async (trx) => {
+      const hlc = await nextHlc(trx);
+      const current = await productRepo.findProductsByIds(
+        actor.tenantId,
+        renumber.map((entry) => entry.id),
+        trx,
+        { includeDeleted: false },
+      );
+      for (const { id, sortOrder } of renumber) {
+        const product = current.get(id);
+        if (!product || product.sortOrder === sortOrder) continue;
+        await productRepo.updateProductColumns(
+          actor.tenantId,
+          id,
+          { sort_order: sortOrder },
+          { hlc, fieldHlc: { ...product.sync.fieldHlc, [fieldFor(PRODUCT_COLUMNS, 'sort_order')]: hlc } },
+          trx,
+        );
+      }
+    });
   }
 
   const result = finish({
@@ -759,13 +1150,32 @@ function ruleName(product: { multiColour: boolean; variants: ReadonlyArray<{ lab
 }
 
 
+/** Text as a typed sheet reads it (`parseImportRow`): runs of whitespace as one space. */
+const spaced = (text: string): string => text.replace(/\s+/g, ' ').trim();
+
 /**
  * The product as the sheet leaves it: the existing sub products with the
- * file's rows folded in. A deactivated variant (history still quotes it) stays
- * out unless a row names its code — it is not resurrected by a sheet that
- * never mentioned it.
+ * file's rows folded in, and the live codes no row named (`untouched`). A
+ * deactivated variant (history still quotes it) stays out unless a row names
+ * its code — it is not resurrected by a sheet that never mentioned it. Under
+ * `exactVariants` a group keeps only its rows, and the codes of rows the run
+ * refused (`MergeRules.refusedCodes`), which the file still names.
+ *
+ * Whether it has colours follows the file once the file covers the whole sub
+ * product, no live code left unnamed: a fixed sub product the file calls
+ * dedicated or multicolour becomes that, not a fixed one coloured "Standard".
+ * A file with no Colour column (`MergeRules.colours`) changes neither that nor
+ * any code's colour.
+ * A typed sheet's text keeps the stored spelling where only the spacing
+ * differs (`MergeRules`), so an unedited export reads as unchanged.
  */
-function mergedUpdate(group: UpdateGroup): ProductInput {
+function mergedUpdate(
+  group: UpdateGroup,
+  rules: MergeRules,
+): { input: ProductInput; untouched: ProductVariantInput[] } {
+  const asStored = (text: string | null | undefined, stored: string | null | undefined): string | null | undefined =>
+    !rules.restore && text && stored && spaced(text) === spaced(stored) ? stored : text;
+
   const merged: Array<ProductVariantInput & { active: boolean; touched?: boolean }> =
     group.existing.variants.map((variant) => ({
       id: variant.id,
@@ -779,14 +1189,17 @@ function mergedUpdate(group: UpdateGroup): ProductInput {
     const byCode = merged.find((variant) => variant.code.toLowerCase() === incoming.code.toLowerCase());
     const byLabel = merged.find(
       (variant) =>
-        variant.active && (variant.label ?? '').toLowerCase() === (incoming.label ?? '').toLowerCase(),
+        variant.active &&
+        !variant.touched &&
+        (variant.label ?? '').toLowerCase() === (incoming.label ?? '').toLowerCase(),
     );
     const target = byCode ?? byLabel;
     if (target) {
       target.code = incoming.code;
-      target.label = incoming.label ?? null;
+      if (rules.colours) target.label = asStored(incoming.label, target.label) ?? null;
       target.touched = true;
-      if (incoming.weightKg !== undefined && incoming.weightKg !== null) target.weightKg = incoming.weightKg;
+      if (rules.clearsWeight) target.weightKg = incoming.weightKg ?? null;
+      else if (incoming.weightKg !== undefined && incoming.weightKg !== null) target.weightKg = incoming.weightKg;
     } else {
       merged.push({
         code: incoming.code,
@@ -798,18 +1211,43 @@ function mergedUpdate(group: UpdateGroup): ProductInput {
     }
   }
 
-  const kept = merged.filter((variant) => variant.active || variant.touched);
-  const hasVariants = group.existing.hasVariants || Boolean(group.input.hasVariants);
+  const untouched = merged.filter((variant) => variant.active && !variant.touched);
+  const onRefusedRow = (variant: { code: string }): boolean => rules.refusedCodes.has(variant.code.toLowerCase());
+  const leftAlone = untouched.filter((variant) => !rules.exactVariants || onRefusedRow(variant));
+  const kept = merged.filter((variant) => variant.touched || leftAlone.includes(variant));
+  // The file decides whether it has colours once it names every live code;
+  // while codes it never named remain, a switch that was on stays on. Then an
+  // unlabelled member — the single row of a one-form product a sheet now
+  // gives colours — is named "Standard", the plain member, so it has a name.
+  const covered = leftAlone.length === 0;
+  const hasVariants = rules.colours
+    ? Boolean(group.input.hasVariants) || (!covered && group.existing.hasVariants)
+    : group.existing.hasVariants;
   return {
-    ...group.input,
-    hasVariants,
-    variants: kept.map(({ active: _active, touched: _touched, ...variant }, index) => ({
-      ...variant,
-      // A one-form product that a sheet now gives colours: its single
-      // unlabelled row is the plain member, and needs a name to keep.
-      label: hasVariants ? (variant.label ?? 'Standard') : null,
-      sequence: index + 1,
-    })),
+    input: {
+      ...group.input,
+      // Left alone where it already is; else filed by the id the plan found.
+      ...(group.mainId === undefined
+        ? {}
+        : {
+            categoryId: group.mainId === group.existing.categoryId ? undefined : group.mainId,
+            categoryCode: undefined,
+            categoryName: undefined,
+            categoryBrand: undefined,
+          }),
+      name: asStored(group.input.name, group.existing.name) ?? group.input.name,
+      ...(group.input.alias !== undefined ? { alias: asStored(group.input.alias, group.existing.alias) } : {}),
+      ...(group.input.size !== undefined ? { size: asStored(group.input.size, group.existing.size) } : {}),
+      hasVariants,
+      variants: kept.map(({ active: _active, touched: _touched, ...variant }, index) => ({
+        ...variant,
+        label: hasVariants ? (variant.label ?? 'Standard') : null,
+        sequence: index + 1,
+      })),
+    },
+    untouched: untouched
+      .filter((variant) => !onRefusedRow(variant))
+      .map(({ active: _active, touched: _touched, ...variant }) => variant),
   };
 }
 
@@ -825,9 +1263,10 @@ function changedCells(
   categoryId: string | undefined,
   categories: ReadonlyArray<{ id: string; code: string | null; name: string }>,
   labelOf: (field: ImportField) => string,
+  rules: MergeRules,
 ): ProductCellChange[] {
   const { existing } = group;
-  const input = mergedUpdate(group);
+  const { input } = mergedUpdate(group, rules);
   const cells: ProductCellChange[] = [];
   const cell = (field: ImportField, from: unknown, to: unknown): void => {
     cells.push({ column: labelOf(field), from: from == null ? '' : String(from), to: to == null ? '' : String(to) });
@@ -881,20 +1320,78 @@ function changedCells(
  * than replacing it: a sheet naming three of DAMRU's forty codes must
  * not delete the other thirty-seven. A row matches an existing variant by
  * code, else by label, else it is a new variant.
+ *
+ * One in the Recycle Bin comes back first, its codes with it, as
+ * `catalog.restoreProduct` brings it — its own photos and history included.
  */
 async function applyUpdate(
   group: UpdateGroup,
+  rules: MergeRules,
   hlc: string,
   tenantId: string,
   trx: Parameters<typeof productRepo.updateProduct>[4],
 ): Promise<void> {
-  const input = mergedUpdate(group);
+  const { input } = mergedUpdate(group, rules);
 
   const touched = Object.keys(columnPatch(input, PRODUCT_COLUMNS));
   const fieldHlc: Record<string, string> = { ...group.existing.sync.fieldHlc, variants: hlc };
   for (const column of touched) fieldHlc[fieldFor(PRODUCT_COLUMNS, column)] = hlc;
 
+  if (group.binned) {
+    fieldHlc.deletedAt = hlc;
+    await productRepo.restoreProduct(tenantId, group.existing.id, { hlc, fieldHlc }, trx);
+  }
   await productRepo.updateProduct(tenantId, group.existing.id, input, { hlc, fieldHlc }, trx);
+  if (group.binned) await productVariantRepo.setDeletedAt(tenantId, group.existing.id, null, trx);
+}
+
+/** Every live sub product, where it sits, in catalogue order within its main product (`listProducts`' order). */
+async function liveSubProducts(
+  tenantId: string,
+): Promise<Array<{ id: string; name: string; categoryId: string; sortOrder: number | null }>> {
+  const rows = await db()('products')
+    .where({ tenant_id: tenantId })
+    .whereNull('deleted_at')
+    .orderByRaw('sort_order ASC NULLS LAST, lower(name) ASC, id ASC')
+    .select<Array<{ id: string; name: string; category_id: string; sort_order: number | null }>>(
+      'id',
+      'name',
+      'category_id',
+      'sort_order',
+    );
+  return rows.map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    categoryId: String(row.category_id),
+    sortOrder: row.sort_order === null ? null : Number(row.sort_order),
+  }));
+}
+
+/**
+ * The sub products in the Recycle Bin behind these codes, keyed by
+ * lower-cased code like `findLiveVariantsByCodes`: the one binned last, when a
+ * code was binned more than once.
+ */
+async function binnedVariantsByCodes(
+  tenantId: string,
+  codes: readonly string[],
+): Promise<Map<string, { productId: string }>> {
+  const found = new Map<string, { productId: string }>();
+  const wanted = [...new Set(codes.map((code) => code.trim().toLowerCase()).filter(Boolean))];
+  if (wanted.length === 0) return found;
+
+  const rows = await db()('product_variants as v')
+    .join('products as p', 'p.id', 'v.product_id')
+    .where('v.tenant_id', tenantId)
+    .whereNotNull('p.deleted_at')
+    .whereRaw('lower(v.code) = ANY(?)', [wanted])
+    .orderBy('p.deleted_at', 'desc')
+    .select<Array<{ code: string; product_id: string }>>('v.code', 'v.product_id');
+  for (const row of rows) {
+    const key = String(row.code).toLowerCase();
+    if (!found.has(key)) found.set(key, { productId: String(row.product_id) });
+  }
+  return found;
 }
 
 /** Brands the file introduces, added to the Brands list (`product.brand`) beside the ones already there. */

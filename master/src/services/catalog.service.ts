@@ -838,11 +838,13 @@ export async function restoreProduct(id: string, actor: ActorContext): Promise<B
 /**
  * Each asserted field trimmed and checked; absent stays absent. The brand has
  * to be a live `product.brand` value — brands are managed there, and a typed
- * one would be a brand no filter could find.
+ * one would be a brand no filter could find. `switchedOffBrand` takes one the
+ * list holds switched off too.
  */
 async function cleanCategoryInput(
   tenantId: string,
   input: CategoryUpdateInput,
+  switchedOffBrand = false,
 ): Promise<CategoryUpdateInput> {
   const clean: CategoryUpdateInput = {};
 
@@ -862,7 +864,12 @@ async function cleanCategoryInput(
 
   if (input.brand !== undefined) {
     const brand = typeof input.brand === 'string' ? input.brand.trim() || null : null;
-    if (brand && !(await customFieldRepo.isValidOption(tenantId, 'product.brand', brand))) {
+    if (
+      brand &&
+      !(await customFieldRepo.isValidOption(tenantId, 'product.brand', brand, {
+        includeInactive: switchedOffBrand,
+      }))
+    ) {
       throw new ValidationError('validation.category.brandUnknown', { brand });
     }
     clean.brand = brand;
@@ -991,18 +998,23 @@ export async function createCategory(
   return category;
 }
 
-/** A partial edit, logged as `{field: {from, to}}` for what actually moved. */
+/**
+ * A partial edit, logged as `{field: {from, to}}` for what actually moved.
+ * `switchedOffBrand` is the product restore's: it puts back the brand a backup
+ * had, which the list may hold switched off since.
+ */
 export async function updateCategory(
   id: string,
   input: CategoryUpdateInput,
   actor: ActorContext,
+  { switchedOffBrand = false }: { switchedOffBrand?: boolean } = {},
 ): Promise<ProductCategory> {
   requirePermission(actor, 'products.edit');
 
   const existing = await productRepo.findCategoryById(actor.tenantId, id);
   if (!existing) throw new NotFoundError('Product');
 
-  const clean = await cleanCategoryInput(actor.tenantId, input ?? {});
+  const clean = await cleanCategoryInput(actor.tenantId, input ?? {}, switchedOffBrand);
   await assertCategoryFree(
     actor.tenantId,
     {
