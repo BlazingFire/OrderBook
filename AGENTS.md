@@ -53,10 +53,10 @@ There is no AI assistant.
 
 ## Standing conventions
 
-- **Branching:** `main` is the only long-lived branch, and `dev` (re-cut from `main` on
-  2026-09-22) is where day-to-day work happens before it lands on `main`. Every other
-  branch was merged or retired on 2026-09-22 (list in `HANDOFF.md`). Do not branch
-  from one.
+- **Branching:** `main` is the only branch, locally and on GitHub. Every other branch
+  (`dev` included) was merged or found a no-op and deleted on 2026-10-10 (`HANDOFF.md`,
+  "1.4.7 released"). Work on a short-lived branch or worktree cut from `main`, merge it
+  back, and delete it.
 - **Never delete or rewrite a migration** that may have run anywhere
   (`master/src/db/migrations/`, pinned by `migration-registry.test.ts`).
 - **Migrations after 1.2.0 only add.** Customers run this software; an update

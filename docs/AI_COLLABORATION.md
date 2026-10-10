@@ -190,6 +190,26 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-10 - 1.4.7: every branch combined into main, released; branches deleted (Claude, Opus)
+
+- **Ask (owner):** update everything, make sure the OrderBook logo replaces Electron's on the exe build, merge all
+  work to main, push, bump to 1.4.7, leave nothing behind, delete the extra branches.
+- **Done:** committed the main checkout's uncommitted Oct 8–9 work (`a1ad8049`); merged `s7/product-backup` (holding
+  `s8`–`s12`), `s6/todo` and `d2/oct7` in `../OrderBook-s0` on `s0/final` (only the change log and HANDOFF
+  conflicted; both sides kept); every other local and remote branch was checked with `git merge-tree` and found
+  already in `main` or a no-op, except the old remote `claude/*` branches retired on 2026-09-22. Logo: panels have
+  carried the stamped OrderBook icon since 1.4.5 (`tools/exe-icon.cjs`); the Electron logo the owner saw is this
+  PC's installed 1.4.4 Master. The Clean Install tool still had Electron's icon: it now runs the same `afterPack`
+  hook with its own `.ico` (`tools/make-icons.mjs`, `cleaner/electron-builder.yml`, tests extended). Fixed
+  `audit-coverage.integration.test.ts` for the "new order" wording. Bumped to 1.4.7, built signed (Win7 Office, then
+  Office + Master), published, pushed `main`, deleted every other branch and worktree. `AGENTS.md` no longer
+  mentions `dev`.
+- **Verified:** `npm run build` 0, lint 0, typecheck 0, test 407 files + 1 skipped / 5,445 tests + 17 skipped on
+  PostgreSQL (first run's 5 failures were the wording, fixed and re-run). The built `.exe` files' icon group and
+  version strings read back as OrderBook 1.4.7.
+- **Not verified:** browser/Electron pass of the To-do list and the Office New Order record screen, installed
+  upgrade from 1.4.4, real two-PC pass.
+
 ### 2026-10-08 (s6) - Lists became the To-do list (Claude, Opus, branch `s6/todo`)
 
 - **Ask (owner):** Lists and Fields do the same thing; Lists becomes a to-do list where the admin writes tasks, office users mark In progress or Completed (who and when shown, several people may mark), the admin deletes tasks and sets an auto expiry at creation or after completion.

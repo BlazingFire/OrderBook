@@ -10,7 +10,17 @@ This file assumes both.
 
 ---
 
-## First: the 2026-10-09 product backup batch is on `s7/product-backup`, not merged, not built
+## First: 1.4.7 is released with everything combined (2026-10-10)
+
+Every branch and the main checkout's uncommitted work are on `main`, pushed; only `main` exists. Version 1.4.7 is
+published (`docs/releases/1.4.7.md`). Next:
+
+1. Install the 1.4.7 Master Setup on this PC (it is still 1.4.4, which is why it shows Electron's logo and no
+   notice board), then each Office. Check the desktop and taskbar icon is the OrderBook mark.
+2. A browser or Electron pass of the To-do list and of the Office's New Order record screen (not done).
+3. The owner decisions and the two backup files below (steps 2 and 3).
+
+## Then: the 2026-10-09 product backup batch (on `main`, released in 1.4.7)
 
 The product backup and restore made exact: every colour, weight, code, photo and caption comes back, older product
 files are read, two installs' backups combine with no sub product twice, "Make the catalogue exactly this file"
@@ -19,8 +29,7 @@ under "Product backup and restore made exact (2026-10-09)", with its 2026-10-10 
 the way before it writes, the preview takes the opt-ins, a sheet with no Colour column changes no colour); the rules
 are in `docs/PRODUCT_IMPORT_FORMAT.md`. In order:
 
-1. Merge `s7/product-backup` and `s12/docs` into `main` once the uncommitted party-screen work in the main checkout
-   is committed (it is someone else's; do not touch it). Run `npm run verify` on the merge.
+1. Done 2026-10-10: merged into `main` with the party-screen work and released in 1.4.7.
 2. Ask the owner the nine decisions listed in `HANDOFF.md` ("Owner decisions waiting"): shipped photos on an update
    from 1.4.4 or earlier (his own Master), brand capitals, the exact option's default and emptying the Recycle Bin of
    what it moved, twins with identical cells, photo 2 of a one-colour sub product, the 1.4.5 catalogue
@@ -33,16 +42,16 @@ are in `docs/PRODUCT_IMPORT_FORMAT.md`. In order:
    install with "Make the catalogue exactly this file", and check its export against both files. If the preview
    lists a main product rename refused for a name the run takes out only at the end, restore the same file a second
    time (`HANDOFF.md` question 8).
-4. Build 1.4.7 with this and the 2026-10-08 batch together (the steps below), then a browser or Electron pass of
-   the restore dialog, which is not recorded for this batch.
+4. Done 2026-10-10: 1.4.7 built with this and the 2026-10-08 batch. Still owed: a browser or Electron pass of the
+   restore dialog on the installed program.
 
-## Then: the 2026-10-08 batch is on `main`, not built yet
+## Then: the 2026-10-08 batch (on `main`, released in 1.4.7)
 
 Product backup zip, a build that carries its product database, the Office setup inside the Master, the notice board on
 Basic Home and at sign-in, Escape goes back, and the New Order dropdown chain. What is true is in `HANDOFF.md`, under
 "Product zip, shipped catalogue, Office setup in the Master, …". In order:
 
-1. Build: bump to 1.4.7 first (`node tools/release.mjs 1.4.7`, into a scratch `ORDERBOOK_RELEASES_DIR`). The default
+1. Done 2026-10-10 (1.4.7). For the next build: bump first (`node tools/release.mjs <next>`, into a scratch `ORDERBOOK_RELEASES_DIR`). The default
    run now builds the Office first and packs it into the Master, so build both in one run. To ship the owner's own
    products, export them on the Master (Products › Sub products › Backup products (.zip)) and pass `--catalogue <zip>`.
    Build `--os win7` into the same folder first if the Master should also carry the Windows 7 Office (+140 MB).

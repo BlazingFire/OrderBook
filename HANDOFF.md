@@ -52,9 +52,43 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
-## Lists became the To-do list (2026-10-08, branch `s6/todo`)
+## 1.4.7 released: everything combined, one branch (2026-10-10)
 
-**State:** on `s6/todo` (cut from `main` @ `ad15b2a2`), not merged, not built. The owner: the Lists and Fields menus
+**State:** `main` carries every piece of work that existed on any branch or in a working tree, and it is pushed.
+Version **1.4.7**, built signed (`release-2026-10-01`) and published on GitHub `BlazingFire/OrderBook-Releases`
+(notes: `docs/releases/1.4.7.md`). Merged in `../OrderBook-s0` on `s0/final`, then `main` fast-forwarded:
+
+- the uncommitted Oct 8–9 work in the main checkout (New Order record screen on both panels, the Master's party
+  details, the notification drawer, Notes/Action list columns, "Pending Order" renamed "New Order", dark home-tile
+  designs), committed as `a1ad8049`;
+- `s7/product-backup` (with `s8`–`s12`: product backup and restore made exact, below);
+- `s6/todo` (Lists became the To-do list, below);
+- `d2/oct7` (the notice card's reading width and primary Open button), the one older commit never merged;
+- the Clean Install tool now gets the OrderBook icon and name stamped into its `.exe` like the panels
+  (`cleaner/electron-builder.yml` runs the `afterPack` hook with its own multi-size `.ico`);
+- `audit-coverage.integration.test.ts` updated to the "new order" wording (the rename's author could not run the
+  PostgreSQL suites).
+
+**The Electron logo the owner saw** is the Master installed on this PC: it is **1.4.4**, from before 1.4.5 stamped
+the OrderBook icon into the program file (`tools/exe-icon.cjs`). Installing 1.4.7 replaces it. The 1.4.7 `.exe`
+files were read back after the build and carry the OrderBook icon group and name.
+
+**Branches:** only `main` remains, locally and on GitHub. Every other branch, local and remote (`dev`, the old
+`claude/*`, `ui/footer-forms-icons`, every `dN/*`, `sN/*`, `merge/*`), and every extra worktree folder was
+deleted after checking that each was merged or a no-op against `main`. AGENTS.md's `dev` branch is gone: work on a
+short-lived branch from `main`.
+
+**Gate (s0/final, before the docs):** `npm run build` 0, `npm run lint` 0 (2 warnings already on main),
+`npm run typecheck` 0, `npm run test`: 407 files passed + 1 skipped (the Windows-only release-workflow), 5,445
+tests + 17 skipped, integration suites on PostgreSQL; the 5 audit-coverage failures of the first run were the
+wording above, fixed and re-run green.
+
+**Not verified:** a browser or Electron pass of the To-do list and of the Office's New Order record screen, a real
+two-PC pass, the update of the real 1.4.4 install, the owner's two product backups (not received).
+
+## Lists became the To-do list (2026-10-08)
+
+**State:** on `main`, released in 1.4.7. The owner: the Lists and Fields menus
 did the same job, so Lists becomes a to-do list. The sidebar module keeps id `lists` and Alt+G on both panels, is labelled
 "To-do list", has no sub-pages, and shows only with `todos.view`; `CatalogListsScreen` is gone and Fields (which still
 edits grades, packaging and brands under `catalog.lists.manage`) is unchanged.
@@ -74,10 +108,7 @@ tests + 17 skipped; integration suites ran on PostgreSQL, incl. `todos.integrati
 browser or Electron pass, no real two-PC pass.
 ## Product backup and restore made exact (2026-10-09)
 
-**State:** on branch `s7/product-backup` (worktree `../OrderBook-s7`), with these docs on `s12/docs` on top of it.
-**Not merged to `main`:** the main checkout holds someone else's uncommitted party-screen work, so the merge waits
-for that to be committed. **Not built**; the version is still 1.4.6, so the next build is 1.4.7 and carries the
-2026-10-08 batch as well. Rules and format: `docs/PRODUCT_IMPORT_FORMAT.md` ("The product backup zip").
+**State:** on `main`, released in 1.4.7 together with the 2026-10-08 batch. Rules and format: `docs/PRODUCT_IMPORT_FORMAT.md` ("The product backup zip").
 
 **Owner asked:** make sure the product backup and restore works with the current and earlier versions — colours,
 photos, weights, variants — double-check and fix; he will share two product backups to be combined into one (no
@@ -175,8 +206,7 @@ only the product restore keeps a backup's master as it is; an unreleased 2026-10
 sets those numbers.
 
 **Owed:** combine the owner's two backup files when he shares them (not received yet), then restore the result
-onto a new install with the exact option and compare it with both; merge `s7/product-backup` and `s12/docs` into
-`main` once the party-screen work there is committed; build 1.4.7.
+onto a new install with the exact option and compare it with both.
 
 **Gate:** each builder's suites ran on PostgreSQL, none skipped. The full suite without the probes passed on
 `4cb607f0`, before the lead's three commits (404 files + 1 skipped, the Windows-only release-workflow; 5,413
@@ -201,8 +231,7 @@ now lives in `catalogue-seed.service.ts` (re-exported from `product-zip.service.
 
 ## Product zip, shipped catalogue, Office setup in the Master, notice board, Escape, New Order chain, Sell today, person screen (2026-10-08)
 
-**State:** on `main`, not built and not released (the owner did not ask for a build). Version is still 1.4.6, so the
-next build must be bumped first (1.4.7). One session did this batch ("single session mode"): five builders in
+**State:** on `main`, released in 1.4.7. One session did this batch ("single session mode"): five builders in
 worktrees `../OrderBook-s1`…`s5` (branches `sN/oct8`), merged in `../OrderBook-s0` (`s0/merge`), each reviewed
 adversarially and fixed. Plan and evidence: `CLAUDE_HELPER_OCT8.md` (untracked).
 
@@ -495,7 +524,7 @@ These are untracked coordination files in the main checkout.
   - the installer actually creating the firewall rules;
   - a Win7 Office;
   - the real Electron shell.
-- **Owner:** delete the 14 old `claude/*` branches and `dev` on GitHub. The permission check blocks the agent from doing it. The command is:
+- **Done 2026-10-10:** delete the 14 old `claude/*` branches and `dev` on GitHub. The permission check blocks the agent from doing it. The command is:
   `git push origin --delete dev $(git branch -r | grep "origin/claude/" | sed 's#origin/##')`
 
 ## Party Access redesign + 1.4.0 (2026-10-04)
@@ -1793,6 +1822,9 @@ terms, multiple contacts); concurrent edits of one lead from two panels
 Condensed. The full entries are in `git show 5b8ebe2:HANDOFF.md` and in
 `docs/AI_COLLABORATION.md`.
 
+- **2026-10-10 — 1.4.7: everything combined.** The main checkout's Oct 8–9 work, `s7/product-backup`, `s6/todo` and
+  `d2/oct7` merged; the Clean Install tool's `.exe` stamped with the OrderBook icon; version 1.4.7 built, published
+  and pushed; every branch but `main` and every extra worktree deleted.
 - **2026-10-03 — 1.4 D1 (helper): app updates end to end, no menu bar.** No menu bar
   on Windows/Linux (macOS keeps Quit/Edit/Window); Check now, a download bar,
   `update.available` / `update.installing` notices, Save all + sign out + silent
