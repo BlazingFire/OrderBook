@@ -33,7 +33,7 @@ afterEach(() => {
 describe('permission labels', () => {
   it('reads modules and actions exactly as the grid always showed them in English', () => {
     expect(MODULES.map(moduleLabel)).toEqual([
-      'Pending Orders',
+      'New Orders',
       'Final Orders',
       'Parties',
       'Products',

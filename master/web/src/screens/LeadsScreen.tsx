@@ -16,13 +16,12 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { shownColour } from '@orderbook/shared';
 import type {
   ChatRecordChip,
   Lead,
   StageCounts,
-  LineItem,
   NoteKind,
+  Order,
   OptionListItem,
   Party,
   PartyScopeFilter,
@@ -37,7 +36,6 @@ import {
   AvatarStack,
   BOARD_SHOWN,
   Button,
-  ButtonLink,
   ConfirmDialog,
   ConflictBanner,
   DataTable,
@@ -45,9 +43,11 @@ import {
   EmptyState,
   FilterChip,
   FilterDivider,
-  IconButton,
   Input,
   LeadRecordView,
+  LeadStageMenu,
+  CopyRecordNumber,
+  RecordMenu,
   PageBar,
   pageWindow,
   usePageSize,
@@ -56,7 +56,6 @@ import {
   Segmented,
   SkeletonTable,
   StatusPill,
-  stageTone,
   formatDateTime,
   formatKg,
   recordNumberText,
@@ -70,7 +69,7 @@ import {
   useToast,
   type DataTableColumn,
   type PrintroomTransport,
-  NoteButtons,
+  RowActions,
 } from '@orderbook/ui';
 
 
@@ -103,38 +102,6 @@ interface Props {
   leadEntryRevision: number;
   /** The signed-in person, left out of who else is on the open record. */
   userId: string;
-}
-
-/**
- * A table row is one line tall and clips what overflows, so a record's lines
- * are summarised onto that line with the full list on hover.
- *
- * The cell sits in a `1fr` grid track, so the summary has a zero flex basis: a
- * `nowrap` run of text that keeps its intrinsic width widens the track, and
- * since each row is its own grid, that row's later columns would then stand out
- * of line with every other row's.
- */
-function summariseItems(items: LineItem[]): { text: string; title: string } {
-  const lines = items.map((item) => {
-    const main = item.categoryName ? `${item.categoryName} › ` : '';
-    // The colour chosen on a multi-colour line rides beside the variant's own;
-    // the variant's is dropped when it only repeats the name (CATALOGUE_MODEL §2).
-    const variant = [shownColour(item.variantLabel, item.productName), item.colour]
-      .filter(Boolean)
-      .join(' · ');
-    const variantText = variant ? ` [${variant}]` : '';
-    const meta = [item.packaging, item.grade].filter(Boolean).join(' · ');
-    const pack = meta ? ` · ${meta}` : '';
-    const short = `${main}${item.productName}${variantText} ×${item.quantity}${pack}`;
-    const full = [main + item.productName + variantText, item.code, item.packaging, item.grade]
-      .filter(Boolean)
-      .join(' · ');
-    return { short, full };
-  });
-  return {
-    text: lines.map((line) => line.short).join(', '),
-    title: lines.map((line) => line.full).join('\n'),
-  };
 }
 
 function leadPieces(lead: Lead): number {
@@ -185,7 +152,8 @@ export function LeadsScreen({
   const [party, setParty] = useState<Party | null>(null);
   /** The Filling or Dispatch note open over a pending order, when there is one. */
   const [note, setNote] = useState<{ id: string; kind: NoteKind } | null>(null);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  /** The record Delete was asked for, from its row or its header; null while no dialog shows. */
+  const [deleteTarget, setDeleteTarget] = useState<Lead | null>(null);
   const [deleting, setDeleting] = useState(false);
   /** The lead being edited in the form, when it is not the record view. */
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -410,16 +378,17 @@ export function LeadsScreen({
   }
 
   async function confirmDelete(): Promise<void> {
-    if (!openLead) return;
+    if (!deleteTarget) return;
+    const target = deleteTarget;
     setDeleting(true);
     try {
-      await api.deleteLead(openLead.id);
-      setConfirmingDelete(false);
-      setRows((current) => current.filter((lead) => lead.id !== openLead.id));
-      onOpenId(null);
+      await api.deleteLead(target.id);
+      setDeleteTarget(null);
+      setRows((current) => current.filter((lead) => lead.id !== target.id));
+      if (openId === target.id) onOpenId(null);
     } catch (caught) {
       setError(deleteFailureMessage(caught));
-      setConfirmingDelete(false);
+      setDeleteTarget(null);
     } finally {
       setDeleting(false);
     }
@@ -454,29 +423,6 @@ export function LeadsScreen({
       ),
     },
     { key: 'party', header: t('lead.list.col.party'), render: (lead) => lead.partyName },
-    {
-      key: 'products',
-      header: t('lead.list.col.products'),
-      priority: 2,
-      render: (lead) => {
-        const summary = summariseItems(lead.items);
-        return (
-          <span
-            className="ob-small"
-            title={summary.title}
-            style={{
-              flex: 1,
-              minWidth: 0,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {summary.text}
-          </span>
-        );
-      },
-    },
     {
       key: 'stage',
       header: t('lead.list.col.stage'),
@@ -540,18 +486,33 @@ export function LeadsScreen({
     },
     {
       key: 'notes',
-      header: t('orderNote.column.notes'),
+      header: t('lead.list.col.notes'),
       priority: 2,
-      width: rem(232),
-      render: (lead) =>
-        lead.convertedOrderId ? null : (
-          <NoteButtons
-            onNote={(kind) => {
-              setNote({ id: lead.id, kind });
-              onOpenId(lead.id);
-            }}
-          />
-        ),
+      render: (lead) => (
+        <span className="ob-small ob-ellipsis" title={lead.notes ?? undefined} style={{ display: 'block' }}>
+          {lead.notes?.trim() || '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'action',
+      header: t('lead.list.col.action'),
+      width: rem(96),
+      render: (lead) => (
+        <RowActions
+          editLabel={t('lead.edit.action')}
+          deleteLabel={t('leadsOrders.delete.lead')}
+          onEdit={
+            canEdit && !lead.convertedOrderId
+              ? () => {
+                  onOpenId(lead.id);
+                  setEditingId(lead.id);
+                }
+              : undefined
+          }
+          onDelete={canDelete ? () => setDeleteTarget(lead) : undefined}
+        />
+      ),
     },
   ];
 
@@ -609,6 +570,19 @@ export function LeadsScreen({
     );
   }
 
+  const deleteDialog = (
+    <ConfirmDialog
+      open={deleteTarget !== null}
+      tone="danger"
+      busy={deleting}
+      title={t('leadsOrders.delete.lead.title', { id: deleteTarget ? recordNumberText(deleteTarget) : '' })}
+      body={t('leadsOrders.delete.body')}
+      confirmLabel={t('common.delete')}
+      onCancel={() => setDeleteTarget(null)}
+      onConfirm={() => void confirmDelete()}
+    />
+  );
+
   if (openLead) {
     return (
       <>
@@ -616,18 +590,21 @@ export function LeadsScreen({
           title={openLead.partyName}
           meta={
             <>
-              {openLead.convertedOrderId ? (
-                <StatusPill tone="ok">{t('lead.badge.converted')}</StatusPill>
-              ) : (
-                <StatusPill
-                  tone={stageTone(
-                    stages.find((stage) => stage.id === openLead.stageId),
-                  )}
-                >
-                  {openLead.stageName}
-                </StatusPill>
-              )}
-              <RecordNumber record={openLead} small />
+              <LeadStageMenu
+                lead={openLead}
+                stages={stages}
+                onMove={
+                  canEdit
+                    ? (stageId) =>
+                        void leadRecordTransport
+                          .setLeadStage(openLead.id, stageId)
+                          .catch((caught: unknown) =>
+                            setError(caught instanceof Error ? caught.message : t('lead.error.move')),
+                          )
+                    : undefined
+                }
+              />
+              <CopyRecordNumber record={openLead} />
             </>
           }
           actions={
@@ -635,7 +612,7 @@ export function LeadsScreen({
               {others}
               {onShareInChat && (
                 <Button
-                  variant="secondary"
+                  variant="ghost"
                   size="sm"
                   icon="chat"
                   onClick={() => onShareInChat({ kind: 'lead', id: openLead.id })}
@@ -643,51 +620,57 @@ export function LeadsScreen({
                   {t('chat.share.button')}
                 </Button>
               )}
+              {/* Viewing the record is the right to print its note (1.4 R10); only for a
+                  new order: once converted, the final order carries the notes. The PDF
+                  opens beside the app: the Electron shell allows this one URL a window
+                  of its own (CATALOGUE_MODEL §8). */}
+              <RecordMenu
+                label={t('lead.detail.printMenu')}
+                icon="print"
+                items={[
+                  ...(openLead.convertedOrderId
+                    ? []
+                    : [
+                        {
+                          label: t('orderNote.filling'),
+                          onSelect: () => setNote({ id: openLead.id, kind: 'filling' as const }),
+                        },
+                        {
+                          label: t('orderNote.dispatch'),
+                          onSelect: () => setNote({ id: openLead.id, kind: 'dispatch' as const }),
+                        },
+                      ]),
+                  ...(canPreviewPdf
+                    ? [
+                        {
+                          label: t('lead.previewPdf'),
+                          href: `/api/leads/${encodeURIComponent(openLead.id)}/pdf`,
+                        },
+                      ]
+                    : []),
+                ]}
+              />
               {canEdit && !openLead.convertedOrderId && (
-                <Button variant="secondary" size="sm" onClick={() => setEditingId(openLead.id)}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon="edit"
+                  onClick={() => setEditingId(openLead.id)}
+                >
                   {t('lead.edit.action')}
                 </Button>
               )}
-              {/* Viewing the record is the right to print its note (1.4 R10); only for a
-                  pending order: once converted, the final order carries the notes. */}
-              {!openLead.convertedOrderId && (
-                <>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setNote({ id: openLead.id, kind: 'filling' })}
-                  >
-                    {t('orderNote.filling')}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setNote({ id: openLead.id, kind: 'dispatch' })}
-                  >
-                    {t('orderNote.dispatch')}
-                  </Button>
-                </>
-              )}
-              {/* Opens beside the app: the Electron shell allows this one URL a
-                  window of its own (CATALOGUE_MODEL §8). */}
-              {canPreviewPdf && (
-                <ButtonLink
-                  href={`/api/leads/${encodeURIComponent(openLead.id)}/pdf`}
-                  target="_blank"
-                  variant="secondary"
-                  size="sm"
-                >
-                  {t('lead.previewPdf')}
-                </ButtonLink>
-              )}
               {/* Absent, not greyed, without the permission — the house rule. */}
               {canDelete && (
-                <IconButton
+                <Button
+                  variant="danger"
+                  size="sm"
                   icon="trash"
-                  label={t('leadsOrders.delete.lead')}
                   disabled={deleting}
-                  onClick={() => setConfirmingDelete(true)}
-                />
+                  onClick={() => setDeleteTarget(openLead)}
+                >
+                  {t('leadsOrders.delete.lead')}
+                </Button>
               )}
             </>
           }
@@ -702,14 +685,15 @@ export function LeadsScreen({
             // A new mount per record, so a half-typed note is never the next one's.
             key={openLead.id}
             lead={openLead}
-            stages={stages}
             optionLists={optionLists}
             packagingRequired={packagingRequired}
             party={party}
             canEdit={canEdit}
             canConvert={canConvert}
             transport={leadRecordTransport}
-            onConverted={(order) => {
+            onEdit={canEdit && !openLead.convertedOrderId ? () => setEditingId(openLead.id) : undefined}
+            onConverted={(result) => {
+              const order = result as Order;
               toast.push(
                 t('lead.board.convertedToast', {
                   qty: leadPieces(openLead),
@@ -722,16 +706,7 @@ export function LeadsScreen({
             onError={setError}
           />
         </EditorScreen>
-        <ConfirmDialog
-          open={confirmingDelete}
-          tone="danger"
-          busy={deleting}
-          title={t('leadsOrders.delete.lead.title', { id: recordNumberText(openLead) })}
-          body={t('leadsOrders.delete.body')}
-          confirmLabel={t('common.delete')}
-          onCancel={() => setConfirmingDelete(false)}
-          onConfirm={() => void confirmDelete()}
-        />
+        {deleteDialog}
       </>
     );
   }
@@ -782,6 +757,7 @@ export function LeadsScreen({
           />
         </>
       )}
+      {deleteDialog}
     </div>
   );
 }

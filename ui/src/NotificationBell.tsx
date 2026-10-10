@@ -1,5 +1,7 @@
 /**
- * The notification bell in the topbar, on both panels (1.3).
+ * The notification bell in the topbar, on both panels (1.3), and the drawer it
+ * slides in from the right: the Notification kit's cards, filed by category,
+ * filterable, and grouped Today / Earlier.
  *
  * Notices are stored on the Master, one person's at a time, and follow that
  * person to whichever panel they sign in on, so the bell reads them through a
@@ -16,6 +18,8 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import type {
   MessageKey,
   NotificationKind,
@@ -23,10 +27,10 @@ import type {
   UserNotification,
 } from '@orderbook/shared';
 
-import { formatDateTime } from './format.js';
+import { formatDateTime, formatRelative } from './format.js';
 import { t } from './i18n.js';
-import { Icon } from './icons';
-import { rem } from './rem.js';
+import { Icon, type IconName } from './icons';
+import { motionDisabled } from './theme.js';
 
 export interface NotificationTransport {
   list(): Promise<{ items: UserNotification[]; unreadCount: number }>;
@@ -72,6 +76,83 @@ export function notificationText(item: Pick<UserNotification, 'kind' | 'params'>
   return t(key, right ? { ...item.params, capability: t(right) } : item.params);
 }
 
+type Tone = 'amber' | 'red' | 'accent' | 'ok' | 'neutral';
+type Category = 'devices' | 'orders' | 'chatroom' | 'tasks' | 'access' | 'printroom' | 'backup' | 'updates';
+
+/**
+ * The Notification kit's reading of each kind: the category it files under, and its tile. Tile
+ * colour carries meaning — amber needs attention, red needs action, blue is information, green
+ * is done, grey is chatter.
+ */
+const KIND_LOOK: Record<NotificationKind, { category: Category; tone: Tone; icon: IconName }> = {
+  'panel.offlineLong': { category: 'devices', tone: 'amber', icon: 'monitor-off' },
+  'lead.numbered': { category: 'orders', tone: 'accent', icon: 'clipboard' },
+  'chat.mention': { category: 'chatroom', tone: 'accent', icon: 'mention' },
+  'task.assigned': { category: 'tasks', tone: 'accent', icon: 'task' },
+  'task.done': { category: 'tasks', tone: 'ok', icon: 'check' },
+  'access.requested': { category: 'access', tone: 'amber', icon: 'lock' },
+  'print.printed': { category: 'printroom', tone: 'ok', icon: 'print' },
+  'backup.autoSkipped': { category: 'backup', tone: 'amber', icon: 'warning' },
+  'backup.autoFailed': { category: 'backup', tone: 'red', icon: 'warning' },
+  'update.available': { category: 'updates', tone: 'accent', icon: 'update' },
+  'update.installing': { category: 'updates', tone: 'accent', icon: 'restart' },
+};
+
+/** A kind newer than this build: grey, filed under nothing but All. */
+const UNKNOWN_LOOK: { category: null; tone: Tone; icon: IconName } = {
+  category: null,
+  tone: 'neutral',
+  icon: 'bell',
+};
+
+const OPEN_TEXT: Record<NotificationLink['kind'], MessageKey> = {
+  panel: 'notification.open.panel',
+  lead: 'notification.open.lead',
+  chat: 'notification.open.chat',
+  role: 'notification.open.role',
+  print: 'notification.open.print',
+  update: 'notification.open.update',
+};
+
+const CATEGORY_TEXT: Record<Category, MessageKey> = {
+  devices: 'notification.category.devices',
+  orders: 'notification.category.orders',
+  chatroom: 'notification.category.chatroom',
+  tasks: 'notification.category.tasks',
+  access: 'notification.category.access',
+  printroom: 'notification.category.printroom',
+  backup: 'notification.category.backup',
+  updates: 'notification.category.updates',
+};
+
+/** How long the drawer takes to slide out: `--d-exit` in the stylesheet. */
+const EXIT_MS = 140;
+
+/** Motion off in Settings or in the OS: the drawer goes at once instead of sliding out. */
+function instantMotion(): boolean {
+  return (
+    motionDisabled() ||
+    typeof window.matchMedia !== 'function' ||
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}
+
+function isToday(iso: string, now: Date): boolean {
+  return new Date(iso).toDateString() === now.toDateString();
+}
+
+/** One card in the drawer, stored or the panel's own, as the kit draws it. */
+interface Card {
+  id: string;
+  text: string;
+  createdAt: string;
+  unread: boolean;
+  category: Category | null;
+  tone: Tone;
+  icon: IconName;
+  item: UserNotification | null;
+}
+
 export function NotificationBell({
   transport,
   revision,
@@ -90,12 +171,17 @@ export function NotificationBell({
   transportRef.current = transport;
 
   const [open, setOpen] = useState(false);
+  // Sliding out: still on screen, already on its way.
+  const [closing, setClosing] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [reads, setReads] = useState(0);
   const [items, setItems] = useState<UserNotification[]>([]);
   const [unread, setUnread] = useState(0);
+  const [filter, setFilter] = useState<Category | 'all'>('all');
   // The last read failed: the Master is out of reach, or the panel's own server is.
   const [stale, setStale] = useState(false);
   const wrapRef = useRef<HTMLSpanElement>(null);
+  const drawerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -115,16 +201,43 @@ export function NotificationBell({
     };
   }, [revision, reads]);
 
+  useEffect(() => () => clearTimeout(closeTimer.current), []);
+
+  function show(): void {
+    clearTimeout(closeTimer.current);
+    setClosing(false);
+    setReads((value) => value + 1);
+    setOpen(true);
+  }
+
+  function close(): void {
+    clearTimeout(closeTimer.current);
+    if (instantMotion()) {
+      setOpen(false);
+      setClosing(false);
+      return;
+    }
+    setClosing(true);
+    closeTimer.current = setTimeout(() => {
+      setOpen(false);
+      setClosing(false);
+    }, EXIT_MS);
+  }
+
+  const shown = open && !closing;
+
   // Esc and a click anywhere else close it, as every other popover does.
   useEffect(() => {
-    if (!open) return;
+    if (!shown) return;
     function onDown(event: MouseEvent) {
-      if (wrapRef.current && !wrapRef.current.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (wrapRef.current?.contains(target) || drawerRef.current?.contains(target)) return;
+      close();
     }
     function onKey(event: KeyboardEvent) {
       if (event.key !== 'Escape') return;
       event.stopPropagation();
-      setOpen(false);
+      close();
     }
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
@@ -132,7 +245,7 @@ export function NotificationBell({
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open]);
+  }, [shown]);
 
   function markRead(which: { ids: string[] } | { all: true }): void {
     const at = new Date().toISOString();
@@ -148,12 +261,162 @@ export function NotificationBell({
 
   function openItem(item: UserNotification): void {
     if (!item.readAt) markRead({ ids: [item.id] });
-    setOpen(false);
+    close();
     if (item.link) onOpen?.(item.link);
   }
 
+  const cards: Card[] = [
+    ...local.map(
+      (notice): Card => ({
+        id: notice.id,
+        text: notice.text,
+        createdAt: notice.createdAt,
+        unread: true,
+        ...KIND_LOOK['panel.offlineLong'],
+        item: null,
+      }),
+    ),
+    ...items.map(
+      (item): Card => ({
+        id: item.id,
+        text: notificationText(item),
+        createdAt: item.createdAt,
+        unread: !item.readAt,
+        ...((KIND_LOOK as Partial<Record<string, (typeof KIND_LOOK)[NotificationKind]>>)[item.kind] ?? UNKNOWN_LOOK),
+        item,
+      }),
+    ),
+  ];
+  const categories = [...new Set(cards.map((card) => card.category))].filter(
+    (category): category is Category => category !== null,
+  );
+  // A filter whose last card went away falls back to All rather than an empty drawer.
+  const active = filter !== 'all' && categories.includes(filter) ? filter : 'all';
+  const visible = active === 'all' ? cards : cards.filter((card) => card.category === active);
+  const now = new Date();
+  const groups = [
+    { key: 'notification.group.today' as const, cards: visible.filter((card) => isToday(card.createdAt, now)) },
+    { key: 'notification.group.earlier' as const, cards: visible.filter((card) => !isToday(card.createdAt, now)) },
+  ].filter((group) => group.cards.length > 0);
+
   const count = unread + local.length;
   const label = count > 0 ? t('notification.unreadLabel', { count }) : t('notification.title');
+  // The badge turns red while anything that needs action is unread.
+  const needsAction = cards.some((card) => card.unread && card.tone === 'red');
+
+  function renderCard(card: Card, index: number) {
+    const { item } = card;
+    return (
+      <li key={card.id}>
+        <article
+          className="ob-ncard"
+          data-unread={card.unread ? 'true' : undefined}
+          data-tone={card.tone}
+          data-clickable={item ? 'true' : undefined}
+          style={{ '--i': Math.min(index, 8) } as CSSProperties}
+          onClick={item ? () => openItem(item) : undefined}
+        >
+          <span className={`ob-ntile ob-ntile--${card.tone}`}>
+            <Icon name={card.icon} size={17} />
+          </span>
+          <div className="ob-ncard-body">
+            <div className="ob-ncard-meta">
+              {card.category ? t(CATEGORY_TEXT[card.category]) : t('notification.title')}
+              <span className="ob-ncard-sep">·</span>
+              <time dateTime={card.createdAt} title={formatDateTime(card.createdAt)}>
+                {formatRelative(card.createdAt)}
+              </time>
+              {card.unread && <span className="ob-ncard-dot" role="img" aria-label={t('notification.unread')} />}
+            </div>
+            <span className="ob-ncard-title">{card.text}</span>
+            {item?.link && onOpen && (
+              <div className="ob-ncard-actions">
+                <button
+                  type="button"
+                  className={`ob-btn ob-btn--sm ${card.unread ? 'ob-btn--primary' : 'ob-btn--secondary'}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openItem(item);
+                  }}
+                >
+                  {t(OPEN_TEXT[item.link.kind])}
+                </button>
+              </div>
+            )}
+          </div>
+        </article>
+      </li>
+    );
+  }
+
+  let index = 0;
+  const drawer = (
+    <aside
+      ref={drawerRef}
+      className="ob-ndrawer"
+      data-closing={closing ? 'true' : undefined}
+      role="region"
+      aria-label={t('notification.title')}
+    >
+      <div className="ob-ndrawer-head">
+        <h2 className="ob-ndrawer-title">{t('notification.title')}</h2>
+        {count > 0 && <span className="ob-ndrawer-new">{t('notification.newCount', { count })}</span>}
+        <span style={{ flex: 1 }} />
+        {unread > 0 && (
+          <button type="button" className="ob-btn ob-btn--ghost ob-btn--sm" onClick={() => markRead({ all: true })}>
+            {t('notification.markAllRead')}
+          </button>
+        )}
+        <button
+          type="button"
+          className="ob-icon-btn"
+          aria-label={t('action.close')}
+          title={t('action.close')}
+          onClick={close}
+        >
+          <Icon name="close" />
+        </button>
+      </div>
+
+      {categories.length > 1 && (
+        <div className="ob-ndrawer-chips">
+          {(['all', ...categories] as const).map((category) => (
+            <button
+              key={category}
+              type="button"
+              className="ob-nchip"
+              aria-pressed={active === category}
+              onClick={() => setFilter(category)}
+            >
+              {category === 'all' ? t('notification.filter.all') : t(CATEGORY_TEXT[category])}
+              <span className="ob-nchip-count">
+                {category === 'all' ? cards.length : cards.filter((card) => card.category === category).length}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="ob-ndrawer-body">
+        {stale && <p className="ob-small ob-ndrawer-note">{t('notification.offlineNote')}</p>}
+        {cards.length === 0 ? (
+          <div className="ob-ndrawer-empty">
+            <span className="ob-ndrawer-empty-tile">
+              <Icon name="bell" size={24} />
+            </span>
+            <span className="ob-body-strong">{t('notification.empty')}</span>
+          </div>
+        ) : (
+          groups.map((group) => (
+            <section key={group.key} className="ob-ngroup">
+              <h3 className="ob-eyebrow ob-ngroup-head">{t(group.key)}</h3>
+              <ul className="ob-ngroup-list">{group.cards.map((card) => renderCard(card, index++))}</ul>
+            </section>
+          ))
+        )}
+      </div>
+    </aside>
+  );
 
   return (
     <span ref={wrapRef} className="ob-bell">
@@ -162,70 +425,17 @@ export function NotificationBell({
         className="ob-icon-btn"
         aria-label={label}
         title={label}
-        aria-expanded={open}
-        onClick={() => {
-          if (!open) setReads((value) => value + 1);
-          setOpen(!open);
-        }}
+        aria-expanded={shown}
+        onClick={() => (shown ? close() : show())}
       >
         <Icon name="bell" />
         {count > 0 && (
-          <span className="ob-bell-badge" aria-hidden="true">
+          <span className={`ob-bell-badge${needsAction ? ' ob-bell-badge--action' : ''}`} aria-hidden="true">
             {count > 99 ? '99+' : count}
           </span>
         )}
       </button>
-
-      {open && (
-        <div
-          className="ob-popover ob-bell-list"
-          role="region"
-          aria-label={t('notification.title')}
-          style={{ width: rem(320) }}
-        >
-          <div className="ob-bell-head">
-            <span className="ob-body-strong">{t('notification.title')}</span>
-            <span style={{ flex: 1 }} />
-            {unread > 0 && (
-              <button
-                type="button"
-                className="ob-btn ob-btn--ghost ob-btn--sm"
-                onClick={() => markRead({ all: true })}
-              >
-                {t('notification.markAllRead')}
-              </button>
-            )}
-          </div>
-
-          {stale && <p className="ob-small ob-bell-note">{t('notification.offlineNote')}</p>}
-
-          {local.length === 0 && items.length === 0 ? (
-            <p className="ob-small ob-bell-note">{t('notification.empty')}</p>
-          ) : (
-            <ul className="ob-bell-items">
-              {local.map((notice) => (
-                <li key={notice.id} className="ob-bell-item" data-unread="true">
-                  <span>{notice.text}</span>
-                  <span className="ob-small ob-bell-when">{formatDateTime(notice.createdAt)}</span>
-                </li>
-              ))}
-              {items.map((item) => (
-                <li key={item.id}>
-                  <button
-                    type="button"
-                    className="ob-bell-item"
-                    data-unread={item.readAt ? undefined : 'true'}
-                    onClick={() => openItem(item)}
-                  >
-                    <span>{notificationText(item)}</span>
-                    <span className="ob-small ob-bell-when">{formatDateTime(item.createdAt)}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+      {open && createPortal(drawer, document.body)}
     </span>
   );
 }

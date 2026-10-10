@@ -225,6 +225,11 @@ interface Props {
   lead?: Lead;
   /** The last save somebody else made to `lead` while it is open (a presence push). */
   remoteChange?: PresenceLastWrite | null;
+  /**
+   * A party to open the New form on — New pending order on a party's screen. A
+   * new object each time it is asked; a form already holding products keeps its draft.
+   */
+  presetParty?: Party | null;
 }
 
 /** One line on the lead: one variant, one colour, one quantity. */
@@ -242,12 +247,6 @@ interface DraftCard {
   /** Where the lines go back to when the card is an edit of a group; null appends them. */
   at: number | null;
 }
-
-const QUICK_FOLLOW_UPS = [
-  { days: 1, token: 'lead.add.followUp.tomorrow' },
-  { days: 3, token: 'lead.add.followUp.inThreeDays' },
-  { days: 7, token: 'lead.add.followUp.nextWeek' },
-] as const;
 
 /**
  * How many added products the panel will draw at once.
@@ -396,6 +395,7 @@ function LeadEntryForm({
   onCancel,
   lead,
   remoteChange,
+  presetParty,
   onReload,
 }: Props & { onReload: () => void }) {
   // Read inside effects and callbacks, never listed as a dependency.
@@ -1566,6 +1566,11 @@ function LeadEntryForm({
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusNonce]);
+  // After the focus effect above, so the preset's move to the source lands last.
+  useEffect(() => {
+    if (presetParty && !lead && lines.length === 0 && !draft) chooseParty(presetParty);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetParty]);
 
   /*
    * Resetting throws away a lead somebody is part-way through typing, so it asks
@@ -1826,7 +1831,6 @@ function LeadEntryForm({
 
             <OrderField label={t('lead.add.followUp.label')}>
               <FollowUpField
-                groupLabel={t('lead.add.followUp.group')}
                 date={
                   <DateField
                     value={followUpDate}
@@ -1834,16 +1838,6 @@ function LeadEntryForm({
                     onChange={(event) => setFollowUpDate(event.target.value)}
                   />
                 }
-                quick={QUICK_FOLLOW_UPS.map(({ days, token }) => {
-                  const iso = isoDate(days);
-                  return {
-                    key: token,
-                    label: t(`${token}Short`),
-                    title: t(token),
-                    active: followUpDate === iso,
-                    onClick: () => setFollowUpDate((current) => (current === iso ? '' : iso)),
-                  };
-                })}
               />
             </OrderField>
 
@@ -2550,7 +2544,6 @@ function LeadEntryForm({
           onSave={() => void save()}
         >
           {groups.map((group) => {
-            const image = group.lines.find((line) => line.image)?.image;
             return (
               <AddedGroup
                 key={group.key}
@@ -2562,15 +2555,6 @@ function LeadEntryForm({
                     checked={Boolean(selected[group.key])}
                     aria-label={t('lead.add.panel.select', { product: group.name })}
                     onChange={() => toggleSelect(group.key)}
-                  />
-                }
-                thumb={
-                  <ProductThumb
-                    images={image ? [image] : undefined}
-                    name={group.name}
-                    size={32}
-                    fallback="none"
-                    alt=""
                   />
                 }
                 code={group.code}

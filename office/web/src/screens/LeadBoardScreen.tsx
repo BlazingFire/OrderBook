@@ -23,7 +23,6 @@ import {
   AvatarStack,
   BOARD_SHOWN,
   Button,
-  ButtonLink,
   ColourChip,
   DataTable,
   PageBar,
@@ -54,10 +53,21 @@ import {
   useToast,
   type DataTableColumn,
   type PrintroomTransport,
-  NoteButtons,
+  RowActions,
+  CopyRecordNumber,
+  LeadRecordView,
+  LeadStageMenu,
+  RecordMenu,
+  type LeadRecordTransport,
 } from '@orderbook/ui';
 import { AddLeadScreen } from './AddLeadScreen';
-import { LeadDetail } from './LeadDetail';
+
+/** What the shared record view reaches on this panel: the outbox-backed client. */
+const leadRecordTransport: LeadRecordTransport = {
+  addLeadRemark: (id, message) => api.addLeadRemark(id, message),
+  setLeadStage: (id, stageId) => api.setLeadStage(id, stageId),
+  convertLead: (id, input) => api.convertLead(id, input),
+};
 
 interface Props {
   view: LocalView;
@@ -352,23 +362,28 @@ export function LeadBoardScreen({
     // A converted lead is locked on the Master, and one it has not received
     // yet has nothing there to update.
     const editable = canEdit && !openLead.convertedOrderId && Boolean(openLead.sync.hlc);
+    const stages = [...(pipeline?.stages ?? [])].sort((x, y) => x.sequence - y.sequence);
+    const party = view.parties.find((candidate) => candidate.id === openLead.partyId) ?? null;
     return (
       <EditorScreen
         title={openLead.partyName}
         meta={
           <>
-            {openLead.convertedOrderId && (
-              <StatusPill tone="ok">{t('lead.badge.converted')}</StatusPill>
-            )}
+            <LeadStageMenu
+              lead={openLead}
+              stages={stages}
+              onMove={editable ? (stageId) => void move(openLead, stageId) : undefined}
+            />
             {/* Provisional, with its temporary id, until the Master numbers it. */}
-            <RecordNumber record={openLead} small />
+            <CopyRecordNumber record={openLead} />
           </>
         }
         actions={
           <>
+            {others}
             {onShareInChat && (
               <Button
-                variant="secondary"
+                variant="ghost"
                 size="sm"
                 icon="chat"
                 onClick={() => onShareInChat({ kind: 'lead', id: openLead.id })}
@@ -376,43 +391,39 @@ export function LeadBoardScreen({
                 {t('chat.share.button')}
               </Button>
             )}
-            {others}
+            {/* Notes come from the local snapshot, so they need no Master and no
+                sync; once converted, the final order carries them. The Master renders
+                the PDF, so a lead it has not received yet has none to show. */}
+            <RecordMenu
+              label={t('lead.detail.printMenu')}
+              icon="print"
+              items={[
+                ...(openLead.convertedOrderId
+                  ? []
+                  : [
+                      {
+                        label: t('orderNote.filling'),
+                        onSelect: () => setNote({ id: openLead.id, kind: 'filling' as const }),
+                      },
+                      {
+                        label: t('orderNote.dispatch'),
+                        onSelect: () => setNote({ id: openLead.id, kind: 'dispatch' as const }),
+                      },
+                    ]),
+                ...(canPreviewPdf && openLead.sync.hlc
+                  ? [
+                      {
+                        label: t('lead.previewPdf'),
+                        href: `/api/leads/${encodeURIComponent(openLead.id)}/pdf`,
+                      },
+                    ]
+                  : []),
+              ]}
+            />
             {editable && (
-              <Button variant="secondary" size="sm" onClick={() => setEditingId(openLead.id)}>
+              <Button variant="secondary" size="sm" icon="edit" onClick={() => setEditingId(openLead.id)}>
                 {t('lead.edit.action')}
               </Button>
-            )}
-            {/* Notes come from the local snapshot, so they need no Master and no
-                sync; once converted, the final order carries them. */}
-            {!openLead.convertedOrderId && (
-              <>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setNote({ id: openLead.id, kind: 'filling' })}
-                >
-                  {t('orderNote.filling')}
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setNote({ id: openLead.id, kind: 'dispatch' })}
-                >
-                  {t('orderNote.dispatch')}
-                </Button>
-              </>
-            )}
-            {/* The Master renders the PDF, so a lead it has not received yet
-                has none to show. Opens beside the app (CATALOGUE_MODEL §8). */}
-            {canPreviewPdf && openLead.sync.hlc && (
-              <ButtonLink
-                href={`/api/leads/${encodeURIComponent(openLead.id)}/pdf`}
-                target="_blank"
-                variant="secondary"
-                size="sm"
-              >
-                {t('lead.previewPdf')}
-              </ButtonLink>
             )}
           </>
         }
@@ -422,11 +433,17 @@ export function LeadBoardScreen({
         }}
         backLabel={t('action.backToList')}
       >
-        <LeadDetail
+        <LeadRecordView
+          key={openLead.id}
           lead={openLead}
-          view={view}
+          optionLists={view.optionLists}
+          packagingRequired={packagingRequired}
+          party={party}
+          canEdit={canEdit}
           canConvert={canConvert}
-          onClose={() => onOpenId(null)}
+          transport={leadRecordTransport}
+          onEdit={editable ? () => setEditingId(openLead.id) : undefined}
+          onConverted={() => onOpenId(null)}
           onError={onError}
         />
       </EditorScreen>
@@ -492,24 +509,6 @@ export function LeadBoardScreen({
     },
     { key: 'party', header: t('lead.list.col.party'), render: (lead) => lead.partyName },
     {
-      key: 'products',
-      header: t('lead.list.col.products'),
-      priority: 2,
-      render: (lead) => {
-        const mains = leadMains(lead);
-        const names = lead.items.map((item) => item.productName).join(', ');
-        return (
-          <span
-            className="ob-small ob-ellipsis"
-            title={mains.length ? `${mains.join(' · ')}\n${names}` : names}
-            style={{ display: 'block' }}
-          >
-            {mains.length ? mains.join(' · ') : names}
-          </span>
-        );
-      },
-    },
-    {
       key: 'stage',
       header: t('lead.list.col.stage'),
       width: rem(110),
@@ -568,18 +567,33 @@ export function LeadBoardScreen({
     },
     {
       key: 'notes',
-      header: t('orderNote.column.notes'),
+      header: t('lead.list.col.notes'),
       priority: 2,
-      width: rem(232),
-      render: (lead) =>
-        lead.convertedOrderId ? null : (
-          <NoteButtons
-            onNote={(kind) => {
-              setNote({ id: lead.id, kind });
-              onOpenId(lead.id);
-            }}
-          />
-        ),
+      render: (lead) => (
+        <span className="ob-small ob-ellipsis" title={lead.notes ?? undefined} style={{ display: 'block' }}>
+          {lead.notes?.trim() || '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'action',
+      header: t('lead.list.col.action'),
+      width: rem(64),
+      render: (lead) => (
+        <RowActions
+          editLabel={t('lead.edit.action')}
+          deleteLabel={t('leadsOrders.delete.lead')}
+          onEdit={
+            // As the record's Edit order: not converted, and received by the Master.
+            canEdit && !lead.convertedOrderId && lead.sync.hlc
+              ? () => {
+                  onOpenId(lead.id);
+                  setEditingId(lead.id);
+                }
+              : undefined
+          }
+        />
+      ),
     },
   ];
 

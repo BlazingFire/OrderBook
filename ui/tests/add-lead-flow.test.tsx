@@ -1473,19 +1473,6 @@ describe('Office: the catalogue changing while the entry is open', () => {
   });
 });
 
-describe('Office: the follow-up chips', () => {
-  it('are one radio group beside the date, not three loose chips', async () => {
-    await openForm();
-    const group = document.querySelector<HTMLElement>('[data-follow-up-chips]')!;
-    expect(group).not.toBeNull();
-    // The three quick chips, and not the date box, share the one wrapping group.
-    expect(group.querySelectorAll('button')).toHaveLength(3);
-    expect(group.querySelector('input')).toBeNull();
-    // One segmented radio group, the design's control, not three loose chips.
-    expect(group.getAttribute('role')).toBe('radiogroup');
-  });
-});
-
 describe('a dedicated sub product', () => {
   it('asks for a quantity only, and its line carries no colour', async () => {
     const calls = await openForm();

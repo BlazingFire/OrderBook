@@ -17,7 +17,6 @@ export function AddedGroup({
   open = true,
   onToggle,
   leading,
-  thumb,
   code,
   name,
   pieces,
@@ -32,8 +31,6 @@ export function AddedGroup({
   open?: boolean;
   onToggle?: () => void;
   leading?: ReactNode;
-  /** A `ProductThumb`, before the code. */
-  thumb?: ReactNode;
   code?: string | null;
   name: string;
   pieces: number;
@@ -47,7 +44,6 @@ export function AddedGroup({
 }) {
   const head = (
     <>
-      {thumb}
       {code && <span className="ob-order-group__code">{code}</span>}
       <span className="ob-order-group__name">{name}</span>
       <span className="ob-order-group__pieces">

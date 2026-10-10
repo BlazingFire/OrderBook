@@ -174,7 +174,6 @@ describe('every editor registers', () => {
     ['ui/src/ChatGroupSettings.tsx', 'chat-group'],
     ['ui/src/ChatConversation.tsx', 'chat-draft:'],
     ['ui/src/OrderRecordView.tsx', 'order-note:'],
-    ['office/web/src/screens/LeadDetail.tsx', 'lead-remark:'],
     ['ui/src/OrderNoteScreen.tsx', 'vehicle:'],
     ['ui/src/PrintroomScreen.tsx', 'print-station-name'],
     ['ui/src/LeadRecordView.tsx', 'lead-remark:'],

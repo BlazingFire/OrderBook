@@ -62,7 +62,11 @@ export type IconName =
   | 'lock'
   | 'camera'
   | 'plug'
-  | 'log';
+  | 'log'
+  | 'monitor-off'
+  | 'mention'
+  | 'clipboard'
+  | 'restart';
 
 /** A circle as a path, for icons that are otherwise one stroke. */
 const circle = (cx: number, cy: number, r: number) =>
@@ -127,6 +131,11 @@ const PATHS: Record<IconName, string> = {
   upload: 'M12 15V4M7 9l5-5 5 5M5 15v4h14v-4',
   download: 'M12 4v11M7 10l5 5 5-5M5 15v4h14v-4',
   bell: 'M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5h4',
+  // The Notification kit's tiles.
+  'monitor-off': 'M3.5 5.5h17v11h-17zM9 20.5h6M12 16.5v4M4 4l16 16',
+  mention: 'M15.5 12a3.5 3.5 0 1 1-7 0a3.5 3.5 0 1 1 7 0M15.5 9v4.25a2.25 2.25 0 0 0 4.5 0V12a8 8 0 1 0-3.2 6.4',
+  clipboard: 'M9 4h6v3H9zM7 5.5H5.5v15h13v-15H17M12 11v6M9 14h6',
+  restart: 'M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5V9H15',
   pin: 'M14.5 4l5.5 5.5-3 1.5-3 3 .5 4-1.5 1.5-9-9L5.5 9l4 .5 3-3zM8 16l-4 4',
   'sign-out': 'M10 4H5v16h5M9 12h11M16 8l4 4-4 4',
   key: `${circle(8, 15, 4)}M11 12l9-9M17 6l2 2M14.5 8.5l1.5 1.5`,

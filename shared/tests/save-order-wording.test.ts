@@ -51,8 +51,8 @@ describe('the New Order save path says "order"', () => {
     expect(text).not.toMatch(/pending order/i);
   });
 
-  it('leaves the list and conversion their own names', () => {
-    expect(t('en', 'nav.leads')).toBe('Pending Orders');
-    expect(t('en', 'lead.error.convert')).toMatch(/pending order/i);
+  it('names the list and conversion New Orders (owner, 2026-10-08)', () => {
+    expect(t('en', 'nav.leads')).toBe('New Orders');
+    expect(t('en', 'lead.error.convert')).toMatch(/new order/i);
   });
 });

@@ -63,14 +63,23 @@ export function loadTheme(): Theme {
  * pixel ratio under 1.5), where the 14 px root reads as tiny; 100 % on
  * everything else, 1080p and 1440p included. The owner's rule, 2026-10-07.
  */
-export function screenDefaultScale(screenWidth: number, devicePixelRatio: number): number {
+export function screenDefaultScale(
+  screenWidth: number,
+  devicePixelRatio: number,
+  viewportWidth = Infinity,
+): number {
   const ratio = devicePixelRatio > 0 ? devicePixelRatio : 1;
-  return screenWidth * ratio >= 3000 && ratio < 1.5 ? SCALE_DEFAULT * 1.5 : SCALE_DEFAULT;
+  if (screenWidth * ratio >= 3000 && ratio < 1.5) return SCALE_DEFAULT * 1.5;
+  // Small laptop windows: a tighter root so the sidebar, toolbar and table keep
+  // the columns they have on a desktop instead of wrapping and dropping them.
+  if (viewportWidth < 1280) return 12;
+  if (viewportWidth < 1440) return 13;
+  return SCALE_DEFAULT;
 }
 
 function screenDefault(): number {
   try {
-    return screenDefaultScale(window.screen?.width ?? 0, window.devicePixelRatio || 1);
+    return screenDefaultScale(window.screen?.width ?? 0, window.devicePixelRatio || 1, window.innerWidth);
   } catch {
     return SCALE_DEFAULT;
   }

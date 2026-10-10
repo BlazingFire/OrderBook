@@ -7,13 +7,13 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { cleanup, render } from '@testing-library/react';
+import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { BUSY_STAGGER_MS, BusyMark } from '../src/BusyMark.js';
 import { Logo } from '../src/Logo.js';
 import { Mark, markShowsGhosts } from '../src/Mark.js';
-import { SPLASH_MS, SPLASH_STAGGER_MS, Splash } from '../src/Splash.js';
+import { SPLASH_FINISH_MS, SPLASH_MIN_MS, SPLASH_STAGGER_MS, Splash } from '../src/Splash.js';
 
 const css = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'mark.css'), 'utf8');
 
@@ -102,56 +102,68 @@ describe('BusyMark', () => {
 });
 
 describe('Splash', () => {
-  const props = { wordmark: 'OrderBook', progress: 0.5, label: 'Starting', retryLabel: 'Retry', onRetry: () => {} };
+  const props = { program: 'office' as const, version: '1.4.6', retryLabel: 'Retry', onRetry: () => {} };
 
-  it('inks the ten squares 34 ms apart after the 240 ms outline, inside a hold that contains the whole entrance', () => {
-    const { container } = render(<Splash {...props} onDone={() => {}} />);
+  it('drops the ten squares in bottom row first, 85 ms apart, and spells the wordmark letter by letter', () => {
+    const { container, getByText } = render(<Splash {...props} company="Smruti Ceramics" ready={false} onDone={() => {}} />);
     const cells = Array.from(container.querySelectorAll('.ob-splash-cell')) as SVGRectElement[];
     expect(cells.map((cell) => cell.style.animationDelay)).toEqual(
-      Array.from({ length: 10 }, (_, i) => `${240 + i * SPLASH_STAGGER_MS}ms`),
+      Array.from({ length: 10 }, (_, i) => `${750 + i * SPLASH_STAGGER_MS}ms`),
     );
-    // The outline traces all twelve squares, the ghosts' places included.
-    expect(container.querySelector('.ob-splash-outline')?.getAttribute('d')?.match(/M/g)).toHaveLength(12);
-    // Last arrival: the bar, at 700 ms over 280 ms.
-    expect(SPLASH_MS).toBeGreaterThanOrEqual(980);
-    expect(css).toMatch(/\.ob-splash-word \{[^}]*animation: ob-word 288ms var\(--e-standard\) 620ms both;/);
-    // Once the squares are in, the outline fades, leaving the ten squares.
-    expect(css).toMatch(/\.ob-splash-outline \{[^}]*ob-outline-fade 220ms var\(--e-exit\) 700ms forwards;/);
+    expect(cells[0]?.getAttribute('y')).toBe('16');
+    expect(cells[9]?.getAttribute('y')).toBe('4');
+    expect(container.querySelectorAll('.ob-splash-draw')).toHaveLength(12);
+    expect(container.querySelectorAll('.ob-splash-ghost')).toHaveLength(2);
+    expect(container.querySelector('h1')?.getAttribute('aria-label')).toBe('OrderBook');
+    expect(container.querySelectorAll('.ob-splash-letter')).toHaveLength(9);
+    expect(getByText('Office Panel · Smruti Ceramics')).toBeTruthy();
+    expect(getByText('Connecting to Master Panel')).toBeTruthy();
+    expect(getByText('v1.4.6')).toBeTruthy();
   });
 
-  it('plays once: it hands the screen back after the hold', () => {
+  it('holds at least 5 s, waits on a slow boot, then plays Ready and hands over', () => {
     vi.useFakeTimers();
     try {
       const onDone = vi.fn();
-      render(<Splash {...props} onDone={onDone} />);
-      vi.advanceTimersByTime(SPLASH_MS - 1);
+      const { container } = render(<Splash {...props} ready onDone={onDone} />);
+      act(() => void vi.advanceTimersByTime(SPLASH_MIN_MS - 1));
+      expect(container.querySelector('.ob-splash--done')).toBeNull();
+      act(() => void vi.advanceTimersByTime(1));
+      expect(container.querySelector('.ob-splash--done')).not.toBeNull();
+      expect(container.querySelector('.ob-splash-ready')?.textContent).toBe('Ready');
+      act(() => void vi.advanceTimersByTime(SPLASH_FINISH_MS - 1));
       expect(onDone).not.toHaveBeenCalled();
-      vi.advanceTimersByTime(1);
+      act(() => void vi.advanceTimersByTime(1));
       expect(onDone).toHaveBeenCalledTimes(1);
+      expect(SPLASH_MIN_MS + SPLASH_FINISH_MS).toBeGreaterThanOrEqual(5000);
+
+      // A boot still running at the hold's end keeps the splash waiting.
+      cleanup();
+      const late = vi.fn();
+      const slow = render(<Splash {...props} ready={false} onDone={late} />);
+      act(() => void vi.advanceTimersByTime(20_000));
+      expect(slow.container.querySelector('.ob-splash--done')).toBeNull();
+      expect(late).not.toHaveBeenCalled();
+      slow.rerender(<Splash {...props} ready onDone={late} />);
+      act(() => void vi.advanceTimersByTime(SPLASH_FINISH_MS));
+      expect(late).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }
   });
+
+  it('waits at 90 % for the boot and fills the last 10 % only once it is done', () => {
+    expect(css).toMatch(/@keyframes ob-sp-progress \{[\s\S]*?100% \{\s*transform: scaleX\(0\.9\);/);
+    expect(css).toMatch(/\.ob-splash--done \.ob-splash-fill \{\s*animation: ob-sp-progress-end/);
+  });
 });
 
 describe('reduced motion', () => {
-  const moving = ['.ob-busy rect', '.ob-splash-cell', '.ob-splash-word'];
-
-  it('stands every moving part of the mark still as its final frame, under both switches', () => {
+  it('stands the busy mark and the splash still, under both switches', () => {
     const reduced = /@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?)\n\}/.exec(css)?.[1] ?? '';
-    const off = /((?:html\[data-motion='off'\] [^,{]+,?\s*)+)\{([^}]*)\}/.exec(css);
-    for (const selector of moving) {
-      expect(reduced, `reduced motion: ${selector}`).toContain(selector);
-      const offSelectors = (off?.[1] ?? '').split(',').map((part) => part.trim());
-      expect(offSelectors, `motion off: ${selector}`).toContain(`html[data-motion='off'] ${selector}`);
-    }
-    for (const block of [reduced, off?.[2] ?? '']) {
-      expect(block).toContain('animation: none !important;');
-      expect(block).toContain('opacity: 1;');
-      expect(block).toContain('stroke-dashoffset: 0;');
-    }
-    // The outline has faded by the final frame, so it is hidden under both switches.
-    expect(reduced).toMatch(/\.ob-splash-outline \{\s*animation: none !important;\s*opacity: 0;/);
-    expect(css).toMatch(/html\[data-motion='off'\] \.ob-splash-outline \{\s*animation: none !important;\s*opacity: 0;/);
+    expect(reduced).toMatch(/\.ob-busy rect,\s*\.ob-splash \* \{\s*animation: none !important;/);
+    expect(css).toMatch(/html\[data-motion='off'\] \.ob-busy rect,\s*html\[data-motion='off'\] \.ob-splash \* \{\s*animation: none !important;/);
+    expect(reduced).toMatch(/\.ob-busy rect \{\s*opacity: 1;\s*transform: none;/);
+    expect(css).toMatch(/html\[data-motion='off'\] \.ob-busy rect \{\s*opacity: 1;\s*transform: none;/);
   });
 });

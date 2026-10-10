@@ -66,7 +66,7 @@ import {
   type PillTone,
   stageTone,
   type PrintroomTransport,
-  NoteButtons,
+  RowActions,
   showsDispatchedPill,
 } from '@orderbook/ui';
 import type { DataTableColumn } from '@orderbook/ui';
@@ -453,16 +453,24 @@ export function OrderBoardScreen({
     },
     {
       key: 'notes',
-      header: t('orderNote.column.notes'),
-      // Goes with Weight, before Order ref and Qty: the notes are also on the order itself.
-      priority: 3,
-      width: rem(232),
+      header: t('lead.list.col.notes'),
+      priority: 2,
       render: (order) => (
-        <NoteButtons
-          onNote={(kind) => {
-            setNote({ id: order.id, kind });
-            onOpenId(order.id);
-          }}
+        <span className="ob-small ob-ellipsis" title={order.notes ?? undefined} style={{ display: 'block' }}>
+          {order.notes?.trim() || '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'action',
+      header: t('lead.list.col.action'),
+      width: rem(64),
+      render: (order) => (
+        <RowActions
+          editLabel={t('order.list.editAction')}
+          deleteLabel={t('leadsOrders.delete.order')}
+          // A final order is edited on its own screen (weight, stage, vehicle, dispatch).
+          onEdit={canEdit ? () => onOpenId(order.id) : undefined}
         />
       ),
     },

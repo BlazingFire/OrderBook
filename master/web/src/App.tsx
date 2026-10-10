@@ -20,6 +20,7 @@ import type {
   DashboardSummary,
   MessageKey,
   OfficePanelWithPresence,
+  Party,
   Pipeline,
   RecycleBinEntityType,
   Product,
@@ -309,7 +310,7 @@ const notificationTransport: NotificationTransport = {
   markRead: (which) => api.markNotificationsRead(which),
 };
 
-/** The cold-start steps the splash reports, in the order they run. */
+/** The cold-start steps the splash waits on, in the order they run. */
 const BOOT_STEPS = ['server', 'session', 'assets'] as const;
 
 /**
@@ -366,6 +367,8 @@ function MasterPanel() {
   const confirm = useConfirm();
   /** Bumped each time New Order is asked for, so the form can take the cursor when blank. */
   const [newLeadNonce, setNewLeadNonce] = useState(0);
+  /** The party New pending order on a party's screen opens the form on; a fresh object per ask. */
+  const [newLeadParty, setNewLeadParty] = useState<Party | null>(null);
   // Above the early returns: the topbar button, the sub-page and Ctrl+Shift+N all read it.
   const canCreateLead = user?.permissions.includes('leads.create') ?? false;
   /*
@@ -857,9 +860,10 @@ function MasterPanel() {
   if (!splashDone || bootStep < BOOT_STEPS.length || bootError) {
     return (
       <Splash
-        wordmark={t('app.name')}
-        progress={bootStep / BOOT_STEPS.length}
-        label={t(`splash.step.${BOOT_STEPS[bootStep] ?? 'ready'}`)}
+        program="master"
+        company={companyName}
+        version={__APP_VERSION__}
+        ready={bootStep >= BOOT_STEPS.length}
         error={bootError}
         retryLabel={t('action.retryNow')}
         onRetry={() => setBootAttempt((attempt) => attempt + 1)}
@@ -1633,6 +1637,17 @@ function MasterPanel() {
           openId={openIds.parties}
           onOpenId={(id) => setOpenIds((current) => ({ ...current, parties: id }))}
           onOpenLead={(id) => openRecord('leads', id)}
+          onOpenOrder={(id) => openRecord('orders', id)}
+          onOpenLeadsList={() => navigate('leads')}
+          onOpenOrdersList={() => navigate('orders')}
+          onNewLead={
+            canCreateLead
+              ? (party) => {
+                  setNewLeadParty({ ...party });
+                  openNewLead();
+                }
+              : undefined
+          }
           onOpenPartyAccess={() => navigate('partyAccess')}
         />
       ),
@@ -1668,6 +1683,7 @@ function MasterPanel() {
                 revision={revisionOf(revisions, 'leadEntry')}
                 catalogueRevision={revisionOf(revisions, 'catalogue')}
                 focusNonce={newLeadNonce}
+                presetParty={newLeadParty}
                 canCreateParty={user.permissions.includes('parties.create')}
                 onSaved={(id, saved) => {
                   closeNewLead();

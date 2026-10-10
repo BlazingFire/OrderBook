@@ -50,8 +50,7 @@ Basic Home and at sign-in, Escape goes back, and the New Order dropdown chain. W
 5. The catalogue photo rebuild at start is refused if a newer `sharp` ever changes the blurhash of a shipped photo; decide whether
    that check should compare the picture instead.
 6. Office `failForward` answers 502 where 404 is meant when the Master says a record is gone.
-7. The settings help prose still says "new pending order" where the screen is now called New Order.
-8. Converting a lead to an order drops the lead's notes (unchanged since 1.4.5). Whether it should carry them is the owner's call.
+7. Converting a lead to an order drops the lead's notes (unchanged since 1.4.5). Whether it should carry them is the owner's call.
 
 ## Before that: 1.4.5 is released; what comes next (2026-10-07)
 

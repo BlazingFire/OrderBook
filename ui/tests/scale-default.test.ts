@@ -33,6 +33,14 @@ describe('loadScale', () => {
 
   it('falls back to the screen default when nothing is saved', () => {
     window.localStorage.removeItem('ob.scale');
-    expect(loadScale()).toBe(screenDefaultScale(window.screen.width, window.devicePixelRatio || 1));
+    expect(loadScale()).toBe(
+      screenDefaultScale(window.screen.width, window.devicePixelRatio || 1, window.innerWidth),
+    );
+  });
+
+  it('starts a small laptop window tighter than a desktop one', () => {
+    expect(screenDefaultScale(1920, 1, 1024)).toBe(12);
+    expect(screenDefaultScale(1920, 1, 1366)).toBe(13);
+    expect(screenDefaultScale(1920, 1, 1920)).toBe(SCALE_DEFAULT);
   });
 });

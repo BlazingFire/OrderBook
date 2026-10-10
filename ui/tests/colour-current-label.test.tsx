@@ -60,7 +60,6 @@ describe('the Master record views print a colour by its current label', () => {
     render(
       <LeadRecordView
         lead={lead}
-        stages={[]}
         optionLists={OPTIONS}
         packagingRequired={false}
         party={null}

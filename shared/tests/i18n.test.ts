@@ -56,12 +56,12 @@ describe('t()', () => {
 
 describe('tCount()', () => {
   it('selects the singular form for a count of 1', () => {
-    expect(tCount('en', 'count.leads', 1)).toBe('1 pending order');
+    expect(tCount('en', 'count.leads', 1)).toBe('1 new order');
   });
 
   it('selects the plural form for a count other than 1', () => {
-    expect(tCount('en', 'count.leads', 0)).toBe('0 pending orders');
-    expect(tCount('en', 'count.leads', 5)).toBe('5 pending orders');
+    expect(tCount('en', 'count.leads', 0)).toBe('0 new orders');
+    expect(tCount('en', 'count.leads', 5)).toBe('5 new orders');
   });
 
   it('injects the count as a number, never pre-formatted with a separator', () => {
@@ -78,7 +78,7 @@ describe('createTranslator()', () => {
 
   it('exposes tCount bound to the same locale', () => {
     const translator = createTranslator('en');
-    expect(translator.tCount('count.leads', 2)).toBe('2 pending orders');
+    expect(translator.tCount('count.leads', 2)).toBe('2 new orders');
   });
 });
 
@@ -123,11 +123,11 @@ describe('renderActivity()', () => {
       details: { number: 'LD0000000007', party: 'Sharma Tiles' },
     };
     expect(renderActivity(createTranslator('en'), deleted)).toBe(
-      'Karan deleted the pending order LD0000000007 for Sharma Tiles',
+      'Karan deleted the new order LD0000000007 for Sharma Tiles',
     );
     // A row written before those fields existed keeps its plain sentence.
     expect(renderActivity(createTranslator('en'), { ...deleted, details: {} })).toBe(
-      'Karan deleted this pending order',
+      'Karan deleted this new order',
     );
   });
 

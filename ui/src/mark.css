@@ -75,14 +75,293 @@
 }
 
 /* ---------------------------------------------------------------------------
- * Splash, played once on a cold start (Splash.tsx):
- *   0–240 ms    the lattice outline draws
- *   240–620 ms  the ten squares ink, 34 ms apart, each from 88 % to full size
- *   620–908 ms  the wordmark rises 4 px
- *   700–920 ms  the outline fades, leaving the ten inked squares
+ * Splash, played once on a cold start (Splash.tsx, the Splash artboard of
+ * 2026-10-08). The scene is the artboard's 880 × 520 window, centred in the
+ * real one; the maker and the version sit in the real window's corners.
+ * Times are from mount; `.ob-splash--done` is added once the boot is ready
+ * and the 5.1 s hold is up, and plays the last 1.25 s.
  * ------------------------------------------------------------------------ */
 
-@keyframes ob-outline-draw {
+.ob-splash {
+  --splash-bg: var(--bg-surface);
+  --splash-grid: #e3e8eb;
+  --splash-track: var(--bg-sunken);
+  --splash-fg3: var(--porcelain-50-fill);
+  --splash-glint: 0.7;
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-splash);
+  background: var(--splash-bg);
+  font-family: var(--font-ui);
+  overflow: hidden;
+}
+
+[data-theme='dark'] .ob-splash {
+  --splash-bg: var(--bg-canvas);
+  --splash-grid: #18222a;
+  --splash-track: var(--line);
+  --splash-glint: 0.5;
+}
+
+.ob-splash-body {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ob-splash-scene {
+  position: relative;
+  flex: none;
+  width: 880px;
+  height: 520px;
+}
+
+.ob-splash-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--splash-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--splash-grid) 1px, transparent 1px);
+  background-size: 30px 30px;
+  background-position: 19px 29px;
+  -webkit-mask-image: radial-gradient(ellipse 340px 230px at 50% 164px, #000 0%, rgba(0, 0, 0, 0.5) 50%, transparent 100%);
+  animation: ob-sp-grid 900ms var(--e-standard) both;
+}
+
+.ob-splash-column {
+  position: absolute;
+  inset: 0;
+  padding-top: 104px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.ob-splash-move,
+.ob-splash-breath {
+  width: 120px;
+  height: 120px;
+}
+
+.ob-splash-move {
+  animation: ob-sp-move 700ms var(--e-standard) 2350ms both;
+}
+
+.ob-splash--done .ob-splash-breath {
+  animation: ob-sp-breath 600ms var(--e-standard) 100ms both;
+}
+
+.ob-splash-mark {
+  display: block;
+  overflow: visible;
+}
+
+.ob-splash-outline {
+  opacity: 0;
+  animation: ob-sp-outline 2350ms linear both;
+}
+
+.ob-splash-draw {
+  stroke-dasharray: 1;
+  animation: ob-sp-draw 450ms var(--e-standard) both;
+}
+
+.ob-splash-cell {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: ob-sp-drop 520ms both;
+}
+
+.ob-splash-ghosts {
+  opacity: var(--ob-mark-ghost);
+}
+
+.ob-splash-ghost {
+  animation: ob-sp-fade 350ms var(--e-standard) both;
+}
+
+.ob-splash-shine {
+  opacity: 0;
+  animation: ob-sp-shine 600ms cubic-bezier(0.4, 0, 0.2, 1) 2100ms both;
+}
+
+.ob-splash-welcome {
+  margin-top: 26px;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 450;
+  color: var(--fg-secondary);
+  animation: ob-sp-rise 450ms var(--e-standard) 2700ms both;
+}
+
+.ob-splash-word {
+  display: flex;
+  margin: 2px 0 0;
+  font-size: 56px;
+  line-height: 1.15;
+  font-weight: 600;
+  color: var(--fg-primary);
+}
+
+.ob-splash-letter-box {
+  display: inline-block;
+  overflow: hidden;
+  margin-right: -0.028em;
+}
+
+.ob-splash-letter {
+  display: inline-block;
+  animation: ob-sp-letter 550ms var(--e-standard) both;
+}
+
+.ob-splash-program {
+  margin-top: 10px;
+  font-size: 13.5px;
+  color: var(--splash-fg3);
+  animation: ob-sp-rise 450ms var(--e-standard) 3650ms both;
+}
+
+.ob-splash-status {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 78px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+/* The error replaces the lines and the bar. It rises in rather than appearing,
+ * so the failure reads as a transition rather than a cut. */
+.ob-splash-status--error {
+  bottom: 48px;
+  animation: ob-sp-rise 280ms var(--e-standard) 500ms both;
+}
+
+.ob-splash-error {
+  max-width: 440px;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--state-conflict);
+}
+
+.ob-splash-lines {
+  position: relative;
+  width: 320px;
+  height: 18px;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--fg-secondary);
+  text-align: center;
+}
+
+.ob-splash-line,
+.ob-splash-ready {
+  position: absolute;
+  inset: 0;
+}
+
+.ob-splash-line {
+  opacity: 0;
+}
+
+.ob-splash-line--1 {
+  animation: ob-sp-status 550ms linear 3700ms both;
+}
+
+.ob-splash-line--2 {
+  animation: ob-sp-status 500ms linear 4250ms both;
+}
+
+/* The third line stays until the boot is done — this is where a slow boot waits. */
+.ob-splash-line--3 {
+  animation: ob-sp-in 80ms linear 4750ms both;
+}
+
+.ob-splash--done .ob-splash-line--3 {
+  animation: ob-sp-leave 100ms linear both;
+}
+
+.ob-splash-ready {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--state-ok);
+  font-weight: 550;
+  animation: ob-sp-rise 350ms var(--e-standard) 100ms both;
+}
+
+.ob-splash-track {
+  width: 200px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--splash-track);
+  overflow: hidden;
+  animation: ob-sp-rise 300ms var(--e-standard) 3600ms both;
+}
+
+/* Runs to 90 % and waits there; the last 10 % is the boot finishing. */
+.ob-splash-fill {
+  height: 100%;
+  background: var(--accent);
+  transform-origin: left center;
+  animation: ob-sp-progress 1230ms linear 3700ms both;
+}
+
+.ob-splash--done .ob-splash-fill {
+  animation: ob-sp-progress-end 220ms linear both;
+}
+
+.ob-splash-maker,
+.ob-splash-version {
+  position: absolute;
+  bottom: 18px;
+  color: var(--splash-fg3);
+  animation: ob-sp-rise 450ms var(--e-standard) 3650ms both;
+}
+
+.ob-splash-maker {
+  left: 24px;
+  font-size: 11.5px;
+}
+
+.ob-splash-version {
+  right: 24px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.ob-splash--done .ob-splash-body {
+  animation: ob-sp-out 350ms var(--e-exit) 900ms both;
+}
+
+@keyframes ob-sp-grid {
+  from {
+    opacity: 0;
+    transform: scale(1.04);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes ob-sp-outline {
+  0%,
+  83% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes ob-sp-draw {
   from {
     stroke-dashoffset: 1;
   }
@@ -91,30 +370,76 @@
   }
 }
 
-@keyframes ob-outline-fade {
-  from {
-    opacity: 1;
-  }
-  to {
+/* Falls, lands, squashes, settles. */
+@keyframes ob-sp-drop {
+  0% {
     opacity: 0;
+    transform: translateY(-14px) scale(0.96, 1.08);
+    animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(0) scale(0.96, 1.08);
+    animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  }
+  68% {
+    transform: translateY(0) scale(1.07, 0.86);
+    animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  }
+  86% {
+    transform: translateY(0) scale(0.99, 1.03);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1, 1);
   }
 }
 
-@keyframes ob-ink {
+@keyframes ob-sp-fade {
   from {
     opacity: 0;
-    transform: scale(0.88);
   }
   to {
     opacity: 1;
+  }
+}
+
+@keyframes ob-sp-shine {
+  from {
+    opacity: 1;
+    transform: translateX(-10px) skewX(-18deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(30px) skewX(-18deg);
+  }
+}
+
+@keyframes ob-sp-move {
+  from {
+    transform: translateY(96px) scale(1.3);
+  }
+  to {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes ob-sp-breath {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.05);
+  }
+  100% {
     transform: scale(1);
   }
 }
 
-@keyframes ob-word {
+@keyframes ob-sp-rise {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -122,75 +447,130 @@
   }
 }
 
-/* The primary horizontal lockup at splash size: mark 56, wordmark 36, gap 16. */
-.ob-splash-lockup {
-  display: flex;
-  align-items: center;
-  gap: 1.1429rem;
+@keyframes ob-sp-letter {
+  from {
+    transform: translateY(108%);
+  }
+  to {
+    transform: translateY(0);
+  }
 }
 
-.ob-splash-mark {
-  flex: none;
-  overflow: visible;
+@keyframes ob-sp-status {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  18%,
+  78% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
 }
 
-.ob-splash-outline {
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  animation:
-    ob-outline-draw 240ms var(--e-standard) forwards,
-    ob-outline-fade 220ms var(--e-exit) 700ms forwards;
+@keyframes ob-sp-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.ob-splash-cell {
-  opacity: 0;
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: ob-ink 144ms var(--e-standard) both;
+@keyframes ob-sp-leave {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
 }
 
-.ob-splash-word {
-  font-size: 2.5714rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1;
-  opacity: 0;
-  animation: ob-word 288ms var(--e-standard) 620ms both;
+@keyframes ob-sp-progress {
+  0% {
+    transform: scaleX(0);
+  }
+  35% {
+    transform: scaleX(0.34);
+  }
+  73% {
+    transform: scaleX(0.7);
+  }
+  100% {
+    transform: scaleX(0.9);
+  }
+}
+
+@keyframes ob-sp-progress-end {
+  from {
+    transform: scaleX(0.9);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes ob-sp-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 /*
  * Reduced motion and the motion switch: no movement at all, the final frame.
  * `reset.css` only clamps durations to 1 ms, which would leave the busy squares
- * resting at 15 % and the splash a frame away from its end; here they stand as
- * the finished mark.
+ * resting at 15 %; here they stand as the finished mark. The splash stands as
+ * its waiting frame: the mark in place, the bar at 90 % on the third line.
  */
 @media (prefers-reduced-motion: reduce) {
   .ob-busy rect,
-  .ob-splash-cell,
-  .ob-splash-word {
+  .ob-splash * {
     animation: none !important;
+  }
+
+  .ob-busy rect {
     opacity: 1;
-    stroke-dashoffset: 0;
     transform: none;
   }
 
-  /* The outline has faded by the final frame. */
-  .ob-splash-outline {
-    animation: none !important;
+  .ob-splash-line--3 {
+    opacity: 1;
+  }
+
+  .ob-splash--done .ob-splash-line--3 {
     opacity: 0;
+  }
+
+  .ob-splash-fill {
+    transform: scaleX(0.9);
   }
 }
 
 html[data-motion='off'] .ob-busy rect,
-html[data-motion='off'] .ob-splash-cell,
-html[data-motion='off'] .ob-splash-word {
+html[data-motion='off'] .ob-splash * {
   animation: none !important;
+}
+
+html[data-motion='off'] .ob-busy rect {
   opacity: 1;
-  stroke-dashoffset: 0;
   transform: none;
 }
 
-html[data-motion='off'] .ob-splash-outline {
-  animation: none !important;
-  opacity: 0;
+html[data-motion='off'] .ob-splash-line--3 {
+  opacity: 1;
+}
+
+html[data-motion='off'] .ob-splash-fill {
+  transform: scaleX(0.9);
 }

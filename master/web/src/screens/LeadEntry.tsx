@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import type { Lead, PresenceLastWrite } from '@orderbook/shared';
+import type { Lead, Party, PresenceLastWrite } from '@orderbook/shared';
 import {
   BusyMark,
   ConflictBanner,
@@ -36,6 +36,8 @@ interface Props {
   lead?: Lead;
   /** The last save somebody else made to `lead` while it is open. */
   remoteChange?: PresenceLastWrite | null;
+  /** A party to open the New form on. */
+  presetParty?: Party | null;
   onSaved: (id: string, saved?: Lead) => void;
   onCancel: () => void;
 }
@@ -47,6 +49,7 @@ export function LeadEntry({
   canCreateParty,
   lead,
   remoteChange,
+  presetParty,
   onSaved,
   onCancel,
 }: Props) {
@@ -83,6 +86,7 @@ export function LeadEntry({
         catalogueRevision={catalogueRevision}
         lead={lead}
         remoteChange={remoteChange}
+        presetParty={presetParty}
         onSaved={onSaved}
         onCancel={onCancel}
       />

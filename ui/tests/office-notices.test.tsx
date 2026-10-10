@@ -502,7 +502,11 @@ describe('Office "Sell today" and the Basic Home product band (2026-10-08)', () 
   const sellPopup = () => screen.queryByRole('dialog', { name: 'Push the Damru range' });
   const noticePopup = () => screen.queryByRole('dialog', { name: t('notices.signIn.title') });
 
-  beforeEach(() => window.localStorage.clear());
+  // Clean, but still motion-off like the harness: the animated splash holds 5 s.
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.localStorage.setItem('ob.motion', 'off');
+  });
 
   it('pops up from the snapshot after the unread notices, offline too, and not twice', async () => {
     await boot({

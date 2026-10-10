@@ -66,6 +66,7 @@ export async function listOrders(
 
   if (options.stageIds?.length) base.whereIn('o.stage_id', options.stageIds);
   if (options.ownerId) base.where('o.owner_id', options.ownerId);
+  if (options.partyId) base.where('o.party_id', options.partyId);
 
   applyRecordSearch(base, options.search, {
     alias: 'o',

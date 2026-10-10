@@ -244,6 +244,15 @@ afterEach(() => {
   delete (window as { orderbook?: unknown }).orderbook;
 });
 
+
+/** A new order's notes sit in its Print & PDF menu (2026-10-08). */
+async function noteItem(kind: 'orderNote.filling' | 'orderNote.dispatch'): Promise<HTMLElement> {
+  if (!screen.queryByRole('menu')) {
+    fireEvent.click(await screen.findByRole('button', { name: t('lead.detail.printMenu') }));
+  }
+  return screen.getByRole('menuitem', { name: t(kind) });
+}
+
 describe('the design-system gallery', () => {
   it('stays open after the hash changes to #/gallery', async () => {
     await boot(ADMIN);
@@ -945,12 +954,14 @@ describe('the Filling and Dispatch notes on an order', () => {
     expect(screen.getByRole('button', { name: t('orderNote.dispatch') })).toBeTruthy();
   });
 
-  it('opens a note straight from the list row, without a click on the row itself (R10)', async () => {
-    await openList([...ADMIN, 'parties.view'], t('nav.orders'));
+  it('has Notes text and Edit / Delete icons on a row, not note buttons (2026-10-09)', async () => {
+    await openList([...ADMIN, 'orders.delete', 'parties.view'], t('nav.orders'));
     await screen.findByText(ORDER.id);
-    fireEvent.click(screen.getByRole('button', { name: t('orderNote.dispatch') }));
-
-    expect((await screen.findAllByText(t('orderNote.page', { n: 1, total: 1 }))).length).toBeGreaterThan(0);
+    expect(screen.getByText(t('lead.list.col.notes'))).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: t('leadsOrders.delete.order') }));
+    // The confirmation, not the order: the icon's click stops at its cell.
+    expect(await screen.findByText(t('leadsOrders.delete.body'))).toBeTruthy();
+    expect(screen.queryByRole('button', { name: t('action.backToList') })).toBeNull();
   });
 
   it('opens the Dispatch note with the party fetched for its header, and prints through the shell', async () => {
@@ -988,21 +999,30 @@ describe('the Filling and Dispatch notes on a pending order', () => {
 
   it('is offered with the right to view leads alone, no export right needed (R10)', async () => {
     await openLeads(['leads.view', 'parties.view']);
-    expect(screen.getByRole('button', { name: t('orderNote.filling') })).toBeTruthy();
-    expect(screen.getByRole('button', { name: t('orderNote.dispatch') })).toBeTruthy();
+    expect((await noteItem('orderNote.filling'))).toBeTruthy();
+    expect((await noteItem('orderNote.dispatch'))).toBeTruthy();
   });
 
-  it('opens a note straight from the list row (R10)', async () => {
+  it('leaves the notes to the record: the row has its Notes text and Edit / Delete icons (2026-10-09)', async () => {
     await openList(['leads.view', 'parties.view'], t('nav.leads'));
     await screen.findByText(LEAD.id);
-    fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+    expect(screen.queryByRole('button', { name: t('orderNote.filling') })).toBeNull();
+    expect(screen.queryByRole('button', { name: t('lead.edit.action') })).toBeNull();
+    expect(screen.queryByRole('button', { name: t('leadsOrders.delete.lead') })).toBeNull();
+    cleanup();
 
-    expect((await screen.findAllByText(t('orderNote.pendingOrderNo'))).length).toBeGreaterThan(0);
+    await openList(['leads.view', 'leads.edit', 'leads.delete', 'parties.view'], t('nav.leads'));
+    await screen.findByText(LEAD.id);
+    expect(screen.getByRole('button', { name: t('lead.edit.action') })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: t('leadsOrders.delete.lead') }));
+    // The confirmation, not the record: the icon's click stops at its cell.
+    expect(await screen.findByText(t('leadsOrders.delete.body'))).toBeTruthy();
+    expect(screen.queryByRole('button', { name: t('action.backToList') })).toBeNull();
   });
 
   it('opens the Filling note headed "Pending Order No." with the lead id, party fetched', async () => {
     const calls = await openLeads(['leads.view', 'leads.export', 'parties.view']);
-    fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+    fireEvent.click((await noteItem('orderNote.filling')));
 
     expect((await screen.findAllByText(t('orderNote.pendingOrderNo'))).length).toBeGreaterThan(0);
     expect(screen.queryByText(t('orderNote.orderId'))).toBeNull();
@@ -1011,14 +1031,14 @@ describe('the Filling and Dispatch notes on a pending order', () => {
 
     // Back from the note lands on the lead.
     fireEvent.click(screen.getByRole('button', { name: t('action.backToList') }));
-    expect(await screen.findByRole('button', { name: t('orderNote.filling') })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: t('lead.detail.printMenu') })).toBeTruthy();
   });
 
   it('prints the copies asked for through the shell, and keeps the vehicle number off the server', async () => {
     const printPage = vi.fn().mockResolvedValue({ ok: true });
     (window as { orderbook?: unknown }).orderbook = { shellVersion: 't', applyUpdate: vi.fn(), printPage };
     const calls = await openLeads(['leads.view', 'leads.export', 'parties.view']);
-    fireEvent.click(screen.getByRole('button', { name: t('orderNote.dispatch') }));
+    fireEvent.click((await noteItem('orderNote.dispatch')));
 
     // A pending order has no vehicle column: the field takes input without leads.edit and saves nothing.
     const field = await screen.findByLabelText(t('orderNote.vehicleNo'));
@@ -1041,7 +1061,7 @@ describe('the Filling and Dispatch notes on a pending order', () => {
     const printPage = vi.fn().mockResolvedValue({ ok: true });
     (window as { orderbook?: unknown }).orderbook = { shellVersion: 't', applyUpdate: vi.fn(), printPage };
     await openLeads(['leads.view', 'leads.export']);
-    fireEvent.click(screen.getByRole('button', { name: t('orderNote.dispatch') }));
+    fireEvent.click((await noteItem('orderNote.dispatch')));
     const copies = await screen.findByLabelText(t('orderNote.copies'));
 
     fireEvent.change(copies, { target: { value: '500' } });
@@ -1057,14 +1077,14 @@ describe('the Filling and Dispatch notes on a pending order', () => {
     const savePdf = vi.fn().mockResolvedValue({ ok: true, path: 'C:\\x.pdf' });
     (window as { orderbook?: unknown }).orderbook = { shellVersion: 't', applyUpdate: vi.fn(), printPage: vi.fn(), savePdf };
     await openLeads(['leads.view', 'leads.export']);
-    fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+    fireEvent.click((await noteItem('orderNote.filling')));
     fireEvent.click(await screen.findByRole('button', { name: t('orderNote.savePdf') }));
     await waitFor(() => expect(savePdf).toHaveBeenCalledWith({ fileName: `${LEAD.id}-filling.pdf` }));
     cleanup();
 
     delete (window as { orderbook?: unknown }).orderbook;
     await openLeads(['leads.view', 'leads.export']);
-    fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+    fireEvent.click((await noteItem('orderNote.filling')));
     await screen.findAllByText(t('orderNote.pendingOrderNo'));
     expect(screen.queryByRole('button', { name: t('orderNote.savePdf') })).toBeNull();
   });
@@ -1076,7 +1096,7 @@ describe('the Filling and Dispatch notes on a pending order', () => {
     await openList(['leads.view', 'leads.export'], t('nav.leads'));
     fireEvent.click(await screen.findByText('PO/2026-27/00042'));
     await screen.findByRole('button', { name: t('action.backToList') });
-    fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+    fireEvent.click((await noteItem('orderNote.filling')));
     expect((await screen.findAllByText(t('orderNote.pendingOrderNo'))).length).toBeGreaterThan(0);
     expect(screen.getAllByText('PO/2026-27/00042').length).toBeGreaterThan(0);
     expect(screen.queryByText(LEAD.id)).toBeNull();
@@ -2589,7 +2609,7 @@ describe('the Printroom (1.3 Phase 7)', () => {
         return undefined;
       });
       fireEvent.click(await screen.findByText(LEAD.id));
-      fireEvent.click(await screen.findByRole('button', { name: t('orderNote.filling') }));
+      fireEvent.click((await noteItem('orderNote.filling')));
       await screen.findByLabelText(t('orderNote.copies'));
       return calls;
     }
@@ -2916,8 +2936,8 @@ describe('The person screen (Oct 8)', () => {
     expect(card('Dispatcher').textContent).toContain(t('access.rolePicker.total', { held: 6, total: 61 }));
 
     // With nothing picked the matrix is Packer's own: allowed, or not.
-    expect(cell('Pending Orders', 'View', t('access.person.cell.held'))).toBeTruthy();
-    expect(cell('Pending Orders', 'Edit', t('access.person.cell.none'))).toBeTruthy();
+    expect(cell('New Orders', 'View', t('access.person.cell.held'))).toBeTruthy();
+    expect(cell('New Orders', 'Edit', t('access.person.cell.none'))).toBeTruthy();
     expect(group('notices').textContent).toBe('Notice board1/2');
     expect(document.querySelector('.ob-person-changebar')).toBeNull();
   });
@@ -2945,8 +2965,8 @@ describe('The person screen (Oct 8)', () => {
 
     fireEvent.click(within(card('Dispatcher')).getByRole('radio'));
     expect(document.querySelector('.ob-person-comparehead')!.textContent).toContain('Packer → Dispatcher');
-    expect(cell('Pending Orders', 'View', t('access.person.cell.kept'))).toBeTruthy();
-    expect(cell('Pending Orders', 'Edit', t('access.person.cell.gained'))).toBeTruthy();
+    expect(cell('New Orders', 'View', t('access.person.cell.kept'))).toBeTruthy();
+    expect(cell('New Orders', 'Edit', t('access.person.cell.gained'))).toBeTruthy();
     expect(cell('Final Orders', 'Edit', t('access.person.cell.gained'))).toBeTruthy();
     expect(cell('Parties', 'View', t('access.person.cell.none'))).toBeTruthy();
     // Workflow goes 0/5 -> 1/5 (lead.convert) and is marked; the notice board stays.
@@ -2962,7 +2982,7 @@ describe('The person screen (Oct 8)', () => {
 
     // Going the other way loses what Packer had: Viewer drops Pending Orders and the notice board.
     fireEvent.click(within(card('Viewer')).getByRole('radio'));
-    expect(cell('Pending Orders', 'View', t('access.person.cell.lost'))).toBeTruthy();
+    expect(cell('New Orders', 'View', t('access.person.cell.lost'))).toBeTruthy();
     expect(group('notices').querySelector('[data-change="down"]')).not.toBeNull();
     expect(document.querySelector('.ob-person-changebar')!.textContent).toContain(
       t('access.person.changeBar.lost', { count: 2 }),
@@ -3366,7 +3386,11 @@ describe('"Sell today" and the Basic Home product band (2026-10-08)', () => {
     createdAt: '2026-10-05T09:00:00.000Z', updatedAt: '2026-10-05T09:00:00.000Z', version: 1, readByMe: false,
   };
 
-  beforeEach(() => window.localStorage.clear());
+  // Clean, but still motion-off like the harness: the animated splash holds 5 s.
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.localStorage.setItem('ob.motion', 'off');
+  });
 
   /** Signs in with these notices, entries and company switches; `office` lands on Basic Home. */
   const bootWith = (
@@ -3416,6 +3440,7 @@ describe('"Sell today" and the Basic Home product band (2026-10-08)', () => {
     await waitFor(() => expect(sellPopup()).not.toBeNull());
     cleanup();
     window.localStorage.clear();
+    window.localStorage.setItem('ob.motion', 'off');
 
     await bootWith({ sellToday: [ENTRY], features: { sellTodayPopup: false } });
     await screen.findByTitle(t('nav.notices'));

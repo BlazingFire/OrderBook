@@ -50,7 +50,9 @@
   gap: 0.857rem;
 }
 
-@container order (max-width: 70rem) {
+/* The sub-product row's seven columns need ~42rem; beside the 34rem aside that takes ~80rem of
+   page. Below that the aside stacks under the form instead of the row overflowing its card. */
+@container order (max-width: 84rem) {
   .ob-order-cols {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -114,9 +116,6 @@
 
 /* Under 1100 px the controls take two rows; the party keeps a row to itself. */
 @container order (max-width: 70rem) {
-  .ob-order-details .ob-order-followup {
-    flex-wrap: wrap;
-  }
   .ob-order-details,
   .ob-order-details[data-owner='false'] {
     grid-template-columns: repeat(auto-fit, minmax(10.714rem, 1fr));
@@ -126,17 +125,11 @@
   }
 }
 
-/* The quick follow-up: one segmented control beside the date. */
+/* The follow-up date, at the design's 124 px. */
 .ob-order-followup {
   display: flex;
   flex-wrap: wrap;
   gap: 0.429rem;
-}
-
-/* The date keeps the design's 124 px; the quick choices sit beside it on the same line. */
-.ob-order-followup {
-  flex-wrap: nowrap;
-  align-items: center;
 }
 
 .ob-order-followup > :first-child {
@@ -166,33 +159,6 @@
   color: var(--fg-secondary);
 }
 
-.ob-order-segmented {
-  display: inline-flex;
-  box-sizing: border-box;
-  height: var(--ctl-h-md);
-  padding: 0.143rem;
-  border-radius: 0.429rem;
-  background: var(--bg-sunken);
-}
-
-.ob-order-segmented button {
-  padding: 0 0.571rem;
-  border: 0;
-  border-radius: 0.286rem;
-  background: transparent;
-  color: var(--fg-secondary);
-  font: inherit;
-  font-size: 0.893rem;
-  cursor: pointer;
-}
-
-.ob-order-segmented button[aria-checked='true'] {
-  background: var(--bg-surface);
-  color: var(--accent);
-  font-weight: 550;
-  box-shadow: 0 0 0 1px var(--line);
-}
-
 /* --- The added-products aside ---------------------------------------------- */
 
 .ob-order-aside {
@@ -204,6 +170,22 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* Side by side: the aside stays in view as the form scrolls, its rows scroll inside it, and the
+   foot (Save order) never leaves the screen. 17.5rem is what sits above it at the top of the page
+   (top bar, title row, details bar), so the whole aside fits the first screen without scrolling. */
+@container order (min-width: 84.01rem) {
+  .ob-order-aside {
+    position: sticky;
+    top: 0.5rem;
+    align-self: start;
+    max-height: calc(100vh - 17.5rem);
+  }
+  .ob-order-aside .ob-order-aside__rows {
+    max-height: none;
+    min-height: 0;
+  }
 }
 
 .ob-order-aside__head {

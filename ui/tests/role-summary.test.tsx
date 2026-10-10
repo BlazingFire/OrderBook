@@ -19,7 +19,7 @@ describe('summariseRole', () => {
   it('splits modules into the ones a role can change and the ones it can only view', () => {
     const summary = summariseRole(['leads.view', 'orders.view', 'orders.edit'], catalogue);
     expect(summary.changes).toEqual(['Final Orders']);
-    expect(summary.viewOnly).toEqual(['Pending Orders']);
+    expect(summary.viewOnly).toEqual(['New Orders']);
     expect(summary.held).toBe(3);
     expect(summary.total).toBeGreaterThan(30);
   });

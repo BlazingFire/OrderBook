@@ -197,12 +197,6 @@ const LIVE_CHECK_BATCH = 200;
 /** How long Save waits for the Master's live-ids answer before saving as if it could not tell. */
 const LIVE_SAVE_WAIT_MS = 3000;
 
-const QUICK_FOLLOW_UPS = [
-  { days: 1, token: 'lead.add.followUp.tomorrow', short: 'lead.add.followUp.tomorrowShort' },
-  { days: 3, token: 'lead.add.followUp.inThreeDays', short: 'lead.add.followUp.inThreeDaysShort' },
-  { days: 7, token: 'lead.add.followUp.nextWeek', short: 'lead.add.followUp.nextWeekShort' },
-] as const;
-
 /**
  * How many added products the panel will draw at once.
  *
@@ -1548,7 +1542,6 @@ function AddLeadForm({
 
           <OrderField label={t('lead.add.followUp.label')}>
             <FollowUpField
-              groupLabel={t('lead.add.followUp.group')}
               date={
                 <DateField
                   value={followUpDate}
@@ -1556,16 +1549,6 @@ function AddLeadForm({
                   onChange={(event) => setFollowUpDate(event.target.value)}
                 />
               }
-              quick={QUICK_FOLLOW_UPS.map(({ days, token, short }) => {
-                const iso = isoDate(days);
-                return {
-                  key: token,
-                  label: t(short),
-                  title: t(token),
-                  active: followUpDate === iso,
-                  onClick: () => setFollowUpDate((current) => (current === iso ? '' : iso)),
-                };
-              })}
             />
           </OrderField>
         </OrderDetailsBar>
@@ -1955,9 +1938,6 @@ function AddLeadForm({
               onSave={() => void save()}
             >
               {panelGroups.map((group) => {
-                const productImages = view.products.find(
-                  (product) => product.id === group.lines[0]?.productId,
-                )?.images;
                 return (
                   <AddedGroup
                     key={group.key}
@@ -1969,15 +1949,6 @@ function AddLeadForm({
                         checked={group.lines.every((line) => selected[line.key])}
                         aria-label={t('lead.add.panel.select', { product: group.name })}
                         onChange={() => toggleGroup(group.lines)}
-                      />
-                    }
-                    thumb={
-                      <ProductThumb
-                        images={productImages}
-                        size={32}
-                        fallback="initial"
-                        alt=""
-                        name={group.name}
                       />
                     }
                     code={group.code}

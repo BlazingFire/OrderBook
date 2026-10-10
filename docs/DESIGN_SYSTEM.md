@@ -180,11 +180,16 @@ Windows `.ico`: 256 master, radius 24; sizes 128 (radius 16), 64 (10), 48 (8), 3
 and the ghost opacity `--ob-mark-ghost` (0.2 light, 0.28 dark); the two ghost squares are left out at 24 px and below. `Logo` and `LogoLockup` draw it in the app. `make-icons.mjs` renders every `.ico` size on its own with the Icons
 artboard's tile radius and mark size (ghosts out at 24 and 16): the Office a cobalt tile with the white mark, the Master a white tile with a hairline and the cobalt mark, the clean-install tool the white mark on its warning red;
 `master/installer/icon.ico` and `office/installer/icon.ico` are stamped into the program file by `tools/exe-icon.cjs`, and a test pins the committed files to what the script renders.
-The splash is the mark at 56 px beside the wordmark: outline 0 to 240 ms, squares ink from 240 ms 34 ms apart, wordmark rises 4 px at 620 ms, the progress bar from 700 ms.
+The splash (artboard: Splash, 2026-10-08) is the mark at 120 px above "Welcome to" and the 56 px wordmark, the program and company line under it, a 200 px bar near the bottom and the maker and version in the window corners, on a faint 30 px grid.
 
 **Motion (artboard: Motion).**
-- *Splash, 900 ms, once on a cold start:* 0 to 240 ms the 12-square outline draws (stroke-dashoffset); 240 to 620 ms the 10
-  squares ink in with a 34 ms stagger (opacity 0 to 1, scale .88 to 1); 620 to 900 ms the wordmark rises 4 px.
+- *Splash, at least 5 s, once on a cold start, every panel:* 0 to 750 ms the grid fades in and the 12 outlines draw;
+  750 to 2050 ms the 10 squares drop in bottom row first, 85 ms apart, with a squash; the ghosts fade in at 1900 ms and a
+  glint crosses at 2100 ms; at 2350 ms the mark rises from the centre to its place; from 2700 ms "Welcome to" and the
+  wordmark letter by letter; from 3700 ms the bar runs to 90 % under "Opening company data", "Checking for updates" and a
+  panel line ("Starting sync for office panels" / "Connecting to Master Panel"). At 5.1 s, or when the boot is done if
+  later (the bar waits at 90 %), Ready, the bar fills, the mark breathes and the scene fades out; the app at about 6.35 s.
+  With the motion switch off the splash is not held.
 - *Busy indicator, 700 ms loop:* the squares pulse in sequence (70 ms stagger, opacity .15 to 1); it is **the only loading
   indicator in the product**, no spinner anywhere, and it stops when the window loses focus. At 16 px it sits before the label
   ("Opening orders"). Reduced motion: no animation, final frame.
@@ -475,7 +480,7 @@ block on a deleted product, offline saves, drafts, follow-up chips, party and ow
 6. **Status footer** (26 px): "1 offline, 5 pending", the company, the person, the version.
 
 **As built on the Master (D4, `ui/src/LeadEntryScreen.tsx` on the `ui/src/order/` kit).** The kit, shared with the Office copy: `OrderDetailsBar` (the header strip: Party, Source,
-Follow up, Owner), `OrderField` (a label above a field), `FollowUpField` (the date and the "+1 d / +3 d / +1 wk" chips), `PartyChip` (the picked party as name, code and city; a "create party" row
+Follow up, Owner), `OrderField` (a label above a field), `FollowUpField` (the follow-up date), `PartyChip` (the picked party as name, code and city; a "create party" row
 reachable by keyboard), `AddedProductsPanel` (the aside: header with the count, search, rows, a footer with the checks, the total and Cancel / Save), `OrderChecks` (the ok / to-do list above the
 total: Party, Products), `CartEntry` and `CartLines` (one added product that opens and closes, its sub lines under it), `ProductThumb` (below). Styles: `ui/src/order/order.css`.
 - **Photos.** `ProductThumb` shows a product's primary photo: **32 px in a sub-product picker row, 48 px on the picked product's card** (blurhash first, then the `thumb` variant); with no photo it draws

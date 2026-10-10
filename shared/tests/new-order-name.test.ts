@@ -1,7 +1,8 @@
 /**
  * The screen that raises a new pending order is called "New Order" everywhere a person reads its
  * name (owner, 2026-10-07): the topbar button, the sidebar sub-page and the screen's title, the Basic
- * Home tile, the Ctrl+K command and the Save-all list. The lists and the records keep "pending order".
+ * Home tile, the Ctrl+K command and the Save-all list. From 2026-10-08 the lists and the records are
+ * "new orders" too: the words "pending order" are gone from the interface.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -29,8 +30,10 @@ describe('the New Order name', () => {
     expect(en[command!.titleToken]).toBe('New Order');
   });
 
-  it('leaves the pending order lists and records alone', () => {
-    expect(en['nav.leads']).toBe('Pending Orders');
-    expect(en['setting.leads.followUpDefaultDays.label']).toContain('new pending order');
+  it('names the lists and the records New Orders too (owner, 2026-10-08)', () => {
+    expect(en['nav.leads']).toBe('New Orders');
+    expect(en['orderNote.pendingOrderNo']).toBe('New Order No.');
+    const left = Object.entries(en).filter(([, text]) => /pending order/i.test(text));
+    expect(left).toEqual([]);
   });
 });

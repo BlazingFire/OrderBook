@@ -108,6 +108,7 @@ import type {
   PartyScopeFilter,
   PartyInput,
   PartyProductVariant,
+  PartyProductVariantInput,
   Pipeline,
   PipelineStage,
   PipelineStageInput,
@@ -809,6 +810,9 @@ export const api = {
   party: (id: string) => request<PartyDetailRecord>(`/api/parties/${id}`),
   /** One party's own product records, each with the catalogue model it stands for named. */
   partyRecords: (id: string) => request<PartyRecord[]>(`/api/parties/${id}/variants`),
+  /** Adds, or replaces, what a party calls one catalogue product. */
+  upsertPartyRecord: (input: PartyProductVariantInput) =>
+    post<PartyProductVariant>('/api/party-variants', input),
   createParty: (input: PartyInput) => post<Party>('/api/parties', input),
   /**
    * `baseFieldHlc` is what the form last saw for each field. Sent so the
@@ -1020,6 +1024,7 @@ export const api = {
       stageIds?: string[];
       scope?: PartyScopeFilter;
       search?: string;
+      partyId?: string;
       limit?: number;
       offset?: number;
     } = {},
@@ -1028,6 +1033,7 @@ export const api = {
     if (options.stageIds?.length) params.set('stageIds', options.stageIds.join(','));
     if (options.scope === 'assigned') params.set('scope', 'assigned');
     if (options.search) params.set('search', options.search);
+    if (options.partyId) params.set('partyId', options.partyId);
     if (options.limit) params.set('limit', String(options.limit));
     if (options.offset) params.set('offset', String(options.offset));
     const query = params.toString();

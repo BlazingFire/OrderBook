@@ -1619,6 +1619,7 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   display: flex;
   align-items: center;
   width: 100%;
+  margin-bottom: var(--s-4);
   color: var(--fg-secondary);
   /* Sidebar artboard: 13.5px rows (sub-pages step down to 12.5px). */
   font-size: 0.9643rem;
@@ -2208,126 +2209,6 @@ body:has(.ob-sidebar--collapsed) .ob-toasts {
 .ob-tooltip--below::after {
   bottom: auto;
   top: -4px;
-}
-
-/* ===========================================================================
- * The splash screen's frame, bar and caption (the mark itself is mark.css)
- * ======================================================================== */
-
-/* The caption under the bar re-announces itself when the boot step changes:
- * a 120ms fade, not a hard swap. */
-@keyframes ob-label-in {
-  from {
-    opacity: 0;
-    transform: translateY(2px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* The error state replaces the bar: it rises in instead of appearing, so the
- * failure reads as a transition rather than a cut. */
-@keyframes ob-rise-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.ob-splash {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-splash);
-  background: var(--bg-canvas);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--s-20);
-}
-
-/* The bar and its caption ride in a beat behind the wordmark, not before it:
- * the mark is the first thing on screen, the machinery underneath it is the
- * second. */
-.ob-splash-status {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--s-8);
-  width: 18.5714rem;
-  opacity: 0;
-  /* `ob-rise-in`, not `ob-word`. The wordmark keyframe tracks letter-spacing
-     from 0.01em to -0.02em because the wordmark is set that tight — and with
-     `both` fill that end state sticks, so borrowing it here squeezed the boot
-     caption and the tabular percentage under the bar for the rest of the
-     splash. This block only ever wanted the rise. */
-  animation: ob-rise-in 280ms var(--e-standard) 700ms both;
-}
-
-/* The error variant arrives later than the bar would have — the boot is
- * already stalled — and it is a rise, not the same entrance as the bar. */
-.ob-splash-status--error {
-  animation: ob-rise-in 280ms var(--e-standard) 500ms both;
-}
-
-.ob-splash-track {
-  width: 100%;
-  height: var(--s-4);
-  border-radius: var(--r-sm);
-  background: var(--bg-sunken);
-  overflow: hidden;
-}
-
-/* Determinate, and only ever forwards. The width is eased frame by frame in
- * Splash.tsx alongside the figure, so a CSS transition on top would only lag
- * behind it. The glint is a 1px light line riding the fill's top edge — the
- * bar reads as a liquid surface, not a flat block. */
-.ob-splash-fill {
-  position: relative;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--accent);
-}
-
-.ob-splash-fill::after {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--rail-glint), transparent);
-  opacity: 0.7;
-}
-
-.ob-splash-label {
-  display: flex;
-  width: 100%;
-  justify-content: space-between;
-  gap: var(--s-8);
-  font-size: var(--t-small-size);
-  line-height: var(--t-small-line);
-  color: var(--fg-secondary);
-  animation: ob-label-in 120ms var(--e-standard) both;
-}
-
-/* Tabular so the percentage does not shuffle the label sideways as it counts. */
-.ob-splash-percent {
-  font-family: var(--font-mono);
-  font-size: var(--t-mono-size);
-  font-variant-numeric: tabular-nums;
-  color: var(--fg-tertiary);
-}
-
-.ob-splash-error {
-  text-align: center;
-  font-size: var(--t-small-size);
-  line-height: var(--t-small-line);
-  color: var(--state-conflict);
 }
 
 /* ===========================================================================
@@ -3109,6 +2990,17 @@ button.ob-stattile:hover {
  * so keyboard/AT semantics stay free while the paint matches the system.
  * ======================================================================== */
 
+/* Bare native checkboxes (table select column, lists): one size, 21 px at the 14 px root. The
+   hidden inputs inside `.ob-check-row` paint their own box and are left out. */
+input[type='checkbox']:where(:not(.ob-check-row input)) {
+  width: 1.5rem;
+  height: 1.5rem;
+  min-width: 1.5rem;
+  flex: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .ob-check-row {
   display: inline-flex;
   align-items: center;
@@ -3504,7 +3396,9 @@ button.ob-stattile:hover {
 
 /*
  * The notification bell (`NotificationBell.tsx`): a topbar icon with an unread
- * count, opening a list anchored under it.
+ * count, opening a drawer that slides in from the right edge (the
+ * Notification kit). The badge is blue, and red while anything that needs
+ * action is unread; the bell is tinted while its drawer is open.
  */
 .ob-bell {
   position: relative;
@@ -3513,6 +3407,10 @@ button.ob-stattile:hover {
 .ob-bell > .ob-icon-btn {
   position: relative;
 }
+.ob-bell > .ob-icon-btn[aria-expanded='true'] {
+  background: var(--accent-tint);
+  color: var(--accent);
+}
 .ob-bell-badge {
   position: absolute;
   top: 0;
@@ -3520,62 +3418,276 @@ button.ob-stattile:hover {
   transform: translate(35%, -25%);
   min-width: var(--s-16);
   padding: 0 var(--s-4);
+  border: 2px solid var(--bg-surface);
   border-radius: var(--r-lg);
   background: var(--accent);
   color: var(--fg-on-accent);
   font-size: var(--t-micro-size);
-  line-height: var(--s-16);
+  font-weight: 700;
+  line-height: calc(var(--s-16) - 4px);
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
-.ob-bell-list {
-  top: calc(100% + var(--s-4));
-  right: 0;
-  max-height: 60vh;
-  overflow-y: auto;
-  padding: var(--s-8);
+.ob-bell-badge--action {
+  background: var(--state-conflict);
 }
-.ob-bell-head {
+
+/* The drawer: below the topbar, above the status footer, flush to the right edge. */
+.ob-ndrawer {
+  position: fixed;
+  top: calc(var(--shell-topbar-h) + var(--s-8));
+  right: var(--s-8);
+  bottom: calc(var(--shell-footer-h) + var(--s-8));
+  z-index: var(--z-overlay);
+  width: min(28.5714rem, calc(100vw - var(--s-16)));
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-3);
+  overflow: hidden;
+  animation: ob-drawer-in var(--d-slow) var(--e-standard) both;
+}
+.ob-ndrawer[data-closing='true'] {
+  animation: ob-drawer-out var(--d-exit) var(--e-exit) both;
+  pointer-events: none;
+}
+@keyframes ob-drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(calc(100% + var(--s-16)));
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes ob-drawer-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(calc(100% + var(--s-16)));
+  }
+}
+.ob-ndrawer-head {
+  flex: none;
   display: flex;
   align-items: center;
   gap: var(--s-8);
-  padding: var(--s-4) var(--s-8) var(--s-8);
+  padding: var(--s-16) var(--s-12) var(--s-8) var(--s-16);
 }
-.ob-bell-note {
-  padding: var(--s-4) var(--s-8);
-  color: var(--fg-tertiary);
+.ob-ndrawer-title {
+  margin: 0;
+  font-size: var(--t-title-size);
+  line-height: var(--t-title-line);
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
-.ob-bell-items {
+.ob-ndrawer-new {
+  padding: 0 var(--s-6);
+  border-radius: var(--r-sm);
+  background: var(--accent);
+  color: var(--fg-on-accent);
+  font-size: var(--t-micro-size);
+  line-height: var(--t-small-line);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ob-ndrawer-chips {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-6);
+  padding: 0 var(--s-16) var(--s-12);
+  border-bottom: 1px solid var(--line);
+}
+/* A filter chip: pill-shaped, solid ink when pressed, its count dimmed beside the name. */
+.ob-nchip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-6);
+  height: var(--s-24);
+  padding: 0 var(--s-12);
+  border: 1px solid var(--line);
+  border-radius: var(--s-12);
+  background: var(--bg-surface);
+  color: var(--fg-secondary);
+  font: inherit;
+  font-size: var(--t-small-size);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--d-fast) var(--e-standard), color var(--d-fast) var(--e-standard);
+}
+.ob-nchip:hover {
+  background: var(--bg-hover);
+}
+.ob-nchip[aria-pressed='true'] {
+  border-color: var(--fg-primary);
+  background: var(--fg-primary);
+  color: var(--bg-surface);
+  font-weight: 550;
+}
+.ob-nchip-count {
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+.ob-ndrawer-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s-8) var(--s-12) var(--s-16);
+}
+.ob-ndrawer-note {
+  margin: 0 0 var(--s-8);
+  padding: var(--s-8);
+  border-radius: var(--r-md);
+  background: var(--state-offline-tint);
+  color: var(--state-offline);
+}
+.ob-ngroup + .ob-ngroup {
+  margin-top: var(--s-12);
+}
+.ob-ngroup-head {
+  margin: 0;
+  padding: var(--s-8) var(--s-4);
+}
+.ob-ngroup-list {
   margin: 0;
   padding: 0;
   list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
 }
-.ob-bell-item {
+
+/* A card: tile, category · time and the unread dot, the sentence, and at most one action. */
+.ob-ncard {
+  display: flex;
+  gap: 0.7143rem; /* 10px */
+  padding: var(--s-12);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  animation: ob-card-in var(--d-base) var(--e-standard) both;
+  animation-delay: calc(var(--i, 0) * 30ms + 80ms);
+  transition: border-color var(--d-fast) var(--e-standard), box-shadow var(--d-fast) var(--e-standard);
+}
+.ob-ncard[data-unread='true'] {
+  border-color: var(--accent-tint);
+  box-shadow: inset 0 0 0 1px var(--accent-tint);
+}
+/* Needs action keeps a red edge until it is read. */
+.ob-ncard[data-unread='true'][data-tone='red'] {
+  border-color: var(--state-conflict);
+  box-shadow: none;
+}
+.ob-ncard[data-clickable='true'] {
+  cursor: pointer;
+}
+.ob-ncard[data-clickable='true']:hover {
+  box-shadow: var(--sh-2);
+}
+.ob-ntile {
+  flex: none;
+  width: 2.2857rem; /* 32px */
+  height: 2.2857rem;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ob-ntile--amber {
+  background: var(--state-offline-tint);
+  color: var(--state-offline-fill);
+}
+.ob-ntile--red {
+  background: var(--state-conflict-tint);
+  color: var(--state-conflict);
+}
+.ob-ntile--accent {
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+.ob-ntile--ok {
+  background: var(--state-ok-tint);
+  color: var(--state-ok);
+}
+.ob-ntile--neutral {
+  background: var(--bg-sunken);
+  color: var(--fg-secondary);
+}
+.ob-ncard-body {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: var(--s-2);
-  width: 100%;
-  padding: var(--s-8);
-  border: 0;
-  border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--fg-secondary);
-  font: inherit;
-  text-align: left;
 }
-button.ob-bell-item {
-  cursor: pointer;
-}
-button.ob-bell-item:hover {
-  background: var(--bg-hover);
-}
-.ob-bell-item[data-unread='true'] {
-  color: var(--fg-primary);
-  font-weight: 550;
-}
-.ob-bell-when {
+.ob-ncard-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s-6);
+  font-size: var(--t-micro-size);
+  line-height: var(--t-micro-line);
   color: var(--fg-tertiary);
-  font-weight: 400;
+}
+.ob-ncard-sep {
+  color: var(--fg-disabled);
+}
+.ob-ncard-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.ob-ncard-title {
+  font-size: var(--t-data-size);
+  line-height: var(--t-data-line);
+  color: var(--fg-secondary);
+  overflow-wrap: anywhere;
+}
+.ob-ncard[data-unread='true'] .ob-ncard-title {
+  color: var(--fg-primary);
+  font-weight: 600;
+}
+.ob-ncard-actions {
+  margin-top: var(--s-6);
+  display: flex;
+  gap: var(--s-6);
+}
+.ob-ndrawer-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-8);
+  min-height: 60%;
+  padding: var(--s-24) var(--s-16);
+  text-align: center;
+  color: var(--fg-secondary);
+}
+.ob-ndrawer-empty-tile {
+  width: 3.4286rem; /* 48px */
+  height: 3.4286rem;
+  border-radius: 12px;
+  background: var(--bg-sunken);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+html[data-motion='off'] .ob-ndrawer,
+html[data-motion='off'] .ob-ncard {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ob-ndrawer,
+  .ob-ncard {
+    animation: none;
+  }
 }
 
 .ob-menu {
@@ -4255,6 +4367,309 @@ button.ob-bell-item:hover {
   display: flex;
   flex-direction: column;
   gap: var(--s-16);
+}
+
+/* ===========================================================================
+ * A party, opened (`PartyDetailView`): a head card, the orders and the
+ * party-wise names on the left, the details panel on the right — folded to a
+ * rail with one button when the table wants the width.
+ * ======================================================================== */
+
+.ob-partyview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-16);
+  min-width: 0;
+}
+
+.ob-partyview-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  min-width: 0;
+}
+
+.ob-partyview-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-16);
+  padding: var(--s-20);
+}
+
+.ob-partyview-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: var(--r-md);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-size: var(--t-title-size);
+  font-weight: 600;
+}
+
+.ob-partyview-who {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-width: 0;
+}
+
+.ob-partyview-titlerow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-8) var(--s-12);
+}
+
+.ob-partyview-titlerow .ob-title {
+  margin: 0;
+}
+
+.ob-partyview-code {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-6);
+  height: var(--ctl-h-sm);
+  padding: 0 var(--s-8);
+  border-radius: var(--r-sm);
+  background: var(--bg-sunken);
+  color: var(--fg-secondary);
+  font-size: var(--t-small-size);
+}
+
+.ob-partyview-code:hover {
+  color: var(--fg-primary);
+}
+
+.ob-partyview-restricted {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-6);
+  height: var(--ctl-h-sm);
+  padding: 0 var(--s-8);
+  border-radius: var(--r-sm);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-size: var(--t-small-size);
+  font-weight: 500;
+}
+
+.ob-partyview-sub {
+  color: var(--fg-secondary);
+}
+
+.ob-partyview-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  margin-left: auto;
+}
+
+.ob-partyview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem);
+  align-items: start;
+  gap: var(--s-16);
+}
+
+.ob-partyview-grid--folded {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.ob-partyview-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-16);
+  min-width: 0;
+}
+
+.ob-partyview-cardhead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-8) var(--s-12);
+  min-height: 3.5rem;
+  padding: var(--s-8) var(--s-20);
+  border-bottom: 1px solid var(--line);
+}
+
+.ob-partyview-count {
+  color: var(--fg-tertiary);
+  font-weight: 400;
+}
+
+.ob-partyview-hint {
+  color: var(--fg-tertiary);
+}
+
+.ob-partyview-textbtn {
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: var(--t-small-size);
+  font-weight: 550;
+}
+
+.ob-partyview-textbtn:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+.ob-partyview-link {
+  color: var(--accent);
+}
+
+.ob-partyview-overdue {
+  color: var(--state-offline);
+  font-weight: 550;
+}
+
+.ob-partyview-none {
+  margin: 0;
+  padding: var(--s-16) var(--s-20);
+  color: var(--fg-tertiary);
+}
+
+.ob-partyview-names {
+  display: flex;
+  flex-direction: column;
+}
+
+.ob-partyview-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-8);
+  padding: var(--s-40) var(--s-20);
+  text-align: center;
+}
+
+.ob-partyview-empty h3 {
+  margin: var(--s-4) 0 0;
+  font-size: var(--t-body-size);
+  font-weight: 600;
+}
+
+.ob-partyview-empty p {
+  max-width: 36rem;
+  margin: 0;
+  color: var(--fg-secondary);
+}
+
+.ob-partyview-emptyicon {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--r-md);
+  background: var(--bg-sunken);
+  color: var(--fg-secondary);
+}
+
+.ob-partyview-side {
+  position: sticky;
+  top: 0;
+}
+
+.ob-partyview-rail {
+  padding: var(--s-8);
+}
+
+.ob-partyview-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+  margin: 0 var(--s-20);
+  padding: var(--s-16) 0;
+}
+
+.ob-partyview-section + .ob-partyview-section {
+  border-top: 1px solid var(--line);
+}
+
+.ob-partyview-section h4 {
+  margin: 0;
+  font-size: var(--t-body-size);
+  font-weight: 600;
+}
+
+.ob-partyview-section p {
+  margin: 0;
+  color: var(--fg-secondary);
+}
+
+.ob-partyview-sectionhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-8);
+}
+
+.ob-partyview-kv {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+  margin: 0;
+}
+
+.ob-partyview-kv > div {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  gap: var(--s-8);
+}
+
+.ob-partyview-kv dt {
+  color: var(--fg-tertiary);
+}
+
+.ob-partyview-kv dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ob-partyview-missing {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-6);
+  padding: var(--s-12) var(--s-16);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+}
+
+.ob-partyview-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-8);
+}
+
+.ob-partyview-person {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-6);
+  padding: var(--s-2) var(--s-4) var(--s-2) var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: var(--t-small-size);
+}
+
+.ob-partyview-initial {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-size: var(--t-micro-size);
+  font-weight: 600;
+}
+
+.ob-partyview-notes {
+  white-space: pre-wrap;
 }
 
 /* ===========================================================================
@@ -5559,8 +5974,8 @@ button.ob-bell-item:hover {
 }
 
 .ob-lead-check {
-  width: 1rem;
-  height: 1rem;
+  width: 1.2857rem;
+  height: 1.2857rem;
   flex: none;
   accent-color: var(--accent);
   cursor: pointer;
@@ -6533,4 +6948,367 @@ button.ob-chat-chip-open:not(:disabled):hover {
   .ob-pa-table tbody td {
     height: 2.5rem;
   }
+}
+
+/* ===========================================================================
+ * New order record (`LeadRecordView`, owner mockup 2026-10-08)
+ *
+ * A strip of facts across the top, then the lines as a table beside an aside
+ * holding the next step (convert) over the notes. The aside folds to its
+ * header so the table can take the width.
+ * ======================================================================== */
+
+.ob-leadrec {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+  max-width: 120rem;
+}
+.ob-leadrec-muted {
+  color: var(--fg-tertiary);
+}
+
+/* Header: the stage pill opens its list; the number carries a Copy button. */
+.ob-leadrec-menu {
+  display: inline-flex;
+}
+.ob-leadrec-stage {
+  gap: var(--s-6);
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+.ob-leadrec-stage:focus-visible {
+  outline: 2px solid var(--line-focus);
+  outline-offset: 1px;
+}
+.ob-leadrec-dot {
+  width: 0.4286rem;
+  height: 0.4286rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+.ob-leadrec-number {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-4);
+  padding: 0 var(--s-2) 0 var(--s-8);
+  border-radius: var(--r-sm);
+  background: var(--bg-sunken);
+}
+.ob-leadrec-menu .ob-menu-item[aria-current] {
+  font-weight: 600;
+}
+
+/* The facts: one row of label-over-value cells, wrapping on a narrow screen. */
+.ob-leadrec-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, auto));
+  padding: 0;
+}
+.ob-leadrec-fact {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+  padding: var(--s-8) var(--s-16);
+  border-left: 1px solid var(--line);
+}
+.ob-leadrec-fact:first-child {
+  border-left: 0;
+}
+.ob-leadrec-fact-label {
+  font-size: var(--t-small-size);
+  color: var(--fg-tertiary);
+  white-space: nowrap;
+}
+.ob-leadrec-fact-value {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-6);
+  min-height: var(--ctl-h-sm);
+}
+.ob-leadrec-party {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.ob-leadrec-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(21rem, 28%, 28rem);
+  gap: var(--s-12);
+  align-items: stretch;
+}
+.ob-leadrec-grid[data-aside-closed] {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+@media (max-width: 1180px) {
+  .ob-leadrec-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.ob-leadrec-lines,
+.ob-leadrec-aside {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0;
+}
+.ob-leadrec-cardhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-12);
+  min-height: var(--ctl-h-lg);
+  padding: var(--s-8) var(--s-16);
+  border-bottom: 1px solid var(--line);
+}
+.ob-leadrec-lines .ob-leadrec-cardhead {
+  justify-content: flex-start;
+}
+
+.ob-leadrec-warn {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  padding: var(--s-8) var(--s-16);
+  background: var(--state-offline-tint);
+  border-bottom: 1px solid var(--line);
+}
+.ob-leadrec-warn > svg {
+  flex: none;
+  color: var(--state-offline);
+}
+.ob-leadrec-warn > span {
+  flex: 1;
+}
+.ob-leadrec-warntext {
+  color: var(--state-offline);
+}
+
+.ob-leadrec-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.ob-leadrec-table th {
+  padding: var(--s-8) var(--s-12);
+  background: var(--bg-sunken);
+  font-size: var(--t-eyebrow-size);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--fg-secondary);
+  white-space: nowrap;
+}
+.ob-leadrec-table td {
+  padding: var(--s-8) var(--s-12);
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.ob-leadrec-table .ob-leadrec-num {
+  width: 2.5rem;
+  padding-left: var(--s-16);
+  color: var(--fg-tertiary);
+}
+.ob-leadrec-qty {
+  text-align: right;
+  white-space: nowrap;
+}
+.ob-leadrec-table .ob-leadrec-qty {
+  padding-right: var(--s-16);
+}
+.ob-leadrec-item {
+  overflow-wrap: anywhere;
+}
+.ob-leadrec-addweight {
+  height: var(--ctl-h-sm);
+  padding: 0 var(--s-8);
+  border: 1px solid var(--kiln-amber-fill);
+  border-radius: var(--r-sm);
+  background: var(--state-offline-tint);
+  color: var(--state-offline);
+  font: inherit;
+  font-size: var(--t-small-size);
+  font-weight: 500;
+  cursor: pointer;
+}
+.ob-leadrec-addproduct {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--s-6);
+  margin: var(--s-8) var(--s-12);
+  padding: var(--s-4);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.ob-leadrec-addweight:hover,
+.ob-leadrec-addproduct:hover {
+  background: var(--bg-hover);
+}
+.ob-leadrec-addweight:focus-visible,
+.ob-leadrec-addproduct:focus-visible {
+  outline: 2px solid var(--line-focus);
+  outline-offset: 1px;
+}
+.ob-leadrec-total {
+  display: grid;
+  grid-template-columns: 1fr auto 8rem;
+  align-items: center;
+  gap: var(--s-16);
+  margin-top: auto;
+  padding: var(--s-12) var(--s-16);
+  border-top: 1px solid var(--line);
+  background: var(--bg-sunken);
+}
+
+/* The aside: next step on top, the notes below, the note box pinned at the foot. */
+.ob-leadrec-asidebody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--s-16);
+  padding: var(--s-16);
+}
+.ob-leadrec-convert {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+  padding: var(--s-16);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--accent-tint);
+}
+.ob-leadrec-convert[data-done] {
+  align-items: flex-start;
+  border-color: var(--line);
+  background: var(--state-ok-tint);
+}
+.ob-leadrec-convert p {
+  margin: 0;
+  color: var(--fg-secondary);
+}
+.ob-leadrec-convert-title {
+  margin: 0;
+  font-size: var(--t-body-size);
+  font-weight: 600;
+}
+.ob-leadrec-checks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  margin: 0 0 var(--s-4);
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-small-size);
+}
+.ob-leadrec-checks li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-6);
+}
+.ob-leadrec-checks li > svg {
+  flex: none;
+  margin-top: 0.1rem;
+}
+.ob-leadrec-checks [data-tone='ok'] {
+  color: var(--state-ok);
+}
+.ob-leadrec-checks [data-tone='warn'] {
+  color: var(--state-offline);
+}
+.ob-leadrec-checks [data-tone='conflict'] {
+  color: var(--state-conflict);
+}
+.ob-leadrec-dateRow {
+  display: flex;
+  gap: var(--s-8);
+}
+.ob-leadrec-dateRow .ob-input {
+  flex: 1;
+  min-width: 0;
+}
+.ob-leadrec-quick {
+  display: flex;
+  flex: none;
+  padding: var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-sunken);
+}
+.ob-leadrec-quick button {
+  padding: 0 var(--s-8);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-secondary);
+  font: inherit;
+  font-size: var(--t-small-size);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ob-leadrec-quick button:hover {
+  background: var(--bg-hover);
+}
+.ob-leadrec-quick button[aria-pressed='true'] {
+  background: var(--bg-surface);
+  color: var(--fg-primary);
+  box-shadow: 0 0 0 1px var(--line);
+}
+.ob-leadrec-quick button:focus-visible {
+  outline: 2px solid var(--line-focus);
+  outline-offset: -2px;
+}
+.ob-leadrec-convert-go {
+  width: 100%;
+  justify-content: center;
+  margin-top: var(--s-4);
+}
+
+.ob-leadrec-history-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  margin-bottom: var(--s-8);
+}
+.ob-leadrec-history ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ob-leadrec-history li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-8);
+  overflow-wrap: anywhere;
+}
+.ob-leadrec-note {
+  display: flex;
+  gap: var(--s-8);
+  padding: var(--s-12) var(--s-16);
+  border-top: 1px solid var(--line);
+}
+.ob-leadrec-note .ob-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* A list row's Edit / Delete icons (`RowActions`): edit in the accent, delete in the conflict red. */
+.ob-rowactions {
+  display: inline-flex;
+  gap: var(--s-4);
+}
+.ob-rowactions-edit,
+.ob-rowactions-edit:hover {
+  color: var(--accent);
 }

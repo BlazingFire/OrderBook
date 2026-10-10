@@ -1,94 +1,79 @@
 /**
- * Splash (the Motion artboard): the cold-start screen — the mark and the
- * wordmark side by side, and a determinate bar reporting the boot the app is
- * actually doing underneath it. Played once:
+ * Splash (the 2026-10-08 Splash artboard): the cold-start screen of every
+ * panel. Played once, at least 5 s, then it hands the screen to the app:
  *
- *   0–240 ms    the lattice outline draws (one path, `pathLength` 1)
- *   240–620 ms  the ten squares ink in reading order, 34 ms apart
- *   620–908 ms  the wordmark rises 4 px
- *   700 ms      the bar and its caption ride in a beat behind the wordmark
+ *   0–750 ms      the grid fades in, the twelve squares' outlines draw
+ *   750–2050 ms   the ten squares drop in, one by one, with a squash
+ *   1900–2300 ms  the two ghost squares fade in
+ *   2100–2700 ms  a glint crosses the mark
+ *   2350–3050 ms  the mark rises from the middle to its place
+ *   2700–3800 ms  "Welcome to OrderBook", letter by letter; the program line
+ *   3700–5100 ms  the bar runs to 90 % under three status lines
+ *   ready         Ready, the bar fills, the mark breathes, the scene fades out
  *
- * The bar is not decoration. `progress` and `label` come from the shell's real
- * startup sequence, so a Master whose database is unreachable stalls visibly
- * on the step that hung instead of sitting on a "Starting…" line that never
- * changes. A step that fails replaces the bar with the reason and a Retry.
+ * If the boot is still running at 5.1 s, the bar waits at 90 % on the third
+ * status line until it is done. A boot that fails replaces the bar with the
+ * reason and a Retry.
  *
- * Motion is CSS (`mark.css`): under `prefers-reduced-motion` or
- * `data-motion="off"` the splash shows its final frame at once. The one thing
- * this component checks is `motionDisabled()`, to drop the minimum hold — with
- * animation off there is nothing left to hold *for*.
+ * Motion is CSS (`mark.css`). With the motion switch off the hold is dropped —
+ * with animation off there is nothing left to hold *for*.
  */
 
 import { useEffect, useRef, useState } from 'react';
 import { Button } from './Button';
+import { t } from './i18n.js';
 import { CELLS, CELL_RADIUS, GHOST_CELLS } from './logoCells.js';
 import { motionDisabled } from './theme';
 
-/**
- * Long enough to contain the whole entrance: the last arrival is the bar and
- * its caption, at 700 ms over 280 ms, so the sequence ends at 980 ms; the
- * wordmark ends at 908 and the last square at 240 + 9 × 34 + 144 = 690.
- */
-export const SPLASH_MS = 1000;
+/** When the third status line starts to leave, if the boot is done by then. */
+export const SPLASH_MIN_MS = 5100;
 
-/** Delay between one square inking and the next. */
-export const SPLASH_STAGGER_MS = 34;
+/** From "ready" to handing over: Ready, the bar's last 10 %, the breath, the fade. */
+export const SPLASH_FINISH_MS = 1250;
 
-/** The outline of all twelve squares, ghosts included, as one path the draw-in traces. */
-const OUTLINE = [...CELLS.slice(0, 2), ...GHOST_CELLS, ...CELLS.slice(2)]
-  .map(([x, y]) => `M${x} ${y}h4v4h-4z`)
-  .join(' ');
+/** Delay between one square dropping in and the next. */
+export const SPLASH_STAGGER_MS = 85;
+
+/** The order the squares drop in: bottom row first, left to right, then upwards. */
+const DROP_ORDER = [...CELLS.slice(6), ...CELLS.slice(2, 6), ...CELLS.slice(0, 2)];
+
+/** All twelve squares, ghosts included, bottom row first, for the outline. */
+const OUTLINE = [...CELLS.slice(6), ...CELLS.slice(2, 6), ...CELLS.slice(0, 2), ...GHOST_CELLS];
+
+/** Each outline draws 50 ms after its left neighbour and its neighbour below. */
+const outlineDelay = (x: number, y: number) => 50 * (1 + (x - 1) / 6 + (16 - y) / 6);
 
 export function Splash({
-  wordmark,
-  progress,
-  label,
+  program,
+  company,
+  version,
+  ready,
   error,
   retryLabel,
   onRetry,
   onDone,
 }: {
-  wordmark: string;
-  /** 0–1, from the shell's completed boot steps. */
-  progress: number;
-  /** What the shell is waiting on right now. */
-  label: string;
+  /** Which panel is starting: names the program line and the third status. */
+  program: 'master' | 'office';
+  company?: string | null;
+  version: string;
+  /** The boot is done; the splash may finish once its minimum hold is up. */
+  ready: boolean;
   /** Why the boot stopped, if it did. Replaces the bar. */
   error?: string | null;
   retryLabel: string;
   onRetry: () => void;
-  /** The minimum hold has elapsed; the shell may take the screen back. */
+  /** The splash has finished; the shell may take the screen back. */
   onDone: () => void;
 }) {
   const animated = useRef(!motionDisabled());
-  const target = Math.round(Math.min(Math.max(progress, 0), 1) * 100);
+  const [held, setHeld] = useState(!animated.current);
+  const finishing = held && ready && !error;
 
-  // What the bar is allowed to show. On a warm local server the whole boot is
-  // over inside a frame, which would make the count read 0, then 100, and
-  // nothing in between. So the figure eases towards the real one — and only
-  // ever towards it: a step that hangs still parks the bar on that step's
-  // ceiling, which is the whole point of showing a number at all.
-  const [shown, setShown] = useState(0);
-  const targetRef = useRef(target);
-  targetRef.current = target;
-
-  // An interval rather than requestAnimationFrame: rAF does not fire at all
-  // while the window is not compositing, which would freeze the figure on 0%
-  // for anyone who starts the panel and looks away. The splash lives about a
-  // second, so a 16ms timer costs nothing.
   useEffect(() => {
     if (!animated.current) return;
-    const tick = window.setInterval(() => {
-      setShown((current) =>
-        current >= targetRef.current
-          ? current // Same value, so React skips the render; the timer idles.
-          : Math.min(
-              targetRef.current,
-              current + Math.max(0.6, (targetRef.current - current) * 0.06),
-            ),
-      );
-    }, 16);
-    return () => window.clearInterval(tick);
+    const timer = setTimeout(() => setHeld(true), SPLASH_MIN_MS);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -96,68 +81,143 @@ export function Splash({
       onDone();
       return;
     }
-    const timer = setTimeout(onDone, SPLASH_MS);
+    if (!finishing) return;
+    const timer = setTimeout(onDone, SPLASH_FINISH_MS);
     return () => clearTimeout(timer);
-  }, [onDone]);
+  }, [finishing, onDone]);
 
-  const percent = animated.current ? Math.round(shown) : target;
+  const wordmark = t('app.name');
+  const programLine = [t(program === 'master' ? 'master.app.panel' : 'office.app.panel'), company]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
-    <div className="ob-splash" role="status" aria-live="polite">
-      <div className="ob-splash-lockup">
-        <svg width={56} height={56} viewBox="0 0 24 24" aria-hidden="true" className="ob-splash-mark">
-          <path
-            className="ob-splash-outline"
-            pathLength={1}
-            fill="none"
-            stroke="var(--ob-mark-ink)"
-            strokeOpacity={0.35}
-            strokeWidth={0.35}
-            d={OUTLINE}
-          />
-          <g fill="var(--ob-mark-ink)">
-            {CELLS.map(([x, y], i) => (
-              <rect
-                key={i}
-                className="ob-splash-cell"
-                x={x}
-                y={y}
-                width={4}
-                height={4}
-                rx={CELL_RADIUS}
-                style={{ animationDelay: `${240 + i * SPLASH_STAGGER_MS}ms` }}
-              />
-            ))}
-          </g>
-        </svg>
-        <span className="ob-splash-word">{wordmark}</span>
-      </div>
+    <div className={finishing ? 'ob-splash ob-splash--done' : 'ob-splash'} role="status" aria-live="polite">
+      <div className="ob-splash-body">
+        <section className="ob-splash-scene" aria-label={`${t('splash.welcome')} ${wordmark}`}>
+          <div className="ob-splash-grid" aria-hidden="true" />
 
-      {error ? (
-        <div className="ob-splash-status ob-splash-status--error">
-          <p className="ob-splash-error">{error}</p>
-          <Button variant="secondary" size="sm" icon="sync" onClick={onRetry}>
-            {retryLabel}
-          </Button>
-        </div>
-      ) : (
-        <div className="ob-splash-status">
-          <div
-            className="ob-splash-track"
-            role="progressbar"
-            aria-valuenow={percent}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label={label}
-          >
-            <div className="ob-splash-fill" style={{ width: `${percent}%` }} />
+          <div className="ob-splash-column">
+            <div className="ob-splash-move">
+              <div className="ob-splash-breath">
+                <svg width={120} height={120} viewBox="0 0 24 24" aria-hidden="true" className="ob-splash-mark">
+                  <defs>
+                    <clipPath id="ob-splash-clip">
+                      {CELLS.map(([x, y]) => (
+                        <rect key={`${x},${y}`} x={x} y={y} width={4} height={4} rx={CELL_RADIUS} />
+                      ))}
+                    </clipPath>
+                    <linearGradient id="ob-splash-glint" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0" stopColor="#fff" stopOpacity="0" />
+                      <stop offset="0.5" stopColor="#fff" style={{ stopOpacity: 'var(--splash-glint)' }} />
+                      <stop offset="1" stopColor="#fff" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                  <g className="ob-splash-outline" fill="none" stroke="var(--accent)" strokeWidth={0.22}>
+                    {OUTLINE.map(([x, y]) => (
+                      <path
+                        key={`${x},${y}`}
+                        className="ob-splash-draw"
+                        pathLength={1}
+                        d={`M${x} ${y}h4v4h-4z`}
+                        style={{ animationDelay: `${outlineDelay(x, y)}ms` }}
+                      />
+                    ))}
+                  </g>
+                  <g fill="var(--accent)">
+                    {DROP_ORDER.map(([x, y], i) => (
+                      <rect
+                        key={`${x},${y}`}
+                        className="ob-splash-cell"
+                        x={x}
+                        y={y}
+                        width={4}
+                        height={4}
+                        rx={CELL_RADIUS}
+                        style={{ animationDelay: `${750 + i * SPLASH_STAGGER_MS}ms` }}
+                      />
+                    ))}
+                  </g>
+                  <g className="ob-splash-ghosts" fill="var(--accent)">
+                    {GHOST_CELLS.map(([x, y], i) => (
+                      <rect
+                        key={`${x},${y}`}
+                        className="ob-splash-ghost"
+                        x={x}
+                        y={y}
+                        width={4}
+                        height={4}
+                        rx={CELL_RADIUS}
+                        style={{ animationDelay: `${1900 + i * 50}ms` }}
+                      />
+                    ))}
+                  </g>
+                  <g clipPath="url(#ob-splash-clip)">
+                    <rect className="ob-splash-shine" x={0} y={-2} width={7} height={28} fill="url(#ob-splash-glint)" />
+                  </g>
+                </svg>
+              </div>
+            </div>
+
+            <span className="ob-splash-welcome" aria-hidden="true">
+              {t('splash.welcome')}
+            </span>
+            <h1 className="ob-splash-word" aria-label={wordmark}>
+              {wordmark.split('').map((letter, i) => (
+                <span key={i} className="ob-splash-letter-box" aria-hidden="true">
+                  <span className="ob-splash-letter" style={{ animationDelay: `${2900 + i * 45}ms` }}>
+                    {letter}
+                  </span>
+                </span>
+              ))}
+            </h1>
+            <span className="ob-splash-program">{programLine}</span>
           </div>
-          <p key={label} className="ob-splash-label">
-            <span>{label}</span>
-            <span className="ob-splash-percent">{percent}%</span>
-          </p>
-        </div>
-      )}
+
+          {error ? (
+            <div className="ob-splash-status ob-splash-status--error">
+              <p className="ob-splash-error">{error}</p>
+              <Button variant="secondary" size="sm" icon="sync" onClick={onRetry}>
+                {retryLabel}
+              </Button>
+            </div>
+          ) : (
+            <div className="ob-splash-status">
+              <div className="ob-splash-lines">
+                <span className="ob-splash-line ob-splash-line--1">{t('splash.status.data')}</span>
+                <span className="ob-splash-line ob-splash-line--2">{t('splash.status.updates')}</span>
+                <span className="ob-splash-line ob-splash-line--3">
+                  {t(program === 'master' ? 'splash.status.master' : 'splash.status.office')}
+                </span>
+                {finishing && (
+                  <span className="ob-splash-ready">
+                    <svg
+                      width={14}
+                      height={14}
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2.5}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M5 12.5l4.5 4.5L19 7" />
+                    </svg>
+                    {t('splash.ready')}
+                  </span>
+                )}
+              </div>
+              <div className="ob-splash-track" aria-hidden="true">
+                <div className="ob-splash-fill" />
+              </div>
+            </div>
+          )}
+        </section>
+
+        <span className="ob-splash-maker">{t('splash.maker')}</span>
+        <span className="ob-splash-version">v{version}</span>
+      </div>
     </div>
   );
 }

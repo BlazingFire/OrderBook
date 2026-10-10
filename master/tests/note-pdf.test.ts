@@ -66,7 +66,7 @@ describe('the pending order PDF — what is on the sheets', () => {
 
     expect(plans).toHaveLength(input.pages.length);
     expect(plans.length).toBeGreaterThan(1);
-    expect(first).toContain('Pending order');
+    expect(first).toContain('New order');
     expect(first.join(' ')).toContain('Printed 19 Sep 2026 · 09:41');
     expect(first).toContain('QUANTITY — THIS PAGE');
     expect(first).toContain('Sharma Tiles');

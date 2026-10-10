@@ -327,6 +327,8 @@ export interface LeadListQuery extends ListQuery {
 export interface OrderListQuery extends ListQuery {
   stageIds?: Uuid[];
   ownerId?: Uuid;
+  /** Only this party's orders. */
+  partyId?: string;
 }
 
 export interface SearchQuery {

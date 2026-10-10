@@ -86,6 +86,7 @@ export * from './RolePicker.js';
 export * from './roleSummary.js';
 export * from './PermissionSummary.js';
 export * from './PartyFormModal.js';
+export * from './PartyDetailView.js';
 export * from './partyPrivacy.js';
 export * from './ProductDetail.js';
 export * from './ProductDrawer.js';

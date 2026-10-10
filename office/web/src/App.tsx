@@ -215,7 +215,7 @@ function readHash(): string {
   return window.location.hash.replace(/^#\/?/, '');
 }
 
-/** The cold-start steps the splash reports, in the order they run. */
+/** The cold-start steps the splash waits on, in the order they run. */
 const BOOT_STEPS = ['server', 'session', 'assets'] as const;
 
 /** Past this, this PC's clock and the Master's disagree enough to say so (1.3). */
@@ -924,9 +924,10 @@ function OfficePanel() {
   if (!splashDone || !connection || !sessionChecked || bootStep < BOOT_STEPS.length || bootError) {
     return (
       <Splash
-        wordmark={t('app.name')}
-        progress={bootStep / BOOT_STEPS.length}
-        label={t(`splash.step.${BOOT_STEPS[bootStep] ?? 'ready'}`)}
+        program="office"
+        company={connection?.companyName}
+        version={__APP_VERSION__}
+        ready={!!connection && sessionChecked && bootStep >= BOOT_STEPS.length}
         error={bootError}
         retryLabel={t('action.retryNow')}
         onRetry={() => setBootAttempt((attempt) => attempt + 1)}

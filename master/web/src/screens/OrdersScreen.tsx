@@ -41,7 +41,6 @@ import {
   EmptyState,
   FilterChip,
   FilterDivider,
-  IconButton,
   Input,
   PageBar,
   pageWindow,
@@ -65,7 +64,7 @@ import {
   stageTone,
   type PrintroomTransport,
   useToast,
-  NoteButtons,
+  RowActions,
   showsDispatchedPill,
 } from '@orderbook/ui';
 
@@ -149,7 +148,8 @@ export function OrdersScreen({
   const [fetched, setFetched] = useState<Order | null>(null);
   const [party, setParty] = useState<Party | null>(null);
   const [note, setNote] = useState<{ id: string; kind: NoteKind } | null>(null);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  /** The order Delete was asked for, from its row or its header; null while no dialog shows. */
+  const [deleteTarget, setDeleteTarget] = useState<Order | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const canEdit = permissions.includes('orders.edit');
@@ -371,16 +371,17 @@ export function OrdersScreen({
   }
 
   async function confirmDelete(): Promise<void> {
-    if (!openOrder) return;
+    if (!deleteTarget) return;
+    const target = deleteTarget;
     setDeleting(true);
     try {
-      await api.deleteOrder(openOrder.id);
-      setConfirmingDelete(false);
-      setRows((current) => current.filter((order) => order.id !== openOrder.id));
-      onOpenId(null);
+      await api.deleteOrder(target.id);
+      setDeleteTarget(null);
+      setRows((current) => current.filter((order) => order.id !== target.id));
+      if (openId === target.id) onOpenId(null);
     } catch (caught) {
       setError(deleteFailureMessage(caught));
-      setConfirmingDelete(false);
+      setDeleteTarget(null);
     } finally {
       setDeleting(false);
     }
@@ -461,15 +462,25 @@ export function OrdersScreen({
     },
     {
       key: 'notes',
-      header: t('orderNote.column.notes'),
+      header: t('lead.list.col.notes'),
       priority: 2,
-      width: rem(232),
       render: (order) => (
-        <NoteButtons
-          onNote={(kind) => {
-            setNote({ id: order.id, kind });
-            onOpenId(order.id);
-          }}
+        <span className="ob-small ob-ellipsis" title={order.notes ?? undefined} style={{ display: 'block' }}>
+          {order.notes?.trim() || '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'action',
+      header: t('lead.list.col.action'),
+      width: rem(96),
+      render: (order) => (
+        <RowActions
+          editLabel={t('order.list.editAction')}
+          deleteLabel={t('leadsOrders.delete.order')}
+          // A final order is edited on its own screen (weight, stage, vehicle, dispatch).
+          onEdit={canEdit ? () => onOpenId(order.id) : undefined}
+          onDelete={canDelete ? () => setDeleteTarget(order) : undefined}
         />
       ),
     },
@@ -495,6 +506,19 @@ export function OrdersScreen({
       />
     );
   }
+
+  const deleteDialog = (
+    <ConfirmDialog
+      open={deleteTarget !== null}
+      tone="danger"
+      busy={deleting}
+      title={t('leadsOrders.delete.order.title', { id: deleteTarget ? recordNumberText(deleteTarget) : '' })}
+      body={t('leadsOrders.delete.body')}
+      confirmLabel={t('common.delete')}
+      onCancel={() => setDeleteTarget(null)}
+      onConfirm={() => void confirmDelete()}
+    />
+  );
 
   if (openOrder) {
     return (
@@ -543,12 +567,15 @@ export function OrdersScreen({
               </Button>
               {/* Absent, not greyed, without the permission — the house rule. */}
               {canDelete && (
-                <IconButton
+                <Button
+                  variant="danger"
+                  size="sm"
                   icon="trash"
-                  label={t('leadsOrders.delete.order')}
                   disabled={deleting}
-                  onClick={() => setConfirmingDelete(true)}
-                />
+                  onClick={() => setDeleteTarget(openOrder)}
+                >
+                  {t('leadsOrders.delete.order')}
+                </Button>
               )}
             </>
           }
@@ -572,16 +599,7 @@ export function OrdersScreen({
             onError={setError}
           />
         </EditorScreen>
-        <ConfirmDialog
-          open={confirmingDelete}
-          tone="danger"
-          busy={deleting}
-          title={t('leadsOrders.delete.order.title', { id: recordNumberText(openOrder) })}
-          body={t('leadsOrders.delete.body')}
-          confirmLabel={t('common.delete')}
-          onCancel={() => setConfirmingDelete(false)}
-          onConfirm={() => void confirmDelete()}
-        />
+        {deleteDialog}
       </>
     );
   }
@@ -622,6 +640,7 @@ export function OrdersScreen({
           />
         </>
       )}
+      {deleteDialog}
     </div>
   );
 }

@@ -1937,7 +1937,7 @@ describe('product photos', () => {
 
     fireEvent.change(qtyBox('OPT-0001'), { target: { value: '5' } });
     await finishCard();
-    expect(document.querySelector('.ob-order-aside .ob-thumb')).not.toBeNull();
+    expect(document.querySelector('.ob-order-aside .ob-thumb')).toBeNull();
   });
 
   it('draws nothing for a product with no photo, but its initial in the sub-product list', async () => {
@@ -2016,38 +2016,6 @@ describe('the save button', () => {
     expect(save.textContent).toContain('Save order');
     expect(save.textContent).toContain('Ctrl S');
     expect(save.getAttribute('aria-label')).toBe('Save order');
-  });
-});
-
-describe('the follow-up quick choices', () => {
-  it('are one segmented radio group beside the date, in the short faces of the design', async () => {
-    await openForm();
-    const group = document.querySelector<HTMLElement>('[data-follow-up-chips]')!;
-    expect(group).not.toBeNull();
-    expect(group.getAttribute('role')).toBe('radiogroup');
-    const radios = group.querySelectorAll('button[role="radio"]');
-    expect([...radios].map((radio) => radio.textContent)).toEqual(['+1 d', '+3 d', '+1 wk']);
-    expect([...radios].map((radio) => radio.getAttribute('title'))).toEqual([
-      t('lead.add.followUp.tomorrow'),
-      t('lead.add.followUp.inThreeDays'),
-      t('lead.add.followUp.nextWeek'),
-    ]);
-    // The date box is not in the group.
-    expect(group.querySelector('input')).toBeNull();
-  });
-
-  it('start on three days, and a click on the checked one clears the date, another sets it again', async () => {
-    await openForm();
-    const date = screen.getByLabelText(t('lead.add.details.followUp')) as HTMLInputElement;
-    const three = screen.getByRole('radio', { name: t('lead.add.followUp.inThreeDays') });
-    expect(three.getAttribute('aria-checked')).toBe('true');
-    expect(date.value).not.toBe('');
-    fireEvent.click(three);
-    expect(three.getAttribute('aria-checked')).toBe('false');
-    expect(date.value).toBe('');
-    fireEvent.click(three);
-    expect(three.getAttribute('aria-checked')).toBe('true');
-    expect(date.value).not.toBe('');
   });
 });
 

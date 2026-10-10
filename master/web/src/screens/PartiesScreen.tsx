@@ -24,43 +24,44 @@
  * `rows.length` as the party count is rendering a page size. This one keeps the
  * whole `Paginated<Party>` and reports `page.total`.
  *
- * **A party opens as a sub-screen** (back button, nested sidebar entry), the
- * way the Office's party detail does: contact, the caller's own access, the
- * party's own product records with the catalogue model each stands for, and
- * its recent pending orders. The shell holds which one is open (`openId`) so a
- * palette hit can open it; a party the loaded page does not hold is fetched.
- * Access has two halves: everybody sees their own grant (`myAccess`, which the
- * server sends on every party), and whoever holds `party.assign` or
- * `party.accessAll` also sees who the party is assigned to and a button to the
- * Party access module, which owns the editing.
+ * **A party opens as a sub-screen** (back button, nested sidebar entry) drawn
+ * by the shared `PartyDetailView`: a head card with New pending order and Edit,
+ * the party's pending and final orders, its party-wise product names (with Add
+ * name), and a folding details panel — contact, who can reach it, notes. The
+ * shell holds which one is open (`openId`) so a palette hit can open it; a
+ * party the loaded page does not hold is fetched. Access has two halves:
+ * everybody sees their own grant (`myAccess`, which the server sends on every
+ * party), and whoever holds `party.assign` or `party.accessAll` also sees who
+ * the party is assigned to and Manage, to the Party access module, which owns
+ * the editing.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Lead, PartyAccessRow } from '@orderbook/shared';
+import type { Lead, Order, PartyAccessRow, Product } from '@orderbook/shared';
 
 import {
   ApiError,
   api,
   type PartyDetailRecord,
   type PartyListRow,
-  type PartyMyAccess,
   type PartyRecord,
 } from '../api';
 import { partyFormTransport } from '../partyFormTransport';
 import { partyImportTransport } from '../transports';
 import {
   Button,
-  Card,
+  Combobox,
   ConfirmDialog,
   DataTable,
   EditorScreen,
   EmptyState,
   ErrorState,
-  IconButton,
+  FormField,
   Input,
-  KeyValueList,
   LoadMorePager,
+  Modal,
   NO_PARTY_LIST_FILTERS,
+  PartyDetailView,
   PartyFilterRow,
   PartyFormModal,
   PartyVisibilityMark,
@@ -68,9 +69,7 @@ import {
   SkeletonTable,
   StatusPill,
   formatDate,
-  formatDateTime,
   presenceOf,
-  recordNumberText,
   rem,
   t,
   useDebounced,
@@ -100,6 +99,13 @@ interface Props {
   onOpenId: (id: string | null) => void;
   /** Opens a pending order in its own module. */
   onOpenLead: (id: string) => void;
+  /** Opens a final order in its own module. */
+  onOpenOrder: (id: string) => void;
+  /** The Pending orders and Final orders lists. */
+  onOpenLeadsList: () => void;
+  onOpenOrdersList: () => void;
+  /** The New pending order form, opened on this party; absent without `leads.create`. */
+  onNewLead?: (party: PartyDetailRecord) => void;
   /** Goes to the Party access module, where a party's assignment is edited. */
   onOpenPartyAccess: () => void;
 }
@@ -111,6 +117,10 @@ export function PartiesScreen({
   openId,
   onOpenId,
   onOpenLead,
+  onOpenOrder,
+  onOpenLeadsList,
+  onOpenOrdersList,
+  onNewLead,
   onOpenPartyAccess,
 }: Props) {
   const toast = useToast();
@@ -140,13 +150,16 @@ export function PartiesScreen({
   const [fetched, setFetched] = useState<PartyDetailRecord | null>(null);
   const [records, setRecords] = useState<PartyRecord[] | null>(null);
   const [access, setAccess] = useState<PartyAccessRow | null>(null);
-  const [recentLeads, setRecentLeads] = useState<Lead[] | null>(null);
+  const [pending, setPending] = useState<{ items: Lead[]; total: number } | null>(null);
+  const [final, setFinal] = useState<{ items: Order[]; total: number } | null>(null);
+  const [addingName, setAddingName] = useState(false);
 
   const canCreate = permissions.includes('parties.create');
   useCommand('party.new', canCreate ? () => setCreating(true) : null);
   const canEdit = permissions.includes('parties.edit');
   const canDelete = permissions.includes('parties.delete');
   const canViewLeads = permissions.includes('leads.view');
+  const canViewOrders = permissions.includes('orders.view');
   // Either key opens the access screen: `party.assign` to redraw the map,
   // `party.accessAll` to read it.
   const canSeeAssignment =
@@ -254,23 +267,36 @@ export function PartiesScreen({
     };
   }, [openPartyId, canSeeAssignment, revision]);
 
-  // Recent pending orders, newest first; the converted ones too, as the Office lists them.
+  // The party's pending orders and final orders, newest first — one page of each, with the totals.
   useEffect(() => {
-    setRecentLeads(null);
-    if (!openPartyId || !canViewLeads) return;
+    setPending(null);
+    setFinal(null);
+    if (!openPartyId) return;
     let cancelled = false;
-    void api
-      .leads({ partyId: openPartyId, limit: 5, includeConverted: true })
-      .then((page) => {
-        if (!cancelled) setRecentLeads(page.items);
-      })
-      .catch(() => {
-        if (!cancelled) setRecentLeads([]);
-      });
+    if (canViewLeads) {
+      void api
+        .leads({ partyId: openPartyId, limit: 50 })
+        .then((page) => {
+          if (!cancelled) setPending({ items: page.items, total: page.total });
+        })
+        .catch(() => {
+          if (!cancelled) setPending({ items: [], total: 0 });
+        });
+    }
+    if (canViewOrders) {
+      void api
+        .orders({ partyId: openPartyId, limit: 50 })
+        .then((page) => {
+          if (!cancelled) setFinal({ items: page.items, total: page.total });
+        })
+        .catch(() => {
+          if (!cancelled) setFinal({ items: [], total: 0 });
+        });
+    }
     return () => {
       cancelled = true;
     };
-  }, [openPartyId, canViewLeads, recordsRevision]);
+  }, [openPartyId, canViewLeads, canViewOrders, recordsRevision]);
 
   async function remove(party: PartyDetailRecord): Promise<void> {
     setDeleteBusy(true);
@@ -425,183 +451,55 @@ export function PartiesScreen({
     },
   ];
 
-  const recordColumns: DataTableColumn<PartyRecord>[] = [
-    {
-      key: 'product',
-      header: t('party.detail.records.product'),
-      render: (record) => record.catalogueName ?? '—',
-    },
-    {
-      key: 'ownName',
-      header: t('party.detail.records.ownName'),
-      render: (record) => <span className="ob-body-strong">{record.productName ?? '—'}</span>,
-    },
-    {
-      key: 'alias',
-      header: t('product.field.alias'),
-      width: rem(110),
-      render: (record) => record.alias ?? '—',
-    },
-    {
-      key: 'size',
-      header: t('product.field.size'),
-      width: rem(110),
-      render: (record) => record.size ?? '—',
-    },
-    {
-      key: 'packaging',
-      header: t('orders.column.packaging'),
-      width: rem(120),
-      render: (record) => record.packaging ?? '—',
-    },
-  ];
-
   if (open) {
+    // A view grant reads the party but may not work it: no new order, no edit, no names.
+    const mayWork = open.myAccess !== 'view';
+    const listed = rows.find((party) => party.id === open.id);
     return (
       <>
         <EditorScreen
-          title={open.name}
-          meta={<span className="ob-mono ob-small">{open.partyCode}</span>}
-          actions={
-            <>
-              {canEdit && (
-                <Button variant="secondary" size="sm" icon="edit" onClick={() => setEditing(open)}>
-                  {t('party.detail.editAction')}
-                </Button>
-              )}
-              {canDelete && (
-                <IconButton
-                  icon="trash"
-                  label={t('parties.delete.confirm')}
-                  onClick={() => setDeleting(open)}
-                />
-              )}
-            </>
-          }
           onBack={() => {
             onOpenId(null);
             return true;
           }}
           backLabel={t('action.backToList')}
         >
-          <Card>
-            <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
-              {t('party.detail.contact')}
-            </div>
-            <KeyValueList
-              items={[
-                { label: t('catalog.parties.column.code'), value: open.partyCode },
-                { label: t('party.detail.phone'), value: open.phone ?? '—' },
-                { label: t('party.field.altPhone'), value: open.altPhone ?? '—' },
-                { label: t('party.detail.email'), value: open.email ?? '—' },
-                { label: t('party.field.addressLine1'), value: open.addressLine1 ?? '—' },
-                { label: t('party.field.addressLine2'), value: open.addressLine2 ?? '—' },
-                { label: t('party.detail.city'), value: open.city ?? '—' },
-                { label: t('party.field.state'), value: open.state ?? '—' },
-                { label: t('party.field.pincode'), value: open.pincode ?? '—' },
-                { label: t('party.detail.taxId'), value: open.gstNumber ?? '—' },
-                { label: t('party.field.notes'), value: open.notes ?? '—' },
-                { label: t('party.detail.since'), value: formatDateTime(open.createdAt) },
-              ]}
-            />
-          </Card>
-
-          <Card>
-            <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
-              {t('party.detail.accessTitle')}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}>
-              {open.myAccess ? (
-                <AccessPill level={open.myAccess} />
-              ) : (
-                <StatusPill>{t('partyAccess.open')}</StatusPill>
-              )}
-              <span className="ob-small">{myAccessText(open.myAccess ?? null)}</span>
-            </div>
-            {canSeeAssignment && (
-              <div style={{ marginTop: 'var(--s-12)' }}>
-                <div className="ob-small" style={{ marginBottom: 'var(--s-4)' }}>
-                  {t('party.detail.access.assigned')}
-                </div>
-                {access === null ? null : access.assignees.length === 0 ? (
-                  <span className="ob-small">{t('partyAccess.open')}</span>
-                ) : (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--s-8)' }}>
-                    {access.assignees.map((person) => (
-                      <StatusPill key={person.userId} tone={person.level === 'manage' ? 'accent' : 'default'}>
-                        {person.displayName} ·{' '}
-                        {person.level === 'manage'
-                          ? t('partyAccess.level.manage')
-                          : t('partyAccess.level.view')}
-                      </StatusPill>
-                    ))}
-                  </div>
-                )}
-                <div style={{ marginTop: 'var(--s-8)' }}>
-                  <Button variant="secondary" size="sm" onClick={onOpenPartyAccess}>
-                    {t('nav.master.partyAccess')}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </Card>
-
-          <div>
-            <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
-              {t('party.detail.recordsTitle')}
-            </div>
-            {records === null ? (
-              <SkeletonTable columns={recordColumns} rows={3} />
-            ) : (
-              <DataTable
-                columns={recordColumns}
-                rows={records}
-                rowKey={(record) => record.id}
-                empty={
-                  <p
-                    className="ob-small"
-                    style={{ margin: 0, padding: 'var(--s-16)', color: 'var(--fg-tertiary)' }}
-                  >
-                    {t('party.detail.records.none')}
-                  </p>
-                }
-              />
-            )}
-          </div>
-
-          {canViewLeads && (
-            <div>
-              <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
-                {t('party.detail.leadsTitle')}
-              </div>
-              {recentLeads === null ? null : recentLeads.length === 0 ? (
-                <p className="ob-small" style={{ color: 'var(--fg-tertiary)' }}>
-                  {t('party.detail.leads.none')}
-                </p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
-                  {recentLeads.map((lead) => (
-                    <button
-                      key={lead.id}
-                      type="button"
-                      className="ob-btn ob-btn--ghost"
-                      style={{ justifyContent: 'flex-start', gap: 'var(--s-10)' }}
-                      onClick={() => onOpenLead(lead.id)}
-                    >
-                      <span
-                        className="ob-mono"
-                        style={{ fontSize: rem(11.5), color: 'var(--fg-secondary)' }}
-                      >
-                        {recordNumberText(lead)}
-                      </span>
-                      <span className="ob-small">{lead.stageName}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          <PartyDetailView
+            party={open}
+            pending={canViewLeads ? (pending?.items ?? null) : []}
+            pendingTotal={pending?.total}
+            final={canViewOrders ? (final?.items ?? null) : undefined}
+            finalTotal={final?.total}
+            records={records}
+            accessCount={access ? access.assignees.length : (listed?.accessCount ?? 0)}
+            assignees={canSeeAssignment ? (access?.assignees ?? null) : null}
+            myAccess={open.myAccess ?? null}
+            onNewOrder={onNewLead && mayWork ? () => onNewLead(open) : undefined}
+            onEdit={canEdit && mayWork ? () => setEditing(open) : undefined}
+            onDelete={canDelete && mayWork ? () => setDeleting(open) : undefined}
+            onOpenLead={onOpenLead}
+            onOpenOrder={onOpenOrder}
+            onOpenPendingList={canViewLeads ? onOpenLeadsList : undefined}
+            onOpenFinalList={canViewOrders ? onOpenOrdersList : undefined}
+            onManageAccess={canSeeAssignment ? onOpenPartyAccess : undefined}
+            onAddName={canEdit && mayWork ? () => setAddingName(true) : undefined}
+          />
         </EditorScreen>
+
+        <AddNameModal
+          open={addingName}
+          partyId={open.id}
+          onClose={() => setAddingName(false)}
+          onSaved={(product) => {
+            setAddingName(false);
+            toast.push(t('party.view.addName.saved', { product }), { tone: 'ok' });
+            void api
+              .partyRecords(open.id)
+              .then(setRecords)
+              .catch(() => undefined);
+          }}
+          onError={(message) => toast.push(message, { tone: 'error' })}
+        />
 
         {partyModals()}
       </>
@@ -711,9 +609,129 @@ function AccessPill({ level }: { level: 'view' | 'manage' }) {
   );
 }
 
-/** What the caller's own grant lets them do — the same sentences the Office's detail uses. */
-function myAccessText(level: PartyMyAccess): string {
-  if (level === 'manage') return t('party.detail.access.manage');
-  if (level === 'view') return t('party.detail.access.view');
-  return t('party.detail.access.open');
+/**
+ * Add name: what this party calls one catalogue product. One name per product
+ * (`upsertVariant` keys on party and product), so picking a product that
+ * already has one replaces it.
+ */
+function AddNameModal({
+  open,
+  partyId,
+  onClose,
+  onSaved,
+  onError,
+}: {
+  open: boolean;
+  partyId: string;
+  onClose: () => void;
+  onSaved: (productName: string) => void;
+  onError: (message: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [options, setOptions] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [product, setProduct] = useState<Product | null>(null);
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const term = useDebounced(query, 200);
+
+  useEffect(() => {
+    if (!open) {
+      setQuery('');
+      setProduct(null);
+      setName('');
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !term.trim()) {
+      setOptions([]);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    void api
+      .pick<Product>('product', { term, limit: 20 })
+      .then((page) => {
+        if (!cancelled) setOptions(page.items);
+      })
+      .catch(() => {
+        if (!cancelled) setOptions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, term]);
+
+  async function save(): Promise<void> {
+    if (!product || !name.trim()) return;
+    setBusy(true);
+    try {
+      await api.upsertPartyRecord({ partyId, productId: product.id, alias: name.trim() });
+      onSaved(product.name);
+    } catch (caught) {
+      onError(caught instanceof Error ? caught.message : t('party.view.addName.failed'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t('party.view.addName.title')}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            {t('action.cancel')}
+          </Button>
+          <Button
+            variant="primary"
+            busy={busy}
+            disabled={!product || !name.trim()}
+            onClick={() => void save()}
+          >
+            {t('party.view.addName')}
+          </Button>
+        </>
+      }
+    >
+      <FormField label={t('party.view.addName.product')} required>
+        {() => (
+          <Combobox<Product>
+            autoFocus
+            filter={false}
+            loading={loading}
+            ariaLabel={t('party.view.addName.product')}
+            placeholder={product?.name ?? t('party.view.addName.productPlaceholder')}
+            onQueryChange={setQuery}
+            options={options.map((item) => ({
+              key: item.id,
+              label: item.name,
+              hint: item.alias ?? undefined,
+              value: item,
+            }))}
+            onSelect={(option) => setProduct(option.value)}
+          />
+        )}
+      </FormField>
+      {product && <p className="ob-small">{product.name}</p>}
+      <FormField label={t('party.view.addName.name')} required>
+        {(id) => (
+          <Input
+            id={id}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') void save();
+            }}
+          />
+        )}
+      </FormField>
+    </Modal>
+  );
 }

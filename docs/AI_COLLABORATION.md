@@ -190,6 +190,38 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-09 - Final order list: Notes and Action columns (Claude, Opus)
+
+- **Ask (owner):** the final order list the same as the new order list — a Notes column with the order's notes, and an Action column.
+- **Built:** Master `OrdersScreen.tsx` and Office `OrderBoardScreen.tsx`: the Filling / Dispatch row buttons are gone; Notes shows `order.notes`; Action uses `RowActions` — the edit icon ("Open to edit", `order.list.editAction`) opens the order, where a final order is edited (weight, stage, vehicle, dispatch), shown with `orders.edit`; Delete (`orders.delete`, Master only) opens the same confirm dialog, now driven by `deleteTarget` so it serves the row and the header. The Master's order header Delete is now a labelled danger button like the new order's. Notes stay on the order screen's Filling note / Dispatch note buttons.
+- **Verified:** typecheck clean, eslint clean on the changed files, `ui/tests` + `shared/tests` + `web-reachability` pass (row-note tests replaced). Master in the browser through the DOM (the pane would not paint): row reads number, party, ref, qty, weight, stage, notes; icons blue "Open to edit" and red "Delete final order"; header ends with the danger Delete. `shared` rebuilt so the dev server sees the new key. Script slip, fixed: a rewrite emptied `office/web/src/screens/OrderBoardScreen.tsx` once; it had no uncommitted changes and was restored from `git checkout` before editing.
+
+### 2026-10-09 - New order list: Notes and Action columns; Delete in the record header (Claude, Opus)
+
+- **Ask (owner):** drop the Products column from the new order list, show the order's notes in a Notes column, make the last column Action with icon-only Edit and Delete in their colours, and replace the record header's ⋯ (Delete only) with a Delete button.
+- **Built:** `RowActions` in `ui/src/DataTable.tsx` (edit icon in the accent, trash in the conflict red, clicks stop at the cell; `.ob-rowactions` in `ui/src/base.css`). Master `LeadsScreen.tsx`: Products column and `summariseItems` gone; Notes shows `lead.notes`; Action has Edit (opens Edit order; `leads.edit`, not converted) and Delete (`leads.delete`, the same confirm dialog, now driven by `deleteTarget` so it serves the row and the header); header ⋯ replaced by a danger **Delete new order** button. Office `LeadBoardScreen.tsx`: same columns, Action is Edit only — the Office has never had a delete flow for new orders. Filling and Dispatch notes are no longer on list rows; they open from the record's Print & PDF menu (and the Office board card menu). Keys `lead.list.col.notes`, `lead.list.col.action`; `lead.list.col.products` removed.
+- **Verified:** typecheck clean, eslint clean on the changed files, `ui/tests` + `shared/tests` + `web-reachability` pass (the two "note from the list row" tests replaced by tests of the new row). Master in the browser (z1.localhost:5100): row reads number, party, stage, source, qty, weight, follow-up, created, notes; icons blue/red; header buttons Share, Print & PDF, Edit order, Delete. Screenshots could not be taken (the pane did not paint); checked through the DOM.
+
+### 2026-10-08 (night) - New order record screen from the owner's mockup; "Pending Order" renamed "New Order" (Claude, Opus)
+
+- **Ask (owner):** build the screen a pending order opens on after it is created, from the owner's screenshot (Patel Tiles & Sanitary, PO/2026-27/00008), and call pending orders "new orders" everywhere.
+- **Built:** `ui/src/LeadRecordView.tsx` rewritten and now used by **both** panels (`office/web/src/screens/LeadDetail.tsx` deleted; the Office passes an outbox-backed `leadRecordTransport` in `LeadBoardScreen.tsx`). Facts strip (party + code, phone with copy, city, source, follow-up date + "in 3 days" + pencil, product names Catalogue / Party-wise, created by owner + time); Line items table (#, item, colour, packaging, grade, weight, qty) with the amber "no weight" band and **Add weights**, per-line **Add weight**, **Add product** and a Total row (kg · N missing, pcs) — all three open Edit order and show only while the order is editable; a foldable "Next step & notes" aside with the Convert card (checks: party and lines, packaging missing (blocks), weights missing (allowed), dispatch address label, expected date with Today / +1 d / +3 d) over Notes & history (avatar, actor, time) and a pinned "Add a note for the team" box. Header on both panels: stage pill that opens the stage list (`LeadStageMenu`, replaces the aside's stage select), number with Copy (`CopyRecordNumber`), Share in chat, **Print & PDF** menu (Filling note, Dispatch note, Preview PDF — `RecordMenu`), Edit order, and on the Master a ⋯ menu holding Delete. Styles: `.ob-leadrec*` block at the end of `ui/src/base.css`. Rename: every English string in `shared/src/i18n/en.ts` that said "pending order" now says "new order" (119); `new-order-name.test.ts` now asserts none is left. Keys, routes, `PO/` numbers and code identifiers unchanged.
+- **Verified:** lint 0 errors, typecheck clean; `npm run test` — every unit/jsdom suite passes (shell tests updated to open notes through the Print & PDF menu); the PostgreSQL integration suites could not run (`pg_ctl start exited with 1`, same as the entries below). Browser pass on the running Master (z1.localhost:5100, 1600×1000 and 1024×768): facts, table, weight band, stage menu, Print & PDF menu, +1 d quick date. Not checked in a browser: the Office panel's copy of the screen.
+
+### 2026-10-08 (night) - New party details screen on the Master (Claude, Opus)
+
+- **Ask (owner):** implement the new party details screen from the owner's screenshot (New Home Ceramics).
+- **Built:** `ui/src/PartyDetailView.tsx` (presentational, shared) with its `.ob-partyview*` block in `ui/src/base.css`: head card (initials, name, copyable party code, "Restricted · N people", city/state · party since; New pending order, Edit party, ⋯ → Delete), Orders card with Pending / Final switch and counts (Order, Status, Created, Products, Pcs, Owner, Follow-up — Today / Tomorrow / amber "Overdue · date"; Final shows expected dispatch) and "Open in Pending/Final orders", Party-wise product names card with Add name and its empty state, and a folding Details panel (contact, "N details not added" + Add details, Who can reach this party + Manage, Notes + Add note, Code, Added). `master/web/src/screens/PartiesScreen.tsx` renders it; Add name is a modal (catalogue product picker + the party's name, saved as the record's alias through the existing `POST /api/party-variants`, new `api.upsertPartyRecord`). New pending order opens the New form on the party (`presetParty` on `LeadEntryScreen` / Master `LeadEntry`; a form already holding products keeps its draft). `GET /api/orders` takes `partyId` (`OrderListQuery.partyId`, `order.repository.ts`). View-only grants get no New order / Edit / Delete / Add name.
+- **Not built:** the Office Panel's party detail (`office/web/src/screens/PartyDetail.tsx`) still has the old layout — its `App.tsx`/lead screens were being edited concurrently in this tree.
+- **Verified:** typecheck of ui, shared, master, master/web clean for these files; eslint clean; `ui/tests/party-detail-view.test.ts` (new, follow-up label) and the party tests in `ui/tests/master-shell.test.tsx` pass. Not verified: `npm run verify` as a whole (uncommitted concurrent edits to LeadsScreen / LeadRecordView / office LeadDetail fail 8 pending-order-note tests and the office api reachability check), the `partyId` order filter against PostgreSQL, and a browser pass (the running Master needs a sign-in).
+
+### 2026-10-08 (night) - Notifications: right-side drawer in the Notification kit's design (Claude, Opus)
+
+- **Ask (owner):** take the notification UI from the "Notification kit — icons & elements" design zip and use it across the app, as a sidebar sliding in from the right with animations.
+- **Built:** `ui/src/NotificationBell.tsx` now opens a drawer (portalled to `body`, fixed under the topbar, above the footer) instead of a popover: kit cards (tile in its meaning colour, category · relative time with the exact time on hover, blue unread dot, bold unread sentence, one "Open …" action per link kind), category filter chips with counts, Today / Earlier groups, an "N new" pill, Mark all as read, Close, the kit's empty state. Slides in (`ob-drawer-in`, `--d-slow`) and out (`ob-drawer-out`, `--d-exit`, unmounted after 140 ms); cards rise in staggered. Instant when motion is off in Settings or the OS. The bell is tinted while open; its badge turns red while a needs-action notice (`backup.autoFailed`) is unread. Kind → category/tone/icon in `KIND_LOOK`; four kit glyphs added to `ui/src/icons.tsx` (`monitor-off`, `mention`, `clipboard`, `restart`); `notification.*` keys in `shared/src/i18n/en.ts` (`notification.empty` now reads "You're all caught up"). Styles replace the old `.ob-bell-list` block in `ui/src/base.css`.
+- **Not built:** per-card dismiss, Clear / Clear all, snooze, Do not disturb and in-app pop-ups for new notices — the Master has no delete or snooze route for notifications, and pop-ups are a separate change.
+- **Verified:** `ui/tests/notification-bell.test.tsx` (15, two new: filter chips + red badge, the Open action), `master-shell`, `office-shell` and the design tests pass; lint and typecheck passed inside `npm run verify`. That run's test step failed for reasons outside this change: the integration suites could not start their PostgreSQL (`pg_ctl start exited with 1`), and `Splash.tsx` / `mark.css` were being edited concurrently in the same tree (`i18n-call-sites`, `legacy-floor`, Splash tests). Browser pass on the running Master at 1440×900, light and dark: drawer, chips, groups, slide-out on Esc.
+
 ### 2026-10-08 (later) - New Order walk to Add sub product, Sell today, product band, person screen (Claude, Opus, single session)
 
 - **Ask (owner, R10–R15 in `CLAUDE_HELPER_OCT8.md`):** after a sub product, each dropdown opens as the walk arrives (colour, or qty for a fixed colour; packaging; grade), the caret stops on Add sub product, Enter adds and goes to a new sub product; a better sub-product dropdown with a collapse button; a compact product slideshow on Basic Home; a "what to sell today" pop-up closable or closing by itself, managed in Notice board management; the Roles & users person screen from the owner's screenshot, fully working; "make everything perfect".
@@ -3203,3 +3235,27 @@ git-excluded `.design-*/` artifact folders, which failed `npm run lint`.
 icons only, per-copy ids, which modules lack art), `basic-home.test.tsx` (every
 tile resolves to art or the fallback).
 
+### 2026-10-08 — New splash screen for every panel (Claude)
+
+**Changed.** `ui/src/Splash.tsx` is rebuilt to the owner's Splash artboard
+(light and dark, Master and Office): grid, outlines drawing, squares dropping
+in, glint, the mark rising, "Welcome to OrderBook" letter by letter, the
+program and company line, three status lines over a bar, Ready, a breath and a
+fade. It plays at least 5 s; a boot still running then holds the bar at 90 %
+on the third line until it is done. The props are now `program`, `company`,
+`version` and `ready` instead of `progress`/`label`; both `App.tsx` files pass
+them. The splash CSS moved wholly into `mark.css` (the old block in
+`base.css` is gone). `splash.step.*` keys gave way to `splash.welcome`,
+`splash.status.*`, `splash.ready` and `splash.maker`. The Electron shell's
+inline "Starting…" page, shown before the server answers, is unchanged.
+
+**Tests.** `mark.test.tsx` covers the drop order, the hold, the wait on a slow
+boot and the hand-over. Three "Sell today" blocks in `master-shell` and
+`office-notices` cleared `localStorage`, which also cleared the harness's
+motion-off flag; they now set it back, as the harness does.
+
+**Verified.** Splash, shell and notices tests pass; seen in the browser on the
+Master in light and dark. The full `npm run verify` did not pass for reasons
+outside this change: another session's uncommitted lead and party work fails
+several tests (notes, Printroom, i18n keys), and the PostgreSQL integration
+suites could not connect (ECONNREFUSED).

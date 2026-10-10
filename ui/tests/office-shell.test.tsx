@@ -267,6 +267,15 @@ async function draftOneProduct(): Promise<void> {
 const addSubProduct = (): HTMLElement =>
   screen.getAllByRole('button', { name: t('lead.add.draft.saveProduct') })[0]!;
 
+
+/** A new order's notes sit in its Print & PDF menu (2026-10-08). */
+async function noteItem(kind: 'orderNote.filling' | 'orderNote.dispatch'): Promise<HTMLElement> {
+  if (!screen.queryByRole('menu')) {
+    fireEvent.click(await screen.findByRole('button', { name: t('lead.detail.printMenu') }));
+  }
+  return screen.getByRole('menuitem', { name: t(kind) });
+}
+
 describe('the event stream', () => {
   it('stays one stream when the link reports it is connected', async () => {
     await boot({ permissions: ['leads.view'] });
@@ -1546,11 +1555,11 @@ describe('Edit lead', () => {
 
     it('is offered with the right to view leads alone, no export right needed (R10)', async () => {
       await openLead(['leads.view']);
-      expect(screen.getByRole('button', { name: t('orderNote.filling') })).toBeTruthy();
-      expect(screen.getByRole('button', { name: t('orderNote.dispatch') })).toBeTruthy();
+      expect((await noteItem('orderNote.filling'))).toBeTruthy();
+      expect((await noteItem('orderNote.dispatch'))).toBeTruthy();
     });
 
-    it('opens a note straight from the list row (R10)', async () => {
+    it('has no note buttons on a list row: notes open from the record (2026-10-09)', async () => {
       await boot({
         permissions: ['leads.view'],
         view: { leads: [LEAD], pipelines: [LEAD_PIPELINE] },
@@ -1562,13 +1571,8 @@ describe('Edit lead', () => {
       await act(async () => {
         fireEvent.click(screen.getAllByRole('button', { name: t('lead.board.tab.list') })[0]!);
       });
-      await act(async () => {
-        fireEvent.click(screen.getByRole('button', { name: t('orderNote.dispatch') }));
-      });
-
-      expect(
-        (await screen.findAllByText(t('orderNote.page', { n: 1, total: 1 }))).length,
-      ).toBeGreaterThan(0);
+      expect(screen.getByText(t('lead.list.col.notes'))).toBeTruthy();
+      expect(screen.queryByRole('button', { name: t('orderNote.dispatch') })).toBeNull();
     });
 
     it('opens a note from the board card menu (R10)', async () => {
@@ -1645,7 +1649,7 @@ describe('Edit lead', () => {
           fireEvent.click((await screen.findAllByText(PARTY.name))[0]!);
         });
         await screen.findByText(t('lead.detail.lineItems'));
-        fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+        fireEvent.click((await noteItem('orderNote.filling')));
         await screen.findByLabelText(t('orderNote.copies'));
         return calls;
       }
@@ -1714,7 +1718,7 @@ describe('Edit lead', () => {
           fireEvent.click((await screen.findAllByText(PARTY.name))[0]!);
         });
         await screen.findByText(t('lead.detail.lineItems'));
-        fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+        fireEvent.click((await noteItem('orderNote.filling')));
         fireEvent.click(
           await screen.findByRole('button', { name: t('orderNote.sendToPrintroom') }),
         );
@@ -1734,7 +1738,7 @@ describe('Edit lead', () => {
 
     it('opens the note from the local snapshot, headed "Pending Order No.", and back returns to the lead', async () => {
       await openLead(['leads.view', 'leads.export']);
-      fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
+      fireEvent.click((await noteItem('orderNote.filling')));
 
       expect((await screen.findAllByText(t('orderNote.pendingOrderNo'))).length).toBeGreaterThan(0);
       expect(screen.queryByText(t('orderNote.orderId'))).toBeNull();
@@ -1752,7 +1756,7 @@ describe('Edit lead', () => {
         printPage,
       };
       const calls = await openLead(['leads.view', 'leads.export']);
-      fireEvent.click(screen.getByRole('button', { name: t('orderNote.dispatch') }));
+      fireEvent.click((await noteItem('orderNote.dispatch')));
 
       const field = await screen.findByLabelText(t('orderNote.vehicleNo'));
       expect((field as HTMLInputElement).disabled).toBe(false);
@@ -1961,7 +1965,7 @@ describe('the Filling and Dispatch notes on an order', () => {
     expect(screen.getByRole('button', { name: t('orderNote.dispatch') })).toBeTruthy();
   });
 
-  it('opens a note straight from the list row (R10)', async () => {
+  it('has a Notes column and no note buttons on a list row (2026-10-09)', async () => {
     await boot({
       permissions: ['orders.view'],
       view: { orders: [NOTE_ORDER], pipelines: [ORDER_PIPELINE] },
@@ -1970,11 +1974,8 @@ describe('the Filling and Dispatch notes on an order', () => {
       fireEvent.click(screen.getByTitle(t('nav.orders')));
     });
     await screen.findByText(ORDER.id);
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: t('orderNote.filling') }));
-    });
-
-    expect((await screen.findAllByText(pageLabel)).length).toBeGreaterThan(0);
+    expect(screen.getByText(t('lead.list.col.notes'))).toBeTruthy();
+    expect(screen.queryByRole('button', { name: t('orderNote.filling') })).toBeNull();
   });
 
   it('opens a preview with the order on it, and back returns to the order', async () => {
@@ -2789,7 +2790,7 @@ describe('W2: a renamed colour reads by its current label on the Office records'
     lineWeightKg: null,
   };
 
-  it('pending-order detail (LeadDetail)', async () => {
+  it('new-order detail (LeadRecordView)', async () => {
     const lead = {
       id: 'LD-IV',
       partyId: PARTY.id,

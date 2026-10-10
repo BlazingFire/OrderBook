@@ -197,6 +197,45 @@ describe('the notification bell', () => {
   });
 });
 
+describe('the drawer (Notification kit)', () => {
+  const FAILED: UserNotification = {
+    id: 'b-1',
+    kind: 'backup.autoFailed',
+    params: {},
+    link: null,
+    createdAt: OFFLINE.createdAt,
+    readAt: null,
+  };
+
+  it('filters by category, and turns the badge red while a needs-action notice is unread', async () => {
+    const view = render(<NotificationBell transport={transport([OFFLINE, FAILED], 2)} revision={0} />);
+    await settle();
+    expect(view.container.querySelector('.ob-bell-badge--action')).not.toBeNull();
+    await openBell(2);
+
+    fireEvent.click(screen.getByRole('button', { name: `${t('notification.category.backup')} 1` }));
+    expect(screen.getByText(t('notification.backup.autoFailed'))).toBeTruthy();
+    expect(screen.queryByText(t('notification.panel.offlineLong', { panel: 'Counter' }))).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: `${t('notification.filter.all')} 2` }));
+    expect(screen.getByText(t('notification.panel.offlineLong', { panel: 'Counter' }))).toBeTruthy();
+  });
+
+  it("offers the link's own action", async () => {
+    const onOpen = vi.fn();
+    render(<NotificationBell transport={transport()} revision={0} onOpen={onOpen} />);
+    await settle();
+    await openBell(1);
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: t('notification.open.panel') })[0]!);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpen).toHaveBeenCalledWith({ kind: 'panel', id: 'panel-1' });
+  });
+});
+
 describe('the Chatroom\'s notices', () => {
   const at = '2026-10-03T09:00:00.000Z';
   const notices: UserNotification[] = [

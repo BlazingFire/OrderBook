@@ -8,6 +8,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
+import { IconButton } from './Button.js';
 import { fitColumns, gridTemplateFor } from './fitColumns.js';
 import { t } from './i18n.js';
 
@@ -408,5 +409,34 @@ export function DataTable<T>({
         </tbody>
       </table>
     </div>
+  );
+}
+
+/**
+ * A row's Edit and Delete as icons, in the list's Action column. Absent, not
+ * greyed, when the handler is missing. A click here must not also open the
+ * record the row stands for, so the click and the key stop at the cell.
+ */
+export function RowActions({
+  onEdit,
+  onDelete,
+  editLabel,
+  deleteLabel,
+}: {
+  onEdit?: () => void;
+  onDelete?: () => void;
+  editLabel: string;
+  deleteLabel: string;
+}) {
+  if (!onEdit && !onDelete) return null;
+  return (
+    <span
+      className="ob-rowactions"
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      {onEdit && <IconButton icon="edit" label={editLabel} className="ob-rowactions-edit" onClick={onEdit} />}
+      {onDelete && <IconButton icon="trash" label={deleteLabel} variant="danger" onClick={onDelete} />}
+    </span>
   );
 }

@@ -154,7 +154,6 @@ describe("a pending order's Convert fields (LeadRecordView, R8)", () => {
   const view = (shown: Lead) => (
     <LeadRecordView
       lead={shown}
-      stages={[]}
       optionLists={[]}
       packagingRequired={false}
       party={null}

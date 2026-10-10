@@ -19,7 +19,6 @@ import {
   SubRow,
   CartEntry,
   CartLines,
-  FollowUpField,
   OrderChecks,
   OrderDetailsBar,
   OrderField,
@@ -60,87 +59,6 @@ describe('OrderDetailsBar', () => {
       </OrderDetailsBar>,
     );
     expect(container.querySelector('.ob-order-details')!.getAttribute('data-owner')).toBe('false');
-  });
-});
-
-describe('FollowUpField', () => {
-  it('is one radio group beside the date, with the active choice checked and each click handled', () => {
-    const picked: string[] = [];
-    render(
-      <FollowUpField
-        groupLabel="Quick follow-up"
-        date={<input aria-label="date" />}
-        quick={[
-          {
-            key: 'd1',
-            label: '+1 d',
-            title: 'Tomorrow',
-            active: false,
-            onClick: () => picked.push('d1'),
-          },
-          {
-            key: 'd3',
-            label: '+3 d',
-            title: 'In 3 days',
-            active: true,
-            onClick: () => picked.push('d3'),
-          },
-        ]}
-      />,
-    );
-    const group = screen.getByRole('radiogroup', { name: 'Quick follow-up' });
-    const radios = within(group).getAllByRole('radio');
-    expect(radios.map((radio) => radio.getAttribute('aria-checked'))).toEqual(['false', 'true']);
-    expect(radios[0]!.getAttribute('title')).toBe('Tomorrow');
-    expect(screen.getByRole('radio', { name: 'In 3 days' })).toBe(radios[1]);
-    fireEvent.click(radios[0]!);
-    expect(picked).toEqual(['d1']);
-    expect(screen.getByLabelText('date')).toBeTruthy();
-  });
-});
-
-describe('FollowUpField keyboard', () => {
-  function field(activeKey: string | null) {
-    const picked: string[] = [];
-    const quick = ['d1', 'd3', 'wk'].map((key) => ({
-      key,
-      label: key,
-      title: `title ${key}`,
-      active: key === activeKey,
-      onClick: () => picked.push(key),
-    }));
-    render(<FollowUpField groupLabel="Quick" date={<input aria-label="date" />} quick={quick} />);
-    return { picked, radios: screen.getAllByRole('radio') };
-  }
-
-  it('has one tab stop: the checked choice, or the first when none is checked', () => {
-    const checked = field('d3');
-    expect(checked.radios.map((radio) => radio.tabIndex)).toEqual([-1, 0, -1]);
-    cleanup();
-    const none = field(null);
-    expect(none.radios.map((radio) => radio.tabIndex)).toEqual([0, -1, -1]);
-  });
-
-  it('moves to the next or previous choice with the arrows, selecting it and wrapping', () => {
-    const { picked, radios } = field('d3');
-    radios[1]!.focus();
-    fireEvent.keyDown(radios[1]!, { key: 'ArrowRight' });
-    expect(document.activeElement).toBe(radios[2]);
-    fireEvent.keyDown(radios[2]!, { key: 'ArrowRight' });
-    expect(document.activeElement).toBe(radios[0]);
-    fireEvent.keyDown(radios[0]!, { key: 'ArrowLeft' });
-    expect(document.activeElement).toBe(radios[2]);
-    expect(picked).toEqual(['wk', 'd1', 'wk']);
-  });
-
-  it('does not clear the checked choice by moving onto it', () => {
-    const { picked, radios } = field('d1');
-    radios[0]!.focus();
-    fireEvent.keyDown(radios[0]!, { key: 'ArrowRight' });
-    fireEvent.keyDown(radios[1]!, { key: 'ArrowLeft' });
-    // The second move lands on the checked one: it is focused but not clicked (a click would clear it).
-    expect(document.activeElement).toBe(radios[0]);
-    expect(picked).toEqual(['d3']);
   });
 });
 

@@ -697,7 +697,11 @@ dataRoutes.get(
   asyncHandler(async (req, res) => {
     res.json(
       await orderService.listOrders(
-        { ...paging(req.query), stageIds: idList(req.query.stageIds) },
+        {
+          ...paging(req.query),
+          stageIds: idList(req.query.stageIds),
+          partyId: typeof req.query.partyId === 'string' && req.query.partyId ? req.query.partyId : undefined,
+        },
         actorFromRequest(req),
       ),
     );
