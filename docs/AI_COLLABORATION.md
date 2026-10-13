@@ -190,6 +190,20 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-13 - Dispatch note: Packing, Grade, Colour tick boxes (Claude, Opus, landed on `main` in fa2e0f52)
+
+- **Ask (owner):** tick boxes on the Dispatch note window; ticked, packaging / grade / colour print on that note;
+  unticked, that column disappears. Dispatch note only.
+- **Built:** `OrderNoteScreen.tsx` shows three `Checkbox`es (all ticked on open, not remembered) when the Dispatch
+  tab is on; `OrderNote.tsx` takes `columns` and drops the named side's column (head and rows) and the coded cell's
+  chip / grade / colour line. Filling note always prints all three. Row heights do not depend on these columns, so
+  pagination is unchanged. The tick-box edits were swept into fa2e0f52 by a concurrent commit.
+- **Verified:** `ui/tests/order-note-screen.test.tsx` (24 pass, 2 new); lint and typecheck green. Full test step
+  could not run: local PostgreSQL failed to start (`pg_ctl start exited with 1`), 121 DB suites errored at setup,
+  0 tests failed.
+- **Not done:** Send to Printroom and the Master's PDF renderer still print all three columns (the choice is not
+  sent over the printroom protocol).
+
 ### 2026-10-13 - Preview PDF opens in the PC's PDF app (Claude, Opus, branch `s1/delete-search-toasts`)
 
 - **Ask (owner):** Preview PDF on a New Order shows a blank window on both panels (Filling and Dispatch notes work).
