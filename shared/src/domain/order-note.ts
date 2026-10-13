@@ -118,10 +118,10 @@ export const NOTE_LAYOUT = {
   namedCharsPerLine: 26,
   namedChipChars: 3,
   columnLabel: 13,
-  /** A row of codes under their group's header. */
+  /** A row of codes under their group's header: code, colour, then pack, grade and quantity. */
   rowCoded: 50,
   /** A row of codes with their product printed on each — groups too small to earn a header. */
-  rowCodedLabelled: 62,
+  rowCodedLabelled: 66,
   groupHeader: 26,
   /**
    * Codes side by side on one printed line: three beside the named half, as the owner asked (V7,
@@ -305,13 +305,6 @@ export function noteRange(from: number, count: number, all: number): string {
 /** A brand as its two-letter chip: the first two letters or digits of its name. */
 export function noteBrandCode(brand: string): string {
   return brand.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase();
-}
-
-const PACK_CODES: Record<string, string> = { box: 'BOX', grass: 'GRS', paper: 'PPR' };
-
-/** A packaging as the coded cell's three-letter chip. */
-export function notePackCode(packaging: string): string {
-  return PACK_CODES[packaging.trim().toLowerCase()] ?? packaging.trim().slice(0, 3).toUpperCase();
 }
 
 /** What the named half prints for a line: the sub product, and its size when the name does not carry it already. */

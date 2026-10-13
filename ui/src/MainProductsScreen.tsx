@@ -54,9 +54,9 @@ import {
 } from './catalogueSummary.js';
 import { Card } from './Card.js';
 import { KeyValueList, useColourHex } from './DataDisplay.js';
-import { DataTable, type DataTableColumn } from './DataTable.js';
+import { DataTable, RowActions, type DataTableColumn } from './DataTable.js';
 import { EditorScreen } from './EditorScreen.js';
-import { apiErrorText } from './errorText.js';
+import { apiErrorText, deleteErrorText } from './errorText.js';
 import { exportCatalogueCsv } from './ProductImportModal.js';
 import { Field, FieldGroup } from './FieldGrid.js';
 import { FilterChip } from './FilterBar.js';
@@ -167,17 +167,22 @@ export function MainProductsScreen({
       : null,
   );
 
+  // The search stays on an open product: typing goes back to the list, filtered.
   useFilterBar(
-    open ? null : (
-      <>
-        <Input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder={t('catalog.mainProducts.searchPlaceholder')}
-          aria-label={t('catalog.mainProducts.searchLabel')}
-          data-screen-search
-          style={{ width: rem(320) }}
-        />
+    <>
+      <Input
+        value={search}
+        onChange={(event) => {
+          setSearch(event.target.value);
+          if (open) setOpenId(null);
+        }}
+        placeholder={t('catalog.mainProducts.searchPlaceholder')}
+        aria-label={t('catalog.mainProducts.searchLabel')}
+        data-screen-search
+        style={{ width: rem(320) }}
+      />
+      {!open && (
+        <>
         <FilterChip
           active={brand === null}
           count={brand === null ? rows?.length : undefined}
@@ -213,8 +218,9 @@ export function MainProductsScreen({
             {t('catalog.mainProducts.new')}
           </Button>
         )}
-      </>
-    ),
+        </>
+      )}
+    </>,
   );
 
   function saved(name: string, created: boolean): void {
@@ -225,18 +231,53 @@ export function MainProductsScreen({
     );
   }
 
+  /** The live sub products under a product, from the loaded catalogue. */
+  function subProductsOf(category: ProductCategory) {
+    return view.products.filter((product) => product.categoryId === category.id);
+  }
+
+  /**
+   * The whole product: each sub product into the Recycle Bin first, then the
+   * product. One still on a live order line is refused by the Master and named;
+   * the product then stays, since the Master will not bin one with live sub
+   * products. Each lands in the Bin on its own, so each can be restored.
+   */
   async function remove(category: ProductCategory): Promise<void> {
     setBusy(true);
+    const subs = subProductsOf(category);
+    const blocked: string[] = [];
     try {
+      for (const sub of subs) {
+        try {
+          await transportRef.current.deleteProduct(sub.id);
+        } catch {
+          blocked.push(sub.name);
+        }
+      }
+      if (blocked.length > 0) {
+        toast.push(
+          t('catalog.mainProducts.deletePartial', {
+            done: subs.length - blocked.length,
+            count: subs.length,
+            name: category.name,
+            blocked: blocked.slice(0, 3).join(', '),
+          }),
+          { tone: 'error' },
+        );
+        return;
+      }
       await transportRef.current.deleteCategory(category.id);
-      setDeleting(null);
       setOpenId(null);
-      setRefetch((current) => current + 1);
-      toast.push(t('catalog.mainProducts.deleted', { name: category.name }));
+      toast.push(
+        subs.length > 0
+          ? t('catalog.mainProducts.deletedWithSubs', { name: category.name, count: subs.length })
+          : t('catalog.mainProducts.deleted', { name: category.name }),
+      );
     } catch (caught) {
-      setDeleting(null);
-      toast.push(apiErrorText(caught, 'catalog.mainProducts.deleteFailed'), { tone: 'error' });
+      toast.push(deleteErrorText(caught, 'catalog.mainProducts.deleteFailed'), { tone: 'error' });
     } finally {
+      setDeleting(null);
+      setRefetch((current) => current + 1);
       setBusy(false);
     }
   }
@@ -267,7 +308,11 @@ export function MainProductsScreen({
           </>
         }
       >
-        <p className="ob-body ob-confirm-body">{t('catalog.mainProducts.delete.body')}</p>
+        <p className="ob-body ob-confirm-body">
+          {deleting && subProductsOf(deleting).length > 0
+            ? t('catalog.mainProducts.delete.bodyWithSubs', { count: subProductsOf(deleting).length })
+            : t('catalog.mainProducts.delete.body')}
+        </p>
       </Modal>
     </>
   );
@@ -402,6 +447,23 @@ export function MainProductsScreen({
       align: 'right',
       render: (row) => <span className="ob-data">{row.sortOrder ?? '—'}</span>,
     },
+    ...(can('products.edit') || can('products.delete')
+      ? [
+          {
+            key: 'action',
+            header: t('lead.list.col.action'),
+            width: rem(96),
+            render: (row: ProductCategoryListRow) => (
+              <RowActions
+                editLabel={t('action.edit')}
+                deleteLabel={t('action.delete')}
+                onEdit={can('products.edit') ? () => setEditing(row) : undefined}
+                onDelete={can('products.delete') ? () => setDeleting(row) : undefined}
+              />
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (

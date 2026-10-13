@@ -549,14 +549,14 @@
   padding-bottom: 0.286rem;
 }
 
-/* The seven columns: code, sub product, colour, weight, quantity, packaging, grade. */
+/* The eight columns: code, sub product, colour, weight, quantity, packaging, grade, remove. */
 /* Floors measured at 1366: 6.5rem holds the SUB PRODUCT label, 8.25rem "Pick colour" in its box,
    3.571rem the WEIGHT label. */
 .ob-order-subrow {
   display: grid;
   grid-template-columns:
     minmax(4.571rem, 5.857rem) minmax(6.5rem, 1fr) minmax(8.25rem, 8.857rem) 3.571rem
-    minmax(3.429rem, 4rem) minmax(5rem, 6.857rem) minmax(4rem, 5.714rem);
+    minmax(3.429rem, 4rem) minmax(5rem, 6.857rem) minmax(4rem, 5.714rem) 2rem;
   column-gap: 0.571rem;
   align-items: center;
   padding: 0.214rem 0.857rem;
@@ -566,6 +566,11 @@
 
 .ob-order-subrow > * {
   min-width: 0;
+}
+
+.ob-order-cell--remove {
+  display: flex;
+  justify-content: center;
 }
 
 .ob-order-subrow--head {

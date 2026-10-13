@@ -86,7 +86,7 @@ describe('the unit of a quantity on a note', () => {
     }
     // Box is only ever the packaging: the Packing column and the tag of a code cell.
     expect(cellsOf(html, 'ob-note-pack ob-note-wrap')).toContain('Box');
-    expect(cellsOf(html, 'ob-note-chip')).toContain('BOX');
+    expect(cellsOf(html, 'ob-note-chip')).toContain('Box');
     expect(html).not.toMatch(/boxes/i);
   });
 });

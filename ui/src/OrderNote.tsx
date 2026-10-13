@@ -14,7 +14,6 @@ import {
   noteBrandCode,
   noteFigure,
   noteRange,
-  notePackCode,
   noteStamp,
   NOTE_LAYOUT,
   type NoteHeader,
@@ -61,7 +60,17 @@ export interface OrderNoteProps {
   namedCount: number;
   codedCount: number;
   printedAt: Date;
+  /** Which of packing, grade and colour print; all when absent. The Dispatch note's tick boxes (owner, 2026-10-13). */
+  columns?: NoteColumns;
 }
+
+export interface NoteColumns {
+  packaging: boolean;
+  grade: boolean;
+  colour: boolean;
+}
+
+const ALL_COLUMNS: NoteColumns = { packaging: true, grade: true, colour: true };
 
 const num = noteFigure;
 
@@ -75,7 +84,6 @@ function numberOf(header: NoteHeader): string {
 
 const range = noteRange;
 const brandCode = noteBrandCode;
-const packCode = notePackCode;
 
 function BrandChip({ brand }: { brand: string | null }) {
   if (!brand) return null;
@@ -87,18 +95,18 @@ function BrandChip({ brand }: { brand: string | null }) {
   ) : null;
 }
 
-/** Always drawn: a code with no packaging shows an empty chip to write in, not nothing. */
+/** Always drawn, its full name (owner, 2026-10-13): a code with no packaging shows an empty chip to write in, not nothing. */
 function PackagingChip({ value }: { value: string | null }) {
   return value ? (
     <span className="ob-note-chip" title={value}>
-      {packCode(value)}
+      {value}
     </span>
   ) : (
     <span className="ob-note-chip ob-note-chip--empty">—</span>
   );
 }
 
-function NamedRow({ line, tick }: { line: NoteLine; tick: boolean }) {
+function NamedRow({ line, tick, show }: { line: NoteLine; tick: boolean; show: NoteColumns }) {
   const height = namedRowHeight(line);
   return (
     <div className="ob-note-row" style={{ height }}>
@@ -106,16 +114,16 @@ function NamedRow({ line, tick }: { line: NoteLine; tick: boolean }) {
         {namedLabel(line)}
         <BrandChip brand={line.brand} />
       </span>
-      <span className="ob-note-pack ob-note-wrap">{line.packaging}</span>
-      <span className="ob-note-colour ob-note-wrap">{line.colour}</span>
-      <span className="ob-note-grade">{line.grade}</span>
+      {show.packaging && <span className="ob-note-pack ob-note-wrap">{line.packaging}</span>}
+      {show.colour && <span className="ob-note-colour ob-note-wrap">{line.colour}</span>}
+      {show.grade && <span className="ob-note-grade">{line.grade}</span>}
       <span className="ob-note-qty">{num(line.quantity)}</span>
       {tick && <span className="ob-note-tick" />}
     </div>
   );
 }
 
-function CodedSlot({ slot }: { slot: NoteSlot }) {
+function CodedSlot({ slot, show }: { slot: NoteSlot; show: NoteColumns }) {
   if (slot.kind === 'header') {
     return (
       <div className="ob-note-group">
@@ -133,9 +141,10 @@ function CodedSlot({ slot }: { slot: NoteSlot }) {
             <span className="ob-note-clip">{line.subProduct}</span>
             <BrandChip brand={line.brand} />
           </div>
+          {show.colour && line.colour && <div className="ob-note-cell-colour">{line.colour}</div>}
           <div className="ob-note-cell-detail">
-            <PackagingChip value={line.packaging} />
-            {line.grade && <span className="ob-note-cell-grade">{line.grade}</span>}
+            {show.packaging && <PackagingChip value={line.packaging} />}
+            {show.grade && line.grade && <span className="ob-note-cell-grade">{line.grade}</span>}
             <span className="ob-note-cell-qty">×{num(line.quantity)}</span>
           </div>
         </div>
@@ -268,6 +277,7 @@ function Header({ props, page }: { props: OrderNoteProps; page: NotePage }) {
 
 function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
   const filling = props.kind === 'filling';
+  const show = props.columns ?? ALL_COLUMNS;
   const hasLeft = page.leftCount > 0;
   const hasRight = page.rightCount > 0;
   /** A page of a long note's own: the notes sit under the strip, the signature row stays at the foot. */
@@ -297,14 +307,14 @@ function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
                 <div className="ob-note-column" key={index}>
                   <div className="ob-note-colhead">
                     <span className="ob-note-grow">{t('orderNote.subProductBrand')}</span>
-                    <span className="ob-note-pack">{t('orderNote.packing')}</span>
-                    <span className="ob-note-colour">{t('orderNote.colour')}</span>
-                    <span className="ob-note-grade">{t('orderNote.grade')}</span>
+                    {show.packaging && <span className="ob-note-pack">{t('orderNote.packing')}</span>}
+                    {show.colour && <span className="ob-note-colour">{t('orderNote.colour')}</span>}
+                    {show.grade && <span className="ob-note-grade">{t('orderNote.grade')}</span>}
                     <span className="ob-note-qty">{t('orderNote.qty')}</span>
                     {filling && <span className="ob-note-tick ob-note-tick--head" />}
                   </div>
                   {column.map((line) => (
-                    <NamedRow key={line.key} line={line} tick={filling} />
+                    <NamedRow key={line.key} line={line} tick={filling} show={show} />
                   ))}
                 </div>
               ))}
@@ -328,7 +338,7 @@ function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
               {page.right.map((column, index) => (
                 <div className="ob-note-column" key={index}>
                   {column.map((slot, slotIndex) => (
-                    <CodedSlot key={slotIndex} slot={slot} />
+                    <CodedSlot key={slotIndex} slot={slot} show={show} />
                   ))}
                 </div>
               ))}

@@ -51,9 +51,10 @@ import {
   type CatalogueView,
 } from './catalogueSummary.js';
 import { StatusPill, useColourHex } from './DataDisplay.js';
-import { DataTable, type DataTableColumn } from './DataTable.js';
+import { ConfirmDialog } from './ConfirmDialog.js';
+import { DataTable, RowActions, type DataTableColumn } from './DataTable.js';
 import { EditorScreen } from './EditorScreen.js';
-import { apiErrorText } from './errorText.js';
+import { apiErrorText, deleteErrorText } from './errorText.js';
 import { FilterChip } from './FilterBar.js';
 import { ProductShareBar } from './ProductShare.js';
 import { ProductThumb } from './ProgressiveImage.js';
@@ -130,6 +131,7 @@ export function SubProductsScreen({
   const canCreate = view.permissions.includes('products.create');
   useCommand('product.new', canCreate ? () => setDrawerOpen(true) : null);
   const canEdit = view.permissions.includes('products.edit');
+  const canDelete = view.permissions.includes('products.delete');
   const canImport = view.permissions.includes('products.bulk');
   // The product backup zip, where the panel offers it (the Master): backing up
   // is the export permission, restoring writes like an upsert import.
@@ -159,6 +161,9 @@ export function SubProductsScreen({
    */
   const [photoPatch, setPhotoPatch] = useState<Product | null>(null);
   const [editing, setEditing] = useState<Product | null>(null);
+  /** The sub product Delete was asked for, from its row or its detail; null while no dialog shows. */
+  const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [zipOpen, setZipOpen] = useState(false);
   const [backingUp, setBackingUp] = useState(false);
@@ -294,6 +299,24 @@ export function SubProductsScreen({
     toast.push(message, { tone: 'error' });
   }
 
+  /** Online only: the Master refuses one still on a live order line, and says which. */
+  async function confirmDelete(): Promise<void> {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    setDeleting(true);
+    try {
+      await transportRef.current.deleteProduct(target.id);
+      if (openId === target.id) setOpenId(null);
+      setRefetch((current) => current + 1);
+      toast.push(t('catalog.subProducts.deleted', { name: target.name }));
+    } catch (caught) {
+      toast.push(deleteErrorText(caught, 'catalog.subProducts.deleteFailed'), { tone: 'error' });
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
+  }
+
   const products = page?.items ?? [];
   const openRow =
     products.find((product) => product.id === openId) ??
@@ -315,17 +338,25 @@ export function SubProductsScreen({
       : null,
   );
 
+  // The search stays on an open sub product: typing goes back to the list, filtered.
   useFilterBar(
-    open ? null : (
-      <>
-        <Input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder={t('catalog.products.searchPlaceholder')}
-          aria-label={t('catalog.products.searchLabel')}
-          data-screen-search
-          style={{ width: rem(320) }}
-        />
+    <>
+      <Input
+        value={search}
+        onChange={(event) => {
+          setSearch(event.target.value);
+          if (open) {
+            setOpenId(null);
+            setPhotoPatch(null);
+          }
+        }}
+        placeholder={t('catalog.products.searchPlaceholder')}
+        aria-label={t('catalog.products.searchLabel')}
+        data-screen-search
+        style={{ width: rem(320) }}
+      />
+      {!open && (
+        <>
         {/* Counted only while chosen: the page's total is the one figure to
             hand, and a count per brand would be a query per chip. */}
         <FilterChip
@@ -395,8 +426,9 @@ export function SubProductsScreen({
             {t('catalog.products.new')}
           </Button>
         )}
-      </>
-    ),
+        </>
+      )}
+    </>,
   );
 
   /*
@@ -498,6 +530,23 @@ export function SubProductsScreen({
         );
       },
     },
+    ...(canEdit || canDelete
+      ? [
+          {
+            key: 'action',
+            header: t('lead.list.col.action'),
+            width: rem(96),
+            render: (product: Product) => (
+              <RowActions
+                editLabel={t('product.detail.editAction')}
+                deleteLabel={t('catalog.subProducts.delete')}
+                onEdit={canEdit ? () => setEditing(product) : undefined}
+                onDelete={canDelete ? () => setDeleteTarget(product) : undefined}
+              />
+            ),
+          },
+        ]
+      : []),
   ];
 
   const drawers = (
@@ -520,6 +569,16 @@ export function SubProductsScreen({
         onClose={() => setEditing(null)}
         onUpdated={onUpdated}
         onError={onDrawerError}
+      />
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        tone="danger"
+        busy={deleting}
+        title={t('catalog.subProducts.delete.title', { name: deleteTarget?.name ?? '' })}
+        body={t('catalog.subProducts.delete.body')}
+        confirmLabel={t('common.delete')}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => void confirmDelete()}
       />
     </>
   );
@@ -544,6 +603,7 @@ export function SubProductsScreen({
             setOpenId(null);
             setPhotoPatch(null);
           }}
+          onDelete={canDelete ? () => setDeleteTarget(open) : undefined}
           onPhotosChanged={setPhotoPatch}
           onError={onDrawerError}
         />

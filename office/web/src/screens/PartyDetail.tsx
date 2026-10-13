@@ -55,10 +55,13 @@ export function PartyDetail({
   party,
   view,
   onEdit,
+  onDelete,
 }: {
   party: Party;
   view: LocalView;
   onEdit: () => void;
+  /** `parties.delete`, online only: a Delete beside Edit; absent without it. */
+  onDelete?: () => void;
 }) {
   const recordRows: OwnRecordRow[] = view.partyVariants
     .filter((variant) => variant.partyId === party.id)
@@ -204,10 +207,15 @@ export function PartyDetail({
         )}
       </div>
 
-      <div>
+      <div style={{ display: 'flex', gap: 'var(--s-8)' }}>
         <Button variant="secondary" size="sm" icon="edit" onClick={onEdit}>
           {t('party.detail.editAction')}
         </Button>
+        {onDelete && (
+          <Button variant="danger" size="sm" icon="trash" onClick={onDelete}>
+            {t('parties.delete.confirm')}
+          </Button>
+        )}
       </div>
     </>
   );

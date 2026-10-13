@@ -45,3 +45,21 @@ export function apiErrorText(caught: unknown, fallback: MessageKey): string {
   }
   return caught instanceof Error ? caught.message : t(fallback);
 }
+
+/**
+ * A refused delete names what still points at the record (`details.blockedBy`,
+ * a 409); the reader needs those names, not "could not delete".
+ */
+export function deleteErrorText(caught: unknown, fallback: MessageKey): string {
+  const blockedBy = isApiErrorShape(caught)
+    ? (caught as { details?: { blockedBy?: unknown } }).details?.blockedBy
+    : undefined;
+  const labels = Array.isArray(blockedBy)
+    ? blockedBy
+        .map((blocker) => (blocker as { label?: unknown } | null)?.label)
+        .filter((label): label is string => typeof label === 'string' && label !== '')
+    : [];
+  return labels.length > 0
+    ? t('leadsOrders.delete.blocked', { items: labels.slice(0, 3).join(', ') })
+    : apiErrorText(caught, fallback);
+}

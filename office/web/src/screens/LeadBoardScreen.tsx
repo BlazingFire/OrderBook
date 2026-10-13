@@ -23,6 +23,8 @@ import {
   AvatarStack,
   BOARD_SHOWN,
   Button,
+  ConfirmDialog,
+  deleteErrorText,
   ColourChip,
   DataTable,
   PageBar,
@@ -79,6 +81,8 @@ interface Props {
   canPreviewPdf: boolean;
   /** `leads.edit` — the open lead's header offers Edit lead. */
   canEdit: boolean;
+  /** `leads.delete` — a row and the open lead's header offer Delete (online only). */
+  canDelete: boolean;
   onError: (message: string) => void;
   onAddLead?: () => void;
   /** Present only for somebody who may share records in chat (`chat.use` and `chat.shareRecords`). */
@@ -143,6 +147,7 @@ export function LeadBoardScreen({
   canConvert,
   canPreviewPdf,
   canEdit,
+  canDelete,
   onError,
   onAddLead,
   onShareInChat,
@@ -163,6 +168,9 @@ export function LeadBoardScreen({
   // The box stays instant; the filter over a big board catches up between keystrokes.
   const deferredSearch = useDeferredValue(search);
   const [menuId, setMenuId] = useState<string | null>(null);
+  /** The record Delete was asked for, from its row or its header; null while no dialog shows. */
+  const [deleteTarget, setDeleteTarget] = useState<Lead | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const colourHex = useColourHex(view.optionLists);
   const labelOf = useColourLabel(view.optionLists);
   const toast = useToast();
@@ -225,17 +233,27 @@ export function LeadBoardScreen({
   }, [openId, inViewNow]);
   const openLead = inView ?? (fetched && fetched.id === openId ? fetched : null);
 
+  const noteKind = note && note.id === openLead?.id ? note.kind : null;
+  // The search stays on an open record: typing goes back to the list, filtered.
+  // Not over the edit form or a note, where it would throw away what is typed.
+  const busyOnRecord = openLead !== null && (editingId === openLead.id || noteKind !== null);
+
   useFilterBar(
-    pipeline && !openLead ? (
+    pipeline && !busyOnRecord ? (
       <>
         <Input
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          onChange={(event) => {
+            setSearch(event.target.value);
+            if (openLead) onOpenId(null);
+          }}
           placeholder={t('leads.search.placeholder')}
           aria-label={t('leads.search.label')}
           data-screen-search
           style={{ width: rem(320) }}
         />
+        {!openLead && (
+          <>
         <Segmented
           options={[
             { value: 'board' as const, label: t('lead.board.tab.board') },
@@ -273,11 +291,11 @@ export function LeadBoardScreen({
         ))}
         <span style={{ flex: 1 }} />
         <span className="ob-small">{t('lead.board.convertedNote')}</span>
+          </>
+        )}
       </>
     ) : null,
   );
-
-  const noteKind = note && note.id === openLead?.id ? note.kind : null;
 
   useSubNav(
     'leads',
@@ -307,6 +325,38 @@ export function LeadBoardScreen({
   // Who has each card or row open (R22), for the faces on it.
   const faces = useBoardPresence(presenceChannel, 'lead');
   const others = <AvatarStack entries={presence.entries} selfUserId={userId} />;
+
+  /** Online only, like every delete: the Master decides, and a refusal names what blocks it. */
+  async function confirmDelete(): Promise<void> {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    setDeleting(true);
+    try {
+      await api.deleteLead(target.id);
+      if (openId === target.id) onOpenId(null);
+      toast.push(t('leadsOrders.deleted.lead', { id: recordNumberText(target) }));
+    } catch (caught) {
+      toast.push(deleteErrorText(caught, 'leadsOrders.delete.failed'), { tone: 'error' });
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
+  }
+
+  const deleteDialog = (
+    <ConfirmDialog
+      open={deleteTarget !== null}
+      tone="danger"
+      busy={deleting}
+      title={t('leadsOrders.delete.lead.title', { id: deleteTarget ? recordNumberText(deleteTarget) : '' })}
+      body={t('leadsOrders.delete.body')}
+      confirmLabel={t('common.delete')}
+      onCancel={() => setDeleteTarget(null)}
+      onConfirm={() => void confirmDelete()}
+    />
+  );
+  // A lead the Master has not received yet has nothing there to delete.
+  const deletable = (lead: Lead) => canDelete && Boolean(lead.sync.hlc);
 
   // The note of a pending order, drawn from the lead and party this panel
   // already holds, so it previews and prints with the Master unreachable. Its
@@ -365,6 +415,7 @@ export function LeadBoardScreen({
     const stages = [...(pipeline?.stages ?? [])].sort((x, y) => x.sequence - y.sequence);
     const party = view.parties.find((candidate) => candidate.id === openLead.partyId) ?? null;
     return (
+      <>
       <EditorScreen
         title={openLead.partyName}
         meta={
@@ -425,6 +476,18 @@ export function LeadBoardScreen({
                 {t('lead.edit.action')}
               </Button>
             )}
+            {/* Absent, not greyed, without the permission — the house rule. */}
+            {deletable(openLead) && (
+              <Button
+                variant="danger"
+                size="sm"
+                icon="trash"
+                disabled={deleting}
+                onClick={() => setDeleteTarget(openLead)}
+              >
+                {t('leadsOrders.delete.lead')}
+              </Button>
+            )}
           </>
         }
         onBack={() => {
@@ -447,6 +510,8 @@ export function LeadBoardScreen({
           onError={onError}
         />
       </EditorScreen>
+      {deleteDialog}
+      </>
     );
   }
 
@@ -578,7 +643,8 @@ export function LeadBoardScreen({
     {
       key: 'action',
       header: t('lead.list.col.action'),
-      width: rem(64),
+      // Two icon buttons and the header at 157 %, as on the Master's list.
+      width: rem(96),
       render: (lead) => (
         <RowActions
           editLabel={t('lead.edit.action')}
@@ -592,6 +658,7 @@ export function LeadBoardScreen({
                 }
               : undefined
           }
+          onDelete={deletable(lead) ? () => setDeleteTarget(lead) : undefined}
         />
       ),
     },
@@ -819,6 +886,7 @@ export function LeadBoardScreen({
           />
         </>
       )}
+      {deleteDialog}
     </>
   );
 }

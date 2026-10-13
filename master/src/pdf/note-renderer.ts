@@ -22,7 +22,6 @@ import {
   namedRowHeight,
   noteBrandCode,
   noteFigure,
-  notePackCode,
   noteRange,
   noteStamp,
   NOTE_LAYOUT,
@@ -475,7 +474,8 @@ function planCoded(
         const middle = cx + cellW / 2;
         // A caption stays inside its own cell: two lines at most, then an ellipsis, as the note's CSS clamps it.
         const productLines = slot.labelled ? wrap(measure, caps(line.product), 'bold', 8, cellW, 2, 0.64) : [];
-        const contentH = productLines.length * 10 + 16 + 1 + 16;
+        const colour = line.colour ? clip(measure, caps(line.colour), 'bold', 8, cellW, 0.24) : '';
+        const contentH = productLines.length * 10 + 16 + 1 + (colour ? 10 : 0) + 16;
         let cy = y + (h - 1 - contentH) / 2;
         productLines.forEach((value) => {
           page.textCentre(middle, centred(cy, 10, 8, 'bold'), value, 'bold', 8, SOFT, 0.64);
@@ -491,21 +491,27 @@ function planCoded(
         page.text(startX, centred(cy, 16, 14, 'bold'), code, 'bold', 14, INK);
         if (chipCode) tag(page, measure, startX + codeW + 4, cy + 8, chipCode, 7.5, 'mono', 0.45, false, SOFT);
         cy += 17;
+        // The colour, under the code (owner, 2026-10-13).
+        if (colour) {
+          page.textCentre(middle, centred(cy, 10, 8, 'bold'), colour, 'bold', 8, INK, 0.24);
+          cy += 10;
+        }
         // Packaging, grade and quantity.
         const qty = `×${noteFigure(line.quantity)}`;
         const qtyW = measure(qty, 'bold', 14);
-        const packText = line.packaging ? notePackCode(line.packaging) : '—';
+        // The packaging's full name, cut short only when the cell cannot hold it (owner, 2026-10-13).
+        const packText = line.packaging ? clip(measure, caps(line.packaging), 'bold', 7, Math.max(cellW - qtyW - 12, 0), 0.21) : '—';
         const packW = measure(packText, 'bold', 7, 0.21) + 4;
         const room = cellW - packW - qtyW - 8;
-        const grade = line.grade ? clip(measure, caps(line.grade), 'bold', 7, Math.max(room, 0), 0.21) : '';
-        const gradeW = grade ? measure(grade, 'bold', 7, 0.21) : 0;
+        const grade = line.grade ? clip(measure, caps(line.grade), 'bold', 9, Math.max(room, 0), 0.21) : '';
+        const gradeW = grade ? measure(grade, 'bold', 9, 0.21) : 0;
         const detailW = packW + (grade ? 4 + gradeW : 0) + 4 + qtyW;
         let dx = middle - detailW / 2;
         page.box(dx, cy + 2, packW, 12, line.packaging ? SOFT : MUTED, 1, 2, !line.packaging);
         page.text(dx + 2.5, centred(cy + 2, 12, 7, 'bold'), packText, 'bold', 7, line.packaging ? INK : MUTED, 0.21);
         dx += packW + 4;
         if (grade) {
-          page.text(dx, centred(cy, 16, 7, 'bold') + 0.5, grade, 'bold', 7, SOFT, 0.21);
+          page.text(dx, centred(cy, 16, 9, 'bold') + 0.5, grade, 'bold', 9, SOFT, 0.21);
           dx += gradeW + 4;
         }
         page.text(dx, centred(cy, 16, 14, 'bold'), qty, 'bold', 14, INK);

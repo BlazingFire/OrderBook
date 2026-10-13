@@ -44,7 +44,8 @@ import {
 } from '../domain/pipeline.js';
 import { assertParentsLive } from '../domain/recycle-bin.js';
 import { db } from '../db/knex.js';
-import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
+import { ConflictError, NotFoundError, toErrorMessage, ValidationError } from '../lib/errors.js';
+import { createLogger } from '../lib/logger.js';
 import { seqCached } from '../lib/seq-cache.js';
 import { renderNotePdf } from '../pdf/note-renderer.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
@@ -59,7 +60,35 @@ import * as productRepo from '../repositories/product.repository.js';
 import * as recycleBinRepo from '../repositories/recycle-bin.repository.js';
 import * as timelineRepo from '../repositories/timeline.repository.js';
 import { actorStamp, publishChange } from './change-bus.js';
+import { mayOpenLead, notify } from './notification.service.js';
 import { requirePartyAccess } from './party-access.service.js';
+
+const log = createLogger('leads');
+
+/**
+ * Tells a new order's owner and creator when somebody else changed or deleted
+ * it. After the commit, and never fatal: the write has happened either way.
+ * Repeated edits by one person collapse into one unread notice.
+ */
+async function tellLeadPeople(kind: 'lead.edited' | 'lead.deleted', lead: Lead, actor: ActorContext): Promise<void> {
+  const actorId = actorUserId(actor);
+  const people = [...new Set([lead.ownerId, lead.createdByUserId])].filter(
+    (id): id is string => Boolean(id) && id !== actorId,
+  );
+  if (people.length === 0) return;
+  try {
+    const allowed: string[] = [];
+    for (const id of people) if (await mayOpenLead(actor.tenantId, id, lead.partyId)) allowed.push(id);
+    await notify(actor.tenantId, allowed, {
+      kind,
+      params: { name: actor.actorName ?? actor.deviceCode ?? '—', number: recordNumber(lead), party: lead.partyName },
+      link: kind === 'lead.edited' ? { kind: 'lead', id: lead.id } : null,
+      ...(kind === 'lead.edited' ? { dedupeKey: `lead.edited:${lead.id}:${actorId ?? actor.actorId ?? ''}` } : {}),
+    });
+  } catch (error) {
+    log.warn(`Could not notify about new order ${lead.id}: ${toErrorMessage(error)}`);
+  }
+}
 
 const PAGING = { defaultLimit: 100, maxLimit: 500 };
 
@@ -349,6 +378,7 @@ export async function updateLead(
   if (!lead) throw new NotFoundError('Lead');
 
   publishChange({ entity: 'lead', action: 'updated', id, payload: lead, ...actorStamp(actor) });
+  await tellLeadPeople('lead.edited', lead, actor);
 
   return lead;
 }
@@ -783,6 +813,7 @@ export async function deleteLead(
   if (!lead) throw new NotFoundError('Lead');
 
   publishChange({ entity: 'lead', action: 'deleted', id, payload: lead, ...actorStamp(actor) });
+  await tellLeadPeople('lead.deleted', existing, actor);
   return { id: lead.id, deletedAt: lead.updatedAt };
 }
 

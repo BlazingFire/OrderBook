@@ -41,6 +41,7 @@ import {
   dialog,
   ipcMain,
   Menu,
+  net,
   Notification,
   shell as electronShell,
 } from 'electron';
@@ -419,6 +420,78 @@ export function runPanelShell(config: PanelShellConfig): void {
   /** A lead's or a report's PDF on this panel — the only URLs it may open a window of its own for. */
   const isLeadPdf = (url: string): boolean => isPdfWindowUrl(ORIGIN, url);
 
+  /**
+   * Preview PDF (owner, 2026-10-13: the in-app viewer window showed blank on
+   * both panels). The shell fetches the PDF with the panel's own sign-in, saves
+   * it to the temp folder and hands it to Windows' PDF app. Only on a PC with no
+   * PDF app (Windows 7) does it fall back to a window with Chromium's viewer —
+   * no preload and no Node, opening nothing and going nowhere.
+   */
+  async function openPdf(url: string): Promise<void> {
+    try {
+      const response = await new Promise<{ status: number; type: string; name: string; bytes: Buffer }>(
+        (resolve, reject) => {
+          const request = net.request({ url, useSessionCookies: true });
+          request.on('response', (res) => {
+            const chunks: Buffer[] = [];
+            res.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+            res.on('end', () => {
+              const header = (name: string): string => {
+                const value = res.headers[name];
+                return (Array.isArray(value) ? value[0] : value) ?? '';
+              };
+              resolve({
+                status: res.statusCode,
+                type: header('content-type'),
+                name: /filename="([^"]+)"/.exec(header('content-disposition'))?.[1] ?? '',
+                bytes: Buffer.concat(chunks),
+              });
+            });
+            res.on('error', reject);
+          });
+          request.on('error', reject);
+          request.end();
+        },
+      );
+      if (response.status !== 200 || !response.type.startsWith('application/pdf')) {
+        say(`Preview PDF: ${url} answered ${response.status} ${response.type}`);
+        await dialog.showMessageBox({
+          type: 'error',
+          title: config.productName,
+          message: 'The PDF could not be made. Check that the Master Panel is reachable and try again.',
+        });
+        return;
+      }
+      const dir = path.join(app.getPath('temp'), 'OrderBook PDF');
+      await mkdir(dir, { recursive: true });
+      const file = path.join(dir, pdfFileName(response.name || 'preview'));
+      await writeFile(file, response.bytes);
+      const failed = await electronShell.openPath(file);
+      if (!failed) return;
+      say(`Preview PDF: no PDF app (${failed}); opening the built-in viewer`);
+    } catch (error) {
+      say(`Preview PDF failed: ${String(error)}`);
+    }
+    const child = new BrowserWindow({
+      width: 960,
+      height: 900,
+      autoHideMenuBar: true,
+      backgroundColor: '#FFFFFF',
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        plugins: true,
+        spellcheck: false,
+        webviewTag: false,
+        devTools: !app.isPackaged,
+      },
+    });
+    child.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    child.webContents.on('will-navigate', (event) => event.preventDefault());
+    void child.loadURL(url);
+  }
+
   async function waitForServerThenShow(): Promise<void> {
     const outcome = await waitForServer((step) => void showSplash(step));
 
@@ -485,41 +558,17 @@ export function runPanelShell(config: PanelShellConfig): void {
     });
 
     window.webContents.setWindowOpenHandler(({ url }) => {
-      // A lead's Preview PDF opens beside the panel, in Chromium's own viewer:
-      // loaded over the app window it would leave the panel with no way back.
-      // No preload and no Node — the window shows bytes this panel served and
-      // is given nothing to reach the shell with. `plugins` is the viewer.
+      // A lead's or report's Preview PDF opens beside the panel, never over it
+      // (that would leave the panel with no way back): see `openPdf`.
       if (isLeadPdf(url)) {
-        return {
-          action: 'allow',
-          overrideBrowserWindowOptions: {
-            width: 960,
-            height: 900,
-            autoHideMenuBar: true,
-            backgroundColor: '#FFFFFF',
-            webPreferences: {
-              contextIsolation: true,
-              nodeIntegration: false,
-              sandbox: true,
-              plugins: true,
-              spellcheck: false,
-              webviewTag: false,
-              devTools: !app.isPackaged,
-            },
-          },
-        };
+        void openPdf(url);
+        return { action: 'deny' };
       }
       // Anything else that is not this panel opens in the real browser, never
       // in here — a window with no address bar is no place to land on an
       // unexpected page.
       if (!sameOrigin(url)) void electronShell.openExternal(url);
       return { action: 'deny' };
-    });
-
-    // The PDF window stays a PDF window: it opens nothing and goes nowhere.
-    window.webContents.on('did-create-window', (child) => {
-      child.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-      child.webContents.on('will-navigate', (event) => event.preventDefault());
     });
 
     window.webContents.on('will-navigate', (event, url) => {

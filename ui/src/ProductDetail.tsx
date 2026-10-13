@@ -82,6 +82,7 @@ export function ProductDetail({
   transport,
   canEdit,
   onEdit,
+  onDelete,
   onPhotosChanged,
   onError,
 }: {
@@ -92,6 +93,8 @@ export function ProductDetail({
   /** The `stock.colour` swatches (`useColourHex`), for the Colour field. */
   colourHex: (colour: string) => string | undefined;
   onEdit: () => void;
+  /** `products.delete`: a Delete button beside Edit; absent without it. */
+  onDelete?: () => void;
   /**
    * A photo write came back with the whole product. The snapshot catches up on
    * its own, but not before the next frame, and a cover photo that keeps the
@@ -156,11 +159,18 @@ export function ProductDetail({
             <span className="ob-eyebrow" style={{ color: 'var(--fg-tertiary)' }}>
               {t('product.detail.detailsTitle')}
             </span>
-            {canEdit && (
-              <Button variant="primary" size="sm" icon="edit" onClick={onEdit}>
-                {t('product.detail.editAction')}
-              </Button>
-            )}
+            <span style={{ display: 'inline-flex', gap: 'var(--s-8)' }}>
+              {canEdit && (
+                <Button variant="primary" size="sm" icon="edit" onClick={onEdit}>
+                  {t('product.detail.editAction')}
+                </Button>
+              )}
+              {onDelete && (
+                <Button variant="danger" size="sm" icon="trash" onClick={onDelete}>
+                  {t('catalog.subProducts.delete')}
+                </Button>
+              )}
+            </span>
           </div>
           <div
             style={{

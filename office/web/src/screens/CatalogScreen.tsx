@@ -80,8 +80,11 @@ import { ProductImportModal } from '../components/ProductImportModal';
 import { byCatalogueOrder, codesOf, productLabel, weightLabel } from '../productSummary';
 import {
   Button,
+  ConfirmDialog,
   type CreatedParty,
   DataTable,
+  RowActions,
+  deleteErrorText,
   EditorScreen,
   EmptyState,
   ErrorState,
@@ -225,6 +228,12 @@ export function CatalogScreen({
    */
   const [photoPatch, setPhotoPatch] = useState<Product | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  /** The party Delete was asked for, from its row or its detail; null while no dialog shows. */
+  const [partyDeleteTarget, setPartyDeleteTarget] = useState<Party | null>(null);
+  const [partyDeleting, setPartyDeleting] = useState(false);
+  /** The sub product Delete was asked for, from its row or its detail; null while no dialog shows. */
+  const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
   const [page, setPage] = useState<ProductPage | null>(null);
@@ -454,6 +463,77 @@ export function CatalogScreen({
     toast.push(message, { tone: 'error' });
   }
 
+  const canEditProduct = view.permissions.includes('products.edit');
+  const canDeleteProduct = view.permissions.includes('products.delete');
+
+  /** Online only: the Master refuses one still on a live order line, and says which. */
+  async function confirmDeleteProduct(): Promise<void> {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    setDeleting(true);
+    try {
+      await api.deleteProduct(target.id);
+      if (openProductId === target.id) setOpenProductId(null);
+      setRevision((current) => current + 1);
+      toast.push(t('catalog.subProducts.deleted', { name: target.name }));
+    } catch (caught) {
+      toast.push(deleteErrorText(caught, 'catalog.subProducts.deleteFailed'), { tone: 'error' });
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
+  }
+
+  const canEditParty = view.permissions.includes('parties.edit');
+  const canDeleteParty = view.permissions.includes('parties.delete');
+  /** A view grant reads the party but may not work it; one not yet on the Master has nothing to delete there. */
+  const mayWorkParty = (party: Party) =>
+    (view.partyGrants ?? []).find((entry) => entry.partyId === party.id)?.level !== 'view';
+  const partyDeletable = (party: Party) => canDeleteParty && mayWorkParty(party) && Boolean(party.sync.hlc);
+
+  /** Online only: the Master refuses a party a live order still points at, and says which. */
+  async function confirmDeleteParty(): Promise<void> {
+    if (!partyDeleteTarget) return;
+    const target = partyDeleteTarget;
+    setPartyDeleting(true);
+    try {
+      await api.deleteParty(target.id);
+      if (openPartyId === target.id) setOpenPartyId(null);
+      toast.push(t('parties.deleted', { name: target.name }));
+    } catch (caught) {
+      toast.push(deleteErrorText(caught, 'parties.deleteFailed'), { tone: 'error' });
+    } finally {
+      setPartyDeleting(false);
+      setPartyDeleteTarget(null);
+    }
+  }
+
+  const deletePartyDialog = (
+    <ConfirmDialog
+      open={partyDeleteTarget !== null}
+      tone="danger"
+      busy={partyDeleting}
+      title={t('parties.delete.title', { name: partyDeleteTarget?.name ?? '' })}
+      body={t('parties.delete.body')}
+      confirmLabel={t('parties.delete.confirm')}
+      onCancel={() => setPartyDeleteTarget(null)}
+      onConfirm={() => void confirmDeleteParty()}
+    />
+  );
+
+  const deleteProductDialog = (
+    <ConfirmDialog
+      open={deleteTarget !== null}
+      tone="danger"
+      busy={deleting}
+      title={t('catalog.subProducts.delete.title', { name: deleteTarget?.name ?? '' })}
+      body={t('catalog.subProducts.delete.body')}
+      confirmLabel={t('common.delete')}
+      onCancel={() => setDeleteTarget(null)}
+      onConfirm={() => void confirmDeleteProduct()}
+    />
+  );
+
   const openParty = view.parties.find((party) => party.id === openPartyId) ?? null;
   const openProductRow =
     products.find((product) => product.id === openProductId) ??
@@ -484,17 +564,23 @@ export function CatalogScreen({
       : null,
   );
 
+  // The search stays on an open record: typing goes back to the list, filtered.
   useFilterBar(
-    openRecord ? null : tab === 'parties' ? (
+    tab === 'parties' ? (
       <>
         <Input
           value={partySearch}
-          onChange={(event) => setPartySearch(event.target.value)}
+          onChange={(event) => {
+            setPartySearch(event.target.value);
+            if (openRecord) setOpenPartyId(null);
+          }}
           placeholder={t('catalog.parties.searchPlaceholder')}
           aria-label={t('catalog.parties.searchLabel')}
           data-screen-search
           style={{ width: rem(400) }}
         />
+        {!openRecord && (
+          <>
         <FilterChip
           active={cityFilter === null}
           count={view.parties.length}
@@ -527,17 +613,27 @@ export function CatalogScreen({
             {t('catalog.parties.new')}
           </Button>
         )}
+          </>
+        )}
       </>
     ) : (
       <>
         <Input
           value={productSearch}
-          onChange={(event) => setProductSearch(event.target.value)}
+          onChange={(event) => {
+            setProductSearch(event.target.value);
+            if (openRecord) {
+              setOpenProductId(null);
+              setPhotoPatch(null);
+            }
+          }}
           placeholder={t('catalog.products.searchPlaceholder')}
           aria-label={t('catalog.products.searchLabel')}
           data-screen-search
           style={{ width: rem(320) }}
         />
+        {!openRecord && (
+          <>
         {/* Counted only while chosen: the page's total is the one figure to
             hand, and a count per brand would be a query per chip. */}
         <FilterChip
@@ -586,6 +682,8 @@ export function CatalogScreen({
             {t('catalog.products.new')}
           </Button>
         )}
+          </>
+        )}
       </>
     ),
   );
@@ -608,7 +706,9 @@ export function CatalogScreen({
             setEditingParty(openParty);
             setOpenPartyId(null);
           }}
+          onDelete={partyDeletable(openParty) ? () => setPartyDeleteTarget(openParty) : undefined}
         />
+        {deletePartyDialog}
         <PartyFormModal
           transport={partyFormTransport}
           open={editingParty !== null}
@@ -707,6 +807,23 @@ export function CatalogScreen({
         width: rem(130),
         render: (party) => <PartyVisibilityMark count={view.partyAccessCounts?.[party.id]} />,
       },
+      ...(canEditParty || canDeleteParty
+        ? [
+            {
+              key: 'action',
+              header: t('lead.list.col.action'),
+              width: rem(96),
+              render: (party: Party) => (
+                <RowActions
+                  editLabel={t('action.edit')}
+                  deleteLabel={t('action.delete')}
+                  onEdit={canEditParty && mayWorkParty(party) ? () => setEditingParty(party) : undefined}
+                  onDelete={partyDeletable(party) ? () => setPartyDeleteTarget(party) : undefined}
+                />
+              ),
+            },
+          ]
+        : []),
     ];
 
     return (
@@ -758,6 +875,7 @@ export function CatalogScreen({
           onUpdated={onPartyUpdated}
           onError={onDrawerError}
         />
+        {deletePartyDialog}
       </>
     );
   }
@@ -883,6 +1001,24 @@ export function CatalogScreen({
         );
       },
     },
+    ...(canEditProduct || canDeleteProduct
+      ? [
+          {
+            key: 'action',
+            header: t('lead.list.col.action'),
+            width: rem(96),
+            render: (product: Product) => (
+              <RowActions
+                editLabel={t('product.detail.editAction')}
+                deleteLabel={t('catalog.subProducts.delete')}
+                onEdit={canEditProduct ? () => setEditingProduct(product) : undefined}
+                // Still queued offline, it has no Master record to delete.
+                onDelete={canDeleteProduct && product.sync.hlc ? () => setDeleteTarget(product) : undefined}
+              />
+            ),
+          },
+        ]
+      : []),
   ];
 
   if (openProduct) {
@@ -903,9 +1039,13 @@ export function CatalogScreen({
             setOpenProductId(null);
             setPhotoPatch(null);
           }}
+          onDelete={
+            canDeleteProduct && openProduct.sync.hlc ? () => setDeleteTarget(openProduct) : undefined
+          }
           onPhotosChanged={setPhotoPatch}
           onError={onDrawerError}
         />
+        {deleteProductDialog}
         <ProductDrawer
           open={editingProduct !== null}
           product={editingProduct}
@@ -1049,6 +1189,7 @@ export function CatalogScreen({
         }}
         onError={onDrawerError}
       />
+      {deleteProductDialog}
     </>
   );
 }

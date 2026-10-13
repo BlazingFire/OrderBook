@@ -115,6 +115,7 @@ import {
   StaleEditNotice,
   SubGrid,
   SubRow,
+  SubRowRemove,
   StatusPill,
   SubListCompactToggle,
   SubProductList,
@@ -831,6 +832,13 @@ function AddLeadForm({
             rows: current.rows.map((row) => (row.key === key ? { ...row, ...patch } : row)),
           }
         : current,
+    );
+  }
+
+  /** Drops one row from the card; saving the card then leaves that line out of the order. */
+  function removeRow(key: string): void {
+    setCard((current) =>
+      current ? { ...current, rows: current.rows.filter((row) => row.key !== key) } : current,
     );
   }
 
@@ -1785,6 +1793,7 @@ function AddLeadForm({
                       partyRecordFor.get(productId)?.packaging ?? null
                     }
                     onRow={patchRow}
+                    onRemoveRow={removeRow}
                     onAnotherColour={anotherColour}
                     onSave={saveCard}
                     onClear={discardCard}
@@ -2063,6 +2072,7 @@ function GridCard({
   colourHex,
   suggestedPackaging,
   onRow,
+  onRemoveRow,
   onAnotherColour,
   onSave,
   onClear,
@@ -2083,6 +2093,8 @@ function GridCard({
   /** The party's saved packaging for a sub product, offered and never applied. */
   suggestedPackaging: (productId: string) => string | null;
   onRow: (key: string, patch: Partial<GridRow>) => void;
+  /** Takes a counted row out of the card. */
+  onRemoveRow: (key: string) => void;
   onAnotherColour: (key: string) => void;
   onSave: () => void;
   onClear: () => void;
@@ -2550,6 +2562,10 @@ function GridCard({
                       ))}
                     </Select>
                   </span>
+                  <SubRowRemove
+                    label={t('lead.add.card.removeRow', { sub: rowName(row) })}
+                    onRemove={Number(row.qty) > 0 ? () => onRemoveRow(row.key) : undefined}
+                  />
                 </SubRow>
               </Fragment>
             );

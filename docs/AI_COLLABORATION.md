@@ -190,6 +190,56 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-13 - Preview PDF opens in the PC's PDF app (Claude, Opus, branch `s1/delete-search-toasts`)
+
+- **Ask (owner):** Preview PDF on a New Order shows a blank window on both panels (Filling and Dispatch notes work).
+- **Found:** the route is fine — signed in to the dev Master, `/api/leads/:id/pdf` answered 200 `application/pdf`,
+  20 KB, one page with its text drawn, and the menu link opens it in a browser. The blank is the Electron window
+  (`window.open` → `overrideBrowserWindowOptions` with `plugins: true`), never verified in Electron before (HANDOFF owed
+  list). Not reproduced: this PC's `node_modules/electron` exits 3 even for `--version`.
+- **Built:** `shell.ts` `openPdf` — the window-open handler now denies the PDF URL and the shell fetches it itself
+  (`net.request`, `useSessionCookies`), saves it under `%TEMP%\OrderBook PDF\` (`pdfFileName`) and opens it with
+  `shell.openPath` (Windows' PDF app). A non-PDF answer shows an error box; only when no app takes PDFs (Windows 7)
+  does it fall back to the old in-app viewer window, created by the shell with the same locked-down options.
+- **Verified:** both Electron tsconfigs, eslint on `shell.ts`, `electron/tests` (312 pass).
+- **Not verified:** a real click in a packaged panel (Master and Office), and the Windows 7 fallback window.
+
+### 2026-10-13 - Colour on the order note's coded cells, bigger grade (Claude, Opus, branch `s1/delete-search-toasts`)
+
+- **Ask (owner):** the numeric-only sub products on the right side of the Filling/Dispatch note must show their
+  colour; the grade on them a little bigger.
+- **Built:** each coded cell prints its colour (`NoteLine.colour`, already filtered by `shownColour`) on its own line
+  under the code, in `OrderNote.tsx` / `order-note.css` and in the PDF (`note-renderer.ts`); the cell's grade goes
+  from 7 px to 9 px in both. `NOTE_LAYOUT.rowCodedLabelled` 62 → 66 so a labelled cell with a two-line caption still
+  fits the colour line; `rowCoded` (50) already had the room. Follow-up ask: packaging prints its full name on the
+  coded side too — `notePackCode` (BOX / GRS / PPR) deleted; the chip holds the whole name, cut with an ellipsis
+  only when the cell cannot hold it (CSS and PDF `clip`). `docs/ORDER_NOTES_PLAN.md` updated.
+- **Verified:** `order-note*`, `note-pdf` tests (113 pass), all `ui/tests` (1521 pass), typecheck.
+- **Not verified:** a printed sheet or PDF by eye; full `npm run verify`.
+
+### 2026-10-13 - Deletes, search on open records, new toasts and notices (Claude, Opus, branch `s1/delete-search-toasts`)
+
+- **Ask (owner):** a product delete button and the whole product-delete flow; Delete and Edit on the New Order list
+  (Office side) without messing up the layout; the search bar everywhere, even with a New Order open; new error and
+  success messages; new notifications.
+- **Built:** sub-product Delete on both panels (row action + detail button, `CatalogueTransport.deleteProduct`,
+  Master `api.deleteProduct`); deleting a main product now takes its sub products to the Recycle Bin first, then the
+  product, and keeps the product (naming what blocks it) when the Master refuses one; Edit/Delete row actions on the
+  main-product list. Office New Order list and record header get Delete (`leads.delete`, online only, hidden for a
+  lead the Master has not received), confirm dialog and toasts; Action column widened to `rem(96)` as on the Master.
+  The filter-bar search now stays when a record is open (New Orders, Final Orders, Parties, Products, Sub products,
+  both panels; not over an edit form or note) and typing returns to the list, filtered, keeping focus. Success and
+  error toasts for every new delete; `deleteErrorText` (ui) words a 409 with the names that block it; product blocker
+  labels now carry the PO number instead of the internal id. New notification kinds `lead.edited` (deduped per editor
+  until read) and `lead.deleted`: the new order's owner and creator hear when somebody else changes or deletes it
+  (`tellLeadPeople` in `lead.service.ts`; `mayOpenLead` moved to `notification.service.ts`). The Office's
+  `deleteProduct`/`deleteLead` left the web-reachability allow-list, since they are now called — this reverses the
+  earlier "deletes are taken on the Master" stance at the owner's request.
+- **Verified:** see HANDOFF "Deletes, search on open records" for the gate; browser pass on the Master (1024×768):
+  search on an open New Order returns to the filtered list with focus kept, list delete with toast, sub-product delete
+  refused with names, whole-product delete of a 3-sub product.
+- **Not verified:** an Office browser pass (the scratch Office was not paired), Electron, two PCs.
+
 ### 2026-10-13 - Product restore "Update only"; variants in the backup zip pinned (Claude, Opus, branch `u1/update-only`)
 
 - **Ask (owner):** import and export the variants of sub products; their merged file has no variants while the

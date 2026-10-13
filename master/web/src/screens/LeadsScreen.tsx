@@ -271,10 +271,11 @@ export function LeadsScreen({
     };
   }, [openPartyId, canViewParties]);
 
-  // An error shown for one record is not the next one's, nor is its edit.
+  // An error shown for one record is not the next one's, nor is its edit — but the
+  // list's Edit opens a record already in edit, so an edit of this very record stays.
   useEffect(() => {
     setError(null);
-    setEditingId(null);
+    setEditingId((current) => (current === openId ? current : null));
     // A note opened from the list's row action arrives with its record; keep it.
     setNote((current) => (current && current.id === openId ? current : null));
   }, [openId]);
@@ -284,18 +285,26 @@ export function LeadsScreen({
   const open = view === 'list';
   // The Master already narrowed `rows` to the stage chip, so every page honours it.
   const shown = rows;
+  // The search stays on an open record: typing goes back to the list, filtered.
+  // Not over the edit form or a note, where it would throw away what is typed.
+  const busyOnRecord = openLead !== null && (editingId === openLead.id || noteKind !== null);
 
   useFilterBar(
-    openLead ? null : (
+    busyOnRecord ? null : (
       <>
         <Input
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          onChange={(event) => {
+            setSearch(event.target.value);
+            if (openLead) onOpenId(null);
+          }}
           placeholder={t('leads.search.placeholder')}
           aria-label={t('leads.search.label')}
           data-screen-search
           style={{ width: rem(320) }}
         />
+        {!openLead && (
+          <>
         <Segmented
           options={[
             { value: 'all' as const, label: t('partyAccess.scope.all') },
@@ -326,6 +335,8 @@ export function LeadsScreen({
             ))}
             <span style={{ flex: 1 }} />
             <span className="ob-small">{t('lead.board.convertedNote')}</span>
+          </>
+        )}
           </>
         )}
       </>
@@ -386,8 +397,11 @@ export function LeadsScreen({
       setDeleteTarget(null);
       setRows((current) => current.filter((lead) => lead.id !== target.id));
       if (openId === target.id) onOpenId(null);
+      toast.push(t('leadsOrders.deleted.lead', { id: recordNumberText(target) }));
     } catch (caught) {
-      setError(deleteFailureMessage(caught));
+      const message = deleteFailureMessage(caught);
+      setError(message);
+      toast.push(message, { tone: 'error' });
       setDeleteTarget(null);
     } finally {
       setDeleting(false);
