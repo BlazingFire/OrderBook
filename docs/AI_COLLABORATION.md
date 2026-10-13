@@ -190,6 +190,20 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-13 - `s1/delete-search-toasts` merged to main and pushed (Claude, Opus)
+
+- **Ask (owner):** update the handoff; push all changes to `main`.
+- **Done:** the branch (deletes, row Edit/Delete on New Orders, Parties and Products, search on open records, toasts,
+  `lead.edited`/`lead.deleted` notices, tick-box column, order-card row remove, plus the second session's order-note,
+  Dispatch tick-box and Preview-PDF work) was merged into `main` (`0f4cec05`); `origin/main`'s 1.4.8 release docs
+  merged on top (only `HANDOFF.md` and this log conflicted; both sides kept); pushed; `s1/delete-search-toasts`
+  deleted. Not in 1.4.8 (built from `10418ed4`): bump to 1.4.9 before the next build.
+- **Verified:** on the merged tree, lint 0 (2 warnings already on main), typecheck 0, test: 399 files passed + 1
+  skipped in the full run; the 9 integration suites that errored at setup when the test cluster dropped
+  (`ECONNREFUSED`, another session's run was sharing the machine) were re-run alone and passed (136 tests). Run with
+  `TEMP`/`TMP` = `.tmp	est-tmp2` and `ORDERBOOK_TEST_PG_PORT=55477`, so it could not collide with the other run.
+- **Not verified:** see HANDOFF "Deletes, edits, search on open records".
+
 ### 2026-10-13 - Dispatch note: Packing, Grade, Colour tick boxes (Claude, Opus, landed on `main` in fa2e0f52)
 
 - **Ask (owner):** tick boxes on the Dispatch note window; ticked, packaging / grade / colour print on that note;

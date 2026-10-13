@@ -76,7 +76,8 @@ log, 2026-10-13 entries.
   packaging by full name (UI and PDF); Preview PDF in Electron now saves the PDF to `%TEMP%\OrderBook PDF\` and opens
   it in Windows' PDF app (`electron/shell.ts` `openPdf`), with the in-app viewer only as the Windows 7 fallback.
 
-**Gate:** see the change log's 2026-10-13 merge entry. **Trap:** the test cluster in `%TEMP%\orderbook-test-pg`
+**Gate:** see the change log entry "`s1/delete-search-toasts` merged to main and pushed". Also from the second
+session: Dispatch note tick boxes for Packing, Grade and Colour (Dispatch only; the Printroom and PDF still print all three). **Trap:** the test cluster in `%TEMP%\orderbook-test-pg`
 would not start from this session (`pg_ctl: could not open log file ... Permission denied`); run with `TEMP`/`TMP`
 set to `.tmp\test-tmp` and it builds a fresh cluster there.
 
