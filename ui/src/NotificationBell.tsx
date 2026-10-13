@@ -48,6 +48,8 @@ export interface LocalNotice {
 const KIND_TEXT: Record<NotificationKind, MessageKey> = {
   'panel.offlineLong': 'notification.panel.offlineLong',
   'lead.numbered': 'notification.lead.numbered',
+  'lead.deleted': 'notification.lead.deleted',
+  'lead.edited': 'notification.lead.edited',
   'chat.mention': 'notification.chat.mention',
   'task.assigned': 'notification.task.assigned',
   'task.done': 'notification.task.done',
@@ -87,6 +89,8 @@ type Category = 'devices' | 'orders' | 'chatroom' | 'tasks' | 'access' | 'printr
 const KIND_LOOK: Record<NotificationKind, { category: Category; tone: Tone; icon: IconName }> = {
   'panel.offlineLong': { category: 'devices', tone: 'amber', icon: 'monitor-off' },
   'lead.numbered': { category: 'orders', tone: 'accent', icon: 'clipboard' },
+  'lead.deleted': { category: 'orders', tone: 'red', icon: 'trash' },
+  'lead.edited': { category: 'orders', tone: 'accent', icon: 'edit' },
   'chat.mention': { category: 'chatroom', tone: 'accent', icon: 'mention' },
   'task.assigned': { category: 'tasks', tone: 'accent', icon: 'task' },
   'task.done': { category: 'tasks', tone: 'ok', icon: 'check' },

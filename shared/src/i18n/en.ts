@@ -1193,6 +1193,17 @@ export const EN_MESSAGES = {
   'catalog.mainProducts.delete.title': 'Delete {name}?',
   'catalog.mainProducts.delete.body':
     'It goes to the Recycle Bin, where it can be restored. A product that still has sub products cannot be deleted — move or delete them first.',
+  'catalog.mainProducts.delete.bodyWithSubs':
+    'Its {count} sub products go to the Recycle Bin with it, and each can be restored from there. A sub product still on an open new order or final order stays, and then so does the product.',
+  'catalog.mainProducts.deletedWithSubs': '{name} and its {count} sub products moved to the Recycle Bin',
+  'catalog.mainProducts.deletePartial':
+    '{done} of {count} sub products moved to the Recycle Bin. {name} stays: {blocked} still on open orders.',
+  'catalog.subProducts.delete': 'Delete sub product',
+  'catalog.subProducts.delete.title': 'Delete {name}?',
+  'catalog.subProducts.delete.body':
+    'It goes to the Recycle Bin with its codes and photos, and can be restored. A sub product still on an open new order or final order cannot be deleted.',
+  'catalog.subProducts.deleted': '{name} moved to the Recycle Bin',
+  'catalog.subProducts.deleteFailed': 'Could not delete the sub product',
   'catalog.mainProducts.field.code': 'Code',
   'catalog.mainProducts.field.codeHint':
     'Letters and digits only, e.g. OPT. Staff can type it instead of the name.',
@@ -2188,6 +2199,7 @@ export const EN_MESSAGES = {
   'leadsOrders.delete.body': 'It goes to the Recycle Bin and can be restored.',
   'leadsOrders.delete.failed': 'Could not delete that record',
   'leadsOrders.delete.blocked': 'Still in use by {items} — deal with those first',
+  'leadsOrders.deleted.lead': 'New order {id} moved to the Recycle Bin',
 
   'parties.created': '{name} saved',
   'parties.updated': '{name} updated',
@@ -3321,6 +3333,8 @@ export const EN_MESSAGES = {
   'logs.action.verified': 'Verified',
   'notification.panel.offlineLong': '{panel} has been offline for over an hour',
   'notification.lead.numbered': 'Your order for {party}, saved offline, is now {number}',
+  'notification.lead.deleted': '{name} deleted your new order {number} for {party}',
+  'notification.lead.edited': '{name} changed your new order {number} for {party}',
   'notification.backup.autoSkipped':
     "Today's automatic backup was skipped: the folder {folder} could not be reached. Plug in the backup drive.",
   'notification.backup.autoFailed':

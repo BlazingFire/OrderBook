@@ -330,8 +330,9 @@ export function PartiesScreen({
     }
   }
 
+  // The search stays on an open party (not over its edit form): typing goes back to the list, filtered.
   useFilterBar(
-    open ? null : (
+    open && editing ? null : (
       <>
         <div className="ob-search" style={{ width: rem(400) }}>
           <Input
@@ -339,9 +340,14 @@ export function PartiesScreen({
             placeholder={t('catalog.parties.searchPlaceholder')}
             aria-label={t('catalog.parties.searchLabel')}
             data-screen-search
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              if (open) onOpenId(null);
+            }}
           />
         </div>
+        {!open && (
+          <>
         <span style={{ flex: 1 }} />
         <span className="ob-small">{t('parties.summary', { shown: rows.length, total })}</span>
         {/* Absent rather than disabled when the permission is missing — the house rule
@@ -357,6 +363,8 @@ export function PartiesScreen({
           <Button variant="primary" size="sm" icon="plus" onClick={() => setCreating(true)}>
             {t('catalog.parties.new')}
           </Button>
+        )}
+          </>
         )}
       </>
     ),

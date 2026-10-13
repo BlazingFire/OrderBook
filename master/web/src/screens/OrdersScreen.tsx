@@ -282,16 +282,22 @@ export function OrdersScreen({
   const shown = rows;
 
   useFilterBar(
-    openOrder ? null : (
+    // The search stays on an open order (not its note): typing goes back to the list, filtered.
+    openOrder && noteKind ? null : (
       <>
         <Input
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          onChange={(event) => {
+            setSearch(event.target.value);
+            if (openOrder) onOpenId(null);
+          }}
           placeholder={t('orders.search.placeholder')}
           aria-label={t('orders.search.label')}
           data-screen-search
           style={{ width: rem(320) }}
         />
+        {!openOrder && (
+          <>
         <Segmented
           options={[
             { value: 'all' as const, label: t('partyAccess.scope.all') },
@@ -321,6 +327,8 @@ export function OrdersScreen({
         <FilterDivider />
         <span style={{ flex: 1 }} />
         <span className="ob-small">{t('orders.filter.note')}</span>
+          </>
+        )}
       </>
     ),
   );

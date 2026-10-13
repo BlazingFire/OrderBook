@@ -25,6 +25,8 @@ import { createRealtimeHub, type RealtimeHub } from '../src/realtime/hub.js';
 import * as notificationRepo from '../src/repositories/notification.repository.js';
 import * as panelRepo from '../src/repositories/office-panel.repository.js';
 import * as authService from '../src/services/auth.service.js';
+import * as catalogService from '../src/services/catalog.service.js';
+import * as leadService from '../src/services/lead.service.js';
 import * as notificationService from '../src/services/notification.service.js';
 import * as panelService from '../src/services/panel.service.js';
 import * as roleService from '../src/services/role.service.js';
@@ -292,6 +294,33 @@ describe.skipIf(!canRunIntegrationTests)('notification centre (integration)', ()
       data: { unreadCount: 0 },
     });
     expect((await rowsFor(bina.id))[0]!.read_at).toBeNull();
+  });
+
+  it("tells a new order's owner when somebody else changes or deletes it, and nobody for their own", async () => {
+    const owner = await person('owner', 'management', ['leads.view', 'leads.create', 'leads.edit', 'leads.delete']);
+    const party = await catalogService.createParty({ name: 'Notice Traders' }, admin);
+    const product = await catalogService.createProduct(
+      { name: 'Notice Pan', categoryName: 'Pans', variants: [{ code: 'NTC-01' }] },
+      admin,
+    );
+    const items = [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 5 }];
+    const lead = await leadService.createLead({ partyId: party.id, ownerId: owner.id, items }, admin);
+
+    // The owner's own edit tells nobody.
+    await leadService.updateLead(lead.id, { notes: 'mine' }, await actorOf(owner));
+    expect(await rowsFor(owner.id)).toHaveLength(0);
+
+    // Two edits by someone else collapse into one unread notice, linked to the order.
+    await leadService.updateLead(lead.id, { notes: 'one' }, admin);
+    await leadService.updateLead(lead.id, { notes: 'two' }, admin);
+    const edited = await db()('user_notifications').where({ user_id: owner.id, kind: 'lead.edited' });
+    expect(edited).toHaveLength(1);
+    expect(edited[0].link).toMatchObject({ kind: 'lead', id: lead.id });
+
+    await leadService.deleteLead(lead.id, admin);
+    const deleted = await db()('user_notifications').where({ user_id: owner.id, kind: 'lead.deleted' });
+    expect(deleted).toHaveLength(1);
+    expect(deleted[0].params).toMatchObject({ party: 'Notice Traders' });
   });
 
   it('prunes read notices older than 60 days and anything past 500 a person', async () => {

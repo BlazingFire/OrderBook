@@ -48,6 +48,7 @@ export const catalogueTransport: CatalogueTransport = {
   createCategory: (input) => api.createCategory(input),
   updateCategory: (id, input) => api.updateCategory(id, input),
   deleteCategory: (id) => api.deleteCategory(id),
+  deleteProduct: (id) => api.deleteProduct(id),
   createProduct: (input) => api.createProduct(input),
   updateProduct: (id, input) => api.updateProduct(id, input),
   uploadProductImage: (productId, file, crop) => api.uploadProductImage(productId, file, crop),

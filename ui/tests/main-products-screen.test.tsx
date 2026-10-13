@@ -9,6 +9,8 @@
  *   the colour its rule shows;
  * - the list refetches when a sub product moves between products, which
  *   leaves the snapshot's length unchanged and so would go unnoticed;
+ * - deleting a product takes its sub products to the Recycle Bin first, and
+ *   leaves the product when the Master refuses one of them;
  * - Brands without `fields.view` says so instead of mounting an editor whose
  *   every read is refused, and reloads when the shell says the lists moved.
  *
@@ -31,6 +33,7 @@ const api = vi.hoisted(() => ({
   updateCategory: vi.fn(async () => ({})),
   createCategory: vi.fn(async () => ({})),
   deleteCategory: vi.fn(async () => ({})),
+  deleteProduct: vi.fn(async () => ({})),
   fieldValues: vi.fn(async () => {
     throw new Error('Missing permission: fields.view');
   }),
@@ -192,6 +195,48 @@ describe('MainProductsScreen', () => {
     expect(within(rows[1]!).queryByText('Magenta')).toBeNull();
     expect(within(rows[2]!).getByText(t('catalog.colourRule.multicolour'))).toBeTruthy();
     expect(within(rows[3]!).queryByText(t('catalog.colourRule.multicolour'))).toBeNull();
+  });
+
+  it('deletes a whole product: its sub products first, then the product', async () => {
+    const ls = category('c-ls', 'LS', 'Lab Sink', null);
+    api.categories.mockResolvedValue([{ ...ls, subProductCount: 2 }]);
+    render(
+      <MainProductsScreen
+        view={viewOf({
+          permissions: ['products.view', 'products.delete'],
+          categories: [ls],
+          products: [subProduct('p-1', 'c-ls', 'h'), subProduct('p-2', 'c-ls', 'h'), subProduct('p-x', 'c-other', 'h')],
+        })}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: t('action.delete') }));
+    expect(screen.getByText(t('catalog.mainProducts.delete.bodyWithSubs', { count: 2 }))).toBeTruthy();
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: t('common.delete') }));
+
+    await waitFor(() => expect(api.deleteCategory).toHaveBeenCalledWith('c-ls'));
+    expect(api.deleteProduct.mock.calls.map((call) => (call as unknown[])[0])).toEqual(['p-1', 'p-2']);
+  });
+
+  it('keeps the product when the Master refuses one of its sub products', async () => {
+    const ls = category('c-ls', 'LS', 'Lab Sink', null);
+    api.categories.mockResolvedValue([{ ...ls, subProductCount: 2 }]);
+    api.deleteProduct.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('in use'));
+    render(
+      <MainProductsScreen
+        view={viewOf({
+          permissions: ['products.view', 'products.delete'],
+          categories: [ls],
+          products: [subProduct('p-1', 'c-ls', 'h'), subProduct('p-2', 'c-ls', 'h', { name: 'SINK B' })],
+        })}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: t('action.delete') }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: t('common.delete') }));
+
+    await waitFor(() => expect(api.deleteProduct).toHaveBeenCalledTimes(2));
+    expect(api.deleteCategory).not.toHaveBeenCalled();
   });
 
   it('refetches the counts when a sub product moves between products', async () => {

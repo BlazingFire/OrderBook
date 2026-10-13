@@ -79,7 +79,6 @@ import * as activityLog from '../repositories/activity-log.repository.js';
 import * as identityRepo from '../repositories/identity.repository.js';
 import * as leadRepo from '../repositories/lead.repository.js';
 import * as orderRepo from '../repositories/order.repository.js';
-import * as partyAccessRepo from '../repositories/party-access.repository.js';
 import * as partyRepo from '../repositories/party.repository.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
@@ -88,7 +87,7 @@ import * as productVariantRepo from '../repositories/product-variant.repository.
 import * as syncRepo from '../repositories/sync.repository.js';
 import type { TransactionContext } from '../repositories/transaction.js';
 import { actorStamp, publishChange, publishConflict } from './change-bus.js';
-import { notify } from './notification.service.js';
+import { mayOpenLead, notify } from './notification.service.js';
 import * as catalogService from './catalog.service.js';
 import * as chatService from './chat.service.js';
 import * as leadService from './lead.service.js';
@@ -1162,14 +1161,6 @@ function savedBeforeConnect(hlc: string, connectedAt: number | undefined): boole
 }
 
 /** Whether `userId` is an active person who could open a lead on this party now. */
-async function mayOpenLead(tenantId: string, userId: string, partyId: string): Promise<boolean> {
-  const viewers = await userRepo.findActiveUserIdsWithPermission(tenantId, 'leads.view');
-  if (!viewers.includes(userId)) return false;
-  const grants = await partyAccessRepo.grantsForParty(tenantId, partyId);
-  if (grants.length === 0 || grants.some((grant) => grant.userId === userId)) return true;
-  return (await userRepo.findActiveUserIdsWithPermission(tenantId, 'party.accessAll')).includes(userId);
-}
-
 function applied(mutation: Mutation, entityId: string): MutationResult {
   return { mutationId: mutation.mutationId, status: 'applied', entityId, conflicts: [] };
 }

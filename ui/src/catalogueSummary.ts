@@ -144,6 +144,8 @@ export interface CatalogueTransport {
   createCategory(input: CategoryInput): Promise<unknown>;
   updateCategory(id: string, input: CategoryUpdateInput): Promise<unknown>;
   deleteCategory(id: string): Promise<unknown>;
+  /** A sub product into the Recycle Bin (`products.delete`); refused while a live order line quotes it. */
+  deleteProduct(id: string): Promise<unknown>;
   createProduct(input: ProductInput): Promise<{ id: string }>;
   updateProduct(id: string, input: ProductInput): Promise<unknown>;
   uploadProductImage(

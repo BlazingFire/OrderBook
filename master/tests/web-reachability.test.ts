@@ -143,8 +143,6 @@ const ALLOWED_UNCALLED: Record<'master' | 'office', Record<string, string>> = {
     recycleBinCounts: 'as recycleBin',
     restoreFromBin: 'as recycleBin',
     deleteParty: 'as recycleBin — deletes are taken on the Master',
-    deleteProduct: 'as recycleBin',
-    deleteLead: 'as recycleBin',
     deleteOrder: 'as recycleBin',
     // --- Superseded by the merged view the panel's SSE stream maintains.
     snapshot: 'the panel reads its view from the change stream, not by polling',

@@ -1976,6 +1976,7 @@ function OfficePanel() {
               canConvert={can('lead.convert')}
               canPreviewPdf={can('leads.export')}
               canEdit={can('leads.edit')}
+              canDelete={can('leads.delete')}
               onError={setError}
               onAddLead={can('leads.create') ? openNewLead : undefined}
               onShareInChat={shareInChat}

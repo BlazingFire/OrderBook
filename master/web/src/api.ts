@@ -872,6 +872,8 @@ export const api = {
     request<ProductCategory>(`/api/categories/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   deleteCategory: (id: string) =>
     request<{ id: string; deletedAt: string }>(`/api/categories/${id}`, { method: 'DELETE' }),
+  deleteProduct: (id: string) =>
+    request<{ id: string; deletedAt: string }>(`/api/products/${id}`, { method: 'DELETE' }),
 
   /** Duplicate Products and sub products, and deleting the extra copies (`products.delete`). */
   duplicates: () => request<DuplicateReport>('/api/duplicates'),

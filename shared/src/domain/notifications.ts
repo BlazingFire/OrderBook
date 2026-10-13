@@ -13,6 +13,9 @@ export const NOTIFICATION_KINDS = [
   'panel.offlineLong',
   // A pending order saved offline got its number (Phase 4).
   'lead.numbered',
+  // Somebody else deleted or changed a new order you own or created.
+  'lead.deleted',
+  'lead.edited',
   // The Chatroom (Phase 6): somebody @mentioned you, handed you a task, ticked
   // one you set, or asked for a chat right.
   'chat.mention',

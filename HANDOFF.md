@@ -52,6 +52,25 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
+## Deletes, search on open records, new toasts and notices (2026-10-13)
+
+**State:** on branch `s1/delete-search-toasts`, not merged, not released. Details: `docs/AI_COLLABORATION.md`
+change log, 2026-10-13.
+
+- Sub products can be deleted (row and detail) on both panels; deleting a main product takes its sub products to the
+  Recycle Bin first, then itself, and stays (naming what blocks) if the Master refuses a sub product on a live order.
+- The Office New Order list and record have Delete (online only) beside Edit; the Action column is `rem(96)`.
+- The list search stays visible with a record open (New Orders, Final Orders, Parties, Products, both panels);
+  typing returns to the filtered list.
+- Success and error toasts for every delete; new bell kinds `lead.edited` and `lead.deleted` to the new order's owner
+  and creator when somebody else acts.
+
+**Gate:** lint 0 (2 warnings already on main), typecheck 0, test 407 files + 1 skipped / 5,448 tests + 17 skipped,
+integration suites on PostgreSQL. **Trap:** the test cluster in `%TEMP%\orderbook-test-pg` would not start from this
+session (`pg_ctl: could not open log file ... Permission denied`); run with `TEMP`/`TMP` set to `.tmp	est-tmp` and
+it builds a fresh cluster there. **Not verified:** Office browser pass, Electron, two PCs; the owner's "UI messed up"
+was read as the New Order list layout — confirm with them.
+
 ## 1.4.7 released: everything combined, one branch (2026-10-10)
 
 **State:** `main` carries every piece of work that existed on any branch or in a working tree, and it is pushed.

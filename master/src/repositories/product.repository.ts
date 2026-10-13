@@ -839,14 +839,16 @@ export async function liveReferencesToProduct(
   const { rows: lineRows } = await runner.raw<{
     rows: Array<{ id: string; parent_id: string; product_name: string }>;
   }>(
-    `SELECT li.id, li.parent_id, li.product_name
+    // The order's PO number where it has one, which is what the reader knows it by.
+    `SELECT li.id, COALESCE(l.po_number, li.parent_id) AS parent_id, li.product_name
        FROM line_items li
        JOIN leads l ON li.parent_type = 'lead' AND l.id = li.parent_id AND l.deleted_at IS NULL
       WHERE li.tenant_id = ? AND li.product_id = ?
      UNION
-     SELECT li.id, li.parent_id, li.product_name
+     SELECT li.id, COALESCE(ld.po_number, li.parent_id) AS parent_id, li.product_name
        FROM line_items li
        JOIN orders o ON li.parent_type = 'order' AND o.id = li.parent_id AND o.deleted_at IS NULL
+       LEFT JOIN leads ld ON ld.id = o.lead_id
       WHERE li.tenant_id = ? AND li.product_id = ?`,
     [tenantId, productId, tenantId, productId],
   );

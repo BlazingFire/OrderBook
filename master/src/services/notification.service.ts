@@ -20,6 +20,8 @@ import type { ActorContext } from '../domain/actor.js';
 import { toErrorMessage, ValidationError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import * as notificationRepo from '../repositories/notification.repository.js';
+import * as partyAccessRepo from '../repositories/party-access.repository.js';
+import * as userRepo from '../repositories/user.repository.js';
 import { publishNotification } from './change-bus.js';
 
 const log = createLogger('notifications');
@@ -64,6 +66,18 @@ export async function notify(
   for (const { userId, notification } of added) {
     publishNotification({ ...notification, tenantId, userId });
   }
+}
+
+/**
+ * Whether this person may open a lead on this party: a notice names the party,
+ * so only someone who could open the lead hears of it.
+ */
+export async function mayOpenLead(tenantId: string, userId: string, partyId: string): Promise<boolean> {
+  const viewers = await userRepo.findActiveUserIdsWithPermission(tenantId, 'leads.view');
+  if (!viewers.includes(userId)) return false;
+  const grants = await partyAccessRepo.grantsForParty(tenantId, partyId);
+  if (grants.length === 0 || grants.some((grant) => grant.userId === userId)) return true;
+  return (await userRepo.findActiveUserIdsWithPermission(tenantId, 'party.accessAll')).includes(userId);
 }
 
 /** The acting person's newest notices and how many are unread. Nobody signed in: none. */
