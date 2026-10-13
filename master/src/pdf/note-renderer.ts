@@ -21,6 +21,8 @@ import {
   namedLabel,
   namedRowHeight,
   noteBrandCode,
+  noteCellCaption,
+  noteCodedRowHeight,
   noteFigure,
   noteRange,
   noteStamp,
@@ -472,12 +474,13 @@ function planCoded(
         continue;
       }
       // The pending order PDF is a Dispatch sheet: the Dispatch note's cell (owner's artifact, 2026-10-13).
-      const h = slot.labelled ? L.rowCodedLabelled : L.rowCoded;
+      const h = noteCodedRowHeight(slot);
       slot.lines.forEach((line, cell) => {
         const cx = x + cell * (cellW + cellGap);
         const middle = cx + cellW / 2;
         // A caption stays inside its own cell: two lines at most, then an ellipsis, as the note's CSS clamps it.
-        const productLines = slot.labelled ? wrap(measure, caps(line.product), 'bold', 8, cellW, 2, 0.64) : [];
+        const caption = noteCellCaption(slot, line);
+        const productLines = caption !== null ? wrap(measure, caps(caption), 'bold', 8, cellW, 2, 0.64) : [];
         // First line: the code, its colour and its brand, on one baseline; the colour (and brand) drop to a
         // line of their own when the three do not fit, as the sheet's flex line wraps.
         const brand = line.brand ? noteBrandCode(line.brand) : '';
