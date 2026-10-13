@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  buildOrderNote, cleanVehicleNumber, colourLabeller, clampNoteCopies, namedLabel, namedRowHeight, noteDocument, noteHeader, noteNumber,
+  buildOrderNote, cleanVehicleNumber, colourLabeller, clampNoteCopies, namedLabel, namedRowHeight, noteCellCaption, noteCodedRowHeight, noteDocument, noteHeader, noteNumber,
   NOTE_LAYOUT, NOTE_MAX_COPIES, paginateOrderNote,
 } from '../src/index.js';
 import type { Lead, LineItem, NoteKind, NotePage, Order, Party } from '../src/index.js';
@@ -210,21 +210,46 @@ describe.each(['filling', 'dispatch'] as NoteKind[])('paginateOrderNote (%s)', (
     expect(firstRows.some((n) => n === NOTE_LAYOUT.codesPerRow)).toBe(true);
   });
 
-  it('prints the product on each code of a product with fewer than three, and gives it no header', () => {
+  it('prints the product on each lone code and gives it no header; two codes of one product earn one', () => {
     const items = [
       line({ productName: '101', categoryName: 'Solo' }),
-      line({ productName: '102', categoryName: 'Pair' }),
+      line({ productName: '102', categoryName: 'Lone' }),
       line({ productName: '103', categoryName: 'Pair' }),
+      line({ productName: '104', categoryName: 'Pair' }),
       ...['201', '202', '203'].map((code) => line({ productName: code, categoryName: 'Trio' })),
     ];
     const slots = paginateOrderNote(buildOrderNote(orderOf(items)), kind)[0]!.right.flat();
-    expect(slots.flatMap((s) => (s.kind === 'header' ? [s.product] : []))).toEqual(['Trio']);
+    expect(slots.flatMap((s) => (s.kind === 'header' ? [s.product] : []))).toEqual(['Pair', 'Trio']);
     const rows = slots.flatMap((s) => (s.kind === 'row' ? [s] : []));
-    // Small products share a line, and each code of one is its own labelled cell with its own product.
+    // Lone codes share a line, and each is its own labelled cell with its own product.
     const small = rows.filter((r) => r.labelled);
     expect(small).toHaveLength(1);
-    expect(small[0]!.lines.map((l) => l.product.split(' ')[0]).sort()).toEqual(['Pair', 'Pair', 'Solo']);
-    expect(rows.filter((r) => !r.labelled).flatMap((r) => r.lines)).toHaveLength(3);
+    expect(small[0]!.lines.map((l) => l.product.split(' ')[0]).sort()).toEqual(['Lone', 'Solo']);
+    expect(rows.filter((r) => !r.labelled).flatMap((r) => r.lines)).toHaveLength(5);
+  });
+
+  it('puts every size of one main product under one header, each code captioned with its size', () => {
+    const items = [
+      line({ productName: '7512', categoryName: 'Table Top Wash Basin', size: null }),
+      line({ productName: '7513', categoryName: 'Table Top Wash Basin', size: null }),
+      line({ productName: '7505', categoryName: 'Table Top Wash Basin', size: '17X11' }),
+      line({ productName: '7507', categoryName: 'Table Top Wash Basin', size: '17X13' }),
+    ];
+    const slots = paginateOrderNote(buildOrderNote(orderOf(items)), kind)[0]!.right.flat();
+    expect(slots.flatMap((s) => (s.kind === 'header' ? [s.product] : []))).toEqual(['Table Top Wash Basin']);
+    const rows = slots.flatMap((s) => (s.kind === 'row' ? [s] : []));
+    expect(rows.every((r) => !r.labelled && r.sized)).toBe(true);
+    expect(rows.flatMap((r) => r.lines.map((l) => [l.subProduct, noteCellCaption(r, l)]))).toEqual([
+      ['7512', '—'], ['7513', '—'], ['7505', '17X11'], ['7507', '17X13'],
+    ]);
+    expect(rows.map(noteCodedRowHeight)).toEqual(rows.map(() => NOTE_LAYOUT.rowCodedLabelled));
+  });
+
+  it('keeps the short row for a headed product of one size', () => {
+    const items = ['301', '302'].map((code) => line({ productName: code, categoryName: 'Same' }));
+    const rows = paginateOrderNote(buildOrderNote(orderOf(items)), kind)[0]!.right.flat()
+      .flatMap((s) => (s.kind === 'row' ? [s] : []));
+    expect(rows.map((r) => [r.sized, noteCodedRowHeight(r), noteCellCaption(r, r.lines[0]!)])).toEqual([[false, NOTE_LAYOUT.rowCoded, null]]);
   });
 
   it('still prints one page for an order with no lines', () => {

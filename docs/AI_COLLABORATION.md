@@ -190,6 +190,16 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-13 - Coded half: one section per main product (Claude)
+
+- **Ask (owner, screenshot):** codes of one main product ("Table Top Wash Basin" 7512, 7513, 7505 17X11,
+  7507 17X13) printed as separate labelled cells, each repeating the product; give them one section, arranged smartly.
+- **Done:** `buildOrderNote` groups coded lines by brand + main product (not product + size), and orders sections
+  first, lone codes in one run after them. `NOTE_GROUP_HEADER_MIN` 3 → 2: two codes of one product earn a header.
+  A section whose codes come in more than one size is `sized`: each cell prints its size as its caption
+  (`noteCellCaption`, `noteCodedRowHeight` — the labelled row's height), on the sheet and the pending order PDF.
+- **Verified:** `npm run verify`; new cases in `shared/tests/order-note.test.ts`.
+
 ### 2026-10-13 - 1.5.0: merged to main, version bumped (Claude, Opus)
 
 - **Ask (owner):** merge the Updating-screen branch to main and release it as 1.5.0.

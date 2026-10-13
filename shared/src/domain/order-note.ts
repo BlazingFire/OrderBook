@@ -120,7 +120,10 @@ export const NOTE_LAYOUT = {
   columnLabel: 13,
   /** A row of codes under their group's header: code, colour, then pack, grade and quantity. */
   rowCoded: 50,
-  /** A row of codes with their product printed on each — groups too small to earn a header. */
+  /**
+   * A row of codes with a caption printed on each: their product, for groups too small to earn a header, or
+   * their size, for a headed product whose codes come in more than one size (`noteCellCaption`).
+   */
   rowCodedLabelled: 66,
   groupHeader: 26,
   /**
@@ -145,8 +148,11 @@ export const NOTE_LAYOUT = {
   minTailLines: 12,
 } as const;
 
-/** A product with this many codes (or more) gets one header, its codes listed below. */
-export const NOTE_GROUP_HEADER_MIN = 3;
+/**
+ * A main product with this many codes (or more) gets one header, its codes listed below: any two codes of one
+ * product make it a section of its own, whatever their sizes (owner, 2026-10-13). A lone code shares a line.
+ */
+export const NOTE_GROUP_HEADER_MIN = 2;
 
 export interface NoteLine {
   /** `variantId|colour|grade|packaging` — what makes two lines one row. */
@@ -190,6 +196,8 @@ export type NoteSlot =
       lines: NoteLine[];
       /** Each code prints its own product (`NoteLine.product`): the products are too small for a header. */
       labelled: boolean;
+      /** Each code prints its own size: its headed product comes in more than one size. */
+      sized: boolean;
       product: string;
     };
 
@@ -380,7 +388,9 @@ export function buildOrderNote(
   const byGroup = new Map<string, NoteGroup>();
   for (const line of lines) {
     if (!isNumericSubProduct(line.subProduct)) continue;
-    const groupKey = `${line.brand ?? ''}|${line.product}`;
+    // One section per main product, whatever the size: a product's sizes print under one header, each code
+    // captioned with its size (`noteCellCaption`).
+    const groupKey = `${line.brand ?? ''}|${line.productName}`;
     let group = byGroup.get(groupKey);
     if (!group) {
       group = { product: line.productName, lines: [] };
@@ -390,9 +400,13 @@ export function buildOrderNote(
     group.lines.push(line);
   }
 
+  // Sections first, then the lone codes in one run, so they share full lines instead of sitting between sections.
+  const sectioned = coded.filter((group) => group.lines.length >= NOTE_GROUP_HEADER_MIN);
+  const lone = coded.filter((group) => group.lines.length < NOTE_GROUP_HEADER_MIN);
+
   return {
     named,
-    coded,
+    coded: [...sectioned, ...lone],
     itemCount: lines.length,
     totalQuantity: lines.reduce((sum, line) => sum + line.quantity, 0),
     totalWeightKg:
@@ -484,7 +498,8 @@ function fillColumns(
     const current = groups[group] as NoteGroup;
     const headed = current.lines.length >= NOTE_GROUP_HEADER_MIN;
     const withHeader = needHeader && headed;
-    const cost = (withHeader ? groupHeader : 0) + (headed ? rowCoded : rowCodedLabelled);
+    const sized = headed && new Set(current.lines.map((l) => l.size ?? '')).size > 1;
+    const cost = (withHeader ? groupHeader : 0) + (headed && !sized ? rowCoded : rowCodedLabelled);
 
     if (used + cost > height) {
       if (column.length === 0) break; // height below one row: cannot happen, never loop
@@ -510,7 +525,7 @@ function fillColumns(
       g += 1;
       l = 0;
     }
-    column.push({ kind: 'row', lines, labelled: !headed, product: current.product });
+    column.push({ kind: 'row', lines, labelled: !headed, sized, product: current.product });
     used += cost;
     placed += lines.length;
     group = g;
@@ -520,6 +535,18 @@ function fillColumns(
 
   if (column.length > 0) columns.push(column);
   return { columns, next: { group, line }, placed };
+}
+
+/** What a code cell prints above its code: its product, its size, or nothing (`NoteSlot.labelled`, `sized`). */
+export function noteCellCaption(slot: Extract<NoteSlot, { kind: 'row' }>, line: NoteLine): string | null {
+  if (slot.labelled) return line.product;
+  if (slot.sized) return line.size ?? '—';
+  return null;
+}
+
+/** A line of codes' printed height: taller when its cells carry a caption. */
+export function noteCodedRowHeight(slot: Extract<NoteSlot, { kind: 'row' }>): number {
+  return slot.labelled || slot.sized ? NOTE_LAYOUT.rowCodedLabelled : NOTE_LAYOUT.rowCoded;
 }
 
 function codedCount(groups: readonly NoteGroup[]): number {

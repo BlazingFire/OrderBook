@@ -12,6 +12,7 @@ import {
   namedLabel,
   namedRowHeight,
   noteBrandCode,
+  noteCellCaption,
   noteFigure,
   noteRange,
   noteStamp,
@@ -127,11 +128,11 @@ function NamedRow({ line, tick, show }: { line: NoteLine; tick: boolean; show: N
  * The Dispatch note's code cell, as the owner's artifact draws it (2026-10-13): the code, its colour and brand
  * on the first line; a grade chip, the packing and `× qty` on the second.
  */
-function DispatchCell({ line, labelled, show }: { line: NoteLine; labelled: boolean; show: NoteColumns }) {
+function DispatchCell({ line, caption, show }: { line: NoteLine; caption: string | null; show: NoteColumns }) {
   const brand = line.brand ? brandCode(line.brand) : '';
   return (
     <div className="ob-note-cell ob-note-cell--dispatch">
-      {labelled && <div className="ob-note-cell-product">{line.product}</div>}
+      {caption !== null && <div className="ob-note-cell-product">{caption}</div>}
       <div className="ob-note-cell-line">
         <span className="ob-note-cell-name">{line.subProduct}</span>
         {/* A code with no colour shows a dash, as the design does. */}
@@ -166,13 +167,14 @@ function CodedSlot({ slot, show, kind }: { slot: NoteSlot; show: NoteColumns; ki
     );
   }
   return (
-    <div className={`ob-note-coderow${slot.labelled ? ' ob-note-coderow--labelled' : ''}`}>
-      {slot.lines.map((line) =>
-        kind === 'dispatch' ? (
-          <DispatchCell key={line.key} line={line} labelled={slot.labelled} show={show} />
+    <div className={`ob-note-coderow${slot.labelled || slot.sized ? ' ob-note-coderow--labelled' : ''}`}>
+      {slot.lines.map((line) => {
+        const caption = noteCellCaption(slot, line);
+        return kind === 'dispatch' ? (
+          <DispatchCell key={line.key} line={line} caption={caption} show={show} />
         ) : (
           <div className="ob-note-cell" key={line.key}>
-            {slot.labelled && <div className="ob-note-cell-product">{line.product}</div>}
+            {caption !== null && <div className="ob-note-cell-product">{caption}</div>}
             <div className="ob-note-cell-code">
               <span className="ob-note-clip">{line.subProduct}</span>
               <BrandChip brand={line.brand} />
@@ -184,8 +186,8 @@ function CodedSlot({ slot, show, kind }: { slot: NoteSlot; show: NoteColumns; ki
               <span className="ob-note-cell-qty">×{num(line.quantity)}</span>
             </div>
           </div>
-        ),
-      )}
+        );
+      })}
     </div>
   );
 }
