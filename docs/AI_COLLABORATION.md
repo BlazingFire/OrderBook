@@ -201,7 +201,10 @@ was verified, so the next agent can trust the state without re-auditing.
 - **Verified:** on the merged tree, lint 0 (2 warnings already on main), typecheck 0, test: 399 files passed + 1
   skipped in the full run; the 9 integration suites that errored at setup when the test cluster dropped
   (`ECONNREFUSED`, another session's run was sharing the machine) were re-run alone and passed (136 tests). Run with
-  `TEMP`/`TMP` = `.tmp	est-tmp2` and `ORDERBOOK_TEST_PG_PORT=55477`, so it could not collide with the other run.
+  `TEMP`/`TMP` = `.tmp\test-tmp2` and `ORDERBOOK_TEST_PG_PORT=55477`, so it could not collide with the other run.
+  A second, independent `npm run verify` on `ccf95d9f` from another session hit `deadlock detected` on the shared
+  test cluster (a third agent was running `vitest run integration` at the same time): the 23 files that failed
+  there (22 integration suites and `electron/tests/staged-update.test.ts`) were re-run alone and all passed.
 - **Not verified:** see HANDOFF "Deletes, edits, search on open records".
 
 ### 2026-10-13 - Dispatch note: Packing, Grade, Colour tick boxes (Claude, Opus, landed on `main` in fa2e0f52)
