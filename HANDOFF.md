@@ -54,8 +54,15 @@ on it.
 
 ## Deletes, edits, search on open records, notices; order note and PDF fixes (2026-10-13)
 
-**State:** on `main`, pushed; version bumped to **1.4.9** (2026-10-13, with the Dispatch code cell) — the push starts the
-Release workflow; check it published. 1.4.8 carries only Update only below; these sit on top of it
+**State:** on `main` and **released as v1.4.9** (2026-10-13, with the Dispatch code cell; published on GitHub
+`BlazingFire/OrderBook-Releases`, Latest, 8 assets like 1.4.8, signed with key `release-2026-10-01`; built from
+`5339073`). 1.4.8 carries only Update only below; these sit on top of it. **How it was built:** the push-to-main
+Release workflow failed (no `RELEASES_TOKEN`/`RELEASE_KEY` secrets: 403 on the releases repo), so a cloud session
+built the Setups on GitHub's Windows runners unsigned (a branch-only workflow, Office first, then the Master), signed
+every manifest off-runner with the owner's key (the Office ones before the Master build, so the Master carries signed
+Office manifests), and published from a temporary branch in the releases repo, since deleted. Leftover to delete by
+hand: the draft pre-release `build-1.4.9-win` on `BlazingFire/OrderBook`. To let CI publish next time, add the
+`RELEASES_TOKEN` and `RELEASE_KEY` secrets and the `RELEASE_KEY_ID` variable (`.github/workflows/release.yml`)
 Built on the
 short-lived branch `s1/delete-search-toasts` (deleted after the merge). Details: `docs/AI_COLLABORATION.md` change
 log, 2026-10-13 entries.

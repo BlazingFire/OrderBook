@@ -190,6 +190,25 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-13 - 1.4.9 built, signed and released (Claude, Opus)
+
+- **Ask (owner):** build 1.4.9 with all changes and publish it on GitHub releases; the owner supplied the
+  `release-2026-10-01` private key to the session.
+- **Why not the Release workflow:** run 78 (the bump push) failed in `create-release` with HTTP 403 on
+  `BlazingFire/OrderBook-Releases`: neither `RELEASES_TOKEN` nor `RELEASE_KEY` is set, and the session cannot set
+  Actions secrets.
+- **Done:** a branch-only workflow (since removed) ran `tools/release.mjs` on `windows-latest` from `5339073`'s tree:
+  `--os win --panel office` and `--os win7`, then `--os win --panel master` with the Office manifests already signed,
+  so the Master bundles signed ones (log: both Office setups bundled, hashes checked). Every manifest signed off-runner
+  with the same payload as `sign()` in `tools/release.mjs`, each verified against the public key in
+  `shared/src/domain/release-keys.ts`. Published as **v1.4.9** (Latest) on `OrderBook-Releases` via a temporary branch
+  there (chunked files, a publish workflow, branch deleted by the workflow).
+- **Verified:** the live release's 5 manifests downloaded from their public URLs: version 1.4.9, key
+  `release-2026-10-01`, signature valid, `sizeBytes` equals the asset size; the setups' SHA-256 matched before
+  upload. Master 374 MB, Office 85 MB, Office Win7 139 MB. **Not verified:** an install or a Master picking the
+  update up; the Setups are not Authenticode-signed (electron-builder: "no signing info").
+- **Left:** the draft pre-release `build-1.4.9-win` on `BlazingFire/OrderBook` (the session may not delete releases).
+
 ### 2026-10-13 - Dispatch note: the artifact's new code cell (Claude, Opus)
 
 - **Ask (owner):** pull `main`, then apply the revised Dispatch note format from the "A4 print notes" artifact
