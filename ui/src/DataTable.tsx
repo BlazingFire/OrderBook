@@ -217,7 +217,9 @@ export function DataTable<T>({
             {
               key: SELECT_KEY,
               header: t('table.selectAll'),
-              width: '2.5rem',
+              // The 1.5rem box plus the first column's padding (--s-16 left, --s-12 right);
+              // a bare 2.5rem squeezed the box and clipped its right edge.
+              width: '3.5rem',
               render: () => null,
             },
             ...columns,

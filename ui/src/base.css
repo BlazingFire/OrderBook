@@ -868,6 +868,13 @@ table.ob-table {
   text-overflow: ellipsis;
 }
 
+/* A tick box keeps its size: the rule above would let it shrink and clip. */
+.ob-table thead th > input[type='checkbox'],
+.ob-table tbody td > input[type='checkbox'] {
+  min-width: 1.5rem;
+  overflow: visible;
+}
+
 .ob-table tbody tr:hover td {
   background: var(--bg-hover);
 }
