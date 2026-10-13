@@ -963,11 +963,52 @@ describe('the product backup zip (Master only)', () => {
 
     expect(await screen.findByText(t('productZip.nothing'))).toBeTruthy();
     expect(screen.queryByLabelText(t('productZip.opt.bin', { count: 1 }))).toBeNull();
-    // No box to tick, so no "tick it below".
-    expect(screen.queryByRole('checkbox')).toBeNull();
+    // No removal to tick (only Update only, which removes nothing), so no "tick it below".
+    expect(screen.getAllByRole('checkbox')).toEqual([screen.getByLabelText(t('productZip.opt.updateOnly'))]);
     expect(screen.getByText(t('productZip.reportOnly.noTick'))).toBeTruthy();
     expect(screen.queryByText(t('productZip.reportOnly'))).toBeNull();
     expect((screen.getByRole('button', { name: t('productZip.apply') }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('offers Update only first: ticked, it previews again with it alone, offers no removal, and applies it', async () => {
+    const productZip = zipTransport();
+    renderList(viewOf({ permissions: ALL }), makeTransport({ productZip }));
+    fireEvent.click(await screen.findByRole('button', { name: t('productZip.restore') }));
+    const file = new File(['PK'], 'update.zip', { type: 'application/zip' });
+    fireEvent.change(await screen.findByTestId('product-zip-file'), { target: { files: [file] } });
+
+    const update = (await screen.findByLabelText(t('productZip.opt.updateOnly'))) as HTMLInputElement;
+    // The first choice, above the report and the removals.
+    expect(screen.getAllByRole('checkbox')[0]).toBe(update);
+    expect(update.checked).toBe(false);
+    expect(screen.getByText(t('productZip.opt.updateOnly.hint'))).toBeTruthy();
+    fireEvent.click(screen.getByLabelText(t('productZip.opt.bin', { count: 1 })));
+
+    fireEvent.click(update);
+    await waitFor(() => expect(productZip.preview).toHaveBeenLastCalledWith(file, { updateOnly: true }));
+    await waitFor(() => expect(update.checked).toBe(true));
+    // Nothing is removed under it: the removals and the exact catalogue are not offered.
+    expect(screen.queryByLabelText(t('productZip.opt.bin', { count: 1 }))).toBeNull();
+    expect(screen.queryByLabelText(t('productZip.opt.photos', { count: 1 }))).toBeNull();
+    expect(screen.queryByLabelText(t('productZip.opt.exact'))).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: t('productZip.apply') }));
+    await waitFor(() => expect(productZip.start).toHaveBeenCalledWith(file, { updateOnly: true }));
+  });
+
+  it('previews again without Update only when it is unticked', async () => {
+    const productZip = zipTransport();
+    renderList(viewOf({ permissions: ALL }), makeTransport({ productZip }));
+    fireEvent.click(await screen.findByRole('button', { name: t('productZip.restore') }));
+    const file = new File(['PK'], 'update.zip', { type: 'application/zip' });
+    fireEvent.change(await screen.findByTestId('product-zip-file'), { target: { files: [file] } });
+    const update = (await screen.findByLabelText(t('productZip.opt.updateOnly'))) as HTMLInputElement;
+    fireEvent.click(update);
+    await waitFor(() => expect(update.checked).toBe(true));
+    fireEvent.click(update);
+    await waitFor(() => expect(productZip.preview).toHaveBeenLastCalledWith(file, {}));
+    await waitFor(() => expect(update.checked).toBe(false));
+    expect(screen.getByLabelText(t('productZip.opt.exact'))).toBeTruthy();
   });
 
   it('says what the exact catalogue took out only when it took something out', async () => {

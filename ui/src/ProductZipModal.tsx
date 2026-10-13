@@ -1,8 +1,9 @@
 /**
  * Restore products from a product backup zip (Master only), or from the
  * products .csv or .xlsx an earlier version exported: choose the file, read
- * what it would do, tick the removals if wanted (or make the catalogue exactly
- * the file), Apply, watch it run, read what it did.
+ * what it would do, tick "Update only" (blank cells keep, nothing removed), or
+ * tick the removals if wanted (or make the catalogue exactly the file), Apply,
+ * watch it run, read what it did.
  *
  * The preview is the Master's own dry run of the same restore
  * (`master/src/services/product-zip.service.ts`), with the exact catalogue
@@ -520,6 +521,7 @@ export function ProductZipModal({
   }
 
   const exact = options.exactCatalogue === true;
+  const updateOnly = options.updateOnly === true;
   const toDo = report ? changes(report, options) : 0;
   const note = (text: ReactNode) => (
     <p className="ob-small" style={{ margin: 0, color: 'var(--fg-secondary)' }}>
@@ -606,9 +608,22 @@ export function ProductZipModal({
             <p className="ob-body-strong" style={{ margin: 0 }}>
               {report.fileName}
             </p>
+            {/* First, and read again either way: update only reads the file's blank cells otherwise. */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
+              <Checkbox
+                checked={updateOnly}
+                disabled={busy}
+                onChange={(checked) => {
+                  if (file) void check(file, checked ? { updateOnly: true } : {});
+                }}
+                label={t('productZip.opt.updateOnly')}
+              />
+              {note(t('productZip.opt.updateOnly.hint'))}
+            </div>
             <ReportView report={report} />
-            {report.rows.notInFile.length + report.photos.notInZip.length + exactOnly(report) >
-              0 && (
+            {!updateOnly &&
+              report.rows.notInFile.length + report.photos.notInZip.length + exactOnly(report) >
+                0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
                 {/* "Tick it below" only where a box is: each one asks products.delete but the photos'. */}
                 {note(

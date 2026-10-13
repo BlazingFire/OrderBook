@@ -182,6 +182,7 @@ export function productImportRoutes(
         binMissingProducts: String(body.binMissingProducts ?? '') === 'true',
         removeMissingPhotos: String(body.removeMissingPhotos ?? '') === 'true',
         exactCatalogue: String(body.exactCatalogue ?? '') === 'true',
+        updateOnly: String(body.updateOnly ?? '') === 'true',
       };
 
       if (String(body.dryRun ?? '') === 'true') {

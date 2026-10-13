@@ -190,6 +190,26 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-13 - Product restore "Update only"; variants in the backup zip pinned (Claude, Opus, branch `u1/update-only`)
+
+- **Ask (owner):** import and export the variants of sub products; their merged file has no variants while the
+  company added some and we updated photos: keep their variants and old data, upload only updated data; the
+  all-in-one zip export must include variants.
+- **Done:** `ProductRestoreOptions.updateOnly` (form field `updateOnly`), the first box of `ProductZipModal`. Blank
+  cells keep in every CSV of the zip (`parseImportRow`, `groupImportRows`, `readZip`/`readList`); a row of a live code
+  needs only its Code (`fillFromLive`; the header needs only the Code column); a new code is added beside a sub
+  product's codes, never recoding one by colour; no variant removed, relabelled or named "Standard"; a `dedicated` rule
+  over unnamed coloured codes left out (`productZip.problem.ruleKept`); the merged sub product validated in the
+  preview; no renumbering of sub products, main products or lists; photos only replace or join their slots
+  (`slotted`); nothing listed missing; removal opt-ins off. The export already wrote one row per live variant: pinned
+  by a test; the README says so and explains Update only. Docs: `PRODUCT_IMPORT_FORMAT.md` "Update only",
+  `STRUCTURE.md`, API contract §23, `HANDOFF.md`.
+- **Verified:** build:shared 0, lint 0 (2 old warnings), typecheck 0, test 408 files + 1 skipped / 5,452 tests + 17
+  skipped on PostgreSQL 17 (`product-backup-update.integration` 5 tests ran), build 0. The new update tests and the
+  modal tests fail with the source changes stashed (the export round trip passes before too: the export already had
+  the variants).
+- **Not verified:** a browser pass of the dialog; the owner's real files.
+
 ### 2026-10-10 - 1.4.7: every branch combined into main, released; branches deleted (Claude, Opus)
 
 - **Ask (owner):** update everything, make sure the OrderBook logo replaces Electron's on the exe build, merge all

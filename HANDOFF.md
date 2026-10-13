@@ -52,6 +52,29 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
+## Product restore "Update only" (2026-10-13)
+
+**State:** on branch `u1/update-only` (worktree `../OrderBook-u1`, cut from `main` at 1.4.7), not merged, not
+released. Rules: `docs/PRODUCT_IMPORT_FORMAT.md`, "Update only".
+
+**Owner asked:** the merged product file has no variants, while the company added variants and we updated photos;
+combine them so their variants stay, our photos and other updated data land, old data stays, and only updated data
+is uploaded; and the all-in-one zip export must include variants.
+
+**Done:** Restore from .zip has a first box, **Update only — add new and changed values, keep everything else
+(recommended)** (`ProductRestoreOptions.updateOnly`, form field `updateOnly=true`). Under it a blank cell never
+clears (every CSV of the zip); a row of a live code may leave Sub product and Main product blank; a new code is
+added to its sub product as another variant (never recoding one by colour); every variant the file does not name
+keeps its code, colour and weight; a `dedicated` rule over unnamed coloured codes is left out and said; nothing is
+removed, listed as missing, renumbered or reordered (photos: the zip's replace or join their slots, others stay);
+the three removal opt-ins are off. The export already wrote one `products.csv` row per live variant (code, colour,
+weight) and its photos; a regression test now pins it, and the zip README says so and explains Update only.
+Tests: `master/tests/product-backup-update.integration.test.ts` (the owner's scenario among them) and the modal in
+`ui/tests/master-catalogue.test.tsx`.
+
+**Decision taken (the owner can overrule):** the box is offered first and called recommended, but is not ticked
+by default, so a person restoring a whole backup gets the behaviour they had; tick it for an update file.
+
 ## 1.4.7 released: everything combined, one branch (2026-10-10)
 
 **State:** `main` carries every piece of work that existed on any branch or in a working tree, and it is pushed.

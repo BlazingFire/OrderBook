@@ -244,8 +244,10 @@ function readme(company: string, date: string, unnamed: readonly string[]): stri
     '',
     'WHAT IS IN THIS ZIP',
     '',
-    '  products.csv       One row per sub product, in catalogue order: Brand, Main product code,',
+    '  products.csv       One row per Code, in catalogue order: Brand, Main product code,',
     '                     Main product, Sub product, Size, Colour rule, Colour, Code, Weight (kg), Alias.',
+    '                     Each variant of a sub product is its own row with its own Code, Colour',
+    '                     and Weight (kg): a sub product made in three colours is three rows.',
     '  main-products.csv  Every main product, one with no sub product too: its code, brand and',
     '                     Order, its place in the catalogue (a blank Order lists after the',
     '                     numbered ones, by name).',
@@ -279,6 +281,22 @@ function readme(company: string, date: string, unnamed: readonly string[]): stri
     "  8. To change a photo's caption, change it in photos.csv.",
     '  9. On the Master, open Products > Sub products > Restore from .zip and choose the zip.',
     '     It lists every change first; nothing is saved until you press Apply.',
+    '',
+    'UPDATE ONLY',
+    '',
+    '  Tick "Update only" when restoring to change only what you filled in, and keep',
+    '  everything else the catalogue holds:',
+    '  - A blank cell keeps the stored value, in every file. Only a filled cell that differs',
+    '    changes anything.',
+    '  - A row for an existing Code may leave Sub product, Main product and Main product code',
+    '    blank: fill in only the cells to change, such as Weight (kg) or Alias.',
+    '  - A row with a new Code needs Main product (or Main product code) and Sub product. Under a',
+    '    sub product that already exists it is added as another variant (give its Colour); the',
+    '    variants it already has stay.',
+    '  - Nothing is removed: sub products, variants, colours, brands and photos the files do not',
+    '    list stay as they are, each variant with its own Code, Colour and Weight (kg).',
+    '  - Put in the images folder only the photos you add or change: each replaces the photo in',
+    '    its place (OPT-0001_2.jpg replaces photo 2), or is added; the other photos stay.',
     '',
     'WHAT REMOVING DOES',
     '',
@@ -551,7 +569,8 @@ interface ListRow {
   value: string;
   label?: string;
   hex?: string | null;
-  active: boolean;
+  /** Undefined only in an update-only file's blank cell: it stays as it is, and a new value is switched on. */
+  active?: boolean;
 }
 
 /**
@@ -560,6 +579,7 @@ interface ListRow {
  * build's) reads as it always did: a blank hex leaves the colour's own, and
  * every colour it lists is switched on. One with no `column` is said and read
  * as no file (null): misread as listing nothing, it would take every value out.
+ * `updateOnly`: a blank Label, Hex or Active is no value, so it stays as it is.
  */
 async function readList(
   reader: ZipFiles,
@@ -567,6 +587,7 @@ async function readList(
   column: string,
   valueHeaders: readonly string[],
   problems: ProductZipProblem[],
+  updateOnly = false,
 ): Promise<ListRow[] | null> {
   const { rows } = await sheetOf(reader, entry);
   const header = (rows[0] ?? []).map((text) => normalizeHeader(text ?? ''));
@@ -588,12 +609,12 @@ async function readList(
     const value = cell(row, valueAt);
     if (!value || list.some((listed) => listed.value.toLowerCase() === value.toLowerCase()))
       continue;
-    const read: ListRow = {
-      value,
-      active: activeAt === -1 || !/^(no|n|false|0)$/i.test(cell(row, activeAt)),
-    };
+    const active = cell(row, activeAt);
+    const read: ListRow = { value };
+    if (!updateOnly || active) read.active = activeAt === -1 || !/^(no|n|false|0)$/i.test(active);
     // A blank label is the value's own, as the Fields screen saves one.
-    if (labelAt !== -1) read.label = cell(row, labelAt) || value;
+    if (labelAt !== -1 && (!updateOnly || cell(row, labelAt)))
+      read.label = cell(row, labelAt) || value;
     const hex = cell(row, hexAt);
     if (hex && !HEX.test(hex))
       problems.push({
@@ -601,7 +622,7 @@ async function readList(
         messageKey: 'validation.productZip.hexInvalid',
         params: { hex },
       });
-    else if (hex || (whole && hexAt !== -1)) read.hex = hex || null;
+    else if (hex || (!updateOnly && whole && hexAt !== -1)) read.hex = hex || null;
     list.push(read);
   }
   return list;
@@ -634,7 +655,13 @@ interface ZipContents {
   captions: Map<string, string> | null;
 }
 
-async function readZip(reader: ZipFiles, problems: ProductZipProblem[]): Promise<ZipContents> {
+/** `updateOnly`: a blank cell of main-products.csv, colours.csv, brands.csv or photos.csv is no value, so it changes nothing. */
+async function readZip(
+  reader: ZipFiles,
+  problems: ProductZipProblem[],
+  updateOnly = false,
+): Promise<ZipContents> {
+  const blank = updateOnly ? undefined : null;
   const productsEntry = findEntry(reader, PRODUCTS_CSV, PRODUCT_SHEETS);
   if (!productsEntry) throw new ValidationError('validation.productZip.noProductsCsv');
   const products = await sheetOf(reader, productsEntry);
@@ -643,9 +670,11 @@ async function readZip(reader: ZipFiles, problems: ProductZipProblem[]): Promise
   const headerAt = products.rows.findIndex((row) => !isBlankRow(row));
   if (headerAt === -1) throw new ValidationError('validation.import.emptyFile');
   const match = matchHeaders((products.rows[headerAt] ?? []).map((text) => text.trim()));
-  if (match.missing.length > 0) {
+  // Update only: the Code column alone will do (`importProducts`).
+  const missing = updateOnly ? match.missing.filter((field) => field === 'code') : match.missing;
+  if (missing.length > 0) {
     throw new ValidationError('validation.import.missingColumn', {
-      column: labelOf(match.missing[0] as ImportField),
+      column: labelOf(missing[0] as ImportField),
     });
   }
   const at = (field: ImportField): number =>
@@ -697,7 +726,7 @@ async function readZip(reader: ZipFiles, problems: ProductZipProblem[]): Promise
       // No Order column leaves every place as it is; an empty cell is no Order. Past what
       // the column holds (an INTEGER) is refused here, not by the write after the preview.
       const text = cell(row, orderAt);
-      let order = orderAt === -1 ? undefined : text === '' ? null : Number(text);
+      let order = orderAt === -1 ? undefined : text === '' ? blank : Number(text);
       if (
         typeof order === 'number' &&
         !(Number.isInteger(order) && order >= 0 && order <= 2_147_483_647)
@@ -709,7 +738,7 @@ async function readZip(reader: ZipFiles, problems: ProductZipProblem[]): Promise
         code,
         name,
         // No Brand column leaves every brand as it is; an empty cell clears that one.
-        brand: brandAt === -1 ? undefined : cell(row, brandAt) || null,
+        brand: brandAt === -1 ? undefined : cell(row, brandAt) || blank,
         order,
       });
     }
@@ -727,11 +756,15 @@ async function readZip(reader: ZipFiles, problems: ProductZipProblem[]): Promise
       if (!main.code || checked.has(main.code.toLowerCase())) continue;
       checked.add(main.code.toLowerCase());
       const own = cells.filter((row) => row.code === main.code?.toLowerCase());
-      const name = own.find((row) => row.name !== main.name);
+      // Update only: a blank cell, here or there, says nothing to disagree with.
+      const given = (text: string): boolean => !updateOnly || text !== '';
+      const name = own.find((row) => row.name !== main.name && given(row.name) && given(main.name));
       if (name && at('categoryName') !== -1)
         differs(main.code, 'categoryName', name.name, main.name);
       const listed = main.brand === undefined ? undefined : (main.brand ?? '').toLowerCase();
-      const brand = own.find((row) => listed !== undefined && row.brand.toLowerCase() !== listed);
+      const brand = own.find(
+        (row) => listed !== undefined && row.brand.toLowerCase() !== listed && given(row.brand),
+      );
       if (brand && at('categoryBrand') !== -1)
         differs(main.code, 'categoryBrand', brand.brand, main.brand ?? '');
     }
@@ -743,11 +776,11 @@ async function readZip(reader: ZipFiles, problems: ProductZipProblem[]): Promise
 
   const colourEntry = findEntry(reader, COLOURS_CSV);
   const colours = colourEntry
-    ? await readList(reader, colourEntry, 'Colour', ['colour', 'color'], problems)
+    ? await readList(reader, colourEntry, 'Colour', ['colour', 'color'], problems, updateOnly)
     : null;
   const brandsEntry = findEntry(reader, BRANDS_CSV);
   const brands = brandsEntry
-    ? await readList(reader, brandsEntry, 'Brand', ['brand'], problems)
+    ? await readList(reader, brandsEntry, 'Brand', ['brand'], problems, updateOnly)
     : null;
 
   let captions: ZipContents['captions'] = null;
@@ -761,7 +794,8 @@ async function readZip(reader: ZipFiles, problems: ProductZipProblem[]): Promise
     for (const row of rows.slice(1)) {
       // By name without its ending, as the planner reads a file: OPT-0001.jpg put in for OPT-0001.webp keeps its caption.
       const key = photoFileKey(fromFileSafe(cell(row, fileAt)))?.full;
-      if (key && !captions.has(key)) captions.set(key, cell(row, captionAt));
+      const caption = cell(row, captionAt);
+      if (key && !captions.has(key) && (caption || !updateOnly)) captions.set(key, caption);
     }
   }
 
@@ -904,6 +938,9 @@ async function binnedCategories(
  *
  * `clearing`: the live main products the exact run moves to the Recycle Bin
  * before it writes (`clearedFirst`). The names and codes they hold are free.
+ *
+ * `updateOnly`: a row of a live code may leave its name blank, which keeps the
+ * name; a blank Brand or Order was read as none given (`readZip`).
  */
 async function planMainProducts(
   rows: readonly MainRow[],
@@ -911,9 +948,16 @@ async function planMainProducts(
   actor: ActorContext,
   problems: ProductZipProblem[],
   clearing: ReadonlySet<string>,
+  updateOnly = false,
 ): Promise<MainPlan> {
   const { tenantId } = actor;
   const live = await productRepo.listCategories(tenantId);
+  if (updateOnly)
+    rows = rows.map((row) =>
+      row.name || !row.code
+        ? row
+        : { ...row, name: live.find((category) => lower(category.code) === lower(row.code))?.name ?? '' },
+    );
   const brandByLower = new Map<string, string>();
   for (const category of live)
     if (category.brand) brandByLower.set(category.brand.toLowerCase(), category.brand);
@@ -1238,11 +1282,13 @@ interface ListPlan {
  * file's label, hex and Active. When the values it lists stand in another
  * order than the list's, the list is numbered in the file's, the ones it does
  * not list after them. A value the file leaves out stays as it is.
+ * `updateOnly` never reorders: a value it adds goes after the last.
  */
 async function planList(
   tenantId: string,
   listKey: string,
   rows: readonly ListRow[],
+  updateOnly = false,
 ): Promise<ListPlan> {
   const existing = await customFieldRepo.listOptionsForKey(tenantId, listKey, {
     includeDeleted: true,
@@ -1281,14 +1327,18 @@ async function planList(
       // A hex is the same colour in either case: the shipped list writes #FEFEFE, the Fields screen #fefefe.
       if (row.hex !== undefined && lower(row.hex) !== lower(hit.hex))
         change('Hex', hit.hex ?? '', row.hex ?? '');
-      if (row.active !== hit.isActive) change('Active', yesNo(hit.isActive), yesNo(row.active));
+      if (row.active !== undefined && row.active !== hit.isActive)
+        change('Active', yesNo(hit.isActive), yesNo(row.active));
       if (!hit.deletedAt) plan.report.changed.push(...fields);
     }
     if (!hit || hit.deletedAt || fields.length > 0) plan.writes.push({ row, hit });
   }
   const ids = new Set(listed.map((entry) => entry.id));
   plan.gone = live.filter((option) => !ids.has(option.id));
-  if (listed.some((entry, index) => index > 0 && entry.at <= (listed[index - 1]?.at ?? 0))) {
+  if (
+    !updateOnly &&
+    listed.some((entry, index) => index > 0 && entry.at <= (listed[index - 1]?.at ?? 0))
+  ) {
     plan.order = [...listed, ...plan.gone];
     plan.report.reordered = true;
   }
@@ -1315,7 +1365,7 @@ async function writeList(tenantId: string, plan: ListPlan, trx: TransactionConte
       );
       added.set(row.value, id);
       // Inserted switched on.
-      if (row.active) continue;
+      if (row.active !== false) continue;
     } else if (hit?.deletedAt) {
       await customFieldRepo.restoreOption(tenantId, id, trx);
     }
@@ -1359,6 +1409,8 @@ interface PhotoPlan {
   recaption: Array<{ imageId: string; caption: string | null; name: string }>;
   /** Photos of the file's sub products that no file names. */
   notInZip: Array<{ imageId: string; name: string }>;
+  /** Update only: the run moves only the photos it puts in, each to its slot (`slotted`). */
+  updateOnly: boolean;
 }
 
 /**
@@ -1371,6 +1423,14 @@ function zipOrder(gallery: readonly string[], slots: ReadonlyMap<string, number>
   const sorted = [...gallery].sort((a, b) => place(a) - place(b));
   const first = sorted[0] !== undefined && slots.get(sorted[0]) === 1 ? sorted[0] : gallery[0];
   return first === undefined ? [] : [first, ...sorted.filter((id) => id !== first)];
+}
+
+/** Update only: the gallery as it stands, each photo the run put in moved to its slot. */
+function slotted(gallery: readonly string[], slots: ReadonlyMap<string, number>): string[] {
+  const order = gallery.filter((id) => !slots.has(id));
+  const placed = [...slots].filter(([id]) => gallery.includes(id)).sort((a, b) => a[1] - b[1]);
+  for (const [id, slot] of placed) order.splice(Math.min(slot - 1, order.length), 0, id);
+  return order;
 }
 
 const sameOrder = (a: readonly string[], b: readonly string[]): boolean =>
@@ -1391,6 +1451,9 @@ const sameOrder = (a: readonly string[], b: readonly string[]): boolean =>
  * load asks for it: it only ever fills an empty catalogue, so a photo there is
  * one an interrupted load already put in (its source hash matches anyway), or
  * one the shipped catalogue photos or a person put in while it was stopped.
+ *
+ * `updateOnly`: no photo is missing from the zip and no gallery is put in the
+ * zip's order; a replaced photo keeps its caption unless `photos.csv` gives one.
  */
 async function planPhotos(
   zip: ZipContents,
@@ -1398,6 +1461,7 @@ async function planPhotos(
   sourceOf: ReadonlyMap<string, string>,
   tenantId: string,
   keepPhotos = false,
+  updateOnly = false,
 ): Promise<PhotoPlan> {
   const byId = new Map(products.map((product) => [product.id, product]));
   const report: ProductZipReport['photos'] = {
@@ -1469,7 +1533,8 @@ async function planPhotos(
       }
       claimed.add(row.slotImageId);
       report.replaced.push(row.fileName);
-      toRun.push(upload);
+      const was = product.images.find((image) => image.id === row.slotImageId);
+      toRun.push(updateOnly && caption === undefined && was ? { ...upload, caption: was.caption } : upload);
     } else {
       report.added.push(row.fileName);
       toRun.push({ ...upload, status: 'new', slotImageId: undefined });
@@ -1480,7 +1545,7 @@ async function planPhotos(
   // The photos a replacement removes are gone by then; an upload is listed already.
   const leaving = new Set(toRun.map((row) => row.slotImageId));
   const reordered = new Map<string, string>();
-  for (const productId of kept) {
+  for (const productId of updateOnly ? [] : kept) {
     const product = byId.get(productId) as Product;
     const gallery = galleryOrder(product).filter((id) => !leaving.has(id));
     if (!sameOrder(zipOrder(gallery, keptSlots), gallery))
@@ -1497,7 +1562,7 @@ async function planPhotos(
   // alone) says nothing about photos, as one without colours.csv says nothing about colours:
   // none is missing from it, so neither opt-in can take a photo out.
   if (zip.photos.length === 0) report.noFile = true;
-  for (const product of zip.photos.length === 0 ? [] : products) {
+  for (const product of zip.photos.length === 0 || updateOnly ? [] : products) {
     if (!product.variants.some((variant) => zip.fileCodes.has(variant.code.toLowerCase())))
       continue;
     const gallery = galleryImages(product);
@@ -1516,7 +1581,7 @@ async function planPhotos(
     }
   }
   report.notInZip = notInZip.map((photo) => photo.name);
-  return { report, toRun, keptSlots, kept, reordered, recaption, notInZip };
+  return { report, toRun, keptSlots, kept, reordered, recaption, notInZip, updateOnly };
 }
 
 /**
@@ -1534,7 +1599,7 @@ async function runPhotos(
   problems: ProductZipProblem[],
   progress: (done: number, total: number) => void,
 ): Promise<{ added: string[]; replaced: string[]; recaptioned: string[]; reordered: string[] }> {
-  const slots = new Map(plan.keptSlots);
+  const slots = new Map<string, number>(plan.updateOnly ? [] : plan.keptSlots);
   const refusals = new Map<ZipPhoto, ProductZipProblem>();
 
   const outcomes = await runPhotoImport(plan.toRun, 'replace', {
@@ -1617,7 +1682,7 @@ async function runPhotos(
     const product = await productRepo.findProductById(actor.tenantId, productId);
     if (!product) continue;
     const gallery = galleryOrder(product);
-    const wanted = zipOrder(gallery, slots);
+    const wanted = plan.updateOnly ? slotted(gallery, slots) : zipOrder(gallery, slots);
     if (sameOrder(wanted, gallery)) continue;
     try {
       if (wanted[0] !== gallery[0])
@@ -1640,7 +1705,7 @@ function requireRestorePermissions(actor: ActorContext, options: ProductRestoreO
   requirePermission(actor, 'products.bulk');
   requirePermission(actor, 'products.create');
   requirePermission(actor, 'products.edit');
-  if (options.binMissingProducts || options.exactCatalogue)
+  if (!options.updateOnly && (options.binMissingProducts || options.exactCatalogue))
     requirePermission(actor, 'products.delete');
 }
 
@@ -1725,14 +1790,16 @@ async function runZip(
   requireRestorePermissions(actor, options);
   const { tenantId } = actor;
   const { dryRun } = options;
+  // Update only removes nothing, and lists nothing as missing: the removals are off under it.
+  const updateOnly = options.updateOnly === true;
   // The catalogue made exactly the file: both removals, and every other thing the file does not list.
-  const exact = options.exactCatalogue === true;
+  const exact = !updateOnly && options.exactCatalogue === true;
   const problems: ProductZipProblem[] = [];
 
   const reader = await openUpload(filePath);
   try {
     progress({ phase: 'checking' });
-    const zip = await readZip(reader, problems).catch((error: unknown) => {
+    const zip = await readZip(reader, problems, updateOnly).catch((error: unknown) => {
       throw zipRefusal(error);
     });
 
@@ -1750,9 +1817,16 @@ async function runZip(
         : [],
     );
     const clearing = exact ? clearedFirst(mainsBefore, liveBefore, zip, quoted) : new Set<string>();
-    const brands = zip.brands && (await planList(tenantId, 'product.brand', zip.brands));
-    const planned = await planMainProducts(zip.mainProducts, brands, actor, problems, clearing);
-    const colours = zip.colours && (await planList(tenantId, 'stock.colour', zip.colours));
+    const brands = zip.brands && (await planList(tenantId, 'product.brand', zip.brands, updateOnly));
+    const planned = await planMainProducts(
+      zip.mainProducts,
+      brands,
+      actor,
+      problems,
+      clearing,
+      updateOnly,
+    );
+    const colours = zip.colours && (await planList(tenantId, 'stock.colour', zip.colours, updateOnly));
     const brandsBefore = brands
       ? []
       : await customFieldRepo.listOptionsForKey(tenantId, 'product.brand');
@@ -1765,7 +1839,9 @@ async function runZip(
     // A colour goes to the Recycle Bin for a person who may delete one; for anyone else it is
     // switched off, as the restore may already do to a colour the file lists.
     const binColours = actorCan(actor, 'fields.manage');
-    const coloursGone = (colours?.gone ?? []).filter((option) => binColours || option.isActive);
+    const coloursGone = updateOnly
+      ? []
+      : (colours?.gone ?? []).filter((option) => binColours || option.isActive);
     // Changing the colour or brand list is the lists' own permission, asked before anything is
     // written: under `exactCatalogue` for every value it may take out too, which a preview
     // tells a person without it.
@@ -1774,7 +1850,8 @@ async function runZip(
       (brands ? brands.gone.length : unusedBrands(brandsBefore, filedBrands).length);
     if (listChanges(colours) + listChanges(brands) + (exact ? mayTakeOut : 0) > 0)
       requirePermission(actor, 'catalog.lists.manage');
-    const exactNeedsLists = mayTakeOut > 0 && !actorCan(actor, 'catalog.lists.manage');
+    const exactNeedsLists =
+      !updateOnly && mayTakeOut > 0 && !actorCan(actor, 'catalog.lists.manage');
 
     // A dry run reads the main products the run creates, recodes or brings back from the Bin as it
     // leaves them, and (`leaving`) the sub products the exact run bins first as gone.
@@ -1795,6 +1872,7 @@ async function runZip(
                 }
               : {}),
             exactVariants: exact,
+            updateOnly,
             ...(leaving ? { leaving: leaving.map((product) => product.id) } : {}),
           },
         },
@@ -1872,11 +1950,17 @@ async function runZip(
       dryRun && exact ? missingFirst.filter((product) => !quoted.has(product.id)) : undefined,
     );
     const added = rows?.added ?? [];
+    for (const kept of rows?.ruleKept ?? [])
+      problems.push({
+        subject: kept.code,
+        messageKey: 'productZip.problem.ruleKept',
+        params: { name: kept.name },
+      });
     // Every sub product a row read, by its codes or (another install's codes) by its name: none is missing.
     const matched = new Set(rows?.matchedIds ?? []);
 
     const live = (await productRepo.listProducts(tenantId, { limit: 100_000, offset: 0 })).items;
-    const missing = exact ? missingFirst : missingOf(live, rows?.matchedIds);
+    const missing = exact ? missingFirst : updateOnly ? [] : missingOf(live, rows?.matchedIds);
 
     // What `exactCatalogue` takes out besides, the same for the preview and the run. A main product
     // neither file names goes once its sub products have: kept only by one the file names but whose
@@ -1895,8 +1979,12 @@ async function runZip(
           (!row.brand || lower(row.brand) === lower(main.brand)),
       );
     const unlisted = mainsBefore.filter((main) => !planned.listed.has(main.id));
-    const mainGone = unlisted.filter((main) => !holding.has(main.id) && !namedByName(main));
-    const brandsGone = brands
+    const mainGone = updateOnly
+      ? []
+      : unlisted.filter((main) => !holding.has(main.id) && !namedByName(main));
+    const brandsGone = updateOnly
+      ? []
+      : brands
       ? brands.gone
       : unusedBrands(brandsBefore, [
           ...filedBrands,
@@ -1939,6 +2027,7 @@ async function runZip(
       await imageRepo.sourceChecksumsForTenant(tenantId),
       tenantId,
       options.keepPhotos,
+      updateOnly,
     );
     const photos = photoPlan.report;
 
@@ -1975,7 +2064,7 @@ async function runZip(
           code: product.variants.find((variant) => variant.isActive)?.code ?? '',
           name: product.name,
         })),
-        ...ifAny('variantsNotInFile', rows?.variantsNotInFile ?? []),
+        ...ifAny('variantsNotInFile', updateOnly ? [] : (rows?.variantsNotInFile ?? [])),
         ...ifAny('restoredFromBin', rows?.restoredFromBin ?? []),
         ...ifAny('reordered', rows?.reordered ?? []),
       },
@@ -2013,7 +2102,7 @@ async function runZip(
 
     progress({ phase: 'removing', done: 0, total: 0 });
     // The exact run's went first.
-    if (options.binMissingProducts && !exact) binned = await binProducts(missing);
+    if (options.binMissingProducts && !exact && !updateOnly) binned = await binProducts(missing);
     // After the sub products: a main product with one left is refused, and said. One whose bin
     // before the rows was refused is tried again, now the rows may have emptied it.
     if (exact) {
@@ -2042,7 +2131,7 @@ async function runZip(
       report.exactRemoved = removed;
     }
     const photosRemoved =
-      options.removeMissingPhotos || exact
+      (options.removeMissingPhotos && !updateOnly) || exact
         ? await binEach(
             photoPlan.notInZip,
             (photo) => deleteImage(photo.imageId, actor),

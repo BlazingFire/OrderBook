@@ -2363,6 +2363,9 @@ export const EN_MESSAGES = {
   'productZip.opt.bin': 'Move sub products missing from the file to the Recycle Bin ({count})',
   'productZip.opt.photos': 'Remove photos missing from the zip ({count})',
   'productZip.opt.photos.hint': 'A removed photo cannot be brought back.',
+  'productZip.opt.updateOnly': 'Update only — add new and changed values, keep everything else (recommended)',
+  'productZip.opt.updateOnly.hint':
+    'A blank cell keeps what the catalogue holds. New sub products, codes and photos are added and filled-in cells applied; nothing is removed, and every code keeps its colour and weight unless its own row changes them.',
   'productZip.opt.exact': 'Make the catalogue exactly this file',
   'productZip.opt.exact.hint':
     'Leaves nothing the file does not list. Sub products, main products, colours and brands it does not list go to the Recycle Bin. Photos missing from the zip, and the colours (codes) of a sub product that its rows leave out, are removed for good.',
@@ -2389,6 +2392,8 @@ export const EN_MESSAGES = {
   'productZip.failed': 'The product restore could not be completed',
   'productZip.another': 'Restore another zip',
   'productZip.problem.photo': 'The photo could not be added: {reason}',
+  'productZip.problem.ruleKept':
+    'The Colour rule of {name} was left as it is: codes this file does not list have colours, and they keep them',
   'partyImport.open': 'Import',
   'partyImport.export': 'Export',
   'partyImport.title': 'Import parties',

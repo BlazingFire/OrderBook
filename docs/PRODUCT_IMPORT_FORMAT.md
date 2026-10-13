@@ -84,7 +84,9 @@ nothing of the shipped catalogue beside it.
 
 ### What is in it
 
-`OrderBook-Products-<company>-<YYYY-MM-DD>.zip`:
+`OrderBook-Products-<company>-<YYYY-MM-DD>.zip`. Every live variant of every sub product is its
+own `products.csv` row, with its Code, Colour and Weight (kg), the sub product's cells repeated on
+each (checked by `product-backup-update.integration.test.ts`, 2026-10-13):
 
 | Entry | What it is |
 |---|---|
@@ -339,6 +341,46 @@ other two change nothing the preview lists. "Nothing is removed unless you tick 
 below" is shown only where a box is; with none (no `products.delete` and no missing
 photos) the dialog says that nothing is removed, offering no tick.
 
+### Update only (2026-10-13)
+
+**Update only — add new and changed values, keep everything else** (`ProductRestoreOptions.updateOnly`,
+the first box of the dialog, unticked until chosen; ticking or unticking it previews again) reads a
+file of only the cells to change, such as a combined file made from an older export, over a
+catalogue that has moved on since. It needs no more than a restore does, and turns the three
+opt-ins off: under it nothing is removed and nothing is listed as missing.
+
+- **A blank cell keeps the stored value, in every file.** `products.csv`: Sub product, Main product,
+  Main product code, Brand, Size, Colour rule, Colour, Weight (kg), Alias. `main-products.csv`: Brand,
+  Main product, Order. `colours.csv` and `brands.csv`: Label, Hex, Active. `photos.csv`: Caption. Only a
+  filled cell that differs from the stored value is applied, and listed as a change in the preview. A
+  filled cell is still the value exactly (a filled Sub product renames, a filled Main product moves).
+- **Rows of live codes need only their Code.** A row may leave Sub product, Main product and Main
+  product code blank when its Code is a live variant: it changes that variant's sub product with its
+  filled cells only. The blanks are taken from another row of the same sub product that fills them,
+  else from the live one. A row with a Code no live variant has needs Sub product and Main product (or
+  Main product code), refused otherwise (`validation.product.nameRequired`,
+  `validation.product.categoryRequired`); matching is the restore's (below): a main product by code,
+  then brand and name; a sub product by name inside it, to which the new Code is **added** as another
+  variant, never recoding one of its codes by colour.
+- **Variants stay.** Every live code the file does not name keeps its code, colour and weight; a row's
+  Colour, when filled, is that row's own code's colour. A `dedicated` Colour rule applies only when the
+  file names every live code of the sub product; while codes it does not name have colours it is left
+  out whole (`productZip.problem.ruleKept`), and no code is ever relabelled "Standard". What a sub
+  product would be after the run is checked in the preview: a new code repeating a colour the sub
+  product has (`validation.product.variantLabelDuplicate`), or a coloured code added to a sub product of
+  one plain code (`validation.product.variantLabelRequired`), is refused there, not by the write.
+- **Photos.** A photo in `images/` is matched by content as always; one that matches nothing replaces
+  the photo in its slot (keeping that photo's caption unless `photos.csv` fills one) or is added. Photos
+  the zip does not hold stay, and a gallery is not reordered beyond moving the photos the run put in to
+  their slots. Put in only the photos to add or change: an old photo in the zip that the company has
+  since replaced would replace theirs, since a slot is all it can be matched by.
+- **Nothing is removed or renumbered.** No sub product, main product, colour, brand, variant or photo is
+  binned or deleted. A blank Order keeps the stored one; a new main product without one goes after the
+  last. Sub products keep their order: a new or moved one goes after the last of its main product. The
+  colour and brand lists keep their order: a value added goes after the last.
+
+An unedited backup restored update only changes nothing, and so does the same update zip twice.
+
 ### How the exact run clears the way
 
 Under **Make the catalogue exactly this file** a name or a code the file gives one thing
@@ -501,3 +543,12 @@ sheet too.
   kept only for the product restore; `product-zip` the exact preview's `products.delete`
   check on the route; the modal tests a preview again on the exact box, its two notes,
   and the done line only when something went.
+- 2026-10-13, update only: `master/tests/product-backup-update.integration.test.ts` (the
+  owner's scenario — the company's added variants, changed weights, rename, replaced photo
+  and added sub product stay while an update zip from an older export lands its filled
+  cells, new rows, new main product and photos, nothing removed, preview equal to the run,
+  a second run writing nothing; every variant its own exported row, and an export restored
+  update only changing nothing; blank cells never clearing and the `dedicated` rule kept;
+  the preview refusing a repeated colour and a new row with no sub product). The modal
+  tests: the box first, a preview again on ticking and unticking, no removal offered, Apply
+  with it.

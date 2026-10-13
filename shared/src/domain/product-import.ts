@@ -146,6 +146,15 @@ export interface ProductRestoreOptions {
    * deactivated where history quotes one.
    */
   exactCatalogue?: boolean;
+  /**
+   * Update only: add what is new and apply each non-blank cell that differs,
+   * keep everything else. A blank cell never clears; a row of a live code may
+   * leave Sub product and Main product blank; a new code is added beside a sub
+   * product's codes; nothing is removed, relabelled or renumbered; a photo in
+   * the zip is added or replaces its slot's, the others stay where they are.
+   * The three above are off under it, whatever they say.
+   */
+  updateOnly?: boolean;
 }
 
 /**

@@ -235,13 +235,18 @@ function parseNumber(text: string): number {
  * than a sheet a person typed: a cell is the stored value exactly — its ends
  * trimmed, its inner spacing kept, since the screens keep it — and a blank
  * Alias or Size is that value cleared (null), not left out.
+ *
+ * `updateOnly` (with `restore`) reads a file of only the cells to change: a
+ * blank cell is left out, never a clear, and a row may leave Sub product and
+ * Main product blank, which the import fills from the live sub product its
+ * code is on (`importProducts`), or refuses there for a code none has.
  */
 export function parseImportRow(
   cells: readonly string[],
   match: HeaderMatch,
   headerRow: readonly string[],
   row: number,
-  options: { restore?: boolean } = {},
+  options: { restore?: boolean; updateOnly?: boolean } = {},
 ): { input: ImportRow | null; issues: ProductImportIssue[] } {
   const issues: ProductImportIssue[] = [];
   const product: Record<string, unknown> = {};
@@ -261,7 +266,8 @@ export function parseImportRow(
     if (!column) return;
     const raw = (cells[index] ?? '').trim();
     if (raw === '') {
-      if (options.restore && (column.field === 'alias' || column.field === 'size')) product[column.field] = null;
+      if (options.restore && !options.updateOnly && (column.field === 'alias' || column.field === 'size'))
+        product[column.field] = null;
       return;
     }
 
@@ -307,10 +313,10 @@ export function parseImportRow(
   const indexOf = (field: ImportField): number => match.byIndex.findIndex((column) => column?.field === field);
 
   const named = (value: unknown): boolean => typeof value === 'string' && value !== '';
-  if (!named(product.categoryName) && !named(product.categoryCode)) {
+  if (!options.updateOnly && !named(product.categoryName) && !named(product.categoryCode)) {
     issue(COLUMN_BY_FIELD.get('categoryName'), indexOf('categoryName'), 'validation.product.categoryRequired');
   }
-  if (typeof product.name !== 'string' || product.name === '') {
+  if (!options.updateOnly && (typeof product.name !== 'string' || product.name === '')) {
     issue(COLUMN_BY_FIELD.get('name'), indexOf('name'), 'validation.product.nameRequired');
   }
   if (typeof variant.code !== 'string' || variant.code === '') {
@@ -374,11 +380,15 @@ export function parseImportRow(
  * Colour column naming a live code), is a duplicate only by its code — when
  * every row of its sub product is one. A new code beside them would otherwise
  * hold the blank colour alone and recode the live code it matches.
+ *
+ * `blankIsNoColour`: an update-only file's blank Colour keeps the code's own,
+ * so two such rows of one sub product are duplicates only by their codes.
  */
 export function findDuplicatesInFile(
   rows: readonly ParsedRow[],
   headerFor: (field: ImportField) => string,
   byCode: (entry: ParsedRow) => boolean = () => false,
+  blankIsNoColour = false,
 ): ProductImportIssue[] {
   const issues: ProductImportIssue[] = [];
   const firstCode = new Map<string, number>();
@@ -404,6 +414,7 @@ export function findDuplicatesInFile(
       else duplicate(row, 'code', first);
     }
     if (byCode(entry) && !mixed.has(groupKey(input))) continue;
+    if (blankIsNoColour && !(input.variant.label ?? '').trim()) continue;
 
     const variantKey = `${groupKey(input)}${(input.variant.label ?? '').trim().toLowerCase()}`;
     const first = firstVariant.get(variantKey);
@@ -481,12 +492,20 @@ export interface ImportGroup {
  * product the file cannot tell apart from it (twins of one name, or a
  * hand-combined file), so it is reported (`validation.import.subProductCellsDiffer`)
  * rather than folded into the first and its cells lost.
+ *
+ * `updateOnly` reads a file of only the cells to change: a blank cell is no
+ * value, so rows disagree only where both give one, the group takes each cell
+ * from the first row that gives it, and a blank Colour is no colour (null),
+ * never a mixed group: a row keeps its code's colour (`mergedUpdate`). A new
+ * sub product whose rows mix colours is refused by the import's check of what
+ * it would write.
  */
 export function groupImportRows(
   rows: readonly ParsedRow[],
   headerFor: (field: ImportField) => string,
-  options: { restore?: boolean } = {},
+  options: { restore?: boolean; updateOnly?: boolean } = {},
 ): { groups: ImportGroup[]; issues: ProductImportIssue[] } {
+  const updateOnly = options.updateOnly === true;
   const byKey = new Map<string, ParsedRow[]>();
   for (const entry of rows) {
     const key = groupKey(entry.input);
@@ -501,7 +520,9 @@ export function groupImportRows(
   for (const [key, all] of byKey) {
     const head = all[0] as ParsedRow;
     const members = all.filter((entry) => {
-      const differs = options.restore ? differingField(head.input.product, entry.input.product) : undefined;
+      const differs = options.restore
+        ? differingField(head.input.product, entry.input.product, updateOnly)
+        : undefined;
       if (differs === undefined) return true;
       // The Colour rule cell is where the template's multicolour flag lives.
       const column = headerFor(differs === 'multiColour' ? 'colourRule' : differs);
@@ -516,7 +537,7 @@ export function groupImportRows(
     });
 
     const labelled = members.filter((entry) => (entry.input.variant.label ?? '').trim() !== '');
-    if (labelled.length > 0 && labelled.length < members.length) {
+    if (!updateOnly && labelled.length > 0 && labelled.length < members.length) {
       for (const entry of members) {
         issues.push({
           row: entry.row,
@@ -535,11 +556,13 @@ export function groupImportRows(
       key,
       rows: members,
       input: {
-        ...first.input.product,
+        ...(updateOnly
+          ? Object.assign({}, ...[...members].reverse().map((entry) => entry.input.product))
+          : first.input.product),
         hasVariants,
         variants: members.map((entry, index) => ({
           code: entry.input.variant.code.trim(),
-          label: hasVariants ? (entry.input.variant.label ?? '').trim() : null,
+          label: hasVariants ? (entry.input.variant.label ?? '').trim() || (updateOnly ? null : '') : null,
           weightKg: entry.input.variant.weightKg ?? null,
           sequence: index + 1,
         })),
@@ -550,10 +573,12 @@ export function groupImportRows(
   return { groups, issues };
 }
 
-/** The first sub product cell two rows give differently, if any. */
-function differingField(a: ProductInput, b: ProductInput): ProductField | undefined {
+/** The first sub product cell two rows give differently, if any; with `given`, only cells both rows give. */
+function differingField(a: ProductInput, b: ProductInput, given = false): ProductField | undefined {
   const fields = new Set([...Object.keys(a), ...Object.keys(b)]) as Set<ProductField>;
-  return [...fields].find((field) => a[field] !== b[field]);
+  return [...fields].find(
+    (field) => a[field] !== b[field] && (!given || (a[field] !== undefined && b[field] !== undefined)),
+  );
 }
 
 /**

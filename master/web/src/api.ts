@@ -532,6 +532,7 @@ function productRestoreForm(file: File, options: ProductRestoreOptions): FormDat
   if (options.binMissingProducts) form.append('binMissingProducts', 'true');
   if (options.removeMissingPhotos) form.append('removeMissingPhotos', 'true');
   if (options.exactCatalogue) form.append('exactCatalogue', 'true');
+  if (options.updateOnly) form.append('updateOnly', 'true');
   return form;
 }
 
