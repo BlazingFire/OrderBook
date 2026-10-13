@@ -54,7 +54,9 @@ on it.
 
 ## 1.5: Updating screen and "Update finished" card (2026-10-13)
 
-**State:** on branch `claude/exciting-fermi-bo240n`, not merged, not released; version still 1.4.9. From Install now
+**State:** merged to `main` (fast-forward) and version bumped to **1.5.0** (2026-10-13); the bump's push triggers the
+Release workflow, which needs the `RELEASES_TOKEN`/`RELEASE_KEY` secrets (missing for 1.4.9) — see the change log for
+how that run ended. From Install now
 both panels show a full Updating screen (steps, whole-update bar, elapsed, time left, hand-over), the shell records
 each update and times it, and the next start shows an "Update finished" card with the times. Rules and traps:
 `docs/UPDATES.md` "1.5". **Trap:** the first update *to* 1.5 is run by the 1.4.x page and shell, so it shows only the

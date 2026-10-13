@@ -190,6 +190,15 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-13 - 1.5.0: merged to main, version bumped (Claude, Opus)
+
+- **Ask (owner):** merge the Updating-screen branch to main and release it as 1.5.0.
+- **Done:** `claude/exciting-fermi-bo240n` fast-forwarded into `main`; every workspace `package.json` set to 1.5.0
+  (`package-lock.json` left as it is, as at earlier bumps); pushed, which starts the Release workflow.
+- **Gate (on the merged tree):** `npm run verify` exit 0: lint 0 errors (2 old warnings), typecheck 0, tests 300 files
+  passed + 112 skipped, 4,055 tests passed + 1,450 skipped. The skips are the PostgreSQL integration suites: no
+  database in this cloud session. The change touches no server code.
+
 ### 2026-10-13 - 1.5: the Updating screen and the "Update finished" card (Claude, Opus, branch `claude/exciting-fermi-bo240n`)
 
 - **Ask (owner):** in 1.5, dedicated loading screens and UI for an app update: once Update is pressed, how long it
