@@ -35,7 +35,7 @@ import type {
   UpdateAvailability,
   UpdateStatusResponse,
 } from '@orderbook/shared';
-import { standing } from '@orderbook/shared';
+import { MASTER_UPDATE_STEPS, standing } from '@orderbook/shared';
 
 import { api, desktopBridge } from '../api';
 import {
@@ -49,13 +49,16 @@ import {
   StatusPill,
   Switch,
   UpdateProgress,
+  UpdateRunScreen,
   apiErrorText,
   formatDateTime,
   rem,
   t,
+  useInstallSeconds,
   useSaveAllBeforeUpdate,
   useToast,
   useUnsavedWork,
+  useUpdateRun,
   type DataTableColumn,
 } from '@orderbook/ui';
 
@@ -85,6 +88,9 @@ export function UpdatesScreen({
   const [phase, setPhase] = useState<Phase>('idle');
   const [failure, setFailure] = useState<string | null>(null);
   const [readyPath, setReadyPath] = useState<string | null>(null);
+  // The Updating screen (1.5): every step from Install now to the window closing.
+  const updateRun = useUpdateRun(MASTER_UPDATE_STEPS);
+  const installSeconds = useInstallSeconds();
   /**
    * What to do instead, for a build that cannot install over itself — the
    * standalone `.exe`, or a Linux copy not started from an AppImage (in a
@@ -151,6 +157,7 @@ export function UpdatesScreen({
   const install = async (): Promise<void> => {
     setPhase('verifying');
     setFailure(null);
+    updateRun.start(status?.master.available?.version ?? '');
     try {
       const { path } = await api.prepareMasterUpdate();
       setReadyPath(path);
@@ -159,17 +166,21 @@ export function UpdatesScreen({
       if (!shell) {
         // No window to quit — show the path so the operator can run it.
         setPhase('idle');
+        updateRun.clear();
         return;
       }
 
       // Save all (1.4 R7b): whatever is open and can be saved is, and what cannot
       // is named. Declining the last question leaves everything as it was.
+      updateRun.step('save');
       if (!(await saveAll())) {
         setPhase('idle');
+        updateRun.clear();
         return;
       }
 
       setPhase('launching');
+      updateRun.step('close');
       // Signed out before the window closes (R7c). The server's stop would end
       // the session anyway; doing it here means a refused install shows the
       // sign-in screen rather than a window that looks signed in and is not.
@@ -178,12 +189,16 @@ export function UpdatesScreen({
       if (!(await shell.applyUpdate())) {
         setPhase('failed');
         setFailure(t('updates.launchRefused'));
+        updateRun.fail(t('updates.launchRefused'));
+        return;
       }
-      // On success this process is about to be replaced; there is nothing to
-      // render afterwards and no state worth setting.
+      // This process is about to be replaced: say so until the window goes.
+      updateRun.handedOver();
     } catch (caught) {
+      const message = caught instanceof Error ? caught.message : t('updates.installFailed');
       setPhase('failed');
-      setFailure(caught instanceof Error ? caught.message : t('updates.installFailed'));
+      setFailure(message);
+      updateRun.fail(message);
     }
   };
 
@@ -233,6 +248,9 @@ export function UpdatesScreen({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-24)' }}>
+      {updateRun.run ? (
+        <UpdateRunScreen run={updateRun.run} installSeconds={installSeconds} onClose={updateRun.clear} />
+      ) : null}
       <Section title={t('updates.thisMachine')}>
         <Card>
           <dl className="ob-detail-grid">

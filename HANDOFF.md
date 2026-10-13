@@ -52,6 +52,15 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
+## 1.5: Updating screen and "Update finished" card (2026-10-13)
+
+**State:** on branch `claude/exciting-fermi-bo240n`, not merged, not released; version still 1.4.9. From Install now
+both panels show a full Updating screen (steps, whole-update bar, elapsed, time left, hand-over), the shell records
+each update and times it, and the next start shows an "Update finished" card with the times. Rules and traps:
+`docs/UPDATES.md` "1.5". **Trap:** the first update *to* 1.5 is run by the 1.4.x page and shell, so it shows only the
+card's version-only fallback; the screen and the measured times begin with the next update. **Not verified:**
+Electron end to end.
+
 ## Deletes, edits, search on open records, notices; order note and PDF fixes (2026-10-13)
 
 **State:** on `main` and **released as v1.4.9** (2026-10-13, with the Dispatch code cell; published on GitHub

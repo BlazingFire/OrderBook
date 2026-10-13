@@ -22,6 +22,7 @@
  * not drift.
  */
 
+import type { UpdateRunFile } from '../domain/update-run.js';
 import type { AutoUpdateRequest } from './auto-update.js';
 
 export interface DesktopBridge {
@@ -136,6 +137,14 @@ export interface DesktopBridge {
    * shell waits up to eight seconds for the handler to settle, then goes on.
    */
   onBeforeUpdate?(handler: () => Promise<void> | void): void;
+
+  /**
+   * What the shell remembers about updates (1.5): the last one it handed over
+   * and how it ended, settled when the new version first answered, and how
+   * long the last finished one took, which the Updating screen uses as its
+   * estimate. Absent from shells older than 1.5.
+   */
+  getUpdateRun?(): Promise<UpdateRunFile>;
 
   /** The printers Windows knows on this PC, for the order-note preview's picker. */
   listPrinters?(): Promise<PrinterInfo[]>;

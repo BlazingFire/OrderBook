@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import '@orderbook/ui/styles.css';
 import './styles.css';
-import { configureUi, ErrorBoundary, initAppearance } from '@orderbook/ui';
+import { configureUi, ErrorBoundary, initAppearance, UpdateFinishedCard } from '@orderbook/ui';
 
 // Which panel this is, and its theme key. Must run before `initAppearance()`,
 // which reads them. Light by default since 1.3, like the Office; dark is still
@@ -24,6 +24,8 @@ createRoot(container).render(
   <StrictMode>
     <ErrorBoundary>
       <App />
+      {/* After an update (1.5): from which version to which, and how long it took. Under the splash until it goes. */}
+      <UpdateFinishedCard running={__APP_VERSION__} />
     </ErrorBoundary>
   </StrictMode>,
 );

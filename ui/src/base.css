@@ -2292,6 +2292,180 @@ html[data-motion='off'] .ob-progress-fill--indeterminate {
   }
 }
 
+/*
+ * The Updating screen (1.5, `UpdateRun.tsx`): it covers the whole panel from Install now until
+ * the window closes. Under dialogs, so the save-all question still shows over it.
+ */
+.ob-updaterun {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-overlay) - 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-24);
+  background: var(--bg-canvas);
+  overflow: auto;
+}
+.ob-updaterun-panel {
+  width: 100%;
+  max-width: 40rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-16);
+  padding: var(--s-32);
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-2);
+}
+.ob-updaterun-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-12);
+}
+.ob-updaterun-mark,
+.ob-updatedone-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border-radius: 50%;
+  color: var(--accent);
+  background: var(--accent-tint);
+}
+.ob-updaterun-mark {
+  width: 2.75rem;
+  height: 2.75rem;
+}
+.ob-updaterun-clock {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-12);
+  color: var(--fg-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.ob-updaterun-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+}
+.ob-updaterun-step {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-12);
+}
+.ob-updaterun-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  color: var(--fg-tertiary);
+  font-size: var(--t-small-size);
+  font-variant-numeric: tabular-nums;
+}
+.ob-updaterun-step--done .ob-updaterun-dot {
+  border-color: var(--state-ok);
+  background: var(--state-ok-tint);
+  color: var(--state-ok);
+}
+.ob-updaterun-step--active .ob-updaterun-dot {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.ob-updaterun-step--failed .ob-updaterun-dot {
+  border-color: var(--state-conflict);
+  background: var(--state-conflict-tint);
+  color: var(--state-conflict);
+}
+.ob-updaterun-step--pending .ob-body-strong {
+  color: var(--fg-tertiary);
+}
+.ob-updaterun-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-width: 0;
+  flex: 1;
+  padding-top: var(--s-2);
+}
+.ob-updaterun-hint {
+  color: var(--fg-secondary);
+}
+.ob-updaterun-note {
+  margin: 0;
+  padding: var(--s-12);
+  border-radius: var(--r-md);
+  background: var(--accent-tint);
+}
+.ob-updaterun-failure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+  padding: var(--s-12);
+  border-radius: var(--r-md);
+  background: var(--state-conflict-tint);
+  color: var(--fg-primary);
+}
+
+/* The card after an update (1.5): bottom right, until OK. Not a dialog, so it never stacks. */
+.ob-updatedone {
+  position: fixed;
+  right: var(--s-24);
+  bottom: var(--s-24);
+  z-index: var(--z-toast);
+  width: 24rem;
+  max-width: calc(100vw - 2 * var(--s-24));
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+  padding: var(--s-16);
+  background: var(--bg-surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--state-ok);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-2);
+  animation: ob-toast-in var(--d-base) var(--e-standard);
+}
+.ob-updatedone--failed {
+  border-left-color: var(--state-conflict);
+}
+.ob-updatedone-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+}
+.ob-updatedone-mark {
+  width: 1.75rem;
+  height: 1.75rem;
+  color: var(--state-ok);
+  background: var(--state-ok-tint);
+}
+.ob-updatedone--failed .ob-updatedone-mark {
+  color: var(--state-conflict);
+  background: var(--state-conflict-tint);
+}
+.ob-updatedone-times {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--s-2) var(--s-12);
+  margin: 0;
+}
+.ob-updatedone-times dt {
+  color: var(--fg-secondary);
+}
+.ob-updatedone-times dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
 /* The determinate bar: what is happening and its figure on one line, the track below. */
 .ob-progress-wrap {
   --progress-fill: var(--accent);

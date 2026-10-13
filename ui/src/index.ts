@@ -160,5 +160,6 @@ export * from './useBoardPresence.js';
 // 1.4 D1
 export * from './unsavedWork.js';
 export * from './UpdateProgress.js';
+export * from './UpdateRun.js';
 export * from './MultiPicker.js';
 export * from './comboboxPlacement.js';

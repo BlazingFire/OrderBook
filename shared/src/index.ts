@@ -52,4 +52,5 @@ export * from './sync/ids.js';
 export * from './sync/merge.js';
 export * from './sync/mutations.js';
 export * from './domain/update-progress.js';
+export * from './domain/update-run.js';
 export * from './protocol/auto-update.js';

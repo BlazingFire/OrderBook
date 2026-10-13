@@ -24,7 +24,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { MessageKey, UpdateAvailability } from '@orderbook/shared';
-import { standing } from '@orderbook/shared';
+import { OFFICE_UPDATE_STEPS, standing } from '@orderbook/shared';
 
 import { api, ApiError, desktopBridge, type ConnectionInfo } from '../api';
 import {
@@ -33,12 +33,15 @@ import {
   Section,
   StatusPill,
   UpdateProgress,
+  UpdateRunScreen,
   apiErrorText,
   formatDateTime,
   t,
   useDownloadProgress,
+  useInstallSeconds,
   useSaveAllBeforeUpdate,
   useToast,
+  useUpdateRun,
 } from '@orderbook/ui';
 
 type Phase = 'idle' | 'downloading' | 'launching' | 'failed';
@@ -65,6 +68,9 @@ export function UpdatesScreen({
   const [phase, setPhase] = useState<Phase>('idle');
   const [failure, setFailure] = useState<string | null>(null);
   const [readyPath, setReadyPath] = useState<string | null>(null);
+  // The Updating screen (1.5): every step from Install now to the window closing.
+  const updateRun = useUpdateRun(OFFICE_UPDATE_STEPS);
+  const installSeconds = useInstallSeconds();
   /**
    * What to do instead, for a build that cannot install over itself — the
    * standalone `.exe`, or a Linux copy not started from an AppImage (in a
@@ -129,6 +135,7 @@ export function UpdatesScreen({
   const install = async (): Promise<void> => {
     setPhase('downloading');
     setFailure(null);
+    updateRun.start(availability?.available?.version ?? '');
     try {
       const { path } = await api.downloadUpdate();
       setReadyPath(path);
@@ -136,31 +143,38 @@ export function UpdatesScreen({
       const shell = desktopBridge();
       if (!shell) {
         setPhase('idle');
+        updateRun.clear();
         return;
       }
 
       // Save all (1.4 R7b): what can be saved is, what cannot is named, and
       // declining the question leaves everything as it was.
+      updateRun.step('save');
       if (!(await saveAll())) {
         setPhase('idle');
+        updateRun.clear();
         return;
       }
 
       setPhase('launching');
+      updateRun.step('close');
       // Signed out before the window closes (R7c).
       await api.signOut().catch(() => undefined);
       setSignedOut(true);
       if (!(await shell.applyUpdate())) {
         setPhase('failed');
         setFailure(t('updates.launchRefused'));
+        updateRun.fail(t('updates.launchRefused'));
+        return;
       }
+      // This process is about to be replaced: say so until the window goes.
+      updateRun.handedOver();
     } catch (caught) {
+      const message =
+        caught instanceof ApiError || caught instanceof Error ? caught.message : t('updates.installFailed');
       setPhase('failed');
-      setFailure(
-        caught instanceof ApiError || caught instanceof Error
-          ? caught.message
-          : t('updates.installFailed'),
-      );
+      setFailure(message);
+      updateRun.fail(message);
     }
   };
 
@@ -169,6 +183,14 @@ export function UpdatesScreen({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-24)' }}>
+      {updateRun.run ? (
+        <UpdateRunScreen
+          run={updateRun.run}
+          download={progress}
+          installSeconds={installSeconds}
+          onClose={updateRun.clear}
+        />
+      ) : null}
       <Section title={t('updates.thisPanel')}>
         <Card>
           <dl className="ob-detail-grid">
@@ -219,7 +241,8 @@ export function UpdatesScreen({
             ) : null}
           </div>
 
-          {progress.phase !== 'idle' ? (
+          {/* While the Updating screen is up the bar is on it, not here behind it. */}
+          {progress.phase !== 'idle' && !updateRun.run ? (
             <div style={{ marginTop: 'var(--s-12)' }}>
               <UpdateProgress progress={progress} />
             </div>

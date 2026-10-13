@@ -71,6 +71,9 @@ contextBridge.exposeInMainWorld('orderbook', {
       systemPackage: boolean;
     }>,
 
+  /** The last update this shell handed over, how it ended, and how long the last one took (1.5). */
+  getUpdateRun: (): Promise<unknown> => ipcRenderer.invoke('orderbook:getUpdateRun'),
+
   setShellSettings: (value: { openAtLogin: boolean }): Promise<boolean> =>
     ipcRenderer.invoke('orderbook:setShellSettings', value) as Promise<boolean>,
 

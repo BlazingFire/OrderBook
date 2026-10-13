@@ -190,6 +190,19 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-13 - 1.5: the Updating screen and the "Update finished" card (Claude, Opus, branch `claude/exciting-fermi-bo240n`)
+
+- **Ask (owner):** in 1.5, dedicated loading screens and UI for an app update: once Update is pressed, how long it
+  will take, a bar, so nobody feels disconnected; proof of the task, accurate, trackable.
+- **Done:** `UpdateRunScreen` covers both panels from Install now: step n of N with each step's state, one bar for
+  the whole update, elapsed clock and time left (download ETA + the install time this PC took last time, else
+  2 min), the hand-over line, and where it stopped on a refusal. The shell records each hand-over in
+  `update-run.json`, settles it when the next start's panel answers, shows "Finishing the update to X…" and a moving
+  bar on its splash, and gives the page the record (`getUpdateRun`). `UpdateFinishedCard` shows from/to, started,
+  ready and how long it took, once; or that the update did not install. Details: `docs/UPDATES.md` "1.5".
+- **Verified:** see the gate line below. **Not verified:** Electron (the splash, the record across a real restart),
+  layout by eye. The version number was not bumped (a release decision).
+
 ### 2026-10-13 - 1.4.9 built, signed and released (Claude, Opus)
 
 - **Ask (owner):** build 1.4.9 with all changes and publish it on GitHub releases; the owner supplied the

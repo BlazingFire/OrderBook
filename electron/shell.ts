@@ -84,6 +84,14 @@ import {
   type UpdatePaths,
 } from './lib/staged-update.js';
 import { isHighIntegrity, planInstallerLaunch, unattendedInstallDue } from './lib/update-launch.js';
+import {
+  abandonUpdateRun,
+  beginUpdateRun,
+  finishingLine,
+  readUpdateRun,
+  settleUpdateRun,
+  writeUpdateRun,
+} from './lib/update-run.js';
 
 export interface PanelShellConfig {
   readonly panel: 'master' | 'office';
@@ -170,6 +178,8 @@ export function runPanelShell(config: PanelShellConfig): void {
   let restarts: number[] = [];
   /** Learned from the panel's own loopback health route, never from the page. */
   let installerDir: string | null = null;
+  /** What this shell remembers about updates (1.5, `lib/update-run.ts`). */
+  const updateRunPath = (): string => path.join(app.getPath('userData'), 'update-run.json');
 
   /**
    * Per-machine, outside the program folder, and **not** inside the app's own
@@ -283,7 +293,7 @@ export function runPanelShell(config: PanelShellConfig): void {
       restarts.push(Date.now());
       say(`Restarting the server (${restarts.length}/${RESTART_LIMIT})`);
       serverProcess = startServer();
-      await showSplash('Restarting…');
+      await showSplash('Restarting…', { busy: true });
       void waitForServerThenShow();
       return;
     }
@@ -301,7 +311,7 @@ export function runPanelShell(config: PanelShellConfig): void {
     if (choice.response === 0) {
       restarts = [];
       serverProcess = startServer();
-      await showSplash('Restarting…');
+      await showSplash('Restarting…', { busy: true });
       void waitForServerThenShow();
       return;
     }
@@ -381,28 +391,67 @@ export function runPanelShell(config: PanelShellConfig): void {
     return { kind: 'not-listening' };
   }
 
-  function splashHtml(message: string): string {
+  /**
+   * The line the splash shows above the boot step while the first start after
+   * an update runs (1.5): "Finishing the update to 1.5.0…". Read once, at
+   * launch, before the record is settled.
+   */
+  let finishing = finishingLine(readUpdateRun(updateRunPath()), app.getVersion());
+
+  function splashHtml(message: string, busy: boolean): string {
     // Inline, because the window has to exist before the server does — there is
     // nothing to load a page from yet. Escaped, because the boot step is now
     // server-supplied text rather than one of a handful of fixed strings.
-    const safe = message.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const escape = (text: string): string =>
+      text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const note = finishing
+      ? `<div style="font-weight:600;color:#1f6f43;margin-bottom:4px">${escape(finishing)}</div>`
+      : '';
+    // A bar that moves while something is happening, so a slow first start
+    // after an update never looks like a window that has stopped.
+    const bar = busy
+      ? `<div style="width:220px;height:4px;margin:14px auto 0;border-radius:2px;background:#dde3e6;overflow:hidden">
+           <div style="width:40%;height:100%;border-radius:2px;background:#2f6fde;animation:ob-run 1.4s ease-in-out infinite"></div>
+         </div>`
+      : '';
     return `data:text/html;charset=utf-8,${encodeURIComponent(`
-      <html><body style="margin:0;display:flex;align-items:center;justify-content:center;
+      <html><head><style>
+        @keyframes ob-run { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+        @media (prefers-reduced-motion: reduce) { div { animation: none !important; } }
+      </style></head><body style="margin:0;display:flex;align-items:center;justify-content:center;
         height:100vh;background:#f2f4f5;color:#10161a;
         font:14px/1.5 'Segoe UI',system-ui,sans-serif">
         <div style="text-align:center">
           <div style="font-size:18px;font-weight:600;margin-bottom:8px">${config.productName}</div>
-          <div style="opacity:.7">${safe}</div>
+          ${note}
+          <div style="opacity:.7">${escape(message)}</div>
+          ${bar}
         </div>
       </body></html>`)}`;
   }
 
-  async function showSplash(message: string): Promise<void> {
+  async function showSplash(message: string, options: { busy?: boolean } = {}): Promise<void> {
     try {
-      await mainWindow?.loadURL(splashHtml(message));
+      await mainWindow?.loadURL(splashHtml(message, options.busy === true));
     } catch (error) {
       say(`Could not show the splash: ${String(error)}`);
     }
+  }
+
+  /**
+   * The first start after an update has answered: record whether it installed
+   * and how long it took (1.5). The page reads it through `getUpdateRun`.
+   */
+  function settleUpdate(): void {
+    finishing = null;
+    const settled = settleUpdateRun(readUpdateRun(updateRunPath()), app.getVersion(), new Date());
+    if (!settled?.last) return;
+    writeUpdateRun(updateRunPath(), settled);
+    say(
+      settled.last.outcome === 'updated'
+        ? `Updated from ${settled.last.from} to ${settled.last.to} in ${String(settled.last.seconds)} s`
+        : `The update to ${settled.last.to} did not install; this is still ${app.getVersion()}`,
+    );
   }
 
   async function showPanel(): Promise<void> {
@@ -493,8 +542,9 @@ export function runPanelShell(config: PanelShellConfig): void {
   }
 
   async function waitForServerThenShow(): Promise<void> {
-    const outcome = await waitForServer((step) => void showSplash(step));
+    const outcome = await waitForServer((step) => void showSplash(step, { busy: true }));
 
+    if (outcome.kind === 'ready') settleUpdate();
     if (outcome.kind === 'ready' || outcome.kind === 'failed') {
       await showPanel();
       return;
@@ -605,7 +655,7 @@ export function runPanelShell(config: PanelShellConfig): void {
       mainWindow = null;
     });
 
-    await showSplash('Starting…');
+    await showSplash('Starting…', { busy: true });
     await waitForServerThenShow();
   }
 
@@ -942,6 +992,9 @@ export function runPanelShell(config: PanelShellConfig): void {
     // Everything the page holds that can still be saved, before the window goes.
     await flushRenderer();
 
+    // Remembered before anything stops, so the next start can say how it went.
+    writeUpdateRun(updateRunPath(), beginUpdateRun(readUpdateRun(updateRunPath()), app.getVersion(), prepared.version, new Date()));
+
     updatingSince = Date.now();
     say(`Stopping the server before installing ${prepared.version}`);
     await stopServer();
@@ -994,6 +1047,7 @@ export function runPanelShell(config: PanelShellConfig): void {
       // leaving a window attached to nothing because an installer would not
       // start.
       updatingSince = null;
+      writeUpdateRun(updateRunPath(), abandonUpdateRun(readUpdateRun(updateRunPath())));
       serverProcess = startServer();
       say(`Could not launch the installer: ${String(error)}`);
       return false;
@@ -1031,6 +1085,9 @@ export function runPanelShell(config: PanelShellConfig): void {
       say(`Refused to update: could not replace ${target}: ${String(error)}`);
       return false;
     }
+
+    // The new file is in place, so the next start runs it whatever happens below.
+    writeUpdateRun(updateRunPath(), beginUpdateRun(readUpdateRun(updateRunPath()), app.getVersion(), version, new Date()));
 
     updatingSince = Date.now();
     say(`Replaced ${target} with ${version}; stopping the server and starting the new version`);
@@ -1142,6 +1199,10 @@ export function runPanelShell(config: PanelShellConfig): void {
     standalone: standalone !== null,
     systemPackage: updateBy === 'system-package',
   }));
+
+  ipcMain.handle('orderbook:getUpdateRun', (event) =>
+    event.sender === mainWindow?.webContents ? readUpdateRun(updateRunPath()) : null,
+  );
 
   ipcMain.handle('orderbook:setShellSettings', (_event, value: unknown) => {
     const openAtLogin = (value as { openAtLogin?: unknown } | null)?.openAtLogin === true;

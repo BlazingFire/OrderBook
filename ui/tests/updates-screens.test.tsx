@@ -56,6 +56,7 @@ function status(changes: Partial<UpdateStatusResponse> = {}): UpdateStatusRespon
 
 interface Bridge {
   applyUpdate: ReturnType<typeof vi.fn>;
+  getUpdateRun?: ReturnType<typeof vi.fn>;
   openLogFolder: ReturnType<typeof vi.fn>;
   getShellSettings: ReturnType<typeof vi.fn>;
 }
@@ -211,8 +212,46 @@ describe('the Master update screen', () => {
       mount(await loadScreen('master'), panels);
 
       fireEvent.click(await screen.findByRole('button', { name: t('updates.installNow') }));
+      // The Updating screen says where it stopped; Close goes back to the screen under it.
+      expect(await screen.findByText(t('updates.run.failedTitle'))).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: t('updates.run.close') }));
+      expect(screen.queryByRole('dialog')).toBeNull();
       expect(await screen.findByRole('button', { name: t('updates.signInAgain') })).toBeTruthy();
       expect(screen.getByText(t('updates.launchRefused'))).toBeTruthy();
+    });
+
+    it('covers the panel with the Updating screen: each step in turn, then the hand-over', async () => {
+      let release: () => void = () => undefined;
+      routeFetch(({ method, url }) => {
+        if (url === '/api/updates/status') return json(status({ master: { current: 'test', available: OFFER } }));
+        if (url === '/api/updates/master/install' && method === 'POST') {
+          return new Promise<Response>((resolve) => {
+            release = () => resolve(json({ path: 'C:\\x\\setup.exe', manifest: OFFER }));
+          });
+        }
+        if (url === '/api/auth/sign-out' && method === 'POST') return json({});
+        return undefined;
+      });
+      bridge.getUpdateRun = vi.fn(async () => ({ pending: null, last: null, installSeconds: 95 }));
+      mount(await loadScreen('master'), panels);
+
+      fireEvent.click(await screen.findByRole('button', { name: t('updates.installNow') }));
+      const dialog = await screen.findByRole('dialog', { name: t('updates.run.title', { version: '1.3.0' }) });
+      const states = () =>
+        [...dialog.querySelectorAll('li')].map((item) => item.getAttribute('data-state'));
+      expect(states()).toEqual(['active', 'pending', 'pending', 'pending', 'pending']);
+      expect(dialog.textContent).toContain(t('updates.run.stepOf', { step: 1, total: 5 }));
+      // The install's time is the one measured on this PC last time.
+      await waitFor(() =>
+        expect(dialog.textContent).toContain(t('updates.run.step.installMeasured', { time: '1 min 35 s' })),
+      );
+      expect(screen.getByTestId('update-run-clock').textContent).toContain(t('updates.run.left', { time: '1 min 35 s' }));
+
+      release();
+      expect(await screen.findByRole('status')).toBeTruthy();
+      expect(states()).toEqual(['done', 'done', 'done', 'active', 'pending']);
+      expect(dialog.textContent).toContain(t('updates.run.handedOver', { version: '1.3.0', time: '1 min 35 s' }));
+      expect(bridge.applyUpdate).toHaveBeenCalledTimes(1);
     });
   });
 

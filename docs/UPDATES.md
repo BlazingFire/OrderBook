@@ -408,6 +408,57 @@ keeps only Quit, Edit (Copy/Paste) and Window.
 | Help → Open log folder | a button on the App update screen (`openLogFolder`) |
 | Help → Version | the App update screen |
 
+## 1.5: the Updating screen and the "Update finished" card
+
+**Before 1.5** Install now turned into a busy button, then the window closed and nothing showed for a minute or two
+while the silent setup (`/S --force-run`) ran, until the new version opened. People could not tell whether anything
+was happening.
+
+**The Updating screen** (`ui/src/UpdateRun.tsx`, `UpdateRunScreen`) covers the panel from the moment Install now is
+pressed. It shows:
+
+- the step it is on, "Step n of N", and every step with its state (done, in progress, waiting, stopped). The Master's
+  steps are Check the file is genuine → Save open work → Sign out and close → Install → Open the new version; the
+  Office's begin with Download from the Master instead of the check (`MASTER_UPDATE_STEPS` /
+  `OFFICE_UPDATE_STEPS` in `shared/src/domain/update-run.ts`);
+- one bar for the whole update: whole steps done plus the download's real fraction. A step with nothing to measure
+  counts as not started until it ends, so the bar never runs ahead of what has happened;
+- a running clock (elapsed) and the time left: the download's own time left plus the install time. The install
+  runs after the window closes, where no page can watch it, so its time is **the one this PC took last time**
+  (measured by the shell, below) or a stated default of 2 minutes (`DEFAULT_INSTALL_SECONDS`). While the download
+  speed is unknown it says "Working out the time left…" rather than guess;
+- under the active step, what it is doing: the download's bytes, speed and time left; "If Windows asks for
+  permission to install, choose Yes" at the hand-over; then "OrderBook is closing to install … It opens again by
+  itself in about …";
+- on a refusal or error, where it stopped and why, with Close back to the App update screen (and Sign in again, as
+  before). It sits under dialogs, so the Save all question still shows over it.
+
+**The shell's record** (`electron/lib/update-run.ts`, `<userData>/update-run.json`). Just before the installer starts
+(after every check, before the server stops) the shell writes `pending` {from, to, startedAt}; if the installer then
+does not start, it is removed. The next start, once its panel answers, settles it: running `to` is `updated`, with
+the seconds from the hand-over to the panel answering; anything else is `notInstalled`. A finished update's seconds
+(if 30 minutes or less, so an overnight gap never becomes the estimate) are kept as `installSeconds`, the next
+update's estimate. The page reads the file through `window.orderbook.getUpdateRun()` (optional; shells before 1.5
+lack it). The AppImage path writes `pending` after the file is replaced, since the new copy runs next whatever happens.
+
+**The shell's splash** shows "Finishing the update to X…" above the boot step on the first start after an update,
+and every busy splash ("Starting…", the boot steps, "Restarting…") now has a moving bar.
+
+**The "Update finished" card** (`UpdateFinishedCard`, mounted beside `<App />` in both `main.tsx`): bottom right, not
+a dialog, under the splash until it goes. It says from which version to which, when it started, when it was ready and
+how long install and restart took, and that the data was kept; or, if the PC came back on the old version, that the
+update did not install and what to do. It shows once per update (acknowledged keys in `localStorage`
+`ob.updates.finishedSeen`). Without the shell's record (a browser tab, or the first update **to** 1.5, which a 1.4.x
+shell and page start) it falls back to the version this browser last ran (`ob.updates.lastVersion`) and shows no
+times.
+
+**So the first update to 1.5 shows only the card's fallback**; the Updating screen and the measured times start with
+the update after it, because the page and shell doing the installing are the old ones.
+
+Tests: `shared/tests/update-run.test.ts`, `electron/tests/update-run.test.ts`, `ui/tests/update-finished-card.test.tsx`,
+and the Updating screen cases in `ui/tests/updates-screens.test.tsx`. **Not verified:** a real Electron update end to
+end (window, splash, the timing across the restart).
+
 ## What data survives
 
 All of it. The installer replaces the program files; the database, uploads and
