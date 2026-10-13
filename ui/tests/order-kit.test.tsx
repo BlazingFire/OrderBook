@@ -17,6 +17,7 @@ import {
   ProductCard,
   SubGrid,
   SubRow,
+  SubRowRemove,
   CartEntry,
   CartLines,
   OrderChecks,
@@ -402,7 +403,7 @@ describe('ColourSelect', () => {
 });
 
 describe('ProductCard and its grid', () => {
-  it('frames a head, a header row of seven labels, the rows and a footer', () => {
+  it('frames a head, a header row of seven labels and the remove column, the rows and a footer', () => {
     const { container } = render(
       <ProductCard head={<span>OPT head</span>} footer={<span>footer</span>}>
         <SubGrid
@@ -433,8 +434,22 @@ describe('ProductCard and its grid', () => {
       'Qty',
       'Packaging',
       'Grade',
+      '',
     ]);
     expect(container.querySelector('.ob-order-subrow[data-muted="true"]')).not.toBeNull();
+  });
+
+  it('offers a row its remove button only when given one to call', () => {
+    const onRemove = vi.fn();
+    render(
+      <>
+        <SubRowRemove label="Remove A" onRemove={onRemove} />
+        <SubRowRemove label="Remove B" />
+      </>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Remove A' }));
+    expect(onRemove).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'Remove B' })).toBeNull();
   });
 });
 

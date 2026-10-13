@@ -139,7 +139,7 @@ import {
   type WalkRow,
   type WalkStop,
 } from './order/gridModel.js';
-import { ProductCard, SubGrid, SubRow } from './order/ProductCard.js';
+import { ProductCard, SubGrid, SubRow, SubRowRemove } from './order/ProductCard.js';
 import { SubListCompactToggle, SubProductList, useSubListCompact } from './order/SubProductList.js';
 import { PartyChip } from './order/PartyChip.js';
 import { ProductThumb } from './ProgressiveImage.js';
@@ -926,6 +926,13 @@ function LeadEntryForm({
     if (cardOpened > 0) focusFirstField();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cardOpened]);
+
+  /** Drops one row from the card; saving the card then leaves that line out of the order. */
+  function removeRow(key: string): void {
+    setDraft((current) =>
+      current ? { ...current, rows: current.rows.filter((row) => row.key !== key) } : current,
+    );
+  }
 
   function patchRow(key: string, patch: Partial<GridRow>): void {
     setDraft((current) =>
@@ -2307,6 +2314,10 @@ function LeadEntryForm({
                                       ))}
                                     </Select>
                                   </span>
+                                  <SubRowRemove
+                                    label={t('lead.add.card.removeRow', { sub: named })}
+                                    onRemove={Number(row.qty) > 0 ? () => removeRow(row.key) : undefined}
+                                  />
                                 </SubRow>
                               );
                             })}

@@ -1545,6 +1545,7 @@ export const EN_MESSAGES = {
   'lead.add.line.modify': 'Modify',
   'lead.add.line.modifyProduct': 'Modify {product}',
   'lead.add.line.removeProduct': 'Remove {product}',
+  'lead.add.card.removeRow': 'Remove {sub} from this order',
   'lead.add.notes.placeholder': 'Anything the next person should know…',
   'lead.add.panel.clear': 'Clear',
   'lead.add.panel.countFiltered': '{shown} of {total}',

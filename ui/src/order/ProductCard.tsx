@@ -9,6 +9,8 @@
 
 import type { ReactNode } from 'react';
 
+import { IconButton } from '../Button.js';
+
 import './order.css';
 
 export function ProductCard({
@@ -62,6 +64,7 @@ export function SubGrid({
         <span className="ob-order-cell--num">{labels.qty}</span>
         <span>{labels.packaging}</span>
         <span>{labels.grade}</span>
+        <span aria-hidden="true" />
       </div>
       <div className="ob-order-table__body" ref={bodyRef}>
         {children}
@@ -70,7 +73,19 @@ export function SubGrid({
   );
 }
 
-/** One row of the grid: seven cells in the template's order. */
+/**
+ * The row's last cell: takes a counted row out of the card (and so out of the order when the
+ * card is saved). Empty for a row with nothing on it — there is nothing to remove.
+ */
+export function SubRowRemove({ label, onRemove }: { label: string; onRemove?: () => void }) {
+  return (
+    <span className="ob-order-cell--remove">
+      {onRemove && <IconButton icon="trash" size={14} variant="danger" label={label} onClick={onRemove} />}
+    </span>
+  );
+}
+
+/** One row of the grid: eight cells in the template's order, the last a `SubRowRemove`. */
 export function SubRow({
   muted = false,
   rowKey,

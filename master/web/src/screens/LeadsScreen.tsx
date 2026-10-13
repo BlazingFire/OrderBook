@@ -271,10 +271,11 @@ export function LeadsScreen({
     };
   }, [openPartyId, canViewParties]);
 
-  // An error shown for one record is not the next one's, nor is its edit.
+  // An error shown for one record is not the next one's, nor is its edit — but the
+  // list's Edit opens a record already in edit, so an edit of this very record stays.
   useEffect(() => {
     setError(null);
-    setEditingId(null);
+    setEditingId((current) => (current === openId ? current : null));
     // A note opened from the list's row action arrives with its record; keep it.
     setNote((current) => (current && current.id === openId ? current : null));
   }, [openId]);
