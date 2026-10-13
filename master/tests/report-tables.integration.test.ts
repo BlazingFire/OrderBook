@@ -320,12 +320,22 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
       ]);
 
       const byParty = await reportService.reportTable('by-party', { period: 'thisMonth' }, admin);
-      expect(byParty.rows.map((row) => [row.partyName, row.leads, row.orders, row.pieces, row.kg, row.daysSince])).toEqual([
+      const partyRows = byParty.rows.map((row) => [row.partyName, row.leads, row.orders, row.pieces, row.kg, row.daysSince]);
+      // Orders, then leads, then the name; two names that differ only in case come in the database's collation
+      // (C on CI puts "Shah" first, an ICU locale "shah"), so those two are compared in a fixed order.
+      const byRank = (x: unknown[], y: unknown[]): number =>
+        (y[2] as number) - (x[2] as number) ||
+        (y[1] as number) - (x[1] as number) ||
+        String(x[0]).toLowerCase().localeCompare(String(y[0]).toLowerCase());
+      expect(partyRows.map((row) => String(row[0]).toLowerCase())).toEqual(
+        [...partyRows].sort(byRank).map((row) => String(row[0]).toLowerCase()),
+      );
+      expect([...partyRows].sort((x, y) => byRank(x, y) || (y[3] as number) - (x[3] as number))).toEqual([
         ['Shah Ceramics', 1, 1, 10, 25, 0],
         ['shah ceramics', 1, 1, 6, 15, 0],
         ['Patel Traders', 1, 1, 4, 10, 0],
         ['Only A Lead', 1, 0, 0, 0, null],
-      ].sort((x, y) => (y[2] as number) - (x[2] as number) || (y[1] as number) - (x[1] as number) || String(x[0]).localeCompare(String(y[0]))));
+      ].sort((x, y) => byRank(x, y) || (y[3] as number) - (x[3] as number)));
       expect(byParty.rows.find((row) => row.partyName === 'Only A Lead')).toMatchObject({ lastOrder: null, daysSince: null });
 
       const byProduct = await reportService.reportTable('by-product', { period: 'thisMonth' }, admin);
