@@ -54,8 +54,9 @@ on it.
 
 ## Deletes, edits, search on open records, notices; order note and PDF fixes (2026-10-13)
 
-**State:** on `main`, pushed; not released — 1.4.8 carries only Update only below; these sit on top of it
-(bump to 1.4.9 before the next build). Built on the
+**State:** on `main`, pushed; version bumped to **1.4.9** (2026-10-13, with the Dispatch code cell) — the push starts the
+Release workflow; check it published. 1.4.8 carries only Update only below; these sit on top of it
+Built on the
 short-lived branch `s1/delete-search-toasts` (deleted after the merge). Details: `docs/AI_COLLABORATION.md` change
 log, 2026-10-13 entries.
 

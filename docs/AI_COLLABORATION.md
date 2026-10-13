@@ -200,6 +200,8 @@ was verified, so the next agent can trust the state without re-auditing.
   page to the Typical order); `docs/ORDER_NOTES_PLAN.md` records it. Tests: `ui/tests/order-note-codes-per-line.test.tsx`.
 - **Verified:** the note tests (106); a rendered Dispatch sheet in the browser pane, 40 cells, none overflowing;
   `npm run verify` exit 0 (408 files, 5460 tests; only `release-workflow` skipped). **Not verified:** a printed sheet by eye, Electron, the PDF by eye.
+- **Release:** version bumped 1.4.8 → 1.4.9 in the eight `package.json` files and pushed to `main` (owner's ask),
+  which starts the Release workflow; whether it published is not checked here.
 
 ### 2026-10-13 - `s1/delete-search-toasts` merged to main and pushed (Claude, Opus)
 
