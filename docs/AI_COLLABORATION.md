@@ -195,6 +195,9 @@ was verified, so the next agent can trust the state without re-auditing.
 - **Ask (owner):** merge the Updating-screen branch to main and release it as 1.5.0.
 - **Done:** `claude/exciting-fermi-bo240n` fast-forwarded into `main`; every workspace `package.json` set to 1.5.0
   (`package-lock.json` left as it is, as at earlier bumps); pushed, which starts the Release workflow.
+- **Not released yet:** Release run 80 failed in `create-release` exactly as run 78 did for 1.4.9: no `RELEASE_KEY`
+  (so it would have been a draft) and HTTP 403 on `BlazingFire/OrderBook-Releases` (no `RELEASES_TOKEN`). The build
+  jobs were skipped. Needs the owner: add the secrets and re-run, or supply the signing key as for 1.4.9.
 - **Gate (on the merged tree):** `npm run verify` exit 0: lint 0 errors (2 old warnings), typecheck 0, tests 300 files
   passed + 112 skipped, 4,055 tests passed + 1,450 skipped. The skips are the PostgreSQL integration suites: no
   database in this cloud session. The change touches no server code.
