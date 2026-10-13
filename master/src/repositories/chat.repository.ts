@@ -231,15 +231,6 @@ export async function insertRoom(
   return mapRoom(created as Row);
 }
 
-export async function findRoom(
-  tenantId: string,
-  roomId: string,
-  runner: Runner = db(),
-): Promise<ChatRoomRow | null> {
-  const row = await runner('chat_rooms').where({ tenant_id: tenantId, id: roomId }).first();
-  return row ? mapRoom(row as Row) : null;
-}
-
 /** Take the room's row lock: posting, and everything that numbers its messages, goes through here. */
 export async function lockRoom(
   trx: TransactionContext,

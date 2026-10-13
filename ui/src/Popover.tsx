@@ -62,13 +62,15 @@ export function Popover({
     document.addEventListener('mousedown', onDocClick);
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('keydown', onMenuKey);
+    // The surface as it is now: by cleanup the closing popover's ref has already let go of it.
+    const surface = ref.current;
     return () => {
       document.removeEventListener('mousedown', onDocClick);
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('keydown', onMenuKey);
       // Only when focus was left inside the closing surface or dropped to <body>; a click elsewhere keeps its own focus.
       const active = document.activeElement;
-      if ((active === document.body || ref.current?.contains(active)) && opener?.isConnected) opener.focus();
+      if ((active === document.body || surface?.contains(active)) && opener?.isConnected) opener.focus();
     };
   }, [open, onClose]);
 

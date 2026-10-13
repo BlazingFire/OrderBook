@@ -924,7 +924,6 @@ function LeadEntryForm({
    */
   useLayoutEffect(() => {
     if (cardOpened > 0) focusFirstField();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cardOpened]);
 
   /** Drops one row from the card; saving the card then leaves that line out of the order. */
