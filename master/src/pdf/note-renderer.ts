@@ -114,6 +114,9 @@ const CONTENT_W = PAGE_W - 2 * PAD_X;
 /** Natural line-box height of each face, as a multiple of its size. */
 const LINE_BOX: Record<PdfFont, number> = { body: 1.21, bold: 1.21, mono: 1.257 };
 
+/** Where the baseline sits below the top of a face's line box, as a multiple of its size: to set mixed sizes on one line. */
+const ASCENT: Record<PdfFont, number> = { body: 0.97, bold: 0.97, mono: 0.98 };
+
 /** Where a line of `size` text sits when centred in a CSS box `lineHeight` tall that starts at `top`. */
 function centred(top: number, lineHeight: number, size: number, font: PdfFont): number {
   return top + (lineHeight - LINE_BOX[font] * size) / 2;
@@ -468,53 +471,81 @@ function planCoded(
         y += h;
         continue;
       }
+      // The pending order PDF is a Dispatch sheet: the Dispatch note's cell (owner's artifact, 2026-10-13).
       const h = slot.labelled ? L.rowCodedLabelled : L.rowCoded;
       slot.lines.forEach((line, cell) => {
         const cx = x + cell * (cellW + cellGap);
         const middle = cx + cellW / 2;
         // A caption stays inside its own cell: two lines at most, then an ellipsis, as the note's CSS clamps it.
         const productLines = slot.labelled ? wrap(measure, caps(line.product), 'bold', 8, cellW, 2, 0.64) : [];
-        const colour = line.colour ? clip(measure, caps(line.colour), 'bold', 8, cellW, 0.24) : '';
-        const contentH = productLines.length * 10 + 16 + 1 + (colour ? 10 : 0) + 16;
+        // First line: the code, its colour and its brand, on one baseline; the colour (and brand) drop to a
+        // line of their own when the three do not fit, as the sheet's flex line wraps.
+        const brand = line.brand ? noteBrandCode(line.brand) : '';
+        const brandW = brand ? measure(brand, 'mono', 7.5, 0.45) : 0;
+        const code = clip(measure, line.subProduct, 'bold', 14, cellW - (brandW ? brandW + 4 : 0));
+        const codeW = measure(code, 'bold', 14);
+        const fullColour = line.colour ?? '—';
+        const colourW = fullColour ? measure(fullColour, 'body', 10) : 0;
+        const oneLine = codeW + (fullColour ? 4 + colourW : 0) + (brand ? 4 + brandW : 0) <= cellW;
+        const colour = fullColour && !oneLine ? clip(measure, fullColour, 'body', 10, cellW - (brand ? brandW + 4 : 0)) : fullColour;
+        const contentH = productLines.length * 10 + 16 + (fullColour && !oneLine ? 12 : 0) + 3 + 16;
         let cy = y + (h - 1 - contentH) / 2;
         productLines.forEach((value) => {
           page.textCentre(middle, centred(cy, 10, 8, 'bold'), value, 'bold', 8, SOFT, 0.64);
           cy += 10;
         });
-        // The code, with its brand chip.
-        const chipCode = line.brand ? noteBrandCode(line.brand) : '';
-        const chipW = chipCode ? measure(chipCode, 'mono', 7.5, 0.45) + 4 : 0;
-        const code = clip(measure, line.subProduct, 'bold', 14, cellW - (chipW ? chipW + 4 : 0));
-        const codeW = measure(code, 'bold', 14);
-        const rowW = codeW + (chipW ? 4 + chipW : 0);
-        const startX = middle - rowW / 2;
-        page.text(startX, centred(cy, 16, 14, 'bold'), code, 'bold', 14, INK);
-        if (chipCode) tag(page, measure, startX + codeW + 4, cy + 8, chipCode, 7.5, 'mono', 0.45, false, SOFT);
-        cy += 17;
-        // The colour, under the code (owner, 2026-10-13).
-        if (colour) {
-          page.textCentre(middle, centred(cy, 10, 8, 'bold'), colour, 'bold', 8, INK, 0.24);
-          cy += 10;
+        const baseline = cy + (16 - LINE_BOX.bold * 14) / 2 + ASCENT.bold * 14;
+        const onBaseline = (font: PdfFont, size: number): number => baseline - ASCENT[font] * size;
+        if (oneLine) {
+          const rowW = codeW + (fullColour ? 4 + colourW : 0) + (brand ? 4 + brandW : 0);
+          let lx = middle - rowW / 2;
+          page.text(lx, onBaseline('bold', 14), code, 'bold', 14, INK);
+          lx += codeW + 4;
+          if (fullColour) {
+            page.text(lx, onBaseline('body', 10), fullColour, 'body', 10, ROW_TEXT);
+            lx += colourW + 4;
+          }
+          if (brand) page.text(lx, onBaseline('mono', 7.5), brand, 'mono', 7.5, SOFT, 0.45);
+          cy += 16;
+        } else {
+          const rowW = codeW + (brand && !colour ? 4 + brandW : 0);
+          const lx = middle - rowW / 2;
+          page.text(lx, onBaseline('bold', 14), code, 'bold', 14, INK);
+          if (brand && !colour) page.text(lx + codeW + 4, onBaseline('mono', 7.5), brand, 'mono', 7.5, SOFT, 0.45);
+          cy += 16;
+          if (colour) {
+            const toneW = measure(colour, 'body', 10) + (brand ? 4 + brandW : 0);
+            const tx = middle - toneW / 2;
+            page.text(tx, centred(cy, 12, 10, 'body'), colour, 'body', 10, ROW_TEXT);
+            if (brand) page.text(tx + measure(colour, 'body', 10) + 4, centred(cy, 12, 7.5, 'mono') + 1, brand, 'mono', 7.5, SOFT, 0.45);
+            cy += 12;
+          }
         }
-        // Packaging, grade and quantity.
-        const qty = `×${noteFigure(line.quantity)}`;
-        const qtyW = measure(qty, 'bold', 14);
-        // The packaging's full name, cut short only when the cell cannot hold it (owner, 2026-10-13).
-        const packText = line.packaging ? clip(measure, caps(line.packaging), 'bold', 7, Math.max(cellW - qtyW - 12, 0), 0.21) : '—';
-        const packW = measure(packText, 'bold', 7, 0.21) + 4;
-        const room = cellW - packW - qtyW - 8;
-        const grade = line.grade ? clip(measure, caps(line.grade), 'bold', 9, Math.max(room, 0), 0.21) : '';
-        const gradeW = grade ? measure(grade, 'bold', 9, 0.21) : 0;
-        const detailW = packW + (grade ? 4 + gradeW : 0) + 4 + qtyW;
+        cy += 3;
+        // Second line: the grade chip, the packing (its full name, cut short only when the cell cannot hold it),
+        // then × and the quantity.
+        const qty = noteFigure(line.quantity);
+        const qtyW = measure(qty, 'bold', 15);
+        const timesW = measure('×', 'bold', 7);
+        const grade = line.grade ? clip(measure, caps(line.grade), 'bold', 8.5, Math.max(cellW / 2, 0)) : '';
+        const gradeW = grade ? measure(grade, 'bold', 8.5) + 2 : 0;
+        const packRoom = cellW - (gradeW ? gradeW + 2 : 0) - timesW - 2 - qtyW - 2;
+        const pack = line.packaging ? clip(measure, caps(line.packaging), 'bold', 7, Math.max(packRoom, 0), -0.07) : '';
+        const packW = pack ? measure(pack, 'bold', 7, -0.07) : 0;
+        const detailW = (gradeW ? gradeW + 2 : 0) + (pack ? packW + 2 : 0) + timesW + 2 + qtyW;
         let dx = middle - detailW / 2;
-        page.box(dx, cy + 2, packW, 12, line.packaging ? SOFT : MUTED, 1, 2, !line.packaging);
-        page.text(dx + 2.5, centred(cy + 2, 12, 7, 'bold'), packText, 'bold', 7, line.packaging ? INK : MUTED, 0.21);
-        dx += packW + 4;
         if (grade) {
-          page.text(dx, centred(cy, 16, 9, 'bold') + 0.5, grade, 'bold', 9, SOFT, 0.21);
-          dx += gradeW + 4;
+          page.box(dx, cy + 2.5, gradeW, 11, SOFT, 1, 2);
+          page.text(dx + 1, centred(cy + 2.5, 11, 8.5, 'bold'), grade, 'bold', 8.5, INK);
+          dx += gradeW + 2;
         }
-        page.text(dx, centred(cy, 16, 14, 'bold'), qty, 'bold', 14, INK);
+        if (pack) {
+          page.text(dx, centred(cy + 2.5, 11, 7, 'bold'), pack, 'bold', 7, ROW_TEXT, -0.07);
+          dx += packW + 2;
+        }
+        page.text(dx, centred(cy + 2.5, 11, 7, 'bold'), '×', 'bold', 7, MUTED);
+        dx += timesW + 2;
+        page.text(dx, centred(cy, 16, 15, 'bold'), qty, 'bold', 15, INK);
         page.line(cx, y + h - 0.5, cx + cellW, y + h - 0.5, DOTS, 1, true);
       });
       y += h;

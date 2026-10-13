@@ -190,6 +190,17 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-13 - Dispatch note: the artifact's new code cell (Claude, Opus)
+
+- **Ask (owner):** pull `main`, then apply the revised Dispatch note format from the "A4 print notes" artifact
+  (`M8BRwLB41wrygh9HWrNGMY`); the owner confirmed only the coded-product cell changed.
+- **Done:** Dispatch note code cell = code · colour (`—` when none) · brand letters, then grade chip · packing · `×` ·
+  qty (`ui/src/OrderNote.tsx` `DispatchCell`, `ui/src/order-note.css`); the pending order PDF draws the same
+  (`master/src/pdf/note-renderer.ts`). Filling note unchanged. Row height kept at 50 px (the artifact's 56 px added a
+  page to the Typical order); `docs/ORDER_NOTES_PLAN.md` records it. Tests: `ui/tests/order-note-codes-per-line.test.tsx`.
+- **Verified:** the note tests (106); a rendered Dispatch sheet in the browser pane, 40 cells, none overflowing;
+  `npm run verify` exit 0 (408 files, 5460 tests; only `release-workflow` skipped). **Not verified:** a printed sheet by eye, Electron, the PDF by eye.
+
 ### 2026-10-13 - `s1/delete-search-toasts` merged to main and pushed (Claude, Opus)
 
 - **Ask (owner):** update the handoff; push all changes to `main`.

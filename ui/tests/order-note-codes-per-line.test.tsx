@@ -62,10 +62,51 @@ describe('the coded half of a note', () => {
   it('fills a line with three codes, not one', () => {
     const html = sheet(12, 30);
     const lines = [...html.matchAll(/ob-note-coderow">((?:(?!ob-note-coderow)[\s\S])*)/g)].map(
-      (match) => (match[1]!.match(/ob-note-cell"/g) ?? []).length,
+      (match) => (match[1]!.match(/class="ob-note-cell[ "]/g) ?? []).length,
     );
     expect(lines.length).toBeGreaterThan(5);
     expect(lines.filter((count) => count === 3).length).toBeGreaterThanOrEqual(lines.length - 1);
+  });
+});
+
+describe("the Dispatch note's code cell (owner's artifact, 2026-10-13)", () => {
+  it('prints the code, colour and brand on one line, then a grade chip, the packing, × and the quantity', () => {
+    const items = [line({ productName: '102', categoryName: 'Basin', brandName: 'Swisware', colour: 'Ivory', grade: 'Prem', packaging: 'Grass', quantity: 7 })];
+    const order = { id: 'OD0000000002', items, totalWeightKg: 0, totalWeightKgOverride: null, weightSource: 'computed' } as unknown as Order;
+    const model = buildOrderNote(order);
+    const html = renderToStaticMarkup(
+      <OrderNote
+        pages={paginateOrderNote(model, 'dispatch')}
+        kind="dispatch"
+        header={noteHeader(order, 'order')}
+        party={null}
+        partyName="Shree Tiles"
+        vehicleNumber=""
+        notes={null}
+        totalQuantity={model.totalQuantity}
+        totalWeightKg={model.totalWeightKg}
+        itemCount={model.itemCount}
+        namedCount={0}
+        codedCount={1}
+        printedAt={new Date('2026-10-13T09:00:00+05:30')}
+      />,
+    );
+    const cell = html.slice(html.indexOf('ob-note-cell--dispatch'));
+    expect(cell).toMatch(/ob-note-cell-line"><span class="ob-note-cell-name">102<\/span><span class="ob-note-cell-tone">Ivory<\/span><span class="ob-note-cell-brand"[^>]*>SW<\/span>/);
+    expect(cell).toMatch(/ob-note-cell-gradechip">Prem<\/span><span class="ob-note-cell-pack"[^>]*>Grass<\/span><span class="ob-note-cell-times">×<\/span><span class="ob-note-cell-qty">7<\/span>/);
+    // No colour: a dash in its place, as the design prints it.
+    const bare = { ...order, items: [line({ productName: '205', categoryName: 'Basin', variantLabel: null, colour: null })] } as Order;
+    const bareModel = buildOrderNote(bare);
+    const plain = renderToStaticMarkup(
+      <OrderNote pages={paginateOrderNote(bareModel, 'dispatch')} kind="dispatch" header={noteHeader(bare, 'order')} party={null}
+        partyName="Shree Tiles" vehicleNumber="" notes={null} totalQuantity={3} totalWeightKg={6} itemCount={1} namedCount={0}
+        codedCount={1} printedAt={new Date('2026-10-13T09:00:00+05:30')} />,
+    );
+    expect(plain).toMatch(/ob-note-cell-name">205<\/span><span class="ob-note-cell-tone">—</);
+  });
+
+  it("leaves the Filling note's cell as it was", () => {
+    expect(sheet(4, 6, 'filling')).not.toContain('ob-note-cell--dispatch');
   });
 });
 
@@ -84,9 +125,9 @@ describe('the unit of a quantity on a note', () => {
     for (const cell of [...cellsOf(html, 'ob-note-qty'), ...cellsOf(html, 'ob-note-cell-qty')].filter((text) => text !== 'Qty')) {
       expect(cell).toMatch(/^×?[0-9,.]+$/);
     }
-    // Box is only ever the packaging: the Packing column and the tag of a code cell.
+    // Box is only ever the packaging: the Packing column and a code cell's packing (a tag on the Filling note).
     expect(cellsOf(html, 'ob-note-pack ob-note-wrap')).toContain('Box');
-    expect(cellsOf(html, 'ob-note-chip')).toContain('Box');
+    expect(cellsOf(html, kind === 'filling' ? 'ob-note-chip' : 'ob-note-cell-pack')).toContain('Box');
     expect(html).not.toMatch(/boxes/i);
   });
 });

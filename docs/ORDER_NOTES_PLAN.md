@@ -16,6 +16,18 @@ or two dotted lines) above the signatures; the Dispatch signatures are
 Supervisor · Loaded by · Checked by. The owner chose to **keep** the coded
 product headers below, which the artifact still omits.
 
+**Dispatch code cell, 2026-10-13 (evening).** The owner revised the artifact's
+coded-product cell only, for the Dispatch note: line one is the code (14 px
+bold), its colour (10 px, `—` when it has none; it drops under the code when the
+line is full) and the brand's two letters (plain mono, no box); line two is the
+**grade** in a bordered chip, the packing as plain 7 px capitals (cut short only
+when the cell cannot hold it), a small grey `×` and the quantity (15 px bold).
+`OrderNote.tsx` `DispatchCell`; the pending order PDF, a Dispatch sheet, draws
+the same (`note-renderer.ts` `planCoded`). The Filling note keeps the cell in
+§2.3. The artifact's cell is 56 px; the row stays **50 px** (`rowCoded`), which
+holds the two lines even with a wrapped colour, so paging and page counts are
+unchanged (56 px took the Typical order from 5 pages to 6).
+
 ---
 
 ## 1. What the owner asked for

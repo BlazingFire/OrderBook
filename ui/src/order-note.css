@@ -671,6 +671,92 @@
   font-weight: 700;
 }
 
+/* The Dispatch note's cell (owner's artifact, 2026-10-13): code, colour and brand, then grade chip, packing, × qty. */
+.ob-note-cell--dispatch {
+  align-items: center;
+  gap: 3px;
+}
+
+.ob-note-cell-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ob-note-cell-name {
+  flex: none;
+  font-size: 14px;
+  line-height: 16px;
+  font-weight: 700;
+}
+
+.ob-note-cell-tone {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  line-height: 12px;
+  font-weight: 500;
+  color: #2b353b;
+}
+
+.ob-note-cell-brand {
+  flex: none;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 7.5px;
+  line-height: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--note-soft);
+}
+
+.ob-note-cell--dispatch .ob-note-cell-detail {
+  gap: 2px;
+  max-width: 100%;
+}
+
+.ob-note-cell-gradechip {
+  flex: none;
+  padding: 0 1px;
+  border: 1px solid var(--note-soft);
+  border-radius: 2px;
+  font-size: 8.5px;
+  line-height: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* The packaging's full name, cut short only when the cell cannot hold it. */
+.ob-note-cell-pack {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 7px;
+  line-height: 11px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  color: #2b353b;
+}
+
+.ob-note-cell-times {
+  flex: none;
+  font-size: 7px;
+  line-height: 11px;
+  font-weight: 600;
+  color: var(--note-muted);
+}
+
+.ob-note-cell--dispatch .ob-note-cell-qty {
+  font-size: 15px;
+}
+
 /* ---- Notes and signatures (last page) ------------------------------------- */
 
 .ob-note-notes {

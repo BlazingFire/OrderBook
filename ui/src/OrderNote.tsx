@@ -123,7 +123,40 @@ function NamedRow({ line, tick, show }: { line: NoteLine; tick: boolean; show: N
   );
 }
 
-function CodedSlot({ slot, show }: { slot: NoteSlot; show: NoteColumns }) {
+/**
+ * The Dispatch note's code cell, as the owner's artifact draws it (2026-10-13): the code, its colour and brand
+ * on the first line; a grade chip, the packing and `× qty` on the second.
+ */
+function DispatchCell({ line, labelled, show }: { line: NoteLine; labelled: boolean; show: NoteColumns }) {
+  const brand = line.brand ? brandCode(line.brand) : '';
+  return (
+    <div className="ob-note-cell ob-note-cell--dispatch">
+      {labelled && <div className="ob-note-cell-product">{line.product}</div>}
+      <div className="ob-note-cell-line">
+        <span className="ob-note-cell-name">{line.subProduct}</span>
+        {/* A code with no colour shows a dash, as the design does. */}
+        {show.colour && <span className="ob-note-cell-tone">{line.colour ?? '—'}</span>}
+        {brand && (
+          <span className="ob-note-cell-brand" title={line.brand ?? undefined}>
+            {brand}
+          </span>
+        )}
+      </div>
+      <div className="ob-note-cell-detail">
+        {show.grade && line.grade && <span className="ob-note-cell-gradechip">{line.grade}</span>}
+        {show.packaging && line.packaging && (
+          <span className="ob-note-cell-pack" title={line.packaging}>
+            {line.packaging}
+          </span>
+        )}
+        <span className="ob-note-cell-times">×</span>
+        <span className="ob-note-cell-qty">{num(line.quantity)}</span>
+      </div>
+    </div>
+  );
+}
+
+function CodedSlot({ slot, show, kind }: { slot: NoteSlot; show: NoteColumns; kind: NoteKind }) {
   if (slot.kind === 'header') {
     return (
       <div className="ob-note-group">
@@ -134,21 +167,25 @@ function CodedSlot({ slot, show }: { slot: NoteSlot; show: NoteColumns }) {
   }
   return (
     <div className={`ob-note-coderow${slot.labelled ? ' ob-note-coderow--labelled' : ''}`}>
-      {slot.lines.map((line) => (
-        <div className="ob-note-cell" key={line.key}>
-          {slot.labelled && <div className="ob-note-cell-product">{line.product}</div>}
-          <div className="ob-note-cell-code">
-            <span className="ob-note-clip">{line.subProduct}</span>
-            <BrandChip brand={line.brand} />
+      {slot.lines.map((line) =>
+        kind === 'dispatch' ? (
+          <DispatchCell key={line.key} line={line} labelled={slot.labelled} show={show} />
+        ) : (
+          <div className="ob-note-cell" key={line.key}>
+            {slot.labelled && <div className="ob-note-cell-product">{line.product}</div>}
+            <div className="ob-note-cell-code">
+              <span className="ob-note-clip">{line.subProduct}</span>
+              <BrandChip brand={line.brand} />
+            </div>
+            {show.colour && line.colour && <div className="ob-note-cell-colour">{line.colour}</div>}
+            <div className="ob-note-cell-detail">
+              {show.packaging && <PackagingChip value={line.packaging} />}
+              {show.grade && line.grade && <span className="ob-note-cell-grade">{line.grade}</span>}
+              <span className="ob-note-cell-qty">×{num(line.quantity)}</span>
+            </div>
           </div>
-          {show.colour && line.colour && <div className="ob-note-cell-colour">{line.colour}</div>}
-          <div className="ob-note-cell-detail">
-            {show.packaging && <PackagingChip value={line.packaging} />}
-            {show.grade && line.grade && <span className="ob-note-cell-grade">{line.grade}</span>}
-            <span className="ob-note-cell-qty">×{num(line.quantity)}</span>
-          </div>
-        </div>
-      ))}
+        ),
+      )}
     </div>
   );
 }
@@ -338,7 +375,7 @@ function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
               {page.right.map((column, index) => (
                 <div className="ob-note-column" key={index}>
                   {column.map((slot, slotIndex) => (
-                    <CodedSlot key={slotIndex} slot={slot} show={show} />
+                    <CodedSlot key={slotIndex} slot={slot} show={show} kind={props.kind} />
                   ))}
                 </div>
               ))}

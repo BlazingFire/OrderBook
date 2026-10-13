@@ -71,6 +71,8 @@ log, 2026-10-13 entries.
   both panels; not over an edit form or note); typing returns to the filtered list.
 - **Messages:** success and error toasts on every delete (`deleteErrorText` in `ui/src/errorText.ts`); bell kinds
   `lead.edited` (deduped per editor until read) and `lead.deleted` to a new order's owner and creator.
+- **Dispatch note code cell (owner's artifact, evening):** code · colour · brand, then grade chip · packing · × qty;
+  pending order PDF too, Filling note unchanged, rows still 50 px (`docs/ORDER_NOTES_PLAN.md`).
 - **Tables:** the tick-box column is `3.5rem` and the box no longer shrinks (was clipped, worst at high scale).
 - **From a second session on the same branch:** the order note prints the colour under each coded cell, grade 9 px,
   packaging by full name (UI and PDF); Preview PDF in Electron now saves the PDF to `%TEMP%\OrderBook PDF\` and opens
