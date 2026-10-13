@@ -190,6 +190,20 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-13 - Preview PDF opens in the PC's PDF app (Claude, Opus, branch `s1/delete-search-toasts`)
+
+- **Ask (owner):** Preview PDF on a New Order shows a blank window on both panels (Filling and Dispatch notes work).
+- **Found:** the route is fine — signed in to the dev Master, `/api/leads/:id/pdf` answered 200 `application/pdf`,
+  20 KB, one page with its text drawn, and the menu link opens it in a browser. The blank is the Electron window
+  (`window.open` → `overrideBrowserWindowOptions` with `plugins: true`), never verified in Electron before (HANDOFF owed
+  list). Not reproduced: this PC's `node_modules/electron` exits 3 even for `--version`.
+- **Built:** `shell.ts` `openPdf` — the window-open handler now denies the PDF URL and the shell fetches it itself
+  (`net.request`, `useSessionCookies`), saves it under `%TEMP%\OrderBook PDF\` (`pdfFileName`) and opens it with
+  `shell.openPath` (Windows' PDF app). A non-PDF answer shows an error box; only when no app takes PDFs (Windows 7)
+  does it fall back to the old in-app viewer window, created by the shell with the same locked-down options.
+- **Verified:** both Electron tsconfigs, eslint on `shell.ts`, `electron/tests` (312 pass).
+- **Not verified:** a real click in a packaged panel (Master and Office), and the Windows 7 fallback window.
+
 ### 2026-10-13 - Colour on the order note's coded cells, bigger grade (Claude, Opus, branch `s1/delete-search-toasts`)
 
 - **Ask (owner):** the numeric-only sub products on the right side of the Filling/Dispatch note must show their

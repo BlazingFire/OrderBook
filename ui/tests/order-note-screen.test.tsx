@@ -88,6 +88,27 @@ describe('the colour a line prints', () => {
   });
 });
 
+describe("the Dispatch note's packing, grade and colour tick boxes", () => {
+  it('print a column while ticked and drop it when unticked, one at a time', () => {
+    mount();
+    expect(screen.getAllByText('Box').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('checkbox', { name: t('orderNote.packing') }));
+    expect(screen.queryAllByText('Box')).toHaveLength(0);
+    expect(screen.queryAllByText(t('orderNote.packing'), { selector: '.ob-note-pack' })).toHaveLength(0);
+    expect(screen.getAllByText('Std').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('checkbox', { name: t('orderNote.grade') }));
+    expect(screen.queryAllByText('Std')).toHaveLength(0);
+    fireEvent.click(screen.getByRole('checkbox', { name: t('orderNote.packing') }));
+    expect(screen.getAllByText('Box').length).toBeGreaterThan(0);
+  });
+
+  it('are not on the Filling note, which always prints all three', () => {
+    mount({ initialKind: 'filling' });
+    expect(screen.queryByRole('checkbox', { name: t('orderNote.packing') })).toBeNull();
+    expect(screen.getAllByText('Box').length).toBeGreaterThan(0);
+  });
+});
+
 describe('what the header calls the record', () => {
   it('heads a pending order "Pending Order No." with the lead id, and a final order "Final Order No."', () => {
     mount({ initialKind: 'filling' });

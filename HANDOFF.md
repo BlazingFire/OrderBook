@@ -52,24 +52,36 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
-## Deletes, search on open records, new toasts and notices (2026-10-13)
+## Deletes, edits, search on open records, notices; order note and PDF fixes (2026-10-13)
 
-**State:** on branch `s1/delete-search-toasts`, not merged, not released. Details: `docs/AI_COLLABORATION.md`
-change log, 2026-10-13.
+**State:** on `main`, pushed; not released (version still 1.4.7 — bump before the next build). Built on the
+short-lived branch `s1/delete-search-toasts` (deleted after the merge). Details: `docs/AI_COLLABORATION.md` change
+log, 2026-10-13 entries.
 
-- Sub products can be deleted (row and detail) on both panels; deleting a main product takes its sub products to the
-  Recycle Bin first, then itself, and stays (naming what blocks) if the Master refuses a sub product on a live order.
-- The Office New Order list and record have Delete (online only) beside Edit; the Action column is `rem(96)`.
-- The list search stays visible with a record open (New Orders, Final Orders, Parties, Products, both panels);
-  typing returns to the filtered list.
-- Success and error toasts for every delete; new bell kinds `lead.edited` and `lead.deleted` to the new order's owner
-  and creator when somebody else acts.
+- **Products:** sub products can be deleted (row and detail) on both panels; deleting a main product takes its sub
+  products to the Recycle Bin first, then itself, and stays (naming what blocks) if the Master refuses a sub product
+  on a live order. Main-product rows have Edit/Delete. Blocker labels show PO numbers, not internal ids.
+- **New Orders:** the Office list and record have Delete (online only) beside Edit. The Master list's row Edit now
+  opens the edit form (an effect used to clear the edit and show the record). In the order form, the product card
+  opened by the pencil (or a fresh pick) has a bin on each counted row (`SubRowRemove`, shared by both panels).
+- **Parties:** Edit/Delete on every row on both panels; the Office party detail has Delete. Hidden without the
+  permission and for a view-only grant.
+- **Search:** the list search stays with a record open (New Orders, Final Orders, Parties, Products, Sub products,
+  both panels; not over an edit form or note); typing returns to the filtered list.
+- **Messages:** success and error toasts on every delete (`deleteErrorText` in `ui/src/errorText.ts`); bell kinds
+  `lead.edited` (deduped per editor until read) and `lead.deleted` to a new order's owner and creator.
+- **Tables:** the tick-box column is `3.5rem` and the box no longer shrinks (was clipped, worst at high scale).
+- **From a second session on the same branch:** the order note prints the colour under each coded cell, grade 9 px,
+  packaging by full name (UI and PDF); Preview PDF in Electron now saves the PDF to `%TEMP%\OrderBook PDF\` and opens
+  it in Windows' PDF app (`electron/shell.ts` `openPdf`), with the in-app viewer only as the Windows 7 fallback.
 
-**Gate:** lint 0 (2 warnings already on main), typecheck 0, test 407 files + 1 skipped / 5,448 tests + 17 skipped,
-integration suites on PostgreSQL. **Trap:** the test cluster in `%TEMP%\orderbook-test-pg` would not start from this
-session (`pg_ctl: could not open log file ... Permission denied`); run with `TEMP`/`TMP` set to `.tmp	est-tmp` and
-it builds a fresh cluster there. **Not verified:** Office browser pass, Electron, two PCs; the owner's "UI messed up"
-was read as the New Order list layout — confirm with them.
+**Gate:** see the change log's 2026-10-13 merge entry. **Trap:** the test cluster in `%TEMP%\orderbook-test-pg`
+would not start from this session (`pg_ctl: could not open log file ... Permission denied`); run with `TEMP`/`TMP`
+set to `.tmp\test-tmp` and it builds a fresh cluster there.
+
+**Not verified:** Office in a browser (the scratch Office was never paired), Electron (incl. the Preview PDF fix and
+its Windows 7 fallback), a printed note by eye, two PCs. The "WEIGHT" header of the order card reads "WEIG…" at
+1024 wide — not checked whether that predates the remove column.
 
 ## 1.4.7 released: everything combined, one branch (2026-10-10)
 

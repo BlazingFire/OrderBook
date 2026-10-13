@@ -34,10 +34,11 @@ import { createPortal } from 'react-dom';
 
 import { Button } from './Button.js';
 import { EditorScreen } from './EditorScreen.js';
+import { Checkbox } from './Form.js';
 import { t } from './i18n.js';
 import { Modal } from './Modal.js';
 import { useUnsavedWork } from './unsavedWork.js';
-import { OrderNote } from './OrderNote.js';
+import { OrderNote, type NoteColumns } from './OrderNote.js';
 import { printOnly } from './printPortal.js';
 import type { PrintroomTransport } from './printroomModel.js';
 import { SendToPrintroomDialog } from './SendToPrintroomDialog.js';
@@ -131,6 +132,8 @@ export function OrderNoteScreen({
   /** One print or Save PDF at a time: `printOnly` marks the page and is not re-entrant. */
   const busyRef = useRef(false);
   const [printedAt] = useState(() => new Date());
+  /** The Dispatch note's packing, grade and colour tick boxes; the Filling note always prints all three. */
+  const [columns, setColumns] = useState<NoteColumns>({ packaging: true, grade: true, colour: true });
 
   const model = useMemo(
     () => buildOrderNote(record, colourLabeller((optionLists ?? []).filter((option) => option.listKey === 'stock.colour'))),
@@ -170,6 +173,7 @@ export function OrderNoteScreen({
     namedCount: model.named.length,
     codedCount: model.coded.reduce((sum, group) => sum + group.lines.length, 0),
     printedAt,
+    columns: kind === 'dispatch' ? columns : undefined,
   };
 
   async function print(): Promise<void> {
@@ -360,6 +364,16 @@ export function OrderNoteScreen({
             )}
           </label>
         )}
+
+        {kind === 'dispatch' &&
+          (['packaging', 'grade', 'colour'] as const).map((column) => (
+            <Checkbox
+              key={column}
+              checked={columns[column]}
+              onChange={(checked) => setColumns((current) => ({ ...current, [column]: checked }))}
+              label={t(column === 'packaging' ? 'orderNote.packing' : `orderNote.${column}`)}
+            />
+          ))}
 
         <label className="ob-note-toolbar-item">
           <span className="ob-small">{t('orderNote.copies')}</span>

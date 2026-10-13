@@ -9,8 +9,8 @@ and `docs/STRUCTURE.md` first; file references below are to that commit.
 describes the revised layout, which is what `ui/src/OrderNote.tsx` draws:
 named rows show `Sub-product · brand | Packing | Colour | Grade | Qty`, at
 32 px, or 44 px when the label wraps to three lines (`namedRowHeight`); coded
-cells show the code with a brand chip, then a packing chip (BOX / GRS / PPR),
-the grade and `×qty`, with no colour (owner's choice); the halves split
+cells show the code with a brand chip, then a packing chip with the packaging's full name (owner, 2026-10-13),
+the colour on its own line, the grade and `×qty` (colour added by the owner, 2026-10-13); the halves split
 58 % / 42 %; the last page carries a 78 px **Notes** block (the record's notes,
 or two dotted lines) above the signatures; the Dispatch signatures are
 Supervisor · Loaded by · Checked by. The owner chose to **keep** the coded
@@ -73,9 +73,9 @@ A grid of `N` columns (owner picks 3–6; default 4; the artifact's toolbar
 offers 3/4/5). Each cell is **50 px**:
 
 - the code, 14 px bold, centred, with the brand chip;
-- beneath: the packing chip (BOX / GRS / PPR, else the first three letters;
-  a dashed empty chip when there is none), the grade (7 px uppercase) and
-  `×qty` (14 px bold). No colour.
+- beneath: the packing chip (the packaging's full name, cut short only when the cell cannot hold it;
+  a dashed empty chip when there is none), the grade (9 px uppercase) and
+  `×qty` (14 px bold); between the code and this line, the colour (8 px uppercase).
 
 When there are no named lines on a page the right half goes full width and
 uses `min(9, cols × 2 − 1)` columns. Split when both exist: left 58 %, right
