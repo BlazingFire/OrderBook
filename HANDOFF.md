@@ -84,10 +84,26 @@ set to `.tmp\test-tmp` and it builds a fresh cluster there.
 its Windows 7 fallback), a printed note by eye, two PCs. The "WEIGHT" header of the order card reads "WEIG…" at
 1024 wide — not checked whether that predates the remove column.
 
-## Product restore "Update only" (2026-10-13)
+## Product restore "Update only" + 1.4.8 (2026-10-13)
 
-**State:** released as **1.4.8** (`10418ed4`, built in the worktree `../OrderBook-u1`, branch `u1/update-only`),
-merged into `main`. Rules: `docs/PRODUCT_IMPORT_FORMAT.md`, "Update only".
+**State:** merged to `main` and **released as v1.4.8** (published on GitHub `BlazingFire/OrderBook-Releases`, Latest,
+8 assets: Master, Office and Office-Win7 Setups plus the five `latest-*.json` manifests, signed with key
+`release-2026-10-01`; built from `10418ed4` in `../OrderBook-u1` with `ORDERBOOK_RELEASES_DIR=.tmp\rel148`). Gate on
+the feature commit: lint 0, typecheck 0, test 0 (408 files + 1 skipped; 5,452 tests + 17 skipped), build 0. Rules:
+`docs/PRODUCT_IMPORT_FORMAT.md`, "Update only".
+
+**The owner's two product files (combined 2026-10-13):** the 1.4.7 export `OrderBook-Products-Smruti-Ceramics-2026-10-13`
+(549 sub products, the shipped catalogue with photos, no weights) and an older products sheet `products-2026-10-13.csv`
+(815 rows, 12 main products, weights). Matched by name within families: 549 pairs, 263 old-only products added (3
+duplicates inside the old sheet merged), 2 new main products (`DLV` One Piece Basin Delta Vitrosa, `EMV` Emerald
+Vitrosa). Delivered in `Desktop\orderbook data combine\`: `OrderBook-Products-Smruti-Ceramics-update-2026-10-13.zip`
+(the file to restore **with Update only ticked**: 534 rows carrying only changed Weight/Size/Alias, 263 new rows under
+their old-sheet codes, 549 photos) and `combine-check.csv` (one line per product: in both / added, old row, notes).
+The earlier `…-combined-…zip` is a full catalogue for "Make the catalogue exactly this file"; it would remove the
+company's newer variants, so it is superseded. Checked on this code against a catalogue changed like the company's
+(extra colour variants, a rename, a size, an own sub product): all kept, ours landed, nothing removed, a second run
+writes nothing. Where both sides set a weight, the zip's wins. Kept the new version's colour rules where the old sheet
+differed (267 rows, listed in `combine-check.csv`). Not tried on the company's real current data.
 
 **Owner asked:** the merged product file has no variants, while the company added variants and we updated photos;
 combine them so their variants stay, our photos and other updated data land, old data stays, and only updated data

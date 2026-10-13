@@ -253,6 +253,16 @@ was verified, so the next agent can trust the state without re-auditing.
   search on an open New Order returns to the filtered list with focus kept, list delete with toast, sub-product delete
   refused with names, whole-product delete of a 3-sub product.
 - **Not verified:** an Office browser pass (the scratch Office was not paired), Electron, two PCs.
+### 2026-10-13 - 1.4.8 released; the owner's two product files combined (Claude, Opus)
+
+- **Done:** `u1/update-only` fast-forwarded to `main`, version bumped to 1.4.8 (`10418ed4`), `main` pushed; Master,
+  Office and Office-Win7 Setups built (`node tools/release.mjs 1.4.8`, then `--os win7`) and published as v1.4.8 on
+  `BlazingFire/OrderBook-Releases` (8 assets, signed). The owner's update zip for that release is described in
+  `HANDOFF.md`, "Product restore 'Update only' + 1.4.8".
+- **Verified:** the update zip restored with Update only on this code over a catalogue changed like the company's:
+  their variants, rename, size and own sub product kept, 263 added, 534 filled, nothing removed, a second run writes
+  nothing. **Not verified:** the Setups on a real PC; the company's real current data.
+
 
 ### 2026-10-13 - Product restore "Update only"; variants in the backup zip pinned (Claude, Opus, branch `u1/update-only`)
 
