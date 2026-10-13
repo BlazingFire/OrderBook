@@ -228,6 +228,9 @@ export function CatalogScreen({
    */
   const [photoPatch, setPhotoPatch] = useState<Product | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  /** The party Delete was asked for, from its row or its detail; null while no dialog shows. */
+  const [partyDeleteTarget, setPartyDeleteTarget] = useState<Party | null>(null);
+  const [partyDeleting, setPartyDeleting] = useState(false);
   /** The sub product Delete was asked for, from its row or its detail; null while no dialog shows. */
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -481,6 +484,43 @@ export function CatalogScreen({
     }
   }
 
+  const canEditParty = view.permissions.includes('parties.edit');
+  const canDeleteParty = view.permissions.includes('parties.delete');
+  /** A view grant reads the party but may not work it; one not yet on the Master has nothing to delete there. */
+  const mayWorkParty = (party: Party) =>
+    (view.partyGrants ?? []).find((entry) => entry.partyId === party.id)?.level !== 'view';
+  const partyDeletable = (party: Party) => canDeleteParty && mayWorkParty(party) && Boolean(party.sync.hlc);
+
+  /** Online only: the Master refuses a party a live order still points at, and says which. */
+  async function confirmDeleteParty(): Promise<void> {
+    if (!partyDeleteTarget) return;
+    const target = partyDeleteTarget;
+    setPartyDeleting(true);
+    try {
+      await api.deleteParty(target.id);
+      if (openPartyId === target.id) setOpenPartyId(null);
+      toast.push(t('parties.deleted', { name: target.name }));
+    } catch (caught) {
+      toast.push(deleteErrorText(caught, 'parties.deleteFailed'), { tone: 'error' });
+    } finally {
+      setPartyDeleting(false);
+      setPartyDeleteTarget(null);
+    }
+  }
+
+  const deletePartyDialog = (
+    <ConfirmDialog
+      open={partyDeleteTarget !== null}
+      tone="danger"
+      busy={partyDeleting}
+      title={t('parties.delete.title', { name: partyDeleteTarget?.name ?? '' })}
+      body={t('parties.delete.body')}
+      confirmLabel={t('parties.delete.confirm')}
+      onCancel={() => setPartyDeleteTarget(null)}
+      onConfirm={() => void confirmDeleteParty()}
+    />
+  );
+
   const deleteProductDialog = (
     <ConfirmDialog
       open={deleteTarget !== null}
@@ -666,7 +706,9 @@ export function CatalogScreen({
             setEditingParty(openParty);
             setOpenPartyId(null);
           }}
+          onDelete={partyDeletable(openParty) ? () => setPartyDeleteTarget(openParty) : undefined}
         />
+        {deletePartyDialog}
         <PartyFormModal
           transport={partyFormTransport}
           open={editingParty !== null}
@@ -765,6 +807,23 @@ export function CatalogScreen({
         width: rem(130),
         render: (party) => <PartyVisibilityMark count={view.partyAccessCounts?.[party.id]} />,
       },
+      ...(canEditParty || canDeleteParty
+        ? [
+            {
+              key: 'action',
+              header: t('lead.list.col.action'),
+              width: rem(96),
+              render: (party: Party) => (
+                <RowActions
+                  editLabel={t('action.edit')}
+                  deleteLabel={t('action.delete')}
+                  onEdit={canEditParty && mayWorkParty(party) ? () => setEditingParty(party) : undefined}
+                  onDelete={partyDeletable(party) ? () => setPartyDeleteTarget(party) : undefined}
+                />
+              ),
+            },
+          ]
+        : []),
     ];
 
     return (
@@ -816,6 +875,7 @@ export function CatalogScreen({
           onUpdated={onPartyUpdated}
           onError={onDrawerError}
         />
+        {deletePartyDialog}
       </>
     );
   }

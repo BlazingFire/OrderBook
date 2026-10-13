@@ -53,6 +53,7 @@ import {
   Combobox,
   ConfirmDialog,
   DataTable,
+  RowActions,
   EditorScreen,
   EmptyState,
   ErrorState,
@@ -457,6 +458,24 @@ export function PartiesScreen({
       // The date alone: a date and time ran 179 px in this 110 px column.
       render: (party) => formatDate(party.createdAt),
     },
+    ...(canEdit || canDelete
+      ? [
+          {
+            key: 'action',
+            header: t('lead.list.col.action'),
+            width: rem(96),
+            // As on the party itself: a view grant reads the party but may not work it.
+            render: (party: PartyListRow) => (
+              <RowActions
+                editLabel={t('action.edit')}
+                deleteLabel={t('action.delete')}
+                onEdit={canEdit && party.myAccess !== 'view' ? () => setEditing(party) : undefined}
+                onDelete={canDelete && party.myAccess !== 'view' ? () => setDeleting(party) : undefined}
+              />
+            ),
+          },
+        ]
+      : []),
   ];
 
   if (open) {
