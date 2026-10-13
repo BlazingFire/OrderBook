@@ -152,7 +152,6 @@ export * from './useEnterToAdvance.js';
 export * from './useOverlay.js';
 export * from './navIcons.js';
 export * from './tileIcons.js';
-export * from './NoteButtons.js';
 export * from './TodoListView.js';
 export * from './ListFilters.js';
 export * from './ProductShare.js';

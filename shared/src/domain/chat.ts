@@ -353,14 +353,6 @@ export const CHAT_SYSTEM_KEYS: Record<ChatSystemEvent, MessageKey> = {
   unarchived: 'chat.system.unarchived',
 };
 
-/** The key for a refused capability request, one per capability. */
-export const CHAT_ACCESS_KEYS: Record<ChatAccessCapability, MessageKey> = {
-  'chat.directMessages': 'permission.chat.directMessages',
-  'chat.shareRecords': 'permission.chat.shareRecords',
-  'chat.tasks': 'permission.chat.tasks',
-  'chat.createGroups': 'permission.chat.createGroups',
-};
-
 /** The direct-chat key for two people: their ids, ordered, so either side finds the same room. */
 export function directKeyOf(a: string, b: string): string {
   return a < b ? `${a}:${b}` : `${b}:${a}`;

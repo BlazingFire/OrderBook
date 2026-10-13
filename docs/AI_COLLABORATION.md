@@ -190,6 +190,22 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-13 - Pre-1.5.0 cleanup: dead code, CSS and strings removed (Claude)
+
+- **Ask (owner):** audit the code, remove bloat, make it cleaner, then build and publish a signed 1.5.0.
+- **Removed (each checked unreferenced across source and tests):** `chatRepo.findRoom`; the unmounted
+  `NoteButtons` and `AvatarPicker` components (`avatarFileProblem` kept, it is used); `CHAT_ACCESS_KEYS`,
+  `NOTICE_PERMISSIONS`, `isLocale`, `LOCALE_LABELS`; about 30 `base.css` rules for layouts no screen renders
+  (old lead form columns, two-column record detail, `.ob-lead-line*`, `.ob-picked`, `.ob-line-meta`); 72 i18n keys
+  with no caller. Panel-scoped keys (`master.*`/`office.*`, looked up through `tp()` with the prefix added) were
+  kept: `master/tests/i18n-call-sites.test.ts` is what sees those.
+- **Fixed:** the two lint warnings; `Popover` restores focus with the surface captured when it opened (by cleanup
+  the closing popover's ref is already null).
+- **Left for the owner (not dead, a decision):** the Developer tools kit in `ui/` (`DeveloperPanel`,
+  `useUninstallTool`, the `developer.tool.*` strings), recorded as kept in the P7 entry; the root
+  `catalogue-products.csv` / `catalogue-main-products.csv`, which nothing reads.
+- **Verified:** `npm run verify` exit 0 on the cleaned tree.
+
 ### 2026-10-13 - Coded half: one section per main product (Claude)
 
 - **Ask (owner, screenshot):** codes of one main product ("Table Top Wash Basin" 7512, 7513, 7505 17X11,

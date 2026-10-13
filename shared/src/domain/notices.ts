@@ -11,7 +11,6 @@
  */
 
 import type { Product, ProductImage } from './entities.js';
-import type { Permission } from './permissions.js';
 
 /**
  * The first panel protocol that speaks the notice board: its commands (`COMMAND_MIN_PROTOCOL`)
@@ -124,12 +123,6 @@ export interface NoticeBoard {
    */
   sellToday?: SellToday[];
 }
-
-/** The permission keys. `view` is held by every role; `manage` is the administrator's. */
-export const NOTICE_PERMISSIONS = {
-  view: 'notices.view',
-  manage: 'notices.manage',
-} as const satisfies Record<string, Permission>;
 
 /** Today in `YYYY-MM-DD` for a business time zone, the way `showUntil` is compared. */
 export function noticeToday(now: Date, timeZone: string): string {

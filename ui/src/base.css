@@ -368,19 +368,6 @@
   color: var(--accent-hover);
 }
 
-.ob-avatarpicker {
-  display: flex;
-  align-items: center;
-  gap: var(--s-16);
-}
-
-.ob-avatarpicker-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-8);
-  min-width: 0;
-}
-
 /* The footer's own is smaller than anything else and sits on the status line. */
 .ob-footer .ob-avatar {
   box-shadow: none;
@@ -1020,57 +1007,6 @@ table.ob-table {
   display: flex;
   flex-wrap: wrap;
   gap: var(--s-4);
-}
-
-/*
- * New lead: the form and the Added-products panel side by side, and one column
- * when the window cannot hold two. `flex: 1 1 <basis>` rather than a media
- * query, so it is the space that decides rather than a device class.
- */
-.ob-lead-cols {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: var(--s-20);
-}
-
-.ob-lead-form {
-  flex: 1 1 21.4286rem;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-20);
-}
-
-.ob-lead-panel {
-  flex: 1 1 21.4286rem;
-  min-width: 0;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-8);
-  padding: var(--s-12);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--bg-surface);
-}
-
-/* Source and follow-up: two even columns under the party field's rule. */
-.ob-lead-enquiry {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-items: start;
-  gap: var(--s-8) var(--s-20);
-  padding-top: var(--s-8);
-  border-top: 1px solid var(--line);
-}
-
-/* px, not rem: a breakpoint that tracked the scale slider would reorganise the
-   layout mid-drag, which reads as a bug (`ui-conventions.test.ts`). */
-@media (max-width: 560px) {
-  .ob-lead-enquiry {
-    grid-template-columns: 1fr;
-  }
 }
 
 .ob-chip {
@@ -5608,10 +5544,6 @@ html[data-motion='off'] .ob-ncard {
    more, rather than the same thing enlarged. */
 
 @media (max-width: 1180px) {
-  .ob-record-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   /* One column: two columns of definition list below this width give each
      value about twelve characters. */
   .ob-detail-grid {
@@ -5647,59 +5579,8 @@ html[data-motion='off'] .ob-ncard {
 }
 
 /* ===========================================================================
- * Record detail — two columns (§8)
- *
- * What a person reads (lines, history) takes the width; what they glance at
- * or act on (stage, party, facts, convert) sits in an aside that stays the
- * same width from the 1024px floor to a 4K panel. A stack of full-width cards
- * put every value a screen-width away from its label.
- *
- * Not `.ob-detail-grid`: that is the label/value `<dl>` above, whose
- * `> div { align-items: baseline; border-bottom }` shrank both columns' cards
- * to their content and drew a hairline under each column.
+ * Record detail — line items (§8)
  * ======================================================================== */
-
-/* The aside grows with the page, 21 to 28rem: fixed at 21rem it cut "Created …"
-   at 1080p while the grid stopped at 96rem and left 325 px empty beside it.
-   The cap still stops a 4K screen from spreading one record across 3600 px. */
-.ob-record-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(21rem, 28%, 28rem);
-  gap: var(--s-16);
-  align-items: start;
-  max-width: 120rem;
-}
-.ob-detail-main,
-.ob-detail-aside {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-12);
-  min-width: 0;
-}
-.ob-detail-aside .ob-kv {
-  grid-template-columns: max-content minmax(0, 1fr);
-}
-.ob-detail-aside .ob-kv dd {
-  /* A value wraps rather than being cut: a created-at time is worth reading whole. */
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-/* The card's own header and footer rows, flush with its padding. */
-.ob-detail-head,
-.ob-detail-foot {
-  display: flex;
-  align-items: center;
-  gap: var(--s-12);
-  padding: var(--s-8) var(--s-12);
-}
-.ob-detail-head {
-  border-bottom: 1px solid var(--line);
-}
-.ob-detail-foot {
-  justify-content: flex-end;
-  border-top: 1px solid var(--line);
-}
 
 /* One line item per row: name and meta on the left, the figures on the right.
    Rows, not nested cards — a card inside a card reads as a mistake at this
@@ -5731,12 +5612,7 @@ html[data-motion='off'] .ob-ncard {
   gap: var(--s-4) var(--s-8);
   min-width: 0;
 }
-.ob-line-meta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--s-4) var(--s-12);
-}
+
 .ob-line-figures {
   flex: none;
   display: flex;
@@ -5974,173 +5850,6 @@ html[data-motion='off'] .ob-ncard {
 .ob-chip__clear:hover {
   background: var(--accent);
   color: var(--fg-on-accent);
-}
-
-/*
- * The product that has been picked but not yet added.
- *
- * It replaces the search field in place rather than opening beside it, so the
- * ring is the whole signal that the next keystroke goes somewhere else.
- */
-.ob-picked {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-8) var(--s-12);
-  min-height: 2.8571rem;
-  box-sizing: border-box;
-  padding: var(--s-4) var(--s-6) var(--s-4) var(--s-12);
-  border: 1px solid var(--accent);
-  border-radius: var(--r-md);
-  background: var(--bg-surface);
-  box-shadow: 0 0 0 3px var(--accent-tint);
-}
-
-/*
- * One product already on the lead, in the Added-products panel.
- *
- * Collapsed it is one line — code, name, colour, quantity — because the panel's
- * job is to let somebody scan twenty products and find the one that is wrong.
- * Opened it shows the colours and what was decided, which is the same
- * information the draft card was filled in with.
- */
-.ob-lead-line {
-  box-sizing: border-box;
-  /* The list is a scrolling flex column: without this an overflow:hidden row has no
-     minimum height and is squashed to fit instead of making the list scroll. */
-  flex: none;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--bg-surface);
-}
-
-.ob-lead-line[data-open='true'] {
-  border-color: var(--line-strong);
-}
-
-.ob-lead-line__head {
-  display: flex;
-  align-items: center;
-}
-
-.ob-lead-line[data-open='true'] .ob-lead-line__head {
-  background: var(--bg-sunken);
-}
-
-/* The clickable half of the head — everything but the checkbox. */
-.ob-lead-line__toggle {
-  display: flex;
-  align-items: center;
-  gap: var(--s-6);
-  flex: 1;
-  min-width: 0;
-  text-align: left;
-  font: inherit;
-  padding: var(--s-6) var(--s-8);
-  border: none;
-  background: none;
-  color: var(--fg-primary);
-  cursor: pointer;
-}
-
-.ob-lead-line__toggle:hover {
-  background: var(--bg-hover);
-}
-
-/*
- * One wrapping row, not a stack.
- *
- * This was `flex-direction: column` with a row each for the variant, the
- * weight, the packaging and the buttons — four full-width rows of mostly empty
- * space, so opening one product pushed the next three out of the panel. The
- * facts are short words and they sit beside each other; the two buttons go to
- * the right and only drop below when the words genuinely fill the line.
- */
-.ob-lead-line__body {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-4) var(--s-8);
-  padding: var(--s-6) var(--s-8) var(--s-6) 2.2143rem;
-  border-top: 1px solid var(--line);
-}
-
-.ob-lead-line__facts {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-4) var(--s-6);
-  color: var(--fg-secondary);
-}
-
-/*
- * The middot between facts. A separate element rather than a `::before` on the
- * sibling, because one of those siblings is a pill with a background of its
- * own and a generated dot would land inside it.
- */
-.ob-lead-line__sep {
-  color: var(--fg-tertiary);
-}
-
-.ob-lead-line__acts {
-  flex: 0 0 auto;
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: var(--s-6);
-}
-
-/*
- * Modify and Remove, as icons on a square of their own.
- *
- * The square is the point: as bare ghost text the two verbs read as the end of
- * the sentence in front of them rather than as things you can press. Tinted
- * rather than bordered, because a border at this size is most of the control.
- *
- * `.ob-icon-btn` is the topbar's affordance and is deliberately background-less
- * until hover; these have to look pressable at rest, in a row that is already
- * full of words.
- */
-.ob-lead-line__act {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  width: var(--ctl-h-sm);
-  height: var(--ctl-h-sm);
-  padding: 0;
-  border: none;
-  border-radius: var(--r-sm);
-  background: var(--bg-sunken);
-  color: var(--fg-secondary);
-  cursor: pointer;
-  transition:
-    background-color var(--d-fast) var(--e-standard),
-    color var(--d-fast) var(--e-standard);
-}
-
-.ob-lead-line__act:hover {
-  background: var(--bg-hover);
-  color: var(--fg-primary);
-}
-
-/* The destructive one, so a slip of the mouse is never a silent one. */
-.ob-lead-line__act--danger:hover {
-  background: var(--state-conflict-tint);
-  color: var(--state-conflict);
-}
-
-/* The panel's own scroller: the page below it must stay reachable. */
-.ob-lead-lines {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-4);
-  max-height: 60vh;
-  overflow-y: auto;
-  overflow-x: hidden;
 }
 
 /* The bar that appears once anything in the panel is ticked. */
@@ -6889,13 +6598,6 @@ button.ob-chat-chip-open:not(:disabled):hover {
   display: flex;
   flex-direction: column;
   gap: var(--s-12);
-}
-
-/* 1.4 R10: the Filling and Dispatch note buttons in a list row. */
-.ob-note-buttons {
-  display: inline-flex;
-  gap: var(--s-4);
-  white-space: nowrap;
 }
 
 /* ===========================================================================
