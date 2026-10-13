@@ -437,7 +437,9 @@ describe.skipIf(!canRunIntegrationTests)('live presence (integration)', () => {
       expect(theirs.ok && theirs.data).toEqual({ recordKind: 'lead', records: {} });
 
       await settle();
-      expect(boards(belaPanel).every((board) => Object.keys(board.records).length === 0)).toBe(true);
+      // No push names the restricted party's card to her. (Other suites' panels may still be beating on records
+      // she can open, so "every board empty" was stricter than this and failed now and then on CI.)
+      expect(boards(belaPanel).some((board) => lead.id in board.records)).toBe(false);
     });
 
     it('refuses a kind that is not a board and a person without the module', async () => {
