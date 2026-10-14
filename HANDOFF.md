@@ -54,7 +54,16 @@ on it.
 
 ## Delete data screen on the Master (2026-10-14)
 
-**State:** on `main`, released as **1.5.1** (2026-10-14). A new **Delete data** row in the Master's Admin group
+**State:** **released as v1.5.1** (2026-10-14; Latest on `BlazingFire/OrderBook-Releases`, 8 assets like 1.5.0, signed
+with `release-2026-10-01`; built from `main` at `ee4ffe7`). Built as 1.5.0 was: a branch-only workflow on
+`claude/funny-cray-wg2xq5` ran `tools/release.mjs` on `windows-latest` (Office and Win7 Office, then the Master carrying
+the Office manifests signed off-runner; log: both bundled, hashes checked); every manifest signed in the session and
+checked with `verifyManifest`; published from a temporary branch of the releases repo whose workflow reassembled the
+chunked setups, re-checked SHA-256, size and signature presence, released and deleted itself. The live release was
+re-downloaded: all 5 signatures valid, every setup's SHA-256 and size match. Left to delete by hand: the draft
+pre-release `build-1.5.1-win` on `BlazingFire/OrderBook` (the session may not delete releases) and the helper commits on
+`claude/funny-cray-wg2xq5` (not for `main`). **Not verified:** an install, or a Master picking the update up.
+A new **Delete data** row in the Master's Admin group
 (after Recycle bin, no chord; `nav.master.dataDelete`), offered only to an administrator or a Server Master holding
 `settings.manage` — `data-reset.service.ts#assertMayReset` checks both again. Five sections
 (`master/web/src/screens/DataDeleteScreen.tsx`):

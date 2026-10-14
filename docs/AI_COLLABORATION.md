@@ -190,6 +190,19 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-14 - 1.5.1 built, signed and released (Claude)
+
+- **Done:** built from `main` at `ee4ffe7` on GitHub's Windows runners (branch-only helper on `claude/funny-cray-wg2xq5`:
+  Office + Office Win7, then the Master with the signed Office manifests bundled; log: both bundled, hashes checked).
+  Every manifest signed in the session with the owner's `release-2026-10-01` key (checked against the public key in
+  `release-keys.ts` first), each checked against its setup's SHA-256 and size and with `verifyManifest`. Published as
+  **v1.5.1** (Latest) on `OrderBook-Releases` from a temporary branch whose workflow reassembled the chunked setups,
+  re-checked them, released and deleted itself (the session may not create releases through the API).
+- **Verified:** the live release's 5 manifests and 3 setups downloaded from their public links: version 1.5.1, signature
+  valid, SHA-256 and size match. CI green on `main` at `ee4ffe7`. **Not verified:** an install, or a Master picking the
+  update up; the Setups are not Authenticode-signed.
+- **Left:** the draft pre-release `build-1.5.1-win` and the helper commits on `claude/funny-cray-wg2xq5`, to delete by hand.
+
 ### 2026-10-14 - 1.5.1: merged to main, version bumped (Claude)
 
 - **Ask (owner):** release 1.5.1 with every Delete data change, committed to `main` before building.
