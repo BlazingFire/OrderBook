@@ -380,11 +380,34 @@ dataRoutes.put(
   }),
 );
 
+/**
+ * What deleting the party would take with it, read by the Master's delete
+ * dialog before it opens (the Delete data screen's "Delete related data").
+ */
+dataRoutes.get(
+  '/parties/:id/delete-preview',
+  needs('parties.delete'),
+  asyncHandler(async (req, res) => {
+    res.json(await catalogService.partyDeletePreview(String(req.params.id), actorFromRequest(req)));
+  }),
+);
+
+/**
+ * `?withRelated=true&expectedRelated=N` asks to take the party's orders with
+ * it; the service honours it only while `parties.deleteRelatedData` is on, and
+ * only when N is still the number of orders the party has.
+ */
 dataRoutes.delete(
   '/parties/:id',
   needs('parties.delete'),
   asyncHandler(async (req, res) => {
-    res.json(await catalogService.deleteParty(String(req.params.id), actorFromRequest(req)));
+    const expected = queryInt(req.query.expectedRelated);
+    res.json(
+      await catalogService.deleteParty(String(req.params.id), actorFromRequest(req), {
+        withRelated: req.query.withRelated === 'true',
+        ...(expected !== undefined ? { expectedRelated: expected } : {}),
+      }),
+    );
   }),
 );
 

@@ -27,6 +27,7 @@ export const NAV_ICONS = {
   fields: 'fields',
   logs: 'log',
   recycleBin: 'trash',
+  dataDelete: 'warning',
   integrations: 'plug',
   settings: 'settings',
   updates: 'update',

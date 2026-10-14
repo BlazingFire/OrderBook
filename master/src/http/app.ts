@@ -23,6 +23,7 @@ import { noticeRoutes } from './routes/notice.routes.js';
 import { todoRoutes } from './routes/todo.routes.js';
 import { printJobRoutes, printStationRoutes } from './routes/print.routes.js';
 import { dataRoutes } from './routes/data.routes.js';
+import { dataResetRoutes } from './routes/data-reset.routes.js';
 import { fieldsRoutes } from './routes/fields.routes.js';
 import { imageFilesRoutes, imagesRoutes } from './routes/images.routes.js';
 import { integrationRoutes } from './routes/integration.routes.js';
@@ -123,6 +124,7 @@ export function createApp(): Express {
   app.use('/api/updates', updateRoutes);
   app.use('/api/party-access', partyAccessRoutes);
   app.use('/api/recycle-bin', recycleBinRoutes);
+  app.use('/api/data-reset', dataResetRoutes);
   app.use('/api/fields', fieldsRoutes);
   app.use('/api/logs', logRoutes);
   app.use('/api/reports', reportRoutes);

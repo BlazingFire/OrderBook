@@ -43,6 +43,7 @@ export const SETTING_GROUPS = [
   'reports',
   'notices',
   'integrations',
+  'data',
 ] as const;
 export type SettingGroup = (typeof SETTING_GROUPS)[number];
 
@@ -218,6 +219,23 @@ export const SETTINGS = {
     group: 'notices',
     control: { kind: 'boolean' },
     fallback: true,
+    parse: (raw: unknown): boolean => asBoolean(raw),
+  },
+
+  /**
+   * Delete related data (2026-10-14), the switch on the Master's Delete data screen. On,
+   * deleting a party on the Master that still has new or final orders sends those orders to
+   * the Recycle Bin with it, after the dialog has listed every one of them. Off, such a delete
+   * is refused naming what still points at the party, as it always was — so `false` is the
+   * fallback and an upgraded company changes nothing. In the `data` group, which the Settings
+   * screen leaves out: the Delete data screen draws it.
+   */
+  'parties.deleteRelatedData': {
+    labelToken: 'setting.parties.deleteRelatedData.label',
+    descriptionToken: 'setting.parties.deleteRelatedData.help',
+    group: 'data',
+    control: { kind: 'boolean' },
+    fallback: false,
     parse: (raw: unknown): boolean => asBoolean(raw),
   },
 

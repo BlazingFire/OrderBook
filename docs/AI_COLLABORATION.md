@@ -190,6 +190,18 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-14 - Delete data screen: Start fresh, chat and print room clears, find and delete, Delete related data (Claude)
+
+- **Done:** the Master's Admin group gains **Delete data** (admin tier + `settings.manage`): Start fresh (every order and
+  party gone, products and users kept), Delete all chat messages, Clear print room history (all three need the
+  person's password and `DELETE`), a search to delete one party or order, and the `parties.deleteRelatedData` switch,
+  which lets the Master's party delete dialog list and bin a party's orders with it. New: `shared/src/domain/data-reset.ts`,
+  `master/src/services/data-reset.service.ts`, `master/src/http/routes/data-reset.routes.ts`,
+  `master/web/src/screens/DataDeleteScreen.tsx`, `master/web/src/components/PartyDeleteDialog.tsx`; `ChatPush` kind
+  `cleared`. Details and the one decision: `HANDOFF.md` "Delete data screen on the Master".
+- **Verified:** `npm run lint`, `npm run typecheck` and the full test suite (integration suites run against PostgreSQL
+  as a non-root user), new suite `master/tests/data-delete.integration.test.ts`.
+
 ### 2026-10-14 - 1.5.0 built, signed and released (Claude)
 
 - **Done:** built from `05f3c64` on GitHub's Windows runners (branch-only helper on `claude/serene-ritchie-bmhtei`,

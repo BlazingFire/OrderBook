@@ -821,6 +821,12 @@ export function ChatConversation(props: ChatConversationProps) {
           },
           () => undefined,
         );
+      } else if (event.kind === 'cleared') {
+        // Every message of the room was deleted: drop what is shown and read it again,
+        // since a reload otherwise folds the new page into what is held.
+        setMessages([]);
+        setHasOlder(false);
+        void loadAll(null);
       } else if (event.kind === 'read') {
         setDetail((current) =>
           current

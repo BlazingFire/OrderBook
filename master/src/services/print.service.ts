@@ -187,6 +187,70 @@ const audit = (
     trx,
   );
 
+// --- Clearing the history (Delete data) --------------------------------------------
+
+/** The jobs "Clear print room history" deletes. Waiting and printing jobs stay. */
+const FINISHED_STATUSES = ['printed', 'cancelled'] as const;
+
+/** How many finished jobs there are, and how many still wait or print. */
+export async function historyCounts(tenantId: string): Promise<{ finished: number; waiting: number }> {
+  const rows = await db()('print_jobs')
+    .where({ tenant_id: tenantId })
+    .select<Array<{ finished: string | number; waiting: string | number }>>(
+      db().raw(`count(*) FILTER (WHERE status IN ('printed', 'cancelled')) AS finished`),
+      db().raw(`count(*) FILTER (WHERE status IN ('queued', 'printing')) AS waiting`),
+    );
+  return { finished: Number(rows[0]?.finished ?? 0), waiting: Number(rows[0]?.waiting ?? 0) };
+}
+
+/**
+ * Delete every printed and cancelled job — the Delete data screen's "Clear
+ * print room history", whose caller has already checked the admin tier and the
+ * password. One job per sender is announced before it goes, so every Printroom
+ * screen that showed one of them (its sender's, and each station's) reads its
+ * list again; a station runner ignores it, since none of them is queued.
+ */
+export async function eraseFinishedJobs(actor: ActorContext): Promise<number> {
+  const tenantId = actor.tenantId;
+  const sampleIds = (
+    await db()('print_jobs')
+      .where({ tenant_id: tenantId })
+      .whereIn('status', [...FINISHED_STATUSES])
+      .distinctOn('sender_id')
+      .orderBy('sender_id')
+      .select<Array<{ id: string }>>('id')
+  ).map((row) => row.id);
+  const samples: PrintJobRow[] = [];
+  for (const id of sampleIds) {
+    const row = await printRepo.findJob(tenantId, id, { withPayload: false });
+    if (row) samples.push(row);
+  }
+
+  const removed = await db().transaction(async (trx) => {
+    const count = await trx('print_jobs')
+      .where({ tenant_id: tenantId })
+      .whereIn('status', [...FINISHED_STATUSES])
+      .delete();
+    await activityRepo.recordActivity(
+      {
+        tenantId,
+        entityType: 'print_job',
+        entityId: tenantId,
+        action: 'erased',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { count },
+      },
+      actor,
+      trx,
+    );
+    return count;
+  });
+
+  for (const summary of await summariesOf(tenantId, samples)) publish(tenantId, summary);
+  return removed;
+}
+
 // --- Sending ---------------------------------------------------------------------
 
 /**

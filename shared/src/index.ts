@@ -26,6 +26,7 @@ export * from './domain/photo-import.js';
 export * from './domain/company-features.js';
 export * from './domain/product-validation.js';
 export * from './domain/recycle-bin.js';
+export * from './domain/data-reset.js';
 export * from './domain/record-search.js';
 export * from './domain/report-access.js';
 export * from './domain/reports.js';

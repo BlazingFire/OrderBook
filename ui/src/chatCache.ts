@@ -74,6 +74,11 @@ function createChatCache(transport: ChatTransport): ChatCache {
     // The room lists are left as read: a screen shows them at once and reads them again behind that.
     const held = rooms.get(event.roomId);
     if (!held) return;
+    if (event.kind === 'cleared') {
+      // Every message went (Delete data): nothing held for the room is true any more.
+      rooms.delete(event.roomId);
+      return;
+    }
     if (event.kind === 'room') {
       held.detail = null;
       return;

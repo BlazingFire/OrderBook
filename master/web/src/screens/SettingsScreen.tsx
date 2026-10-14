@@ -276,11 +276,12 @@ export function SettingsScreen({
              * appears empty; `shared/tests/settings.test.ts` also fails if a
              * declared group has no members at all.
              *
-             * The `leads` group is the exception: it has a tab of its own.
+             * The `leads` group is the exception: it has a tab of its own. So is
+             * `data`: the Delete data screen draws it.
              */
             render: () => (
               <>
-                {SETTING_GROUPS.filter((group) => group !== 'leads').map((group) =>
+                {SETTING_GROUPS.filter((group) => group !== 'leads' && group !== 'data').map((group) =>
                   groupSection(settings, group),
                 )}
               </>

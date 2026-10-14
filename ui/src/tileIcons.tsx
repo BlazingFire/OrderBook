@@ -1107,6 +1107,46 @@ function ActivityLogTile({ size = 80 }: TileProps) {
   );
 }
 
+/** Delete data (2026-10-14): a warning triangle on the red of the Recycle Bin, darker. */
+function DataDeleteTile({ size = 80 }: TileProps) {
+  const u = useTileId();
+  return (
+    <svg viewBox="0 0 96 96" width={size} height={size} aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id={`${u}-g`} x1="0" y1="0" x2="0.35" y2="1">
+          <stop offset="0" stopColor="#E8574F" />
+          <stop offset="1" stopColor="#A9221F" />
+        </linearGradient>
+        <radialGradient id={`${u}-h`} cx="0.3" cy="0" r="0.9">
+          <stop offset="0" stopColor="#fff" stopOpacity=".28" />
+          <stop offset="1" stopColor="#fff" stopOpacity="0" />
+        </radialGradient>
+        <filter id={`${u}-d`} x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="#A9221F" floodOpacity=".55" />
+        </filter>
+      </defs>
+      <rect width="96" height="96" rx="22" fill={`url(#${u}-g)`} />
+      <rect width="96" height="96" rx="22" fill={`url(#${u}-h)`} />
+      <rect
+        x=".75"
+        y=".75"
+        width="94.5"
+        height="94.5"
+        rx="21.25"
+        fill="none"
+        stroke="#fff"
+        strokeOpacity=".22"
+        strokeWidth="1.5"
+      />
+      <g filter={`url(#${u}-d)`}>
+        <path d="M48 18 L80 74 H16 Z" fill="#FFFFFF" strokeLinejoin="round" stroke="#FFFFFF" strokeWidth="6" />
+        <rect x="44.5" y="36" width="7" height="22" rx="3.5" fill="#A9221F" />
+        <circle cx="48" cy="65" r="4" fill="#A9221F" />
+      </g>
+    </svg>
+  );
+}
+
 function RecycleBinTile({ size = 80 }: TileProps) {
   const u = useTileId();
   return (
@@ -1251,5 +1291,6 @@ export const TILE_ICONS: Partial<Record<NavIconId | 'newLead', ComponentType<Til
   fields: FieldsTile,
   logs: ActivityLogTile,
   recycleBin: RecycleBinTile,
+  dataDelete: DataDeleteTile,
   integrations: IntegrationsTile,
 };

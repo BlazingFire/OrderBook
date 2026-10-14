@@ -158,6 +158,12 @@ import type {
   UserInput,
   UserUpdateInput,
   DeviceInfo,
+  ChatClearResult,
+  PrintHistoryClearResult,
+  FreshStartInput,
+  FreshStartResult,
+  FreshStartSummary,
+  PartyDeletePreview,
 } from '@orderbook/shared';
 import { MASTER_KEY_TOKEN_HEADER, reportQueryParams } from '@orderbook/shared';
 
@@ -1177,8 +1183,27 @@ export const api = {
 
   // --- Recycle Bin (docs/backend-modules/04-API-CONTRACT.md §4) -----------
 
-  deleteParty: (id: string) =>
-    request<{ id: string; deletedAt: string }>(`/api/parties/${id}`, { method: 'DELETE' }),
+  /**
+   * `related` takes the party's orders with it — honoured only while
+   * `parties.deleteRelatedData` is on, and only if the party still has exactly
+   * `expected` orders (new + final), the number the dialog listed.
+   */
+  deleteParty: (id: string, related?: { expected: number }) =>
+    request<{ id: string; deletedAt: string; removedLeads?: number; removedOrders?: number }>(
+      related
+        ? `/api/parties/${id}?withRelated=true&expectedRelated=${related.expected}`
+        : `/api/parties/${id}`,
+      { method: 'DELETE' },
+    ),
+  partyDeletePreview: (id: string) => request<PartyDeletePreview>(`/api/parties/${id}/delete-preview`),
+
+  // --- Delete data (shared/src/domain/data-reset.ts) ------------------------
+
+  freshStartSummary: () => request<FreshStartSummary>('/api/data-reset/summary'),
+  freshStart: (input: FreshStartInput) => post<FreshStartResult>('/api/data-reset/fresh-start', input),
+  clearChat: (input: FreshStartInput) => post<ChatClearResult>('/api/data-reset/chat', input),
+  clearPrintHistory: (input: FreshStartInput) =>
+    post<PrintHistoryClearResult>('/api/data-reset/print-history', input),
   deleteLead: (id: string) =>
     request<{ id: string; deletedAt: string }>(`/api/leads/${id}`, { method: 'DELETE' }),
   deleteOrder: (id: string) =>

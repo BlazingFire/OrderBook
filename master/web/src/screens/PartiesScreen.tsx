@@ -46,12 +46,12 @@ import {
   type PartyListRow,
   type PartyRecord,
 } from '../api';
+import { PartyDeleteDialog } from '../components/PartyDeleteDialog';
 import { partyFormTransport } from '../partyFormTransport';
 import { partyImportTransport } from '../transports';
 import {
   Button,
   Combobox,
-  ConfirmDialog,
   DataTable,
   RowActions,
   EditorScreen,
@@ -139,7 +139,6 @@ export function PartiesScreen({
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<PartyDetailRecord | null>(null);
   const [deleting, setDeleting] = useState<PartyDetailRecord | null>(null);
-  const [deleteBusy, setDeleteBusy] = useState(false);
   // 1.4 D3 (R17): the Master sorts, so the order holds across pages; the choice is
   // kept per machine. The filters narrow the same query.
   const [sort, setSort] = useStoredSort('parties', { key: 'name', dir: 'asc' });
@@ -298,38 +297,6 @@ export function PartiesScreen({
       cancelled = true;
     };
   }, [openPartyId, canViewLeads, canViewOrders, recordsRevision]);
-
-  async function remove(party: PartyDetailRecord): Promise<void> {
-    setDeleteBusy(true);
-    try {
-      await api.deleteParty(party.id);
-      setDeleting(null);
-      onOpenId(null);
-      toast.push(t('parties.deleted', { name: party.name }), { tone: 'ok' });
-      refresh();
-    } catch (caught) {
-      // A delete the server refuses because something live still points at the
-      // party is not a failure to report as "could not delete" — the operator
-      // needs to know what to deal with first.
-      if (caught instanceof ApiError && caught.isConflict) {
-        const labels = caught.blockedBy
-          .map((blocker) => (blocker as { label?: string }).label)
-          .filter((label): label is string => Boolean(label));
-        toast.push(
-          labels.length > 0
-            ? t('parties.deleteBlocked', { items: labels.slice(0, 3).join(', ') })
-            : t('error.conflict.blockedByLiveReferences'),
-          { tone: 'error' },
-        );
-      } else {
-        toast.push(caught instanceof Error ? caught.message : t('parties.deleteFailed'), {
-          tone: 'error',
-        });
-      }
-    } finally {
-      setDeleteBusy(false);
-    }
-  }
 
   // The search stays on an open party (not over its edit form): typing goes back to the list, filtered.
   useFilterBar(
@@ -611,16 +578,14 @@ export function PartiesScreen({
           onError={(message) => toast.push(message, { tone: 'error' })}
         />
 
-        <ConfirmDialog
-          open={deleting !== null}
-          tone="danger"
-          busy={deleteBusy}
-          title={t('parties.delete.title', { name: deleting?.name ?? '' })}
-          body={t('parties.delete.body')}
-          confirmLabel={t('parties.delete.confirm')}
-          onCancel={() => setDeleting(null)}
-          onConfirm={() => {
-            if (deleting) void remove(deleting);
+        <PartyDeleteDialog
+          party={deleting}
+          onClose={() => setDeleting(null)}
+          onDeleted={(party) => {
+            setDeleting(null);
+            onOpenId(null);
+            toast.push(t('parties.deleted', { name: party.name }), { tone: 'ok' });
+            refresh();
           }}
         />
       </>

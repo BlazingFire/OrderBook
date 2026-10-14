@@ -52,6 +52,40 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
+## Delete data screen on the Master (2026-10-14)
+
+**State:** on branch `claude/funny-cray-wg2xq5`, not released. A new **Delete data** row in the Master's Admin group
+(after Recycle bin, no chord; `nav.master.dataDelete`), offered only to an administrator or a Server Master holding
+`settings.manage` — `data-reset.service.ts#assertMayReset` checks both again. Five sections
+(`master/web/src/screens/DataDeleteScreen.tsx`):
+
+- **Start fresh** (`POST /api/data-reset/fresh-start`): hard-deletes every new order, final order and party (binned
+  ones too) with their lines, timelines, party-wise records, party access, their sync conflicts, connector links and
+  the bell entries that open an order. Keeps products, users, roles, settings, panels, option lists, the activity log
+  and the id counters (a printed PO number is never handed out again). One transaction holding the order and party
+  tables in EXCLUSIVE mode; one `party_list.erased` activity row; one `party_bulk` change plus `resnapshotAll`, so every
+  panel takes the empty book.
+- **Delete all chat messages** (`POST /api/data-reset/chat`): deletes `chat_messages`, keeps rooms and members,
+  keeps each room's `last_seq` and marks every member read up to it; pushes a new `ChatPush` kind **`cleared`**, on which
+  `chatCache` drops the room and an open `ChatConversation` empties and reads again.
+- **Clear print room history** (`POST /api/data-reset/print-history`): deletes printed and cancelled `print_jobs`,
+  keeps queued and printing ones; one job per sender is published first so each Printroom list reads again.
+- All three ask for the person's own password **and** the typed word `DELETE` (`FRESH_START_CONFIRMATION`); a wrong
+  one is a 400 (`validation.dataReset.*`), never a 401, which the window would read as signed out.
+- **Find and delete one record:** a search bar over parties, new orders and final orders (each kind only with its
+  `.view` and `.delete`), deleting the one picked to the Recycle Bin through the existing routes.
+- **Delete related data:** the company setting `parties.deleteRelatedData` (fallback off, new settings group `data`
+  that the Settings screen leaves out). On the Master, the party delete dialog (now
+  `master/web/src/components/PartyDeleteDialog.tsx`, shared by Parties and the search) first reads
+  `GET /api/parties/:id/delete-preview` and lists every new and final order (dispatched ones marked). With the switch on
+  it deletes with `?withRelated=true&expectedRelated=N`: the party, its final orders and every live lead of the party
+  go to the Recycle Bin in one transaction, each logged and published as its own delete; a different N is refused
+  (`error.conflict.partyDeleteStale`). Restore is party → lead → order, as before. Off, the dialog says why and offers
+  no button. **Decision:** an Office panel's party delete is unchanged (it never sends `withRelated`), because it has no
+  dialog that lists the orders first.
+
+Tests: `master/tests/data-delete.integration.test.ts`. **Not verified:** a browser or Electron pass of the screen.
+
 ## 1.5: Updating screen and "Update finished" card (2026-10-13)
 
 **State:** **released as v1.5.0** (2026-10-14; Latest on `BlazingFire/OrderBook-Releases`, 8 assets like 1.4.9, signed

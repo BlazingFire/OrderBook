@@ -13,6 +13,7 @@ import type {
   Paginated,
   Party,
   PartyAccessLevel,
+  PartyDeletePreview,
   PartyInput,
   PartyProductVariant,
   PartyProductVariantInput,
@@ -28,6 +29,7 @@ import {
   CATEGORY_CODE_PATTERN,
   columnPatch,
   fieldFor,
+  recordNumber,
   PARTY_COLUMNS,
   PRODUCT_COLUMNS,
   ProductValidationError,
@@ -36,13 +38,15 @@ import {
 
 import { actorCan, actorUserId, requirePermission, type ActorContext } from '../domain/actor.js';
 import { clampPaging } from '../domain/paging.js';
-import { creatorGrantee, resolvePartyScope } from '../domain/party-scope.js';
+import { creatorGrantee, resolvePartyScope, UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
 import { assertParentsLive, suggestRestoredName } from '../domain/recycle-bin.js';
 import { db } from '../db/knex.js';
 import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
 import { seqCached } from '../lib/seq-cache.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as customFieldRepo from '../repositories/custom-field.repository.js';
+import * as leadRepo from '../repositories/lead.repository.js';
+import * as orderRepo from '../repositories/order.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
 import * as partyAccessRepo from '../repositories/party-access.repository.js';
 import * as partyRepo from '../repositories/party.repository.js';
@@ -52,6 +56,7 @@ import * as productVariantRepo from '../repositories/product-variant.repository.
 import type { TransactionContext } from '../repositories/transaction.js';
 import { publishChange } from './change-bus.js';
 import { requirePartyAccess } from './party-access.service.js';
+import { getSetting } from './settings.service.js';
 
 const PAGING = { defaultLimit: 100, maxLimit: 500 };
 
@@ -218,18 +223,93 @@ export async function updateParty(
  * lead or order still references it — a soft-deleted party would otherwise
  * leave those rows pointing at a tombstone.
  */
-export async function deleteParty(
-  id: string,
-  actor: ActorContext,
-): Promise<{ id: string; deletedAt: string }> {
+/** The live new orders (not yet final) and final orders that hang off one party. */
+async function relatedOrdersOfParty(
+  tenantId: string,
+  partyId: string,
+  runner: TransactionContext | ReturnType<typeof db> = db(),
+): Promise<Pick<PartyDeletePreview, 'pendingOrders' | 'finalOrders'>> {
+  const [leads, orders] = await Promise.all([
+    runner('leads')
+      .where({ tenant_id: tenantId, party_id: partyId })
+      .whereNull('deleted_at')
+      .whereNull('converted_order_id')
+      .orderBy('created_at')
+      .select<Array<{ id: string; po_number: string | null }>>('id', 'po_number'),
+    runner('orders as o')
+      .leftJoin('leads as ld', function joinLead() {
+        this.on('ld.id', '=', 'o.lead_id').andOn('ld.tenant_id', '=', 'o.tenant_id');
+      })
+      .where({ 'o.tenant_id': tenantId, 'o.party_id': partyId })
+      .whereNull('o.deleted_at')
+      .orderBy('o.created_at')
+      .select<Array<{ id: string; po_number: string | null; dispatched_at: string | null }>>(
+        'o.id',
+        'ld.po_number',
+        'o.dispatched_at',
+      ),
+  ]);
+
+  return {
+    pendingOrders: leads.map((row) => ({ id: row.id, number: recordNumber({ id: row.id, poNumber: row.po_number }) })),
+    finalOrders: orders.map((row) => ({
+      id: row.id,
+      number: recordNumber({ id: row.id, poNumber: row.po_number }),
+      dispatched: row.dispatched_at !== null,
+    })),
+  };
+}
+
+/**
+ * What deleting this party would take with it — the Master's delete dialog
+ * reads this before it opens, so it can list every order before anything goes
+ * (the Delete data screen's "Delete related data" switch).
+ */
+export async function partyDeletePreview(id: string, actor: ActorContext): Promise<PartyDeletePreview> {
   requirePermission(actor, 'parties.delete');
   await requirePartyAccess(id, 'manage', actor);
 
   const existing = await partyRepo.findPartyById(actor.tenantId, id);
   if (!existing) throw new NotFoundError('Party');
 
+  const [relatedDeleteEnabled, related] = await Promise.all([
+    getSetting(actor.tenantId, 'parties.deleteRelatedData'),
+    relatedOrdersOfParty(actor.tenantId, id),
+  ]);
+
+  return { partyId: id, partyName: existing.name, relatedDeleteEnabled, ...related };
+}
+
+/**
+ * Soft-delete a party (the Recycle Bin).
+ *
+ * A party that new or final orders still point at is refused naming them —
+ * unless the caller asked for `withRelated` **and** the company has switched
+ * on `parties.deleteRelatedData`. Then every live order of the party goes to
+ * the Bin in the same transaction: its new orders, its final orders (dispatched
+ * ones too) and the leads those final orders were made from. `expectedRelated`
+ * is how many orders the dialog listed (new + final); a different number means
+ * somebody added or removed one meanwhile, and the delete is refused rather than
+ * taking an order the person never saw. Only the Master's own screen asks for
+ * `withRelated`; an Office panel's delete is unchanged.
+ */
+export async function deleteParty(
+  id: string,
+  actor: ActorContext,
+  options: { withRelated?: boolean; expectedRelated?: number } = {},
+): Promise<{ id: string; deletedAt: string; removedLeads?: number; removedOrders?: number }> {
+  requirePermission(actor, 'parties.delete');
+  await requirePartyAccess(id, 'manage', actor);
+
+  const existing = await partyRepo.findPartyById(actor.tenantId, id);
+  if (!existing) throw new NotFoundError('Party');
+
+  // Read before the transaction: `getSetting` takes its own pooled connection.
+  const cascade =
+    options.withRelated === true && (await getSetting(actor.tenantId, 'parties.deleteRelatedData'));
+
   const blockers = await partyRepo.liveReferencesToParty(actor.tenantId, id);
-  if (blockers.length > 0) {
+  if (blockers.length > 0 && !cascade) {
     throw new ConflictError(
       'error.conflict.blockedByLiveReferences',
       {},
@@ -243,9 +323,91 @@ export async function deleteParty(
       },
     );
   }
+  if (cascade) {
+    if (blockers.some((b) => b.entityType === 'lead')) requirePermission(actor, 'leads.delete');
+    if (blockers.some((b) => b.entityType === 'order')) requirePermission(actor, 'orders.delete');
+  }
+
+  const removedLeadIds: string[] = [];
+  const removedOrderIds: string[] = [];
 
   const party = await db().transaction(async (trx) => {
     const hlc = await nextHlc(trx);
+
+    if (cascade) {
+      const related = await relatedOrdersOfParty(actor.tenantId, id, trx);
+      const listed = related.pendingOrders.length + related.finalOrders.length;
+      if (options.expectedRelated !== undefined && options.expectedRelated !== listed) {
+        throw new ConflictError('error.conflict.partyDeleteStale', { count: listed });
+      }
+
+      // The party's final orders first, then every live lead of the party —
+      // the ones still pending and the ones those final orders were made from —
+      // each stamped as its own delete would stamp it, so a restore from the
+      // Bin (party, then lead, then order) behaves exactly as for a single one.
+      const stamp = {
+        deleted_at: trx.fn.now(),
+        deleted_by: actorUserId(actor),
+        version: trx.raw('version + 1'),
+        hlc,
+        field_hlc: trx.raw("field_hlc || jsonb_build_object('deletedAt', ?::text)", [hlc]),
+        updated_at: trx.fn.now(),
+      };
+      const orders = await trx('orders')
+        .where({ tenant_id: actor.tenantId, party_id: id })
+        .whereNull('deleted_at')
+        .update(stamp)
+        .returning<Array<{ id: string }>>('id');
+      const leads = await trx('leads')
+        .where({ tenant_id: actor.tenantId, party_id: id })
+        .whereNull('deleted_at')
+        .update(stamp)
+        .returning<Array<{ id: string; converted_order_id: string | null; po_number: string | null }>>([
+          'id',
+          'converted_order_id',
+          'po_number',
+        ]);
+      removedOrderIds.push(...orders.map((row) => row.id));
+      removedLeadIds.push(...leads.map((row) => row.id));
+
+      const numberOfOrder = new Map(
+        leads
+          .filter((row) => row.converted_order_id)
+          .map((row) => [row.converted_order_id as string, recordNumber({ id: row.id, poNumber: row.po_number })]),
+      );
+      for (const order of orders) {
+        await activityLog.recordActivity(
+          {
+            tenantId: actor.tenantId,
+            entityType: 'order',
+            entityId: order.id,
+            action: 'deleted',
+            actorType: actor.actorType,
+            actorId: actor.actorId,
+            details: { number: numberOfOrder.get(order.id) ?? order.id, party: existing.name, withParty: true },
+          },
+          actor,
+          trx,
+        );
+      }
+      for (const lead of leads) {
+        if (lead.converted_order_id) continue;
+        await activityLog.recordActivity(
+          {
+            tenantId: actor.tenantId,
+            entityType: 'lead',
+            entityId: lead.id,
+            action: 'deleted',
+            actorType: actor.actorType,
+            actorId: actor.actorId,
+            details: { number: recordNumber({ id: lead.id, poNumber: lead.po_number }), party: existing.name, withParty: true },
+          },
+          actor,
+          trx,
+        );
+      }
+    }
+
     const fieldHlc = { ...existing.sync.fieldHlc, deletedAt: hlc };
     const row = await partyRepo.softDeleteParty(
       actor.tenantId,
@@ -263,7 +425,9 @@ export async function deleteParty(
         action: 'deleted',
         actorType: actor.actorType,
         actorId: actor.actorId,
-        details: { name: existing.name },
+        details: cascade
+          ? { name: existing.name, removedLeads: removedLeadIds.length, removedOrders: removedOrderIds.length }
+          : { name: existing.name },
       },
       actor,
       trx,
@@ -274,10 +438,26 @@ export async function deleteParty(
 
   if (!party) throw new NotFoundError('Party');
 
+  // Each order and lead is announced as its own delete would be, so every
+  // board and every Office panel drops it; the party last.
+  for (const orderId of removedOrderIds) {
+    const order = await orderRepo.findOrderById(actor.tenantId, orderId, UNSCOPED_PARTY_ACCESS, db(), {
+      includeDeleted: true,
+    });
+    publishChange({ entity: 'order', action: 'deleted', id: orderId, payload: order ?? { id: orderId, partyId: id } });
+  }
+  for (const leadId of removedLeadIds) {
+    const lead = await leadRepo.findLeadById(actor.tenantId, leadId, UNSCOPED_PARTY_ACCESS, db(), {
+      includeDeleted: true,
+    });
+    publishChange({ entity: 'lead', action: 'deleted', id: leadId, payload: lead ?? { id: leadId, partyId: id } });
+  }
   publishChange({ entity: 'party', action: 'deleted', id, payload: party });
   // `updated_at` is bumped by the same `now()` call as `deleted_at` in one
   // UPDATE, so the two are byte-identical without a second round trip.
-  return { id: party.id, deletedAt: party.updatedAt };
+  return cascade
+    ? { id: party.id, deletedAt: party.updatedAt, removedLeads: removedLeadIds.length, removedOrders: removedOrderIds.length }
+    : { id: party.id, deletedAt: party.updatedAt };
 }
 
 export async function restoreParty(

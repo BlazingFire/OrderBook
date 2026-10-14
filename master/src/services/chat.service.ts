@@ -408,6 +408,54 @@ function emit(tenantId: string, userIds: readonly string[], push: ChatPush): voi
   if (userIds.length > 0) publishChat({ tenantId, userIds: [...new Set(userIds)], push });
 }
 
+/**
+ * Delete every chat message of the company — the Delete data screen's "Delete
+ * all chat messages", whose caller (`data-reset.service.ts`) has already checked
+ * the admin tier and the password. Groups, direct chats and members stay; each
+ * room's `last_seq` is kept so a new message never reuses a number a panel still
+ * holds, and every member is marked read up to it so no badge counts deleted
+ * lines. Each room's members are told (`cleared`), so open conversations empty.
+ */
+export async function eraseAllMessages(actor: ActorContext): Promise<number> {
+  const tenantId = actor.tenantId;
+  const { removed, rooms } = await db().transaction(async (trx) => {
+    const removed = await trx('chat_messages').where({ tenant_id: tenantId }).delete();
+    const rooms = await trx('chat_rooms')
+      .where({ tenant_id: tenantId })
+      .update({ last_message_at: null, updated_at: trx.fn.now() })
+      .returning<Array<{ id: string }>>('id');
+    await trx.raw(
+      `UPDATE chat_members m SET last_read_seq = r.last_seq
+         FROM chat_rooms r
+        WHERE r.id = m.room_id AND m.tenant_id = ?`,
+      [tenantId],
+    );
+    await activityRepo.recordActivity(
+      {
+        tenantId,
+        entityType: 'chat_message',
+        entityId: tenantId,
+        action: 'erased',
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        details: { count: removed },
+      },
+      actor,
+      trx,
+    );
+    return { removed, rooms };
+  });
+
+  for (const room of rooms) {
+    try {
+      emit(tenantId, await memberIds(room.id), { kind: 'cleared', roomId: room.id });
+    } catch (error) {
+      log.warn(`Could not tell a room it was cleared: ${toErrorMessage(error)}`);
+    }
+  }
+  return removed;
+}
+
 async function publishMessage(row: ChatMessageRow, tenantId: string, extraUserIds: readonly string[] = []): Promise<void> {
   try {
     const message = await hydrateForPush(row, tenantId);

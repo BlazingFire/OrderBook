@@ -185,6 +185,7 @@ const PartyAccessScreen = lazyScreen(
   'PartyAccessScreen',
 );
 const RecycleBinScreen = lazyScreen(() => import('./screens/RecycleBinScreen'), 'RecycleBinScreen');
+const DataDeleteScreen = lazyScreen(() => import('./screens/DataDeleteScreen'), 'DataDeleteScreen');
 const SettingsScreen = lazyScreen(() => import('./screens/SettingsScreen'), 'SettingsScreen');
 const UpdatesScreen = lazyScreen(() => import('./screens/UpdatesScreen'), 'UpdatesScreen');
 
@@ -206,6 +207,7 @@ type Tab =
   | 'integrations'
   | 'logs'
   | 'recycleBin'
+  | 'dataDelete'
   | 'conflicts'
   | 'chatroom'
   | 'printroom'
@@ -278,6 +280,8 @@ const SCREEN_ENTITIES: Record<string, readonly string[]> = {
     'option_list',
     'custom_field',
   ],
+  /** Delete data: its counts, and the Delete related data switch. */
+  dataDelete: ['lead', 'order', 'party', 'party_bulk', 'product', 'catalog', 'user', 'setting'],
   conflicts: ['sync_conflict'],
   /** Settings' company rows, and apart from them the lead sources on its Leads tab. */
   settings: ['setting'],
@@ -925,6 +929,10 @@ function MasterPanel() {
   const canViewParties = user.permissions.includes('parties.view');
   const canViewLogs = user.permissions.includes('logs.view');
   const canViewRecycleBin = user.permissions.includes('recycleBin.view');
+  // Delete data: an administrator or a Server Master with `settings.manage`, as the Master enforces.
+  const canDeleteData =
+    user.permissions.includes('settings.manage') &&
+    (user.roleTier === 'admin' || user.roleTier === 'server_master');
   // The permission and the company's switch for this person's tier: the Master
   // enforces both on every request, this only decides whether to draw the row.
   const canViewReports = reportsOffered(user.roleTier, user.features, user.permissions);
@@ -1239,6 +1247,9 @@ function MasterPanel() {
         canViewLogs ? { id: 'logs', label: t('nav.master.logs'), icon: NAV_ICONS.logs } : null,
         canViewRecycleBin
           ? { id: 'recycleBin', label: t('nav.master.recycleBin'), icon: NAV_ICONS.recycleBin }
+          : null,
+        canDeleteData
+          ? { id: 'dataDelete', label: t('nav.master.dataDelete'), icon: NAV_ICONS.dataDelete }
           : null,
         canManageApi
           ? { id: 'integrations', label: t('nav.master.integrations'), icon: NAV_ICONS.integrations }
@@ -1870,6 +1881,10 @@ function MasterPanel() {
           onTypeChange={(next) => selectSubPage('recycleBin', next === '' ? 'all' : next)}
         />
       ),
+    },
+    {
+      id: 'dataDelete',
+      render: () => <DataDeleteScreen revision={revisionOf(revisions, 'dataDelete')} permissions={user.permissions} />,
     },
     {
       id: 'conflicts',

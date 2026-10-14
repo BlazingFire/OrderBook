@@ -223,7 +223,9 @@ export interface ChatTaskRow {
 export type ChatPush =
   | { kind: 'message'; roomId: Uuid; message: ChatMessage }
   | { kind: 'room'; roomId: Uuid }
-  | { kind: 'read'; roomId: Uuid; userId: string; seq: number };
+  | { kind: 'read'; roomId: Uuid; userId: string; seq: number }
+  /** Every message of the room was deleted (Delete data → Delete all chat messages): read it again. */
+  | { kind: 'cleared'; roomId: Uuid };
 
 // --- Pure helpers ------------------------------------------------------------
 
