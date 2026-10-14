@@ -54,9 +54,13 @@ on it.
 
 ## 1.5: Updating screen and "Update finished" card (2026-10-13)
 
-**State:** merged to `main` (fast-forward) and version bumped to **1.5.0** (2026-10-13); the bump's push triggers the
-Release workflow, which **failed** (run 80: no `RELEASE_KEY`, 403 without `RELEASES_TOKEN`), so 1.5.0 is **not
-published** yet. From Install now
+**State:** **released as v1.5.0** (2026-10-14; Latest on `BlazingFire/OrderBook-Releases`, 8 assets like 1.4.9, signed
+with `release-2026-10-01`; built from `05f3c64`, which also carries the coded-half sections and the pre-1.5.0 cleanup).
+Built as 1.4.9 was: Windows runners on a branch-only workflow (Office first, then the Master carrying the signed Office
+manifests), every manifest signed off-runner and checked against the shipped public key, published from a temporary
+branch of the releases repo that deleted itself. The live manifests were re-downloaded: signatures valid, sizes match.
+Leftover to delete by hand: the draft pre-releases `build-1.5.0-win` and `build-1.4.9-win` on `BlazingFire/OrderBook`,
+and the branch `claude/serene-ritchie-bmhtei` (build helper and signed manifests, not for `main`). From Install now
 both panels show a full Updating screen (steps, whole-update bar, elapsed, time left, hand-over), the shell records
 each update and times it, and the next start shows an "Update finished" card with the times. Rules and traps:
 `docs/UPDATES.md` "1.5". **Trap:** the first update *to* 1.5 is run by the 1.4.x page and shell, so it shows only the

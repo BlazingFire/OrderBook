@@ -190,6 +190,20 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-14 - 1.5.0 built, signed and released (Claude)
+
+- **Done:** built from `05f3c64` on GitHub's Windows runners (branch-only helper on `claude/serene-ritchie-bmhtei`,
+  Office + Office Win7, then the Master with the signed Office manifests bundled; log: both bundled, hashes checked).
+  Every manifest signed off-runner with `release-2026-10-01`, checked against the setup's SHA-256 and size and the
+  public key in `release-keys.ts`. Published as **v1.5.0** (Latest) on `OrderBook-Releases` from a temporary branch whose
+  workflow reassembled the chunked setups, re-checked them and deleted itself.
+- **Verified:** the live release's 5 manifests, downloaded from their public links: version 1.5.0, signature valid,
+  size equal to the asset. **Not verified:** an install, or a Master picking the update up.
+- **CI:** `main` had been red since 1.5 (`report-tables` sorted case-only name differences with `localeCompare`
+  against the database's collation; `presence` asserted an empty board where other panels' beats can reach it). Both
+  test-only fixes are on `main` (`b58f6ff`); CI green on the branch with them.
+- **Left:** the draft pre-releases `build-1.5.0-win`, `build-1.4.9-win` and the helper branch, to delete by hand.
+
 ### 2026-10-13 - Pre-1.5.0 cleanup: dead code, CSS and strings removed (Claude)
 
 - **Ask (owner):** audit the code, remove bloat, make it cleaner, then build and publish a signed 1.5.0.
