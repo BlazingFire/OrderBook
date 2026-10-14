@@ -54,7 +54,7 @@ on it.
 
 ## Delete data screen on the Master (2026-10-14)
 
-**State:** on branch `claude/funny-cray-wg2xq5`, not released. A new **Delete data** row in the Master's Admin group
+**State:** on `main`, released as **1.5.1** (2026-10-14). A new **Delete data** row in the Master's Admin group
 (after Recycle bin, no chord; `nav.master.dataDelete`), offered only to an administrator or a Server Master holding
 `settings.manage` — `data-reset.service.ts#assertMayReset` checks both again. Five sections
 (`master/web/src/screens/DataDeleteScreen.tsx`):

@@ -190,6 +190,15 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-14 - 1.5.1: merged to main, version bumped (Claude)
+
+- **Ask (owner):** release 1.5.1 with every Delete data change, committed to `main` before building.
+- **Done:** `claude/funny-cray-wg2xq5` fast-forwarded into `main`; every workspace `package.json` set to 1.5.1
+  (`package-lock.json` left as at earlier bumps); release notes `docs/releases/1.5.1.md`. No migration, no panel
+  protocol change (an older Office page ignores the new `cleared` chat push).
+- **Gate:** lint, typecheck, `npm run build` and the full suite with PostgreSQL (413 files, 5,519 tests) on the
+  delete changes; the version tests again after the bump.
+
 ### 2026-10-14 - Delete data screen: Start fresh, chat and print room clears, find and delete, Delete related data (Claude)
 
 - **Done:** the Master's Admin group gains **Delete data** (admin tier + `settings.manage`): Start fresh (every order and
