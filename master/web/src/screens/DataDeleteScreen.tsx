@@ -417,6 +417,14 @@ function BulkDeleteDialog({
           event.preventDefault();
           void submit();
         }}
+        // Enter in either field confirms, as a form with a submit button would; the
+        // visible buttons live in the footer, outside the form.
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && event.target instanceof HTMLInputElement) {
+            event.preventDefault();
+            void submit();
+          }
+        }}
       >
         <ConflictBanner>{warning}</ConflictBanner>
         {children}
@@ -444,8 +452,6 @@ function BulkDeleteDialog({
           )}
         </FormField>
         {error && <FieldError>{error}</FieldError>}
-        {/* Enter submits; the visible buttons live in the footer. */}
-        <button type="submit" hidden aria-hidden="true" tabIndex={-1} />
       </form>
     </Modal>
   );
