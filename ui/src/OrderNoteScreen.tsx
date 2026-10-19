@@ -82,7 +82,7 @@ export interface OrderNoteScreenProps {
    */
   onSaveVehicle: (vehicleNumber: string | null) => Promise<unknown>;
   onBack: () => void;
-  desktop?: Pick<DesktopBridge, 'listPrinters' | 'printPage' | 'savePdf'>;
+  desktop?: Pick<DesktopBridge, 'listPrinters' | 'printPage' | 'savePdf' | 'savePdfToDesktop'>;
   /**
    * Offers "Send to Printroom". Supplied by the panel only to somebody holding
    * `print.send`, and for a pending order only once the Master has it (the
@@ -233,6 +233,36 @@ export function OrderNoteScreen({
     }
   }
 
+  /**
+   * Save to this device: the note straight to the Desktop, no dialog. Only in
+   * the desktop shell — a browser tab cannot write outside its downloads.
+   */
+  async function saveToDevice(): Promise<void> {
+    const save = desktop?.savePdfToDesktop;
+    if (!save || busyRef.current) return;
+    busyRef.current = true;
+    setSaving(true);
+    try {
+      const result = await printOnly(portalRef.current, () =>
+        save({ fileName: `${header.number ?? header.id}-${kind}.pdf` }),
+      );
+      if (result.ok) {
+        const name = (result.path ?? '').split(/[\\/]/).pop() || t('orderNote.saveToDevice');
+        toast.push(t('orderNote.savedToDevice', { name }), { tone: 'ok' });
+      } else {
+        toast.push(t('orderNote.savePdfFailed', { error: result.error ?? '—' }), { tone: 'error' });
+      }
+    } catch (caught) {
+      toast.push(
+        t('orderNote.savePdfFailed', { error: caught instanceof Error ? caught.message : '—' }),
+        { tone: 'error' },
+      );
+    } finally {
+      busyRef.current = false;
+      setSaving(false);
+    }
+  }
+
   const printRef = useRef(print);
   printRef.current = print;
   useEffect(() => {
@@ -325,6 +355,11 @@ export function OrderNoteScreen({
           {desktop?.savePdf && (
             <Button variant="secondary" busy={saving} disabled={printing || saving} onClick={() => void savePdf()}>
               {t('orderNote.savePdf')}
+            </Button>
+          )}
+          {desktop?.savePdfToDesktop && (
+            <Button variant="secondary" busy={saving} disabled={printing || saving} onClick={() => void saveToDevice()}>
+              {t('orderNote.saveToDevice')}
             </Button>
           )}
           <Button variant="primary" busy={printing} disabled={printing || saving} onClick={() => void print()}>
@@ -425,6 +460,16 @@ export function OrderNoteScreen({
             {desktop?.savePdf && (
               <Button variant="secondary" busy={saving} disabled={printing || saving} onClick={() => void savePdf()}>
                 {t('orderNote.savePdf')}
+              </Button>
+            )}
+            {desktop?.savePdfToDesktop && (
+              <Button
+                variant="secondary"
+                busy={saving}
+                disabled={printing || saving}
+                onClick={() => void saveToDevice()}
+              >
+                {t('orderNote.saveToDevice')}
               </Button>
             )}
             <Button variant="primary" busy={printing} disabled={printing || saving} onClick={() => void print()}>

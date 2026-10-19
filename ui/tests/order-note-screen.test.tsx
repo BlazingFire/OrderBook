@@ -281,6 +281,30 @@ describe('Save PDF', () => {
   });
 });
 
+describe('Save to this device', () => {
+  it('sits beside Print only in the desktop shell, saves straight to the Desktop, and names the saved file', async () => {
+    mount({ desktop: { printPage: vi.fn() } });
+    expect(screen.queryByRole('button', { name: t('orderNote.saveToDevice') })).toBeNull();
+    cleanup();
+
+    const savePdfToDesktop = vi.fn().mockResolvedValue({ ok: true, path: 'C:\\Users\\Z\\Desktop\\LD0000000042-dispatch.pdf' });
+    mount({ desktop: { printPage: vi.fn(), savePdfToDesktop } });
+    const buttons = screen.getAllByRole('button').map((button) => button.textContent);
+    expect(buttons.indexOf(t('orderNote.saveToDevice'))).toBeGreaterThan(-1);
+    expect(buttons.indexOf(t('orderNote.saveToDevice'))).toBeLessThan(buttons.indexOf(t('orderNote.print')));
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.saveToDevice') }));
+    await waitFor(() => expect(savePdfToDesktop).toHaveBeenCalledWith({ fileName: `${LEAD.id}-dispatch.pdf` }));
+    expect(await screen.findByText(t('orderNote.savedToDevice', { name: 'LD0000000042-dispatch.pdf' }))).toBeTruthy();
+  });
+
+  it('says why a direct save fails', async () => {
+    const savePdfToDesktop = vi.fn().mockResolvedValue({ ok: false, error: 'disk full' });
+    mount({ desktop: { printPage: vi.fn(), savePdfToDesktop } });
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.saveToDevice') }));
+    expect(await screen.findByText(t('orderNote.savePdfFailed', { error: 'disk full' }))).toBeTruthy();
+  });
+});
+
 describe('printOnly', () => {
   it('marks the one portal while the job runs and puts the page back after, whatever the job does', async () => {
     const a = document.createElement('div');

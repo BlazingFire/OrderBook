@@ -39,6 +39,23 @@ export function pdfFileName(raw: unknown): string {
   return cleaned === '' ? 'note.pdf' : `${cleaned}.pdf`;
 }
 
+/**
+ * The next free name for a direct-to-Desktop save: `base.pdf`, then
+ * `base (2).pdf`, `base (3).pdf`, … — the series the owner asked for, so a
+ * repeated save never overwrites the last one. `taken` names what is already
+ * on the Desktop (file names, compared case-insensitively, as Windows does).
+ */
+export function desktopPdfName(base: unknown, taken: readonly string[]): string {
+  const first = pdfFileName(base);
+  const lower = new Set(taken.map((name) => name.toLowerCase()));
+  if (!lower.has(first.toLowerCase())) return first;
+  const stem = first.replace(/\.pdf$/, '');
+  for (let n = 2; ; n += 1) {
+    const candidate = `${stem} (${n}).pdf`;
+    if (!lower.has(candidate.toLowerCase())) return candidate;
+  }
+}
+
 export interface PrintRequest {
   silent: boolean;
   deviceName?: string;

@@ -107,6 +107,15 @@ contextBridge.exposeInMainWorld('orderbook', {
       cancelled?: boolean;
       error?: string;
     }>,
+  /** Save the page as a PDF straight to the Desktop, with no dialog; the name grows into a series. */
+  savePdfToDesktop: (options: {
+    fileName: string;
+  }): Promise<{ ok: boolean; path?: string; error?: string }> =>
+    ipcRenderer.invoke('orderbook:savePdfToDesktop', options) as Promise<{
+      ok: boolean;
+      path?: string;
+      error?: string;
+    }>,
   /** Keep the window rendering while minimised, for an auto-print station. */
   setStationMode: (on: boolean): Promise<boolean> =>
     ipcRenderer.invoke('orderbook:setStationMode', on) as Promise<boolean>,

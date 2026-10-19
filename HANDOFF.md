@@ -52,6 +52,16 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
+## Save to this device on the order notes (2026-10-19)
+
+**State:** on `main`, to release as **1.5.2**. The Filling/Dispatch note screen (and its Preview dialog) has
+**Save to this device** beside Print: one click writes the note's PDF straight to the Desktop, no dialog, named
+`<number>-<filling|dispatch>.pdf` growing into a series (`… (2).pdf`, …) so repeats never overwrite; a toast
+names the file. Desktop shell only (`orderbook:savePdfToDesktop` in `electron/shell.ts`, optional on
+`DesktopBridge`): a browser tab cannot write outside its downloads, so the button stays hidden there and Save
+PDF is unchanged. No migration, no protocol change. **Not verified:** a click in a live Electron window
+(headless session); owed a double-click run.
+
 ## Delete data screen on the Master (2026-10-14)
 
 **State:** **released as v1.5.1** (2026-10-14; Latest on `BlazingFire/OrderBook-Releases`, 8 assets like 1.5.0, signed

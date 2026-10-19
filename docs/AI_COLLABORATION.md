@@ -190,6 +190,31 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-19 - 1.5.2: merged to main, version bumped (OpenCode)
+
+- **Ask (owner):** build, merge all to git, commit and push, bump version.
+- **Done:** `test/note-columns-save` merged into `main`; every workspace `package.json` set to 1.5.2;
+  release notes `docs/releases/1.5.2.md`. No migration, no panel protocol change (the new bridge method is
+  optional; an older shell simply hides the button).
+- **Gate:** lint 0, typecheck 0, full suite 297 files / 4,075 tests pass; 149 integration suites fail only at
+  `pg_ctl start` (no test PostgreSQL in this sandbox), none touching this change. The touched suites
+  (`print-options`, `station-mode`, `order-note-screen`, both shells, `send-to-printroom`, `printroom-screen`,
+  `order-note`, `printroom`) all pass.
+
+### 2026-10-19 - Save to this device on the order notes (OpenCode, branch `test/note-columns-save`)
+
+- **Ask (owner):** a save button beside Print that saves the PDF directly without asking.
+- **Built:** `orderbook:savePdfToDesktop` in the shell (`electron/shell.ts`, preloaded, optional on
+  `DesktopBridge`): renders the note to PDF and writes it straight to the Desktop, no dialog; the name grows
+  into a series via `desktopPdfName` (`electron/lib/print-options.ts`), so repeats never overwrite. The note
+  screen (`ui/src/OrderNoteScreen.tsx`) shows **Save to this device** beside Print (and in Preview) only when
+  the shell offers it — browser tabs cannot write outside downloads, so it stays hidden there. Keys
+  `orderNote.saveToDevice` / `orderNote.savedToDevice` in `shared/src/i18n/en.ts`.
+- **Verified:** eslint, typecheck (electron + ui tests), the touched test files plus both shell suites, all
+  green. Shell + both web frontends rebuilt; the string ships in `master/web/dist` and the IPC in
+  `master/electron/dist/shell.js`. Not verified in a live Electron window (headless session); owed a
+  double-click run.
+
 ### 2026-10-14 - 1.5.1 built, signed and released (Claude)
 
 - **Done:** built from `main` at `ee4ffe7` on GitHub's Windows runners (branch-only helper on `claude/funny-cray-wg2xq5`:

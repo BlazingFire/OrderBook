@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { clampCopies, pdfFileName, printOptions } from '../lib/print-options.js';
+import { clampCopies, desktopPdfName, pdfFileName, printOptions } from '../lib/print-options.js';
 
 const INSTALLED = ['HP LaserJet', 'Microsoft Print to PDF'];
 
@@ -84,6 +84,22 @@ describe('pdfFileName', () => {
     expect(pdfFileName(42)).toBe('note.pdf');
     expect(pdfFileName(undefined)).toBe('note.pdf');
     expect(pdfFileName({ toString: () => 'x' })).toBe('note.pdf');
+  });
+});
+
+describe('desktopPdfName', () => {
+  it('keeps the first save plain, then grows a series so nothing is overwritten', () => {
+    expect(desktopPdfName('PO-1-dispatch', [])).toBe('PO-1-dispatch.pdf');
+    expect(desktopPdfName('PO-1-dispatch', ['PO-1-dispatch.pdf'])).toBe('PO-1-dispatch (2).pdf');
+    expect(desktopPdfName('PO-1-dispatch', ['PO-1-dispatch.pdf', 'PO-1-dispatch (2).pdf'])).toBe(
+      'PO-1-dispatch (3).pdf',
+    );
+  });
+
+  it('matches names the way Windows does, case-insensitively, and cleans the base first', () => {
+    expect(desktopPdfName('po-1-dispatch', ['PO-1-DISPATCH.PDF'])).toBe('po-1-dispatch (2).pdf');
+    expect(desktopPdfName('PO/1 dispatch', ['PO-1 dispatch.pdf'])).toBe('PO-1 dispatch (2).pdf');
+    expect(desktopPdfName('', ['note.pdf'])).toBe('note (2).pdf');
   });
 });
 

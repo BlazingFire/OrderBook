@@ -172,6 +172,16 @@ export interface DesktopBridge {
   }): Promise<{ ok: boolean; path?: string; cancelled?: boolean; error?: string }>;
 
   /**
+   * Save the page as a PDF straight to the Desktop, with no dialog. The name
+   * grows into a series (`base.pdf`, `base (2).pdf`, …), so a repeated save
+   * never overwrites the last one. Shell only — a browser tab cannot write
+   * outside its downloads, so it never sees this.
+   */
+  savePdfToDesktop?(options: {
+    fileName: string;
+  }): Promise<{ ok: boolean; path?: string; error?: string }>;
+
+  /**
    * Turn this PC's auto-print station mode on or off. While it is on the shell
    * keeps the window rendering when it is minimised or hidden (no background
    * throttling), so a printer PC left minimised keeps printing. Anything but

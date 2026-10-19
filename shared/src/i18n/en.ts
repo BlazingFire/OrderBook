@@ -2043,6 +2043,8 @@ export const EN_MESSAGES = {
   'orderNote.copiesHint': 'Set {n} copies in the print dialog',
   'orderNote.savePdf': 'Save PDF',
   'orderNote.savePdfFailed': 'Could not save the PDF: {error}',
+  'orderNote.saveToDevice': 'Save to this device',
+  'orderNote.savedToDevice': 'Saved to the Desktop: {name}',
   'orderNote.vehicleNotSaved': 'Printed on this note only; a new order does not keep it',
   'orders.detail.subtitleWithLead': '{id} · from {leadId}',
   'orders.detail.weight': 'Weight',

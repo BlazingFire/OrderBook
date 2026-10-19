@@ -61,7 +61,7 @@ import { approveInstaller, updateMethod } from './lib/installer.js';
 import { isPdfWindowUrl } from './lib/lead-pdf.js';
 import { openLogFile, type LogFile } from './lib/log-file.js';
 import { rendererHeapFlag, serverHeapMb } from './lib/memory.js';
-import { pdfFileName, printOptions } from './lib/print-options.js';
+import { desktopPdfName, pdfFileName, printOptions } from './lib/print-options.js';
 import { backgroundThrottlingFor, parseStationMode } from './lib/station-mode.js';
 import {
   readDataDirOverride,
@@ -1266,6 +1266,36 @@ export function runPanelShell(config: PanelShellConfig): void {
       if (chosen.canceled || !chosen.filePath) return { ok: false, cancelled: true };
       await writeFile(chosen.filePath, bytes);
       return { ok: true, path: chosen.filePath };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  /*
+   * Save to this device for the order notes: the page as printed (A4, its
+   * print stylesheet), written straight to the Desktop with no dialog — the
+   * owner asked for one click beside Print. The name is the page's file name
+   * grown into a series (`base.pdf`, `base (2).pdf`, …), so a repeated save
+   * never overwrites the last one. Same sender rule as every print handler:
+   * only the panel's own window may ask.
+   */
+  ipcMain.handle('orderbook:savePdfToDesktop', async (event, value: unknown) => {
+    if (event.sender !== mainWindow?.webContents || !mainWindow) {
+      return { ok: false, error: 'Not allowed' };
+    }
+    try {
+      const bytes = await event.sender.printToPDF({
+        printBackground: true,
+        preferCSSPageSize: true,
+        pageSize: 'A4',
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
+      });
+      const desktop = app.getPath('desktop');
+      const taken: string[] = await readdir(desktop).catch(() => []);
+      const name = desktopPdfName((value as { fileName?: unknown } | null)?.fileName, taken);
+      const target = path.join(desktop, name);
+      await writeFile(target, bytes);
+      return { ok: true, path: target };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }

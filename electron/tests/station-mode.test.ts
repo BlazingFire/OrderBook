@@ -44,6 +44,17 @@ describe('orderbook:setStationMode in shell.ts', () => {
     expect(preload).toContain("setStationMode: (on: boolean): Promise<boolean> =>");
     expect(preload).toContain("ipcRenderer.invoke('orderbook:setStationMode', on)");
   });
+
+  it('saves straight to the Desktop with no dialog, in a series that never overwrites', () => {
+    const body = handlerBody('orderbook:savePdfToDesktop');
+    // Only the panel's own window may ask, like every print handler.
+    expect(body).toMatch(/event\.sender !== mainWindow\?\.webContents/);
+    // No dialog: the Desktop path plus the series name, then the write.
+    expect(body).not.toContain('showSaveDialog');
+    expect(body).toContain("app.getPath('desktop')");
+    expect(body).toContain('desktopPdfName(');
+    expect(preload).toContain("ipcRenderer.invoke('orderbook:savePdfToDesktop', options)");
+  });
 });
 
 describe('silent printing for a station', () => {
@@ -52,7 +63,7 @@ describe('silent printing for a station', () => {
     expect(body).toMatch(/event\.sender !== mainWindow\?\.webContents/);
     expect(body).toContain('getPrintersAsync()');
     expect(body).toContain('printOptions(value, installed)');
-    for (const channel of ['orderbook:listPrinters', 'orderbook:savePdf', 'orderbook:setStationMode']) {
+    for (const channel of ['orderbook:listPrinters', 'orderbook:savePdf', 'orderbook:savePdfToDesktop', 'orderbook:setStationMode']) {
       expect(handlerBody(channel), channel).toMatch(/event\.sender !== (mainWindow\?\.webContents|window\.webContents|mainWindow\.webContents)/);
     }
   });
