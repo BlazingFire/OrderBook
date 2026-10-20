@@ -190,6 +190,16 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-20 - 1.5.2 built, signed and released (OpenCode)
+
+- **Done:** CI's Release workflow could not create the release (its token got 403 on the releases repo), so the
+  builds were made off-runner on this PC exactly as 1.5.1 was: Office 1.5.2 (82 MB), Win7 Office 1.5.2 (134 MB,
+  x64+ia32), Master 1.5.2 (360 MB, bundling both Office setups), each manifest signed with
+  `release-2026-10-01` and checked with `verifyManifest` plus SHA-256/size against the files. Published as
+  **v1.5.2** on `OrderBook-Releases` with the same asset names as 1.5.1 (8 assets).
+- **Not verified:** an install, or a Master picking the update up.
+- **Left:** `docs/releases/1.5.2.md` says 2026-10-19 in one line — fix on the next edit.
+
 ### 2026-10-19 - 1.5.2: merged to main, version bumped (OpenCode)
 
 - **Ask (owner):** build, merge all to git, commit and push, bump version.
