@@ -20,6 +20,7 @@ import path from 'node:path';
 import type {
   CompanyFeatures,
   Lead,
+  Order,
   LineItem,
   Mutation,
   Party,
@@ -355,6 +356,23 @@ function applyOverlay(view: SyncSnapshot, mutation: Mutation): void {
       );
       return;
 
+    case 'order.update':
+      // The Dispatch note saved tick boxes (and the vehicle number): queued,
+      // so the note screen reads them back before the Master answers.
+      view.orders = view.orders.map((order) =>
+        order.id === mutation.entityId
+          ? {
+              ...order,
+              ...pickOrderFields(mutation),
+              sync: {
+                ...order.sync,
+                fieldHlc: { ...order.sync.fieldHlc, ...stampedFields(mutation) },
+              },
+            }
+          : order,
+      );
+      return;
+
     case 'lead.setStage': {
       const stageId = String(mutation.payload.stageId ?? '');
       const stage = findStage(view, stageId);
@@ -575,6 +593,19 @@ function provisionalProduct(mutation: Mutation): Product {
     // a still-provisional record.
     images: [],
   };
+}
+
+function pickOrderFields(mutation: Mutation): Partial<Order> {
+  const payload = mutation.payload as Partial<Order>;
+  const patch: Partial<Order> = {};
+
+  for (const field of mutation.fields) {
+    if (field in payload) {
+      Object.assign(patch, { [field]: payload[field as keyof Order] });
+    }
+  }
+
+  return patch;
 }
 
 function pickLeadFields(mutation: Mutation): Partial<Lead> {

@@ -162,6 +162,9 @@ export const EN_MESSAGES = {
   'setting.leads.quietAfterDays.label': 'A new order has gone quiet after',
   'setting.leads.quietAfterDays.help':
     'How long a new order can sit untouched before the New Order Outcomes report stops counting it as open.',
+  'setting.notes.defaultBold.label': 'Bold note totals and headings',
+  'setting.notes.defaultBold.help':
+    'On, the Dispatch and Filling notes print their totals and headings bold, and the note screen ticks Bold. Off, they print in the regular face.',
   'setting.reports.visibleToOffice.label': 'Show Reports to Office users',
   'setting.reports.visibleToOffice.help':
     'On, people in the Office tier see the Reports module and get their own figures in it. Off, it is hidden from them and refused if they ask. Administrators always see it.',
@@ -291,7 +294,8 @@ export const EN_MESSAGES = {
   'error.validation.backupFileMissing':
     'The file {file} could not be found. Plug in the backup drive or choose another file.',
   'error.conflict.backupBusy': 'A backup or restore is already running. Wait for it to finish.',
-  'error.conflict.productRestoreBusy': 'A product restore is already running. Wait for it to finish.',
+  'error.conflict.productRestoreBusy':
+    'A product restore is already running. Wait for it to finish.',
   'error.internal.archiveRecoveryFailed':
     'The restore failed and the data from before it could not be put back. Restore {file} from the first-run screen.',
   'error.conflict.dataDirectoryPopulated':
@@ -354,6 +358,8 @@ export const EN_MESSAGES = {
     'This final order has been dispatched and can no longer be edited',
   'validation.order.weightNegative': 'Weight cannot be negative',
   'validation.order.vehicleInvalid': 'Vehicle number: up to 20 letters, digits, spaces or dashes',
+  'validation.noteColumns.invalid':
+    'Note columns must be true or false for packing, grade and colour',
   'validation.order.alreadyDispatched': 'This final order was already dispatched',
   'validation.remark.textRequired': 'A remark needs some text',
   'validation.lead.partyRequired': 'Select a party for this order',
@@ -365,8 +371,7 @@ export const EN_MESSAGES = {
   'validation.lead.productMissing': 'One of the selected products no longer exists',
   'validation.lead.quantityRequired': 'Add a quantity for {productName}',
   'validation.lead.sourceInvalid': '"{value}" is not a configured order source',
-  'validation.lead.alreadyConverted':
-    'This new order has already been converted to a final order',
+  'validation.lead.alreadyConverted': 'This new order has already been converted to a final order',
   'validation.lead.noItemsToConvert':
     'A new order needs at least one product before it can become a final order',
   'validation.lead.quantityMissingOnConvert':
@@ -430,6 +435,8 @@ export const EN_MESSAGES = {
   'validation.import.tooManyRows':
     'The file has more than {max} rows — split it and import the parts',
   'validation.import.tooLarge': 'That file is too large to import',
+  'validation.import.fileChanged':
+    'The file changed since the preview - review it again before applying',
   'validation.import.sameProduct':
     '{name} and another product in this file both match the same existing product',
   'validation.import.rowFailed': 'The row could not be saved: {reason}',
@@ -443,12 +450,15 @@ export const EN_MESSAGES = {
   'validation.productZip.fileRequired': 'Choose a .zip, .csv or .xlsx file',
   'validation.productZip.tooLarge': 'That zip is larger than 1 GB',
   'validation.productZip.notAZip': 'That file could not be opened as a zip',
-  'validation.productZip.noProductsCsv': 'This zip has no products.csv, so it is not an OrderBook product backup',
+  'validation.productZip.noProductsCsv':
+    'This zip has no products.csv, so it is not an OrderBook product backup',
   'validation.productZip.manyFiles': 'This zip has more than one {file}. Keep one and try again.',
   'validation.productZip.entryRejected':
     'This zip holds a file it should not ({entry}), so nothing was read from it',
-  'validation.productZip.codeInvalid': 'The main product code {code} must be letters and digits only',
-  'validation.productZip.hexInvalid': '{hex} is not a colour like #1A2B3C, so its hex was left as it is',
+  'validation.productZip.codeInvalid':
+    'The main product code {code} must be letters and digits only',
+  'validation.productZip.hexInvalid':
+    '{hex} is not a colour like #1A2B3C, so its hex was left as it is',
   'validation.productZip.mainDiffers':
     'products.csv gives the {column} as "{value}" but main-products.csv as "{main}". Only main-products.csv is read, so change it there.',
   'validation.productZip.mainDuplicate':
@@ -569,7 +579,8 @@ export const EN_MESSAGES = {
   'validation.sellToday.malformed': 'That “Sell today” entry could not be read',
   'validation.sellToday.nothingToSell': 'Pick at least one product or write a message',
   'validation.sellToday.tooManyProducts': 'Pick at most {max} products',
-  'validation.sellToday.autoCloseInvalid': 'Close it by itself after {min} to {max} seconds, or only when closed',
+  'validation.sellToday.autoCloseInvalid':
+    'Close it by itself after {min} to {max} seconds, or only when closed',
   'validation.sellToday.datesReversed': 'The last day cannot be before the first day',
   'validation.sellToday.unknownProduct': 'One of the chosen products is no longer in the catalogue',
   'validation.fields.valueImmutable':
@@ -1120,6 +1131,61 @@ export const EN_MESSAGES = {
   'catalog.nav.brands': 'Brands',
   'catalog.nav.duplicates': 'Duplicates',
   'catalog.nav.photoImport': 'Photo import',
+  'import.preview.truncated': 'Showing the first {max} rows.',
+  'import.preview.noRows': 'No rows to review.',
+  'catalog.nav.productConflicts': 'Product conflicts',
+  'catalog.nav.productEdit': 'Edit product',
+  'product.conflicts.title': 'Product conflicts',
+  'product.conflicts.description': 'Review imports, exports, backups and duplicates in one place.',
+  'product.conflicts.tab.import': 'Import review',
+  'product.conflicts.tab.export': 'Export',
+  'product.conflicts.tab.backup': 'Backup and restore',
+  'product.conflicts.tab.duplicates': 'Duplicates',
+  'product.conflicts.tab.alteration': 'Alteration',
+  'product.conflicts.importHint':
+    'Upload a CSV or Excel file. Each row shows file values, existing values, the auto decision and the reason.',
+  'product.conflicts.exportSub': 'Download sub products CSV',
+  'product.conflicts.exportMain': 'Download main products CSV',
+  'product.conflicts.backupHint':
+    'Back up or restore the product zip. The list toolbar no longer carries these actions.',
+  'product.smart.fileValue': 'File',
+  'product.smart.existingValue': 'Existing',
+  'product.smart.decision': 'Decision',
+  'product.smart.reason': 'Reason',
+  'product.smart.create': 'Create',
+  'product.smart.update': 'Update',
+  'product.smart.skip': 'Skip',
+  'product.smart.include': 'Include',
+  'product.smart.autoBest': 'Auto choose best',
+  'product.smart.reason.validNew': 'Valid new row, will create',
+  'product.smart.reason.validUpdate': 'Valid change, will update',
+  'product.smart.reason.unchanged': 'No changes, skipped',
+  'product.smart.reason.codeTaken': 'Code taken by another product, skipped',
+  'product.smart.reason.blankCode': 'Blank code, skipped',
+  'product.smart.reason.invalid': 'Invalid row, skipped',
+  'product.smart.bulk.skipClashes': 'All code clashes to Skip',
+  'product.smart.bulk.createNew': 'All new to Create',
+  'product.smart.bulk.updateValid': 'All valid updates to Update',
+  'product.smart.noWholeFile': 'Per row decisions only, no whole file accept',
+  'product.alteration.title': 'Alteration preview',
+  'product.alteration.description':
+    'Pending leads and undispatched orders take the new snapshot. Dispatched and converted history stays read only.',
+  'product.alteration.pendingLeads': 'Pending leads',
+  'product.alteration.pendingOrders': 'Pending orders',
+  'product.alteration.frozen': 'Frozen history (read only)',
+  'product.alteration.apply': 'Apply to pending only',
+  'product.alteration.applied': 'Alteration applied to pending records',
+  'product.alteration.pdf': 'Download affected orders PDF',
+  'product.alteration.selectProduct': 'Select a product to preview its alteration',
+  'product.alteration.loadFailed': 'Alteration preview failed to load',
+  'product.alteration.applyFailed': 'Alteration apply failed',
+  'product.alteration.pendingList':
+    'Pending lines ({shown} shown across {leads} leads and {orders} orders)',
+  'product.alteration.frozenList':
+    'Frozen history lines ({shown} shown across {leads} leads and {orders} orders)',
+  'product.alteration.changesList': 'Before and after (first {shown})',
+  'product.alteration.reviewPdf': 'Download review PDF',
+  'product.edit.openInScreen': 'Open in edit screen',
   'photoImport.title': 'Import product photos',
   'photoImport.description':
     'Pick a folder or many image files named by sub product code ({example}), or by alias: that is photo 1, the primary. {second} is photo 2, and so on; it never replaces the primary. jpg, jpeg, png and webp are read; each photo is added whole, without cropping.',
@@ -1164,8 +1230,7 @@ export const EN_MESSAGES = {
   'duplicates.match.code': 'Same code',
   'duplicates.oldest': 'Oldest',
   'duplicates.addedOn': 'Added {date}',
-  'duplicates.blocked.liveReferences':
-    'On {count} live new orders or orders - cannot be deleted',
+  'duplicates.blocked.liveReferences': 'On {count} live new orders or orders - cannot be deleted',
   'duplicates.blocked.subProducts': 'Holds {count} sub products - delete them first, then this one',
   'duplicates.delete': 'Delete the other copies',
   'duplicates.confirm.title': 'Delete the other copies?',
@@ -1201,7 +1266,8 @@ export const EN_MESSAGES = {
     'It goes to the Recycle Bin, where it can be restored. A product that still has sub products cannot be deleted — move or delete them first.',
   'catalog.mainProducts.delete.bodyWithSubs':
     'Its {count} sub products go to the Recycle Bin with it, and each can be restored from there. A sub product still on an open new order or final order stays, and then so does the product.',
-  'catalog.mainProducts.deletedWithSubs': '{name} and its {count} sub products moved to the Recycle Bin',
+  'catalog.mainProducts.deletedWithSubs':
+    '{name} and its {count} sub products moved to the Recycle Bin',
   'catalog.mainProducts.deletePartial':
     '{done} of {count} sub products moved to the Recycle Bin. {name} stays: {blocked} still on open orders.',
   'catalog.subProducts.delete': 'Delete sub product',
@@ -1325,8 +1391,7 @@ export const EN_MESSAGES = {
   'dashboard.pipeline.emptyDescription': 'New Orders you create appear here, online or off.',
   'dashboard.followUp.title': 'Follow up today',
   'dashboard.followUp.emptyTitle': 'Nothing due',
-  'dashboard.followUp.emptyDescription':
-    'New Orders whose follow-up date arrives show up here.',
+  'dashboard.followUp.emptyDescription': 'New Orders whose follow-up date arrives show up here.',
   'dashboard.activity.title': 'Recent activity',
   'dashboard.activity.emptyTitle': 'No activity yet',
   'dashboard.activity.emptyDescription': 'Moves, conversions and dispatches show up here.',
@@ -1658,7 +1723,8 @@ export const EN_MESSAGES = {
   'lead.detail.createdBy': 'Created by {name}',
   'lead.detail.lines': '{count} lines',
   'lead.detail.linesOne': '{count} line',
-  'lead.detail.weightBand.all': 'All {count} lines have no weight, so the dispatch note will show 0 kg.',
+  'lead.detail.weightBand.all':
+    'All {count} lines have no weight, so the dispatch note will show 0 kg.',
   'lead.detail.weightBand.one': 'This line has no weight, so the dispatch note will show 0 kg.',
   'lead.detail.weightBand.some':
     '{count} of {total} lines have no weight, so the dispatch note will show less than the real weight.',
@@ -2009,6 +2075,10 @@ export const EN_MESSAGES = {
   'orderNote.packing': 'Packing',
   'orderNote.colour': 'Colour',
   'orderNote.grade': 'Grade',
+  'orderNote.bold': 'Bold',
+  'orderNote.saveColumns': 'Save columns',
+  'orderNote.columnsSaved': 'Note columns saved',
+  'orderNote.saveColumnsFailed': 'Could not save the note columns: {error}',
   'orderNote.qty': 'Qty',
   'orderNote.dealer': 'Dealer',
   'orderNote.party': 'Party',
@@ -2398,11 +2468,14 @@ export const EN_MESSAGES = {
   'productZip.item.listReordered': 'Put in the order of the file',
   'productZip.item.unchanged': 'Unchanged: {count}',
   'productZip.item.notInFile': 'In the catalogue but not in products.csv: {count}',
-  'productZip.item.mainNotInFile': 'In the catalogue but in neither main-products.csv nor products.csv: {count}',
+  'productZip.item.mainNotInFile':
+    'In the catalogue but in neither main-products.csv nor products.csv: {count}',
   'productZip.item.listNotInFile': 'In the list but not in the file: {count}',
   'productZip.item.variantsNotInFile': 'Codes in the catalogue but not in products.csv: {count}',
-  'productZip.item.rowsReordered': 'Main products whose sub products are put in the order of the file: {count}',
-  'productZip.item.noColoursFile': 'This file has no colours.csv it can read, so the colour list stays as it is.',
+  'productZip.item.rowsReordered':
+    'Main products whose sub products are put in the order of the file: {count}',
+  'productZip.item.noColoursFile':
+    'This file has no colours.csv it can read, so the colour list stays as it is.',
   'productZip.item.noPhotosFile': 'This file has no photos, so the photos stay as they are.',
   'productZip.item.replaced': 'Replaced: {count}',
   'productZip.item.recaptioned': 'Caption put back from photos.csv: {count}',
@@ -2416,11 +2489,13 @@ export const EN_MESSAGES = {
   'productZip.cellChange': '{column}: {from} → {to}',
   'productZip.reportOnly':
     'What the catalogue holds and the file does not is only listed. Nothing is removed unless you tick it below.',
-  'productZip.reportOnly.noTick': 'What the catalogue holds and the file does not is only listed. Nothing is removed.',
+  'productZip.reportOnly.noTick':
+    'What the catalogue holds and the file does not is only listed. Nothing is removed.',
   'productZip.opt.bin': 'Move sub products missing from the file to the Recycle Bin ({count})',
   'productZip.opt.photos': 'Remove photos missing from the zip ({count})',
   'productZip.opt.photos.hint': 'A removed photo cannot be brought back.',
-  'productZip.opt.updateOnly': 'Update only — add new and changed values, keep everything else (recommended)',
+  'productZip.opt.updateOnly':
+    'Update only — add new and changed values, keep everything else (recommended)',
   'productZip.opt.updateOnly.hint':
     'A blank cell keeps what the catalogue holds. New sub products, codes and photos are added and filled-in cells applied; nothing is removed, and every code keeps its colour and weight unless its own row changes them.',
   'productZip.opt.exact': 'Make the catalogue exactly this file',
@@ -2428,7 +2503,8 @@ export const EN_MESSAGES = {
     'Leaves nothing the file does not list. Sub products, main products, colours and brands it does not list go to the Recycle Bin. Photos missing from the zip, and the colours (codes) of a sub product that its rows leave out, are removed for good.',
   'productZip.opt.exact.keepsColours':
     'Except the colour list: this file has no colours.csv, so the colours stay as they are.',
-  'productZip.opt.exact.keepsPhotos': 'Except the photos: this file has no photos, so the photos stay as they are.',
+  'productZip.opt.exact.keepsPhotos':
+    'Except the photos: this file has no photos, so the photos stay as they are.',
   'productZip.opt.exact.switchedOff':
     'You may not delete colours, so the colours the file does not list are switched off instead.',
   'productZip.opt.exact.needsLists':
@@ -2440,7 +2516,8 @@ export const EN_MESSAGES = {
   'productZip.phase.photos': 'Adding photos',
   'productZip.phase.removing': 'Removing what you ticked',
   'productZip.photoProgress': '{done} of {total} photos',
-  'productZip.runningHint': 'You can close this window. The restore carries on, and opening it again shows where it is.',
+  'productZip.runningHint':
+    'You can close this window. The restore carries on, and opening it again shows where it is.',
   'productZip.done': 'The product restore is finished.',
   'productZip.done.binned': '{count} sub products moved to the Recycle Bin.',
   'productZip.done.photosRemoved': '{count} photos removed.',
@@ -3823,9 +3900,11 @@ export const EN_MESSAGES = {
   'updates.run.step.closeHint': 'If Windows asks for permission to install, choose Yes.',
   'updates.run.step.install': 'Install {version}',
   'updates.run.step.installHint': 'Runs by itself after this window closes. Usually about {time}.',
-  'updates.run.step.installMeasured': 'Runs by itself after this window closes. Last time on this PC: {time}.',
+  'updates.run.step.installMeasured':
+    'Runs by itself after this window closes. Last time on this PC: {time}.',
   'updates.run.step.restart': 'Open the new version',
-  'updates.run.step.restartHint': 'OrderBook opens again by itself and shows that the update finished.',
+  'updates.run.step.restartHint':
+    'OrderBook opens again by itself and shows that the update finished.',
   'updates.run.state.done': 'Done',
   'updates.run.state.active': 'In progress',
   'updates.run.state.pending': 'Waiting',
@@ -3840,7 +3919,8 @@ export const EN_MESSAGES = {
   'updates.finished.started': 'Started',
   'updates.finished.ready': 'Ready',
   'updates.finished.took': 'Install and restart took',
-  'updates.finished.dataKept': 'Your orders, parties, products and settings were kept as they were.',
+  'updates.finished.dataKept':
+    'Your orders, parties, products and settings were kept as they were.',
   'updates.finished.notInstalledTitle': 'The update did not install',
   'updates.finished.notInstalledBody':
     'The update to {to} was started, but this PC is still on {running}. Open App update and choose Install now again, or open the log folder to see why.',
@@ -4275,7 +4355,8 @@ export const EN_MESSAGES = {
   'sellToday.manage.intro':
     'What to sell today: a headline and the products to push. It pops up once a day for each person it is meant for, then they start work.',
   'sellToday.manage.empty': 'Nothing to sell today yet',
-  'sellToday.manage.emptyBody': 'Pick the products to push; they pop up for everybody as they start work.',
+  'sellToday.manage.emptyBody':
+    'Pick the products to push; they pop up for everybody as they start work.',
   'sellToday.manage.loadFailed': 'Could not load the “Sell today” entries',
   'sellToday.manage.col.entry': 'Headline',
   'sellToday.manage.col.products': 'Products',
@@ -4292,7 +4373,8 @@ export const EN_MESSAGES = {
   'sellToday.closes.never': 'When closed',
   'sellToday.closes.after': 'After {seconds} s',
   'sellToday.delete.title': 'Delete “{title}”?',
-  'sellToday.delete.body': 'It stops popping up and leaves the product band, and goes to the Recycle Bin.',
+  'sellToday.delete.body':
+    'It stops popping up and leaves the product band, and goes to the Recycle Bin.',
   'sellToday.delete.confirm': 'Delete',
   'sellToday.editor.newTitle': 'New “Sell today”',
   'sellToday.editor.editTitle': 'Edit “Sell today”',
@@ -4316,7 +4398,8 @@ export const EN_MESSAGES = {
   'sellToday.editor.seconds': '{seconds} seconds',
   'sellToday.editor.fromLabel': 'First day',
   'sellToday.editor.untilLabel': 'Last day',
-  'sellToday.editor.daysHint': 'Today only, unless you change it. Clear the last day to keep it until removed.',
+  'sellToday.editor.daysHint':
+    'Today only, unless you change it. Clear the last day to keep it until removed.',
   'sellToday.editor.save': 'Save',
   'sellToday.editor.saveFailed': 'Could not save it',
   'sellToday.editor.conflict': 'Somebody changed this while you were editing it.',

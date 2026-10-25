@@ -124,6 +124,8 @@ describe('the migration registry matches the directory', () => {
     '20261018000000_notice_sell_today',
     // 2026-10-08: the To-do list (`todos`, `todo_marks` and their two grants).
     '20261019000000_todo_list',
+    // 2026-10-25: the Dispatch note saved tick boxes (note_columns on leads and orders).
+    '20261025000000_note_columns',
   ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {

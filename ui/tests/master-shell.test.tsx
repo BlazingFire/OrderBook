@@ -245,12 +245,9 @@ afterEach(() => {
 });
 
 
-/** A new order's notes sit in its Print & PDF menu (2026-10-08). */
+/** A new order's notes sit beside its header as direct buttons (2026-10-25). */
 async function noteItem(kind: 'orderNote.filling' | 'orderNote.dispatch'): Promise<HTMLElement> {
-  if (!screen.queryByRole('menu')) {
-    fireEvent.click(await screen.findByRole('button', { name: t('lead.detail.printMenu') }));
-  }
-  return screen.getByRole('menuitem', { name: t(kind) });
+  return screen.findByRole('button', { name: t(kind) });
 }
 
 describe('the design-system gallery', () => {
@@ -1000,6 +997,8 @@ describe('the Filling and Dispatch notes on a pending order', () => {
     await openLeads(['leads.view', 'parties.view']);
     expect((await noteItem('orderNote.filling'))).toBeTruthy();
     expect((await noteItem('orderNote.dispatch'))).toBeTruthy();
+    // Preview PDF is an export right: a viewer alone gets the notes, not the link.
+    expect(screen.queryByRole('link', { name: t('lead.previewPdf') })).toBeNull();
   });
 
   it('leaves the notes to the record: the row has its Notes text and Edit / Delete icons (2026-10-09)', async () => {
@@ -1021,6 +1020,7 @@ describe('the Filling and Dispatch notes on a pending order', () => {
 
   it('opens the Filling note headed "Pending Order No." with the lead id, party fetched', async () => {
     const calls = await openLeads(['leads.view', 'leads.export', 'parties.view']);
+    expect(screen.getByRole('link', { name: t('lead.previewPdf') })).toBeTruthy();
     fireEvent.click((await noteItem('orderNote.filling')));
 
     expect((await screen.findAllByText(t('orderNote.pendingOrderNo'))).length).toBeGreaterThan(0);
@@ -1030,7 +1030,8 @@ describe('the Filling and Dispatch notes on a pending order', () => {
 
     // Back from the note lands on the lead.
     fireEvent.click(screen.getByRole('button', { name: t('action.backToList') }));
-    expect(await screen.findByRole('button', { name: t('lead.detail.printMenu') })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: t('orderNote.filling') })).toBeTruthy();
+    expect(screen.getByRole('button', { name: t('orderNote.dispatch') })).toBeTruthy();
   });
 
   it('prints the copies asked for through the shell, and keeps the vehicle number off the server', async () => {
@@ -1587,9 +1588,19 @@ describe('Products', () => {
       ],
     };
 
-    it('is offered only with products.delete', async () => {
-      await openProducts(['products.view']);
+    it('lives in the conflicts tab, not the sidebar', async () => {
+      // The duplicates list is answered, or its never-settling read would sit
+      // in `api.ts`'s shared in-flight map and swallow the next test's.
+      await boot(['products.view', 'products.delete'], (call) =>
+        call.url.split('?')[0] === '/api/duplicates' ? json({ groups: [] }) : undefined,
+      );
+      await act(async () => {
+        fireEvent.click(moduleEntry());
+        await wait(0);
+      });
       expect(screen.queryByText(t('catalog.nav.duplicates'))).toBeNull();
+      fireEvent.click(await screen.findByText(t('catalog.nav.productConflicts')));
+      expect(await screen.findByText(t('product.conflicts.tab.duplicates'))).toBeTruthy();
     });
 
     it('lists the groups, keeps the oldest by default and deletes the other copy after a confirm', async () => {
@@ -1603,7 +1614,8 @@ describe('Products', () => {
         fireEvent.click(moduleEntry());
         await wait(0);
       });
-      fireEvent.click(await screen.findByText(t('catalog.nav.duplicates')));
+      fireEvent.click(await screen.findByText(t('catalog.nav.productConflicts')));
+      fireEvent.click(await screen.findByText(t('product.conflicts.tab.duplicates')));
 
       expect(await screen.findByText('Wash-basin')).toBeTruthy();
       expect((screen.getAllByRole('radio')[0] as HTMLInputElement).checked).toBe(true);
@@ -1630,7 +1642,8 @@ describe('Products', () => {
         fireEvent.click(moduleEntry());
         await wait(0);
       });
-      fireEvent.click(await screen.findByText(t('catalog.nav.duplicates')));
+      fireEvent.click(await screen.findByText(t('catalog.nav.productConflicts')));
+      fireEvent.click(await screen.findByText(t('product.conflicts.tab.duplicates')));
       await screen.findByText('Wash-basin');
 
       fireEvent.click(screen.getAllByRole('radio')[1]!);
@@ -1660,7 +1673,8 @@ describe('Products', () => {
         fireEvent.click(moduleEntry());
         await wait(0);
       });
-      fireEvent.click(await screen.findByText(t('catalog.nav.duplicates')));
+      fireEvent.click(await screen.findByText(t('catalog.nav.productConflicts')));
+      fireEvent.click(await screen.findByText(t('product.conflicts.tab.duplicates')));
 
       expect(await screen.findByText(t('duplicates.blocked.subProducts', { count: 3 }))).toBeTruthy();
       expect((screen.getByRole('button', { name: t('duplicates.delete') }) as HTMLButtonElement).disabled).toBe(true);

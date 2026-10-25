@@ -108,6 +108,12 @@ import type {
   ProductImportFormat,
   ProductImportMode,
   ProductImportResult,
+  ProductAlterationPreview,
+  ProductAlterationApplyResult,
+  ProductAlterationAffected,
+  DuplicateReport,
+  DuplicateResolveInput,
+  DuplicateResolveResult,
   ProductInput,
   ProductListPage,
   ProductListQuery,
@@ -774,11 +780,17 @@ export const api = {
       undefined,
       level === 'main' ? `main-products.${format}` : `products.${format}`,
     ),
-  importProducts: (file: File, options: { dryRun: boolean; mode: ProductImportMode }) => {
+  importProducts: (
+    file: File,
+    options: { dryRun: boolean; mode: ProductImportMode; onlyRows?: number[]; fileHash?: string },
+  ) => {
     const form = new FormData();
     form.append('file', file);
     form.append('dryRun', String(options.dryRun));
     form.append('mode', options.mode);
+    if (options.onlyRows && options.onlyRows.length > 0)
+      form.append('onlyRows', options.onlyRows.join(','));
+    if (options.fileHash) form.append('fileHash', options.fileHash);
     return postFile<ProductImportResult>('/api/products/import', form);
   },
 
@@ -788,7 +800,10 @@ export const api = {
     fetchBlob(`/api/parties/import/template.${format}`, undefined, `parties-template.${format}`),
   exportParties: (format: PartyImportFormat) =>
     fetchBlob(`/api/parties/export.${format}`, undefined, `parties.${format}`),
-  importParties: (file: File, options: { dryRun: boolean; mode: PartyImportMode }) => {
+  importParties: (
+    file: File,
+    options: { dryRun: boolean; mode: PartyImportMode },
+  ) => {
     const form = new FormData();
     form.append('file', file);
     form.append('dryRun', String(options.dryRun));
@@ -851,8 +866,29 @@ export const api = {
 
   deleteParty: (id: string) =>
     request<{ id: string; deletedAt: string }>(`/api/parties/${id}`, { method: 'DELETE' }),
+  previewProductAlteration: (id: string) =>
+    request<ProductAlterationPreview>(`/api/products/${id}/alteration/preview`),
+  applyProductAlteration: (id: string, product: ProductInput, baseFieldHlc?: Record<string, string>) =>
+    post<ProductAlterationApplyResult>(`/api/products/${id}/alteration/apply`, {
+      product,
+      ...(baseFieldHlc ? { baseFieldHlc } : {}),
+    }),
+  alterationOrdersPdf: (id: string, productName: string, affected: ProductAlterationAffected[]) =>
+    fetchBlob(
+      `/api/products/${id}/alteration/pdf`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productName, affected }),
+      },
+      'alteration.pdf',
+    ),
+
   deleteProduct: (id: string) =>
     request<{ id: string; deletedAt: string }>(`/api/products/${id}`, { method: 'DELETE' }),
+  duplicates: () => request<DuplicateReport>('/api/duplicates'),
+  resolveDuplicates: (input: DuplicateResolveInput) =>
+    post<DuplicateResolveResult>('/api/duplicates/resolve', input),
   deleteLead: (id: string) =>
     request<{ id: string; deletedAt: string }>(`/api/leads/${id}`, { method: 'DELETE' }),
   deleteOrder: (id: string) =>

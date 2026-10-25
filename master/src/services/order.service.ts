@@ -6,7 +6,12 @@
  * incidental tidiness — an order must never exist half-converted.
  */
 
-import { fieldFor, ORDER_COLUMNS, recordNumber } from '@orderbook/shared';
+import {
+  cleanNoteColumns,
+  fieldFor,
+  ORDER_COLUMNS,
+  recordNumber,
+} from '@orderbook/shared';
 import type {
   BinBlocker,
   BinRestoreResult,
@@ -295,6 +300,12 @@ export async function updateOrder(
 
   if (input.vehicleNumber !== undefined) {
     patch.vehicle_number = normaliseVehicleNumber(input.vehicleNumber);
+  }
+
+  if (input.noteColumns !== undefined) {
+    const cleaned = cleanNoteColumns(input.noteColumns);
+    if ('errorKey' in cleaned) throw new ValidationError(cleaned.errorKey);
+    patch.note_columns = cleaned.value === null ? null : JSON.stringify(cleaned.value);
   }
 
   const fields = Object.keys(patch).map((column) => fieldFor(ORDER_COLUMNS, column));

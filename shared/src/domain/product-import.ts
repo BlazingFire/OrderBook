@@ -74,6 +74,13 @@ export interface ProductImportResult {
   fileName: string;
   /** Data rows in the file, blank rows excluded. */
   totalRows: number;
+  /**
+   * SHA-256 of the uploaded file bytes. The review sends it back with a
+   * per-row apply so a re-uploaded file cannot silently move the row numbers
+   * the review approved; a mismatch is refused with
+   * `validation.import.fileChanged`.
+   */
+  fileHash?: string;
   /** Rows created — or, on a dry run, rows that would be. */
   created: number;
   updated: number;
@@ -97,9 +104,28 @@ export interface ProductImportResult {
   formatVersion?: number | null;
   /** The first few rows as they were understood, for the preview. */
   sample: ProductInput[];
+  rowPreviews?: ProductImportRowPreview[];
+  rowPreviewsTruncated?: boolean;
 }
 
 // --- The product backup zip -------------------------------------------------
+
+export type ProductImportRowKind = 'new' | 'update' | 'unchanged' | 'clash' | 'invalid';
+export type ProductImportRowDecision = 'create' | 'update' | 'skip';
+
+export interface ProductImportRowPreview {
+  row: number;
+  kind: ProductImportRowKind;
+  decision: ProductImportRowDecision;
+  fileName: string;
+  fileCode: string;
+  existingName: string | null;
+  existingCode: string | null;
+  cells: ProductCellChange[];
+  reasonKey: MessageKey;
+  reasonParams?: MessageParams;
+}
+
 //
 // `OrderBook-Products-<company>-<date>.zip`: `products.csv` (the export above),
 // `main-products.csv`, `colours.csv`, `brands.csv`, `images/<CODE>.<ext>`, one

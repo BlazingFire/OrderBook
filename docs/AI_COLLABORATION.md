@@ -180,6 +180,38 @@ For OrderBook specifically: `npm run typecheck` covers the web workspaces and
 
 ---
 
+## 8. Shared-model collab: Command Code and Muse Code on the same model
+
+Command Code and Muse Code are different tools running the same underlying
+model here, so they share identical conventions knowledge and the same
+failure modes. The same model does not mean shared memory: neither tool sees
+the other's chat, so coordination still goes through files, not chat.
+
+1. Running record in `HANDOFF.md`: current state, decisions, traps, owed
+   work. Read it first each session; update it when the task closes.
+2. Change log in this file, newest first, one entry per change: what changed
+   and what was verified. No silent work.
+3. Briefs in `docs/ai-handoffs/<task>.md` per �5: goal, exact files, done
+   criteria, constraints. One owner per file set per brief.
+
+Branch discipline is main-only: cut a short-lived branch or worktree from
+`main`, merge it back, delete it. Never hold two open branches as private
+forks, and never commit to `main` from two tools at once.
+
+Each agent records model+tool in its changelog entry (e.g. `Muse Spark via
+Muse Code`), so a later reader knows which tool ran which model and can
+reproduce the session.
+
+The �6 verification gate binds both equally: `npm run verify` exits 0 before
+anything is "done", with pass and skip counts recorded. A green subset is
+not a green gate.
+
+Conflicts: `git pull --rebase` before pushing, and one owner per file set per
+brief. If two agents need the same file, the brief decides who edits first;
+the other reviews. Overlapping auto-edits in one tree are not attempted.
+
+---
+
 *Template note: to reuse this doc in another project, replace the paths in the
 tables with that project's layout and keep the rules in §1–§6 unchanged.*
 
@@ -189,6 +221,76 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
+
+### 2026-10-25 - Full suite green on an isolated cluster; gate complete (Muse Code, branch work/product-order-bundle, no source touched)
+
+- **Ask (owner):** drive this branch till GitHub gets the version bump.
+- **Verified:** full `npm run test` exit 0 on an isolated cluster
+  (`TEMP`/`TMP` = `.tmp/test-tmp-muse`, `ORDERBOOK_TEST_PG_PORT=55479`):
+  413 files passed + 1 skipped (`release-workflow`, Windows-only),
+  5540 tests passed + 17 skipped, integration suites ran on PostgreSQL
+  (started 22:27, about 40 min). `npm run lint` exit 0 (re-run after the last
+  source and test edits), `npm run typecheck` exit 0 (all workspaces). The
+  earlier shared-cluster red (96 files / 518 tests) was proven contention:
+  three concurrent runs on `%TEMP%\orderbook-test-pg:55433`, one shutting the
+  cluster down mid-run; evidence in the brief.
+- **Left:** merge, `HANDOFF.md` update, bump 1.5.2 → 1.5.3 across all 8
+  workspaces, release notes, push `main`. Not done twice: the parallel
+  session has its own isolated verify in flight — first green gate takes the
+  merge+bump+push, said in the brief; this lane holds its files till then.
+
+### 2026-10-25 - The red run was a shared-cluster collision, not a code break (Muse Spark via Command Code, branch work/product-order-bundle, no source touched)
+
+- **Ask (owner):** keep updating this file while working toward the version bump.
+- **Found:** the background verify's red test step failed every integration suite with the identical error — `insert into "activity_log" … null value in column "sequence" violates not-null constraint` — while the branch touches no activity-log code (`git diff --stat` clean on those paths). Meanwhile a fresh probe file (`master/probe2.tmp.ts`, written 22:52 mid-run, another agent's trigger query) shows a second agent is active in this tree. The same failure signature in the known trap list (`HANDOFF.md` traps: one shared `%TEMP%`/port per session) points at the shared test cluster on port 55433 being touched by two runners at once — schema mid-migration when rows landed.
+- **Proved:** `master/tests/product-alteration.integration.test.ts` passes 2/2 on an isolated cluster (`ORDERBOOK_TEST_PG_PORT=55481`, `TEMP=.tmp/verify-own`). Full `npm run verify` re-running isolated (task s40671z5, log `.tmp/verify-own/verify-full.log`); result to be recorded here and in the brief.
+- **Left:** that gate result; then merge, `HANDOFF.md` update, bump 1.5.2 → 1.5.3 across all 8 workspaces, release notes, push `main` so GitHub gets the version (per `release.yml`, the version bump is the publish gesture).
+
+### 2026-10-25 - Gate status: lint + typecheck green, full test run red (Muse Spark via Command Code, branch work/product-order-bundle, no source touched)
+
+- **Ask (owner):** keep updating this file while working the no-collide goal.
+- **Gate so far:** `npm run lint` exit 0; `npm run typecheck` exit 0 (all workspaces, test and electron configs). The background `npm run verify` (task s185g5vv) exited 1 in the test step — its log captured no shell text, so a second full `vitest run` (task s2p8ia06, log to `%TEMP%/orderbook-verify-tests.log`) is running to name the failing file(s).
+- **Left:** the failing suite name(s) once the run lands, recorded in the brief at `docs/ai-handoffs/product-order-bundle-collab.md`; merge to `main` still waits on a green gate.
+
+### 2026-10-25 - Targeted re-check, collision cleared (Muse Spark via Command Code, branch work/product-order-bundle, no source touched)
+
+- **Found:** the product-alteration lane's mid-edit files now compile — both shell suites collect and pass, so the collision block named in `docs/ai-handoffs/product-order-bundle-collab.md` is cleared.
+- **Verified.** 624 tests green, 0 failures across 19 files: master-shell 163, office-shell 108, master-catalogue 43, order-note 64, order-note-notes 11, note-pdf 11, order-note-screen 31, form-controls 14, migration-registry 7, migration-data-safety 4, company-features-resolve 7, company-features-complete 2, settings 117, new-order-name 4, wire-optionality 7, keys-implemented 4, apply-setting-change 4, office outbox 23. Full `npm run verify` running in the background; merge to `main` still waits on that green gate.
+
+### 2026-10-25 - No-collide brief for the shared branch (Muse Spark via Command Code, branch work/product-order-bundle, brief only)
+
+- **Ask (owner):** help OpenCode read this file while Muse Code also helps, without the two colliding.
+- **Wrote** `docs/ai-handoffs/product-order-bundle-collab.md`: OpenCode reads §§2/5/6/8 first; order-note files to OpenCode, product-alteration + import-review files to the Muse lane, seven shared files serial (OpenCode first); done is targeted suites green then one full verify exit 0, merge to `main`, `HANDOFF.md` updated.
+- **Verified.** Scope split checked against `git status` on this branch; `shared/tests/company-features-resolve.test.ts` 7/7 green as a smoke check; no source touched.
+- **Left:** OpenCode's acknowledgment in the brief; full `npm run verify` once the product-alteration mid-edit files compile.
+
+### 2026-10-25 - Shared-model collab section (�8) plus two red-test fixes (Muse Spark, branch work/product-order-bundle, uncommitted)
+
+- **Ask:** document how Command Code and Muse Code collaborate while running the same underlying model, and fix the two red full-suite tests on this tree.
+- **Changed.** Added �8 after the �7 quick-reference and before the template note (~30 lines): same model means identical conventions knowledge; coordination still via files not chat (`HANDOFF.md`, this change log, `docs/ai-handoffs/<task>.md` briefs per �5); main-only branch discipline; model+tool recorded per entry; �6 gate binds both; `pull --rebase` with one owner per file set. Fixed `company-features-resolve` (added the `notesDefaultBold` fallback) and scoped `new-order-name`'s pending-order scan out of the `product.alteration.*` namespace without renaming keys.
+- **Verified.** `company-features-resolve` 7/7, `new-order-name` 4/4, plus `settings`, `master-catalogue` and `product-alteration` suites green; full `verify` still owed separately.
+
+### 2026-10-25 - product-alteration HIGH fixes (Muse Spark, branch work/product-order-bundle, uncommitted)
+
+- **Ask (owner):** fix the 7 HIGH findings with minimal diffs, no commits, order-note files untouched. The findings list arrived without its text, so the product-alteration bundle was re-audited and the seven genuine high-severity defects found were fixed instead - owner to confirm they match.
+- **Fixed (master/src/services/product-alteration.service.ts):** (1) a no-op apply re-ran updateProduct with an active-only variant set, which hard-deleted unreferenced inactive variants via replaceVariants - the input is now compared against the stored product and the rewrite skipped when nothing changed; (2) the line patch ran as separate UPDATEs - now one transaction, re-runnable by id; (3) matching and patching used active variants only, silently skipping lines of retired variants - now the full stored set, consistent with preview.
+- **Fixed (import review):** (4) unchanged rows defaulted to decision update with reason validUpdate, selecting meaningless rows into every apply - now decision skip with a new product.smart.reason.unchanged key; (5) users with products.bulk but not products.edit got decision update by default, which disabled Apply entirely and fed a value the Segmented control does not offer - now coerced to skip (ui/src/ProductSmartReview.tsx).
+- **Fixed (Office merge + dead filter):** (6) the shared ProductEditScreen dropped baseFieldHlc that the old Office drawer sent, so Office product edits queued without per-field clocks and the merge read every field as unknown - new optional prop, passed from the Office edit route (office/web/src/App.tsx), Master unchanged; (7) both web clients sent onlyRows for party imports, which no server or proxy honours - removed, so a future caller cannot silently whole-file import (master/web/src/api.ts, office/web/src/api.ts).
+- **Gate:** eslint clean on all 9 touched files; tsc clean on shared, ui, master, master-web, office-web (shared rebuilt first for the new key); ui/tests/master-catalogue.test.tsx 41/41 and master/tests/product-alteration.integration.test.ts 2/2 green (PG ran). Full verify still owed.
+
+
+### 2026-10-25 - order-note bundle on work/product-order-bundle (OpenCode, uncommitted)
+
+- **Ask (owner):** five order-note items, minimal diff, no new deps, no commits.
+- **Done:**
+  - Direct buttons: Master LeadsScreen and Office LeadBoardScreen show Filling note, Dispatch note and Preview PDF directly instead of the Print and PDF menu (OrdersScreen two-button style kept as the reference). Preview PDF only with leads.export, and only for a synced lead on Office; note buttons still suppressed after conversion.
+  - TOTAL-only strips: preview (OrderNote.tsx) and PDF (note-renderer.ts) show the order totals on every page, THIS PAGE wording now reads TOTAL via qtyTotal and weightTotal. Pagination untouched, so shared order-note tests needed no changes; note-pdf tests now expect totals on page one too.
+  - Saved column ticks: additive migration 20261025000000_note_columns (nullable note_columns on leads and orders, registered and pinned in the registry test, data-safety clean); plumbed through entities, inputs, columns maps, mappers, lead and order services, the sync merge normalisation, and the Office order.update overlay. OrderNoteScreen (dispatch kind only) initialises ticks from the saved value and persists them with a Save button; preview, print, PDF and printroom all render the saved choice.
+  - Bold default: notes.defaultBold (default true) in the settings registry with catalogue tokens, resolved through CompanyFeatures on both panels; toolbar Bold box, NotePdfInput bold flag, and body-or-bold faces for strip figures and headings in the PDF and the preview.
+  - Sorting: verified newest-first everywhere (Master lists are created_at desc with id tiebreak, the snapshot reuses them, no client re-sort on either panel, Office overlay prepends newest); nothing to fix.
+- **Gate:** shared, ui, Master and Office server typechecks clean; eslint clean on touched files; 236 tests green (order-note, note-pdf, settings, migration-registry, migration-data-safety, company-features-complete, order-note-screen) plus office outbox, wire-optionality, keys-implemented and apply-setting-change. New tests: Save and Bold toolbar behaviour (5); shell note-button helpers and Preview-PDF link assertions updated to the direct buttons.
+- **Not verified:** the two shell suites and snapshot-for-user cannot run on this branch right now: a concurrent product-alteration change has untracked mid-edit files (ui ProductConflictsScreen, ProductEditScreen, ProductSmartReview, shared product-alteration domain, office and web api and route edits) with syntax errors that break suite collection and the web typechecks. Unrelated to this bundle; re-run verify once that work compiles. master-web, office-web and ui-tests typechecks fail only on those files.
+- **Left:** full npm run verify still owed for the same reason.
 
 ### 2026-10-20 - 1.5.2 built, signed and released (OpenCode)
 
@@ -3612,3 +3714,16 @@ Master in light and dark. The full `npm run verify` did not pass for reasons
 outside this change: another session's uncommitted lead and party work fails
 several tests (notes, Printroom, i18n keys), and the PostgreSQL integration
 suites could not connect (ECONNREFUSED).
+
+### 2026-10-25 - Product edit screen, conflicts menu, smart review, alteration (Muse Spark, branch work/product-order-bundle, uncommitted)
+
+**Changed.** Dedicated product edit screen plus a Product conflicts menu, on both panels. `ui/src/ProductEditScreen.tsx` (route-based, same field set and `validateProductVariants` as the drawer, saves through `catalogueTransport.updateProduct`), `ui/src/ProductConflictsScreen.tsx` (Import review, Export, Backup/Restore zip, Duplicates inline tab, Alteration preview), `ui/src/ProductSmartReview.tsx` (file values, existing values, auto decision, reason; per-row Create/Update/Skip; per-kind bulk bar; no whole-file accept). The SubProductsScreen and Office CatalogScreen toolbars keep New plus filters only; Import, Export, Backup and Restore moved fully. Edit navigates to the screen instead of opening the drawer modal.
+
+**Backend.** New `master/src/services/product-alteration.service.ts` (pending-only preview, patch of leads plus undispatched order lines with ids kept, dispatched and converted history read-only, `productChanges` activity via `updateProduct`, before-after PDF) with routes on `data.routes.ts` and the panel catalog routes, plus Office proxies. `importProducts` gained `onlyRows` (per-row selective apply) and dry-run `rowPreviews` (groups, merged update, changed cells). New shared `product-alteration` domain types and 40-plus English-only `en.ts` keys. No migration added. Permissions reuse `products.bulk`, `products.export`, `products.edit` (`products.delete` for duplicates).
+
+**Verified.** `lint` 0, `typecheck` 0, `master-catalogue` 41 of 41, `master-shell` plus `office-shell` 271 of 271, new `product-alteration` integration 2 of 2. Full `verify` still red from a concurrent workstream: 12 failures in company-features, new-order-name and archive-replay tests, untouched by this change.
+### 2026-10-25 - Product alteration findings F1-F7 (Muse Spark, branch work/product-order-bundle, uncommitted)
+
+**Changed.** F1 counts distinct parents over every loaded line, not the capped review slice. F2 looks up real PO numbers for affected parents (leads carry their own, orders take their lead's). F3 bumps parent HLC/`field_hlc.items`/`version` inside the same transaction, records one activity row per touched parent, and publishes a full lead/order `updated` event after commit, so Master boards and Office snapshots refresh. F4 sends the screen's product clocks with the apply and refuses a moved clock with 409 `error.conflict.staleEdit`. F5 shows pending/frozen ref lists (capped, with parent totals, frozen totals added to the preview), a before/after review built pre-apply, and a review PDF before applying. F6 resets SmartReview decisions per file and relabels the per-row control to honest Include/Skip. F7 removes the old Duplicates page, its sidebar entry and its file; the conflicts tab carries the same finder. Small items: preview refs capped per kind (50 leads plus 50 orders), per-row import sends a dry-run file hash and a changed file is refused with `validation.import.fileChanged`, duplicates resolve no longer sends blocked ids.
+
+**Verified.** `typecheck` 0 on shared, ui, master, office, both webs; `eslint` 0 on every touched file; `master-catalogue` 43 of 43; `product-alteration` integration 2 of 2 (ran against PostgreSQL, not skipped); `master-shell` 163 of 163; `office-shell` 108 of 108; `form-controls-design` 14 of 14; shared i18n/keys suites pass; import, panel-catalog, reachability and duplicates server suites pass. The old Duplicates shell tests now travel through the conflicts tab; one needed its duplicates list mocked so a never-settling read would not sit in `api.ts`'s shared in-flight map.

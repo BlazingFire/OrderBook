@@ -75,8 +75,6 @@ import { ApiError, api, type LocalView } from '../api';
 import { partyFormTransport } from '../partyFormTransport';
 import { partyImportTransport } from '../partyImportTransport';
 import { ProductDrawer, type CreatedProduct } from '../components/ProductDrawer';
-import { exportCatalogueCsv, exportFailureText } from '../components/exportCatalogue';
-import { ProductImportModal } from '../components/ProductImportModal';
 import { byCatalogueOrder, codesOf, productLabel, weightLabel } from '../productSummary';
 import {
   Button,
@@ -173,15 +171,15 @@ function matchesProduct(product: Product, term: string, filters: ProductFilters)
 export function CatalogScreen({
   view,
   tab,
-  canImport = false,
   focus,
+  onEditProduct,
 }: {
   view: LocalView;
   tab: 'parties' | 'products';
-  /** Holds `products.bulk`. Absent rather than disabled, like every gated control. */
-  canImport?: boolean;
   /** A sub product another screen asked to open (Basic Home's product band, "Sell today"). */
   focus?: { id: string; nonce: number };
+  /** Edit on the dedicated screen; absent keeps the edit dialog fallback. */
+  onEditProduct?: (id: string) => void;
 }) {
   const toast = useToast();
   /*
@@ -206,8 +204,12 @@ export function CatalogScreen({
   const [productSearch, setProductSearch] = useState('');
   const [filters, setFilters] = useState<ProductFilters>(NO_FILTERS);
   // 1.4 D3 (R17). Products sort on the Master (or the cached snapshot, offline); parties here.
-  const [productSort, setProductSort] = useStoredSort('products.sub', { key: 'category', dir: 'asc' });
-  const [productListFilters, setProductListFilters] = useState<ProductListFilters>(NO_PRODUCT_LIST_FILTERS);
+  const [productSort, setProductSort] = useStoredSort('products.sub', {
+    key: 'category',
+    dir: 'asc',
+  });
+  const [productListFilters, setProductListFilters] =
+    useState<ProductListFilters>(NO_PRODUCT_LIST_FILTERS);
   // 1.4 D3 (R16): ticked rows for Create product share.
   const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
   const [partySort, setPartySort] = useStoredSort('parties', { key: 'name', dir: 'asc' });
@@ -234,7 +236,6 @@ export function CatalogScreen({
   /** The sub product Delete was asked for, from its row or its detail; null while no dialog shows. */
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
 
   const [page, setPage] = useState<ProductPage | null>(null);
   const [loading, setLoading] = useState(false);
@@ -303,7 +304,9 @@ export function CatalogScreen({
             (party.phone ?? '').includes(partyTerm)) &&
           (!cityFilter || party.city === cityFilter) &&
           (!partyListFilters.city.trim() ||
-            (party.city ?? '').toLowerCase().includes(partyListFilters.city.trim().toLowerCase())) &&
+            (party.city ?? '')
+              .toLowerCase()
+              .includes(partyListFilters.city.trim().toLowerCase())) &&
           (!partyListFilters.state.trim() ||
             (party.state ?? '')
               .toLowerCase()
@@ -454,6 +457,14 @@ export function CatalogScreen({
     toast.push(t('catalog.products.created', { name: product.name }));
   }
 
+  function editProduct(product: Product): void {
+    if (onEditProduct) {
+      onEditProduct(product.id);
+      return;
+    }
+    setEditingProduct(product);
+  }
+
   function onProductUpdated(name: string): void {
     setEditingProduct(null);
     toast.push(t('product.updated', { name }));
@@ -489,7 +500,8 @@ export function CatalogScreen({
   /** A view grant reads the party but may not work it; one not yet on the Master has nothing to delete there. */
   const mayWorkParty = (party: Party) =>
     (view.partyGrants ?? []).find((entry) => entry.partyId === party.id)?.level !== 'view';
-  const partyDeletable = (party: Party) => canDeleteParty && mayWorkParty(party) && Boolean(party.sync.hlc);
+  const partyDeletable = (party: Party) =>
+    canDeleteParty && mayWorkParty(party) && Boolean(party.sync.hlc);
 
   /** Online only: the Master refuses a party a live order still points at, and says which. */
   async function confirmDeleteParty(): Promise<void> {
@@ -581,38 +593,46 @@ export function CatalogScreen({
         />
         {!openRecord && (
           <>
-        <FilterChip
-          active={cityFilter === null}
-          count={view.parties.length}
-          onClick={() => setCityFilter(null)}
-        >
-          {t('catalog.filter.all')}
-        </FilterChip>
-        {cities.map((city) => (
-          <FilterChip
-            key={city}
-            active={cityFilter === city}
-            count={view.parties.filter((party) => party.city === city).length}
-            onClick={() => setCityFilter(city)}
-          >
-            {city}
-          </FilterChip>
-        ))}
-        <span style={{ flex: 1 }} />
-        {/* Online-only, through the Master. The list below is the snapshot, which
+            <FilterChip
+              active={cityFilter === null}
+              count={view.parties.length}
+              onClick={() => setCityFilter(null)}
+            >
+              {t('catalog.filter.all')}
+            </FilterChip>
+            {cities.map((city) => (
+              <FilterChip
+                key={city}
+                active={cityFilter === city}
+                count={view.parties.filter((party) => party.city === city).length}
+                onClick={() => setCityFilter(city)}
+              >
+                {city}
+              </FilterChip>
+            ))}
+            <span style={{ flex: 1 }} />
+            {/* Online-only, through the Master. The list below is the snapshot, which
             the Master re-sends after an import (`party_bulk`), so there is
             nothing to refetch here. */}
-        <PartyImportControls
-          transport={partyImportTransport}
-          canExport={view.permissions.includes('parties.view') && view.permissions.includes('parties.export')}
-          canImport={view.permissions.includes('parties.bulk')}
-          onImported={() => undefined}
-        />
-        {canCreateParty && (
-          <Button variant="primary" size="sm" icon="plus" onClick={() => setPartyFormOpen(true)}>
-            {t('catalog.parties.new')}
-          </Button>
-        )}
+            <PartyImportControls
+              transport={partyImportTransport}
+              canExport={
+                view.permissions.includes('parties.view') &&
+                view.permissions.includes('parties.export')
+              }
+              canImport={view.permissions.includes('parties.bulk')}
+              onImported={() => undefined}
+            />
+            {canCreateParty && (
+              <Button
+                variant="primary"
+                size="sm"
+                icon="plus"
+                onClick={() => setPartyFormOpen(true)}
+              >
+                {t('catalog.parties.new')}
+              </Button>
+            )}
           </>
         )}
       </>
@@ -634,54 +654,39 @@ export function CatalogScreen({
         />
         {!openRecord && (
           <>
-        {/* Counted only while chosen: the page's total is the one figure to
+            {/* Counted only while chosen: the page's total is the one figure to
             hand, and a count per brand would be a query per chip. */}
-        <FilterChip
-          active={filters.brand === null}
-          count={filters.brand === null && page ? page.total + pending.length : undefined}
-          onClick={() => setFilters((current) => ({ ...current, brand: null }))}
-        >
-          {t('catalog.filter.all')}
-        </FilterChip>
-        {brands.map((brand) => (
-          <FilterChip
-            key={brand.id}
-            active={filters.brand === brand.value}
-            count={filters.brand === brand.value && page ? page.total + pending.length : undefined}
-            // A product of another brand would filter the list to nothing.
-            onClick={() => setFilters({ brand: brand.value, categoryId: null })}
-          >
-            {brand.label}
-          </FilterChip>
-        ))}
-        <span style={{ flex: 1 }} />
-        <Button
-          variant="secondary"
-          size="sm"
-          icon="upload"
-          onClick={() =>
-            void exportCatalogueCsv('sub').catch((caught) =>
-              toast.push(exportFailureText(caught), { tone: 'error' }),
-            )
-          }
-        >
-          {t('catalog.export')}
-        </Button>
-        {canImport && (
-          <Button variant="secondary" size="sm" icon="download" onClick={() => setImportOpen(true)}>
-            {t('catalog.products.import')}
-          </Button>
-        )}
-        {canCreateProduct && (
-          <Button
-            variant="primary"
-            size="sm"
-            icon="plus"
-            onClick={() => setProductDrawerOpen(true)}
-          >
-            {t('catalog.products.new')}
-          </Button>
-        )}
+            <FilterChip
+              active={filters.brand === null}
+              count={filters.brand === null && page ? page.total + pending.length : undefined}
+              onClick={() => setFilters((current) => ({ ...current, brand: null }))}
+            >
+              {t('catalog.filter.all')}
+            </FilterChip>
+            {brands.map((brand) => (
+              <FilterChip
+                key={brand.id}
+                active={filters.brand === brand.value}
+                count={
+                  filters.brand === brand.value && page ? page.total + pending.length : undefined
+                }
+                // A product of another brand would filter the list to nothing.
+                onClick={() => setFilters({ brand: brand.value, categoryId: null })}
+              >
+                {brand.label}
+              </FilterChip>
+            ))}
+            <span style={{ flex: 1 }} />
+            {canCreateProduct && (
+              <Button
+                variant="primary"
+                size="sm"
+                icon="plus"
+                onClick={() => setProductDrawerOpen(true)}
+              >
+                {t('catalog.products.new')}
+              </Button>
+            )}
           </>
         )}
       </>
@@ -817,7 +822,9 @@ export function CatalogScreen({
                 <RowActions
                   editLabel={t('action.edit')}
                   deleteLabel={t('action.delete')}
-                  onEdit={canEditParty && mayWorkParty(party) ? () => setEditingParty(party) : undefined}
+                  onEdit={
+                    canEditParty && mayWorkParty(party) ? () => setEditingParty(party) : undefined
+                  }
                   onDelete={partyDeletable(party) ? () => setPartyDeleteTarget(party) : undefined}
                 />
               ),
@@ -917,7 +924,12 @@ export function CatalogScreen({
         return (
           <span
             title={label}
-            style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            style={{
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
           >
             {label}
           </span>
@@ -956,7 +968,12 @@ export function CatalogScreen({
       render: (product) => (
         <span
           title={product.size ?? undefined}
-          style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          style={{
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
         >
           {product.size ?? '—'}
         </span>
@@ -1011,9 +1028,11 @@ export function CatalogScreen({
               <RowActions
                 editLabel={t('product.detail.editAction')}
                 deleteLabel={t('catalog.subProducts.delete')}
-                onEdit={canEditProduct ? () => setEditingProduct(product) : undefined}
+                onEdit={canEditProduct ? () => editProduct(product) : undefined}
                 // Still queued offline, it has no Master record to delete.
-                onDelete={canDeleteProduct && product.sync.hlc ? () => setDeleteTarget(product) : undefined}
+                onDelete={
+                  canDeleteProduct && product.sync.hlc ? () => setDeleteTarget(product) : undefined
+                }
               />
             ),
           },
@@ -1035,12 +1054,14 @@ export function CatalogScreen({
           product={openProduct}
           colourHex={colourHex}
           onEdit={() => {
-            setEditingProduct(openProduct);
+            editProduct(openProduct);
             setOpenProductId(null);
             setPhotoPatch(null);
           }}
           onDelete={
-            canDeleteProduct && openProduct.sync.hlc ? () => setDeleteTarget(openProduct) : undefined
+            canDeleteProduct && openProduct.sync.hlc
+              ? () => setDeleteTarget(openProduct)
+              : undefined
           }
           onPhotosChanged={setPhotoPatch}
           onError={onDrawerError}
@@ -1089,7 +1110,9 @@ export function CatalogScreen({
       <ProductFilterRow
         value={productListFilters}
         onChange={setProductListFilters}
-        extraActive={productSearch.trim() !== '' || filters.brand !== null || filters.categoryId !== null}
+        extraActive={
+          productSearch.trim() !== '' || filters.brand !== null || filters.categoryId !== null
+        }
         onClearAll={() => {
           setProductSearch('');
           setFilters(NO_FILTERS);
@@ -1180,15 +1203,6 @@ export function CatalogScreen({
         onError={onDrawerError}
       />
 
-      <ProductImportModal
-        open={importOpen}
-        onClose={() => setImportOpen(false)}
-        onImported={(result) => {
-          setRevision((current) => current + 1);
-          toast.push(t('import.done', { created: result.created, updated: result.updated }));
-        }}
-        onError={onDrawerError}
-      />
       {deleteProductDialog}
     </>
   );

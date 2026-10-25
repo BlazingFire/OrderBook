@@ -44,6 +44,7 @@ import type {
 } from '@orderbook/shared';
 import {
   baseForUnversionedEdit,
+  cleanNoteColumns,
   columnPatch,
   ProductValidationError,
   validateProductInput,
@@ -986,10 +987,22 @@ export async function assertMergeAllowed(
       if (!owner) throw new ValidationError('validation.lead.ownerMissing');
     }
     if (typeof accepted.notes === 'string') accepted.notes = accepted.notes.trim() || null;
+    // The tick boxes merge like any other field; normalised here so a hand-built
+    // push cannot store a shape the readers do not understand.
+    if ('noteColumns' in accepted) {
+      const cleaned = cleanNoteColumns(accepted.noteColumns);
+      if ('errorKey' in cleaned) throw new ValidationError(cleaned.errorKey);
+      accepted.noteColumns = cleaned.value;
+    }
   } else if (entity === 'order') {
     const weight = accepted.totalWeightKgOverride;
     if (typeof weight === 'number' && weight < 0) {
       throw new ValidationError('validation.order.weightNegative');
+    }
+    if ('noteColumns' in accepted) {
+      const cleaned = cleanNoteColumns(accepted.noteColumns);
+      if ('errorKey' in cleaned) throw new ValidationError(cleaned.errorKey);
+      accepted.noteColumns = cleaned.value;
     }
     if ('vehicleNumber' in accepted) {
       const vehicle = accepted.vehicleNumber;

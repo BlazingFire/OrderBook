@@ -31,12 +31,18 @@
  * a bulk import through it would be quadratic on disk and invisible on refusal.
  */
 
+import { createHash } from 'node:crypto';
 import type {
+  MessageKey,
+  MessageParams,
   Product,
   ProductCellChange,
   ProductImportIssue,
   ProductImportMode,
   ProductImportResult,
+  ProductImportRowDecision,
+  ProductImportRowKind,
+  ProductImportRowPreview,
   ProductInput,
   ProductRowChange,
   ProductVariantInput,
@@ -93,6 +99,8 @@ const log = createLogger('product-import');
 
 /** Products per transaction. Large enough to amortise the locks, small enough to lose little on a clash. */
 const BATCH = 500;
+
+const MAX_ROW_PREVIEWS = 1000;
 
 const ACCEPTED_EXTENSIONS = new Set(['csv', 'xlsx', 'txt']);
 
@@ -210,7 +218,11 @@ export async function buildProductExport(
     }
     const bytes = await buildXlsxTable({
       sheetName: 'Main products',
-      columns: headers.map((header) => ({ header, width: 24, text: header === 'Main product code' })),
+      columns: headers.map((header) => ({
+        header,
+        width: 24,
+        text: header === 'Main product code',
+      })),
       rows: mainRows,
     });
     return {
@@ -248,7 +260,14 @@ export async function buildProductExport(
 
   if (format === 'csv') {
     return {
-      bytes: Buffer.from('﻿' + toCsv(columns.map((column) => column.label), rows), 'utf8'),
+      bytes: Buffer.from(
+        '﻿' +
+          toCsv(
+            columns.map((column) => column.label),
+            rows,
+          ),
+        'utf8',
+      ),
       contentType: 'text/csv; charset=utf-8',
       fileName: `products-${today()}.csv`,
       count: rows.length,
@@ -265,7 +284,12 @@ export async function buildProductExport(
     rows,
     subject: `${PRODUCT_FORMAT_SUBJECT} ${PRODUCT_FORMAT_VERSION}`,
   });
-  return { bytes, contentType: XLSX_CONTENT_TYPE, fileName: `products-${today()}.xlsx`, count: rows.length };
+  return {
+    bytes,
+    contentType: XLSX_CONTENT_TYPE,
+    fileName: `products-${today()}.xlsx`,
+    count: rows.length,
+  };
 }
 
 interface ImportFile {
@@ -276,6 +300,15 @@ interface ImportFile {
 interface ImportOptions {
   dryRun: boolean;
   mode: ProductImportMode;
+  /** Selected spreadsheet rows for a per row review apply. When set, rows outside the set are not read, not counted and not written. */
+  onlyRows?: number[];
+  /**
+   * SHA-256 of the file the dry run hashed, sent back with a per-row apply so
+   * a re-uploaded file cannot silently move the approved row numbers. A real
+   * run with `onlyRows` whose hash differs is refused with
+   * `validation.import.fileChanged`.
+   */
+  fileHash?: string;
   /**
    * Set by the product zip restore (`product-zip.service.ts`), which writes its
    * own one activity row and change event, so this run writes neither.
@@ -311,7 +344,12 @@ interface ImportOptions {
    */
   restore?: {
     pendingCategories?: readonly productRepo.CategorySeed[];
-    plannedCategories?: ReadonlyArray<{ id: string; code: string | null; name: string; brand: string | null }>;
+    plannedCategories?: ReadonlyArray<{
+      id: string;
+      code: string | null;
+      name: string;
+      brand: string | null;
+    }>;
     exactVariants?: boolean;
     leaving?: readonly string[];
     updateOnly?: boolean;
@@ -400,13 +438,23 @@ export async function importProducts(
     throw new ValidationError('validation.import.unsupportedFormat');
   }
 
+  const fileHash = createHash('sha256').update(file.buffer).digest('hex');
+  // A per-row apply re-uploads the file its preview reviewed: row numbers only
+  // mean something against the same bytes, so a changed file is refused here
+  // rather than applying the approved decisions to another file's rows.
+  if (!options.dryRun && options.onlyRows && options.fileHash !== fileHash) {
+    throw new ValidationError('validation.import.fileChanged');
+  }
+
   let rows: string[][];
   let formatVersion: number | null = null;
   try {
     rows = await readSheetRows(file.buffer);
     formatVersion = productFormatOf(await readSheetSubject(file.buffer));
   } catch (error) {
-    log.warn(`Could not read ${file.fileName}: ${error instanceof Error ? error.message : String(error)}`);
+    log.warn(
+      `Could not read ${file.fileName}: ${error instanceof Error ? error.message : String(error)}`,
+    );
     throw new ValidationError('validation.import.unreadable');
   }
 
@@ -418,9 +466,13 @@ export async function importProducts(
   const headerRow = (rows[headerIndex] ?? []).map((cell) => cell.trim());
   const match = matchHeaders(headerRow);
   // An update-only file needs only its Code column: a row of a live code fills the rest from it.
-  const missing = options.restore?.updateOnly ? match.missing.filter((field) => field === 'code') : match.missing;
+  const missing = options.restore?.updateOnly
+    ? match.missing.filter((field) => field === 'code')
+    : match.missing;
   if (missing.length > 0) {
-    throw new ValidationError('validation.import.missingColumn', { column: labelOf(missing[0] as ImportField) });
+    throw new ValidationError('validation.import.missingColumn', {
+      column: labelOf(missing[0] as ImportField),
+    });
   }
 
   const headerFor = (field: ImportField): string => {
@@ -487,13 +539,15 @@ export async function importProducts(
   const colourValues = new Set(colourOptions.map((option) => option.value));
   const colourByLower = new Map<string, string>();
   for (const option of colourOptions) {
-    if (!colourByLower.has(option.value.toLowerCase())) colourByLower.set(option.value.toLowerCase(), option.value);
+    if (!colourByLower.has(option.value.toLowerCase()))
+      colourByLower.set(option.value.toLowerCase(), option.value);
   }
 
   const updateOnly = Boolean(options.restore?.updateOnly);
   const rules: MergeRules = {
     restore,
-    clearsWeight: restore && !updateOnly && match.byIndex.some((column) => column?.field === 'weightKg'),
+    clearsWeight:
+      restore && !updateOnly && match.byIndex.some((column) => column?.field === 'weightKg'),
     refusedCodes: new Set(),
     exactVariants: !updateOnly && Boolean(options.restore?.exactVariants),
     colours: match.byIndex.some((column) => column?.field === 'variant'),
@@ -508,6 +562,8 @@ export async function importProducts(
 
   rows.slice(headerIndex + 1).forEach((cells, offset) => {
     if (isBlankRow(cells)) return;
+    const selectedRow = headerIndex + 2 + offset;
+    if (options.onlyRows && !options.onlyRows.includes(selectedRow)) return;
     totalRows += 1;
     const row = headerIndex + 2 + offset;
     codeOfRow.set(row, (cells[codeAt] ?? '').trim().toLowerCase());
@@ -537,8 +593,10 @@ export async function importProducts(
     actor.tenantId,
     parsed.map((entry) => entry.input.variant.code),
   );
-  if (updateOnly) parsed = await fillFromLive(parsed, existingByCode, actor.tenantId, issues, headerFor);
-  if (restore) separateTwins(parsed, (code) => existingByCode.get(code.trim().toLowerCase())?.productId);
+  if (updateOnly)
+    parsed = await fillFromLive(parsed, existingByCode, actor.tenantId, issues, headerFor);
+  if (restore)
+    separateTwins(parsed, (code) => existingByCode.get(code.trim().toLowerCase())?.productId);
 
   // With no Colour column a live code is its own variant: two codes of one sub product are not one.
   const duplicateIssues = findDuplicatesInFile(
@@ -557,7 +615,10 @@ export async function importProducts(
   );
   issues.push(...grouped.issues);
 
-  const ownersOf = (group: ImportGroup, byCode: ReadonlyMap<string, { productId: string }>): Set<string> => {
+  const ownersOf = (
+    group: ImportGroup,
+    byCode: ReadonlyMap<string, { productId: string }>,
+  ): Set<string> => {
     const owners = new Set<string>();
     for (const variant of group.input.variants ?? []) {
       const hit = byCode.get(variant.code.toLowerCase());
@@ -667,7 +728,8 @@ export async function importProducts(
     const brand = textKey(group.input.categoryBrand ?? '') || null;
     const named = liveCategories.filter(
       (category) =>
-        textKey(category.name) === name && (brand === null || textKey(category.brand ?? '') === brand),
+        textKey(category.name) === name &&
+        (brand === null || textKey(category.brand ?? '') === brand),
     );
     return (named.find((category) => !category.brand) ?? named[0])?.id;
   };
@@ -718,18 +780,26 @@ export async function importProducts(
       const kept = new Set(after.map((variant) => variant.id));
       return [
         ...after.map((variant) => variant.code),
-        ...group.existing.variants.filter((variant) => !kept.has(variant.id)).map((variant) => variant.code),
+        ...group.existing.variants
+          .filter((variant) => !kept.has(variant.id))
+          .map((variant) => variant.code),
       ];
     };
     const fileGroupOf = new Map<string, ImportGroup>();
     for (const group of [...creates, ...updates]) {
-      for (const variant of group.input.variants ?? []) fileGroupOf.set(variant.code.toLowerCase(), group);
+      for (const variant of group.input.variants ?? [])
+        fileGroupOf.set(variant.code.toLowerCase(), group);
     }
-    const holders = await productVariantRepo.findLiveVariantsByCodes(actor.tenantId, binned.flatMap(codesOf));
+    const holders = await productVariantRepo.findLiveVariantsByCodes(
+      actor.tenantId,
+      binned.flatMap(codesOf),
+    );
     const stay = new Set<ImportGroup>();
     for (const group of binned) {
       const taken = codesOf(group).filter(
-        (code) => holders.has(code.toLowerCase()) || (fileGroupOf.get(code.toLowerCase()) ?? group) !== group,
+        (code) =>
+          holders.has(code.toLowerCase()) ||
+          (fileGroupOf.get(code.toLowerCase()) ?? group) !== group,
       );
       if (mayRestore && taken.length === 0) continue;
       stay.add(group);
@@ -739,18 +809,26 @@ export async function importProducts(
           kind: 'error',
           column: headerFor('code'),
           ...(mayRestore
-            ? { messageKey: 'validation.product.restoreCodesTaken', params: { codes: taken.join(', ') } }
-            : { messageKey: 'validation.import.binnedNeedsDelete', params: { name: group.existing.name } }),
+            ? {
+                messageKey: 'validation.product.restoreCodesTaken',
+                params: { codes: taken.join(', ') },
+              }
+            : {
+                messageKey: 'validation.import.binnedNeedsDelete',
+                params: { name: group.existing.name },
+              }),
         });
       }
     }
     updates = updates.filter((group) => !stay.has(group));
   }
 
-  const bySheet = (a: ImportGroup, b: ImportGroup): number => (a.rows[0]?.row ?? 0) - (b.rows[0]?.row ?? 0);
+  const bySheet = (a: ImportGroup, b: ImportGroup): number =>
+    (a.rows[0]?.row ?? 0) - (b.rows[0]?.row ?? 0);
   const leaving = new Set(options.restore?.leaving);
   const liveSubs = (await liveSubProducts(actor.tenantId)).filter((sub) => !leaving.has(sub.id));
-  const nameKey = (categoryId: string, name: string): string => `${categoryId}\u001f${name.trim().toLowerCase()}`;
+  const nameKey = (categoryId: string, name: string): string =>
+    `${categoryId}\u001f${name.trim().toLowerCase()}`;
 
   if (restore && options.mode === 'upsert') {
     // The same sub product under codes this catalogue does not have — another
@@ -792,15 +870,19 @@ export async function importProducts(
   // may be where another group was going: settled again until nothing more is.
   const refused = new Set<ImportGroup>();
   const fileIds = new Set(updates.map((group) => group.existing.id));
-  for (let more = true; more; ) {
+  for (let more = true; more;) {
     more = false;
     const held = new Set(
-      liveSubs.filter((sub) => !fileIds.has(sub.id)).map((sub) => nameKey(sub.categoryId, sub.name)),
+      liveSubs
+        .filter((sub) => !fileIds.has(sub.id))
+        .map((sub) => nameKey(sub.categoryId, sub.name)),
     );
     const moving: Array<[ImportGroup, string]> = [];
     for (const group of [...creates, ...updates].sort(bySheet)) {
       const stays =
-        isUpdate(group) && !group.binned ? nameKey(group.existing.categoryId, group.existing.name) : undefined;
+        isUpdate(group) && !group.binned
+          ? nameKey(group.existing.categoryId, group.existing.name)
+          : undefined;
       const categoryId = existingCategoryOf(group);
       const name = isUpdate(group) ? mergedUpdate(group, rules).input.name : group.input.name;
       const lands = categoryId === undefined ? undefined : nameKey(categoryId, name);
@@ -845,7 +927,12 @@ export async function importProducts(
       } catch (error) {
         if (!(error instanceof ProductValidationError)) throw error;
         for (const entry of group.rows) {
-          issues.push({ row: entry.row, kind: 'error', column: headerFor('variant'), messageKey: error.messageKey });
+          issues.push({
+            row: entry.row,
+            kind: 'error',
+            column: headerFor('variant'),
+            messageKey: error.messageKey,
+          });
         }
         return false;
       }
@@ -864,9 +951,14 @@ export async function importProducts(
   // A sub product back from the Bin is a change whatever its cells say.
   const matched = updates;
   const changes = new Map(
-    updates.map((group) => [group, changedCells(group, existingCategoryOf(group), liveCategories, labelOf, rules)]),
+    updates.map((group) => [
+      group,
+      changedCells(group, existingCategoryOf(group), liveCategories, labelOf, rules),
+    ]),
   );
-  const unchangedGroups = updates.filter((group) => !group.binned && changes.get(group)?.length === 0);
+  const unchangedGroups = updates.filter(
+    (group) => !group.binned && changes.get(group)?.length === 0,
+  );
   updates = updates.filter((group) => !unchangedGroups.includes(group));
   const unchanged = rowCount(unchangedGroups);
 
@@ -920,7 +1012,8 @@ export async function importProducts(
         else group.input.sortOrder = index + 1;
       });
       let next = groups.length;
-      for (const sub of live) if (!named.has(sub.id)) renumbered.push({ id: sub.id, sortOrder: (next += 1) });
+      for (const sub of live)
+        if (!named.has(sub.id)) renumbered.push({ id: sub.id, sortOrder: (next += 1) });
     }
   }
 
@@ -930,31 +1023,50 @@ export async function importProducts(
   const restoreRows = (): { rows?: ImportedRows } => {
     if (!restore) return {};
     const failed = failedRows();
-    const landed = (group: ImportGroup): boolean => group.rows.every((entry) => !failed.has(entry.row));
+    const landed = (group: ImportGroup): boolean =>
+      group.rows.every((entry) => !failed.has(entry.row));
     const changedRow = (group: UpdateGroup): ProductRowChange => ({
       code: group.input.variants?.[0]?.code ?? '',
       name: group.input.name,
       fields: changes.get(group) ?? [],
     });
-    const subProduct = (id: string | null, input: ProductInput): ImportedRows['subProducts'][number] => ({
+    const subProduct = (
+      id: string | null,
+      input: ProductInput,
+    ): ImportedRows['subProducts'][number] => ({
       id,
       name: input.name,
       hasVariants: Boolean(input.hasVariants),
-      variants: (input.variants ?? []).map((variant) => ({ code: variant.code, label: variant.label ?? null })),
+      variants: (input.variants ?? []).map((variant) => ({
+        code: variant.code,
+        label: variant.label ?? null,
+      })),
     });
     const kept = matched.filter(landed);
     return {
       rows: {
-        added: creates.filter(landed).flatMap((group) =>
-          group.rows.map((entry) => ({ code: entry.input.variant.code.trim(), name: group.input.name, fields: [] })),
-        ),
+        added: creates
+          .filter(landed)
+          .flatMap((group) =>
+            group.rows.map((entry) => ({
+              code: entry.input.variant.code.trim(),
+              name: group.input.name,
+              fields: [],
+            })),
+          ),
         changed: updates.filter((group) => landed(group) && !group.binned).map(changedRow),
         restoredFromBin: updates.filter((group) => landed(group) && group.binned).map(changedRow),
         ruleKept: kept
           .filter((group) => mergedUpdate(group, rules).ruleKept)
-          .map((group) => ({ code: group.input.variants?.[0]?.code ?? '', name: group.input.name })),
+          .map((group) => ({
+            code: group.input.variants?.[0]?.code ?? '',
+            name: group.input.name,
+          })),
         variantsNotInFile: kept.flatMap((group) =>
-          mergedUpdate(group, rules).untouched.map((variant) => ({ code: variant.code, name: group.input.name })),
+          mergedUpdate(group, rules).untouched.map((variant) => ({
+            code: variant.code,
+            name: group.input.name,
+          })),
         ),
         reordered,
         matchedIds: kept.map((group) => group.existing.id),
@@ -963,7 +1075,12 @@ export async function importProducts(
           ...creates.filter(landed).map((group) => subProduct(null, group.input)),
           ...updates
             .filter(landed)
-            .map((group) => subProduct(group.existing.id, mergedUpdate(group, { ...rules, exactVariants: false }).input)),
+            .map((group) =>
+              subProduct(
+                group.existing.id,
+                mergedUpdate(group, { ...rules, exactVariants: false }).input,
+              ),
+            ),
         ],
       },
     };
@@ -974,10 +1091,106 @@ export async function importProducts(
     .slice(0, 5)
     .map((group) => group.input);
 
+  function buildRowPreviews(): {
+    rowPreviews: ProductImportRowPreview[];
+    rowPreviewsTruncated: boolean;
+  } {
+    const byRow = new Map<number, ProductImportRowPreview>();
+    const pushRow = (args: {
+      row: number;
+      kind: ProductImportRowKind;
+      decision: ProductImportRowDecision;
+      fileName: string;
+      fileCode: string;
+      existing: { name: string } | null;
+      cells: ProductCellChange[];
+      reasonKey: MessageKey;
+      reasonParams?: MessageParams;
+    }): void => {
+      if (byRow.has(args.row)) return;
+      byRow.set(args.row, {
+        row: args.row,
+        kind: args.kind,
+        decision: args.decision,
+        fileName: args.fileName,
+        fileCode: args.fileCode,
+        existingName: args.existing ? args.existing.name : null,
+        existingCode: args.existing ? args.fileCode : null,
+        cells: args.cells,
+        reasonKey: args.reasonKey,
+        ...(args.reasonParams ? { reasonParams: args.reasonParams } : {}),
+      });
+    };
+    for (const issue of issues) {
+      pushRow({
+        row: issue.row,
+        kind: issue.kind === 'skipped' ? 'clash' : 'invalid',
+        decision: 'skip',
+        fileName: '',
+        fileCode: codeOfRow.get(issue.row) ?? '',
+        existing: null,
+        cells: [],
+        reasonKey: issue.messageKey,
+        reasonParams: issue.params,
+      });
+    }
+    const upsert = options.mode === 'upsert';
+    for (const group of creates) {
+      for (const entry of group.rows) {
+        pushRow({
+          row: entry.row,
+          kind: 'new',
+          decision: 'create',
+          fileName: group.input.name,
+          fileCode: entry.input.variant.code,
+          existing: null,
+          cells: [],
+          reasonKey: 'product.smart.reason.validNew',
+        });
+      }
+    }
+    for (const group of updates) {
+      const cells = changes.get(group) ?? [];
+      for (const entry of group.rows) {
+        pushRow({
+          row: entry.row,
+          kind: 'update',
+          decision: upsert ? 'update' : 'skip',
+          fileName: group.input.name,
+          fileCode: entry.input.variant.code,
+          existing: group.existing,
+          cells,
+          reasonKey: upsert ? 'product.smart.reason.validUpdate' : 'import.skip.codeExists',
+          ...(upsert ? {} : { reasonParams: { productCode: entry.input.variant.code } }),
+        });
+      }
+    }
+    for (const group of unchangedGroups) {
+      for (const entry of group.rows) {
+        pushRow({
+          row: entry.row,
+          kind: 'unchanged',
+          decision: 'skip',
+          fileName: group.input.name,
+          fileCode: entry.input.variant.code,
+          existing: group.existing,
+          cells: [],
+          reasonKey: 'product.smart.reason.unchanged',
+        });
+      }
+    }
+    const sorted = [...byRow.values()].sort((a, b) => a.row - b.row);
+    return {
+      rowPreviews: sorted.slice(0, MAX_ROW_PREVIEWS),
+      rowPreviewsTruncated: sorted.length > MAX_ROW_PREVIEWS,
+    };
+  }
+
   if (options.dryRun) {
     return {
       ...finish({
         dryRun: true,
+        fileHash,
         mode: options.mode,
         fileName: file.fileName,
         totalRows,
@@ -990,6 +1203,7 @@ export async function importProducts(
         formatVersion,
       }),
       ...restoreRows(),
+      ...buildRowPreviews(),
     };
   }
 
@@ -1066,7 +1280,12 @@ export async function importProducts(
         try {
           await db().transaction(async (trx) => {
             const hlc = await nextHlc(trx);
-            await registerBrands(actor.tenantId, [group.input.categoryBrand ?? ''], brandOptions, trx);
+            await registerBrands(
+              actor.tenantId,
+              [group.input.categoryBrand ?? ''],
+              brandOptions,
+              trx,
+            );
             // Filed where the plan found its main product, as the chunk would have.
             await productRepo.insertProduct(
               {
@@ -1139,7 +1358,10 @@ export async function importProducts(
           actor.tenantId,
           id,
           { sort_order: sortOrder },
-          { hlc, fieldHlc: { ...product.sync.fieldHlc, [fieldFor(PRODUCT_COLUMNS, 'sort_order')]: hlc } },
+          {
+            hlc,
+            fieldHlc: { ...product.sync.fieldHlc, [fieldFor(PRODUCT_COLUMNS, 'sort_order')]: hlc },
+          },
           trx,
         );
       }
@@ -1148,6 +1370,7 @@ export async function importProducts(
 
   const result = finish({
     dryRun: false,
+    fileHash,
     mode: options.mode,
     fileName: file.fileName,
     totalRows,
@@ -1170,7 +1393,13 @@ export async function importProducts(
           action: 'imported',
           actorType: actor.actorType,
           actorId: actor.actorId,
-          details: { count: created + updated, fileName: file.fileName, mode: options.mode, created, updated },
+          details: {
+            count: created + updated,
+            fileName: file.fileName,
+            mode: options.mode,
+            created,
+            updated,
+          },
         },
         actor,
         trx,
@@ -1189,11 +1418,13 @@ export async function importProducts(
 }
 
 /** The Colour rule cell as the template spells it. */
-function ruleName(product: { multiColour: boolean; variants: ReadonlyArray<{ label: string | null }> }): string {
+function ruleName(product: {
+  multiColour: boolean;
+  variants: ReadonlyArray<{ label: string | null }>;
+}): string {
   const rule = colourRuleOf(product);
   return rule === 'selectable' ? 'multicolour' : rule;
 }
-
 
 /** Text as a typed sheet reads it (`parseImportRow`): runs of whitespace as one space. */
 const spaced = (text: string): string => text.replace(/\s+/g, ' ').trim();
@@ -1218,7 +1449,10 @@ function mergedUpdate(
   group: UpdateGroup,
   rules: MergeRules,
 ): { input: ProductInput; untouched: ProductVariantInput[]; ruleKept: boolean } {
-  const asStored = (text: string | null | undefined, stored: string | null | undefined): string | null | undefined =>
+  const asStored = (
+    text: string | null | undefined,
+    stored: string | null | undefined,
+  ): string | null | undefined =>
     !rules.restore && text && stored && spaced(text) === spaced(stored) ? stored : text;
 
   const merged: Array<ProductVariantInput & { active: boolean; touched?: boolean }> =
@@ -1231,7 +1465,9 @@ function mergedUpdate(
     }));
 
   for (const incoming of group.input.variants ?? []) {
-    const byCode = merged.find((variant) => variant.code.toLowerCase() === incoming.code.toLowerCase());
+    const byCode = merged.find(
+      (variant) => variant.code.toLowerCase() === incoming.code.toLowerCase(),
+    );
     const byLabel = merged.find(
       (variant) =>
         variant.active &&
@@ -1246,7 +1482,8 @@ function mergedUpdate(
         target.label = asStored(incoming.label, target.label) ?? null;
       target.touched = true;
       if (rules.clearsWeight) target.weightKg = incoming.weightKg ?? null;
-      else if (incoming.weightKg !== undefined && incoming.weightKg !== null) target.weightKg = incoming.weightKg;
+      else if (incoming.weightKg !== undefined && incoming.weightKg !== null)
+        target.weightKg = incoming.weightKg;
     } else {
       merged.push({
         code: incoming.code,
@@ -1259,7 +1496,8 @@ function mergedUpdate(
   }
 
   const untouched = merged.filter((variant) => variant.active && !variant.touched);
-  const onRefusedRow = (variant: { code: string }): boolean => rules.refusedCodes.has(variant.code.toLowerCase());
+  const onRefusedRow = (variant: { code: string }): boolean =>
+    rules.refusedCodes.has(variant.code.toLowerCase());
   const leftAlone = untouched.filter((variant) => !rules.exactVariants || onRefusedRow(variant));
   const kept = merged.filter((variant) => variant.touched || leftAlone.includes(variant));
   // The file decides whether it has colours once it names every live code;
@@ -1271,8 +1509,10 @@ function mergedUpdate(
   // its rows add one, or a `dedicated` rule names every live code of it. A dedicated rule while
   // codes it does not name have colours cannot apply, and is left out whole (`ruleKept`).
   const { multiColour, ...given } = group.input;
-  const dedicated = multiColour === false && !(group.input.variants ?? []).some((variant) => variant.label);
-  const ruleKept = rules.updateOnly && rules.colours && dedicated && !covered && group.existing.hasVariants;
+  const dedicated =
+    multiColour === false && !(group.input.variants ?? []).some((variant) => variant.label);
+  const ruleKept =
+    rules.updateOnly && rules.colours && dedicated && !covered && group.existing.hasVariants;
   const hasVariants = !rules.colours
     ? group.existing.hasVariants
     : rules.updateOnly
@@ -1293,8 +1533,12 @@ function mergedUpdate(
             categoryBrand: undefined,
           }),
       name: asStored(group.input.name, group.existing.name) ?? group.input.name,
-      ...(group.input.alias !== undefined ? { alias: asStored(group.input.alias, group.existing.alias) } : {}),
-      ...(group.input.size !== undefined ? { size: asStored(group.input.size, group.existing.size) } : {}),
+      ...(group.input.alias !== undefined
+        ? { alias: asStored(group.input.alias, group.existing.alias) }
+        : {}),
+      ...(group.input.size !== undefined
+        ? { size: asStored(group.input.size, group.existing.size) }
+        : {}),
       hasVariants,
       variants: kept.map(({ active: _active, touched: _touched, ...variant }, index) => ({
         ...variant,
@@ -1326,12 +1570,20 @@ function changedCells(
   const { input } = mergedUpdate(group, rules);
   const cells: ProductCellChange[] = [];
   const cell = (field: ImportField, from: unknown, to: unknown): void => {
-    cells.push({ column: labelOf(field), from: from == null ? '' : String(from), to: to == null ? '' : String(to) });
+    cells.push({
+      column: labelOf(field),
+      from: from == null ? '' : String(from),
+      to: to == null ? '' : String(to),
+    });
   };
 
   if (categoryId === undefined || categoryId !== existing.categoryId) {
     const moved = categories.find((category) => category.id === categoryId);
-    cell('categoryCode', existing.categoryCode ?? existing.categoryName, moved ? (moved.code ?? moved.name) : '');
+    cell(
+      'categoryCode',
+      existing.categoryCode ?? existing.categoryName,
+      moved ? (moved.code ?? moved.name) : '',
+    );
   }
   for (const key of ['name', 'alias', 'size'] as const) {
     if (input[key] !== undefined && (input[key] ?? null) !== (existing[key] ?? null)) {
@@ -1356,14 +1608,19 @@ function changedCells(
   }
 
   if (next.length !== live.length) {
-    cell('code', live.map((variant) => variant.code).join(', '), next.map((variant) => variant.code).join(', '));
+    cell(
+      'code',
+      live.map((variant) => variant.code).join(', '),
+      next.map((variant) => variant.code).join(', '),
+    );
     return cells;
   }
   next.forEach((variant, index) => {
     const was = live[index] as (typeof live)[number];
     if (variant.code !== was.code) cell('code', was.code, variant.code);
     if ((variant.label ?? null) !== (was.label ?? null)) cell('variant', was.label, variant.label);
-    if ((variant.weightKg ?? null) !== (was.weightKg ?? null)) cell('weightKg', was.weightKg, variant.weightKg);
+    if ((variant.weightKg ?? null) !== (was.weightKg ?? null))
+      cell('weightKg', was.weightKg, variant.weightKg);
   });
   return cells;
 }
@@ -1418,8 +1675,11 @@ async function fillFromLive(
 ): Promise<ParsedRow[]> {
   const ownerOf = (entry: ParsedRow): string | undefined =>
     liveByCode.get(entry.input.variant.code.trim().toLowerCase())?.productId;
-  const hasMain = (product: ProductInput): boolean => Boolean(product.categoryCode || product.categoryName);
-  const lacking = parsed.filter((entry) => !entry.input.product.name || !hasMain(entry.input.product));
+  const hasMain = (product: ProductInput): boolean =>
+    Boolean(product.categoryCode || product.categoryName);
+  const lacking = parsed.filter(
+    (entry) => !entry.input.product.name || !hasMain(entry.input.product),
+  );
   const live = await productRepo.findProductsByIds(
     tenantId,
     lacking.flatMap((entry) => ownerOf(entry) ?? []),
@@ -1443,21 +1703,31 @@ async function fillFromLive(
       const name = (owner && named.get(owner)) || sub?.name;
       if (name) product.name = name;
       else {
-        issues.push({ row: entry.row, kind: 'error', column: headerFor('name'), messageKey: 'validation.product.nameRequired' });
+        issues.push({
+          row: entry.row,
+          kind: 'error',
+          column: headerFor('name'),
+          messageKey: 'validation.product.nameRequired',
+        });
         ok = false;
       }
     }
     if (!hasMain(product)) {
       const from = owner === undefined ? undefined : mains.get(owner);
       const main = from
-        ? { categoryCode: from.categoryCode, categoryName: from.categoryName, categoryBrand: from.categoryBrand }
+        ? {
+            categoryCode: from.categoryCode,
+            categoryName: from.categoryName,
+            categoryBrand: from.categoryBrand,
+          }
         : sub
           ? sub.categoryCode
             ? { categoryCode: sub.categoryCode }
             : { categoryName: sub.categoryName, categoryBrand: sub.brand ?? undefined }
           : undefined;
       if (main) {
-        for (const [key, value] of Object.entries(main)) if (value) Object.assign(product, { [key]: value });
+        for (const [key, value] of Object.entries(main))
+          if (value) Object.assign(product, { [key]: value });
       } else {
         issues.push({
           row: entry.row,
@@ -1535,7 +1805,15 @@ export async function registerBrands(
     have.add(brand.toLowerCase());
     sequence += 1;
     await customFieldRepo.insertOption(
-      { tenantId, listKey: 'product.brand', value: brand, label: brand, hex: null, sequence, createdBy: null },
+      {
+        tenantId,
+        listKey: 'product.brand',
+        value: brand,
+        label: brand,
+        hex: null,
+        sequence,
+        createdBy: null,
+      },
       trx,
     );
   }
@@ -1612,7 +1890,11 @@ function classifyGroupFailure(
 function finish(partial: {
   dryRun: boolean;
   mode: ProductImportMode;
+  /** Selected spreadsheet rows for a per row review apply. When set, rows outside the set are not read, not counted and not written. */
+  onlyRows?: number[];
   fileName: string;
+  /** SHA-256 of the uploaded file, for the per-row apply to send back. */
+  fileHash: string;
   totalRows: number;
   created: number;
   updated: number;
@@ -1623,14 +1905,18 @@ function finish(partial: {
   formatVersion: number | null;
 }): ProductImportResult {
   const sorted = [...partial.issues].sort((a, b) => a.row - b.row);
-  const skipped = new Set(sorted.filter((issue) => issue.kind === 'skipped').map((issue) => issue.row)).size;
+  const skipped = new Set(
+    sorted.filter((issue) => issue.kind === 'skipped').map((issue) => issue.row),
+  ).size;
   // Issues are per cell; failures are per row.
-  const failed = new Set(sorted.filter((issue) => issue.kind === 'error').map((issue) => issue.row)).size;
+  const failed = new Set(sorted.filter((issue) => issue.kind === 'error').map((issue) => issue.row))
+    .size;
 
   return {
     dryRun: partial.dryRun,
     mode: partial.mode,
     fileName: partial.fileName,
+    fileHash: partial.fileHash,
     totalRows: partial.totalRows,
     created: partial.created,
     updated: partial.updated,

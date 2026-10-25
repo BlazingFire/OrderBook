@@ -481,6 +481,23 @@ export const SETTINGS = {
     fallback: 30,
     parse: (raw: unknown): number => asBoundedInt(1, 365)(raw),
   },
+
+  /**
+   * Whether the note screen ticks Bold unless unticked.
+   *
+   * On, the Dispatch and Filling notes strip figures and headings print bold,
+   * and the preview matches; off, they print in the body face. A rendering
+   * choice only, so the fallback is on: an upgraded company sees the sheets it
+   * always saw, and a key added here needs no migration at all.
+   */
+  'notes.defaultBold': {
+    labelToken: 'setting.notes.defaultBold.label',
+    descriptionToken: 'setting.notes.defaultBold.help',
+    group: 'leads',
+    control: { kind: 'boolean' },
+    fallback: true,
+    parse: (raw: unknown): boolean => asBoolean(raw),
+  },
 } satisfies Record<string, SettingDefinition<unknown>>;
 
 export type SettingKey = keyof typeof SETTINGS;

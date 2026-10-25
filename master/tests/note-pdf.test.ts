@@ -68,7 +68,8 @@ describe('the pending order PDF — what is on the sheets', () => {
     expect(plans.length).toBeGreaterThan(1);
     expect(first).toContain('New order');
     expect(first.join(' ')).toContain('Printed 19 Sep 2026 · 09:41');
-    expect(first).toContain('QUANTITY — THIS PAGE');
+    expect(first).toContain('TOTAL QUANTITY');
+    expect(first).toContain('TOTAL ITEM WEIGHT');
     expect(first).toContain('Sharma Tiles');
     expect(first).toContain('P0042 · Morbi');
     expect(first).toContain('PO/2026-27/00042');

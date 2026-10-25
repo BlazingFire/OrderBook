@@ -79,6 +79,8 @@ interface Props {
   /** The stage showing, or null for all — chosen here or from the sidebar's stage pages. */
   stageId: string | null;
   onStageChange: (stageId: string | null) => void;
+  /** notes.defaultBold, already coalesced by the shell. */
+  defaultBold?: boolean;
   /** The order showing as a sub-screen, held by the shell so a search hit can open one. */
   openId: string | null;
   onOpenId: (id: string | null) => void;
@@ -116,6 +118,7 @@ export function OrdersScreen({
   permissions,
   stageId: stageFilter,
   onStageChange,
+  defaultBold,
   openId,
   onOpenId,
   onOpenLead,
@@ -507,6 +510,14 @@ export function OrdersScreen({
         onSaveVehicle={async (vehicleNumber) => {
           patchOrder(await api.updateOrder(openOrder.id, { vehicleNumber }));
         }}
+        defaultBold={defaultBold}
+        onSaveNoteColumns={
+          canEdit && !openOrder.dispatchedAt
+            ? async (noteColumns) => {
+                patchOrder(await api.updateOrder(openOrder.id, { noteColumns }));
+              }
+            : undefined
+        }
         onBack={() => setNote(null)}
         desktop={desktopBridge() ?? undefined}
         printroom={printroom}

@@ -31,7 +31,7 @@ import type {
   User,
   UserAvatar,
 } from '@orderbook/shared';
-import { isPermission } from '@orderbook/shared';
+import { isPermission, parseNoteColumns } from '@orderbook/shared';
 
 export function toNumber(value: unknown): number | null {
   if (value === null || value === undefined) return null;
@@ -510,6 +510,7 @@ export function mapLead(
     missingFields: completeness.missingFields,
     convertedOrderId: (row.converted_order_id as string | null) ?? null,
     convertedAt: toIso(row.converted_at),
+    noteColumns: parseNoteColumns(row.note_columns),
     ...summariseWeight(items),
     sourcePanelId: (row.source_panel_id as string | null) ?? null,
     createdByUserId: (row.created_by_user_id as string | null) ?? null,
@@ -551,6 +552,7 @@ export function mapOrder(
     // the UI shows — so both travel and the source says which is authoritative.
     weightSource: override === null ? 'computed' : 'manual',
     vehicleNumber: (row.vehicle_number as string | null) ?? null,
+    noteColumns: parseNoteColumns(row.note_columns),
     leadCreatedAt: toIso(row.lead_created_at),
     notes: (row.notes as string | null) ?? null,
     customFields: toJsonObject(row.custom_fields),

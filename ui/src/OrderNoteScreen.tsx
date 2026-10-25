@@ -21,6 +21,7 @@ import {
   noteHeader,
   NOTE_MAX_COPIES,
   paginateOrderNote,
+  parseNoteColumns,
   type DesktopBridge,
   type Lead,
   type NoteKind,
@@ -81,6 +82,13 @@ export interface OrderNoteScreenProps {
    * number is typed for the sheet and gone when the screen closes.
    */
   onSaveVehicle: (vehicleNumber: string | null) => Promise<unknown>;
+  /**
+   * Persists the Dispatch note tick boxes for this record; the Save button
+   * shows beside them only when given. Without it ticks preview unsaved.
+   */
+  onSaveNoteColumns?: (columns: NoteColumns) => Promise<unknown>;
+  /** The company switch (notes.defaultBold): the Bold box starts ticked unless false. */
+  defaultBold?: boolean;
   onBack: () => void;
   desktop?: Pick<DesktopBridge, 'listPrinters' | 'printPage' | 'savePdf' | 'savePdfToDesktop'>;
   /**
@@ -103,6 +111,8 @@ export function OrderNoteScreen({
   initialKind,
   canEditVehicle,
   onSaveVehicle,
+  onSaveNoteColumns,
+  defaultBold,
   onBack,
   desktop,
   printroom,
@@ -133,7 +143,13 @@ export function OrderNoteScreen({
   const busyRef = useRef(false);
   const [printedAt] = useState(() => new Date());
   /** The Dispatch note's packing, grade and colour tick boxes; the Filling note always prints all three. */
-  const [columns, setColumns] = useState<NoteColumns>({ packaging: true, grade: true, colour: true });
+  // The saved tick boxes when the record has them, else all ticked (a Filling
+  // note always prints all three; only the Dispatch note reads these).
+  const [columns, setColumns] = useState<NoteColumns>(
+    () => parseNoteColumns(record.noteColumns ?? null) ?? { packaging: true, grade: true, colour: true },
+  );
+  const [bold, setBold] = useState(defaultBold ?? true);
+  const [savingColumns, setSavingColumns] = useState(false);
 
   const model = useMemo(
     () => buildOrderNote(record, colourLabeller((optionLists ?? []).filter((option) => option.listKey === 'stock.colour'))),
@@ -174,6 +190,7 @@ export function OrderNoteScreen({
     codedCount: model.coded.reduce((sum, group) => sum + group.lines.length, 0),
     printedAt,
     columns: kind === 'dispatch' ? columns : undefined,
+    bold,
   };
 
   async function print(): Promise<void> {
@@ -260,6 +277,23 @@ export function OrderNoteScreen({
     } finally {
       busyRef.current = false;
       setSaving(false);
+    }
+  }
+
+  /** The tick boxes as the record keeps them (dispatch kind only). */
+  async function saveColumns(): Promise<void> {
+    if (!onSaveNoteColumns) return;
+    setSavingColumns(true);
+    try {
+      await onSaveNoteColumns(columns);
+      toast.push(t('orderNote.columnsSaved'), { tone: 'ok' });
+    } catch (caught) {
+      toast.push(
+        t('orderNote.saveColumnsFailed', { error: caught instanceof Error ? caught.message : '?' }),
+        { tone: 'error' },
+      );
+    } finally {
+      setSavingColumns(false);
     }
   }
 
@@ -409,6 +443,12 @@ export function OrderNoteScreen({
               label={t(column === 'packaging' ? 'orderNote.packing' : `orderNote.${column}`)}
             />
           ))}
+        {kind === 'dispatch' && onSaveNoteColumns && (
+          <Button variant="secondary" busy={savingColumns} disabled={printing || saving || savingColumns} onClick={() => void saveColumns()}>
+            {t('orderNote.saveColumns')}
+          </Button>
+        )}
+        <Checkbox checked={bold} onChange={setBold} label={t('orderNote.bold')} />
 
         <label className="ob-note-toolbar-item">
           <span className="ob-small">{t('orderNote.copies')}</span>

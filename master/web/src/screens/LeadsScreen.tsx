@@ -36,6 +36,7 @@ import {
   AvatarStack,
   BOARD_SHOWN,
   Button,
+  ButtonLink,
   ConfirmDialog,
   ConflictBanner,
   DataTable,
@@ -47,7 +48,6 @@ import {
   LeadRecordView,
   LeadStageMenu,
   CopyRecordNumber,
-  RecordMenu,
   PageBar,
   pageWindow,
   usePageSize,
@@ -82,6 +82,8 @@ interface Props {
   permissions: string[];
   /** `leads.packagingRequiredOnConvert`, already coalesced by the shell. */
   packagingRequired: boolean;
+  /** notes.defaultBold, already coalesced by the shell. */
+  defaultBold?: boolean;
   /** Which list is showing — chosen from the sidebar's sub-pages. */
   view: 'list' | 'converted';
   /** The lead showing as a sub-screen, held by the shell so a search hit can open one. */
@@ -113,6 +115,7 @@ export function LeadsScreen({
   stages,
   permissions,
   packagingRequired,
+  defaultBold,
   view,
   openId,
   onOpenId,
@@ -542,6 +545,10 @@ export function LeadsScreen({
         initialKind={noteKind}
         canEditVehicle
         onSaveVehicle={async () => undefined}
+        onSaveNoteColumns={
+          canEdit ? async (noteColumns) => api.updateLead(openLead.id, { noteColumns }) : undefined
+        }
+        defaultBold={defaultBold}
         onBack={() => setNote(null)}
         desktop={desktopBridge() ?? undefined}
         printroom={printroom}
@@ -638,32 +645,21 @@ export function LeadsScreen({
                   new order: once converted, the final order carries the notes. The PDF
                   opens beside the app: the Electron shell allows this one URL a window
                   of its own (CATALOGUE_MODEL §8). */}
-              <RecordMenu
-                label={t('lead.detail.printMenu')}
-                icon="print"
-                items={[
-                  ...(openLead.convertedOrderId
-                    ? []
-                    : [
-                        {
-                          label: t('orderNote.filling'),
-                          onSelect: () => setNote({ id: openLead.id, kind: 'filling' as const }),
-                        },
-                        {
-                          label: t('orderNote.dispatch'),
-                          onSelect: () => setNote({ id: openLead.id, kind: 'dispatch' as const }),
-                        },
-                      ]),
-                  ...(canPreviewPdf
-                    ? [
-                        {
-                          label: t('lead.previewPdf'),
-                          href: `/api/leads/${encodeURIComponent(openLead.id)}/pdf`,
-                        },
-                      ]
-                    : []),
-                ]}
-              />
+              {!openLead.convertedOrderId && (
+                <Button onClick={() => setNote({ id: openLead.id, kind: 'filling' as const })}>
+                  {t('orderNote.filling')}
+                </Button>
+              )}
+              {!openLead.convertedOrderId && (
+                <Button onClick={() => setNote({ id: openLead.id, kind: 'dispatch' as const })}>
+                  {t('orderNote.dispatch')}
+                </Button>
+              )}
+              {canPreviewPdf && (
+                <ButtonLink href={'/api/leads/' + encodeURIComponent(openLead.id) + '/pdf'} target='_blank' variant='secondary'>
+                  {t('lead.previewPdf')}
+                </ButtonLink>
+              )}
               {canEdit && !openLead.convertedOrderId && (
                 <Button
                   variant="secondary"

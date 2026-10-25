@@ -14,7 +14,7 @@
  */
 
 import { useDeferredValue, useEffect, useRef, useState } from 'react';
-import { matchesRecordSearch, shownColour } from '@orderbook/shared';
+import { matchesRecordSearch, resolveCompanyFeatures, shownColour } from '@orderbook/shared';
 import type {
   ChatRecordChip,
   NoteKind,
@@ -198,6 +198,7 @@ export function OrderBoardScreen({
    * never, while offline — so reopening the note would print the old number.
    */
   const [sentVehicles, setSentVehicles] = useState<Record<string, string | null>>({});
+  const notesDefaultBold = resolveCompanyFeatures(view.features).notesDefaultBold;
   const noteOrder =
     openOrder && noteKind && openOrder.id in sentVehicles
       ? { ...openOrder, vehicleNumber: sentVehicles[openOrder.id] }
@@ -294,6 +295,14 @@ export function OrderBoardScreen({
           await api.updateOrder(openOrder.id, { vehicleNumber });
           setSentVehicles((current) => ({ ...current, [openOrder.id]: vehicleNumber }));
         }}
+        onSaveNoteColumns={
+          canEdit && !openOrder.dispatchedAt
+            ? async (noteColumns) => {
+                await api.updateOrder(openOrder.id, { noteColumns });
+              }
+            : undefined
+        }
+        defaultBold={notesDefaultBold}
         onBack={() => setNote(null)}
         desktop={desktopBridge() ?? undefined}
         printroom={printroom}

@@ -474,3 +474,50 @@ describe('the Preview dialog (1.4 R11)', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
+
+
+describe('the Dispatch note saved tick boxes', () => {
+  it('offers no Save without a saver, and none on the Filling note', () => {
+    mount();
+    expect(screen.queryByRole('button', { name: t('orderNote.saveColumns') })).toBeNull();
+    cleanup();
+
+    mount({ initialKind: 'filling', onSaveNoteColumns: async () => undefined });
+    expect(screen.queryByRole('button', { name: t('orderNote.saveColumns') })).toBeNull();
+  });
+
+  it('saves the current ticks through the saver', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    mount({ onSaveNoteColumns: save });
+    fireEvent.click(screen.getByRole('checkbox', { name: t('orderNote.packing') }));
+    fireEvent.click(screen.getByRole('button', { name: t('orderNote.saveColumns') }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith({ packaging: false, grade: true, colour: true }));
+    await waitFor(() => expect(screen.getByText(t('orderNote.columnsSaved'))).toBeTruthy());
+  });
+
+  it('starts from the record saved choice', () => {
+    mount({
+      record: { ...LEAD, noteColumns: { packaging: false, grade: true, colour: false } } as Lead,
+    });
+    expect(screen.queryByText('Box')).toBeNull();
+    expect(screen.getAllByText('Std').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Ivory')).toBeNull();
+  });
+});
+
+describe('the Bold tick box', () => {
+  it('starts ticked and toggles the bold sheets', () => {
+    mount({ onSaveNoteColumns: async () => undefined });
+    const box = screen.getByRole('checkbox', { name: t('orderNote.bold') });
+    expect((box as HTMLInputElement).checked).toBe(true);
+    expect(document.querySelector('.ob-note-scope.ob-note--bold')).not.toBeNull();
+    fireEvent.click(box);
+    expect(document.querySelector('.ob-note-scope.ob-note--bold')).toBeNull();
+  });
+
+  it('starts unticked when the company switched Bold off', () => {
+    mount({ defaultBold: false });
+    const box = screen.getByRole('checkbox', { name: t('orderNote.bold') });
+    expect((box as HTMLInputElement).checked).toBe(false);
+  });
+});

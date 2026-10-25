@@ -55,3 +55,4 @@ export * from './sync/mutations.js';
 export * from './domain/update-progress.js';
 export * from './domain/update-run.js';
 export * from './protocol/auto-update.js';
+export * from './domain/product-alteration.js';

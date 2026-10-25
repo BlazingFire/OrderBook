@@ -21,19 +21,26 @@ import type { OptionListItem, Product, ProductCategory } from '@orderbook/shared
 import {
   BusyMark,
   BrandsScreen,
+  EditorScreen,
   ConflictBanner,
   MainProductsScreen,
+  ProductConflictsScreen,
+  ProductEditScreen,
   SubProductsScreen,
   apiErrorText,
+  t,
+  useToast,
   type CatalogueView,
 } from '@orderbook/ui';
 
 import { api } from '../api';
 import { catalogueTransport, optionListTransport } from '../transports';
-import { DuplicatesScreen } from './DuplicatesScreen';
+
 import { PhotoImportScreen } from './PhotoImportScreen';
 
-export type ProductsPage = 'sub' | 'main' | 'brands' | 'duplicates' | 'photos';
+// The old Duplicates page is gone: the conflicts tab below mounts the same
+// finder inline (`ProductConflictsScreen`'s duplicates tab), so one copy stays.
+export type ProductsPage = 'sub' | 'main' | 'brands' | 'photos' | 'conflicts';
 
 interface Props {
   page: ProductsPage;
@@ -44,6 +51,12 @@ interface Props {
   listsRevision: number;
   /** A sub product to open (Basic Home's product band, the "Sell today" pop-up). */
   focus?: { id: string; nonce: number };
+  /** The sub product open on the dedicated edit screen (the products edit route). */
+  editFocus?: { id: string; nonce: number } | null;
+  /** Open the dedicated edit screen for a sub product. */
+  onEditProduct: (id: string) => void;
+  /** Back from the edit screen to the list. */
+  onEditBack: () => void;
 }
 
 export function ProductsScreen({
@@ -52,8 +65,12 @@ export function ProductsScreen({
   catalogueRevision,
   listsRevision,
   focus,
+  editFocus,
+  onEditProduct,
+  onEditBack,
 }: Props) {
   const canViewProducts = permissions.includes('products.view');
+  const toast = useToast();
 
   const [optionLists, setOptionLists] = useState<OptionListItem[] | null>(null);
   const [categories, setCategories] = useState<ProductCategory[] | null>(null);
@@ -105,19 +122,47 @@ export function ProductsScreen({
   }
 
   const view: CatalogueView = { permissions, optionLists, categories, products };
+  const editProduct = editFocus
+    ? (products.find((entry) => entry.id === editFocus.id) ?? null)
+    : null;
 
   return (
     <>
       {error && <ConflictBanner>{error}</ConflictBanner>}
-      <Activity mode={page === 'sub' ? 'visible' : 'hidden'}>
+      <Activity mode={page === 'sub' && !editProduct ? 'visible' : 'hidden'}>
         <SubProductsScreen
           view={view}
           transport={catalogueTransport}
           revision={catalogueRevision + importBump}
           onImported={() => setImportBump((current) => current + 1)}
           focus={focus}
+          onEditProduct={onEditProduct}
         />
       </Activity>
+      {editProduct && (
+        <EditorScreen
+          title={editProduct.name}
+          onBack={() => {
+            onEditBack();
+            return true;
+          }}
+          backLabel={t('action.backToList')}
+        >
+          <ProductEditScreen
+            product={editProduct}
+            categories={categories}
+            optionLists={optionLists}
+            transport={catalogueTransport}
+            onSaved={(name) => {
+              setImportBump((current) => current + 1);
+              toast.push(t('product.updated', { name }));
+              onEditBack();
+            }}
+            onCancel={onEditBack}
+            onError={(message) => toast.push(message, { tone: 'error' })}
+          />
+        </EditorScreen>
+      )}
       <Activity mode={page === 'main' ? 'visible' : 'hidden'}>
         <MainProductsScreen
           view={view}
@@ -125,10 +170,15 @@ export function ProductsScreen({
           revision={catalogueRevision + importBump}
         />
       </Activity>
-      {page === 'duplicates' && permissions.includes('products.delete') && (
-        <DuplicatesScreen revision={catalogueRevision + importBump} />
-      )}
       {/* Kept mounted while hidden, so leaving the page does not drop an import that is running. */}
+      {page === 'conflicts' && (
+        <ProductConflictsScreen
+          view={view}
+          transport={catalogueTransport}
+          revision={catalogueRevision + importBump}
+          onImported={() => setImportBump((current) => current + 1)}
+        />
+      )}
       {permissions.includes('products.edit') && (
         <Activity mode={page === 'photos' ? 'visible' : 'hidden'}>
           <PhotoImportScreen products={products} />

@@ -29,6 +29,7 @@ import {
   NOTE_LAYOUT,
   t,
   type NoteLine,
+  type NoteColumns,
   type NotePage,
   type NoteSlot,
 } from '@orderbook/shared';
@@ -95,6 +96,13 @@ export interface NotePdfInput {
   itemCount: number;
   totalQuantity: number;
   totalWeightKg: number;
+  /**
+   * The saved tick boxes (note_columns): an unticked column is not drawn.
+   * Absent prints all three.
+   */
+  columns?: NoteColumns;
+  /** The company switch (notes.defaultBold): regular faces when false. */
+  bold?: boolean;
 }
 
 const INK = '#10161a';
@@ -245,6 +253,10 @@ export function planNotePdf(input: NotePdfInput, measure: Measure): PdfOp[][] {
 function planPage(input: NotePdfInput, data: NotePage, measure: Measure): PdfOp[] {
   const page = new Page(measure);
   const last = data.isLast;
+  // Every page carries the order totals, not its own (the preview reads the
+  // same figures). Bold swaps the strip and heading faces body<->bold.
+  const head: PdfFont = input.bold === false ? 'body' : 'bold';
+  const show: NoteColumns = input.columns ?? { packaging: true, grade: true, colour: true };
   const right = PAD_X + CONTENT_W;
   let y = PAD_TOP;
 
@@ -270,7 +282,7 @@ function planPage(input: NotePdfInput, data: NotePage, measure: Measure): PdfOp[
     y += 34;
   }
 
-  // ---- Strip: this page (or the totals), the party, the number and page ----
+  // ---- Strip: the order totals, the party, the number and page ----
   const stripTop = y;
   const pageCellW = 148;
   const gap = 18;
@@ -280,27 +292,27 @@ function planPage(input: NotePdfInput, data: NotePage, measure: Measure): PdfOp[
 
   const unit = ` ${t('en', 'orderNote.unit')}`;
   const stripFigure = (x: number, w: number, label: string, value: string, suffix: string): void => {
-    page.eyebrow(x, stripTop, label);
-    const size = last ? 21 : 16;
-    page.text(x, centred(figureTop, 26, size, 'bold'), value, 'bold', size, INK);
-    const valueW = measure(value, 'bold', size);
+    page.text(x, stripTop, caps(label), head, 8.5, MUTED, 0.85);
+    const size = 21;
+    page.text(x, centred(figureTop, 26, size, head), value, head, size, INK);
+    const valueW = measure(value, head, size);
     page.text(x + valueW, centred(figureTop, 26, 11, 'body') + 2, clip(measure, suffix, 'body', 11, Math.max(w - valueW, 10)), 'body', 11, SOFT);
   };
   stripFigure(
     cellX(0),
     flexW,
-    t('en', last ? 'orderNote.qtyTotal' : 'orderNote.qtyThisPage'),
-    noteFigure(last ? input.totalQuantity : data.quantity),
+    t('en', 'orderNote.qtyTotal'),
+    noteFigure(input.totalQuantity),
     unit,
   );
   stripFigure(
     cellX(1),
     flexW,
-    t('en', last ? 'orderNote.weightTotal' : 'orderNote.weightThisPage'),
-    noteFigure(last ? input.totalWeightKg : data.weightKg),
+    t('en', 'orderNote.weightTotal'),
+    noteFigure(input.totalWeightKg),
     ' kg',
   );
-  page.eyebrow(cellX(2), stripTop, t('en', 'orderNote.party'));
+  page.text(cellX(2), stripTop, caps(t('en', 'orderNote.party')), head, 8.5, MUTED, 0.85);
   // A long party name takes two lines of the same 26 px the figures stand on, rather than being cut.
   const partyLines = wrap(measure, input.partyName, 'bold', 13, flexW, 2);
   const partyTop = figureTop + (26 - partyLines.length * 13) / 2;
@@ -312,7 +324,7 @@ function planPage(input: NotePdfInput, data: NotePage, measure: Measure): PdfOp[
   }
   const pageCellX = right - pageCellW;
   page.textRight(right, stripTop, clip(measure, input.numberText, 'mono', 9, pageCellW, 0.36), 'mono', 9, MUTED, 0.36);
-  page.textRight(right, centred(figureTop, 26, 12, 'bold'), t('en', 'orderNote.page', { n: data.pageNo, total: data.pageCount }), 'bold', 12, INK);
+  page.textRight(right, centred(figureTop, 26, 12, head), t('en', 'orderNote.page', { n: data.pageNo, total: data.pageCount }), head, 12, INK);
   page.textRight(
     right,
     figureTop + 26 + 1,
@@ -347,15 +359,15 @@ function planPage(input: NotePdfInput, data: NotePage, measure: Measure): PdfOp[
   }
 
   if (hasLeft) {
-    page.text(leftX, centred(y, L.caption, 8, 'bold') + 2, caps(t('en', 'orderNote.productLines')), 'bold', 8, MUTED, 1.04);
+    page.text(leftX, centred(y, L.caption, 8, head) + 2, caps(t('en', 'orderNote.productLines')), head, 8, MUTED, 1.04);
     page.textRight(leftX + leftW, centred(y, L.caption, 8, 'mono') + 2, noteRange(data.leftFrom, data.leftCount, input.namedCount), 'mono', 8, MUTED, 0.16);
-    planNamed(page, measure, data.left, leftX, y + L.caption, leftW);
+    planNamed(page, measure, data.left, leftX, y + L.caption, leftW, head, show);
   }
   if (hasRight) {
-    page.text(rightX, centred(y, L.caption, 8, 'bold') + 2, caps(t('en', 'orderNote.codedProducts')), 'bold', 8, MUTED, 1.04);
+    page.text(rightX, centred(y, L.caption, 8, head) + 2, caps(t('en', 'orderNote.codedProducts')), head, 8, MUTED, 1.04);
     page.textRight(rightX + rightW, centred(y, L.caption, 8, 'mono') + 2, noteRange(data.rightFrom, data.rightCount, input.codedCount), 'mono', 8, MUTED, 0.16);
     const perRow = data.wideRight ? L.codesPerRowWide : L.codesPerRow;
-    planCoded(page, measure, data.right, rightX, y + L.caption, rightW, perRow);
+    planCoded(page, measure, data.right, rightX, y + L.caption, rightW, perRow, head, show);
   }
 
   // ---- Notes (the last pages) -----------------------------------------------
@@ -378,7 +390,16 @@ function planPage(input: NotePdfInput, data: NotePage, measure: Measure): PdfOp[
 }
 
 /** The named half: one column of product lines, or two when the page has no coded lines. */
-function planNamed(page: Page, measure: Measure, columns: NoteLine[][], x0: number, top: number, width: number): void {
+function planNamed(
+  page: Page,
+  measure: Measure,
+  columns: NoteLine[][],
+  x0: number,
+  top: number,
+  width: number,
+  face: PdfFont,
+  show: NoteColumns,
+): void {
   const gap = 16;
   const count = Math.max(columns.length, 1);
   const colW = (width - gap * (count - 1)) / count;
@@ -398,11 +419,11 @@ function planNamed(page: Page, measure: Measure, columns: NoteLine[][], x0: numb
     // Column heading, with its rule.
     const head = L.columnLabel;
     const headY = centred(top, head, 7.5, 'bold');
-    page.text(x, headY, caps(t('en', 'orderNote.subProductBrand')), 'bold', 7.5, MUTED, 0.83);
-    page.text(packX, headY, caps(t('en', 'orderNote.packing')), 'bold', 7.5, MUTED, 0.83);
-    page.text(colourX, headY, caps(t('en', 'orderNote.colour')), 'bold', 7.5, MUTED, 0.83);
-    page.text(gradeX, headY, caps(t('en', 'orderNote.grade')), 'bold', 7.5, MUTED, 0.83);
-    page.textRight(qtyRight, headY, caps(t('en', 'orderNote.qty')), 'bold', 7.5, MUTED, 0.83);
+    page.text(x, headY, caps(t('en', 'orderNote.subProductBrand')), face, 7.5, MUTED, 0.83);
+    page.text(packX, headY, caps(t('en', 'orderNote.packing')), face, 7.5, MUTED, 0.83);
+    page.text(colourX, headY, caps(t('en', 'orderNote.colour')), face, 7.5, MUTED, 0.83);
+    page.text(gradeX, headY, caps(t('en', 'orderNote.grade')), face, 7.5, MUTED, 0.83);
+    page.textRight(qtyRight, headY, caps(t('en', 'orderNote.qty')), face, 7.5, MUTED, 0.83);
     page.line(x, top + head - 0.5, edge, top + head - 0.5, INK, 1);
 
     let y = top + head;
@@ -426,9 +447,9 @@ function planNamed(page: Page, measure: Measure, columns: NoteLine[][], x0: numb
         const top2 = y + (h - lines.length * 13) / 2;
         lines.forEach((text, i) => page.text(cx, centred(top2 + i * 13, 13, 11, 'body'), text, 'body', 11, ROW_TEXT));
       };
-      small(line.packaging, packX, packW);
-      small(line.colour, colourX, colourW);
-      if (line.grade) {
+      if (show.packaging) small(line.packaging, packX, packW);
+      if (show.colour) small(line.colour, colourX, colourW);
+      if (show.grade && line.grade) {
         page.text(gradeX, centred(y + (h - 13) / 2, 13, 11, 'body'), clip(measure, line.grade, 'body', 11, gradeW), 'body', 11, ROW_TEXT);
       }
       page.textRight(qtyRight, centred(y + (h - 18) / 2, 18, 15, 'bold'), noteFigure(line.quantity), 'bold', 15, INK);
@@ -447,6 +468,8 @@ function planCoded(
   top: number,
   width: number,
   perRow: number,
+  face: PdfFont,
+  show: NoteColumns,
 ): void {
   const gap = 20;
   const count = Math.max(columns.length, 1);
@@ -462,11 +485,11 @@ function planCoded(
         const h = L.groupHeader;
         const cont = slot.continued ? t('en', 'orderNote.groupContinued') : '';
         const contW = cont ? measure(cont, 'body', 7) + 3 : 0;
-        const lines = wrap(measure, caps(slot.product), 'bold', 9.5, colW - contW, 2, 0.29);
+        const lines = wrap(measure, caps(slot.product), face, 9.5, colW - contW, 2, 0.29);
         const base = y + h - 3 - lines.length * 11;
-        lines.forEach((value, i) => page.text(x, centred(base + i * 11, 11, 9.5, 'bold'), value, 'bold', 9.5, INK, 0.29));
+        lines.forEach((value, i) => page.text(x, centred(base + i * 11, 11, 9.5, face), value, face, 9.5, INK, 0.29));
         if (cont) {
-          const lastW = measure(lines.at(-1) ?? '', 'bold', 9.5, 0.29);
+          const lastW = measure(lines.at(-1) ?? '', face, 9.5, 0.29);
           page.text(x + lastW + 3, centred(y + h - 3 - 11, 11, 7, 'body') + 1, cont, 'body', 7, MUTED);
         }
         page.line(x, y + h - 0.5, x + colW, y + h - 0.5, INK, 1);
@@ -480,21 +503,21 @@ function planCoded(
         const middle = cx + cellW / 2;
         // A caption stays inside its own cell: two lines at most, then an ellipsis, as the note's CSS clamps it.
         const caption = noteCellCaption(slot, line);
-        const productLines = caption !== null ? wrap(measure, caps(caption), 'bold', 8, cellW, 2, 0.64) : [];
+        const productLines = caption !== null ? wrap(measure, caps(caption), face, 8, cellW, 2, 0.64) : [];
         // First line: the code, its colour and its brand, on one baseline; the colour (and brand) drop to a
         // line of their own when the three do not fit, as the sheet's flex line wraps.
         const brand = line.brand ? noteBrandCode(line.brand) : '';
         const brandW = brand ? measure(brand, 'mono', 7.5, 0.45) : 0;
         const code = clip(measure, line.subProduct, 'bold', 14, cellW - (brandW ? brandW + 4 : 0));
         const codeW = measure(code, 'bold', 14);
-        const fullColour = line.colour ?? '—';
+        const fullColour = show.colour ? (line.colour ?? '—') : null;
         const colourW = fullColour ? measure(fullColour, 'body', 10) : 0;
         const oneLine = codeW + (fullColour ? 4 + colourW : 0) + (brand ? 4 + brandW : 0) <= cellW;
         const colour = fullColour && !oneLine ? clip(measure, fullColour, 'body', 10, cellW - (brand ? brandW + 4 : 0)) : fullColour;
         const contentH = productLines.length * 10 + 16 + (fullColour && !oneLine ? 12 : 0) + 3 + 16;
         let cy = y + (h - 1 - contentH) / 2;
         productLines.forEach((value) => {
-          page.textCentre(middle, centred(cy, 10, 8, 'bold'), value, 'bold', 8, SOFT, 0.64);
+          page.textCentre(middle, centred(cy, 10, 8, face), value, face, 8, SOFT, 0.64);
           cy += 10;
         });
         const baseline = cy + (16 - LINE_BOX.bold * 14) / 2 + ASCENT.bold * 14;
@@ -530,10 +553,10 @@ function planCoded(
         const qty = noteFigure(line.quantity);
         const qtyW = measure(qty, 'bold', 15);
         const timesW = measure('×', 'bold', 7);
-        const grade = line.grade ? clip(measure, caps(line.grade), 'bold', 8.5, Math.max(cellW / 2, 0)) : '';
+        const grade = show.grade && line.grade ? clip(measure, caps(line.grade), 'bold', 8.5, Math.max(cellW / 2, 0)) : '';
         const gradeW = grade ? measure(grade, 'bold', 8.5) + 2 : 0;
         const packRoom = cellW - (gradeW ? gradeW + 2 : 0) - timesW - 2 - qtyW - 2;
-        const pack = line.packaging ? clip(measure, caps(line.packaging), 'bold', 7, Math.max(packRoom, 0), -0.07) : '';
+        const pack = show.packaging && line.packaging ? clip(measure, caps(line.packaging), 'bold', 7, Math.max(packRoom, 0), -0.07) : '';
         const packW = pack ? measure(pack, 'bold', 7, -0.07) : 0;
         const detailW = (gradeW ? gradeW + 2 : 0) + (pack ? packW + 2 : 0) + timesW + 2 + qtyW;
         let dx = middle - detailW / 2;

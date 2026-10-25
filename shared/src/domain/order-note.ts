@@ -14,9 +14,60 @@
  */
 
 import { isNumericSubProduct, shownColour, type ColourLabelOf } from './colour-rule.js';
+import type { MessageKey } from '../i18n/keys.js';
 import type { IsoTimestamp, Lead, LineItem, Order, Party, RecordId } from './entities.js';
 
 export type NoteKind = 'filling' | 'dispatch';
+
+/**
+ * Which of packing, grade and colour the Dispatch note prints. The Filling
+ * note always prints all three. One order saved tick boxes (note_columns):
+ * the note screen initialises from them, and every renderer reads them, so an
+ * unticked column vanishes from the preview, the print, the PDF and the
+ * printroom alike.
+ */
+export interface NoteColumns {
+  packaging: boolean;
+  grade: boolean;
+  colour: boolean;
+}
+
+/** Every column ticked: a note with no saved choice, and the Filling note. */
+export const ALL_NOTE_COLUMNS: NoteColumns = { packaging: true, grade: true, colour: true };
+
+/**
+ * The saved tick boxes as the mappers read them: null when the record has
+ * none (NULL, or a row written before the column existed), else each column
+ * present and a boolean, missing keys ticked. Never throws: a value no writer
+ * could have stored still reads as a note.
+ */
+export function parseNoteColumns(value: unknown): NoteColumns | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'object') return null;
+  const stored = value as Record<string, unknown>;
+  const tick = (key: string): boolean => stored[key] === undefined || stored[key] === true;
+  return { packaging: tick('packaging'), grade: tick('grade'), colour: tick('colour') };
+}
+
+/**
+ * The tick boxes as a write path stores them: null clears the choice, an
+ * object with only boolean packing/grade/colour keeps it. Anything else is
+ * refused with a validation key, so a hand-built request cannot store a shape
+ * the readers do not understand.
+ */
+export function cleanNoteColumns(value: unknown): { value: NoteColumns | null } | { errorKey: MessageKey } {
+  if (value === null) return { value: null };
+  if (typeof value !== 'object' || Array.isArray(value)) return { errorKey: 'validation.noteColumns.invalid' };
+  const stored = value as Record<string, unknown>;
+  const columns: NoteColumns = { packaging: true, grade: true, colour: true };
+  for (const key of ['packaging', 'grade', 'colour'] as const) {
+    const entry = stored[key];
+    if (entry === undefined) continue;
+    if (typeof entry !== 'boolean') return { errorKey: 'validation.noteColumns.invalid' };
+    columns[key] = entry;
+  }
+  return { value: columns };
+}
 
 /** What a note is printed from: a pending order (a lead) or a final order. */
 export type NoteSource = 'lead' | 'order';
@@ -50,6 +101,12 @@ export interface NoteDocument {
   vehicleNumber: string | null;
   /** The record's notes, printed above the signatures. Absent on jobs frozen before notes were printed. */
   notes?: string | null;
+  /**
+   * The saved tick boxes (note_columns), or null for all three. The
+   * printroom renders from this frozen choice, the live screens from the
+   * record own.
+   */
+  columns?: NoteColumns | null;
   model: OrderNoteModel;
 }
 
@@ -448,6 +505,7 @@ export function noteDocument(
       : null,
     vehicleNumber,
     notes: record.notes ?? null,
+    columns: parseNoteColumns(record.noteColumns ?? null),
     model: buildOrderNote(record, labelOf),
   };
 }

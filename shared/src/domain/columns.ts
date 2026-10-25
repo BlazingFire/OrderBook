@@ -33,7 +33,11 @@
  */
 
 /** Columns holding JSON, which therefore need serialising on the way in. */
-export const JSON_COLUMNS = new Set(['custom_fields']);
+export const JSON_COLUMNS = new Set([
+  'custom_fields',
+  // The Dispatch note saved tick boxes: stored as JSON, read back leniently.
+  'note_columns',
+]);
 
 export const PARTY_COLUMNS = {
   name: 'name',
@@ -76,6 +80,7 @@ export const LEAD_COLUMNS = {
   partyWiseMode: 'party_wise_mode',
   notes: 'notes',
   customFields: 'custom_fields',
+  noteColumns: 'note_columns',
 } as const satisfies Record<string, string>;
 
 export const ORDER_COLUMNS = {
@@ -83,6 +88,7 @@ export const ORDER_COLUMNS = {
   expectedDispatchDate: 'expected_dispatch_date',
   totalWeightKgOverride: 'total_weight_kg_override',
   vehicleNumber: 'vehicle_number',
+  noteColumns: 'note_columns',
   notes: 'notes',
   customFields: 'custom_fields',
 } as const satisfies Record<string, string>;

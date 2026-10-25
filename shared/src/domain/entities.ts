@@ -13,6 +13,7 @@
 
 import type { RoleTier } from './permissions.js';
 import type { ReleaseManifest } from './version.js';
+import type { NoteColumns } from './order-note.js';
 
 export type Uuid = string;
 
@@ -168,6 +169,8 @@ export interface CompanyFeatures {
   sellTodayPopup?: boolean;
   /** `basicHome.productSlideshow`: whether Basic Home carries the product band. */
   productSlideshow?: boolean;
+  /** notes.defaultBold: whether the note screen ticks Bold unless unticked. */
+  notesDefaultBold?: boolean;
 }
 
 export interface SignedInUser extends User {
@@ -770,6 +773,11 @@ export interface Lead {
   /** Set on conversion. The lead is kept as history, never deleted. */
   convertedOrderId: RecordId | null;
   convertedAt: IsoTimestamp | null;
+  /**
+   * The Dispatch note saved tick boxes (packing, grade, colour), or null for
+   * all three. Set from the note screen Save; every renderer reads it.
+   */
+  noteColumns?: NoteColumns | null;
 
   /** Sum of the lines' `lineWeightKg`, over the lines that have a weight. */
   totalWeightKg: number;
@@ -815,6 +823,11 @@ export interface Order {
   weightSource: WeightSource;
   /** The vehicle it goes out on, for the Dispatch note. */
   vehicleNumber?: string | null;
+  /**
+   * The Dispatch note saved tick boxes (packing, grade, colour), or null for
+   * all three. Set from the note screen Save; every renderer reads it.
+   */
+  noteColumns?: NoteColumns | null;
   /** When the lead this order came from was generated; null for an order with no lead. */
   leadCreatedAt?: IsoTimestamp | null;
 

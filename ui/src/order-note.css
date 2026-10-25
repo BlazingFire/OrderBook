@@ -282,6 +282,15 @@
   font-size: 21px;
 }
 
+/* Regular faces (notes.defaultBold off): the totals and headings lose their weight. */
+.ob-note-scope:not(.ob-note--bold) .ob-note-strip-figure,
+.ob-note-scope:not(.ob-note--bold) .ob-note-strip-page-no,
+.ob-note-scope:not(.ob-note--bold) .ob-note-strip-cell .ob-note-eyebrow,
+.ob-note-scope:not(.ob-note--bold) .ob-note-caption,
+.ob-note-scope:not(.ob-note--bold) .ob-note-colhead {
+  font-weight: 400;
+}
+
 .ob-note-strip-unit {
   font-size: 10px;
   font-weight: 500;

@@ -7,7 +7,13 @@
  * the repositories, and the rules that decide anything live in `domain/`.
  */
 
-import { colourLabeller, fieldFor, LEAD_COLUMNS, recordNumber } from '@orderbook/shared';
+import {
+  cleanNoteColumns,
+  colourLabeller,
+  fieldFor,
+  LEAD_COLUMNS,
+  recordNumber,
+} from '@orderbook/shared';
 import type {
   BinBlocker,
   BinRestoreResult,
@@ -45,6 +51,7 @@ import {
 import { assertParentsLive } from '../domain/recycle-bin.js';
 import { db } from '../db/knex.js';
 import { ConflictError, NotFoundError, toErrorMessage, ValidationError } from '../lib/errors.js';
+import { getSetting } from './settings.service.js';
 import { createLogger } from '../lib/logger.js';
 import { seqCached } from '../lib/seq-cache.js';
 import { renderNotePdf } from '../pdf/note-renderer.js';
@@ -164,7 +171,19 @@ export async function leadPdf(
   // was sold under; one the list never had prints as stored.
   const colours = await customFieldRepo.listOptionsForKey(actor.tenantId, 'stock.colour', { includeDeleted: true });
   // The Master PC's own clock: the day and time it was printed, where it was printed.
-  const bytes = await renderNotePdf(leadNotePdf(lead, party, company, new Date(), colourLabeller(colours)));
+  // The saved tick boxes travel on the lead; Bold reads the company switch,
+  // so a PDF printed after the switch moved matches the screen.
+  const bytes = await renderNotePdf(
+    leadNotePdf(
+      lead,
+      party,
+      company,
+      new Date(),
+      colourLabeller(colours),
+      lead.noteColumns ?? undefined,
+      await getSetting(actor.tenantId, 'notes.defaultBold'),
+    ),
+  );
   // `PO/2026-27/00042` → `pending-order-PO-2026-27-00042.pdf`: a slash cannot be in a file name.
   return { fileName: `pending-order-${recordNumber(lead).replace(/\//g, '-')}.pdf`, bytes };
 }
@@ -324,6 +343,12 @@ export async function updateLead(
   if (input.followUpDate !== undefined) patch.follow_up_date = input.followUpDate;
   if (input.partyWiseMode !== undefined) patch.party_wise_mode = input.partyWiseMode;
   if (input.notes !== undefined) patch.notes = input.notes?.trim() || null;
+
+  if (input.noteColumns !== undefined) {
+    const cleaned = cleanNoteColumns(input.noteColumns);
+    if ('errorKey' in cleaned) throw new ValidationError(cleaned.errorKey);
+    patch.note_columns = cleaned.value === null ? null : JSON.stringify(cleaned.value);
+  }
 
   if (input.customFields !== undefined) {
     patch.custom_fields = JSON.stringify(normalizeCustomFields(input.customFields, definitions));

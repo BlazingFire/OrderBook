@@ -66,6 +66,7 @@ import * as noticePlacement from './20261016000000_notice_placement.js';
 import * as productImageSourceChecksum from './20261017000000_product_image_source_checksum.js';
 import * as noticeSellToday from './20261018000000_notice_sell_today.js';
 import * as todoList from './20261019000000_todo_list.js';
+import * as noteColumns from './20261025000000_note_columns.js';
 
 export interface Migration {
   name: string;
@@ -308,6 +309,11 @@ export const migrations: Migration[] = [
   {
     name: '20261019000000_todo_list',
     ...todoList,
+  },
+  // 2026-10-25: the Dispatch note saved tick boxes (note_columns on leads and orders).
+  {
+    name: '20261025000000_note_columns',
+    ...noteColumns,
   },
 ];
 

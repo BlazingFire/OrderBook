@@ -102,7 +102,7 @@ describe('checkbox, radio and switch', () => {
 
   it('are used for the role cards and the duplicate-merge choice, not the browser radio', () => {
     expect(read('../src/RolePicker.tsx')).toMatch(/type="radio"[ \n]+className="ob-radio"/);
-    expect(read('../../master/web/src/screens/DuplicatesScreen.tsx')).toMatch(/type="radio"[ \n]+className="ob-radio"/);
+    expect(read('../src/ProductConflictsScreen.tsx')).toMatch(/type="radio"[ \n]+className="ob-radio"/);
   });
 
   it('are a 32 x 18 switch with a 14 px thumb that travels 14 px, grey when off, with no border', () => {

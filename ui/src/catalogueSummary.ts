@@ -41,6 +41,12 @@ import type {
   ProductRestoreJob,
   ProductRestoreOptions,
   ProductZipReport,
+  ProductAlterationPreview,
+  ProductAlterationApplyResult,
+  ProductAlterationAffected,
+  DuplicateReport,
+  DuplicateResolveInput,
+  DuplicateResolveResult,
 } from '@orderbook/shared';
 import { colourRuleOf, shownColour } from '@orderbook/shared';
 
@@ -147,7 +153,7 @@ export interface CatalogueTransport {
   /** A sub product into the Recycle Bin (`products.delete`); refused while a live order line quotes it. */
   deleteProduct(id: string): Promise<unknown>;
   createProduct(input: ProductInput): Promise<{ id: string }>;
-  updateProduct(id: string, input: ProductInput): Promise<unknown>;
+  updateProduct(id: string, input: ProductInput & { baseFieldHlc?: Record<string, string> }): Promise<unknown>;
   uploadProductImage(
     productId: string,
     file: Blob,
@@ -175,8 +181,27 @@ export interface CatalogueTransport {
   ): Promise<{ blob: Blob; fileName: string }>;
   importProducts(
     file: File,
-    options: { dryRun: boolean; mode: ProductImportMode },
+    options: { dryRun: boolean; mode: ProductImportMode; onlyRows?: number[]; fileHash?: string },
   ): Promise<ProductImportResult>;
+  /** Pending only alteration of line snapshots, where offered. Absent hides the tab. */
+  alteration?: {
+    preview(productId: string): Promise<ProductAlterationPreview>;
+    apply(
+      productId: string,
+      product: ProductInput,
+      baseFieldHlc?: Record<string, string>,
+    ): Promise<ProductAlterationApplyResult>;
+    pdf(
+      productId: string,
+      productName: string,
+      affected: ProductAlterationAffected[],
+    ): Promise<{ blob: Blob; fileName: string }>;
+  };
+  /** Duplicate finder, where offered. Absent hides the tab. */
+  duplicates?: {
+    list(): Promise<DuplicateReport>;
+    resolve(input: DuplicateResolveInput): Promise<DuplicateResolveResult>;
+  };
   /** The product backup zip, on a panel that offers it (the Master); absent hides both buttons. */
   productZip?: ProductZipTransport;
 }

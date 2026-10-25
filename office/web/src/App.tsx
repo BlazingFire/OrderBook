@@ -63,6 +63,8 @@ import {
   homeProducts,
   BusyMark,
   PrintStationRunner,
+  ProductConflictsScreen,
+  ProductEditScreen,
   Avatar,
   FilterBarOutlet,
   FilterBarProvider,
@@ -79,6 +81,7 @@ import {
   PaletteButton,
   apiErrorText,
   ConfirmProvider,
+  EditorScreen,
   onSessionEnded,
   ResetProvider,
   ScreenHost,
@@ -106,6 +109,7 @@ import {
   type ChatPage,
   type PrintPage,
   type ChatRecordOption,
+  type CatalogueTransport,
   type LocalNotice,
   type NavGroup,
   type NavItem,
@@ -133,6 +137,37 @@ import { reportsTransport } from './reportsTransport';
 import { AddLeadScreen } from './screens/AddLeadScreen';
 import { CatalogScreen } from './screens/CatalogScreen';
 import { BrandsScreen, MainProductsScreen } from './screens/MainProductsScreen';
+
+const officeCatalogueTransport: CatalogueTransport = {
+  listProducts: (query, signal) => api.listProducts(query, signal),
+  productSharePdf: (ids) => api.productSharePdf(ids),
+  categories: (query) => api.categories(query),
+  createCategory: (input) => api.createCategory(input),
+  updateCategory: (id, input) => api.updateCategory(id, input),
+  deleteCategory: (id) => api.deleteCategory(id),
+  deleteProduct: (id) => api.deleteProduct(id),
+  createProduct: (input) => api.createProduct(input),
+  updateProduct: (id, input) => api.updateProduct(id, input),
+  uploadProductImage: (productId, file, crop) => api.uploadProductImage(productId, file, crop),
+  updateProductImage: (productId, imageId, input) =>
+    api.updateProductImage(productId, imageId, input),
+  reorderProductImages: (productId, ids) => api.reorderProductImages(productId, ids),
+  deleteProductImage: (productId, imageId) => api.deleteProductImage(productId, imageId),
+  productImportTemplate: (format) => api.productImportTemplate(format),
+  exportProducts: (format, level) => api.exportProducts(format, level),
+  importProducts: (file, options) => api.importProducts(file, options),
+  alteration: {
+    preview: (productId) => api.previewProductAlteration(productId),
+    apply: (productId, product, baseFieldHlc) =>
+      api.applyProductAlteration(productId, product, baseFieldHlc),
+    pdf: (productId, productName, affected) =>
+      api.alterationOrdersPdf(productId, productName, affected),
+  },
+  duplicates: {
+    list: () => api.duplicates(),
+    resolve: (input) => api.resolveDuplicates(input),
+  },
+};
 import { ConnectionUnpair } from './components/ConnectionUnpair';
 import { ConnectionScreen } from './screens/ConnectionScreen';
 import { SetupScreen } from './screens/SetupScreen';
@@ -393,6 +428,9 @@ function OfficePanel() {
   const [noticeFocus, setNoticeFocus] = useState<{ id: string; nonce: number } | null>(null);
   // The sub product a Basic Home card or the "Sell today" pop-up opened, for the catalogue to show.
   const [productFocus, setProductFocus] = useState<{ id: string; nonce: number } | null>(null);
+  const [productEditFocus, setProductEditFocus] = useState<{ id: string; nonce: number } | null>(
+    null,
+  );
   // The sign-in the unread notices pop-up is done with: the "Sell today" pop-up waits for it.
   const [signInSettledFor, setSignInSettledFor] = useState<string | null>(null);
   const [chatShare, setChatShare] = useState<ChatRecordChip | null>(null);
@@ -640,9 +678,8 @@ function OfficePanel() {
   const noticeUnread = unreadOnBoard(myNotices, todayForNotices()).length;
   // Where else the board shows (`notices.showOnHome`, `notices.showAtSignIn`), from the snapshot's
   // switches: a setting change forces a fresh snapshot, so a flip on the Master lands here.
-  const { noticesOnHome, noticesAtSignIn, sellTodayPopup, productSlideshow } = resolveCompanyFeatures(
-    view?.features,
-  );
+  const { noticesOnHome, noticesAtSignIn, sellTodayPopup, productSlideshow } =
+    resolveCompanyFeatures(view?.features);
   // "Sell today" (2026-10-08), from the same snapshot, so the pop-up and the product band work offline.
   const mySellToday = canViewNotices ? view?.sellToday : undefined;
   const signInKey = session ? `${session.userId}:${session.signedInAt}` : '';
@@ -1107,6 +1144,15 @@ function OfficePanel() {
       { key: 'sub', label: t('catalog.nav.subProducts'), icon: 'products' },
       { key: 'main', label: t('catalog.nav.mainProducts'), icon: 'inventory' },
       { key: 'brands', label: t('catalog.nav.brands'), icon: 'edit' },
+      ...(can('products.bulk') || can('products.export') || can('products.delete')
+        ? [
+            {
+              key: 'conflicts',
+              label: t('catalog.nav.productConflicts'),
+              icon: 'conflicts' as const,
+            },
+          ]
+        : []),
     ],
     settings: SETTINGS_TAB_IDS.map((id) => ({
       key: id,
@@ -1132,6 +1178,7 @@ function OfficePanel() {
   }
 
   function selectSubPage(module: string, key: string): void {
+    if (module === 'products') setProductEditFocus(null);
     if (module === 'settings') setSettingsTab(key);
     else if (module === 'leads') {
       if (key === 'new') openNewLead();
@@ -1805,11 +1852,20 @@ function OfficePanel() {
     setProductFocus({ id, nonce: Date.now() });
     goToTab('products.sub');
   }
+  /** Open a sub product on the dedicated edit screen (the products edit route). */
+  function openProductEdit(id: string): void {
+    goToTab('products.sub');
+    setProductEditFocus({ id, nonce: Date.now() });
+  }
   // Basic Home's top row, from this person's own cache: the notice band unless the company turned
   // it off, and the product band (`basicHome.productSlideshow`): today's "Sell today" products,
   // else sub products with photos. Nothing before the first snapshot.
   const showNoticeBand = canViewNotices && noticesOnHome && view !== null;
-  const homeBand = homeProducts(mySellToday, can('products.view') ? (view?.products ?? []) : [], todayForNotices());
+  const homeBand = homeProducts(
+    mySellToday,
+    can('products.view') ? (view?.products ?? []) : [],
+    todayForNotices(),
+  );
   const showProductBand = productSlideshow && view !== null && homeBand.products.length > 0;
 
   const alwaysAvailable: ScreenSpec[] = [
@@ -1836,7 +1892,11 @@ function OfficePanel() {
                 />
               )}
               {showProductBand && (
-                <ProductSlideshow products={homeBand.products} sellToday={homeBand.sellToday} onOpen={openProduct} />
+                <ProductSlideshow
+                  products={homeBand.products}
+                  sellToday={homeBand.sellToday}
+                  onOpen={openProduct}
+                />
               )}
             </div>
           )}
@@ -2054,20 +2114,62 @@ function OfficePanel() {
           // filters and open record, as `ScreenHost` does between modules.
           render: () => (
             <>
-              <Activity mode={subKeyOf('products') === 'sub' ? 'visible' : 'hidden'}>
+              <Activity
+                mode={subKeyOf('products') === 'sub' && !productEditFocus ? 'visible' : 'hidden'}
+              >
                 <CatalogScreen
                   view={view}
                   tab="products"
-                  canImport={can('products.bulk')}
+                  onEditProduct={openProductEdit}
                   focus={productFocus ?? undefined}
                 />
               </Activity>
+              {(view && productEditFocus
+                ? view.products.filter((entry) => entry.id === productEditFocus.id)
+                : []
+              ).map((target) => (
+                <EditorScreen
+                  key={target.id}
+                  title={target.name}
+                  onBack={() => {
+                    setProductEditFocus(null);
+                    return true;
+                  }}
+                  backLabel={t('action.backToList')}
+                >
+                  <ProductEditScreen
+                    product={target}
+                    categories={view.categories}
+                    optionLists={view.optionLists}
+                    transport={officeCatalogueTransport}
+                    baseFieldHlc={target.sync.fieldHlc}
+                    onSaved={(name) => {
+                      toast.push(t('product.updated', { name }));
+                      setProductEditFocus(null);
+                    }}
+                    onCancel={() => setProductEditFocus(null)}
+                    onError={(message) => toast.push(message, { tone: 'error' })}
+                  />
+                </EditorScreen>
+              ))}
               <Activity mode={subKeyOf('products') === 'main' ? 'visible' : 'hidden'}>
                 <MainProductsScreen view={view} />
               </Activity>
               <Activity mode={subKeyOf('products') === 'brands' ? 'visible' : 'hidden'}>
                 <BrandsScreen view={view} revision={optionListsRevision} />
               </Activity>
+              {subKeyOf('products') === 'conflicts' && (
+                <ProductConflictsScreen
+                  view={{
+                    permissions: view.permissions,
+                    optionLists: view.optionLists,
+                    categories: view.categories,
+                    products: view.products,
+                  }}
+                  transport={officeCatalogueTransport}
+                  revision={view.products.length}
+                />
+              )}
             </>
           ),
         },

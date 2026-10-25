@@ -909,6 +909,7 @@ export function createApp(): Express {
       kind: 'party.update',
       entity: 'party',
       entityId: req.params.id,
+
       payload: req.body,
       baseFieldHlc: req.body?.baseFieldHlc,
     }),
@@ -1118,6 +1119,16 @@ export function createApp(): Express {
           const body = (req.body ?? {}) as Record<string, unknown>;
           form.append('dryRun', String(body.dryRun === 'true' || body.dryRun === true));
           form.append('mode', modeOf(body.mode));
+          const onlyRowsValue = (body as Record<string, unknown>).onlyRows;
+          if (typeof onlyRowsValue === 'string' && onlyRowsValue.length > 0)
+            form.append('onlyRows', onlyRowsValue);
+          else if (Array.isArray(onlyRowsValue) && onlyRowsValue.length > 0)
+            form.append('onlyRows', onlyRowsValue.join(','));
+          // The per-row review's file identity: the Master refuses an apply
+          // whose file no longer hashes to the preview's.
+          const fileHashValue = (body as Record<string, unknown>).fileHash;
+          if (typeof fileHashValue === 'string' && fileHashValue.length > 0)
+            form.append('fileHash', fileHashValue);
 
           const response = await masterFetch(masterPath, { method: 'POST', body: form });
           res.status(response.status).json(await response.json().catch(() => null));
@@ -1158,10 +1169,94 @@ export function createApp(): Express {
       kind: 'product.update',
       entity: 'product',
       entityId: req.params.id,
+
       payload: req.body,
       baseFieldHlc: req.body?.baseFieldHlc,
     }),
   );
+
+  app.get('/api/products/:id/alteration/preview', (req, res) => {
+    void (async () => {
+      try {
+        const response = await masterFetch(
+          '/api/panel/products/' + String(req.params.id) + '/alteration/preview',
+        );
+        res.status(response.status).json(await response.json().catch(() => null));
+      } catch (error) {
+        unavailable(res, error);
+      }
+    })();
+  });
+  app.post('/api/products/:id/alteration/apply', (req, res) => {
+    void (async () => {
+      try {
+        const response = await masterFetch(
+          '/api/panel/products/' + String(req.params.id) + '/alteration/apply',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              product: (req.body as Record<string, unknown>)?.product,
+              baseFieldHlc: (req.body as Record<string, unknown>)?.baseFieldHlc,
+            }),
+          },
+        );
+        res.status(response.status).json(await response.json().catch(() => null));
+      } catch (error) {
+        unavailable(res, error);
+      }
+    })();
+  });
+  app.post('/api/products/:id/alteration/pdf', (req, res) => {
+    void (async () => {
+      try {
+        const response = await masterFetch(
+          '/api/panel/products/' + String(req.params.id) + '/alteration/pdf',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(req.body ?? {}),
+          },
+        );
+        if (!response.ok) {
+          res.status(response.status).json(await response.json().catch(() => null));
+          return;
+        }
+        res.setHeader('Content-Type', response.headers.get('content-type') ?? 'application/pdf');
+        res.setHeader(
+          'Content-Disposition',
+          response.headers.get('content-disposition') ?? 'attachment; filename=alteration.pdf',
+        );
+        res.send(Buffer.from(await response.arrayBuffer()));
+      } catch (error) {
+        unavailable(res, error);
+      }
+    })();
+  });
+  app.get('/api/duplicates', (req, res) => {
+    void (async () => {
+      try {
+        const response = await masterFetch('/api/panel/duplicates');
+        res.status(response.status).json(await response.json().catch(() => null));
+      } catch (error) {
+        unavailable(res, error);
+      }
+    })();
+  });
+  app.post('/api/duplicates/resolve', (req, res) => {
+    void (async () => {
+      try {
+        const response = await masterFetch('/api/panel/duplicates/resolve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(req.body ?? {}),
+        });
+        res.status(response.status).json(await response.json().catch(() => null));
+      } catch (error) {
+        unavailable(res, error);
+      }
+    })();
+  });
 
   // Images stay online-only, like the Recycle Bin — the offline outbox
   // carries JSON mutations, and there is no mechanism to queue a multipart
@@ -1341,6 +1436,7 @@ export function createApp(): Express {
       kind: 'lead.update',
       entity: 'lead',
       entityId: req.params.id,
+
       payload: req.body,
       baseFieldHlc: req.body?.baseFieldHlc,
       validate: () => leadPayloadProblem(req.body, { itemsRequired: false }),
@@ -1351,6 +1447,7 @@ export function createApp(): Express {
       kind: 'lead.setStage',
       entity: 'lead',
       entityId: req.params.id,
+
       payload: { stageId: req.body?.stageId, remark: req.body?.remark ?? null },
     }),
   );
@@ -1359,6 +1456,7 @@ export function createApp(): Express {
       kind: 'lead.addRemark',
       entity: 'lead',
       entityId: req.params.id,
+
       payload: { message: req.body?.message },
     }),
   );
@@ -1367,6 +1465,7 @@ export function createApp(): Express {
       kind: 'lead.convert',
       entity: 'lead',
       entityId: req.params.id,
+
       payload: req.body ?? {},
     }),
   );
@@ -1419,6 +1518,7 @@ export function createApp(): Express {
       kind: 'order.update',
       entity: 'order',
       entityId: req.params.id,
+
       payload: req.body,
       baseFieldHlc: req.body?.baseFieldHlc,
     }),
@@ -1428,6 +1528,7 @@ export function createApp(): Express {
       kind: 'order.setStage',
       entity: 'order',
       entityId: req.params.id,
+
       payload: { stageId: req.body?.stageId, remark: req.body?.remark ?? null },
     }),
   );
@@ -1436,6 +1537,7 @@ export function createApp(): Express {
       kind: 'order.dispatch',
       entity: 'order',
       entityId: req.params.id,
+
       payload: { note: req.body?.note ?? null },
     }),
   );
@@ -2524,7 +2626,8 @@ function noticesFor(view: LocalView, permissions: readonly string[], ownCache: b
  * cache built for somebody else carries cards resolved under that person's permissions.
  */
 function sellTodayFor(view: LocalView, permissions: readonly string[], ownCache: boolean) {
-  if (!view.sellToday || !permissions.includes('notices.view')) return view.sellToday ? [] : undefined;
+  if (!view.sellToday || !permissions.includes('notices.view'))
+    return view.sellToday ? [] : undefined;
   const entries = ownCache
     ? view.sellToday
     : view.sellToday.filter((entry) => entry.audience.kind === 'all');

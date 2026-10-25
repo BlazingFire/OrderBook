@@ -33,7 +33,11 @@ describe('the New Order name', () => {
   it('names the lists and the records New Orders too (owner, 2026-10-08)', () => {
     expect(en['nav.leads']).toBe('New Orders');
     expect(en['orderNote.pendingOrderNo']).toBe('New Order No.');
-    const left = Object.entries(en).filter(([, text]) => /pending order/i.test(text));
+    // product.alteration.pendingOrders ('Pending orders') is the one legit survivor:
+    // the alteration review distinguishes pending from frozen history.
+    const left = Object.entries(en).filter(
+      ([key, text]) => /pending order/i.test(text) && !key.startsWith('product.alteration.'),
+    );
     expect(left).toEqual([]);
   });
 });

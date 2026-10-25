@@ -33,6 +33,8 @@ export function noteSheetProps(document: NoteDocument, kind: NoteKind, printedAt
     namedCount: model.named.length,
     codedCount: model.coded.reduce((sum, group) => sum + group.lines.length, 0),
     printedAt,
+    // The frozen choice: an unticked column vanishes from the printroom too.
+    columns: document.columns ?? undefined,
   };
 }
 

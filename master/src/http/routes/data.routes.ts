@@ -28,6 +28,7 @@ import * as dashboardService from '../../services/dashboard.service.js';
 import * as duplicateService from '../../services/duplicate-products.service.js';
 import * as fieldsService from '../../services/fields.service.js';
 import * as productShareService from '../../services/product-share.service.js';
+import * as productAlterationService from '../../services/product-alteration.service.js';
 import { isProductRestoreRunning } from '../../services/product-zip.service.js';
 import * as leadService from '../../services/lead.service.js';
 import * as orderService from '../../services/order.service.js';
@@ -154,7 +155,12 @@ dataRoutes.post(
     const confirmWipe = req.body?.confirmWipe === 'true' || req.body?.confirmWipe === true;
 
     res.json(
-      await backupRestoreService.restoreBackup(req.file.buffer, passphrase, confirmWipe, actorFromRequest(req)),
+      await backupRestoreService.restoreBackup(
+        req.file.buffer,
+        passphrase,
+        confirmWipe,
+        actorFromRequest(req),
+      ),
     );
   }),
 );
@@ -181,14 +187,9 @@ dataRoutes.post(
   }),
 );
 
-dataRoutes.get(
-  '/storage/archive/job',
-  requireLoopback,
-  needs('storage.backupAll'),
-  (_req, res) => {
-    res.json(currentJob());
-  },
-);
+dataRoutes.get('/storage/archive/job', requireLoopback, needs('storage.backupAll'), (_req, res) => {
+  res.json(currentJob());
+});
 
 dataRoutes.get(
   '/storage/archives',
@@ -345,7 +346,8 @@ dataRoutes.get(
         {
           ...paging(req.query),
           city: typeof req.query.city === 'string' && req.query.city ? req.query.city : undefined,
-          state: typeof req.query.state === 'string' && req.query.state ? req.query.state : undefined,
+          state:
+            typeof req.query.state === 'string' && req.query.state ? req.query.state : undefined,
           hasGst:
             req.query.hasGst === 'true' ? true : req.query.hasGst === 'false' ? false : undefined,
         },
@@ -358,9 +360,7 @@ dataRoutes.get(
 dataRoutes.get(
   '/parties/:id',
   asyncHandler(async (req, res) => {
-    res.json(
-      await catalogService.getPartyWithAccess(String(req.params.id), actorFromRequest(req)),
-    );
+    res.json(await catalogService.getPartyWithAccess(String(req.params.id), actorFromRequest(req)));
   }),
 );
 
@@ -414,9 +414,7 @@ dataRoutes.delete(
 dataRoutes.get(
   '/parties/:id/variants',
   asyncHandler(async (req, res) => {
-    res.json(
-      await catalogService.listPartyRecords(String(req.params.id), actorFromRequest(req)),
-    );
+    res.json(await catalogService.listPartyRecords(String(req.params.id), actorFromRequest(req)));
   }),
 );
 
@@ -458,7 +456,11 @@ dataRoutes.get(
           missingWeight: req.query.missingWeight === 'true',
           size: typeof req.query.size === 'string' && req.query.size ? req.query.size : undefined,
           hasPhoto:
-            req.query.hasPhoto === 'true' ? true : req.query.hasPhoto === 'false' ? false : undefined,
+            req.query.hasPhoto === 'true'
+              ? true
+              : req.query.hasPhoto === 'false'
+                ? false
+                : undefined,
         },
         actorFromRequest(req),
       ),
@@ -507,6 +509,46 @@ dataRoutes.delete(
   needs('products.delete'),
   asyncHandler(async (req, res) => {
     res.json(await catalogService.deleteProduct(String(req.params.id), actorFromRequest(req)));
+  }),
+);
+
+dataRoutes.get(
+  '/products/:id/alteration/preview',
+  asyncHandler(async (req, res) => {
+    res.json(
+      await productAlterationService.previewProductAlteration(
+        String(req.params.id),
+        actorFromRequest(req),
+      ),
+    );
+  }),
+);
+dataRoutes.post(
+  '/products/:id/alteration/apply',
+  asyncHandler(async (req, res) => {
+    res.json(
+      await productAlterationService.applyProductAlteration(
+        String(req.params.id),
+        {
+          product: req.body?.product ?? req.body,
+          baseFieldHlc: req.body?.baseFieldHlc as Record<string, string> | undefined,
+        },
+        actorFromRequest(req),
+      ),
+    );
+  }),
+);
+dataRoutes.post(
+  '/products/:id/alteration/pdf',
+  asyncHandler(async (req, res) => {
+    const file = await productAlterationService.alterationOrdersPdf(
+      String(req.body?.productName ?? ''),
+      req.body?.affected ?? [],
+      actorFromRequest(req),
+    );
+    res.setHeader('Content-Type', file.contentType);
+    res.setHeader('Content-Disposition', 'attachment; filename=' + file.fileName);
+    res.send(file.bytes);
   }),
 );
 
@@ -583,7 +625,9 @@ dataRoutes.put(
   '/leads/:id',
   needs('leads.edit'),
   asyncHandler(async (req, res) => {
-    res.json(await leadService.updateLead(String(req.params.id), req.body ?? {}, actorFromRequest(req)));
+    res.json(
+      await leadService.updateLead(String(req.params.id), req.body ?? {}, actorFromRequest(req)),
+    );
   }),
 );
 
@@ -609,7 +653,10 @@ dataRoutes.get(
           stageIds: idList(req.query.stageIds),
           includeConverted: req.query.includeConverted === 'true',
           convertedOnly: req.query.convertedOnly === 'true',
-          partyId: typeof req.query.partyId === 'string' && req.query.partyId ? req.query.partyId : undefined,
+          partyId:
+            typeof req.query.partyId === 'string' && req.query.partyId
+              ? req.query.partyId
+              : undefined,
           followUpDueOnly: req.query.followUpDueOnly === 'true',
         },
         actorFromRequest(req),
@@ -628,7 +675,10 @@ dataRoutes.get(
           ...paging(req.query),
           includeConverted: req.query.includeConverted === 'true',
           convertedOnly: req.query.convertedOnly === 'true',
-          partyId: typeof req.query.partyId === 'string' && req.query.partyId ? req.query.partyId : undefined,
+          partyId:
+            typeof req.query.partyId === 'string' && req.query.partyId
+              ? req.query.partyId
+              : undefined,
           followUpDueOnly: req.query.followUpDueOnly === 'true',
         },
         actorFromRequest(req),
@@ -723,7 +773,10 @@ dataRoutes.get(
         {
           ...paging(req.query),
           stageIds: idList(req.query.stageIds),
-          partyId: typeof req.query.partyId === 'string' && req.query.partyId ? req.query.partyId : undefined,
+          partyId:
+            typeof req.query.partyId === 'string' && req.query.partyId
+              ? req.query.partyId
+              : undefined,
         },
         actorFromRequest(req),
       ),
@@ -816,7 +869,8 @@ dataRoutes.get(
   '/presence/board',
   asyncHandler(async (req, res) => {
     const kind = req.query.kind;
-    if (kind !== 'lead' && kind !== 'order') throw new ValidationError('validation.presence.invalid');
+    if (kind !== 'lead' && kind !== 'order')
+      throw new ValidationError('validation.presence.invalid');
     res.json(await presenceService.boardFor(actorFromRequest(req), kind));
   }),
 );

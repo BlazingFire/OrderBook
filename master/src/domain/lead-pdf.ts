@@ -17,7 +17,14 @@
  * whoever clicked Preview in their own locale.
  */
 
-import { buildOrderNote, paginateOrderNote, recordNumber, t, type ColourLabelOf } from '@orderbook/shared';
+import {
+  buildOrderNote,
+  paginateOrderNote,
+  recordNumber,
+  t,
+  type ColourLabelOf,
+  type NoteColumns,
+} from '@orderbook/shared';
 import type { Lead, Party } from '@orderbook/shared';
 
 import type { NotePdfInput } from '../pdf/note-renderer.js';
@@ -29,6 +36,10 @@ export function leadNotePdf(
   printedAt: Date,
   /** The colour list's label for a stored value (`colourLabeller`), resolved at print time. */
   labelOf: ColourLabelOf = (colour) => colour,
+  /** The saved tick boxes: an unticked column vanishes from this PDF too. */
+  columns?: NoteColumns,
+  /** The company switch (notes.defaultBold): regular faces when false. */
+  bold?: boolean,
 ): NotePdfInput {
   const model = buildOrderNote(lead, labelOf);
   return {
@@ -41,6 +52,8 @@ export function leadNotePdf(
     notes: lead.notes?.trim() ?? '',
     // No signature row: nobody signs this one, so its room goes to the lines.
     pages: paginateOrderNote(model, 'dispatch', { signatures: false, notes: lead.notes }),
+    columns,
+    bold,
     namedCount: model.named.length,
     codedCount: model.coded.reduce((sum, group) => sum + group.lines.length, 0),
     itemCount: model.itemCount,

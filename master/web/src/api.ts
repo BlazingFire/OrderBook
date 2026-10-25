@@ -132,6 +132,9 @@ import type {
   ProductImportFormat,
   ProductImportMode,
   ProductImportResult,
+  ProductAlterationPreview,
+  ProductAlterationApplyResult,
+  ProductAlterationAffected,
   ProductInput,
   ProductListPage,
   ProductListQuery,
@@ -326,7 +329,12 @@ async function send<T>(
      * boot-time `me` check: a 401 there means nobody has signed in yet, not that a session
      * ended, and it put "Not signed in" above a fresh sign-in form.
      */
-    if (response.status === 401 && !path.endsWith('/sign-in') && path !== '/api/auth/me' && !MASTER_KEY_REFUSALS.has(detail?.messageKey ?? '')) {
+    if (
+      response.status === 401 &&
+      !path.endsWith('/sign-in') &&
+      path !== '/api/auth/me' &&
+      !MASTER_KEY_REFUSALS.has(detail?.messageKey ?? '')
+    ) {
       publishSessionEnded(detail?.messageKey ?? 'signIn.notice.sessionEnded');
     }
 
@@ -406,7 +414,6 @@ function sharedRead<T>(
   timeout: AbortSignal,
   asFailure: (error: unknown) => never,
 ): Promise<T> {
-
   /*
    * The dedupe key is the path *plus* whatever headers the caller set. A GET
    * carrying `x-developer-token` is a different question from the same GET
@@ -592,10 +599,9 @@ export const api = {
   /** A correct key buys a five-minute token; five wrong ones lock the gate for a minute. */
   verifyMasterKey: (key: string) => post<MasterKeyUnlock>('/api/master-key/verify', { key }),
   serverMasters: (masterKeyToken: string) =>
-    request<{ accounts: ServerMasterAccount[]; needed: number }>(
-      '/api/master-key/server-masters',
-      { headers: masterKeyHeader(masterKeyToken) },
-    ),
+    request<{ accounts: ServerMasterAccount[]; needed: number }>('/api/master-key/server-masters', {
+      headers: masterKeyHeader(masterKeyToken),
+    }),
   /** The upgrade flow: exactly the missing Server Masters, before anyone signs in. */
   setUpServerMasters: (accounts: ServerMasterAccountInput[], masterKeyToken: string) =>
     request<{ accounts: Array<{ id: string; username: string; displayName: string }> }>(
@@ -643,8 +649,7 @@ export const api = {
   signOut: () => post<void>('/api/auth/sign-out'),
   // Carries the caller's own resolved permissions, so the UI renders from what
   // the trusted process granted rather than guessing from the role name.
-  me: () =>
-    request<{ user: SignedInUser; sessionToken: string }>('/api/auth/me'),
+  me: () => request<{ user: SignedInUser; sessionToken: string }>('/api/auth/me'),
 
   storage: () => request<StorageUsage>('/api/storage'),
 
@@ -672,7 +677,9 @@ export const api = {
   startArchiveBackup: (folder: string) => post<BackupJobStatus>('/api/storage/archive', { folder }),
   archiveJob: () => request<BackupJobStatus | null>('/api/storage/archive/job'),
   listArchives: (folder: string) =>
-    request<ArchiveListEntry[]>(`/api/storage/archives?${new URLSearchParams({ folder }).toString()}`),
+    request<ArchiveListEntry[]>(
+      `/api/storage/archives?${new URLSearchParams({ folder }).toString()}`,
+    ),
   previewArchive: (path: string) => post<ArchivePreview>('/api/storage/archive/preview', { path }),
   /**
    * Replaces every record, so it needs the master key. The job is followed
@@ -876,7 +883,10 @@ export const api = {
   },
   createCategory: (input: CategoryInput) => post<ProductCategory>('/api/categories', input),
   updateCategory: (id: string, input: CategoryUpdateInput) =>
-    request<ProductCategory>(`/api/categories/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+    request<ProductCategory>(`/api/categories/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
   deleteCategory: (id: string) =>
     request<{ id: string; deletedAt: string }>(`/api/categories/${id}`, { method: 'DELETE' }),
   deleteProduct: (id: string) =>
@@ -888,6 +898,20 @@ export const api = {
     post<DuplicateResolveResult>('/api/duplicates/resolve', input),
 
   /** 1.4 D3: Create product share; the Master draws the PDF with the photographs. */
+  previewProductAlteration: (id: string) =>
+    request<ProductAlterationPreview>(`/api/products/${id}/alteration/preview`),
+  applyProductAlteration: (id: string, product: ProductInput, baseFieldHlc?: Record<string, string>) =>
+    post<ProductAlterationApplyResult>(`/api/products/${id}/alteration/apply`, {
+      product,
+      ...(baseFieldHlc ? { baseFieldHlc } : {}),
+    }),
+  alterationOrdersPdf: (id: string, productName: string, affected: ProductAlterationAffected[]) =>
+    requestFile(`/api/products/${id}/alteration/pdf`, `alteration.pdf`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productName, affected }),
+    }),
+
   productSharePdf: (ids: string[]) =>
     requestFile('/api/products/share.pdf', 'product-share.pdf', {
       method: 'POST',
@@ -903,11 +927,17 @@ export const api = {
       `/api/products/export.${format}${level === 'main' ? '?level=main' : ''}`,
       `products.${format}`,
     ),
-  importProducts: (file: File, options: { dryRun: boolean; mode: ProductImportMode }) => {
+  importProducts: (
+    file: File,
+    options: { dryRun: boolean; mode: ProductImportMode; onlyRows?: number[]; fileHash?: string },
+  ) => {
     const form = new FormData();
     form.append('file', file);
     form.append('dryRun', String(options.dryRun));
     form.append('mode', options.mode);
+    if (options.onlyRows && options.onlyRows.length > 0)
+      form.append('onlyRows', options.onlyRows.join(','));
+    if (options.fileHash) form.append('fileHash', options.fileHash);
     return requestForm<ProductImportResult>('/api/products/import', form);
   },
 
@@ -928,7 +958,10 @@ export const api = {
     requestFile(`/api/parties/import/template.${format}`, `parties-template.${format}`),
   exportParties: (format: PartyImportFormat) =>
     requestFile(`/api/parties/export.${format}`, `parties.${format}`),
-  importParties: (file: File, options: { dryRun: boolean; mode: PartyImportMode }) => {
+  importParties: (
+    file: File,
+    options: { dryRun: boolean; mode: PartyImportMode },
+  ) => {
     const form = new FormData();
     form.append('file', file);
     form.append('dryRun', String(options.dryRun));
@@ -1018,7 +1051,12 @@ export const api = {
 
   /** Per-stage counts under the same filters as `leads`, ignoring the stage chip. */
   leadStageCounts: (
-    options: { includeConverted?: boolean; convertedOnly?: boolean; scope?: PartyScopeFilter; search?: string } = {},
+    options: {
+      includeConverted?: boolean;
+      convertedOnly?: boolean;
+      scope?: PartyScopeFilter;
+      search?: string;
+    } = {},
   ) => {
     const params = new URLSearchParams();
     if (options.convertedOnly) params.set('convertedOnly', 'true');
@@ -1174,7 +1212,8 @@ export const api = {
   },
 
   /** Which product ids are still in the catalogue — the entry form's save check. */
-  liveProducts: (ids: string[]) => post<{ live: string[] | null }>('/api/pick/live-products', { ids }),
+  liveProducts: (ids: string[]) =>
+    post<{ live: string[] | null }>('/api/pick/live-products', { ids }),
 
   conflicts: (includeResolved = false) =>
     request<SyncConflict[]>(`/api/conflicts${includeResolved ? '?includeResolved=true' : ''}`),
@@ -1195,12 +1234,14 @@ export const api = {
         : `/api/parties/${id}`,
       { method: 'DELETE' },
     ),
-  partyDeletePreview: (id: string) => request<PartyDeletePreview>(`/api/parties/${id}/delete-preview`),
+  partyDeletePreview: (id: string) =>
+    request<PartyDeletePreview>(`/api/parties/${id}/delete-preview`),
 
   // --- Delete data (shared/src/domain/data-reset.ts) ------------------------
 
   freshStartSummary: () => request<FreshStartSummary>('/api/data-reset/summary'),
-  freshStart: (input: FreshStartInput) => post<FreshStartResult>('/api/data-reset/fresh-start', input),
+  freshStart: (input: FreshStartInput) =>
+    post<FreshStartResult>('/api/data-reset/fresh-start', input),
   clearChat: (input: FreshStartInput) => post<ChatClearResult>('/api/data-reset/chat', input),
   clearPrintHistory: (input: FreshStartInput) =>
     post<PrintHistoryClearResult>('/api/data-reset/print-history', input),
@@ -1257,16 +1298,21 @@ export const api = {
   notices: () => request<NoticeBoard>('/api/notices'),
   /** Every notice, expired ones included, with role names and read counts. `notices.manage`. */
   noticeManageList: () => request<Notice[]>('/api/notices/manage'),
-  noticeReaders: (id: string) => request<NoticeReaders>(`/api/notices/${encodeURIComponent(id)}/readers`),
+  noticeReaders: (id: string) =>
+    request<NoticeReaders>(`/api/notices/${encodeURIComponent(id)}/readers`),
   /** The roles an audience can be made of. `notices.manage`. */
   noticeAudiences: () => request<Array<{ id: string; name: string }>>('/api/notices/audiences'),
   createNotice: (input: NoticeInput) => post<Notice>('/api/notices', input),
   updateNotice: (id: string, update: NoticeUpdate) =>
-    request<Notice>(`/api/notices/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(update) }),
+    request<Notice>(`/api/notices/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(update),
+    }),
   deleteNotice: (id: string) =>
     request<{ id: string }>(`/api/notices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   /** Marks the given notices read (all of them when `ids` is left out) and answers the new unread count. */
-  markNoticesRead: (ids?: string[]) => post<{ unreadCount: number }>('/api/notices/read', ids ? { ids } : {}),
+  markNoticesRead: (ids?: string[]) =>
+    post<{ unreadCount: number }>('/api/notices/read', ids ? { ids } : {}),
   /** Every "Sell today" entry, ended ones included. `notices.manage`. Deleted with `deleteNotice`. */
   sellTodayManageList: () => request<SellToday[]>('/api/notices/sell-today'),
 
@@ -1290,7 +1336,8 @@ export const api = {
     requestUntracked<ChatRoomSummary[]>(
       `/api/chat/rooms?all=${options.all ? '1' : '0'}&archived=${options.includeArchived ? '1' : '0'}`,
     ),
-  chatRoom: (roomId: string) => requestUntracked<ChatRoomDetail>(`/api/chat/rooms/${encodeURIComponent(roomId)}`),
+  chatRoom: (roomId: string) =>
+    requestUntracked<ChatRoomDetail>(`/api/chat/rooms/${encodeURIComponent(roomId)}`),
   chatMessages: (roomId: string, options: { beforeSeq?: number; limit?: number } = {}) => {
     const params = new URLSearchParams();
     if (options.beforeSeq) params.set('before', String(options.beforeSeq));
@@ -1311,7 +1358,9 @@ export const api = {
       body: JSON.stringify({ body, ...(mentions ? { mentions } : {}) }),
     }),
   chatDelete: (messageId: string) =>
-    requestUntracked<ChatMessage>(`/api/chat/messages/${encodeURIComponent(messageId)}`, { method: 'DELETE' }),
+    requestUntracked<ChatMessage>(`/api/chat/messages/${encodeURIComponent(messageId)}`, {
+      method: 'DELETE',
+    }),
   chatPin: (messageId: string, pinned: boolean) =>
     requestUntracked<ChatMessage>(`/api/chat/messages/${encodeURIComponent(messageId)}/pin`, {
       method: 'POST',
@@ -1323,35 +1372,49 @@ export const api = {
       body: JSON.stringify({ done }),
     }),
   chatRead: (roomId: string, seq: number) =>
-    requestUntracked<{ lastReadSeq: number }>(`/api/chat/rooms/${encodeURIComponent(roomId)}/read`, {
-      method: 'POST',
-      body: JSON.stringify({ seq }),
-    }),
+    requestUntracked<{ lastReadSeq: number }>(
+      `/api/chat/rooms/${encodeURIComponent(roomId)}/read`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ seq }),
+      },
+    ),
   chatMute: (roomId: string, muted: boolean) =>
     requestUntracked<null>(`/api/chat/rooms/${encodeURIComponent(roomId)}/mute`, {
       method: 'POST',
       body: JSON.stringify({ muted }),
     }),
   chatDirect: (userId: string) =>
-    requestUntracked<ChatRoomSummary>('/api/chat/direct', { method: 'POST', body: JSON.stringify({ userId }) }),
+    requestUntracked<ChatRoomSummary>('/api/chat/direct', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    }),
   chatCreateRoom: (input: ChatRoomInput) =>
-    requestUntracked<ChatRoomSummary>('/api/chat/rooms', { method: 'POST', body: JSON.stringify(input) }),
+    requestUntracked<ChatRoomSummary>('/api/chat/rooms', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
   chatUpdateRoom: (roomId: string, patch: ChatRoomPatch) =>
     requestUntracked<ChatRoomSummary>(`/api/chat/rooms/${encodeURIComponent(roomId)}`, {
       method: 'PUT',
       body: JSON.stringify(patch),
     }),
   chatSetMember: (roomId: string, userId: string, role: ChatMemberRole | null) =>
-    requestUntracked<ChatRoomDetail | null>(`/api/chat/rooms/${encodeURIComponent(roomId)}/members`, {
-      method: 'POST',
-      body: JSON.stringify({ userId, role }),
-    }),
+    requestUntracked<ChatRoomDetail | null>(
+      `/api/chat/rooms/${encodeURIComponent(roomId)}/members`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ userId, role }),
+      },
+    ),
   chatSearch: (q: string, roomId?: string) =>
     requestUntracked<ChatSearchHit[]>(
       `/api/chat/search?q=${encodeURIComponent(q)}${roomId ? `&roomId=${encodeURIComponent(roomId)}` : ''}`,
     ),
   chatTasks: (scope: 'mine' | 'created', includeDone: boolean) =>
-    requestUntracked<ChatTaskRow[]>(`/api/chat/tasks?scope=${scope}&includeDone=${includeDone ? '1' : '0'}`),
+    requestUntracked<ChatTaskRow[]>(
+      `/api/chat/tasks?scope=${scope}&includeDone=${includeDone ? '1' : '0'}`,
+    ),
   chatRequestAccess: (capability: ChatAccessCapability, note?: string) =>
     requestUntracked<{ notified: number }>('/api/chat/access-requests', {
       method: 'POST',
@@ -1377,10 +1440,15 @@ export const api = {
       body: JSON.stringify({ printed, ...(printerName ? { printerName } : {}) }),
     }),
   cancelPrintJob: (id: string) =>
-    requestUntracked<PrintJobSummary>(`/api/print-jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+    requestUntracked<PrintJobSummary>(`/api/print-jobs/${encodeURIComponent(id)}/cancel`, {
+      method: 'POST',
+    }),
   printStations: () => requestUntracked<PrintStation[]>('/api/print-stations'),
   savePrintStation: (input: PrintStationInput) =>
-    requestUntracked<PrintStation>('/api/print-stations/self', { method: 'PUT', body: JSON.stringify(input) }),
+    requestUntracked<PrintStation>('/api/print-stations/self', {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
   logs: (query: ActivityLogQuery = {}) => {
     const params = new URLSearchParams();
     if (query.cursor) params.set('cursor', query.cursor);
@@ -1428,7 +1496,10 @@ export const api = {
     request<ReportOptions>('/api/reports/options', signal ? { signal } : undefined),
   reportTable: (kind: ReportKind, query: ReportQuery, signal?: AbortSignal) => {
     const qs = reportQueryParams(query).toString();
-    return request<ReportTable>(`/api/reports/table/${kind}${qs ? `?${qs}` : ''}`, signal ? { signal } : undefined);
+    return request<ReportTable>(
+      `/api/reports/table/${kind}${qs ? `?${qs}` : ''}`,
+      signal ? { signal } : undefined,
+    );
   },
   reportExport: (kind: ReportKind, query: ReportQuery & { format: ReportFormat }) => {
     const params = reportQueryParams(query);

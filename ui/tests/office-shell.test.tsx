@@ -267,13 +267,9 @@ async function draftOneProduct(): Promise<void> {
 const addSubProduct = (): HTMLElement =>
   screen.getAllByRole('button', { name: t('lead.add.draft.saveProduct') })[0]!;
 
-
-/** A new order's notes sit in its Print & PDF menu (2026-10-08). */
+/** A new order's notes sit beside its header as direct buttons (2026-10-25). */
 async function noteItem(kind: 'orderNote.filling' | 'orderNote.dispatch'): Promise<HTMLElement> {
-  if (!screen.queryByRole('menu')) {
-    fireEvent.click(await screen.findByRole('button', { name: t('lead.detail.printMenu') }));
-  }
-  return screen.getByRole('menuitem', { name: t(kind) });
+  return screen.findByRole('button', { name: t(kind) });
 }
 
 describe('the event stream', () => {
@@ -1557,6 +1553,12 @@ describe('Edit lead', () => {
       await openLead(['leads.view']);
       expect((await noteItem('orderNote.filling'))).toBeTruthy();
       expect((await noteItem('orderNote.dispatch'))).toBeTruthy();
+      // Preview PDF is an export right: a viewer alone gets the notes, not the link.
+      expect(screen.queryByRole('link', { name: t('lead.previewPdf') })).toBeNull();
+      cleanup();
+
+      await openLead(['leads.view', 'leads.export']);
+      expect(screen.getByRole('link', { name: t('lead.previewPdf') })).toBeTruthy();
     });
 
     it('has no note buttons on a list row: notes open from the record (2026-10-09)', async () => {

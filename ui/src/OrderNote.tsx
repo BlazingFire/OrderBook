@@ -21,6 +21,7 @@ import {
   type NoteKind,
   type NoteLine,
   type NotePage,
+  type NoteColumns,
   type NotePartyHeader,
   type NoteSlot,
 } from '@orderbook/shared';
@@ -54,7 +55,7 @@ export interface OrderNoteProps {
   vehicleNumber: string;
   /** The record's notes, printed on the last page; blank lines to write on when empty. */
   notes: string | null;
-  /** Total pieces and weight of the whole order, for the last page's strip. */
+  /** Total pieces and weight of the whole order, for the strip on every page. */
   totalQuantity: number;
   totalWeightKg: number;
   itemCount: number;
@@ -63,13 +64,11 @@ export interface OrderNoteProps {
   printedAt: Date;
   /** Which of packing, grade and colour print; all when absent. The Dispatch note's tick boxes (owner, 2026-10-13). */
   columns?: NoteColumns;
+  /** Bold strip figures and headings (notes.defaultBold); regular faces when false. */
+  bold?: boolean;
 }
 
-export interface NoteColumns {
-  packaging: boolean;
-  grade: boolean;
-  colour: boolean;
-}
+export type { NoteColumns };
 
 const ALL_COLUMNS: NoteColumns = { packaging: true, grade: true, colour: true };
 
@@ -207,9 +206,9 @@ function Strip({
   return (
     <div className={`ob-note-strip ob-note-strip-${position}`}>
       <div className="ob-note-strip-cell">
-        <div className="ob-note-eyebrow">{last ? t('orderNote.qtyTotal') : t('orderNote.qtyThisPage')}</div>
-        <div className={`ob-note-strip-figure${last ? ' ob-note-strip-figure--total' : ''}`}>
-          {num(last ? props.totalQuantity : page.quantity)}
+        <div className="ob-note-eyebrow">{t('orderNote.qtyTotal')}</div>
+        <div className={`ob-note-strip-figure ob-note-strip-figure--total`}>
+          {num(props.totalQuantity)}
           <span className="ob-note-strip-unit"> {t('orderNote.unit')}</span>
         </div>
         {bottom && (
@@ -222,9 +221,9 @@ function Strip({
       </div>
       <span className="ob-note-strip-rule" />
       <div className="ob-note-strip-cell">
-        <div className="ob-note-eyebrow">{last ? t('orderNote.weightTotal') : t('orderNote.weightThisPage')}</div>
-        <div className={`ob-note-strip-figure${last ? ' ob-note-strip-figure--total' : ''}`}>
-          {num(last ? props.totalWeightKg : page.weightKg)}
+        <div className="ob-note-eyebrow">{t('orderNote.weightTotal')}</div>
+        <div className={`ob-note-strip-figure ob-note-strip-figure--total`}>
+          {num(props.totalWeightKg)}
           <span className="ob-note-strip-unit"> kg</span>
         </div>
         {bottom && (
@@ -415,7 +414,7 @@ function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
 
 export function OrderNote(props: OrderNoteProps) {
   return (
-    <div className="ob-note-scope" style={LAYOUT_VARS}>
+    <div className={props.bold === false ? 'ob-note-scope' : 'ob-note-scope ob-note--bold'} style={LAYOUT_VARS}>
       {props.pages.map((page) => (
         <Sheet key={page.pageNo} props={props} page={page} />
       ))}

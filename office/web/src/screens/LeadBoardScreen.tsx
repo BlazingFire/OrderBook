@@ -23,6 +23,7 @@ import {
   AvatarStack,
   BOARD_SHOWN,
   Button,
+  ButtonLink,
   ConfirmDialog,
   deleteErrorText,
   ColourChip,
@@ -59,7 +60,6 @@ import {
   CopyRecordNumber,
   LeadRecordView,
   LeadStageMenu,
-  RecordMenu,
   type LeadRecordTransport,
 } from '@orderbook/ui';
 import { AddLeadScreen } from './AddLeadScreen';
@@ -177,6 +177,7 @@ export function LeadBoardScreen({
   // `leads.packagingRequiredOnConvert`, resolved at this panel's edge. At
   // component scope, not inside `renderCard` — `renderCard` closes over it.
   const packagingRequired = resolveCompanyFeatures(view.features).packagingRequiredOnConvert;
+  const notesDefaultBold = resolveCompanyFeatures(view.features).notesDefaultBold;
 
   const pipeline = view.pipelines.find((candidate) => candidate.kind === 'lead');
   const stages = [...(pipeline?.stages ?? [])].sort((a, b) => a.sequence - b.sequence);
@@ -371,6 +372,12 @@ export function LeadBoardScreen({
         initialKind={noteKind}
         canEditVehicle
         onSaveVehicle={async () => undefined}
+        onSaveNoteColumns={
+          canEdit && !openLead.convertedOrderId
+            ? async (noteColumns) => api.updateLead(openLead.id, { noteColumns })
+            : undefined
+        }
+        defaultBold={notesDefaultBold}
         onBack={() => setNote(null)}
         desktop={desktopBridge() ?? undefined}
         printroom={printroom}
@@ -445,32 +452,21 @@ export function LeadBoardScreen({
             {/* Notes come from the local snapshot, so they need no Master and no
                 sync; once converted, the final order carries them. The Master renders
                 the PDF, so a lead it has not received yet has none to show. */}
-            <RecordMenu
-              label={t('lead.detail.printMenu')}
-              icon="print"
-              items={[
-                ...(openLead.convertedOrderId
-                  ? []
-                  : [
-                      {
-                        label: t('orderNote.filling'),
-                        onSelect: () => setNote({ id: openLead.id, kind: 'filling' as const }),
-                      },
-                      {
-                        label: t('orderNote.dispatch'),
-                        onSelect: () => setNote({ id: openLead.id, kind: 'dispatch' as const }),
-                      },
-                    ]),
-                ...(canPreviewPdf && openLead.sync.hlc
-                  ? [
-                      {
-                        label: t('lead.previewPdf'),
-                        href: `/api/leads/${encodeURIComponent(openLead.id)}/pdf`,
-                      },
-                    ]
-                  : []),
-              ]}
-            />
+            {!openLead.convertedOrderId && (
+              <Button onClick={() => setNote({ id: openLead.id, kind: 'filling' as const })}>
+                {t('orderNote.filling')}
+              </Button>
+            )}
+            {!openLead.convertedOrderId && (
+              <Button onClick={() => setNote({ id: openLead.id, kind: 'dispatch' as const })}>
+                {t('orderNote.dispatch')}
+              </Button>
+            )}
+            {canPreviewPdf && openLead.sync.hlc && (
+              <ButtonLink href={'/api/leads/' + encodeURIComponent(openLead.id) + '/pdf'} target='_blank' variant='secondary'>
+                {t('lead.previewPdf')}
+              </ButtonLink>
+            )}
             {editable && (
               <Button variant="secondary" size="sm" icon="edit" onClick={() => setEditingId(openLead.id)}>
                 {t('lead.edit.action')}

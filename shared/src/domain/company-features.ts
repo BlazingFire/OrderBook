@@ -35,6 +35,7 @@ export interface ResolvedCompanyFeatures {
   noticesAtSignIn: boolean;
   sellTodayPopup: boolean;
   productSlideshow: boolean;
+  notesDefaultBold: boolean;
 }
 
 export function resolveCompanyFeatures(
@@ -57,5 +58,6 @@ export function resolveCompanyFeatures(
     sellTodayPopup: features?.sellTodayPopup ?? SETTINGS['notices.showSellToday'].fallback,
     productSlideshow:
       features?.productSlideshow ?? SETTINGS['basicHome.productSlideshow'].fallback,
+    notesDefaultBold: features?.notesDefaultBold ?? SETTINGS['notes.defaultBold'].fallback,
   };
 }

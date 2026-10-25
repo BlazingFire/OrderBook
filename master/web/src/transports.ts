@@ -65,6 +65,17 @@ export const catalogueTransport: CatalogueTransport = {
     start: (file, options) => api.startProductRestore(file, options),
     job: () => api.productRestoreJob(),
   },
+  alteration: {
+    preview: (productId) => api.previewProductAlteration(productId),
+    apply: (productId, product, baseFieldHlc) =>
+      api.applyProductAlteration(productId, product, baseFieldHlc),
+    pdf: (productId, productName, affected) =>
+      api.alterationOrdersPdf(productId, productName, affected),
+  },
+  duplicates: {
+    list: () => api.duplicates(),
+    resolve: (input) => api.resolveDuplicates(input),
+  },
 };
 
 export const partyImportTransport: PartyImportTransport = {

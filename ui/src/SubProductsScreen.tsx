@@ -1,6 +1,6 @@
 /**
  * Products -> Sub products: the sub-product list, its detail sub-screen and the
- * dialogs that create, edit and import.
+ * dialog that creates. Editing happens on the edit screen and intake lives on the conflicts screen.
  *
  * Port of the products half of `office/web/src/screens/CatalogScreen.tsx`; keep
  * in step (until the Office switches to this copy the code exists twice).
@@ -73,9 +73,6 @@ import { LoadMorePager } from './CursorPager.js';
 import { ProductDetail, SubProductColour } from './ProductDetail.js';
 import { useCommand } from './KeyboardProvider.js';
 import { ProductDrawer, type CreatedProduct } from './ProductDrawer.js';
-import { saveBlob } from './ImportDialog.js';
-import { ProductImportModal, exportCatalogueCsv } from './ProductImportModal.js';
-import { ProductZipModal } from './ProductZipModal.js';
 import { rem } from './rem.js';
 import { Select } from './SuggestInput.js';
 import { EmptyState, ErrorState, SkeletonTable } from './States.js';
@@ -108,10 +105,11 @@ export function SubProductsScreen({
   revision,
   onImported,
   focus,
+  onEditProduct,
 }: {
   view: CatalogueView;
   transport: CatalogueTransport;
-  /** A bulk import wrote something; the host refetches what else it shows (brands). */
+  /** A catalogue write outside this list (import, restore, create); the host refetches what else it shows (brands). */
   onImported?: () => void;
   /** Moves when the catalogue changed anywhere; the list is read again. */
   revision: number;
@@ -120,6 +118,8 @@ export function SubProductsScreen({
    * pop-up, 2026-10-08): its detail opens whether or not it is on the page the list shows.
    */
   focus?: { id: string; nonce: number };
+  /** Edit on the dedicated screen; absent keeps the edit dialog fallback. */
+  onEditProduct?: (id: string) => void;
 }) {
   const toast = useToast();
   // Held in a ref so a host that builds the object inline cannot re-run an
@@ -132,12 +132,6 @@ export function SubProductsScreen({
   useCommand('product.new', canCreate ? () => setDrawerOpen(true) : null);
   const canEdit = view.permissions.includes('products.edit');
   const canDelete = view.permissions.includes('products.delete');
-  const canImport = view.permissions.includes('products.bulk');
-  // The product backup zip, where the panel offers it (the Master): backing up
-  // is the export permission, restoring writes like an upsert import.
-  const productZip = transport.productZip;
-  const canBackup = Boolean(productZip) && view.permissions.includes('products.export');
-  const canRestore = Boolean(productZip) && canImport && canCreate && canEdit;
 
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<ProductFilters>(NO_FILTERS);
@@ -164,9 +158,6 @@ export function SubProductsScreen({
   /** The sub product Delete was asked for, from its row or its detail; null while no dialog shows. */
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
-  const [zipOpen, setZipOpen] = useState(false);
-  const [backingUp, setBackingUp] = useState(false);
 
   const [page, setPage] = useState<ProductPage | null>(null);
   const [loading, setLoading] = useState(false);
@@ -283,8 +274,17 @@ export function SubProductsScreen({
     }
   }
 
+  function editProduct(product: Product): void {
+    if (onEditProduct) {
+      onEditProduct(product.id);
+      return;
+    }
+    setEditing(product);
+  }
+
   function onCreated(product: CreatedProduct): void {
     setDrawerOpen(false);
+    onImported?.();
     setRefetch((current) => current + 1);
     toast.push(t('catalog.products.savedOnline', { name: product.name }));
   }
@@ -357,75 +357,32 @@ export function SubProductsScreen({
       />
       {!open && (
         <>
-        {/* Counted only while chosen: the page's total is the one figure to
+          {/* Counted only while chosen: the page's total is the one figure to
             hand, and a count per brand would be a query per chip. */}
-        <FilterChip
-          active={filters.brand === null}
-          count={filters.brand === null && page ? page.total : undefined}
-          onClick={() => setFilters((current) => ({ ...current, brand: null }))}
-        >
-          {t('catalog.filter.all')}
-        </FilterChip>
-        {brands.map((brand) => (
           <FilterChip
-            key={brand.id}
-            active={filters.brand === brand.value}
-            count={filters.brand === brand.value && page ? page.total : undefined}
-            // A product of another brand would filter the list to nothing.
-            onClick={() => setFilters({ brand: brand.value, categoryId: null })}
+            active={filters.brand === null}
+            count={filters.brand === null && page ? page.total : undefined}
+            onClick={() => setFilters((current) => ({ ...current, brand: null }))}
           >
-            {brand.label}
+            {t('catalog.filter.all')}
           </FilterChip>
-        ))}
-        <span style={{ flex: 1 }} />
-        <Button
-          variant="secondary"
-          size="sm"
-          icon="upload"
-          onClick={() =>
-            void exportCatalogueCsv(transportRef.current, 'sub').catch((caught) =>
-              toast.push(apiErrorText(caught, 'catalog.export.failed'), { tone: 'error' }),
-            )
-          }
-        >
-          {t('catalog.export')}
-        </Button>
-        {canBackup && (
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="upload"
-            busy={backingUp}
-            disabled={backingUp}
-            onClick={() => {
-              const zip = transportRef.current.productZip;
-              if (!zip) return;
-              setBackingUp(true);
-              void zip
-                .exportZip()
-                .then(({ blob, fileName }) => saveBlob(blob, fileName))
-                .catch((caught) => toast.push(apiErrorText(caught, 'productZip.backupFailed'), { tone: 'error' }))
-                .finally(() => setBackingUp(false));
-            }}
-          >
-            {t('productZip.backup')}
-          </Button>
-        )}
-        {canRestore && (
-          <Button variant="secondary" size="sm" icon="download" onClick={() => setZipOpen(true)}>
-            {t('productZip.restore')}
-          </Button>
-        )}
-        {canImport && (
-          <Button variant="secondary" size="sm" icon="download" onClick={() => setImportOpen(true)}>
-            {t('catalog.products.import')}
-          </Button>
-        )}
-        {canCreate && (
-          <Button variant="primary" size="sm" icon="plus" onClick={() => setDrawerOpen(true)}>
-            {t('catalog.products.new')}
-          </Button>
-        )}
+          {brands.map((brand) => (
+            <FilterChip
+              key={brand.id}
+              active={filters.brand === brand.value}
+              count={filters.brand === brand.value && page ? page.total : undefined}
+              // A product of another brand would filter the list to nothing.
+              onClick={() => setFilters({ brand: brand.value, categoryId: null })}
+            >
+              {brand.label}
+            </FilterChip>
+          ))}
+          <span style={{ flex: 1 }} />
+          {canCreate && (
+            <Button variant="primary" size="sm" icon="plus" onClick={() => setDrawerOpen(true)}>
+              {t('catalog.products.new')}
+            </Button>
+          )}
         </>
       )}
     </>,
@@ -540,7 +497,7 @@ export function SubProductsScreen({
               <RowActions
                 editLabel={t('product.detail.editAction')}
                 deleteLabel={t('catalog.subProducts.delete')}
-                onEdit={canEdit ? () => setEditing(product) : undefined}
+                onEdit={canEdit ? () => editProduct(product) : undefined}
                 onDelete={canDelete ? () => setDeleteTarget(product) : undefined}
               />
             ),
@@ -599,7 +556,7 @@ export function SubProductsScreen({
           colourHex={colourHex}
           canEdit={canEdit}
           onEdit={() => {
-            setEditing(open);
+            editProduct(open);
             setOpenId(null);
             setPhotoPatch(null);
           }}
@@ -712,30 +669,6 @@ export function SubProductsScreen({
       )}
 
       {drawers}
-
-      <ProductImportModal
-        open={importOpen}
-        transport={transport}
-        onClose={() => setImportOpen(false)}
-        onImported={(result) => {
-          setRefetch((current) => current + 1);
-          onImported?.();
-          toast.push(t('import.done', { created: result.created, updated: result.updated }));
-        }}
-        onError={onDrawerError}
-      />
-      {productZip && canRestore && (
-        <ProductZipModal
-          open={zipOpen}
-          transport={productZip}
-          canDelete={view.permissions.includes('products.delete')}
-          onClose={() => setZipOpen(false)}
-          onRestored={() => {
-            setRefetch((current) => current + 1);
-            onImported?.();
-          }}
-        />
-      )}
     </>
   );
 }

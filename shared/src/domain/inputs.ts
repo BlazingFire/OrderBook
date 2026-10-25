@@ -18,6 +18,7 @@ import type {
   UserAvatar,
   Uuid,
 } from './entities.js';
+import type { NoteColumns } from './order-note.js';
 import type { FieldListKey } from './fields.js';
 import type { RoleTier } from './permissions.js';
 import type { RecycleBinEntityType } from './recycle-bin.js';
@@ -225,6 +226,8 @@ export interface LeadUpdateInput {
   notes?: string | null;
   customFields?: Record<string, unknown>;
   /** When present, replaces the whole line set — lines have no stable client id. */
+  /** The Dispatch note saved tick boxes; null clears the saved choice. */
+  noteColumns?: NoteColumns | null;
   items?: LineItemInput[];
   /**
    * The field clocks (`sync.fieldHlc`) the editor opened the record at, for the
@@ -260,6 +263,8 @@ export interface OrderUpdateInput {
   totalWeightKgOverride?: number | null;
   /** Printed on the Dispatch note. Trimmed and upper-cased; null clears it. */
   vehicleNumber?: string | null;
+  /** The Dispatch note saved tick boxes; null clears the saved choice. */
+  noteColumns?: NoteColumns | null;
   notes?: string | null;
   customFields?: Record<string, unknown>;
   /** As on `LeadUpdateInput`. */

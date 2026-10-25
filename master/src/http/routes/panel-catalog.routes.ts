@@ -27,6 +27,8 @@ import { ValidationError } from '../../lib/errors.js';
 import * as partyImportService from '../../services/party-import.service.js';
 import * as productImportService from '../../services/product-import.service.js';
 import * as productZipService from '../../services/product-zip.service.js';
+import * as duplicateService from '../../services/duplicate-products.service.js';
+import * as productAlterationService from '../../services/product-alteration.service.js';
 import { asyncHandler } from '../async-handler.js';
 import { panelActorFromRequest } from '../middleware/require-panel.js';
 import { requirePermission, type ActorContext } from '../../domain/actor.js';
@@ -60,7 +62,10 @@ const zipUpload = multer({
 });
 
 /** The file, or — for one past the size ceiling — the import's own named refusal, not a generic 400. */
-function uploader(single: ReturnType<typeof multer>, tooLarge: MessageKey = 'validation.import.tooLarge') {
+function uploader(
+  single: ReturnType<typeof multer>,
+  tooLarge: MessageKey = 'validation.import.tooLarge',
+) {
   return (req: Request, res: Response, next: NextFunction): void => {
     single.single('file')(req, res, (error: unknown) => {
       if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
@@ -152,17 +157,87 @@ export function productImportRoutes(
       const body = (req.body ?? {}) as Record<string, unknown>;
       const dryRun = String(body.dryRun ?? '') === 'true';
       const mode = body.mode === 'upsert' ? 'upsert' : 'create';
+      const rawOnly = (body as Record<string, unknown>).onlyRows;
+      const onlyRows = Array.isArray(rawOnly)
+        ? rawOnly.map((v) => Number(v)).filter((v) => Number.isInteger(v) && v > 0)
+        : typeof rawOnly === 'string' && rawOnly.length > 0
+          ? String(rawOnly)
+              .split(',')
+              .map((v) => Number(v.trim()))
+              .filter((v) => Number.isInteger(v) && v > 0)
+          : undefined;
 
       res.json(
         await productImportService.importProducts(
           { buffer: req.file.buffer, fileName: req.file.originalname || 'products.csv' },
-          { dryRun, mode },
+          {
+            dryRun,
+            mode,
+            onlyRows,
+            fileHash:
+              typeof body.fileHash === 'string' && body.fileHash.length > 0
+                ? body.fileHash
+                : undefined,
+          },
           actorOf(req),
         ),
       );
     }),
   );
 
+  routes.get(
+    '/duplicates',
+    asyncHandler(async (req, res) => {
+      res.json(await duplicateService.findDuplicates(actorOf(req)));
+    }),
+  );
+  routes.post(
+    '/duplicates/resolve',
+    asyncHandler(async (req, res) => {
+      res.json(await duplicateService.resolveDuplicates(req.body, actorOf(req)));
+    }),
+  );
+  routes.get(
+    '/products/:id/alteration/preview',
+    asyncHandler(async (req, res) => {
+      res.json(
+        await productAlterationService.previewProductAlteration(
+          String(req.params.id),
+          actorOf(req),
+        ),
+      );
+    }),
+  );
+  routes.post(
+    '/products/:id/alteration/apply',
+    asyncHandler(async (req, res) => {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      res.json(
+        await productAlterationService.applyProductAlteration(
+          String(req.params.id),
+          {
+            product: body.product as never,
+            baseFieldHlc: body.baseFieldHlc as Record<string, string> | undefined,
+          },
+          actorOf(req),
+        ),
+      );
+    }),
+  );
+  routes.post(
+    '/products/:id/alteration/pdf',
+    asyncHandler(async (req, res) => {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const file = await productAlterationService.alterationOrdersPdf(
+        String((body.productName as string | undefined) ?? ''),
+        (body.affected as never) ?? [],
+        actorOf(req),
+      );
+      res.setHeader('Content-Type', file.contentType);
+      res.setHeader('Content-Disposition', 'attachment; filename=' + file.fileName);
+      res.send(file.bytes);
+    }),
+  );
   if (!options.zip) return routes;
 
   /**
@@ -230,10 +305,14 @@ export function partyImportRoutes(actorOf: (req: Request) => ActorContext): Rout
   const routes: Router = Router();
 
   const formatOf = (value: unknown): 'csv' | 'xlsx' => {
-    if (value !== 'csv' && value !== 'xlsx') throw new ValidationError('validation.import.unsupportedFormat');
+    if (value !== 'csv' && value !== 'xlsx')
+      throw new ValidationError('validation.import.unsupportedFormat');
     return value;
   };
-  const send = (res: Response, file: { bytes: Buffer; contentType: string; fileName: string }): void => {
+  const send = (
+    res: Response,
+    file: { bytes: Buffer; contentType: string; fileName: string },
+  ): void => {
     res.setHeader('Content-Type', file.contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
     res.send(file.bytes);
@@ -242,7 +321,10 @@ export function partyImportRoutes(actorOf: (req: Request) => ActorContext): Rout
   routes.get(
     '/parties/import/template.:format',
     asyncHandler(async (req, res) => {
-      send(res, await partyImportService.partyImportTemplate(formatOf(req.params.format), actorOf(req)));
+      send(
+        res,
+        await partyImportService.partyImportTemplate(formatOf(req.params.format), actorOf(req)),
+      );
     }),
   );
 

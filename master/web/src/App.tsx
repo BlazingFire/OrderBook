@@ -140,31 +140,19 @@ import { SETTINGS_TAB_IDS, settingsTabIdsFor } from './settingsTabs';
  * path never wait on a fetch.
  */
 const AccessScreen = lazyScreen(() => import('./screens/AccessScreen'), 'AccessScreen');
-const ChatroomScreen = lazyScreen<
-  'ChatroomScreen',
-  ComponentProps<typeof ChatroomScreenImpl>
->(
+const ChatroomScreen = lazyScreen<'ChatroomScreen', ComponentProps<typeof ChatroomScreenImpl>>(
   () => import('@orderbook/ui/lazy/ChatroomScreen'),
   'ChatroomScreen',
 );
-const PrintroomScreen = lazyScreen<
-  'PrintroomScreen',
-  ComponentProps<typeof PrintroomScreenImpl>
->(
+const PrintroomScreen = lazyScreen<'PrintroomScreen', ComponentProps<typeof PrintroomScreenImpl>>(
   () => import('@orderbook/ui/lazy/PrintroomScreen'),
   'PrintroomScreen',
 );
-const ReportsScreen = lazyScreen<
-  'ReportsScreen',
-  ComponentProps<typeof ReportsScreenImpl>
->(
+const ReportsScreen = lazyScreen<'ReportsScreen', ComponentProps<typeof ReportsScreenImpl>>(
   () => import('@orderbook/ui/lazy/ReportsScreen'),
   'ReportsScreen',
 );
-const GalleryScreen = lazyScreen<
-  'GalleryScreen',
-  object
->(
+const GalleryScreen = lazyScreen<'GalleryScreen', object>(
   () => import('@orderbook/ui/lazy/GalleryScreen'),
   'GalleryScreen',
 );
@@ -244,7 +232,16 @@ type RecycleBinType = RecycleBinEntityType | '';
  */
 /** Screens whose open record publishes a sidebar label; signing out must not leave them for the next user. */
 const SUB_NAV_SCREENS = [
-  'leads', 'orders', 'parties', 'panels', 'logs', 'access', 'products', 'addLead', 'chatroom', 'printroom',
+  'leads',
+  'orders',
+  'parties',
+  'panels',
+  'logs',
+  'access',
+  'products',
+  'addLead',
+  'chatroom',
+  'printroom',
 ] as const;
 
 const SCREEN_ENTITIES: Record<string, readonly string[]> = {
@@ -252,7 +249,15 @@ const SCREEN_ENTITIES: Record<string, readonly string[]> = {
   /** Pending and Final Orders stage pages, apart from `records` so a lead edit does not re-read it. */
   stages: ['pipeline'],
   /** The New / Edit pending order form: what `/api/lead-entry` is built from. */
-  leadEntry: ['option_list', 'party', 'party_bulk', 'party_variant', 'product', 'catalog', 'setting'],
+  leadEntry: [
+    'option_list',
+    'party',
+    'party_bulk',
+    'party_variant',
+    'product',
+    'catalog',
+    'setting',
+  ],
   /**
    * The Products module, in two slices so a lead edit reads neither: the
    * products and their sub products (`catalog` is the one event a bulk import
@@ -272,7 +277,8 @@ const SCREEN_ENTITIES: Record<string, readonly string[]> = {
   recycleBin: [
     'lead',
     'order',
-    'party', 'party_bulk',
+    'party',
+    'party_bulk',
     'product',
     'product_category',
     'role',
@@ -750,7 +756,8 @@ function MasterPanel() {
    * (and kept current by the board itself as notices are marked read).
    */
   const canViewNotices = phase === 'ready' && (user?.permissions.includes('notices.view') ?? false);
-  const canManageNotices = phase === 'ready' && (user?.permissions.includes('notices.manage') ?? false);
+  const canManageNotices =
+    phase === 'ready' && (user?.permissions.includes('notices.manage') ?? false);
   const noticeBoard = useNotices(revisionOf(revisions, 'notices'), canViewNotices);
   // The notice a Basic Home slide opened, for the board to bring into view.
   const [noticeFocus, setNoticeFocus] = useState<{ id: string; nonce: number } | null>(null);
@@ -760,9 +767,14 @@ function MasterPanel() {
   const [signInSettledFor, setSignInSettledFor] = useState<string | null>(null);
   // The product a Basic Home card or the "Sell today" pop-up opened, for Sub products to show.
   const [productFocus, setProductFocus] = useState<{ id: string; nonce: number } | null>(null);
+  const [productEditFocus, setProductEditFocus] = useState<{ id: string; nonce: number } | null>(
+    null,
+  );
   // Sub products with photos, for Basic Home's product band on a day with no "Sell today" products.
   const canSeeProductBand =
-    phase === 'ready' && companyFeatures.productSlideshow && (user?.permissions.includes('products.view') ?? false);
+    phase === 'ready' &&
+    companyFeatures.productSlideshow &&
+    (user?.permissions.includes('products.view') ?? false);
   const catalogueRevision = revisionOf(revisions, 'catalogue');
   const [bandCatalogue, setBandCatalogue] = useState<Product[]>([]);
   useEffect(() => {
@@ -912,7 +924,9 @@ function MasterPanel() {
   const openConflicts = summary?.openConflictCount ?? 0;
   const pendingSync = summary?.pendingSyncCount ?? 0;
   // Removed panels are not offline, they are gone: only active ones count.
-  const offlinePanels = panels.filter((panel) => panel.status === 'active' && !panel.isConnected).length;
+  const offlinePanels = panels.filter(
+    (panel) => panel.status === 'active' && !panel.isConnected,
+  ).length;
   const canManageRoles =
     user.permissions.includes('roles.view') || user.permissions.includes('users.manage');
   const canManagePanels = user.permissions.includes('panels.manage');
@@ -1025,9 +1039,7 @@ function MasterPanel() {
     leads: [
       { key: 'list', label: t('lead.board.tab.list'), icon: 'orders' },
       { key: 'converted', label: t('leadsOrders.tab.converted'), icon: 'check' },
-      ...(canCreateLead
-        ? [{ key: 'new', label: t('lead.add.title'), icon: 'plus' as const }]
-        : []),
+      ...(canCreateLead ? [{ key: 'new', label: t('lead.add.title'), icon: 'plus' as const }] : []),
     ],
     // All stages, then one page per stage - read off the pipeline, so the
     // sidebar names whatever the company calls them.
@@ -1043,11 +1055,23 @@ function MasterPanel() {
       { key: 'sub', label: t('catalog.nav.subProducts'), icon: 'products' },
       { key: 'main', label: t('catalog.nav.mainProducts'), icon: 'inventory' },
       { key: 'brands', label: t('catalog.nav.brands'), icon: 'edit' },
-      ...(user.permissions.includes('products.delete')
-        ? [{ key: 'duplicates', label: t('catalog.nav.duplicates'), icon: 'trash' as const }]
-        : []),
+      // Duplicates used to sit here as its own page; the conflicts tab below
+      // carries the same finder, so this entry was removed rather than kept
+      // beside its replacement.
       ...(user.permissions.includes('products.edit')
         ? [{ key: 'photos', label: t('catalog.nav.photoImport'), icon: 'upload' as const }]
+        : []),
+      ...(canViewProducts &&
+      (user.permissions.includes('products.bulk') ||
+        user.permissions.includes('products.export') ||
+        user.permissions.includes('products.delete'))
+        ? [
+            {
+              key: 'conflicts',
+              label: t('catalog.nav.productConflicts'),
+              icon: 'conflicts' as const,
+            },
+          ]
         : []),
     ],
     reports: offeredReportKinds(user.roleTier, user.features, user.permissions).map((kind) => ({
@@ -1137,6 +1161,7 @@ function MasterPanel() {
   }
 
   function selectSubPage(module: string, key: string): void {
+    if (module === 'products') setProductEditFocus(null);
     if (module === 'settings') setSettingsTab(key);
     else if (module === 'leads' && key === 'new') openNewLead();
     else if (module === 'leads') {
@@ -1223,8 +1248,12 @@ function MasterPanel() {
     {
       label: t('nav.catalogue'),
       items: [
-        canViewProducts ? { id: 'products', label: t('nav.products'), icon: NAV_ICONS.products } : null,
-        canViewParties ? { id: 'parties', label: t('nav.master.parties'), icon: NAV_ICONS.parties } : null,
+        canViewProducts
+          ? { id: 'products', label: t('nav.products'), icon: NAV_ICONS.products }
+          : null,
+        canViewParties
+          ? { id: 'parties', label: t('nav.master.parties'), icon: NAV_ICONS.parties }
+          : null,
         canViewPartyAccess
           ? { id: 'partyAccess', label: t('nav.master.partyAccess'), icon: NAV_ICONS.partyAccess }
           : null,
@@ -1238,12 +1267,18 @@ function MasterPanel() {
     {
       label: t('nav.master.admin'),
       items: [
-        canManagePanels ? { id: 'panels', label: t('nav.master.panels'), icon: NAV_ICONS.panels } : null,
-        canManageRoles ? { id: 'access', label: t('nav.master.access'), icon: NAV_ICONS.access } : null,
+        canManagePanels
+          ? { id: 'panels', label: t('nav.master.panels'), icon: NAV_ICONS.panels }
+          : null,
+        canManageRoles
+          ? { id: 'access', label: t('nav.master.access'), icon: NAV_ICONS.access }
+          : null,
         canManageNotices
           ? { id: 'noticesManage', label: t('nav.noticesManage'), icon: NAV_ICONS.noticesManage }
           : null,
-        canViewFields ? { id: 'fields', label: t('nav.master.fields'), icon: NAV_ICONS.fields } : null,
+        canViewFields
+          ? { id: 'fields', label: t('nav.master.fields'), icon: NAV_ICONS.fields }
+          : null,
         canViewLogs ? { id: 'logs', label: t('nav.master.logs'), icon: NAV_ICONS.logs } : null,
         canViewRecycleBin
           ? { id: 'recycleBin', label: t('nav.master.recycleBin'), icon: NAV_ICONS.recycleBin }
@@ -1252,7 +1287,11 @@ function MasterPanel() {
           ? { id: 'dataDelete', label: t('nav.master.dataDelete'), icon: NAV_ICONS.dataDelete }
           : null,
         canManageApi
-          ? { id: 'integrations', label: t('nav.master.integrations'), icon: NAV_ICONS.integrations }
+          ? {
+              id: 'integrations',
+              label: t('nav.master.integrations'),
+              icon: NAV_ICONS.integrations,
+            }
           : null,
       ] satisfies Array<NavItem | null>,
     },
@@ -1289,17 +1328,18 @@ function MasterPanel() {
   // not shown as the landing screen.
   const NOT_IN_SIDEBAR: readonly string[] = canCreateLead ? ['addLead'] : [];
   const shownTab: Tab = NOT_IN_SIDEBAR.includes(tab) || offered(tab) ? tab : landing;
-  const activeId = subNav && shownTab !== 'addLead'
-    ? subNav.activeId
-    : route === 'gallery'
-      ? 'gallery'
-      : // `addLead` is not in the sidebar, so it is named here or it would fall
-        // through to a sidebar item and the sidebar would highlight nothing.
-        shownTab === 'addLead'
-        ? 'leads.new'
-        : subPages[shownTab]?.length
-        ? `${shownTab}.${subKeyOf(shownTab)}`
-        : shownTab;
+  const activeId =
+    subNav && shownTab !== 'addLead'
+      ? subNav.activeId
+      : route === 'gallery'
+        ? 'gallery'
+        : // `addLead` is not in the sidebar, so it is named here or it would fall
+          // through to a sidebar item and the sidebar would highlight nothing.
+          shownTab === 'addLead'
+          ? 'leads.new'
+          : subPages[shownTab]?.length
+            ? `${shownTab}.${subKeyOf(shownTab)}`
+            : shownTab;
   const activeLabel =
     route === 'gallery' && !subNav
       ? t('footer.designSystem')
@@ -1557,6 +1597,11 @@ function MasterPanel() {
     setProductFocus({ id, nonce: Date.now() });
     navigate('products.sub');
   };
+  /** Open a sub product on the dedicated edit screen (the products edit route). */
+  const openProductEdit = (id: string) => {
+    navigate('products.sub');
+    setProductEditFocus({ id, nonce: Date.now() });
+  };
   // Basic Home's top row: the notice band unless the company turned it off (`notices.showOnHome`),
   // drawn once the first read has answered, never as "none" before it; and the product band
   // (`basicHome.productSlideshow`): today's "Sell today" products, else sub products with photos.
@@ -1586,7 +1631,11 @@ function MasterPanel() {
                 />
               )}
               {showProductBand && (
-                <ProductSlideshow products={homeBand.products} sellToday={homeBand.sellToday} onOpen={openProduct} />
+                <ProductSlideshow
+                  products={homeBand.products}
+                  sellToday={homeBand.sellToday}
+                  onOpen={openProduct}
+                />
               )}
             </div>
           )}
@@ -1665,6 +1714,7 @@ function MasterPanel() {
           stages={leadStages}
           permissions={user.permissions}
           packagingRequired={companyFeatures.packagingRequiredOnConvert}
+          defaultBold={companyFeatures.notesDefaultBold}
           view={subKeys.leads === 'converted' ? 'converted' : 'list'}
           canCreate={canCreateLead}
           onNewLead={openNewLead}
@@ -1711,11 +1761,16 @@ function MasterPanel() {
           stages={orderStages}
           permissions={user.permissions}
           stageId={
-            subKeyOf('orders').startsWith('stage:') ? subKeyOf('orders').slice('stage:'.length) : null
+            subKeyOf('orders').startsWith('stage:')
+              ? subKeyOf('orders').slice('stage:'.length)
+              : null
           }
-          onStageChange={(stageId) => selectSubPage('orders', stageId === null ? 'all' : `stage:${stageId}`)}
+          onStageChange={(stageId) =>
+            selectSubPage('orders', stageId === null ? 'all' : `stage:${stageId}`)
+          }
           openId={openIds.orders}
           onOpenId={(id) => setOpenIds((current) => ({ ...current, orders: id }))}
+          defaultBold={companyFeatures.notesDefaultBold}
           onOpenLead={(leadId) => openRecord('leads', leadId)}
           onShareInChat={shareInChat}
           printroom={canSendPrint ? masterPrintroomTransport : undefined}
@@ -1810,6 +1865,9 @@ function MasterPanel() {
           catalogueRevision={revisionOf(revisions, 'catalogue')}
           listsRevision={revisionOf(revisions, 'catalogueLists')}
           focus={productFocus ?? undefined}
+          editFocus={productEditFocus ?? undefined}
+          onEditProduct={openProductEdit}
+          onEditBack={() => setProductEditFocus(null)}
         />
       ),
     },
@@ -1884,13 +1942,16 @@ function MasterPanel() {
     },
     {
       id: 'dataDelete',
-      render: () => <DataDeleteScreen revision={revisionOf(revisions, 'dataDelete')} permissions={user.permissions} />,
+      render: () => (
+        <DataDeleteScreen
+          revision={revisionOf(revisions, 'dataDelete')}
+          permissions={user.permissions}
+        />
+      ),
     },
     {
       id: 'conflicts',
-      render: () => (
-        <ConflictsScreen revision={revisionOf(revisions, 'conflicts')} />
-      ),
+      render: () => <ConflictsScreen revision={revisionOf(revisions, 'conflicts')} />,
     },
     {
       id: 'updates',
@@ -1980,7 +2041,8 @@ function MasterPanel() {
           else if (hit.kind === 'order_line') openRecord('orders', hit.id);
           else if (hit.kind === 'party') openRecord('parties', hit.id);
           // Like the Office, a product hit lands on the list, not on the record.
-          else if (hit.kind === 'product') navigate(offered('products.sub') ? 'products.sub' : 'products');
+          else if (hit.kind === 'product')
+            navigate(offered('products.sub') ? 'products.sub' : 'products');
         }}
       />
       {syncOverlay}
