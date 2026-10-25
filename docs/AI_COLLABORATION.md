@@ -234,10 +234,11 @@ was verified, so the next agent can trust the state without re-auditing.
   earlier shared-cluster red (96 files / 518 tests) was proven contention:
   three concurrent runs on `%TEMP%\orderbook-test-pg:55433`, one shutting the
   cluster down mid-run; evidence in the brief.
-- **Left:** merge, `HANDOFF.md` update, bump 1.5.2 → 1.5.3 across all 8
-  workspaces, release notes, push `main`. Not done twice: the parallel
-  session has its own isolated verify in flight — first green gate takes the
-  merge+bump+push, said in the brief; this lane holds its files till then.
+- **Done:** merged as `6e6a1f1f` (bundle) + `23a2047d` (bump), `HANDOFF.md`
+  updated, bumped 1.5.2 → 1.5.3 across all 8 workspaces with release notes
+  `docs/releases/1.5.3.md`, pushed — `origin/main` is `23a2047d` and its
+  `package.json` reads 1.5.3; branch deleted, brief closed. Parallel session:
+  nothing left to merge — pull before any further push.
 
 ### 2026-10-25 - The red run was a shared-cluster collision, not a code break (Muse Spark via Command Code, branch work/product-order-bundle, no source touched)
 
