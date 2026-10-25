@@ -420,12 +420,19 @@ export function buildOrderNote(
           : existing.weightKg + line.lineWeightKg;
       continue;
     }
+    // A numeric VARIANT code (1501 on 18X14 VITROSA SET) prints as a code on
+    // the right half under its sub product heading, like a numeric sub
+    // product name does: the cell shows the code, the header its parent.
+    const subName = line.productName.trim();
+    const code = line.code?.trim() ?? '';
+    const category = line.categoryName?.trim() || '';
+    const codedByCode = code !== '' && !isNumericSubProduct(subName) && isNumericSubProduct(code);
     merged.set(key, {
       key,
       brand: line.brandName,
       product: productLabel(line),
-      productName: line.categoryName?.trim() || line.productName,
-      subProduct: line.productName.trim(),
+      productName: codedByCode ? (category === '' ? subName : `${category} — ${subName}`) : (category || subName),
+      subProduct: codedByCode ? code : subName,
       size: line.size?.trim() || null,
       // Through `shownColour`, as every other colour that prints: a colour that
       // only repeats the sub product's name ("Ivory" on "IVORY BASIN") is not

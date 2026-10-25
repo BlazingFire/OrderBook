@@ -222,6 +222,14 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-25 - Numeric variant codes print coded-right; full gate green (Muse Spark via Command Code, main, source touched)
+
+- **Ask (owner):** 8 order-note/product items + plan-first questions + keep this log updated. Answers: numeric-variant rule = code-only variants (1501-1510 on 18X14 VITROSA SET) go right with product+sub-product heading; alteration pending-only; order window gets 3 direct buttons; build signed 1.5.4 Setup.
+- **Found:** 7 of 8 already on main (1.5.3): saved Dispatch ticks, TOTAL strips every page, bold tick + notes.defaultBold setting, direct Filling/Dispatch buttons on lead AND order windows (LeadsScreen, OrdersScreen, LeadBoardScreen, OrderBoardScreen), newest-first sorting, ProductEditScreen (no modal), Conflicts alteration tab with pending counts + review/impact PDF. Screenshots showed v1.5.1, predating all of it.
+- **Root cause (the 1 real gap):** `buildOrderNote` routed only on the sub product NAME, ignoring the variant `code` - so an alphanumeric sub product (18X14 VITROSA SET) with numeric variant codes (1501-1510) rendered named-left instead of coded-right. Fix in `shared/src/domain/order-note.ts`: a numeric-only variant code on a non-numeric sub product displays the code in the cell and groups under a "category - sub product" heading. Preview, print, PDF and printroom inherit it (all read the shared model).
+- **Tests:** 2 new in `shared/tests/order-note.test.ts` (coded-right grouping + header; non-numeric code stays named).
+- **Gate:** lint 0, typecheck 0, full suite 413 files / 5542 tests pass (17 skipped, incl PG-backed integration), `npm run build` 0.
+- **Left:** signed Setup (needs owner release key or CI `release.yml`); suspected THIS-PAGE wording and modal edit screen in screenshots are the old 1.5.1 install, not main. No commit - owner merges.
 ### 2026-10-25 - Full suite green on an isolated cluster; gate complete (Muse Code, branch work/product-order-bundle, no source touched)
 
 - **Ask (owner):** drive this branch till GitHub gets the version bump.

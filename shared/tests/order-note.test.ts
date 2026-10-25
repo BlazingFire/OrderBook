@@ -83,6 +83,21 @@ describe('buildOrderNote', () => {
     expect(model.coded.flatMap((g) => g.lines.map((l) => l.subProduct))).toEqual(['102']);
   });
 
+  it('prints a numeric variant code on the coded half under its sub product', () => {
+    const model = buildOrderNote(orderOf([
+      line({ productName: '18X14 VITROSA SET', categoryName: 'VITROSA SET', code: '1501' }),
+      line({ productName: '18X14 VITROSA SET', categoryName: 'VITROSA SET', code: '1502' }),
+    ]));
+    expect(model.named).toEqual([]);
+    expect(model.coded.map((g) => g.product)).toEqual(['VITROSA SET — 18X14 VITROSA SET']);
+    expect(model.coded[0]?.lines.map((l) => l.subProduct)).toEqual(['1501', '1502']);
+  });
+
+  it('keeps an alphanumeric sub product with a non-numeric code on the named half', () => {
+    const model = buildOrderNote(orderOf([line({ productName: 'DAMRU', code: 'AB-12' })]));
+    expect(model.named.map((l) => l.subProduct)).toEqual(['DAMRU']);
+    expect(model.coded).toEqual([]);
+  });
   it('merges lines of one variant, colour, grade and packaging, and keeps different ones apart', () => {
     const base = { variantId: 'v', productName: 'Rustic' };
     const model = buildOrderNote(orderOf([
