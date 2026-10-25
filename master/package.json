@@ -1,6 +1,6 @@
 {
   "name": "@orderbook/master",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "homepage": "https://github.com/blazingfire/orderbook",
   "private": true,
   "type": "module",

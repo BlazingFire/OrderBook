@@ -52,6 +52,46 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
+## 1.5.3: product-order bundle merged, version bumped and pushed (2026-10-25)
+
+**State:** on `main`, pushed. Branch `work/product-order-bundle` carried two
+uncommitted bundles (order notes by OpenCode, product alteration + import
+review in the Muse lane, split by the no-collide brief
+`docs/ai-handoffs/product-order-bundle-collab.md`, now closed and deleted).
+Committed as `6e6a1f1f`, fast-forwarded to `main`, every workspace
+`package.json` set to 1.5.3 with release notes `docs/releases/1.5.3.md`.
+One additive migration (`20261025000000_note_columns`: nullable
+`note_columns` on leads and orders); no panel protocol change, so a 1.5.2
+Office keeps working with a 1.5.3 Master. Setups not built yet.
+
+**What landed:** saved Dispatch tick boxes (preview, print, PDF and printroom
+read the saved choice); TOTAL-only strips on notes and PDFs; Filling/Dispatch
+note and Preview PDF buttons directly on both lead screens; bold-by-default
+notes (`notes.defaultBold`, default true); product alteration (pending-only
+line patch in one transaction, frozen dispatched/converted history, stale-view
+409, before/after list); smart import review (unchanged rows skip, no
+auto-delete, bulk-bar per conflict kind, `products.bulk`-without-`edit`
+coerced to skip, Office edits keep per-field clocks); Duplicates page folded
+into the conflicts screen as a tab; dead party-import `onlyRows` filter
+removed.
+
+**Gate:** `npm run lint` 0; `npm run typecheck` 0 (all workspaces);
+`npm run test` exit 0 on an isolated cluster: 413 files passed + 1 skipped
+(`release-workflow`, Windows-only), 5540 tests passed + 17 skipped,
+integration suites ran on PostgreSQL. An earlier shared-cluster run failed 96
+files / 518 tests from contention (three concurrent runs, one tearing the
+cluster down mid-run) — environmental, not code; lanes isolate or serialize
+full runs from here.
+
+**Decisions taken (owner can overrule):** the OpenCode acknowledgment owed by
+the brief is moot — the owner directed driving to the bump; Update-only and
+related-data semantics unchanged; an unchanged alteration input writes
+nothing.
+
+**Not verified:** a browser or Electron pass of the conflicts screen, the
+saved ticks and the direct buttons; a real two-PC pass; build, sign and
+publish of the 1.5.3 Setups.
+
 ## Save to this device on the order notes (2026-10-19)
 
 **State:** on `main`, to release as **1.5.2**. The Filling/Dispatch note screen (and its Preview dialog) has
