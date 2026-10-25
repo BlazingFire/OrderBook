@@ -222,6 +222,11 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-25 - 1.5.4 built locally, unsigned (Muse Spark via Command Code, main, version bump only)
+
+- **Ask (owner):** make builds locally now.
+- **Done:** `npm run release -- 1.5.4` exit 0 on this PC. `C:\OrderBook-Releases` holds OrderBook-Master-1.5.4-Setup.exe (225 MB, Office bundled) + OrderBook-Office-1.5.4-Setup.exe (85 MB), each with latest.json manifests. No ORDERBOOK_RELEASE_KEY on this machine, so manifests are UNSIGNED - installing needs ORDERBOOK_ALLOW_UNSIGNED_RELEASES=1 on the target, or a later signed rebuild by the owner. Version bump only (8 package.json); no source touched.
+- **Left:** install test on Master PC; signed rebuild when owner provides key.
 ### 2026-10-25 - Numeric variant codes print coded-right; full gate green (Muse Spark via Command Code, main, source touched)
 
 - **Ask (owner):** 8 order-note/product items + plan-first questions + keep this log updated. Answers: numeric-variant rule = code-only variants (1501-1510 on 18X14 VITROSA SET) go right with product+sub-product heading; alteration pending-only; order window gets 3 direct buttons; build signed 1.5.4 Setup.
