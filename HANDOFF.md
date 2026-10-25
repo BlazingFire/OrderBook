@@ -52,6 +52,36 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
+## Performance plan approved, Gate 0 closed, 1.5.4 built (2026-10-25)
+
+**State:** `main` = `origin/main` = `0944dc61`, tree clean, **version 1.5.4**
+(bumped by OpenCode; `npm run release -- 1.5.4` built Master 225 MB + Office
+85 MB Setups into `C:\OrderBook-Releases` — **manifests UNSIGNED** (no
+`ORDERBOOK_RELEASE_KEY` here): installing needs
+`ORDERBOOK_ALLOW_UNSIGNED_RELEASES=1`, or a signed rebuild by the owner).
+
+- **The owner's performance plan is approved and active:**
+  `~/.commandcode/plans/performance-blazing-fast.md` (Gate 0 → phases 0–19;
+  owner review folded in four requests: implement everything, keep this change
+  log current at every phase close, P1 1J sweeps `src/assets`/dead files —
+  **`master/assets` is load-bearing, never swept** — and the 2026-10-25 feature
+  audit's gaps become work: P1 1C/1A/1H, P15 15x, new **P17b alteration
+  history**). No version bump/push/release beyond this until the plan's
+  stability bar passes.
+- **Gate 0 is closed:** the last dirty file (numeric variant → coded right
+  half) landed as `14d64a4d` with 2 tests; verified here — guard broken once
+  (test went red) and restored, `shared/tests/order-note*` 77/77,
+  `note-pdf` 11/11, full `npm run verify` exit 0 on `0944dc61`, PG integration
+  suites confirmed RUN (not skipped).
+- **Feature audit (the owner's 8 claims) verdicts are in the plan's table** and
+  in the Change log entry of this date; summary: 6 of 8 fully exist on main
+  (screenshots showed the old 1.5.1 install), the numeric-variant gap is fixed,
+  and 5 PARTIAL gaps remain scheduled (PDF column headings, final-order Preview
+  PDF, main-product no-modal screen, alteration menu + history patch,
+  printroom bold).
+- **Next: Phase 0 `perf-baselines`** — measurement only, numbers into the
+  brief, no commits. Then Phase 1 `dedup-cleaner-ia`.
+
 ## 1.5.3: product-order bundle merged, version bumped and pushed (2026-10-25)
 
 **State:** on `main`, pushed. Branch `work/product-order-bundle` carried two

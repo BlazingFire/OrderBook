@@ -222,6 +222,14 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-25 - Gate 0 closed; performance plan approved; feature audit recorded (Command Code, main, docs only)
+
+- **Ask (owner):** audit the 8 order-note/product claims against CODE, keep this log updated, review + revise the performance plan ("make all changes / implement it") at `~/.commandcode/plans/performance-blazing-fast.md`, then start it.
+- **Audit verdicts (code on `main` @ `dabade60`, full table in the plan):** EXISTS — saved Dispatch ticks honoured end-to-end, TOTAL-only strips on every page/PDF, newest-first on every list/board/picker, direct Filling/Dispatch/Preview-PDF buttons on both LEAD records, `notes.defaultBold` + bold tick, sub-product `ProductEditScreen` (no modal). PARTIAL — numeric variant right-half (fixed same day, `14d64a4d`); master PDF prints column *headings* for unticked columns (`note-renderer.ts:423`); final-order records have NO Preview PDF (no `/api/orders/:id/pdf`); main-product edit still a `Modal` both panels (`MainProductsScreen.tsx:607`); product alteration is a buried tab not a menu, and history is deliberately frozen (pending-only) contrary to the owner's "also auto change in past orders"; printroom `NoteDocument` has no `bold` field so bold-off is ignored there. NOT THERE — nothing beyond these; the THIS-PAGE / modal-edit screenshots were the owner's old 1.5.1 install, not main.
+- **Plan approved with the owner's four requests folded in:** Gate 0 unblocked (bundle landed as 1.5.3/1.5.4), audit gaps → P1 (1C main-product screen, 1A/1H alteration menu, 1J assets/dead-files sweep), P15 (15x: heading gate, printroom bold, orders-PDF route), new P17b (alteration patches dispatched/converted history on explicit Apply), plus a standing rule: every phase close writes its Change-log entry in the same session.
+- **Gate 0 verified here:** OpenCode's `14d64a4d` matches the diff validated in this session; guard broken once (forced `codedByCode=false` → the new coded-right test went red) then restored; `shared/tests/order-note*` 77/77 + `master/tests/note-pdf` 11/11 green; fresh full `npm run verify` exit 0 on the stable tree (`0944dc61`); PG integration confirmed genuinely RUN, not skipped (`product-alteration.integration` 2/2 against live PostgreSQL). Tree clean, `main` = `origin/main` = `0944dc61`.
+- **State:** 1.5.4 built locally (unsigned — see entry below). **Next: Phase 0 `perf-baselines`** — measurement only, no code.
+
 ### 2026-10-25 - 1.5.4 built locally, unsigned (Muse Spark via Command Code, main, version bump only)
 
 - **Ask (owner):** make builds locally now.
