@@ -17,6 +17,13 @@ describe('which URL may open a PDF window', () => {
     expect(isPdfWindowUrl(ORIGIN, `${ORIGIN}/api/leads/L-TMP%201/pdf`)).toBe(true);
   });
 
+  it("allows a final order's PDF, bare or with no query", () => {
+    expect(isPdfWindowUrl(ORIGIN, `${ORIGIN}/api/orders/O-1/pdf`)).toBe(true);
+    expect(isPdfWindowUrl(ORIGIN, `${ORIGIN}/api/orders/OD0000000002/pdf`)).toBe(true);
+    expect(isPdfWindowUrl(ORIGIN, `${ORIGIN}/api/orders/O-1/pdf?x=1`)).toBe(false);
+    expect(isPdfWindowUrl(ORIGIN, `${ORIGIN}/api/orders/a/b/pdf`)).toBe(false);
+  });
+
   it('allows a report PDF, bare or with allowlisted keys', () => {
     expect(isPdfWindowUrl(ORIGIN, `${ORIGIN}/api/reports/dispatches/pdf`)).toBe(true);
     expect(
@@ -48,7 +55,6 @@ describe('which URL may open a PDF window', () => {
     ['a longer path', `${ORIGIN}/api/leads/L-1/pdf/more`],
     ['a nested id', `${ORIGIN}/api/leads/a/b/pdf`],
     ['no id', `${ORIGIN}/api/leads//pdf`],
-    ['another record', `${ORIGIN}/api/orders/O-1/pdf`],
     ['the panel itself', `${ORIGIN}/`],
     ['the export route with format=pdf', `${ORIGIN}/api/reports/dispatches/export?format=pdf`],
     ['a report fragment', `${ORIGIN}/api/reports/dispatches/pdf#page=2`],

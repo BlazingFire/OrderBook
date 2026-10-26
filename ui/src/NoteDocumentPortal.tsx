@@ -35,6 +35,8 @@ export function noteSheetProps(document: NoteDocument, kind: NoteKind, printedAt
     printedAt,
     // The frozen choice: an unticked column vanishes from the printroom too.
     columns: document.columns ?? undefined,
+    // The frozen Bold tick; absent on old jobs, which always printed bold.
+    bold: document.bold,
   };
 }
 

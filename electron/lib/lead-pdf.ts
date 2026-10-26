@@ -1,8 +1,10 @@
 /**
  * The URLs a panel window may open a window of its own for: a PDF on this panel
- * (`docs/catalogue/CATALOGUE_MODEL.md` §8). Two kinds, each an exact path:
+ * (`docs/catalogue/CATALOGUE_MODEL.md` §8). Three kinds, each an exact path:
  *
  * - a lead's PDF, `<origin>/api/leads/<id>/pdf`, with no query;
+ * - a final order's PDF, `<origin>/api/orders/<id>/pdf`, with no query
+ *   (the order record's third button, 2026-10-25);
  * - a report's PDF, `<origin>/api/reports/<one of the 15 kinds>/pdf`, with a
  *   query only of the allowlisted keys below.
  *
@@ -54,6 +56,7 @@ export const PDF_QUERY_KEYS: readonly string[] = [
 ];
 
 const LEAD_PATH = /^\/api\/leads\/[^/?#]+\/pdf$/;
+const ORDER_PATH = /^\/api\/orders\/[^/?#]+\/pdf$/;
 const REPORT_PATH = new RegExp(`^/api/reports/(${PDF_REPORT_KINDS.join('|')})/pdf$`);
 /** Characters a value may hold once decoded: ids, dates, `a,b` column lists. */
 const QUERY_VALUE = /^[A-Za-z0-9._,:+-]{0,200}$/;
@@ -69,6 +72,7 @@ export function isPdfWindowUrl(origin: string, url: string): boolean {
   const query = mark === -1 ? null : rest.slice(mark + 1);
 
   if (LEAD_PATH.test(path)) return query === null;
+  if (ORDER_PATH.test(path)) return query === null;
   if (!REPORT_PATH.test(path)) return false;
   if (query === null) return true;
 

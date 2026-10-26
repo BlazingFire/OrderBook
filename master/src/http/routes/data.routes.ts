@@ -799,6 +799,25 @@ dataRoutes.get(
   }),
 );
 
+/**
+ * The final-order PDF, the mirror of `/leads/:id/pdf` (the order record's third
+ * button, 2026-10-25): `inline`, so Preview PDF opens it in a window rather than
+ * downloading it.
+ */
+dataRoutes.get(
+  '/orders/:id/pdf',
+  needs('orders.export'),
+  asyncHandler(async (req, res) => {
+    const { fileName, bytes } = await orderService.orderPdf(
+      String(req.params.id),
+      actorFromRequest(req),
+    );
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+    res.send(Buffer.from(bytes));
+  }),
+);
+
 dataRoutes.put(
   '/orders/:id',
   asyncHandler(async (req, res) => {

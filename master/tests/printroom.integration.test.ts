@@ -144,6 +144,34 @@ describe.skipIf(!canRunIntegrationTests)('printroom (integration)', () => {
       expect(job.document?.model.totalQuantity).toBe(3);
     });
 
+    it('freezes the sender bold tick, falls back to the company switch when none is named, refuses a non-boolean (15x)', async () => {
+      const { lead } = await seedLead();
+      const sender = await person('bolda', SENDER);
+
+      const unticked = await print.sendJob(
+        { requestId: requestId(), kind: 'filling', source: 'lead', sourceId: lead.id, copies: 1, bold: false },
+        sender.actor,
+        LAN,
+      );
+      expect(unticked.document?.bold).toBe(false);
+
+      const noTick = await print.sendJob(
+        { requestId: requestId(), kind: 'filling', source: 'lead', sourceId: lead.id, copies: 1 },
+        sender.actor,
+        LAN,
+      );
+      // `notes.defaultBold` ships true, so a sender naming no tick gets the company default.
+      expect(noTick.document?.bold).toBe(true);
+
+      await expect(
+        print.sendJob(
+          { requestId: requestId(), kind: 'filling', source: 'lead', sourceId: lead.id, copies: 1, bold: 'yes' },
+          sender.actor,
+          LAN,
+        ),
+      ).rejects.toMatchObject({ messageKey: 'validation.print.bold' });
+    });
+
     it('prints the current colour label from the list, so a colour renamed in Fields reads the new way on the note', async () => {
       const ivory = await fields.createValue({ listKey: 'stock.colour', value: 'Ivory', label: 'Ivory' }, admin);
       const party = await catalog.createParty({ name: 'Colour Traders' }, admin);

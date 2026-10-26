@@ -1992,6 +1992,16 @@ describe('the Filling and Dispatch notes on an order', () => {
     expect(await screen.findByText(t('orders.detail.products'))).toBeTruthy();
   });
 
+  it('shows Preview PDF as the third direct button, only with orders.export (15x, 2026-10-25)', async () => {
+    await openOrder(['orders.view']);
+    expect(screen.queryByRole('link', { name: t('lead.previewPdf') })).toBeNull();
+    cleanup();
+
+    await openOrder(['orders.view', 'orders.export']);
+    const link = screen.getByRole('link', { name: t('lead.previewPdf') });
+    expect(link.getAttribute('href')).toBe(`/api/orders/${ORDER.id}/pdf`);
+  });
+
   it('prints through the shell to the printer picked, and asks each time until one is', async () => {
     const printPage = vi.fn().mockResolvedValue({ ok: true });
     (window as Window & { orderbook?: unknown }).orderbook = {

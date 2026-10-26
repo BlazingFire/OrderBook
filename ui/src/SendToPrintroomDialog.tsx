@@ -43,6 +43,8 @@ export interface SendToPrintroomDialogProps {
   initialKind: NoteKind;
   initialVehicle?: string;
   initialCopies?: number;
+  /** The sender's Bold tick from the note screen: the frozen sheet prints exactly this. */
+  bold?: boolean;
   onSent?: (job: PrintJob) => void;
 }
 
@@ -56,6 +58,7 @@ export function SendToPrintroomDialog({
   initialKind,
   initialVehicle = '',
   initialCopies = 1,
+  bold,
   onSent,
 }: SendToPrintroomDialogProps) {
   const toast = useToast();
@@ -112,6 +115,7 @@ export function SendToPrintroomDialog({
         targetStationId: targetId === '' ? null : targetId,
         vehicleNumber: kind === 'dispatch' && vehicle.trim() !== '' ? vehicle : null,
         note: message.trim() === '' ? null : message.trim(),
+        bold: bold ?? null,
       });
       toast.push(t('printroom.dialog.sent'), { tone: 'ok' });
       onSent?.(job);

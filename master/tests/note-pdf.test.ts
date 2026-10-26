@@ -241,3 +241,42 @@ describe('the pending order PDF — the document', () => {
     expect(text).toMatch(/\/MediaBox \[0 0 595\.28 841\.89\]/);
   });
 });
+
+describe('the saved column ticks — 15x (2026-10-25 audit)', () => {
+  const items = [line({ productName: 'Rustic', packaging: 'Box', grade: 'Std', colour: 'Ivory' })];
+  const withColumns = (columns?: { packaging: boolean; colour: boolean; grade: boolean }): string =>
+    words(planNotePdf(leadNotePdf(lead(items), PARTY, 'Swisware Ceramics', PRINTED, undefined, columns), measure));
+
+  it('prints every column heading when all three are ticked, none of an unticked column', () => {
+    const all = withColumns();
+    expect(all).toContain('PACKING');
+    expect(all).toContain('COLOUR');
+    expect(all).toContain('GRADE');
+
+    // The defect this closes: the headings used to print regardless, so an unticked
+    // column left an empty-headed column on the sheet.
+    const none = withColumns({ packaging: false, colour: false, grade: false });
+    expect(none).not.toContain('PACKING');
+    expect(none).not.toContain('COLOUR');
+    expect(none).not.toContain('GRADE');
+    // The sub-product/brand and quantity headings are never ticked away.
+    expect(none).toContain('QTY');
+
+    const half = withColumns({ packaging: true, colour: false, grade: true });
+    expect(half).toContain('PACKING');
+    expect(half).not.toContain('COLOUR');
+    expect(half).toContain('GRADE');
+  });
+
+  it('calls the sheet Final order when it is built from an order, New order for a lead', () => {
+    const pending = words(planNotePdf(leadNotePdf(lead(items), PARTY, 'Swisware Ceramics', PRINTED), measure));
+    expect(pending).toContain('New order');
+
+    const asOrder = { ...lead(items), leadCreatedAt: '2026-09-29T00:00:00.000Z' } as ReturnType<typeof lead> & {
+      leadCreatedAt: string;
+    };
+    const final = words(planNotePdf(leadNotePdf(asOrder, PARTY, 'Swisware Ceramics', PRINTED), measure));
+    expect(final).toContain('Final order');
+    expect(final).not.toContain('New order');
+  });
+});

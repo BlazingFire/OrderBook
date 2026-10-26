@@ -67,6 +67,7 @@ import { publishPrintJob } from './change-bus.js';
 import * as leadService from './lead.service.js';
 import { notify } from './notification.service.js';
 import * as orderService from './order.service.js';
+import { getSetting } from './settings.service.js';
 
 const log = createLogger('print');
 
@@ -288,7 +289,10 @@ export async function sendJob(raw: unknown, actor: ActorContext, origin: PrintOr
   // The colour list as it stands now, deleted entries too (a colour taken off the list still has the label it
   // was sold under), so a renamed colour prints its new label; one the list never had prints as stored.
   const colours = await customFieldRepo.listOptionsForKey(actor.tenantId, 'stock.colour', { includeDeleted: true });
-  const document: NoteDocument = noteDocument(record, input.source, party, vehicle, colourLabeller(colours));
+  // Bold travels with the send (the dialog's tick); an older sender omits it and
+  // falls back to the company switch — either way the sheet freezes what was asked.
+  const bold = input.bold ?? (await getSetting(actor.tenantId, 'notes.defaultBold'));
+  const document: NoteDocument = noteDocument(record, input.source, party, vehicle, colourLabeller(colours), bold);
 
   const { row, created } = await db().transaction(async (trx) => {
     const made = await printRepo.insertJob(trx, {

@@ -34,6 +34,7 @@ import {
   AvatarStack,
   BOARD_SHOWN,
   Button,
+  ButtonLink,
   ConfirmDialog,
   ConflictBanner,
   DataTable,
@@ -158,6 +159,7 @@ export function OrdersScreen({
   const canEdit = permissions.includes('orders.edit');
   const canDispatch = permissions.includes('orders.dispatch');
   const canDelete = permissions.includes('orders.delete');
+  const canPreviewPdf = permissions.includes('orders.export');
   const canViewParties = permissions.includes('parties.view');
 
   const loadKey = `${scope}|${term}|${stageFilter ?? ''}|${pageSize}`;
@@ -584,6 +586,17 @@ export function OrdersScreen({
               <Button onClick={() => setNote({ id: openOrder.id, kind: 'dispatch' })}>
                 {t('orderNote.dispatch')}
               </Button>
+              {/* The third button the lead record already had: the Master renders the
+                  final order's PDF and the shell opens this one URL in a window. */}
+              {canPreviewPdf && (
+                <ButtonLink
+                  href={'/api/orders/' + encodeURIComponent(openOrder.id) + '/pdf'}
+                  target="_blank"
+                  variant="secondary"
+                >
+                  {t('lead.previewPdf')}
+                </ButtonLink>
+              )}
               {/* Absent, not greyed, without the permission — the house rule. */}
               {canDelete && (
                 <Button

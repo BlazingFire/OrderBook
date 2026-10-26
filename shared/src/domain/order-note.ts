@@ -107,6 +107,12 @@ export interface NoteDocument {
    * record own.
    */
   columns?: NoteColumns | null;
+  /**
+   * Bold, frozen with the rest at send time (the sender's Bold tick, else the
+   * company `notes.defaultBold`). Absent on jobs frozen before bold travelled:
+   * those print bold, which is what they always did.
+   */
+  bold?: boolean;
   model: OrderNoteModel;
 }
 
@@ -503,6 +509,8 @@ export function noteDocument(
   party: Party | null,
   vehicleNumber: string | null,
   labelOf: ColourLabelOf = (colour) => colour,
+  /** The sender's Bold tick; the printroom sheet prints exactly this. */
+  bold?: boolean,
 ): NoteDocument {
   return {
     header: noteHeader(record, source),
@@ -513,6 +521,7 @@ export function noteDocument(
     vehicleNumber,
     notes: record.notes ?? null,
     columns: parseNoteColumns(record.noteColumns ?? null),
+    bold,
     model: buildOrderNote(record, labelOf),
   };
 }

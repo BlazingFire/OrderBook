@@ -106,6 +106,11 @@ export interface PrintJobInput {
   targetStationId?: string | null;
   vehicleNumber?: string | null;
   note?: string | null;
+  /**
+   * The sender's Bold tick. Null/absent: the Master falls back to the company
+   * `notes.defaultBold`, so an older Office keeps its current behaviour.
+   */
+  bold?: boolean | null;
 }
 
 export interface PrintJobQuery {
@@ -208,6 +213,14 @@ export function cleanPrintJobInput(raw: unknown): CleanPrintInput {
     vehicleNumber = cleaned === '' || input.kind !== 'dispatch' ? null : cleaned;
   }
 
+  // Bold: absent means "use the company default" (older senders); anything not a
+  // boolean is a refusal, as every other field refuses.
+  let bold: boolean | null = null;
+  if (input.bold !== undefined && input.bold !== null) {
+    if (typeof input.bold !== 'boolean') return { errorKey: 'validation.print.bold' };
+    bold = input.bold;
+  }
+
   return {
     value: {
       requestId: input.requestId,
@@ -218,6 +231,7 @@ export function cleanPrintJobInput(raw: unknown): CleanPrintInput {
       targetStationId,
       vehicleNumber,
       note,
+      bold,
     },
   };
 }

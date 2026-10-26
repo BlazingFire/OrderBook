@@ -197,7 +197,7 @@ export interface PanelAuthPayload {
  * socket command, so either side can tell the other is too old for one before
  * sending it, instead of waiting out a timeout.
  */
-export const PANEL_PROTOCOL_VERSION = 11;
+export const PANEL_PROTOCOL_VERSION = 12;
 
 /**
  * The lowest Master protocol each command needs. A command not listed has
@@ -269,6 +269,9 @@ export const COMMAND_MIN_PROTOCOL: Partial<Record<keyof ClientToServerEvents, nu
   'panel:leave': 9,
   // Which product ids are still live, for the lead entry's save check (U14).
   'product:live': 10,
+  // The final-order PDF (2026-10-25): the order record's third button. Protocol 12, so an
+  // Office on a Master that predates it is told to update instead of waiting out a timeout.
+  'order:pdf': 12,
 };
 
 /**
@@ -853,6 +856,11 @@ export interface ClientToServerEvents {
   ) => void;
   'order:setStage': (input: StageChangeInput, ack: CommandAck<Order>) => void;
   'order:dispatch': (input: OrderDispatchInput, ack: CommandAck<Order>) => void;
+  /**
+   * The fixed-layout final-order PDF, the mirror of `lead:pdf` (the order
+   * record's third button, 2026-10-25). `orders.export`; online-only.
+   */
+  'order:pdf': (id: RecordId, ack: CommandAck<{ fileName: string; bytes: Uint8Array }>) => void;
 
   'search:query': (query: SearchQuery, ack: CommandAck<SearchHit[]>) => void;
 

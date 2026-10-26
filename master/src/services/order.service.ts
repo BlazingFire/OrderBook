@@ -8,6 +8,7 @@
 
 import {
   cleanNoteColumns,
+  colourLabeller,
   fieldFor,
   ORDER_COLUMNS,
   recordNumber,
@@ -31,6 +32,7 @@ import {
   copyLinesForOrder,
 } from '../domain/conversion.js';
 import { normalizeCustomFields } from '../domain/custom-fields.js';
+import { leadNotePdf } from '../domain/lead-pdf.js';
 import { clampPaging } from '../domain/paging.js';
 import { resolvePartyScope, UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
 import {
@@ -45,12 +47,15 @@ import { assertParentsLive } from '../domain/recycle-bin.js';
 import { db } from '../db/knex.js';
 import { ConflictError, NotFoundError, ValidationError } from '../lib/errors.js';
 import { seqCached } from '../lib/seq-cache.js';
+import { renderNotePdf } from '../pdf/note-renderer.js';
 import * as activityLog from '../repositories/activity-log.repository.js';
 import * as customFieldRepo from '../repositories/custom-field.repository.js';
-import { nextHlc } from '../repositories/identity.repository.js';
+import { findMasterConfig } from '../repositories/master-config.repository.js';
+import { nextHlc, resolveId } from '../repositories/identity.repository.js';
 import * as leadRepo from '../repositories/lead.repository.js';
 import * as lineItemRepo from '../repositories/line-item.repository.js';
 import * as orderRepo from '../repositories/order.repository.js';
+import * as partyRepo from '../repositories/party.repository.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
 import * as recycleBinRepo from '../repositories/recycle-bin.repository.js';
 import * as timelineRepo from '../repositories/timeline.repository.js';
@@ -104,6 +109,42 @@ export async function getOrder(id: string, actor: ActorContext): Promise<Order> 
   if (!order) throw new NotFoundError('Order');
 
   return order;
+}
+
+/**
+ * The final order as a fixed-layout PDF — the mirror of `leadPdf` (the third
+ * button the order record gained on 2026-10-25): the same sheet the Dispatch
+ * note draws, headed "Final order".
+ *
+ * Gated on `orders.export` and read through `getOrder`, so the party scoping
+ * that hides an order hides its print too. The saved tick boxes and the
+ * company bold switch travel exactly as they do on the lead PDF.
+ */
+export async function orderPdf(
+  id: string,
+  actor: ActorContext,
+): Promise<{ fileName: string; bytes: Buffer }> {
+  requirePermission(actor, 'orders.export');
+
+  const order = await getOrder(await resolveId(actor.tenantId, id), actor);
+  // Read directly rather than through a party getter: its own `parties.view`
+  // check would refuse somebody who may see — and print — the order.
+  const party = await partyRepo.findPartyById(actor.tenantId, order.partyId);
+  const company = (await findMasterConfig())?.company_name?.trim() || 'OrderBook';
+  const colours = await customFieldRepo.listOptionsForKey(actor.tenantId, 'stock.colour', { includeDeleted: true });
+  const bytes = await renderNotePdf(
+    leadNotePdf(
+      order,
+      party,
+      company,
+      new Date(),
+      colourLabeller(colours),
+      order.noteColumns ?? undefined,
+      await getSetting(actor.tenantId, 'notes.defaultBold'),
+    ),
+  );
+  // `PO/2026-27/00042` → `final-order-PO-2026-27-00042.pdf`: a slash cannot be in a file name.
+  return { fileName: `final-order-${recordNumber(order).replace(/\//g, '-')}.pdf`, bytes };
 }
 
 /**

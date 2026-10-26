@@ -950,6 +950,16 @@ describe('the Filling and Dispatch notes on an order', () => {
     expect(screen.getByRole('button', { name: t('orderNote.dispatch') })).toBeTruthy();
   });
 
+  it('shows Preview PDF as the third direct button, only with orders.export (15x, 2026-10-25)', async () => {
+    await openOrders([...ADMIN]);
+    expect(screen.queryByRole('link', { name: t('lead.previewPdf') })).toBeNull();
+    cleanup();
+
+    await openOrders([...ADMIN, 'orders.export']);
+    const link = screen.getByRole('link', { name: t('lead.previewPdf') });
+    expect(link.getAttribute('href')).toBe(`/api/orders/${ORDER.id}/pdf`);
+  });
+
   it('has Notes text and Edit / Delete icons on a row, not note buttons (2026-10-09)', async () => {
     await openList([...ADMIN, 'orders.delete', 'parties.view'], t('nav.orders'));
     await screen.findByText(ORDER.id);
