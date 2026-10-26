@@ -69,7 +69,6 @@ import {
   IMPORT_HEADERS,
   isBlankRow,
   matchHeaders,
-  parseImportRow,
   separateTwins,
   templateGuideRows,
   type ImportField,
@@ -80,6 +79,10 @@ import { db } from '../db/knex.js';
 import { AppError, ValidationError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import { toCsv } from '../lib/csv.js';
+import {
+  parseImportSheetViaRust,
+  type ParsedImportSheetRow,
+} from '../lib/product-import-via-rust.js';
 import {
   buildCsvTemplate,
   buildXlsxTable,
@@ -560,14 +563,21 @@ export async function importProducts(
   const codeAt = match.byIndex.findIndex((column) => column?.field === 'code');
   const codeOfRow = new Map<number, string>();
 
-  rows.slice(headerIndex + 1).forEach((cells, offset) => {
-    if (isBlankRow(cells)) return;
-    const selectedRow = headerIndex + 2 + offset;
-    if (options.onlyRows && !options.onlyRows.includes(selectedRow)) return;
+  const dataRows = rows
+    .slice(headerIndex + 1)
+    .map((cells, offset) => ({ cells, row: headerIndex + 2 + offset }))
+    .filter(({ cells, row }) => {
+      if (isBlankRow(cells)) return false;
+      if (options.onlyRows && !options.onlyRows.includes(row)) return false;
+      return true;
+    });
+  for (const { cells, row } of dataRows) {
     totalRows += 1;
-    const row = headerIndex + 2 + offset;
     codeOfRow.set(row, (cells[codeAt] ?? '').trim().toLowerCase());
-    const outcome = parseImportRow(cells, match, headerRow, row, { restore, updateOnly });
+  }
+  const outcomes = await parseImportSheetViaRust(headerRow, dataRows, { restore, updateOnly });
+  dataRows.forEach(({ row }, index) => {
+    const outcome = outcomes[index] as ParsedImportSheetRow;
     if (!outcome.input) {
       issues.push(...outcome.issues);
       return;

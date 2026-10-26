@@ -19,6 +19,7 @@ import { PassThrough, Readable } from 'node:stream';
 import ExcelJS from 'exceljs';
 
 import { toCsv } from './csv.js';
+import { parseCsvViaRust } from './spreadsheet-via-rust.js';
 
 export type SheetKind = 'csv' | 'xlsx';
 
@@ -155,7 +156,7 @@ export async function readSheetRows(buffer: Buffer): Promise<string[][]> {
   // A CSV is parsed here, not by exceljs: that reader coerces numbers and
   // dates, assumes a comma, and drops blank lines — shifting every row number
   // the report quotes.
-  if (sheetKindOf(buffer) === 'csv') return parseCsv(decodeCsv(buffer));
+  if (sheetKindOf(buffer) === 'csv') return parseCsvViaRust(decodeCsv(buffer));
 
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.read(Readable.from([buffer]));

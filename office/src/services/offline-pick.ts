@@ -35,7 +35,15 @@ import type {
   ProductListQuery,
   SyncSnapshot,
 } from '@orderbook/shared';
-import { PICK_DEFAULT_LIMIT, PICK_MAX_LIMIT, comparePicked, pickScore } from '@orderbook/shared';
+import {
+  PICK_DEFAULT_LIMIT,
+  PICK_MAX_LIMIT,
+  PICK_SCORE,
+  comparePicked,
+  pickScore,
+} from '@orderbook/shared';
+
+import { pickScoresViaRust } from '../lib/pick-via-rust.js';
 
 /** Which permission each pickable kind sits behind, offline as online. */
 const REQUIRED_PERMISSION: Record<PickKind, string> = {
@@ -237,6 +245,114 @@ export function pickFromView(
   }
 
   return pickFrom<Party>(
+    view.parties,
+    (party) => [party.partyCode, party.name, party.phone, party.city],
+    (party) => party.name,
+    query,
+  );
+}
+
+/**
+ * `pickFrom` with the row scores computed by the Rust sidecar in one batch
+ * when it answers, else the TypeScript `pickScore` row by row. Same filter,
+ * same order, same truncation — only where the scores come from changes.
+ */
+async function pickFromAsync<T extends { id: string }>(
+  rows: readonly T[],
+  fields: (row: T) => Array<string | null | undefined>,
+  label: (row: T) => string,
+  query: PickQuery,
+): Promise<PickPage<T>> {
+  const limit = clamp(query.limit);
+  const term = query.term?.trim() ?? '';
+  const include = new Set(query.include ?? []);
+
+  const included = rows.filter((row) => include.has(row.id));
+  const candidates = rows.filter((row) => !include.has(row.id));
+  // One round trip for the whole page; an empty term skips scoring because
+  // the filter below keeps every row before any score is read.
+  const scores = term === '' ? [] : await pickScoresViaRust(candidates.map(fields), term);
+
+  const ranked = candidates
+    .map((row, index) => {
+      const fieldList = fields(row);
+      return {
+        row,
+        score: term === '' ? PICK_SCORE.none : (scores[index] ?? pickScore(fieldList, term)),
+        label: label(row),
+      };
+    })
+    .filter((entry) => term === '' || entry.score > 0)
+    .sort(comparePicked);
+
+  const room = Math.max(0, limit - included.length);
+
+  return {
+    items: [...included, ...ranked.slice(0, room).map((entry) => entry.row)],
+    truncated: ranked.length > room,
+  };
+}
+
+/**
+ * `pickFromView` with ranked branches scored by the Rust sidecar when it
+ * answers. Same permission gates, same fixed-order branches, same shapes —
+ * the category list and the in-category product bar never rank, so they run
+ * the shared sync code untouched.
+ */
+export async function pickFromViewAsync(
+  kind: PickKind,
+  query: PickQuery,
+  view: SyncSnapshot,
+  permissions: readonly string[],
+): Promise<PickPage<ProductCategory> | PickPage<Product> | PickPage<Party>> {
+  const required = REQUIRED_PERMISSION[kind];
+  if (!permissions.includes(required)) throw new OfflinePickForbidden(required);
+
+  if (kind === 'category') {
+    const withProducts = new Set(view.products.map((product) => product.categoryId));
+    const term = query.term?.trim().toLowerCase() ?? '';
+    const exact = (category: ProductCategory): number =>
+      term !== '' && (category.code ?? '').toLowerCase() === term ? 0 : 1;
+    return pickInOrder(
+      view.categories.filter((category) => withProducts.has(category.id)),
+      (category) => categoryMatches(category, term),
+      (a, b) => exact(a) - exact(b) || byCatalogueOrder(a, b),
+      query,
+      PICK_DEFAULT_LIMIT,
+    );
+  }
+
+  if (kind === 'product') {
+    const categoryId = query.categoryId?.trim();
+    if (categoryId) {
+      const term = query.term?.trim().toLowerCase() ?? '';
+      return pickInOrder(
+        view.products.filter((product) => product.categoryId === categoryId),
+        (product) =>
+          term === '' ||
+          product.name.toLowerCase().includes(term) ||
+          product.variants.some(
+            (variant) => variant.isActive && variant.code.toLowerCase().startsWith(term),
+          ),
+        byCatalogueOrder,
+        query,
+        PICK_MAX_LIMIT,
+      );
+    }
+    return pickFromAsync<Product>(
+      view.products,
+      (product) => [
+        ...product.variants.map((variant) => variant.code),
+        product.name,
+        product.alias,
+        ...product.variants.map((variant) => variant.label),
+      ],
+      (product) => product.name,
+      query,
+    );
+  }
+
+  return pickFromAsync<Party>(
     view.parties,
     (party) => [party.partyCode, party.name, party.phone, party.city],
     (party) => party.name,

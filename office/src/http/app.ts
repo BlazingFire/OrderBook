@@ -69,7 +69,7 @@ import {
   OfflinePickForbidden,
   listCategoriesFromView,
   listProductsFromView,
-  pickFromView,
+  pickFromViewAsync,
 } from '../services/offline-pick.js';
 import { adoptMaster, parkedChangeCount, removedNote } from '../services/master-binding.js';
 import {
@@ -1608,7 +1608,7 @@ export function createApp(): Express {
             return;
           }
 
-          const page = pickFromView(
+          const page = await pickFromViewAsync(
             kind,
             query,
             forCurrentUser(view),

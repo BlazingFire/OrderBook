@@ -19,7 +19,7 @@ import { requirePermission, type ActorContext } from '../domain/actor.js';
 import { resolvePartyScope } from '../domain/party-scope.js';
 import { clampLogPage, decodeLogCursor, encodeLogCursor } from '../domain/log-cursor.js';
 import { db } from '../db/knex.js';
-import { csvLines, toCsv } from '../lib/csv.js';
+import { csvLinesViaRust, toCsvViaRust } from '../lib/csv-via-rust.js';
 import { ValidationError } from '../lib/errors.js';
 import * as activityLogRepo from '../repositories/activity-log.repository.js';
 
@@ -257,7 +257,7 @@ export async function exportLogs(
   assertDateRange(query.from, query.to);
 
   const t = createTranslator('en');
-  const chunks = [toCsv(CSV_HEADERS, [])];
+  const chunks = [await toCsvViaRust(CSV_HEADERS, [])];
   let bytes = Buffer.byteLength(chunks[0] as string);
   let rowCount = 0;
   let truncated = false;
@@ -280,7 +280,7 @@ export async function exportLogs(
   )) {
     const room = limits.maxRows - rowCount;
     const rows = batch.length > room ? batch.slice(0, room) : batch;
-    const chunk = csvLines(rows.map((entry) => rowFor(entry, t)));
+    const chunk = await csvLinesViaRust(rows.map((entry) => rowFor(entry, t)));
     if (bytes + Buffer.byteLength(chunk) > limits.maxBytes) {
       truncated = true;
       break;
