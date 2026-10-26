@@ -7195,3 +7195,83 @@ button.ob-chat-chip-open:not(:disabled):hover {
 .ob-rowactions-edit:hover {
   color: var(--accent);
 }
+
+/* Duplicate-list pieces (`DuplicatesInline` in ProductConflictsScreen, reused
+   by the Master photo import screen): one copy in the kit so both panels
+   render them, not a Master-only section. */
+.ob-dup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+  padding: var(--s-16);
+  max-width: 60rem;
+}
+
+.ob-dup__head p {
+  margin: var(--s-4) 0 0;
+  color: var(--fg-secondary);
+}
+
+.ob-dup__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-12);
+}
+
+.ob-dup__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-8);
+}
+
+.ob-dup__chip {
+  padding: 0 var(--s-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  color: var(--fg-secondary);
+  font-size: 0.85em;
+}
+
+.ob-dup__members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-8);
+}
+
+.ob-dup__members li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-4) var(--s-12);
+  padding: var(--s-6) var(--s-8);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+}
+
+.ob-dup__members li.is-kept {
+  border-color: var(--state-ok);
+}
+
+.ob-dup__members label {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+}
+
+.ob-dup__name {
+  font-weight: 600;
+}
+
+.ob-dup__detail {
+  color: var(--fg-secondary);
+}
+
+.ob-dup__blocked {
+  flex-basis: 100%;
+  color: var(--state-conflict);
+  font-style: normal;
+}
