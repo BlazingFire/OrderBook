@@ -69,6 +69,11 @@ rebuild by the owner).
 - **Owner-directed release:** the 1.5.5 bump/push was ordered from the task board
   while the performance plan's freeze ("no version bump/push/release until the
   stability bar passes") is still open — owner's call, recorded here.
+- **CI builds blocked on billing (2026-10-26):** the `Release` workflow fails in
+  seconds — "account payments have failed or spending limit needs increase".
+  Nothing reaches `BlazingFire/OrderBook-Releases` (still v1.5.2) until billing
+  is fixed in GitHub settings. Ship 1.5.5 by USB stick from
+  `C:\OrderBook-Releases` with `ORDERBOOK_ALLOW_UNSIGNED_RELEASES=1`.
 
 - **The owner's performance plan is approved and active:**
   `~/.commandcode/plans/performance-blazing-fast.md` (Gate 0 → phases 0–19;
