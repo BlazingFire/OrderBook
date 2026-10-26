@@ -541,6 +541,7 @@ export function OrderNoteScreen({
           initialKind={kind}
           initialVehicle={vehicle}
           initialCopies={copies}
+          bold={bold}
         />
       )}
     </EditorScreen>

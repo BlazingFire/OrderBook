@@ -258,6 +258,9 @@ gets the PDF viewer (`plugins: true`), so the rule is exact paths, tested in
 
 - **A lead's PDF:** `<origin>/api/leads/<id>/pdf`, matching
   `^/api/leads/[^/?#]+/pdf$`, **no query**.
+- **A final order's PDF** (2026-10-25, the order record's third button):
+  `<origin>/api/orders/<id>/pdf`, matching `^/api/orders/[^/?#]+/pdf$`,
+  **no query**.
 - **A report's PDF** (1.3, Preview PDF on Reports): `<origin>/api/reports/<kind>/pdf`,
   `<kind>` one of the 15 report ids, matching `^/api/reports/(<the 15>)/pdf$`.
   The query is parsed with `URLSearchParams` and may hold only `period`,
@@ -268,7 +271,7 @@ gets the PDF viewer (`plugins: true`), so the rule is exact paths, tested in
 - **No fragment, ever.** Another origin, a look-alike host (`localhost:4100.evil`),
   a longer or nested path, the `/export` route and an unknown report id are refused.
 
-Both routes answer `application/pdf` with `Content-Disposition: inline`, so a
+All three routes answer `application/pdf` with `Content-Disposition: inline`, so a
 query cannot turn the window into anything else. A LAN browser opens the same
 links in a new tab. The report route needs `reports.view` and `reports.export`
 and applies the export's subject rule and Party Access

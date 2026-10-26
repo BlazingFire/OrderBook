@@ -3093,7 +3093,9 @@ the service checks.
   (`leads.create`), `GET /leads`, `GET /leads/:id`, `POST /leads/:id/stage`, `POST
   /leads/:id/remarks`, `DELETE /leads/:id` (`leads.delete`), `POST
   /leads/:id/convert`, `GET /leads/:id/pdf` (catalogue v2, `leads.export`: the
-  fixed-layout lead PDF, `inline`); orders `GET /orders`, `GET /orders/:id`, `PUT /orders/:id`,
+  fixed-layout lead PDF, `inline`); orders `GET /orders`, `GET /orders/:id`, `GET
+  /orders/:id/pdf` (2026-10-25, `orders.export`: the same sheet as the final order's
+  Dispatch note, `inline`, socket `order:pdf` at protocol 12), `PUT /orders/:id`,
   `POST /orders/:id/stage`, `POST /orders/:id/dispatch`, `DELETE /orders/:id`
   (`orders.delete`); `GET /conflicts`, `POST /conflicts/:id/resolve`.
 - `master/src/http/routes/public-api.routes.ts` (`/api/v1`) — table-driven (§5.8.2).

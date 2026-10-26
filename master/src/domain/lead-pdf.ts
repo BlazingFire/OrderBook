@@ -25,12 +25,12 @@ import {
   type ColourLabelOf,
   type NoteColumns,
 } from '@orderbook/shared';
-import type { Lead, Party } from '@orderbook/shared';
+import type { Lead, Order, Party } from '@orderbook/shared';
 
 import type { NotePdfInput } from '../pdf/note-renderer.js';
 
 export function leadNotePdf(
-  lead: Lead,
+  lead: Lead | Order,
   party: Party | null,
   companyName: string,
   printedAt: Date,
@@ -42,8 +42,11 @@ export function leadNotePdf(
   bold?: boolean,
 ): NotePdfInput {
   const model = buildOrderNote(lead, labelOf);
+  // An Order carries `leadCreatedAt`; a Lead does not — that is the whole difference
+  // in what the sheet calls itself ("Final order" vs "New order").
+  const isOrder = 'leadCreatedAt' in lead;
   return {
-    title: t('en', 'orderNote.pendingOrder'),
+    title: isOrder ? t('en', 'orderNote.finalOrder') : t('en', 'orderNote.pendingOrder'),
     companyName,
     printedAt,
     partyName: party?.name?.trim() || lead.partyName,

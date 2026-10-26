@@ -877,6 +877,8 @@ function registerCommands(socket: PanelSocket, actorFor: () => Promise<ActorCont
   on('order:dispatch', (input, ack) =>
     run(ack, (actor) => orderService.dispatchOrder(input, actor)),
   );
+  // The order record's Preview PDF, the mirror of `lead:pdf` (2026-10-25).
+  on('order:pdf', (id, ack) => run(ack, (actor) => orderService.orderPdf(id, actor)));
   on('order:delete', (id, ack) => run(ack, (actor) => orderService.deleteOrder(id, actor)));
 
   // Stock and inventory were removed in 1.4. An Office still on an older build may

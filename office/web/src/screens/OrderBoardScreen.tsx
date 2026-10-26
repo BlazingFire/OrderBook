@@ -30,6 +30,7 @@ import {
   AvatarStack,
   BOARD_SHOWN,
   Button,
+  ButtonLink,
   Card,
   ColourName,
   DataTable,
@@ -79,6 +80,8 @@ interface Props {
   canDispatch: boolean;
   /** `orders.edit`: may set the vehicle number on the Dispatch note. */
   canEdit: boolean;
+  /** `orders.export`: may open the final order's PDF. */
+  canPreviewPdf: boolean;
   onError: (message: string) => void;
   /** The signed-in person, left out of who else is on the open order. */
   userId?: string | null;
@@ -139,6 +142,7 @@ export function OrderBoardScreen({
   onOpenId,
   canDispatch,
   canEdit,
+  canPreviewPdf,
   onError,
   stageId: stageFilter,
   onStageChange: setStageFilter,
@@ -342,6 +346,17 @@ export function OrderBoardScreen({
             {/* Viewing the order is the right to print its note (1.4 R10). */}
             <Button onClick={() => setNote({ id: openOrder.id, kind: 'filling' })}>{t('orderNote.filling')}</Button>
             <Button onClick={() => setNote({ id: openOrder.id, kind: 'dispatch' })}>{t('orderNote.dispatch')}</Button>
+            {/* The third button the lead record already had; the Master renders the
+                PDF and this Office server forwards it (online only). */}
+            {canPreviewPdf && (
+              <ButtonLink
+                href={'/api/orders/' + encodeURIComponent(openOrder.id) + '/pdf'}
+                target="_blank"
+                variant="secondary"
+              >
+                {t('lead.previewPdf')}
+              </ButtonLink>
+            )}
           </>
         }
         onBack={() => {

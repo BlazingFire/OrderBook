@@ -2055,6 +2055,7 @@ function OfficePanel() {
               onOpenId={setOpenOrderId}
               canDispatch={can('orders.dispatch')}
               canEdit={can('orders.edit')}
+              canPreviewPdf={can('orders.export')}
               onError={setError}
               userId={session?.userId ?? null}
               stageId={

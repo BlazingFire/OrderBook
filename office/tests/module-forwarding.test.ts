@@ -786,6 +786,21 @@ describe('categories, the Leads setting and the lead PDF', () => {
     expect(response.headers['content-disposition']).toBe('inline; filename="lead-LD1.pdf"');
     expect(Buffer.from(response.body as Buffer).toString()).toBe('%PDF-1.7 test');
   });
+
+  it('streams the final-order PDF inline from order:pdf (the third button, 2026-10-25)', async () => {
+    const bytes = new Uint8Array(Buffer.from('%PDF-1.7 order'));
+    const commandSpy = vi
+      .spyOn(masterConnection, 'command')
+      .mockResolvedValue({ fileName: 'final-order-OD1.pdf', bytes } as never);
+
+    const response = await request(createApp()).get('/api/orders/OD1/pdf').buffer(true);
+
+    expect(commandSpy).toHaveBeenCalledWith('order:pdf', 'OD1');
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toBe('application/pdf');
+    expect(response.headers['content-disposition']).toBe('inline; filename="final-order-OD1.pdf"');
+    expect(Buffer.from(response.body as Buffer).toString()).toBe('%PDF-1.7 order');
+  });
 });
 
 describe('notifications', () => {

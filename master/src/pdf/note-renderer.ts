@@ -420,9 +420,11 @@ function planNamed(
     const head = L.columnLabel;
     const headY = centred(top, head, 7.5, 'bold');
     page.text(x, headY, caps(t('en', 'orderNote.subProductBrand')), face, 7.5, MUTED, 0.83);
-    page.text(packX, headY, caps(t('en', 'orderNote.packing')), face, 7.5, MUTED, 0.83);
-    page.text(colourX, headY, caps(t('en', 'orderNote.colour')), face, 7.5, MUTED, 0.83);
-    page.text(gradeX, headY, caps(t('en', 'orderNote.grade')), face, 7.5, MUTED, 0.83);
+    // An unticked column prints no heading either — the preview never shows one, and the
+    // empty-headed column this used to draw was a defect (2026-10-25 audit, 15x).
+    if (show.packaging) page.text(packX, headY, caps(t('en', 'orderNote.packing')), face, 7.5, MUTED, 0.83);
+    if (show.colour) page.text(colourX, headY, caps(t('en', 'orderNote.colour')), face, 7.5, MUTED, 0.83);
+    if (show.grade) page.text(gradeX, headY, caps(t('en', 'orderNote.grade')), face, 7.5, MUTED, 0.83);
     page.textRight(qtyRight, headY, caps(t('en', 'orderNote.qty')), face, 7.5, MUTED, 0.83);
     page.line(x, top + head - 0.5, edge, top + head - 0.5, INK, 1);
 

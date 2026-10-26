@@ -395,6 +395,13 @@ describe('a lead as the source of a note', () => {
     expect(noteDocument(orderOf(items), 'order', null, null).header.createdAt).toBeNull();
     expect(noteDocument(order, 'order', null, 'GJ 03 AB 1234').vehicleNumber).toBe('GJ 03 AB 1234');
   });
+
+  it('freezes the bold tick it was given, and leaves it unset when there was none (the printroom 15x)', () => {
+    expect(noteDocument(lead, 'lead', null, null, undefined, false).bold).toBe(false);
+    expect(noteDocument(lead, 'lead', null, null, undefined, true).bold).toBe(true);
+    // Older callers and old payloads: no bold field — the sheet renders bold, as it always did.
+    expect(noteDocument(lead, 'lead', null, null).bold).toBeUndefined();
+  });
 });
 
 describe('clampNoteCopies', () => {

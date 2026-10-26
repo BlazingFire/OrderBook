@@ -36,8 +36,15 @@ const VALID = {
 describe('cleanPrintJobInput', () => {
   it('accepts a send and fills what was left out', () => {
     expect(cleanPrintJobInput(VALID)).toEqual({
-      value: { ...VALID, targetStationId: null, vehicleNumber: null, note: null },
+      value: { ...VALID, targetStationId: null, vehicleNumber: null, note: null, bold: null },
     });
+  });
+
+  it('keeps a boolean bold tick as it is (15x)', () => {
+    const off = cleanPrintJobInput({ ...VALID, bold: false });
+    expect('value' in off && off.value.bold).toBe(false);
+    const on = cleanPrintJobInput({ ...VALID, bold: true });
+    expect('value' in on && on.value.bold).toBe(true);
   });
 
   it('cleans the vehicle number and keeps it only for a Dispatch note', () => {
@@ -73,6 +80,8 @@ describe('cleanPrintJobInput', () => {
     [{ targetStationId: 'main-printer' }, 'validation.print.station'],
     [{ vehicleNumber: 'A'.repeat(21) }, 'validation.print.vehicle'],
     [{ vehicleNumber: 12 }, 'validation.print.vehicle'],
+    [{ bold: 'yes' }, 'validation.print.bold'],
+    [{ bold: 1 }, 'validation.print.bold'],
   ] as const)('refuses %j', (override, errorKey) => {
     expect(cleanPrintJobInput({ ...VALID, ...override })).toEqual({ errorKey });
   });

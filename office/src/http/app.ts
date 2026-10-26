@@ -1492,6 +1492,27 @@ export function createApp(): Express {
   });
 
   /**
+   * The final-order PDF — the same shape as the lead's, so the order record's
+   * third button opens it the same way (2026-10-25). Online only; a Master too
+   * old for the command gets the usual update-the-Master answer (protocol 12).
+   */
+  app.get('/api/orders/:id/pdf', (req, res) => {
+    void (async () => {
+      try {
+        const pdf = await masterConnection.command<
+          'order:pdf',
+          { fileName: string; bytes: Uint8Array }
+        >('order:pdf', req.params.id);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${pdf.fileName}"`);
+        res.send(Buffer.from(pdf.bytes));
+      } catch (error) {
+        failForward(res, error);
+      }
+    })();
+  });
+
+  /**
    * Create product share (1.4 D3): the Master renders the four-to-a-page PDF with
    * its photographs and this hands it to the browser. Online only, like the other
    * PDFs: the Master holds the renderer, the fonts and the image files.

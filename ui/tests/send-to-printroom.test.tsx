@@ -113,6 +113,23 @@ describe('what a send carries', () => {
     });
   });
 
+  it('carries the sender bold tick, and null when none was given (15x, 2026-10-25)', async () => {
+    const ticked = makeTransport();
+    mount(ticked, { bold: false });
+    await screen.findByRole('option', { name: 'Front desk' });
+    fireEvent.click(sendButton());
+    await waitFor(() => expect(ticked.sendJob).toHaveBeenCalled());
+    expect(vi.mocked(ticked.sendJob).mock.calls[0]![0]).toMatchObject({ bold: false });
+    cleanup();
+
+    const plain = makeTransport();
+    mount(plain);
+    await screen.findByRole('option', { name: 'Front desk' });
+    fireEvent.click(sendButton());
+    await waitFor(() => expect(plain.sendJob).toHaveBeenCalled());
+    expect(vi.mocked(plain.sendJob).mock.calls[0]![0]).toMatchObject({ bold: null });
+  });
+
   it('switches to the Dispatch note\'s vehicle field and back', async () => {
     mount(makeTransport(), { initialKind: 'filling' });
     expect(screen.queryByLabelText(t('orderNote.vehicleNo'))).toBeNull();
