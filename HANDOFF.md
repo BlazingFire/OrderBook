@@ -52,13 +52,23 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
-## Performance plan approved, Gate 0 closed, 1.5.4 built (2026-10-25)
+## Performance plan approved, Gate 0 closed, 1.5.5 built unsigned (2026-10-26)
 
-**State:** `main` = `origin/main` = `0944dc61`, tree clean, **version 1.5.4**
-(bumped by OpenCode; `npm run release -- 1.5.4` built Master 225 MB + Office
-85 MB Setups into `C:\OrderBook-Releases` — **manifests UNSIGNED** (no
-`ORDERBOOK_RELEASE_KEY` here): installing needs
-`ORDERBOOK_ALLOW_UNSIGNED_RELEASES=1`, or a signed rebuild by the owner).
+**State:** `main` = `eb269017` (ahead of `origin/main` until pushed), tree clean, **version 1.5.5**
+(bumped by `npm run release -- 1.5.5`; Master 236 MB + Office 85 MB Setups into
+`C:\OrderBook-Releases` — **manifests UNSIGNED** (no key on this PC, none in CI
+secrets): installing needs `ORDERBOOK_ALLOW_UNSIGNED_RELEASES=1`, or a signed
+rebuild by the owner).
+- **feat/pdf-15x merged:** the worktree branch (printroom PDF work: lead-pdf,
+  note renderer, OrderNote screens, printroom domain + tests) merged as
+  `eb269017` after a green `npm run verify` on the merged tree (lint 0,
+  typecheck 0, 417 files / 5568 tests green, PG integration suites RUN).
+  Worktree removed, local branch deleted. Panel protocol 11 → 12 (`order:pdf`).
+- **Release notes** `docs/releases/1.5.5.md` cover everything since v1.5.2 —
+  1.5.3 and 1.5.4 were committed and built locally but never published.
+- **Owner-directed release:** the 1.5.5 bump/push was ordered from the task board
+  while the performance plan's freeze ("no version bump/push/release until the
+  stability bar passes") is still open — owner's call, recorded here.
 
 - **The owner's performance plan is approved and active:**
   `~/.commandcode/plans/performance-blazing-fast.md` (Gate 0 → phases 0–19;
@@ -2050,6 +2060,14 @@ terms, multiple contacts); concurrent edits of one lead from two panels
 
 Condensed. The full entries are in `git show 5b8ebe2:HANDOFF.md` and in
 `docs/AI_COLLABORATION.md`.
+
+- **2026-10-26 — 1.5.5: PDF work combined, green gate, unsigned build, extras removed.**
+  `feat/pdf-15x` (printroom PDF work) merged as `eb269017`; full `npm run verify` exit 0
+  on the merged tree (417 files / 5568 tests, PG integration RUN). Worktree removed,
+  local branch deleted. `npm run release -- 1.5.5` wrote unsigned Master + Office
+  setups to `C:\OrderBook-Releases` (no key here, none in CI). Release notes cover all
+  since v1.5.2. Pushed to `main`; four stale `origin/claude/*` build-helper branches
+  deleted. See the Change log entry of this date.
 
 - **2026-10-10 — 1.4.7: everything combined.** The main checkout's Oct 8–9 work, `s7/product-backup`, `s6/todo` and
   `d2/oct7` merged; the Clean Install tool's `.exe` stamped with the OrderBook icon; version 1.4.7 built, published
