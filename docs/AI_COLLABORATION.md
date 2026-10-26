@@ -222,6 +222,37 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-26 - Rust sidecar complete: full verify green (Muse Code, main, source touched, uncommitted)
+
+- **Final gate:** `npm run verify` exit 0 — lint 0, typecheck 0 (incl. the repo-wide `tsconfig.test.json` that caught one generic-indexing slip in a parity test, fixed), 417 files / 5557 tests green with 17 pre-existing skips. Both review agents returned No issues.
+- **What shipped:** `rust/` workspace (csv, pick-score, record match/filter, spreadsheet parse, manifest payload, HLC clock, LWW merge, line identity, import-row parse incl. header tables); `orderbook-helper` sidecar (csv, pickScore, pickBatch, parseCsv, parseImportSheet ops — every op has a live caller); TS bridges with fallback in Master + Office; 4 wired paths (log CSV export, offline pick ranking, sheet read, import sheet batch); 4 vitest parity suites + Rust unit tests in every ported module + `phase2.rs` integration vectors; `rust:check` repo script.
+- **Deliberately not wired:** single-shot callers where a spawn costs more than the compute (`prefixTsQuery`, `buildLineSnapshot`), sync-only chains (manifest verify), browser-side filtering, Ed25519 (needs vendored crypto crates — network fetch, not done here). Rule kept: no caller-less ops, no behavior change without a binary.
+- **Owner action needed for the last mile:** install the Windows SDK (Build Tools present, import libs absent) so `cargo test` can link and the helper binary can build; until then the binary-backed parity assertions activate automatically wherever a binary exists, and everything else runs on the verified TypeScript fallback.
+
+### 2026-10-26 - Rust sidecar phase 3: import-row batch ported, wired, integration-green (Muse Code, main, source touched, uncommitted)
+
+- **Ported (2 builders, parallel):** `import.rs` (`parse_import_row`, `prefix_ts_query`, `build_line_snapshot`, header tables) and `sync_port.rs` (`merge_fields`, `same_lines`, HLC family, `base_for_unversioned_edit`). My review caught and fixed 3 divergences before wiring: `Number("1_0")` underscore parsing, absent-key vs explicit-`undefined` in merge `accepted` (callers use `in`/`Object.keys`), and a byte-slice panic on non-boundary input. Validation-by-construction documented where the twin can never fire (`validateProductInput` no-op on parser-built rows; proof in entry).
+- **Wired:** `parseImportSheet` helper op (one spawn per sheet, explicit row numbers, strings-and-lists-only wire) + `product-import-via-rust.ts` + batch restructure of the import loop in `product-import.service.ts` (blank/onlyRows filtering and `codeOfRow` bookkeeping unchanged). `prefixTsQuery`/`buildLineSnapshot`/sync ports stay core-only: single-shot callers where a spawn costs more than the compute, and sync-only call chains — same no-caller-less-ops rule.
+- **Gate this turn:** `cargo fmt/check/clippy` 0; master typecheck 0; eslint 0; 28k-vector import fuzz + 38k-vector sync fuzz clean; new `rust-import-parity` green; product-import integration suite RAN on local Postgres 13/13 through the rewired batch path.
+- **Still open:** phase-3 reviewer verdict; full `npm run verify` after all edits; Windows SDK still missing so `cargo test` (link) awaits an SDK machine.
+
+### 2026-10-26 - Rust sidecar phase 2: CSV sheet parsing wired; helper surface kept honest (Muse Code, main, source touched, uncommitted)
+
+- **Ask (owner):** finish the whole Rust part faster, with more subagents.
+- **Wired:** `parseCsv` via `readSheetRows` (`master/src/lib/spreadsheet-via-rust.ts` + 1-line branch edit) — every CSV import (products, parties, logs) now parses in Rust when the binary exists, TypeScript otherwise; 4 new parity tests.
+- **Deliberately not shipped:** `matchesBatch` and `manifestPayload` helper ops were built then removed — their call chains are browser-side filtering and synchronous manifest verification, neither of which can await a sidecar. The tested core functions stay (`matches_batch`, `canonical_manifest_payload` + Rust tests); every helper op on the wire has a live caller. New rule recorded: no caller-less ops.
+- **Fanned out (parallel):** 2 read-only scouts ranked the next portable surfaces (server winner: `parseImportRow`, `prefixTsQuery`, `buildLineSnapshot`; shared winner: `mergeFields`, `tickHlc` family, `sameLines`); 2 builders are now porting those to `rust/` core (`import.rs`, `sync_port.rs`); 1 reviewer audits the phase-2 diff.
+- **Gate:** `cargo fmt/check/clippy` 0; master typecheck 0; eslint 0; 28 spreadsheet-area tests green; 40k-vector phase-2 fuzz clean. Full `npm run verify` exit 0 (415 files / 5550 tests) on the pre-phase-2 tree.
+
+### 2026-10-26 - Rust sidecar phase 1: core, helper, bridge, two wired paths (Muse Code, main, source touched, uncommitted)
+
+- **Ask (owner):** use the Rust programming language in this project — maximum Rust, no feature changed or broken.
+- **Added (all additive, every caller falls back to TypeScript when the binary is absent):** `rust/` Cargo workspace (`orderbook-core`: csv render, pick-score tiers, record match, all std-only; `orderbook-helper`: one-JSON-request/one-JSON-response stdin/stdout binary, no files, no network); `master/src/lib/rust-bridge.ts` + twin `office/src/lib/rust-bridge.ts` (`spawn` + timeout + byte cap, `ORDERBOOK_RUST_HELPER` override, null when unbuilt); `master/src/lib/csv-via-rust.ts` wired into `log.service.ts` `exportLogs` (byte-identical CSV); `office/src/lib/pick-via-rust.ts` + `pickFromViewAsync`/`pickFromAsync` wired into the offline pick route in `office/src/http/app.ts` (same order/truncation, permission gate kept). Sync `pickFromView` untouched and still fully tested.
+- **Tests:** 8 new parity tests (`master/tests/rust-csv-parity.test.ts`, `office/tests/rust-pick-parity.test.ts`) pinning helper-output == TypeScript output through fallback and through a real binary when present; 7 Rust unit tests mirroring the TS vectors. Targeted run 5 files / 49 tests green.
+- **Gate this session:** `cargo check` 0, `cargo clippy -- -D warnings` 0, `cargo fmt --check` 0; master + office `typecheck` 0; eslint on all touched files 0. `rust:check` script added to root `package.json`; `rust/target/` gitignored. Full `npm run verify` NOT yet re-run after these edits.
+- **Known limit:** this PC has Build Tools but no Windows SDK import libs (`kernel32.lib` absent), so the helper binary cannot link here — `cargo test` (which links) cannot run on this machine until the SDK is installed. All behavior above is verified through the TypeScript fallback path plus `cargo check`/clippy/fmt; the parity tests exercise the live binary automatically wherever one exists.
+- **Next:** install the Windows SDK (or build on a machine that has it) to run `cargo test` and the binary-backed parity assertions; then port the next pure surfaces (record-search batch, spreadsheet parse, release-signature verify) behind the same bridge.
+
 ### 2026-10-26 - Phase 0 perf-baselines complete; numbers in the brief (Command Code, main, no source touched)
 
 - **Ask (owner):** continue the approved performance plan ("open code work is done you continue").

@@ -45,6 +45,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "verify": "npm run lint && npm run typecheck && npm run test",
+    "rust:check": "cargo fmt --manifest-path rust/Cargo.toml -p orderbook-core -p orderbook-helper -- --check && cargo clippy --manifest-path rust/Cargo.toml --workspace --tests -- -D warnings",
     "release": "node tools/release.mjs",
     "smoke:legacy": "node tools/legacy-smoke.mjs",
     "release:keygen": "node tools/make-release-key.mjs",

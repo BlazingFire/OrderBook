@@ -1,0 +1,11 @@
+[package]
+name = "orderbook-helper"
+version = "1.5.4"
+edition = "2021"
+
+[[bin]]
+name = "orderbook-helper"
+path = "src/main.rs"
+
+[dependencies]
+orderbook-core = { path = "../orderbook-core" }

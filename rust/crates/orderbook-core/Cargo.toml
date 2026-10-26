@@ -1,0 +1,8 @@
+[package]
+name = "orderbook-core"
+version = "1.5.4"
+edition = "2021"
+
+[lib]
+name = "orderbook_core"
+path = "src/lib.rs"
