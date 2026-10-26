@@ -9,10 +9,10 @@
  * quantity, no money, no signature row.
  */
 
-import { NOTE_LAYOUT, type Lead, type LineItem, type Party } from '@orderbook/shared';
+import { NOTE_LAYOUT, type Lead, type LineItem, type Order, type Party } from '@orderbook/shared';
 import { describe, expect, it } from 'vitest';
 
-import { leadNotePdf } from '../src/domain/lead-pdf.js';
+import { leadNotePdf, orderNotePdf } from '../src/domain/lead-pdf.js';
 import { planNotePdf, renderNotePdf, type Measure, type PdfOp, type TextOp } from '../src/pdf/note-renderer.js';
 
 let nextId = 0;
@@ -158,6 +158,69 @@ and a second paragraph`;
     expect(input.pages.filter((page) => page.notesHeight > 0).length).toBeGreaterThan(1);
     expect(printed).toEqual(text.split(' '));
     expect(texts(plans.at(-1)!).map((op) => op.text)).toContain(`Page ${plans.length} of ${plans.length}`);
+  });
+});
+
+describe('the pending order PDF — the saved tick boxes', () => {
+  const tickedHeading = (plans: PdfOp[][], heading: string): boolean =>
+    texts(plans[0]!).some((op) => op.text === heading);
+
+  it('prints no heading for an unticked column, as the preview gates it (15x)', () => {
+    const items = [line({ packaging: 'Box', colour: 'Blue', grade: 'Std' })];
+    const headed = planNotePdf(
+      leadNotePdf(lead(items), PARTY, 'Swisware Ceramics', PRINTED, (colour) => colour, {
+        packaging: true, grade: true, colour: true,
+      }),
+      measure,
+    );
+    expect(tickedHeading(headed, 'PACKING')).toBe(true);
+    expect(tickedHeading(headed, 'COLOUR')).toBe(true);
+    expect(tickedHeading(headed, 'GRADE')).toBe(true);
+
+    const unticked = planNotePdf(
+      leadNotePdf(lead(items), PARTY, 'Swisware Ceramics', PRINTED, (colour) => colour, {
+        packaging: false, grade: false, colour: false,
+      }),
+      measure,
+    );
+    const all = words(unticked);
+    expect(tickedHeading(unticked, 'PACKING')).toBe(false);
+    expect(tickedHeading(unticked, 'COLOUR')).toBe(false);
+    expect(tickedHeading(unticked, 'GRADE')).toBe(false);
+    // The rows print too, only without the ticked columns.
+    expect(all).toContain('Sharma Tiles');
+  });
+});
+
+describe('the final order PDF — the document', () => {
+  it('heads the sheet as a final order and freezes ticks and bold (15x)', () => {
+    const items = [line({ packaging: 'Box', colour: 'Blue', grade: 'Std' })];
+    const order = {
+      ...lead(items),
+      poNumber: 'FO/2026-27/00042',
+      leadId: null,
+      dispatchAddressLabel: null,
+      expectedDispatchDate: null,
+      totalWeightKgOverride: null,
+      weightSource: 'computed',
+      linesWithoutWeight: 0,
+      dispatchedAt: null,
+    } as Order;
+    const input = orderNotePdf(order, PARTY, 'Swisware Ceramics', PRINTED, (colour) => colour, {
+      packaging: false, grade: true, colour: true,
+    }, false);
+
+    expect(input.title).toBe('Final order');
+    expect(input.numberText).toBe('FO/2026-27/00042');
+    expect(input.bold).toBe(false);
+    expect(input.columns).toEqual({ packaging: false, grade: true, colour: true });
+
+    const plans = planNotePdf(input, measure);
+    const first = texts(plans[0]!).map((op) => op.text);
+    expect(first).toContain('Final order');
+    expect(first).not.toContain('PACKING');
+    expect(first).toContain('COLOUR');
+    expect(first).toContain('GRADE');
   });
 });
 

@@ -1965,6 +1965,13 @@ describe('the Filling and Dispatch notes on an order', () => {
     await screen.findByText(t('orders.detail.products'));
     expect(screen.getByRole('button', { name: t('orderNote.filling') })).toBeTruthy();
     expect(screen.getByRole('button', { name: t('orderNote.dispatch') })).toBeTruthy();
+    // Preview PDF is an export right: a viewer alone gets the notes, not the link.
+    expect(screen.queryByRole('link', { name: t('lead.previewPdf') })).toBeNull();
+    cleanup();
+
+    await openOrder(['orders.view', 'orders.export']);
+    const link = screen.getByRole('link', { name: t('lead.previewPdf') });
+    expect(link.getAttribute('href')).toBe(`/api/orders/${ORDER.id}/pdf`);
   });
 
   it('has a Notes column and no note buttons on a list row (2026-10-09)', async () => {

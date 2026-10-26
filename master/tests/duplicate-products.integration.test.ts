@@ -159,6 +159,78 @@ describe.skipIf(!canRunIntegrationTests)('duplicate products (integration)', () 
     });
   });
 
+  it('DUP-7: suspect-only groups refuse resolve — rename or merge first', async () => {
+    const basin = await category('Wash Basin', 'WB');
+    await subProduct('DAMRU', basin.id, 'WB-0001');
+    await subProduct('DAMRUU', basin.id, 'WB-0002');
+
+    const { groups } = await duplicates.findDuplicates(actor);
+    const suspects = groups.filter((group) => group.matchedOn.includes('near-name'));
+    expect(suspects).toHaveLength(1);
+    expect(suspects[0]?.matchedOn).toEqual(['near-name']);
+
+    const members = suspects[0]!.members;
+    await expect(
+      duplicates.resolveDuplicates(
+        { level: 'subProduct', keepId: members[0]!.id, deleteIds: [members[1]!.id] },
+        actor,
+      ),
+    ).rejects.toMatchObject({ messageKey: 'validation.duplicates.suspect' });
+    // Nothing deleted: the rows stay for a human verdict.
+    expect(await db()('products').whereNull('deleted_at').count('* as n').first()).toMatchObject({
+      n: '2',
+    });
+  });
+
+  it('DUP-8: retiring a variant quoted by pending lines is refused, naming its codes', async () => {
+    const basin = await category('Wash Basin', 'WB');
+    const product = await catalog.createProduct(
+      {
+        name: 'DAMRU',
+        categoryId: basin.id,
+        hasVariants: true,
+        variants: [
+          { code: 'WB-0001', label: 'White' },
+          { code: 'WB-0002', label: 'Ivory' },
+        ],
+      },
+      actor,
+    );
+    const party = await catalog.createParty({ name: 'Sharma Tiles' }, actor);
+    await leadService.createLead(
+      {
+        partyId: party.id,
+        items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 5, packaging: 'Box' }],
+      },
+      actor,
+    );
+
+    // Retiring the quoted variant is refused.
+    await expect(
+      catalog.updateProduct(
+        product.id,
+        {
+          name: 'DAMRU',
+          hasVariants: true,
+          variants: [{ id: product.variants[1]!.id, code: 'WB-0002', label: 'Ivory' }],
+        },
+        actor,
+      ),
+    ).rejects.toMatchObject({ messageKey: 'error.conflict.variantRetiredWithPendingLines' });
+
+    // Omitting only the unquoted variant goes through; the quoted one stays.
+    const updated = await catalog.updateProduct(
+      product.id,
+      {
+        name: 'DAMRU',
+        hasVariants: true,
+        variants: [{ id: product.variants[0]!.id, code: 'WB-0001', label: 'White' }],
+      },
+      actor,
+    );
+    expect(updated.variants.map((variant) => variant.code)).toEqual(['WB-0001']);
+  });
+
   it('DUP-6: needs products.delete to look or to delete', async () => {
     const viewer = await actorWith(['products.view']);
     await expect(duplicates.findDuplicates(viewer)).rejects.toMatchObject({ statusCode: 403 });

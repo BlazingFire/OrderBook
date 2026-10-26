@@ -67,7 +67,7 @@ import {
   type ProductListFilters,
 } from './ListFilters.js';
 import { useFilterBar } from './FilterBarSlot.js';
-import { Input } from './Form.js';
+import { SearchField } from './SearchField.js';
 import { t } from './i18n.js';
 import { LoadMorePager } from './CursorPager.js';
 import { ProductDetail, SubProductColour } from './ProductDetail.js';
@@ -341,19 +341,17 @@ export function SubProductsScreen({
   // The search stays on an open sub product: typing goes back to the list, filtered.
   useFilterBar(
     <>
-      <Input
+      <SearchField
+        label={t('catalog.products.searchLabel')}
+        placeholder={t('catalog.products.searchPlaceholder')}
         value={search}
-        onChange={(event) => {
-          setSearch(event.target.value);
+        onValueChange={(next) => {
+          setSearch(next);
           if (open) {
             setOpenId(null);
             setPhotoPatch(null);
           }
         }}
-        placeholder={t('catalog.products.searchPlaceholder')}
-        aria-label={t('catalog.products.searchLabel')}
-        data-screen-search
-        style={{ width: rem(320) }}
       />
       {!open && (
         <>

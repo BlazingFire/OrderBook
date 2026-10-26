@@ -406,17 +406,20 @@ function planNamed(
   columns.forEach((column, index) => {
     const x = x0 + index * (colW + gap);
     const edge = x + colW;
-    const packW = colW * 0.11;
-    const colourW = colW * 0.15;
-    const gradeW = 40;
+    // An unticked column frees its width to the label, as the preview's flex does — the heading gate below
+    // must match the rows, or an empty-headed column prints (15x).
+    const packW = show.packaging ? colW * 0.11 : 0;
+    const colourW = show.colour ? colW * 0.15 : 0;
+    const gradeW = show.grade ? 40 : 0;
     const qtyW = 34;
-    const labelW = colW - packW - colourW - gradeW - qtyW - 4 * 7;
+    const gaps = 7 * ((show.packaging ? 1 : 0) + (show.colour ? 1 : 0) + (show.grade ? 1 : 0) + 1);
+    const labelW = colW - packW - colourW - gradeW - qtyW - gaps;
     const packX = x + labelW + 7;
-    const colourX = packX + packW + 7;
-    const gradeX = colourX + colourW + 7;
+    const colourX = packX + packW + (show.packaging ? 7 : 0);
+    const gradeX = colourX + colourW + (show.colour ? 7 : 0);
     const qtyRight = edge;
 
-    // Column heading, with its rule.
+    // Column heading, with its rule. Unticked columns print no heading, as the preview gates them (15x).
     const head = L.columnLabel;
     const headY = centred(top, head, 7.5, 'bold');
     page.text(x, headY, caps(t('en', 'orderNote.subProductBrand')), face, 7.5, MUTED, 0.83);

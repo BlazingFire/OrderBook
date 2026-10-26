@@ -35,7 +35,8 @@ import { roomTitle, type ChatRecordOption, type ChatTransport, type ChatViewer }
 import { Combobox } from './Combobox.js';
 import { apiErrorText } from './errorText.js';
 import { FilterChip } from './FilterBar.js';
-import { Checkbox, Input } from './Form.js';
+import { Checkbox } from './Form.js';
+import { SearchField } from './SearchField.js';
 import { t } from './i18n.js';
 import { Icon } from './icons';
 import { Popover } from './Popover.js';
@@ -281,15 +282,14 @@ function RoomsPage({
   return (
     <div className="ob-chat-page">
       <div className="ob-chat-toolbar">
-        <Input
-          data-screen-search
-          className="ob-chat-search"
-          type="search"
-          value={term}
-          placeholder={t('chat.rooms.search')}
-          aria-label={t('chat.rooms.search')}
-          onChange={(event) => setTerm(event.target.value)}
-        />
+        <span className="ob-chat-search">
+          <SearchField
+            label={t('chat.rooms.search')}
+            placeholder={t('chat.rooms.search')}
+            value={term}
+            onValueChange={setTerm}
+          />
+        </span>
         {canDirect && (
           <span className="ob-chat-directwrap">
             <Button icon="plus" onClick={() => setDirectOpen((open) => !open)} aria-expanded={directOpen}>

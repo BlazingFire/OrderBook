@@ -371,7 +371,7 @@ describe('Clear filters on the sub-product list (1.4 rework)', () => {
     renderList(viewOf(), transport);
     await waitFor(() => expect(transport.listProducts).toHaveBeenCalled());
 
-    fireEvent.change(screen.getByRole('textbox', { name: t('catalog.products.searchLabel') }), {
+    fireEvent.change(screen.getByRole('searchbox', { name: t('catalog.products.searchLabel') }), {
       target: { value: 'damru' },
     });
     fireEvent.click(screen.getByRole('button', { name: /Other/ }));
@@ -396,7 +396,7 @@ describe('Clear filters on the sub-product list (1.4 rework)', () => {
       ),
     );
     expect(
-      (screen.getByRole('textbox', { name: t('catalog.products.searchLabel') }) as HTMLInputElement)
+      (screen.getByRole('searchbox', { name: t('catalog.products.searchLabel') }) as HTMLInputElement)
         .value,
     ).toBe('');
     expect((screen.getByLabelText(t('listFilter.size')) as HTMLInputElement).value).toBe('');

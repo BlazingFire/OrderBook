@@ -9,7 +9,7 @@
  * and the same result shapes as the modals and screens it replaces.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   DuplicateGroup,
   DuplicateMember,
@@ -19,7 +19,13 @@ import type {
   ProductAlterationAffected,
   ProductAlterationPreview,
 } from '@orderbook/shared';
-import { MAX_PRODUCT_IMPORT_BYTES } from '@orderbook/shared';
+import {
+  MAX_PRODUCT_IMPORT_BYTES,
+  colourRuleOf,
+  qualitySuspects,
+  sizeDriftVariants,
+  type QualitySuspect,
+} from '@orderbook/shared';
 
 import { Button } from './Button.js';
 import { type CatalogueTransport, type CatalogueView } from './catalogueSummary.js';
@@ -37,7 +43,7 @@ import { Segmented } from './Tabs.js';
 import { useToast } from './Toast.js';
 import { formatDateTime } from './format.js';
 
-type Tab = 'import' | 'export' | 'backup' | 'duplicates' | 'alteration';
+type Tab = 'import' | 'export' | 'backup' | 'duplicates' | 'alteration' | 'quality';
 
 interface ProductConflictsScreenProps {
   view: CatalogueView;
@@ -74,6 +80,7 @@ export function ProductConflictsScreen({
       label: t('product.conflicts.tab.duplicates'),
       show: Boolean(transport.duplicates) && canDelete,
     },
+    { value: 'quality', label: t('product.conflicts.tab.quality'), show: canEdit },
     { value: 'alteration', label: t('product.conflicts.tab.alteration'), show: true },
   ];
   const visible = tabs.filter((tab) => tab.show);
@@ -128,6 +135,7 @@ export function ProductConflictsScreen({
           onDone={(message) => toast.push(message, { tone: 'ok' })}
         />
       )}
+      {active === 'quality' && <QualitySection view={view} revision={revision} />}
       {active === 'alteration' && (
         <AlterationSection
           view={view}
@@ -136,6 +144,96 @@ export function ProductConflictsScreen({
           onDone={(message) => toast.push(message, { tone: 'ok' })}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Data-quality suspects (docs/PRODUCT_CONFLICTS.md §D): computed client-side
+ * over the loaded catalogue view — no new endpoint. Each finding names the
+ * rows; fixing happens on the product, then a re-check.
+ */
+function QualitySection({ view, revision }: { view: CatalogueView; revision: number }) {
+  const suspects = useMemo(() => {
+    void revision;
+    const colours = new Set(
+      view.optionLists.filter((option) => option.listKey === 'stock.colour').map((option) => option.label.trim().toLowerCase()),
+    );
+    const products = view.products.map((product) => ({
+      id: product.id,
+      name: product.name,
+      size: product.size,
+      alias: product.alias,
+      categoryId: product.categoryId,
+      brand: product.brand,
+      colourRule: colourRuleOf(product),
+      variants: product.variants.map((variant) => ({
+        id: variant.id,
+        code: variant.code,
+        label: variant.label,
+        weightKg: variant.weightKg,
+      })),
+    }));
+    const neighbours = products.map((product) => ({
+      id: product.id,
+      name: product.name,
+      categoryId: product.categoryId,
+      brand: product.brand,
+      codes: product.variants.map((variant) => variant.code ?? '').filter(Boolean),
+    }));
+    const found: QualitySuspect[] = [];
+    for (const product of products) {
+      found.push(
+        ...qualitySuspects(
+          product,
+          neighbours.filter((neighbour) => neighbour.id !== product.id),
+          colours,
+        ),
+      );
+    }
+    // D5 size drift is catalogue-wide per Product, not per row.
+    const byCategory = new Map<string, Array<{ id: string; size: string | null }>>();
+    for (const product of view.products) {
+      const list = byCategory.get(product.categoryId) ?? [];
+      list.push({ id: product.id, size: product.size });
+      byCategory.set(product.categoryId, list);
+    }
+    for (const [categoryId, rows] of byCategory) {
+      for (const forms of sizeDriftVariants(rows)) {
+        const first = rows.find((row) => row.size && forms.includes(row.size));
+        const name = view.products.find((product) => product.id === first?.id)?.name ?? categoryId;
+        found.push({
+          kind: 'size-drift',
+          productId: first?.id ?? categoryId,
+          productName: name,
+          detail: `Size prints ${forms.map((form) => `"${form}"`).join(' vs ')} in one product`,
+        });
+      }
+    }
+    return found.sort((a, b) => a.productName.localeCompare(b.productName) || a.kind.localeCompare(b.kind));
+  }, [view, revision]);
+
+  if (suspects.length === 0) {
+    return (
+      <EmptyState
+        title={t('product.quality.empty.title')}
+        description={t('product.quality.empty.description')}
+      />
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-12)' }}>
+      <p className="ob-small" style={{ color: 'var(--fg-tertiary)', margin: 0 }}>
+        {t('product.quality.description')}
+      </p>
+      {suspects.map((suspect: QualitySuspect, index: number) => (
+        <div key={`${suspect.productId}:${suspect.kind}:${index}`} className="ob-card ob-card--pad" style={{ display: 'flex', gap: 'var(--s-8)', alignItems: 'baseline', flexWrap: 'wrap' }}>
+          <strong>{suspect.productName}</strong>
+          <span className="ob-dup__chip">{t(`product.quality.kind.${suspect.kind}`)}</span>
+          <span className="ob-small" style={{ color: 'var(--fg-secondary)' }}>{suspect.detail}</span>
+        </div>
+      ))}
     </div>
   );
 }

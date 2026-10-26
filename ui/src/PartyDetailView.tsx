@@ -16,8 +16,8 @@
 import { useState } from 'react';
 import type { Lead, Order, Party, PartyProductVariant } from '@orderbook/shared';
 
+import { CopyButton } from './ActionButtons.js';
 import { Button, IconButton } from './Button.js';
-import { copyText } from './clipboard.js';
 import { StatusPill } from './DataDisplay.js';
 import { DataTable, type DataTableColumn } from './DataTable.js';
 import { formatDate, formatDateTime } from './format.js';
@@ -123,7 +123,6 @@ export function PartyDetailView(props: PartyDetailViewProps) {
   const [tab, setTab] = useState<OrdersTab>('pending');
   const [detailsOpen, setDetailsOpen] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   const place = [party.city, party.state].filter(Boolean).join(', ');
   const showFinal = props.final !== undefined;
@@ -248,20 +247,7 @@ export function PartyDetailView(props: PartyDetailViewProps) {
         <div className="ob-partyview-who">
           <div className="ob-partyview-titlerow">
             <h1 className="ob-title">{party.name}</h1>
-            <button
-              type="button"
-              className="ob-partyview-code"
-              title={copied ? t('party.view.copied') : t('party.view.copyCode')}
-              onClick={() => {
-                void copyText(party.partyCode).then((ok) => {
-                  setCopied(ok);
-                  if (ok) window.setTimeout(() => setCopied(false), 1500);
-                });
-              }}
-            >
-              <span className="ob-mono">{party.partyCode}</span>
-              <Icon name={copied ? 'check' : 'copy'} size={13} />
-            </button>
+            <CopyButton value={party.partyCode} label={t('party.view.copyCode')} />
             {accessCount > 0 && (
               <span className="ob-partyview-restricted">
                 <Icon name="lock" size={13} />

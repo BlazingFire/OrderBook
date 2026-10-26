@@ -17,8 +17,12 @@ export function isDuplicateLevel(value: unknown): value is DuplicateLevel {
   return (DUPLICATE_LEVELS as readonly unknown[]).includes(value);
 }
 
-/** What made two rows one group. A group can match on both. */
-export type DuplicateMatch = 'name' | 'code';
+/**
+ * What made two rows one group. A group can match on both. `near-name` and
+ * `code-variant` are suspects (A8/A9), never auto-deleted: the finder refuses
+ * a resolve whose group matched only on a suspect.
+ */
+export type DuplicateMatch = 'name' | 'code' | 'near-name' | 'code-variant';
 
 /**
  * Why a member cannot be deleted now:
@@ -84,4 +88,51 @@ export function duplicateKey(value: string | null | undefined): string {
     .replace(/\p{M}/gu, '')
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]/gu, '');
+}
+
+/**
+ * Edit distance for short catalogue names (A8). Capped inputs: names here are
+ * a few dozen characters, and callers compare within one brand scope.
+ */
+export function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    let current = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const next = Math.min(prev[j]! + 1, current + 1, prev[j - 1]! + cost);
+      prev[j - 1] = current;
+      current = next;
+    }
+    prev[b.length] = current;
+  }
+  return prev[b.length]!;
+}
+
+/** Two normalized names that differ by a likely typo (A8): same length class, distance ≤ 2. */
+export function isNearName(a: string, b: string): boolean {
+  if (!a || !b || a === b) return false;
+  if (Math.abs(a.length - b.length) > 2) return false;
+  if (Math.max(a.length, b.length) < 4) return false;
+  return levenshtein(a, b) <= 2;
+}
+
+/**
+ * Two codes that differ only by separators, case or zero padding (A9):
+ * `OPT-0001` vs `OPT0001` vs `opt-001`. The digit run must agree once leading
+ * zeros are stripped, and the letter run must agree exactly.
+ */
+export function isCodeVariant(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  const split = (code: string): [string, string] => {
+    const letters = code.replace(/[^a-z]/gi, '').toLowerCase();
+    const digits = code.replace(/[^0-9]/g, '').replace(/^0+/, '');
+    return [letters, digits];
+  };
+  const [lettersA, digitsA] = split(a);
+  const [lettersB, digitsB] = split(b);
+  return lettersA !== '' && lettersA === lettersB && digitsA !== '' && digitsA === digitsB && a !== b;
 }

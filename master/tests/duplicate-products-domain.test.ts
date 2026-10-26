@@ -91,4 +91,40 @@ describe('findDuplicateGroups', () => {
       findDuplicateGroups('product', [row({ name: 'A', codes: ['X1'] }), row({ name: 'B', codes: ['X2'] })]),
     ).toEqual([]);
   });
+
+  it('groups near-name suspects without merging them into exact matches', () => {
+    const groups = findDuplicateGroups('product', [
+      row({ id: 'A', name: 'DAMRU', codes: ['X1'] }),
+      row({ id: 'B', name: 'DAMRUU', codes: ['X2'] }),
+      row({ id: 'C', name: 'Pedestal', codes: ['Y1'] }),
+    ]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.members.map((member) => member.id).sort()).toEqual(['A', 'B']);
+    expect(groups[0]?.matchedOn).toEqual(['near-name']);
+  });
+
+  it('groups code-variant suspects within a brand', () => {
+    const groups = findDuplicateGroups('subProduct', [
+      row({ id: 'A', name: 'Basin', categoryId: 'P', codes: ['OPT-0001'] }),
+      row({ id: 'B', name: 'Basin Pro', categoryId: 'P', codes: ['OPT-001'] }),
+      row({ id: 'C', name: 'Basin', categoryId: 'Q', codes: ['OPT-0002'] }),
+    ]);
+
+    // A~B differ only by zero padding (variant); C is unrelated.
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.members.map((member) => member.id).sort()).toEqual(['A', 'B']);
+    expect(groups[0]?.matchedOn).toEqual(['code-variant']);
+  });
+
+  it('does not raise a suspect for an exact match or a far name', () => {
+    const groups = findDuplicateGroups('product', [
+      row({ id: 'A', name: 'Wash Basin', codes: ['WB'] }),
+      row({ id: 'B', name: 'wash-basin', codes: ['WB2'] }),
+      row({ id: 'C', name: 'Washing Machine Deluxe', codes: ['W1'] }),
+    ]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.matchedOn).toEqual(['name']);
+  });
 });

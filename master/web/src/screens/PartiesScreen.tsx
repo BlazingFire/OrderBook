@@ -61,6 +61,7 @@ import {
   Input,
   LoadMorePager,
   Modal,
+  SearchField,
   NO_PARTY_LIST_FILTERS,
   PartyDetailView,
   PartyFilterRow,
@@ -302,14 +303,13 @@ export function PartiesScreen({
   useFilterBar(
     open && editing ? null : (
       <>
-        <div className="ob-search" style={{ width: rem(400) }}>
-          <Input
-            value={search}
+        <div style={{ width: rem(400) }}>
+          <SearchField
+            label={t('catalog.parties.searchLabel')}
             placeholder={t('catalog.parties.searchPlaceholder')}
-            aria-label={t('catalog.parties.searchLabel')}
-            data-screen-search
-            onChange={(event) => {
-              setSearch(event.target.value);
+            value={search}
+            onValueChange={(next) => {
+              setSearch(next);
               if (open) onOpenId(null);
             }}
           />

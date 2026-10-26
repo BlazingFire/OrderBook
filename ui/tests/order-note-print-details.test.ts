@@ -44,6 +44,22 @@ describe('the bundled fonts', () => {
   });
 });
 
+describe('the frozen sheet props', () => {
+  it('carries the frozen bold to the sheets, defaulting to bold (15x)', async () => {
+    const { noteDocument } = await import('@orderbook/shared');
+    const { noteSheetProps } = await import('../src/NoteDocumentPortal.js');
+    const lead = { partyName: 'P', notes: null, items: [], totalWeightKg: 0 } as never;
+    const document = noteDocument(lead, 'lead', null, null);
+    expect(noteSheetProps({ ...document, bold: null }, 'dispatch', new Date()).bold).toBeUndefined();
+    expect(noteSheetProps({ ...document, bold: false }, 'dispatch', new Date()).bold).toBe(false);
+    expect(noteSheetProps({ ...document, bold: true }, 'dispatch', new Date()).bold).toBe(true);
+    // Bold changes faces, never pagination: the same pages either way.
+    expect(noteSheetProps({ ...document, bold: false }, 'dispatch', new Date()).pages).toEqual(
+      noteSheetProps({ ...document, bold: true }, 'dispatch', new Date()).pages,
+    );
+  });
+});
+
 describe('the note quantity unit', () => {
   it('is "pcs": a quantity is always pieces, and "Box" is only a kind of packaging (owner, 2026-10-07)', async () => {
     const { t } = await import('../src/i18n.js');

@@ -15,6 +15,8 @@
 
 import {
   duplicateKey,
+  isCodeVariant,
+  isNearName,
   type DuplicateGroup,
   type DuplicateLevel,
   type DuplicateMatch,
@@ -68,13 +70,52 @@ export function findDuplicateGroups(
   });
 
   const matches = new Map<number, Set<DuplicateMatch>>();
+  const exactPairs = new Set<string>();
   for (const [token, holders] of tokens) {
     if (holders.length < 2) continue;
     const kind: DuplicateMatch = token.startsWith('name|') ? 'name' : 'code';
     const root = find(holders[0] as number);
-    for (const holder of holders.slice(1)) parent[find(holder)] = root;
+    for (const holder of holders.slice(1)) {
+      parent[find(holder)] = root;
+      const pair = [holders[0], holder].sort((a, b) => (a as number) - (b as number)).join(':');
+      exactPairs.add(pair);
+    }
     for (const holder of holders) {
       matches.set(holder, (matches.get(holder) ?? new Set()).add(kind));
+    }
+  }
+
+  // Suspects (A8/A9): pairs that are not exact matches but look like typos.
+  // Same scope rules as exact matches: names within one Product (or one
+  // brand for Products), codes within one brand.
+  for (let i = 0; i < candidates.length; i += 1) {
+    for (let j = i + 1; j < candidates.length; j += 1) {
+      const pair = `${i}:${j}`;
+      if (exactPairs.has(pair)) continue;
+      const a = candidates[i] as DuplicateCandidate;
+      const b = candidates[j] as DuplicateCandidate;
+      if (duplicateKey(a.brand) !== duplicateKey(b.brand)) continue;
+      if (level === 'subProduct' && (a.categoryId ?? '') !== (b.categoryId ?? '')) continue;
+      const nameA = duplicateKey(a.name);
+      const nameB = duplicateKey(b.name);
+      let kind: DuplicateMatch | null = null;
+      if (isNearName(nameA, nameB)) kind = 'near-name';
+      if (!kind) {
+        const codesA = a.codes.map(duplicateKey).filter(Boolean);
+        const codesB = new Set(b.codes.map(duplicateKey).filter(Boolean));
+        if (codesA.some((code) => codesB.has(code))) {
+          // Exact code matches are already grouped above; skip.
+        } else if (
+          a.codes.some((left) => b.codes.some((right) => isCodeVariant(left, right)))
+        ) {
+          kind = 'code-variant';
+        }
+      }
+      if (!kind) continue;
+      const root = find(i);
+      parent[find(j)] = root;
+      matches.set(i, (matches.get(i) ?? new Set()).add(kind));
+      matches.set(j, (matches.get(j) ?? new Set()).add(kind));
     }
   }
 
@@ -97,7 +138,9 @@ export function findDuplicateGroups(
       key: `${level}:${rows.map((row) => row.id).sort().join('+')}`,
       level,
       brand: rows.find((row) => row.brand)?.brand ?? null,
-      matchedOn: (['name', 'code'] as const).filter((kind) => matchedOn.has(kind)),
+      matchedOn: (['name', 'code', 'near-name', 'code-variant'] as const).filter((kind) =>
+        matchedOn.has(kind),
+      ),
       members: rows.map((row) => toMember(level, row)),
     });
   }

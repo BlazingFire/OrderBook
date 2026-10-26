@@ -32,7 +32,7 @@ import {
   copyLinesForOrder,
 } from '../domain/conversion.js';
 import { normalizeCustomFields } from '../domain/custom-fields.js';
-import { leadNotePdf } from '../domain/lead-pdf.js';
+import { orderNotePdf } from '../domain/lead-pdf.js';
 import { clampPaging } from '../domain/paging.js';
 import { resolvePartyScope, UNSCOPED_PARTY_ACCESS } from '../domain/party-scope.js';
 import {
@@ -118,7 +118,9 @@ export async function getOrder(id: string, actor: ActorContext): Promise<Order> 
  *
  * Gated on `orders.export` and read through `getOrder`, so the party scoping
  * that hides an order hides its print too. The saved tick boxes and the
- * company bold switch travel exactly as they do on the lead PDF.
+ * company bold switch travel exactly as they do on the lead PDF: rendered by
+ * the Master (`orderNotePdf` in `domain/lead-pdf.ts`, `docs/catalogue/CATALOGUE_MODEL.md`
+ * §8), bytes `inline` for Preview PDF.
  */
 export async function orderPdf(
   id: string,
@@ -131,9 +133,14 @@ export async function orderPdf(
   // check would refuse somebody who may see — and print — the order.
   const party = await partyRepo.findPartyById(actor.tenantId, order.partyId);
   const company = (await findMasterConfig())?.company_name?.trim() || 'OrderBook';
+
+  // Deleted options too: a colour taken off the list still has the label it
+  // was sold under; one the list never had prints as stored. The saved tick
+  // boxes travel on the order; Bold reads the company switch, so a PDF printed
+  // after the switch moved matches the screen.
   const colours = await customFieldRepo.listOptionsForKey(actor.tenantId, 'stock.colour', { includeDeleted: true });
   const bytes = await renderNotePdf(
-    leadNotePdf(
+    orderNotePdf(
       order,
       party,
       company,

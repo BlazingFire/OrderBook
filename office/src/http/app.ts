@@ -1493,8 +1493,11 @@ export function createApp(): Express {
 
   /**
    * The final-order PDF — the same shape as the lead's, so the order record's
-   * third button opens it the same way (2026-10-25). Online only; a Master too
-   * old for the command gets the usual update-the-Master answer (protocol 12).
+   * third button opens it the same way (2026-10-25): rendered by the Master
+   * and handed to the browser `inline`, so Preview PDF opens it rather than
+   * saving it. Online-only: the Master holds the renderer and the fonts; a
+   * Master too old for the command gets the usual update-the-Master answer
+   * (protocol 12).
    */
   app.get('/api/orders/:id/pdf', (req, res) => {
     void (async () => {

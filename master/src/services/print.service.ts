@@ -64,10 +64,10 @@ import * as printRepo from '../repositories/print.repository.js';
 import type { PrintJobRow, PrintStationRow } from '../repositories/print.repository.js';
 import type { TransactionContext } from '../repositories/transaction.js';
 import { publishPrintJob } from './change-bus.js';
+import { getSetting } from './settings.service.js';
 import * as leadService from './lead.service.js';
 import { notify } from './notification.service.js';
 import * as orderService from './order.service.js';
-import { getSetting } from './settings.service.js';
 
 const log = createLogger('print');
 

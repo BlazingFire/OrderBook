@@ -39,6 +39,7 @@ import { Card, Section } from './Card.js';
 import { DataTable, type DataTableColumn } from './DataTable.js';
 import { apiErrorText } from './errorText.js';
 import { FormField, Input } from './Form.js';
+import { SearchField } from './SearchField.js';
 import { t } from './i18n.js';
 import { rem } from './rem.js';
 import { saveBlob } from './ImportDialog.js';
@@ -361,9 +362,11 @@ export function ReportsScreen({ transport, kind, onKindChange, revision, online 
           )}
 
           <div style={{ width: rem(220) }}>
-            <FormField label={t('reports.search')}>
-              {(id) => <Input id={id} value={search} data-screen-search onChange={(event) => setSearch(event.target.value)} />}
-            </FormField>
+            <SearchField
+              label={t('reports.search')}
+              value={search}
+              onValueChange={setSearch}
+            />
           </div>
 
           <span style={{ flex: 1 }} />

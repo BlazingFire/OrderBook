@@ -245,15 +245,20 @@ export function AppShell({
               aria-expanded={open}
               onClick={() => setFolded((current) => ({ ...current, [item.id]: open }))}
             >
-              <Icon name={open ? 'chevron-down' : 'chevron-right'} size={12} />
+              {/* One chevron, rotated by CSS — it animates instead of swapping. */}
+              <Icon name="chevron-right" size={12} />
             </button>
           )}
         </div>
         {/* Collapsed to icons there is no indent to read a child by, and no
-            label to say what it is — so a collapsed sidebar shows modules only. */}
+            label to say what it is — so a collapsed sidebar shows modules only.
+            A closed submenu unmounts (so it stays out of title queries and the
+            a11y tree); opening mounts it and the enter animation plays. */}
         {!collapsed && open && (
-          <div className="ob-navitem-children">
-            {item.children!.map((child) => renderNavItem(child, depth + 1))}
+          <div className="ob-navitem-children ob-navitem-children--open">
+            <div className="ob-navitem-children-inner">
+              {item.children!.map((child) => renderNavItem(child, depth + 1))}
+            </div>
           </div>
         )}
       </div>

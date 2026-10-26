@@ -39,9 +39,11 @@ describe('NAV_ICONS', () => {
 });
 
 describe('sign-out control (R12)', () => {
-  it.each(['master/web', 'office/web'])('has the icon and the muted-red class in %s', (panel) => {
+  it.each(['master/web', 'office/web'])('lives in the footer UserMenu in %s, with the icon and muted-red class', (panel) => {
     const source = readFileSync(join(process.cwd(), panel, 'src', 'App.tsx'), 'utf8');
-    expect(source).toMatch(/ob-btn--signout[\s\S]{0,120}<Icon name="sign-out"/);
+    expect(source).toContain('<UserMenu');
+    const menu = readFileSync(join(process.cwd(), 'ui', 'src', 'UserMenu.tsx'), 'utf8');
+    expect(menu).toMatch(/ob-btn--signout[\s\S]{0,300}signOut/);
   });
 
   it('colours it from a palette token', () => {

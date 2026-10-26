@@ -208,7 +208,11 @@ describe('the kit reads as it always did', () => {
     expect(screen.getByRole('button', { name: 'Load more' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Newer' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Older' })).toBeTruthy();
-    expect(screen.getByRole('status').getAttribute('aria-label')).toBe('Working');
+    expect(screen.getByRole('status', { name: 'Working' }).getAttribute('aria-label')).toBe('Working');
+    // IdField renders the shared CopyButton (icon-only, named "Copy").
     expect(screen.getByRole('button', { name: 'Copy' })).toBeTruthy();
+    expect(en('common.copied')).toBe('Copied');
+    expect(en('common.copyFailed')).toBe('Could not copy');
+    expect(en('common.clearSearch')).toBe('Clear search');
   });
 });

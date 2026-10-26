@@ -828,6 +828,40 @@ export async function listSubProductsForDuplicates(
 }
 
 /**
+ * Pending lines quoting any of these variants: pending leads (unconverted)
+ * and undispatched orders only — history keeps its snapshot whatever happens.
+ */
+export async function pendingLinesQuotingVariants(
+  tenantId: string,
+  variantIds: string[],
+  runner: Runner = db(),
+): Promise<Array<{ variantId: string; code: string; parentId: string }>> {
+  if (variantIds.length === 0) return [];
+  const { rows } = await runner.raw<{
+    rows: Array<{ variant_id: string; code: string; parent_id: string }>;
+  }>(
+    `SELECT li.variant_id, li.code, COALESCE(l.po_number, li.parent_id) AS parent_id
+        FROM line_items li
+        JOIN leads l ON li.parent_type = 'lead' AND l.id = li.parent_id
+         AND l.deleted_at IS NULL AND l.converted_order_id IS NULL
+       WHERE li.tenant_id = ? AND li.variant_id = ANY(?)
+      UNION
+      SELECT li.variant_id, li.code, COALESCE(ld.po_number, li.parent_id)
+        FROM line_items li
+        JOIN orders o ON li.parent_type = 'order' AND o.id = li.parent_id
+         AND o.deleted_at IS NULL AND o.dispatched_at IS NULL
+        LEFT JOIN leads ld ON ld.id = o.lead_id
+       WHERE li.tenant_id = ? AND li.variant_id = ANY(?)`,
+    [tenantId, variantIds, tenantId, variantIds],
+  );
+  return rows.map((row) => ({
+    variantId: String(row.variant_id),
+    code: String(row.code ?? ''),
+    parentId: String(row.parent_id),
+  }));
+}
+
+/**
  * What blocks deleting this product: a live line item (its parent lead or
  * order not itself deleted).
  */

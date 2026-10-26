@@ -800,9 +800,9 @@ dataRoutes.get(
 );
 
 /**
- * The final-order PDF, the mirror of `/leads/:id/pdf` (the order record's third
- * button, 2026-10-25): `inline`, so Preview PDF opens it in a window rather than
- * downloading it.
+ * The final-order PDF (`docs/catalogue/CATALOGUE_MODEL.md` §8), the mirror of
+ * `/leads/:id/pdf` (the order record's third button, 2026-10-25): `inline`, so
+ * Preview PDF opens it in a window rather than downloading it.
  */
 dataRoutes.get(
   '/orders/:id/pdf',

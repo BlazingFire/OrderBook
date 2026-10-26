@@ -2,9 +2,9 @@
  * The URLs a panel window may open a window of its own for: a PDF on this panel
  * (`docs/catalogue/CATALOGUE_MODEL.md` §8). Three kinds, each an exact path:
  *
- * - a lead's PDF, `<origin>/api/leads/<id>/pdf`, with no query;
- * - a final order's PDF, `<origin>/api/orders/<id>/pdf`, with no query
- *   (the order record's third button, 2026-10-25);
+ * - a record's PDF, `<origin>/api/leads/<id>/pdf` or
+ *   `<origin>/api/orders/<id>/pdf` (the order record's third button,
+ *   2026-10-25), with no query;
  * - a report's PDF, `<origin>/api/reports/<one of the 15 kinds>/pdf`, with a
  *   query only of the allowlisted keys below.
  *

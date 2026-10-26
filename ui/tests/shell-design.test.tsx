@@ -137,8 +137,9 @@ describe('status footer (Navigation and Shell artboards)', () => {
     const source = readFileSync(join(process.cwd(), panel, 'src', 'App.tsx'), 'utf8').split(String.fromCharCode(13)).join('');
     const footer = source.slice(source.indexOf('const footer = ('), source.indexOf('const ', source.indexOf('const footer = (') + 20));
     expect(footer.indexOf('ob-footer-sync')).toBeGreaterThan(-1);
-    expect(footer.indexOf('ob-footer-sync')).toBeLessThan(footer.indexOf('ob-footer-user'));
-    expect(footer.indexOf('ob-footer-user')).toBeLessThan(footer.indexOf('ob-footer-version'));
+    // The person is now the UserMenu behind the avatar, still between company and version.
+    expect(footer.indexOf('ob-footer-sync')).toBeLessThan(footer.indexOf('<UserMenu'));
+    expect(footer.indexOf('<UserMenu')).toBeLessThan(footer.indexOf('ob-footer-version'));
     expect(footer).toContain('data-state={railState}');
   });
 });

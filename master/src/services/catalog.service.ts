@@ -827,6 +827,31 @@ export async function updateProduct(
   assertProductInput({ ...input, hasVariants, ...(variants ? { variants } : {}) });
   if (variants) await assertCodesFree(actor.tenantId, variants, id);
 
+  // C5: retiring variants that pending lines still quote is refused — the
+  // lines would point at a hidden variant. Delete those lines' records first,
+  // or keep the variant. Variants retire by omission from the replaced set,
+  // matched by id then by code (a set rebuilt without ids keeps its rows).
+  if (variants) {
+    const retiredIds = existing.variants
+      .filter((stored) => stored.isActive)
+      .filter((stored) => {
+        const byId = variants.find((variant) => variant.id === stored.id);
+        if (byId) return false;
+        const byCode = variants.find(
+          (variant) => variant.code.trim().toLowerCase() === stored.code.trim().toLowerCase(),
+        );
+        return !byCode;
+      })
+      .map((stored) => stored.id);
+    if (retiredIds.length > 0) {
+      const quoting = await productRepo.pendingLinesQuotingVariants(actor.tenantId, retiredIds);
+      if (quoting.length > 0) {
+        const codes = [...new Set(quoting.map((row) => row.code || '?'))].slice(0, 5).join(', ');
+        throw new ConflictError('error.conflict.variantRetiredWithPendingLines', { codes });
+      }
+    }
+  }
+
   const permitted = { ...input, name, hasVariants, ...(variants ? { variants } : {}) };
   const touchedColumns = Object.keys(columnPatch(permitted, PRODUCT_COLUMNS));
 

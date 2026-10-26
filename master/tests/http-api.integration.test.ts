@@ -281,6 +281,7 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       ['put', '/api/categories/PC0000000001'],
       ['delete', '/api/categories/PC0000000001'],
       ['get', '/api/leads/LD0000000001/pdf'],
+      ['get', '/api/orders/OR0000000001/pdf'],
       ['get', '/api/leads'],
       ['put', '/api/leads/LD0000000001'],
       ['get', '/api/lead-entry'],
@@ -614,6 +615,30 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       expect((response.body as Buffer).subarray(0, 5).toString()).toBe('%PDF-');
 
       await agent.get('/api/leads/LD9999999999/pdf').expect(404);
+    });
+
+    it('serves the order PDF inline, behind orders.export', async () => {
+      const { password } = await initialize();
+      const agent = await signedInAgent(password);
+      const { lead } = await seedLead(agent);
+      const converted = await agent.post(`/api/leads/${lead.id}/convert`).send({}).expect(201);
+      const orderId = converted.body.id as string;
+
+      const response = await agent
+        .get(`/api/orders/${orderId}/pdf`)
+        .buffer(true)
+        .parse((res, done) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk: Buffer) => chunks.push(chunk));
+          res.on('end', () => done(null, Buffer.concat(chunks)));
+        })
+        .expect(200);
+
+      expect(response.headers['content-type']).toBe('application/pdf');
+      expect(response.headers['content-disposition']).toMatch(/^inline; filename="final-order-.+\.pdf"$/);
+      expect((response.body as Buffer).subarray(0, 5).toString()).toBe('%PDF-');
+
+      await agent.get('/api/orders/OR9999999999/pdf').expect(404);
     });
 
     it('lists open leads with their totals', async () => {

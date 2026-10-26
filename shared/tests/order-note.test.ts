@@ -387,6 +387,12 @@ describe('a lead as the source of a note', () => {
     expect(noteDocument(lead, 'lead', null, null).party).toBeNull();
   });
 
+  it('freezes bold with the document: absent reads as bold, printroom honours false (15x)', () => {
+    expect(noteDocument(lead, 'lead', party, null).bold).toBeNull();
+    expect(noteDocument(lead, 'lead', party, null, (colour) => colour, false).bold).toBe(false);
+    expect(noteDocument(lead, 'lead', party, null, (colour) => colour, true).bold).toBe(true);
+  });
+
   it('reads an order\'s created-at from leadCreatedAt, and null when it has none', () => {
     const order = orderOf(items, { partyName: 'Shree Tiles', leadCreatedAt: '2026-09-30T05:00:00.000Z' });
     expect(noteDocument(order, 'order', null, 'GJ 03 AB 1234').header).toMatchObject({
@@ -399,8 +405,8 @@ describe('a lead as the source of a note', () => {
   it('freezes the bold tick it was given, and leaves it unset when there was none (the printroom 15x)', () => {
     expect(noteDocument(lead, 'lead', null, null, undefined, false).bold).toBe(false);
     expect(noteDocument(lead, 'lead', null, null, undefined, true).bold).toBe(true);
-    // Older callers and old payloads: no bold field — the sheet renders bold, as it always did.
-    expect(noteDocument(lead, 'lead', null, null).bold).toBeUndefined();
+    // Older callers and old payloads: no bold field freezes as null — the sheet renders bold, as it always did.
+    expect(noteDocument(lead, 'lead', null, null).bold).toBeNull();
   });
 });
 

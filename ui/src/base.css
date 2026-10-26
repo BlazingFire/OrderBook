@@ -215,8 +215,752 @@
   color: var(--accent);
 }
 
-/* Icon-only buttons always carry an aria-label equal to their tooltip (§10). */
+/* ---- Arc action motion: press scale, label morph, hold fill, row glide ----
+ * Transform/opacity only, on the kit tokens; instant under reduced motion or
+ * the global motion switch. */
+.ob-btn:active:not(:disabled),
+.ob-icon-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.ob-icon-btn:active:not(:disabled) {
+  transform: scale(0.93);
+}
+@keyframes ob-label-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+.ob-actionbtn-label,
+.ob-swap-label,
+.ob-copy-label,
+.ob-hold-label {
+  display: inline-block;
+  animation: ob-label-in var(--d-base) var(--e-standard);
+}
+/* Hold-to-confirm: the fill tracks the hold via --ob-hold-p (0..1), set from JS. */
+.ob-hold {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.ob-hold::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--state-conflict);
+  opacity: 0.22;
+  transform: scaleX(var(--ob-hold-p, 0));
+  transform-origin: left center;
+}
+.ob-hold--neutral::before {
+  background: var(--accent);
+}
+.ob-hold--holding {
+  transform: scale(0.97);
+}
+/* Button group: one surface, hairline dividers, press answers in place. */
+.ob-btngroup {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--line-control);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+.ob-btngroup--solid {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.ob-btngroup-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-6);
+  padding: 0 var(--s-12);
+  min-height: var(--ctl-h-md);
+  background: transparent;
+  color: var(--fg-secondary);
+  font-size: var(--t-body-size);
+  font-weight: 550;
+  white-space: nowrap;
+  transition:
+    background-color var(--d-fast) var(--e-standard),
+    color var(--d-fast) var(--e-standard),
+    transform var(--d-fast) var(--e-standard);
+}
+.ob-btngroup--sm .ob-btngroup-seg {
+  min-height: var(--ctl-h-sm);
+  padding: 0 var(--s-8);
+  font-size: var(--t-small-size);
+}
+.ob-btngroup-seg + .ob-btngroup-seg {
+  border-left: 1px solid var(--line);
+}
+.ob-btngroup--solid .ob-btngroup-seg {
+  color: var(--fg-on-accent);
+}
+.ob-btngroup--solid .ob-btngroup-seg + .ob-btngroup-seg {
+  border-left-color: rgb(255 255 255 / 0.25);
+}
+.ob-btngroup-seg:hover {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
+}
+.ob-btngroup--solid .ob-btngroup-seg:hover {
+  background: rgb(255 255 255 / 0.12);
+  color: var(--fg-on-accent);
+}
+.ob-btngroup-seg:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.ob-btngroup-seg--destructive,
+.ob-btngroup-seg--destructive:hover {
+  color: var(--state-conflict);
+}
+.ob-btngroup-seg:focus-visible {
+  outline: 2px solid var(--line-focus);
+  outline-offset: -2px;
+}
+/* Copy button: bordered or plain, state crossfades in place. */
+.ob-copy--plain {
+  border-color: transparent;
+  background: transparent;
+}
+/* Swipe rows: the row tracks the finger via inline transform; actions sit under it. */
+.ob-swipe {
+  position: relative;
+  overflow: hidden;
+}
+.ob-swipe-actions {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: stretch;
+}
+.ob-swipe-actions--leading {
+  justify-content: flex-start;
+}
+.ob-swipe-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-4);
+  padding: 0 var(--s-12);
+  color: #fff;
+  font-size: var(--t-small-size);
+  font-weight: 600;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.ob-swipe-action--neutral {
+  background: var(--fg-secondary);
+}
+.ob-swipe-action--accent {
+  background: var(--accent);
+}
+.ob-swipe-action--danger {
+  background: var(--state-conflict);
+}
+.ob-swipe-face {
+  position: relative;
+  background: var(--bg-surface);
+  touch-action: pan-y;
+  transition: transform var(--d-base) var(--e-standard);
+}
+.ob-swipe-face--drag {
+  transition: none;
+}
+/* Reactions: pills with rolling counts. */
+.ob-react-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-6);
+  align-items: center;
+}
+.ob-react-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-4);
+  min-height: var(--ctl-h-sm);
+  padding: 0 var(--s-8);
+  border: 1px solid var(--line-control);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--fg-secondary);
+  font-size: var(--t-small-size);
+  font-variant-numeric: tabular-nums;
+  transition:
+    background-color var(--d-fast) var(--e-standard),
+    border-color var(--d-fast) var(--e-standard),
+    transform var(--d-fast) var(--e-standard);
+}
+.ob-react-pill:hover {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
+}
+.ob-react-pill:active {
+  transform: scale(0.95);
+}
+.ob-react-pill[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+/* User menu: avatar trigger, panel with identity + rows + theme + sign out. */
+.ob-usermenu-panel {
+  min-width: 17.5rem;
+  max-width: calc(100vw - 24px);
+  padding: var(--s-8);
+}
+.ob-usermenu-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  padding: var(--s-8);
+}
+.ob-usermenu-name {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.ob-usermenu-name > strong,
+.ob-usermenu-name > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ob-usermenu-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  width: 100%;
+  min-height: var(--ctl-h-md);
+  padding: 0 var(--s-8);
+  border-radius: var(--r-sm);
+  color: var(--fg-primary);
+  font-size: var(--t-body-size);
+  text-align: left;
+  transition: background-color var(--d-fast) var(--e-standard);
+}
+.ob-usermenu-row:hover {
+  background: var(--bg-hover);
+}
+.ob-usermenu-row--danger,
+.ob-usermenu-row--danger:hover {
+  color: var(--state-conflict);
+}
+.ob-usermenu-keys {
+  margin-left: auto;
+  color: var(--fg-tertiary);
+  font-size: var(--t-small-size);
+}
+@keyframes ob-menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.ob-popover--menu {
+  animation: ob-menu-in var(--d-base) var(--e-standard);
+  transform-origin: top right;
+}
+/* SearchField: icon left, clear button in a reserved slot so the field never shifts. */
+.ob-searchfield {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+}
+.ob-searchfield-icon {
+  position: absolute;
+  left: var(--s-8);
+  display: inline-flex;
+  color: var(--fg-tertiary);
+  pointer-events: none;
+}
+.ob-searchfield-input {
+  width: 100%;
+  padding-left: calc(var(--s-8) + 16px + var(--s-6)) !important;
+  padding-right: var(--ctl-h-md) !important;
+}
+.ob-searchfield-input::-webkit-search-cancel-button {
+  display: none;
+}
+.ob-searchfield-clear {
+  position: absolute;
+  right: var(--s-4);
+  display: inline-flex;
+  opacity: 0;
+  transform: scale(0.8);
+  transition:
+    opacity var(--d-fast) var(--e-standard),
+    transform var(--d-fast) var(--e-standard);
+  pointer-events: none;
+}
+.ob-searchfield-clear[data-on='true'] {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+/* ExpandingSearch: icon button morphs into a field with grouped results. */
+.ob-expsearch {
+  display: inline-flex;
+  position: relative;
+  min-width: 0;
+}
+.ob-expsearch-results {
+  min-width: 16rem;
+  max-width: min(22rem, 60vw);
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: var(--s-8);
+}
+.ob-expsearch-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-8);
+  width: 100%;
+  padding: var(--s-6) var(--s-8);
+  border-radius: var(--r-sm);
+  text-align: left;
+  transition: background-color var(--d-fast) var(--e-standard);
+}
+.ob-expsearch-row[data-active] {
+  background: var(--bg-hover);
+}
+.ob-expsearch-row mark {
+  background: var(--accent-tint);
+  color: inherit;
+  border-radius: 2px;
+}
+.ob-expsearch-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* InlineEdit: text that becomes a field with the same metrics. */
+.ob-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-4);
+  min-width: 0;
+  max-width: 100%;
+}
+.ob-inline--title {
+  font-size: var(--t-title-size);
+  font-weight: 600;
+}
+.ob-inline-text {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: var(--r-sm);
+  text-align: inherit;
+  font: inherit;
+  color: inherit;
+  padding: 0 var(--s-4);
+  margin: 0 calc(var(--s-4) * -1);
+}
+.ob-inline-text:hover {
+  background: var(--bg-hover);
+}
+.ob-inline--editing {
+  flex-wrap: wrap;
+}
+.ob-inline-field {
+  min-width: 8rem;
+  flex: 1;
+}
+textarea.ob-inline-field {
+  width: 100%;
+  resize: vertical;
+}
+.ob-inline-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--ctl-h-sm);
+  height: var(--ctl-h-sm);
+  border-radius: var(--r-sm);
+  color: var(--fg-secondary);
+}
+.ob-inline-btn:hover {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
+}
+.ob-inline-empty {
+  color: var(--fg-disabled);
+}
+.ob-inline-saved {
+  color: var(--state-ok);
+  font-size: var(--t-small-size);
+}
+.ob-inline-error {
+  flex-basis: 100%;
+  color: var(--state-conflict);
+  font-size: var(--t-small-size);
+}
+/* React/Swipe extras. */
+.ob-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.ob-react-picker {
+  display: flex;
+  gap: var(--s-4);
+  padding: var(--s-4);
+}
+.ob-react-pick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--ctl-h-md);
+  height: var(--ctl-h-md);
+  border-radius: var(--r-sm);
+  color: var(--fg-secondary);
+}
+.ob-react-pick:hover {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
+}
+.ob-swipe-list {
+  display: flex;
+  flex-direction: column;
+}
+.ob-swipe-more {
+  margin-left: auto;
+  flex: none;
+  align-self: center;
+}
+.ob-usermenu {
+  position: relative;
+  display: inline-flex;
+}
+.ob-usermenu-trigger {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 50%;
+}
+.ob-usermenu-trigger:focus-visible {
+  outline: 2px solid var(--line-focus);
+  outline-offset: 2px;
+}
+html[data-motion='off'] .ob-btn:active:not(:disabled),
+html[data-motion='off'] .ob-icon-btn:active:not(:disabled),
+html[data-motion='off'] .ob-actionbtn-label,
+html[data-motion='off'] .ob-swap-label,
+html[data-motion='off'] .ob-copy-label,
+html[data-motion='off'] .ob-hold-label,
+html[data-motion='off'] .ob-hold,
+html[data-motion='off'] .ob-hold::before,
+html[data-motion='off'] .ob-btngroup-seg,
+html[data-motion='off'] .ob-react-pill,
+html[data-motion='off'] .ob-popover--menu,
+html[data-motion='off'] .ob-swipe-face {
+  transition: none;
+  animation: none;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ob-btn:active:not(:disabled),
+  .ob-icon-btn:active:not(:disabled),
+  .ob-actionbtn-label,
+  .ob-swap-label,
+  .ob-copy-label,
+  .ob-hold-label,
+  .ob-hold,
+  .ob-hold::before,
+  .ob-btngroup-seg,
+  .ob-react-pill,
+  .ob-popover--menu,
+  .ob-swipe-face {
+    transition: none;
+    animation: none;
+    transform: none;
+  }
+}
+
+/* ---- Dashboard: colour tiles, animated bars/donut/sparkline, drill rows ----
+ * Odoo/Monday-inspired: colour carries meaning, every figure is a button to
+ * its screen, bars/donuts animate width/stroke on the standard ease, counts
+ * roll when they change. Transform/opacity/SVG-geometry only; still under
+ * reduced motion and the motion switch. */
+.ob-dtile {
+  position: relative;
+  overflow: hidden;
+  text-align: left;
+  width: 100%;
+  animation: ob-card-in var(--d-base) var(--e-standard) both;
+}
+button.ob-dtile {
+  cursor: pointer;
+}
+button.ob-dtile:hover {
+  border-color: var(--line-control);
+}
+.ob-dtile-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+}
+.ob-dtile-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  margin-top: var(--s-4);
+}
+.ob-dtile-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1429rem;
+  height: 2.1429rem;
+  border-radius: var(--r-md);
+  flex: none;
+}
+.ob-dtile-value {
+  display: block;
+  margin-top: var(--s-4);
+  animation: ob-count-in var(--d-base) var(--e-standard);
+}
+@keyframes ob-count-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.ob-dtile-note {
+  display: block;
+  margin-top: var(--s-2);
+  color: var(--fg-tertiary);
+}
+.ob-spark {
+  display: block;
+  margin-top: var(--s-4);
+}
+.ob-spark polyline {
+  stroke-dasharray: 400;
+  stroke-dashoffset: 400;
+  animation: ob-spark-draw 900ms var(--e-standard) forwards;
+}
+@keyframes ob-spark-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.ob-stagebars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.ob-stagebar-row {
+  display: grid;
+  grid-template-columns: 8rem 1fr 3rem;
+  align-items: center;
+  gap: var(--s-8);
+  width: 100%;
+  padding: var(--s-4) var(--s-8);
+  border-radius: var(--r-md);
+  text-align: left;
+  transition: background-color var(--d-fast) var(--e-standard);
+}
+button.ob-stagebar-row:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+button.ob-stagebar-row:disabled {
+  cursor: default;
+}
+.ob-stagebar-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ob-stagebar-track {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  overflow: hidden;
+}
+.ob-stagebar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  animation: ob-bar-grow var(--d-slow) var(--e-standard) both;
+  transform-origin: left center;
+}
+@keyframes ob-bar-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.ob-stagebar-count {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  animation: ob-count-in var(--d-base) var(--e-standard);
+}
+.ob-donut-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--s-16);
+  margin-top: var(--s-12);
+  flex-wrap: wrap;
+}
+.ob-donut-arc {
+  transition: stroke-dasharray var(--d-slow) var(--e-standard);
+  transform-origin: 70px 70px;
+  animation: ob-donut-in var(--d-slow) var(--e-standard) both;
+}
+@keyframes ob-donut-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.ob-donut-total {
+  font-size: 1.2857rem;
+  font-weight: 700;
+  fill: var(--fg-primary);
+  font-variant-numeric: tabular-nums;
+}
+.ob-donut-cap {
+  font-size: 0.7143rem;
+  fill: var(--fg-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.ob-donut-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-width: 0;
+  flex: 1;
+}
+.ob-donut-key {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  width: 100%;
+  padding: var(--s-4) var(--s-8);
+  border-radius: var(--r-sm);
+  text-align: left;
+  transition: background-color var(--d-fast) var(--e-standard);
+}
+button.ob-donut-key:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+button.ob-donut-key:disabled {
+  cursor: default;
+}
+.ob-donut-dot {
+  width: 0.7143rem;
+  height: 0.7143rem;
+  border-radius: 50%;
+  flex: none;
+}
+.ob-donut-key .ob-data {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.ob-drill-list {
+  list-style: none;
+  margin: var(--s-8) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ob-drill-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  width: 100%;
+  padding: var(--s-8);
+  border-radius: var(--r-md);
+  border-top: 1px solid var(--line);
+  text-align: left;
+  transition: background-color var(--d-fast) var(--e-standard), transform var(--d-fast) var(--e-standard);
+}
+.ob-drill-row:hover {
+  background: var(--bg-hover);
+}
+.ob-drill-row:active {
+  transform: scale(0.99);
+}
+.ob-drill-row:first-child {
+  border-top: none;
+}
+.ob-drill-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 550;
+}
+.ob-drill-meta {
+  flex: none;
+  color: var(--fg-tertiary);
+}
+html[data-motion='off'] .ob-dtile,
+html[data-motion='off'] .ob-dtile-value,
+html[data-motion='off'] .ob-spark polyline,
+html[data-motion='off'] .ob-stagebar-fill,
+html[data-motion='off'] .ob-stagebar-count,
+html[data-motion='off'] .ob-donut-arc {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ob-dtile,
+  .ob-dtile-value,
+  .ob-spark polyline,
+  .ob-stagebar-fill,
+  .ob-stagebar-count,
+  .ob-donut-arc {
+    animation: none;
+  }
+}
+
+/* Icon-only buttons always carry an aria-label equal to their tooltip (§10).
+ * HIG minimum 44×44pt touch target: small icons keep their visual size and
+ * extend the hit area with a pseudo-element, so dense rows don't grow. */
 .ob-icon-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -231,6 +975,13 @@
     background-color var(--d-fast) var(--e-standard),
     color var(--d-fast) var(--e-standard),
     transform var(--d-fast) var(--e-standard);
+}
+.ob-icon-btn::after {
+  content: '';
+  position: absolute;
+  inset: max(calc((44px - var(--ctl-h-md)) / -2), -12px) max(calc((44px - var(--ctl-h-md)) / -2), -12px);
+  min-width: 44px;
+  min-height: 44px;
 }
 .ob-icon-btn:hover {
   background: var(--bg-hover);
@@ -1482,7 +2233,9 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
   border-right: 1px solid var(--line);
   display: flex;
   flex-direction: column;
-  transition: none; /* collapse is instant; animating width is banned */
+  /* Animated collapse: width ease only (§5 motion tokens); off under reduced motion. */
+  transition: width var(--d-slow) var(--e-standard);
+  overflow: hidden;
 }
 
 .ob-sidebar--collapsed {
@@ -1619,6 +2372,60 @@ html[data-window-blur='true'] .ob-progress-fill--indeterminate {
 .ob-navitem-fold:hover {
   background: var(--bg-hover);
   color: var(--fg-primary);
+}
+/* Collapsible chevron: rotates 90° on expand, animates on the standard ease. */
+.ob-navitem-fold svg {
+  transition: transform var(--d-base) var(--e-standard);
+}
+.ob-navitem-fold[aria-expanded='true'] svg {
+  transform: rotate(90deg);
+}
+
+/*
+ * Collapsible submenus: a closed submenu unmounts; opening mounts it and the
+ * children fade-slide in with a stagger (enter animation, no width animation
+ * of content). Closing snaps shut while the chevron and sidebar width ease.
+ */
+.ob-navitem-children > .ob-navitem-children-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+@keyframes ob-navchild-in {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.ob-navitem-children--open > .ob-navitem-children-inner > .ob-navitem-wrap {
+  animation: ob-navchild-in var(--d-base) var(--e-standard) both;
+}
+.ob-navitem-children--open > .ob-navitem-children-inner > .ob-navitem-wrap:nth-child(2) {
+  animation-delay: calc(var(--d-fast) / 4);
+}
+.ob-navitem-children--open > .ob-navitem-children-inner > .ob-navitem-wrap:nth-child(3) {
+  animation-delay: calc(var(--d-fast) / 2);
+}
+.ob-navitem-children--open > .ob-navitem-children-inner > .ob-navitem-wrap:nth-child(n + 4) {
+  animation-delay: var(--d-fast);
+}
+/* Reduced-motion and the global motion switch: everything lands instantly. */
+html[data-motion='off'] .ob-sidebar,
+html[data-motion='off'] .ob-navitem-fold svg,
+html[data-motion='off'] .ob-navitem-children--open > .ob-navitem-children-inner > .ob-navitem-wrap {
+  transition: none;
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ob-sidebar,
+  .ob-navitem-fold svg,
+  .ob-navitem-children--open > .ob-navitem-children-inner > .ob-navitem-wrap {
+    transition: none;
+    animation: none;
+  }
 }
 
 /* The label wraps to two lines, then ends in an ellipsis (the full text is the row's title);

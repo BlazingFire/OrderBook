@@ -109,6 +109,12 @@ export async function resolveDuplicates(
     throw new ValidationError('validation.duplicates.selection');
   }
 
+  // Suspect-only groups (near-name, code-variant) are never auto-deleted: a
+  // human renames or merges first, then resolves the exact group that remains.
+  if (group.matchedOn.every((kind) => kind === 'near-name' || kind === 'code-variant')) {
+    throw new ValidationError('validation.duplicates.suspect');
+  }
+
   const result: DuplicateResolveResult = { deleted: [], refused: [] };
   for (const id of new Set(input.deleteIds)) {
     const blockedBy = members.get(id)?.blockedBy ?? null;

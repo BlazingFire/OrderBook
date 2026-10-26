@@ -50,7 +50,6 @@ import { presenceChannel } from './presence';
 import { reportsTransport, todoTransport } from './transports';
 import {
   AppShell,
-  Avatar,
   BasicHome,
   NoticeSlideshow,
   ProductSlideshow,
@@ -83,6 +82,7 @@ import {
   TopbarActionsOutlet,
   TopbarActionsProvider,
   TopbarTitle,
+  UserMenu,
   flattenNav,
   graftSubNav,
   loadSidebarMode,
@@ -1468,22 +1468,8 @@ function MasterPanel() {
           else if (link.kind === 'lead') openRecord('leads', link.id);
         }}
       />
-      {/* Beside Sign out, because the two are the same kind of thing — what you
-          do with your own account — and the topbar is on every screen. */}
-      {/* The label is in a span so it can end in an ellipsis when the bar is full. */}
-      <button
-        className="ob-btn ob-btn--ghost ob-btn--squeeze"
-        title={t('action.changePassword')}
-        aria-label={t('action.changePassword')}
-        onClick={() => setChangingPassword(true)}
-      >
-        <Icon name="key" size={16} />
-        <span>{t('action.changePassword')}</span>
-      </button>
-      <button className="ob-btn ob-btn--ghost ob-btn--signout" onClick={() => void signOut()}>
-        <Icon name="sign-out" size={16} />
-        {t('action.signOut')}
-      </button>
+      {/* Account actions (change password, theme, sign out) live in the footer
+          UserMenu now; the topbar keeps only screen actions. */}
     </>
   );
 
@@ -1501,15 +1487,14 @@ function MasterPanel() {
       </button>
       <span style={{ flex: 1 }} />
       {companyName && <span>{`${t('footer.company')} · ${companyName}`}</span>}
-      <span className="ob-footer-user">
-        <Avatar
-          name={user.displayName}
-          avatar={user.avatar}
-          size="sm"
-          highlight={user.roleTier === SERVER_MASTER_TIER}
-        />
-        {user.displayName}
-      </span>
+      <UserMenu
+        name={user.displayName}
+        avatar={user.avatar}
+        highlight={user.roleTier === SERVER_MASTER_TIER}
+        role={user.roleName}
+        onChangePassword={() => setChangingPassword(true)}
+        onSignOut={() => void signOut()}
+      />
       <span className="ob-mono ob-footer-version">v{__APP_VERSION__}</span>
     </>
   );

@@ -956,6 +956,27 @@ export async function importProducts(
     if (code) rules.refusedCodes.add(code);
   }
 
+  // F4/F5: a create whose name already lives in the catalogue — same Product
+  // with different codes (rename?), or another Product (move?). Flagged for
+  // the review; the row still creates on apply unless the person skips it.
+  const suspectKindOf = (group: ImportGroup): 'rename-suspect' | 'move-suspect' | null => {
+    const categoryId = existingCategoryOf(group);
+    if (categoryId === undefined) return null;
+    const name = group.input.name.trim().toLowerCase();
+    if (!name) return null;
+    for (const sub of liveSubs) {
+      if (sub.name.trim().toLowerCase() !== name) continue;
+      if (sub.categoryId === categoryId) return 'rename-suspect';
+      return 'move-suspect';
+    }
+    return null;
+  };
+  const suspectOf = new Map<ImportGroup, 'rename-suspect' | 'move-suspect'>();
+  for (const group of creates) {
+    const kind = suspectKindOf(group);
+    if (kind) suspectOf.set(group, kind);
+  }
+
   // An upsert row whose product already says exactly this is not an update:
   // an export uploaded back unedited must read "nothing to do", not "N updated".
   // A sub product back from the Bin is a change whatever its cells say.
@@ -1146,16 +1167,21 @@ export async function importProducts(
     }
     const upsert = options.mode === 'upsert';
     for (const group of creates) {
+      const suspect = suspectOf.get(group);
       for (const entry of group.rows) {
         pushRow({
           row: entry.row,
-          kind: 'new',
-          decision: 'create',
+          kind: suspect ?? 'new',
+          decision: suspect ? 'skip' : 'create',
           fileName: group.input.name,
           fileCode: entry.input.variant.code,
           existing: null,
           cells: [],
-          reasonKey: 'product.smart.reason.validNew',
+          reasonKey: suspect === 'rename-suspect'
+            ? 'product.smart.reason.renameSuspect'
+            : suspect === 'move-suspect'
+              ? 'product.smart.reason.moveSuspect'
+              : 'product.smart.reason.validNew',
         });
       }
     }

@@ -26,7 +26,6 @@ import {
   REPORT_META,
   reportsOffered,
   resolveCompanyFeatures,
-  SERVER_MASTER_TIER,
 } from '@orderbook/shared';
 import type {
   ChatRecordChip,
@@ -65,7 +64,6 @@ import {
   PrintStationRunner,
   ProductConflictsScreen,
   ProductEditScreen,
-  Avatar,
   FilterBarOutlet,
   FilterBarProvider,
   formatDateTime,
@@ -117,6 +115,7 @@ import {
   type ScreenSpec,
   type SidebarMode,
   type SubPage,
+  UserMenu,
   NAV_ICONS,
   setCreatedPartiesPrivate,
   useConfirm,
@@ -1607,10 +1606,7 @@ function OfficePanel() {
         }}
       />
 
-      <button className="ob-btn ob-btn--ghost ob-btn--signout" onClick={() => void signOut()}>
-        <Icon name="sign-out" size={16} />
-        {t('action.signOut')}
-      </button>
+      {/* Sign out lives in the footer UserMenu now; the topbar keeps screen actions. */}
     </>
   );
 
@@ -1630,16 +1626,11 @@ function OfficePanel() {
       {connection.companyName && (
         <span>{`${t('footer.company')} · ${connection.companyName}`}</span>
       )}
-      <span className="ob-footer-user">
-        <Avatar
-          name={session.displayName}
-          avatar={null}
-          src={api.profileAvatarUrl(session.userId)}
-          size="sm"
-          highlight={session.roleTier === SERVER_MASTER_TIER}
-        />
-        {session.displayName}
-      </span>
+      <UserMenu
+        name={session.displayName}
+        avatar={null}
+        onSignOut={() => void askSignOut()}
+      />
       <span className="ob-mono ob-footer-version">v{__APP_VERSION__}</span>
     </>
   );

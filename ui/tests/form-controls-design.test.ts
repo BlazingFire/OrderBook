@@ -46,7 +46,7 @@ describe('buttons', () => {
 
   it('show the busy mark in place of the icon', () => {
     const source = read('../src/Button.tsx');
-    expect(source).toMatch(/busy \? \(\s*<BusyMark size=\{14\} label=""/);
+    expect(source).toMatch(/working \? \(\s*<BusyMark size=\{14\} label=""/);
   });
 });
 

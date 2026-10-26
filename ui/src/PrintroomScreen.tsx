@@ -25,6 +25,8 @@ import { StatusPill, type PillTone } from './DataDisplay.js';
 import { EditorScreen } from './EditorScreen.js';
 import { apiErrorText } from './errorText.js';
 import { Input, Switch } from './Form.js';
+import { SearchField } from './SearchField.js';
+import { SwipeActionsRow } from './SwipeActions.js';
 import { formatDateTime } from './format.js';
 import { t } from './i18n.js';
 import { useUnsavedWork } from './unsavedWork.js';
@@ -245,7 +247,32 @@ function JobRow({
   onMark: (printed: boolean) => void;
   onCancel: () => void;
 }) {
+  const rowLabel = `${job.partyName} · ${jobNumber(job)}`;
+  const swipeTrailing = [
+    ...(canMark && job.status !== 'cancelled'
+      ? [
+          {
+            label: job.status === 'printed' ? t('printroom.action.markNotPrinted') : t('printroom.action.markPrinted'),
+            icon: 'check' as const,
+            tone: 'accent' as const,
+            keepRow: true,
+            onSelect: () => onMark(job.status !== 'printed'),
+          },
+        ]
+      : []),
+    ...(canCancel
+      ? [
+          {
+            label: t('printroom.action.cancel'),
+            icon: 'close' as const,
+            tone: 'danger' as const,
+            onSelect: onCancel,
+          },
+        ]
+      : []),
+  ];
   return (
+    <SwipeActionsRow label={rowLabel} trailing={swipeTrailing}>
     <li className="ob-print-row" data-status={job.status}>
       <button type="button" className="ob-print-rowmain" onClick={onOpen} aria-label={t('printroom.action.open')}>
         <span className="ob-print-when ob-small">{formatDateTime(job.requestedAt)}</span>
@@ -282,6 +309,7 @@ function JobRow({
         )}
       </span>
     </li>
+    </SwipeActionsRow>
   );
 }
 
@@ -420,15 +448,14 @@ function PrintroomList({
           </FilterChip>
         )}
         {page === 'waiting' && waiting > 0 && <span className="ob-print-count">{waiting}</span>}
-        <Input
-          data-screen-search
-          className="ob-print-search"
-          type="search"
-          value={term}
-          placeholder={t('printroom.search')}
-          aria-label={t('printroom.search')}
-          onChange={(event) => setTerm(event.target.value)}
-        />
+        <span className="ob-print-search">
+          <SearchField
+            label={t('printroom.search')}
+            placeholder={t('printroom.search')}
+            value={term}
+            onValueChange={setTerm}
+          />
+        </span>
       </div>
 
       {showStation && desktop && <StationStrip transport={transport} desktop={desktop} />}

@@ -10,8 +10,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { compareNotices, isNoticeExpired, type Notice } from '@orderbook/shared';
 
+import { ActionButton } from './ActionButtons.js';
 import { Button } from './Button.js';
 import { StatusPill } from './DataDisplay.js';
+import { Reactions } from './Reactions.js';
+import { SwipeActionsRow } from './SwipeActions.js';
 import { formatDateTime } from './format.js';
 import { t } from './i18n.js';
 import { ConflictBanner, EmptyState, ErrorState, OfflineBanner, SkeletonRows } from './States.js';
@@ -71,6 +74,8 @@ export function NoticeBoardView({
     }
   }
 
+
+
   if (loading && notices.length === 0) return <SkeletonRows rows={4} columns={1} />;
   if (error && notices.length === 0) {
     return <ErrorState title={t('notices.board.loadFailed')} description={error} actionLabel={onRetry ? t('action.retryNow') : undefined} onAction={onRetry} />;
@@ -85,15 +90,15 @@ export function NoticeBoardView({
         <span className="ob-body-strong" role="status" aria-live="polite">
           {unreadCount > 0 ? t('notices.board.unread', { count: unreadCount }) : t('notices.board.upToDate')}
         </span>
-        <Button
+        <ActionButton
+          label={t('notices.board.markAllRead')}
+          pendingLabel={t('notices.board.markAllRead')}
+          successLabel={t('common.saved')}
           variant="secondary"
           size="sm"
           disabled={!online || unreadCount === 0 || busy !== null}
-          busy={busy === 'all'}
-          onClick={() => void run('all', onMarkAllRead)}
-        >
-          {t('notices.board.markAllRead')}
-        </Button>
+          onAction={() => onMarkAllRead()}
+        />
       </div>
 
       {shown.length === 0 ? (
@@ -146,6 +151,14 @@ function NoticeItem({
   }, [focusNonce]);
 
   return (
+    <SwipeActionsRow
+      label={notice.title}
+      trailing={
+        unread && online && !disabled
+          ? [{ label: t('notices.board.markRead'), icon: 'check', tone: 'accent', onSelect: onMarkRead }]
+          : []
+      }
+    >
     <li
       ref={item}
       tabIndex={-1}
@@ -198,11 +211,20 @@ function NoticeItem({
           {notice.showUntil ? ` · ${t('notices.meta.until', { date: notice.showUntil })}` : ''}
         </span>
         {unread && (
-          <Button variant="secondary" size="sm" disabled={!online || disabled} busy={busy} onClick={onMarkRead}>
-            {t('notices.board.markRead')}
-          </Button>
+          <ActionButton
+            label={t('notices.board.markRead')}
+            successLabel={t('common.saved')}
+            variant="secondary"
+            size="sm"
+            disabled={!online || disabled || busy}
+            onAction={() => {
+              onMarkRead();
+            }}
+          />
         )}
       </div>
+      <Reactions label={t('notices.reactions', { title: notice.title })} />
     </li>
+    </SwipeActionsRow>
   );
 }

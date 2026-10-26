@@ -33,6 +33,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { ButtonGroup } from './ActionButtons.js';
 import { Button } from './Button.js';
 import { EditorScreen } from './EditorScreen.js';
 import { Checkbox } from './Form.js';
@@ -378,24 +379,44 @@ export function OrderNoteScreen({
               { value: 'dispatch', label: t('orderNote.dispatch') },
             ]}
           />
-          <Button variant="secondary" onClick={() => setPreviewing(true)}>
-            {t('orderNote.previewButton')}
-          </Button>
-          {canSend && (
-            <Button variant="secondary" disabled={printing || saving} onClick={() => setSending(true)}>
-              {t('orderNote.sendToPrintroom')}
-            </Button>
-          )}
-          {desktop?.savePdf && (
-            <Button variant="secondary" busy={saving} disabled={printing || saving} onClick={() => void savePdf()}>
-              {t('orderNote.savePdf')}
-            </Button>
-          )}
-          {desktop?.savePdfToDesktop && (
-            <Button variant="secondary" busy={saving} disabled={printing || saving} onClick={() => void saveToDevice()}>
-              {t('orderNote.saveToDevice')}
-            </Button>
-          )}
+          <ButtonGroup
+            label={t('orderNote.actions')}
+            variant="outline"
+            size="md"
+            items={[
+              { id: 'preview', label: t('orderNote.previewButton'), onSelect: () => setPreviewing(true) },
+              ...(canSend
+                ? [
+                    {
+                      id: 'send',
+                      label: t('orderNote.sendToPrintroom'),
+                      disabled: printing || saving,
+                      onSelect: () => setSending(true),
+                    },
+                  ]
+                : []),
+              ...(desktop?.savePdf
+                ? [
+                    {
+                      id: 'pdf',
+                      label: t('orderNote.savePdf'),
+                      disabled: printing || saving,
+                      onSelect: () => void savePdf(),
+                    },
+                  ]
+                : []),
+              ...(desktop?.savePdfToDesktop
+                ? [
+                    {
+                      id: 'device',
+                      label: t('orderNote.saveToDevice'),
+                      disabled: printing || saving,
+                      onSelect: () => void saveToDevice(),
+                    },
+                  ]
+                : []),
+            ]}
+          />
           <Button variant="primary" busy={printing} disabled={printing || saving} onClick={() => void print()}>
             {t('orderNote.print')}
           </Button>

@@ -16,6 +16,8 @@ interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'typ
   variant?: ButtonVariant;
   size?: ButtonSize;
   busy?: boolean;
+  /** Arc alias for busy: shows the spinner, keeps focus, swallows clicks. */
+  loading?: boolean;
   icon?: IconName;
   type?: 'button' | 'submit';
 }
@@ -24,6 +26,7 @@ export function Button({
   variant = 'secondary',
   size = 'md',
   busy = false,
+  loading = false,
   icon,
   type = 'button',
   className,
@@ -31,6 +34,7 @@ export function Button({
   children,
   ...rest
 }: ButtonProps) {
+  const working = busy || loading;
   const classes = [
     'ob-btn',
     `ob-btn--${variant}`,
@@ -40,8 +44,15 @@ export function Button({
     .filter(Boolean)
     .join(' ');
   return (
-    <button type={type} className={classes} disabled={disabled || busy} aria-busy={busy} {...rest}>
-      {busy ? (
+    <button
+      type={type}
+      className={classes}
+      disabled={disabled || working}
+      aria-busy={working}
+      aria-disabled={working || undefined}
+      {...rest}
+    >
+      {working ? (
         <BusyMark size={14} label="" />
       ) : (
         icon && <Icon name={icon} size={size === 'lg' ? 18 : 16} />

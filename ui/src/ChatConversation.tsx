@@ -29,6 +29,7 @@ import { CHAT_LIMITS, CHAT_SYSTEM_KEYS, withinEditWindow } from '@orderbook/shar
 
 import { Avatar } from './Avatar.js';
 import { Button, IconButton } from './Button.js';
+import { SwipeActionsRow } from './SwipeActions.js';
 import {
   applyChatPush,
   dayKeyOf,
@@ -192,14 +193,49 @@ function MessageRow(props: MessageRowProps) {
     !!task && !deleted && (assigneeIds.includes(viewer.id) || own || moderator) && !message.pending;
   const receipts = task ? receiptsFor(message, detail.members) : null;
 
+  const swipeTrailing = [
+    ...(canEdit
+      ? [
+          {
+            label: t('chat.message.edit'),
+            icon: 'edit' as const,
+            onSelect: () => setEditing(message.body),
+          },
+        ]
+      : []),
+    ...(canPin
+      ? [
+          {
+            label: message.pinnedAt ? t('chat.message.unpin') : t('chat.message.pin'),
+            icon: 'pin' as const,
+            tone: 'accent' as const,
+            keepRow: true,
+            onSelect: () => props.onPin(message, message.pinnedAt === null),
+          },
+        ]
+      : []),
+    ...(canDelete
+      ? [
+          {
+            label: t('chat.message.delete'),
+            icon: 'trash' as const,
+            tone: 'danger' as const,
+            onSelect: () => props.onDelete(message),
+          },
+        ]
+      : []),
+  ];
+  const rowLabel = `${message.author?.displayName ?? t('chat.message.unknownAuthor')}: ${message.body.slice(0, 60)}`;
+
   return (
-    <div
-      className="ob-chat-row"
-      data-seq={message.seq}
-      data-own={own ? 'true' : undefined}
-      data-highlight={props.highlighted ? 'true' : undefined}
-      data-mention={props.mentionsMe ? 'true' : undefined}
-    >
+    <SwipeActionsRow label={rowLabel} trailing={swipeTrailing}>
+      <div
+        className="ob-chat-row"
+        data-seq={message.seq}
+        data-own={own ? 'true' : undefined}
+        data-highlight={props.highlighted ? 'true' : undefined}
+        data-mention={props.mentionsMe ? 'true' : undefined}
+      >
       <div className="ob-chat-avatar">
         {props.showHeader && message.author && (
           <Avatar
@@ -376,7 +412,8 @@ function MessageRow(props: MessageRowProps) {
           </Popover>
         </div>
       )}
-    </div>
+      </div>
+    </SwipeActionsRow>
   );
 }
 

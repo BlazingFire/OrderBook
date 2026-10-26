@@ -44,8 +44,8 @@ import {
   EmptyState,
   FilterChip,
   FilterDivider,
-  Input,
   LeadRecordView,
+  SearchField,
   LeadStageMenu,
   CopyRecordNumber,
   PageBar,
@@ -295,16 +295,14 @@ export function LeadsScreen({
   useFilterBar(
     busyOnRecord ? null : (
       <>
-        <Input
+        <SearchField
+          label={t('leads.search.label')}
+          placeholder={t('leads.search.placeholder')}
           value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
+          onValueChange={(next) => {
+            setSearch(next);
             if (openLead) onOpenId(null);
           }}
-          placeholder={t('leads.search.placeholder')}
-          aria-label={t('leads.search.label')}
-          data-screen-search
-          style={{ width: rem(320) }}
         />
         {!openLead && (
           <>

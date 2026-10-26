@@ -857,8 +857,9 @@ export interface ClientToServerEvents {
   'order:setStage': (input: StageChangeInput, ack: CommandAck<Order>) => void;
   'order:dispatch': (input: OrderDispatchInput, ack: CommandAck<Order>) => void;
   /**
-   * The fixed-layout final-order PDF, the mirror of `lead:pdf` (the order
-   * record's third button, 2026-10-25). `orders.export`; online-only.
+   * The fixed-layout final-order PDF (`docs/catalogue/CATALOGUE_MODEL.md` §8),
+   * the mirror of `lead:pdf` (the order record's third button, 2026-10-25).
+   * `orders.export`; online-only.
    */
   'order:pdf': (id: RecordId, ack: CommandAck<{ fileName: string; bytes: Uint8Array }>) => void;
 

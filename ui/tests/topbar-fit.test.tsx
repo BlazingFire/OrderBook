@@ -82,10 +82,11 @@ describe('the topbar rules', () => {
 });
 
 describe('the Master topbar', () => {
-  it('keeps the Change password label in a span, so it can end in an ellipsis', () => {
+  it('keeps account actions (change password, sign out) in the footer UserMenu, not the topbar', () => {
     const app = readFileSync(join(root, 'master', 'web', 'src', 'App.tsx'), 'utf8');
-    expect(app).toMatch(/<span>\{t\('action\.changePassword'\)\}<\/span>/);
-    // Squeezable, with an icon and an accessible name for when the label is hidden.
-    expect(app).toMatch(/ob-btn--squeeze"[\s\S]{0,200}aria-label=\{t\('action\.changePassword'\)\}[\s\S]{0,120}<Icon name="key"/);
+    expect(app).not.toMatch(/ob-btn--signout/);
+    expect(app).toContain('<UserMenu');
+    const menu = readFileSync(join(root, 'ui', 'src', 'UserMenu.tsx'), 'utf8');
+    expect(menu).toMatch(/onChangePassword/);
   });
 });

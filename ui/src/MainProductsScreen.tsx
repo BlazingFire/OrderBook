@@ -62,6 +62,7 @@ import { Field, FieldGroup } from './FieldGrid.js';
 import { FilterChip } from './FilterBar.js';
 import { useFilterBar } from './FilterBarSlot.js';
 import { Input, NumberInput } from './Form.js';
+import { SearchField } from './SearchField.js';
 import { t } from './i18n.js';
 import { useFormBaseline, useUnsavedWork } from './unsavedWork.js';
 import { useCommand } from './KeyboardProvider.js';
@@ -170,16 +171,14 @@ export function MainProductsScreen({
   // The search stays on an open product: typing goes back to the list, filtered.
   useFilterBar(
     <>
-      <Input
+      <SearchField
+        label={t('catalog.mainProducts.searchLabel')}
+        placeholder={t('catalog.mainProducts.searchPlaceholder')}
         value={search}
-        onChange={(event) => {
-          setSearch(event.target.value);
+        onValueChange={(next) => {
+          setSearch(next);
           if (open) setOpenId(null);
         }}
-        placeholder={t('catalog.mainProducts.searchPlaceholder')}
-        aria-label={t('catalog.mainProducts.searchLabel')}
-        data-screen-search
-        style={{ width: rem(320) }}
       />
       {!open && (
         <>

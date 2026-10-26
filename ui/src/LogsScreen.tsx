@@ -42,7 +42,8 @@ import { KeyValueList, StatusPill } from './DataDisplay.js';
 import { DataTable, type DataTableColumn } from './DataTable.js';
 import { EditorScreen } from './EditorScreen.js';
 import { useFilterBar } from './FilterBarSlot.js';
-import { DateField, Input } from './Form.js';
+import { DateField } from './Form.js';
+import { SearchField } from './SearchField.js';
 import { formatDateTime } from './format.js';
 import { t } from './i18n.js';
 import { Modal } from './Modal.js';
@@ -298,15 +299,12 @@ export function LogsScreen({ permissions, transport, search }: Props) {
   useFilterBar(
     canView ? (
       <>
-        <div className="ob-search">
-          <Input
-            value={filters.q}
-            placeholder={t('logs.filter.searchPlaceholder')}
-            aria-label={t('logs.filter.searchPlaceholder')}
-            data-screen-search
-            onChange={(event) => setFilter({ q: event.target.value })}
-          />
-        </div>
+        <SearchField
+          label={t('logs.filter.searchPlaceholder')}
+          placeholder={t('logs.filter.searchPlaceholder')}
+          value={filters.q}
+          onValueChange={(next) => setFilter({ q: next })}
+        />
         <Select
           value={filters.actor}
           aria-label={t('logs.filter.actorLabel')}

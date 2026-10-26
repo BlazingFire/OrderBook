@@ -343,12 +343,14 @@ export function OrderBoardScreen({
                 {t('chat.share.button')}
               </Button>
             )}
-            {/* Viewing the order is the right to print its note (1.4 R10). */}
+            {/* Viewing the order is the right to print its note (1.4 R10). The Master renders the
+                PDF, so an order it has not received yet has none to show. */}
             <Button onClick={() => setNote({ id: openOrder.id, kind: 'filling' })}>{t('orderNote.filling')}</Button>
             <Button onClick={() => setNote({ id: openOrder.id, kind: 'dispatch' })}>{t('orderNote.dispatch')}</Button>
             {/* The third button the lead record already had; the Master renders the
-                PDF and this Office server forwards it (online only). */}
-            {canPreviewPdf && (
+                PDF and this Office server forwards it (online only). An order
+                this Master has not received yet has none to show. */}
+            {canPreviewPdf && openOrder.sync.hlc && (
               <ButtonLink
                 href={'/api/orders/' + encodeURIComponent(openOrder.id) + '/pdf'}
                 target="_blank"

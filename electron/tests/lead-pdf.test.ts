@@ -1,7 +1,7 @@
 /**
- * The shell's one exception to "nothing opens a window": a lead's or a report's
- * PDF (`docs/catalogue/CATALOGUE_MODEL.md` §8). That window gets the PDF viewer,
- * so the rule must stay exactly these paths on exactly this panel.
+ * The shell's one exception to "nothing opens a window": a record's or a
+ * report's PDF (`docs/catalogue/CATALOGUE_MODEL.md` §8). That window gets the
+ * PDF viewer, so the rule must stay exactly these paths on exactly this panel.
  */
 
 import { REPORT_KINDS } from '@orderbook/shared';
@@ -17,10 +17,12 @@ describe('which URL may open a PDF window', () => {
     expect(isPdfWindowUrl(ORIGIN, `${ORIGIN}/api/leads/L-TMP%201/pdf`)).toBe(true);
   });
 
-  it("allows a final order's PDF, bare or with no query", () => {
+  it("allows a final order's PDF on this panel, bare but with no query or fragment", () => {
     expect(isPdfWindowUrl(ORIGIN, `${ORIGIN}/api/orders/O-1/pdf`)).toBe(true);
+    expect(isPdfWindowUrl(ORIGIN, `${ORIGIN}/api/orders/O-TMP%201/pdf`)).toBe(true);
     expect(isPdfWindowUrl(ORIGIN, `${ORIGIN}/api/orders/OD0000000002/pdf`)).toBe(true);
     expect(isPdfWindowUrl(ORIGIN, `${ORIGIN}/api/orders/O-1/pdf?x=1`)).toBe(false);
+    expect(isPdfWindowUrl(ORIGIN, `${ORIGIN}/api/orders/O-1/pdf#page=2`)).toBe(false);
     expect(isPdfWindowUrl(ORIGIN, `${ORIGIN}/api/orders/a/b/pdf`)).toBe(false);
   });
 
@@ -55,6 +57,8 @@ describe('which URL may open a PDF window', () => {
     ['a longer path', `${ORIGIN}/api/leads/L-1/pdf/more`],
     ['a nested id', `${ORIGIN}/api/leads/a/b/pdf`],
     ['no id', `${ORIGIN}/api/leads//pdf`],
+    ['no order id', `${ORIGIN}/api/orders//pdf`],
+    ['a nested order id', `${ORIGIN}/api/orders/a/b/pdf`],
     ['the panel itself', `${ORIGIN}/`],
     ['the export route with format=pdf', `${ORIGIN}/api/reports/dispatches/export?format=pdf`],
     ['a report fragment', `${ORIGIN}/api/reports/dispatches/pdf#page=2`],

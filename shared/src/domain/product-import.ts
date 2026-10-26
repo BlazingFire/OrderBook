@@ -110,7 +110,14 @@ export interface ProductImportResult {
 
 // --- The product backup zip -------------------------------------------------
 
-export type ProductImportRowKind = 'new' | 'update' | 'unchanged' | 'clash' | 'invalid';
+export type ProductImportRowKind =
+  | 'new'
+  | 'update'
+  | 'unchanged'
+  | 'clash'
+  | 'invalid'
+  | 'rename-suspect'
+  | 'move-suspect';
 export type ProductImportRowDecision = 'create' | 'update' | 'skip';
 
 export interface ProductImportRowPreview {

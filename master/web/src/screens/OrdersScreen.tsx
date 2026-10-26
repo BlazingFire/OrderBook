@@ -42,8 +42,8 @@ import {
   EmptyState,
   FilterChip,
   FilterDivider,
-  Input,
   PageBar,
+  SearchField,
   pageWindow,
   usePageSize,
   OrderNoteScreen,
@@ -290,16 +290,14 @@ export function OrdersScreen({
     // The search stays on an open order (not its note): typing goes back to the list, filtered.
     openOrder && noteKind ? null : (
       <>
-        <Input
+        <SearchField
+          label={t('orders.search.label')}
+          placeholder={t('orders.search.placeholder')}
           value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
+          onValueChange={(next) => {
+            setSearch(next);
             if (openOrder) onOpenId(null);
           }}
-          placeholder={t('orders.search.placeholder')}
-          aria-label={t('orders.search.label')}
-          data-screen-search
-          style={{ width: rem(320) }}
         />
         {!openOrder && (
           <>

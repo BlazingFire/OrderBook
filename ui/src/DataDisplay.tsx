@@ -3,12 +3,11 @@
  * KeyValueList, IdField.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { colourLabeller } from '@orderbook/shared';
 import type { ColourLabelOf, PipelineStage, TimelineEntry as RecordTimelineEntry } from '@orderbook/shared';
-import { IconButton } from './Button';
-import { copyText } from './clipboard.js';
+import { CopyButton } from './ActionButtons.js';
 import { t } from './i18n.js';
 
 interface ColourOption {
@@ -195,23 +194,10 @@ export function KeyValueList({ items }: { items: { label: string; value: ReactNo
 }
 
 export function IdField({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
   return (
     <span className="ob-idfield">
       <span className="ob-mono">{value}</span>
-      <IconButton
-        icon={copied ? 'check' : 'copy'}
-        label={t('common.copy')}
-        size={12}
-        onClick={() => {
-          // The check only when the copy happened — see `clipboard.ts`.
-          void copyText(value).then((ok) => {
-            if (!ok) return;
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1200);
-          });
-        }}
-      />
+      <CopyButton value={value} label={t('common.copy')} iconOnly />
     </span>
   );
 }

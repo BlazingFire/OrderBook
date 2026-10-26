@@ -330,15 +330,25 @@ describe('the next person to sign in at this window', () => {
     return undefined;
   };
 
+  /** Sign out through the footer UserMenu: open it, then the Sign out row. */
+  async function signOutViaMenu(): Promise<void> {
+    const trigger = document.querySelector('.ob-usermenu-trigger') as HTMLElement;
+    await act(async () => {
+      fireEvent.click(trigger);
+      await wait(0);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: t('action.signOut') }));
+      await wait(0);
+    });
+  }
+
   it('starts on the Dashboard, not on the screen the last one signed out from', async () => {
     await boot(ADMIN, answers);
     await open(t('nav.master.panels'));
     expect(topbarTitle()).toBe(t('nav.master.panels'));
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: t('action.signOut') }));
-      await wait(0);
-    });
+    await signOutViaMenu();
     await signInAsSales();
 
     // Office panels needs `panels.manage`: its sidebar entry is gone, and the
@@ -382,10 +392,7 @@ describe('the next person to sign in at this window', () => {
     );
     await open(t('nav.master.panels'));
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: t('action.signOut') }));
-      await wait(0);
-    });
+    await signOutViaMenu();
     await signInAsSales();
 
     expect(topbarTitle()).toBe(t('nav.basicHome'));
@@ -397,10 +404,7 @@ describe('the next person to sign in at this window', () => {
     await screen.findByRole('button', { name: t('action.backToList') });
     expect(screen.getAllByTitle(LEAD.partyName).length).toBeGreaterThan(0);
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: t('action.signOut') }));
-      await wait(0);
-    });
+    await signOutViaMenu();
     await signInAsSales();
 
     expect(screen.queryAllByTitle(LEAD.partyName)).toHaveLength(0);
@@ -948,6 +952,14 @@ describe('the Filling and Dispatch notes on an order', () => {
     await openOrders([...ADMIN]);
     expect(screen.getByRole('button', { name: t('orderNote.filling') })).toBeTruthy();
     expect(screen.getByRole('button', { name: t('orderNote.dispatch') })).toBeTruthy();
+    // Preview PDF is an export right: a viewer alone gets the notes, not the link.
+    expect(screen.queryByRole('link', { name: t('lead.previewPdf') })).toBeNull();
+  });
+
+  it('offers Preview PDF on a final order behind orders.export (15x)', async () => {
+    await openOrders([...ADMIN, 'orders.export']);
+    const link = screen.getByRole('link', { name: t('lead.previewPdf') });
+    expect(link.getAttribute('href')).toBe(`/api/orders/${ORDER.id}/pdf`);
   });
 
   it('shows Preview PDF as the third direct button, only with orders.export (15x, 2026-10-25)', async () => {
@@ -1821,8 +1833,9 @@ describe('changing your own password', () => {
         : undefined,
     );
 
+    fireEvent.click(document.querySelector<HTMLElement>('.ob-usermenu-trigger')!);
     fireEvent.click(
-      within(document.querySelector<HTMLElement>('.ob-topbar')!).getByRole('button', {
+      await screen.findByRole('menuitem', {
         name: t('action.changePassword'),
       }),
     );
@@ -2219,7 +2232,7 @@ describe('Server Masters at first run and sign-in (1.3)', () => {
     );
 
     const footer = document.querySelector('.ob-footer')!;
-    expect(footer.querySelector('.ob-avatar[data-highlight="true"]')).not.toBeNull();
+    expect(footer.querySelector('.ob-usermenu .ob-avatar[data-highlight="true"]')).not.toBeNull();
   });
 });
 

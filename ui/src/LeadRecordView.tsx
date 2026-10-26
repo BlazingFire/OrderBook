@@ -23,8 +23,8 @@ import type { MessageKey } from '@orderbook/shared';
 import type { Lead, LineItem, OptionListItem, Party, PipelineStage } from '@orderbook/shared';
 
 import { Avatar } from './Avatar.js';
+import { CopyButton } from './ActionButtons.js';
 import { Button, IconButton } from './Button.js';
-import { copyText } from './clipboard.js';
 import { ColourChip, StatusPill, stageTone, useColourHex, useColourLabel } from './DataDisplay.js';
 import { DateField, FormField, Input } from './Form.js';
 import { formatDateTime, formatKg } from './format.js';
@@ -90,29 +90,12 @@ function dayDistance(iso: string): string {
   return new Intl.RelativeTimeFormat('en', { numeric: 'auto' }).format(days, 'day');
 }
 
-function CopyButton({ text, label }: { text: string; label: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <IconButton
-      icon={copied ? 'check' : 'copy'}
-      label={copied ? t('access.secret.copied') : label}
-      size={14}
-      onClick={() =>
-        void copyText(text).then((ok) => {
-          setCopied(ok);
-          if (ok) window.setTimeout(() => setCopied(false), 1500);
-        })
-      }
-    />
-  );
-}
-
 /** The order's number with a Copy button, for the header. */
 export function CopyRecordNumber({ record }: { record: { id: string; poNumber?: string | null } }) {
   return (
     <span className="ob-leadrec-number">
       <RecordNumber record={record} small />
-      <CopyButton text={recordNumberText(record)} label={t('lead.detail.copyNumber')} />
+      <CopyButton value={recordNumberText(record)} label={t('lead.detail.copyNumber')} iconOnly />
     </span>
   );
 }
@@ -357,7 +340,7 @@ export function LeadRecordView({
           {party?.phone ? (
             <>
               <span className="ob-data">{party.phone}</span>
-              <CopyButton text={party.phone} label={t('lead.detail.copyPhone')} />
+              <CopyButton value={party.phone} label={t('lead.detail.copyPhone')} iconOnly />
             </>
           ) : (
             '—'

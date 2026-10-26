@@ -264,6 +264,49 @@ describe.skipIf(!canRunIntegrationTests)('bulk product import (integration)', ()
     expect(real).toMatchObject({ dryRun: false, created: 1, failed: 1, issues: preview.issues });
   });
 
+  it('flags rename and move suspects in the dry-run preview, skipping them by default', async () => {
+    await run(
+      csv([
+        [...HEAD],
+        ['Basins', 'DAMRU', '', 'DAM-0001'],
+      ]),
+    );
+    const preview = await run(
+      csv([
+        [...HEAD],
+        // Same name + same Product, different code: rename suspect.
+        ['Basins', 'DAMRU', '', 'DAM-0099'],
+        // Same name under no Product (new Product): still a create.
+        ['Tanks', 'DAMRU', '', 'T-0001'],
+      ]),
+      admin,
+      true,
+    );
+    const byCode = new Map((preview.rowPreviews ?? []).map((row) => [row.fileCode, row]));
+    expect(byCode.get('DAM-0099')).toMatchObject({
+      kind: 'rename-suspect',
+      decision: 'skip',
+      reasonKey: 'product.smart.reason.renameSuspect',
+    });
+    expect(byCode.get('T-0001')).toMatchObject({ kind: 'new', decision: 'create' });
+  });
+
+  it('flags a same-name row under another Product as a move suspect', async () => {
+    await run(csv([[ 'categoryName', 'name', 'variant', 'code' ], ['Basins', 'DAMRU', '', 'DAM-0001']]));
+    const basin = (await catalog.listCategories(admin)).find((category) => category.name === 'Basins');
+    await catalog.createCategory({ name: 'Tanks', code: 'TNK' }, admin);
+    const tanks = (await catalog.listCategories(admin)).find((category) => category.name === 'Tanks');
+    expect(basin && tanks).toBeTruthy();
+    const preview = await run(
+      csv([[ 'categoryName', 'name', 'variant', 'code' ], ['Tanks', 'DAMRU', '', 'TNK-0001']]),
+      admin,
+      true,
+    );
+    const rows = preview.rowPreviews ?? [];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind: 'move-suspect', decision: 'skip' });
+  });
+
   it('files a row under the product its code or its (brand, name) pair names, and never invents one for a code', async () => {
     const ids = await db().transaction((trx) =>
       productRepo.ensureCategories(
