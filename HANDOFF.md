@@ -79,8 +79,17 @@ on it.
   and 5 PARTIAL gaps remain scheduled (PDF column headings, final-order Preview
   PDF, main-product no-modal screen, alteration menu + history patch,
   printroom bold).
-- **Next: Phase 0 `perf-baselines`** — measurement only, numbers into the
-  brief, no commits. Then Phase 1 `dedup-cleaner-ia`.
+- **Phase 0 `perf-baselines` is DONE** (2026-10-26): every number in
+  `docs/ai-handoffs/perf-baselines.md` — list open 5q cold / 1q warm at 1-13 ms
+  on 100-row lists, one edit 16q / 6-13 ms, `buildSnapshot` 26-36q (worst 36q
+  already touches P18A's ≤35 budget), fan-out ≈1+N queries per write (1 grants +
+  1 resolve + 1 emit per connected recipient), idle RSS 110.7 MiB, motion
+  baseline 14 intervals + 27 keyframes, 4 kill points. Temp counters reverted,
+  nothing committed, scratch PG stopped. Browser profiler NOT DONE (owed with
+  P18's manual pass). **Next: Phase 1 `dedup-cleaner-ia`** — the Muse lane's
+  parked `clean/dedup-styles-dead-keys` (3 files + collab entry, uncommitted,
+  owner decides) already covers part of 1J's dead keys; Phase 1 absorbs it,
+  never repeats it.
 
 ## 1.5.3: product-order bundle merged, version bumped and pushed (2026-10-25)
 

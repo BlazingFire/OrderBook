@@ -222,6 +222,14 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-10-26 - Phase 0 perf-baselines complete; numbers in the brief (Command Code, main, no source touched)
+
+- **Ask (owner):** continue the approved performance plan ("open code work is done you continue").
+- **Done:** `docs/ai-handoffs/perf-baselines.md` carries every §0 number: list open **5q cold / 1q warm, 1-13 ms** on 100-row lists (target <300 ms — huge headroom); one lead edit **16q / 6-13 ms**, 100 writes 2.4 s; `buildSnapshot` **26-36q** (worst 36q already touches P18A's ≤35 budget — flagged for P18); fan-out with 1 live socket **grants=1 + resolves=1 + emits=1 per change** (≈1+N queries scaling per recipient — P3's actor-cache target); idle RSS **110.7 MiB**, +1.6 MB over a 100-write burst; motion baseline **14 intervals + 27 keyframes** for P19; 4 kill points named. Browser profiler **NOT DONE** with reason (owed with the P18 manual pass).
+- **Method:** scratch Master only (`PORT=5410`, PG `55483`, private `TEMP`/`ORDERBOOK_DATA_DIR=.tmp/perf-b0`); seed fixture volume is hardcoded (13/19), so 136 pending + 131 final were bulked through the real API; HTTP numbers from the already-shipped dev `X-Query-Count` headers (zero code); snapshot + fan-out via **TEMP counters** in `hub.ts`/`snapshot.service.ts` triggered through the `panel-push` + `snapshot-party-access` integration suites — **both files reverted (`git checkout --`), nothing committed** (plan: Phase 0 = no commits). Scratch PG stopped clean, no orphans, ports free.
+- **Coexistence:** Muse lane's `clean/dedup-styles-dead-keys` ran mid-session (its full-suite gate green; its 3 files + its entry below stay parked uncommitted — owner decides). Its dead keys overlap Phase 1's 1J sweep — Phase 1 absorbs that slice, never repeats it.
+- **Next:** Phase 1 `dedup-cleaner-ia`.
+
 ### 2026-10-25 - Gate 0 closed; performance plan approved; feature audit recorded (Command Code, main, docs only)
 
 - **Ask (owner):** audit the 8 order-note/product claims against CODE, keep this log updated, review + revise the performance plan ("make all changes / implement it") at `~/.commandcode/plans/performance-blazing-fast.md`, then start it.
@@ -229,6 +237,13 @@ was verified, so the next agent can trust the state without re-auditing.
 - **Plan approved with the owner's four requests folded in:** Gate 0 unblocked (bundle landed as 1.5.3/1.5.4), audit gaps → P1 (1C main-product screen, 1A/1H alteration menu, 1J assets/dead-files sweep), P15 (15x: heading gate, printroom bold, orders-PDF route), new P17b (alteration patches dispatched/converted history on explicit Apply), plus a standing rule: every phase close writes its Change-log entry in the same session.
 - **Gate 0 verified here:** OpenCode's `14d64a4d` matches the diff validated in this session; guard broken once (forced `codedByCode=false` → the new coded-right test went red) then restored; `shared/tests/order-note*` 77/77 + `master/tests/note-pdf` 11/11 green; fresh full `npm run verify` exit 0 on the stable tree (`0944dc61`); PG integration confirmed genuinely RUN, not skipped (`product-alteration.integration` 2/2 against live PostgreSQL). Tree clean, `main` = `origin/main` = `0944dc61`.
 - **State:** 1.5.4 built locally (unsigned — see entry below). **Next: Phase 0 `perf-baselines`** — measurement only, no code.
+
+### 2026-10-26 - Cleanup audit: duplicate-list styles to the kit, 5 dead keys out (Muse Code, branch clean/dedup-styles-dead-keys, uncommitted)
+
+- **Ask (owner):** audit the code, make it clean, remove bloat.
+- **Cut:** the Master-only `.ob-dup*` section (12 blocks) moved to the kit's `ui/src/base.css` — the shared duplicates tab rendered unstyled on the Office panel, which wires the same screen; both panels render it now. Stale "Duplicates page" comment fixed. 5 dead i18n keys removed (`duplicates.title`, `duplicates.description`, `lead.detail.printMenu`, `orderNote.qtyThisPage`, `orderNote.weightThisPage`), each proven zero-reference by two tools including tests; `catalog.nav.duplicates` kept — a shell test pins the sidebar-absence contract through it. A byte-level rewrite mid-edit briefly double-encoded 7 em-dashes in the Master sheet; caught by byte check and repaired, verified 7/7 intact.
+- **Rejected:** ~350 naive-sweep "dead" keys are dynamic `t()` compositions (`logs.action.*`, `permission.*`, …) — cutting them would break the UI. Drawer consolidation (`office/.../ProductDrawer.tsx` vs the kit port) proposed only: the header marks the duplication deliberate until Office migrates.
+- **Gate:** lint 0, typecheck 0, targeted 9 files / 292 tests green, full suite exit 0 isolated: 413 files passed + 1 skipped, 5542 tests passed + 17 skipped, PG ran. Net: +81/−85 across 3 files. Uncommitted — owner decides merge.
 
 ### 2026-10-25 - 1.5.4 built locally, unsigned (Muse Spark via Command Code, main, version bump only)
 
