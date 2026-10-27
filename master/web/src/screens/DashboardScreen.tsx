@@ -25,15 +25,17 @@ import type { DashboardSummary, Lead, Notice, OfficePanelWithPresence } from '@o
 import { api } from '../api';
 import { todayForNotices } from '../noticeToday';
 import {
-  Button,
   Card,
+  DashboardTile,
+  Donut,
+  DrillCard,
   EmptyState,
   NoticeDashboardCard,
   Skeleton,
-  StatTile,
+  rem,
+  StageBars,
   StatTileSkeleton,
   recordNumberText,
-  rem,
   t,
 } from '@orderbook/ui';
 
@@ -118,8 +120,13 @@ export function DashboardScreen({
   const dispatchedCount = summary?.dispatchedThisWeekCount;
   const stages = [...(summary?.pipelineBreakdown ?? [])].sort((a, b) => a.sequence - b.sequence);
   const stagedLeads = stages.reduce((sum, stage) => sum + stage.leadCount, 0);
-  const pipelineMax = Math.max(1, ...stages.map((stage) => stage.leadCount));
   const count = (value: number) => value.toLocaleString('en-IN');
+  const donutSlices = [
+    leadCount !== undefined ? { id: 'pending', label: t('dashboard.leads.title'), value: leadCount, color: 'var(--glaze-50)' } : null,
+    openOrderCount !== undefined ? { id: 'orders', label: t('dashboard.orders.title'), value: openOrderCount, color: '#6d4dbb' } : null,
+    dispatchedToday !== undefined ? { id: 'dispatched', label: t('dashboard.stat.dispatchedToday'), value: dispatchedToday, color: '#0f766e' } : null,
+    conflictCount !== undefined ? { id: 'conflicts', label: t('dashboard.stat.conflicts'), value: conflictCount, color: 'var(--kiln-red)' } : null,
+  ].filter((slice): slice is { id: string; label: string; value: number; color: string } => slice !== null && slice.value > 0);
 
   return (
     <div
@@ -144,8 +151,9 @@ export function DashboardScreen({
         ) : (
           <>
             {leadCount !== undefined && (
-              <StatTile
+              <DashboardTile
                 icon="leads"
+                accent="blue"
                 label={t('dashboard.leads.title')}
                 value={count(leadCount)}
                 note={
@@ -157,8 +165,9 @@ export function DashboardScreen({
               />
             )}
             {convertedToday !== undefined && (
-              <StatTile
+              <DashboardTile
                 icon="check"
+                accent="green"
                 label={t('dashboard.stat.convertedToday')}
                 value={count(convertedToday)}
                 note={t('dashboard.stat.convertedToday.note')}
@@ -166,16 +175,18 @@ export function DashboardScreen({
               />
             )}
             {dispatchedToday !== undefined && (
-              <StatTile
+              <DashboardTile
                 icon="upload"
+                accent="teal"
                 label={t('dashboard.stat.dispatchedToday')}
                 value={count(dispatchedToday)}
                 note={t('dashboard.stat.dispatchedToday.note')}
               />
             )}
             {dueCount !== undefined && (
-              <StatTile
+              <DashboardTile
                 icon="calendar"
+                accent="amber"
                 label={t('dashboard.stat.followUpsDue')}
                 value={count(dueCount)}
                 note={t('dashboard.stat.followUpsDue.note')}
@@ -183,8 +194,9 @@ export function DashboardScreen({
               />
             )}
             {canManagePanels && (
-              <StatTile
+              <DashboardTile
                 icon="server"
+                accent={active.length > 0 && offlineCount > 0 ? 'amber' : 'blue'}
                 label={t('dashboard.stat.panelsOnline')}
                 value={`${connected} / ${active.length}`}
                 note={
@@ -194,12 +206,12 @@ export function DashboardScreen({
                       ? t('dashboard.stat.panelsOnline.noteAll')
                       : t('dashboard.stat.panelsOnline.noteSome', { count: offlineCount })
                 }
-                tone={active.length > 0 && offlineCount > 0 ? 'offline' : undefined}
               />
             )}
             {canManagePanels && (
-              <StatTile
+              <DashboardTile
                 icon="warning"
+                accent="red"
                 label={t('dashboard.stat.panelsOfflineLong')}
                 value={count(longOfflineCount)}
                 note={
@@ -207,21 +219,22 @@ export function DashboardScreen({
                     ? t('dashboard.stat.panelsOfflineLong.noteNone')
                     : t('dashboard.stat.panelsOfflineLong.noteSome')
                 }
-                tone={longOfflineCount > 0 ? 'offline' : undefined}
                 onClick={longOfflineCount > 0 ? () => onNavigate('panels') : undefined}
               />
             )}
             {openOrderCount !== undefined && (
-              <StatTile
+              <DashboardTile
                 icon="orders"
+                accent="violet"
                 label={t('dashboard.orders.title')}
                 value={count(openOrderCount)}
                 onClick={() => onNavigate('orders')}
               />
             )}
             {dispatchedCount !== undefined && (
-              <StatTile
+              <DashboardTile
                 icon="upload"
+                accent="teal"
                 label={t('dashboard.dispatched.title')}
                 value={count(dispatchedCount)}
                 note={
@@ -234,8 +247,9 @@ export function DashboardScreen({
               />
             )}
             {conflictCount !== undefined && (
-              <StatTile
+              <DashboardTile
                 icon="conflicts"
+                accent="red"
                 label={t('dashboard.stat.conflicts')}
                 value={count(conflictCount)}
                 note={
@@ -243,216 +257,140 @@ export function DashboardScreen({
                     ? t('dashboard.stat.conflicts.noteSome')
                     : t('dashboard.stat.conflicts.noteNone')
                 }
-                tone={conflictCount > 0 ? 'conflict' : undefined}
                 onClick={conflictCount > 0 ? () => onNavigate('conflicts') : undefined}
               />
             )}
             {pendingCount !== undefined && (
-              <StatTile
+              <DashboardTile
                 icon="sync"
+                accent="amber"
                 label={t('dashboard.stat.pendingSync')}
                 value={count(pendingCount)}
                 note={t('dashboard.stat.pendingSync.note')}
-                tone={pendingCount > 0 ? 'offline' : undefined}
               />
             )}
             {printPending !== undefined && (
-              <StatTile label={t('dashboard.stat.printPending')} value={count(printPending)} />
+              <DashboardTile
+                icon="print"
+                accent="blue"
+                label={t('dashboard.stat.printPending')}
+                value={count(printPending)}
+              />
             )}
             {chatUnread !== undefined && (
-              <StatTile label={t('dashboard.stat.chatUnread')} value={count(chatUnread)} />
+              <DashboardTile
+                icon="chat"
+                accent="violet"
+                label={t('dashboard.stat.chatUnread')}
+                value={count(chatUnread)}
+              />
             )}
           </>
         )}
       </div>
 
       {!loading && summary?.pipelineBreakdown && (
-        <Card>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
-            <div className="ob-eyebrow" style={{ flex: 1 }}>
-              {t('dashboard.pipeline.title')}
-            </div>
-            <Button variant="ghost" onClick={() => onNavigate('leads')}>
-              {t('dashboard.pipeline.openBoard')}
-            </Button>
-          </div>
-          {stages.length === 0 || stagedLeads === 0 ? (
-            <div style={{ marginTop: 'var(--s-12)' }}>
+        <>
+          <StageBars
+            title={t('dashboard.pipeline.title')}
+            stages={stages.map((stage) => ({
+              id: stage.stageId,
+              label: stage.stageName,
+              count: stage.leadCount,
+              color: stage.colourHex || undefined,
+            }))}
+            onOpen={() => onNavigate('leads')}
+          />
+          {(stages.length === 0 || stagedLeads === 0) && (
+            <Card>
               <EmptyState
                 title={t('dashboard.pipeline.emptyTitle')}
                 description={t('dashboard.pipeline.emptyDescription')}
               />
-            </div>
-          ) : (
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 'var(--s-8)',
-                marginTop: 'var(--s-12)',
-              }}
-            >
-              {stages.map((stage) => (
-                <div
-                  key={stage.stageId}
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: `${rem(120)} 1fr ${rem(40)}`,
-                    alignItems: 'center',
-                    gap: 'var(--s-8)',
-                  }}
-                >
-                  <span className="ob-small" style={{ color: 'var(--fg-secondary)' }}>
-                    {stage.stageName}
-                  </span>
-                  <span
-                    style={{
-                      display: 'block',
-                      height: rem(8),
-                      borderRadius: 'var(--r-md)',
-                      background: 'var(--bg-sunken)',
-                      overflow: 'hidden',
-                    }}
-                  >
-                    <span
-                      style={{
-                        display: 'block',
-                        height: '100%',
-                        width: `${Math.round((stage.leadCount / pipelineMax) * 100)}%`,
-                        background: 'var(--accent)',
-                        borderRadius: 'var(--r-md)',
-                      }}
-                    />
-                  </span>
-                  <span
-                    className="ob-data ob-small"
-                    style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                  >
-                    {stage.leadCount.toLocaleString('en-IN')}
-                  </span>
-                </div>
-              ))}
-            </div>
+            </Card>
           )}
-        </Card>
+          {donutSlices.length > 0 && (leadCount !== undefined || openOrderCount !== undefined) && (
+            <Donut
+              title={t('dashboard.status.title')}
+              total={count((leadCount ?? 0) + (openOrderCount ?? 0))}
+              slices={donutSlices}
+              onSelect={(id) => {
+                if (id === 'pending') onNavigate('leads');
+                else if (id === 'orders' || id === 'dispatched') onNavigate('orders');
+                else if (id === 'conflicts') onNavigate('conflicts');
+              }}
+            />
+          )}
+        </>
       )}
 
       {canViewNotices && <NoticeDashboardCard notices={notices} today={todayForNotices()} onOpen={() => onNavigate('notices')} />}
 
-      {canViewLeads && (
-        <Card>
-          <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
-            {t('dashboard.followUp.dueTitle')}
-          </div>
-          {followUps === null ? (
+      {canViewLeads &&
+        (followUps === null ? (
+          <Card>
             <Skeleton height="var(--t-body-line)" />
-          ) : followUps.length === 0 ? (
-            <EmptyState
-              title={t('dashboard.followUp.emptyTitle')}
-              description={t('dashboard.followUp.emptyDescription')}
-            />
-          ) : (
-            <div className="ob-lines">
-              {followUps.map((lead) => (
-                <FollowUpRow key={lead.id} lead={lead} onOpen={() => onOpenLead(lead.id)} />
-              ))}
-            </div>
-          )}
-        </Card>
-      )}
+          </Card>
+        ) : (
+          <DrillCard
+            title={t('dashboard.followUp.dueTitle')}
+            rows={followUps.map((lead) => ({
+              id: lead.id,
+              title: (
+                <>
+                  <span className="ob-mono ob-small">{recordNumberText(lead)} · </span>
+                  {lead.partyName}
+                </>
+              ),
+              meta: lead.stageName,
+            }))}
+            empty={{
+              title: t('dashboard.followUp.emptyTitle'),
+              description: t('dashboard.followUp.emptyDescription'),
+            }}
+            onOpen={(id) => onOpenLead(id)}
+          />
+        ))}
 
-      {canManagePanels && (
-        <Card>
-          <div className="ob-body-strong" style={{ marginBottom: 'var(--s-12)' }}>
-            {t('nav.master.panels')}
-            {!loading &&
-              ` — ${t('dashboard.panels.subtitle', { connected, total: active.length })}`}
-          </div>
-          {loading ? (
+      {canManagePanels &&
+        (loading ? (
+          <Card>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
               <Skeleton height="var(--t-body-line)" />
               <Skeleton height="var(--t-body-line)" width="70%" />
             </div>
-          ) : active.length === 0 ? (
-            <EmptyState
-              title={t('dashboard.panels.empty.title')}
-              description={t('dashboard.panels.empty.description')}
-            />
-          ) : (
-            <ul
-              style={{
-                margin: 0,
-                padding: 0,
-                listStyle: 'none',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 'var(--s-8)',
-              }}
-            >
-              {active.map((panel) => (
-                <li
-                  key={panel.id}
-                  style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-8)' }}
-                >
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      width: rem(6),
-                      height: rem(6),
-                      borderRadius: '50%',
-                      flex: 'none',
-                      background: panel.isConnected ? 'var(--state-ok)' : 'var(--line-strong)',
-                    }}
-                  />
-                  <span className="ob-body">{panel.name}</span>
-                  <span className="ob-small">
-                    {panel.lanIp ?? t('dashboard.panels.addressUnknown')} ·{' '}
-                    {t('dashboard.panels.deviceLabel', { code: panel.deviceCode })}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <p className="ob-small" style={{ marginTop: 'var(--s-12)', marginBottom: 0 }}>
-            {t('dashboard.panels.footerNote')}
-          </p>
-        </Card>
-      )}
+          </Card>
+        ) : (
+          <DrillCard
+            title={
+              active.length === 0
+                ? t('nav.master.panels')
+                : `${t('nav.master.panels')} — ${t('dashboard.panels.subtitle', { connected, total: active.length })}`
+            }
+            rows={active.map((panel) => ({
+              id: panel.id,
+              title: panel.name,
+              meta: `${panel.lanIp ?? t('dashboard.panels.addressUnknown')} · ${t('dashboard.panels.deviceLabel', { code: panel.deviceCode })}`,
+              badge: (
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: '0.5rem',
+                    height: '0.5rem',
+                    borderRadius: '50%',
+                    flex: 'none',
+                    background: panel.isConnected ? 'var(--state-ok)' : 'var(--line-strong)',
+                  }}
+                />
+              ),
+            }))}
+            empty={{
+              title: t('dashboard.panels.empty.title'),
+              description: t('dashboard.panels.empty.description'),
+            }}
+            onOpen={() => onNavigate('panels')}
+          />
+        ))}
     </div>
-  );
-}
-
-/** One due follow-up, as the Office draws it; the whole row opens the lead. */
-function FollowUpRow({ lead, onOpen }: { lead: Lead; onOpen: () => void }) {
-  return (
-    <button
-      type="button"
-      className="ob-line"
-      style={{
-        width: '100%',
-        textAlign: 'left',
-        background: 'none',
-        border: 'none',
-        borderTop: '1px solid var(--line)',
-        cursor: 'pointer',
-        font: 'inherit',
-        color: 'inherit',
-        paddingLeft: 0,
-        paddingRight: 0,
-      }}
-      onClick={onOpen}
-    >
-      <span className="ob-line-body">
-        <span className="ob-line-head">
-          <span className="ob-mono ob-small">{recordNumberText(lead)}</span>
-          <span className="ob-body-strong">{lead.partyName}</span>
-        </span>
-      </span>
-      <span className="ob-line-figures" style={{ flexDirection: 'row', gap: 'var(--s-12)' }}>
-        <span className="ob-small" style={{ color: 'var(--fg-secondary)' }}>
-          {lead.stageName}
-        </span>
-      </span>
-    </button>
   );
 }

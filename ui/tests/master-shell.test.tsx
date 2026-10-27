@@ -2331,7 +2331,7 @@ describe('the link to the Master server, and the bell (1.3)', () => {
     await pressAltDigitUntil(2, t('nav.master.dashboard'));
 
     const tile = (await screen.findByText(t('dashboard.stat.panelsOfflineLong'))).closest(
-      '.ob-stattile',
+      '.ob-dtile',
     ) as HTMLElement;
     expect(within(tile).getByText('1')).toBeTruthy();
 

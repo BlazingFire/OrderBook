@@ -21,16 +21,19 @@
  * stages and counts the leads in each.
  */
 
-import type { Lead, Notice } from '@orderbook/shared';
+import type { Notice } from '@orderbook/shared';
 
 import type { LocalView } from '../api';
 import { todayForNotices } from '../noticeReads';
 import {
   Card,
+  DashboardTile,
+  Donut,
+  DrillCard,
   EmptyState,
   NoticeDashboardCard,
   RecordNumber,
-  StatTile,
+  StageBars,
   Timeline,
   formatDateTime,
   recordNumberText,
@@ -288,8 +291,6 @@ export function DashboardScreen({
   const stagedLeads = stages.reduce((sum, stage) => sum + stage.leadCount, 0);
   const asOf = view.dashboard?.asOf ?? null;
 
-  const pipelineMax = Math.max(1, ...stages.map((stage) => stage.leadCount));
-
   const activity = describeActivity(view, canViewLeads, canViewOrders).slice(0, 5);
 
   return (
@@ -306,7 +307,9 @@ export function DashboardScreen({
         }}
       >
         {canViewLeads && (
-          <StatTile
+          <DashboardTile
+            icon="leads"
+            accent="blue"
             label={t('dashboard.leads.title')}
             value={openLeads.length.toLocaleString('en-IN')}
             note={
@@ -314,12 +317,15 @@ export function DashboardScreen({
                 ? t('dashboard.leads.dueToday', { count: dueToday })
                 : t('dashboard.leads.noneDueToday')
             }
+            trend={openLeads.slice(0, 12).map((_, index) => openLeads.length - index)}
             onClick={() => onNavigate('leads')}
           />
         )}
 
         {canViewOrders && (
-          <StatTile
+          <DashboardTile
+            icon="orders"
+            accent="violet"
             label={t('dashboard.orders.title')}
             value={openOrders.length.toLocaleString('en-IN')}
             note={
@@ -334,7 +340,9 @@ export function DashboardScreen({
         )}
 
         {canViewOrders && (
-          <StatTile
+          <DashboardTile
+            icon="upload"
+            accent="teal"
             label={t('dashboard.dispatched.title')}
             value={
               <>
@@ -356,29 +364,54 @@ export function DashboardScreen({
         )}
 
         {printPending !== undefined && (
-          <StatTile
+          <DashboardTile
+            icon="print"
+            accent="blue"
             label={t('dashboard.stat.printPending')}
             value={printPending.toLocaleString('en-IN')}
           />
         )}
 
         {chatUnread !== undefined && (
-          <StatTile
+          <DashboardTile
+            icon="chat"
+            accent="violet"
             label={t('dashboard.stat.chatUnread')}
             value={chatUnread.toLocaleString('en-IN')}
           />
         )}
 
-        <StatTile
+        <DashboardTile
+          icon="sync"
+          accent={syncTone === 'conflict' ? 'red' : syncTone === 'offline' ? 'amber' : 'green'}
           label={t('dashboard.sync.title')}
           value={syncValue}
-          tone={syncTone}
           note={
             linkDown && asOf ? t('dashboard.asOf.stale', { when: formatDateTime(asOf) }) : syncNote
           }
           onClick={canViewConflicts ? () => onNavigate('conflicts') : undefined}
         />
       </div>
+
+      <Donut
+        title={t('dashboard.status.title')}
+        total={(openLeads.length + openOrders.length).toLocaleString('en-IN')}
+        slices={[
+          ...(canViewLeads && openLeads.length > 0
+            ? [{ id: 'leads', label: t('dashboard.leads.title'), value: openLeads.length, color: 'var(--glaze-50)' }]
+            : []),
+          ...(canViewOrders && openOrders.length > 0
+            ? [{ id: 'orders', label: t('dashboard.orders.title'), value: openOrders.length, color: '#6d4dbb' }]
+            : []),
+          ...(canViewOrders && dispatchedThisWeek.length > 0
+            ? [{ id: 'dispatched', label: t('dashboard.dispatched.title'), value: dispatchedThisWeek.length, color: '#0f766e' }]
+            : []),
+        ]}
+        onSelect={(id) => {
+          if (id === 'leads') onNavigate('leads');
+          else onNavigate('orders');
+        }}
+      />
 
       <div
         style={{
@@ -388,76 +421,21 @@ export function DashboardScreen({
           alignItems: 'start',
         }}
       >
-        {canViewLeads && (
-          <Card>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-12)' }}>
-              <div className="ob-eyebrow" style={{ flex: 1 }}>
-                {t('dashboard.pipeline.title')}
-              </div>
-              <button className="ob-btn ob-btn--ghost" onClick={() => onNavigate('leads')}>
-                {t('dashboard.pipeline.openBoard')}
-              </button>
-            </div>
-            {stages.length === 0 || stagedLeads === 0 ? (
-              <div style={{ marginTop: 'var(--s-12)' }}>
-                <EmptyState
-                  title={t('dashboard.pipeline.emptyTitle')}
-                  description={t('dashboard.pipeline.emptyDescription')}
-                />
-              </div>
-            ) : (
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 'var(--s-8)',
-                  marginTop: 'var(--s-12)',
-                }}
-              >
-                {stages.map((stage) => (
-                  <div
-                    key={stage.stageId}
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: `${rem(88)} 1fr ${rem(24)} ${rem(96)}`,
-                      alignItems: 'center',
-                      gap: 'var(--s-8)',
-                    }}
-                  >
-                    <span className="ob-small" style={{ color: 'var(--fg-secondary)' }}>
-                      {stage.stageName}
-                    </span>
-                    <span
-                      style={{
-                        display: 'block',
-                        height: rem(8),
-                        borderRadius: 'var(--r-md)',
-                        background: 'var(--bg-sunken)',
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <span
-                        style={{
-                          display: 'block',
-                          height: '100%',
-                          width: `${Math.round((stage.leadCount / pipelineMax) * 100)}%`,
-                          background: 'var(--accent)',
-                          borderRadius: 'var(--r-md)',
-                        }}
-                      />
-                    </span>
-                    <span
-                      className="ob-data ob-small"
-                      style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                    >
-                      {stage.leadCount.toLocaleString('en-IN')}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-        )}
+        {canViewLeads &&
+          (stages.length === 0 || stagedLeads === 0 ? (
+            <Card>
+              <EmptyState
+                title={t('dashboard.pipeline.emptyTitle')}
+                description={t('dashboard.pipeline.emptyDescription')}
+              />
+            </Card>
+          ) : (
+            <StageBars
+              title={t('dashboard.pipeline.title')}
+              stages={stages.map((stage) => ({ id: stage.stageId, label: stage.stageName, count: stage.leadCount }))}
+              onOpen={() => onNavigate('leads')}
+            />
+          ))}
 
         <Card>
           <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
@@ -482,23 +460,23 @@ export function DashboardScreen({
       </div>
 
       {canViewLeads && (
-        <Card>
-          <div className="ob-eyebrow" style={{ marginBottom: 'var(--s-8)' }}>
-            {t('dashboard.followUp.title')}
-          </div>
-          {followUpsDue.length === 0 ? (
-            <EmptyState
-              title={t('dashboard.followUp.emptyTitle')}
-              description={t('dashboard.followUp.emptyDescription')}
-            />
-          ) : (
-            <div className="ob-lines">
-              {followUpsDue.slice(0, 8).map((lead) => (
-                <FollowUpRow key={lead.id} lead={lead} onOpen={() => onOpenLead(lead.id)} />
-              ))}
-            </div>
-          )}
-        </Card>
+        <DrillCard
+          title={t('dashboard.followUp.title')}
+          rows={followUpsDue.slice(0, 8).map((lead) => ({
+            id: lead.id,
+            title: (
+              <>
+                <RecordNumber record={lead} small /> {lead.partyName}
+              </>
+            ),
+            meta: lead.stageName,
+          }))}
+          empty={{
+            title: t('dashboard.followUp.emptyTitle'),
+            description: t('dashboard.followUp.emptyDescription'),
+          }}
+          onOpen={(id) => onOpenLead(id)}
+        />
       )}
 
       {/* An offline panel is showing the past. Say so, rather than letting the
@@ -525,38 +503,4 @@ function formatRelativeDay(iso: string): string {
   if (daysAgo <= 0) return t('dashboard.activity.today', { time });
   if (daysAgo === 1) return t('dashboard.activity.yesterday', { time });
   return formatDateTime(iso);
-}
-
-function FollowUpRow({ lead, onOpen }: { lead: Lead; onOpen: () => void }) {
-  return (
-    <button
-      type="button"
-      className="ob-line"
-      style={{
-        width: '100%',
-        textAlign: 'left',
-        background: 'none',
-        border: 'none',
-        borderTop: '1px solid var(--line)',
-        cursor: 'pointer',
-        font: 'inherit',
-        color: 'inherit',
-        paddingLeft: 0,
-        paddingRight: 0,
-      }}
-      onClick={onOpen}
-    >
-      <span className="ob-line-body">
-        <span className="ob-line-head">
-          <RecordNumber record={lead} small />
-          <span className="ob-body-strong">{lead.partyName}</span>
-        </span>
-      </span>
-      <span className="ob-line-figures" style={{ flexDirection: 'row', gap: 'var(--s-12)' }}>
-        <span className="ob-small" style={{ color: 'var(--fg-secondary)' }}>
-          {lead.stageName}
-        </span>
-      </span>
-    </button>
-  );
 }

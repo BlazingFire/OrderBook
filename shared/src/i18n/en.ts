@@ -3270,6 +3270,7 @@ export const EN_MESSAGES = {
   'dashboard.stat.dispatchedToday.note': 'Final orders sent out since midnight',
   'dashboard.stat.followUpsDue': 'Follow-ups due',
   'dashboard.stat.followUpsDue.note': 'New orders due or overdue for a call',
+  'dashboard.status.title': 'Today at a glance',
   'dashboard.stat.printPending': 'Print jobs waiting',
   'dashboard.stat.chatUnread': 'Unread messages',
   'signin.deviceCode': 'Device code',

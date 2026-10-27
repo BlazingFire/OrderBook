@@ -351,8 +351,11 @@
 .ob-swipe-action {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--s-4);
-  padding: 0 var(--s-12);
+  width: 5.4286rem; /* 76px: one action stop */
+  min-height: 44px;
+  padding: 0 var(--s-8);
   color: #fff;
   font-size: var(--t-small-size);
   font-weight: 600;
@@ -401,6 +404,9 @@
     background-color var(--d-fast) var(--e-standard),
     border-color var(--d-fast) var(--e-standard),
     transform var(--d-fast) var(--e-standard);
+}
+.ob-react-pill {
+  position: relative;
 }
 .ob-react-pill:hover {
   background: var(--bg-hover);
@@ -511,6 +517,9 @@
     transform var(--d-fast) var(--e-standard);
   pointer-events: none;
 }
+.ob-searchfield-clear .ob-icon-btn {
+  position: relative;
+}
 .ob-searchfield-clear[data-on='true'] {
   opacity: 1;
   transform: none;
@@ -592,6 +601,7 @@ textarea.ob-inline-field {
   resize: vertical;
 }
 .ob-inline-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -599,6 +609,20 @@ textarea.ob-inline-field {
   height: var(--ctl-h-sm);
   border-radius: var(--r-sm);
   color: var(--fg-secondary);
+}
+/* HIG 44×44pt minimum: the glyph stays small, the hit area does not. */
+.ob-inline-btn::after,
+.ob-react-pick::after,
+.ob-react-pill::after,
+.ob-searchfield-clear .ob-icon-btn::after {
+  content: '';
+  position: absolute;
+  inset: max(calc((44px - 100%) / -2), -12px) max(calc((44px - 100%) / -2), -12px);
+  min-width: 44px;
+  min-height: 44px;
+}
+.ob-react-pick {
+  position: relative;
 }
 .ob-inline-btn:hover {
   background: var(--bg-hover);

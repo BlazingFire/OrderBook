@@ -76,7 +76,11 @@ export function SwipeActionsRow({
 
   const stops = (): { left: number; right: number } => {
     const width = face.current?.offsetWidth ?? 320;
-    const unit = 76;
+    // One action stop in px, read from the rendered buttons (5.4286rem each)
+    // rather than hard-coded — the scale contract forbids px in JS.
+    const root = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 14;
+    const unit =
+      face.current?.querySelector<HTMLElement>('.ob-swipe-action')?.offsetWidth ?? root * 5.4286;
     return {
       left: leading.length > 0 ? Math.min(leading.length * unit, width * 0.6) : 0,
       right: trailing.length > 0 ? Math.min(trailing.length * unit, width * 0.6) : 0,
@@ -147,7 +151,6 @@ export function SwipeActionsRow({
               type="button"
               tabIndex={-1}
               className={`ob-swipe-action ob-swipe-action--${action.tone ?? 'neutral'}`}
-              style={{ width: 76 }}
               onClick={() => action.onSelect()}
             >
               <Icon name={action.icon} size={18} />
@@ -164,7 +167,6 @@ export function SwipeActionsRow({
               type="button"
               tabIndex={-1}
               className={`ob-swipe-action ob-swipe-action--${action.tone ?? 'neutral'}`}
-              style={{ width: 76 }}
               onClick={() => action.onSelect()}
             >
               <Icon name={action.icon} size={18} />

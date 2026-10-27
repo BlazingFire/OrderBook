@@ -353,7 +353,7 @@ describe('the link to the Master (1.3)', () => {
     await status({ state: 'disconnected', disconnectedSince: new Date().toISOString() });
 
     expect(screen.queryByText(t('dashboard.sync.allSynced'))).toBeNull();
-    const tile = screen.getByText(t('dashboard.sync.title')).closest('.ob-stattile')!;
+    const tile = screen.getByText(t('dashboard.sync.title')).closest('.ob-dtile')!;
     expect(within(tile as HTMLElement).getByText(t('sync.offline'))).toBeTruthy();
   });
 
@@ -475,7 +475,10 @@ describe('the Dashboard orders tile (stock removed, 1.4)', () => {
       view: { orders, permissions: ['leads.view', 'orders.view'] },
     });
     await pressAltDigitUntil(2, t('nav.dashboard'));
-    return screen.getByText(t('dashboard.orders.title')).closest('.ob-stattile') as HTMLElement;
+    const label = screen
+      .getAllByText(t('dashboard.orders.title'))
+      .find((node) => node.closest('.ob-dtile') !== null);
+    return label!.closest('.ob-dtile') as HTMLElement;
   }
 
   it('counts the pieces on open orders as pcs still to dispatch', async () => {
