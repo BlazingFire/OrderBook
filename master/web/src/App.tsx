@@ -162,10 +162,6 @@ const TodoListView = lazyScreen<'TodoListView', ComponentProps<typeof TodoListVi
 );
 const ConflictsScreen = lazyScreen(() => import('./screens/ConflictsScreen'), 'ConflictsScreen');
 const FieldsScreen = lazyScreen(() => import('./screens/FieldsScreen'), 'FieldsScreen');
-const IntegrationsScreen = lazyScreen(
-  () => import('./screens/IntegrationsScreen'),
-  'IntegrationsScreen',
-);
 const LogsScreen = lazyScreen(() => import('./screens/LogsScreen'), 'LogsScreen');
 const PanelsScreen = lazyScreen(() => import('./screens/PanelsScreen'), 'PanelsScreen');
 const PartyAccessScreen = lazyScreen(
@@ -192,7 +188,6 @@ type Tab =
   | 'partyAccess'
   | 'lists'
   | 'fields'
-  | 'integrations'
   | 'logs'
   | 'recycleBin'
   | 'dataDelete'
@@ -930,7 +925,6 @@ function MasterPanel() {
   const canManageRoles =
     user.permissions.includes('roles.view') || user.permissions.includes('users.manage');
   const canManagePanels = user.permissions.includes('panels.manage');
-  const canManageApi = user.permissions.includes('api.manage');
   const canViewFields = user.permissions.includes('fields.view');
   // Either key opens the screen: `party.assign` to redraw the map,
   // `party.accessAll` to read it. Somebody trusted with the whole book should
@@ -1055,23 +1049,8 @@ function MasterPanel() {
       { key: 'sub', label: t('catalog.nav.subProducts'), icon: 'products' },
       { key: 'main', label: t('catalog.nav.mainProducts'), icon: 'inventory' },
       { key: 'brands', label: t('catalog.nav.brands'), icon: 'edit' },
-      // Duplicates used to sit here as its own page; the conflicts tab below
-      // carries the same finder, so this entry was removed rather than kept
-      // beside its replacement.
       ...(user.permissions.includes('products.edit')
         ? [{ key: 'photos', label: t('catalog.nav.photoImport'), icon: 'upload' as const }]
-        : []),
-      ...(canViewProducts &&
-      (user.permissions.includes('products.bulk') ||
-        user.permissions.includes('products.export') ||
-        user.permissions.includes('products.delete'))
-        ? [
-            {
-              key: 'conflicts',
-              label: t('catalog.nav.productConflicts'),
-              icon: 'conflicts' as const,
-            },
-          ]
         : []),
     ],
     reports: offeredReportKinds(user.roleTier, user.features, user.permissions).map((kind) => ({
@@ -1118,10 +1097,6 @@ function MasterPanel() {
         label: t(`recycleBin.entity.${branch}`),
         icon: 'trash' as const,
       })),
-    ],
-    integrations: [
-      { key: 'keys', label: t('integrations.tab.keys'), icon: 'shield' },
-      { key: 'connectors', label: t('integrations.tab.connectors'), icon: 'server' },
     ],
     settings: settingsTabIdsFor(user.permissions).map((id) => ({
       key: id,
@@ -1285,13 +1260,6 @@ function MasterPanel() {
           : null,
         canDeleteData
           ? { id: 'dataDelete', label: t('nav.master.dataDelete'), icon: NAV_ICONS.dataDelete }
-          : null,
-        canManageApi
-          ? {
-              id: 'integrations',
-              label: t('nav.master.integrations'),
-              icon: NAV_ICONS.integrations,
-            }
           : null,
       ] satisfies Array<NavItem | null>,
     },
@@ -1941,16 +1909,6 @@ function MasterPanel() {
     {
       id: 'updates',
       render: () => <UpdatesScreen panels={panels} permissions={user.permissions} />,
-    },
-    {
-      id: 'integrations',
-      render: () => (
-        <IntegrationsScreen
-          canManage={canManageApi}
-          tab={subKeyOf('integrations') as 'keys' | 'connectors'}
-          onTabChange={(next) => selectSubPage('integrations', next)}
-        />
-      ),
     },
     {
       id: 'settings',

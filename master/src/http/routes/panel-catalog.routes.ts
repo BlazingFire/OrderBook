@@ -9,56 +9,23 @@
  * the person and the audit trail names them.
  */
 
-import { createReadStream } from 'node:fs';
-import { mkdir, rm } from 'node:fs/promises';
-import path from 'node:path';
 
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';
 import {
   MAX_PARTY_IMPORT_BYTES,
-  MAX_PRODUCT_IMPORT_BYTES,
-  MAX_PRODUCT_ZIP_BYTES,
   type MessageKey,
 } from '@orderbook/shared';
 
-import { config } from '../../config/index.js';
 import { ValidationError } from '../../lib/errors.js';
 import * as partyImportService from '../../services/party-import.service.js';
-import * as productImportService from '../../services/product-import.service.js';
-import * as productZipService from '../../services/product-zip.service.js';
-import * as duplicateService from '../../services/duplicate-products.service.js';
-import * as productAlterationService from '../../services/product-alteration.service.js';
 import { asyncHandler } from '../async-handler.js';
 import { panelActorFromRequest } from '../middleware/require-panel.js';
-import { requirePermission, type ActorContext } from '../../domain/actor.js';
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_PRODUCT_IMPORT_BYTES },
-});
+import type { ActorContext } from '../../domain/actor.js';
 
 const partyUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_PARTY_IMPORT_BYTES },
-});
-
-/**
- * The product backup zip carries every photo, so it is written to the data
- * folder's `tmp` as it arrives, never held in memory. Whoever handles it
- * deletes it: the preview when it answers, the restore job when it ends.
- */
-const zipUpload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, done) => {
-      const dir = path.join(config.dataDir, 'tmp');
-      mkdir(dir, { recursive: true }).then(
-        () => done(null, dir),
-        (error: Error) => done(error, dir),
-      );
-    },
-  }),
-  limits: { fileSize: MAX_PRODUCT_ZIP_BYTES },
 });
 
 /** The file, or — for one past the size ceiling — the import's own named refusal, not a generic 400. */
@@ -77,222 +44,7 @@ function uploader(
   };
 }
 
-const uploadFile = uploader(upload);
 const uploadPartyFile = uploader(partyUpload);
-const uploadZip = uploader(zipUpload, 'validation.productZip.tooLarge');
-
-/**
- * The import handlers, parameterised on who is acting: a paired Office panel
- * (`panelActorFromRequest`, behind `requirePanel`) or a signed-in Master user
- * (`actorFromRequest`, behind the session guard on `dataRoutes`). The service
- * checks `products.bulk` / `.create` / `.edit` against that actor either way.
- *
- * `zip` adds the product backup zip — `export.zip`, and the restore with its
- * job — for the Master's own users only. The Office's proxy buffers a download
- * whole, and a restore is minutes of photo encoding behind a progress bar the
- * Office has no screen for, so a paired panel is not offered either.
- */
-export function productImportRoutes(
-  actorOf: (req: Request) => ActorContext,
-  options: { zip?: boolean } = {},
-): Router {
-  const routes: Router = Router();
-
-  routes.get(
-    '/products/import/template.:format',
-    asyncHandler(async (req, res) => {
-      const format = String(req.params.format);
-      if (format !== 'csv' && format !== 'xlsx') {
-        throw new ValidationError('validation.import.unsupportedFormat');
-      }
-
-      const file = await productImportService.productImportTemplate(format, actorOf(req));
-
-      res.setHeader('Content-Type', file.contentType);
-      res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
-      res.send(file.bytes);
-    }),
-  );
-
-  routes.get(
-    '/products/export.:format',
-    asyncHandler(async (req, res) => {
-      const format = String(req.params.format);
-      if (format === 'zip' && options.zip) {
-        // Streamed from the file the service wrote, then deleted, however the response ends.
-        const file = await productZipService.exportProductZip(actorOf(req));
-        res.setHeader('Content-Type', 'application/zip');
-        res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
-        const stream = createReadStream(file.filePath);
-        res.on('close', () => {
-          stream.destroy();
-          void rm(file.filePath, { force: true });
-        });
-        stream.on('error', (error) => res.destroy(error));
-        stream.pipe(res);
-        return;
-      }
-      if (format !== 'csv' && format !== 'xlsx') {
-        throw new ValidationError('validation.import.unsupportedFormat');
-      }
-
-      const file = await productImportService.exportProducts(
-        format,
-        actorOf(req),
-        req.query.level === 'main' ? 'main' : 'sub',
-      );
-
-      res.setHeader('Content-Type', file.contentType);
-      res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
-      res.send(file.bytes);
-    }),
-  );
-
-  routes.post(
-    '/products/import',
-    uploadFile,
-    asyncHandler(async (req, res) => {
-      if (!req.file) throw new ValidationError('validation.import.fileRequired');
-
-      const body = (req.body ?? {}) as Record<string, unknown>;
-      const dryRun = String(body.dryRun ?? '') === 'true';
-      const mode = body.mode === 'upsert' ? 'upsert' : 'create';
-      const rawOnly = (body as Record<string, unknown>).onlyRows;
-      const onlyRows = Array.isArray(rawOnly)
-        ? rawOnly.map((v) => Number(v)).filter((v) => Number.isInteger(v) && v > 0)
-        : typeof rawOnly === 'string' && rawOnly.length > 0
-          ? String(rawOnly)
-              .split(',')
-              .map((v) => Number(v.trim()))
-              .filter((v) => Number.isInteger(v) && v > 0)
-          : undefined;
-
-      res.json(
-        await productImportService.importProducts(
-          { buffer: req.file.buffer, fileName: req.file.originalname || 'products.csv' },
-          {
-            dryRun,
-            mode,
-            onlyRows,
-            fileHash:
-              typeof body.fileHash === 'string' && body.fileHash.length > 0
-                ? body.fileHash
-                : undefined,
-          },
-          actorOf(req),
-        ),
-      );
-    }),
-  );
-
-  routes.get(
-    '/duplicates',
-    asyncHandler(async (req, res) => {
-      res.json(await duplicateService.findDuplicates(actorOf(req)));
-    }),
-  );
-  routes.post(
-    '/duplicates/resolve',
-    asyncHandler(async (req, res) => {
-      res.json(await duplicateService.resolveDuplicates(req.body, actorOf(req)));
-    }),
-  );
-  routes.get(
-    '/products/:id/alteration/preview',
-    asyncHandler(async (req, res) => {
-      res.json(
-        await productAlterationService.previewProductAlteration(
-          String(req.params.id),
-          actorOf(req),
-        ),
-      );
-    }),
-  );
-  routes.post(
-    '/products/:id/alteration/apply',
-    asyncHandler(async (req, res) => {
-      const body = (req.body ?? {}) as Record<string, unknown>;
-      res.json(
-        await productAlterationService.applyProductAlteration(
-          String(req.params.id),
-          {
-            product: body.product as never,
-            baseFieldHlc: body.baseFieldHlc as Record<string, string> | undefined,
-          },
-          actorOf(req),
-        ),
-      );
-    }),
-  );
-  routes.post(
-    '/products/:id/alteration/pdf',
-    asyncHandler(async (req, res) => {
-      const body = (req.body ?? {}) as Record<string, unknown>;
-      const file = await productAlterationService.alterationOrdersPdf(
-        String((body.productName as string | undefined) ?? ''),
-        (body.affected as never) ?? [],
-        actorOf(req),
-      );
-      res.setHeader('Content-Type', file.contentType);
-      res.setHeader('Content-Disposition', 'attachment; filename=' + file.fileName);
-      res.send(file.bytes);
-    }),
-  );
-  if (!options.zip) return routes;
-
-  /**
-   * The zip, as a dry run (the preview) or the real run (202 and the job's
-   * first status; `GET /products/restore/job` follows it). The opt-ins ride as
-   * form fields, `true` or absent, on both: the preview is of the run they ask.
-   */
-  routes.post(
-    '/products/restore',
-    uploadZip,
-    asyncHandler(async (req, res) => {
-      if (!req.file) throw new ValidationError('validation.productZip.fileRequired');
-      const { path: filePath, originalname } = req.file;
-      const fileName = originalname || 'products.zip';
-      const body = (req.body ?? {}) as Record<string, unknown>;
-      const options = {
-        binMissingProducts: String(body.binMissingProducts ?? '') === 'true',
-        removeMissingPhotos: String(body.removeMissingPhotos ?? '') === 'true',
-        exactCatalogue: String(body.exactCatalogue ?? '') === 'true',
-        updateOnly: String(body.updateOnly ?? '') === 'true',
-      };
-
-      if (String(body.dryRun ?? '') === 'true') {
-        try {
-          res.json(
-            await productZipService.previewProductZip(filePath, fileName, actorOf(req), options),
-          );
-        } finally {
-          await rm(filePath, { force: true });
-        }
-        return;
-      }
-
-      try {
-        const status = productZipService.startProductRestore(
-          filePath,
-          fileName,
-          options,
-          actorOf(req),
-        );
-        res.status(202).json(status);
-      } catch (error) {
-        await rm(filePath, { force: true });
-        throw error;
-      }
-    }),
-  );
-
-  routes.get('/products/restore/job', (req, res) => {
-    requirePermission(actorOf(req), 'products.bulk');
-    res.json(productZipService.productRestoreJob());
-  });
-
-  return routes;
-}
 
 /**
  * The party import handlers, parameterised on who is acting like
@@ -359,5 +111,4 @@ export function partyImportRoutes(actorOf: (req: Request) => ActorContext): Rout
 }
 
 export const panelCatalogRoutes: Router = Router();
-panelCatalogRoutes.use(productImportRoutes(panelActorFromRequest));
 panelCatalogRoutes.use(partyImportRoutes(panelActorFromRequest));

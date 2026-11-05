@@ -11,9 +11,6 @@
  * block reads the same result.
  */
 
-import { copyFile, mkdtemp, rm } from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -26,7 +23,6 @@ import { db } from '../src/db/knex.js';
 import type { ParsedCatalogue } from '../src/domain/catalogue-markdown.js';
 import * as catalog from '../src/services/catalog.service.js';
 import { onChange } from '../src/services/change-bus.js';
-import { exportProductZip, loadShippedCatalogue, SHIPPED_CATALOGUE_MARKER } from '../src/services/product-zip.service.js';
 import {
   loadCatalogue,
   otherDatabaseClients,
@@ -400,60 +396,6 @@ describe.skipIf(!canRunIntegrationTests)('loading the SWISWARE catalogue (integr
       } finally {
         await master.end();
       }
-    });
-  });
-
-  describe('on boot, into an install that has never had a catalogue', () => {
-    const noZip = path.join(os.tmpdir(), 'orderbook-no-such-catalogue.zip');
-    const marker = () => db()('settings').where({ key: SHIPPED_CATALOGUE_MARKER }).first();
-
-    it('loads the shipped catalogue once, before setup, as System; a second boot does nothing', async () => {
-      await resetData();
-      expect(await loadShippedCatalogue({ zip: noZip })).toBe('markdown');
-      expect(await liveCount('product_categories')).toBe(41);
-      expect(await liveCount('products')).toBe(549);
-      expect(await marker()).toBeDefined();
-      expect(await db()('activity_log').where({ entity_type: 'catalog', actor_type: 'system' })).toHaveLength(1);
-
-      // Emptied on purpose since: it stays empty.
-      await db()('product_variants').delete();
-      await db()('products').delete();
-      await db()('product_categories').delete();
-      expect(await loadShippedCatalogue({ zip: noZip })).toBeNull();
-      expect(await count('product_categories')).toBe(0);
-    }, 120_000);
-
-    it('loads the product zip a build carries in place of the printed catalogue', async () => {
-      await resetData();
-      const actor = await testActor();
-      await seedCatalogue({ actor });
-      const dir = await mkdtemp(path.join(os.tmpdir(), 'shipped-catalogue-'));
-      try {
-        const { filePath } = await exportProductZip(actor);
-        const zip = path.join(dir, 'products.zip');
-        await copyFile(filePath, zip);
-        await rm(filePath, { force: true });
-
-        await resetData();
-        expect(await loadShippedCatalogue({ zip })).toBe('zip');
-        expect(await liveCount('product_categories')).toBe(41);
-        expect(await liveCount('products')).toBe(549);
-        expect(await db()('product_categories').whereNull('code').count('* as n').first()).toEqual({ n: '0' });
-      } finally {
-        await rm(dir, { recursive: true, force: true });
-      }
-    }, 120_000);
-
-    it('only records the marker where a main product exists, even one in the Recycle Bin', async () => {
-      await resetData();
-      const actor = await testActor();
-      const category = await catalog.createCategory({ name: 'Basins', code: 'BAS' }, actor);
-      await catalog.deleteCategory(category.id, actor);
-
-      expect(await loadShippedCatalogue({ zip: noZip })).toBe('none');
-      expect(await count('products')).toBe(0);
-      expect(await marker()).toBeDefined();
-      expect(await loadShippedCatalogue({ zip: noZip })).toBeNull();
     });
   });
 });

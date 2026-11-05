@@ -24,7 +24,6 @@ import {
   EditorScreen,
   ConflictBanner,
   MainProductsScreen,
-  ProductConflictsScreen,
   ProductEditScreen,
   SubProductsScreen,
   apiErrorText,
@@ -38,9 +37,7 @@ import { catalogueTransport, optionListTransport } from '../transports';
 
 import { PhotoImportScreen } from './PhotoImportScreen';
 
-// The old Duplicates page is gone: the conflicts tab below mounts the same
-// finder inline (`ProductConflictsScreen`'s duplicates tab), so one copy stays.
-export type ProductsPage = 'sub' | 'main' | 'brands' | 'photos' | 'conflicts';
+export type ProductsPage = 'sub' | 'main' | 'brands' | 'photos';
 
 interface Props {
   page: ProductsPage;
@@ -170,15 +167,6 @@ export function ProductsScreen({
           revision={catalogueRevision + importBump}
         />
       </Activity>
-      {/* Kept mounted while hidden, so leaving the page does not drop an import that is running. */}
-      {page === 'conflicts' && (
-        <ProductConflictsScreen
-          view={view}
-          transport={catalogueTransport}
-          revision={catalogueRevision + importBump}
-          onImported={() => setImportBump((current) => current + 1)}
-        />
-      )}
       {permissions.includes('products.edit') && (
         <Activity mode={page === 'photos' ? 'visible' : 'hidden'}>
           <PhotoImportScreen products={products} />

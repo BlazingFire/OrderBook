@@ -107,7 +107,6 @@ const MASTER_NAV: NavEntry[] = [
   ['recycleBin', 'nav.master.recycleBin', 'Alt+B'],
   // Delete data (2026-10-14): admin tier only, reached from the sidebar or the palette.
   ['dataDelete', 'nav.master.dataDelete', null],
-  ['integrations', 'nav.master.integrations', 'Alt+I'],
   ['settings', 'nav.master.settings'],
   ['updates', 'nav.updates', 'Alt+U'],
 ];

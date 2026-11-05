@@ -1214,60 +1214,6 @@ function RecycleBinTile({ size = 80 }: TileProps) {
   );
 }
 
-function IntegrationsTile({ size = 80 }: TileProps) {
-  const u = useTileId();
-  return (
-    <svg viewBox="0 0 96 96" width={size} height={size} aria-hidden="true" focusable="false">
-      <defs>
-        <linearGradient id={`${u}-g`} x1="0" y1="0" x2="0.35" y2="1">
-          <stop offset="0" stopColor="#B07BFF" />
-          <stop offset="1" stopColor="#7440E6" />
-        </linearGradient>
-        <radialGradient id={`${u}-h`} cx="0.3" cy="0" r="0.9">
-          <stop offset="0" stopColor="#fff" stopOpacity=".28" />
-          <stop offset="1" stopColor="#fff" stopOpacity="0" />
-        </radialGradient>
-        <filter id={`${u}-s`} x="-30%" y="-30%" width="160%" height="160%">
-          <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" floodColor="#000" floodOpacity=".22" />
-        </filter>
-        <filter id={`${u}-d`} x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="#7440E6" floodOpacity=".55" />
-        </filter>
-      </defs>
-      <rect width="96" height="96" rx="22" fill={`url(#${u}-g)`} />
-      <rect width="96" height="96" rx="22" fill={`url(#${u}-h)`} />
-      <rect
-        x=".75"
-        y=".75"
-        width="94.5"
-        height="94.5"
-        rx="21.25"
-        fill="none"
-        stroke="#fff"
-        strokeOpacity=".22"
-        strokeWidth="1.5"
-      />
-      <g filter={`url(#${u}-d)`}>
-        <path
-          d="M26 48h-3a7 7 0 0 0-7 7v20"
-          fill="none"
-          stroke="#FFFFFF"
-          strokeWidth="5.5"
-          strokeLinecap="round"
-        />
-        <rect x="25" y="34" width="24" height="28" rx="7" fill="#FFFFFF" />
-        <rect x="47" y="39" width="12" height="5.5" rx="2.75" fill="#FFFFFF" />
-        <rect x="47" y="51.5" width="12" height="5.5" rx="2.75" fill="#FFFFFF" />
-        <g filter={`url(#${u}-s)`}>
-          <rect x="60" y="28" width="22" height="40" rx="7" fill="#FFD54F" />
-        </g>
-        <rect x="66" y="38.5" width="10" height="6.5" rx="3.25" fill="#5A3E00" />
-        <rect x="66" y="51" width="10" height="6.5" rx="3.25" fill="#5A3E00" />
-      </g>
-    </svg>
-  );
-}
-
 /** Module id -> tile. A module with no entry keeps its line icon on a plain face. */
 export const TILE_ICONS: Partial<Record<NavIconId | 'newLead', ComponentType<TileProps>>> = {
   newLead: NewOrderTile,
@@ -1292,5 +1238,4 @@ export const TILE_ICONS: Partial<Record<NavIconId | 'newLead', ComponentType<Til
   logs: ActivityLogTile,
   recycleBin: RecycleBinTile,
   dataDelete: DataDeleteTile,
-  integrations: IntegrationsTile,
 };

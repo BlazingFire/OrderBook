@@ -32,21 +32,9 @@ import type {
   ProductCategory,
   ProductCategoryListRow,
   ProductImageUpdateInput,
-  ProductImportFormat,
-  ProductImportMode,
-  ProductImportResult,
   ProductInput,
   ProductListPage,
   ProductListQuery,
-  ProductRestoreJob,
-  ProductRestoreOptions,
-  ProductZipReport,
-  ProductAlterationPreview,
-  ProductAlterationApplyResult,
-  ProductAlterationAffected,
-  DuplicateReport,
-  DuplicateResolveInput,
-  DuplicateResolveResult,
 } from '@orderbook/shared';
 import { colourRuleOf, shownColour } from '@orderbook/shared';
 
@@ -173,46 +161,4 @@ export interface CatalogueTransport {
   ): Promise<Product>;
   reorderProductImages(productId: string, ids: string[]): Promise<Product>;
   deleteProductImage(productId: string, imageId: string): Promise<Product>;
-  productImportTemplate(format: ProductImportFormat): Promise<{ blob: Blob; fileName: string }>;
-  /** `level` `main` exports the main products; the default is every sub product. */
-  exportProducts(
-    format: ProductImportFormat,
-    level?: 'sub' | 'main',
-  ): Promise<{ blob: Blob; fileName: string }>;
-  importProducts(
-    file: File,
-    options: { dryRun: boolean; mode: ProductImportMode; onlyRows?: number[]; fileHash?: string },
-  ): Promise<ProductImportResult>;
-  /** Pending only alteration of line snapshots, where offered. Absent hides the tab. */
-  alteration?: {
-    preview(productId: string): Promise<ProductAlterationPreview>;
-    apply(
-      productId: string,
-      product: ProductInput,
-      baseFieldHlc?: Record<string, string>,
-    ): Promise<ProductAlterationApplyResult>;
-    pdf(
-      productId: string,
-      productName: string,
-      affected: ProductAlterationAffected[],
-    ): Promise<{ blob: Blob; fileName: string }>;
-  };
-  /** Duplicate finder, where offered. Absent hides the tab. */
-  duplicates?: {
-    list(): Promise<DuplicateReport>;
-    resolve(input: DuplicateResolveInput): Promise<DuplicateResolveResult>;
-  };
-  /** The product backup zip, on a panel that offers it (the Master); absent hides both buttons. */
-  productZip?: ProductZipTransport;
-}
-
-/** The product backup zip's calls (`master/src/services/product-zip.service.ts`). */
-export interface ProductZipTransport {
-  exportZip(): Promise<{ blob: Blob; fileName: string }>;
-  /** What the zip would do with these opt-ins: a dry run, nothing written. */
-  preview(file: File, options: ProductRestoreOptions): Promise<ProductZipReport>;
-  /** Start the real run; it carries on without the screen. */
-  start(file: File, options: ProductRestoreOptions): Promise<ProductRestoreJob>;
-  /** The latest restore, running or finished; null since the Master started. */
-  job(): Promise<ProductRestoreJob | null>;
 }

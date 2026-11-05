@@ -31,7 +31,7 @@ import { Button } from './Button.js';
 import { ChatConversation } from './ChatConversation.js';
 import { ChatGroupSettings } from './ChatGroupSettings.js';
 import { ChatShareScreen } from './ChatShareScreen.js';
-import { roomTitle, type ChatRecordOption, type ChatTransport, type ChatViewer } from './chatModel.js';
+import { chatName, roomTitle, type ChatRecordOption, type ChatTransport, type ChatViewer } from './chatModel.js';
 import { Combobox } from './Combobox.js';
 import { apiErrorText } from './errorText.js';
 import { FilterChip } from './FilterBar.js';
@@ -142,7 +142,7 @@ function whenOf(iso: string | null): string {
 function preview(room: ChatRoomSummary): string {
   const message = room.lastMessage;
   if (!message) return t('chat.rooms.noMessages');
-  const who = message.author?.displayName ?? '';
+  const who = message.author ? chatName(message.author.displayName) : '';
   const text = message.body !== '' ? message.body : message.refs.length > 0 ? t('chat.rooms.sharedRecord') : '';
   return who ? `${who}: ${text}` : text;
 }

@@ -36,13 +36,11 @@ import { toErrorMessage } from './lib/errors.js';
 import { loadOrCreateKey } from './lib/secret-box.js';
 import { sweepOrphanImageVariants } from './services/image.service.js';
 import { attachCataloguePhotos } from './services/catalogue-photos.service.js';
-import { loadShippedCatalogue } from './services/product-zip.service.js';
 import { assertFontsPresent } from './pdf/fonts.js';
 import { listLanAddresses } from './lib/network.js';
 import { createRealtimeHub, type RealtimeHub } from './realtime/hub.js';
 import { purgeExpiredSessions } from './services/auth.service.js';
 import { startBackupScheduler } from './services/backup-scheduler.js';
-import { startConnectorScheduler } from './services/connector-scheduler.js';
 import { startNotificationPruner } from './services/notification.service.js';
 import { announceNewVersion, startAutoUpdateScheduler } from './services/auto-update.js';
 import { seedBundledOfficeRelease, startReleasePolling } from './services/update.service.js';
@@ -272,37 +270,14 @@ async function main(): Promise<void> {
       log.warn(`Could not sweep orphaned image folders: ${toErrorMessage(error)}`);
     });
 
-    /*
-     * Once per install, and only on a brand-new one: not set up yet, and a
-     * catalogue that has never held a main product. An update, or an install a
-     * backup restored, only records that it had nothing to do. Awaited, before
-     * the panel serves, so nobody sees a half-loaded list and the photo attach
-     * below already finds its sub products. After the sweep, for the reason
-     * given there: a shipped zip's photos are uploaded here. A load is marked as
-     * under way before it writes anything, so one that fails, or that a closed
-     * window stops halfway, is a warning here and carries on over what it left
-     * on the next boot, until setup is done; the panel still starts.
-     */
-    bootStep('Loading the product catalogue');
-    await loadShippedCatalogue({}, (progress) => {
-      if (progress.phase === undefined && progress.total) {
-        bootStep(`Loading the product catalogue (${progress.done ?? 0} of ${progress.total} photos)`);
-      }
-    }).catch((error: unknown) => {
-      log.warn(`Could not load the shipped product catalogue: ${toErrorMessage(error)}`);
+    // Not awaited: encoding a few hundred photos takes minutes. A restore stops it first.
+    void attachCataloguePhotos().catch((error: unknown) => {
+      log.warn(`Could not attach the catalogue photos: ${toErrorMessage(error)}`);
     });
 
     bootStep('Starting the panel');
     handler = createApp();
 
-    // After the sweep, never before it: the sweep would take a photo being
-    // attached for an orphan. Not awaited — encoding a few hundred photos
-    // takes minutes, and the panel serves meanwhile; a restore started in that
-    // time stops it before it writes (`stopCataloguePhotos`). Once per install,
-    // and only on the printed catalogue it loaded: an update attaches nothing.
-    void attachCataloguePhotos().catch((error: unknown) => {
-      log.warn(`Could not attach the catalogue photos: ${toErrorMessage(error)}`);
-    });
     // The Office setup this Master's setup file carried, into the releases
     // folder the Offices update from. Not awaited either: 85 MB or more to copy.
     void seedBundledOfficeRelease().catch((error: unknown) => {
@@ -316,7 +291,6 @@ async function main(): Promise<void> {
 
     // One disposable, per this file's rule: the scheduler owns its own timer
     // and hands back the way to stop it.
-    disposables.push(startConnectorScheduler());
 
     // Same shape: the daily automatic backup, off until a Server Master turns it on.
     disposables.push(startBackupScheduler());

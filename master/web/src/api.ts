@@ -11,9 +11,6 @@ import {
 } from '@orderbook/ui';
 import type {
   PickKind,
-  DuplicateReport,
-  DuplicateResolveInput,
-  DuplicateResolveResult,
   ChatAccessCapability,
   PrintJob,
   PrintJobInput,
@@ -54,14 +51,6 @@ import type {
   CustomFieldDefinitionInput,
   CustomFieldDefinitionUpdateInput,
   CustomFieldReorderInput,
-  ApiKey,
-  ApiKeyInput,
-  Connector,
-  ConnectorFieldMapInput,
-  ConnectorInput,
-  ConnectorResourceInput,
-  ConnectorRun,
-  ConnectorTestResult,
   FieldCatalogue,
   FieldUsageBreakdown,
   Lead,
@@ -123,18 +112,9 @@ import type {
   ProductCategory,
   ProductCategoryListRow,
   ProductImageUpdateInput,
-  ProductRestoreJob,
-  ProductRestoreOptions,
-  ProductZipReport,
   PartyImportFormat,
   PartyImportMode,
   PartyImportResult,
-  ProductImportFormat,
-  ProductImportMode,
-  ProductImportResult,
-  ProductAlterationPreview,
-  ProductAlterationApplyResult,
-  ProductAlterationAffected,
   ProductInput,
   ProductListPage,
   ProductListQuery,
@@ -538,17 +518,6 @@ async function requestForm<T>(path: string, form: FormData): Promise<T> {
   return (await response.json()) as T;
 }
 
-/** A product restore's upload and its opt-ins, each `true` or absent. */
-function productRestoreForm(file: File, options: ProductRestoreOptions): FormData {
-  const form = new FormData();
-  form.append('file', file);
-  if (options.binMissingProducts) form.append('binMissingProducts', 'true');
-  if (options.removeMissingPhotos) form.append('removeMissingPhotos', 'true');
-  if (options.exactCatalogue) form.append('exactCatalogue', 'true');
-  if (options.updateOnly) form.append('updateOnly', 'true');
-  return form;
-}
-
 /** What first-run setup answers: the two Server Masters it made, and how panels pair. */
 export interface FirstRunCredentials {
   masterUniqueId: string;
@@ -892,66 +861,13 @@ export const api = {
   deleteProduct: (id: string) =>
     request<{ id: string; deletedAt: string }>(`/api/products/${id}`, { method: 'DELETE' }),
 
-  /** Duplicate Products and sub products, and deleting the extra copies (`products.delete`). */
-  duplicates: () => request<DuplicateReport>('/api/duplicates'),
-  resolveDuplicates: (input: DuplicateResolveInput) =>
-    post<DuplicateResolveResult>('/api/duplicates/resolve', input),
-
   /** 1.4 D3: Create product share; the Master draws the PDF with the photographs. */
-  previewProductAlteration: (id: string) =>
-    request<ProductAlterationPreview>(`/api/products/${id}/alteration/preview`),
-  applyProductAlteration: (id: string, product: ProductInput, baseFieldHlc?: Record<string, string>) =>
-    post<ProductAlterationApplyResult>(`/api/products/${id}/alteration/apply`, {
-      product,
-      ...(baseFieldHlc ? { baseFieldHlc } : {}),
-    }),
-  alterationOrdersPdf: (id: string, productName: string, affected: ProductAlterationAffected[]) =>
-    requestFile(`/api/products/${id}/alteration/pdf`, `alteration.pdf`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productName, affected }),
-    }),
-
   productSharePdf: (ids: string[]) =>
     requestFile('/api/products/share.pdf', 'product-share.pdf', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids }),
     }),
-
-  // Bulk product import (`products.bulk`, checked by the service).
-  productImportTemplate: (format: ProductImportFormat) =>
-    requestFile(`/api/products/import/template.${format}`, `products-template.${format}`),
-  exportProducts: (format: ProductImportFormat, level: 'sub' | 'main' = 'sub') =>
-    requestFile(
-      `/api/products/export.${format}${level === 'main' ? '?level=main' : ''}`,
-      `products.${format}`,
-    ),
-  importProducts: (
-    file: File,
-    options: { dryRun: boolean; mode: ProductImportMode; onlyRows?: number[]; fileHash?: string },
-  ) => {
-    const form = new FormData();
-    form.append('file', file);
-    form.append('dryRun', String(options.dryRun));
-    form.append('mode', options.mode);
-    if (options.onlyRows && options.onlyRows.length > 0)
-      form.append('onlyRows', options.onlyRows.join(','));
-    if (options.fileHash) form.append('fileHash', options.fileHash);
-    return requestForm<ProductImportResult>('/api/products/import', form);
-  },
-
-  // The product backup zip (`products.export` to back up; the restore checks the bulk keys).
-  exportProductZip: () => requestFile('/api/products/export.zip', 'products.zip'),
-  // The preview is of the run its opt-ins ask for.
-  previewProductZip: (file: File, options: ProductRestoreOptions = {}) => {
-    const form = productRestoreForm(file, options);
-    form.append('dryRun', 'true');
-    return requestForm<ProductZipReport>('/api/products/restore', form);
-  },
-  startProductRestore: (file: File, options: ProductRestoreOptions) =>
-    requestForm<ProductRestoreJob>('/api/products/restore', productRestoreForm(file, options)),
-  productRestoreJob: () => request<ProductRestoreJob | null>('/api/products/restore/job'),
 
   // Bulk party import and export (`parties.bulk` / `parties.view`, checked by the service).
   partyImportTemplate: (format: PartyImportFormat) =>
@@ -1507,33 +1423,4 @@ export const api = {
     return requestFile(`/api/reports/${kind}/export?${params}`, `${kind}.${query.format}`);
   },
 
-  // --- Integrations (Stage 11) ---------------------------------------------
-
-  apiKeys: () => request<ApiKey[]>('/api/integrations/keys'),
-  /** The only call that ever sees a token. It is not stored anywhere else. */
-  issueApiKey: (input: ApiKeyInput) =>
-    post<{ key: ApiKey; token: string }>('/api/integrations/keys', input),
-  revokeApiKey: (id: string) => post<ApiKey>(`/api/integrations/keys/${id}/revoke`),
-
-  connectors: () => request<Connector[]>('/api/integrations/connectors'),
-  createConnector: (input: ConnectorInput & { fromProfile?: string }) =>
-    post<Connector>('/api/integrations/connectors', input),
-  updateConnector: (id: string, input: ConnectorInput) =>
-    request<Connector>(`/api/integrations/connectors/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(input),
-    }),
-  setConnectorMapping: (
-    id: string,
-    resources: Array<ConnectorResourceInput & { fieldMaps: ConnectorFieldMapInput[] }>,
-  ) =>
-    request<Connector>(`/api/integrations/connectors/${id}/mapping`, {
-      method: 'PUT',
-      body: JSON.stringify({ resources }),
-    }),
-  testConnector: (id: string, entity: 'party' | 'product') =>
-    post<ConnectorTestResult>(`/api/integrations/connectors/${id}/test`, { entity }),
-  runConnector: (id: string, mode: 'dry_run' | 'import') =>
-    post<ConnectorRun & { runId: number }>(`/api/integrations/connectors/${id}/run`, { mode }),
-  connectorRuns: (id: string) => request<ConnectorRun[]>(`/api/integrations/connectors/${id}/runs`),
 };

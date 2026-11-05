@@ -136,7 +136,6 @@ const PANEL_ONLY: Record<string, string> = {
   fields: 'Master only: custom-field definitions are schema, and schema is single-writer.',
   recycleBin: 'Master only: restoring a soft-deleted row is a write against the owning database.',
   dataDelete: 'Master only: Start fresh and the Delete related data switch are company-wide, admin-tier tools.',
-  integrations: 'Master only: API keys and connectors are configured where they are held.',
 
   // `parties` was here — "Office only: the Master reaches parties through Party
   // Access instead." That was never a decision, it was an omission with a

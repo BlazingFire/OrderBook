@@ -288,7 +288,6 @@ describe('the command catalogue', () => {
       fields: 'Alt+E',
       logs: 'Alt+L',
       recycleBin: 'Alt+B',
-      integrations: 'Alt+I',
       updates: 'Alt+U',
     });
     const office = Object.fromEntries(navChords('office'));

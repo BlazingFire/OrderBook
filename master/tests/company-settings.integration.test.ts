@@ -18,9 +18,7 @@ import type { Express } from 'express';
 
 import type { ActorContext } from '../src/domain/actor.js';
 import { createApp } from '../src/http/app.js';
-import { db } from '../src/db/knex.js';
 import * as catalog from '../src/services/catalog.service.js';
-import { importProducts } from '../src/services/product-import.service.js';
 import * as panels from '../src/services/panel.service.js';
 import * as settings from '../src/services/settings.service.js';
 import * as auth from '../src/services/auth.service.js';
@@ -178,110 +176,6 @@ describe.skipIf(!canRunIntegrationTests)('company settings, end to end (integrat
       const signedIn = await auth.signIn(credentials.username, credentials.password, 'browser', { onMasterPc: true });
 
       expect(signedIn.sessionTtlMs).toBe(12 * 60 * 60 * 1000);
-    });
-  });
-
-  describe('catalog.importCreatesCategories', () => {
-    function csv(rows: Array<Array<string | number>>): { buffer: Buffer; fileName: string } {
-      return {
-        buffer: Buffer.from(rows.map((row) => row.map(String).join(',')).join('\r\n') + '\r\n', 'utf8'),
-        fileName: 'supplier.csv',
-      };
-    }
-
-    /** A category the company already has, made the way a person makes one. */
-    async function seedCategory(name: string): Promise<void> {
-      await catalog.createProduct(
-        { name: `Seed for ${name}`, categoryName: name, variants: [{ code: `SEED-${name}` }] },
-        actor,
-      );
-    }
-
-    async function categoryNames(): Promise<string[]> {
-      return (await catalog.listCategories(actor)).map((category) => category.name).sort();
-    }
-
-    const FILE = csv([
-      ['categoryName', 'name', 'code'],
-      ['Vitrified', 'Carrara White', 'GVT-1'],
-      ['Basins', 'Statuario', 'GVT-2'],
-    ]);
-
-    it('refuses the row naming a category the company does not have, and invents nothing', async () => {
-      await seedCategory('Basins');
-      await settings.writeSetting(actor, 'catalog.importCreatesCategories', false);
-
-      const result = await importProducts(FILE, { dryRun: false, mode: 'create' }, actor);
-
-      expect(result.issues).toEqual([
-        {
-          row: 2,
-          kind: 'error',
-          column: 'categoryName',
-          messageKey: 'validation.import.unknownCategory',
-          params: { categoryName: 'Vitrified' },
-        },
-      ]);
-      expect(result.failed).toBe(1);
-      // The row is refused, not filed under no category: nothing of it landed.
-      expect(result.created).toBe(1);
-      expect(await categoryNames()).toEqual(['Basins']);
-      const codes = (await db()('product_variants').select('code')).map((row) => row.code).sort();
-      expect(codes).toEqual(['GVT-2', 'SEED-Basins']);
-    });
-
-    it('gives the preview and the commit the same answer about the same row', async () => {
-      await seedCategory('Basins');
-      await settings.writeSetting(actor, 'catalog.importCreatesCategories', false);
-
-      const preview = await importProducts(FILE, { dryRun: true, mode: 'create' }, actor);
-      const commit = await importProducts(FILE, { dryRun: false, mode: 'create' }, actor);
-
-      // The defect this switch could introduce: a preview that says "ok" and a
-      // commit that refuses. Both passes must name row 2 and count it the same.
-      expect(preview.issues).toEqual(commit.issues);
-      expect(preview.created).toBe(commit.created);
-      expect(preview.failed).toBe(commit.failed);
-      // And the preview wrote nothing while establishing that.
-      expect(await categoryNames()).toEqual(['Basins']);
-    });
-
-    it('refuses an unknown category on the upsert path too', async () => {
-      await catalog.createProduct(
-        { name: 'Carrara White', categoryName: 'Basins', variants: [{ code: 'GVT-1' }] },
-        actor,
-      );
-      await settings.writeSetting(actor, 'catalog.importCreatesCategories', false);
-
-      const result = await importProducts(FILE, { dryRun: false, mode: 'upsert' }, actor);
-
-      expect(result.issues.map((issue) => [issue.row, issue.messageKey])).toEqual([
-        [2, 'validation.import.unknownCategory'],
-      ]);
-      expect(result.updated).toBe(0);
-      expect(await categoryNames()).toEqual(['Basins']);
-    });
-
-    it('accepts the row once the category exists, matching case-insensitively', async () => {
-      // Spelt differently, because the match is on `lower(name)`, the same
-      // rule `ensureCategories` already uses.
-      await seedCategory('VITRIFIED');
-      await seedCategory('Basins');
-      await settings.writeSetting(actor, 'catalog.importCreatesCategories', false);
-
-      const result = await importProducts(FILE, { dryRun: false, mode: 'create' }, actor);
-
-      expect(result.issues).toEqual([]);
-      expect(result.created).toBe(2);
-      expect(await categoryNames()).toEqual(['Basins', 'VITRIFIED']);
-    });
-
-    it('creates the category at its default, so an upgraded installation imports exactly as before', async () => {
-      const result = await importProducts(FILE, { dryRun: false, mode: 'create' }, actor);
-
-      expect(result.issues).toEqual([]);
-      expect(result.created).toBe(2);
-      expect(await categoryNames()).toEqual(['Basins', 'Vitrified']);
     });
   });
 

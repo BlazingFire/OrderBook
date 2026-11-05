@@ -67,6 +67,7 @@ import * as productImageSourceChecksum from './20261017000000_product_image_sour
 import * as noticeSellToday from './20261018000000_notice_sell_today.js';
 import * as todoList from './20261019000000_todo_list.js';
 import * as noteColumns from './20261025000000_note_columns.js';
+import * as variantBlankLabel from './20261105000000_variant_blank_label.js';
 
 export interface Migration {
   name: string;
@@ -314,6 +315,11 @@ export const migrations: Migration[] = [
   {
     name: '20261025000000_note_columns',
     ...noteColumns,
+  },
+  // 2026-11-05: a variant's colour may be blank (the label index only guards given labels).
+  {
+    name: '20261105000000_variant_blank_label',
+    ...variantBlankLabel,
   },
 ];
 

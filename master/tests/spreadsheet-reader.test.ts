@@ -7,7 +7,6 @@
 import ExcelJS from 'exceljs';
 import { describe, expect, it } from 'vitest';
 
-import { matchHeaders, parseImportRow } from '../src/domain/product-import.js';
 import { toCsv } from '../src/lib/csv.js';
 import { decodeCsv, parseCsv, readSheetRows } from '../src/lib/spreadsheet.js';
 
@@ -80,32 +79,5 @@ describe('Excel reading', () => {
     const rows = await readSheetRows(Buffer.from(out as ArrayBuffer));
     expect(rows[1]).toEqual(['12', 'DAMRU', '18x12', '18.5', '2026-03-04']);
     expect(rows[2]).toEqual(['0012', 'ONE PIECE', 'L-27', '1,200.5', 'ali']);
-  });
-});
-
-describe('cell values', () => {
-  const read = (header: string[], cells: string[]) => {
-    const headerRow = header;
-    return parseImportRow(cells, matchHeaders(headerRow), headerRow, 2);
-  };
-
-  it('reads weights the way a sheet writes them, including a decimal comma', () => {
-    const header = ['Main product', 'Sub product', 'Code', 'Weight (kg)'];
-    const weight = (text: string) => read(header, ['Basins', 'A', 'A-1', text]).input?.variant.weightKg;
-
-    expect(weight('18.5')).toBe(18.5);
-    expect(weight('12,5')).toBe(12.5);
-    expect(weight('1,200.50')).toBe(1200.5);
-    expect(weight('12.5 kg')).toBe(12.5);
-    expect(read(header, ['Basins', 'A', 'A-1', '0x10']).issues[0]?.messageKey).toBe('validation.import.notANumber');
-    expect(read(header, ['Basins', 'A', 'A-1', '1e3']).issues[0]?.messageKey).toBe('validation.import.notANumber');
-    expect(read(header, ['Basins', 'A', 'A-1', '-3']).issues[0]?.messageKey).toBe('validation.product.weightPositive');
-  });
-
-  it('folds inner whitespace in names so "ONE  PIECE" is "ONE PIECE", but leaves a code as typed', () => {
-    const outcome = read(['Main product', 'Sub product', 'Code'], ['ONE   PIECE', 'DAMRU\nBIG', 'A  1']);
-    expect(outcome.input?.product.categoryName).toBe('ONE PIECE');
-    expect(outcome.input?.product.name).toBe('DAMRU BIG');
-    expect(outcome.input?.variant.code).toBe('A  1');
   });
 });

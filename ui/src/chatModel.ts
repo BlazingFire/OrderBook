@@ -228,5 +228,14 @@ export function unreadTotals(rooms: readonly ChatRoomSummary[]): { total: number
 
 /** A room's name as the viewer sees it: a direct chat is named for the other person. */
 export function roomTitle(room: Pick<ChatRoomSummary, 'name' | 'direct'>): string {
-  return room.direct?.displayName ?? room.name ?? '';
+  return room.direct ? chatName(room.direct.displayName) : (room.name ?? '');
+}
+
+/**
+ * A person's name as a chat shows it, WhatsApp-style: without a trailing number ("Ravi 2", "Ravi-07"
+ * read "Ravi"). Display only; a name that is nothing but digits is kept as it is.
+ */
+export function chatName(displayName: string): string {
+  const stripped = displayName.replace(/[\s._-]*\d+$/, '').trim();
+  return stripped === '' ? displayName : stripped;
 }

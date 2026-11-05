@@ -28,7 +28,6 @@
  * other managed list.
  */
 
-import { exportCatalogueCsv, exportFailureText } from '../components/exportCatalogue';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CategoryInput, ProductCategory, ProductCategoryListRow } from '@orderbook/shared';
 import { CATEGORY_CODE_PATTERN } from '@orderbook/shared';
@@ -205,18 +204,6 @@ export function MainProductsScreen({ view }: { view: LocalView }) {
           </FilterChip>
         ))}
         <span style={{ flex: 1 }} />
-        <Button
-          variant="secondary"
-          size="sm"
-          icon="upload"
-          onClick={() =>
-            void exportCatalogueCsv('main').catch((caught) =>
-              toast.push(exportFailureText(caught), { tone: 'error' }),
-            )
-          }
-        >
-          {t('catalog.export')}
-        </Button>
         {can('products.create') && (
           <Button variant="primary" size="sm" icon="plus" onClick={() => setEditing('new')}>
             {t('catalog.mainProducts.new')}

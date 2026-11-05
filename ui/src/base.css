@@ -1513,7 +1513,10 @@ table.ob-table {
 .ob-table thead {
   display: block;
   position: sticky;
-  top: 0;
+  /* Sticky measures from the pane's padding edge in, so `top: 0` stuck the header
+     --s-16 (the `.ob-pane` top padding) below the pane's top and rows scrolled
+     visibly past above it. Cancel that padding so the header sits flush. */
+  top: calc(-1 * var(--s-16));
   z-index: 1;
   /* On `thead` itself, not only on its `th` cells: without it the gaps between
      cells are transparent and rows show through the header as they scroll. */
@@ -3732,15 +3735,16 @@ html[data-motion='off'] .ob-selltoday-ring {
 .ob-launcher {
   display: flex;
   flex-direction: column;
-  gap: var(--s-32);
-  /* On top of the pane's own 16px 20px, for the mockup's 24px 32px 32px. */
-  padding: var(--s-8) var(--s-12) var(--s-16);
+  gap: clamp(var(--s-8), 2vh, var(--s-24));
+  /* Icons scale with the window's height so every section fits without a scrollbar. */
+  --ob-face: clamp(2.6rem, 6.5vh, 4rem);
+  padding: 0 var(--s-8);
 }
 
 .ob-launcher-section {
   display: flex;
   flex-direction: column;
-  gap: var(--s-12);
+  gap: var(--s-6);
 }
 
 .ob-launcher-section > h2 {
@@ -3750,7 +3754,7 @@ html[data-motion='off'] .ob-selltoday-ring {
 .ob-launcher-tiles {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--s-20) var(--s-16);
+  gap: var(--s-8) var(--s-12);
 }
 
 .ob-tile {
@@ -3758,8 +3762,8 @@ html[data-motion='off'] .ob-selltoday-ring {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--s-8);
-  width: 9.1429rem; /* 128px */
+  gap: var(--s-4);
+  width: calc(var(--ob-face) * 1.9);
   padding: 0;
   border: 0;
   background: none;
@@ -3776,8 +3780,8 @@ html[data-motion='off'] .ob-selltoday-ring {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 5.7143rem; /* 80px */
-  height: 5.7143rem;
+  width: var(--ob-face);
+  height: var(--ob-face);
   box-sizing: border-box;
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
@@ -3790,8 +3794,8 @@ html[data-motion='off'] .ob-selltoday-ring {
 
 /* The icon is drawn at 36px; the stroke stays the sidebar's 1.75 units. */
 .ob-tile-face > svg {
-  width: 2.5714rem; /* 36px */
-  height: 2.5714rem;
+  width: 45%;
+  height: 45%;
 }
 
 .ob-tile:hover .ob-tile-face {
@@ -3850,7 +3854,7 @@ html[data-motion='off'] .ob-tile:hover .ob-tile-face--art {
 .ob-tile-count {
   position: absolute;
   top: calc(-1 * var(--s-6));
-  right: calc(1.7143rem - var(--s-6));
+  right: calc((var(--ob-face) * 0.45) - var(--s-6));
   min-width: 1.2857rem;
   height: 1.2857rem;
   padding: 0 var(--s-6);
@@ -3866,7 +3870,7 @@ html[data-motion='off'] .ob-tile:hover .ob-tile-face--art {
 }
 
 .ob-tile-label {
-  max-width: 9.1429rem;
+  max-width: 100%;
   font-size: var(--t-small-size); /* 12.5px */
   line-height: var(--t-small-line);
   font-weight: 550;
@@ -3875,6 +3879,7 @@ html[data-motion='off'] .ob-tile:hover .ob-tile-face--art {
 }
 
 .ob-tile-chord {
+  display: none; /* the shortcut still works; the badge cost a row of height per tile */
   height: 1.2857rem; /* 18px */
   box-sizing: border-box;
   padding: 0 0.3571rem;
@@ -6958,7 +6963,8 @@ html[data-motion='off'] .ob-ncard {
   padding: var(--s-8) var(--s-12);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: var(--bg-surface);
+  /* WhatsApp-style: a tinted backdrop the message bubbles sit on. */
+  background: var(--bg-sunken);
 }
 .ob-chat-older {
   display: flex;
@@ -7005,10 +7011,18 @@ html[data-motion='off'] .ob-ncard {
   content-visibility: visible;
 }
 .ob-chat-row:hover {
-  background: var(--bg-hover);
+  background: transparent;
 }
 .ob-chat-row[data-highlight='true'] {
   background: var(--bg-selected);
+}
+/* Your own messages sit on the right, others' on the left. */
+.ob-chat-row[data-own='true'] {
+  flex-direction: row-reverse;
+}
+.ob-chat-row[data-own='true'] .ob-chat-avatar,
+.ob-chat-row[data-own='true'] .ob-chat-author {
+  display: none;
 }
 .ob-chat-row[data-mention='true'] {
   box-shadow: inset 3px 0 0 var(--state-offline-fill);
@@ -7018,8 +7032,19 @@ html[data-motion='off'] .ob-ncard {
   width: var(--s-24);
 }
 .ob-chat-bubble {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: min(75%, 42rem);
+  padding: var(--s-6) var(--s-12);
+  border-radius: var(--r-lg);
+  border-top-left-radius: var(--r-sm);
+  background: var(--bg-surface);
+  box-shadow: 0 1px 1px rgb(0 0 0 / 0.08);
+}
+.ob-chat-row[data-own='true'] .ob-chat-bubble {
+  background: var(--accent-tint);
+  border-top-left-radius: var(--r-lg);
+  border-top-right-radius: var(--r-sm);
 }
 .ob-chat-head {
   display: flex;

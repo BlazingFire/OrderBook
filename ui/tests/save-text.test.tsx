@@ -161,7 +161,6 @@ describe('every screen that shows a value once offers Save to .txt', () => {
     ['master/web/src/screens/ServerMasterSetupFlow.tsx', /slug="server-masters"/],
     ['master/web/src/screens/MasterKeyRecoveryFlow.tsx', /slug="password-reset"/],
     ['master/web/src/screens/AccessScreen.tsx', /slug="password"/],
-    ['master/web/src/screens/IntegrationsScreen.tsx', /slug="api-token"/],
     ['master/web/src/screens/SettingsScreen.tsx', /slug="pairing-password"/],
     ['master/web/src/components/StorageBackup.tsx', /slug="pairing-password"/],
     ['office/web/src/screens/SetupScreen.tsx', /slug="office-setup"/],

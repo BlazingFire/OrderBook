@@ -62,11 +62,11 @@ function hasText(value: string | null | undefined): boolean {
 /**
  * The variant set, on the same two paths.
  *
- * Every row needs a code; codes and labels must be unique within the set
+ * Every row needs a code; codes, and any labels given, must be unique within the set
  * (case-insensitively — `blue` and `Blue` are one colour, and the database's
  * indexes agree); a weight, when given, is a positive number. A product
  * without variants is exactly one row with no label; one with variants has
- * a label on every row, so the lead screen always has something to offer.
+ * a colour that may be left blank, which prints nothing.
  *
  * Uniqueness *across* products is the database's job (the partial unique
  * index on the code) and the service's friendly pre-check — this function
@@ -89,10 +89,13 @@ export function validateProductVariants(
     codes.add(codeKey);
 
     const label = hasText(variant.label) ? String(variant.label).trim() : '';
-    if (hasVariants && !label) throw new ProductValidationError('validation.product.variantLabelRequired');
-    const labelKey = label.toLowerCase();
-    if (labels.has(labelKey)) throw new ProductValidationError('validation.product.variantLabelDuplicate');
-    labels.add(labelKey);
+    // A variant's colour may be blank (code-only variants; nothing prints for it). Only
+    // the colours that are given must differ.
+    if (label) {
+      const labelKey = label.toLowerCase();
+      if (labels.has(labelKey)) throw new ProductValidationError('validation.product.variantLabelDuplicate');
+      labels.add(labelKey);
+    }
 
     const weight = variant.weightKg;
     if (weight !== undefined && weight !== null) {

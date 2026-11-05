@@ -114,17 +114,33 @@ describe.skipIf(!canRunIntegrationTests)('product variants (integration)', () =>
         ),
       ).rejects.toMatchObject({ messageKey: 'validation.product.variantLabelUnexpected' });
 
+      // A variant's colour may be blank, and several variants may be: only the code is required.
+      const blank = await catalog.createProduct(
+        {
+          name: 'Model',
+          categoryName: CATEGORY,
+          hasVariants: true,
+          variants: [
+            { code: 'M-1', label: 'White' },
+            { code: 'M-2', label: '   ' },
+            { code: 'M-3', label: '' },
+          ],
+        },
+        actor,
+      );
+      expect(blank.variants.map((v) => v.code)).toEqual(['M-1', 'M-2', 'M-3']);
+
       await expect(
         catalog.createProduct(
           {
-            name: 'Model',
+            name: 'Model 2',
             categoryName: CATEGORY,
             hasVariants: true,
-            variants: [{ code: 'M-1', label: 'White' }, { code: 'M-2', label: '   ' }],
+            variants: [{ code: '', label: 'White' }],
           },
           actor,
         ),
-      ).rejects.toMatchObject({ messageKey: 'validation.product.variantLabelRequired' });
+      ).rejects.toMatchObject({ messageKey: 'validation.product.variantCodeRequired' });
     });
 
     it('refuses two rows with the same label on one model, whatever the case', async () => {

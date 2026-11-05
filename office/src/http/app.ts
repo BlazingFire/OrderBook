@@ -29,7 +29,6 @@ import {
   isReportFormat,
   MAX_IMAGE_SOURCE_BYTES,
   MAX_PARTY_IMPORT_BYTES,
-  MAX_PRODUCT_IMPORT_BYTES,
   MUTATION_PERMISSIONS,
   PARTY_ACCESS_SORTS,
   bodyParserFailure,
@@ -105,12 +104,6 @@ const imageUpload = multer({
 const backupUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 64 * 1024 * 1024 },
-});
-// A product spreadsheet, forwarded whole to the Master — the same ceiling it
-// applies, so an oversized file is refused here rather than after the upload.
-const importUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_PRODUCT_IMPORT_BYTES },
 });
 const partyImportUpload = multer({
   storage: multer.memoryStorage(),
@@ -1140,17 +1133,6 @@ export function createApp(): Express {
   ];
 
   app.get(
-    ['/api/products/import/template.:format', '/api/products/export.:format'],
-    proxyDownload('products-template'),
-  );
-  app.post(
-    '/api/products/import',
-    ...proxyImport(importUpload, '/api/panel/products/import', 'products.csv', (mode) =>
-      mode === 'upsert' ? 'upsert' : 'create',
-    ),
-  );
-
-  app.get(
     ['/api/parties/import/template.:format', '/api/parties/export.:format'],
     proxyDownload('parties-template'),
   );
@@ -1174,89 +1156,6 @@ export function createApp(): Express {
       baseFieldHlc: req.body?.baseFieldHlc,
     }),
   );
-
-  app.get('/api/products/:id/alteration/preview', (req, res) => {
-    void (async () => {
-      try {
-        const response = await masterFetch(
-          '/api/panel/products/' + String(req.params.id) + '/alteration/preview',
-        );
-        res.status(response.status).json(await response.json().catch(() => null));
-      } catch (error) {
-        unavailable(res, error);
-      }
-    })();
-  });
-  app.post('/api/products/:id/alteration/apply', (req, res) => {
-    void (async () => {
-      try {
-        const response = await masterFetch(
-          '/api/panel/products/' + String(req.params.id) + '/alteration/apply',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              product: (req.body as Record<string, unknown>)?.product,
-              baseFieldHlc: (req.body as Record<string, unknown>)?.baseFieldHlc,
-            }),
-          },
-        );
-        res.status(response.status).json(await response.json().catch(() => null));
-      } catch (error) {
-        unavailable(res, error);
-      }
-    })();
-  });
-  app.post('/api/products/:id/alteration/pdf', (req, res) => {
-    void (async () => {
-      try {
-        const response = await masterFetch(
-          '/api/panel/products/' + String(req.params.id) + '/alteration/pdf',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(req.body ?? {}),
-          },
-        );
-        if (!response.ok) {
-          res.status(response.status).json(await response.json().catch(() => null));
-          return;
-        }
-        res.setHeader('Content-Type', response.headers.get('content-type') ?? 'application/pdf');
-        res.setHeader(
-          'Content-Disposition',
-          response.headers.get('content-disposition') ?? 'attachment; filename=alteration.pdf',
-        );
-        res.send(Buffer.from(await response.arrayBuffer()));
-      } catch (error) {
-        unavailable(res, error);
-      }
-    })();
-  });
-  app.get('/api/duplicates', (req, res) => {
-    void (async () => {
-      try {
-        const response = await masterFetch('/api/panel/duplicates');
-        res.status(response.status).json(await response.json().catch(() => null));
-      } catch (error) {
-        unavailable(res, error);
-      }
-    })();
-  });
-  app.post('/api/duplicates/resolve', (req, res) => {
-    void (async () => {
-      try {
-        const response = await masterFetch('/api/panel/duplicates/resolve', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(req.body ?? {}),
-        });
-        res.status(response.status).json(await response.json().catch(() => null));
-      } catch (error) {
-        unavailable(res, error);
-      }
-    })();
-  });
 
   // Images stay online-only, like the Recycle Bin — the offline outbox
   // carries JSON mutations, and there is no mechanism to queue a multipart

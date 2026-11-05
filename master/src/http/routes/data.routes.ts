@@ -8,7 +8,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { isPickKind, MASTER_KEY_TOKEN_HEADER } from '@orderbook/shared';
 
-import { ConflictError, ValidationError } from '../../lib/errors.js';
+import { ValidationError } from '../../lib/errors.js';
 import { exportArchive } from '../../services/archive-export.service.js';
 import { previewArchive, restoreArchive } from '../../services/archive-restore.service.js';
 import { currentJob, startJob } from '../../services/backup-job.js';
@@ -25,11 +25,8 @@ import * as backupRestoreService from '../../services/backup-restore.service.js'
 import * as catalogService from '../../services/catalog.service.js';
 import * as conflictService from '../../services/conflict.service.js';
 import * as dashboardService from '../../services/dashboard.service.js';
-import * as duplicateService from '../../services/duplicate-products.service.js';
 import * as fieldsService from '../../services/fields.service.js';
 import * as productShareService from '../../services/product-share.service.js';
-import * as productAlterationService from '../../services/product-alteration.service.js';
-import { isProductRestoreRunning } from '../../services/product-zip.service.js';
 import * as leadService from '../../services/lead.service.js';
 import * as orderService from '../../services/order.service.js';
 import * as presenceService from '../../services/presence.service.js';
@@ -38,7 +35,7 @@ import * as snapshotService from '../../services/snapshot.service.js';
 import * as storageService from '../../services/storage.service.js';
 import { asyncHandler } from '../async-handler.js';
 import { idList, paging, queryInt } from '../query.js';
-import { partyImportRoutes, productImportRoutes } from './panel-catalog.routes.js';
+import { partyImportRoutes } from './panel-catalog.routes.js';
 import {
   actorFromRequest,
   requireAuth,
@@ -221,8 +218,6 @@ dataRoutes.post(
     masterKeyGate.assertUnlocked(req.header(MASTER_KEY_TOKEN_HEADER));
     const file = requireLocalPath(req.body?.path);
     const actor = actorFromRequest(req);
-    // A product restore writes through the ordinary services, which maintenance does not stop.
-    if (isProductRestoreRunning()) throw new ConflictError('error.conflict.productRestoreBusy');
     const { status } = startJob('restore', async (update, jobId) => {
       await restoreArchive(file, { mode: 'replace', actor, progress: update, jobId });
     });
@@ -468,11 +463,6 @@ dataRoutes.get(
   }),
 );
 
-// Bulk import for a signed-in user — the same handlers the paired-panel path
-// uses (`panel-catalog.routes.ts`); the service checks `products.bulk`. The
-// product backup zip is offered here only, to the Master's own users.
-dataRoutes.use(productImportRoutes(actorFromRequest, { zip: true }));
-
 dataRoutes.get(
   '/products/by-code/:code',
   asyncHandler(async (req, res) => {
@@ -509,46 +499,6 @@ dataRoutes.delete(
   needs('products.delete'),
   asyncHandler(async (req, res) => {
     res.json(await catalogService.deleteProduct(String(req.params.id), actorFromRequest(req)));
-  }),
-);
-
-dataRoutes.get(
-  '/products/:id/alteration/preview',
-  asyncHandler(async (req, res) => {
-    res.json(
-      await productAlterationService.previewProductAlteration(
-        String(req.params.id),
-        actorFromRequest(req),
-      ),
-    );
-  }),
-);
-dataRoutes.post(
-  '/products/:id/alteration/apply',
-  asyncHandler(async (req, res) => {
-    res.json(
-      await productAlterationService.applyProductAlteration(
-        String(req.params.id),
-        {
-          product: req.body?.product ?? req.body,
-          baseFieldHlc: req.body?.baseFieldHlc as Record<string, string> | undefined,
-        },
-        actorFromRequest(req),
-      ),
-    );
-  }),
-);
-dataRoutes.post(
-  '/products/:id/alteration/pdf',
-  asyncHandler(async (req, res) => {
-    const file = await productAlterationService.alterationOrdersPdf(
-      String(req.body?.productName ?? ''),
-      req.body?.affected ?? [],
-      actorFromRequest(req),
-    );
-    res.setHeader('Content-Type', file.contentType);
-    res.setHeader('Content-Disposition', 'attachment; filename=' + file.fileName);
-    res.send(file.bytes);
   }),
 );
 
@@ -589,25 +539,6 @@ dataRoutes.delete(
   needs('products.delete'),
   asyncHandler(async (req, res) => {
     res.json(await catalogService.deleteCategory(String(req.params.id), actorFromRequest(req)));
-  }),
-);
-
-// Duplicate products: the finder and the delete-extra-copies call. Both are
-// `products.delete` - a resolve is a delete, through the same soft delete.
-
-dataRoutes.get(
-  '/duplicates',
-  needs('products.delete'),
-  asyncHandler(async (req, res) => {
-    res.json(await duplicateService.findDuplicates(actorFromRequest(req)));
-  }),
-);
-
-dataRoutes.post(
-  '/duplicates/resolve',
-  needs('products.delete'),
-  asyncHandler(async (req, res) => {
-    res.json(await duplicateService.resolveDuplicates(req.body, actorFromRequest(req)));
   }),
 );
 

@@ -56,26 +56,6 @@ export const catalogueTransport: CatalogueTransport = {
     api.updateProductImage(productId, imageId, input),
   reorderProductImages: (productId, ids) => api.reorderProductImages(productId, ids),
   deleteProductImage: (productId, imageId) => api.deleteProductImage(productId, imageId),
-  productImportTemplate: (format) => api.productImportTemplate(format),
-  exportProducts: (format, level) => api.exportProducts(format, level),
-  importProducts: (file, options) => api.importProducts(file, options),
-  productZip: {
-    exportZip: () => api.exportProductZip(),
-    preview: (file, options) => api.previewProductZip(file, options),
-    start: (file, options) => api.startProductRestore(file, options),
-    job: () => api.productRestoreJob(),
-  },
-  alteration: {
-    preview: (productId) => api.previewProductAlteration(productId),
-    apply: (productId, product, baseFieldHlc) =>
-      api.applyProductAlteration(productId, product, baseFieldHlc),
-    pdf: (productId, productName, affected) =>
-      api.alterationOrdersPdf(productId, productName, affected),
-  },
-  duplicates: {
-    list: () => api.duplicates(),
-    resolve: (input) => api.resolveDuplicates(input),
-  },
 };
 
 export const partyImportTransport: PartyImportTransport = {

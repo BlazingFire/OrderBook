@@ -33,6 +33,7 @@ import { SwipeActionsRow } from './SwipeActions.js';
 import {
   applyChatPush,
   dayKeyOf,
+  chatName,
   groupByDay,
   lastSeqOf,
   mentionQueryAt,
@@ -131,7 +132,7 @@ function PersonName({ person }: { person: ChatPerson | null }) {
   if (!person) return <span className="ob-chat-author">{t('chat.message.unknownAuthor')}</span>;
   return (
     <span className="ob-chat-author">
-      {person.displayName}
+      {chatName(person.displayName)}
       {person.tier === 'server_master' && <ServerMasterBadge />}
     </span>
   );
@@ -225,7 +226,7 @@ function MessageRow(props: MessageRowProps) {
         ]
       : []),
   ];
-  const rowLabel = `${message.author?.displayName ?? t('chat.message.unknownAuthor')}: ${message.body.slice(0, 60)}`;
+  const rowLabel = `${message.author ? chatName(message.author.displayName) : t('chat.message.unknownAuthor')}: ${message.body.slice(0, 60)}`;
 
   return (
     <SwipeActionsRow label={rowLabel} trailing={swipeTrailing}>

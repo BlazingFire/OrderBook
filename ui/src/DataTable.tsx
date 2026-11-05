@@ -9,7 +9,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { IconButton } from './Button.js';
-import { fitColumns, gridTemplateFor } from './fitColumns.js';
+import { fitColumns, gridTemplateFor, needsFiller } from './fitColumns.js';
 import { t } from './i18n.js';
 
 /** The key of the tick-box column a table adds when it is given `onSelectionChange`. */
@@ -242,6 +242,7 @@ export function DataTable<T>({
   };
 
   const gridTemplate = gridTemplateFor(visible);
+  const filler = needsFiller(visible);
 
   if (rows.length === 0) {
     return <div className="ob-tablewrap">{empty}</div>;
@@ -319,6 +320,7 @@ export function DataTable<T>({
                 </th>
               );
             })}
+            {filler && <th aria-hidden="true" />}
           </tr>
         </thead>
         <tbody style={{ display: 'block' }}>
@@ -400,6 +402,7 @@ export function DataTable<T>({
                     </td>
                   );
                 })}
+                {filler && <td aria-hidden="true" />}
               </tr>
             );
           })}

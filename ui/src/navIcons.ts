@@ -28,7 +28,6 @@ export const NAV_ICONS = {
   logs: 'log',
   recycleBin: 'trash',
   dataDelete: 'warning',
-  integrations: 'plug',
   settings: 'settings',
   updates: 'update',
 } as const satisfies Record<string, IconName>;

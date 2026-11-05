@@ -62,7 +62,6 @@ import {
   homeProducts,
   BusyMark,
   PrintStationRunner,
-  ProductConflictsScreen,
   ProductEditScreen,
   FilterBarOutlet,
   FilterBarProvider,
@@ -152,20 +151,6 @@ const officeCatalogueTransport: CatalogueTransport = {
     api.updateProductImage(productId, imageId, input),
   reorderProductImages: (productId, ids) => api.reorderProductImages(productId, ids),
   deleteProductImage: (productId, imageId) => api.deleteProductImage(productId, imageId),
-  productImportTemplate: (format) => api.productImportTemplate(format),
-  exportProducts: (format, level) => api.exportProducts(format, level),
-  importProducts: (file, options) => api.importProducts(file, options),
-  alteration: {
-    preview: (productId) => api.previewProductAlteration(productId),
-    apply: (productId, product, baseFieldHlc) =>
-      api.applyProductAlteration(productId, product, baseFieldHlc),
-    pdf: (productId, productName, affected) =>
-      api.alterationOrdersPdf(productId, productName, affected),
-  },
-  duplicates: {
-    list: () => api.duplicates(),
-    resolve: (input) => api.resolveDuplicates(input),
-  },
 };
 import { ConnectionUnpair } from './components/ConnectionUnpair';
 import { ConnectionScreen } from './screens/ConnectionScreen';
@@ -1143,15 +1128,6 @@ function OfficePanel() {
       { key: 'sub', label: t('catalog.nav.subProducts'), icon: 'products' },
       { key: 'main', label: t('catalog.nav.mainProducts'), icon: 'inventory' },
       { key: 'brands', label: t('catalog.nav.brands'), icon: 'edit' },
-      ...(can('products.bulk') || can('products.export') || can('products.delete')
-        ? [
-            {
-              key: 'conflicts',
-              label: t('catalog.nav.productConflicts'),
-              icon: 'conflicts' as const,
-            },
-          ]
-        : []),
     ],
     settings: SETTINGS_TAB_IDS.map((id) => ({
       key: id,
@@ -2150,18 +2126,6 @@ function OfficePanel() {
               <Activity mode={subKeyOf('products') === 'brands' ? 'visible' : 'hidden'}>
                 <BrandsScreen view={view} revision={optionListsRevision} />
               </Activity>
-              {subKeyOf('products') === 'conflicts' && (
-                <ProductConflictsScreen
-                  view={{
-                    permissions: view.permissions,
-                    optionLists: view.optionLists,
-                    categories: view.categories,
-                    products: view.products,
-                  }}
-                  transport={officeCatalogueTransport}
-                  revision={view.products.length}
-                />
-              )}
             </>
           ),
         },

@@ -75,7 +75,7 @@ for (const [command, ...args] of [
   // `shell: true` on Windows only, where the resolved binaries are `.cmd` shims
   // that `spawn` cannot execute directly. Elsewhere it would be an extra
   // process and an extra quoting hazard for no benefit.
-  const result = spawnSync(command, args, {
+  const result = spawnSync(process.platform === "win32" ? `"${command}"` : command, args, {
     cwd: workspace,
     env,
     stdio: 'inherit',

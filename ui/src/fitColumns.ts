@@ -109,6 +109,13 @@ export function fitColumns<T extends FittableColumn>(
  */
 export function gridTemplateFor(columns: readonly FittableColumn[]): string {
   const tracks = columns.map((column) => column.width ?? '1fr');
-  const hasFlexible = tracks.some((track) => /(\bauto\b|fr|%)/.test(track));
-  return [...tracks, ...(hasFlexible ? [] : ['minmax(0, 1fr)'])].join(' ');
+  return [...tracks, ...(needsFiller(columns) ? ['minmax(0, 1fr)'] : [])].join(' ');
+}
+
+/**
+ * True when `gridTemplateFor` adds a trailing filler track. The table renders an empty cell in it, so
+ * a row's stripe, hairline and hover/selected tint run to the table's right edge, not only to its last column.
+ */
+export function needsFiller(columns: readonly FittableColumn[]): boolean {
+  return !columns.some((column) => /(\bauto\b|fr|%)/.test(column.width ?? '1fr'));
 }

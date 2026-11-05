@@ -505,7 +505,6 @@ export function ProductDrawer({
                     <span style={{ flex: 1, minWidth: 0 }}>
                       <SuggestInput
                         value={row.label}
-                        invalid={!row.label.trim()}
                         placeholder={t('product.variants.labelPlaceholder')}
                         optionsLabel={t('lead.add.draft.showOptions', {
                           field: t('product.variants.col.label'),
