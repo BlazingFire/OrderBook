@@ -2813,7 +2813,7 @@ describe('The person screen (Oct 8)', () => {
     expect(card('Packer').textContent).toContain(t('access.rolePicker.current'));
     expect(card('Packer').textContent).toContain(t('access.person.people.one'));
     expect(card('Dispatcher').textContent).toContain(t('access.person.people.other', { count: 2 }));
-    expect(card('Dispatcher').textContent).toContain(t('access.rolePicker.total', { held: 6, total: 63 }));
+    expect(card('Dispatcher').textContent).toContain(t('access.rolePicker.total', { held: 6, total: 62 }));
 
     // With nothing picked the matrix is Packer's own: allowed, or not.
     expect(cell('New Orders', 'View', t('access.person.cell.held'))).toBeTruthy();

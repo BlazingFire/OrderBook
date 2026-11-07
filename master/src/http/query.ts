@@ -1,9 +1,5 @@
 /**
  * Reading a list query off a URL, once.
- *
- * Extracted from `data.routes.ts` so the public `/api/v1` router shares it
- * rather than growing a second copy that drifts. The two routers differ in what
- * they authenticate, not in what `?limit=` means.
  */
 
 import type { ListQuery } from '@orderbook/shared';

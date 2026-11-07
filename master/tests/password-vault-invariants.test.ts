@@ -48,9 +48,6 @@ describe('the sealed value never leaves its module', () => {
     );
 
     expect(importers).toEqual([
-      // Sealing and opening a connector's own credential — its own AAD, and it
-      // can no more read a vault row than the settings service can.
-      'master/src/repositories/connector.repository.ts',
       // Type-only: the row shape. It cannot call anything.
       'master/src/repositories/password-vault.repository.ts',
       // Resets the vault key on a full developer wipe — never opens a sealed row.

@@ -1,6 +1,6 @@
 {
   "name": "@orderbook/cleaner",
-  "version": "1.5.7",
+  "version": "1.5.8",
   "private": true,
   "type": "module",
   "main": "electron/dist/cleaner.main.js",

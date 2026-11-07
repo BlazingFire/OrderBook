@@ -17,11 +17,11 @@
  */
 
 import fs from 'node:fs/promises';
-import path from 'node:path';
 
 import type { Mutation } from '@orderbook/shared';
 
 import { paths } from '../config/paths.js';
+import { writeDurable } from '../lib/durable-file.js';
 import { createLogger } from '../lib/logger.js';
 import { resetLocalStore } from '../sync/local-store.js';
 import { pending, resetOutboxCache, settle } from '../sync/outbox.store.js';
@@ -97,8 +97,7 @@ async function load(): Promise<Binding> {
 
 async function save(next: Binding): Promise<void> {
   cache = next;
-  await fs.mkdir(path.dirname(paths().masterBindingFile), { recursive: true });
-  await fs.writeFile(paths().masterBindingFile, JSON.stringify(next, null, 2), { mode: 0o600 });
+  await writeDurable(paths().masterBindingFile, JSON.stringify(next, null, 2));
 }
 
 /**
@@ -144,8 +143,7 @@ export async function adoptMaster(credentials: StoredCredentials): Promise<Adopt
       parkedAt: new Date().toISOString(),
       mutations: waiting,
     });
-    await fs.mkdir(path.dirname(paths().parkedOutboxFile), { recursive: true });
-    await fs.writeFile(paths().parkedOutboxFile, JSON.stringify(batches, null, 2), { mode: 0o600 });
+    await writeDurable(paths().parkedOutboxFile, JSON.stringify(batches, null, 2));
     await settle(waiting.map((mutation) => mutation.mutationId));
     log.warn(`${waiting.length} unsent change(s) from another Master were set aside, not sent`);
   }

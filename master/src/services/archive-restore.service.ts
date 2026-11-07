@@ -58,6 +58,7 @@ import {
   tableEntryName,
 } from '../domain/archive.js';
 import { type EntryDigest, type ZipReader, openZipReader } from '../lib/archive-zip.js';
+import { writeDurable } from '../lib/durable-file.js';
 import { AppError, BackupError, ConflictError, ValidationError, toErrorMessage } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import { recordDetachedActivity } from '../repositories/activity-log.repository.js';
@@ -73,9 +74,11 @@ import {
   verifyActivityLogChain,
 } from '../repositories/backup.repository.js';
 import type { TransactionContext } from '../repositories/transaction.js';
+import { findActiveUserIdsWithPermission } from '../repositories/user.repository.js';
 import { assertDigest, exportArchive } from './archive-export.service.js';
 import { enterMaintenance, leaveMaintenance, type JobProgress } from './backup-job.js';
 import { stopCataloguePhotos } from './catalogue-photos.service.js';
+import { notify } from './notification.service.js';
 import { scheduleLongOfflineNoticesAtBoot } from './panel.service.js';
 import { resetProcessCaches } from './process-caches.js';
 import { ensureServerMasterRole } from './server-master.service.js';
@@ -346,6 +349,111 @@ async function writeSafetyArchive(): Promise<string> {
   return result.path;
 }
 
+/*
+ * The one thing `recover` cannot cover is the process itself dying: the schema is
+ * dropped outside any transaction, so a power cut there used to bring the Master
+ * back empty, on the first-run screen, with the safety copy sitting unnoticed. This
+ * file exists from before the drop until the replay is over, and the next boot
+ * finishes the job. Whatever stage it finds, the answer is the data from before:
+ * the photos are only swapped once this file is gone, so they always match.
+ */
+const RESTORE_MARKER = 'restore-pending.json';
+
+export interface RestoreMarker {
+  mode: ArchiveRestoreMode;
+  safetyArchivePath: string | null;
+  /** The archive being restored, by name, for the notice. */
+  file: string;
+  startedAt: string;
+}
+
+const restoreMarkerPath = (): string => path.join(config.dataDir, RESTORE_MARKER);
+
+async function clearRestoreMarker(): Promise<void> {
+  // Retried: on Windows a scan may hold it for a moment, and a marker left behind
+  // would undo a restore that worked at the next boot.
+  await fs.rm(restoreMarkerPath(), { force: true, maxRetries: 5, retryDelay: 200 }).catch((error: unknown) =>
+    log.error(`Could not remove ${restoreMarkerPath()}: ${toErrorMessage(error)}`),
+  );
+}
+
+/**
+ * On boot, before the migrations: finish a restore the last run did not. A replace
+ * goes back to its safety copy, checked first; a first run goes back to empty, as it
+ * was. Answers the marker when it did something, and null otherwise.
+ *
+ * A copy that cannot be used stops the boot with an error naming it, rather than
+ * opening an empty Master somebody might set up over it. Unless the Master still has
+ * its data: then the drop never happened, and it carries on with what it has.
+ */
+export async function resumeInterruptedRestore(): Promise<RestoreMarker | null> {
+  let marker: RestoreMarker;
+  try {
+    marker = JSON.parse(await fs.readFile(restoreMarkerPath(), 'utf8')) as RestoreMarker;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      log.error(`Ignoring ${restoreMarkerPath()}, which could not be read: ${toErrorMessage(error)}`);
+    }
+    return null;
+  }
+
+  log.warn(`The restore of ${marker.file} started ${marker.startedAt} did not finish; putting back the data from before it`);
+  if (marker.mode === 'replace' && marker.safetyArchivePath) {
+    try {
+      const safety = await openArchive(marker.safetyArchivePath);
+      try {
+        for (const table of safety.manifest.tables) {
+          assertDigest(await safety.reader.hashEntry(tableEntryName(table.name)), table);
+        }
+        await replayDatabase(safety.reader, safety.manifest, noProgress);
+      } finally {
+        safety.reader.close();
+      }
+    } catch (error) {
+      if (await isSetupComplete().catch(() => false)) {
+        log.error(`The safety copy could not be used, and the data is still here: ${toErrorMessage(error)}`);
+        await clearRestoreMarker();
+        return null;
+      }
+      throw new Error(
+        `A restore was interrupted, and the data from before it could not be put back from ${marker.safetyArchivePath}: ${toErrorMessage(error)}. ` +
+          `Nothing has been deleted. To restore by hand, delete ${restoreMarkerPath()}, restart, and choose a backup on the first-run screen.`,
+      );
+    }
+  } else {
+    await db().raw('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
+    await runMigrations();
+  }
+
+  await clearRestoreMarker();
+  const work = path.join(config.dataDir, 'tmp');
+  for (const name of await fs.readdir(work).catch(() => [] as string[])) {
+    if (name.startsWith('restore-')) await fs.rm(path.join(work, name), { recursive: true, force: true }).catch(() => undefined);
+  }
+  return marker;
+}
+
+/** After the migrations: the trail and the Server Masters' bell say what happened. */
+export async function reportInterruptedRestore(marker: RestoreMarker): Promise<void> {
+  for (const tenantId of await listTenantIds()) {
+    await recordDetachedActivity(
+      {
+        tenantId,
+        entityType: 'backup',
+        entityId: marker.startedAt,
+        action: 'restore_failed',
+        actorType: 'system',
+        actorId: null,
+        details: { file: marker.file },
+      },
+      { ...systemActor(tenantId), actorName: 'Master PC' },
+      db(),
+    );
+    const userIds = await findActiveUserIdsWithPermission(tenantId, 'storage.backupAll');
+    await notify(tenantId, userIds, { kind: 'backup.restoreInterrupted', params: { file: marker.file } });
+  }
+}
+
 /**
  * Put the database back after a failed replay, then rethrow `error`. First
  * run goes back to an empty first-run schema; a replace replays its safety
@@ -366,6 +474,7 @@ async function recover(mode: ArchiveRestoreMode, safetyArchivePath: string | nul
       await db().raw('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
       await runMigrations();
     }
+    await clearRestoreMarker();
   } catch (recoveryError) {
     log.error(`Could not put the previous data back: ${toErrorMessage(recoveryError)}`);
     if (safetyArchivePath) {
@@ -496,12 +605,21 @@ export async function restoreArchive(file: string, options: ArchiveRestoreOption
     inMaintenance = true;
     await enterMaintenance();
 
-    // 4. The database, at the archive's level and then upgraded.
+    // 4. The database, at the archive's level and then upgraded. If this cannot
+    // be written the disk is failing or full: better to stop while nothing is lost.
+    const marker: RestoreMarker = {
+      mode: options.mode,
+      safetyArchivePath,
+      file: path.basename(file),
+      startedAt: new Date().toISOString(),
+    };
+    await writeDurable(restoreMarkerPath(), Buffer.from(JSON.stringify(marker)));
     try {
       await replayDatabase(reader, manifest, progress);
     } catch (error) {
       await recover(options.mode, safetyArchivePath, error);
     }
+    await clearRestoreMarker();
 
     // From here the restore has happened: the records are the archive's, and
     // at first run this PC now counts as set up, so it cannot be tried again.

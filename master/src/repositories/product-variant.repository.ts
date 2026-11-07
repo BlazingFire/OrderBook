@@ -144,10 +144,49 @@ async function deleteLegacyStock(tenantId: string, variantId: string, trx: Trans
 }
 
 /**
+ * Which stored row each incoming row is, or null for a new one: by id, then by
+ * code, then by label, each pass over every input so that a row's own id or code
+ * is never lost to another row's weaker match. Several rows may have a blank
+ * label, so a blank only identifies a row when it is the only blank one.
+ *
+ * Both the save and the guard on retiring a quoted variant ask this, so they
+ * cannot disagree about which rows a form leaves out.
+ */
+export function matchVariantRows(
+  existing: ReadonlyArray<{ id: string; code: string; label: string | null }>,
+  inputs: ReadonlyArray<{ id?: string | undefined; code: string; label?: string | null | undefined }>,
+): Array<string | null> {
+  const codeKey = (code: string): string => code.trim().toLowerCase();
+  const blanks = existing.filter((row) => !labelKey(row.label));
+  const passes: Array<(input: (typeof inputs)[number]) => (typeof existing)[number] | undefined> = [
+    (input) => existing.find((row) => row.id === input.id),
+    (input) => existing.find((row) => codeKey(row.code) === codeKey(input.code)),
+    (input) => {
+      const key = labelKey(input.label);
+      if (key) return existing.find((row) => labelKey(row.label) === key);
+      return blanks.length === 1 ? blanks[0] : undefined;
+    },
+  ];
+
+  const matched = inputs.map((): string | null => null);
+  const claimed = new Set<string>();
+  for (const pass of passes) {
+    inputs.forEach((input, index) => {
+      if (matched[index]) return;
+      const row = pass(input);
+      if (row && !claimed.has(row.id)) {
+        claimed.add(row.id);
+        matched[index] = row.id;
+      }
+    });
+  }
+  return matched;
+}
+
+/**
  * Make the product's variant set equal to `inputs`.
  *
- * Rows are matched by id first, then by label (case-insensitively, a null
- * label matching only a null label), so a form that re-sends a row without
+ * Rows are matched by `matchVariantRows`, so a form that re-sends a row without
  * its id still updates the row rather than duplicating it. Matched rows are
  * updated and reactivated; new rows are inserted with fresh ids; rows left
  * out are deleted, unless something references them, in which case they are
@@ -166,27 +205,22 @@ export async function replaceVariants(
   const existing = await trx(TABLE)
     .where({ tenant_id: tenantId, product_id: productId })
     .forUpdate()
-    .select<Array<{ id: string; label: string | null }>>('id', 'label');
+    .select<Array<{ id: string; code: string; label: string | null }>>('id', 'code', 'label');
 
-  const byId = new Map(existing.map((row) => [String(row.id), row]));
-  const byLabel = new Map(existing.map((row) => [labelKey(row.label), String(row.id)]));
-  const claimed = new Set<string>();
+  const matches = matchVariantRows(
+    existing.map((row) => ({ ...row, id: String(row.id) })),
+    inputs,
+  );
+  const claimed = new Set(matches.filter((id): id is string => id !== null));
 
   const updates: Array<{ id: string; input: ProductVariantInput; sequence: number }> = [];
   const inserts: Array<{ input: ProductVariantInput; sequence: number }> = [];
 
   inputs.forEach((input, index) => {
     const sequence = input.sequence ?? index + 1;
-    const matchedId =
-      input.id && byId.has(input.id) && !claimed.has(input.id)
-        ? input.id
-        : (() => {
-            const candidate = byLabel.get(labelKey(input.label ?? null));
-            return candidate && !claimed.has(candidate) ? candidate : null;
-          })();
+    const matchedId = matches[index];
 
     if (matchedId) {
-      claimed.add(matchedId);
       updates.push({ id: matchedId, input, sequence });
     } else {
       inserts.push({ input, sequence });

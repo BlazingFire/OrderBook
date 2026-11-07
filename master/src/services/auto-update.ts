@@ -42,6 +42,7 @@ import { config } from '../config/index.js';
 import { db } from '../db/knex.js';
 import { systemActor, type ActorContext } from '../domain/actor.js';
 import { companySlug } from '../domain/archive.js';
+import { writeDurable } from '../lib/durable-file.js';
 import { toErrorMessage, ValidationError } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import { recordDetachedActivity } from '../repositories/activity-log.repository.js';
@@ -108,10 +109,7 @@ let queue: Promise<unknown> = Promise.resolve();
 function changeAutoUpdate(edit: (file: AutoUpdateFile) => AutoUpdateFile): Promise<AutoUpdateFile> {
   const next = queue.then(async () => {
     const updated = edit(await readAutoUpdate());
-    await fs.mkdir(config.dataDir, { recursive: true });
-    const tmp = `${settingsFile()}.tmp`;
-    await fs.writeFile(tmp, JSON.stringify(updated, null, 2));
-    await fs.rename(tmp, settingsFile());
+    await writeDurable(settingsFile(), Buffer.from(JSON.stringify(updated, null, 2)));
     return updated;
   });
   queue = next.catch(() => undefined);

@@ -49,7 +49,13 @@ async function insertPackaging(value: string, sequence: number, deleted = false)
 describe.skipIf(!canRunIntegrationTests)('line packaging defaults migration (integration)', () => {
   beforeAll(setupDatabase);
   afterAll(teardownDatabase);
-  beforeEach(resetData);
+  beforeEach(async () => {
+    await resetData();
+    // `resetData` keeps the option rows `setupDatabase` captured, and on a brand-new test database
+    // that capture is empty (the six source platforms are seeded per company, and there is none at
+    // migration time), so it skips the option cleanup and the last case's rows would leak into this one.
+    await db()('option_lists').where({ list_key: 'line.packaging' }).delete();
+  });
 
   it('PKG-DEF-1: fills an empty list with Box, Grass and Paper, once however often it runs', async () => {
     await up(db());

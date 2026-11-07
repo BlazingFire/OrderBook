@@ -1327,7 +1327,7 @@ const PANEL_WRITABLE_SETTINGS: ReadonlySet<string> = new Set(['leads.followUpDef
  * accepted, so a panel holding an admin-tier role would otherwise lend
  * `settings.manage` to whoever sits at it. And every other setting is the
  * Master screen's alone — `security.passwordRevealEnabled` off purges the
- * vault, `externalApi.enabled` opens the public API. Listed by key, not by the
+ * vault. Listed by key, not by the
  * `leads.` prefix: that would also hand over packaging-on-convert and the
  * quiet-after window, which the Office has no screen for. The value is still
  * validated in full by `writeSetting`, which checks `settings.manage` itself.

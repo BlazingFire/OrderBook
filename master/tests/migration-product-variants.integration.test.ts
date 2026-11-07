@@ -132,10 +132,10 @@ describe.skipIf(!canRunIntegrationTests)('product variants migration (integratio
     expect(variants).toEqual([{ code: 'SRV-1' }]);
   });
 
-  it('MIG-5: the database itself refuses a duplicate code, a zero weight and two blank labels on one model', async () => {
+  it('MIG-5: the database itself refuses a duplicate code, a zero weight and a repeated colour on one model, and allows blank colours', async () => {
     const actor = await testActor();
     const tenantId = await testTenantId();
-    const { product, variant } = await createTestProduct(actor, { name: 'Guarded', code: 'GRD-1' });
+    const { variant } = await createTestProduct(actor, { name: 'Guarded', code: 'GRD-1' });
     const { product: other } = await createTestProduct(actor, { name: 'Other', code: 'OTH-1' });
 
     const row = (overrides: Record<string, unknown>) => ({
@@ -159,14 +159,21 @@ describe.skipIf(!canRunIntegrationTests)('product variants migration (integratio
       code: '23514',
       constraint: 'product_variants_weight_check',
     });
-    // Two rows with no label would be two "the product itself" rows.
+    // A colour that is given must differ, whatever the case...
+    await db()('product_variants').insert(row({ id: 'VR9999999997', code: 'Y', label: 'Blue' }));
+    await expect(db()('product_variants').insert(row({ label: 'BLUE' }))).rejects.toMatchObject({
+      code: '23505',
+      constraint: 'idx_product_variants_label',
+    });
+    // ...but several rows may leave it blank (20261105000000_variant_blank_label).
+    await db()('product_variants').insert(row({ id: 'VR9999999998', code: 'Z', label: null }));
     await expect(
-      db()('product_variants').insert(row({ product_id: product.id, label: null })),
-    ).rejects.toMatchObject({ code: '23505', constraint: 'idx_product_variants_label' });
+      db()('product_variants').insert(row({ id: 'VR9999999996', code: 'W', label: null })),
+    ).resolves.toBeDefined();
 
     // ...while a binned product's codes are free for the taking.
     await db()('product_variants').where({ id: variant.id }).update({ deleted_at: db().fn.now() });
-    await expect(db()('product_variants').insert(row({ code: 'GRD-1' }))).resolves.toBeDefined();
+    await expect(db()('product_variants').insert(row({ code: 'GRD-1', label: 'Green' }))).resolves.toBeDefined();
   });
 
   it('MIG-6: editing a variant re-indexes its product, so a new code is searchable at once', async () => {

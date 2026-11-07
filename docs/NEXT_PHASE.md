@@ -52,8 +52,8 @@ Basic Home and at sign-in, Escape goes back, and the New Order dropdown chain. W
 "Product zip, shipped catalogue, Office setup in the Master, …". In order:
 
 1. Done 2026-10-10 (1.4.7). For the next build: bump first (`node tools/release.mjs <next>`, into a scratch `ORDERBOOK_RELEASES_DIR`). The default
-   run now builds the Office first and packs it into the Master, so build both in one run. To ship the owner's own
-   products, export them on the Master (Products › Sub products › Backup products (.zip)) and pass `--catalogue <zip>`.
+   run now builds the Office first and packs it into the Master, so build both in one run. (`--catalogue <zip>` is
+   gone, 2026-11-06: a build ships the printed catalogue only.)
    Build `--os win7` into the same folder first if the Master should also carry the Windows 7 Office (+140 MB).
 2. Install it on this PC: the installed Master here is still 1.4.4, which is why the notice board looked missing.
 3. Check on the real program: the Master Setup's size (about 85 MB more), Office panels › Add panel › Save Office setup…
@@ -418,10 +418,10 @@ whichever panel syncs first and that `id_map` resolves a temporary ID forever.
 The sort is per pushed batch, and a business-data wipe clears `id_map`
 (`docs/LEAD_GENERATION_FLOW.md` §7).
 
-Deliberate, not a defect, so nobody "fixes" it: three kinds of audit entry are
+Deliberate, not a defect, so nobody "fixes" it: two kinds of audit entry are
 still written after the fact by `recordDetachedActivity` — sign-in attempts
 (accepted ones included, so a trail that cannot be written never stops somebody
-signing in), connector runs, and a panel's reissued secret or moved storage
+signing in), and a panel's reissued secret or moved storage
 folder (`docs/ROLES_AND_USERS.md` §7.1).
 
 ---

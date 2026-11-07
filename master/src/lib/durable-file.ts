@@ -18,6 +18,16 @@ async function ensureDir(dir: string): Promise<void> {
   if (!existsSync(dir)) await mkdir(dir, { recursive: true });
 }
 
+/** Force a file's contents out of the OS page cache and onto the disk. */
+export async function syncFile(absolutePath: string): Promise<void> {
+  const handle = await open(absolutePath, 'r+');
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
 /**
  * Writes bytes durably at `absolutePath`.
  *
@@ -25,18 +35,15 @@ async function ensureDir(dir: string): Promise<void> {
  * file's contents are still in the OS page cache, and a power cut between the
  * two leaves a correctly-named empty file that every later read believes.
  */
-export async function writeDurable(absolutePath: string, bytes: Buffer): Promise<void> {
+export async function writeDurable(
+  absolutePath: string,
+  bytes: Buffer,
+  options: { mode?: number } = {},
+): Promise<void> {
   await ensureDir(path.dirname(absolutePath));
 
   const temporary = `${absolutePath}.tmp`;
-  await writeFile(temporary, bytes);
-
-  const handle = await open(temporary, 'r+');
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-
+  await writeFile(temporary, bytes, options);
+  await syncFile(temporary);
   await rename(temporary, absolutePath);
 }

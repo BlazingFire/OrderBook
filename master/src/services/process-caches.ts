@@ -14,8 +14,6 @@
  */
 
 import { resetRateLimits } from '../http/middleware/api-key-rate-limit.js';
-import { resetApiKeyFailures } from '../http/middleware/require-api-key.js';
-import { resetPublicApiTenantCache } from '../http/routes/public-api.routes.js';
 import { resetChangeRing } from '../realtime/change-ring.js';
 import { resetSeqCache } from '../lib/seq-cache.js';
 import { invalidateFieldCache } from '../repositories/custom-field.repository.js';
@@ -32,10 +30,8 @@ export function resetProcessCaches(): void {
   invalidateRoleCache();
   invalidatePipelineCache();
   invalidateFieldCache();
-  resetPublicApiTenantCache();
   resetRateLimits();
   resetSeqCache();
-  resetApiKeyFailures();
   // A new boot id as well as an empty ring: a panel's cursor names records
   // this database may never have held, so it must take a snapshot.
   resetChangeRing();

@@ -222,6 +222,19 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-11-06 - Data safety fixes and version 1.5.8 (Claude, branch fix/157-gate, source touched, uncommitted)
+
+- **What changed:** interrupted-restore marker and boot resume; bell warnings for stale backups and low disk (`data-safety-watch.ts`); durable writes on both panels; new secret files private (`private-path.ts`); the end of `postgres.log` on a failed start; version 1.5.8.
+- **Docs:** `HANDOFF.md`, `docs/STRUCTURE.md`, `docs/releases/1.5.8.md`.
+- **Left out, owner's call:** encrypted backups, limited database role.
+
+### 2026-11-06 - Dead Integrations code out, catalogue boot load restored, variant match, quiet installer (Claude, branch fix/157-gate, source touched, uncommitted)
+
+- **What changed:** dead Integrations code left after `bb8d0326` removed (with `api.manage`, `externalApi.enabled`, the `integrations` group, about 115 strings); tables, old-log tokens, actor types and `api-key-rate-limit.ts` kept on purpose. `loadShippedCatalogue` restored in `catalogue-seed.service.ts` (Markdown only); `release --catalogue`, `ORDERBOOK_CATALOGUE_ZIP`, `config.catalogueZip` removed. New `matchVariantRows` shared by `replaceVariants` and the retire guard; several variant rows imply `hasVariants`. New `tools/nsis/quiet-uninstall-check.nsh` in both installers. Start fresh is the last card on the Delete data screen.
+- **Docs:** `HANDOFF.md` (dated section, traps), `docs/STRUCTURE.md`, `docs/UPDATES.md`, `docs/ROLES_AND_USERS.md`, `docs/NEXT_PHASE.md`, `docs/PRODUCT_IMPORT_FORMAT.md`; the stale `products.zip` entry out of `.gitignore`.
+- **Gate:** lint 0, typecheck 0, test 0: 398 files passed + 1 skipped, 5265 tests passed + 17 skipped, 99 integration files ran on PostgreSQL. Worktree `C:\Users\Z\Desktop\OrderBook-r157`, based on `main` `86f49c2e`, version still 1.5.7.
+- **Not verified:** the real Install now button in the Electron window; the quiet-uninstall check in a real failing install; the Master nightly auto update end to end. A failed nightly install still leaves the Master down until someone starts it.
+
 ### 2026-10-26 - Rust sidecar complete: full verify green (Muse Code, main, source touched, uncommitted)
 
 - **Final gate:** `npm run verify` exit 0 — lint 0, typecheck 0 (incl. the repo-wide `tsconfig.test.json` that caught one generic-indexing slip in a parity test, fixed), 417 files / 5557 tests green with 17 pre-existing skips. Both review agents returned No issues.

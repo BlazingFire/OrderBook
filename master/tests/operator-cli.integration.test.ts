@@ -42,9 +42,7 @@ import { closeDatabase, db, initDatabase } from '../src/db/knex.js';
 import { formatMigrationStatus, type MigrationList } from '../src/db/migration-status.js';
 import { migrations, RegistryMigrationSource, type Migration } from '../src/db/migrations/index.js';
 import { verifyChain } from '../src/repositories/activity-log.repository.js';
-import * as connectorRepo from '../src/repositories/connector.repository.js';
 import * as catalog from '../src/services/catalog.service.js';
-import * as connectorService from '../src/services/connector.service.js';
 import * as roleService from '../src/services/role.service.js';
 import * as userService from '../src/services/user.service.js';
 
@@ -145,16 +143,6 @@ describe.skipIf(!canRunIntegrationTests)('the operator CLIs (integration)', () =
         { username: 'keeper', displayName: 'Keeper', roleId: role.id },
         actor,
       );
-      const connector = await connectorService.createConnector(actor, {
-        slug: 'kept',
-        label: 'Kept connection',
-        baseUrl: 'http://127.0.0.1:9',
-        authKind: 'none',
-        scheduleKind: 'manual',
-        runAsUserId: keeper.user.id,
-        isEnabled: false,
-      });
-
       // …and business data it must not, each write leaving an activity entry,
       // with the connection's links to it (sync bookkeeping, not configuration).
       const party = await catalog.createParty({ name: 'Wiped Traders', city: 'Morbi' }, actor);
@@ -164,16 +152,13 @@ describe.skipIf(!canRunIntegrationTests)('the operator CLIs (integration)', () =
       });
       linkedProductId = product.id;
       const tenantId = await testTenantId();
-      await connectorRepo.upsertLink(tenantId, connector.id, 'party', {
-        remoteId: 'R-PARTY',
-        localId: party.id,
-        remoteHash: 'unchanged',
-      });
-      await connectorRepo.upsertLink(tenantId, connector.id, 'product', {
-        remoteId: 'R-PRODUCT',
-        localId: product.id,
-        remoteHash: 'unchanged',
-      });
+      const [connector] = await db()('api_connectors')
+        .insert({ tenant_id: tenantId, slug: 'kept', label: 'Kept connection', base_url: 'http://127.0.0.1:9', run_as_user_id: keeper.user.id })
+        .returning('id');
+      await db()('api_connector_links').insert([
+        { tenant_id: tenantId, connector_id: connector.id, entity: 'party', remote_id: 'R-PARTY', local_id: party.id, remote_hash: 'unchanged' },
+        { tenant_id: tenantId, connector_id: connector.id, entity: 'product', remote_id: 'R-PRODUCT', local_id: product.id, remote_hash: 'unchanged' },
+      ]);
 
       before = {
         tenants: await count('tenants'),

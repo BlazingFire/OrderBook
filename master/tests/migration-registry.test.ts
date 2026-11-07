@@ -126,6 +126,8 @@ describe('the migration registry matches the directory', () => {
     '20261019000000_todo_list',
     // 2026-10-25: the Dispatch note saved tick boxes (note_columns on leads and orders).
     '20261025000000_note_columns',
+    // 2026-11-05: a variant's colour may be blank, on several rows of one product.
+    '20261105000000_variant_blank_label',
   ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {

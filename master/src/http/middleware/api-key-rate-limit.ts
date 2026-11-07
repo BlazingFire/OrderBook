@@ -57,24 +57,3 @@ export function resetRateLimits(keyId?: string): void {
   if (keyId) windows.delete(keyId);
   else windows.clear();
 }
-
-/**
- * Keys seen since the last flush, and when.
- *
- * `last_used_at` is written from the connector scheduler's own sixty-second
- * tick rather than per request: a key polled twice a second would otherwise
- * turn every read into a write, and that column is only ever read by a person
- * deciding whether a key is still in use.
- */
-const pendingTouches = new Map<string, Date>();
-
-export function noteUsed(keyId: string, at: Date = new Date()): void {
-  pendingTouches.set(keyId, at);
-}
-
-/** Hands over what has accumulated and clears it, so a failed flush loses at most one tick. */
-export function drainTouches(): Map<string, Date> {
-  const drained = new Map(pendingTouches);
-  pendingTouches.clear();
-  return drained;
-}

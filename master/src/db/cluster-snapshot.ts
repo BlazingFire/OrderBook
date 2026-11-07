@@ -36,6 +36,8 @@ import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { writeDurable } from '../lib/durable-file.js';
+
 /** Under the data directory, beside `postgres/`. */
 export const SNAPSHOT_DIR_NAME = 'backups';
 const SNAPSHOT_PREFIX = 'before-';
@@ -94,8 +96,7 @@ export async function readBootedVersion(dataDir: string): Promise<string | null>
  * else.
  */
 export async function recordBootedVersion(dataDir: string, version: string): Promise<void> {
-  await fs.mkdir(dataDir, { recursive: true });
-  await fs.writeFile(path.join(dataDir, BOOTED_VERSION_FILE), `${version}\n`, 'utf8');
+  await writeDurable(path.join(dataDir, BOOTED_VERSION_FILE), Buffer.from(`${version}\n`));
 }
 
 function defaultIsProcessAlive(pid: number): boolean {

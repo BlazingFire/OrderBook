@@ -25,10 +25,11 @@
  */
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, writeSync } from 'node:fs';
 import path from 'node:path';
 
 import { config } from '../config/index.js';
+import { keepPrivate } from './private-path.js';
 
 export interface SealedValue {
   v: 1;
@@ -87,11 +88,19 @@ export function loadOrCreateKey(): Buffer {
 
     try {
       mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-      // 0600 is honoured on POSIX and is a no-op on Windows, where the
-      // directory's inherited ACL is what actually restricts it. Written
-      // anyway: the file is copied between machines by people, and a mode that
-      // travels is better than one that does not exist.
-      writeFileSync(file, JSON.stringify(contents), { mode: 0o600, flag: 'wx' });
+      // Before the file, which inherits this. 0600 below is honoured on POSIX and
+      // is a no-op on Windows. Written anyway: the file is copied between machines
+      // by people, and a mode that travels is better than one that does not exist.
+      keepPrivate(path.dirname(file));
+      const descriptor = openSync(file, 'wx', 0o600);
+      try {
+        writeSync(descriptor, JSON.stringify(contents));
+        // A power cut must not leave an empty key behind: the sealed rows would
+        // stay in the database with nothing that can open them.
+        fsyncSync(descriptor);
+      } finally {
+        closeSync(descriptor);
+      }
     } catch (error) {
       // `wx` loses a race to another process that created it first, which is
       // not a failure — fall through and read what they wrote.

@@ -52,6 +52,74 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
+## Data safety and version 1.5.8 (2026-11-06)
+
+**State:** uncommitted on `fix/157-gate`, worktree `C:\Users\Z\Desktop\OrderBook-r157`, based on `main` `86f49c2e`.
+All `package.json` files say **1.5.8**, notes in `docs/releases/1.5.8.md`. No migration, protocol still 12.
+
+**Rule the owner set:** data safety must not affect running software. So an existing install keeps its database
+login and folder permissions, and the Office snapshot is not flushed (large, frequent, rebuildable).
+
+**What landed:**
+- `restore-pending.json` (`archive-restore.service.ts`): written durably before the schema drop, removed once the
+  replay ends. `resumeInterruptedRestore()` runs at boot before the migrations and goes back to the safety copy, or
+  to empty on a first run. An unusable copy stops the boot naming the file, unless the data is still there.
+  `reportInterruptedRestore()` writes the trail and the bell.
+- `data-safety-watch.ts`: hourly, warnings only. `backup.stale` (7 days), `storage.lowDisk` (under 2 GB). Repeat
+  timing comes from `lastSentAt`, because a dedupe key only holds while a notice is unread.
+- Durable writes: Master `lib/durable-file.ts` (`syncFile`, `writeDurable`, used by the vault key, the database
+  password, `auto-backup.json`, `auto-update.json`, `booted-version`, and every finished archive). Office
+  `lib/durable-file.ts` (outbox, refusals, parked outbox, pairing, master binding, users, device).
+- `lib/private-path.ts` `keepPrivate()`: new secret files only, grant first, then cut inheritance; never fatal.
+- `postgres-server.ts`: a failed `pg_ctl start` carries the end of `postgres.log` to the boot screen.
+
+**Left out on purpose, the owner's call:** encrypted backups (a lost passphrase makes the backup useless) and a
+limited database role (`session_replication_role` and `DROP SCHEMA` in restore need the superuser; every running
+database would change owner).
+
+## Dead Integrations code out, catalogue boot load back, variant match, quiet installer (2026-11-06)
+
+**State:** uncommitted on `fix/157-gate`, worktree `C:\Users\Z\Desktop\OrderBook-r157`, based on `main` `86f49c2e`.
+Then at 1.5.7. **Gate at that point (2026-11-06): lint 0, typecheck 0, test 0: 398 files passed + 1 skipped (`release-workflow`), 5265 tests passed + 17 skipped, 99 integration files ran on PostgreSQL.**
+
+**What changed:**
+- **Dead Integrations code removed** (left after `bb8d0326`): in `master/src` `require-api-key`, `public-api-contract`,
+  `integration.routes`, `public-api.routes`, `api-key.repository`, `connector.repository`, `api-key.service`,
+  `connector-profiles`, `connector-run.service`, `connector-scheduler`, `connector.service`, `domain/connector-mapping`,
+  `domain/json-pointer`; `shared/src/domain/api-keys.ts`, `connectors.ts`; their tests; the `api.manage` permission;
+  the `externalApi.enabled` setting and the `integrations` group; about 115 i18n strings. A stale `api.manage` in a
+  stored role is filtered out on read by `isPermission`. The GitHub release poll is now the only internet path.
+- **Kept on purpose:** the database tables (migrations only add); `api_connector_links` cleanup in data reset and
+  catalogue reload; `activity.connector.*`, `logs.actorType.connector`, `logs.entity.connector` and the `api_key` and
+  `connector` actor types (old log rows must still render); the sealed connector credential count in backups;
+  `master/src/http/middleware/api-key-rate-limit.ts` (live limiters use its `consume` despite the name).
+- **Printed catalogue boot load restored:** `loadShippedCatalogue` in `master/src/services/catalogue-seed.service.ts`,
+  called from `master/src/index.ts` before `attachCataloguePhotos`. Markdown only; the product zip route is gone.
+  Removed `release --catalogue`, `ORDERBOOK_CATALOGUE_ZIP`, `config.catalogueZip`. (`reload:catalog`'s own
+  `--catalogue` flag is a different thing and stays.)
+- **`matchVariantRows`** (`master/src/repositories/product-variant.repository.ts`): rows match by id, then code, then
+  label; a blank label matches only when it is the only blank row. Used by `replaceVariants` and the retire guard in
+  `catalog.service` `updateProduct`. Retiring a variant a pending lead or undispatched order quotes is refused
+  (`variantRetiredWithPendingLines`); otherwise a referenced row is deactivated.
+- Several variant rows now imply `hasVariants` when the caller does not say.
+- **`tools/nsis/quiet-uninstall-check.nsh`**, included by both panels' `installer.nsh`: a `/S` setup no longer stops on
+  electron-builder's "Failed to uninstall" MessageBox; it exits 2 and under `--force-run` relaunches the installed
+  program. NOT yet exercised by a real install.
+- Master `DataDeleteScreen`: Start fresh is now the last card.
+
+**Traps:**
+- The Claude desktop app is MSIX, so anything launched from its tools sees a virtualised `AppData\Roaming` (under
+  `Packages\Claude_*\LocalCache`) that an elevated installer or a normally launched app cannot see. Launch outside it
+  with `Invoke-CimMethod Win32_Process Create`.
+- Uninstalling a panel runs a sweep that deletes `%TEMP%\orderbook*`, which includes the test cluster. Do not uninstall
+  while tests run.
+- Killing vitest mid-run can leave rows in `%TEMP%\orderbook-test-pg` that `resetData` does not clear, causing many
+  false failures (`roles_name_unique`). Delete that folder and rerun.
+
+**Not verified:** the real Install now button in the Electron window; the quiet-uninstall check in a real failing
+install; the Master nightly auto update end to end. A failed nightly install still leaves the Master down until someone
+starts it. Office panels update only by button, by design.
+
 ## Performance plan approved, Gate 0 closed, 1.5.5 built unsigned (2026-10-26)
 
 **State:** `main` = `eb269017` (ahead of `origin/main` until pushed), tree clean, **version 1.5.5**
@@ -376,7 +444,7 @@ product a live lead or order quotes is not read as leaving: its bin is refused);
 the dialog previews again when the exact box is ticked or unticked, so its lists and counts are the run's; under the
 box the dialog says that a file with no `colours.csv` keeps the colour list and one with no photos keeps the photos;
 a sheet with no Colour column (the plain Import too) changes no colour, and a new code beside live ones in it is
-refused rather than recoding one; only the product restore (and the shipped `products.zip` load) keeps a WebP master
+refused rather than recoding one; only the product restore keeps a WebP master
 byte for byte (`UploadImageRequest.keepWebpMaster`), every other upload encodes it; the dialog says "file" where the
 upload may be a sheet, hides the exact option's done line at zero, and offers no tick where no box is. **Known
 limit:** a main product the file leaves out whose sub products the file moves elsewhere is binned only at the end,
@@ -389,7 +457,7 @@ so a rename onto its name is refused on the first run (preview and run agree) an
 | What comes back | cells exactly as stored (inner spacing, colour spelling); a blank Alias, Size or Weight clears; `fixed` → `dedicated`/`multicolour` without a "Standard" colour; the decimal comma (`0,125` kg); a value starting `'-`; main product and sub product order; the colour and brand lists (labels, hex, switched off, order); photo captions, order and main photo, and their exact bytes from Master to Master. An unedited backup reads as nothing to do; the same zip twice changes nothing. |
 | Matching | main product by code, then by brand and name (recoded to the file's code), then from the Recycle Bin; sub product by code, then from the Recycle Bin, then by name inside its main product (its codes taken over by colour, the others kept unless the exact option is ticked) — so two backups combined restore with no sub product twice. The bulk import now refuses a second sub product of one name in a main product; rows of one sub product that disagree are reported, not merged. |
 | New install | **Make the catalogue exactly this file** (off by default; needs Delete products): what the file does not list goes to the Recycle Bin (sub products, main products, colours, brands); photos missing from the zip and codes the rows leave out are removed for good. It takes out first what holds a name the file gives another, so a rename onto it lands in one run; its preview is the exact run's. His backup onto a new install then equals his export, CSV by CSV and photo byte by photo byte. |
-| Updates | The shipped catalogue loads only on an install not yet set up; an update or a restored install only gets the marker, even with an empty catalogue. The shipped photos attach once per install and only after a printed-catalogue load, never on an update, and never bring back a photo the company removed. A product restore stops the attach and ends it at its first write; a full backup restore stops it. |
+| Updates | The shipped catalogue (since 2026-11-06 the printed Markdown only) loads only on an install not yet set up; an update or a restored install only gets the marker, even with an empty catalogue. The shipped photos attach once per install and only after a printed-catalogue load, never on an update, and never bring back a photo the company removed. A full backup restore stops the attach. (The product restore that also stopped it was removed in `bb8d0326`.) |
 
 **Decisions taken (the owner can overrule):** an update changes no data, which reverses U7 for installs updated
 from 1.4.4 or earlier (question 1 below); the exact option is off by default and moves to the Recycle Bin rather
@@ -482,7 +550,7 @@ adversarially and fixed. Plan and evidence: `CLAUDE_HELPER_OCT8.md` (untracked).
 | ID | Owner asked | Result |
 |---|---|---|
 | R1–R3 | one product backup and restore in a single zip with the images; edit it and put it back; the software finds what changed; a proper CSV and an images folder named after the products | Products › Sub products › **Backup products (.zip)**: `products.csv` (the import's own columns), `main-products.csv`, `colours.csv`, `README.txt`, `images/<code>.webp` and `<code>_N` for photo N. **Restore from .zip**: a dry-run preview (main products added or renamed; rows added, changed cell by cell, unchanged, not in the file; colours; photos new, replaced, unchanged by hash, unmatched), two opt-ins (missing sub products to the Recycle Bin, missing photos removed), then a background job with progress. Master only. `docs/PRODUCT_IMPORT_FORMAT.md`. |
-| R4 | every build contains the product database | (Narrowed 2026-10-09, above: only an install not yet set up.) An install whose catalogue has never had a main product loads the shipped catalogue once at boot (marker setting `internal.shippedCatalogueLoaded`; a load stopped halfway resumes on the next boot): `master/assets/catalogue/products.zip` when the build carries one, else the printed catalogue `.md` + photos. `node tools/release.mjs --catalogue <zip>` (or `ORDERBOOK_CATALOGUE_ZIP`) ships the owner's own export. |
+| R4 | every build contains the product database | (Narrowed 2026-10-09, above: only an install not yet set up.) An install whose catalogue has never had a main product loads the shipped catalogue once at boot (marker setting `internal.shippedCatalogueLoaded`; a load stopped halfway runs again on the next boot): the printed catalogue `.md` + photos. (2026-11-06: the `products.zip` load, `release --catalogue` and `ORDERBOOK_CATALOGUE_ZIP` are gone.) |
 | R5 | the Master build contains the Office setup | `release.mjs` builds the Office first and packs its same-version Setup (and the Win7 one when present) into the Master as `resources/panel/office-setup`. On boot the Master copies it into its releases folder when newer (Offices update with no internet; a GitHub sync never goes backwards). A new PC downloads it from Office panels › Add panel (**Save Office setup…**) or `http://<master>:<port>/api/updates/office/setup` (no sign-in, rate-limited). |
 | R6 | notice board "not available" | The Master installed on this PC is **1.4.4** (`C:\Program Files\OrderBook Master Panel`); the notice board arrived in 1.4.5. Also, the Basic Home band showed only important/pinned notices and the sign-in pop-up only important ones, and nothing otherwise. |
 | R7 | settings: one notice board on Basic Home, another at sign-in | Basic Home always shows the band (every current notice placed there, unread first; "No notices" when empty); the pop-up lists every unread notice placed at sign-in. Settings › Company › Notice board: `notices.showOnHome`, `notices.showAtSignIn`. Per notice: "Show on Basic Home" / "Show at sign-in" (migration `20261016000000_notice_placement`, additive). The owner's "Notice board management" tile art is in. |

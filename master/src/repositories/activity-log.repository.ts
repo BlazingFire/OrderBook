@@ -122,8 +122,7 @@ export async function recordActivity(
  *    the other events that change no row: locking developer mode, dropping a
  *    panel's socket (`panel.service.ts`), starting a Master update
  *    (`update.service.ts`);
- *  - a **run that spans many transactions** — a connector import
- *    (`connector-run.service.ts`), seeding the test accounts
+ *  - a **run that spans many transactions** — seeding the test accounts
  *    (`developer.service.ts`) — whose one entry summarises all of them and
  *    is written after the last;
  *  - a change that **already happened on another machine** before the Master
@@ -141,6 +140,15 @@ export async function recordActivity(
  * wrong for anything else. If you are reaching for this from a service that has
  * a transaction open, you want that one.
  */
+/** When this company last finished a "Back up everything", by hand or on schedule. */
+export async function lastBackupCreatedAt(tenantId: string): Promise<Date | null> {
+  const row = (await db()('activity_log')
+    .where({ tenant_id: tenantId, entity_type: 'backup', action: 'created' })
+    .max('created_at as at')
+    .first()) as { at: Date | string | null } | undefined;
+  return row?.at ? new Date(row.at) : null;
+}
+
 export async function recordDetachedActivity(
   entry: ActivityEntry,
   actor: ActorContext,

@@ -43,7 +43,7 @@ describe.skipIf(!canRunIntegrationTests)('settings (integration)', () => {
     expect(await settingsService.getSetting(admin.tenantId, 'security.passwordRevealEnabled')).toBe(
       false,
     );
-    expect(await settingsService.getSetting(admin.tenantId, 'externalApi.enabled')).toBe(false);
+    expect(await settingsService.getSetting(admin.tenantId, 'parties.deleteRelatedData')).toBe(false);
 
     const views = await settingsService.readSettings(admin);
     // Counted against the catalogue rather than a literal: this list grows with
@@ -78,24 +78,24 @@ describe.skipIf(!canRunIntegrationTests)('settings (integration)', () => {
   });
 
   it('makes two consecutive writes visible immediately, with no read in between', async () => {
-    await settingsService.writeSetting(admin, 'externalApi.enabled', true);
-    expect(await settingsService.getSetting(admin.tenantId, 'externalApi.enabled')).toBe(true);
+    await settingsService.writeSetting(admin, 'parties.deleteRelatedData', true);
+    expect(await settingsService.getSetting(admin.tenantId, 'parties.deleteRelatedData')).toBe(true);
 
-    await settingsService.writeSetting(admin, 'externalApi.enabled', false);
-    expect(await settingsService.getSetting(admin.tenantId, 'externalApi.enabled')).toBe(false);
+    await settingsService.writeSetting(admin, 'parties.deleteRelatedData', false);
+    expect(await settingsService.getSetting(admin.tenantId, 'parties.deleteRelatedData')).toBe(false);
   });
 
   it('falls back to the default when a stored value no longer parses, rather than throwing', async () => {
     // Store a real value, then corrupt it in place, the
     // way a narrowed parser in a newer build would find an older value.
-    await settingsService.writeSetting(admin, 'externalApi.enabled', true);
+    await settingsService.writeSetting(admin, 'parties.deleteRelatedData', true);
     await db()('settings')
-      .where({ tenant_id: admin.tenantId, key: 'externalApi.enabled' })
+      .where({ tenant_id: admin.tenantId, key: 'parties.deleteRelatedData' })
       .update({ value: JSON.stringify('yes') });
     settingsService.invalidateSettingsCache();
 
-    expect(await settingsService.getSetting(admin.tenantId, 'externalApi.enabled')).toBe(false);
-    expect(viewFor(await settingsService.readSettings(admin), 'externalApi.enabled')).toMatchObject({
+    expect(await settingsService.getSetting(admin.tenantId, 'parties.deleteRelatedData')).toBe(false);
+    expect(viewFor(await settingsService.readSettings(admin), 'parties.deleteRelatedData')).toMatchObject({
       value: false,
       isDefault: false,
     });
@@ -119,7 +119,7 @@ describe.skipIf(!canRunIntegrationTests)('settings (integration)', () => {
   });
 
   it('audits every write, naming the key and both values', async () => {
-    await settingsService.writeSetting(admin, 'externalApi.enabled', true);
+    await settingsService.writeSetting(admin, 'parties.deleteRelatedData', true);
     await settingsService.writeSetting(admin, 'leads.packagingRequiredOnConvert', true);
 
     const rows = await db()('activity_log')
@@ -132,15 +132,15 @@ describe.skipIf(!canRunIntegrationTests)('settings (integration)', () => {
       );
 
     expect(rows.map((row) => `${row.entity_id}:${row.action}`)).toEqual([
-      'externalApi.enabled:updated',
+      'parties.deleteRelatedData:updated',
       'leads.packagingRequiredOnConvert:updated',
     ]);
 
     // `labelToken` and a switch's `fromToken` / `toToken` are message keys the
     // Logs sentence translates; `from` / `to` stay the raw values.
     expect(rows[0]?.details).toEqual({
-      name: 'externalApi.enabled',
-      labelToken: 'setting.externalApi.enabled.label',
+      name: 'parties.deleteRelatedData',
+      labelToken: 'setting.parties.deleteRelatedData.label',
       from: 'false',
       to: 'true',
       fromToken: 'settingValue.off',

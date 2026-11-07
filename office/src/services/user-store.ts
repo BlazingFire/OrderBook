@@ -15,11 +15,11 @@
  */
 
 import fs from 'node:fs/promises';
-import path from 'node:path';
 
 import type { RoleTierName } from '@orderbook/shared';
 
 import { paths } from '../config/paths.js';
+import { writeDurable } from '../lib/durable-file.js';
 import { createLogger } from '../lib/logger.js';
 
 const log = createLogger('user-store');
@@ -92,10 +92,8 @@ async function load(): Promise<StoredFile> {
 }
 
 async function persist(file: StoredFile): Promise<void> {
-  await fs.mkdir(path.dirname(paths().usersFile), { recursive: true });
-  // 0o600 for the same reason pairing.json is: this file decides who may use
-  // the panel when the Master cannot be asked.
-  await fs.writeFile(paths().usersFile, JSON.stringify(file, null, 2), { mode: 0o600 });
+  // This file decides who may use the panel when the Master cannot be asked.
+  await writeDurable(paths().usersFile, JSON.stringify(file, null, 2));
 }
 
 export async function findByUsername(username: string): Promise<KnownUser | null> {

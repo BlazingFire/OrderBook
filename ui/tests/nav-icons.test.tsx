@@ -33,7 +33,7 @@ describe('NAV_ICONS', () => {
 
   it.each(['master/web', 'office/web'])('is the only icon source in %s App.tsx nav rows', (panel) => {
     const source = readFileSync(join(process.cwd(), panel, 'src', 'App.tsx'), 'utf8');
-    const literal = source.match(/id: '(?:basicHome|dashboard|leads|orders|conflicts|chatroom|printroom|reports|products|parties|partyAccess|lists|panels|access|fields|logs|recycleBin|integrations|settings|updates)',[^}]{0,140}?icon: '/g);
+    const literal = source.match(/id: '(?:basicHome|dashboard|leads|orders|conflicts|chatroom|printroom|reports|products|parties|partyAccess|lists|panels|access|fields|logs|recycleBin|settings|updates)',[^}]{0,140}?icon: '/g);
     expect(literal).toBeNull();
   });
 });

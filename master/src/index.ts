@@ -35,7 +35,10 @@ import { createLogger } from './lib/logger.js';
 import { toErrorMessage } from './lib/errors.js';
 import { loadOrCreateKey } from './lib/secret-box.js';
 import { sweepOrphanImageVariants } from './services/image.service.js';
+import { reportInterruptedRestore, resumeInterruptedRestore } from './services/archive-restore.service.js';
 import { attachCataloguePhotos } from './services/catalogue-photos.service.js';
+import { loadShippedCatalogue } from './services/catalogue-seed.service.js';
+import { startDataSafetyWatch } from './services/data-safety-watch.js';
 import { assertFontsPresent } from './pdf/fonts.js';
 import { listLanAddresses } from './lib/network.js';
 import { createRealtimeHub, type RealtimeHub } from './realtime/hub.js';
@@ -247,11 +250,18 @@ async function main(): Promise<void> {
     initDatabase(postgres.connectionUrl);
 
     bootStep('Updating the database');
+    // Before the migrations: they would turn a dropped schema into an empty, working one.
+    const interruptedRestore = await resumeInterruptedRestore();
     await runMigrations();
     await assertTimeZoneValid();
     // Only now: the marker means "this version's schema is in place", so a
     // boot that dies in a migration leaves the next attempt taking a fresh copy.
     await recordBootedVersion(config.dataDir, appVersion());
+    if (interruptedRestore?.mode === 'replace') {
+      await reportInterruptedRestore(interruptedRestore).catch((error: unknown) => {
+        log.warn(`Could not report the interrupted restore: ${toErrorMessage(error)}`);
+      });
+    }
 
     if (await isSetupComplete()) {
       await refreshStoredLanIp();
@@ -268,6 +278,13 @@ async function main(): Promise<void> {
      */
     await sweepOrphanImageVariants().catch((error: unknown) => {
       log.warn(`Could not sweep orphaned image folders: ${toErrorMessage(error)}`);
+    });
+
+    // Awaited, so nobody sees a half-loaded list and the attach below finds its sub
+    // products. A failure is a warning: the panel still starts, and the load carries on next boot.
+    bootStep('Loading the product catalogue');
+    await loadShippedCatalogue().catch((error: unknown) => {
+      log.warn(`Could not load the shipped product catalogue: ${toErrorMessage(error)}`);
     });
 
     // Not awaited: encoding a few hundred photos takes minutes. A restore stops it first.
@@ -294,6 +311,9 @@ async function main(): Promise<void> {
 
     // Same shape: the daily automatic backup, off until a Server Master turns it on.
     disposables.push(startBackupScheduler());
+
+    // Warnings only: no backup for a week, or a disk nearly full.
+    disposables.push(startDataSafetyWatch());
 
     // Same shape: the poller owns its timers and hands back the way to stop
     // them. A no-op unless a releases repository is configured.

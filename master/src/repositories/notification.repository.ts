@@ -38,6 +38,14 @@ function mapNotification(row: Row): UserNotification {
  * notice with the same `dedupeKey` (the partial unique index decides, so two
  * notices racing each other cannot both land). Returns the rows actually added.
  */
+/** When a notice of this kind last went out to anybody in the company. */
+export async function lastSentAt(tenantId: string, kind: NotificationKind): Promise<Date | null> {
+  const row = (await db()(TABLE).where({ tenant_id: tenantId, kind }).max('created_at as at').first()) as
+    | { at: Date | string | null }
+    | undefined;
+  return row?.at ? new Date(row.at) : null;
+}
+
 export async function insertNotifications(
   tenantId: string,
   userIds: readonly string[],

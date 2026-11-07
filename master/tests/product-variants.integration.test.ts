@@ -341,7 +341,7 @@ describe.skipIf(!canRunIntegrationTests)('product variants (integration)', () =>
       }
     });
 
-    it('deactivates, rather than deletes, a removed row a lead line still quotes', async () => {
+    it('refuses to retire a row a pending lead quotes; once none does, deactivates rather than deletes it', async () => {
       const product = await damru();
       const [v41, v42] = product.variants;
       const party = await catalog.createParty({ name: 'Patel Sanitary' }, actor);
@@ -352,20 +352,27 @@ describe.skipIf(!canRunIntegrationTests)('product variants (integration)', () =>
         },
         actor,
       );
+      const trimmedSet = { name: product.name, variants: [{ id: v41!.id, code: '41', label: 'Vitrosa 41' }] };
 
-      const updated = await catalog.updateProduct(
-        product.id,
-        { name: product.name, variants: [{ id: v41!.id, code: '41', label: 'Vitrosa 41' }] },
-        actor,
-      );
+      await expect(catalog.updateProduct(product.id, trimmedSet, actor)).rejects.toMatchObject({
+        messageKey: 'error.conflict.variantRetiredWithPendingLines',
+      });
+      expect((await catalog.getProduct(product.id, actor)).variants.map((variant) => variant.isActive)).toEqual([
+        true,
+        true,
+        true,
+      ]);
+
+      await leads.deleteLead(lead.id, actor);
+      const updated = await catalog.updateProduct(product.id, trimmedSet, actor);
 
       expect(updated.variants.map((variant) => [variant.code, variant.isActive])).toEqual([
         ['41', true],
         ['42', false],
       ]);
       // The line is untouched, and still names the variant it was raised on.
-      const reread = await leads.getLead(lead.id, actor);
-      expect(reread.items[0]).toMatchObject({ variantId: v42!.id, code: '42', quantity: 3 });
+      const line = await db()('line_items').where({ parent_id: lead.id }).first();
+      expect(line).toMatchObject({ variant_id: v42!.id, code: '42' });
 
       // An inactive variant keeps its code: nobody else may reissue it while
       // history quotes it.
@@ -388,14 +395,65 @@ describe.skipIf(!canRunIntegrationTests)('product variants (integration)', () =>
       ).rejects.toMatchObject({ messageKey: 'validation.lead.variantMissing' });
     });
 
-    it('deactivates a removed row a lead still quotes, and reactivates it when it comes back', async () => {
+    it('takes several blank-colour rows as a product with variants when the caller did not say', async () => {
+      const product = await catalog.createProduct(
+        { name: 'Implied', categoryName: CATEGORY, variants: [{ code: 'I-1' }, { code: 'I-2' }] },
+        actor,
+      );
+      expect(product.hasVariants).toBe(true);
+      expect(codesOf(product.variants)).toEqual(['I-1', 'I-2']);
+    });
+
+    it('keeps each blank-colour row its own when a set is re-sent without ids', async () => {
+      const product = await catalog.createProduct(
+        {
+          name: 'Plain',
+          categoryName: CATEGORY,
+          hasVariants: true,
+          variants: [{ code: 'P-1' }, { code: 'P-2' }, { code: 'P-3', label: 'White' }],
+        },
+        actor,
+      );
+      const idOf = (code: string) => product.variants.find((variant) => variant.code === code)!.id;
+      const party = await catalog.createParty({ name: 'Patel Sanitary' }, actor);
+      const lead = await leads.createLead(
+        { partyId: party.id, items: [{ productId: product.id, variantId: idOf('P-1'), quantity: 1, packaging: 'carton' }] },
+        actor,
+      );
+
+      // P-1 is what the pending lead quotes, and it is still in this set.
+      const resent = await catalog.updateProduct(
+        product.id,
+        { name: product.name, variants: [{ code: 'P-1' }, { code: 'P-2', weightKg: 9 }, { code: 'P-3', label: 'White' }] },
+        actor,
+      );
+      expect(resent.variants.map((variant) => [variant.code, variant.id, variant.isActive])).toEqual([
+        ['P-1', idOf('P-1'), true],
+        ['P-2', idOf('P-2'), true],
+        ['P-3', idOf('P-3'), true],
+      ]);
+
+      // Leaving out the quoted one is seen as retiring it, not as renaming another blank row.
+      await expect(
+        catalog.updateProduct(
+          product.id,
+          { name: product.name, variants: [{ code: 'P-2' }, { code: 'P-3', label: 'White' }] },
+          actor,
+        ),
+      ).rejects.toMatchObject({ messageKey: 'error.conflict.variantRetiredWithPendingLines' });
+
+      await leads.deleteLead(lead.id, actor);
+    });
+
+    it('deactivates a removed row only a binned lead quotes, and reactivates it when it comes back', async () => {
       const product = await damru();
       const [v41, v42, white] = product.variants;
       const party = await catalog.createParty({ name: 'Patel Sanitary' }, actor);
-      await leads.createLead(
+      const lead = await leads.createLead(
         { partyId: party.id, items: [{ productId: product.id, variantId: white!.id, quantity: 6, packaging: 'carton' }] },
         actor,
       );
+      await leads.deleteLead(lead.id, actor);
 
       const trimmed = await catalog.updateProduct(
         product.id,

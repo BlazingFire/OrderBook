@@ -57,6 +57,9 @@ const KIND_TEXT: Record<NotificationKind, MessageKey> = {
   'print.printed': 'notification.print.printed',
   'backup.autoSkipped': 'notification.backup.autoSkipped',
   'backup.autoFailed': 'notification.backup.autoFailed',
+  'backup.stale': 'notification.backup.stale',
+  'backup.restoreInterrupted': 'notification.backup.restoreInterrupted',
+  'storage.lowDisk': 'notification.storage.lowDisk',
   'update.available': 'notification.update.available',
   'update.installing': 'notification.update.installing',
 };
@@ -98,6 +101,9 @@ const KIND_LOOK: Record<NotificationKind, { category: Category; tone: Tone; icon
   'print.printed': { category: 'printroom', tone: 'ok', icon: 'print' },
   'backup.autoSkipped': { category: 'backup', tone: 'amber', icon: 'warning' },
   'backup.autoFailed': { category: 'backup', tone: 'red', icon: 'warning' },
+  'backup.stale': { category: 'backup', tone: 'amber', icon: 'warning' },
+  'backup.restoreInterrupted': { category: 'backup', tone: 'red', icon: 'warning' },
+  'storage.lowDisk': { category: 'backup', tone: 'red', icon: 'warning' },
   'update.available': { category: 'updates', tone: 'accent', icon: 'update' },
   'update.installing': { category: 'updates', tone: 'accent', icon: 'restart' },
 };

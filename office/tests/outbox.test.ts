@@ -277,12 +277,13 @@ describe('outbox', () => {
   it('keeps saving after one save could not be written', async () => {
     const { outbox } = await loadModules();
     const locked = Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' });
-    const rename = vi.spyOn(fs, 'rename').mockRejectedValueOnce(locked);
+    const rename = vi.spyOn(fs, 'rename').mockRejectedValue(locked);
 
     try {
       await expect(
         outbox.enqueue({ kind: 'lead.create', entity: 'lead', entityId: 'L1', payload: {} }),
       ).rejects.toThrow(/EPERM/);
+      rename.mockRestore();
 
       // One failed write used to fail every write after it until a restart,
       // because each save was chained onto the one before, rejection and all.

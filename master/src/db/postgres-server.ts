@@ -22,7 +22,9 @@ import { randomBytes } from 'node:crypto';
 import pg from 'pg';
 
 import { config } from '../config/index.js';
+import { writeDurable } from '../lib/durable-file.js';
 import { createLogger } from '../lib/logger.js';
+import { keepPrivate } from '../lib/private-path.js';
 
 const execFileAsync = promisify(execFile);
 const log = createLogger('postgres');
@@ -314,7 +316,9 @@ async function ensureCluster(binDir: string, clusterDir: string): Promise<string
 
   const password = randomBytes(24).toString('base64url');
   await fs.mkdir(config.dataDir, { recursive: true });
-  await fs.writeFile(passwordPath, password, { mode: 0o600 });
+  // Durable: a cluster whose password was lost to a power cut cannot be opened.
+  await writeDurable(passwordPath, Buffer.from(password), { mode: 0o600 });
+  keepPrivate(passwordPath);
 
   const pwfilePath = path.join(config.dataDir, 'pg-initdb-password.tmp');
   await fs.writeFile(pwfilePath, password, { mode: 0o600 });
@@ -340,6 +344,19 @@ async function ensureCluster(binDir: string, clusterDir: string): Promise<string
 
   log.info('Database cluster created');
   return password;
+}
+
+/**
+ * The end of `postgres.log`, for the boot screen: a damaged cluster, a full disk and
+ * a port already taken all exit from `pg_ctl` the same way, and only this tells them apart.
+ */
+async function endOfLog(logFile: string): Promise<string> {
+  try {
+    const lines = (await fs.readFile(logFile, 'utf8')).trim().split(/\r?\n/).slice(-20);
+    return `. The end of postgres.log:\n${lines.join('\n')}`;
+  } catch {
+    return '';
+  }
 }
 
 async function startCluster(binDir: string, clusterDir: string, socketDir: string): Promise<void> {
@@ -389,9 +406,13 @@ async function startCluster(binDir: string, clusterDir: string, socketDir: strin
     );
 
     child.on('error', reject);
-    child.on('exit', (code) =>
-      code === 0 ? resolve() : reject(new Error(`pg_ctl start exited with ${code ?? 'no code'}`)),
-    );
+    child.on('exit', (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      void endOfLog(logFile).then((end) => reject(new Error(`pg_ctl start exited with ${code ?? 'no code'}${end}`)));
+    });
   });
 
   log.info(`Database listening on 127.0.0.1:${config.database.port}`);

@@ -14,12 +14,12 @@
  */
 
 import fs from 'node:fs/promises';
-import path from 'node:path';
 
 import { deviceCodeFromSeed, formatTemporaryId } from '@orderbook/shared';
 
 import { config } from '../config/index.js';
 import { paths } from '../config/paths.js';
+import { writeDurable } from '../lib/durable-file.js';
 import { createLogger } from '../lib/logger.js';
 import { loadCredentials } from '../services/credentials.store.js';
 
@@ -90,8 +90,8 @@ async function load(): Promise<DeviceState> {
 
 async function save(state: DeviceState): Promise<void> {
   cached = state;
-  await fs.mkdir(path.dirname(paths().deviceFile), { recursive: true });
-  await fs.writeFile(paths().deviceFile, JSON.stringify(state, null, 2), { mode: 0o600 });
+  // A counter lost to a power cut would hand out a temporary id twice.
+  await writeDurable(paths().deviceFile, JSON.stringify(state, null, 2));
 }
 
 /** Test seam: drops the in-memory cache so the next read hits disk. */

@@ -61,7 +61,10 @@ describe('starting the PostgreSQL cluster', () => {
     // "started" mean started.
     expect(body).toContain(`child.on('exit'`);
     expect(body).toContain(`child.on('error'`);
-    expect(body).toMatch(/code === 0 \? resolve\(\)/);
+    expect(body).toMatch(/code === 0\)? (\?|\{)\s*resolve\(\)/);
+    // ...and a failed start says why: the end of postgres.log goes with the error.
+    expect(body).toMatch(/reject\(new Error\(`pg_ctl start exited with/);
+    expect(body).toContain('endOfLog(logFile)');
   });
 
   it('keeps --wait, so pg_ctl itself does not return early', () => {

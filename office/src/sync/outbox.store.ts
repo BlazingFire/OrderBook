@@ -15,12 +15,12 @@
  */
 
 import fs from 'node:fs/promises';
-import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 import type { IsoTimestamp, Mutation, MutationKind, MutationResult } from '@orderbook/shared';
 
 import { paths } from '../config/paths.js';
+import { writeDurable } from '../lib/durable-file.js';
 import { createLogger } from '../lib/logger.js';
 import { stamp } from './clock.js';
 import { deviceCode } from './device.js';
@@ -275,11 +275,7 @@ export function outboxRevision(): number {
 }
 
 async function persist(mutations: Mutation[]): Promise<void> {
-  await fs.mkdir(path.dirname(paths().outboxFile), { recursive: true });
-
-  const temporary = `${paths().outboxFile}.tmp`;
-  await fs.writeFile(temporary, JSON.stringify(mutations, null, 2), { mode: 0o600 });
-  await fs.rename(temporary, paths().outboxFile);
+  await writeDurable(paths().outboxFile, JSON.stringify(mutations, null, 2));
 }
 
 /**
@@ -357,11 +353,7 @@ async function loadRefusals(): Promise<RefusedWrite[]> {
 }
 
 async function persistRefusals(entries: RefusedWrite[]): Promise<void> {
-  await fs.mkdir(path.dirname(paths().refusalsFile), { recursive: true });
-
-  const temporary = `${paths().refusalsFile}.tmp`;
-  await fs.writeFile(temporary, JSON.stringify(entries, null, 2), { mode: 0o600 });
-  await fs.rename(temporary, paths().refusalsFile);
+  await writeDurable(paths().refusalsFile, JSON.stringify(entries, null, 2));
 }
 
 /** Test seam. */

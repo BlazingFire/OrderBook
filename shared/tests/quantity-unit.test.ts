@@ -12,7 +12,6 @@ import { REPORT_COLUMNS, t, type MessageKey } from '../src/index.js';
 
 /** Messages where "box" is a field on the screen, not a quantity. */
 const NOT_A_QUANTITY = new Set([
-  'integrations.mapping.help',
   'lead.add.products.productHint',
   'lead.add.flow.colourKeys',
 ]);

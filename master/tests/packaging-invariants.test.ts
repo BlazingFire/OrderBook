@@ -35,7 +35,6 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import { createZipWriter } from '../src/lib/archive-zip.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -1039,47 +1038,29 @@ describe('the catalogue a Master build ships', () => {
     expect(masterPanel()).toMatch(/extras: \[[^\]]*'assets'/);
   });
 
-  it('checks a --catalogue zip (or ORDERBOOK_CATALOGUE_ZIP) before anything is built', async () => {
-    const dir = mkdtempSync(path.join(os.tmpdir(), 'orderbook-release-catalogue-'));
-    try {
-      const zip = async (name: string, entry: string): Promise<string> => {
-        const file = path.join(dir, name);
-        const writer = createZipWriter(file);
-        await writer.appendEntry(entry, ['Brand,Code\r\n']);
-        await writer.finalize();
-        return file;
-      };
-      const good = await zip('good.zip', 'Backup/products.csv');
-      const bad = await zip('bad.zip', 'images/OPT-0001.webp');
-      const text = path.join(dir, 'text.zip');
-      writeFileSync(text, 'not a zip');
+  it('boots the catalogue before the photo attach, which reads the mark the load leaves', () => {
+    const index = readText('master', 'src', 'index.ts');
+    expect(index.indexOf('await loadShippedCatalogue()')).toBeGreaterThan(-1);
+    expect(index.indexOf('await loadShippedCatalogue()')).toBeLessThan(index.indexOf('void attachCataloguePhotos()'));
+  });
+});
 
-      const run = (args: string[], panel?: string, env?: Record<string, string>) =>
-        releaseAs('win32', 'x64', 'win', panel, { args, env });
-      expect(run(['--catalogue', path.join(dir, 'missing.zip')])).toMatch(/Release failed: --catalogue: .*does not exist/);
-      expect(run(['--catalogue', text])).toMatch(/Release failed: --catalogue: .*is not a zip/);
-      expect(run(['--catalogue', bad])).toMatch(/Release failed: --catalogue: .*has no products.csv/);
-      expect(run(['--catalogue', good], 'office')).toContain('ships with the Master');
-      expect(run(['--catalogue'])).toMatch(/Release failed: --catalogue: \(no file named\) does not exist/);
-      expect(run([], undefined, { ORDERBOOK_CATALOGUE_ZIP: bad })).toMatch(/has no products.csv/);
-      // The variable may be set for every run: an Office-only one ignores it rather than failing.
-      expect(run([], 'office', { ORDERBOOK_CATALOGUE_ZIP: bad })).toContain('Release failed: STOP before npm');
-      // A good zip passes the check and the run reaches its first command; the stub stops it before the copy.
-      expect(run(['--catalogue', good])).toContain('Release failed: STOP before npm');
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
+describe('a setup that cannot uninstall the old version', () => {
+  const check = (): string => readText('tools', 'nsis', 'quiet-uninstall-check.nsh');
+
+  it('is replaced on both panels, because the template asks even a /S run to click OK', () => {
+    for (const panel of ['master', 'office']) {
+      expect(readText(panel, 'installer', 'installer.nsh')).toContain('quiet-uninstall-check.nsh');
     }
+    expect(check()).toContain('!macro customUnInstallCheck');
   });
 
-  it('copies the zip to the path the Master boots from, after the check and before any build', () => {
-    expect(RELEASE).toContain("path.join(ROOT, 'master', 'assets', 'catalogue', 'products.zip')");
-    const main = bodyOf('async function main()');
-    expect(main.indexOf('assertCatalogueZip(catalogueZip)')).toBeGreaterThan(-1);
-    expect(main.indexOf('assertCatalogueZip(catalogueZip)')).toBeLessThan(main.indexOf("run('npm'"));
-    expect(main.indexOf('cp(catalogueZip, SHIPPED_CATALOGUE)')).toBeGreaterThan(main.indexOf("run('npm'"));
-    expect(main.indexOf('cp(catalogueZip, SHIPPED_CATALOGUE)')).toBeLessThan(main.indexOf('build(panel, version)'));
-    expect(readText('master', 'src', 'config', 'index.ts')).toContain(
-      "catalogueZip: path.join(packageRoot, 'assets', 'catalogue', 'products.zip')",
-    );
+  it('only shows its message to a person, exits 2, and brings a --force-run panel back', () => {
+    const text = check();
+    expect(text).toMatch(/\$\{IfNot\} \$\{Silent\}\s+MessageBox/);
+    expect(text.match(/^\s*MessageBox/gm)).toHaveLength(1);
+    expect(text).toContain('"--force-run"');
+    expect(text.indexOf('${StdUtils.ExecShellAsUser}')).toBeGreaterThan(-1);
+    expect(text.indexOf('${StdUtils.ExecShellAsUser}')).toBeLessThan(text.indexOf('SetErrorLevel 2'));
   });
 });

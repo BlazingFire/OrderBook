@@ -42,7 +42,6 @@ export const SETTING_GROUPS = [
   'leads',
   'reports',
   'notices',
-  'integrations',
   'data',
 ] as const;
 export type SettingGroup = (typeof SETTING_GROUPS)[number];
@@ -234,24 +233,6 @@ export const SETTINGS = {
     labelToken: 'setting.parties.deleteRelatedData.label',
     descriptionToken: 'setting.parties.deleteRelatedData.help',
     group: 'data',
-    control: { kind: 'boolean' },
-    fallback: false,
-    parse: (raw: unknown): boolean => asBoolean(raw),
-  },
-
-  /**
-   * The public API's master switch.
-   *
-   * There was a second key beside this one — a list of `{slug, label, baseUrl}`
-   * declarations for outbound connections — which Stage 11 replaced with real
-   * tables carrying resources, field maps, links and runs. Two homes for one
-   * concept is how they drift, so the settings-level list was deleted rather
-   * than left as a shadow copy nothing reads.
-   */
-  'externalApi.enabled': {
-    labelToken: 'setting.externalApi.enabled.label',
-    descriptionToken: 'setting.externalApi.enabled.help',
-    group: 'integrations',
     control: { kind: 'boolean' },
     fallback: false,
     parse: (raw: unknown): boolean => asBoolean(raw),

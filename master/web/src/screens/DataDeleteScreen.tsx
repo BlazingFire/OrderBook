@@ -129,36 +129,6 @@ export function DataDeleteScreen({ revision, permissions }: Props) {
       </p>
 
       <Card>
-        <Section title={t('dataDelete.fresh.title')}>
-          <p className="ob-body" style={{ margin: 0 }}>
-            {t('dataDelete.fresh.body')}
-          </p>
-          {summary && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-16)' }}>
-                {removesOrders}
-                <CountList
-                  heading={t('dataDelete.fresh.keeps')}
-                  lines={[
-                    t('dataDelete.count.products', { count: summary.products }),
-                    t('dataDelete.count.users', { count: summary.users }),
-                    t('dataDelete.keeps.rest'),
-                  ]}
-                />
-              </div>
-              <span className="ob-small">{t('dataDelete.binNote')}</span>
-            </div>
-          )}
-          <ToolButton
-            label={t('dataDelete.fresh.button')}
-            nothing={noOrdersOrParties ? t('dataDelete.fresh.nothing') : null}
-            disabled={summary === null}
-            onClick={() => setTool('fresh')}
-          />
-        </Section>
-      </Card>
-
-      <Card>
         <Section title={t('dataDelete.chat.title')}>
           <p className="ob-body" style={{ margin: 0 }}>
             {t('dataDelete.chat.body')}
@@ -238,6 +208,36 @@ export function DataDeleteScreen({ revision, permissions }: Props) {
             </span>
           )}
           {relatedError && <FieldError>{relatedError}</FieldError>}
+        </Section>
+      </Card>
+
+      <Card>
+        <Section title={t('dataDelete.fresh.title')}>
+          <p className="ob-body" style={{ margin: 0 }}>
+            {t('dataDelete.fresh.body')}
+          </p>
+          {summary && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s-8)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--s-16)' }}>
+                {removesOrders}
+                <CountList
+                  heading={t('dataDelete.fresh.keeps')}
+                  lines={[
+                    t('dataDelete.count.products', { count: summary.products }),
+                    t('dataDelete.count.users', { count: summary.users }),
+                    t('dataDelete.keeps.rest'),
+                  ]}
+                />
+              </div>
+              <span className="ob-small">{t('dataDelete.binNote')}</span>
+            </div>
+          )}
+          <ToolButton
+            label={t('dataDelete.fresh.button')}
+            nothing={noOrdersOrParties ? t('dataDelete.fresh.nothing') : null}
+            disabled={summary === null}
+            onClick={() => setTool('fresh')}
+          />
         </Section>
       </Card>
 

@@ -20,9 +20,8 @@ Office panels never reach the internet for an update: they ask their Master
 over the LAN. Since 1.4 the Master reaches GitHub by default, to the public
 `BlazingFire/OrderBook-Releases` (`ORDERBOOK_RELEASES_GITHUB_REPO` overrides it, and
 setting it to nothing turns it off). Only the Master ever does; no Office Panel
-leaves the LAN. (It is one of two internet-capable paths in the product;
-the other is the Master's outbound connectors, which call whatever URL an
-administrator configures under Integrations.) A shop floor with no route to the
+leaves the LAN. (It is the only internet-capable path in the product: the outbound
+connectors went with Integrations.) A shop floor with no route to the
 outside world still updates every till from one PC, and a site with no
 internet at all keeps working exactly as before: copy the releases folder in on
 a USB stick and nothing else changes. Since 2026-10-08 the Master's own setup
@@ -131,25 +130,11 @@ has always used.
 
 ### Shipping the product database with a build (2026-10-08)
 
-Every Master build carries a product catalogue, which a **new install** loads on
-its first boot: the printed catalogue (`master/assets/catalogue/swisware-plus-2026.md`
-and its photos) unless the build carries a product backup zip. To ship the
-company's current products instead, take **Products → Sub products → Backup
-products (.zip)** on the live Master and build with it:
-
-```bash
-npm run release -- --catalogue D:/Backups/OrderBook-Products-Acme-2026-10-08.zip
-```
-
-(or set `ORDERBOOK_CATALOGUE_ZIP`; a run that does not build the Master, such as
-`--panel office` or `--os win7`, ignores the variable and says so, but refuses an
-explicit `--catalogue`). The release checks the zip holds a
-`products.csv` before it builds anything, then copies it to
-`master/assets/catalogue/products.zip`, which the Master build stages with the
-rest of `assets/`. The run prints which catalogue it ships; a `products.zip`
-left there by an earlier `--catalogue` run ships too until it is deleted. That
-path is git-ignored, so the CI release ships the committed catalogue unless the
-owner commits a zip there (`git add -f`), which is his decision.
+Every Master build carries the printed catalogue
+(`master/assets/catalogue/swisware-plus-2026.md` and its photos), which a **new install**
+loads on its first boot (`loadShippedCatalogue`, `master/src/services/catalogue-seed.service.ts`).
+There is no other choice of catalogue: the product backup zip, `release --catalogue` and
+`ORDERBOOK_CATALOGUE_ZIP` are gone (zip route removed in `bb8d0326`, the release flag on 2026-11-06).
 
 The shipped catalogue is loaded **once**, and only into a brand-new install: one
 whose first-run setup is not done yet and whose catalogue has never held a main
@@ -158,21 +143,19 @@ catalogue** (2026-10-09): an install already set up, whether an update reaches i
 or a full backup restored it, only records that the check was made, even when its
 catalogue is empty (the internal setting `internal.shippedCatalogueLoaded`, as
 `loaded: 'none'`). A load is recorded as under way (`state: 'loading'`) before it
-writes anything and as done when it ends, so one that fails, or that a closed
-window stops while the photos go in, carries on at the next boot: rows are upserted
-by code and a photo already in its slot stays, so nothing is loaded twice. It
-carries on only while setup is still not done; once the company has set up, the
+writes anything and as done when it ends, so one that fails or is stopped runs
+again at the next boot (a failure is a warning; the panel still starts). It
+runs again only while setup is still not done; once the company has set up, the
 next boot marks it done and loads nothing over what may be the company's own data.
 
 The **shipped catalogue photos** (`master/assets/catalogue/photos/`) follow the
 same rule. They are attached once per install, on the boot after the printed
 catalogue went in, and only to sub products with no photo: an install that never
-loaded the printed catalogue (a build that shipped `products.zip`, whose photos it
-carries; an install updated from 1.4.4 or earlier, which has no record of either
-load) never gets them, and any record of a run means done, whatever a later build
-ships, so an update never attaches a photo or brings back one the company removed.
-A product restore stops the attach and, once it writes, ends it for good; a full
-backup restore stops it and lets the restored settings decide.
+loaded the printed catalogue (one set up before this, or updated from 1.4.4 or
+earlier, which has no record of either load) never gets them, and any record of a
+run means done, whatever a later build ships, so an update never attaches a photo
+or brings back one the company removed. A full backup restore stops the attach and
+lets the restored settings decide.
 
 ## When a new build shows up
 

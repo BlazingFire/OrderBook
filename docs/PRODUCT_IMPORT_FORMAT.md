@@ -1,5 +1,11 @@
 # Product import and export — the file format and its versions
 
+> **Removed, 2026-11-05 (`bb8d0326`).** The product sheet import and export and the product backup
+> zip are no longer in the software, and the files named below are gone; whole-software backup and
+> restore and the bulk Photo import stayed. This document is kept as the record of the format.
+> A build ships the printed catalogue only (`docs/UPDATES.md`); `release --catalogue` and the
+> `products.zip` load were removed on 2026-11-06.
+
 What a person puts in a spreadsheet to add or change sub products in bulk, and what
 the Products screens hand back. The columns are `IMPORT_COLUMNS` in
 `master/src/domain/product-import.ts`; the import, export and template are
@@ -69,8 +75,6 @@ Master only: the Office has neither button. Code: `master/src/services/product-z
 which sends `products.csv` through `importProducts` with `restore`
 (`master/src/services/product-import.service.ts`); wire types: `ProductZipReport`,
 `ProductRestoreOptions` and `ProductRestoreJob` in `shared/src/domain/product-import.ts`.
-It is also what a build can ship as the catalogue of a new install (`release
---catalogue`, `docs/UPDATES.md`).
 
 **What a restore promises.** The file is a backup of the stored catalogue, not a sheet a
 person typed, so a restore puts back what it holds as it holds it: names, sizes,
@@ -289,8 +293,7 @@ Products → Duplicates before taking a backup.
   — is stored as the new `master.webp` byte for byte, the smaller sizes made from it. So
   a backup restored on another Master keeps its checksums there, and a backup of that
   Master reads as unchanged on the first. Only the product restore asks for this
-  (`UploadImageRequest.keepWebpMaster`, passed by `runPhotos`; the shipped `products.zip`
-  load is one): since 2026-10-10 a single upload, the bulk Photo import and the heal
+  (`UploadImageRequest.keepWebpMaster`, passed by `runPhotos`): since 2026-10-10 a single upload, the bulk Photo import and the heal
   encode every file, such a WebP saved from anywhere else too. Any other file in a zip
   (a jpg, a png, a webp a person made) is encoded like every upload, and the row keeps
   the sha256 of the file it came from

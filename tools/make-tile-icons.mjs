@@ -33,7 +33,6 @@ const TILES = {
   fields: 'fields',
   'activity-log': 'logs',
   'recycle-bin': 'recycleBin',
-  integrations: 'integrations',
 };
 
 const pascal = (name) => name.replace(/(^|-)([a-z])/g, (_, __, c) => c.toUpperCase());

@@ -57,7 +57,8 @@ import {
 } from '../domain/archive.js';
 import { appVersion } from '../lib/app-version.js';
 import { createZipWriter, type EntryDigest, type ZipReader, type ZipWriter, openZipReader } from '../lib/archive-zip.js';
-import { BackupError, ConflictError, ValidationError } from '../lib/errors.js';
+import { syncFile } from '../lib/durable-file.js';
+import { BackupError, ConflictError, ValidationError, toErrorMessage } from '../lib/errors.js';
 import { createLogger } from '../lib/logger.js';
 import { recordDetachedActivity } from '../repositories/activity-log.repository.js';
 import {
@@ -379,6 +380,11 @@ export async function exportArchive(options: ArchiveExportOptions): Promise<Arch
       reader.close();
     }
 
+    // The safety copy a restore relies on, and a USB drive pulled out straight
+    // after. Best effort: some network drives refuse this, and that must not fail a good backup.
+    await syncFile(partialPath).catch((error: unknown) =>
+      log.warn(`Could not flush ${partialPath} to disk: ${toErrorMessage(error)}`),
+    );
     await fs.rename(partialPath, finalPath);
   } catch (error) {
     // Retried: on Windows the aborted file's handle may still be closing.

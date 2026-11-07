@@ -36,7 +36,7 @@ import pg from 'pg';
 import type { LoadCatalogueResult } from '@orderbook/shared';
 
 import { config } from '../config/index.js';
-import type { ActorContext } from '../domain/actor.js';
+import { systemActor, type ActorContext } from '../domain/actor.js';
 import {
   parseCatalogueMarkdown,
   type CatalogueSubProduct,
@@ -55,6 +55,7 @@ import * as settingsRepo from '../repositories/settings.repository.js';
 import { resolveDefaultTenantId } from '../repositories/tenant.repository.js';
 import type { TransactionContext } from '../repositories/transaction.js';
 import { publishChange } from './change-bus.js';
+import { isSetupComplete } from './setup.service.js';
 
 const log = createLogger('catalogue-seed');
 
@@ -297,6 +298,59 @@ export async function seedCatalogue(
   const catalogue = await readCatalogueFile();
   const actor = options.actor ?? (await administratorActor(await resolveDefaultTenantId()));
   return loadCatalogue(catalogue, actor, { replace: false });
+}
+
+/**
+ * The printed catalogue, loaded once, on boot, into a brand-new install: not yet
+ * set up, and its catalogue has never held a main product, the Recycle Bin
+ * included. As System: nobody exists yet to act as.
+ *
+ * Recorded under the marker whatever it found, so an install that already has
+ * products or is set up (one an update reaches, or a full backup restored) only
+ * gets the marker, and a catalogue a company later empties on purpose is never
+ * filled again. Marked `loading` before its first write, so one the Master
+ * stopped in the middle of runs again on the next boot while still not set up.
+ * Answers what it did, and null when it had already run.
+ */
+export async function loadShippedCatalogue(file?: string): Promise<'markdown' | 'none' | null> {
+  const tenantId = await resolveDefaultTenantId();
+  const marker = (await settingsRepo.readSettingRows(tenantId)).find(
+    (row) => row.key === SHIPPED_CATALOGUE_MARKER,
+  )?.value as { state?: string } | undefined;
+  if (marker && marker.state !== 'loading') return null;
+
+  const mark = (state: 'loading' | 'done', loaded: 'markdown' | 'none') =>
+    db().transaction((trx) =>
+      settingsRepo.upsertSetting(
+        tenantId,
+        SHIPPED_CATALOGUE_MARKER,
+        { state, loaded, at: new Date().toISOString() },
+        false,
+        1,
+        null,
+        trx,
+      ),
+    );
+
+  const alreadyUsed =
+    !marker && (await db()('product_categories').where({ tenant_id: tenantId }).first('id')) !== undefined;
+  if (alreadyUsed || (await isSetupComplete())) {
+    await mark('done', 'none');
+    return 'none';
+  }
+
+  await mark('loading', 'markdown');
+  const actor: ActorContext = {
+    ...systemActor(tenantId),
+    permissions: {
+      roleId: null,
+      roleName: 'System',
+      tier: 'admin',
+      permissions: ['products.view', 'products.bulk', 'products.create', 'products.edit', 'catalog.lists.manage'],
+    },
+  };
+  await loadCatalogue(await readCatalogueFile(file), actor, { replace: false });
+  return 'markdown';
 }
 
 /**

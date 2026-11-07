@@ -310,7 +310,6 @@ one of them records inside its transaction (`master/tests/audit-atomicity.integr
   as scrypt, in a transaction of its own — and its entry is still written after that commits. It could
   join that transaction and does not, because joining would make signing in fail whenever the trail
   cannot be written, for the administrator who has to fix the trail as much as for anyone.
-- **Connector runs** — many transactions, one summary entry written after the last.
 - **A panel's reissued secret and moved storage folder** — changes that have already happened on the
   panel's own machine before the Master writes, where rolling the Master's half back because the entry
   failed would leave the two machines disagreeing.
@@ -584,7 +583,7 @@ creates is decided by one more key:
 |---|---|
 | a person **without** `party.accessAll` (the usual office role) | restricted at birth: a `manage` grant for the creator, in the same transaction. Visible only to them and to `party.accessAll` holders, with its leads, orders, search hits, dashboard figures, reports, chat chips and Office snapshot |
 | a person **with** `party.accessAll` (administrators; grantable to a manager) | open to everyone, as before. They restrict it in Party Access if they want |
-| nobody (an unattended panel, the system, a connector) | open to everyone |
+| nobody (an unattended panel, the system) | open to everyone |
 
 Example: 3 administrators and 5 office users. Office user A's party is invisible to office users B to E and
 visible to A and all 3 administrators. Parties that existed before are unchanged (no backfill).
@@ -683,9 +682,9 @@ The Office Panel has no Roles & users screen (§16), so this screen is the Maste
 | `active` column | `is_active` | Matches the convention already used by `parties` and `products` |
 | Sign-in works offline against the local replica | **Built** — see §15 | The panel verifies against a verifier it minted itself at the last online sign-in, rather than against a replica of the Master's hashes, which the Master never sends. Only people who have signed in on that machine before can sign in there offline |
 | Roles and users are *managed* from any panel | Managed on the Master only | The Office Panel signs people in; it has no role editor or user list. Nothing in the schema prevents one — it has not been built |
-| Every audited write is atomic with its entry | True since 2026-09-24 for every audited write that is the Master's alone and fits in one transaction — **except** an accepted sign-in, whose `last_sign_in` stamp (and any password-hash upgrade) commits before its entry is written | Detached, on purpose: sign-in attempts, refused or accepted; connector runs (many transactions, one entry); and a panel's reissued secret or moved storage, which have already happened on the panel's machine before the Master writes its half. See §7.1 |
+| Every audited write is atomic with its entry | True since 2026-09-24 for every audited write that is the Master's alone and fits in one transaction — **except** an accepted sign-in, whose `last_sign_in` stamp (and any password-hash upgrade) commits before its entry is written | Detached, on purpose: sign-in attempts, refused or accepted; and a panel's reissued secret or moved storage, which have already happened on the panel's machine before the Master writes its half. See §7.1 |
 | The database refuses to open unencrypted | **Not implemented, and undecided** | SQLCipher is a SQLite-file mechanism and community PostgreSQL has no upstream equivalent, so the swap removed the mechanism with no in-schema replacement. Every `password_hash` is already an irreversible digest and the cluster is loopback-bound, but "data at rest is unreadable without a key" is a guarantee this build does not make. Open question for the owner |
 | Recycle Bin module (`2-…` §4.12) | **Built** — soft delete and restore, and the Master's Recycle Bin screen lists the deleted records of eight entity types (`RECYCLE_BIN_ENTITIES`), roles and users among them | The Bin has no permission of its own: restoring a record needs that entity's own delete permission, so it cannot become a back door |
-| API keys (`api_keys` referencing `role_id`) | **Built** — `api_keys` with `api_key_scopes`, owned by a user (`owner_user_id`), not a role | Specified in `docs/schema/07-integrations.md`, not here |
+| API keys (`api_keys` referencing `role_id`) | **Removed** — Integrations and the `api.manage` permission are gone (`bb8d0326`, dead code 2026-11-06). The tables stay (migrations only add); a stale `api.manage` in a stored role is filtered out on read by `isPermission` | Tables specified in `docs/schema/07-integrations.md` |
 | Developer Panel vendor support session | **Not built** | There is no Developer Panel in OrderBook |
 | i18n via `labelToken` from the first commit | Tokens are in the catalogue and served, and `t()` renders them in English | None |

@@ -25,9 +25,11 @@ import * as catalog from '../src/services/catalog.service.js';
 import { onChange } from '../src/services/change-bus.js';
 import {
   loadCatalogue,
+  loadShippedCatalogue,
   otherDatabaseClients,
   readCatalogueFile,
   seedCatalogue,
+  SHIPPED_CATALOGUE_MARKER,
 } from '../src/services/catalogue-seed.service.js';
 import * as fields from '../src/services/fields.service.js';
 import * as leads from '../src/services/lead.service.js';
@@ -396,6 +398,41 @@ describe.skipIf(!canRunIntegrationTests)('loading the SWISWARE catalogue (integr
       } finally {
         await master.end();
       }
+    });
+  });
+
+  describe('on boot, into an install that has never had a catalogue', () => {
+    const marker = async () =>
+      (await db()('settings').where({ key: SHIPPED_CATALOGUE_MARKER }).first())?.value as
+        | { state: string; loaded: string }
+        | undefined;
+
+    it('loads the shipped catalogue once, before setup, as System, and leaves the mark the photo attach reads', async () => {
+      await resetData();
+      expect(await loadShippedCatalogue()).toBe('markdown');
+      expect(await liveCount('product_categories')).toBe(41);
+      expect(await liveCount('products')).toBe(549);
+      expect(await marker()).toMatchObject({ state: 'done', loaded: 'markdown' });
+      expect(await db()('activity_log').where({ entity_type: 'catalog', actor_type: 'system' })).toHaveLength(1);
+
+      // Emptied on purpose since: it stays empty.
+      await db()('product_variants').delete();
+      await db()('products').delete();
+      await db()('product_categories').delete();
+      expect(await loadShippedCatalogue()).toBeNull();
+      expect(await count('product_categories')).toBe(0);
+    }, 120_000);
+
+    it('only records the marker where a main product exists, even one in the Recycle Bin', async () => {
+      await resetData();
+      const actor = await testActor();
+      const category = await catalog.createCategory({ name: 'Basins', code: 'BAS' }, actor);
+      await catalog.deleteCategory(category.id, actor);
+
+      expect(await loadShippedCatalogue()).toBe('none');
+      expect(await count('products')).toBe(0);
+      expect(await marker()).toMatchObject({ state: 'done', loaded: 'none' });
+      expect(await loadShippedCatalogue()).toBeNull();
     });
   });
 });

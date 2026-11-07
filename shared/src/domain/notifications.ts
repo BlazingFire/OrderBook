@@ -27,6 +27,11 @@ export const NOTIFICATION_KINDS = [
   // The daily automatic backup, to the Server Masters: the drive was missing, or the backup failed.
   'backup.autoSkipped',
   'backup.autoFailed',
+  // Data safety, to the Server Masters: no backup for a week, a restore a shutdown
+  // interrupted (the data from before it is back), and a disk nearly full.
+  'backup.stale',
+  'backup.restoreInterrupted',
+  'storage.lowDisk',
   // A newer OrderBook build is published (1.4): to everyone, once per version.
   'update.available',
   // The Master is about to restart for its nightly update (1.4): Offices will drop and reconnect.

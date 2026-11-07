@@ -42,7 +42,6 @@ describe('every parser rejects a wrong shape', () => {
   // parsers would reject for the uninteresting reason that it is not an object.
   const WRONG: Record<string, unknown> = {
     'security.passwordRevealEnabled': 'yes',
-    'externalApi.enabled': 1,
     'panels.autoPairingEnabled': 'yes',
     'security.developerModeEnabled': 'yes',
     'catalog.importCreatesCategories': 'yes',

@@ -25,6 +25,7 @@
   !error "script-hashes.nsh did not define UNINSTALL_SCRIPT_SHA256"
 !endif
 !include "${__FILEDIR__}\..\..\tools\nsis\verified-powershell.nsh"
+!include "${__FILEDIR__}\..\..\tools\nsis\quiet-uninstall-check.nsh"
 ; ${__FILEDIR__} inside a macro names the folder of the file the macro is
 ; inserted into (electron-builder's installSection.nsh), so this file's own
 ; folder is captured here, at top level, for the File line in customInstall.

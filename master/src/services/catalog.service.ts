@@ -608,11 +608,14 @@ async function assertCodesFree(
   }
 }
 
-/** `hasVariants` as the form meant it: stated, or implied by a labelled row. */
+/** `hasVariants` as the form meant it: stated, or implied by a labelled row or by several rows. */
 function resolveHasVariants(input: ProductInput, fallback: boolean | null): boolean {
   if (input.hasVariants !== undefined) return input.hasVariants;
   if (input.variants !== undefined) {
-    return input.variants.some((variant) => typeof variant.label === 'string' && variant.label.trim() !== '');
+    return (
+      input.variants.length > 1 ||
+      input.variants.some((variant) => typeof variant.label === 'string' && variant.label.trim() !== '')
+    );
   }
   return fallback ?? false;
 }
@@ -829,19 +832,12 @@ export async function updateProduct(
 
   // C5: retiring variants that pending lines still quote is refused — the
   // lines would point at a hidden variant. Delete those lines' records first,
-  // or keep the variant. Variants retire by omission from the replaced set,
-  // matched by id then by code (a set rebuilt without ids keeps its rows).
+  // or keep the variant. Variants retire by omission from the replaced set, as
+  // `replaceVariants` will match it.
   if (variants) {
+    const kept = new Set(productVariantRepo.matchVariantRows(existing.variants, variants));
     const retiredIds = existing.variants
-      .filter((stored) => stored.isActive)
-      .filter((stored) => {
-        const byId = variants.find((variant) => variant.id === stored.id);
-        if (byId) return false;
-        const byCode = variants.find(
-          (variant) => variant.code.trim().toLowerCase() === stored.code.trim().toLowerCase(),
-        );
-        return !byCode;
-      })
+      .filter((stored) => stored.isActive && !kept.has(stored.id))
       .map((stored) => stored.id);
     if (retiredIds.length > 0) {
       const quoting = await productRepo.pendingLinesQuotingVariants(actor.tenantId, retiredIds);

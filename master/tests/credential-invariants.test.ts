@@ -19,13 +19,6 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'src');
-const SHARED = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '..',
-  '..',
-  'shared',
-  'src',
-);
 
 function read(relative: string): string {
   // A Windows checkout (core.autocrlf) has CRLF; the needles below use LF.
@@ -243,50 +236,6 @@ describe('the two-layer permission check', () => {
     // administers). `GET /pairing-window` used to be the second; it now lists this
     // PC's addresses and is `panels.manage` like the screen that reads it.
     expect(guards.length).toBe(handlers.length - 1);
-  });
-
-  /*
-   * The API key's digest is the third credential in this codebase, and it gets
-   * the same greppable treatment as the first two: a rule stated in a comment
-   * stops being true quietly, so something mechanical checks it.
-   */
-  it('never declares an API key token on the shape the browser receives', () => {
-    // Comments stripped first: this file's header explains at length what it
-    // does not declare, and a test that read prose would fail on the
-    // explanation rather than on the code.
-    const shape = readFileSync(path.join(SHARED, 'domain', 'api-keys.ts'), 'utf8')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/\/\/.*$/gm, '');
-
-    // Not the value and not the digest. The plaintext exists for exactly one
-    // response, and `IssuedApiKey` — a separate type, in the service — is where
-    // that one response is typed.
-    expect(shape).not.toMatch(/\btoken\s*[?]?:/);
-    expect(shape).not.toMatch(/tokenHash/);
-  });
-
-  it('strips the digest in the mapper rather than trusting the type to hide it', () => {
-    const repository = read('repositories/api-key.repository.ts');
-
-    // Destructured away, so adding a column to the row type cannot silently
-    // start returning it — the same discipline as the panel secret above.
-    expect(repository).toContain('const { token_hash: _hash, ...rest } = row;');
-  });
-
-  it('guards every integration route (`api.manage` gates keys and connections)', () => {
-    const routes = read('http/routes/integration.routes.ts');
-
-    const handlers = routes
-      .split('\n')
-      .filter((line) => /integrationRoutes\.(get|post|put|patch|delete)\(/.test(line));
-    const guards = routes
-      .split('\n')
-      .filter((line) => !line.trim().startsWith('*') && line.includes('needs('));
-
-    // No exemptions. Every one of these either mints a credential, points this
-    // Master at another system, or reads what those did.
-    expect(handlers.length).toBeGreaterThan(0);
-    expect(guards.length).toBe(handlers.length);
   });
 
   it('guards the identity route (`settings.manage`); leaves first-run and restore open', () => {

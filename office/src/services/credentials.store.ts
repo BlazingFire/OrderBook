@@ -5,9 +5,9 @@
  */
 
 import fs from 'node:fs/promises';
-import path from 'node:path';
 
 import { paths } from '../config/paths.js';
+import { writeDurable } from '../lib/durable-file.js';
 import { createLogger } from '../lib/logger.js';
 
 const log = createLogger('credentials');
@@ -40,8 +40,7 @@ export async function loadCredentials(): Promise<StoredCredentials | null> {
 }
 
 export async function saveCredentials(credentials: StoredCredentials): Promise<void> {
-  await fs.mkdir(path.dirname(paths().credentialsFile), { recursive: true });
-  await fs.writeFile(paths().credentialsFile, JSON.stringify(credentials, null, 2), { mode: 0o600 });
+  await writeDurable(paths().credentialsFile, JSON.stringify(credentials, null, 2));
   cached = credentials;
   log.info(`Paired with Master ${credentials.masterUniqueId} at ${credentials.masterHost}:${credentials.masterPort}`);
 }

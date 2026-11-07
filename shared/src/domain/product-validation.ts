@@ -51,7 +51,10 @@ export function validateProductInput(input: ProductInput): void {
     throw new ProductValidationError('validation.category.sortOrder');
   }
   if (input.variants !== undefined) {
-    validateProductVariants(input.variants, input.hasVariants ?? input.variants.some((v) => hasText(v.label)));
+    validateProductVariants(
+      input.variants,
+      input.hasVariants ?? (input.variants.length > 1 || input.variants.some((v) => hasText(v.label))),
+    );
   }
 }
 
