@@ -54,8 +54,16 @@ on it.
 
 ## Data safety and version 1.5.8 (2026-11-06)
 
-**State:** uncommitted on `fix/157-gate`, worktree `C:\Users\Z\Desktop\OrderBook-r157`, based on `main` `86f49c2e`.
+**State:** committed as `37e4ad63` on `fix/157-gate` (worktree `C:\Users\Z\Desktop\OrderBook-r157`), on top of `main` `86f49c2e`.
 All `package.json` files say **1.5.8**, notes in `docs/releases/1.5.8.md`. No migration, protocol still 12.
+**Gate (2026-11-07, fresh test cluster): lint 0, typecheck 0, test 0: 402 files passed + 1 skipped, 5289 tests passed + 17 skipped, 101 integration files ran on PostgreSQL.**
+Two tests needed a fix on the way: `postgres-launcher.test.ts` pinned the exact spelling of the exit-code check, and
+`migration-line-packaging-defaults` leaked rows on a brand-new test database (the six source platforms are seeded per
+company, none exists at migration time, so `resetData`'s option cleanup is skipped). The helper itself is unchanged.
+
+**Publishing:** the owner's rule (2026-11-07) is to build here and upload only, never GitHub Actions (no minutes left).
+A release is `gh release create v<version> -R BlazingFire/OrderBook-Releases` with the three Setups and the five
+`latest-*.json` manifests, signed locally with `release-2026-10-01`. A push to `main` carries `[skip ci]` in its subject.
 
 **Rule the owner set:** data safety must not affect running software. So an existing install keeps its database
 login and folder permissions, and the Office snapshot is not flushed (large, frequent, rebuildable).
