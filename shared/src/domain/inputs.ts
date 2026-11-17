@@ -19,6 +19,7 @@ import type {
   Uuid,
 } from './entities.js';
 import type { NoteColumns } from './order-note.js';
+import type { PrintSide, PrintSideSetting } from './colour-rule.js';
 import type { FieldListKey } from './fields.js';
 import type { RoleTier } from './permissions.js';
 import type { RecycleBinEntityType } from './recycle-bin.js';
@@ -36,23 +37,6 @@ export interface PartyInput {
   gstNumber?: string | null;
   notes?: string | null;
   customFields?: Record<string, unknown>;
-}
-
-/**
- * One variant as the product form sends it. `id` names an existing row on an
- * edit — it must be preserved, because stock rows, reservations and lines are
- * keyed by it; a row without one (or with an id the product does not have) is
- * matched by label, and otherwise inserted.
- */
-export interface ProductVariantInput {
-  id?: RecordId;
-  code: string;
-  /** Colour or pattern text; omitted or null on a no-variant product. */
-  label?: string | null;
-  /** Kilograms; omitted or null while unknown. Must be greater than zero when given. */
-  weightKg?: number | null;
-  /** Form order; defaults to the array position. */
-  sequence?: number;
 }
 
 export interface ProductInput {
@@ -80,15 +64,21 @@ export interface ProductInput {
    */
   categoryBrand?: string | null;
   /**
-   * The variant set. Required on create (at least one). On an update, absent
-   * means "leave the variants alone" and present replaces the whole set.
+   * The sub product's software code (`OPT-0001`). Blank or absent on create
+   * takes the next `CODE-####` for its category; absent on update leaves it.
    */
-  variants?: ProductVariantInput[];
-  /** Defaults on create to whether any variant carries a label. */
-  hasVariants?: boolean;
+  code?: string | null;
+  /** Kilograms; omitted or null while unknown. Must be greater than zero when given. */
+  weightKg?: number | null;
   size?: string | null;
-  /** Made in any colour of the company's colour list — a lead line may then name one. */
-  multiColour?: boolean;
+  /**
+   * The colours this sub product is offered in. Absent on update leaves
+   * them alone; present replaces the whole list (cleaned by
+   * `normalizeColours` on the way in).
+   */
+  colours?: string[];
+  /** Print side setting; absent leaves it alone, absent on create is `default`. */
+  printSide?: PrintSideSetting;
   /** Catalogue order inside the category; null sorts last. */
   sortOrder?: number | null;
   customFields?: Record<string, unknown>;
@@ -150,19 +140,23 @@ export interface PartyProductVariantInput {
 }
 
 /**
- * One line on a lead or order — one variant, one quantity.
+ * One line on a lead or order — one sub product, one quantity.
  *
  * The snapshot fields are accepted from the client rather than re-derived on the
  * server, because an offline panel builds the line from its cached catalogue and
- * that snapshot *is* the agreed spec. The server validates that the variant
- * exists on the product and fills any snapshot field the client left out — it
+ * that snapshot *is* the agreed spec. The server validates that the sub
+ * product exists and fills any snapshot field the client left out — it
  * never overwrites one the client sent, which is what keeps a line taken
  * offline intact.
  */
 export interface LineItemInput {
   productId: RecordId;
-  /** Which variant of the product — the code and weight resolve from it. */
-  variantId: RecordId;
+  /**
+   * Legacy: the variant row, on a line built by a panel from before
+   * variants were removed (a queued offline lead). The Master maps it back
+   * to its sub product; new panels never send it.
+   */
+  variantId?: RecordId | null;
   quantity: number;
   productName?: string | null;
   categoryName?: string | null;
@@ -174,12 +168,14 @@ export interface LineItemInput {
   code?: string | null;
   variantLabel?: string | null;
   /**
-   * A colour from the company's colour list, meaningful only on a
-   * `multiColour` product; null means the variant's own. Sent for any other
-   * product it is dropped, not refused — a lead queued offline must not
-   * bounce on it (`docs/catalogue/CATALOGUE_MODEL.md` §2).
+   * The colour chosen on the line, one of the sub product's colour options.
+   * A colour the sub product does not offer is dropped, not refused — a
+   * lead queued offline must not bounce on it. Absent on a single-colour
+   * sub product, the Master fills in that one colour.
    */
   colour?: string | null;
+  /** The resolved print side as the panel's catalogue had it; the Master fills it when absent. */
+  printSide?: PrintSide | null;
   size?: string | null;
   weightKg?: number | null;
   /**

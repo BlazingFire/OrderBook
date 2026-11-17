@@ -170,7 +170,7 @@ CREATE TABLE line_items (
   parent_type        TEXT NOT NULL CHECK (parent_type IN ('lead', 'order')),
   parent_id          TEXT NOT NULL,                              -- leads.id or orders.id; no FK
   product_id         TEXT NOT NULL REFERENCES products(id),
-  variant_id         TEXT NOT NULL REFERENCES product_variants(id),   -- since 2026-09: a line is one variant
+  variant_id         TEXT REFERENCES product_variants(id),   -- legacy only: set on a line written before 2026-11-17, NULL since
 
   -- Snapshotted at add time, frozen from then on.
   product_name       TEXT NOT NULL,
@@ -178,11 +178,13 @@ CREATE TABLE line_items (
   category_code      TEXT,                       -- since 2026-09-29: that category's code, e.g. 'OPT'
   brand_name         TEXT,                       -- since 2026-09-29: that category's brand
   alias              TEXT,
-  code               TEXT,                       -- the variant's code as it was
-  variant_label      TEXT,                       -- the variant's colour or pattern as it was
-  colour             TEXT,                       -- since 2026-09-21: the colour chosen on a multi-colour line
+  code               TEXT,                       -- the sub product's code as it was
+  variant_label      TEXT,                       -- legacy: a pre-2026-11-17 line's variant colour/pattern
+  colour             TEXT,                       -- the colour on the line, from the sub product's own list
+  print_side         TEXT CHECK (print_side IS NULL OR print_side IN ('left', 'right')),
+                                                 -- since 2026-11-17: the side resolved at add time; NULL on older lines
   size               TEXT,
-  weight_kg          NUMERIC(10,3),              -- the variant's weight as it was, per piece
+  weight_kg          NUMERIC(10,3),              -- the sub product's weight as it was, per piece
 
   packaging          TEXT,
   grade              TEXT,                       -- since 2026-09-22: the grade this line is sold as
@@ -222,12 +224,18 @@ from the product, not from a party variant, not during conversion.
 `image_path` is carried through the input contract and stored as given; no screen in either panel
 sets it today.
 
-**A line is one variant** (2026-09). White ×5 and Blue ×10 of the same model are two lines,
-each with its own code and its own weight. The `line_item_quantities` child table of the
-tile-era model (one line, many colour rows) is gone: the colour is now the variant, and the
-variant is the grain a line is kept at. `code`,
-`variant_label` and `weight_kg` are copied off the variant when the line is added and never
+**A line is one sub product and one colour** (2026-09, re-based 2026-11-17).
+White ×5 and Blue ×10 of the same sub product are two lines, each with its own
+quantity and its own colour. The `line_item_quantities` child table of the
+tile-era model (one line, many colour rows) is gone. `code`, `colour` and
+`weight_kg` are copied off the sub product when the line is added and never
 re-read — a weight entered on the product later does not move an order's line.
+`print_side` is frozen the same way, from `printSideOf(name, product.print_side)`,
+so re-siding a sub product never reprints history; a line written before the
+setting has NULL and resolves by the Default name rule when it prints.
+`variant_id` and `variant_label` are the legacy pair: a line taken by a panel
+before the removal keeps them, and the order note reads its colour as
+`colour ?? variant_label`.
 `Lead.totalWeightKg` and `Order.totalWeightKg` sum `weight_kg × quantity` over the lines that
 have a weight; `linesWithoutWeight` counts the rest, because an unentered weight is a fact to
 show, not a zero to add. The CHECK on `quantity` is what makes "a line with nothing on it"
@@ -426,7 +434,7 @@ were recorded as **consumed**, since it had already taken its stock under the ol
 | Before | Now | Why |
 |---|---|---|
 | `products.product_code`, `weight_kg`, `color` | `product_variants` rows — one per colour/pattern, one for a plain product | A sanitaryware model is sold in many coded variants, each with its own code and weight (`02-parties-and-products.md`) |
-| `line_items` + `line_item_quantities` (one line, many colour rows) | One line per variant: `variant_id`, `variant_label`, `quantity` | The colour *is* the variant, and the variant is what stock is keyed by |
+| `line_items` + `line_item_quantities` (one line, many colour rows) | One line per sub product and colour: `product_id`, `colour`, `quantity` (`variant_id`/`variant_label` are the pre-2026-11-17 pair) | The colour is a line attribute chosen from the sub product's own list; several colours are several lines |
 | `inventory_stock` / `stock_reservations` / `stock_movements` keyed by `(product_id, colour)` text | Keyed by `variant_id` | A line, a hold and a movement share one grain; nothing is matched by a typed colour name |
 | `products.category_id` optional | `NOT NULL` | The lead screen finds products category-first |
 | Pick kinds `product`, `variant`, `party` | `category`, `product` (scoped by `categoryId`), `party` | The two-stage search the brief asked for |

@@ -13,7 +13,13 @@
  * alone and silently overflow a page.
  */
 
-import { isNumericSubProduct, shownColour, type ColourLabelOf } from './colour-rule.js';
+import {
+  isNumericSubProduct,
+  printSideOf,
+  shownColour,
+  type ColourLabelOf,
+  type PrintSide,
+} from './colour-rule.js';
 import type { MessageKey } from '../i18n/keys.js';
 import type { IsoTimestamp, Lead, LineItem, Order, Party, RecordId } from './entities.js';
 
@@ -219,15 +225,17 @@ export const NOTE_LAYOUT = {
 export const NOTE_GROUP_HEADER_MIN = 2;
 
 export interface NoteLine {
-  /** `variantId|colour|grade|packaging` — what makes two lines one row. */
+  /** `productId|colour|grade|packaging` — what makes two lines one row. */
   key: string;
   brand: string | null;
   /** Main product and size, e.g. `Duragres Oak Wood 200×1200` — the coded side's group header. */
   product: string;
   /** The main product alone, without its size — what the named side prints. */
   productName: string;
-  /** The sub product: a name on the left half, a code on the right. */
+  /** The sub product text: its name, or a legacy numeric variant code on old lines. */
   subProduct: string;
+  /** The half it prints on: its line's print-side snapshot, else the Default name rule. */
+  side: PrintSide;
   size: string | null;
   colour: string | null;
   grade: string | null;
@@ -406,8 +414,9 @@ function compareLines(a: NoteLine, b: NoteLine): number {
 
 /**
  * Merges lines that the store fills as one (same sub product, colour, grade and
- * packaging), splits them by `isNumericSubProduct` — the only test of named
- * against coded — and sorts each half.
+ * packaging), splits them by each line's resolved print side — its frozen
+ * snapshot, or the Default name rule on a line from before the setting — and
+ * sorts each half.
  */
 export function buildOrderNote(
   order: NoteRecord,
@@ -417,7 +426,15 @@ export function buildOrderNote(
   const merged = new Map<string, NoteLine>();
 
   for (const line of order.items) {
-    const key = [line.variantId, line.colour ?? '', line.grade ?? '', line.packaging ?? ''].join('|');
+    const key = [
+      line.productId,
+      // Null on every new line; on legacy lines it keeps two coded variants
+      // of one sub product from merging into a row that shows one code.
+      line.variantId ?? '',
+      line.colour ?? line.variantLabel ?? '',
+      line.grade ?? '',
+      line.packaging ?? '',
+    ].join('|');
     const existing = merged.get(key);
     if (existing) {
       existing.quantity += line.quantity;
@@ -427,19 +444,23 @@ export function buildOrderNote(
           : existing.weightKg + line.lineWeightKg;
       continue;
     }
-    // A numeric VARIANT code (1501 on 18X14 VITROSA SET) prints as a code on
-    // the right half under its sub product heading, like a numeric sub
-    // product name does: the cell shows the code, the header its parent.
+    // Legacy lines only: a numeric VARIANT code (1501 on 18X14 VITROSA SET)
+    // printed as a code on the right half under its sub product heading, like
+    // a numeric sub product name does: the cell shows the code, the header
+    // its parent. A line with a print-side snapshot never takes this path —
+    // its own code is the sub product's software code, not a printed name.
     const subName = line.productName.trim();
     const code = line.code?.trim() ?? '';
     const category = line.categoryName?.trim() || '';
-    const codedByCode = code !== '' && !isNumericSubProduct(subName) && isNumericSubProduct(code);
+    const codedByCode =
+      line.printSide == null && code !== '' && !isNumericSubProduct(subName) && isNumericSubProduct(code);
     merged.set(key, {
       key,
       brand: line.brandName,
       product: productLabel(line),
       productName: codedByCode ? (category === '' ? subName : `${category} — ${subName}`) : (category || subName),
       subProduct: codedByCode ? code : subName,
+      side: codedByCode ? 'right' : (line.printSide ?? printSideOf(subName, 'default')),
       size: line.size?.trim() || null,
       // Through `shownColour`, as every other colour that prints: a colour that
       // only repeats the sub product's name ("Ivory" on "IVORY BASIN") is not
@@ -453,12 +474,12 @@ export function buildOrderNote(
   }
 
   const lines = [...merged.values()].sort(compareLines);
-  const named = lines.filter((line) => !isNumericSubProduct(line.subProduct));
+  const named = lines.filter((line) => line.side === 'left');
 
   const coded: NoteGroup[] = [];
   const byGroup = new Map<string, NoteGroup>();
   for (const line of lines) {
-    if (!isNumericSubProduct(line.subProduct)) continue;
+    if (line.side !== 'right') continue;
     // One section per main product, whatever the size: a product's sizes print under one header, each code
     // captioned with its size (`noteCellCaption`).
     const groupKey = `${line.brand ?? ''}|${line.productName}`;

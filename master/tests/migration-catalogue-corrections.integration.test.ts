@@ -14,7 +14,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { buildOrderNote, colourRuleOf } from '@orderbook/shared';
+import { buildOrderNote } from '@orderbook/shared';
 
 import { db } from '../src/db/knex.js';
 import { up } from '../src/db/migrations/20261015000000_catalogue_corrections.js';
@@ -74,6 +74,20 @@ async function stageOldInstall() {
   const actor = await testActor();
   await loadCatalogue(await readCatalogueFile(), actor, { replace: false });
 
+  // The catalogue now seeds code/colours on the product itself; an install
+  // from before the correction held them on one variant row per sub product,
+  // which is the shape this migration reads. Put those rows back.
+  await db().raw(`
+    INSERT INTO product_variants (id, tenant_id, product_id, code, label, sequence)
+    SELECT 'LEGACY-' || p.id, p.tenant_id, p.id, p.code,
+           CASE WHEN jsonb_array_length(p.colours) = 1 THEN p.colours ->> 0 ELSE NULL END, 1
+      FROM products p
+     WHERE p.code IS NOT NULL;
+    UPDATE products
+       SET has_variants = (jsonb_array_length(colours) = 1),
+           multi_colour = (jsonb_array_length(colours) > 1);
+  `);
+
   await db()('products').where({ id: (await byCode('OPT-0001')).id }).update({ name: '102 (9")', size: 'L-27, B-15, H-26' });
   await db()('products').where({ id: (await byCode('OPT-0015')).id }).update({ name: 'SYPHONIC (9")', size: 'L-26, B-14, H-30' });
   // The company's own name for 111: not the shipped caption, so not ours to change.
@@ -86,9 +100,12 @@ async function stageOldInstall() {
   await db()('product_variants').where({ code: 'WC-0003' }).update({ label: 'Ivory' });
 
   const corner = await byCode('TTW-0016');
+  // The product's own code has to move too, or a line taken from this staging
+  // would snapshot the seeded `TTW-0016` and the migration's line update — which
+  // matches on the OLD code — would find nothing.
   await db()('products')
     .where({ id: corner.id })
-    .update({ category_id: await categoryId('WB'), sort_order: 17, has_variants: true });
+    .update({ code: 'WB-0017', category_id: await categoryId('WB'), sort_order: 17, has_variants: true });
   await db()('product_variants').where({ id: corner.variantId }).update({ code: 'WB-0017', label: 'White' });
 
   const party = await catalog.createParty({ name: 'Old Orders Traders' }, actor);
@@ -102,6 +119,8 @@ async function stageOldInstall() {
   const lead = await take('OPT-0001');
   const order = await orders.convertLead({ leadId: (await take('OPT-0001')).id }, actor);
   const cornerLead = await take('WB-0017');
+  // Lines from before the print-side setting carry no frozen side.
+  await db()('line_items').update({ print_side: null });
   return { actor, lead, order, cornerLead, corner };
 }
 
@@ -170,16 +189,16 @@ describe.skipIf(!canRunIntegrationTests)('catalogue corrections migration (integ
   });
 
   it('CAT-FIX-5: the concealed and modern closets become white only; the trap closets stay multicolour', async () => {
-    const { actor } = await stageOldInstall();
+    await stageOldInstall();
 
     await up(db());
 
     for (const code of ['WC-0001', 'WC-0002']) {
-      const product = (await catalog.findProductByCode(code, actor))!;
-      expect(colourRuleOf(product)).toBe('fixed');
-      expect(product.variants.map((variant) => variant.label)).toEqual(['White']);
+      const row = await byCode(code);
+      expect(row.multiColour).toBe(false);
+      expect(row.label).toBe('White');
     }
-    expect(colourRuleOf((await catalog.findProductByCode('WC-0005', actor))!)).toBe('selectable');
+    expect((await byCode('WC-0005')).multiColour).toBe(true);
   });
 
   it('CAT-FIX-6: 14x14 NEW CORNER moves to Table Top Wash Basin on the next free code, and its old line follows', async () => {
@@ -190,7 +209,7 @@ describe.skipIf(!canRunIntegrationTests)('catalogue corrections migration (integ
     expect(await byCode('WB-0017')).toBeUndefined();
     const moved = await byCode('TTW-0016');
     expect(moved).toMatchObject({ id: corner.id, variantId: corner.variantId, categoryCode: 'TTW', label: null });
-    expect(colourRuleOf((await catalog.findProductByCode('TTW-0016', actor))!)).toBe('dedicated');
+    expect(moved.multiColour).toBe(false);
     const line = (await leads.getLead(cornerLead.id, actor)).items[0];
     expect(line).toMatchObject({ variantId: corner.variantId, code: 'TTW-0016', categoryCode: 'TTW' });
   });

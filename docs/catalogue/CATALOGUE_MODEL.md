@@ -2,6 +2,9 @@
 
 Design for the owner's 2026-09-28 catalogue restructure, **ported onto main's
 1.2 product master** (category → model → variant, no money; stock was removed in 1.4).
+**Amended 2026-11-17:** the variant layer is removed — a sub product carries its
+own code, weight, colours and print side (see §2 and `GLOSSARY.md`); the
+`product_variants` table stays only as a dormant record of pre-removal lines.
 The data lives in [`master/assets/catalogue/swisware-plus-2026.md`](../../master/assets/catalogue/swisware-plus-2026.md)
 (shipped with the Master so the `/api/developer/load-catalogue` route can load it in an installed copy; no screen calls it since 5a32106).
 
@@ -20,10 +23,10 @@ Owner answers this rests on (2026-09-28):
 - Numbered designer sub products (1111, 41, 7511 …): no colour is shown
   anywhere.
 - Lead PDF: an alphanumeric sub product prints in **Model** (left), a purely
-  numeric one in **Code** (right). The PDF comes back as a fixed-layout lead PDF
-  — no designer, no templates (the PDF Designer stays removed).
+  numeric one in **Code** (right) — unless the sub product sets its own print
+  side (2026-11-17, §2).
 - Port onto main; keep everything main has (1.2.0, the settings, the Master
-  Parties screen, no money, variants).
+  Parties screen, no money).
 
 ## 1. Terms and storage
 
@@ -32,41 +35,59 @@ Owner answers this rests on (2026-09-28):
 | Brand | option list `product.brand` (value = label = brand name) + `product_categories.brand` | `Swisware+` |
 | Product | `product_categories` row | `One Piece Toilet` (code `OPT`) |
 | Product code | `product_categories.code` — alphanumeric, unique per tenant among live rows | `OPT` |
-| Sub product | a `products` row (a "model") with **exactly one variant**; its printed identifier is `products.name` | `102`, `1111`, `MAGENTA` |
-| Sub product software code | that variant's `product_variants.code` (already tenant-unique) | `OPT-0001` |
+| Sub product | a `products` row | `102`, `1111`, `MAGENTA` |
+| Sub product software code | `products.code` (tenant-unique among live rows) | `OPT-0001` |
 | Size | `products.size` | `L-27, B-15, H-26` |
+| Colours offered | `products.colours` — a JSON array of `stock.colour` values (§2) | `["White","Ivory"]` |
+| Print side | `products.print_side` — `default`, `left` or `right` | `default` |
 | Catalogue order | `product_categories.sort_order`, `products.sort_order` | |
 
 **A product's name never shows its code (1.4, R14).** `OPT` is the Product code: it has its own column and field and still finds the product when typed in a search, but every list, picker, chip, line subtitle, log entry and refusal names the product as `One Piece Toilet` (plus its brand where a picker needs it). The one composer is `productLabel(name, brand?)` in `ui/src/catalogueSummary.ts` (the Office re-exports it) and `categoryLabel` in `master/src/services/catalog.service.ts`; `ui/tests/product-label.test.ts` fails if a screen passes a code to it. This applies to every product code, not only OPT.
 
 UI wording: **Product** = the category, **Sub product** = the model. Code
-identifiers stay (`category*`, `product*`, `variant*`); nothing is renamed.
+identifiers stay (`category*`, `product*`); the `variant*` vocabulary went with
+the variant layer (2026-11-17) — a line's legacy `variantId` / `variantLabel`
+remain only so a pre-removal line still reads and prints.
 
 Brand is an option-list value (add, rename the label, remove to the Recycle
 Bin, activity log, sync — all existing). The trim deleted the old
 `product.brand` list and the `products.brand` column; brand now lives on the
 category and is read through it. No copy on `products`.
 
-## 2. Colour rules — derived, no column
+## 2. Colours and print side — columns on the sub product (2026-11-17)
 
-| Rule | Stored as | Line colour | Shown |
-|---|---|---|---|
-| `fixed` | `has_variants = true`, one variant whose `label` is the colour (White, Black, Magenta, Rustic Coffee Brown) | none (the variant label is the colour) | yes, except when the label only repeats the sub-product name (`MAGENTA` / `Magenta`) |
-| `dedicated` | `has_variants = false`, one variant with `label` NULL, `multi_colour = false` | none | never |
-| `selectable` ("multicolour") | `multi_colour = true`, `has_variants = false`, one variant with `label` NULL | the chosen colour from `stock.colour` | yes |
+The rule is no longer derived: a sub product **stores the colours it is offered
+in** (`products.colours`) and **where it prints** (`products.print_side`).
 
-`colourRuleOf(product)` in `shared/src/domain/colour-rule.ts` derives it:
-`multiColour ? 'selectable' : variants[0]?.label ? 'fixed' : 'dedicated'`, plus
-`isNumericSubProduct`, `subProductCells` (Model/Code split) and the "colour
-repeats the name" helper. No sentinel colour value.
+| `products.colours` | Line colour | Shown |
+|---|---|---|
+| none (designer pieces like `1111`, accessories) | null | never |
+| one (White, Black, Magenta, Rustic Coffee Brown) | that colour always | yes, except when it only repeats the sub-product name (`MAGENTA` / `Magenta`) |
+| several ("every colour" — Orissa Pan, Water Closet) | the one chosen per line from the sub product's own list | yes |
+
+`shared/src/domain/colour-rule.ts` is the one deep module for this behaviour:
+`resolveLineColour(colours, chosen)` picks a line's colour (0/1/several),
+`printSideOf(name, setting)` resolves `default` / `left` / `right` (a purely
+numeric name prints right, anything else left, so a catalogue nobody has
+re-sided prints exactly as it always did), `normalizeColours`, `subProductCells`
+(the Model/Code split) and the "colour repeats the name" helpers. `colourRuleOf`
+and the `fixed` / `dedicated` / `selectable` vocabulary are gone — nothing may
+re-derive a rule from columns.
+
+`printSideOf` gives the side; a **line freezes its resolved side at add time**
+(`line_items.print_side`), so re-siding a sub product never reprints history.
+Lines written before the setting have `print_side` NULL and resolve by name.
 
 - **Several colours with a quantity each** = several `line_items` rows on the
-  same variant, one per colour. No schema change; screens and the PDF group them.
-- **The Master coerces, never refuses:** a colour sent for a product that is not
-  multi-colour is dropped (`colour = null`) instead of `LineColourError` — a
-  queued offline lead must not bounce on it. This amends HANDOFF decision 15.
+  same sub product, one per colour. No schema change; screens and the PDF group them.
+- **The Master coerces, never refuses:** a colour sent for a sub product that
+  offers none is dropped (`colour = null`) instead of `LineColourError` — a
+  queued offline lead must not bounce on it. A *chosen* colour of a
+  several-colours sub product that is not on its list is refused readably.
 - The colour range (catalogue page 2: 16 colours + 5 rustic, with hex) is the
-  `stock.colour` list; the loader upserts it.
+  `stock.colour` list; the loader upserts it. The colours copied onto the 13
+  former multicolour sub products are the list's values on the day of the
+  removal, not a live reference to it.
 
 ## 3. Schema
 
@@ -93,23 +114,36 @@ Never edit a shipped migration.
    - `line_items.brand_name TEXT`, `line_items.category_code TEXT` (snapshots
      beside `category_name`).
    - No data, no DROP COLUMN / DELETE / TRUNCATE (the additive guard).
-3. `SHIPPED` in `migration-registry.test.ts` gains every name up to and
-   including these two.
+4. `20261116000000_sub_product_code_colours_print_side` — **additive,
+   idempotent** (2026-11-17). `products.code TEXT`, `weight_kg NUMERIC(10,3)`,
+   `colours JSONB NOT NULL DEFAULT '[]'`, `print_side TEXT NOT NULL DEFAULT
+   'default'` with its CHECK, unique `idx_products_code_tenant (tenant_id,
+   lower(code)) WHERE code IS NOT NULL AND deleted_at IS NULL`; `line_items.print_side
+   TEXT` plus its CHECK and `variant_id` dropped from NOT NULL (the FK stays, for
+   the lines that quote one). Backfilled from each sub product's first variant —
+   a former multicolour one takes the tenant's live `stock.colour` values, a
+   several-variant one keeps every label as a colour, every row prints `default`.
+   `products_search_refresh()` is rewritten to read the product's own code and
+   colours and the `product_variants` search trigger is dropped. `product_variants`
+   itself is left in place, dormant (`docs/schema/02-parties-and-products.md`).
+5. `SHIPPED` in `migration-registry.test.ts` gains every name up to and
+   including these.
 
 ## 4. Catalogue data and loading
 
 - `master/src/domain/catalogue-markdown.ts` — strict parser of the markdown
   file (brands table, colour range with hex, `### CODE — Name` product blocks
-  with `- Brand:` and `| # | Sub product | Size | Colour rule | Colour |`),
+  with `- Brand:` and `| # | Sub product | Size | Colours | Print side |`),
   refusing malformed input with a line number. Replaces
-  `master/src/domain/swisware-catalogue.ts` (deleted).
+  `master/src/domain/swisware-catalogue.ts` (deleted). `All` in the Colours
+  column means the whole colour range (§2), expanded at parse time.
 - `catalogue-seed.service.ts` → `loadCatalogue(parsed, actor, { replace })`, one
   transaction: upsert brand values and colours (hex, reactivate), products =
-  categories with code/brand/sort order, sub products = one-variant models with
-  `CODE-0001…` codes in catalogue order, `sort_order`, size, rule per §2,
-  weights NULL. Additive mode (the `/api/developer/load-catalogue` route,
-  `seed:catalogue`) skips what exists; `replace` (reload) first clears the
-  catalogue-dependent data only.
+  categories with code/brand/sort order, sub products carrying their own code
+  (`CODE-0001…` in catalogue order), sort order, size, colours and print side
+  per §2, weights NULL. Additive mode (the `/api/developer/load-catalogue` route,
+  `seed:catalogue`) skips what exists and never reuses a binned code; `replace`
+  (reload) first clears the catalogue-dependent data only.
 - `npm run reload:catalog` — parse, refuse while another connection to the
   database is open (stop the Master first), warn to drain Office outboxes,
   `loadCatalogue({replace:true})`. Deletes leads, orders, lines, party variants,
@@ -132,8 +166,12 @@ Never edit a shipped migration.
   back to `snapshot.categories` offline).
 - Sub product create/update: category by id, then `categoryCode`, then (brand,
   name) — never silently creates a category when a code was given; a live name
-  clash inside the category → `ConflictError`; a blank variant code → next
-  `CODE-####` for that category. Since 2026-10-09 the bulk import keeps the same
+  clash inside the category → `ConflictError`; a blank code → next `CODE-####`
+  for that category, a typed code that another live sub product holds →
+  `error.conflict.productCodeTaken` (the partial unique index is the
+  enforcement). Colours and print side are ordinary columns; `validateProductInput`
+  (`shared/src/domain/product-validation.ts`) is the one validator for the
+  service and the offline merge. Since 2026-10-09 the bulk import keeps the same
   name rule (`validation.product.nameTaken`) for a create, a rename or a move,
   checked against where every sub product ends up, so two names a file swaps
   both land; twins made before that stay editable. A product backup restore
@@ -142,8 +180,9 @@ Never edit a shipped migration.
 - Picks: `category` matches code prefix, name substring or brand, exact code
   first, then `sort_order`; rows carry `code`, `brand`. `product` with
   `categoryId` returns **every** live sub product of that category in
-  `sort_order` order (limit raised; `PICK_MAX_LIMIT` ≥ 200), rows carry size,
-  `multiColour`, `hasVariants`, variants.
+  `sort_order` order (limit raised; `PICK_MAX_LIMIT` ≥ 200), rows carry the
+  whole sub product — its code, weight, `colours` and `printSide` — so the
+  entry screen needs no second round trip.
 - **The Master's own Products module** (parity plan P4, 2026-10-01): Products /
   Sub products / Brands over the same routes — `GET /api/products` (limit up to
   2000), `/api/categories` CRUD, `/api/products/:id/images…` for photos — plus
@@ -155,48 +194,17 @@ Never edit a shipped migration.
   caller may not see). The screens are the `ui/` ports `SubProductsScreen`,
   `MainProductsScreen`, `BrandsScreen`, `ProductDetail`, `ProductDrawer`,
   `ProductImages`, `ProductImportModal`.
-- **Import and export** (`product-import.service.ts`; one handler set, `productImportRoutes`,
-  serves the Master session route `/api/products/…` and the paired-panel route `/api/panel/products/…`;
-  the Office's `/api/products/…` proxies the latter byte for byte, query string included).
-  - *Format.* One header row, in this order, written identically by the template, the Sub product export
-    and read by the import: **Brand, Main product code, Main product, Sub product, Size, Colour rule,
-    Colour, Code, Weight (kg), Alias** (`IMPORT_HEADERS`). Headers match ignoring case, spaces and
-    punctuation, and the field keys (`categoryName`, `name`, `variant`, `code`, `weightKg`…) and trade
-    words (`SKU`, `Model`, `Colour`) still read. `GET …/export.:format?level=main` writes the Main
-    product list instead (Brand, Main product code, Main product, Sub products) — not importable.
-  - *Round trip.* An export re-imported unedited changes nothing: `upsert` reports every row `unchanged`
-    (new `unchanged` count; not `updated`), `create` reports every row skipped as existing. Rows are
-    folded into the product only for cells the sheet fills — a blank Alias or Weight leaves the stored
-    value alone, it cannot clear it. A deactivated variant (history still quotes it) is neither exported
-    nor revived by an upsert; Recycle Bin products are neither exported nor matched.
-  - *Reading.* CSV is parsed in `lib/spreadsheet.ts` (not by exceljs): UTF-8 with or without BOM, UTF-16
-    "Unicode Text", Windows-1252; comma, semicolon or tab; CRLF/LF; quoted commas, quotes and line
-    breaks; blank lines keep their row number so reported rows match Excel. The export's formula-guard
-    apostrophe (`'=…`, `'-…`) is removed on read. Every cell is text — `0012` and `18x12` are never
-    coerced; Excel number cells become their digits, dates `YYYY-MM-DD`; a Guide sheet in front of the
-    data is skipped. Weights accept `18.5`, `1,200.50`, `12,5` and `12.5 kg`; `0x10`/`1e3`
-    are refused. Since 2026-10-09 a lone comma is the decimal mark whatever the digits after it (`0,125`,
-    `1,125` and `1,200` are 0.125, 1.125 and 1.2 kg — a piece's weight), and `1.234,5` reads as 1234.5.
-    Inner whitespace in names is folded to one space (codes are left as typed; a product backup restore
-    keeps every cell as written).
-  - *Matching.* Brand, Main product, Sub product and Colour match case-insensitively. A listed brand or
-    colour takes the list's own spelling; an unlisted colour stays as typed; an unlisted brand is a new
-    brand and, on a real import, is added to the Brands list in the same transaction.
-  - *Limits and errors.* 50 MB (`validation.import.tooLarge`, 400, both panels) and 20,000 data rows
-    (`validation.import.tooManyRows`); the issue list is cut at 1,000 (`issuesTruncated`). Every issue
-    carries the spreadsheet row, the header as written and a `messageKey`. Two models of one file
-    resolving to one existing product → the later is refused (`validation.import.sameProduct`).
-  - *Atomicity.* A bad row never half-imports: rows are validated first, a model (all its rows) is
-    inserted or not at all, in chunks of 500 products per transaction; a chunk that fails is replayed
-    model by model, so one clash costs one model. Valid rows of a file with bad rows do import — the
-    report names the rest. One `imported` activity row (count, file, mode, created, updated) and one
-    `catalog` change event per real import; none for a dry run or an all-unchanged upsert.
-  - *Permissions.* Template and import need `products.bulk` (+ `products.create`; `upsert` also
-    `products.edit`); **export needs only `products.view`**. The panel route runs as the signed-in person
-    when an acting token is presented, else as the panel's own role.
-  - *Files.* Export names are dated: `products-YYYY-MM-DD.csv|xlsx`, `main-products-YYYY-MM-DD.csv|xlsx`
-    (the PC's date); the template stays `products-template.csv|xlsx`. CSV exports start with a BOM so
-    Excel opens non-ASCII names correctly.
+- **Import and export** — *removed 2026-11-05 (`bb8d0326`)*: the product sheet
+  import/export and the product backup zip are no longer in the software. The
+  format is kept as the record in `docs/PRODUCT_IMPORT_FORMAT.md`; the Rust
+  sheet-importer (`rust/crates/orderbook-core/src/import.rs`) went with it on
+  2026-11-17. Whole-software backup/restore and the bulk Photo import stayed.
+  The Sub product export that remains is the plain sheet
+  (`GET …/export.:format`, `products.view`). The removed importer's own rules
+  (format, round trip, reading, matching, limits, atomicity) are kept in
+  `docs/PRODUCT_IMPORT_FORMAT.md`; the columns an old file meets are **Brand,
+  Main product code, Main product, Sub product, Size, Colour rule, Colour,
+  Code, Weight (kg), Alias**.
 - Snapshot and list caps rise so 549+ sub products reach
   panels complete.
 - Settings: main's existing `leads.followUpDefaultDays` — **fallback 3**
@@ -216,12 +224,12 @@ Never edit a shipped migration.
 4. **Product bar** — product name or code; rows `CODE · Name · Brand`.
 5. **Sub product bar** — every sub product of the product in catalogue order,
    filtered as you type; rows show the photo, code, printed name with its size,
-   colour or variants (a swatch for colour-named ones) and weight, under a count
-   and column header; **Collapse** shrinks it to one short line a row (kept per PC).
-6. **Colour / quantity** — `fixed`: colour shown locked + qty; `dedicated`: qty
-   only; `selectable`: colour-range list, several colours each with a qty.
-   Packaging and grade sit beside each qty, the same box each; grade is
-   optional, packaging required only while the company requires it.
+   colour (a swatch) and weight, under a count and column header; **Collapse**
+   shrinks it to one short line a row (kept per PC).
+6. **Colour / quantity** — no colours: qty only; one: colour shown locked + qty;
+   several: a dropdown of *that sub product's* colours, several colours each
+   with a qty. Packaging and grade sit beside each qty, the same box each;
+   grade is optional, packaging required only while the company requires it.
 7. **Enter** walks colour → qty → packaging → grade, row by row, each pick list
    open as the walk reaches it (2026-10-08), then lands on **Add sub product**,
    whose Enter adds the sub product and returns to the sub-product bar. **Shift+Q** or **Complete sub product** adds a pending valid sub product
@@ -241,10 +249,13 @@ Built with the existing report-table renderer extended to wrap text cells.
 Company header, party block, then:
 `# | [Brand] | Main product | Model | Size | Colour | Code | Qty`.
 
-- Model = the sub product when not purely numeric; Code = the sub product when
-  purely numeric (right-aligned). Exactly one is filled.
-- Colour: nothing for dedicated; the fixed colour unless it repeats the name;
-  multicolour lines of one sub product are grouped as `White ×10, Ivory ×5`.
+- Model = the sub product when it prints on the left; Code = the sub product
+  when it prints on the right (right-aligned). Exactly one is filled. The side
+  is the line's frozen `printSide`; a line from before the setting resolves by
+  the Default rule (a purely numeric name → Code).
+- Colour: nothing when the sub product offers none; its one colour unless it
+  repeats the name; several colours of one sub product are grouped as
+  `White ×10, Ivory ×5`, printed in the order the lines hold them.
 - Left-aligned cells wrap and grow the row; figures stay on one line.
 - Brand only when the lines span more than one brand. No money anywhere.
 - **Preview PDF** on the Master leads list and the Office lead detail; the

@@ -83,6 +83,14 @@ export function OrderRecordView({
 
   const colourHex = useColourHex(optionLists);
   const labelOf = useColourLabel(optionLists);
+
+  /** The colour the line was sold in; a line from before the removal carries it as its label. */
+  function colourOf(item: Order['items'][number]): string | null {
+    if (item.colour) return item.colour;
+    // Not when it only repeats the name (CATALOGUE_MODEL §2).
+    if (item.variantLabel && shownColour(item.variantLabel, item.productName)) return item.variantLabel;
+    return null;
+  }
   const [note, setNote] = useState('');
   const [override, setOverride] = useState(
     order.totalWeightKgOverride === null ? '' : String(order.totalWeightKgOverride),
@@ -146,7 +154,6 @@ export function OrderRecordView({
                 <tr>
                   <th>{t('orders.column.code')}</th>
                   <th>{t('orders.column.product')}</th>
-                  <th>{t('orders.column.variant')}</th>
                   <th>{t('orders.column.colour')}</th>
                   <th>{t('orders.column.packaging')}</th>
                   <th>{t('orders.column.grade')}</th>
@@ -165,16 +172,10 @@ export function OrderRecordView({
                       </div>
                     </td>
                     <td>
-                      {/* Not when it only repeats the name (CATALOGUE_MODEL §2). */}
-                      {item.variantLabel && shownColour(item.variantLabel, item.productName) ? (
-                        <ColourName name={labelOf(item.variantLabel)} hex={colourHex(item.variantLabel)} />
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td>
-                      {item.colour ? (
-                        <ColourName name={labelOf(item.colour)} hex={colourHex(item.colour)} />
+                      {/* The colour the line was sold in; a line from before
+                          the removal carries it as its variant label. */}
+                      {colourOf(item) ? (
+                        <ColourName name={labelOf(colourOf(item)!)} hex={colourHex(colourOf(item)!)} />
                       ) : (
                         '—'
                       )}

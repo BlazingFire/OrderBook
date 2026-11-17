@@ -28,7 +28,6 @@ import { clampLimit } from '../domain/paging.js';
 import { resolvePartyScope } from '../domain/party-scope.js';
 import { mapParty, mapProduct, mapProductCategory } from '../repositories/mappers.js';
 import { loadImagesFor } from '../repositories/product-image.repository.js';
-import { loadVariantsFor } from '../repositories/product-variant.repository.js';
 import * as searchRepo from '../repositories/search.repository.js';
 
 const PAGING = { defaultLimit: 20, maxLimit: 100 };
@@ -121,22 +120,15 @@ export async function pick(
       ...(categoryId ? { categoryId } : {}),
     });
 
-    // Whole products, variants included: the third stage of the lead screen
-    // (which colour, which code, which weight) needs no further round trip.
+    // Whole products — code, colours, weight, print side ride along: the
+    // third stage of the lead screen (which colour) needs no further trip.
     const ids = page.rows.map((row) => String(row.id));
-    const [variants, images] = await Promise.all([
-      loadVariantsFor(actor.tenantId, ids),
-      // Only the primary photo rides on a picker row: it is a thumbnail, not a gallery.
-      loadImagesFor(actor.tenantId, ids),
-    ]);
+    // Only the primary photo rides on a picker row: it is a thumbnail, not a gallery.
+    const images = await loadImagesFor(actor.tenantId, ids);
 
     return {
       items: page.rows.map((row) =>
-        mapProduct(
-          row,
-          images.get(String(row.id))?.slice(0, 1) ?? [],
-          variants.get(String(row.id)) ?? [],
-        ),
+        mapProduct(row, images.get(String(row.id))?.slice(0, 1) ?? []),
       ),
       truncated: page.truncated,
     };

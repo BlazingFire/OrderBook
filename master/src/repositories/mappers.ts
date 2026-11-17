@@ -23,7 +23,6 @@ import type {
   Product,
   ProductCategory,
   ProductImage,
-  ProductVariant,
   Role,
   SyncConflict,
   SyncMeta,
@@ -31,7 +30,7 @@ import type {
   User,
   UserAvatar,
 } from '@orderbook/shared';
-import { isPermission, parseNoteColumns } from '@orderbook/shared';
+import { isPermission, normalizeColours, parseNoteColumns } from '@orderbook/shared';
 
 export function toNumber(value: unknown): number | null {
   if (value === null || value === undefined) return null;
@@ -357,19 +356,7 @@ export function mapProductImage(row: Row): ProductImage {
   };
 }
 
-export function mapProductVariant(row: Row): ProductVariant {
-  return {
-    id: String(row.id),
-    productId: String(row.product_id),
-    code: String(row.code),
-    label: (row.label as string | null) ?? null,
-    weightKg: toNumber(row.weight_kg),
-    sequence: toRequiredNumber(row.sequence),
-    isActive: Boolean(row.is_active),
-  };
-}
-
-export function mapProduct(row: Row, images: ProductImage[] = [], variants: ProductVariant[] = []): Product {
+export function mapProduct(row: Row, images: ProductImage[] = []): Product {
   return {
     id: String(row.id),
     tenantId: String(row.tenant_id),
@@ -384,9 +371,11 @@ export function mapProduct(row: Row, images: ProductImage[] = [], variants: Prod
     brand: (row.category_brand as string | null) ?? null,
     sortOrder: toNumber(row.sort_order),
     size: (row.size as string | null) ?? null,
-    hasVariants: Boolean(row.has_variants),
-    variants,
-    multiColour: Boolean(row.multi_colour),
+    code: String(row.code ?? ''),
+    weightKg: toNumber(row.weight_kg),
+    colours: normalizeColours(toStringArray(row.colours)),
+    printSide:
+      row.print_side === 'left' || row.print_side === 'right' ? row.print_side : 'default',
     customFields: toJsonObject(row.custom_fields),
     isActive: Boolean(row.is_active),
     createdAt: toRequiredIso(row.created_at),
@@ -425,7 +414,7 @@ export function mapLineItem(row: Row): LineItem {
     parentType: row.parent_type as LineItem['parentType'],
     parentId: String(row.parent_id),
     productId: String(row.product_id),
-    variantId: String(row.variant_id),
+    variantId: row.variant_id ? String(row.variant_id) : null,
     productName: String(row.product_name ?? ''),
     categoryName: (row.category_name as string | null) ?? null,
     categoryCode: (row.category_code as string | null) ?? null,
@@ -434,6 +423,7 @@ export function mapLineItem(row: Row): LineItem {
     code: (row.code as string | null) ?? null,
     variantLabel: (row.variant_label as string | null) ?? null,
     colour: (row.colour as string | null) ?? null,
+    printSide: row.print_side === 'left' || row.print_side === 'right' ? row.print_side : null,
     size: (row.size as string | null) ?? null,
     weightKg,
     packaging: (row.packaging as string | null) ?? null,

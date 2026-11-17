@@ -17,11 +17,10 @@
  * What lands, per §1–§2: the brands and the colour range as option values
  * (added, brought back from the Recycle Bin, printed hex written); each
  * product as a category with its code, brand and catalogue order; each sub
- * product as a model with **exactly one variant**, coded `CODE-0001…` in
- * catalogue order, its rule stored the way `colourRuleOf` reads it back —
- * `fixed` a labelled variant, `dedicated` an unlabelled one, `selectable`
- * the `multiColour` switch. Weights are left blank: the catalogue prints none,
- * and a guessed weight would be worse than the flag a blank one raises.
+ * product coded `CODE-0001…` in catalogue order, carrying the colours the
+ * file offers it in and the print side the file sets. Weights are left
+ * blank: the catalogue prints none, and a guessed weight would be worse
+ * than the flag a blank one raises.
  *
  * Bulk inserts, not 549 `createProduct` calls: the service path is one
  * transaction and one activity row per product, and the whole point here is
@@ -49,7 +48,6 @@ import * as activityLog from '../repositories/activity-log.repository.js';
 import * as customFieldRepo from '../repositories/custom-field.repository.js';
 import { allocatePermanentIds, nextHlc } from '../repositories/identity.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
-import { insertVariantRows } from '../repositories/product-variant.repository.js';
 import { permissionSetForRole } from '../repositories/role.repository.js';
 import * as settingsRepo from '../repositories/settings.repository.js';
 import { resolveDefaultTenantId } from '../repositories/tenant.repository.js';
@@ -130,12 +128,17 @@ export async function loadCatalogue(
           .select<Array<{ category_id: string; name: string }>>('category_id', 'name')
       ).map((row) => `${row.category_id}\u0000${row.name.toLowerCase()}`),
     );
-    // Every code any variant has carried, Recycle Bin included: a binned sub
+    // Every code any sub product has carried — on the product now, on a
+    // dormant variant from before — Recycle Bin included: a binned sub
     // product must be able to come back without colliding.
     const takenCodes = new Set(
-      (await trx('product_variants').where({ tenant_id: tenantId }).pluck<string[]>('code')).map(
-        (code) => code.toLowerCase(),
-      ),
+      [
+        ...(await trx('products')
+          .where({ tenant_id: tenantId })
+          .whereNotNull('code')
+          .pluck<string[]>('code')),
+        ...(await trx('product_variants').where({ tenant_id: tenantId }).pluck<string[]>('code')),
+      ].map((code) => code.toLowerCase()),
     );
 
     const fresh: Array<{
@@ -168,7 +171,6 @@ export async function loadCatalogue(
     if (fresh.length > 0) {
       const hlc = await nextHlc(trx);
       const productIds = await allocatePermanentIds(tenantId, 'product', fresh.length, trx);
-      const variantIds = await allocatePermanentIds(tenantId, 'product_variant', fresh.length, trx);
 
       await productRepo.insertProductRows(
         fresh.map((row, index) => ({
@@ -178,27 +180,14 @@ export async function loadCatalogue(
             name: row.sub.name,
             categoryId: row.categoryId,
             size: row.sub.size,
-            // §2: the rule is not stored, it is what these two and the label say.
-            hasVariants: row.sub.rule === 'fixed',
-            multiColour: row.sub.rule === 'selectable',
+            code: row.code,
+            weightKg: null,
+            colours: row.sub.colours,
+            printSide: row.sub.printSide,
             sortOrder: row.position,
           },
         })),
         { tenantId, hlc },
-        trx,
-      );
-      await insertVariantRows(
-        fresh.map((row, index) => ({
-          id: variantIds[index] as string,
-          productId: productIds[index] as string,
-          input: {
-            code: row.code,
-            label: row.sub.rule === 'fixed' ? row.sub.colour : null,
-            weightKg: null,
-          },
-          sequence: 1,
-        })),
-        tenantId,
         trx,
       );
     }

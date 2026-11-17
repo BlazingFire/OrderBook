@@ -184,10 +184,10 @@ describe.skipIf(!canRunIntegrationTests)('company settings, end to end (integrat
     async function leadWithoutPackaging() {
       const party = await catalog.createParty({ name: 'Packless Traders' }, actor);
       const product = await catalog.createProduct(
-        { name: 'Orissa Pan', categoryName: 'Pans', variants: [{ code: 'PKG-01' }] },
+        { name: 'Orissa Pan', categoryName: 'Pans', code: 'PKG-01' },
         actor,
       );
-      const variant = product.variants[0]!;
+      const variant = { id: product.id };
       return leads.createLead(
         {
           partyId: party.id,

@@ -29,7 +29,7 @@ let admin: ActorContext;
 async function seed() {
   const party = await catalog.createParty({ name: 'Permission Traders' }, admin);
   const product = await catalog.createProduct(
-    { categoryName: 'Tiles', variants: [{ code: 'PRM-01' }], name: 'Glazed Tile' },
+    { categoryName: 'Tiles', code: 'PRM-01', name: 'Glazed Tile' },
     admin,
   );
   return { party, product };
@@ -43,7 +43,7 @@ async function seedLead() {
       items: [
         {
           productId: product.id,
-          variantId: product.variants[0]!.id,
+          variantId: product.id,
           quantity: 4,
           packaging: 'carton',
         },
@@ -85,7 +85,7 @@ describe.skipIf(!canRunIntegrationTests)('permissions (integration)', () => {
             items: [
               {
                 productId: product.id,
-                variantId: product.variants[0]!.id,
+                variantId: product.id,
                 quantity: 1,
                 packaging: 'carton',
               },
@@ -111,7 +111,7 @@ describe.skipIf(!canRunIntegrationTests)('permissions (integration)', () => {
           items: [
             {
               productId: product.id,
-              variantId: product.variants[0]!.id,
+              variantId: product.id,
               quantity: 2,
               packaging: 'carton',
             },
@@ -160,7 +160,7 @@ describe.skipIf(!canRunIntegrationTests)('permissions (integration)', () => {
             items: [
               {
                 productId: product.id,
-                variantId: product.variants[0]!.id,
+                variantId: product.id,
                 quantity: 1,
                 packaging: 'carton',
               },

@@ -30,10 +30,10 @@ let actor: ActorContext;
 async function seedPartyWithOrders(name: string, productCode: string) {
   const party = await catalogService.createParty({ name }, actor);
   const product = await catalogService.createProduct(
-    { name: `Basin ${productCode}`, categoryName: 'Basins', variants: [{ code: productCode }] },
+    { name: `Basin ${productCode}`, categoryName: 'Basins', code: productCode },
     actor,
   );
-  const line = { productId: product.id, variantId: product.variants[0]!.id, quantity: 5, packaging: 'Box' };
+  const line = { productId: product.id, variantId: product.id, quantity: 5, packaging: 'Box' };
   const pending = await leadService.createLead({ partyId: party.id, items: [line] }, actor);
   const converted = await leadService.createLead({ partyId: party.id, items: [line] }, actor);
   const order = await orderService.convertLead({ leadId: converted.id }, actor);

@@ -1,6 +1,6 @@
-/**
+﻿/**
  * Categories as catalogue v2 reads them (`docs/catalogue/CATALOGUE_MODEL.md`
- * §1, §5): found by id, then code, then name — live rows only — created with
+ * Â§1, Â§5): found by id, then code, then name â€” live rows only â€” created with
  * their code, brand and order, and listed in catalogue order.
  *
  * The owner's words are Product (a category) and Sub product (a model); the
@@ -24,7 +24,7 @@ function seed(seeds: productRepo.CategorySeed[]): Promise<Map<string, string>> {
 
 function subProduct(name: string, category: { categoryId?: string; categoryCode?: string; categoryName?: string }, code: string) {
   return catalog.createProduct(
-    { name, ...category, hasVariants: false, variants: [{ code }] },
+    { name, ...category, code },
     actor,
   );
 }
@@ -131,13 +131,13 @@ describe.skipIf(!canRunIntegrationTests)('catalogue categories (integration)', (
     ]);
 
     const matched = await catalog.createProduct(
-      { name: '14x14', categoryName: 'wash basin', categoryBrand: 'SWISWARE+', hasVariants: false, variants: [{ code: 'WB-0001' }] },
+      { name: '14x14', categoryName: 'wash basin', categoryBrand: 'SWISWARE+', code: 'WB-0001' },
       actor,
     );
     expect(matched.categoryId).toBe(ids.get('wb'));
 
     const created = await catalog.createProduct(
-      { name: '16x12', categoryName: 'Wash Basin', categoryBrand: 'Other', hasVariants: false, variants: [{ code: 'WB-0002' }] },
+      { name: '16x12', categoryName: 'Wash Basin', categoryBrand: 'Other', code: 'WB-0002' },
       actor,
     );
     expect(created.categoryId).not.toBe(ids.get('wb'));
@@ -176,7 +176,7 @@ describe.skipIf(!canRunIntegrationTests)('catalogue categories (integration)', (
       { name: 'Wash Basin', code: 'WB', brand: 'Other' },
     ]);
     await catalog.createProduct(
-      { name: '102 (9")', categoryCode: 'OPT', sortOrder: 1, hasVariants: true, variants: [{ code: 'OPT-0001', label: 'White' }] },
+      { name: '102 (9")', categoryCode: 'OPT', sortOrder: 1, code: 'OPT-0001', colours: ['White'] },
       actor,
     );
     await subProduct('14x14', { categoryCode: 'WB' }, 'WB-0001');

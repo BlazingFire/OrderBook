@@ -13,30 +13,14 @@ import { describe, expect, it } from 'vitest';
 import {
   colourLabeller,
   colourRepeatsName,
-  colourRuleOf,
   isNumericSubProduct,
   lineColourText,
+  normalizeColours,
+  printSideOf,
+  resolveLineColour,
   shownColour,
   subProductCells,
 } from '../src/index.js';
-
-describe('colourRuleOf derives the rule from what the product master stores', () => {
-  it('is selectable for a multi-colour sub product', () => {
-    expect(colourRuleOf({ multiColour: true, variants: [{ label: null }] })).toBe('selectable');
-    // The switch wins over a label: the spec's formula tests `multiColour` first.
-    expect(colourRuleOf({ multiColour: true, variants: [{ label: 'White' }] })).toBe('selectable');
-  });
-
-  it('is fixed when the one variant is labelled with its colour', () => {
-    expect(colourRuleOf({ multiColour: false, variants: [{ label: 'White' }] })).toBe('fixed');
-  });
-
-  it('is dedicated with no label, a blank label, or no variant at all', () => {
-    expect(colourRuleOf({ multiColour: false, variants: [{ label: null }] })).toBe('dedicated');
-    expect(colourRuleOf({ multiColour: false, variants: [{ label: '  ' }] })).toBe('dedicated');
-    expect(colourRuleOf({ multiColour: false, variants: [] })).toBe('dedicated');
-  });
-});
 
 describe('a colour that only repeats the name is not shown', () => {
   it('matches case-insensitively and after trimming', () => {
@@ -103,6 +87,59 @@ describe('the Colour cell', () => {
     expect(lineColourText([{ colour: 'Ivory', variantLabel: 'White', quantity: 1 }], 'X')).toBe(
       'Ivory',
     );
+  });
+});
+
+describe("printSideOf: a sub product's own setting, Default keeping today's rule", () => {
+  it('resolves Default as numeric to the right and anything else to the left', () => {
+    expect(printSideOf('1111', 'default')).toBe('right');
+    expect(printSideOf('102 (9")', 'default')).toBe('left');
+    expect(printSideOf('MAGENTA', undefined)).toBe('left');
+    expect(printSideOf('', 'default')).toBe('left');
+  });
+
+  it('lets an explicit Left or Right override the name rule both ways', () => {
+    expect(printSideOf('1111', 'left')).toBe('left');
+    expect(printSideOf('MAGENTA', 'right')).toBe('right');
+  });
+
+  it('drives the PDF cells when a setting is given', () => {
+    expect(subProductCells('1111', 'left')).toEqual({ model: '1111', code: null });
+    expect(subProductCells('MAGENTA', 'right')).toEqual({ model: null, code: 'MAGENTA' });
+    expect(subProductCells('1111', 'default')).toEqual({ model: null, code: '1111' });
+  });
+});
+
+describe('normalizeColours: the colour list a sub product offers', () => {
+  it('trims, drops blanks and duplicates (case aside), and keeps order', () => {
+    expect(normalizeColours([' White ', '', 'white', 'Ivory', ' IVORY '])).toEqual([
+      'White',
+      'Ivory',
+    ]);
+    expect(normalizeColours([])).toEqual([]);
+    expect(normalizeColours(null)).toEqual([]);
+    expect(normalizeColours(undefined)).toEqual([]);
+  });
+});
+
+describe("resolveLineColour: what a line may carry for a sub product's colours", () => {
+  it('carries nothing when the sub product offers no colours', () => {
+    expect(resolveLineColour([], 'White')).toBeNull();
+    expect(resolveLineColour([], null)).toBeNull();
+  });
+
+  it("always carries the one colour of a single-colour sub product", () => {
+    expect(resolveLineColour(['Magenta'], null)).toBe('Magenta');
+    expect(resolveLineColour(['Magenta'], 'White')).toBe('Magenta');
+  });
+
+  it('carries a chosen colour that is on the list, in the list spelling', () => {
+    expect(resolveLineColour(['White', 'Ivory'], ' ivory ')).toBe('Ivory');
+  });
+
+  it('drops a colour that is not offered instead of refusing the line', () => {
+    expect(resolveLineColour(['White', 'Ivory'], 'Ochre')).toBeNull();
+    expect(resolveLineColour(['White', 'Ivory'], null)).toBeNull();
   });
 });
 

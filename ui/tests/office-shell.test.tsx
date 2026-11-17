@@ -76,7 +76,7 @@ const PRODUCT = {
   alias: null,
   size: null,
   multiColour: false,
-  variants: [{ id: 'var-1', label: 'White', code: 'AQ-W', weightKg: 30, isActive: true }],
+  code: 'AQ-W', weightKg: 30, colours: ['White'],
 };
 
 const ORDER_PIPELINE = {

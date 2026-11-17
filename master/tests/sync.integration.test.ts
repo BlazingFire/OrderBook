@@ -80,7 +80,7 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
   async function seed() {
     const party = await catalog.createParty({ name: 'Offline Traders' }, actor);
     const product = await catalog.createProduct(
-      { categoryName: 'Tiles', variants: [{ code: 'OFF-01' }], name: 'Matte Tile' },
+      { categoryName: 'Tiles', code: 'OFF-01', name: 'Matte Tile' },
       actor,
     );
     return { party, product };
@@ -103,7 +103,7 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
                 items: [
                   {
                     productId: product.id,
-                    variantId: product.variants[0]!.id,
+                    variantId: product.id,
                     quantity: 3,
                     packaging: 'carton',
                   },
@@ -146,7 +146,7 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
       // Every other `lead.create` test in this file uses a permanent party id,
       // which is why nothing caught it.
       const product = await catalog.createProduct(
-        { name: 'Gloss Basin', categoryName: 'Basins', variants: [{ code: 'OFF-02' }] },
+        { name: 'Gloss Basin', categoryName: 'Basins', code: 'OFF-02' },
         actor,
       );
 
@@ -172,7 +172,7 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
                 items: [
                   {
                     productId: product.id,
-                    variantId: product.variants[0]!.id,
+                    variantId: product.id,
                     packaging: 'carton',
                     quantity: 2,
                   },
@@ -207,7 +207,7 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
           items: [
             {
               productId: product.id,
-              variantId: product.variants[0]!.id,
+              variantId: product.id,
               quantity: 1,
               packaging: 'carton',
             },
@@ -237,7 +237,7 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
           items: [
             {
               productId: product.id,
-              variantId: product.variants[0]!.id,
+              variantId: product.id,
               quantity: 1,
               packaging: 'carton',
             },
@@ -262,7 +262,7 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
 
       const item = {
         productId: product.id,
-        variantId: product.variants[0]!.id,
+        variantId: product.id,
         quantity: 1,
         packaging: 'carton',
       };
@@ -306,7 +306,7 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
           items: [
             {
               productId: product.id,
-              variantId: product.variants[0]!.id,
+              variantId: product.id,
               quantity: 2,
               packaging: 'carton',
             },
@@ -484,7 +484,7 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
         {
           partyId: party.id,
           notes: 'original note',
-          items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 1, packaging: 'carton' }],
+          items: [{ productId: product.id, variantId: product.id, quantity: 1, packaging: 'carton' }],
         },
         actor,
       );
@@ -528,7 +528,7 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
       return leads.createLead(
         {
           partyId: party.id,
-          items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 1, packaging: 'carton' }],
+          items: [{ productId: product.id, variantId: product.id, quantity: 1, packaging: 'carton' }],
         },
         actor,
       );
@@ -595,7 +595,7 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
 
     async function line() {
       const { party, product } = await seed();
-      return { party, variant: { productId: product.id, variantId: product.variants[0]!.id } };
+      return { party, variant: { productId: product.id, variantId: product.id } };
     }
 
     it('tells the author once, when the save predates the panel connecting', async () => {
@@ -650,14 +650,13 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
     /** A lead with one line, the way an Office edit would find it, plus a second product to swap in. */
     async function leadWithLine() {
       const { party, product } = await seed();
-      const variant = product.variants[0]!;
       const other = await catalog.createProduct(
-        { categoryName: 'Tiles', variants: [{ code: 'OFF-09' }], name: 'Gloss Tile' },
+        { categoryName: 'Tiles', code: 'OFF-09', name: 'Gloss Tile' },
         actor,
       );
-      const line = { productId: product.id, variantId: variant.id, quantity: 2, packaging: 'carton' };
+      const line = { productId: product.id, quantity: 2, packaging: 'carton' };
       const lead = await leads.createLead({ partyId: party.id, notes: 'original note', items: [line] }, actor);
-      const otherLine = { productId: other.id, variantId: other.variants[0]!.id, quantity: 4, packaging: 'carton' };
+      const otherLine = { productId: other.id, quantity: 4, packaging: 'carton' };
       return { party, product, lead, line, otherLine };
     }
 
@@ -719,19 +718,22 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
         expect((await leads.getLead(lead.id, actor)).items[0]?.quantity).toBe(2);
       });
 
-      it('refuses an unknown variant and applies none of the same edit', async () => {
+      it('drops a legacy variant id no dormant row answers to, and keeps the edit', async () => {
         const { lead, line } = await leadWithLine();
 
         const response = await push(
           leadEdit(lead.id, {
             fields: ['items', 'notes'],
-            payload: { items: [{ ...line, variantId: 'gone' }], notes: 'should not land' },
+            payload: { items: [{ ...line, variantId: 'gone' }], notes: 'lands anyway' },
           }),
         );
 
-        expect(response.results[0]?.status).toBe('rejected');
-        expect(response.results[0]?.error).toMatch(/variants? no longer exists/i);
-        expect((await leads.getLead(lead.id, actor)).notes).toBe('original note');
+        // Storing it would fail the line's foreign key, so it is dropped the
+        // way an unoffered colour is — never a refusal that parks the lead.
+        expect(response.results[0]?.status).toBe('applied');
+        const after = await leads.getLead(lead.id, actor);
+        expect(after.notes).toBe('lands anyway');
+        expect(after.items[0]?.variantId).toBeNull();
       });
 
       it('an older edit loses, is recorded once, and can be put back', async () => {
@@ -1009,7 +1011,7 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
                 items: [
                   {
                     productId: product.id,
-                    variantId: product.variants[0]!.id,
+                    variantId: product.id,
                     quantity: 1,
                     packaging: 'carton',
                   },
@@ -1070,7 +1072,7 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
                 items: [
                   {
                     productId: product.id,
-                    variantId: product.variants[0]!.id,
+                    variantId: product.id,
                     quantity: 2,
                     packaging: 'carton',
                   },
@@ -1095,7 +1097,7 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
       return leads.createLead(
         {
           partyId: party.id,
-          items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 1, packaging: 'carton' }],
+          items: [{ productId: product.id, variantId: product.id, quantity: 1, packaging: 'carton' }],
         },
         actor,
       );
@@ -1170,7 +1172,7 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
         hlc: hlcFor(PANEL_B, -600_000),
         payload: {
           partyId: party.id,
-          items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 1, packaging: 'carton' }],
+          items: [{ productId: product.id, variantId: product.id, quantity: 1, packaging: 'carton' }],
         },
       });
       // Older than the moment the create is applied here: the create's fields
@@ -1311,7 +1313,7 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
         entity: 'lead',
         payload: {
           partyId: party.id,
-          items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 2, packaging: 'carton' }],
+          items: [{ productId: product.id, variantId: product.id, quantity: 2, packaging: 'carton' }],
         },
       });
 
@@ -1345,7 +1347,7 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
                 items: [
                   {
                     productId: product.id,
-                    variantId: product.variants[0]!.id,
+                    variantId: product.id,
                     quantity: 1,
                     packaging: 'carton',
                   },
@@ -1401,7 +1403,7 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
     return catalog.createProduct(
       {
         categoryName: 'Tiles',
-        variants: [{ code: 'MRG-01', weightKg: 20 }],
+        code: 'MRG-01', weightKg: 20,
         name: 'Merge Tile',
         size: '600x600',
       },
@@ -1421,8 +1423,8 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
             kind: 'product.update',
             entity: 'product',
             entityId: product.id,
-            fields: ['alias', 'multiColour'],
-            payload: { alias: 'Merge', multiColour: true },
+            fields: ['alias', 'colours'],
+            payload: { alias: 'Merge', colours: ['White', 'Ivory'] },
             baseFieldHlc: product.sync.fieldHlc,
           }),
         ],
@@ -1433,13 +1435,13 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
     expect(response.results[0]?.status).not.toBe('rejected');
     const after = await reload(product.id);
     expect(after.alias).toBe('Merge');
-    expect(after.multiColour).toBe(true);
+    expect(after.colours).toEqual(['White', 'Ivory']);
   });
 
   it('refuses an offline rename onto a live sibling of the same product, and writes nothing', async () => {
     const product = await existingProduct();
     await catalog.createProduct(
-      { categoryName: 'Tiles', variants: [{ code: 'MRG-02' }], name: 'Other Tile' },
+      { categoryName: 'Tiles', code: 'MRG-02', name: 'Other Tile' },
       actor,
     );
 
@@ -1464,7 +1466,7 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
     expect((await reload(product.id)).name).toBe('Merge Tile');
   });
 
-  it('refuses a variant set the rules could never accept, with a reason', async () => {
+  it('refuses a weight the rules could never accept, with a reason', async () => {
     const product = await existingProduct();
 
     const response = await sync.applyPush(
@@ -1474,8 +1476,8 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
             kind: 'product.update',
             entity: 'product',
             entityId: product.id,
-            fields: ['variants'],
-            payload: { variants: [{ code: 'MRG-01', label: null, weightKg: -4 }] },
+            fields: ['weightKg'],
+            payload: { code: 'MRG-01', weightKg: -4 },
             baseFieldHlc: product.sync.fieldHlc,
           }),
         ],
@@ -1485,12 +1487,12 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
 
     const result = response.results[0];
     expect(result?.status).toBe('rejected');
-    // A sentence, not `new row for relation "product_variants" violates
-    // check constraint "product_variants_weight_check"`.
+    // A sentence, not `new row for relation "products" violates check
+    // constraint "products_weight_check"`.
     expect(result?.error ?? '').toMatch(/weight/i);
 
     // …and nothing was written.
-    expect((await reload(product.id)).variants[0]?.weightKg).toBe(20);
+    expect((await reload(product.id)).weightKg).toBe(20);
   });
 
   it('ignores an unresolvable category id and keeps the rest of the edit', async () => {
@@ -1527,7 +1529,7 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
     async function inTwoCategories() {
       const product = await existingProduct();
       const basin = await catalog.createProduct(
-        { categoryName: 'Basins', variants: [{ code: 'MRG-B1' }], name: 'Basin One' },
+        { categoryName: 'Basins', code: 'MRG-B1', name: 'Basin One' },
         actor,
       );
       return { product, target: basin.categoryId };
@@ -1573,7 +1575,7 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
     it('refuses a move onto a main product that already has that name', async () => {
       const { product, target } = await inTwoCategories();
       await catalog.createProduct(
-        { categoryId: target, variants: [{ code: 'MRG-B2' }], name: 'Merge Tile' },
+        { categoryId: target, code: 'MRG-B2', name: 'Merge Tile' },
         actor,
       );
 
@@ -1607,9 +1609,83 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
     });
   });
 
-  it('replaces the variant set as one field, keeping the ids lines are keyed by', async () => {
+  it('records a losing offline edit to a code and weight as conflicts, one per field', async () => {
     const product = await existingProduct();
-    const [existing] = product.variants;
+
+    // The Master's own edit lands first, stamping `code` and `weightKg`.
+    const online = await catalog.updateProduct(
+      product.id,
+      { name: product.name, code: 'MRG-01', weightKg: 30 },
+      await testActor(),
+    );
+
+    // A panel that never saw that edit pushes older values with an older clock.
+    const response = await sync.applyPush(
+      {
+        mutations: [
+          mutation({
+            kind: 'product.update',
+            entity: 'product',
+            entityId: product.id,
+            fields: ['code', 'weightKg'],
+            payload: { code: 'MRG-09', weightKg: 25 },
+            baseFieldHlc: product.sync.fieldHlc,
+            // Far in the past: older than anything the Master has stamped.
+            hlc: hlcFor(PANEL_A, -1_000_000_000),
+          }),
+        ],
+      },
+      actor,
+    );
+
+    expect(response.results[0]?.conflicts.map((conflict) => conflict.field)).toEqual([
+      'code',
+      'weightKg',
+    ]);
+    expect((await reload(product.id)).weightKg).toBe(30);
+    expect(online.weightKg).toBe(30);
+  });
+
+  it('puts a losing code and weight back', async () => {
+    const product = await existingProduct();
+    await catalog.updateProduct(
+      product.id,
+      { name: product.name, code: 'MRG-01', weightKg: 30 },
+      await testActor(),
+    );
+    await sync.applyPush(
+      {
+        mutations: [
+          mutation({
+            kind: 'product.update',
+            entity: 'product',
+            entityId: product.id,
+            fields: ['code', 'weightKg'],
+            payload: { code: 'MRG-09', weightKg: 25 },
+            hlc: hlcFor(PANEL_A, -1_000_000_000),
+          }),
+        ],
+      },
+      actor,
+    );
+
+    for (const conflict of await conflicts.listConflicts(actor)) {
+      await conflicts.resolveConflict({ conflictId: conflict.id, action: 'restoreLoser' }, actor);
+    }
+
+    const after = await reload(product.id);
+    expect(after.weightKg).toBe(25);
+    expect(after.code).toBe('MRG-09');
+  });
+
+  /*
+   * A panel built before variants were removed still queues the old shape —
+   * the whole reason `legacyVariantProductFields` exists. One case, so the
+   * adapter stays honest: its first row's code and weight, every row's label
+   * as a colour option of the one sub product it always described.
+   */
+  it('reads a legacy variant set queued by an older panel as the sub product fields', async () => {
+    const product = await existingProduct();
 
     const response = await sync.applyPush(
       {
@@ -1618,12 +1694,11 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
             kind: 'product.update',
             entity: 'product',
             entityId: product.id,
-            fields: ['hasVariants', 'variants'],
+            fields: ['variants'],
             payload: {
-              hasVariants: true,
               variants: [
-                { id: existing!.id, code: 'MRG-01', label: 'White', weightKg: 21 },
-                { code: 'MRG-02', label: 'Blue', weightKg: 22 },
+                { id: 'ignored', code: 'MRG-77', label: 'White', weightKg: 21 },
+                { code: 'MRG-78', label: 'Blue', weightKg: 22 },
               ],
             },
             baseFieldHlc: product.sync.fieldHlc,
@@ -1635,104 +1710,11 @@ describe.skipIf(!canRunIntegrationTests)('merging a product edit (integration)',
 
     expect(response.results[0]?.status).toBe('applied');
     const after = await reload(product.id);
-    expect(after.hasVariants).toBe(true);
-    expect(after.variants.map((variant) => [variant.id === existing!.id, variant.code, variant.label, variant.weightKg])).toEqual([
-      [true, 'MRG-01', 'White', 21],
-      [false, 'MRG-02', 'Blue', 22],
-    ]);
-    expect(after.sync.fieldHlc.variants).toBeDefined();
-  });
-
-  it('records a losing variant set as one conflict rather than merging rows', async () => {
-    const product = await existingProduct();
-    const [existing] = product.variants;
-
-    // The Master's own edit lands first, stamping `variants`.
-    const online = await catalog.updateProduct(
-      product.id,
-      { name: product.name, variants: [{ id: existing!.id, code: 'MRG-01', weightKg: 30 }] },
-      await testActor(),
-    );
-
-    // A panel that never saw that edit pushes an older set with an older clock.
-    const response = await sync.applyPush(
-      {
-        mutations: [
-          mutation({
-            kind: 'product.update',
-            entity: 'product',
-            entityId: product.id,
-            fields: ['variants'],
-            payload: { variants: [{ id: existing!.id, code: 'MRG-01', weightKg: 25 }] },
-            baseFieldHlc: product.sync.fieldHlc,
-            // Far in the past: older than anything the Master has stamped.
-            hlc: hlcFor(PANEL_A, -1_000_000_000),
-          }),
-        ],
-      },
-      actor,
-    );
-
-    expect(response.results[0]?.conflicts.map((conflict) => conflict.field)).toEqual(['variants']);
-    expect((await reload(product.id)).variants[0]?.weightKg).toBe(30);
-    expect(online.variants[0]?.weightKg).toBe(30);
-  });
-
-  it('puts a losing variant set back', async () => {
-    const product = await existingProduct();
-    const [existing] = product.variants;
-    await catalog.updateProduct(
-      product.id,
-      { name: product.name, variants: [{ id: existing!.id, code: 'MRG-01', weightKg: 30 }] },
-      await testActor(),
-    );
-    await sync.applyPush(
-      {
-        mutations: [
-          mutation({
-            kind: 'product.update',
-            entity: 'product',
-            entityId: product.id,
-            fields: ['variants'],
-            payload: { variants: [{ id: existing!.id, code: 'MRG-01', weightKg: 25 }] },
-            hlc: hlcFor(PANEL_A, -1_000_000_000),
-          }),
-        ],
-      },
-      actor,
-    );
-
-    const [conflict] = await conflicts.listConflicts(actor);
-    expect(conflict?.field).toBe('variants');
-    await conflicts.resolveConflict({ conflictId: conflict!.id, action: 'restoreLoser' }, actor);
-
-    const after = await reload(product.id);
-    expect(after.variants[0]?.weightKg).toBe(25);
-    // Same variant row, so the lines keyed by it are not orphaned.
-    expect(after.variants[0]?.id).toBe(existing!.id);
-  });
-
-  it('refuses a variant set that breaks the rules, with a reason', async () => {
-    const product = await existingProduct();
-
-    const response = await sync.applyPush(
-      {
-        mutations: [
-          mutation({
-            kind: 'product.update',
-            entity: 'product',
-            entityId: product.id,
-            fields: ['variants'],
-            payload: { variants: [{ code: 'MRG-01', weightKg: -1 }] },
-            baseFieldHlc: product.sync.fieldHlc,
-          }),
-        ],
-      },
-      actor,
-    );
-
-    expect(response.results[0]?.status).toBe('rejected');
-    expect(response.results[0]?.error ?? '').toMatch(/greater than zero/i);
-    expect((await reload(product.id)).variants[0]?.weightKg).toBe(20);
+    expect(after.code).toBe('MRG-77');
+    expect(after.weightKg).toBe(21);
+    expect(after.colours).toEqual(['White', 'Blue']);
+    // Converted under the set's own clock, so a later real edit wins as usual.
+    expect(after.sync.fieldHlc.colours).toBeDefined();
+    expect(after.sync.fieldHlc.variants).toBeUndefined();
   });
 });

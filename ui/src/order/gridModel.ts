@@ -2,20 +2,20 @@
  * The data side of the new pending order's product card, pure and shared by both panels.
  *
  * Choosing a product (a `ProductCategory`: OPT, One piece toilet) opens a card with every one of
- * its sub products at once, a row for each active variant (a row for each colour of a multicolour
- * sub product). A row carries its OWN product facts, because one card spans many sub products: the
- * live deleted-product check, the party's own names and packaging, and the colour rule are all per
- * product id.
+ * its sub products at once, a row for each sub product. A row carries its OWN product facts,
+ * because one card spans many sub products: the live deleted-product check, the party's own
+ * names and packaging, and the colours on offer are all per product id.
  *
  * Nothing here knows about React, the transport or the Enter walk; those stay in the screens.
  */
 
-import { colourRuleOf, type ColourRule, type Product, type ProductImage } from '@orderbook/shared';
+import type { PrintSideSetting, Product, ProductImage } from '@orderbook/shared';
 
-/** What every line and every grid row knows about its variant. */
-export interface VariantFacts {
-  variantId: string;
-  /** The colour or pattern; null on a product that comes in one form. */
+/** What every line and every grid row knows about its sub product's code and weight. */
+export interface SubProductFacts {
+  /** Legacy variant reference, carried through on a line taken before variants went; null since. */
+  variantId: string | null;
+  /** Legacy colour text of such a line; null on every newer one. */
   variantLabel: string | null;
   code: string;
   /** Per piece, or null while the master has no figure for it yet. */
@@ -32,16 +32,18 @@ export interface ProductFacts {
   brand: string | null;
   alias: string | null;
   size: string | null;
-  /** Decides what the colour cell is (§2). */
-  rule: ColourRule;
+  /** The colours this sub product is offered in — decides what the colour cell is (§2). */
+  colours: string[];
+  /** Its print-side setting, resolved against the name when the line is built. */
+  printSide: PrintSideSetting;
   fromPartyVariant: boolean;
   notes: string;
   /** The sub product's primary photo, when the catalogue has one. */
   image?: ProductImage;
 }
 
-/** One line on the lead: one variant, one colour, one quantity. */
-export interface GridLine extends ProductFacts, VariantFacts {
+/** One line on the lead: one sub product, one colour, one quantity. */
+export interface GridLine extends ProductFacts, SubProductFacts {
   key: string;
   colour: string;
   packaging: string;
@@ -49,13 +51,13 @@ export interface GridLine extends ProductFacts, VariantFacts {
   quantity: number;
 }
 
-/** One row of the card: a sub product's variant, in one colour, with the quantity as typed. */
-export interface GridRow extends ProductFacts, VariantFacts {
+/** One row of the card: a sub product, in one colour, with the quantity as typed. */
+export interface GridRow extends ProductFacts, SubProductFacts {
   /** The row's own identity (React key, patch target). Never the saved line's. */
   key: string;
   /** When the row was lifted from a saved line: that line's key, kept so the line stays itself. */
   lineKey?: string;
-  /** Only ever chosen on a `selectable` sub product; blank everywhere else. */
+  /** Only ever chosen on a sub product offering several colours; blank everywhere else. */
   colour: string;
   /** Kept as text so a half-typed number stays half-typed. */
   qty: string;
@@ -95,37 +97,30 @@ export function factsOfProduct(
     brand: product.brand,
     alias: partyRecord?.alias ?? product.alias,
     size: partyRecord?.size ?? product.size,
-    rule: colourRuleOf(product),
+    colours: product.colours,
+    printSide: product.printSide,
     fromPartyVariant: Boolean(partyRecord),
     notes: '',
   };
 }
 
 /**
- * The card's rows for a chosen product: every sub product, in catalogue order, a row for each
- * variant still on sale. Packaging starts empty on purpose (§3.2): the party's saved packaging is
- * offered, never applied. A variant taken off the form stays sellable on old lines, not new ones.
+ * The card's rows for a chosen product: every sub product, in catalogue order, one row each.
+ * Packaging starts empty on purpose (§3.2): the party's saved packaging is offered, never applied.
  */
 export function buildRows(subProducts: readonly Product[], options: BuildRowsOptions): GridRow[] {
-  const rows: GridRow[] = [];
-  for (const product of subProducts) {
-    const facts = factsOfProduct(product, options.partyRecordFor?.(product.id));
-    for (const variant of product.variants.filter((candidate) => candidate.isActive)) {
-      rows.push({
-        ...facts,
-        key: options.nextKey(),
-        variantId: variant.id,
-        variantLabel: variant.label,
-        code: variant.code,
-        weightKg: variant.weightKg,
-        colour: '',
-        qty: '',
-        packaging: '',
-        grade: '',
-      });
-    }
-  }
-  return rows;
+  return subProducts.map((product) => ({
+    ...factsOfProduct(product, options.partyRecordFor?.(product.id)),
+    key: options.nextKey(),
+    variantId: null,
+    variantLabel: null,
+    code: product.code,
+    weightKg: product.weightKg,
+    colour: '',
+    qty: '',
+    packaging: '',
+    grade: '',
+  }));
 }
 
 /** "+ Same sub product, another colour": a blank copy of the row, right under it. */
@@ -157,18 +152,13 @@ export function isCounted(row: GridRow): boolean {
 export interface ReadyOptions {
   /** `leads.packagingRequiredOnConvert`: every counted row needs a packaging. */
   packagingRequired: boolean;
-  /**
-   * The company has a colour list. A `selectable` row needs a colour once it has a quantity; with
-   * no list there is nothing to choose from, so it is a plain row (the fallback of the old card).
-   */
-  colourListNonEmpty: boolean;
 }
 
 /** Why a counted row cannot be added yet, or null when it can. */
 export function rowProblem(row: GridRow, options: ReadyOptions): 'colour' | 'packaging' | null {
   if (!isCounted(row)) return null;
-  if (row.rule === 'selectable' && options.colourListNonEmpty && !row.colour.trim())
-    return 'colour';
+  // A sub product offering several colours needs one chosen on the row.
+  if (row.colours.length > 1 && !row.colour.trim()) return 'colour';
   if (options.packagingRequired && !row.packaging.trim()) return 'packaging';
   return null;
 }
@@ -266,8 +256,8 @@ export interface WalkRow {
 }
 
 /**
- * Where Enter goes from a field of the row walk. A row's fields in order are colour (selectable
- * only), quantity, packaging, grade. A row nobody has started is skipped whole: from its colour
+ * Where Enter goes from a field of the row walk. A row's fields in order are colour (only where
+ * several are offered), quantity, packaging, grade. A row nobody has started is skipped whole: from its colour
  * select (no quantity, no colour) or from its quantity (no quantity) the walk goes on to the next
  * row, so a card of thirty sub products is not thirty rows of three Enters.
  *

@@ -95,12 +95,12 @@ describe.skipIf(!canRunIntegrationTests)('archive restore across schema levels (
     folder = await mkdtemp(path.join(os.tmpdir(), 'ob-archive-replay-'));
     const party = await catalog.createParty({ name: 'Replay Traders' }, actor);
     const product = await catalog.createProduct(
-      { categoryName: 'Tiles', variants: [{ code: 'RP-01' }], name: 'Replay Tile' },
+      { categoryName: 'Tiles', code: 'RP-01', name: 'Replay Tile' },
       actor,
     );
     draft = {
       partyId: party.id,
-      items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 1, packaging: 'Box' }],
+      items: [{ productId: product.id, variantId: product.id, quantity: 1, packaging: 'Box' }],
     };
   });
   afterEach(async () => {
@@ -133,6 +133,20 @@ describe.skipIf(!canRunIntegrationTests)('archive restore across schema levels (
       entries: {
         // The column the migration adds, and the counters it seeds.
         [tableEntryName('leads')]: (text) => text.replace(/,"po_number":(null|"[^"]*")/g, ''),
+        // At this level `line_items.variant_id` was still NOT NULL. Every line
+        // written then named a variant; the sub product's own row is the id a
+        // build from before the removal would have written, so a null becomes
+        // the line's `product_id`.
+        [tableEntryName('line_items')]: (text) =>
+          text
+            .split('\n')
+            .map((line) => {
+              const product = /"product_id":"([^"]+)"/.exec(line)?.[1];
+              return product && line.includes('"variant_id":null')
+                ? line.replace('"variant_id":null', `"variant_id":"${product}"`)
+                : line;
+            })
+            .join('\n'),
         [tableEntryName('id_sequences')]: (text) =>
           text
             .split('\n')

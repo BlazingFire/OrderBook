@@ -12,7 +12,6 @@ import {
   mapLineItem,
   mapParty,
   mapProduct,
-  mapProductVariant,
   toIso,
   toIsoDate,
   toNumber,
@@ -142,66 +141,51 @@ describe('mapParty', () => {
 });
 
 describe('mapProduct', () => {
-  it('reads the model columns and defaults a missing JSONB custom_fields to an object', () => {
+  it('reads the sub product columns and defaults a missing JSONB custom_fields to an object', () => {
     const product = mapProduct(
       {
         id: 'pr1',
         name: 'Carrara White',
         category_id: 'c1',
         category_name: 'Floor Tile',
-        has_variants: false,
         size: '600x600mm',
-        multi_colour: true,
+        code: 'GVT-01',
+        weight_kg: '22.500',
+        colours: ['White', 'Ivory'],
+        print_side: 'right',
         custom_fields: null,
         is_active: true,
         created_at: new Date(),
         updated_at: new Date(),
       },
       [],
-      [
-        {
-          id: 'VR0000000001',
-          productId: 'pr1',
-          code: 'GVT-01',
-          label: null,
-          weightKg: 22.5,
-          sequence: 1,
-          isActive: true,
-        },
-      ],
     );
 
     expect(product.size).toBe('600x600mm');
-    expect(product.multiColour).toBe(true);
+    expect(product.code).toBe('GVT-01');
+    expect(product.weightKg).toBe(22.5);
+    expect(product.colours).toEqual(['White', 'Ivory']);
+    expect(product.printSide).toBe('right');
     expect(product.customFields).toEqual({});
     expect(product.categoryName).toBe('Floor Tile');
-    expect(product.hasVariants).toBe(false);
-    expect(product.variants.map((variant) => variant.code)).toEqual(['GVT-01']);
   });
 
-  it("coerces the variant's NUMERIC weight and keeps a null one null", () => {
-    expect(
-      mapProductVariant({
-        id: 'VR1',
-        product_id: 'pr1',
-        code: '41',
-        label: 'Vitrosa 41',
-        weight_kg: '18.500',
-        sequence: 2,
-        is_active: true,
-      }),
-    ).toEqual({
-      id: 'VR1',
-      productId: 'pr1',
+  it("coerces the sub product's NUMERIC weight and keeps a null one null", () => {
+    const base = {
+      id: 'pr1',
+      name: 'Vitrosa 41',
+      category_id: 'c1',
       code: '41',
-      label: 'Vitrosa 41',
-      weightKg: 18.5,
-      sequence: 2,
-      isActive: true,
-    });
-    expect(
-      mapProductVariant({ id: 'VR2', product_id: 'pr1', code: '42', label: null, weight_kg: null, sequence: 3, is_active: false }).weightKg,
-    ).toBeNull();
+      colours: '["White"]',
+      is_active: true,
+      created_at: new Date(),
+      updated_at: new Date(),
+    };
+    expect(mapProduct({ ...base, weight_kg: '18.500' }).weightKg).toBe(18.5);
+    expect(mapProduct({ ...base, weight_kg: null }).weightKg).toBeNull();
+    // A row from before the print-side column reads as the Default side.
+    expect(mapProduct({ ...base, weight_kg: null }).printSide).toBe('default');
+    expect(mapProduct({ ...base, weight_kg: null }).colours).toEqual(['White']);
   });
 });
 

@@ -83,18 +83,13 @@ async function runQuery(
 ): Promise<RankedRow[]> {
   switch (kind) {
     case 'product': {
-      // The vector already carries every variant code and label (the
-      // `product_variants_search_trg` trigger refreshes it), so a code typed
-      // here finds its model; the subtitle names the category and the codes.
+      // The vector already carries the sub product's code and colours (the
+      // `products_search_trg` trigger refreshes it), so a code typed here
+      // finds its sub product; the subtitle names the category and the code.
       const { rows } = await runner.raw<{ rows: RankedRow[] }>(
         `SELECT p.id,
                 p.name AS title,
-                COALESCE(c.name, '')
-                  || COALESCE(' · ' || (
-                       SELECT string_agg(v.code, ', ' ORDER BY v.sequence, v.code)
-                         FROM product_variants v
-                        WHERE v.product_id = p.id AND v.is_active
-                     ), '') AS subtitle,
+                COALESCE(c.name, '') || COALESCE(' · ' || p.code, '') AS subtitle,
                 ts_rank(p.search_vector, ${TSQUERY}) AS rank
            FROM products p
            LEFT JOIN product_categories c ON c.id = p.category_id
@@ -151,7 +146,8 @@ async function runQuery(
       const { rows } = await runner.raw<{ rows: RankedRow[] }>(
         `SELECT li.parent_id AS id,
                 li.product_name AS title,
-                ${number} || COALESCE(' · ' || li.code, '') || COALESCE(' · ' || li.variant_label, '') AS subtitle,
+                ${number} || COALESCE(' · ' || li.code, '')
+                  || COALESCE(' · ' || COALESCE(NULLIF(li.colour, ''), li.variant_label), '') AS subtitle,
                 MAX(ts_rank(li.search_vector, ${TSQUERY})) AS rank
            FROM line_items li
            JOIN ${parentTable} parent
@@ -160,7 +156,7 @@ async function runQuery(
             AND li.parent_type = ?
             AND parent.deleted_at IS NULL
             AND li.search_vector @@ ${TSQUERY}${partyScope.sql}
-          GROUP BY li.parent_id, ${numberGroup}, li.product_name, li.code, li.variant_label
+          GROUP BY li.parent_id, ${numberGroup}, li.product_name, li.code, li.variant_label, li.colour
           ORDER BY rank DESC
           LIMIT ?`,
         [term, tenantId, parentType, term, ...partyScope.bindings, limit],
@@ -217,12 +213,9 @@ export async function pickProducts(
   const categoryId = options.categoryId?.trim();
   if (categoryId) return pickSubProducts(tenantId, categoryId, options, fetch, runner);
 
-  // The codes live on the variants, so the prefix boost and the prefix
-  // filter both look there: typing `41` puts the model that sells `41` first.
-  const CODE_PREFIX = `EXISTS (
-    SELECT 1 FROM product_variants v
-     WHERE v.product_id = p.id AND v.is_active AND v.code ILIKE ? ESCAPE '\\'
-  )`;
+  // The code lives on the sub product, so the prefix boost and the prefix
+  // filter both look there: typing `41` puts the sub product coded `41` first.
+  const CODE_PREFIX = `COALESCE(p.code ILIKE ? ESCAPE '\\', false)`;
 
   const { rows } = await runner.raw<{ rows: Row[] }>(
     `SELECT p.*, ${PICKED_CATEGORY_COLUMNS},
@@ -313,10 +306,7 @@ async function pickSubProducts(
           (p.is_active AND p.deleted_at IS NULL AND (
             ? = ''
             OR p.name ILIKE ? ESCAPE '\\'
-            OR EXISTS (
-              SELECT 1 FROM product_variants v
-               WHERE v.product_id = p.id AND v.is_active AND v.code ILIKE ? ESCAPE '\\'
-            )
+            OR p.code ILIKE ? ESCAPE '\\'
           ))
           OR (? AND p.id = ANY(?))
         )

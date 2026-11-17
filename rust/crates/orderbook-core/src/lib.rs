@@ -423,6 +423,3 @@ mod tests {
         assert!(!matches_record("a b", "a\u{85}b"));
     }
 }
-
-mod import;
-pub use import::*;

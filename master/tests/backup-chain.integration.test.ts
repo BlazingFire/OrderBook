@@ -248,12 +248,12 @@ describe.skipIf(!canRunIntegrationTests)('restoring a backup without PO numbers 
     const actor = await testActor();
     const party = await catalogService.createParty({ name: 'Old Numbers Traders' }, actor);
     const product = await catalogService.createProduct(
-      { categoryName: 'Tiles', variants: [{ code: 'OLD-01' }], name: 'Old Tile' },
+      { categoryName: 'Tiles', code: 'OLD-01', name: 'Old Tile' },
       actor,
     );
     const draft = {
       partyId: party.id,
-      items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 1, packaging: 'Box' }],
+      items: [{ productId: product.id, variantId: product.id, quantity: 1, packaging: 'Box' }],
     };
     const first = await leadService.createLead(draft, actor);
     const second = await leadService.createLead(draft, actor);

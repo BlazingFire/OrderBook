@@ -70,9 +70,7 @@ const FIXED = {
   sortOrder: 1,
   alias: null,
   size: 'L-27',
-  multiColour: false,
-  hasVariants: true,
-  variants: [{ id: 'var-1', label: 'White', code: 'OPT-0001', weightKg: 30, isActive: true }],
+  code: 'OPT-0001', weightKg: 30, colours: ['White'],
 };
 
 /** `selectable`: multicolour, one variant with no label. */
@@ -81,9 +79,7 @@ const MULTI = {
   id: 'prod-2',
   name: 'Orissa Pan',
   sortOrder: 2,
-  multiColour: true,
-  hasVariants: false,
-  variants: [{ id: 'var-2', label: null, code: 'OPT-0002', weightKg: 12, isActive: true }],
+  code: 'OPT-0002', weightKg: 12, colours: ['White', 'Ivory'],
 };
 
 /** `dedicated`: a numbered designer piece — no label, not multicolour; its design is its colour. */
@@ -92,8 +88,7 @@ const DEDICATED = {
   id: 'prod-3',
   name: '1111',
   sortOrder: 3,
-  hasVariants: false,
-  variants: [{ id: 'var-3', label: null, code: 'OPT-0003', weightKg: 20, isActive: true }],
+  code: 'OPT-0003', weightKg: 20, colours: [] as string[],
 };
 
 const COLOURS = ['White', 'Ivory'].map((name, index) => ({
@@ -411,6 +406,10 @@ const colourBoxLabel = (productName: string, code: string): string =>
 const colourBoxOf = (productName: string, code: string): HTMLInputElement =>
   screen.getByLabelText(colourBoxLabel(productName, code), { selector: 'input' });
 
+/** Every colour box of one sub product's card, in row order (a row per colour). */
+const colorBoxes = (productName: string, code: string): HTMLInputElement[] =>
+  screen.getAllByLabelText(colourBoxLabel(productName, code), { selector: 'input' }) as HTMLInputElement[];
+
 /** The card's rows, in order, by the code in their first cell. */
 const gridCodes = (): string[] =>
   [...document.querySelectorAll<HTMLElement>('[data-row-key] .ob-order-cell--code')].map(
@@ -420,17 +419,19 @@ const gridCodes = (): string[] =>
 const aside = (): HTMLElement => document.querySelector<HTMLElement>('.ob-order-aside')!;
 const page = (): HTMLElement => document.querySelector<HTMLElement>('.ob-order-page')!;
 
-/** A fixed-colour sub product sold in two variants, so its card has two rows. */
+/** One sub product offered in two colours, so its card has a row per colour. */
 const PAIR = {
   ...FIXED,
   id: 'prod-5',
   name: 'Twin Basin',
   sortOrder: 5,
-  variants: [
-    { id: 'var-5w', label: 'White', code: 'OPT-0005', weightKg: 9, isActive: true },
-    { id: 'var-5i', label: 'Ivory', code: 'OPT-0006', weightKg: 9, isActive: true },
-  ],
+  code: 'OPT-0006',
+  colours: ['White', 'Ivory'],
 };
+
+/** The two rows of `PAIR`'s card, named the way the card names a row. */
+const PAIR_WHITE = 'OPT-0006 · White';
+const PAIR_IVORY = 'OPT-0006 · Ivory';
 
 beforeEach(() => {
   installBrowserStubs();
@@ -537,7 +538,7 @@ describe('the product bar', () => {
     fireEvent.focus(searchBox());
     await screen.findByRole('button', { name: new RegExp(WASH_BASIN.name) });
 
-    // No wait between the code and the Enter — the counter types `opt⏎` blind.
+    // No wait between the code and the Enter — the counter types `opt` blind.
     fireEvent.change(searchBox(), { target: { value: 'opt' } });
     fireEvent.keyDown(searchBox(), { key: 'Enter' });
 
@@ -685,14 +686,17 @@ describe('the sub-product bar', () => {
       id: 'prod-4',
       name: 'Whitewash Pan',
       sortOrder: 0,
-      variants: [{ id: 'var-4', label: 'Ivory', code: 'OPT-0004', weightKg: 9, isActive: true }],
+      code: 'OPT-0004', weightKg: 9, colours: ['Ivory'],
     });
     await chooseProduct();
 
     fireEvent.change(searchBox(), { target: { value: 'white' } });
     const rows = within(screen.getByRole('listbox')).getAllByRole('button');
+    // The exact name first, then the prefix; MULTI comes along because one of
+    // the colours it is offered in is White.
     expect(rows.map((row) => row.textContent)).toEqual([
       expect.stringContaining(FIXED.name),
+      expect.stringContaining(MULTI.name),
       expect.stringContaining('Whitewash Pan'),
     ]);
   });
@@ -721,7 +725,7 @@ describe('the sub-product bar', () => {
     expect(gridCodes()).toEqual(['OPT-0001']);
   });
 
-  it('opens on the one variant whose code was typed in full', async () => {
+  it('opens on the sub product whose code was typed in full', async () => {
     const fake = await openForm();
     fake.catalogue.products.push(PAIR);
     await chooseProduct();
@@ -729,8 +733,12 @@ describe('the sub-product bar', () => {
     fireEvent.change(searchBox(), { target: { value: 'opt-0006' } });
     await pressEnter(searchBox());
 
-    await screen.findByLabelText(qtyLabel('OPT-0006'));
-    expect(gridCodes()).toEqual(['OPT-0006']);
+    // One card, one row per colour it is offered in: the code names the sub
+    // product, not a colour of it, and the card opens on its first colour.
+    // The row is named by the code alone until a colour is chosen on it.
+    await screen.findByLabelText(qtyLabel(PAIR.code));
+    expect(gridCodes()).toEqual([PAIR.code]);
+    expect(document.activeElement).toBe(colourBoxOf(PAIR.name, PAIR.code));
   });
 
   it('goes back to the product bar on Backspace in the empty box', async () => {
@@ -829,15 +837,15 @@ describe('the sub product card', () => {
     });
     const { items } = created(fake);
     expect(
-      items.map(({ variantId, colour, packaging, grade, quantity }) => ({
-        variantId,
+      items.map(({ productId, colour, packaging, grade, quantity }) => ({
+        productId,
         colour,
         packaging,
         grade,
         quantity,
       })),
     ).toEqual([
-      { variantId: 'var-2', colour: 'White', packaging: 'Grass', grade: 'B', quantity: 10 },
+      { productId: MULTI.id, colour: 'White', packaging: 'Grass', grade: 'B', quantity: 10 },
     ]);
   });
 
@@ -1208,27 +1216,42 @@ describe('the sub product card', () => {
 describe('Escape walks back over the stops Enter uses', () => {
   const OPTIONS = { optionLists: [...COLOURS, ...PACKAGING, ...GRADES] };
 
+  /** A row is a sub product in one colour, so a two-row card is one sub product in two. */
+  async function pickColour(box: HTMLElement, typed: string): Promise<void> {
+    fireEvent.change(box, { target: { value: typed } });
+    await pressEnter(box);
+  }
+
   async function pickPair(): Promise<void> {
     const fake = await openForm(OPTIONS);
     fake.catalogue.products.push(PAIR);
     await pickSubProduct(PAIR.name);
+    await pickColour(colourBoxOf(PAIR.name, PAIR.code), 'Whi');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('lead.add.card.anotherColour') }));
+      await wait(0);
+    });
+    const boxes = screen.getAllByLabelText(colourBoxLabel(PAIR.name, PAIR.code), {
+      selector: 'input',
+    }) as HTMLInputElement[];
+    await pickColour(boxes[1]!, 'Ivo');
   }
 
   it('walks a counted row back through its grade and packaging to its quantity, the list the walk opened closing first', async () => {
     await pickPair();
-    const qty = qtyBox('OPT-0005');
+    const qty = qtyBox(PAIR_WHITE);
     fireEvent.change(qty, { target: { value: '5' } });
     await pressEnter(qty);
-    await pressEnter(packagingBox('OPT-0005'));
-    expect(document.activeElement).toBe(gradeBox('OPT-0005'));
+    await pressEnter(packagingBox(PAIR_WHITE));
+    expect(document.activeElement).toBe(gradeBox(PAIR_WHITE));
 
     // The grade's list opened as the walk arrived: the first Escape closes it, the caret stays.
     expect(screen.getByRole('listbox')).toBeTruthy();
     expect(await press('Escape')).toBe(false);
-    expect(document.activeElement).toBe(gradeBox('OPT-0005'));
+    expect(document.activeElement).toBe(gradeBox(PAIR_WHITE));
     expect(screen.queryByRole('listbox')).toBeNull();
 
-    for (const back of [packagingBox('OPT-0005'), qty]) {
+    for (const back of [packagingBox(PAIR_WHITE), qty]) {
       expect(await press('Escape')).toBe(false);
       expect(document.activeElement).toBe(back);
     }
@@ -1237,49 +1260,44 @@ describe('Escape walks back over the stops Enter uses', () => {
   it('skips the packaging and grade of a row with no quantity, on to the next row', async () => {
     await pickPair();
 
-    await pressEnter(qtyBox('OPT-0005'));
-    expect(document.activeElement).toBe(qtyBox('OPT-0006'));
-  });
-
-  it('lands on the quantity of an empty row above, not on its packaging or grade', async () => {
-    await pickPair();
-    qtyBox('OPT-0006').focus();
-
-    await press('Escape');
-    expect(document.activeElement).toBe(qtyBox('OPT-0005'));
-  });
-
-  it('goes through the packaging and grade of a row that has a quantity', async () => {
-    await pickPair();
-    fireEvent.change(qtyBox('OPT-0005'), { target: { value: '5' } });
-    qtyBox('OPT-0006').focus();
-
-    await press('Escape');
-    expect(document.activeElement).toBe(gradeBox('OPT-0005'));
-    await press('Escape');
-    expect(document.activeElement).toBe(packagingBox('OPT-0005'));
-    await press('Escape');
-    expect(document.activeElement).toBe(qtyBox('OPT-0005'));
+    // The next row begins at its colour, because a sub product offered in
+    // several is asked for one first.
+    await pressEnter(qtyBox(PAIR_WHITE));
+    expect(document.activeElement).toBe(colorBoxes(PAIR.name, PAIR.code)[1]);
   });
 
   it("from Add product goes back to the last row's quantity when that row is empty", async () => {
     await pickPair();
-    fireEvent.change(qtyBox('OPT-0005'), { target: { value: '5' } });
+    fireEvent.change(qtyBox(PAIR_WHITE), { target: { value: '5' } });
     addButton().focus();
 
     await press('Escape');
-    expect(document.activeElement).toBe(qtyBox('OPT-0006'));
+    expect(document.activeElement).toBe(qtyBox(PAIR_IVORY));
+  });
+
+  it('goes through the packaging and grade of a row that has a quantity, back to its colour', async () => {
+    await pickPair();
+    fireEvent.change(qtyBox(PAIR_WHITE), { target: { value: '5' } });
+    gradeBox(PAIR_WHITE).focus();
+
+    await press('Escape');
+    expect(document.activeElement).toBe(packagingBox(PAIR_WHITE));
+    await press('Escape');
+    expect(document.activeElement).toBe(qtyBox(PAIR_WHITE));
+    await press('Escape');
+    expect(document.activeElement).toBe(colorBoxes(PAIR.name, PAIR.code)[0]);
   });
 
   it('adds a two-row card from Add sub product after the last row, the empty one left out', async () => {
     await pickPair();
-    fireEvent.change(qtyBox('OPT-0005'), { target: { value: '5' } });
-    await pressEnter(qtyBox('OPT-0005'));
-    await pressEnter(packagingBox('OPT-0005'));
-    await pressEnter(gradeBox('OPT-0005'));
-    expect(document.activeElement).toBe(qtyBox('OPT-0006'));
+    fireEvent.change(qtyBox(PAIR_WHITE), { target: { value: '5' } });
+    await pressEnter(qtyBox(PAIR_WHITE));
+    await pressEnter(packagingBox(PAIR_WHITE));
+    await pressEnter(gradeBox(PAIR_WHITE));
+    expect(document.activeElement).toBe(colorBoxes(PAIR.name, PAIR.code)[1]);
 
-    await pressEnter(qtyBox('OPT-0006'));
+    // Through the second row's colour to its quantity and on to Add.
+    await pressEnter(qtyBox(PAIR_IVORY));
     expect(document.activeElement).toBe(addButton());
     await pressEnter(addButton());
     await backInTheBar();
@@ -1303,25 +1321,27 @@ describe('the Added products count', () => {
 });
 
 describe('the rows are named by their code', () => {
-  it('tells apart two rows of the same colour by their code', async () => {
+  it('names a row by its sub product code and its colour, so two rows never share a label', async () => {
     const fake = await openForm({ optionLists: [...COLOURS, ...PACKAGING, ...GRADES] });
-    fake.catalogue.products.push({
-      ...FIXED,
-      id: 'prod-twin',
-      name: 'Twin Closet',
-      sortOrder: 5,
-      variants: [
-        { id: 'var-t1', label: 'White', code: 'OPT-0008', weightKg: 30, isActive: true },
-        { id: 'var-t2', label: 'White', code: 'OPT-0009', weightKg: 30, isActive: true },
-      ],
+    fake.catalogue.products.push(PAIR);
+    await pickSubProduct(PAIR.name);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('lead.add.card.anotherColour') }));
+      await wait(0);
     });
-    await pickSubProduct('Twin Closet');
+    const boxes = screen.getAllByLabelText(colourBoxLabel(PAIR.name, PAIR.code), {
+      selector: 'input',
+    }) as HTMLInputElement[];
+    fireEvent.change(boxes[0]!, { target: { value: 'Whi' } });
+    await pressEnter(boxes[0]!);
+    fireEvent.change(boxes[1]!, { target: { value: 'Ivo' } });
+    await pressEnter(boxes[1]!);
 
-    // Two white rows, two different labels.
-    expect(qtyBox('OPT-0008')).toBeTruthy();
-    expect(qtyBox('OPT-0009')).toBeTruthy();
-    expect(packagingBox('OPT-0009')).toBeTruthy();
-    expect(gradeBox('OPT-0009')).toBeTruthy();
+    // Two rows, one code, two labels: the colour is what tells them apart.
+    expect(qtyBox(PAIR_WHITE)).toBeTruthy();
+    expect(qtyBox(PAIR_IVORY)).toBeTruthy();
+    expect(packagingBox(PAIR_IVORY)).toBeTruthy();
+    expect(gradeBox(PAIR_IVORY)).toBeTruthy();
   });
 });
 
@@ -1425,10 +1445,10 @@ describe('colour in the card', () => {
 
     const { items } = created(fake);
     expect(
-      items.map(({ variantId, colour, quantity }) => ({ variantId, colour, quantity })),
+      items.map(({ productId, colour, quantity }) => ({ productId, colour, quantity })),
     ).toEqual([
-      { variantId: 'var-2', colour: 'Ivory', quantity: 5 },
-      { variantId: 'var-2', colour: 'White', quantity: 10 },
+      { productId: MULTI.id, colour: 'Ivory', quantity: 5 },
+      { productId: MULTI.id, colour: 'White', quantity: 10 },
     ]);
   });
 
@@ -1478,11 +1498,19 @@ describe('colour in the card', () => {
     expect(document.querySelector('.ob-order-colour__input')).toBeNull();
   });
 
-  it('falls back to a plain row for a multicolour sub product when the company has no colour list', async () => {
+  it("offers the sub product's own colours even when the company list is empty", async () => {
+    // The colours a sub product is offered in are stored on it, not read from
+    // `stock.colour`: an empty list cannot hide them, and a curated list cannot
+    // add one.
     await openForm({ optionLists: [...PACKAGING, ...GRADES] });
     await pickSubProduct(MULTI.name);
-    expect(document.querySelector('.ob-order-colour__input')).toBeNull();
-    fireEvent.change(qtyBox('OPT-0002'), { target: { value: '4' } });
+    expect(document.querySelector('.ob-order-colour__input')).not.toBeNull();
+
+    const box = colourBoxOf(MULTI.name, MULTI.code);
+    box.focus();
+    await pickColour(box, 'Whi');
+    expect(box.value).toBe('White');
+    fireEvent.change(qtyBox('OPT-0002 · White'), { target: { value: '4' } });
     expect(addOff()).toBe(false);
   });
 });
@@ -1500,7 +1528,7 @@ describe('the catalogue changing while the entry is open', () => {
     id: 'prod-new',
     name: 'Fresh Closet',
     sortOrder: 9,
-    variants: [{ id: 'var-new', label: 'Black', code: 'OPT-0099', weightKg: 25, isActive: true }],
+    code: 'OPT-0099', weightKg: 25, colours: ['Black'],
   };
 
   it('offers a product added on the Master at once, with nothing reopened', async () => {
@@ -1632,15 +1660,8 @@ describe('the catalogue changing while the entry is open', () => {
       id: `prod-x${index}`,
       name: `Bulk Closet ${String(index).padStart(2, '0')}`,
       sortOrder: 20 + index,
-      variants: [
-        {
-          id: `var-x${index}`,
-          label: 'White',
-          code: `OPT-X${index}`,
-          weightKg: 25,
-          isActive: true,
-        },
-      ],
+      code: `OPT-X${index}`,
+      colours: ['White'],
     }));
     fake.catalogue.products.push(...(extra as never[]));
     // Thirty-one lines: the fixed sub product, then each bulk one typed into the bar the add left
@@ -1648,7 +1669,7 @@ describe('the catalogue changing while the entry is open', () => {
     // product), Enter.
     await enterOneLine();
     for (const product of extra) {
-      const code = product.variants[0]!.code;
+      const code = product.code;
       fireEvent.change(searchBox(), { target: { value: code } });
       await pressEnter(searchBox());
       const qty = await screen.findByLabelText(qtyLabel(code));
@@ -1797,7 +1818,7 @@ describe('the Added products list, grouped by product', () => {
     categoryName: WASH_BASIN.name,
     categoryCode: WASH_BASIN.code,
     sortOrder: 9,
-    variants: [{ id: 'var-9', label: 'Ivory', code: 'WB-0001', weightKg: 8, isActive: true }],
+    code: 'WB-0001', weightKg: 8, colours: ['Ivory'],
   };
 
   async function twoGroups() {
@@ -2040,8 +2061,8 @@ describe('a dedicated sub product', () => {
 
     const { items } = created(fake);
     expect(
-      items.map(({ variantId, colour, quantity }) => ({ variantId, colour, quantity })),
-    ).toEqual([{ variantId: 'var-3', colour: null, quantity: 3 }]);
+      items.map(({ productId, colour, quantity }) => ({ productId, colour, quantity })),
+    ).toEqual([{ productId: DEDICATED.id, colour: null, quantity: 3 }]);
   });
 });
 

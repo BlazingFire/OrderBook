@@ -36,14 +36,14 @@ let actor: ActorContext;
 async function seedLeadFixture() {
   const party = await catalogService.createParty({ name: 'Patel Tiles' }, actor);
   const product = await catalogService.createProduct(
-    { categoryName: 'Tiles', variants: [{ code: 'GVT-01' }], name: 'Carrara White' },
+    { categoryName: 'Tiles', code: 'GVT-01', name: 'Carrara White' },
     actor,
   );
   return { party, product };
 }
 
 function line(product: Product) {
-  return { productId: product.id, variantId: product.variants[0]!.id, quantity: 10, packaging: 'carton' };
+  return { productId: product.id, variantId: product.id, quantity: 10, packaging: 'carton' };
 }
 
 async function sourcePlatformValueId(value: string): Promise<string> {

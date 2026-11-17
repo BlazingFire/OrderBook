@@ -855,7 +855,7 @@ is: **`undefined` = not asserted, `null` = clear it.**
   reverse lookup.
 - `PARTY_COLUMNS` (12 fields: name, phones, email, address, city, state, pincode,
   `gstNumber`, notes, customFields); `PRODUCT_COLUMNS` (name, alias, categoryId,
-  hasVariants, size, multiColour, customFields — `categoryName` and `variants`
+  code, weightKg, size, colours, printSide, sortOrder, customFields — `categoryName`
   deliberately absent); `LEAD_COLUMNS` (partyId, ownerId, stageId, sourcePlatform,
   followUpDate, partyWiseMode, notes, customFields); `ORDER_COLUMNS`
   (dispatchAddressLabel, expectedDispatchDate, totalWeightKgOverride, notes,
@@ -1130,6 +1130,10 @@ one push `presence:board` (`BoardPresence & {forUserId}`), the whole board each 
 **2026-10-08 "Sell today":** `PANEL_PROTOCOL_VERSION` is 11, for `sellToday:manageList`, `sellToday:create` and
 `sellToday:update` (`SELL_TODAY_MIN_PROTOCOL`, `shared/src/domain/notices.ts`) and the snapshot's optional
 `sellToday` (§11.12a).
+**2026-11-17, the variant removal:** `PANEL_PROTOCOL_VERSION` is 13 (12 was the unreleased order-PDF bump),
+because the payload shape changed: a `Product` carries `code`, `weightKg`, `colours` and `printSide` instead of
+`variants`/`hasVariants`/`multiColour`, and a `LineItem` carries a frozen `printSide`. An Office at 12 or below is
+refused by version, never fed a v13 snapshot (§11.5).
 
 **`shared/src/protocol/discovery.ts` — custom UDP discovery (not mDNS).**
 `DISCOVERY_PORT = 45789`, `DISCOVERY_MAGIC = 'ORDERBOOK'`,
@@ -1197,7 +1201,7 @@ and the one it added show their `it(` count instead, marked `it(`.
 | `shared/tests/company-features-resolve.test.ts` | 5 | `resolveCompanyFeatures` fills from fallbacks |
 | `shared/tests/apply-setting-change.test.ts` | 4 | a `setting` change forces a refresh on a connected panel |
 | `shared/tests/keys-implemented.test.ts` | 4 | every `COMMANDS` id is handled by `useCommand(…)`, a `command.id ===` switch or a `shellCommands` key under `ui/src`, `master/web/src` or `office/web/src` (walks the disk) |
-| `shared/tests/colour-rule.test.ts` | 12 `it(` | catalogue v2: `colourRuleOf` precedence (`multiColour` wins even with a label), blank labels, `shownColour`/`colourRepeatsName`, the numeric Model/Code split, `lineColourText` summing and grouping |
+| `shared/tests/colour-rule.test.ts` | 20 `it(` | catalogue v2, re-based 2026-11-17: `resolveLineColour` over 0/1/several offered colours, `printSideOf` (Default → the numeric Model/Code rule, an explicit side wins), `normalizeColours`, `shownColour`/`colourRepeatsName`, `colourLabeller`, `lineColourText` summing and grouping |
 | `shared/tests/fields.test.ts` | 3 `it(` | catalogue v2: `product.brand` is a managed set with no hex, in `FIELD_LIST_KEYS` and the catalogue |
 | `shared/tests/apply-category-change.test.ts` | 1 `it(` | a `deleted` category change takes the category out of a connected panel's snapshot, and a restore puts it back |
 | `shared/tests/record-search.test.ts` | 4 `it(` | `matchesRecordSearch`: an empty term matches everything; finds by id, party, owner, notes, product, code and packaging, ignoring case; needs every word, in any order; finds by PO number, whole or in part, and by id when there is none |
@@ -2344,10 +2348,10 @@ exercised only through service integration tests.
   `SHIPPED_CATALOGUE_MARKER`; `readCatalogueFile` (parse `config.catalogueFile` before anything is touched),
   `loadCatalogue(parsed, actor, { replace })` — **one transaction**, bulk inserts:
   brand and colour option values (added, restored from the Bin, hex written),
-  categories through `ensureCategories` (code, brand, catalogue order), one-variant
-  sub products coded `CODE-0001…` with `hasVariants = rule === 'fixed'`,
-  `multiColour = rule === 'selectable'` and the fixed colour as the label, weights
-  blank; `replace` first runs `clearCatalogueData` (the retired stock, movement and reservation tables, still cleared for FK safety;
+  categories through `ensureCategories` (code, brand, catalogue order), sub
+  products carrying their own code `CODE-0001…`, weight, `colours` and
+  `printSide` (`All` in the catalogue's Colours column expands to the whole colour
+  range), weights blank; `replace` first runs `clearCatalogueData` (the retired stock, movement and reservation tables, still cleared for FK safety;
   lines, timelines, leads, orders, their sync conflicts, party-wise records, photo
   rows, product connector links, variants, sub products, categories). One
   `catalog.reloaded` or `catalog.imported` activity row and one `catalog` change
@@ -3379,6 +3383,7 @@ are recounted in the 1.3 Phase 9 reconciliation.
 | 49 | `master/src/db/migrations/20261017000000_product_image_source_checksum.ts` | 24 | **Pinned, additive, idempotent** (2026-10-08). `ADD COLUMN IF NOT EXISTS product_images.source_checksum TEXT NULL`, no backfill; `down()` drops it. `uploadImage` fills it with the sha256 of the uploaded file (null when cropped or rotated); the product zip reads a photo as unchanged on it or `checksum`. `master/tests/migration-product-image-source-checksum.integration.test.ts` |
 | 50 | `master/src/db/migrations/20261018000000_notice_sell_today.ts` | 47 | **Pinned, additive, idempotent** (2026-10-08). `notices.kind` (`'notice'` default, or `'sellToday'`, CHECK), `product_ids JSONB` (an array, default `[]`), `auto_close_seconds` (null, 0 or 5 to 120, CHECK), `show_from DATE`: a "Sell today" entry is a kind of notice (§11.12a). `down()` drops the four. `master/tests/migration-notice-sell-today.integration.test.ts` |
 | 51 | `master/src/db/migrations/20261019000000_todo_list.ts` | 89 | **Pinned last, additive, idempotent** (2026-10-08). `todos` and `todo_marks` (the To-do list, §11.12b), `todos.view` to every role and `todos.manage` to `admin` / `server_master` roles (union). `down()` drops the tables only. Test: `master/tests/todos.integration.test.ts` (TD-10 for the grants) |
+| 52 | `master/src/db/migrations/20261116000000_sub_product_code_colours_print_side.ts` | — | **Pinned last, additive, idempotent** (2026-11-17, the variant removal). `products.code`, `weight_kg`, `colours` (JSONB), `print_side` (+CHECK) and the unique `idx_products_code_tenant`; `line_items.print_side` (+CHECK) and `variant_id` no longer NOT NULL. Backfilled from each sub product's first variant — a former multicolour one takes the tenant's live `stock.colour` values, a several-variant one keeps every label as a colour, every row prints `default`. `products_search_refresh()` rewritten; the `product_variants` search trigger dropped. `product_variants` stays, dormant. `master/tests/product-code-colours.integration.test.ts` |
 
 ### 6.3 Conventions across the schema
 
@@ -3417,9 +3422,9 @@ are recounted in the 1.3 Phase 9 reconciliation.
   item 20).
 - **Full-text search** (`search_vector tsvector`, maintained by triggers):
   `parties_search_trg` (name, party_code, phones, email, city); `products_search_trg`
-  (name, live variant codes and labels, alias, size); `product_variants_search_trg`
-  (re-touches the parent product); `line_items_search_trg` (product_name, code,
-  alias, variant_label, colour, size, packaging, notes — not `grade`).
+  (the sub product's name, its own code and colours, alias, size — since 2026-11-17,
+  when `product_variants_search_trg` was dropped); `line_items_search_trg` (product_name,
+  code, alias, variant_label, colour, size, packaging, notes — not `grade`).
 
 ```mermaid
 erDiagram
@@ -3438,7 +3443,8 @@ erDiagram
     PIPELINES ||--|{ PIPELINE_STAGES : cascade
     LEADS ||--o{ LINE_ITEMS : "parent_type=lead (no FK)"
     ORDERS ||--o{ LINE_ITEMS : "parent_type=order (no FK)"
-    PRODUCT_VARIANTS ||--o{ LINE_ITEMS : variant_id
+    PRODUCTS ||--o{ LINE_ITEMS : product_id
+    PRODUCT_VARIANTS ||..o{ LINE_ITEMS : "variant_id (legacy, dormant table)"
     ORDERS ||--o{ TIMELINE_ENTRIES : "parent (no FK)"
 ```
 
@@ -3481,8 +3487,8 @@ digest of each user's `password_hash`, never the hash.
 | Table | Key columns | Keys and constraints | Purpose / code |
 |---|---|---|---|
 | `product_categories` | `id` (PC…), `name`, `code`, `brand`, `sort_order`, `created_at`, `updated_at`, `deleted_at` (the last five since catalogue v2) | `idx_categories_brand_name UNIQUE (tenant_id, lower(coalesce(brand,'')), lower(name)) WHERE deleted_at IS NULL`; `idx_categories_code UNIQUE (tenant_id, lower(code)) WHERE code IS NOT NULL AND deleted_at IS NULL` | the owner's **Product** (e.g. `OPT` One Piece Toilet): an alphanumeric code, a `product.brand` value, catalogue order; no sync columns; `product.repository.ts` (`ensureCategories`, `listCategories`, `findLiveCategoryByCode`) |
-| `products` | `id` (PR…), `category_id` **NOT NULL**, `name`, `alias`, `size`, `has_variants`, `multi_colour`, `sort_order` (catalogue v2), `is_active`, `custom_fields`, soft delete, sync columns, `search_vector` | FK `category_id`; index `(tenant_id, category_id)` | a model (e.g. DAMRU) — the owner's **Sub product**, one variant each in the SWISWARE catalogue — 20 columns; **no code, weight, colour, pricing or trade attributes**; `multi_colour` lets a line pick a colour from `stock.colour`; `product.repository.ts` |
-| `product_variants` | `id` (VR…), `product_id`, `code`, `label` (null = the single plain variant), `weight_kg` (CHECK > 0), `sequence`, `is_active`, `deleted_at` | FK CASCADE; `idx_product_variants_code_tenant (tenant_id, lower(code)) WHERE deleted_at IS NULL`; UNIQUE `(product_id, lower(coalesce(label,'')))` | **every code and weight**; every product has ≥ 1 variant; a variant removed from the form is refused if a pending lead or undispatched order quotes it (`error.conflict.variantRetiredWithPendingLines`), deactivated if otherwise referenced, else hard-deleted; `product-variant.repository.ts` |
+| `products` | `id` (PR…), `category_id` **NOT NULL**, `name`, `alias`, `size`, `code`, `weight_kg`, `colours` (JSONB), `print_side`, `sort_order`, `is_active`, `custom_fields`, soft delete, sync columns, `search_vector` | FK `category_id`; `(tenant_id, category_id)`; UNIQUE `idx_products_code_tenant (tenant_id, lower(code)) WHERE code IS NOT NULL AND deleted_at IS NULL` | the owner's **Sub product** (e.g. DAMRU) — its own software code, weight, the colours it is offered in and where it prints; **no pricing or trade attributes**; `product.repository.ts` |
+| `product_variants` | `id` (VR…), `product_id`, `code`, `label`, `weight_kg` (CHECK > 0), `sequence`, `is_active`, `deleted_at` | FK CASCADE; indexes as the 2026-09 migration left them | **dormant since 2026-11-17** — nothing writes it; kept because migrations only add, and the two legacy lookups (`findProductIdByLegacyVariantId` / `…ByLegacyVariantCode`) read it for a line or a code an older panel still names |
 | `product_images` | `id` UUID, `product_id`, `is_primary`, `caption`, `sequence`, `width`, `height`, `checksum`, `source_checksum` (nullable, `20261016`), `blurhash`, `byte_size`, `uploaded_at` | FK CASCADE | metadata only; files at `<imagesDir>/<tenantId>/<imageId>/<variant>.webp`; `checksum` hashes the stored master, `source_checksum` the uploaded file (server-side only, read by the product zip); `product-image.repository.ts` |
 
 ### 6.9 Leads, orders, line items, pipelines
@@ -3493,7 +3499,7 @@ digest of each user's `password_hash`, never the hash.
 | `pipeline_stages` | `id`, `pipeline_id`, `name`, `sequence`, `is_default`, `is_terminal`, `is_archived`, `colour` | `pipeline_stages_seq_unique (pipeline_id, sequence) DEFERRABLE`; at most one default per pipeline; not both archived and default | Kanban columns (no `tenant_id`). Seeded lead stages: New (default), Quoted, Negotiating, Won (terminal), Lost (terminal). Order stages: In Progress (default), Postpone, Dispatched (terminal), Cancelled (terminal). |
 | `leads` | `id` (LD…), `party_id`, `stage_id`, `owner_id`, `created_by_user_id`, `source_panel_id`, `source_platform`, `follow_up_date`, `party_wise_mode`, `notes`, `custom_fields`, `converted_order_id`, `converted_at`, soft delete, sync columns | FKs to parties, stages, users, office_panels, orders; partial `idx_leads_open`, `idx_leads_followup`; **no index on `owner_id`** (§5.11 item 21) | an enquiry; no status, `lead_number` or amount column — the id is the docket number and the stage is the status; `lead.repository.ts` |
 | `orders` | `id` (OD…), `lead_id`, `party_id`, `stage_id`, `owner_id`, `created_by_user_id`, `source_panel_id`, `dispatch_address_label`, `expected_dispatch_date`, `total_weight_kg`, `total_weight_kg_override`, `notes`, `custom_fields`, `dispatched_at`, soft delete, sync columns | FK `lead_id`→leads (circular with `leads.converted_order_id`); partial `idx_orders_dispatched`; no index on `owner_id` | created only by conversion; `order.repository.ts` |
-| `line_items` | `id` (LI…), `parent_type`, `parent_id` (no FK), `product_id`, `variant_id`; snapshots `product_name`, `category_name`, `category_code`, `brand_name` (the two since catalogue v2), `alias`, `code`, `variant_label`, `colour`, `size`, `weight_kg`, `packaging`, `grade`; `sequence`, `from_party_variant`, `image_path`, `notes`, `quantity` NUMERIC(12,2), `search_vector` | CHECK `quantity > 0`; index `(tenant_id, parent_type, parent_id)` | one table for both parents, one line per variant, snapshot frozen when added; `replaceLines` deletes and re-inserts; `line-item.repository.ts` |
+| `line_items` | `id` (LI…), `parent_type`, `parent_id` (no FK), `product_id`, `variant_id` (nullable, legacy); snapshots `product_name`, `category_name`, `category_code`, `brand_name` (the two since catalogue v2), `alias`, `code`, `variant_label` (legacy), `colour`, `print_side` (since 2026-11-17), `size`, `weight_kg`, `packaging`, `grade`; `sequence`, `from_party_variant`, `image_path`, `notes`, `quantity` NUMERIC(12,2), `search_vector` | CHECK `quantity > 0`; CHECK `print_side IS NULL OR IN ('left','right')`; index `(tenant_id, parent_type, parent_id)` | one table for both parents, one line per sub product and colour, snapshot frozen when added; `replaceLines` deletes and re-inserts; `line-item.repository.ts` |
 | `timeline_entries` | `id` (TL…), `parent_type`/`parent_id`, `kind` (`system`/`remark`), `message`, `from_stage_id`, `to_stage_id`, `actor_user_id` | FKs to stages and users | history and remarks; `timeline.repository.ts` |
 
 ### 6.10 Retired tables: inventory, movements, reservations
@@ -3503,11 +3509,9 @@ RETIRED but kept** — migrations after 1.2.0 only add, and a customer's rows ar
 dropped by an update. **Nothing reads or writes them**: no service, repository, route,
 socket command or screen. They are left out of the ER diagram above and are described
 here only as the historical record (full DDL in `docs/schema/03-leads-orders-inventory.md`).
-Three FK-driven exceptions remain in code: `catalog-reload-cli.ts` (`BUSINESS_TABLES`) and
+Two FK-driven exceptions remain in code: `catalog-reload-cli.ts` (`BUSINESS_TABLES`) and
 `catalogue-seed.service.ts#clearCatalogueData` still `DELETE` from them so a wipe/reload can
-remove variants, and `product-variant.repository.ts#deleteLegacyStock` clears a deleted
-variant's rows from them (they are FK-ed to `product_variants`); `referencedVariantIds` counts
-line items only, so old stock never keeps a variant "in use". Do not write new code against them.
+remove variants (the old rows are FK-ed to `product_variants`). Do not write new code against them.
 
 | Table | Key columns | Keys and constraints | Purpose / code |
 |---|---|---|---|
@@ -4872,9 +4876,9 @@ each with a reason in `ALLOWED_UNCALLED.office`).
   short line a row, kept per PC by `useSubListCompact` in `localStorage`
   `ob.order.subList.compact`). The chain is the owner's (2026-10-08, restored after
   the 1.4.6 grid): picking a sub product opens its card (`GridCard`, the shared
-  `ui/src/order/` kit; `buildRows([product])`, one row per active variant, only the
-  variant whose code was typed in full when one was) by its `colourRuleOf` rule —
-  `fixed` the colour shown locked, `dedicated` no colour, `selectable` a colour select
+  `ui/src/order/` kit; `buildRows([product])`, one row for each colour it is
+  offered in) by the colours on the sub product itself —
+  none: quantity only, one: the colour shown locked, several: a colour select
   first ("+ Same sub product, another colour" adds a row) — each row's packaging and
   grade right beside its quantity: the kit's pick-only `Select` over `line.packaging`
   and `line.grade`, packaging required only while `packagingRequiredOnConvert` is on
@@ -6059,13 +6063,14 @@ rewritten. Tests: `shared/tests/apply-party-rename.test.ts`,
 
 ### 11.5 Product catalogue, images and import
 
-- **Model.** `product_categories` → `products` (a model) → `product_variants` (every
-  code and weight); `party_product_variants` per
+- **Model.** `product_categories` → `products` (the sub product: its own code,
+  weight, `colours`, `print_side`); `party_product_variants` per
   (party, product) holds a party's own name, alias, size, weight and packaging. Since
   catalogue v2 (2026-09-29) the screens call a category a **Product** (code, brand,
-  catalogue order, a soft delete of its own) and a model a **Sub product** (one
-  variant each in the SWISWARE catalogue); the colour rule is `colourRuleOf`
-  (`shared/src/domain/colour-rule.ts`), never a column.
+  catalogue order, a soft delete of its own) and a model a **Sub product**. Since
+  2026-11-17 the variant layer is gone: `product_variants` stays in the database,
+  dormant, and the one deep module for colours and print side is
+  `shared/src/domain/colour-rule.ts` (`resolveLineColour`, `printSideOf`) — never a rule column.
 - **Products (categories), catalogue v2.** Office Products → Products
   (`office/web/src/screens/MainProductsScreen.tsx`) → `api` → `POST`/`PUT`/`DELETE
   /api/categories` (Office, online only) → `category:create`/`update`/`delete` →
@@ -6075,14 +6080,15 @@ rewritten. Tests: `shared/tests/apply-party-rename.test.ts`,
   Brands: Products → Brands (`BrandsScreen`) and the Master's Settings → Fields, both
   the shared `OptionListEditor` over `product.brand`.
 - **Create/edit (Office).** `office/web/src/components/ProductDrawer.tsx` →
-  `validateProductVariants` (`shared/src/domain/product-validation.ts`) →
+  `validateProductInput` (`shared/src/domain/product-validation.ts`) →
   `api.createProduct`/`updateProduct` → queued `product.create`/`product.update` →
-  `catalogService.createProduct` or `mergeUpdate` → `product.repository.ts` +
-  `product-variant.repository.ts#replaceVariants`. `matchVariantRows` decides which stored
-  row each incoming row is, for that save and for the guard in `catalog.service.ts#updateProduct`,
-  so they cannot disagree: retiring a variant a pending lead or undispatched order quotes is
-  refused (`variantRetiredWithPendingLines`), otherwise a referenced row is deactivated. Several
-  variant rows imply `hasVariants` when the caller does not say (2026-11-06). A new category name is created on
+  `catalogService.createProduct` or `mergeUpdate` → `product.repository.ts`
+  (`insertProduct`, `updateProductColumns`; a blank code takes the next in its
+  product's sequence, `nextSubProductCodes`, and the partial unique index refuses a
+  taken one). A queued payload from a panel built before the removal still carries
+  `variants`/`multiColour`; it is converted once, by `normalizeLegacyProductInput`
+  (the service) or `legacyVariantProductFields` (the offline merge and a stored
+  conflict restore). A new category name is created on
   the Master (the private `resolveCategoryId` in `product.repository.ts`, which
   inserts a `product_categories` row — by id, then `categoryCode` (never creates),
   then name with `categoryBrand`; `ensureCategories` serves only the catalogue
@@ -6840,7 +6846,7 @@ All call `setupDatabase`, `teardownDatabase`, `resetData` and wrap their body in
 |---|---|---|
 | Access, auth and audit (9) | `access`, `access-lockout`, `audit-trail`, `audit-atomicity`, `auth-pairing`, `permissions`, `panel-actor`, `party-access`, `password-vault` | the Roles & Users gate list (cited as "docs/ROLES_AND_USERS.md §15" in the test header, but that section is now "Signing in on an Office Panel" and the list is not in that file); last-admin lockout (G4); the audit row commits/rolls back with its transaction — for roles and users (`audit-trail`) and, since 2026-09-25, every write path that used to record detached or not at all, with the entry written after every row lock (`audit-atomicity`, which forces the entry to fail with a trigger and probes lock order under a 500 ms `lock_timeout`); setup, sign-in, sessions and pairing; a refusal names its permission; an Office command runs as the signed-in person; per-party grants; the vault stores nothing while off |
 | HTTP surfaces (4) | `http-api`, `panel-administration`, `panel-catalog-route`, `panel-image-route` | `requireAuth` coverage and no static uploads mount; `GET /api/storage` needs `settings.manage`; panel secret rotation order; panel import/image routes authenticate as the user, once per request and before the upload is parsed, and a refused acting token is a 401 |
-| Catalogue (10) | `catalog`, `catalogue-seed`, `catalogue-categories` (catalogue v2), `product-attributes`, `product-hierarchy`, `product-variants`, `product-import`, `partial-patch`, `images`, `image-sequence` | parties and products; the catalogue load (since catalogue v2 the shipped Markdown file: every product and sub product, codes, brand and order, `CODE-####`, the colour rule read back by `colourRuleOf`, hex, idempotent, and a replacing load that keeps parties and the log); categories found by id, code, then name, live rows only, and `ensureCategories` never updating an existing row (`catalogue-categories`, 9); a partial write never nulls fields it was not given; `replaceVariants`; bulk import names bad rows and a re-upload changes nothing; the image pipeline with real `sharp`; gallery `sequence` after a delete |
+| Catalogue (9) | `catalog`, `catalogue-seed`, `catalogue-categories` (catalogue v2), `product-attributes`, `product-hierarchy`, `product-code-colours`, `partial-patch`, `images`, `image-sequence` | parties and products; the catalogue load (since catalogue v2 the shipped Markdown file: every product and sub product, their own codes, brand and order, `CODE-####`, colours and print side, hex, idempotent, and a replacing load that keeps parties and the log); categories found by id, code, then name, live rows only, and `ensureCategories` never updating an existing row (`catalogue-categories`, 9); `product-code-colours` replaced `product-variants` on 2026-11-17 — the sub product's own code, weight, colours and print side, the unique code index, the legacy lookups and the merge's conversion of an older panel's `variants` payload; a partial write never nulls fields it was not given; the image pipeline with real `sharp`; gallery `sequence` after a delete. `product-import` went with the sheet import/export on 2026-11-05. |
 | Leads and orders (3) | `lead`, `pick`, `search` | conversion copies lines and snapshots weights; dispatch stamps the order's clock (`audit-atomicity` also pins that a dispatch reads its stage under the lock); picker prefix matching; `tsvector` search. `inventory` and `free-to-sell` were deleted in 1.4 |
 | Stock retired (1) | `stock-retired` | 1.4 (R15): converting and dispatching work with no stock rows and write none; the Dispatches report counts boxes from line quantities; an older Office's `stock:*` command gets a refusal ack (`validation.stock.retired`); a stored role holding the removed permissions loads and grants neither; a stored `inventory.freeToSell` row is ignored; `stock: []` is still sent; a queued `stock.inbound` is rejected alone and the lead beside it still applies (8 `it(`) |
 | Sync (2) | `sync`, `sync-delta` | outbox apply (duplicates, conflicts, reconnect order); a delta replay equals a fresh snapshot |

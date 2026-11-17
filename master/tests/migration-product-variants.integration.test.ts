@@ -62,7 +62,11 @@ describe.skipIf(!canRunIntegrationTests)('product variants migration (integratio
     const products = await columnsOf('products');
     expect(products).toContain('has_variants');
     expect(products).not.toContain('product_code');
-    expect(products).not.toContain('weight_kg');
+    // 2026-11-17 gave the sub product its own `code`, `weight_kg`, `colours`
+    // and `print_side`, backfilled from the first variant; the variant table
+    // stays dormant.
+    expect(products).toContain('code');
+    expect(products).toContain('weight_kg');
     expect(products).not.toContain('color');
 
     // A category is no longer optional.
@@ -117,12 +121,24 @@ describe.skipIf(!canRunIntegrationTests)('product variants migration (integratio
     expect(await indexesOf('stock_reservations')).toContain('idx_reservations_variant');
     expect(await indexesOf('line_items')).toContain('idx_line_items_variant');
     expect(await indexesOf('products')).toContain('idx_products_category');
-    expect(await indexesOf('products')).not.toContain('idx_products_code_tenant');
+    // Added by the 2026-11-17 removal: the sub product's own code is unique.
+    expect(await indexesOf('products')).toContain('idx_products_code_tenant');
   });
 
   it('MIG-4: running up() again on a migrated database changes nothing — the wipe does not fire', async () => {
     const actor = await testActor();
     const { product } = await createTestProduct(actor, { name: 'Survivor', code: 'SRV-1' });
+    // Nothing writes a variant row any more; this one is staged by hand because
+    // the subject of this suite is the dormant table's own shape.
+    const tenantId = await testTenantId();
+    await db()('product_variants').insert({
+      id: 'VR9999999901',
+      tenant_id: tenantId,
+      product_id: product.id,
+      code: 'SRV-1',
+      label: null,
+      sequence: 0,
+    });
 
     await productVariants(db());
 
@@ -135,7 +151,7 @@ describe.skipIf(!canRunIntegrationTests)('product variants migration (integratio
   it('MIG-5: the database itself refuses a duplicate code, a zero weight and a repeated colour on one model, and allows blank colours', async () => {
     const actor = await testActor();
     const tenantId = await testTenantId();
-    const { variant } = await createTestProduct(actor, { name: 'Guarded', code: 'GRD-1' });
+    const { product: guarded } = await createTestProduct(actor, { name: 'Guarded', code: 'GRD-1' });
     const { product: other } = await createTestProduct(actor, { name: 'Other', code: 'OTH-1' });
 
     const row = (overrides: Record<string, unknown>) => ({
@@ -147,6 +163,17 @@ describe.skipIf(!canRunIntegrationTests)('product variants migration (integratio
       weight_kg: null,
       sequence: 9,
       ...overrides,
+    });
+
+    // Staged by hand: nothing writes this table any more, and its own shape is
+    // the subject here. `guarded` takes the code every other insert collides on.
+    await db()('product_variants').insert({
+      id: 'VR9999999995',
+      tenant_id: tenantId,
+      product_id: guarded.id,
+      code: 'GRD-1',
+      label: 'Blue',
+      sequence: 0,
     });
 
     // The code index is case-insensitive and spans products.
@@ -172,16 +199,19 @@ describe.skipIf(!canRunIntegrationTests)('product variants migration (integratio
     ).resolves.toBeDefined();
 
     // ...while a binned product's codes are free for the taking.
-    await db()('product_variants').where({ id: variant.id }).update({ deleted_at: db().fn.now() });
+    await db()('product_variants')
+      .where({ id: 'VR9999999995' })
+      .update({ deleted_at: db().fn.now() });
     await expect(db()('product_variants').insert(row({ code: 'GRD-1', label: 'Green' }))).resolves.toBeDefined();
   });
 
-  it('MIG-6: editing a variant re-indexes its product, so a new code is searchable at once', async () => {
+  it('MIG-6: the product carries its own code, so the vector follows the product row', async () => {
     const actor = await testActor();
-    const { product, variant } = await createTestProduct(actor, { name: 'Indexed', code: 'IDX-1' });
+    const { product } = await createTestProduct(actor, { name: 'Indexed', code: 'IDX-1' });
 
-    // Straight into the table: the point is the trigger, not the service.
-    await db()('product_variants').where({ id: variant.id }).update({ code: 'TRIGGERCODE2' });
+    // The variant trigger is gone with the table; `products_search_refresh`
+    // reads the product's own columns, so editing the row re-indexes it.
+    await db()('products').where({ id: product.id }).update({ code: 'TRIGGERCODE2' });
 
     const hit = await db()('products')
       .where({ id: product.id })

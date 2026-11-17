@@ -47,7 +47,7 @@ const PRODUCT = {
   size: '600 x 400',
   categoryName: 'Table Top Basin',
   isActive: true,
-  variants: [{ code: 'TTB-0041', isActive: true }],
+  code: 'TTB-0041',
   images: [],
 } as unknown as Product;
 

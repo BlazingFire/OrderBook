@@ -221,24 +221,17 @@ export function pickFromView(
         (product) =>
           term === '' ||
           product.name.toLowerCase().includes(term) ||
-          product.variants.some(
-            (variant) => variant.isActive && variant.code.toLowerCase().startsWith(term),
-          ),
+          product.code.toLowerCase().startsWith(term),
         byCatalogueOrder,
         query,
         PICK_MAX_LIMIT,
       );
     }
-    // The whole catalogue, ranked. The codes live on the variants, so a code
-    // typed here still finds its model.
+    // The whole catalogue, ranked. The code lives on the sub product, so a
+    // code typed here still finds it.
     return pickFrom<Product>(
       view.products,
-      (product) => [
-        ...product.variants.map((variant) => variant.code),
-        product.name,
-        product.alias,
-        ...product.variants.map((variant) => variant.label),
-      ],
+      (product) => [product.code, product.name, product.alias, ...product.colours],
       (product) => product.name,
       query,
     );
@@ -331,9 +324,7 @@ export async function pickFromViewAsync(
         (product) =>
           term === '' ||
           product.name.toLowerCase().includes(term) ||
-          product.variants.some(
-            (variant) => variant.isActive && variant.code.toLowerCase().startsWith(term),
-          ),
+          product.code.toLowerCase().startsWith(term),
         byCatalogueOrder,
         query,
         PICK_MAX_LIMIT,
@@ -341,12 +332,7 @@ export async function pickFromViewAsync(
     }
     return pickFromAsync<Product>(
       view.products,
-      (product) => [
-        ...product.variants.map((variant) => variant.code),
-        product.name,
-        product.alias,
-        ...product.variants.map((variant) => variant.label),
-      ],
+      (product) => [product.code, product.name, product.alias, ...product.colours],
       (product) => product.name,
       query,
     );
@@ -385,25 +371,15 @@ function productComparator(
   dir: string | undefined,
 ): (a: Product, b: Product) => number {
   const byName = (a: Product, b: Product): number => a.name.localeCompare(b.name);
-  const live = (product: Product) => product.variants.filter((variant) => variant.isActive);
   const textOf: Record<string, (product: Product) => string | null> = {
     brand: (product) => product.brand,
     category: (product) => product.categoryName,
     name: (product) => product.name,
     size: (product) => product.size,
-    colours: (product) =>
-      live(product)
-        .map((variant) => variant.label ?? '')
-        .sort()[0] || null,
-    code: (product) =>
-      live(product)
-        .map((variant) => variant.code)
-        .sort()[0] ?? null,
+    colours: (product) => [...product.colours].sort()[0] || null,
+    code: (product) => product.code,
   };
-  const weightOf = (product: Product): number | null => {
-    const weights = live(product).flatMap((variant) => (variant.weightKg === null ? [] : [variant.weightKg]));
-    return weights.length > 0 ? Math.min(...weights) : null;
-  };
+  const weightOf = (product: Product): number | null => product.weightKg;
   const sign = dir === 'desc' ? -1 : 1;
 
   if (sort === 'weight') {
@@ -448,12 +424,11 @@ export function listProductsFromView(
       product.categoryName,
       product.categoryCode,
       product.brand,
-      ...product.variants.map((variant) => variant.code),
-      ...product.variants.map((variant) => variant.label),
+      product.code,
+      ...product.colours,
     ].some((field) => (field ?? '').toLowerCase().includes(term));
 
-  const missingWeight = (product: Product): boolean =>
-    product.variants.some((variant) => variant.isActive && variant.weightKg === null);
+  const missingWeight = (product: Product): boolean => product.weightKg === null;
 
   // The brand narrows before the facet, as on the Master: it decides which
   // category chips are worth offering at all.

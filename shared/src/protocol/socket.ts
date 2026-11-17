@@ -194,10 +194,12 @@ export interface PanelAuthPayload {
 
 /**
  * The protocol this build speaks. It rises by one in each release that adds a
- * socket command, so either side can tell the other is too old for one before
- * sending it, instead of waiting out a timeout.
+ * socket command — or changes a payload's shape, as 13 does (a Product no
+ * longer carries variants; it carries its own code, colours and print
+ * side) — so either side can tell the other is too old before sending it,
+ * instead of waiting out a timeout or misreading the catalogue.
  */
-export const PANEL_PROTOCOL_VERSION = 12;
+export const PANEL_PROTOCOL_VERSION = 13;
 
 /**
  * The lowest Master protocol each command needs. A command not listed has

@@ -82,7 +82,7 @@ async function makePerson(username: string): Promise<string> {
 
 async function seedProduct() {
   return catalog.createProduct(
-    { categoryName: 'Tiles', variants: [{ code: 'PA-01' }], name: 'Glazed Tile' },
+    { categoryName: 'Tiles', code: 'PA-01', name: 'Glazed Tile' },
     admin,
   );
 }
@@ -94,7 +94,7 @@ async function seedLead(partyId: string, product: Product, actor: ActorContext) 
       items: [
         {
           productId: product.id,
-          variantId: product.variants[0]!.id,
+          variantId: product.id,
           quantity: 3,
           packaging: 'carton',
         },

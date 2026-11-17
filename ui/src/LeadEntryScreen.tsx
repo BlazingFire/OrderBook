@@ -32,13 +32,12 @@
  * dropdowns: the **product bar** (a product by name or code, rows
  * `CODE · Name · Brand`), then, with the product as a chip in front of the same
  * box, the **sub-product bar** (its sub products, by name, alias, code or
- * colour). Picking a sub product opens the **card** under it, one row for each
- * variant on sale. A row says what the colour rule (`colourRuleOf`) leaves to
- * ask:
- *  · `fixed` — the colour is the variant's label, shown and not chosen;
- *  · `dedicated` — nothing about colour at all (a dash);
- *  · `selectable` (multicolour) — a colour from the company's colour list in
- *    the row's colour select, and "+ Same sub product, another colour" adds a
+ * colour). Picking a product opens the **card** under it, one row for each
+ * sub product. A row asks only what its sub product's own colours leave open:
+ *  · one colour offered — that colour, shown and not chosen;
+ *  · no colours — nothing about colour at all (a dash);
+ *  · several — a colour from the sub product's own list in the row's colour
+ *    select (a dropdown), and "+ Same sub product, another colour" adds a
  *    blank row under it, so White ×10 and Ivory ×5 are two rows.
  * A row is a line once it has a quantity. Each row's packaging sits beside its
  * quantity, a pick from the company's `line.packaging` list (required only
@@ -47,7 +46,7 @@
  *
  * Keys, the way the counter works (owner, 2026-10-08; the model is
  * `ui/src/order/gridModel.ts`):
- *  · **Enter** walks colour (multicolour only), quantity, packaging and grade,
+ *  · **Enter** walks colour (only where several are offered), quantity, packaging and grade,
  *    each pick list open as the caret arrives (`arriveAt`): Enter takes the
  *    highlighted value and moves on, as a mouse pick does. A row nobody has
  *    started is skipped. After the last field comes **Add sub product**, and
@@ -65,24 +64,23 @@
  * lifts that product's lines back into the card, where Add puts them back in
  * place.
  *
- * The unit of a lead is **one variant in one colour** (`LineItem.variantId`,
- * `LineItem.colour`). A multicolour sub product ordered in White and Ivory adds
- * two lines on the same variant; the review groups them back into one row
- * (`White ×10, Ivory ×5`).
+ * The unit of a lead is **one sub product in one colour**. A sub product
+ * ordered in White and Ivory adds two lines on the same sub product; the
+ * review groups them back into one row (`White ×10, Ivory ×5`).
  *
  * Rules enforced visibly rather than only on the server:
  *  · **Packaging is never auto-filled.** While the company requires it the
  *    draft cannot be added until somebody chooses one; a party's saved
  *    packaging is only ever a suggestion.
- *  · **A colour is chosen only on a multicolour sub product**, and only from
- *    the company's colour list. The Master drops one sent for anything else
- *    rather than refuse the lead (§2), so this screen never sends one.
+ *  · **A colour is chosen only where a sub product offers several**, and only
+ *    from its own list. The Master drops one sent for anything else rather
+ *    than refuse the lead (§2), so this screen never sends one.
  *  · **The source is one of the company's listed sources.** There is no
  *    free-text "Other": the Master refuses an unlisted source, and a queued
  *    lead would bounce on it.
  *  · **A party's own record renames the product for that party.**
  *
- * Weights are the variant's and may not have been entered yet. A line without
+ * Weights are the sub product's and may not have been entered yet. A line without
  * one shows "weight missing" rather than a zero, and the footer counts such
  * lines beside the total weight it could compute.
  *
@@ -94,7 +92,6 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import type {
   AssignablePerson,
-  ColourRule,
   Lead,
   LeadInput,
   LeadUpdateInput,
@@ -111,8 +108,8 @@ import type {
 import {
   PICK_MAX_LIMIT,
   colourLabeller,
-  colourRuleOf,
   lineColourText,
+  printSideOf,
   resolveCompanyFeatures,
 } from '@orderbook/shared';
 
@@ -283,11 +280,9 @@ function subProductMatches(rows: readonly Product[], term: string): Product[] {
   if (!term) return rows.slice();
   const ranked: Array<{ row: Product; rank: number }> = [];
   for (const row of rows) {
-    const words = [
-      row.name,
-      row.alias ?? '',
-      ...row.variants.flatMap((variant) => [variant.code, variant.label ?? '']),
-    ].map((word) => word.toLowerCase());
+    const words = [row.name, row.alias ?? '', row.code, ...row.colours].map((word) =>
+      word.toLowerCase(),
+    );
     const rank = words.includes(term)
       ? 0
       : words.some((word) => word.startsWith(term))
@@ -336,15 +331,11 @@ function chorded(event: {
 function linesOf(lead: Lead, view: LeadEntryView): DraftLine[] {
   return lead.items.map((item, index) => {
     const product = view.products?.find((candidate) => candidate.id === item.productId);
-    // The product's own rule while the catalogue still has it; otherwise read
-    // off the line — a chosen colour only exists on a multicolour one.
-    const rule: ColourRule = product
-      ? colourRuleOf(product)
-      : item.colour
-        ? 'selectable'
-        : item.variantLabel
-          ? 'fixed'
-          : 'dedicated';
+    // The sub product's own colours while the catalogue still has it;
+    // otherwise read off the line — its chosen colour, else its frozen one.
+    const colours =
+      product?.colours ??
+      (item.colour ? [item.colour] : item.variantLabel ? [item.variantLabel] : []);
     return {
       key: `saved-${index + 1}`,
       productId: item.productId,
@@ -356,7 +347,8 @@ function linesOf(lead: Lead, view: LeadEntryView): DraftLine[] {
       size: item.size,
       image: product?.images?.[0],
       packaging: item.packaging ?? '',
-      rule,
+      colours,
+      printSide: product?.printSide ?? 'default',
       grade: item.grade ?? '',
       fromPartyVariant: item.fromPartyVariant,
       notes: item.notes ?? '',
@@ -555,7 +547,7 @@ function LeadEntryForm({
     [view.optionLists],
   );
 
-  /** The company's colour list — what a multi-colour line may name. */
+  /** The company's colour list — labels and swatches for the colours a sub product offers. */
   const colourOptions = useMemo(
     () =>
       view.optionLists.filter(
@@ -569,6 +561,35 @@ function LeadEntryForm({
    * now, so a colour renamed in Fields reads the new way on every line without touching the lines.
    */
   const labelOf = useMemo(() => colourLabeller(colourOptions), [colourOptions]);
+
+  /**
+   * A row's colour dropdown holds only what its sub product offers, in the
+   * sub product's own order — the company list supplies each offered
+   * colour's label and swatch, and a colour the list no longer holds still
+   * picks under its own name.
+   */
+  const optionsForColours = (colours: readonly string[]): OptionListItem[] =>
+    colours.map((colour) => {
+      const listed = colourOptions.find(
+        (option) => option.value.toLowerCase() === colour.toLowerCase(),
+      );
+      return (
+        listed ?? {
+          id: `colour-${colour}`,
+          tenantId: '',
+          listKey: 'stock.colour',
+          value: colour,
+          label: colour,
+          sequence: 0,
+          isActive: true,
+          hex: null,
+          deletedAt: null,
+          createdAt: '',
+          updatedAt: '',
+          version: 0,
+        }
+      );
+    });
 
   /*
    * The enquiry came from somewhere, and on this screen it always came from the
@@ -964,15 +985,12 @@ function LeadEntryForm({
   function draftIsReady(candidate: DraftCard): boolean {
     // `leads.packagingRequiredOnConvert` off: a shop that packs to order cannot state the
     // packaging at the counter, so a line may go in without. On, every counted row needs its own.
-    return cardReady(candidate.rows, {
-      packagingRequired,
-      colourListNonEmpty: colourOptions.length > 0,
-    });
+    return cardReady(candidate.rows, { packagingRequired });
   }
 
   /**
-   * One line per row with a quantity — per variant, and per colour: White ×10 and Ivory ×5 are
-   * two lines on the same variant. A card lifted from the list puts its lines back where they were.
+   * One line per row with a quantity — per sub product, and per colour: White ×10 and Ivory ×5 are
+   * two lines on the same sub product. A card lifted from the list puts its lines back where they were.
    * Then back to the sub-product bar (`backToBar`).
    */
   function saveDraft(): void {
@@ -1022,9 +1040,9 @@ function LeadEntryForm({
   /** The product's photo: the first sub product that has one, since a product itself has none. */
   const cardImage = draft?.rows.find((row) => row.image)?.image;
 
-  /** A selectable row can take "another colour": the one the caret is on, else the last counted. */
-  const selectableRows = draft?.rows.filter((row) => row.rule === 'selectable') ?? [];
-  const someSelectable = colourOptions.length > 0 && selectableRows.length > 0;
+  /** A row offering several colours can take "another colour": the one the caret is on, else the last counted. */
+  const selectableRows = draft?.rows.filter((row) => row.colours.length > 1) ?? [];
+  const someSelectable = selectableRows.length > 0;
   const moreTarget = someSelectable
     ? (
         selectableRows.find((row) => row.key === activeRow) ??
@@ -1057,7 +1075,7 @@ function LeadEntryForm({
     patchRow(row.key, { qty: String(Math.max(0, current + delta)) });
   }
 
-  /** The card's fields in DOM order (a multicolour row's colour select first), and its Add button. */
+  /** The card's fields in DOM order (a several-colours row's colour select first), and its Add button. */
   function cardStops() {
     const body = gridRef.current;
     if (!body) return null;
@@ -1082,7 +1100,7 @@ function LeadEntryForm({
   }
 
   /**
-   * One stop on, row by row: each row's colour (a multicolour one), quantity, packaging and grade,
+   * One stop on, row by row: each row's colour (where several are offered), quantity, packaging and grade,
    * a pick list opening as the caret arrives (`arriveAt`). A row nobody has started — no quantity
    * and no colour — is skipped whole, and from a row with no quantity the walk skips its packaging
    * and grade (`nextWalkStop`). Past the last field comes Add sub product (`finishing`).
@@ -1112,7 +1130,7 @@ function LeadEntryForm({
       addRef.current?.querySelector<HTMLElement>('[data-add-card]')?.focus();
       return;
     }
-    const options = { packagingRequired, colourListNonEmpty: colourOptions.length > 0 };
+    const options = { packagingRequired };
     const lacking = draft.rows.find((row) => rowProblem(row, options) !== null);
     const row = gridRef.current?.querySelector(
       `[data-row-key="${(lacking ?? draft.rows[0])?.key}"]`,
@@ -1380,8 +1398,9 @@ function LeadEntryForm({
       alias: line.alias,
       code: line.code,
       variantLabel: line.variantLabel,
-      // Only a multicolour sub product carries one; the Master drops any other.
+      // Only a chosen colour travels; a single offered colour is the Master's to fill in.
       colour: line.colour.trim() || null,
+      printSide: printSideOf(line.productName, line.printSide),
       grade: line.grade.trim() || null,
       size: line.size,
       weightKg: line.weightKg,
@@ -2198,12 +2217,13 @@ function LeadEntryForm({
                             }}
                           >
                             {draft.rows.map((row) => {
-                              // The chosen colour on a multicolour row, else the fixed one.
+                              // The chosen colour where several are offered, else the one colour.
                               const named = row.colour
                                 ? `${row.code} · ${labelOf(row.colour)}`
                                 : row.code;
                               const unpacked = lacks(row);
-                              const chooses = row.rule === 'selectable' && colourOptions.length > 0;
+                              const chooses = row.colours.length > 1;
+                              const onlyColour = row.colours.length === 1 ? row.colours[0] : undefined;
                               return (
                                 <SubRow key={row.key} rowKey={row.key}>
                                   <span className="ob-order-cell--code" title={row.code}>
@@ -2215,7 +2235,7 @@ function LeadEntryForm({
                                   {chooses ? (
                                     <ColourSelect
                                       value={row.colour}
-                                      options={colourOptions}
+                                      options={optionsForColours(row.colours)}
                                       labelOf={labelOf}
                                       hexOf={colourHex}
                                       ariaLabel={`${t('lead.add.draft.colour')} — ${row.code}`}
@@ -2231,14 +2251,14 @@ function LeadEntryForm({
                                         stepOn(document.activeElement, picked ? row.key : undefined)
                                       }
                                     />
-                                  ) : row.rule === 'fixed' && row.variantLabel ? (
+                                  ) : onlyColour ? (
                                     <span className="ob-order-cell--fixed">
                                       <ColourChip
-                                        name={labelOf(row.variantLabel)}
-                                        hex={colourHex(row.variantLabel)}
+                                        name={labelOf(onlyColour)}
+                                        hex={colourHex(onlyColour)}
                                       />
                                       <span className="ob-order-cell--name">
-                                        {labelOf(row.variantLabel)}
+                                        {labelOf(onlyColour)}
                                       </span>
                                     </span>
                                   ) : (
@@ -2578,7 +2598,10 @@ function LeadEntryForm({
               >
                 {group.lines.map((line) => {
                   const colour =
-                    line.colour || (line.rule === 'fixed' ? (line.variantLabel ?? '') : '');
+                    line.colour ||
+                    (line.colours.length === 1
+                      ? (line.colours[0] ?? '')
+                      : (line.variantLabel ?? ''));
                   return (
                     <AddedLine
                       key={line.key}
@@ -2693,10 +2716,10 @@ function ReviewModal({
   onClose: () => void;
   onConfirm: () => void;
 }) {
-  // One row per variant, grade and packaging, in the order they were added.
+  // One row per sub product, grade and packaging, in the order they were added.
   const groups = new Map<string, DraftLine[]>();
   for (const line of lines) {
-    const key = [line.variantId, line.grade, line.packaging].join('|');
+    const key = [line.productId, line.variantId ?? '', line.grade, line.packaging].join('|');
     groups.set(key, [...(groups.get(key) ?? []), line]);
   }
 

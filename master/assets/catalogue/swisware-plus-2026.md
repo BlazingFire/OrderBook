@@ -15,14 +15,16 @@ the table columns and the `### CODE — Name` product headings when editing.
   the product bar instead of the name. Codes are always alphanumeric and unique.
 - **Sub product** — the model inside a product, as printed under its photo: a number (`1111`, `41`)
   or alphanumeric (`DAMRU`, `MAGENTA`, `E-01`). Unique inside its product.
-- **Colour rule**
-  - `fixed` — made in one colour only, named in the Colour column. No colour choice at entry.
-  - `dedicated` — the design is its own colour (numbered and designer pieces, accessories). No colour
+- **Colours** — the colours a sub product is offered in, comma-separated.
+  - One colour — made in that colour only. No colour choice at entry.
+  - Empty — the design is its own colour (numbered and designer pieces, accessories). No colour
     choice and no colour is printed.
-  - `multicolour` — any colour of the colour range; lead entry picks one or more colours with a
-    quantity each.
-- On documents an alphanumeric sub product prints in the **Model** column (left) and a numeric one in
-  the **Code** column (right).
+  - `All` — any colour of the colour range; lead entry picks one or more colours with a quantity
+    each.
+- **Print side** — `Default`, `Left` or `Right`: which half of a printed note the sub product belongs
+  on. `Default` keeps the original rule — an alphanumeric sub product prints in the **Model** column
+  (left) and a numeric one in the **Code** column (right). Every row below is `Default`, as loaded
+  on 2026-11-16 when the setting was introduced.
 
 ## Transcription decisions
 
@@ -41,16 +43,16 @@ the table columns and the `### CODE — Name` product headings when editing.
 - Under Counter and Lab Sink models are named by their size; the stray spaces in the printed lab-sink
   captions (`24 x18x10`) and in `SILVER SET (18x14 )` are dropped.
 - The ten coloured pans under Orissa Pan (Marble, Double Colour, Rustic) illustrate the colour offer;
-  they are not models (owner, 2026-10-07: colour examples). Orissa Pan is `multicolour`.
+  they are not models (owner, 2026-10-07: colour examples). Orissa Pan carries `All` colours.
 - Page 13's "all items available in all colours" covers only the trap closets, per the owner
-  (2026-10-07): the E.W.C and Anglo Indian S and P traps are `multicolour`; the Eco Concealed,
-  Eco Concealed Slim, Modern and Concealed closets are white only (`fixed` White).
+  (2026-10-07): the E.W.C and Anglo Indian S and P traps carry `All` colours; the Eco Concealed,
+  Eco Concealed Slim, Modern and Concealed closets are white only (one colour, White).
 - Eco Concealed Designer has no E-04 or E-05; per the owner that is intentional.
 - Page 25's "all colours available in all items" adds no colour choice: per the owner, Silver,
   18"x14", Micra and the Rustic Set come in just the colours printed, one sub product per caption.
 - Page 18's `18x14 SET` is the white Plain Set; page 25's 18"x14" Vitrosa Double Colour is a different
   product (`D1814`) with its own sub products, per the owner.
-- Urinal channel and the three traps are photographed in cream, so they carry no colour (`dedicated`)
+- Urinal channel and the three traps are photographed in cream, so they carry no colour (empty Colours)
   rather than a guessed one.
 - Sizes are copied only where the catalogue prints them. Vitrosa ranges print no size.
 - Colour hex values were sampled from the swatches on page 2.
@@ -96,874 +98,874 @@ the table columns and the `### CODE — Name` product headings when editing.
 - Brand: Swisware+
 - Catalogue pages: 4, 6, 7
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 102 | 9", L-27, B-15, H-26 | fixed | White |
-| 2 | 111 | 9", L-27, B-14, H-25 | fixed | White |
-| 3 | 103 | 9", L-27, B-14, H-27 | fixed | White |
-| 4 | 105 | 9", L-26, B-14, H-27 | fixed | White |
-| 5 | 107 | 9", L-26, B-14, H-30 | fixed | White |
-| 6 | 108 | 9", L-25, B-14, H-27 | fixed | White |
-| 7 | 109 | 9", L-26, B-14, H-29 | fixed | White |
-| 8 | 110 | 9", L-25, B-14, H-27 | fixed | White |
-| 9 | 112 | 9", L-26, B-14, H-28 | fixed | White |
-| 10 | 113 | 9", L-25, B-14, H-28 | fixed | White |
-| 11 | 115 | 9", L-26, B-14, H-29 | fixed | White |
-| 12 | 116 | 9", L-26, B-14, H-29 | fixed | White |
-| 13 | 118 | 9", L-26, B-14, H-30 | fixed | White |
-| 14 | 204 | 4", L-27, B-14, H-27 | fixed | White |
-| 15 | SYPHONIC | 9", L-26, B-14, H-30 | fixed | White |
-| 16 | 1111 |  | dedicated |  |
-| 17 | 1113 |  | dedicated |  |
-| 18 | 1115 |  | dedicated |  |
-| 19 | 1123 |  | dedicated |  |
-| 20 | 1127 |  | dedicated |  |
-| 21 | 1133 |  | dedicated |  |
-| 22 | 1141 |  | dedicated |  |
-| 23 | 1143 |  | dedicated |  |
-| 24 | 1144 |  | dedicated |  |
-| 25 | 1151 |  | dedicated |  |
-| 26 | 1152 |  | dedicated |  |
-| 27 | 1153 |  | dedicated |  |
-| 28 | 1155 |  | dedicated |  |
-| 29 | 1156 |  | dedicated |  |
-| 30 | 1171 |  | dedicated |  |
-| 31 | 1181 |  | dedicated |  |
-| 32 | 1183 |  | dedicated |  |
-| 33 | 1184 |  | dedicated |  |
-| 34 | 1185 |  | dedicated |  |
-| 35 | 1190 |  | dedicated |  |
-| 36 | 1191 |  | dedicated |  |
-| 37 | 1192 |  | dedicated |  |
-| 38 | 1193 |  | dedicated |  |
-| 39 | 1194 |  | dedicated |  |
-| 40 | 1195 |  | dedicated |  |
-| 41 | 1196 |  | dedicated |  |
-| 42 | 1197 |  | dedicated |  |
-| 43 | 1198 |  | dedicated |  |
-| 44 | 1199 |  | dedicated |  |
-| 45 | 1158 |  | dedicated |  |
-| 46 | 1159 |  | dedicated |  |
-| 47 | 1160 |  | dedicated |  |
-| 48 | 1161 |  | dedicated |  |
-| 49 | 1162 |  | dedicated |  |
-| 50 | 1163 |  | dedicated |  |
-| 51 | 1164 |  | dedicated |  |
-| 52 | 1165 |  | dedicated |  |
-| 53 | 1166 |  | dedicated |  |
-| 54 | 1167 |  | dedicated |  |
-| 55 | 1168 |  | dedicated |  |
-| 56 | 1169 |  | dedicated |  |
+| 1 | 102 | 9", L-27, B-15, H-26 | White | Default |
+| 2 | 111 | 9", L-27, B-14, H-25 | White | Default |
+| 3 | 103 | 9", L-27, B-14, H-27 | White | Default |
+| 4 | 105 | 9", L-26, B-14, H-27 | White | Default |
+| 5 | 107 | 9", L-26, B-14, H-30 | White | Default |
+| 6 | 108 | 9", L-25, B-14, H-27 | White | Default |
+| 7 | 109 | 9", L-26, B-14, H-29 | White | Default |
+| 8 | 110 | 9", L-25, B-14, H-27 | White | Default |
+| 9 | 112 | 9", L-26, B-14, H-28 | White | Default |
+| 10 | 113 | 9", L-25, B-14, H-28 | White | Default |
+| 11 | 115 | 9", L-26, B-14, H-29 | White | Default |
+| 12 | 116 | 9", L-26, B-14, H-29 | White | Default |
+| 13 | 118 | 9", L-26, B-14, H-30 | White | Default |
+| 14 | 204 | 4", L-27, B-14, H-27 | White | Default |
+| 15 | SYPHONIC | 9", L-26, B-14, H-30 | White | Default |
+| 16 | 1111 |  |  | Default |
+| 17 | 1113 |  |  | Default |
+| 18 | 1115 |  |  | Default |
+| 19 | 1123 |  |  | Default |
+| 20 | 1127 |  |  | Default |
+| 21 | 1133 |  |  | Default |
+| 22 | 1141 |  |  | Default |
+| 23 | 1143 |  |  | Default |
+| 24 | 1144 |  |  | Default |
+| 25 | 1151 |  |  | Default |
+| 26 | 1152 |  |  | Default |
+| 27 | 1153 |  |  | Default |
+| 28 | 1155 |  |  | Default |
+| 29 | 1156 |  |  | Default |
+| 30 | 1171 |  |  | Default |
+| 31 | 1181 |  |  | Default |
+| 32 | 1183 |  |  | Default |
+| 33 | 1184 |  |  | Default |
+| 34 | 1185 |  |  | Default |
+| 35 | 1190 |  |  | Default |
+| 36 | 1191 |  |  | Default |
+| 37 | 1192 |  |  | Default |
+| 38 | 1193 |  |  | Default |
+| 39 | 1194 |  |  | Default |
+| 40 | 1195 |  |  | Default |
+| 41 | 1196 |  |  | Default |
+| 42 | 1197 |  |  | Default |
+| 43 | 1198 |  |  | Default |
+| 44 | 1199 |  |  | Default |
+| 45 | 1158 |  |  | Default |
+| 46 | 1159 |  |  | Default |
+| 47 | 1160 |  |  | Default |
+| 48 | 1161 |  |  | Default |
+| 49 | 1162 |  |  | Default |
+| 50 | 1163 |  |  | Default |
+| 51 | 1164 |  |  | Default |
+| 52 | 1165 |  |  | Default |
+| 53 | 1166 |  |  | Default |
+| 54 | 1167 |  |  | Default |
+| 55 | 1168 |  |  | Default |
+| 56 | 1169 |  |  | Default |
 
 ### OPB — One Piece Basin
 
 - Brand: Swisware+
 - Catalogue pages: 5
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | DAMRU | L-16, H-31 | fixed | White |
-| 2 | NOVA | L-15, H-31 | fixed | White |
-| 3 | DAMRU PLUS | L-16, H-32 | fixed | White |
-| 4 | RUBY | L-16, H-33 | fixed | White |
-| 5 | ROYAL | L-16, H-34 | fixed | White |
-| 6 | RAINBOW | L-18, B-14, H-31 | fixed | White |
-| 7 | DIAMOND | L-18, H-32 | fixed | White |
-| 8 | VOLVO | L-18, H-31 | fixed | White |
-| 9 | CROWNIE | L-16, H-33 | fixed | White |
-| 10 | SAPPHIRE | L-16, B-14, H-32 | fixed | White |
-| 11 | EAGLE | L-17, B-13, H-32 | fixed | White |
-| 12 | LAVA | L-19, B-15, H-32 | fixed | White |
-| 13 | SCORPIO | L-18, H-32 | fixed | White |
-| 14 | WUDU BASIN - WHITE |  | fixed | White |
-| 15 | WUDU BASIN - BLACK |  | fixed | Black |
+| 1 | DAMRU | L-16, H-31 | White | Default |
+| 2 | NOVA | L-15, H-31 | White | Default |
+| 3 | DAMRU PLUS | L-16, H-32 | White | Default |
+| 4 | RUBY | L-16, H-33 | White | Default |
+| 5 | ROYAL | L-16, H-34 | White | Default |
+| 6 | RAINBOW | L-18, B-14, H-31 | White | Default |
+| 7 | DIAMOND | L-18, H-32 | White | Default |
+| 8 | VOLVO | L-18, H-31 | White | Default |
+| 9 | CROWNIE | L-16, H-33 | White | Default |
+| 10 | SAPPHIRE | L-16, B-14, H-32 | White | Default |
+| 11 | EAGLE | L-17, B-13, H-32 | White | Default |
+| 12 | LAVA | L-19, B-15, H-32 | White | Default |
+| 13 | SCORPIO | L-18, H-32 | White | Default |
+| 14 | WUDU BASIN - WHITE |  | White | Default |
+| 15 | WUDU BASIN - BLACK |  | Black | Default |
 
 ### DMV — One Piece Basin Damru Vitrosa
 
 - Brand: Swisware+
 - Catalogue pages: 8, 9
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 41 |  | dedicated |  |
-| 2 | 42 |  | dedicated |  |
-| 3 | 46 |  | dedicated |  |
-| 4 | 47 |  | dedicated |  |
-| 5 | 48 |  | dedicated |  |
-| 6 | 49 |  | dedicated |  |
-| 7 | 50 |  | dedicated |  |
-| 8 | 51 |  | dedicated |  |
-| 9 | 53 |  | dedicated |  |
-| 10 | 55 |  | dedicated |  |
-| 11 | 57 |  | dedicated |  |
-| 12 | 58 |  | dedicated |  |
-| 13 | 59 |  | dedicated |  |
-| 14 | 60 |  | dedicated |  |
-| 15 | 61 |  | dedicated |  |
-| 16 | 64 |  | dedicated |  |
-| 17 | 65 |  | dedicated |  |
-| 18 | 66 |  | dedicated |  |
-| 19 | 67 |  | dedicated |  |
-| 20 | 69 |  | dedicated |  |
-| 21 | 70 |  | dedicated |  |
-| 22 | 72 |  | dedicated |  |
-| 23 | 76 |  | dedicated |  |
-| 24 | 81 |  | dedicated |  |
-| 25 | 82 |  | dedicated |  |
-| 26 | 83 |  | dedicated |  |
-| 27 | 84 |  | dedicated |  |
-| 28 | 85 |  | dedicated |  |
-| 29 | 87 |  | dedicated |  |
-| 30 | 88 |  | dedicated |  |
-| 31 | 89 |  | dedicated |  |
-| 32 | 91 |  | dedicated |  |
-| 33 | 92 |  | dedicated |  |
-| 34 | 95 |  | dedicated |  |
-| 35 | 97 |  | dedicated |  |
-| 36 | 100 |  | dedicated |  |
+| 1 | 41 |  |  | Default |
+| 2 | 42 |  |  | Default |
+| 3 | 46 |  |  | Default |
+| 4 | 47 |  |  | Default |
+| 5 | 48 |  |  | Default |
+| 6 | 49 |  |  | Default |
+| 7 | 50 |  |  | Default |
+| 8 | 51 |  |  | Default |
+| 9 | 53 |  |  | Default |
+| 10 | 55 |  |  | Default |
+| 11 | 57 |  |  | Default |
+| 12 | 58 |  |  | Default |
+| 13 | 59 |  |  | Default |
+| 14 | 60 |  |  | Default |
+| 15 | 61 |  |  | Default |
+| 16 | 64 |  |  | Default |
+| 17 | 65 |  |  | Default |
+| 18 | 66 |  |  | Default |
+| 19 | 67 |  |  | Default |
+| 20 | 69 |  |  | Default |
+| 21 | 70 |  |  | Default |
+| 22 | 72 |  |  | Default |
+| 23 | 76 |  |  | Default |
+| 24 | 81 |  |  | Default |
+| 25 | 82 |  |  | Default |
+| 26 | 83 |  |  | Default |
+| 27 | 84 |  |  | Default |
+| 28 | 85 |  |  | Default |
+| 29 | 87 |  |  | Default |
+| 30 | 88 |  |  | Default |
+| 31 | 89 |  |  | Default |
+| 32 | 91 |  |  | Default |
+| 33 | 92 |  |  | Default |
+| 34 | 95 |  |  | Default |
+| 35 | 97 |  |  | Default |
+| 36 | 100 |  |  | Default |
 
 ### DPV — One Piece Basin Damru Plus Vitrosa
 
 - Brand: Swisware+
 - Catalogue pages: 9
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 29 |  | dedicated |  |
-| 2 | 30 |  | dedicated |  |
-| 3 | 31 |  | dedicated |  |
-| 4 | 32 |  | dedicated |  |
-| 5 | 33 |  | dedicated |  |
-| 6 | 34 |  | dedicated |  |
-| 7 | 35 |  | dedicated |  |
-| 8 | 36 |  | dedicated |  |
-| 9 | 37 |  | dedicated |  |
-| 10 | 38 |  | dedicated |  |
-| 11 | 39 |  | dedicated |  |
-| 12 | 40 |  | dedicated |  |
+| 1 | 29 |  |  | Default |
+| 2 | 30 |  |  | Default |
+| 3 | 31 |  |  | Default |
+| 4 | 32 |  |  | Default |
+| 5 | 33 |  |  | Default |
+| 6 | 34 |  |  | Default |
+| 7 | 35 |  |  | Default |
+| 8 | 36 |  |  | Default |
+| 9 | 37 |  |  | Default |
+| 10 | 38 |  |  | Default |
+| 11 | 39 |  |  | Default |
+| 12 | 40 |  |  | Default |
 
 ### NVV — One Piece Basin Nova Vitrosa
 
 - Brand: Swisware+
 - Catalogue pages: 10
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 150 |  | dedicated |  |
-| 2 | 151 |  | dedicated |  |
-| 3 | 152 |  | dedicated |  |
-| 4 | 153 |  | dedicated |  |
-| 5 | 157 |  | dedicated |  |
-| 6 | 158 |  | dedicated |  |
-| 7 | 161 |  | dedicated |  |
+| 1 | 150 |  |  | Default |
+| 2 | 151 |  |  | Default |
+| 3 | 152 |  |  | Default |
+| 4 | 153 |  |  | Default |
+| 5 | 157 |  |  | Default |
+| 6 | 158 |  |  | Default |
+| 7 | 161 |  |  | Default |
 
 ### RYV — One Piece Basin Royal Vitrosa
 
 - Brand: Swisware+
 - Catalogue pages: 10
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 350 |  | dedicated |  |
-| 2 | 351 |  | dedicated |  |
-| 3 | 352 |  | dedicated |  |
-| 4 | 353 |  | dedicated |  |
-| 5 | 354 |  | dedicated |  |
+| 1 | 350 |  |  | Default |
+| 2 | 351 |  |  | Default |
+| 3 | 352 |  |  | Default |
+| 4 | 353 |  |  | Default |
+| 5 | 354 |  |  | Default |
 
 ### RBV — One Piece Basin Rainbow Vitrosa
 
 - Brand: Swisware+
 - Catalogue pages: 10
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 570 |  | dedicated |  |
-| 2 | 571 |  | dedicated |  |
-| 3 | 572 |  | dedicated |  |
-| 4 | 575 |  | dedicated |  |
-| 5 | 577 |  | dedicated |  |
-| 6 | 580 |  | dedicated |  |
-| 7 | 581 |  | dedicated |  |
-| 8 | 582 |  | dedicated |  |
-| 9 | 583 |  | dedicated |  |
-| 10 | 585 |  | dedicated |  |
+| 1 | 570 |  |  | Default |
+| 2 | 571 |  |  | Default |
+| 3 | 572 |  |  | Default |
+| 4 | 575 |  |  | Default |
+| 5 | 577 |  |  | Default |
+| 6 | 580 |  |  | Default |
+| 7 | 581 |  |  | Default |
+| 8 | 582 |  |  | Default |
+| 9 | 583 |  |  | Default |
+| 10 | 585 |  |  | Default |
 
 ### DIV — One Piece Basin Diamond Vitrosa
 
 - Brand: Swisware+
 - Catalogue pages: 11
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 271 |  | dedicated |  |
-| 2 | 272 |  | dedicated |  |
-| 3 | 275 |  | dedicated |  |
-| 4 | 276 |  | dedicated |  |
-| 5 | 277 |  | dedicated |  |
-| 6 | 278 |  | dedicated |  |
-| 7 | 282 |  | dedicated |  |
-| 8 | 283 |  | dedicated |  |
-| 9 | 285 |  | dedicated |  |
+| 1 | 271 |  |  | Default |
+| 2 | 272 |  |  | Default |
+| 3 | 275 |  |  | Default |
+| 4 | 276 |  |  | Default |
+| 5 | 277 |  |  | Default |
+| 6 | 278 |  |  | Default |
+| 7 | 282 |  |  | Default |
+| 8 | 283 |  |  | Default |
+| 9 | 285 |  |  | Default |
 
 ### CRV — One Piece Basin Crownie Vitrosa
 
 - Brand: Swisware+
 - Catalogue pages: 11
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 171 |  | dedicated |  |
-| 2 | 172 |  | dedicated |  |
-| 3 | 173 |  | dedicated |  |
-| 4 | 174 |  | dedicated |  |
-| 5 | 175 |  | dedicated |  |
-| 6 | 179 |  | dedicated |  |
-| 7 | 180 |  | dedicated |  |
+| 1 | 171 |  |  | Default |
+| 2 | 172 |  |  | Default |
+| 3 | 173 |  |  | Default |
+| 4 | 174 |  |  | Default |
+| 5 | 175 |  |  | Default |
+| 6 | 179 |  |  | Default |
+| 7 | 180 |  |  | Default |
 
 ### EGV — One Piece Basin Eagle Vitrosa
 
 - Brand: Swisware+
 - Catalogue pages: 11
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 381 |  | dedicated |  |
-| 2 | 382 |  | dedicated |  |
-| 3 | 384 |  | dedicated |  |
-| 4 | 385 |  | dedicated |  |
-| 5 | 386 |  | dedicated |  |
-| 6 | 387 |  | dedicated |  |
+| 1 | 381 |  |  | Default |
+| 2 | 382 |  |  | Default |
+| 3 | 384 |  |  | Default |
+| 4 | 385 |  |  | Default |
+| 5 | 386 |  |  | Default |
+| 6 | 387 |  |  | Default |
 
 ### SPV — One Piece Basin Sapphire Vitrosa
 
 - Brand: Swisware+
 - Catalogue pages: 12
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 367 |  | dedicated |  |
-| 2 | 369 |  | dedicated |  |
-| 3 | 371 |  | dedicated |  |
-| 4 | 372 |  | dedicated |  |
-| 5 | 373 |  | dedicated |  |
-| 6 | 376 |  | dedicated |  |
-| 7 | 378 |  | dedicated |  |
-| 8 | 379 |  | dedicated |  |
+| 1 | 367 |  |  | Default |
+| 2 | 369 |  |  | Default |
+| 3 | 371 |  |  | Default |
+| 4 | 372 |  |  | Default |
+| 5 | 373 |  |  | Default |
+| 6 | 376 |  |  | Default |
+| 7 | 378 |  |  | Default |
+| 8 | 379 |  |  | Default |
 
 ### VLV — One Piece Basin Volvo Vitrosa
 
 - Brand: Swisware+
 - Catalogue pages: 12
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 330 |  | dedicated |  |
-| 2 | 331 |  | dedicated |  |
-| 3 | 332 |  | dedicated |  |
-| 4 | 334 |  | dedicated |  |
-| 5 | 335 |  | dedicated |  |
+| 1 | 330 |  |  | Default |
+| 2 | 331 |  |  | Default |
+| 3 | 332 |  |  | Default |
+| 4 | 334 |  |  | Default |
+| 5 | 335 |  |  | Default |
 
 ### LVV — One Piece Basin Lava Vitrosa
 
 - Brand: Swisware+
 - Catalogue pages: 12
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 192 |  | dedicated |  |
-| 2 | 193 |  | dedicated |  |
-| 3 | 194 |  | dedicated |  |
-| 4 | 195 |  | dedicated |  |
+| 1 | 192 |  |  | Default |
+| 2 | 193 |  |  | Default |
+| 3 | 194 |  |  | Default |
+| 4 | 195 |  |  | Default |
 
 ### SCV — One Piece Basin Scorpio Vitrosa
 
 - Brand: Swisware+
 - Catalogue pages: 12
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 551 |  | dedicated |  |
-| 2 | 555 |  | dedicated |  |
-| 3 | 556 |  | dedicated |  |
-| 4 | 557 |  | dedicated |  |
+| 1 | 551 |  |  | Default |
+| 2 | 555 |  |  | Default |
+| 3 | 556 |  |  | Default |
+| 4 | 557 |  |  | Default |
 
 ### WC — Water Closet
 
 - Brand: Swisware+
 - Catalogue pages: 13
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | E.W.C - ECO CONCEALED |  | fixed | White |
-| 2 | E.W.C - ECO CONCEALED SLIM |  | fixed | White |
-| 3 | E.W.C - MODERN |  | fixed | White |
-| 4 | E.W.C - CONCEALED |  | fixed | White |
-| 5 | E.W.C - S TRAP |  | multicolour |  |
-| 6 | E.W.C - P TRAP |  | multicolour |  |
-| 7 | ANGLO INDIAN - S TRAP |  | multicolour |  |
-| 8 | ANGLO INDIAN - P TRAP |  | multicolour |  |
+| 1 | E.W.C - ECO CONCEALED |  | White | Default |
+| 2 | E.W.C - ECO CONCEALED SLIM |  | White | Default |
+| 3 | E.W.C - MODERN |  | White | Default |
+| 4 | E.W.C - CONCEALED |  | White | Default |
+| 5 | E.W.C - S TRAP |  | All | Default |
+| 6 | E.W.C - P TRAP |  | All | Default |
+| 7 | ANGLO INDIAN - S TRAP |  | All | Default |
+| 8 | ANGLO INDIAN - P TRAP |  | All | Default |
 
 ### ECD — Eco Concealed Designer
 
 - Brand: Swisware+
 - Catalogue pages: 13
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | E-01 |  | dedicated |  |
-| 2 | E-02 |  | dedicated |  |
-| 3 | E-03 |  | dedicated |  |
-| 4 | E-06 |  | dedicated |  |
-| 5 | E-07 |  | dedicated |  |
-| 6 | E-08 |  | dedicated |  |
-| 7 | E-09 |  | dedicated |  |
+| 1 | E-01 |  |  | Default |
+| 2 | E-02 |  |  | Default |
+| 3 | E-03 |  |  | Default |
+| 4 | E-06 |  |  | Default |
+| 5 | E-07 |  |  | Default |
+| 6 | E-08 |  |  | Default |
+| 7 | E-09 |  |  | Default |
 
 ### UC — Under Counter
 
 - Brand: Swisware+
 - Catalogue pages: 13
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 18x18 | 18x18 | fixed | White |
-| 2 | 22x16 | 22x16 | fixed | White |
+| 1 | 18x18 | 18x18 | White | Default |
+| 2 | 22x16 | 22x16 | White | Default |
 
 ### LS — Lab Sink
 
 - Brand: Swisware+
 - Catalogue pages: 13
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 24x18x10 | 24x18x10 | fixed | White |
-| 2 | 20x16x7 | 20x16x7 | fixed | White |
-| 3 | 18x12x6 | 18x12x6 | fixed | White |
+| 1 | 24x18x10 | 24x18x10 | White | Default |
+| 2 | 20x16x7 | 20x16x7 | White | Default |
+| 3 | 18x12x6 | 18x12x6 | White | Default |
 
 ### WB — Wash Basin
 
 - Brand: Swisware+
 - Catalogue pages: 14
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 12x9 | 12x9 | fixed | White |
-| 2 | 13x9 SQUARE | 13x9 | fixed | White |
-| 3 | 14x11 ROUND | 14x11 | fixed | White |
-| 4 | 16x16 CORNER | 16x16 | fixed | White |
-| 5 | 17x11 | 17x11 | fixed | White |
-| 6 | 18x12 | 18x12 | fixed | White |
-| 7 | 18x12 SQUARE | 18x12 | fixed | White |
-| 8 | 18x13 | 18x13 | fixed | White |
-| 9 | 16x12 | 16x12 | fixed | White |
-| 10 | 18x14 | 18x14 | fixed | White |
-| 11 | 18x14 GOLDEN | 18x14 | fixed | White |
-| 12 | 18x14 POLO | 18x14 | fixed | White |
-| 13 | 18x14 SILVER | 18x14 | fixed | White |
-| 14 | 18x16 MICRA | 18x16 | fixed | White |
-| 15 | 20x16 | 20x16 | fixed | White |
-| 16 | 22x16 | 22x16 | fixed | White |
+| 1 | 12x9 | 12x9 | White | Default |
+| 2 | 13x9 SQUARE | 13x9 | White | Default |
+| 3 | 14x11 ROUND | 14x11 | White | Default |
+| 4 | 16x16 CORNER | 16x16 | White | Default |
+| 5 | 17x11 | 17x11 | White | Default |
+| 6 | 18x12 | 18x12 | White | Default |
+| 7 | 18x12 SQUARE | 18x12 | White | Default |
+| 8 | 18x13 | 18x13 | White | Default |
+| 9 | 16x12 | 16x12 | White | Default |
+| 10 | 18x14 | 18x14 | White | Default |
+| 11 | 18x14 GOLDEN | 18x14 | White | Default |
+| 12 | 18x14 POLO | 18x14 | White | Default |
+| 13 | 18x14 SILVER | 18x14 | White | Default |
+| 14 | 18x16 MICRA | 18x16 | White | Default |
+| 15 | 20x16 | 20x16 | White | Default |
+| 16 | 22x16 | 22x16 | White | Default |
 
 ### TTW — Table Top Wash Basin
 
 - Brand: Swisware+
 - Catalogue pages: 14
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 7501 | 23x14 | dedicated |  |
-| 2 | 7505 | 17x11 | dedicated |  |
-| 3 | 7507 | 17x13 | dedicated |  |
-| 4 | 7601 | 16x12 | dedicated |  |
-| 5 | 7702 | 20x13 | dedicated |  |
-| 6 | 7704 | 20x16 | dedicated |  |
-| 7 | 7706 | 17x17 | dedicated |  |
-| 8 | 7708 | 19x15 | dedicated |  |
-| 9 | 7801 | 22x17 | dedicated |  |
-| 10 | 7803 | 18x14 | dedicated |  |
-| 11 | 7805 | 18x14 | dedicated |  |
-| 12 | 7807 | 16x16 | dedicated |  |
-| 13 | 7901 | 28x14 | dedicated |  |
-| 14 | 7902 | 23x14 | dedicated |  |
-| 15 | 7903 | 25x15 | dedicated |  |
-| 16 | 14x14 NEW CORNER | 14x14 | dedicated |  |
+| 1 | 7501 | 23x14 |  | Default |
+| 2 | 7505 | 17x11 |  | Default |
+| 3 | 7507 | 17x13 |  | Default |
+| 4 | 7601 | 16x12 |  | Default |
+| 5 | 7702 | 20x13 |  | Default |
+| 6 | 7704 | 20x16 |  | Default |
+| 7 | 7706 | 17x17 |  | Default |
+| 8 | 7708 | 19x15 |  | Default |
+| 9 | 7801 | 22x17 |  | Default |
+| 10 | 7803 | 18x14 |  | Default |
+| 11 | 7805 | 18x14 |  | Default |
+| 12 | 7807 | 16x16 |  | Default |
+| 13 | 7901 | 28x14 |  | Default |
+| 14 | 7902 | 23x14 |  | Default |
+| 15 | 7903 | 25x15 |  | Default |
+| 16 | 14x14 NEW CORNER | 14x14 |  | Default |
 
 ### TTV — Table Top Vitrosa Basin
 
 - Brand: Swisware+
 - Catalogue pages: 15, 16, 17
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 7511 |  | dedicated |  |
-| 2 | 7512 |  | dedicated |  |
-| 3 | 7513 |  | dedicated |  |
-| 4 | 7662 |  | dedicated |  |
-| 5 | 7663 |  | dedicated |  |
-| 6 | 7664 |  | dedicated |  |
-| 7 | 7665 |  | dedicated |  |
-| 8 | 7667 |  | dedicated |  |
-| 9 | 7668 |  | dedicated |  |
-| 10 | 7641 |  | dedicated |  |
-| 11 | 7643 |  | dedicated |  |
-| 12 | 7644 |  | dedicated |  |
-| 13 | 7646 |  | dedicated |  |
-| 14 | 7647 |  | dedicated |  |
-| 15 | 7721 |  | dedicated |  |
-| 16 | 7722 |  | dedicated |  |
-| 17 | 7726 |  | dedicated |  |
-| 18 | 7741 |  | dedicated |  |
-| 19 | 7742 |  | dedicated |  |
-| 20 | 7743 |  | dedicated |  |
-| 21 | 7744 |  | dedicated |  |
-| 22 | 7745 |  | dedicated |  |
-| 23 | 7781 |  | dedicated |  |
-| 24 | 7782 |  | dedicated |  |
-| 25 | 7783 |  | dedicated |  |
-| 26 | 7784 |  | dedicated |  |
-| 27 | 7785 |  | dedicated |  |
-| 28 | 7786 |  | dedicated |  |
-| 29 | 7788 |  | dedicated |  |
-| 30 | 7851 |  | dedicated |  |
-| 31 | 7852 |  | dedicated |  |
-| 32 | 7853 |  | dedicated |  |
-| 33 | 7854 |  | dedicated |  |
-| 34 | 7855 |  | dedicated |  |
-| 35 | 7857 |  | dedicated |  |
-| 36 | 7858 |  | dedicated |  |
-| 37 | 7859 |  | dedicated |  |
-| 38 | 7514 |  | dedicated |  |
-| 39 | 7516 |  | dedicated |  |
-| 40 | 7517 |  | dedicated |  |
-| 41 | 7525 |  | dedicated |  |
-| 42 | 7760 |  | dedicated |  |
-| 43 | 7761 |  | dedicated |  |
-| 44 | 7762 |  | dedicated |  |
-| 45 | 7767 |  | dedicated |  |
-| 46 | 7768 |  | dedicated |  |
-| 47 | 7769 |  | dedicated |  |
-| 48 | 7840 |  | dedicated |  |
-| 49 | 7842 |  | dedicated |  |
-| 50 | 7843 |  | dedicated |  |
-| 51 | 7844 |  | dedicated |  |
-| 52 | 7845 |  | dedicated |  |
-| 53 | 7847 |  | dedicated |  |
-| 54 | 7848 |  | dedicated |  |
-| 55 | 7914 |  | dedicated |  |
-| 56 | 7915 |  | dedicated |  |
-| 57 | 7916 |  | dedicated |  |
-| 58 | 7917 |  | dedicated |  |
-| 59 | 7918 |  | dedicated |  |
-| 60 | 7920 |  | dedicated |  |
-| 61 | 7953 |  | dedicated |  |
-| 62 | 7941 |  | dedicated |  |
-| 63 | 7943 |  | dedicated |  |
-| 64 | 7945 |  | dedicated |  |
-| 65 | 7946 |  | dedicated |  |
-| 66 | 7931 |  | dedicated |  |
-| 67 | 7933 |  | dedicated |  |
-| 68 | 7934 |  | dedicated |  |
-| 69 | 7935 |  | dedicated |  |
+| 1 | 7511 |  |  | Default |
+| 2 | 7512 |  |  | Default |
+| 3 | 7513 |  |  | Default |
+| 4 | 7662 |  |  | Default |
+| 5 | 7663 |  |  | Default |
+| 6 | 7664 |  |  | Default |
+| 7 | 7665 |  |  | Default |
+| 8 | 7667 |  |  | Default |
+| 9 | 7668 |  |  | Default |
+| 10 | 7641 |  |  | Default |
+| 11 | 7643 |  |  | Default |
+| 12 | 7644 |  |  | Default |
+| 13 | 7646 |  |  | Default |
+| 14 | 7647 |  |  | Default |
+| 15 | 7721 |  |  | Default |
+| 16 | 7722 |  |  | Default |
+| 17 | 7726 |  |  | Default |
+| 18 | 7741 |  |  | Default |
+| 19 | 7742 |  |  | Default |
+| 20 | 7743 |  |  | Default |
+| 21 | 7744 |  |  | Default |
+| 22 | 7745 |  |  | Default |
+| 23 | 7781 |  |  | Default |
+| 24 | 7782 |  |  | Default |
+| 25 | 7783 |  |  | Default |
+| 26 | 7784 |  |  | Default |
+| 27 | 7785 |  |  | Default |
+| 28 | 7786 |  |  | Default |
+| 29 | 7788 |  |  | Default |
+| 30 | 7851 |  |  | Default |
+| 31 | 7852 |  |  | Default |
+| 32 | 7853 |  |  | Default |
+| 33 | 7854 |  |  | Default |
+| 34 | 7855 |  |  | Default |
+| 35 | 7857 |  |  | Default |
+| 36 | 7858 |  |  | Default |
+| 37 | 7859 |  |  | Default |
+| 38 | 7514 |  |  | Default |
+| 39 | 7516 |  |  | Default |
+| 40 | 7517 |  |  | Default |
+| 41 | 7525 |  |  | Default |
+| 42 | 7760 |  |  | Default |
+| 43 | 7761 |  |  | Default |
+| 44 | 7762 |  |  | Default |
+| 45 | 7767 |  |  | Default |
+| 46 | 7768 |  |  | Default |
+| 47 | 7769 |  |  | Default |
+| 48 | 7840 |  |  | Default |
+| 49 | 7842 |  |  | Default |
+| 50 | 7843 |  |  | Default |
+| 51 | 7844 |  |  | Default |
+| 52 | 7845 |  |  | Default |
+| 53 | 7847 |  |  | Default |
+| 54 | 7848 |  |  | Default |
+| 55 | 7914 |  |  | Default |
+| 56 | 7915 |  |  | Default |
+| 57 | 7916 |  |  | Default |
+| 58 | 7917 |  |  | Default |
+| 59 | 7918 |  |  | Default |
+| 60 | 7920 |  |  | Default |
+| 61 | 7953 |  |  | Default |
+| 62 | 7941 |  |  | Default |
+| 63 | 7943 |  |  | Default |
+| 64 | 7945 |  |  | Default |
+| 65 | 7946 |  |  | Default |
+| 66 | 7931 |  |  | Default |
+| 67 | 7933 |  |  | Default |
+| 68 | 7934 |  |  | Default |
+| 69 | 7935 |  |  | Default |
 
 ### TTH — Table Top Hydrographic
 
 - Brand: Swisware+
 - Catalogue pages: 17
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | A |  | dedicated |  |
-| 2 | B |  | dedicated |  |
-| 3 | C |  | dedicated |  |
-| 4 | D |  | dedicated |  |
-| 5 | E |  | dedicated |  |
-| 6 | F |  | dedicated |  |
-| 7 | G |  | dedicated |  |
-| 8 | H |  | dedicated |  |
-| 9 | I |  | dedicated |  |
-| 10 | J |  | dedicated |  |
-| 11 | K |  | dedicated |  |
+| 1 | A |  |  | Default |
+| 2 | B |  |  | Default |
+| 3 | C |  |  | Default |
+| 4 | D |  |  | Default |
+| 5 | E |  |  | Default |
+| 6 | F |  |  | Default |
+| 7 | G |  |  | Default |
+| 8 | H |  |  | Default |
+| 9 | I |  |  | Default |
+| 10 | J |  |  | Default |
+| 11 | K |  |  | Default |
 
 ### V1812 — 18x12 Vitrosa
 
 - Brand: Swisware+
 - Catalogue pages: 17
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | BLACK | 18x12 | fixed | Black |
-| 2 | MINT GREEN | 18x12 | fixed | Mint Green |
-| 3 | MAGENTA | 18x12 | fixed | Magenta |
+| 1 | BLACK | 18x12 | Black | Default |
+| 2 | MINT GREEN | 18x12 | Mint Green | Default |
+| 3 | MAGENTA | 18x12 | Magenta | Default |
 
 ### R1812 — 18x12 Rustic
 
 - Brand: Swisware+
 - Catalogue pages: 17
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | BLACK | 18x12 | fixed | Rustic Royal Black |
-| 2 | COFFEE BROWN | 18x12 | fixed | Rustic Coffee Brown |
-| 3 | ALPINE BLUE | 18x12 | fixed | Rustic Alpine Blue |
+| 1 | BLACK | 18x12 | Rustic Royal Black | Default |
+| 2 | COFFEE BROWN | 18x12 | Rustic Coffee Brown | Default |
+| 3 | ALPINE BLUE | 18x12 | Rustic Alpine Blue | Default |
 
 ### PS — Plain Set
 
 - Brand: Swisware+
 - Catalogue pages: 18
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | GOLDEN SET (18X14) | 18x14 | fixed | White |
-| 2 | POLO SET (18X14) | 18x14 | fixed | White |
-| 3 | SILVER SET (18x14) | 18x14 | fixed | White |
-| 4 | 18x14 SET | 18x14 | fixed | White |
-| 5 | MICRA SET (18X16) | 18x16 | fixed | White |
-| 6 | 20x16 SET | 20x16 | fixed | White |
-| 7 | REPOSE SET (22X16) | 22x16 | fixed | White |
-| 8 | FABIA SET (20X17) | 20x17 | fixed | White |
-| 9 | SOFIYA SET (22X17) | 22x17 | fixed | White |
-| 10 | STERLING SET (22X17) | 22x17 | fixed | White |
-| 11 | AMAZON SET (22x17) | 22x17 | fixed | White |
-| 12 | SUPREME SET (23X17) | 23x17 | fixed | White |
-| 13 | SERENA SET (23X17) | 23x17 | fixed | White |
-| 14 | CRETA SET (23x17) | 23x17 | fixed | White |
-| 15 | CRYSTA SET (24X18) | 24x18 | fixed | White |
-| 16 | LAURET SET (24X18) | 24x18 | fixed | White |
-| 17 | LEXO SET (24X18) | 24x18 | fixed | White |
-| 18 | EURO SET (24X19) | 24x19 | fixed | White |
-| 19 | DIAMOND SET (23X20) | 23x20 | fixed | White |
-| 20 | INNOVA SET (23X18) | 23x18 | fixed | White |
-| 21 | BIG STERLING SET (25X21) | 25x21 | fixed | White |
-| 22 | DOLPHIN SET (18X20) | 18x20 | fixed | White |
+| 1 | GOLDEN SET (18X14) | 18x14 | White | Default |
+| 2 | POLO SET (18X14) | 18x14 | White | Default |
+| 3 | SILVER SET (18x14) | 18x14 | White | Default |
+| 4 | 18x14 SET | 18x14 | White | Default |
+| 5 | MICRA SET (18X16) | 18x16 | White | Default |
+| 6 | 20x16 SET | 20x16 | White | Default |
+| 7 | REPOSE SET (22X16) | 22x16 | White | Default |
+| 8 | FABIA SET (20X17) | 20x17 | White | Default |
+| 9 | SOFIYA SET (22X17) | 22x17 | White | Default |
+| 10 | STERLING SET (22X17) | 22x17 | White | Default |
+| 11 | AMAZON SET (22x17) | 22x17 | White | Default |
+| 12 | SUPREME SET (23X17) | 23x17 | White | Default |
+| 13 | SERENA SET (23X17) | 23x17 | White | Default |
+| 14 | CRETA SET (23x17) | 23x17 | White | Default |
+| 15 | CRYSTA SET (24X18) | 24x18 | White | Default |
+| 16 | LAURET SET (24X18) | 24x18 | White | Default |
+| 17 | LEXO SET (24X18) | 24x18 | White | Default |
+| 18 | EURO SET (24X19) | 24x19 | White | Default |
+| 19 | DIAMOND SET (23X20) | 23x20 | White | Default |
+| 20 | INNOVA SET (23X18) | 23x18 | White | Default |
+| 21 | BIG STERLING SET (25X21) | 25x21 | White | Default |
+| 22 | DOLPHIN SET (18X20) | 18x20 | White | Default |
 
 ### BSD — Big Sterling Vitrosa Double Colour
 
 - Brand: Swisware+
 - Catalogue pages: 19
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 3001 |  | dedicated |  |
-| 2 | 3002 |  | dedicated |  |
-| 3 | 5001 |  | dedicated |  |
-| 4 | 5002 |  | dedicated |  |
-| 5 | 5003 |  | dedicated |  |
-| 6 | 5004 |  | dedicated |  |
-| 7 | 5005 |  | dedicated |  |
-| 8 | 5011 |  | dedicated |  |
-| 9 | 5012 |  | dedicated |  |
-| 10 | 5014 |  | dedicated |  |
-| 11 | 6001 |  | dedicated |  |
-| 12 | 6002 |  | dedicated |  |
-| 13 | 6003 |  | dedicated |  |
-| 14 | 6004 |  | dedicated |  |
-| 15 | 6005 |  | dedicated |  |
-| 16 | 6006 |  | dedicated |  |
-| 17 | 6007 |  | dedicated |  |
-| 18 | 6008 |  | dedicated |  |
-| 19 | 6010 |  | dedicated |  |
-| 20 | 6011 |  | dedicated |  |
-| 21 | 6012 |  | dedicated |  |
-| 22 | 6015 |  | dedicated |  |
-| 23 | 6016 |  | dedicated |  |
-| 24 | WOODEN |  | fixed | Wooden |
+| 1 | 3001 |  |  | Default |
+| 2 | 3002 |  |  | Default |
+| 3 | 5001 |  |  | Default |
+| 4 | 5002 |  |  | Default |
+| 5 | 5003 |  |  | Default |
+| 6 | 5004 |  |  | Default |
+| 7 | 5005 |  |  | Default |
+| 8 | 5011 |  |  | Default |
+| 9 | 5012 |  |  | Default |
+| 10 | 5014 |  |  | Default |
+| 11 | 6001 |  |  | Default |
+| 12 | 6002 |  |  | Default |
+| 13 | 6003 |  |  | Default |
+| 14 | 6004 |  |  | Default |
+| 15 | 6005 |  |  | Default |
+| 16 | 6006 |  |  | Default |
+| 17 | 6007 |  |  | Default |
+| 18 | 6008 |  |  | Default |
+| 19 | 6010 |  |  | Default |
+| 20 | 6011 |  |  | Default |
+| 21 | 6012 |  |  | Default |
+| 22 | 6015 |  |  | Default |
+| 23 | 6016 |  |  | Default |
+| 24 | WOODEN |  | Wooden | Default |
 
 ### EUD — Euro Vitrosa Double Colour
 
 - Brand: Swisware+
 - Catalogue pages: 20
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 6501 |  | dedicated |  |
-| 2 | 6502 |  | dedicated |  |
-| 3 | 6503 |  | dedicated |  |
-| 4 | 6504 |  | dedicated |  |
-| 5 | 6505 |  | dedicated |  |
-| 6 | 6506 |  | dedicated |  |
-| 7 | 6507 |  | dedicated |  |
-| 8 | 6508 |  | dedicated |  |
-| 9 | 6509 |  | dedicated |  |
-| 10 | 6510 |  | dedicated |  |
-| 11 | 6511 |  | dedicated |  |
-| 12 | 6512 |  | dedicated |  |
-| 13 | 6513 |  | dedicated |  |
-| 14 | 6514 |  | dedicated |  |
+| 1 | 6501 |  |  | Default |
+| 2 | 6502 |  |  | Default |
+| 3 | 6503 |  |  | Default |
+| 4 | 6504 |  |  | Default |
+| 5 | 6505 |  |  | Default |
+| 6 | 6506 |  |  | Default |
+| 7 | 6507 |  |  | Default |
+| 8 | 6508 |  |  | Default |
+| 9 | 6509 |  |  | Default |
+| 10 | 6510 |  |  | Default |
+| 11 | 6511 |  |  | Default |
+| 12 | 6512 |  |  | Default |
+| 13 | 6513 |  |  | Default |
+| 14 | 6514 |  |  | Default |
 
 ### SFD — Sofiya Vitrosa Double Colour
 
 - Brand: Swisware+
 - Catalogue pages: 20
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | MAGENTA |  | fixed | Magenta |
-| 2 | MINT GREEN |  | fixed | Mint Green |
-| 3 | ALPINE BLUE |  | fixed | Alpine Blue |
-| 4 | BLACK |  | fixed | Black |
-| 5 | RED |  | fixed | Red |
-| 6 | RED BROWN |  | fixed | Red Brown |
-| 7 | ORANGE |  | fixed | Orange |
-| 8 | BLACK PLAIN |  | fixed | Black |
-| 9 | MAGENTA PLAIN |  | fixed | Magenta |
+| 1 | MAGENTA |  | Magenta | Default |
+| 2 | MINT GREEN |  | Mint Green | Default |
+| 3 | ALPINE BLUE |  | Alpine Blue | Default |
+| 4 | BLACK |  | Black | Default |
+| 5 | RED |  | Red | Default |
+| 6 | RED BROWN |  | Red Brown | Default |
+| 7 | ORANGE |  | Orange | Default |
+| 8 | BLACK PLAIN |  | Black | Default |
+| 9 | MAGENTA PLAIN |  | Magenta | Default |
 
 ### AMD — Amazon Vitrosa Double Colour
 
 - Brand: Swisware+
 - Catalogue pages: 21
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 5501 |  | dedicated |  |
-| 2 | 5502 |  | dedicated |  |
-| 3 | 5503 |  | dedicated |  |
-| 4 | 5504 |  | dedicated |  |
-| 5 | 5505 |  | dedicated |  |
-| 6 | 5506 |  | dedicated |  |
-| 7 | 5507 |  | dedicated |  |
-| 8 | 5508 |  | dedicated |  |
-| 9 | 5509 |  | dedicated |  |
-| 10 | 5511 |  | dedicated |  |
-| 11 | 5512 |  | dedicated |  |
-| 12 | 5513 |  | dedicated |  |
-| 13 | 5514 |  | dedicated |  |
-| 14 | 5515 |  | dedicated |  |
-| 15 | 5516 |  | dedicated |  |
-| 16 | 5517 |  | dedicated |  |
-| 17 | 5518 |  | dedicated |  |
-| 18 | 5521 |  | dedicated |  |
-| 19 | 5522 |  | dedicated |  |
-| 20 | 5523 |  | dedicated |  |
-| 21 | 5524 |  | dedicated |  |
-| 22 | 5525 |  | dedicated |  |
-| 23 | 5526 |  | dedicated |  |
-| 24 | 5527 |  | dedicated |  |
+| 1 | 5501 |  |  | Default |
+| 2 | 5502 |  |  | Default |
+| 3 | 5503 |  |  | Default |
+| 4 | 5504 |  |  | Default |
+| 5 | 5505 |  |  | Default |
+| 6 | 5506 |  |  | Default |
+| 7 | 5507 |  |  | Default |
+| 8 | 5508 |  |  | Default |
+| 9 | 5509 |  |  | Default |
+| 10 | 5511 |  |  | Default |
+| 11 | 5512 |  |  | Default |
+| 12 | 5513 |  |  | Default |
+| 13 | 5514 |  |  | Default |
+| 14 | 5515 |  |  | Default |
+| 15 | 5516 |  |  | Default |
+| 16 | 5517 |  |  | Default |
+| 17 | 5518 |  |  | Default |
+| 18 | 5521 |  |  | Default |
+| 19 | 5522 |  |  | Default |
+| 20 | 5523 |  |  | Default |
+| 21 | 5524 |  |  | Default |
+| 22 | 5525 |  |  | Default |
+| 23 | 5526 |  |  | Default |
+| 24 | 5527 |  |  | Default |
 
 ### SRD — Serena Vitrosa Double Colour
 
 - Brand: Swisware+
 - Catalogue pages: 22, 23, 24
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 605 |  | dedicated |  |
-| 2 | 1001 |  | dedicated |  |
-| 3 | 1016 |  | dedicated |  |
-| 4 | 1019 |  | dedicated |  |
-| 5 | 1036 |  | dedicated |  |
-| 6 | 1037 |  | dedicated |  |
-| 7 | 1050 |  | dedicated |  |
-| 8 | 1051 |  | dedicated |  |
-| 9 | 1052 |  | dedicated |  |
-| 10 | 1061 |  | dedicated |  |
-| 11 | 1062 |  | dedicated |  |
-| 12 | 1063 |  | dedicated |  |
-| 13 | 1064 |  | dedicated |  |
-| 14 | 1065 |  | dedicated |  |
-| 15 | 1066 |  | dedicated |  |
-| 16 | 1067 |  | dedicated |  |
-| 17 | 1068 |  | dedicated |  |
-| 18 | 2001 |  | dedicated |  |
-| 19 | 2002 |  | dedicated |  |
-| 20 | 2003 |  | dedicated |  |
-| 21 | 2006 |  | dedicated |  |
-| 22 | 2501 |  | dedicated |  |
-| 23 | 2502 |  | dedicated |  |
-| 24 | 2503 |  | dedicated |  |
-| 25 | 2504 |  | dedicated |  |
-| 26 | 2505 |  | dedicated |  |
-| 27 | 2506 |  | dedicated |  |
-| 28 | 2507 |  | dedicated |  |
-| 29 | 2508 |  | dedicated |  |
-| 30 | 2509 |  | dedicated |  |
-| 31 | 2510 |  | dedicated |  |
-| 32 | 2511 |  | dedicated |  |
-| 33 | 2512 |  | dedicated |  |
-| 34 | 2513 |  | dedicated |  |
-| 35 | 2514 |  | dedicated |  |
-| 36 | 2515 |  | dedicated |  |
-| 37 | 2516 |  | dedicated |  |
-| 38 | 2517 |  | dedicated |  |
-| 39 | 4001 |  | dedicated |  |
-| 40 | 4002 |  | dedicated |  |
-| 41 | 4005 |  | dedicated |  |
-| 42 | 4011 |  | dedicated |  |
-| 43 | 4012 |  | dedicated |  |
-| 44 | 4016 |  | dedicated |  |
-| 45 | 4017 |  | dedicated |  |
-| 46 | 4018 |  | dedicated |  |
-| 47 | 4019 |  | dedicated |  |
-| 48 | 4020 |  | dedicated |  |
-| 49 | 4021 |  | dedicated |  |
-| 50 | 4022 |  | dedicated |  |
-| 51 | 4031 |  | dedicated |  |
-| 52 | 4032 |  | dedicated |  |
-| 53 | 4033 |  | dedicated |  |
-| 54 | 4034 |  | dedicated |  |
+| 1 | 605 |  |  | Default |
+| 2 | 1001 |  |  | Default |
+| 3 | 1016 |  |  | Default |
+| 4 | 1019 |  |  | Default |
+| 5 | 1036 |  |  | Default |
+| 6 | 1037 |  |  | Default |
+| 7 | 1050 |  |  | Default |
+| 8 | 1051 |  |  | Default |
+| 9 | 1052 |  |  | Default |
+| 10 | 1061 |  |  | Default |
+| 11 | 1062 |  |  | Default |
+| 12 | 1063 |  |  | Default |
+| 13 | 1064 |  |  | Default |
+| 14 | 1065 |  |  | Default |
+| 15 | 1066 |  |  | Default |
+| 16 | 1067 |  |  | Default |
+| 17 | 1068 |  |  | Default |
+| 18 | 2001 |  |  | Default |
+| 19 | 2002 |  |  | Default |
+| 20 | 2003 |  |  | Default |
+| 21 | 2006 |  |  | Default |
+| 22 | 2501 |  |  | Default |
+| 23 | 2502 |  |  | Default |
+| 24 | 2503 |  |  | Default |
+| 25 | 2504 |  |  | Default |
+| 26 | 2505 |  |  | Default |
+| 27 | 2506 |  |  | Default |
+| 28 | 2507 |  |  | Default |
+| 29 | 2508 |  |  | Default |
+| 30 | 2509 |  |  | Default |
+| 31 | 2510 |  |  | Default |
+| 32 | 2511 |  |  | Default |
+| 33 | 2512 |  |  | Default |
+| 34 | 2513 |  |  | Default |
+| 35 | 2514 |  |  | Default |
+| 36 | 2515 |  |  | Default |
+| 37 | 2516 |  |  | Default |
+| 38 | 2517 |  |  | Default |
+| 39 | 4001 |  |  | Default |
+| 40 | 4002 |  |  | Default |
+| 41 | 4005 |  |  | Default |
+| 42 | 4011 |  |  | Default |
+| 43 | 4012 |  |  | Default |
+| 44 | 4016 |  |  | Default |
+| 45 | 4017 |  |  | Default |
+| 46 | 4018 |  |  | Default |
+| 47 | 4019 |  |  | Default |
+| 48 | 4020 |  |  | Default |
+| 49 | 4021 |  |  | Default |
+| 50 | 4022 |  |  | Default |
+| 51 | 4031 |  |  | Default |
+| 52 | 4032 |  |  | Default |
+| 53 | 4033 |  |  | Default |
+| 54 | 4034 |  |  | Default |
 
 ### LRD — Lauret Vitrosa Double Colour
 
 - Brand: Swisware+
 - Catalogue pages: 24
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | MAGENTA |  | fixed | Magenta |
-| 2 | MINT GREEN |  | fixed | Mint Green |
-| 3 | RED BROWN |  | fixed | Red Brown |
-| 4 | BLACK |  | fixed | Black |
-| 5 | ALPINE BLUE |  | fixed | Alpine Blue |
-| 6 | WOODEN |  | fixed | Wooden |
+| 1 | MAGENTA |  | Magenta | Default |
+| 2 | MINT GREEN |  | Mint Green | Default |
+| 3 | RED BROWN |  | Red Brown | Default |
+| 4 | BLACK |  | Black | Default |
+| 5 | ALPINE BLUE |  | Alpine Blue | Default |
+| 6 | WOODEN |  | Wooden | Default |
 
 ### DID — Diamond Vitrosa Double Colour
 
 - Brand: Swisware+
 - Catalogue pages: 24
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | MAGENTA |  | fixed | Magenta |
-| 2 | ORANGE |  | fixed | Orange |
-| 3 | RED |  | fixed | Red |
-| 4 | BLACK |  | fixed | Black |
-| 5 | ALPINE BLUE |  | fixed | Alpine Blue |
+| 1 | MAGENTA |  | Magenta | Default |
+| 2 | ORANGE |  | Orange | Default |
+| 3 | RED |  | Red | Default |
+| 4 | BLACK |  | Black | Default |
+| 5 | ALPINE BLUE |  | Alpine Blue | Default |
 
 ### SH — Set Hydrographic
 
 - Brand: Swisware+
 - Catalogue pages: 24
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | B |  | dedicated |  |
-| 2 | C |  | dedicated |  |
-| 3 | G |  | dedicated |  |
-| 4 | H |  | dedicated |  |
-| 5 | I |  | dedicated |  |
-| 6 | L |  | dedicated |  |
+| 1 | B |  |  | Default |
+| 2 | C |  |  | Default |
+| 3 | G |  |  | Default |
+| 4 | H |  |  | Default |
+| 5 | I |  |  | Default |
+| 6 | L |  |  | Default |
 
 ### SLD — Silver Vitrosa Double Colour
 
 - Brand: Swisware+
 - Catalogue pages: 25
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | BLACK |  | fixed | Black |
-| 2 | MAGENTA |  | fixed | Magenta |
-| 3 | RED BROWN |  | fixed | Red Brown |
-| 4 | MINT GREEN |  | fixed | Mint Green |
-| 5 | PUNCH BLACK |  | fixed | Punch Black |
-| 6 | WOODEN |  | fixed | Wooden |
+| 1 | BLACK |  | Black | Default |
+| 2 | MAGENTA |  | Magenta | Default |
+| 3 | RED BROWN |  | Red Brown | Default |
+| 4 | MINT GREEN |  | Mint Green | Default |
+| 5 | PUNCH BLACK |  | Punch Black | Default |
+| 6 | WOODEN |  | Wooden | Default |
 
 ### D1814 — 18"x14" Vitrosa Double Colour
 
 - Brand: Swisware+
 - Catalogue pages: 25
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | RED BROWN | 18x14 | fixed | Red Brown |
-| 2 | BLACK | 18x14 | fixed | Black |
+| 1 | RED BROWN | 18x14 | Red Brown | Default |
+| 2 | BLACK | 18x14 | Black | Default |
 
 ### MCD — Micra Vitrosa Double Colour
 
 - Brand: Swisware+
 - Catalogue pages: 25
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | MAGENTA |  | fixed | Magenta |
-| 2 | ALPINE BLUE |  | fixed | Alpine Blue |
-| 3 | MINT GREEN |  | fixed | Mint Green |
-| 4 | BLACK |  | fixed | Black |
+| 1 | MAGENTA |  | Magenta | Default |
+| 2 | ALPINE BLUE |  | Alpine Blue | Default |
+| 3 | MINT GREEN |  | Mint Green | Default |
+| 4 | BLACK |  | Black | Default |
 
 ### RS — Rustic Set
 
 - Brand: Swisware+
 - Catalogue pages: 25
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | SOFIYA SET COFFEE BROWN |  | fixed | Rustic Coffee Brown |
-| 2 | 18x14 SET BLACK |  | fixed | Rustic Royal Black |
-| 3 | 18x14 SET COFFEE BROWN |  | fixed | Rustic Coffee Brown |
-| 4 | SERENA SET ALPINE BLUE |  | fixed | Rustic Alpine Blue |
-| 5 | SERENA SET COFFEE BROWN |  | fixed | Rustic Coffee Brown |
-| 6 | SERENA SET BLACK |  | fixed | Rustic Royal Black |
-| 7 | BIG STERLING SET MAGENTA |  | fixed | Rustic Magenta |
-| 8 | BIG STERLING SET ALPINE BLUE |  | fixed | Rustic Alpine Blue |
-| 9 | BIG STERLING SET RED BROWN |  | fixed | Rustic Red Brown |
+| 1 | SOFIYA SET COFFEE BROWN |  | Rustic Coffee Brown | Default |
+| 2 | 18x14 SET BLACK |  | Rustic Royal Black | Default |
+| 3 | 18x14 SET COFFEE BROWN |  | Rustic Coffee Brown | Default |
+| 4 | SERENA SET ALPINE BLUE |  | Rustic Alpine Blue | Default |
+| 5 | SERENA SET COFFEE BROWN |  | Rustic Coffee Brown | Default |
+| 6 | SERENA SET BLACK |  | Rustic Royal Black | Default |
+| 7 | BIG STERLING SET MAGENTA |  | Rustic Magenta | Default |
+| 8 | BIG STERLING SET ALPINE BLUE |  | Rustic Alpine Blue | Default |
+| 9 | BIG STERLING SET RED BROWN |  | Rustic Red Brown | Default |
 
 ### UR — Urinal
 
 - Brand: Swisware+
 - Catalogue pages: 26
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | HEXA URINAL |  | fixed | White |
-| 2 | HALF STALL URINAL |  | fixed | White |
-| 3 | GENTS WALL URINAL |  | fixed | White |
-| 4 | NANO URINAL |  | fixed | White |
-| 5 | NEW CORNER URINAL |  | fixed | White |
-| 6 | LADIES URINAL |  | fixed | White |
-| 7 | URINAL PARTITION |  | fixed | White |
-| 8 | URINAL CHANNEL |  | dedicated |  |
-| 9 | BIG P-TRAP |  | dedicated |  |
-| 10 | S-TRAP |  | dedicated |  |
-| 11 | P-TRAP |  | dedicated |  |
+| 1 | HEXA URINAL |  | White | Default |
+| 2 | HALF STALL URINAL |  | White | Default |
+| 3 | GENTS WALL URINAL |  | White | Default |
+| 4 | NANO URINAL |  | White | Default |
+| 5 | NEW CORNER URINAL |  | White | Default |
+| 6 | LADIES URINAL |  | White | Default |
+| 7 | URINAL PARTITION |  | White | Default |
+| 8 | URINAL CHANNEL |  |  | Default |
+| 9 | BIG P-TRAP |  |  | Default |
+| 10 | S-TRAP |  |  | Default |
+| 11 | P-TRAP |  |  | Default |
 
 ### OP — Orissa Pan
 
 - Brand: Swisware+
 - Catalogue pages: 26
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | 20" O.P |  | multicolour |  |
-| 2 | 20" O.P CROSS |  | multicolour |  |
-| 3 | M.D PAN |  | multicolour |  |
-| 4 | EASTERN PAN |  | multicolour |  |
-| 5 | ACUPRESSURE PAN |  | multicolour |  |
-| 6 | CITY PAN |  | multicolour |  |
-| 7 | 21" (Stand) O.P |  | multicolour |  |
-| 8 | 23" O.P |  | multicolour |  |
-| 9 | 23" (Stand) O.P |  | multicolour |  |
+| 1 | 20" O.P |  | All | Default |
+| 2 | 20" O.P CROSS |  | All | Default |
+| 3 | M.D PAN |  | All | Default |
+| 4 | EASTERN PAN |  | All | Default |
+| 5 | ACUPRESSURE PAN |  | All | Default |
+| 6 | CITY PAN |  | All | Default |
+| 7 | 21" (Stand) O.P |  | All | Default |
+| 8 | 23" O.P |  | All | Default |
+| 9 | 23" (Stand) O.P |  | All | Default |
 
 ### ACC — Accessories
 
 - Brand: Swisware+
 - Catalogue pages: 27
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | EWC SEAT COVER |  | dedicated |  |
-| 2 | 710 SOFT CLOSE SEAT COVER |  | dedicated |  |
-| 3 | 735 SOFT CLOSE SEAT COVER |  | dedicated |  |
-| 4 | 740 SOFT CLOSE SEAT COVER |  | dedicated |  |
-| 5 | 743 SOFT CLOSE SEAT COVER |  | dedicated |  |
-| 6 | 784 SOFT CLOSE SEAT COVER |  | dedicated |  |
-| 7 | GASKET |  | dedicated |  |
-| 8 | SINGLE FLUSH TANK CISTERN |  | dedicated |  |
-| 9 | DUAL FLUSH TANK CISTERN |  | dedicated |  |
-| 10 | 8" FITTING |  | dedicated |  |
-| 11 | 10" FITTING |  | dedicated |  |
-| 12 | WASTE PIPE |  | dedicated |  |
-| 13 | WASTE COUPLING |  | dedicated |  |
-| 14 | HEALTH FAUCET |  | dedicated |  |
-| 15 | SINK OVERFLOW HOLE COVER |  | dedicated |  |
+| 1 | EWC SEAT COVER |  |  | Default |
+| 2 | 710 SOFT CLOSE SEAT COVER |  |  | Default |
+| 3 | 735 SOFT CLOSE SEAT COVER |  |  | Default |
+| 4 | 740 SOFT CLOSE SEAT COVER |  |  | Default |
+| 5 | 743 SOFT CLOSE SEAT COVER |  |  | Default |
+| 6 | 784 SOFT CLOSE SEAT COVER |  |  | Default |
+| 7 | GASKET |  |  | Default |
+| 8 | SINGLE FLUSH TANK CISTERN |  |  | Default |
+| 9 | DUAL FLUSH TANK CISTERN |  |  | Default |
+| 10 | 8" FITTING |  |  | Default |
+| 11 | 10" FITTING |  |  | Default |
+| 12 | WASTE PIPE |  |  | Default |
+| 13 | WASTE COUPLING |  |  | Default |
+| 14 | HEALTH FAUCET |  |  | Default |
+| 15 | SINK OVERFLOW HOLE COVER |  |  | Default |
 
 ### MER — Merchandise
 
 - Brand: Swisware+
 - Catalogue pages: 27
 
-| # | Sub product | Size | Colour rule | Colour |
+| # | Sub product | Size | Colours | Print side |
 |---|---|---|---|---|
-| 1 | CUP |  | dedicated |  |
-| 2 | CAP |  | dedicated |  |
-| 3 | PEN |  | dedicated |  |
-| 4 | WATCH |  | dedicated |  |
-| 5 | BAG |  | dedicated |  |
-| 6 | NOTE PAD |  | dedicated |  |
-| 7 | CATALOGUE |  | dedicated |  |
+| 1 | CUP |  |  | Default |
+| 2 | CAP |  |  | Default |
+| 3 | PEN |  |  | Default |
+| 4 | WATCH |  |  | Default |
+| 5 | BAG |  |  | Default |
+| 6 | NOTE PAD |  |  | Default |
+| 7 | CATALOGUE |  |  | Default |

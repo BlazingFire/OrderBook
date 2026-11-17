@@ -51,14 +51,14 @@ describe.skipIf(!canRunIntegrationTests)('the Recycle Bin (integration)', () => 
     it('is refused while a live lead references it', async () => {
       const party = await catalogService.createParty({ name: 'Sharma Tiles' }, actor);
       const product = await catalogService.createProduct(
-        { name: 'Basin', categoryName: 'Basins', variants: [{ code: 'B-1' }] },
+        { name: 'Basin', categoryName: 'Basins', code: 'B-1' },
         actor,
       );
       await leadService.createLead(
         {
           partyId: party.id,
           items: [
-            { productId: product.id, variantId: product.variants[0]!.id, quantity: 5, packaging: 'Box' },
+            { productId: product.id, variantId: product.id, quantity: 5, packaging: 'Box' },
           ],
         },
         actor,
@@ -110,14 +110,14 @@ describe.skipIf(!canRunIntegrationTests)('the Recycle Bin (integration)', () => 
   describe('deleting and restoring a product', () => {
     it('is refused while a live line quotes it', async () => {
       const product = await catalogService.createProduct(
-        { name: 'Basin', categoryName: 'Basins', variants: [{ code: 'B-1' }] },
+        { name: 'Basin', categoryName: 'Basins', code: 'B-1' },
         actor,
       );
       const party = await catalogService.createParty({ name: 'Quoting Party' }, actor);
       await leadService.createLead(
         {
           partyId: party.id,
-          items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 10 }],
+          items: [{ productId: product.id, variantId: product.id, quantity: 10 }],
         },
         actor,
       );
@@ -129,27 +129,27 @@ describe.skipIf(!canRunIntegrationTests)('the Recycle Bin (integration)', () => 
 
     it('frees the codes of a binned product for another product', async () => {
       const product = await catalogService.createProduct(
-        { name: 'Basin', categoryName: 'Basins', variants: [{ code: 'B-1' }] },
+        { name: 'Basin', categoryName: 'Basins', code: 'B-1' },
         actor,
       );
       await catalogService.deleteProduct(product.id, actor);
 
       // A new product reissues the freed code — an ordinary Tuesday.
       const again = await catalogService.createProduct(
-        { name: 'Basin V2', categoryName: 'Basins', variants: [{ code: 'B-1' }] },
+        { name: 'Basin V2', categoryName: 'Basins', code: 'B-1' },
         actor,
       );
-      expect(again.variants[0]?.code).toBe('B-1');
+      expect(again.code).toBe('B-1');
     });
 
     it('restore is refused, naming the codes, once another product holds them', async () => {
       const product = await catalogService.createProduct(
-        { name: 'Basin', categoryName: 'Basins', variants: [{ code: 'B-1' }] },
+        { name: 'Basin', categoryName: 'Basins', code: 'B-1' },
         actor,
       );
       await catalogService.deleteProduct(product.id, actor);
       await catalogService.createProduct(
-        { name: 'Basin V2', categoryName: 'Basins', variants: [{ code: 'B-1' }] },
+        { name: 'Basin V2', categoryName: 'Basins', code: 'B-1' },
         actor,
       );
 
@@ -163,7 +163,7 @@ describe.skipIf(!canRunIntegrationTests)('the Recycle Bin (integration)', () => 
 
     it('restore brings the variants and their codes back', async () => {
       const product = await catalogService.createProduct(
-        { name: 'Basin', categoryName: 'Basins', variants: [{ code: 'B-1' }] },
+        { name: 'Basin', categoryName: 'Basins', code: 'B-1' },
         actor,
       );
       await catalogService.deleteProduct(product.id, actor);
@@ -174,12 +174,12 @@ describe.skipIf(!canRunIntegrationTests)('the Recycle Bin (integration)', () => 
       );
       expect(result.entityType).toBe('product');
       const restored = await catalogService.getProduct(product.id, actor);
-      expect(restored.variants.map((variant) => variant.code)).toEqual(['B-1']);
+      expect(restored.code).toBe('B-1');
 
       // The code is in use again: a new product cannot take it.
       await expect(
         catalogService.createProduct(
-          { name: 'Basin V3', categoryName: 'Basins', variants: [{ code: 'B-1' }] },
+          { name: 'Basin V3', categoryName: 'Basins', code: 'B-1' },
           actor,
         ),
       ).rejects.toMatchObject({ code: 'conflict' });
@@ -190,14 +190,14 @@ describe.skipIf(!canRunIntegrationTests)('the Recycle Bin (integration)', () => 
     async function seedLeadWithParty(): Promise<{ leadId: string; partyId: string }> {
       const party = await catalogService.createParty({ name: 'Sharma Tiles' }, actor);
       const product = await catalogService.createProduct(
-        { name: 'Basin', categoryName: 'Basins', variants: [{ code: 'B-1' }] },
+        { name: 'Basin', categoryName: 'Basins', code: 'B-1' },
         actor,
       );
       const lead = await leadService.createLead(
         {
           partyId: party.id,
           items: [
-            { productId: product.id, variantId: product.variants[0]!.id, quantity: 5, packaging: 'Box' },
+            { productId: product.id, variantId: product.id, quantity: 5, packaging: 'Box' },
           ],
         },
         actor,

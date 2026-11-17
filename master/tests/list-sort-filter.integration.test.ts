@@ -63,7 +63,7 @@ describe.skipIf(!canRunIntegrationTests)('list sorting and filters (integration)
             categoryName,
             ...(brand ? { categoryBrand: brand } : {}),
             ...(size ? { size } : {}),
-            variants: [{ code }],
+            code,
           } as never,
           actor,
         );

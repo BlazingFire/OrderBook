@@ -557,6 +557,14 @@ function OrderDetailBody({
   /** The colour list's current label for a stored colour value (`useColourLabel`). */
   labelOf: (colour: string) => string;
 }) {
+  /** The colour the line was sold in; a line from before the removal carries it as its label. */
+  function colourOf(item: Order['items'][number]): string | null {
+    if (item.colour) return item.colour;
+    // Not when it only repeats the name (CATALOGUE_MODEL §2).
+    if (item.variantLabel && shownColour(item.variantLabel, item.productName)) return item.variantLabel;
+    return null;
+  }
+
   const [note, setNote] = useState('');
   const [override, setOverride] = useState(
     order.totalWeightKgOverride === null ? '' : String(order.totalWeightKgOverride),
@@ -631,7 +639,6 @@ function OrderDetailBody({
                 <tr>
                   <th>{t('orders.column.code')}</th>
                   <th>{t('orders.column.product')}</th>
-                  <th>{t('orders.column.variant')}</th>
                   <th>{t('orders.column.colour')}</th>
                   <th>{t('orders.column.packaging')}</th>
                   <th>{t('orders.column.grade')}</th>
@@ -650,16 +657,13 @@ function OrderDetailBody({
                       </div>
                     </td>
                     <td>
-                      {/* Not when it only repeats the name (CATALOGUE_MODEL §2). */}
-                      {item.variantLabel && shownColour(item.variantLabel, item.productName) ? (
-                        <ColourName name={labelOf(item.variantLabel)} hex={colourHex(item.variantLabel)} />
+                      {/* The colour the line was sold in; a line from before
+                          the removal carries it as its variant label. */}
+                      {colourOf(item) ? (
+                        <ColourName name={labelOf(colourOf(item)!)} hex={colourHex(colourOf(item)!)} />
                       ) : (
                         '—'
                       )}
-                    </td>
-                    <td>
-                      {/* The colour chosen on a multi-colour line — frozen like the rest of the line. */}
-                      {item.colour ? <ColourName name={labelOf(item.colour)} hex={colourHex(item.colour)} /> : '—'}
                     </td>
                     <td>{item.packaging ?? '—'}</td>
                     <td>{item.grade ?? '—'}</td>

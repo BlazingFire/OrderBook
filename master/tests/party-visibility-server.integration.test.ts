@@ -146,7 +146,7 @@ describe.skipIf(!canRunIntegrationTests)('party visibility, server (integration)
     const a = await person('a-user');
     const b = await person('b-user');
     const product = await catalog.createProduct(
-      { categoryName: 'Tiles', variants: [{ code: 'PV-01' }], name: 'Glazed Secret Tile' },
+      { categoryName: 'Tiles', code: 'PV-01', name: 'Glazed Secret Tile' },
       admin,
     );
     const open = await catalog.createParty({ name: 'Open Traders' }, admin);
@@ -154,7 +154,7 @@ describe.skipIf(!canRunIntegrationTests)('party visibility, server (integration)
     const lead = await leads.createLead(
       {
         partyId: open.id,
-        items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 2, packaging: 'Box' }],
+        items: [{ productId: product.id, variantId: product.id, quantity: 2, packaging: 'Box' }],
       },
       b,
     );
@@ -170,7 +170,7 @@ describe.skipIf(!canRunIntegrationTests)('party visibility, server (integration)
       payload: {
         partyId: secret.id,
         partyWiseMode: true,
-        items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 0 }],
+        items: [{ productId: product.id, variantId: product.id, quantity: 0 }],
       },
       fields: ['partyId', 'items', 'partyWiseMode'],
       baseFieldHlc: {},

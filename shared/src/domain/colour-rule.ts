@@ -1,37 +1,28 @@
 /**
- * The catalogue's colour rules, and how a sub product and its colours read on
- * the way out (`docs/catalogue/CATALOGUE_MODEL.md` §2, §8).
+ * A sub product's colours and print side, and how they read on the way out
+ * (`docs/catalogue/CATALOGUE_MODEL.md` §2, §8).
  *
- * Every sub product is a model with exactly one variant, and its rule is
- * **derived** from what 1.2's product master already stores — there is no
- * rule column and no sentinel colour:
+ * Each sub product stores the colours it is offered in (`Product.colours`)
+ * and where it prints (`Product.printSide`) outright — no rule is derived
+ * from other columns any more (the variant layer that carried the old
+ * fixed/dedicated/selectable derivation is gone):
  *
- * - `fixed` — `hasVariants`, one variant whose label *is* the colour (White,
- *   Black, Magenta). Nothing is chosen at the counter; the colour shows,
- *   unless it only repeats the sub product's own name (`MAGENTA` / Magenta).
- * - `dedicated` — no label and not multi-colour: numbered designer pieces
- *   (`1111`, `41`) and accessories, whose design is their colour. Nothing is
- *   chosen and nothing is shown.
- * - `selectable` — the owner's "multicolour": `multiColour`, no label. The
- *   counter picks from the `stock.colour` list, several colours with a
- *   quantity each, each one its own line on the same variant.
+ * - no colours — nothing is chosen and nothing is shown (numbered designer
+ *   pieces like `1111` and accessories, whose design is their colour);
+ * - one colour — it always applies and shows, unless it only repeats the
+ *   sub product's own name (`MAGENTA` / Magenta);
+ * - several — the counter picks per line from a dropdown, several colours
+ *   with a quantity each, each one its own line.
+ *
+ * The print side is `left`, `right`, or `default`, and `default` keeps the
+ * catalogue's original rule — a purely numeric name prints right (Code),
+ * anything else left (Model) — so a catalogue nobody has re-sided by hand
+ * prints exactly as it always did.
  *
  * Pure and shared because three places must agree on it without a network
- * call: the Master (which drops a colour sent for anything but `selectable`),
- * the panels' entry and list screens, and the lead PDF's Model / Code / Colour
- * cells.
+ * call: the Master (which drops a colour a sub product does not offer),
+ * the panels' entry and list screens, and the printed notes' two halves.
  */
-
-export type ColourRule = 'fixed' | 'dedicated' | 'selectable';
-
-/** The rule a product follows, from the columns it already has. */
-export function colourRuleOf(product: {
-  multiColour: boolean;
-  variants: ReadonlyArray<{ label: string | null }>;
-}): ColourRule {
-  if (product.multiColour) return 'selectable';
-  return hasText(product.variants[0]?.label) ? 'fixed' : 'dedicated';
-}
 
 /**
  * True when a colour only says the sub product's name again — `MAGENTA` sold
@@ -66,20 +57,88 @@ export function isNumericSubProduct(name: string | null | undefined): boolean {
   return /^\d+$/.test(name?.trim() ?? '');
 }
 
+/** A sub product's stored print-side setting: an explicit side, or `default`. */
+export type PrintSideSetting = 'default' | 'left' | 'right';
+
+/** The resolved side a sub product prints on — Model (left) or Code (right). */
+export type PrintSide = 'left' | 'right';
+
 /**
- * Which lead PDF column a sub product prints in (§8): a numbered one in
- * **Code** (right), anything else in **Model** (left). Exactly one is filled;
- * both are null only for a blank name.
+ * Which side a sub product prints on.
+ *
+ * An explicit `left`/`right` setting (chosen per sub product in Products)
+ * wins. `default` — and a missing setting, on a line or product from before
+ * the setting existed — keeps the catalogue's original rule: a purely
+ * numeric name prints right, anything else left.
  */
-export function subProductCells(name: string | null | undefined): {
+export function printSideOf(
+  name: string | null | undefined,
+  setting: PrintSideSetting | null | undefined,
+): PrintSide {
+  if (setting === 'left' || setting === 'right') return setting;
+  return isNumericSubProduct(name) ? 'right' : 'left';
+}
+
+/**
+ * Which lead PDF column a sub product prints in (§8), by its resolved print
+ * side: left in **Model**, right in **Code**. Exactly one is filled; both
+ * are null only for a blank name. With no setting given, the side resolves
+ * by the Default rule, as every print before the setting existed did.
+ */
+export function subProductCells(
+  name: string | null | undefined,
+  setting: PrintSideSetting | null | undefined = 'default',
+): {
   model: string | null;
   code: string | null;
 } {
   const printed = name?.trim() ?? '';
   if (!printed) return { model: null, code: null };
-  return isNumericSubProduct(printed)
+  return printSideOf(printed, setting) === 'right'
     ? { model: null, code: printed }
     : { model: printed, code: null };
+}
+
+/**
+ * The colour list a sub product offers, cleaned for storage and display:
+ * trimmed, blanks dropped, duplicates collapsed case-insensitively (first
+ * spelling kept), order preserved.
+ */
+export function normalizeColours(
+  colours: ReadonlyArray<string> | null | undefined,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const colour of colours ?? []) {
+    const trimmed = colour.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(trimmed);
+  }
+  return out;
+}
+
+/**
+ * The colour one lead/order line may carry for a sub product offering
+ * `colours`:
+ *
+ * - none offered → no colour, whatever was sent;
+ * - exactly one → that colour, always (nothing to choose);
+ * - several → the chosen one, in the list's own spelling, when it is on
+ *   the list; a colour that is not offered is dropped to null rather than
+ *   refusing the line (a queued offline lead must not bounce on it).
+ */
+export function resolveLineColour(
+  colours: ReadonlyArray<string>,
+  chosen: string | null | undefined,
+): string | null {
+  const offered = normalizeColours(colours);
+  if (offered.length === 0) return null;
+  if (offered.length === 1) return offered[0] ?? null;
+  const wanted = chosen?.trim().toLowerCase() ?? '';
+  return offered.find((colour) => colour.toLowerCase() === wanted) ?? null;
 }
 
 /** Turns a stored colour into the words to print. */
@@ -142,8 +201,4 @@ export function lineColourText(
     .filter((entry): entry is { colour: string; quantity: number } => entry.colour !== null)
     .map((entry) => `${entry.colour} ×${entry.quantity}`)
     .join(', ');
-}
-
-function hasText(value: string | null | undefined): boolean {
-  return typeof value === 'string' && value.trim() !== '';
 }

@@ -176,13 +176,13 @@ describe.skipIf(!canRunIntegrationTests)('printroom (integration)', () => {
       const ivory = await fields.createValue({ listKey: 'stock.colour', value: 'Ivory', label: 'Ivory' }, admin);
       const party = await catalog.createParty({ name: 'Colour Traders' }, admin);
       const product = await catalog.createProduct(
-        { name: 'ROMA', categoryName: 'WASH BASIN', multiColour: true, variants: [{ code: 'ROMA-1', weightKg: 12 }] },
+        { name: 'ROMA', categoryName: 'WASH BASIN', colours: ['White', 'Ivory'], code: 'ROMA-1', weightKg: 12 },
         admin,
       );
       const lead = await leads.createLead(
         {
           partyId: party.id,
-          items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 4, packaging: 'carton', colour: 'Ivory' }],
+          items: [{ productId: product.id, variantId: product.id, quantity: 4, packaging: 'carton', colour: 'Ivory' }],
         },
         admin,
       );

@@ -12,22 +12,23 @@
  *   `## Colour range`  a `| Colour | Hex | Group |` table
  *   `## Products`      one `### CODE — Name` block per product: a `- Brand:`
  *                      line, an optional `- Catalogue pages:` line, and a
- *                      `| # | Sub product | Size | Colour rule | Colour |` table
+ *                      `| # | Sub product | Size | Colours | Print side |` table
  *
  * **Strict, and loud about where.** The loader can clear and rebuild the
  * catalogue from this, so a silently skipped row is a sub product that stops
  * existing. Anything the parser does not understand inside a data section is
  * an error naming the line — never a guess.
  *
- * The file says `multicolour` because that is the owner's word; the software's
- * is `selectable` (`ColourRule`, `shared/src/domain/colour-rule.ts`). The
- * mapping lives here and nowhere else, so the loader and `colourRuleOf` speak
- * one vocabulary. The product master has no rule column: the loader turns a
- * rule into a variant label and the `multiColour` switch, and `colourRuleOf`
- * reads it back from those (§2).
+ * A sub product's Colours cell is the list it is offered in, comma-separated
+ * — empty for none, one name for its only colour, several for a choice at
+ * the counter. The word `All` alone in the cell is the whole Colour range
+ * above it, expanded here so every later reader sees the colours themselves.
+ * Print side is `Default`, `Left` or `Right` (blank is Default): which half
+ * of a printed note the sub product belongs on, Default keeping the original
+ * numeric-name rule (`shared/src/domain/colour-rule.ts`).
  */
 
-import { CATEGORY_CODE_PATTERN, type ColourRule } from '@orderbook/shared';
+import { CATEGORY_CODE_PATTERN, normalizeColours, type PrintSideSetting } from '@orderbook/shared';
 
 export interface CatalogueColour {
   name: string;
@@ -41,9 +42,10 @@ export interface CatalogueSubProduct {
   /** The printed identifier (`102`, `1111`, `MAGENTA`); unique inside its product. */
   name: string;
   size: string | null;
-  rule: ColourRule;
-  /** Set exactly when `rule` is `fixed`. */
-  colour: string | null;
+  /** The colours it is offered in (`All` already expanded); empty for none. */
+  colours: string[];
+  /** Which half of a printed note it belongs on; `default` unless the file says a side. */
+  printSide: PrintSideSetting;
 }
 
 export interface CatalogueProduct {
@@ -74,16 +76,19 @@ export class CatalogueParseError extends Error {
   }
 }
 
-/** The file's rule words. A `Map`, not an object literal: `"constructor"` must not look like a rule. */
-const RULE_WORDS: ReadonlyMap<string, ColourRule> = new Map([
-  ['fixed', 'fixed'],
-  ['dedicated', 'dedicated'],
-  ['multicolour', 'selectable'],
+/** The file's print-side words. A `Map`, not an object literal: `"constructor"` must not look like a side. */
+const SIDE_WORDS: ReadonlyMap<string, PrintSideSetting> = new Map([
+  ['default', 'default'],
+  ['left', 'left'],
+  ['right', 'right'],
 ]);
+
+/** The one Colours word that means the file's whole Colour range. */
+const ALL_COLOURS = 'all';
 
 const BRANDS_HEADER = ['brand'];
 const COLOURS_HEADER = ['colour', 'hex', 'group'];
-const SUB_PRODUCTS_HEADER = ['#', 'sub product', 'size', 'colour rule', 'colour'];
+const SUB_PRODUCTS_HEADER = ['#', 'sub product', 'size', 'colours', 'print side'];
 
 interface Line {
   /** 1-based, as an editor shows it. */
@@ -144,7 +149,7 @@ export function parseCatalogueMarkdown(source: string): ParsedCatalogue {
   }
 
   const products = productBlocks.map((block) => ({
-    ...readProduct(block, brandByLower),
+    ...readProduct(block, brandByLower, colours.map((colour) => colour.name)),
     line: block.heading.number,
   }));
   assertUnique(products, (product) => product.code, 'product code');
@@ -263,7 +268,11 @@ function cellsOf(text: string): string[] {
   return inner.split('|').map((cell) => cell.trim());
 }
 
-function readProduct(block: Section, brandByLower: Map<string, string>): CatalogueProduct {
+function readProduct(
+  block: Section,
+  brandByLower: Map<string, string>,
+  colourNames: readonly string[],
+): CatalogueProduct {
   const heading = /^(\S+)\s+—\s+(.+)$/.exec(block.title);
   if (!heading) {
     throw new CatalogueParseError(
@@ -311,8 +320,8 @@ function readProduct(block: Section, brandByLower: Map<string, string>): Catalog
         return Number(trimmed);
       });
     } else {
-      // A `- Colour rule: multicolour` under the heading reads to a person as
-      // applying to every row; ignoring it would load every row as written.
+      // A `- Colours: All` under the heading reads to a person as applying
+      // to every row; ignoring it would load every row as written.
       throw new CatalogueParseError(
         line.number,
         `expected a "- Brand:" or "- Catalogue pages:" line or a table row, found "${line.text}"`,
@@ -325,7 +334,7 @@ function readProduct(block: Section, brandByLower: Map<string, string>): Catalog
   }
 
   const rows = readTable(block, SUB_PRODUCTS_HEADER).map(([cells, line]) => ({
-    ...readSubProduct(cells, line, code),
+    ...readSubProduct(cells, line, code, colourNames),
     line,
   }));
   if (rows.length === 0) {
@@ -342,33 +351,41 @@ function readProduct(block: Section, brandByLower: Map<string, string>): Catalog
   };
 }
 
-function readSubProduct(cells: string[], line: number, productCode: string): CatalogueSubProduct {
-  const [, name = '', size = '', ruleWord = '', colour = ''] = cells;
+function readSubProduct(
+  cells: string[],
+  line: number,
+  productCode: string,
+  colourNames: readonly string[],
+): CatalogueSubProduct {
+  const [, name = '', size = '', coloursCell = '', sideWord = ''] = cells;
 
   if (!name) throw new CatalogueParseError(line, `a sub product of ${productCode} needs a name`);
 
-  const rule = RULE_WORDS.get(ruleWord.toLowerCase());
-  if (!rule) {
+  let colours: string[];
+  if (!coloursCell) {
+    colours = [];
+  } else if (coloursCell.toLowerCase() === ALL_COLOURS) {
+    colours = [...colourNames];
+  } else {
+    const parts = coloursCell.split(',').map((part) => part.trim());
+    if (parts.some((part) => !part)) {
+      throw new CatalogueParseError(line, `"${name}" has a blank colour in "${coloursCell}"`);
+    }
+    colours = normalizeColours(parts);
+    if (colours.length !== parts.length) {
+      throw new CatalogueParseError(line, `"${name}" names a colour twice in "${coloursCell}"`);
+    }
+  }
+
+  const printSide = sideWord ? SIDE_WORDS.get(sideWord.toLowerCase()) : 'default';
+  if (!printSide) {
     throw new CatalogueParseError(
       line,
-      `"${name}" has colour rule "${ruleWord}", expected ${[...RULE_WORDS.keys()].join(', ')}`,
+      `"${name}" has print side "${sideWord}", expected Default, Left or Right`,
     );
   }
 
-  // The rule and the Colour column must agree, both ways: a fixed piece with no
-  // colour would load as a dedicated one, and a colour beside a dedicated or
-  // multicolour rule is a transcription that meant something else.
-  if (rule === 'fixed' && !colour) {
-    throw new CatalogueParseError(line, `"${name}" is fixed but names no colour`);
-  }
-  if (rule !== 'fixed' && colour) {
-    throw new CatalogueParseError(
-      line,
-      `"${name}" is ${ruleWord} and must leave Colour empty, found "${colour}"`,
-    );
-  }
-
-  return { name, size: size || null, rule, colour: rule === 'fixed' ? colour : null };
+  return { name, size: size || null, colours, printSide };
 }
 
 /** Case-insensitive, because the database's unique indexes are. */

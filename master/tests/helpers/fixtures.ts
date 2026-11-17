@@ -14,7 +14,6 @@ import type {
   PermissionSet,
   Product,
   ProductInput,
-  ProductVariant,
   ServerMasterAccountInput,
 } from '@orderbook/shared';
 import { PERMISSIONS } from '@orderbook/shared';
@@ -381,9 +380,27 @@ export async function actorWith(
 }
 
 /**
- * A product the way every suite needs one: in a category, with at least one
- * variant carrying a code. Returns the product and its first variant, because
- * a line is keyed by the variant id.
+ * The code/colour/weight triple suites used to read off a product's first
+ * variant. Kept as a return shape so the many call sites that destructure
+ * `{ product, variant }` keep reading the same three facts — now the sub
+ * product's own. Its `id` is the product's: a line built with it as a
+ * legacy `variantId` resolves to this product, and the Master drops the
+ * unresolvable reference rather than storing it.
+ */
+export interface TestVariant {
+  id: string;
+  productId: string;
+  code: string;
+  label: string | null;
+  weightKg: number | null;
+  sequence: number;
+  isActive: boolean;
+}
+
+/**
+ * A product the way every suite needs one: in a category, carrying a code.
+ * Returns the product and a variant-shaped view of its code, first colour
+ * and weight, because older suites were written against one.
  */
 export async function createTestProduct(
   actor: ActorContext,
@@ -394,23 +411,29 @@ export async function createTestProduct(
     weightKg?: number | null;
     variants?: Array<{ code: string; label: string; weightKg?: number | null }>;
   } & Record<string, unknown>,
-): Promise<{ product: Product; variant: ProductVariant }> {
-  const { name, categoryName, code, weightKg, variants, ...rest } = input;
+): Promise<{ product: Product; variant: TestVariant }> {
+  const { name, categoryName, code, weightKg, variants, colours, ...rest } = input as typeof input & {
+    colours?: string[];
+  };
   const product = await catalogService.createProduct(
     {
       ...(rest as Partial<ProductInput>),
       name,
       categoryName: categoryName ?? 'Test category',
-      ...(variants
-        ? { hasVariants: true, variants }
-        : {
-            hasVariants: false,
-            variants: [{ code: code ?? `T-${name.replace(/[^A-Za-z0-9]+/g, '-').toUpperCase()}`, weightKg: weightKg ?? null }],
-          }),
+      code: code ?? variants?.[0]?.code ?? `T-${name.replace(/[^A-Za-z0-9]+/g, '-').toUpperCase()}`,
+      weightKg: weightKg ?? variants?.[0]?.weightKg ?? null,
+      colours: colours ?? variants?.map((variant) => variant.label).filter(Boolean) ?? [],
     },
     actor,
   );
-  const variant = product.variants[0];
-  if (!variant) throw new Error(`createTestProduct: ${name} came back without a variant`);
+  const variant: TestVariant = {
+    id: product.id,
+    productId: product.id,
+    code: product.code,
+    label: product.colours[0] ?? null,
+    weightKg: product.weightKg,
+    sequence: 1,
+    isActive: true,
+  };
   return { product, variant };
 }

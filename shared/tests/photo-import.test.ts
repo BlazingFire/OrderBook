@@ -23,21 +23,13 @@ function image(id: string, sequence: number, isPrimary = false): ProductImage {
   return { id, sequence, isPrimary } as ProductImage;
 }
 
-function product(id: string, codes: Array<[string, string | null]>, extra: Partial<Product> = {}): Product {
+function product(id: string, code: string, colours: string[] = [], extra: Partial<Product> = {}): Product {
   return {
     id,
     name: `Model ${id}`,
     alias: null,
-    hasVariants: codes.length > 1,
-    variants: codes.map(([code, label], sequence) => ({
-      id: `${id}-v${sequence}`,
-      productId: id,
-      code,
-      label,
-      weightKg: null,
-      sequence,
-      isActive: true,
-    })),
+    code,
+    colours,
     images: [],
     ...extra,
   } as Product;
@@ -51,19 +43,16 @@ const TEXT = new TextEncoder().encode('just some notes, not a photo');
 const file = (name: string, head?: Uint8Array): PhotoFileLike => (head ? { name, head } : { name });
 
 const catalogue = [
-  product('P1', [['OPT-0011', null]]),
-  product('P2', [
-    ['DAM-0041', 'Blue'],
-    ['DAM-0042', 'Ivory'],
-  ]),
+  product('P1', 'OPT-0011'),
+  product('P2', 'DAM-0042', ['Ivory']),
   // Gallery order is primary first, then sequence: old-1 is photo 1 though its sequence is higher.
-  product('P3', [['WB-0001', null]], { alias: 'Royal', images: [image('old-2', 0), image('old-1', 5, true)] }),
-  product('P4', [['X-1', null]], { alias: 'twin' }),
-  product('P5', [['X-2', null]], { alias: 'Twin' }),
+  product('P3', 'WB-0001', [], { alias: 'Royal', images: [image('old-2', 0), image('old-1', 5, true)] }),
+  product('P4', 'X-1', [], { alias: 'twin' }),
+  product('P5', 'X-2', [], { alias: 'Twin' }),
   // An alias spelling another sub product's code: the code wins.
-  product('P6', [['X-3', null]], { alias: 'opt-0011' }),
+  product('P6', 'X-3', [], { alias: 'opt-0011' }),
   // One photo only: a `_2` sits beside it, never in its place.
-  product('P7', [['TTW-0016', null]], { images: [image('corner-1', 0, true)] }),
+  product('P7', 'TTW-0016', [], { images: [image('corner-1', 0, true)] }),
 ];
 
 describe('photoFileKey', () => {
@@ -127,14 +116,14 @@ describe('planPhotoImport', () => {
       expect(result.find((entry) => entry.status !== 'duplicate')?.fileName).toBe('OPT-0011.JPG');
     }
     // Exact case wins even where the alphabet would pick the other ('AB' sorts before 'Ab').
-    const mixed = planPhotoImport([file('AB-1.jpg'), file('Ab-1.png')], [product('P8', [['Ab-1', null]])]);
+    const mixed = planPhotoImport([file('AB-1.jpg'), file('Ab-1.png')], [product('P8', 'Ab-1')]);
     expect(mixed.find((entry) => entry.status === 'duplicate')).toMatchObject({ fileName: 'AB-1.jpg', duplicateOf: 'Ab-1.png' });
     // Neither spelled as the catalogue: the first alphabetically, by code point.
     const neither = planPhotoImport([file('nope-9.jpg'), file('NOPE-9.png')], catalogue);
     expect(neither.find((entry) => entry.status === 'duplicate')?.duplicateOf).toBe('NOPE-9.png');
   });
 
-  it('captions a photo matched through a colour code with that colour', () => {
+  it("captions a photo of a single-colour sub product with that colour", () => {
     expect(row('DAM-0042.webp')).toMatchObject({ status: 'new', productId: 'P2', caption: 'Ivory' });
   });
 
@@ -156,7 +145,7 @@ describe('planPhotoImport', () => {
   });
 
   it('reads a whole name that is a code as photo 1 of that code, not as photo 2 of a shorter code', () => {
-    const both = [product('A', [['OPT-0002', null]]), product('B', [['OPT-0002_2', null]])];
+    const both = [product('A', 'OPT-0002'), product('B', 'OPT-0002_2')];
     const plan = planPhotoImport([file('OPT-0002_2.webp'), file('OPT-0002_2_2.webp'), file('OPT-0002_3.webp')], both);
     const at = (name: string) => plan.find((entry) => entry.fileName === name);
     expect(at('OPT-0002_2.webp')).toMatchObject({ status: 'new', productId: 'B', matchedAs: 'OPT-0002_2', slot: 1 });

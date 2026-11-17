@@ -108,7 +108,7 @@ function brandOption(value: string): OptionListItem {
 const SWISWARE = brandOption('Swisware+');
 const OTHER = brandOption('Other');
 
-/** A sub product: one variant, its label the fixed colour or null. */
+/** A sub product carrying its own code, weight, colours and print side. */
 function subProduct(
   id: string,
   categoryId: string,
@@ -116,8 +116,9 @@ function subProduct(
     name?: string;
     code?: string;
     sortOrder?: number | null;
-    label?: string | null;
-    multiColour?: boolean;
+    /** The colours it is offered in; one is the fixed colour. */
+    colours?: string[];
+    printSide?: 'default' | 'left' | 'right';
     images?: ProductImage[];
   } = {},
 ): Product {
@@ -131,17 +132,10 @@ function subProduct(
     brand: 'Old brand',
     sortOrder: extra.sortOrder ?? null,
     size: null,
-    multiColour: extra.multiColour ?? false,
-    hasVariants: Boolean(extra.label),
-    variants: [
-      {
-        id: `${id}-v`,
-        code: extra.code ?? `${id}-code`,
-        label: extra.label ?? null,
-        isActive: true,
-        weightKg: 5,
-      },
-    ],
+    code: extra.code ?? `${id}-code`,
+    weightKg: 5,
+    colours: extra.colours ?? [],
+    printSide: extra.printSide ?? 'default',
     images: extra.images ?? [],
     sync: { hlc: 'hlc-1' },
   } as unknown as Product;
@@ -249,8 +243,8 @@ describe('the sub-product list', () => {
     const transport = makeTransport({
       listProducts: vi.fn(async () => ({
         items: [
-          subProduct('p-white', 'c-opt', { name: '102 (9")', label: 'White' }),
-          subProduct('p-orissa', 'c-opt', { name: 'ORISSA', multiColour: true }),
+          subProduct('p-white', 'c-opt', { name: '102 (9")', colours: ['White'] }),
+          subProduct('p-orissa', 'c-opt', { name: 'ORISSA', colours: ['White', 'Ivory'] }),
           subProduct('p-1111', 'c-opt', { name: '1111' }),
         ],
         total: 3,
@@ -426,9 +420,9 @@ describe('the Products page', () => {
           products: [
             // Out of order on purpose: nothing arrives in catalogue order by itself.
             subProduct('p-4', 'c-opt', { name: '1111', sortOrder: 4 }),
-            subProduct('p-2', 'c-opt', { name: 'MAGENTA', sortOrder: 2, label: 'Magenta' }),
-            subProduct('p-1', 'c-opt', { name: '102 (9")', sortOrder: 1, label: 'White' }),
-            subProduct('p-3', 'c-opt', { name: 'ORISSA', sortOrder: 3, multiColour: true }),
+            subProduct('p-2', 'c-opt', { name: 'MAGENTA', sortOrder: 2, colours: ['Magenta'] }),
+            subProduct('p-1', 'c-opt', { name: '102 (9")', sortOrder: 1, colours: ['White'] }),
+            subProduct('p-3', 'c-opt', { name: 'ORISSA', sortOrder: 3, colours: ['White', 'Ivory'] }),
             subProduct('p-x', 'c-other', { name: 'Elsewhere', sortOrder: 1 }),
           ],
         })}

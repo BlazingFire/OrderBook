@@ -487,8 +487,8 @@ describe('Office notice board: management and the Dashboard', () => {
 describe('Office "Sell today" and the Basic Home product band (2026-10-08)', () => {
   const DAMRU = {
     id: 'prod-9', tenantId: 'tenant-1', name: 'DAMRU', alias: null, categoryId: 'cat-1', categoryName: 'Table Top Basin',
-    categoryCode: 'TTB', brand: 'Swisware+', sortOrder: 1, size: '600 x 400', hasVariants: false, multiColour: false,
-    variants: [{ id: 'var-9', productId: 'prod-9', label: null, code: 'TTB-0009', weightKg: null, sequence: 0, isActive: true }],
+    categoryCode: 'TTB', brand: 'Swisware+', sortOrder: 1, size: '600 x 400',
+    code: 'TTB-0009', weightKg: null, colours: [], printSide: 'default',
     customFields: {}, isActive: true, createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z',
     sync: { version: 1, hlc: '', fieldHlc: {} },
     images: [{ id: 'img-9', productId: 'prod-9', caption: null, isPrimary: true, sequence: 0, width: 800, height: 800, checksum: 'x', blurhash: '', byteSize: 1, uploadedAt: '2026-10-01T00:00:00.000Z' }],

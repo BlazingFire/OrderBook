@@ -129,7 +129,7 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
     async function imageFixture() {
       const admin = await testActor();
       const product = await catalog.createProduct(
-        { categoryName: 'Tiles', variants: [{ code: 'IMG-1' }], name: 'Glossy' },
+        { categoryName: 'Tiles', code: 'IMG-1', name: 'Glossy' },
         admin,
       );
       const source = await sharp({ create: { width: 400, height: 300, channels: 3, background: { r: 200, g: 120, b: 40 } } })
@@ -331,7 +331,7 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       const product = (code: string, name: string) => ({
         name,
         categoryName: 'Basins',
-        variants: [{ code }],
+        code,
       });
       await agent.post('/api/products').send(product('A1', 'One')).expect(201);
       await agent.post('/api/products').send(product('A1', 'Two')).expect(409);
@@ -350,7 +350,7 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
 
       await agent
         .post('/api/products')
-        .send({ name: '102', categoryCode: 'OPT', variants: [{ code: '' }] })
+        .send({ name: '102', categoryCode: 'OPT', code: '' })
         .expect(201);
 
       const list = await agent.get('/api/categories?search=opt').expect(200);
@@ -383,7 +383,7 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
         const actor = await testActor();
         const party = await catalog.createParty({ name: 'Patel Tiles' }, actor);
         const product = await catalog.createProduct(
-          { name: 'Carrara White', categoryName: 'Tiles', variants: [{ code: 'GVT-01' }] },
+          { name: 'Carrara White', categoryName: 'Tiles', code: 'GVT-01' },
           actor,
         );
         await catalog.upsertVariant(
@@ -540,7 +540,7 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
         .send({
           name: 'Carrara White',
           categoryName: 'Tiles',
-          variants: [{ code: 'GVT-01', weightKg: 20 }],
+          code: 'GVT-01', weightKg: 20,
         })
         .expect(201);
 
@@ -550,7 +550,6 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
           items: [
             {
               productId: product.body.id as string,
-              variantId: (product.body as { variants: Array<{ id: string }> }).variants[0]!.id,
               quantity: 12,
               packaging: 'carton',
             },
@@ -562,7 +561,7 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       return {
         partyId: party.body.id as string,
         productId: product.body.id as string,
-        variantId: (product.body as { variants: Array<{ id: string }> }).variants[0]!.id,
+        variantId: product.body.id as string,
         lead,
       };
     }
@@ -954,7 +953,7 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       const second = await agent.post('/api/parties').send({ name: 'Mehta Traders' }).expect(201);
       const product = await agent
         .post('/api/products')
-        .send({ name: 'Slate Grey', categoryName: 'Stone', variants: [{ code: 'SLT-01', weightKg: 10 }] })
+        .send({ name: 'Slate Grey', categoryName: 'Stone', code: 'SLT-01', weightKg: 10 })
         .expect(201);
       const other = await leads.createLead(
         {
@@ -962,7 +961,6 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
           items: [
             {
               productId: product.body.id as string,
-              variantId: (product.body as { variants: Array<{ id: string }> }).variants[0]!.id,
               quantity: 3,
               packaging: 'carton',
             },
@@ -1019,7 +1017,7 @@ describe.skipIf(!canRunIntegrationTests)('master HTTP API (integration)', () => 
       const agent = await signedInAgent(password);
       await agent
         .post('/api/products')
-        .send({ name: 'Cascade Basin', categoryName: 'Basins', variants: [{ code: 'SAN-77' }] })
+        .send({ name: 'Cascade Basin', categoryName: 'Basins', code: 'SAN-77' })
         .expect(201);
 
       const response = await agent.get('/api/search?q=Cascade').expect(200);

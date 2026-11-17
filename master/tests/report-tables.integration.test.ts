@@ -66,13 +66,12 @@ async function makeShop(): Promise<Shop> {
     {
       name: 'Report Basin',
       categoryName: 'Tiles',
-      hasVariants: true,
-      variants: [{ code, label: 'White', weightKg: 2.5 }],
+      code,
+      weightKg: 2.5, colours: ['White'],
     },
     admin,
   );
-  const variantId = product.variants[0]!.id;
-  return { productId: product.id, variantId, code };
+  return { productId: product.id, variantId: product.id, code };
 }
 
 async function makeLead(by: ActorContext, shop: Shop, partyName: string, city: string, quantity = 10) {
@@ -187,7 +186,7 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
       await expect(reportService.reportTable('by-user', {}, nobody)).rejects.toBeInstanceOf(ForbiddenError);
     });
 
-    it('lets an administrator pick any live user — another administrator included — and refuses one that does not exist', async () => {
+    it('lets an administrator pick any live user â€” another administrator included â€” and refuses one that does not exist', async () => {
       const alice = await makeUser('alice');
       const shop = await makeShop();
       await makeDispatched(await author(alice), shop, 'Alice Traders', 'Morbi');
@@ -351,13 +350,13 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
     it('leaves a line with no weight out of kilograms rather than counting it as zero', async () => {
       const alice = await makeUser('alice');
       const bare = await catalogService.createProduct(
-        { name: 'Bare Basin', categoryName: 'Basins', hasVariants: true, variants: [{ code: 'BARE-1', label: 'White' }] },
+        { name: 'Bare Basin', categoryName: 'Basins', code: 'BARE-1', colours: ['White'] },
         admin,
       );
       const a = await author(alice);
       const party = await catalogService.createParty({ name: 'Bare Party', city: 'Morbi' }, admin);
       const lead = await leadService.createLead(
-        { partyId: party.id, items: [{ productId: bare.id, variantId: bare.variants[0]!.id, quantity: 7, packaging: 'Box' }] },
+        { partyId: party.id, items: [{ productId: bare.id, variantId: bare.id, quantity: 7, packaging: 'Box' }] },
         a,
       );
       await orderService.dispatchOrder({ orderId: (await orderService.convertLead({ leadId: lead.id }, a)).id }, a);
@@ -387,7 +386,7 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
       expect(table.totals).toEqual({ orders: 0 });
     });
 
-    it('does not list a party that has ordered again since the range — only one whose latest order is older than it', async () => {
+    it('does not list a party that has ordered again since the range â€” only one whose latest order is older than it', async () => {
       const alice = await makeUser('alice');
       const shop = await makeShop();
       const a = await author(alice);
@@ -636,13 +635,13 @@ describe.skipIf(!canRunIntegrationTests)('report tables (integration)', () => {
       const a = await author(alice);
       // 0.1 kg and 0.2 kg on two rows: added as floats they print 0.30000000000000004.
       const light = await catalogService.createProduct(
-        { name: 'Light Cup', categoryName: 'Cups', hasVariants: true, variants: [{ code: 'LIGHT-1', label: 'White', weightKg: 0.1 }] },
+        { name: 'Light Cup', categoryName: 'Cups', code: 'LIGHT-1', weightKg: 0.1, colours: ['White'] },
         admin,
       );
       for (const quantity of [1, 2]) {
         const party = await catalogService.createParty({ name: `Light ${quantity}`, city: 'Surat' }, admin);
         const lead = await leadService.createLead(
-          { partyId: party.id, items: [{ productId: light.id, variantId: light.variants[0]!.id, quantity, packaging: 'Box' }] },
+          { partyId: party.id, items: [{ productId: light.id, variantId: light.id, quantity, packaging: 'Box' }] },
           a,
         );
         await orderService.dispatchOrder({ orderId: (await orderService.convertLead({ leadId: lead.id }, a)).id }, a);

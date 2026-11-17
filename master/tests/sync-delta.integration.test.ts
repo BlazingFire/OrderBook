@@ -52,7 +52,7 @@ async function seedLead(partyId: string, product: Product) {
     {
       partyId,
       items: [
-        { productId: product.id, variantId: product.variants[0]!.id, quantity: 3, packaging: 'carton' },
+        { productId: product.id, variantId: product.id, quantity: 3, packaging: 'carton' },
       ],
     },
     admin,
@@ -72,7 +72,7 @@ describe.skipIf(!canRunIntegrationTests)('reconnect delta (integration)', () => 
   it('leaves a replaying panel holding what a snapshot-taking one holds', async () => {
     const party = await seedParty('Delta Traders');
     const product = await catalog.createProduct(
-      { categoryName: 'Tiles', variants: [{ code: 'DL-01' }], name: 'Glazed Tile' },
+      { categoryName: 'Tiles', code: 'DL-01', name: 'Glazed Tile' },
       admin,
     );
 
@@ -84,7 +84,7 @@ describe.skipIf(!canRunIntegrationTests)('reconnect delta (integration)', () => 
     await seedLead(party.id, product);
     await catalog.updateParty(party.id, { name: 'Delta Traders Ltd' }, admin);
     await catalog.createProduct(
-      { categoryName: 'Tiles', variants: [{ code: 'DL-02' }], name: 'Matt Tile' },
+      { categoryName: 'Tiles', code: 'DL-02', name: 'Matt Tile' },
       admin,
     );
 
@@ -115,7 +115,7 @@ describe.skipIf(!canRunIntegrationTests)('reconnect delta (integration)', () => 
 
     const party = await seedParty('Variant Traders');
     const product = await catalog.createProduct(
-      { categoryName: 'Tiles', variants: [{ code: 'DL-03' }], name: 'Rustic Tile' },
+      { categoryName: 'Tiles', code: 'DL-03', name: 'Rustic Tile' },
       admin,
     );
 

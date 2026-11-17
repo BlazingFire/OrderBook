@@ -453,10 +453,10 @@ describe.skipIf(!canRunIntegrationTests)('the Server Master tier (integration)',
         admin,
       );
       const product = await catalogService.createProduct(
-        { categoryName: 'Tiles', variants: [{ code: 'SM-01' }], name: 'Glazed Tile' },
+        { categoryName: 'Tiles', code: 'SM-01', name: 'Glazed Tile' },
         admin,
       );
-      const items = [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 2, packaging: 'carton' }];
+      const items = [{ productId: product.id, variantId: product.id, quantity: 2, packaging: 'carton' }];
       const desk = await testActor({
         actorId: user.id,
         userId: user.id,

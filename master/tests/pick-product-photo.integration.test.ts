@@ -44,11 +44,11 @@ describe.skipIf(!canRunIntegrationTests)('product picker photos (integration)', 
 
   it('sends the primary photo only, and none for a product without one', async () => {
     const pictured = await catalog.createProduct(
-      { categoryName: 'Basins', variants: [{ code: 'PK-0001' }], name: 'Pictured' },
+      { categoryName: 'Basins', code: 'PK-0001', name: 'Pictured' },
       actor,
     );
     const bare = await catalog.createProduct(
-      { categoryName: 'Basins', variants: [{ code: 'PK-0002' }], name: 'Bare' },
+      { categoryName: 'Basins', code: 'PK-0002', name: 'Bare' },
       actor,
     );
     const first = await imageService.uploadImage(

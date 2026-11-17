@@ -39,7 +39,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Product } from '@orderbook/shared';
+import type { PrintSideSetting, Product } from '@orderbook/shared';
 
 import { Button } from './Button.js';
 import {
@@ -282,6 +282,32 @@ export function SubProductsScreen({
     setEditing(product);
   }
 
+  /**
+   * The print side, settable from the row itself beside Edit (owner,
+   * 2026-11-16) — the same field the edit form carries, saved as a
+   * one-field patch: the name rides along because every product write
+   * names the record.
+   */
+  async function setPrintSide(product: Product, printSide: PrintSideSetting): Promise<void> {
+    setPage((current) =>
+      current
+        ? {
+            ...current,
+            items: current.items.map((row) =>
+              row.id === product.id ? { ...row, printSide } : row,
+            ),
+          }
+        : current,
+    );
+    try {
+      await transportRef.current.updateProduct(product.id, { name: product.name, printSide });
+      toast.push(t('product.updated', { name: product.name }));
+    } catch (caught) {
+      toast.push(apiErrorText(caught, 'product.createFailed'), { tone: 'error' });
+      setRefetch((current) => current + 1);
+    }
+  }
+
   function onCreated(product: CreatedProduct): void {
     setDrawerOpen(false);
     onImported?.();
@@ -484,6 +510,40 @@ export function SubProductsScreen({
           weight
         );
       },
+    },
+    {
+      // Beside Edit, per the owner: Default unless this sub product says a side.
+      key: 'printSide',
+      header: t('catalog.products.column.printSide'),
+      priority: 2,
+      width: rem(128),
+      render: (product) =>
+        canEdit ? (
+          <span
+            onClick={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <Select
+              value={product.printSide}
+              aria-label={`${t('product.printSide.label')} — ${product.name}`}
+              onChange={(event) =>
+                void setPrintSide(product, event.target.value as PrintSideSetting)
+              }
+            >
+              <option value="default">{t('product.printSide.default')}</option>
+              <option value="left">{t('product.printSide.left')}</option>
+              <option value="right">{t('product.printSide.right')}</option>
+            </Select>
+          </span>
+        ) : (
+          t(
+            product.printSide === 'left'
+              ? 'product.printSide.left'
+              : product.printSide === 'right'
+                ? 'product.printSide.right'
+                : 'product.printSide.default',
+          )
+        ),
     },
     ...(canEdit || canDelete
       ? [

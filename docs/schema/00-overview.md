@@ -157,11 +157,12 @@ uploads and backups are all under the chosen folder. Backups are in
   Recycle Bin, which has no table of its own. A deleted row keeps every reference to
   it valid, and the unique indexes on these tables are partial (`WHERE deleted_at IS
   NULL`) so a deleted row does not reserve its name or code. `product_variants` has
-  `deleted_at` only, mirrored from its product. `is_active` is a different thing — a
-  switch a person flips, not a deletion. Nothing ever purges the Bin.
+  `deleted_at` only; the table is dormant since 2026-11-17 (nothing writes it, and a
+  sub product now carries its own code, weight, `colours` and `print_side`). `is_active`
+  is a different thing — a switch a person flips, not a deletion. Nothing ever purges the Bin.
 - **Display codes**: only parties have one separate from their id — `party_code`
   (`P-0001`), drawn from `party_code_seq`. A lead's or order's permanent id *is* its
-  docket number (`LD0000000042`), and a product variant's `code` is the business's
+  docket number (`LD0000000042`), and a sub product's `code` is the business's
   own code, typed by staff. *History:* the initial schema also had `product_code` and
   `lead_number`, each with its own sequence; both are gone.
 - **`JSONB`** holds data whose shape is the point: the values of admin-defined custom

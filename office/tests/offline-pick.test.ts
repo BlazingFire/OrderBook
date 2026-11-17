@@ -31,7 +31,7 @@ function product(
   code: string,
   name: string,
   category: { id: string; name: string } = { id: 'PC1', name: 'Tiles' },
-  variants: Array<{ code: string; label: string | null }> = [{ code, label: null }],
+  colours: string[] = [],
 ): Product {
   return {
     id,
@@ -44,17 +44,10 @@ function product(
     brand: null,
     sortOrder: null,
     size: null,
-    hasVariants: variants.some((variant) => variant.label !== null),
-    variants: variants.map((variant, index) => ({
-      id: `${id}-V${index + 1}`,
-      productId: id,
-      code: variant.code,
-      label: variant.label,
-      weightKg: null,
-      sequence: index + 1,
-      isActive: true,
-    })),
-    multiColour: false,
+    code,
+    weightKg: null,
+    colours,
+    printSide: 'default',
     customFields: {},
     isActive: true,
     createdAt: NOW,
@@ -96,10 +89,7 @@ const VIEW = {
   products: [
     product('PR1', 'GLZ-100', 'Glazed Vitrified Tile', FLOOR),
     product('PR2', 'GLS-200', 'Glossy Wall Tile', WALL),
-    product('PR3', 'RST-300', 'Rustic Floor Tile', FLOOR, [
-      { code: 'RST-300', label: 'Terracotta' },
-      { code: 'RST-301', label: 'Slate' },
-    ]),
+    product('PR3', 'RST-300', 'Rustic Floor Tile', FLOOR, ['Terracotta', 'Slate']),
   ],
   categories: [
     { id: FLOOR.id, tenantId: 't1', name: FLOOR.name, createdAt: NOW },
@@ -110,8 +100,7 @@ const VIEW = {
 
 const ALL = ['products.view', 'parties.view'];
 
-const codesOf = (page: { items: Product[] }) =>
-  page.items.map((item) => item.variants.map((variant) => variant.code).join(','));
+const codesOf = (page: { items: Product[] }) => page.items.map((item) => item.code);
 
 describe('picking offline', () => {
   it('matches a prefix of the name', () => {
@@ -121,15 +110,12 @@ describe('picking offline', () => {
 
   it('matches a code typed in full, however the words break', () => {
     const page = pickFromView('product', { term: 'RST-300' }, VIEW, ALL) as { items: Product[] };
-    expect(codesOf(page)).toEqual(['RST-300,RST-301']);
+    expect(codesOf(page)).toEqual(['RST-300']);
   });
 
-  it('finds a model by any of its variant codes or colours', () => {
-    expect(codesOf(pickFromView('product', { term: 'RST-301' }, VIEW, ALL) as { items: Product[] })).toEqual([
-      'RST-300,RST-301',
-    ]);
+  it('finds a sub product by any of its colours', () => {
     expect(codesOf(pickFromView('product', { term: 'slate' }, VIEW, ALL) as { items: Product[] })).toEqual([
-      'RST-300,RST-301',
+      'RST-300',
     ]);
   });
 

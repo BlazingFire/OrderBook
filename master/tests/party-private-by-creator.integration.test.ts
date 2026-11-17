@@ -77,7 +77,7 @@ async function lineFor(partyId: string, actor: ActorContext) {
   return leads.createLead(
     {
       partyId,
-      items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 3, packaging: 'carton' }],
+      items: [{ productId: product.id, variantId: product.id, quantity: 3, packaging: 'carton' }],
     },
     actor,
   );
@@ -95,7 +95,7 @@ describe.skipIf(!canRunIntegrationTests)('a party is private to its creator (int
     await resetData();
     setup = await testActor();
     product = await catalog.createProduct(
-      { categoryName: 'Tiles', variants: [{ code: 'PV-01' }], name: 'Glazed Tile' },
+      { categoryName: 'Tiles', code: 'PV-01', name: 'Glazed Tile' },
       setup,
     );
 
@@ -413,7 +413,7 @@ describe.skipIf(!canRunIntegrationTests)('a party is private to its creator (int
       // A push that carries no party-scoped work is never held for want of a user.
       const bare = { ...(await barePanel()), ...(await actorWith([...DESK_KEYS, 'products.create'])), deviceCode: PANEL, actorType: 'office_panel' as const, userId: null, actorId: null };
       const product = await sync.applyPush(
-        { mutations: [mutationFor('product.create', 'product', formatTemporaryId(PANEL, 44), { name: 'Plain', categoryName: 'Tiles', variants: [{ code: 'PX-1' }] }, null)] },
+        { mutations: [mutationFor('product.create', 'product', formatTemporaryId(PANEL, 44), { name: 'Plain', categoryName: 'Tiles', code: 'PX-1' }, null)] },
         bare,
       );
       expect(product.results[0]?.status).toBe('applied');

@@ -51,12 +51,12 @@ describe.skipIf(!canRunIntegrationTests)('pending order numbers migration (integ
     actor = await testActor();
     const party = await catalog.createParty({ name: 'Numbering Traders' }, actor);
     const product = await catalog.createProduct(
-      { categoryName: 'Tiles', variants: [{ code: 'PO-01' }], name: 'Number Tile' },
+      { categoryName: 'Tiles', code: 'PO-01', name: 'Number Tile' },
       actor,
     );
     draft = {
       partyId: party.id,
-      items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 1, packaging: 'Box' }],
+      items: [{ productId: product.id, variantId: product.id, quantity: 1, packaging: 'Box' }],
     };
   });
 

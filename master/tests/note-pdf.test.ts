@@ -20,9 +20,9 @@ let nextId = 0;
 function line(overrides: Partial<LineItem>): LineItem {
   nextId += 1;
   return {
-    id: `LI${nextId}`, tenantId: 't', parentType: 'lead', parentId: 'LD1', productId: `P${nextId}`, variantId: `V${nextId}`,
+    id: `LI${nextId}`, tenantId: 't', parentType: 'lead', parentId: 'LD1', productId: `P${nextId}`, variantId: null,
     productName: `Model ${nextId}`, categoryName: 'Wash basin', categoryCode: 'WB', brandName: null, alias: null, code: null,
-    variantLabel: null, colour: null, size: null, weightKg: 2, packaging: 'Box', grade: 'Std', sequence: nextId,
+    variantLabel: null, colour: null, printSide: null, size: null, weightKg: 2, packaging: 'Box', grade: 'Std', sequence: nextId,
     fromPartyVariant: false, imagePath: null, notes: null, quantity: 4, lineWeightKg: 8,
     createdAt: '2026-09-29T00:00:00.000Z', updatedAt: '2026-09-29T00:00:00.000Z',
     ...overrides,

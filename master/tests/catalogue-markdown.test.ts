@@ -59,23 +59,38 @@ describe('the SWISWARE+ 2026 catalogue file', () => {
     expect(toilet?.subProducts[0]).toEqual({
       name: '102',
       size: '9", L-27, B-15, H-26',
-      rule: 'fixed',
-      colour: 'White',
+      colours: ['White'],
+      printSide: 'default',
     });
     expect(toilet?.subProducts.find((sub) => sub.name === '1111')).toEqual({
       name: '1111',
       size: null,
-      rule: 'dedicated',
-      colour: null,
+      colours: [],
+      printSide: 'default',
     });
   });
 
-  it('reads Orissa Pan as multicolour (selectable) — nine models, none with a colour', () => {
+  it('reads Orissa Pan as offered in every colour — nine models, the whole 21-colour range each', () => {
     const pan = product('OP');
     expect(pan?.subProducts).toHaveLength(9);
-    expect(pan?.subProducts.every((sub) => sub.rule === 'selectable' && sub.colour === null)).toBe(
-      true,
-    );
+    expect(
+      pan?.subProducts.every(
+        (sub) =>
+          sub.colours.length === 21 && sub.colours[0] === 'White' && sub.printSide === 'default',
+      ),
+    ).toBe(true);
+  });
+
+  it('sets every current sub product to the Default print side', () => {
+    expect(
+      catalogue.products.every((entry) =>
+        entry.subProducts.every((sub) => sub.printSide === 'default'),
+      ),
+    ).toBe(true);
+    const all = catalogue.products.flatMap((entry) => entry.subProducts);
+    expect(all.filter((sub) => sub.colours.length === 1)).toHaveLength(132);
+    expect(all.filter((sub) => sub.colours.length === 0)).toHaveLength(404);
+    expect(all.filter((sub) => sub.colours.length === 21)).toHaveLength(13);
   });
 
   it('keeps the plain Sofiya pedestals apart from the floral basins of the same colour', () => {
@@ -118,11 +133,11 @@ const GOOD_PRODUCT = [
   '- Brand: Acme',
   '- Catalogue pages: 4',
   '',
-  '| # | Sub product | Size | Colour rule | Colour |',
+  '| # | Sub product | Size | Colours | Print side |',
   '|---|---|---|---|---|',
-  '| 1 | 102 (9") | L-27 | fixed | White |',
-  '| 2 | 1111 |  | dedicated |  |',
-  '| 3 | 20" O.P |  | multicolour |  |',
+  '| 1 | 102 (9") | L-27 | White | Default |',
+  '| 2 | 1111 |  |  | Left |',
+  '| 3 | 20" O.P |  | All |  |',
 ].join('\n');
 
 /** Line 17 is the first line of the products block in `file()`. */
@@ -139,14 +154,19 @@ function refusal(source: string): CatalogueParseError {
 }
 
 describe('a catalogue file that is wrong', () => {
-  it('accepts the minimal file these cases break, rule words in any case', () => {
+  it('accepts the minimal file these cases break, side words in any case', () => {
     const parsed = parseCatalogueMarkdown(
-      file(GOOD_PRODUCT.replace('| multicolour |', '| MultiColour |')),
+      file(GOOD_PRODUCT.replace('| All |  |', '| aLL | right |')),
     );
-    expect(parsed.products[0]?.subProducts.map((sub) => sub.rule)).toEqual([
-      'fixed',
-      'dedicated',
-      'selectable',
+    expect(parsed.products[0]?.subProducts.map((sub) => sub.colours)).toEqual([
+      ['White'],
+      [],
+      ['White'],
+    ]);
+    expect(parsed.products[0]?.subProducts.map((sub) => sub.printSide)).toEqual([
+      'default',
+      'left',
+      'right',
     ]);
   });
 
@@ -167,32 +187,31 @@ describe('a catalogue file that is wrong', () => {
   it('refuses the same sub product twice inside one product, whatever the case', () => {
     const error = refusal(
       file(
-        `${GOOD_PRODUCT}\n| 4 | syphonic |  | fixed | White |\n| 5 | SYPHONIC |  | fixed | White |`,
+        `${GOOD_PRODUCT}\n| 4 | syphonic |  | White | Default |\n| 5 | SYPHONIC |  | White | Default |`,
       ),
     );
     expect(error.line).toBe(FIRST_PRODUCT_LINE + 11);
     expect(error.message).toMatch(/duplicate sub product of OPT "SYPHONIC"/);
   });
 
-  it('refuses a fixed sub product with no colour', () => {
-    const error = refusal(file(GOOD_PRODUCT.replace('| fixed | White |', '| fixed |  |')));
+  it('refuses a blank entry inside a colours list', () => {
+    const error = refusal(file(GOOD_PRODUCT.replace('| White | Default |', '| White, | Default |')));
     expect(error.line).toBe(FIRST_PRODUCT_LINE + 7);
-    expect(error.message).toMatch(/fixed but names no colour/);
+    expect(error.message).toMatch(/blank colour/);
   });
 
-  it('refuses a colour beside a dedicated or multicolour rule', () => {
-    expect(
-      refusal(file(GOOD_PRODUCT.replace('| dedicated |  |', '| dedicated | White |'))).line,
-    ).toBe(FIRST_PRODUCT_LINE + 8);
-    expect(
-      refusal(file(GOOD_PRODUCT.replace('| multicolour |  |', '| multicolour | White |'))).line,
-    ).toBe(FIRST_PRODUCT_LINE + 9);
+  it('refuses a colour named twice in one list, whatever the case', () => {
+    const error = refusal(
+      file(GOOD_PRODUCT.replace('| White | Default |', '| White, white | Default |')),
+    );
+    expect(error.line).toBe(FIRST_PRODUCT_LINE + 7);
+    expect(error.message).toMatch(/names a colour twice/);
   });
 
-  it('refuses a colour rule it does not know', () => {
-    const error = refusal(file(GOOD_PRODUCT.replace('| dedicated |', '| rainbow |')));
+  it('refuses a print side it does not know', () => {
+    const error = refusal(file(GOOD_PRODUCT.replace('| Left |', '| Middle |')));
     expect(error.line).toBe(FIRST_PRODUCT_LINE + 8);
-    expect(error.message).toMatch(/expected fixed, dedicated, multicolour/);
+    expect(error.message).toMatch(/expected Default, Left or Right/);
   });
 
   it('refuses a brand the Brands table does not list', () => {
@@ -210,8 +229,8 @@ describe('a catalogue file that is wrong', () => {
     const error = refusal(
       file(
         GOOD_PRODUCT.replace(
-          '| # | Sub product | Size | Colour rule | Colour |',
-          '| # | Sub product | Colour rule | Size | Colour |',
+          '| # | Sub product | Size | Colours | Print side |',
+          '| # | Sub product | Colours | Size | Print side |',
         ),
       ),
     );
@@ -220,7 +239,7 @@ describe('a catalogue file that is wrong', () => {
 
   it('refuses a row with a missing cell', () => {
     const error = refusal(
-      file(GOOD_PRODUCT.replace('| 2 | 1111 |  | dedicated |  |', '| 2 | 1111 | dedicated |  |')),
+      file(GOOD_PRODUCT.replace('| 2 | 1111 |  |  | Left |', '| 2 | 1111 |  | Left |')),
     );
     expect(error.line).toBe(FIRST_PRODUCT_LINE + 8);
     expect(error.message).toMatch(/expected 5 cells, found 4/);
@@ -248,7 +267,7 @@ describe('a catalogue file that is wrong', () => {
 
   it('refuses a line in a product block it does not understand', () => {
     const error = refusal(
-      file(GOOD_PRODUCT.replace('- Catalogue pages: 4', '- Colour rule: multicolour')),
+      file(GOOD_PRODUCT.replace('- Catalogue pages: 4', '- Colours: All')),
     );
     expect(error.line).toBe(FIRST_PRODUCT_LINE + 3);
   });
@@ -262,7 +281,7 @@ describe('a catalogue file that is wrong', () => {
   });
 
   it('refuses a table row typed without its leading pipe', () => {
-    expect(refusal(file(`${GOOD_PRODUCT}\n4 | 1113 |  | dedicated |  |`)).line).toBe(
+    expect(refusal(file(`${GOOD_PRODUCT}\n4 | 1113 |  |  | Default |`)).line).toBe(
       FIRST_PRODUCT_LINE + 10,
     );
     const brands = refusal(file(GOOD_PRODUCT).replace('| Acme |', '| Acme |\nZeta |'));

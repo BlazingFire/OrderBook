@@ -21,7 +21,6 @@ import * as leadRepo from '../repositories/lead.repository.js';
 import * as orderRepo from '../repositories/order.repository.js';
 import * as partyRepo from '../repositories/party.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
-import * as productVariantRepo from '../repositories/product-variant.repository.js';
 import { nextHlc } from '../repositories/identity.repository.js';
 import * as syncRepo from '../repositories/sync.repository.js';
 import { publishChange } from './change-bus.js';
@@ -31,9 +30,9 @@ import { requirePartyAccess } from './party-access.service.js';
 import {
   assertMergeAllowed,
   assertMergeUnlocked,
+  legacyVariantProductFields,
   loadMergeTarget,
   lockMergeTarget,
-  normaliseVariants,
 } from './sync.service.js';
 
 /**
@@ -93,8 +92,9 @@ export async function resolveConflict(
 
   const resolved = await db().transaction(async (trx) => {
     if (input.action === 'restoreLoser' && !restoreStage) {
-      // Sets, not columns: the lead's lines and a product's variants are child
-      // tables, restored as a whole set like they were merged.
+      // Sets, not columns: the lead's lines are child rows, restored as a
+      // whole set like they were merged; a product's `variants` conflict is
+      // a stored relic of the same shape from before variants were removed.
       if (
         (conflict.entity === 'lead' && conflict.field === 'items') ||
         (conflict.entity === 'product' && conflict.field === 'variants')
@@ -236,18 +236,33 @@ async function restoreSet(conflict: SyncConflict, actor: ActorContext, trx: Trx)
     return;
   }
 
-  const variants = normaliseVariants(Array.isArray(conflict.losingValue) ? conflict.losingValue : []);
+  // A stored `variants` conflict restores as the fields that replaced the
+  // set — its first row's code and weight, its labels as colour options.
+  const derived = legacyVariantProductFields(
+    Array.isArray(conflict.losingValue) ? conflict.losingValue : [],
+  );
   try {
     validateProductInput({
-      hasVariants: Boolean(target.values.hasVariants),
-      variants,
-    } as Parameters<typeof validateProductInput>[0]);
+      name: String(target.values.name ?? ''),
+      code: derived.code,
+      weightKg: derived.weightKg,
+      colours: derived.colours,
+    });
   } catch (error) {
     if (error instanceof ProductValidationError) throw new ValidationError(error.messageKey);
     throw error;
   }
-  await productVariantRepo.replaceVariants(tenantId, conflict.entityId, variants, trx);
-  await productRepo.updateProductColumns(tenantId, conflict.entityId, {}, meta, trx);
+  await productRepo.updateProductColumns(
+    tenantId,
+    conflict.entityId,
+    {
+      code: derived.code,
+      weight_kg: derived.weightKg,
+      colours: JSON.stringify(derived.colours),
+    },
+    meta,
+    trx,
+  );
 }
 
 async function writeRestore(

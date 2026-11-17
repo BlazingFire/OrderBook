@@ -29,13 +29,10 @@ function product(overrides: Partial<Product> = {}): Product {
     brand: 'Swisware',
     sortOrder: null,
     size: '600x600',
-    hasVariants: true,
-    variants: [
-      { id: 'V1', productId: 'PR1', code: 'D-1', label: 'White', weightKg: 12.5, sequence: 1, isActive: true },
-      { id: 'V2', productId: 'PR1', code: 'D-2', label: 'Ivory', weightKg: 13, sequence: 2, isActive: true },
-      { id: 'V3', productId: 'PR1', code: 'D-3', label: 'Old', weightKg: 99, sequence: 3, isActive: false },
-    ],
-    multiColour: false,
+    code: 'D-1',
+    weightKg: 12.5,
+    colours: ['White', 'Ivory'],
+    printSide: 'default',
     customFields: { Finish: 'Glossy', Empty: '' },
     isActive: true,
     images: [],
@@ -58,16 +55,16 @@ describe('chunkPages', () => {
 });
 
 describe('shareCard', () => {
-  it('carries every product field, skips the empty ones and the retired variants', () => {
+  it('carries every product field, and skips the empty ones', () => {
     const card = shareCard(product());
     expect(card.title).toBe('Damru');
     expect(card.subtitle).toBe('One Piece Toilet  |  Swisware');
     expect(card.fields).toEqual([
       { label: 'Alias', value: 'Bell' },
       { label: 'Size', value: '600x600' },
-      { label: 'Code', value: 'D-1, D-2' },
+      { label: 'Code', value: 'D-1' },
       { label: 'Colours', value: 'White, Ivory' },
-      { label: 'Weight', value: '12.5 kg - 13 kg' },
+      { label: 'Weight', value: '12.5 kg' },
       { label: 'Finish', value: 'Glossy' },
     ]);
   });
@@ -80,11 +77,10 @@ describe('shareCard', () => {
 
   it('prints the sheet words from the text it is given, and a page line', () => {
     const text = shareText();
-    const card = shareCard(product({ alias: 'Bell', multiColour: true } as Partial<Product>), undefined, text);
+    const card = shareCard(product({ alias: 'Bell' } as Partial<Product>), undefined, text);
     const labels = card.fields.map((field) => field.label);
-    expect(labels).toEqual(expect.arrayContaining([text.alias, text.size, text.code, text.colours, text.colour, text.weight]));
+    expect(labels).toEqual(expect.arrayContaining([text.alias, text.size, text.code, text.colours, text.weight]));
     expect(text.page(2, 5)).toBe('Page 2 of 5');
-    expect(card.fields).toContainEqual({ label: text.colour, value: text.anyColour });
   });
 
   it('prints a custom field by the company label, and by its key when it has none (1.4 rework)', () => {
@@ -98,17 +94,18 @@ describe('shareCard', () => {
     expect(card.fields.map((field) => field.label)).not.toContain('Finish');
   });
 
-  it('leaves a weight out while any live variant has none, never printing zero', () => {
-    const missing = product({
-      variants: [{ id: 'V1', productId: 'PR1', code: 'D-1', label: null, weightKg: null, sequence: 1, isActive: true }],
-    } as Partial<Product>);
+  it('leaves a weight out while the sub product has none, never printing zero', () => {
+    const missing = product({ weightKg: null } as Partial<Product>);
     expect(shareWeight(missing)).toBeNull();
     expect(shareCard(missing).fields.map((field) => field.label)).not.toContain('Weight');
   });
 
-  it('says a multi-colour model comes in any colour of the range', () => {
-    const card = shareCard(product({ multiColour: true, variants: [] } as Partial<Product>));
-    expect(card.fields).toContainEqual({ label: 'Colour', value: 'Any colour of the range' });
+  it('prints every colour the sub product is offered in, and no colours line when it has none', () => {
+    const card = shareCard(product());
+    expect(card.fields).toContainEqual({ label: 'Colours', value: 'White, Ivory' });
+
+    const plain = shareCard(product({ colours: [] } as Partial<Product>));
+    expect(plain.fields.map((field) => field.label)).not.toContain('Colours');
   });
 
   it('prints no money: nothing on a card is a price, rate or amount', () => {

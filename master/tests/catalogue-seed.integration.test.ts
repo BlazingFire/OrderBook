@@ -15,7 +15,7 @@
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { colourRuleOf, type DataChangedEvent, type LoadCatalogueResult } from '@orderbook/shared';
+import type { DataChangedEvent, LoadCatalogueResult } from '@orderbook/shared';
 
 import { canRunIntegrationTests, testConnectionUrl } from './helpers/db.js';
 import { resetData, setupDatabase, teardownDatabase, testActor } from './helpers/fixtures.js';
@@ -93,7 +93,7 @@ describe.skipIf(!canRunIntegrationTests)('loading the SWISWARE catalogue (integr
       }
     }, 120_000);
 
-    it('lands every product and sub product of the file, one variant each, and nothing else', async () => {
+    it('lands every product and sub product of the file, each carrying its own code, and nothing else', async () => {
       expect(first).toEqual({
         brands: 1,
         colours: 21,
@@ -105,7 +105,9 @@ describe.skipIf(!canRunIntegrationTests)('loading the SWISWARE catalogue (integr
       });
       expect(await liveCount('product_categories')).toBe(41);
       expect(await liveCount('products')).toBe(549);
-      expect(await count('product_variants')).toBe(549);
+      // The variant layer is gone: a sub product carries its own code.
+      expect(await count('product_variants')).toBe(0);
+      expect(await liveCount('products', { code: null })).toBe(0);
       expect(await liveCount('option_lists', { list_key: 'product.brand' })).toBe(1);
     });
 
@@ -128,9 +130,8 @@ describe.skipIf(!canRunIntegrationTests)('loading the SWISWARE catalogue (integr
       const { rows } = await db().raw<{
         rows: Array<{ code: string; expected: string; weight_kg: unknown }>;
       }>(
-        `SELECT v.code, c.code || '-' || lpad(p.sort_order::text, 4, '0') AS expected, v.weight_kg
-           FROM product_variants v
-           JOIN products p ON p.id = v.product_id
+        `SELECT p.code, c.code || '-' || lpad(p.sort_order::text, 4, '0') AS expected, p.weight_kg
+           FROM products p
            JOIN product_categories c ON c.id = p.category_id`,
       );
       expect(rows.filter((row) => row.code !== row.expected)).toEqual([]);
@@ -158,7 +159,7 @@ describe.skipIf(!canRunIntegrationTests)('loading the SWISWARE catalogue (integr
       );
     });
 
-    it('stores every sub product so that colourRuleOf reads back the rule the file prints', async () => {
+    it('stores every sub product with the colours and print side the file prints', async () => {
       const actor = await testActor();
       const products = (await catalog.listProducts({ limit: 1000 }, actor)).items;
       const byKey = new Map(
@@ -168,10 +169,9 @@ describe.skipIf(!canRunIntegrationTests)('loading the SWISWARE catalogue (integr
       const mismatched = CATALOGUE.products.flatMap((product) =>
         product.subProducts.flatMap((sub) => {
           const stored = byKey.get(`${product.code}|${sub.name}`);
-          const label = stored?.variants[0]?.label ?? null;
           return stored &&
-            colourRuleOf(stored) === sub.rule &&
-            label === (sub.rule === 'fixed' ? sub.colour : null)
+            JSON.stringify(stored.colours) === JSON.stringify(sub.colours) &&
+            stored.printSide === sub.printSide
             ? []
             : [`${product.code} ${sub.name}`];
         }),
@@ -179,12 +179,9 @@ describe.skipIf(!canRunIntegrationTests)('loading the SWISWARE catalogue (integr
       expect(mismatched).toEqual([]);
 
       // One of each, spelled out.
-      expect(byKey.get('OPT|102')).toMatchObject({ hasVariants: true, multiColour: false });
-      expect(byKey.get('OPT|1111')).toMatchObject({ hasVariants: false, multiColour: false });
-      expect(byKey.get('WC|E.W.C - S TRAP')).toMatchObject({
-        hasVariants: false,
-        multiColour: true,
-      });
+      expect(byKey.get('OPT|102')).toMatchObject({ colours: ['White'], printSide: 'default' });
+      expect(byKey.get('OPT|1111')).toMatchObject({ colours: [], printSide: 'default' });
+      expect(byKey.get('WC|E.W.C - S TRAP')?.colours).toHaveLength(21);
     });
 
     it('seeds the colour range with the printed hex', async () => {
@@ -240,7 +237,7 @@ describe.skipIf(!canRunIntegrationTests)('loading the SWISWARE catalogue (integr
         skipped: 549,
       });
       expect(events.filter((event) => event.entity === 'catalog')).toEqual([]);
-      expect(await count('product_variants')).toBe(549);
+      expect(await liveCount('products')).toBe(549);
       expect(await count('activity_log', { entity_type: 'catalog' })).toBe(1);
     });
 
@@ -254,10 +251,9 @@ describe.skipIf(!canRunIntegrationTests)('loading the SWISWARE catalogue (integr
       expect(third).toMatchObject({ products: 0, subProducts: 1, skipped: 548 });
       // OPT-0001 stays with the binned one, so its restore can never collide.
       const readded = await db()('products as p')
-        .join('product_variants as v', 'v.product_id', 'p.id')
         .where('p.name', '102')
         .whereNull('p.deleted_at')
-        .first('v.code');
+        .first('p.code');
       expect(readded).toMatchObject({ code: 'OPT-0057' });
     });
 
@@ -290,10 +286,10 @@ describe.skipIf(!canRunIntegrationTests)('loading the SWISWARE catalogue (integr
 
       const party = await catalog.createParty({ name: 'Kept Party' }, actor);
       const old = await catalog.createProduct(
-        { name: 'Old Model', categoryName: 'Old Range', variants: [{ code: 'OLD-1' }] },
+        { name: 'Old Model', categoryName: 'Old Range', code: 'OLD-1' },
         actor,
       );
-      const oldLine = { productId: old.id, variantId: old.variants[0]!.id, quantity: 1 };
+      const oldLine = { productId: old.id, variantId: old.id, quantity: 1 };
       await leads.createLead({ partyId: party.id, items: [oldLine] }, actor);
       // And everything else that quotes the old model: an order, the party's own name for it.
       const converted = await leads.createLead({ partyId: party.id, items: [oldLine] }, actor);
@@ -339,8 +335,7 @@ describe.skipIf(!canRunIntegrationTests)('loading the SWISWARE catalogue (integr
 
       expect(await liveCount('product_categories')).toBe(41);
       expect(await liveCount('products')).toBe(549);
-      expect(await count('product_variants')).toBe(549);
-      expect(await count('product_variants', { code: 'OLD-1' })).toBe(0);
+      expect(await liveCount('products', { code: 'OLD-1' })).toBe(0);
       for (const table of [
         'leads',
         'orders',

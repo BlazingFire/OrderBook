@@ -28,6 +28,7 @@ import type {
   SyncDeltaCursor,
   SyncSnapshot,
 } from '@orderbook/shared';
+import { printSideOf, resolveLineColour } from '@orderbook/shared';
 
 import { paths } from '../config/paths.js';
 import { createLogger } from '../lib/logger.js';
@@ -480,9 +481,8 @@ function provisionalLine(
   variantPartyId?: string,
 ): LineItem {
   const product = view.products.find((candidate) => candidate.id === item.productId);
-  // The product variant is where the code, the colour text and the weight
-  // come from; the party's own record is where a party-wise name comes from.
-  const variant = product?.variants.find((candidate) => candidate.id === item.variantId);
+  // The sub product is where the code, colours and weight come from; the
+  // party's own record is where a party-wise name comes from.
   const partyRecord = variantPartyId
     ? view.partyVariants.find(
         (candidate) =>
@@ -491,7 +491,8 @@ function provisionalLine(
     : undefined;
 
   const quantity = Number(item.quantity) || 0;
-  const weightKg = (item.weightKg as number | null | undefined) ?? variant?.weightKg ?? null;
+  const weightKg = (item.weightKg as number | null | undefined) ?? product?.weightKg ?? null;
+  const productName = String(item.productName ?? partyRecord?.productName ?? product?.name ?? '');
 
   return {
     id: `${parentId}-line-${index}`,
@@ -499,15 +500,21 @@ function provisionalLine(
     parentType: 'lead',
     parentId,
     productId: String(item.productId ?? ''),
-    variantId: String(item.variantId ?? ''),
-    productName: String(item.productName ?? partyRecord?.productName ?? product?.name ?? ''),
+    variantId: typeof item.variantId === 'string' && item.variantId ? item.variantId : null,
+    productName,
     categoryName: (item.categoryName as string | null) ?? product?.categoryName ?? null,
     categoryCode: (item.categoryCode as string | null) ?? product?.categoryCode ?? null,
     brandName: (item.brandName as string | null) ?? product?.brand ?? null,
     alias: (item.alias as string | null) ?? partyRecord?.alias ?? product?.alias ?? null,
-    code: (item.code as string | null) ?? variant?.code ?? null,
-    variantLabel: (item.variantLabel as string | null) ?? variant?.label ?? null,
-    colour: (item.colour as string | null) ?? null,
+    code: (item.code as string | null) ?? product?.code ?? null,
+    variantLabel: (item.variantLabel as string | null) ?? null,
+    colour: product
+      ? resolveLineColour(product.colours, (item.colour as string | null) ?? null)
+      : ((item.colour as string | null) ?? null),
+    printSide:
+      item.printSide === 'left' || item.printSide === 'right'
+        ? item.printSide
+        : printSideOf(productName, product?.printSide ?? 'default'),
     size: (item.size as string | null) ?? partyRecord?.size ?? product?.size ?? null,
     weightKg,
     packaging: (item.packaging as string | null) ?? null,
@@ -552,9 +559,13 @@ function provisionalParty(mutation: Mutation): Party {
 
 function provisionalProduct(mutation: Mutation): Product {
   const payload = mutation.payload as Record<string, never>;
-  const variants = Array.isArray(payload.variants)
+  // A create queued by a panel built before variants were removed still
+  // speaks of variants; read it as the sub product it describes, the way
+  // the Master will when it lands.
+  const legacy = Array.isArray(payload.variants)
     ? (payload.variants as Array<Record<string, unknown>>)
     : [];
+  const first = legacy[0];
 
   return {
     id: mutation.entityId,
@@ -569,20 +580,18 @@ function provisionalProduct(mutation: Mutation): Product {
     brand: payload.categoryBrand ?? null,
     sortOrder: payload.sortOrder ?? null,
     size: payload.size ?? null,
-    hasVariants: Boolean(payload.hasVariants),
-    // The Master mints the variant ids; until it answers, these rows carry
-    // placeholder ids for display. The lead screen leaves a still-provisional
-    // product alone for exactly that reason.
-    variants: variants.map((variant, index) => ({
-      id: typeof variant.id === 'string' ? variant.id : `${mutation.entityId}-v${index + 1}`,
-      productId: mutation.entityId,
-      code: String(variant.code ?? ''),
-      label: typeof variant.label === 'string' && variant.label ? variant.label : null,
-      weightKg: typeof variant.weightKg === 'number' ? variant.weightKg : null,
-      sequence: typeof variant.sequence === 'number' ? variant.sequence : index + 1,
-      isActive: true,
-    })),
-    multiColour: Boolean(payload.multiColour),
+    code: String(payload.code ?? first?.code ?? ''),
+    weightKg:
+      typeof payload.weightKg === 'number'
+        ? payload.weightKg
+        : typeof first?.weightKg === 'number'
+          ? first.weightKg
+          : null,
+    colours: Array.isArray(payload.colours)
+      ? (payload.colours as unknown[]).map(String)
+      : legacy.flatMap((row) => (typeof row.label === 'string' && row.label ? [row.label] : [])),
+    printSide:
+      payload.printSide === 'left' || payload.printSide === 'right' ? payload.printSide : 'default',
     customFields: {},
     isActive: true,
     createdAt: mutation.createdAt,
