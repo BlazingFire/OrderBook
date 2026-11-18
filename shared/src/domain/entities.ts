@@ -172,6 +172,8 @@ export interface CompanyFeatures {
   productSlideshow?: boolean;
   /** notes.defaultBold: whether the note screen ticks Bold unless unticked. */
   notesDefaultBold?: boolean;
+  /** notes.gradeSize: how large a line's grade prints on a note, in pixels. */
+  notesGradeSize?: number;
 }
 
 export interface SignedInUser extends User {
@@ -521,6 +523,12 @@ export interface Product {
    * numeric name prints right, anything else left; see `printSideOf`).
    */
   printSide: PrintSideSetting;
+  /**
+   * The packaging a line of this sub product is entered with, so the counter
+   * does not pick it again on every order (`20261118000000_note_dealer_and_grade_size`).
+   * Null asks each time, which is what every product did before.
+   */
+  defaultPackaging: string | null;
   customFields: Record<string, unknown>;
   isActive: boolean;
   createdAt: IsoTimestamp;
@@ -770,6 +778,19 @@ export interface Lead {
    * all three. Set from the note screen Save; every renderer reads it.
    */
   noteColumns?: NoteColumns | null;
+  /**
+   * The dealer code this order's note prints instead of the party's own. Null
+   * prints the party's `partyCode`, which is what every note did before the
+   * override existed (`20261118000000_note_dealer_and_grade_size`).
+   */
+  dealerCode?: string | null;
+  /**
+   * The grade's text size on this order's note, in pixels. Null follows the
+   * company setting `notes.gradeSize`.
+   */
+  noteGradeSize?: number | null;
+  /** The name of the account that created the order, for the note's foot. */
+  createdByName?: string | null;
 
   /** Sum of the lines' `lineWeightKg`, over the lines that have a weight. */
   totalWeightKg: number;
@@ -820,6 +841,19 @@ export interface Order {
    * all three. Set from the note screen Save; every renderer reads it.
    */
   noteColumns?: NoteColumns | null;
+  /**
+   * The dealer code this order's note prints instead of the party's own. Null
+   * prints the party's `partyCode`, which is what every note did before the
+   * override existed (`20261118000000_note_dealer_and_grade_size`).
+   */
+  dealerCode?: string | null;
+  /**
+   * The grade's text size on this order's note, in pixels. Null follows the
+   * company setting `notes.gradeSize`.
+   */
+  noteGradeSize?: number | null;
+  /** The name of the account that created the order, for the note's foot. */
+  createdByName?: string | null;
   /** When the lead this order came from was generated; null for an order with no lead. */
   leadCreatedAt?: IsoTimestamp | null;
 

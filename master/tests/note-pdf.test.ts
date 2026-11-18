@@ -229,7 +229,15 @@ describe('the pending order PDF — captions stay in their cells', () => {
     // Products of one or two codes get no group header: each cell carries its own caption.
     const items: LineItem[] = [];
     for (let i = 0; i < 40; i += 1) {
-      items.push(line({ productName: String(900 + i), categoryName: `One piece toilet ${i}"`, size: 'L-27, B-14, H-27, extra long size text' }));
+      // The long caption used to be the size, which the sheet no longer prints
+      // (owner, 2026-11-18). The caption is the product, so the product is what
+      // has to be long enough to wrap — the cell rule under test is unchanged.
+      items.push(
+        line({
+          productName: String(900 + i),
+          categoryName: `One piece toilet with a long extended product name ${i}"`,
+        }),
+      );
     }
     const input = leadNotePdf(lead(items), PARTY, 'Swisware Ceramics', PRINTED);
     const plans = planNotePdf(input, measure);

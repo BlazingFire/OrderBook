@@ -42,6 +42,7 @@ function baseQuery(
     .join('parties as pa', 'pa.id', 'l.party_id')
     .join('pipeline_stages as st', 'st.id', 'l.stage_id')
     .leftJoin('users as ow', 'ow.id', 'l.owner_id')
+    .leftJoin('users as cr', 'cr.id', 'l.created_by_user_id')
     .where('l.tenant_id', tenantId)
     .select(
       'l.*',
@@ -49,6 +50,7 @@ function baseQuery(
       'st.name as stage_name',
       'st.sequence as stage_sequence',
       'ow.display_name as owner_name',
+      'cr.display_name as created_by_name',
     );
 
   applyPartyScope(query, tenantId, 'l.party_id', scope, { level: 'view', filter: options.filter });

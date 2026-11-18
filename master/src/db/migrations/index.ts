@@ -69,6 +69,7 @@ import * as todoList from './20261019000000_todo_list.js';
 import * as noteColumns from './20261025000000_note_columns.js';
 import * as variantBlankLabel from './20261105000000_variant_blank_label.js';
 import * as subProductCodeColoursPrintSide from './20261116000000_sub_product_code_colours_print_side.js';
+import * as noteDealerAndGradeSize from './20261118000000_note_dealer_and_grade_size.js';
 
 export interface Migration {
   name: string;
@@ -327,6 +328,12 @@ export const migrations: Migration[] = [
   {
     name: '20261116000000_sub_product_code_colours_print_side',
     ...subProductCodeColoursPrintSide,
+  },
+  // 2026-11-18: a note's dealer code and grade text size per order, and a sub
+  // product's default packaging.
+  {
+    name: '20261118000000_note_dealer_and_grade_size',
+    ...noteDealerAndGradeSize,
   },
 ];
 

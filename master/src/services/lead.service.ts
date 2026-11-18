@@ -8,6 +8,8 @@
  */
 
 import {
+  cleanDealerCode,
+  cleanGradeSize,
   cleanNoteColumns,
   colourLabeller,
   fieldFor,
@@ -347,6 +349,16 @@ export async function updateLead(
     const cleaned = cleanNoteColumns(input.noteColumns);
     if ('errorKey' in cleaned) throw new ValidationError(cleaned.errorKey);
     patch.note_columns = cleaned.value === null ? null : JSON.stringify(cleaned.value);
+  }
+
+  if (input.dealerCode !== undefined) {
+    patch.dealer_code = cleanDealerCode(input.dealerCode);
+  }
+
+  if (input.noteGradeSize !== undefined) {
+    const cleaned = cleanGradeSize(input.noteGradeSize);
+    if ('errorKey' in cleaned) throw new ValidationError(cleaned.errorKey);
+    patch.note_grade_size = cleaned.value;
   }
 
   if (input.customFields !== undefined) {

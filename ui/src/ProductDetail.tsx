@@ -221,6 +221,10 @@ export function ProductDetail({
                     : 'product.printSide.default',
               )}
             />
+            <DetailField
+              label={t('product.defaultPackaging.label')}
+              value={product.defaultPackaging ?? '—'}
+            />
           </div>
         </Card>
       </div>

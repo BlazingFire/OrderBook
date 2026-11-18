@@ -50,7 +50,7 @@ export class ProductValidationError extends Error {
  * which only the service can mint.
  */
 export function validateProductInput(input: ProductInput): void {
-  const { sortOrder, weightKg, printSide, colours } = input;
+  const { sortOrder, weightKg, printSide, colours, defaultPackaging } = input;
   if (sortOrder !== undefined && sortOrder !== null && !(Number.isInteger(sortOrder) && sortOrder >= 0)) {
     throw new ProductValidationError('validation.category.sortOrder');
   }
@@ -61,6 +61,9 @@ export function validateProductInput(input: ProductInput): void {
   }
   if (printSide !== undefined && printSide !== 'default' && printSide !== 'left' && printSide !== 'right') {
     throw new ProductValidationError('validation.product.printSideInvalid');
+  }
+  if (defaultPackaging !== undefined && defaultPackaging !== null && typeof defaultPackaging !== 'string') {
+    throw new ProductValidationError('validation.product.defaultPackagingInvalid');
   }
   if (colours !== undefined) {
     const seen = new Set<string>();

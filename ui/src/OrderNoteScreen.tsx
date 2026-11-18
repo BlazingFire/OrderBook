@@ -49,6 +49,9 @@ import { useToast } from './Toast.js';
 
 const KEY_PRINTER = 'ob.note.printer';
 
+/** The grade sizes an order may be set to, matching the `notes.gradeSize` range. */
+const GRADE_SIZES = [7, 8, 9, 10, 11, 12, 14, 16] as const;
+
 function stored(key: string): string | null {
   try {
     return window.localStorage.getItem(key);
@@ -88,6 +91,15 @@ export interface OrderNoteScreenProps {
    * shows beside them only when given. Without it ticks preview unsaved.
    */
   onSaveNoteColumns?: (columns: NoteColumns) => Promise<unknown>;
+  /**
+   * Persists this order's own dealer code and grade text size (the owner,
+   * 2026-11-18); the Save note settings button shows only when given. A null
+   * dealer code follows the party, a null grade size the company
+   * `notes.gradeSize`.
+   */
+  onSaveNoteSettings?: (settings: { dealerCode: string | null; noteGradeSize: number | null }) => Promise<unknown>;
+  /** The company's grade size (`notes.gradeSize`), shown as the Default choice. */
+  defaultGradeSize?: number;
   /** The company switch (notes.defaultBold): the Bold box starts ticked unless false. */
   defaultBold?: boolean;
   onBack: () => void;
@@ -113,6 +125,8 @@ export function OrderNoteScreen({
   canEditVehicle,
   onSaveVehicle,
   onSaveNoteColumns,
+  onSaveNoteSettings,
+  defaultGradeSize,
   defaultBold,
   onBack,
   desktop,
@@ -151,6 +165,34 @@ export function OrderNoteScreen({
   );
   const [bold, setBold] = useState(defaultBold ?? true);
   const [savingColumns, setSavingColumns] = useState(false);
+  // This order's own dealer code and grade size; blank/Default follows the party
+  // and the company setting. Saved together by one button (owner, 2026-11-18).
+  const savedDealerCode = (record as { dealerCode?: string | null }).dealerCode ?? '';
+  const savedGradeSize = (record as { noteGradeSize?: number | null }).noteGradeSize ?? null;
+  const [dealerCode, setDealerCode] = useState(savedDealerCode);
+  const [gradeSize, setGradeSize] = useState<number | null>(savedGradeSize);
+  const [savingNoteSettings, setSavingNoteSettings] = useState(false);
+  const noteSettingsDirty =
+    dealerCode.trim() !== savedDealerCode.trim() || gradeSize !== savedGradeSize;
+
+  async function saveNoteSettings(): Promise<void> {
+    if (!onSaveNoteSettings) return;
+    setSavingNoteSettings(true);
+    try {
+      await onSaveNoteSettings({
+        dealerCode: dealerCode.trim() || null,
+        noteGradeSize: gradeSize,
+      });
+      toast.push(t('orderNote.noteSettingsSaved'), { tone: 'ok' });
+    } catch (caught: unknown) {
+      toast.push(
+        t('orderNote.saveNoteSettingsFailed', { error: caught instanceof Error ? caught.message : '?' }),
+        { tone: 'error' },
+      );
+    } finally {
+      setSavingNoteSettings(false);
+    }
+  }
 
   const model = useMemo(
     () => buildOrderNote(record, colourLabeller((optionLists ?? []).filter((option) => option.listKey === 'stock.colour'))),
@@ -182,6 +224,10 @@ export function OrderNoteScreen({
     header,
     party,
     partyName: record.partyName,
+    // This order's own choices win over the party's code and the company size.
+    dealerCode: dealerCode.trim() || undefined,
+    createdByName: record.createdByName ?? undefined,
+    gradeSize: gradeSize ?? defaultGradeSize,
     vehicleNumber: vehicle,
     notes: record.notes,
     totalQuantity: model.totalQuantity,
@@ -468,6 +514,49 @@ export function OrderNoteScreen({
           <Button variant="secondary" busy={savingColumns} disabled={printing || saving || savingColumns} onClick={() => void saveColumns()}>
             {t('orderNote.saveColumns')}
           </Button>
+        )}
+        {onSaveNoteSettings && (
+          <>
+            <label className="ob-note-toolbar-item">
+              <span className="ob-small">{t('orderNote.dealerOverride')}</span>
+              <input
+                className="ob-input ob-note-vehicle-input"
+                value={dealerCode}
+                maxLength={24}
+                placeholder={party?.partyCode ?? t('orderNote.dealerOverrideHint')}
+                disabled={printing || saving || savingNoteSettings}
+                onChange={(event) => setDealerCode(event.target.value)}
+              />
+            </label>
+            <label className="ob-note-toolbar-item">
+              <span className="ob-small">{t('orderNote.gradeSize')}</span>
+              <select
+                className="ob-input"
+                value={gradeSize === null ? '' : String(gradeSize)}
+                disabled={printing || saving || savingNoteSettings}
+                onChange={(event) =>
+                  setGradeSize(event.target.value === '' ? null : Number(event.target.value))
+                }
+              >
+                <option value="">
+                  {t('orderNote.gradeSizeDefault', { size: defaultGradeSize ?? 9 })}
+                </option>
+                {GRADE_SIZES.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Button
+              variant="secondary"
+              busy={savingNoteSettings}
+              disabled={printing || saving || savingNoteSettings || !noteSettingsDirty}
+              onClick={() => void saveNoteSettings()}
+            >
+              {t('orderNote.saveNoteSettings')}
+            </Button>
+          </>
         )}
         <Checkbox checked={bold} onChange={setBold} label={t('orderNote.bold')} />
 

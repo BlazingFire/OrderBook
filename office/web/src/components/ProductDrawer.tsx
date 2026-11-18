@@ -112,6 +112,7 @@ export function ProductDrawer({
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [colours, setColours] = useState<string[]>([]);
   const [printSide, setPrintSide] = useState<PrintSideSetting>('default');
+  const [defaultPackaging, setDefaultPackaging] = useState('');
   const [busy, setBusy] = useState(false);
   const baseline = useFormBaseline<unknown>();
 
@@ -141,12 +142,19 @@ export function ProductDrawer({
           },
           colours: [...editing.colours],
           printSide: editing.printSide,
+          defaultPackaging: editing.defaultPackaging ?? '',
         }
-      : { draft: EMPTY, colours: [] as string[], printSide: 'default' as PrintSideSetting };
+      : {
+          draft: EMPTY,
+          colours: [] as string[],
+          printSide: 'default' as PrintSideSetting,
+          defaultPackaging: '',
+        };
     baseline.mark(loaded);
     setDraft(loaded.draft);
     setColours(loaded.colours);
     setPrintSide(loaded.printSide);
+    setDefaultPackaging(loaded.defaultPackaging);
 
     // Keyed on the record's identity, not the record: an unrelated field
     // arriving through the event stream must not wipe a half-typed draft.
@@ -196,6 +204,7 @@ export function ProductDrawer({
       weightKg: toNumber(draft.weightKg),
       colours: colours.map((colour) => colour.trim()).filter(Boolean),
       printSide,
+      defaultPackaging: defaultPackaging || null,
     };
 
     // The same rules the Master applies, so the refusal is immediate and
@@ -219,7 +228,7 @@ export function ProductDrawer({
         const result = await api.createProduct(input);
         onCreated?.({ id: result.id, name, code: draft.code.trim() });
         setDraft(EMPTY);
-        baseline.mark({ draft: EMPTY, colours, printSide });
+        baseline.mark({ draft: EMPTY, colours, printSide, defaultPackaging });
       }
       return true;
     } catch (caught) {
@@ -234,7 +243,7 @@ export function ProductDrawer({
   // is complete, and named if it is not.
   useUnsavedWork(
     'product-form',
-    open && baseline.dirty({ draft, colours, printSide })
+    open && baseline.dirty({ draft, colours, printSide, defaultPackaging })
       ? { label: t('updates.saveAll.product', { name: draft.name.trim() || '…' }), save }
       : null,
   );
@@ -267,6 +276,10 @@ export function ProductDrawer({
 
   const colourOptions = optionLists
     .filter((option) => option.listKey === 'stock.colour' && option.isActive)
+    .map((option) => ({ value: option.value, label: option.label }));
+
+  const packagingOptions = optionLists
+    .filter((option) => option.listKey === 'line.packaging' && option.isActive)
     .map((option) => ({ value: option.value, label: option.label }));
 
   function focusColourRow(index: number): void {
@@ -364,6 +377,26 @@ export function ProductDrawer({
                   {t('product.printSide.hint')}
                 </span>
               </div>
+            )}
+          </Field>
+          <Field
+            label={t('product.defaultPackaging.label')}
+            span={3}
+            hint={t('product.defaultPackaging.hint')}
+          >
+            {(id) => (
+              <Select
+                id={id}
+                value={defaultPackaging}
+                onChange={(event) => setDefaultPackaging(event.target.value)}
+              >
+                <option value="">{t('product.defaultPackaging.none')}</option>
+                {packagingOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
             )}
           </Field>
         </FieldGroup>

@@ -84,6 +84,8 @@ interface Props {
   packagingRequired: boolean;
   /** notes.defaultBold, already coalesced by the shell. */
   defaultBold?: boolean;
+  /** notes.gradeSize, already coalesced by the shell. */
+  defaultGradeSize?: number;
   /** Which list is showing — chosen from the sidebar's sub-pages. */
   view: 'list' | 'converted';
   /** The lead showing as a sub-screen, held by the shell so a search hit can open one. */
@@ -116,6 +118,7 @@ export function LeadsScreen({
   permissions,
   packagingRequired,
   defaultBold,
+  defaultGradeSize,
   view,
   openId,
   onOpenId,
@@ -546,6 +549,16 @@ export function LeadsScreen({
         onSaveNoteColumns={
           canEdit ? async (noteColumns) => api.updateLead(openLead.id, { noteColumns }) : undefined
         }
+        onSaveNoteSettings={
+          canEdit
+            ? async (settings) => {
+                const saved = await api.updateLead(openLead.id, settings);
+                if (fetched && fetched.id === saved.id) setFetched(saved);
+                setRows((current) => current.map((lead) => (lead.id === saved.id ? saved : lead)));
+              }
+            : undefined
+        }
+        defaultGradeSize={defaultGradeSize}
         defaultBold={defaultBold}
         onBack={() => setNote(null)}
         desktop={desktopBridge() ?? undefined}

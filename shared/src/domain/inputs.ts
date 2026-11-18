@@ -79,6 +79,12 @@ export interface ProductInput {
   colours?: string[];
   /** Print side setting; absent leaves it alone, absent on create is `default`. */
   printSide?: PrintSideSetting;
+  /**
+   * The packaging a line of this sub product starts with, so lead entry does
+   * not have to choose it again. Absent on update leaves it alone; null clears
+   * it, so every line asks.
+   */
+  defaultPackaging?: string | null;
   /** Catalogue order inside the category; null sorts last. */
   sortOrder?: number | null;
   customFields?: Record<string, unknown>;
@@ -224,6 +230,16 @@ export interface LeadUpdateInput {
   /** When present, replaces the whole line set — lines have no stable client id. */
   /** The Dispatch note saved tick boxes; null clears the saved choice. */
   noteColumns?: NoteColumns | null;
+  /**
+   * The dealer code this order's note prints instead of the party's own; null
+   * clears the override. Blank is stored as null, so the party's code prints.
+   */
+  dealerCode?: string | null;
+  /**
+   * The grade's text size on this order's note, in pixels; null follows the
+   * company `notes.gradeSize`.
+   */
+  noteGradeSize?: number | null;
   items?: LineItemInput[];
   /**
    * The field clocks (`sync.fieldHlc`) the editor opened the record at, for the
@@ -261,6 +277,10 @@ export interface OrderUpdateInput {
   vehicleNumber?: string | null;
   /** The Dispatch note saved tick boxes; null clears the saved choice. */
   noteColumns?: NoteColumns | null;
+  /** As on `LeadUpdateInput`: this order's own dealer code, null for the party's. */
+  dealerCode?: string | null;
+  /** As on `LeadUpdateInput`: this order's own grade text size, null for the company default. */
+  noteGradeSize?: number | null;
   notes?: string | null;
   customFields?: Record<string, unknown>;
   /** As on `LeadUpdateInput`. */

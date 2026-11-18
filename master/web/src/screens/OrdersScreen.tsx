@@ -82,6 +82,8 @@ interface Props {
   onStageChange: (stageId: string | null) => void;
   /** notes.defaultBold, already coalesced by the shell. */
   defaultBold?: boolean;
+  /** notes.gradeSize, already coalesced by the shell. */
+  defaultGradeSize?: number;
   /** The order showing as a sub-screen, held by the shell so a search hit can open one. */
   openId: string | null;
   onOpenId: (id: string | null) => void;
@@ -120,6 +122,7 @@ export function OrdersScreen({
   stageId: stageFilter,
   onStageChange,
   defaultBold,
+  defaultGradeSize,
   openId,
   onOpenId,
   onOpenLead,
@@ -511,6 +514,14 @@ export function OrdersScreen({
           patchOrder(await api.updateOrder(openOrder.id, { vehicleNumber }));
         }}
         defaultBold={defaultBold}
+        defaultGradeSize={defaultGradeSize}
+        onSaveNoteSettings={
+          canEdit && !openOrder.dispatchedAt
+            ? async (settings) => {
+                patchOrder(await api.updateOrder(openOrder.id, settings));
+              }
+            : undefined
+        }
         onSaveNoteColumns={
           canEdit && !openOrder.dispatchedAt
             ? async (noteColumns) => {

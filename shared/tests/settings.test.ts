@@ -55,6 +55,8 @@ describe('every parser rejects a wrong shape', () => {
     'basicHome.productSlideshow': 1,
     'parties.deleteRelatedData': 'on',
     'notes.defaultBold': 'yes',
+    // Above its ceiling: a 40 px grade overruns the line it prints on.
+    'notes.gradeSize': 40,
     // Below their floors rather than the wrong type: for a bounded number the
     // interesting refusal is the in-range-looking value that is out of range —
     // 0 hours signs the administrator out on their next request, and 0 quiet

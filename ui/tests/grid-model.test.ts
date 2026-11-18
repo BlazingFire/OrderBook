@@ -41,6 +41,7 @@ function product(over: Record<string, unknown>): Product {
     weightKg: 25,
     colours: [],
     printSide: 'default',
+    defaultPackaging: null,
     sortOrder: 1,
     images: [],
     ...over,
@@ -63,9 +64,23 @@ describe('buildRows', () => {
       ['b', 'OPT-3', ['White', 'Ivory']],
     ]);
     expect(rows.map((row) => row.key)).toEqual(['k1', 'k2']);
-    expect(rows.every((row) => row.qty === '' && row.packaging === '' && row.colour === '')).toBe(
-      true,
+    expect(rows.every((row) => row.qty === '' && row.colour === '')).toBe(true);
+    // No default on either product, so the line asks, as it always did.
+    expect(rows.every((row) => row.packaging === '')).toBe(true);
+  });
+
+  it("starts a row's packaging from the sub product's own default", () => {
+    // The point of the column: the counter stops choosing the same value on
+    // every order (owner, 2026-11-18), and anyone can still change the line.
+    const rows = buildRows(
+      [
+        product({ id: 'a', code: 'OPT-1', defaultPackaging: 'Carton' }),
+        product({ id: 'b', code: 'OPT-2', defaultPackaging: null }),
+      ],
+      { nextKey: counter() },
     );
+    expect(rows[0]!.packaging).toBe('Carton');
+    expect(rows[1]!.packaging).toBe('');
   });
 
   it("carries each row's own product facts, and the party's own names where it has them", () => {

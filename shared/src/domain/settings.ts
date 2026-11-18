@@ -479,6 +479,28 @@ export const SETTINGS = {
     fallback: true,
     parse: (raw: unknown): boolean => asBoolean(raw),
   },
+
+  /**
+   * The text size, in pixels, of a line's grade on the Filling and Dispatch
+   * note — for the whole company.
+   *
+   * A note is a printed sheet, so this is a company decision rather than a
+   * property of one clerk's screen: two people printing the same order must get
+   * the same sheet. An order that needs its own size carries
+   * `note_grade_size`, and that wins.
+   *
+   * The fallback is the size the sheet always printed at, so an installation
+   * that never opens Settings prints exactly what it printed before, and a key
+   * added here still needs no migration.
+   */
+  'notes.gradeSize': {
+    labelToken: 'setting.notes.gradeSize.label',
+    descriptionToken: 'setting.notes.gradeSize.help',
+    group: 'leads',
+    control: { kind: 'number', min: 5, max: 20, step: 1, unitToken: 'setting.unit.px' },
+    fallback: 9,
+    parse: (raw: unknown): number => asBoundedInt(5, 20)(raw),
+  },
 } satisfies Record<string, SettingDefinition<unknown>>;
 
 export type SettingKey = keyof typeof SETTINGS;

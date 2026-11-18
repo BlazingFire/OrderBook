@@ -592,6 +592,8 @@ function provisionalProduct(mutation: Mutation): Product {
       : legacy.flatMap((row) => (typeof row.label === 'string' && row.label ? [row.label] : [])),
     printSide:
       payload.printSide === 'left' || payload.printSide === 'right' ? payload.printSide : 'default',
+    defaultPackaging:
+      typeof payload.defaultPackaging === 'string' ? payload.defaultPackaging : null,
     customFields: {},
     isActive: true,
     createdAt: mutation.createdAt,

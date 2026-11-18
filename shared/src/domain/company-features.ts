@@ -36,6 +36,8 @@ export interface ResolvedCompanyFeatures {
   sellTodayPopup: boolean;
   productSlideshow: boolean;
   notesDefaultBold: boolean;
+  /** The company's grade text size on a note, in pixels (`notes.gradeSize`). */
+  notesGradeSize: number;
 }
 
 export function resolveCompanyFeatures(
@@ -59,5 +61,6 @@ export function resolveCompanyFeatures(
     productSlideshow:
       features?.productSlideshow ?? SETTINGS['basicHome.productSlideshow'].fallback,
     notesDefaultBold: features?.notesDefaultBold ?? SETTINGS['notes.defaultBold'].fallback,
+    notesGradeSize: features?.notesGradeSize ?? SETTINGS['notes.gradeSize'].fallback,
   };
 }

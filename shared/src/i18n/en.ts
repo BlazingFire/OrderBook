@@ -135,6 +135,7 @@ export const EN_MESSAGES = {
   // --- Units rendered beside a number setting's field.
   'setting.unit.hours': 'hours',
   'setting.unit.days': 'days',
+  'setting.unit.px': 'px',
   /** The placeholder in a number setting that may be left empty. */
   'setting.number.none': 'None',
 
@@ -163,6 +164,9 @@ export const EN_MESSAGES = {
   'setting.notes.defaultBold.label': 'Bold note totals and headings',
   'setting.notes.defaultBold.help':
     'On, the Dispatch and Filling notes print their totals and headings bold, and the note screen ticks Bold. Off, they print in the regular face.',
+  'setting.notes.gradeSize.label': 'Grade text size on notes',
+  'setting.notes.gradeSize.help':
+    'How large a line\'s grade prints on the Filling and Dispatch notes, for everyone. An order that sets its own size on the note screen keeps it; this is what every other order prints.',
   'setting.reports.visibleToOffice.label': 'Show Reports to Office users',
   'setting.reports.visibleToOffice.help':
     'On, people in the Office tier see the Reports module and get their own figures in it. Off, it is hidden from them and refused if they ask. Administrators always see it.',
@@ -338,6 +342,7 @@ export const EN_MESSAGES = {
   'validation.order.vehicleInvalid': 'Vehicle number: up to 20 letters, digits, spaces or dashes',
   'validation.noteColumns.invalid':
     'Note columns must be true or false for packing, grade and colour',
+  'validation.noteGradeSize.invalid': 'Grade text size must be a whole number from 5 to 20',
   'validation.order.alreadyDispatched': 'This final order was already dispatched',
   'validation.remark.textRequired': 'A remark needs some text',
   'validation.lead.partyRequired': 'Select a party for this order',
@@ -394,6 +399,7 @@ export const EN_MESSAGES = {
   'validation.product.colourBlank': 'A colour cannot be blank',
   'validation.product.coloursDuplicate': 'Two colours in this list are the same',
   'validation.product.printSideInvalid': 'Print side must be Default, Left or Right',
+  'validation.product.defaultPackagingInvalid': 'Default packaging must be text',
   'validation.product.weightPositive': 'Weight must be a number greater than zero',
   'validation.product.restoreCodesTaken': 'Cannot restore — another product now uses {codes}',
   'validation.lead.variantMissing': 'One of the selected sub products no longer exists',
@@ -2013,6 +2019,15 @@ export const EN_MESSAGES = {
   'orderNote.saveColumnsFailed': 'Could not save the note columns: {error}',
   'orderNote.qty': 'Qty',
   'orderNote.dealer': 'Dealer',
+  'orderNote.dealerOverride': 'Dealer code on this order',
+  'orderNote.dealerOverrideHint': 'Blank prints the party\'s own code',
+  'orderNote.gradeSize': 'Grade text size',
+  'orderNote.gradeSizeDefault': 'Default ({size} px)',
+  'orderNote.saveNoteSettings': 'Save note settings',
+  'orderNote.noteSettingsSaved': 'Note settings saved',
+  'orderNote.saveNoteSettingsFailed': 'Could not save the note settings: {error}',
+  'orderNote.createdBy': 'Created by',
+  'orderNote.userNameUnknown': '—',
   'orderNote.party': 'Party',
   'orderNote.pendingOrder': 'New order',
   'orderNote.finalOrder': 'Final order',
@@ -3105,6 +3120,11 @@ export const EN_MESSAGES = {
   'product.printSide.right': 'Right',
   'product.printSide.hint':
     'Which half of a printed note this sub product belongs on. Default follows the name: a number prints on the right, a name on the left.',
+  'product.defaultPackaging.label': 'Default packaging',
+  'product.defaultPackaging.hint':
+    'Filled in automatically on every new order that picks this sub product, so the counter does not choose it again. Anyone can still change it on the line.',
+  'product.defaultPackaging.none': 'Ask on every line',
+  'catalog.products.column.defaultPackaging': 'Default packaging',
   'product.detail.category': 'Product',
   'product.detail.detailsTitle': 'Details',
   'product.detail.photoTitle': 'Photo',

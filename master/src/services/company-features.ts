@@ -61,6 +61,7 @@ export async function companyFeatures(tenantId: string): Promise<CompanyFeatures
     'notices.showSellToday': boolean;
     'basicHome.productSlideshow': boolean;
     'notes.defaultBold': boolean;
+    'notes.gradeSize': number;
   };
 
   return {
@@ -74,5 +75,6 @@ export async function companyFeatures(tenantId: string): Promise<CompanyFeatures
     sellTodayPopup: values['notices.showSellToday'],
     productSlideshow: values['basicHome.productSlideshow'],
     notesDefaultBold: values['notes.defaultBold'],
+    notesGradeSize: values['notes.gradeSize'],
   };
 }

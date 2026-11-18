@@ -254,7 +254,7 @@ describe.each(['filling', 'dispatch'] as NoteKind[])('paginateOrderNote (%s)', (
     expect(rows.filter((r) => !r.labelled).flatMap((r) => r.lines)).toHaveLength(5);
   });
 
-  it('puts every size of one main product under one header, each code captioned with its size', () => {
+  it('puts every size of one main product under one header, with no size caption (owner, 2026-11-18)', () => {
     const items = [
       line({ productName: '7512', categoryName: 'Table Top Wash Basin', size: null }),
       line({ productName: '7513', categoryName: 'Table Top Wash Basin', size: null }),
@@ -264,9 +264,12 @@ describe.each(['filling', 'dispatch'] as NoteKind[])('paginateOrderNote (%s)', (
     const slots = paginateOrderNote(buildOrderNote(orderOf(items)), kind)[0]!.right.flat();
     expect(slots.flatMap((s) => (s.kind === 'header' ? [s.product] : []))).toEqual(['Table Top Wash Basin']);
     const rows = slots.flatMap((s) => (s.kind === 'row' ? [s] : []));
+    // No size is printed over the codes any more, which is the whole point of
+    // the change. The rows now sort by code within the product, because the
+    // size is no longer part of the sort key (`compareLines`).
     expect(rows.every((r) => !r.labelled && r.sized)).toBe(true);
     expect(rows.flatMap((r) => r.lines.map((l) => [l.subProduct, noteCellCaption(r, l)]))).toEqual([
-      ['7512', '—'], ['7513', '—'], ['7505', '17X11'], ['7507', '17X13'],
+      ['7505', null], ['7507', null], ['7512', null], ['7513', null],
     ]);
     expect(rows.map(noteCodedRowHeight)).toEqual(rows.map(() => NOTE_LAYOUT.rowCodedLabelled));
   });
@@ -352,13 +355,15 @@ describe('named rows (design rule)', () => {
     expect(NOTE_LAYOUT.namedCharsPerLine).toBe(26);
   });
 
-  it('print the sub product with its size unless the name carries it, and grow tall for a three-line label', () => {
+  it('prints the sub product alone — the size came off the sheet — and grows tall for a three-line label', () => {
     const [short, sized, long] = buildOrderNote(orderOf([
       line({ productName: 'Rustic', size: '600x600' }),
       line({ productName: 'Rustic 600x600 Gloss', size: '600x600' }),
       line({ productName: 'Wash basin with full pedestal and rimless overflow', size: '24"', brandName: 'Cera' }),
     ])).named.sort((a, b) => a.subProduct.length - b.subProduct.length);
-    expect(namedLabel(short!)).toBe('Rustic 600x600');
+    // The size no longer rides behind the name (owner, 2026-11-18): it wrapped
+    // the row and shifted the columns beside it.
+    expect(namedLabel(short!)).toBe('Rustic');
     expect(namedLabel(sized!)).toBe('Rustic 600x600 Gloss');
     expect(namedRowHeight(short!)).toBe(NOTE_LAYOUT.rowNamed);
     expect(namedRowHeight(long!)).toBe(NOTE_LAYOUT.rowNamedTall);
@@ -396,6 +401,37 @@ describe('a lead as the source of a note', () => {
     const doc = noteDocument(lead, 'lead', party, null);
     expect(doc.party).toEqual({ partyCode: 'P0042', city: 'Morbi', phone: '9876543210', gstNumber: '24ABCDE1234F1Z5' });
     expect(noteDocument(lead, 'lead', null, null).party).toBeNull();
+  });
+
+  /*
+   * The dealer code, the grade's size and the creator's name (owner, 2026-11-18).
+   * Each has an override on the order that must beat the company/party answer,
+   * and each must fall back to what the sheet printed before when absent —
+   * otherwise an upgraded installation's notes would change on their own.
+   */
+  it('prints the party code as the dealer until this order overrides it', () => {
+    expect(noteDocument(lead, 'lead', party, null).dealerCode).toBe('P0042');
+    expect(noteDocument({ ...lead, dealerCode: 'P9999' }, 'lead', party, null).dealerCode).toBe('P9999');
+    // A note whose party could not be read, and an order with nothing stored.
+    expect(noteDocument(lead, 'lead', null, null, undefined, undefined, undefined).dealerCode).toBeNull();
+  });
+
+  it("takes the grade's size from the order, else the company's, else the sheet's own", () => {
+    // Absent everywhere: undefined, which the sheet reads as its built-in size.
+    expect(noteDocument(lead, 'lead', party, null).gradeSize).toBeUndefined();
+    // The company setting alone.
+    expect(noteDocument(lead, 'lead', party, null, undefined, undefined, 12).gradeSize).toBe(12);
+    // The order's own wins over the company's.
+    expect(
+      noteDocument({ ...lead, noteGradeSize: 16 }, 'lead', party, null, undefined, undefined, 12).gradeSize,
+    ).toBe(16);
+  });
+
+  it('carries the creator for the foot of the sheet, and nothing when unknown', () => {
+    expect(noteDocument(lead, 'lead', party, null).createdByName).toBeNull();
+    expect(
+      noteDocument({ ...lead, createdByName: 'Riya Shah' }, 'lead', party, null).createdByName,
+    ).toBe('Riya Shah');
   });
 
   it('freezes bold with the document: absent reads as bold, printroom honours false (15x)', () => {

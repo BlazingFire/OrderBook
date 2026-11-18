@@ -378,6 +378,15 @@ export function LeadBoardScreen({
             : undefined
         }
         defaultBold={notesDefaultBold}
+        defaultGradeSize={resolveCompanyFeatures(view.features).notesGradeSize}
+        onSaveNoteSettings={
+          canEdit && !openLead.convertedOrderId
+            ? async (settings) => {
+                await api.updateLead(openLead.id, settings);
+                // The snapshot carries the change back; this panel does not hold it itself.
+              }
+            : undefined
+        }
         onBack={() => setNote(null)}
         desktop={desktopBridge() ?? undefined}
         printroom={printroom}

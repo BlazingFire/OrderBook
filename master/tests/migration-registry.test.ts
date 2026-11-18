@@ -130,6 +130,9 @@ describe('the migration registry matches the directory', () => {
     '20261105000000_variant_blank_label',
     // 2026-11-16: code, weight, colours and print side move onto `products`.
     '20261116000000_sub_product_code_colours_print_side',
+    // 2026-11-18: a note's dealer code and grade size per order, and a sub
+    // product's default packaging.
+    '20261118000000_note_dealer_and_grade_size',
   ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {
@@ -205,6 +208,7 @@ describe('the migration registry matches the directory', () => {
     '20260323000000_catalogue_brands_and_codes',
     '20260326000000_catalogue_brands_and_codes_port',
     '20260327000000_option_lists_repair',
+    '20261118000000_note_dealer_and_grade_size',
   ];
 
   it('still lists every migration that has ever run on a real installation', () => {

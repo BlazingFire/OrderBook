@@ -487,10 +487,16 @@
 .ob-note-colour,
 .ob-note-grade {
   min-width: 0;
+  /* The grade alone may be sized by the company setting or this order's own
+     (`--note-grade-size` on the note root); the rest keep 11 px. */
   font-size: 11px;
   line-height: 13px;
   font-weight: 500;
   color: #2b353b;
+}
+
+.ob-note-grade {
+  font-size: var(--note-grade-size, 11px);
 }
 
 .ob-note-pack {
@@ -665,7 +671,8 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 9px;
+  /* The same setting the named half reads: one number sizes a grade everywhere. */
+  font-size: var(--note-grade-size, 9px);
   line-height: 12px;
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -830,6 +837,21 @@
 
 .ob-note-sign-slot .ob-note-eyebrow {
   padding-top: 4px;
+}
+
+/* Who raised the order, at the foot of the last sheet (the owner, 2026-11-18). */
+.ob-note-created-by {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.ob-note-created-by-name {
+  font-size: 10px;
+  line-height: 12px;
+  font-weight: 600;
+  color: var(--note-ink);
 }
 
 /* ---- Print ----------------------------------------------------------------

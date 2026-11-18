@@ -44,6 +44,8 @@ import type {
 } from '@orderbook/shared';
 import {
   baseForUnversionedEdit,
+  cleanDealerCode,
+  cleanGradeSize,
   cleanNoteColumns,
   columnPatch,
   ProductValidationError,
@@ -1013,6 +1015,18 @@ export async function assertMergeAllowed(
       if ('errorKey' in cleaned) throw new ValidationError(cleaned.errorKey);
       accepted.noteColumns = cleaned.value;
     }
+    if ('noteGradeSize' in accepted) {
+      const cleaned = cleanGradeSize(
+        typeof accepted.noteGradeSize === 'number' ? accepted.noteGradeSize : null,
+      );
+      if ('errorKey' in cleaned) throw new ValidationError(cleaned.errorKey);
+      accepted.noteGradeSize = cleaned.value;
+    }
+    if ('dealerCode' in accepted) {
+      accepted.dealerCode = cleanDealerCode(
+        typeof accepted.dealerCode === 'string' ? accepted.dealerCode : null,
+      );
+    }
   } else if (entity === 'order') {
     const weight = accepted.totalWeightKgOverride;
     if (typeof weight === 'number' && weight < 0) {
@@ -1022,6 +1036,18 @@ export async function assertMergeAllowed(
       const cleaned = cleanNoteColumns(accepted.noteColumns);
       if ('errorKey' in cleaned) throw new ValidationError(cleaned.errorKey);
       accepted.noteColumns = cleaned.value;
+    }
+    if ('noteGradeSize' in accepted) {
+      const cleaned = cleanGradeSize(
+        typeof accepted.noteGradeSize === 'number' ? accepted.noteGradeSize : null,
+      );
+      if ('errorKey' in cleaned) throw new ValidationError(cleaned.errorKey);
+      accepted.noteGradeSize = cleaned.value;
+    }
+    if ('dealerCode' in accepted) {
+      accepted.dealerCode = cleanDealerCode(
+        typeof accepted.dealerCode === 'string' ? accepted.dealerCode : null,
+      );
     }
     if ('vehicleNumber' in accepted) {
       const vehicle = accepted.vehicleNumber;

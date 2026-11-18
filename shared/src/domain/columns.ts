@@ -70,6 +70,7 @@ export const PRODUCT_COLUMNS = {
   size: 'size',
   colours: 'colours',
   printSide: 'print_side',
+  defaultPackaging: 'default_packaging',
   sortOrder: 'sort_order',
   customFields: 'custom_fields',
 } as const satisfies Record<string, string>;
@@ -84,6 +85,8 @@ export const LEAD_COLUMNS = {
   notes: 'notes',
   customFields: 'custom_fields',
   noteColumns: 'note_columns',
+  dealerCode: 'dealer_code',
+  noteGradeSize: 'note_grade_size',
 } as const satisfies Record<string, string>;
 
 export const ORDER_COLUMNS = {
@@ -92,6 +95,8 @@ export const ORDER_COLUMNS = {
   totalWeightKgOverride: 'total_weight_kg_override',
   vehicleNumber: 'vehicle_number',
   noteColumns: 'note_columns',
+  dealerCode: 'dealer_code',
+  noteGradeSize: 'note_grade_size',
   notes: 'notes',
   customFields: 'custom_fields',
 } as const satisfies Record<string, string>;

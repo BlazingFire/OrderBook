@@ -120,6 +120,9 @@ CREATE TABLE orders (
   total_weight_kg          NUMERIC(12,3) NOT NULL DEFAULT 0,
   total_weight_kg_override NUMERIC(12,3),
   vehicle_number           TEXT CHECK (char_length(vehicle_number) <= 20),
+  dealer_code              TEXT,                            -- this order's own; NULL prints the party's
+  note_grade_size          INTEGER,                         -- the grade's px on the note; NULL follows notes.gradeSize
+  note_columns             JSONB,                           -- the Dispatch note's tick boxes; NULL means all three
   notes                    TEXT,
   custom_fields            JSONB NOT NULL DEFAULT '{}',
   dispatched_at            TIMESTAMPTZ,
@@ -159,7 +162,28 @@ vehicle the order goes out on. The Dispatch note prints it large; the Filling no
 to write it in. It is upper-cased and trimmed by `updateOrder`, and is a mergeable order column
 (`ORDER_COLUMNS.vehicleNumber`), so an offline Office edit merges like the weight override. The
 Dispatch note also shows the lead's creation date, which `mapOrder` joins from `leads` as
-`leadCreatedAt` — not stored on the order.
+`lead_created_at` — and who raised the order, joined from `users` as `created_by_name` (see below).
+
+`dealer_code` and `note_grade_size` (both added by `20261118000000_note_dealer_and_grade_size`,
+both nullable, on `leads` as well as `orders`) are a single order's own answers to two note
+questions:
+
+- `dealer_code` is what the note's Dealer block prints **instead of** the party's `partyCode`.
+  NULL prints the party's, which is what every note did before the override existed — the point
+  being that one order can be corrected without renaming the party on every other screen
+  (`cleanDealerCode` upper-cases it, and blank stores as NULL).
+- `note_grade_size` is the grade's text size in pixels on that order's Filling and Dispatch note.
+  NULL follows the company setting `notes.gradeSize` (fallback 9), which is what every other
+  order prints; `cleanGradeSize` refuses anything outside 5–20.
+
+Both are mergeable (`LEAD_COLUMNS`/`ORDER_COLUMNS`), so an Office edit merges like the vehicle
+number, and both are cleaned again on the sync push path. Neither is a copy of anything the note
+already had: the fallbacks are exactly what the sheet printed before.
+
+`createdByName` is **not** a column: `mapOrder`/`mapLead` read it from `users.display_name`, which
+both base queries join on `created_by_user_id` as `created_by_name`. The note prints it under the
+signature row of its last page. `created_by_user_id` was already stored; it had simply never been
+resolved to a name.
 
 ## `line_items` — one table, both parents
 

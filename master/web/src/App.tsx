@@ -1668,6 +1668,7 @@ function MasterPanel() {
           permissions={user.permissions}
           packagingRequired={companyFeatures.packagingRequiredOnConvert}
           defaultBold={companyFeatures.notesDefaultBold}
+          defaultGradeSize={companyFeatures.notesGradeSize}
           view={subKeys.leads === 'converted' ? 'converted' : 'list'}
           canCreate={canCreateLead}
           onNewLead={openNewLead}
@@ -1724,6 +1725,7 @@ function MasterPanel() {
           openId={openIds.orders}
           onOpenId={(id) => setOpenIds((current) => ({ ...current, orders: id }))}
           defaultBold={companyFeatures.notesDefaultBold}
+          defaultGradeSize={companyFeatures.notesGradeSize}
           onOpenLead={(leadId) => openRecord('leads', leadId)}
           onShareInChat={shareInChat}
           printroom={canSendPrint ? masterPrintroomTransport : undefined}

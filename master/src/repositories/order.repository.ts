@@ -40,6 +40,7 @@ function baseQuery(
     .join('parties as pa', 'pa.id', 'o.party_id')
     .join('pipeline_stages as st', 'st.id', 'o.stage_id')
     .leftJoin('users as ow', 'ow.id', 'o.owner_id')
+    .leftJoin('users as cr', 'cr.id', 'o.created_by_user_id')
     .leftJoin('leads as ld', 'ld.id', 'o.lead_id')
     .where('o.tenant_id', tenantId)
     .select(
@@ -48,6 +49,7 @@ function baseQuery(
       'st.name as stage_name',
       'st.sequence as stage_sequence',
       'ow.display_name as owner_name',
+      'cr.display_name as created_by_name',
       'ld.created_at as lead_created_at',
       'ld.po_number as po_number',
     );

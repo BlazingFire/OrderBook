@@ -310,6 +310,33 @@ export function SubProductsScreen({
     }
   }
 
+  /**
+   * The default packaging, settable from the row itself beside Print side (owner,
+   * 2026-11-18): what a line of this sub product is entered with, so the counter
+   * does not pick the same value on every order. A one-field patch, like
+   * `setPrintSide`.
+   */
+  async function setDefaultPackaging(product: Product, defaultPackaging: string): Promise<void> {
+    const value = defaultPackaging || null;
+    setPage((current) =>
+      current
+        ? {
+            ...current,
+            items: current.items.map((row) =>
+              row.id === product.id ? { ...row, defaultPackaging: value } : row,
+            ),
+          }
+        : current,
+    );
+    try {
+      await transportRef.current.updateProduct(product.id, { name: product.name, defaultPackaging: value });
+      toast.push(t('product.updated', { name: product.name }));
+    } catch (caught) {
+      toast.push(apiErrorText(caught, 'product.createFailed'), { tone: 'error' });
+      setRefetch((current) => current + 1);
+    }
+  }
+
   function onCreated(product: CreatedProduct): void {
     setDrawerOpen(false);
     onImported?.();
@@ -535,6 +562,38 @@ export function SubProductsScreen({
           </span>
         ) : (
           printSideLabel(product.printSide)
+        ),
+    },
+    {
+      // The packaging a line starts with, so lead entry stops asking (owner, 2026-11-18).
+      key: 'defaultPackaging',
+      header: t('catalog.products.column.defaultPackaging'),
+      priority: 3,
+      width: rem(160),
+      render: (product) =>
+        canEdit ? (
+          <span
+            onClick={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <select
+              className="ob-input"
+              value={product.defaultPackaging ?? ''}
+              aria-label={`${t('product.defaultPackaging.label')} — ${product.name}`}
+              onChange={(event) => void setDefaultPackaging(product, event.target.value)}
+            >
+              <option value="">{t('product.defaultPackaging.none')}</option>
+              {view.optionLists
+                .filter((option) => option.listKey === 'line.packaging' && option.isActive)
+                .map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+            </select>
+          </span>
+        ) : (
+          product.defaultPackaging ?? '—'
         ),
     },
     ...(canEdit || canDelete

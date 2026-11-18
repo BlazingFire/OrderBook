@@ -188,6 +188,12 @@ catalogue's original rule — a purely numeric name prints right (Code), anythin
 else left (Model) — so a catalogue nobody has re-sided prints as it always did.
 A line freezes the resolved side at add time.
 
+`products.default_packaging` (added by `20261118000000_note_dealer_and_grade_size`,
+nullable) is the packaging a line of this sub product **starts** with, so the
+counter stops picking the same value on every order. It is a starting value
+only: the line carries its own packaging and anyone may change it there. NULL
+means the line asks, which is what every product did before the column existed.
+
 **What a product is, since 2026-09-21** (`HANDOFF.md` Key decision 15), as
 `20261116000000_sub_product_code_colours_print_side` leaves it:
 
@@ -204,6 +210,7 @@ CREATE TABLE products (
   weight_kg      NUMERIC(10,3),                          -- per piece, nullable while unknown
   colours        JSONB NOT NULL DEFAULT '[]'::jsonb,     -- the colour list it is offered in
   print_side     TEXT NOT NULL DEFAULT 'default',        -- 'default' | 'left' | 'right'
+  default_packaging TEXT,                                -- a line's starting packaging, NULL asks each time
   sort_order     INTEGER,                                -- since 2026-09-29: catalogue order inside the category
   custom_fields  JSONB NOT NULL DEFAULT '{}',            -- values of admin-defined fields
   -- plumbing

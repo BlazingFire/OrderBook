@@ -80,6 +80,7 @@ export function ProductEditScreen({
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [colours, setColours] = useState<string[]>([]);
   const [printSide, setPrintSide] = useState<PrintSideSetting>('default');
+  const [defaultPackaging, setDefaultPackaging] = useState('');
   const [busy, setBusy] = useState(false);
   const baseline = useFormBaseline<unknown>();
 
@@ -104,11 +105,13 @@ export function ProductEditScreen({
       },
       colours: [...product.colours],
       printSide: product.printSide,
+      defaultPackaging: product.defaultPackaging ?? '',
     };
     baseline.mark(loaded);
     setDraft(loaded.draft);
     setColours(loaded.colours);
     setPrintSide(loaded.printSide);
+    setDefaultPackaging(loaded.defaultPackaging);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product.id]);
 
@@ -136,6 +139,7 @@ export function ProductEditScreen({
       weightKg: toNumber(draft.weightKg),
       colours: colours.map((colour) => colour.trim()).filter(Boolean),
       printSide,
+      defaultPackaging: defaultPackaging || null,
     };
     try {
       validateProductInput(input);
@@ -161,7 +165,7 @@ export function ProductEditScreen({
 
   useUnsavedWork(
     'product-form',
-    baseline.dirty({ draft, colours, printSide })
+    baseline.dirty({ draft, colours, printSide, defaultPackaging })
       ? { label: t('updates.saveAll.product', { name: draft.name.trim() || '…' }), save }
       : null,
   );
@@ -266,6 +270,29 @@ export function ProductEditScreen({
                 {t('product.printSide.hint')}
               </span>
             </div>
+          )}
+        </Field>
+        <Field
+          label={t('product.defaultPackaging.label')}
+          span={3}
+          hint={t('product.defaultPackaging.hint')}
+        >
+          {(id) => (
+            <select
+              id={id}
+              className="ob-input"
+              value={defaultPackaging}
+              onChange={(event) => setDefaultPackaging(event.target.value)}
+            >
+              <option value="">{t('product.defaultPackaging.none')}</option>
+              {optionLists
+                .filter((option) => option.listKey === 'line.packaging' && option.isActive)
+                .map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+            </select>
           )}
         </Field>
       </FieldGroup>

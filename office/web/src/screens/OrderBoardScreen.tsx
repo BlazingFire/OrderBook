@@ -307,6 +307,14 @@ export function OrderBoardScreen({
             : undefined
         }
         defaultBold={notesDefaultBold}
+        defaultGradeSize={resolveCompanyFeatures(view.features).notesGradeSize}
+        onSaveNoteSettings={
+          canEdit && !openOrder.dispatchedAt
+            ? async (settings) => {
+                await api.updateOrder(openOrder.id, settings);
+              }
+            : undefined
+        }
         onBack={() => setNote(null)}
         desktop={desktopBridge() ?? undefined}
         printroom={printroom}

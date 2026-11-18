@@ -106,7 +106,9 @@ export function factsOfProduct(
 
 /**
  * The card's rows for a chosen product: every sub product, in catalogue order, one row each.
- * Packaging starts empty on purpose (§3.2): the party's saved packaging is offered, never applied.
+ * Packaging starts from the sub product's own default when it has one (so the counter does
+ * not pick the same value on every order); otherwise empty, where the party's saved
+ * packaging is offered but never applied (§3.2).
  */
 export function buildRows(subProducts: readonly Product[], options: BuildRowsOptions): GridRow[] {
   return subProducts.map((product) => ({
@@ -118,7 +120,7 @@ export function buildRows(subProducts: readonly Product[], options: BuildRowsOpt
     weightKg: product.weightKg,
     colour: '',
     qty: '',
-    packaging: '',
+    packaging: product.defaultPackaging ?? '',
     grade: '',
   }));
 }

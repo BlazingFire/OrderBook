@@ -27,6 +27,7 @@ describe('resolveCompanyFeatures', () => {
       sellTodayPopup: SETTINGS['notices.showSellToday'].fallback,
       productSlideshow: SETTINGS['basicHome.productSlideshow'].fallback,
       notesDefaultBold: SETTINGS['notes.defaultBold'].fallback,
+      notesGradeSize: SETTINGS['notes.gradeSize'].fallback,
     });
   });
 

@@ -75,6 +75,36 @@ export function cleanNoteColumns(value: unknown): { value: NoteColumns | null } 
   return { value: columns };
 }
 
+/** The sizes `notes.gradeSize` and an order's own grade size may hold, in pixels. */
+export const NOTE_GRADE_SIZE_MIN = 5;
+export const NOTE_GRADE_SIZE_MAX = 20;
+
+/**
+ * A dealer code as a write path stores it: null clears the override (the
+ * party's own code then prints), a string is trimmed and upper-cased. Blank is
+ * null rather than an empty override, so a cleared field means "the party".
+ */
+export function cleanDealerCode(value: string | null | undefined): string | null {
+  const text = (value ?? '').trim().toUpperCase();
+  return text === '' ? null : text;
+}
+
+/**
+ * A grade text size as a write path stores it: null follows the company
+ * setting, otherwise a whole number of pixels in range. Anything else is
+ * refused with a validation key, so a hand-built request cannot store a size
+ * the sheet cannot print.
+ */
+export function cleanGradeSize(value: number | null | undefined): { value: number | null } | { errorKey: MessageKey } {
+  if (value === null || value === undefined) return { value: null };
+  if (typeof value !== 'number' || !Number.isFinite(value)) return { errorKey: 'validation.noteGradeSize.invalid' };
+  const size = Math.round(value);
+  if (size < NOTE_GRADE_SIZE_MIN || size > NOTE_GRADE_SIZE_MAX) {
+    return { errorKey: 'validation.noteGradeSize.invalid' };
+  }
+  return { value: size };
+}
+
 /** What a note is printed from: a pending order (a lead) or a final order. */
 export type NoteSource = 'lead' | 'order';
 
@@ -104,6 +134,19 @@ export interface NoteDocument {
   header: NoteHeader;
   partyName: string;
   party: NotePartyHeader | null;
+  /**
+   * The dealer code printed in the header: the order's own override when it
+   * has one, else the party's `partyCode`. Null prints no dealer line at all.
+   */
+  dealerCode?: string | null;
+  /** The account that created the record, printed at the foot. Null prints nothing. */
+  createdByName?: string | null;
+  /**
+   * The grade's text size in pixels: the order's own override, else the
+   * company `notes.gradeSize`, else the sheet's built-in size. Absent is the
+   * sheet's own (`--note-grade`).
+   */
+  gradeSize?: number;
   vehicleNumber: string | null;
   /** The record's notes, printed above the signatures. Absent on jobs frozen before notes were printed. */
   notes?: string | null;
@@ -387,9 +430,16 @@ export function noteBrandCode(brand: string): string {
   return brand.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase();
 }
 
-/** What the named half prints for a line: the sub product, and its size when the name does not carry it already. */
+/**
+ * What the named half prints for a line: the sub product alone.
+ *
+ * The size used to ride behind it (`9", L-27, B-14, H-25`), which wrapped a
+ * row onto two lines and moved the columns beside it. The owner took it off the
+ * sheet (2026-11-18): a note is a picking list, and the size is read on the
+ * screen it is printed from.
+ */
 export function namedLabel(line: NoteLine): string {
-  return line.size && !line.subProduct.includes(line.size) ? `${line.subProduct} ${line.size}` : line.subProduct;
+  return line.subProduct;
 }
 
 /** A named row's height: taller when its label (and room for a brand chip) wraps past two lines. */
@@ -398,9 +448,9 @@ export function namedRowHeight(line: NoteLine): number {
   return Math.ceil(chars / NOTE_LAYOUT.namedCharsPerLine) > 2 ? NOTE_LAYOUT.rowNamedTall : NOTE_LAYOUT.rowNamed;
 }
 
+/** The coded side's group header: the main product alone — the size came off the sheet (2026-11-18). */
 function productLabel(line: LineItem): string {
-  const label = [line.categoryName, line.size].filter(Boolean).join(' ').trim();
-  return label || line.productName;
+  return line.categoryName?.trim() || line.productName;
 }
 
 function compareLines(a: NoteLine, b: NoteLine): number {
@@ -533,6 +583,11 @@ export function noteDocument(
   labelOf: ColourLabelOf = (colour) => colour,
   /** The sender's Bold tick; the printroom sheet prints exactly this. */
   bold?: boolean | null,
+  /**
+   * The company's grade text size (`notes.gradeSize`). The record's own
+   * `noteGradeSize` still wins over it.
+   */
+  gradeSize?: number,
 ): NoteDocument {
   return {
     header: noteHeader(record, source),
@@ -540,6 +595,11 @@ export function noteDocument(
     party: party
       ? { partyCode: party.partyCode, city: party.city, phone: party.phone, gstNumber: party.gstNumber }
       : null,
+    // The order's own override wins; else the party's code, as before. A record
+    // that is not a Lead/Order (a test double) simply has neither.
+    dealerCode: (record as { dealerCode?: string | null }).dealerCode ?? party?.partyCode ?? null,
+    createdByName: (record as { createdByName?: string | null }).createdByName ?? null,
+    gradeSize: (record as { noteGradeSize?: number | null }).noteGradeSize ?? gradeSize,
     vehicleNumber,
     notes: record.notes ?? null,
     columns: parseNoteColumns(record.noteColumns ?? null),
@@ -633,11 +693,17 @@ function fillColumns(
   return { columns, next: { group, line }, placed };
 }
 
-/** What a code cell prints above its code: its product, its size, or nothing (`NoteSlot.labelled`, `sized`). */
+/**
+ * What a code cell prints above its code: its product, or nothing (`NoteSlot.labelled`).
+ *
+ * `slot.sized` used to print the size here, which is what the owner struck off
+ * the sheet (2026-11-18) — a "9\", L-27, B-14, H-25" over every code in a
+ * product that came in several sizes. The note no longer captions by size at
+ * all; a sized group still gets the taller row, so the line the size used to
+ * take is breathing room rather than a wrap.
+ */
 export function noteCellCaption(slot: Extract<NoteSlot, { kind: 'row' }>, line: NoteLine): string | null {
-  if (slot.labelled) return line.product;
-  if (slot.sized) return line.size ?? '—';
-  return null;
+  return slot.labelled ? line.product : null;
 }
 
 /** A line of codes' printed height: taller when its cells carry a caption. */

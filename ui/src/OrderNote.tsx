@@ -52,6 +52,15 @@ export interface OrderNoteProps {
   header: NoteHeader;
   party: NotePartyHeader | null;
   partyName: string;
+  /**
+   * The dealer code the header prints: the order's own override, else the
+   * party's `partyCode`. Null/absent prints no dealer line.
+   */
+  dealerCode?: string | null;
+  /** The account that created the record, printed at the foot. Absent prints nothing. */
+  createdByName?: string | null;
+  /** The grade's text size in pixels (`notes.gradeSize`, or this order's own). */
+  gradeSize?: number;
   vehicleNumber: string;
   /** The record's notes, printed on the last page; blank lines to write on when empty. */
   notes: string | null;
@@ -256,6 +265,8 @@ function Header({ props, page }: { props: OrderNoteProps; page: NotePage }) {
   const filling = kind === 'filling';
   const title = filling ? t('orderNote.filling') : t('orderNote.dispatch');
   const printed = stamp(props.printedAt);
+  // The order's own dealer code wins over the party's; either may be absent.
+  const showDealer = props.dealerCode?.trim() || party?.partyCode || null;
 
   if (!page.isFirst) {
     return (
@@ -289,10 +300,10 @@ function Header({ props, page }: { props: OrderNoteProps; page: NotePage }) {
       <div style={{ minWidth: 0 }}>
         <div className="ob-note-party ob-note-clip">{partyName}</div>
         {meta && <div className="ob-note-party-meta ob-note-clip">{meta}</div>}
-        {party?.partyCode && (
+        {showDealer && (
           <span className="ob-note-dealer">
             <span className="ob-note-eyebrow">{t('orderNote.dealer')}</span>
-            <span className="ob-note-dealer-code">{party.partyCode}</span>
+            <span className="ob-note-dealer-code">{showDealer}</span>
           </span>
         )}
       </div>
@@ -398,14 +409,22 @@ function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
         </div>
       )}
       {page.isLast && (
-        <div className="ob-note-sign">
-          {signatures.map((label) => (
-            <div className="ob-note-sign-slot" key={label}>
-              <div className="ob-note-sign-line" />
-              <div className="ob-note-eyebrow">{label}</div>
+        <>
+          <div className="ob-note-sign">
+            {signatures.map((label) => (
+              <div className="ob-note-sign-slot" key={label}>
+                <div className="ob-note-sign-line" />
+                <div className="ob-note-eyebrow">{label}</div>
+              </div>
+            ))}
+          </div>
+          {props.createdByName && (
+            <div className="ob-note-created-by">
+              <span className="ob-note-eyebrow">{t('orderNote.createdBy')}</span>
+              <span className="ob-note-created-by-name">{props.createdByName}</span>
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
       {filling && <Strip props={props} page={page} position="bottom" />}
     </section>
@@ -413,8 +432,12 @@ function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
 }
 
 export function OrderNote(props: OrderNoteProps) {
+  // The company's (or this order's) grade size, as the one number the sheet reads.
+  const vars = props.gradeSize
+    ? ({ ...LAYOUT_VARS, '--note-grade-size': `${props.gradeSize}px` } as CSSProperties)
+    : LAYOUT_VARS;
   return (
-    <div className={props.bold === false ? 'ob-note-scope' : 'ob-note-scope ob-note--bold'} style={LAYOUT_VARS}>
+    <div className={props.bold === false ? 'ob-note-scope' : 'ob-note-scope ob-note--bold'} style={vars}>
       {props.pages.map((page) => (
         <Sheet key={page.pageNo} props={props} page={page} />
       ))}
