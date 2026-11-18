@@ -73,7 +73,9 @@ import { LoadMorePager } from './CursorPager.js';
 import { ProductDetail, SubProductColour } from './ProductDetail.js';
 import { useCommand } from './KeyboardProvider.js';
 import { ProductDrawer, type CreatedProduct } from './ProductDrawer.js';
+import { Segmented } from './Tabs.js';
 import { rem } from './rem.js';
+import { printSideLabel, printSideOptions } from './printSide.js';
 import { Select } from './SuggestInput.js';
 import { EmptyState, ErrorState, SkeletonTable } from './States.js';
 import { useSubNav } from './SubNavSlot.js';
@@ -516,33 +518,23 @@ export function SubProductsScreen({
       key: 'printSide',
       header: t('catalog.products.column.printSide'),
       priority: 2,
-      width: rem(128),
+      width: rem(272),
       render: (product) =>
         canEdit ? (
           <span
             onClick={(event) => event.stopPropagation()}
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <Select
+            <Segmented<PrintSideSetting>
               value={product.printSide}
-              aria-label={`${t('product.printSide.label')} — ${product.name}`}
-              onChange={(event) =>
-                void setPrintSide(product, event.target.value as PrintSideSetting)
-              }
-            >
-              <option value="default">{t('product.printSide.default')}</option>
-              <option value="left">{t('product.printSide.left')}</option>
-              <option value="right">{t('product.printSide.right')}</option>
-            </Select>
+              label={`${t('product.printSide.label')} — ${product.name}`}
+              options={printSideOptions()}
+              fill
+              onChange={(next) => void setPrintSide(product, next)}
+            />
           </span>
         ) : (
-          t(
-            product.printSide === 'left'
-              ? 'product.printSide.left'
-              : product.printSide === 'right'
-                ? 'product.printSide.right'
-                : 'product.printSide.default',
-          )
+          printSideLabel(product.printSide)
         ),
     },
     ...(canEdit || canDelete

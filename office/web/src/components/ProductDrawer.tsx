@@ -47,6 +47,7 @@ import {
   Input,
   Modal,
   NumberInput,
+  printSideOptions,
   Segmented,
   Select,
   SuggestInput,
@@ -356,11 +357,7 @@ export function ProductDrawer({
               >
                 <Segmented<PrintSideSetting>
                   value={printSide}
-                  options={[
-                    { value: 'default', label: t('product.printSide.default') },
-                    { value: 'left', label: t('product.printSide.left') },
-                    { value: 'right', label: t('product.printSide.right') },
-                  ]}
+                  options={printSideOptions()}
                   onChange={(next) => setPrintSide(next)}
                 />
                 <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>

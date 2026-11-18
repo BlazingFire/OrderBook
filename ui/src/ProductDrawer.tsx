@@ -59,6 +59,7 @@ import { useFormBaseline, useUnsavedWork } from './unsavedWork.js';
 import { Modal } from './Modal.js';
 import { rem } from './rem.js';
 import { Segmented } from './Tabs.js';
+import { printSideOptions } from './printSide.js';
 import { Select, SuggestInput } from './SuggestInput.js';
 import { useEnterToAdvance } from './useEnterToAdvance.js';
 
@@ -356,11 +357,7 @@ export function ProductDrawer({
               >
                 <Segmented<PrintSideSetting>
                   value={printSide}
-                  options={[
-                    { value: 'default', label: t('product.printSide.default') },
-                    { value: 'left', label: t('product.printSide.left') },
-                    { value: 'right', label: t('product.printSide.right') },
-                  ]}
+                  options={printSideOptions()}
                   onChange={(next) => setPrintSide(next)}
                 />
                 <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>

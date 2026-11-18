@@ -74,15 +74,18 @@ product → sub product stands.
 `product_variants` left dormant; every current sub product on Default),
 Master repositories/services/sync/conflict restore, catalogue file + parser +
 seed on `Colours | Print side` columns, Office snapshot/pick, dead Rust sheet
-importer deleted, both panels' forms, lists (Print side select beside Edit)
-and lead entry. Legacy panels' queued `variants` payloads convert at the
-catalog service and the offline merge; a bogus legacy `variantId` on a line
-is dropped, never stored.
+importer deleted, both panels' forms, lists and lead entry. **The Print side
+cell of the sub-product list is a three-segment control** (the kit's
+`Segmented`, filling its cell — `ui/src/printSide.ts` holds the one set of
+labels), not a dropdown: one click picks a side, and the form and drawer
+already used the same control. Legacy panels' queued `variants` payloads
+convert at the catalog service and the offline merge; a bogus legacy
+`variantId` on a line is dropped, never stored.
 
 **Gate (2026-11-17, this machine):** `npm run lint` 0, `npm run typecheck` 0
 (every workspace, both test tsconfigs, both Electron shells), `npm run build` 0,
 `npm run test` exit 0: **402 files passed + 1 skipped** (the Windows-only
-`release-workflow`), **5292 tests passed + 17 skipped**, **113 integration
+`release-workflow`), **5294 tests passed + 17 skipped**, **113 integration
 suites ran on PostgreSQL 17** (not skipped). Fixes on the way: a line search's
 subtitle now names the line's own `colour` (it read only `variant_label`), and
 the order record's dead "Variant" column is gone from both panels. Docs pass:

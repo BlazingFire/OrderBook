@@ -284,6 +284,54 @@ describe('the sub-product list', () => {
     expect(screen.queryByText(/stock/i)).toBeNull();
   });
 
+  it('offers the print side in the row as three segments, and saves the one pressed', async () => {
+    const transport = makeTransport({
+      listProducts: vi.fn(async () => ({
+        items: [subProduct('p-1', 'c-opt', { name: 'Aqua', printSide: 'left' })],
+        total: 1,
+        limit: 100,
+        offset: 0,
+      })),
+    });
+    renderList(viewOf({ permissions: ['products.view', 'products.edit'] }), transport);
+
+    const group = await screen.findByRole('group', {
+      name: `${t('product.printSide.label')} — Aqua`,
+    });
+    const segments = within(group).getAllByRole('button');
+    expect(segments.map((segment) => segment.textContent)).toEqual([
+      t('product.printSide.default'),
+      t('product.printSide.left'),
+      t('product.printSide.right'),
+    ]);
+    // The stored setting is the one shown as chosen.
+    expect(segments[1]!.getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.click(segments[2]!);
+    await waitFor(() =>
+      expect(transport.updateProduct).toHaveBeenCalledWith('p-1', {
+        name: 'Aqua',
+        printSide: 'right',
+      }),
+    );
+  });
+
+  it('shows the print side as a word, with no control, to a reader who may not edit', async () => {
+    const transport = makeTransport({
+      listProducts: vi.fn(async () => ({
+        items: [subProduct('p-1', 'c-opt', { name: 'Aqua', printSide: 'right' })],
+        total: 1,
+        limit: 100,
+        offset: 0,
+      })),
+    });
+    renderList(viewOf(), transport);
+
+    const row = (await screen.findByText('Aqua')).closest('tr') as HTMLElement;
+    expect(row.textContent).toContain(t('product.printSide.right'));
+    expect(within(row).queryByRole('group')).toBeNull();
+  });
+
   it('offers no New or Import without products.create / products.bulk, and no Edit or photo controls without products.edit', async () => {
     const transport = makeTransport({
       listProducts: vi.fn(async () => ({

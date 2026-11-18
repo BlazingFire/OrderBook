@@ -69,6 +69,7 @@ export function Segmented<T extends string>({
   onChange,
   label,
   disabled,
+  fill,
 }: {
   options: { value: T; label: string }[];
   value: T;
@@ -76,9 +77,14 @@ export function Segmented<T extends string>({
   /** The group's accessible name ("Access level for Ravi"); without it a screen reader hears only "group". */
   label?: string;
   disabled?: boolean;
+  /**
+   * Fill the width given to it and drop the track — for a control that *is*
+   * a table cell rather than a chip on one (`.ob-seg--fill`).
+   */
+  fill?: boolean;
 }) {
   return (
-    <div className="ob-seg" role="group" aria-label={label}>
+    <div className={fill ? 'ob-seg ob-seg--fill' : 'ob-seg'} role="group" aria-label={label}>
       {options.map((opt) => (
         <button
           key={opt.value}

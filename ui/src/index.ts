@@ -136,6 +136,7 @@ export * from './i18n.js';
 export * from './icons.js';
 export * from './logoCells.js';
 export * from './permissionLabels.js';
+export * from './printSide.js';
 export * from './rem.js';
 export * from './errorText.js';
 export * from './sessionEnded.js';
