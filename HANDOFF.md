@@ -52,14 +52,14 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
-## Variant system removed: sub product carries code, colours, print side (2026-11-16/17, committed, pushed, not merged)
+## Variant system removed: sub product carries code, colours, print side (2026-11-16/17, MERGED to main)
 
-**State:** branch `remove-variant-system`, committed as **`fc033aac`** and pushed
-to `origin/remove-variant-system`; **`main` is untouched** at `3cb016ae`, and the
-branch is not merged (owner's call). Gate green on that commit. Completed in
-Command Code from the pickup brief `docs/ai-handoffs/variant-removal.md`, now
-deleted; what is durable is here and in `docs/AI_COLLABORATION.md`'s
-2026-11-17 entry (files touched, traps).
+**State:** `main` carries it as merge `649a86d8` (the two commits `4a060c39` +
+`f5f319a2` on `remove-variant-system`), pushed; `origin/main` matches. The
+branch is still on disk and on `origin`, safe to delete once the owner says so.
+Gate green on the merged tree. Completed in Command Code from the pickup brief
+`docs/ai-handoffs/variant-removal.md`, now deleted; what is durable is here and
+in `docs/AI_COLLABORATION.md`'s 2026-11-17 entries (files touched, traps).
 
 **The decision (owner, 2026-11-16):** no variants anywhere. A sub product is
 picked after its Product, offers its own list of colours (dropdown at entry
@@ -93,8 +93,9 @@ the order record's dead "Variant" column is gone from both panels. Docs pass:
 `docs/schema/03-leads-orders-inventory.md`, `docs/schema/00-overview.md`,
 `docs/STRUCTURE.md`.
 
-**Merging:** when the owner wants it, `git checkout main && git merge --no-ff
-remove-variant-system`, then delete the branch locally and on `origin`.
+**Merging:** done. `main` is `649a86d8`, merged with `--no-ff` from
+`remove-variant-system` and pushed. Deleting the branch (locally and on
+`origin`) is the owner's call, not done here.
 
 **Traps:** the migration has already run on this machine's dev database (boot
 log 2026-11-17) — its products carry the new columns; do not "fix" that by
