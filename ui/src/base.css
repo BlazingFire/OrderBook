@@ -1073,6 +1073,28 @@ html[data-motion='off'] .ob-donut-arc {
 }
 
 /*
+ * The same control inside a table cell, where it fills the column instead of
+ * sitting on a track: the owner's sub-product list shows Default · Left · Right
+ * as three touching cells, the chosen one raised. Each segment takes an equal
+ * share, so the three read as one cell rather than three chips.
+ */
+.ob-seg--fill {
+  display: flex;
+  width: 100%;
+  padding: 0;
+  border-radius: var(--r-sm);
+}
+.ob-seg--fill > button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 var(--s-4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: var(--r-sm);
+}
+
+/*
  * A screen's own control in the topbar's trailing cluster, set apart from the
  * app-wide ones by a hairline so the two groups do not read as one row of
  * unrelated buttons.

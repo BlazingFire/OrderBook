@@ -162,30 +162,34 @@ lower(name))`), text ids since `20260302`.
 existed. On a database made before it every brand is NULL, so the new name index is
 exactly as strict as the old one and could not fail on existing rows.
 
-## `products` (the model — the owner's "Sub product")
+## `products` (the sub product)
 
-A row is a **model** — DAMRU, 102, HEXA URINAL — the thing a category lists and a
-name is typed for. It carries no code and no weight: those belong to its
-variants (next section), and a model with no colour or pattern choices has
-exactly one variant.
+A row is a **sub product** — DAMRU, 102, HEXA URINAL — the thing a category lists,
+a name is typed for and a lead line quotes. **Since 2026-11-17 the variant layer
+is gone:** the row carries its own software code, weight, colour offers and print
+side. `product_variants` stays in the database, dormant, and only a line written
+before the removal still references it (`docs/catalogue/CATALOGUE_MODEL.md` §2).
 
-**Since catalogue v2 (2026-09-29) every catalogue model is a sub product with exactly
-one variant.** Its printed identifier is `products.name` (`102`, `1111`,
-`MAGENTA`); its software code is that variant's `code` (`OPT-0001`, the category code and
-a four-digit number in catalogue order); `sort_order` is its place in the catalogue.
-The owner's colour rule is **derived, never stored** (`colourRuleOf` in
-`shared/src/domain/colour-rule.ts`):
+Its printed identifier is `products.name` (`102`, `1111`, `MAGENTA`); its software
+code is `products.code` (`OPT-0001`, the category code and a four-digit number in
+catalogue order); `sort_order` is its place in the catalogue.
 
-| Rule | Stored as | A lead line's colour |
-|---|---|---|
-| `fixed` | `has_variants = true`, one variant whose `label` is the colour (White, Rustic Coffee Brown) | none — the label is the colour; shown unless it only repeats the name (`MAGENTA` / Magenta) |
-| `dedicated` | `has_variants = false`, `multi_colour = false`, one variant with `label` NULL | none, and never shown |
-| `selectable` ("multicolour") | `multi_colour = true`, `has_variants = false`, one variant with `label` NULL | chosen from `stock.colour`; several colours = several lines |
+**Colours are the list on the row, and print side is a setting** — neither is
+derived (`shared/src/domain/colour-rule.ts`):
 
-`multi_colour` wins, then a non-blank first label means `fixed`, else `dedicated`. There
-is no colour-rule column and no sentinel colour value.
+| `products.colours` | A lead line's colour |
+|---|---|
+| none | none, and never shown |
+| one (White, Rustic Coffee Brown) | that colour; shown unless it only repeats the name (`MAGENTA` / Magenta) |
+| several ("every colour") | the one chosen on the line from this list; several colours = several lines |
 
-**What a product is, since 2026-09-21** (`HANDOFF.md` Key decision 15):
+`products.print_side` is `default`, `left` or `right`. `default` keeps the
+catalogue's original rule — a purely numeric name prints right (Code), anything
+else left (Model) — so a catalogue nobody has re-sided prints as it always did.
+A line freezes the resolved side at add time.
+
+**What a product is, since 2026-09-21** (`HANDOFF.md` Key decision 15), as
+`20261116000000_sub_product_code_colours_print_side` leaves it:
 
 ```sql
 -- The live shape. Everything above the plumbing line is what a person fills in.
@@ -196,8 +200,10 @@ CREATE TABLE products (
   category_id    TEXT NOT NULL REFERENCES product_categories(id),
   alias          TEXT,                                   -- a short counter name
   size           TEXT,                                   -- free text: '9" · L-27 B-15 H-26', '18x12'
-  has_variants   BOOLEAN NOT NULL DEFAULT false,         -- the form's "comes in variants" switch
-  multi_colour   BOOLEAN NOT NULL DEFAULT false,         -- made in every colour of the colour list
+  code           TEXT,                                   -- the software code, OPT-0001 (unique among live rows)
+  weight_kg      NUMERIC(10,3),                          -- per piece, nullable while unknown
+  colours        JSONB NOT NULL DEFAULT '[]'::jsonb,     -- the colour list it is offered in
+  print_side     TEXT NOT NULL DEFAULT 'default',        -- 'default' | 'left' | 'right'
   sort_order     INTEGER,                                -- since 2026-09-29: catalogue order inside the category
   custom_fields  JSONB NOT NULL DEFAULT '{}',            -- values of admin-defined fields
   -- plumbing
@@ -206,7 +212,7 @@ CREATE TABLE products (
   hlc            TEXT,
   field_hlc      JSONB NOT NULL DEFAULT '{}',
   temporary_id   TEXT,
-  search_vector  tsvector,                               -- name, live variant codes + labels, alias, size
+  search_vector  tsvector,                               -- name, own code, colours, alias, size
   deleted_at     TIMESTAMPTZ,
   deleted_by     TEXT,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -219,22 +225,34 @@ CREATE INDEX idx_products_hlc      ON products (tenant_id, hlc);
 CREATE INDEX idx_products_deleted  ON products (tenant_id, deleted_at DESC, id DESC) WHERE deleted_at IS NOT NULL;
 CREATE INDEX idx_products_tenant   ON products (tenant_id);
 CREATE INDEX idx_products_name     ON products (lower(name));   -- from the initial schema; not tenant-scoped
+CREATE UNIQUE INDEX idx_products_code_tenant ON products (tenant_id, lower(code))
+  WHERE code IS NOT NULL AND deleted_at IS NULL;
 ```
 
-`multi_colour` marks a model the factory makes in any colour of the company's colour list
-(the `stock.colour` option list) — the catalogue prints "ALL COLOURS AVAILABLE IN ALL ITEMS"
-over its water closets, pedestal sets, urinals and pans. A lead line on such a model may name a
-colour (`line_items.colour`, `03-leads-orders-inventory.md`); the colour is a line attribute,
-not part of the variant key. Everything else that once sat on this table — `sin`, `grade`, `product_type`,
-`brand`, `barcode`, `hsn_code`, `uom`, every price column, the tile and ceramic attributes and
-the `parameters` bag — was dropped by `20260324000000_product_master_trim` at the owner's
-decision that a product is a name, a category, an alias, a size and its variants. No index
-makes a model's name unique — the codes that must be unique are on its variants. Since
-catalogue v2 the service refuses a second live sub product of the same name inside one
-category (`ConflictError`), because the name is what the lead PDF prints; the same name
-under two categories is fine (the SWISWARE catalogue has a `BLACK` sub product in eight
-products). Since 2026-10-09 the bulk import refuses one too (`validation.product.nameTaken`,
-for a create, a rename or a move); still no index, so twins made by older imports stay.
+`colours` is the colour list the factory offers it in — copied onto the row, not a
+live reference to the `stock.colour` option list, so curating the list later does
+not silently change what a sub product is offered in (the 13 former multicolour sub
+products took the list's values on the day of the removal). A lead line names one
+of them (`line_items.colour`, `03-leads-orders-inventory.md`); the colour is a line
+attribute. `code` is what the trade quotes: unique among live rows per tenant,
+digits-and-letters only, and the partial index is the enforcement. `weight_kg` is
+nullable on purpose — the catalogue carries no weights — and must be positive when
+given (`products_weight_check`, and `validateProductInput` before the row is
+reached). Everything else that once sat on this table — `sin`, `grade`, `product_type`,
+`brand`, `barcode`, `hsn_code`, `uom`, every price column, the tile and ceramic
+attributes, the `parameters` bag, and the variant-era `has_variants` / `multi_colour`
+switches — is gone. No index makes a model's name unique — the code is what must be
+unique. Since catalogue v2 the service refuses a second live sub product of the same
+name inside one category (`ConflictError`), because the name is what the lead PDF
+prints; the same name under two categories is fine (the SWISWARE catalogue has a
+`BLACK` sub product in eight products). Since 2026-10-09 the bulk import refuses one
+too (`validation.product.nameTaken`, for a create, a rename or a move); still no
+index, so twins made by older imports stay.
+
+`products_search_refresh()` (rewritten by the same migration) builds the vector
+from the row's own name, code, colours (via `jsonb_array_elements_text`), alias and
+size: weight A for name and code, A for the colours, B for the alias, C for the
+size.
 
 ### History: how the product master got here
 
@@ -250,13 +268,25 @@ for a create, a rename or a move); still no index, so twins made by older import
 | `20260324000000_product_master_trim` | Dropped 26 columns, every price among them, and the permission keys and option lists that went with them; added `multi_colour`. |
 | `20260323000000_catalogue_brands_and_codes` | Nothing: an empty body kept under a stale branch's name so the one database that ran its real body still boots (`HANDOFF.md`, "Traps"). Registered beside `product_variants`. |
 | `20260326000000_catalogue_brands_and_codes_port` | `sort_order`; on the category, `code`, `brand`, `sort_order`, `updated_at`, `deleted_at` and the two new unique indexes (above). Additive and idempotent; pinned last. |
+| `20261116000000_sub_product_code_colours_print_side` | **2026-11-17, the variant removal.** `products` gains `code`, `weight_kg`, `colours` (JSONB), `print_side` (with its CHECK) and the unique `idx_products_code_tenant`; `line_items` gains `print_side` and loses the NOT NULL on `variant_id`. Backfilled from each sub product's first variant; `products_search_refresh()` rewritten and the variant search trigger dropped. `product_variants` is left in place, dormant. `has_variants` / `multi_colour` stay as dead columns (migrations only add). |
 
 One rule from the trade-attribute pass still governs any attribute added later:
 **columns** for anything indexed, constrained, arithmetic or standard-defined;
 **option lists** for vocabularies staff extend; **custom fields** for neither. A new
 brand arrives with a new supplier and must not need a migration.
 
-### Product variants (2026-09-19)
+### Product variants (2026-09-19 — dormant since 2026-11-17)
+
+> **Dormant.** Nothing writes this table any more: on 2026-11-17 the variant
+> layer was removed from the software and a sub product carries its own `code`,
+> `weight_kg`, `colours` and `print_side` (above). The table and its rows stay
+> because migrations after 1.2.0 only add, and because a lead line written before
+> the removal still resolves its colour through `line_items.variant_id` and prints
+> from its own snapshots. The reads that remain are
+> `productRepo.findProductIdByLegacyVariantId` / `findProductIdByLegacyVariantCode`
+> (an old panel's queued line, an old code typed into a picker) and
+> `nextSubProductCodes`, which unions its codes so one is never handed out twice.
+> The paragraphs below are the design as it stood.
 
 `20260323000000_product_variants` moved the product master from a tile trade
 to a sanitaryware one — category → **model** → **variant** — where a model

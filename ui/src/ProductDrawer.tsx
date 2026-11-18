@@ -10,11 +10,11 @@
  * message. Original header follows.
  *
  *
- * A product is a **model in a category** with one or more **variants**, and
- * every variant owns a code, a colour and a weight. The form says so in its
- * shape: the *Codes & weight* group is a switch — "Does this product come in
- * variants?" — and either one code-and-weight pair (No) or a table of colour ·
- * code · weight rows (Yes). Nothing else on the form knows about codes.
+ * A product is a **model in a category** carrying its own code, weight, the
+ * colours it is offered in and its print side. The form says so in its
+ * shape: one code-and-weight pair, a list of colours (none, one, or several
+ * the counter picks from in a dropdown), and a Default / Left / Right print
+ * side. Nothing else on the form knows about codes.
  *
  * In the owner's words the record is a **sub product** and its category is its
  * **product** (`docs/catalogue/CATALOGUE_MODEL.md` §1). The product is
@@ -29,32 +29,22 @@
  * read through it, so there is nothing to set here, and a sub product moves
  * brand only by moving product.
  *
- * *Made in every colour* is the second switch. Some models are made in any
- * colour of the company's colour list ("all colours available in all items"
- * in the catalogue), and nobody wants sixteen variants per model to say so:
- * with it on, a lead line on this product may name a colour from the list.
- *
- * The two switches are also what the catalogue's colour rule is read from
- * (§2) — multi-colour is "Multicolour", one labelled variant is a fixed
- * colour, one unlabelled variant is a numbered design — so the form needs no
- * rule picker of its own.
- *
- * That is the whole form: name, product, alias, size, the variants and the
- * colour switch. The product master carries nothing else (2026-09-21).
+ * That is the whole form: name, product, alias, size, code and weight, the
+ * colours and the print side. The product master carries nothing else
+ * (2026-09-21).
  *
  * The name is kept for its call sites; it is a modal.
  */
 
 import { useEffect, useRef, useState } from 'react';
-import type { KeyboardEvent } from 'react';
 import type {
   OptionListItem,
+  PrintSideSetting,
   Product,
   ProductCategory,
   ProductInput,
-  ProductVariantInput,
 } from '@orderbook/shared';
-import { ProductValidationError, validateProductVariants } from '@orderbook/shared';
+import { ProductValidationError, validateProductInput } from '@orderbook/shared';
 
 import { Button } from './Button.js';
 import { byCatalogueOrder, productLabel } from './catalogueSummary.js';
@@ -69,13 +59,14 @@ import { useFormBaseline, useUnsavedWork } from './unsavedWork.js';
 import { Modal } from './Modal.js';
 import { rem } from './rem.js';
 import { Segmented } from './Tabs.js';
+import { printSideOptions } from './printSide.js';
 import { Select, SuggestInput } from './SuggestInput.js';
 import { useEnterToAdvance } from './useEnterToAdvance.js';
 
 export interface CreatedProduct {
   id: string;
   name: string;
-  /** The first variant's code — what the catalogue shows for a one-form product. */
+  /** The sub product's code — what the catalogue shows. */
   code: string;
 }
 
@@ -85,7 +76,7 @@ interface ProductDrawerProps {
   product?: Product | null;
   /** The categories (the owner's products) this panel holds, for the product picker. */
   categories: ProductCategory[];
-  /** For the colour swatch beside a variant colour (`stock.colour`). */
+  /** For the colour swatch beside a colour (`stock.colour`). */
   optionLists: OptionListItem[];
   onClose: () => void;
   onCreated?: (product: CreatedProduct) => void;
@@ -99,23 +90,11 @@ const EMPTY = {
   categoryId: '',
   alias: '',
   size: '',
-  /** The one code and weight of a product with no variants. */
   code: '',
   weightKg: '',
 };
 
 type Draft = typeof EMPTY;
-
-/** One row of the variants table, as typed. */
-interface VariantRow {
-  /** The saved variant's id, kept so stock and lines stay pointed at it. */
-  id: string | null;
-  label: string;
-  code: string;
-  weightKg: string;
-}
-
-const EMPTY_ROW: VariantRow = { id: null, label: '', code: '', weightKg: '' };
 
 function toNumber(value: string): number | null {
   return value.trim() ? Number(value) : null;
@@ -140,17 +119,16 @@ export function ProductDrawer({
   const colourHex = useColourHex(optionLists);
 
   const [draft, setDraft] = useState<Draft>(EMPTY);
-  const [hasVariants, setHasVariants] = useState(false);
-  const [multiColour, setMultiColour] = useState(false);
-  const [rows, setRows] = useState<VariantRow[]>([EMPTY_ROW]);
+  const [colours, setColours] = useState<string[]>([]);
+  const [printSide, setPrintSide] = useState<PrintSideSetting>('default');
   const [busy, setBusy] = useState(false);
   const baseline = useFormBaseline<unknown>();
 
   const set = (field: keyof Draft, value: string): void =>
     setDraft((current) => ({ ...current, [field]: value }));
 
-  const setRow = (index: number, patch: Partial<VariantRow>): void =>
-    setRows((current) => current.map((row, at) => (at === index ? { ...row, ...patch } : row)));
+  const setColour = (index: number, value: string): void =>
+    setColours((current) => current.map((colour, at) => (at === index ? value : colour)));
 
   // Live products only, in catalogue order — the order the printed catalogue
   // and the lead screen's product bar use.
@@ -160,41 +138,24 @@ export function ProductDrawer({
   useEffect(() => {
     if (!open) return;
 
-    let loaded: { draft: Draft; hasVariants: boolean; multiColour: boolean; rows: VariantRow[] };
-    if (editing) {
-      const single = editing.variants[0];
-      loaded = {
-        draft: {
-          name: editing.name,
-          categoryId: editing.categoryId,
-          alias: editing.alias ?? '',
-          size: editing.size ?? '',
-          code: !editing.hasVariants && single ? single.code : '',
-          weightKg: !editing.hasVariants && single?.weightKg != null ? String(single.weightKg) : '',
-        },
-        hasVariants: editing.hasVariants,
-        multiColour: editing.multiColour,
-        // Deactivated variants stay off the table: they are history's, not the
-        // form's, and re-adding the same label brings the old row back.
-        rows: editing.hasVariants
-          ? editing.variants
-              .filter((variant) => variant.isActive)
-              .map((variant) => ({
-                id: variant.id,
-                label: variant.label ?? '',
-                code: variant.code,
-                weightKg: variant.weightKg != null ? String(variant.weightKg) : '',
-              }))
-          : [EMPTY_ROW],
-      };
-    } else {
-      loaded = { draft: EMPTY, hasVariants: false, multiColour: false, rows: [EMPTY_ROW] };
-    }
+    const loaded = editing
+      ? {
+          draft: {
+            name: editing.name,
+            categoryId: editing.categoryId,
+            alias: editing.alias ?? '',
+            size: editing.size ?? '',
+            code: editing.code,
+            weightKg: editing.weightKg != null ? String(editing.weightKg) : '',
+          },
+          colours: [...editing.colours],
+          printSide: editing.printSide,
+        }
+      : { draft: EMPTY, colours: [] as string[], printSide: 'default' as PrintSideSetting };
     baseline.mark(loaded);
     setDraft(loaded.draft);
-    setHasVariants(loaded.hasVariants);
-    setMultiColour(loaded.multiColour);
-    setRows(loaded.rows);
+    setColours(loaded.colours);
+    setPrintSide(loaded.printSide);
 
     // Keyed on the record's identity, not the record: an unrelated field
     // arriving through the event stream must not wipe a half-typed draft.
@@ -214,30 +175,6 @@ export function ProductDrawer({
     onClose();
   }
 
-  /** The variant set as the Master will receive it, from whichever half of the switch is showing. */
-  function variantInputs(): ProductVariantInput[] {
-    if (!hasVariants) {
-      const single = editing && !editing.hasVariants ? editing.variants[0] : undefined;
-      return [
-        {
-          ...(single ? { id: single.id } : {}),
-          code: draft.code.trim(),
-          label: null,
-          weightKg: toNumber(draft.weightKg),
-        },
-      ];
-    }
-    return rows
-      .filter((row) => row.label.trim() || row.code.trim() || row.weightKg.trim())
-      .map((row, index) => ({
-        ...(row.id ? { id: row.id } : {}),
-        code: row.code.trim(),
-        label: row.label.trim(),
-        weightKg: toNumber(row.weightKg),
-        sequence: index + 1,
-      }));
-  }
-
   /** True when the product was saved; false when it was refused or failed (the reason went to `onError`). */
   async function save(): Promise<boolean> {
     const name = draft.name.trim();
@@ -251,16 +188,6 @@ export function ProductDrawer({
       return false;
     }
 
-    const variants = variantInputs();
-    // The same rules the Master applies, so the refusal is immediate and names
-    // the row's problem rather than arriving as a 400 after the round trip.
-    try {
-      validateProductVariants(variants, hasVariants);
-    } catch (caught) {
-      onError(caught instanceof ProductValidationError ? t(caught.messageKey) : String(caught));
-      return false;
-    }
-
     const text = (field: keyof Draft): string | null => draft[field].trim() || null;
 
     const input: ProductInput = {
@@ -268,10 +195,20 @@ export function ProductDrawer({
       categoryId: draft.categoryId,
       alias: text('alias'),
       size: text('size'),
-      multiColour,
-      hasVariants,
-      variants,
+      code: draft.code.trim() || null,
+      weightKg: toNumber(draft.weightKg),
+      colours: colours.map((colour) => colour.trim()).filter(Boolean),
+      printSide,
     };
+
+    // The same rules the Master applies, so the refusal is immediate and
+    // names the problem rather than arriving as a 400 after the round trip.
+    try {
+      validateProductInput(input);
+    } catch (caught) {
+      onError(caught instanceof ProductValidationError ? t(caught.messageKey) : String(caught));
+      return false;
+    }
 
     setBusy(true);
     try {
@@ -280,9 +217,9 @@ export function ProductDrawer({
         onUpdated?.(name);
       } else {
         const result = await transportRef.current.createProduct(input);
-        onCreated?.({ id: result.id, name, code: variants[0]?.code ?? '' });
+        onCreated?.({ id: result.id, name, code: draft.code.trim() });
         setDraft(EMPTY);
-        baseline.mark({ draft: EMPTY, hasVariants, multiColour, rows });
+        baseline.mark({ draft: EMPTY, colours, printSide });
       }
       return true;
     } catch (caught) {
@@ -297,7 +234,7 @@ export function ProductDrawer({
   // is complete, and named if it is not.
   useUnsavedWork(
     'product-form',
-    open && baseline.dirty({ draft, hasVariants, multiColour, rows })
+    open && baseline.dirty({ draft, colours, printSide })
       ? { label: t('updates.saveAll.product', { name: draft.name.trim() || '…' }), save }
       : null,
   );
@@ -332,36 +269,8 @@ export function ProductDrawer({
     .filter((option) => option.listKey === 'stock.colour' && option.isActive)
     .map((option) => ({ value: option.value, label: option.label }));
 
-  /**
-   * Enter on a row's **last cell**: on to the next row, a new row after the
-   * last, or the save when the last row is still blank. Left to the walk,
-   * Enter on the last weight would save a half-typed table.
-   *
-   * The row's other two cells are deliberately not wired to this. It used to
-   * sit on all three, which meant Enter anywhere in a row jumped to the *next*
-   * row — so colour → code → weight could only be walked with Tab, and Enter
-   * on the colour of a single blank row ran the save and answered with a
-   * validation error about the code nobody had reached yet. Colour and code
-   * are ordinary steps of `useEnterToAdvance`, which walks them in DOM order;
-   * only the end of a row is this function's business.
-   */
-  function onRowKeyDown(event: KeyboardEvent<HTMLElement>, index: number): void {
-    if (event.key !== 'Enter' || event.defaultPrevented) return;
-    event.preventDefault();
-    const row = rows[index];
-    const blank = row && !row.label.trim() && !row.code.trim() && !row.weightKg.trim();
-    if (index < rows.length - 1) {
-      focusRow(index + 1);
-    } else if (blank) {
-      void save();
-    } else {
-      setRows((current) => [...current, EMPTY_ROW]);
-      window.setTimeout(() => focusRow(index + 1), 0);
-    }
-  }
-
-  function focusRow(index: number): void {
-    fields.current?.querySelector<HTMLInputElement>(`[data-variant-row="${index}"] input`)?.focus();
+  function focusColourRow(index: number): void {
+    fields.current?.querySelector<HTMLInputElement>(`[data-colour-row="${index}"] input`)?.focus();
   }
 
   return (
@@ -425,7 +334,18 @@ export function ProductDrawer({
         </FieldGroup>
 
         <FieldGroup title={t('product.group.codes')}>
-          <Field label={t('product.variants.hasVariants')} span={3}>
+          <Field label={t('product.field.code')} required>
+            {(id) => (
+              <Input
+                id={id}
+                value={draft.code}
+                className="ob-mono"
+                onChange={(event) => set('code', event.target.value)}
+              />
+            )}
+          </Field>
+          {numeric('weightKg', t('product.field.weight'), t('product.field.weightHint'))}
+          <Field label={t('product.printSide.label')} span={3}>
             {() => (
               <div
                 style={{
@@ -435,160 +355,105 @@ export function ProductDrawer({
                   gap: 'var(--s-12)',
                 }}
               >
-                <Segmented<'no' | 'yes'>
-                  value={hasVariants ? 'yes' : 'no'}
-                  options={[
-                    { value: 'no', label: t('product.variants.no') },
-                    { value: 'yes', label: t('product.variants.yes') },
-                  ]}
-                  onChange={(next) => setHasVariants(next === 'yes')}
+                <Segmented<PrintSideSetting>
+                  value={printSide}
+                  options={printSideOptions()}
+                  onChange={(next) => setPrintSide(next)}
                 />
                 <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                  {hasVariants ? t('product.variants.yesHint') : t('product.variants.noHint')}
+                  {t('product.printSide.hint')}
                 </span>
               </div>
             )}
           </Field>
+        </FieldGroup>
 
-          {!hasVariants && (
-            <>
-              <Field label={t('product.field.code')} required>
-                {(id) => (
-                  <Input
-                    id={id}
-                    value={draft.code}
-                    className="ob-mono"
-                    onChange={(event) => set('code', event.target.value)}
-                  />
-                )}
-              </Field>
-              {numeric('weightKg', t('product.field.weight'), t('product.field.weightHint'))}
-            </>
-          )}
-
-          {hasVariants && (
-            <div
-              style={{
-                gridColumn: '1 / -1',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: rem(6),
-              }}
-            >
+        <FieldGroup title={t('product.group.colours')}>
+          <div
+            style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: rem(6) }}
+          >
+            {colours.length > 0 && (
               <div
                 className="ob-eyebrow"
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: VARIANT_GRID,
+                  gridTemplateColumns: COLOUR_GRID,
                   gap: '0 var(--s-12)',
                   color: 'var(--fg-tertiary)',
                 }}
               >
-                <span>{t('product.variants.col.label')}</span>
-                <span>{t('product.variants.col.code')}</span>
-                <span>{t('product.variants.col.weight')}</span>
+                <span>{t('product.colours.col.label')}</span>
                 <span />
               </div>
-              {rows.map((row, index) => (
-                <div
-                  key={row.id ?? `new-${index}`}
-                  data-variant-row={index}
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: VARIANT_GRID,
-                    gap: '0 var(--s-12)',
-                    alignItems: 'center',
-                  }}
-                >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: rem(8), minWidth: 0 }}>
-                    <ColourChip hex={colourHex(row.label)} name={row.label || '—'} />
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <SuggestInput
-                        value={row.label}
-                        placeholder={t('product.variants.labelPlaceholder')}
-                        optionsLabel={t('lead.add.draft.showOptions', {
-                          field: t('product.variants.col.label'),
-                        })}
-                        options={colourOptions}
-                        onChange={(next) => setRow(index, { label: next })}
-                      />
-                    </span>
+            )}
+            {colours.map((colour, index) => (
+              <div
+                key={index}
+                data-colour-row={index}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: COLOUR_GRID,
+                  gap: '0 var(--s-12)',
+                  alignItems: 'center',
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: rem(8), minWidth: 0 }}>
+                  <ColourChip hex={colourHex(colour)} name={colour || '—'} />
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <SuggestInput
+                      value={colour}
+                      placeholder={t('product.colours.labelPlaceholder')}
+                      optionsLabel={t('lead.add.draft.showOptions', {
+                        field: t('product.colours.col.label'),
+                      })}
+                      options={colourOptions}
+                      onChange={(next) => setColour(index, next)}
+                    />
                   </span>
-                  <Input
-                    value={row.code}
-                    className="ob-mono"
-                    invalid={!row.code.trim()}
-                    aria-label={`${t('product.variants.col.code')} ${index + 1}`}
-                    onChange={(event) => setRow(index, { code: event.target.value })}
-                  />
-                  <NumberInput
-                    value={row.weightKg}
-                    aria-label={`${t('product.variants.col.weight')} ${index + 1}`}
-                    onChange={(event) =>
-                      setRow(index, { weightKg: event.target.value.replace(/[^0-9.]/g, '') })
-                    }
-                    onKeyDown={(event) => onRowKeyDown(event, index)}
-                  />
-                  <button
-                    type="button"
-                    className="ob-btn ob-btn--ghost"
-                    aria-label={t('product.variants.remove', {
-                      label: row.label || String(index + 1),
-                    })}
-                    title={t('product.variants.remove', { label: row.label || String(index + 1) })}
-                    style={{ padding: 0, minWidth: rem(32), justifyContent: 'center' }}
-                    disabled={rows.length === 1}
-                    onClick={() => setRows((current) => current.filter((_, at) => at !== index))}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-              <span>
+                </span>
+                <button
+                  type="button"
+                  className="ob-btn ob-btn--ghost"
+                  aria-label={t('product.colours.remove', {
+                    label: colour || String(index + 1),
+                  })}
+                  title={t('product.colours.remove', { label: colour || String(index + 1) })}
+                  style={{ padding: 0, minWidth: rem(32), justifyContent: 'center' }}
+                  onClick={() => setColours((current) => current.filter((_, at) => at !== index))}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            <span style={{ display: 'flex', gap: 'var(--s-8)' }}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setColours((current) => [...current, '']);
+                  window.setTimeout(() => focusColourRow(colours.length), 0);
+                }}
+              >
+                {t('product.colours.add')}
+              </Button>
+              {colourOptions.length > 0 && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setRows((current) => [...current, EMPTY_ROW])}
+                  onClick={() => setColours(colourOptions.map((option) => option.value))}
                 >
-                  {t('product.variants.add')}
+                  {t('product.colours.all')}
                 </Button>
-              </span>
-              <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                {t('product.variants.weightHint')}
-              </span>
-            </div>
-          )}
-        </FieldGroup>
-
-        <FieldGroup title={t('product.group.colours')}>
-          <Field label={t('product.multiColour.label')} span={3}>
-            {() => (
-              <div
-                style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  alignItems: 'center',
-                  gap: 'var(--s-12)',
-                }}
-              >
-                <Segmented<'no' | 'yes'>
-                  value={multiColour ? 'yes' : 'no'}
-                  options={[
-                    { value: 'no', label: t('product.multiColour.no') },
-                    { value: 'yes', label: t('product.multiColour.yes') },
-                  ]}
-                  onChange={(next) => setMultiColour(next === 'yes')}
-                />
-                <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
-                  {multiColour ? t('product.multiColour.yesHint') : t('product.multiColour.noHint')}
-                </span>
-              </div>
-            )}
-          </Field>
+              )}
+            </span>
+            <span className="ob-micro" style={{ color: 'var(--fg-tertiary)' }}>
+              {t('product.colours.hint')}
+            </span>
+          </div>
         </FieldGroup>
       </div>
     </Modal>
   );
 }
 
-const VARIANT_GRID = `minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) ${rem(32)}`;
+const COLOUR_GRID = `minmax(0, 1fr) ${rem(32)}`;

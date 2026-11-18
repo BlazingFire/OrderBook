@@ -6,11 +6,8 @@
 //!   {"op":"pickScore","fields":["..."],"term":"..."}
 //!   {"op":"pickBatch","rows":[[...]],"term":"..."}
 //!   {"op":"parseCsv","text":"a,b"}
-//!   {"op":"parseImportSheet","headerRow":[...],"rows":[[...]],"rowNumbers":["2"],"restore":"false","updateOnly":"false"}
-//! Rows and row numbers run in parallel: the caller filters blank and
-//! out-of-scope rows first, exactly as the TypeScript loop does, so the
-//! helper never invents a row number. Scalars travel stringified — the only
-//! shapes on this wire are strings and lists of strings.
+//! Scalars travel stringified — the only shapes on this wire are strings
+//! and lists of strings.
 //!
 //! (`matches_batch` and `canonical_manifest_payload` stay core-only for now:
 //! their call chains are browser-side filtering and synchronous manifest
@@ -23,10 +20,7 @@
 //! change. Only the standard library is used: no network, no filesystem
 //! access, no dependencies to vendor.
 
-use orderbook_core::{
-    csv_lines, match_headers, matches_record, parse_csv, parse_import_row, pick_batch, pick_score,
-    ImportIssue, ImportProduct, ImportRow, ImportVariant, ParseOptions,
-};
+use orderbook_core::{csv_lines, matches_record, parse_csv, pick_batch, pick_score};
 use std::io::Read;
 
 fn main() {
@@ -106,46 +100,6 @@ fn handle(input: &str) -> Result<String, String> {
                 .ok_or_else(|| "missing \"text\"".to_string())?;
             let text = as_string(&text).ok_or_else(|| "\"text\" must be a string".to_string())?;
             Ok(json_of_rows(&parse_csv(&text)))
-        }
-        "parseImportSheet" => {
-            let get = |name: &str| {
-                request
-                    .iter()
-                    .find(|(key, _)| key == name)
-                    .map(|(_, value)| value.clone())
-                    .ok_or_else(|| format!("missing \"{name}\""))
-            };
-            let header_row = as_string_list(&get("headerRow")?)?;
-            let rows = as_string_rows(&get("rows")?)?;
-            let row_numbers = as_string_list(&get("rowNumbers")?)?;
-            if row_numbers.len() != rows.len() {
-                return Err("rowNumbers must run parallel to rows".to_string());
-            }
-            let flag = |name: &str| match &get(name)? {
-                Json::Str(text) if text == "true" => Ok(true),
-                Json::Str(text) if text == "false" => Ok(false),
-                _ => Err(format!("invalid \"{name}\"")),
-            };
-            let options = ParseOptions {
-                restore: flag("restore")?,
-                update_only: flag("updateOnly")?,
-            };
-            let matched = match_headers(&header_row.iter().map(String::as_str).collect::<Vec<_>>());
-            let header_refs: Vec<&str> = header_row.iter().map(String::as_str).collect();
-            let mut out = String::from("[");
-            for (index, cells) in rows.iter().enumerate() {
-                if index > 0 {
-                    out.push(',');
-                }
-                let row_number: u32 = row_numbers[index]
-                    .parse()
-                    .map_err(|_| "invalid \"rowNumbers\" entry".to_string())?;
-                let refs: Vec<&str> = cells.iter().map(String::as_str).collect();
-                let parsed = parse_import_row(&refs, &matched, &header_refs, row_number, options);
-                out.push_str(&json_of_parsed_row(parsed.input.as_ref(), &parsed.issues));
-            }
-            out.push(']');
-            Ok(out)
         }
         "matchesRecord" => {
             let haystack = request
@@ -357,138 +311,6 @@ fn json_of_rows(rows: &[Vec<String>]) -> String {
         out.push(']');
     }
     out.push(']');
-    out
-}
-
-/// `{"input":{...}|null,"issues":[...]}` for one parsed sheet row. Field
-/// names are the twin's camelCase keys; a `None` product key is absent,
-/// `Some(None)` is null — the absent-key vs null distinction the twin keeps.
-fn json_of_parsed_row(input: Option<&ImportRow>, issues: &[ImportIssue]) -> String {
-    let mut out = String::from("{\"input\":");
-    match input {
-        None => out.push_str("null"),
-        Some(row) => {
-            out.push_str("{\"product\":");
-            out.push_str(&json_of_import_product(&row.product));
-            out.push_str(",\"variant\":");
-            out.push_str(&json_of_import_variant(&row.variant));
-            out.push('}');
-        }
-    }
-    out.push_str(",\"issues\":[");
-    for (index, issue) in issues.iter().enumerate() {
-        if index > 0 {
-            out.push(',');
-        }
-        out.push_str("{\"row\":");
-        out.push_str(&issue.row.to_string());
-        out.push_str(",\"kind\":\"error\",");
-        out.push_str("\"column\":");
-        match &issue.column {
-            None => out.push_str("null"),
-            Some(column) => out.push_str(&escape_json(column)),
-        }
-        out.push_str(",\"messageKey\":");
-        out.push_str(&escape_json(issue.message_key));
-        out.push_str(",\"params\":");
-        match &issue.params {
-            None => out.push_str("null"),
-            Some(params) => {
-                out.push_str("{\"column\":");
-                out.push_str(&escape_json(&params.column));
-                match params.allowed {
-                    None => out.push('}'),
-                    Some(allowed) => {
-                        out.push_str(",\"allowed\":");
-                        out.push_str(&escape_json(allowed));
-                        out.push('}');
-                    }
-                }
-            }
-        }
-        out.push('}');
-    }
-    out.push_str("]}");
-    out
-}
-
-fn json_of_field_string(key: &str, value: &Option<String>, out: &mut String, first: &mut bool) {
-    if let Some(text) = value {
-        if !*first {
-            out.push(',');
-        }
-        *first = false;
-        out.push_str(&escape_json(key));
-        out.push(':');
-        out.push_str(&escape_json(text));
-    }
-}
-
-fn json_of_import_product(product: &ImportProduct) -> String {
-    let mut out = String::from("{");
-    let mut first = true;
-    json_of_field_string(
-        "categoryBrand",
-        &product.category_brand,
-        &mut out,
-        &mut first,
-    );
-    json_of_field_string("categoryCode", &product.category_code, &mut out, &mut first);
-    json_of_field_string("categoryName", &product.category_name, &mut out, &mut first);
-    json_of_field_string("name", &product.name, &mut out, &mut first);
-    match &product.size {
-        None => {}
-        Some(inner) => {
-            if !first {
-                out.push(',');
-            }
-            first = false;
-            out.push_str("\"size\":");
-            match inner {
-                None => out.push_str("null"),
-                Some(text) => out.push_str(&escape_json(text)),
-            }
-        }
-    }
-    match &product.alias {
-        None => {}
-        Some(inner) => {
-            if !first {
-                out.push(',');
-            }
-            first = false;
-            out.push_str("\"alias\":");
-            match inner {
-                None => out.push_str("null"),
-                Some(text) => out.push_str(&escape_json(text)),
-            }
-        }
-    }
-    if let Some(multi) = product.multi_colour {
-        if !first {
-            out.push(',');
-        }
-        out.push_str("\"multiColour\":");
-        out.push_str(&multi.to_string());
-    }
-    out.push('}');
-    out
-}
-
-fn json_of_import_variant(variant: &ImportVariant) -> String {
-    let mut out = String::from("{\"code\":");
-    out.push_str(&escape_json(&variant.code));
-    out.push_str(",\"label\":");
-    match &variant.label {
-        None => out.push_str("null"),
-        Some(label) => out.push_str(&escape_json(label)),
-    }
-    out.push_str(",\"weightKg\":");
-    match variant.weight_kg {
-        None => out.push_str("null"),
-        Some(weight) => out.push_str(&weight.to_string()),
-    }
-    out.push('}');
     out
 }
 

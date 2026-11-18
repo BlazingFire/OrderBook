@@ -63,12 +63,12 @@ describe.skipIf(!canRunIntegrationTests)('PO numbers under concurrent sync (inte
     admin = await testActor();
     const party = await catalog.createParty({ name: 'Concurrent Traders' }, admin);
     const product = await catalog.createProduct(
-      { categoryName: 'Tiles', variants: [{ code: 'CONC-01' }], name: 'Concurrent Tile' },
+      { categoryName: 'Tiles', code: 'CONC-01', name: 'Concurrent Tile' },
       admin,
     );
     item = {
       partyId: party.id,
-      line: { productId: product.id, variantId: product.variants[0]!.id, quantity: 1, packaging: 'carton' },
+      line: { productId: product.id, variantId: product.id, quantity: 1, packaging: 'carton' },
     };
     __resetGateForTests();
   });

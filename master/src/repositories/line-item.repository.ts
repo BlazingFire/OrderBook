@@ -1,12 +1,13 @@
 /**
  * Line items — one table serving both leads and orders, discriminated by
- * `(parent_type, parent_id)`, one row per variant.
+ * `(parent_type, parent_id)`, one row per sub product and colour.
  *
  * That shared table is what makes conversion a straight copy rather than a
  * translation between two shapes, and it is what lets one search index cover
  * both (docs/LEAD_GENERATION_FLOW.md §5.1, §9.3).
  */
 
+import { printSideOf } from '@orderbook/shared';
 import type { LineItem, LineItemParentType } from '@orderbook/shared';
 import type { Knex } from 'knex';
 
@@ -74,6 +75,7 @@ export async function insertLines(
       code: line.code,
       variant_label: line.variantLabel,
       colour: line.colour,
+      print_side: line.printSide,
       size: line.size,
       weight_kg: line.weightKg,
       packaging: line.packaging,
@@ -131,6 +133,8 @@ export async function loadSnapshots(
     code: line.code,
     variantLabel: line.variantLabel,
     colour: line.colour,
+    // A line stored before the setting existed resolves by the Default rule.
+    printSide: line.printSide ?? printSideOf(line.productName, 'default'),
     size: line.size,
     weightKg: line.weightKg,
     packaging: line.packaging,

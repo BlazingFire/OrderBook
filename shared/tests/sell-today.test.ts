@@ -98,17 +98,14 @@ describe('the day’s entry', () => {
 });
 
 describe('sellTodayProductOf', () => {
-  it('takes the first active code, the main product and the primary photo', () => {
+  it('takes its code, the main product and the primary photo', () => {
     const image = (id: string, isPrimary: boolean) => ({ id, isPrimary, blurhash: 'L', sequence: 0 }) as never;
     const product = {
       id: 'PR1',
       name: 'DAMRU',
       size: '600 x 400',
       categoryName: 'Table Top Basin',
-      variants: [
-        { code: 'OLD-1', isActive: false },
-        { code: 'OPT-0001', isActive: true },
-      ],
+      code: 'OPT-0001',
       images: [image('IMG-2', false), image('IMG-1', true)],
     } as unknown as Product;
 

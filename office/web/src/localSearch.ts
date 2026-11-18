@@ -36,12 +36,10 @@ export function searchLocalView(view: LocalView, term: string): SearchHit[] {
   const hits: SearchHit[] = [];
 
   for (const product of view.products) {
-    // The codes and colours live on the variants: "41" and "Magenta" both
-    // have to find the model they belong to. A sub product's printed name
-    // (`102 (9")`) is rarely what is typed; its brand and its product's code
-    // and name often are (`docs/catalogue/CATALOGUE_MODEL.md` §1).
-    const codes = product.variants.map((variant) => variant.code);
-    const labels = product.variants.map((variant) => variant.label);
+    // The code and colours live on the sub product: "41" and "Magenta" both
+    // have to find it. A sub product's printed name (`102 (9")`) is rarely
+    // what is typed; its brand and its product's code and name often are
+    // (`docs/catalogue/CATALOGUE_MODEL.md` §1).
     const found = matches(
       needle,
       product.name,
@@ -50,15 +48,15 @@ export function searchLocalView(view: LocalView, term: string): SearchHit[] {
       product.brand,
       product.categoryName,
       product.categoryCode,
-      ...codes,
-      ...labels,
+      product.code,
+      ...product.colours,
     );
     if (!found) continue;
     hits.push({
       kind: 'product',
       id: product.id,
       title: product.name,
-      subtitle: `${product.categoryName} · ${codes.join(', ')}`,
+      subtitle: `${product.categoryName} · ${product.code}`,
       // No `ts_rank` offline. A flat score keeps the order the snapshot is in,
       // which is the Master's own, rather than inventing a ranking that would
       // visibly reshuffle the moment the link comes back.

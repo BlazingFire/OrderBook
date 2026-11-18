@@ -31,7 +31,6 @@ import type { ActorContext } from '../src/domain/actor.js';
 import { ConflictError } from '../src/lib/errors.js';
 import * as productRepo from '../src/repositories/product.repository.js';
 import * as catalog from '../src/services/catalog.service.js';
-import * as fields from '../src/services/fields.service.js';
 import * as leads from '../src/services/lead.service.js';
 import * as orders from '../src/services/order.service.js';
 import * as settings from '../src/services/settings.service.js';
@@ -40,17 +39,15 @@ let actor: ActorContext;
 
 /** A one-form product, a model with three colour variants (one unweighed), and a model made in every colour. */
 async function seed() {
-  // A new line's colour must be on the company list (W2, 2026-10-07).
-  for (const value of ['White', 'Ivory']) {
-    await fields.createValue({ listKey: 'stock.colour', value, label: value }, actor);
-  }
+  // Colours are stored on the sub product now, so nothing is seeded into the
+  // company's `stock.colour` list here.
   const party = await catalog.createParty({ name: 'Patel Sanitary' }, actor);
   const plain = await catalog.createProduct(
     {
       name: '102',
       categoryName: 'ONE PIECE TOILET',
       size: '9" · L-27 B-15 H-26',
-      variants: [{ code: '102', weightKg: 32.5 }],
+      code: '102', weightKg: 32.5,
     },
     actor,
   );
@@ -58,39 +55,44 @@ async function seed() {
     {
       name: 'E.W.C - S TRAP',
       categoryName: 'WATER CLOSET',
-      multiColour: true,
-      variants: [{ code: 'EWC-S-TRAP', weightKg: 22 }],
+      colours: ['White', 'Ivory'],
+      code: 'EWC-S-TRAP', weightKg: 22,
     },
     actor,
   );
-  const model = await catalog.createProduct(
-    {
-      name: 'XYZ',
-      categoryName: 'ONE PIECE TOILET',
-      hasVariants: true,
-      variants: [
-        { code: '1111', label: 'White', weightKg: 32 },
-        { code: '1112', label: 'Blue', weightKg: 32.5 },
-        { code: '1113', label: 'Red' },
-      ],
-    },
-    actor,
-  );
-  const byLabel = (label: string) => {
-    const found = model.variants.find((variant) => variant.label === label);
-    if (!found) throw new Error(`seed: no ${label} variant`);
-    return found;
-  };
+  // What was one model with three colour variants is three sub products
+  // now, each carrying its own code, colour and weight.
+  const colourModel = (code: string, label: string, weightKg?: number) =>
+    catalog.createProduct(
+      {
+        name: `XYZ ${label}`,
+        categoryName: 'ONE PIECE TOILET',
+        code,
+        colours: [label],
+        weightKg: weightKg ?? null,
+      },
+      actor,
+    );
+  const whiteProduct = await colourModel('1111', 'White', 32);
+  const blueProduct = await colourModel('1112', 'Blue', 32.5);
+  const redProduct = await colourModel('1113', 'Red');
+  const shim = (product: typeof whiteProduct, label: string) => ({
+    id: product.id,
+    productId: product.id,
+    code: product.code,
+    label,
+    weightKg: product.weightKg,
+  });
   return {
     party,
     plain,
-    plainVariant: plain.variants[0]!,
+    plainVariant: { id: plain.id, code: plain.code, label: null, weightKg: plain.weightKg },
     anyColour,
-    anyColourVariant: anyColour.variants[0]!,
-    model,
-    white: byLabel('White'),
-    blue: byLabel('Blue'),
-    red: byLabel('Red'),
+    anyColourVariant: { id: anyColour.id, code: anyColour.code, label: null, weightKg: anyColour.weightKg },
+    model: whiteProduct,
+    white: shim(whiteProduct, 'White'),
+    blue: shim(blueProduct, 'Blue'),
+    red: shim(redProduct, 'Red'),
   };
 }
 
@@ -215,10 +217,10 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
         actor,
       );
 
-      // Two lines of the same variant, one in a colour and one as it comes:
-      // the colour is a line attribute, so both point at the one variant.
+      // Two lines of the same sub product, one in a colour and one as it
+      // comes: the colour is a line attribute.
       expect(lead.items.map((item) => item.colour)).toEqual(['Ivory', null]);
-      expect(lead.items.map((item) => item.variantId)).toEqual([anyColourVariant.id, anyColourVariant.id]);
+      expect(lead.items.map((item) => item.variantId)).toEqual([null, null]);
       expect(lead.items.map((item) => item.code)).toEqual(['EWC-S-TRAP', 'EWC-S-TRAP']);
     });
 
@@ -260,7 +262,7 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
       expect(lead.items[0]?.quantity).toBe(1);
     });
 
-    it('keeps several colours of one multi-colour sub product as lines on its one variant', async () => {
+    it('keeps several colours of one sub product as lines on it', async () => {
       const { party, anyColour, anyColourVariant } = await seed();
 
       const lead = await leads.createLead(
@@ -274,17 +276,17 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
         actor,
       );
 
-      expect(lead.items.map((item) => [item.variantId, item.colour, item.quantity])).toEqual([
-        [anyColourVariant.id, 'White', 10],
-        [anyColourVariant.id, 'Ivory', 5],
+      expect(lead.items.map((item) => [item.productId, item.colour, item.quantity])).toEqual([
+        [anyColour.id, 'White', 10],
+        [anyColour.id, 'Ivory', 5],
       ]);
 
-      // Both lines ride across to the order against the one variant.
+      // Both lines ride across to the order against the one sub product.
       const order = await orders.convertLead({ leadId: lead.id }, actor);
       expect(order.items.map((item) => item.colour)).toEqual(['White', 'Ivory']);
-      expect(order.items.map((item) => [item.variantId, item.quantity])).toEqual([
-        [anyColourVariant.id, 10],
-        [anyColourVariant.id, 5],
+      expect(order.items.map((item) => [item.productId, item.quantity])).toEqual([
+        [anyColour.id, 10],
+        [anyColour.id, 5],
       ]);
     });
 
@@ -298,10 +300,10 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
         ),
       );
       const subProduct = await catalog.createProduct(
-        { name: '102 (9")', categoryCode: 'OPT', variants: [{ code: 'OPT-0001' }] },
+        { name: '102 (9")', categoryCode: 'OPT', code: 'OPT-0001' },
         actor,
       );
-      const variant = subProduct.variants[0]!;
+      const variant = { id: subProduct.id };
 
       const lead = await leads.createLead(
         {
@@ -351,20 +353,20 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
       expect(bytes.subarray(0, 5).toString('latin1')).toBe('%PDF-');
     });
 
-    it('takes the code and the weight from the chosen colour of a model', async () => {
-      const { party, model, blue, red } = await seed();
+    it("takes the code, colour and weight from each line's own sub product", async () => {
+      const { party, blue, red } = await seed();
 
       const lead = await leads.createLead(
         {
           partyId: party.id,
-          items: [line(model.id, blue.id, 10), line(model.id, red.id, 3)],
+          items: [line(blue.productId, blue.id, 10), line(red.productId, red.id, 3)],
         },
         actor,
       );
 
       const [blueLine, redLine] = lead.items;
       expect(blueLine?.code).toBe('1112');
-      expect(blueLine?.variantLabel).toBe('Blue');
+      expect(blueLine?.colour).toBe('Blue');
       expect(blueLine?.weightKg).toBe(32.5);
       expect(blueLine?.lineWeightKg).toBe(325);
       // Red has no weight entered yet: the line says so instead of guessing.
@@ -375,13 +377,17 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
       expect(lead.linesWithoutWeight).toBe(1);
     });
 
-    it('keeps several colours of one model as separate lines, each with its own total', async () => {
-      const { party, model, white, blue, red } = await seed();
+    it('keeps several coloured sub products as separate lines, each with its own total', async () => {
+      const { party, white, blue, red } = await seed();
 
       const lead = await leads.createLead(
         {
           partyId: party.id,
-          items: [line(model.id, white.id, 5), line(model.id, blue.id, 10), line(model.id, red.id, 3)],
+          items: [
+            line(white.productId, white.id, 5),
+            line(blue.productId, blue.id, 10),
+            line(red.productId, red.id, 3),
+          ],
         },
         actor,
       );
@@ -397,32 +403,41 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
       expect(lead.linesWithoutWeight).toBe(1);
     });
 
-    it('refuses a variant that belongs to another product', async () => {
+    it('drops a legacy variant id that names nothing, and takes the lead on its product', async () => {
       const { party, plain, blue } = await seed();
 
-      await expect(
-        leads.createLead({ partyId: party.id, items: [line(plain.id, blue.id, 1)] }, actor),
-      ).rejects.toThrow(/variants no longer exists/i);
+      const lead = await leads.createLead(
+        { partyId: party.id, items: [line(plain.id, blue.id, 1)] },
+        actor,
+      );
+
+      expect(lead.items[0]?.productId).toBe(plain.id);
+      expect(lead.items[0]?.variantId).toBeNull();
     });
 
-    it('refuses a variant the administrator has taken off the form', async () => {
-      const { party, model, white, blue, red } = await seed();
-      // Blue is removed from the model; nothing references it yet, so it goes.
+    it('refuses a new line in a colour the sub product no longer offers', async () => {
+      const { party, anyColour, anyColourVariant } = await seed();
+      // Blue joins the offer, then is taken off it again.
       await catalog.updateProduct(
-        model.id,
-        {
-          name: 'XYZ',
-          variants: [
-            { id: white.id, code: '1111', label: 'White', weightKg: 32 },
-            { id: red.id, code: '1113', label: 'Red' },
-          ],
-        },
+        anyColour.id,
+        { name: anyColour.name, colours: ['White', 'Ivory', 'Blue'] },
+        actor,
+      );
+      await catalog.updateProduct(
+        anyColour.id,
+        { name: anyColour.name, colours: ['White', 'Ivory'] },
         actor,
       );
 
       await expect(
-        leads.createLead({ partyId: party.id, items: [line(model.id, blue.id, 1)] }, actor),
-      ).rejects.toThrow(/variants no longer exists/i);
+        leads.createLead(
+          {
+            partyId: party.id,
+            items: [line(anyColour.id, anyColourVariant.id, 1, { colour: 'Blue' })],
+          },
+          actor,
+        ),
+      ).rejects.toThrow(/colour/i);
     });
 
     it('refuses a line with no quantity', async () => {
@@ -561,7 +576,7 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
       expect(notes.notes).toBe('call first');
     });
 
-    it('refuses lines with no product or variant id, and a party id that is not text', async () => {
+    it('refuses a line with no product at all, and a party id that is not text', async () => {
       const { party, plain, plainVariant } = await seed();
       const lead = await leads.createLead(
         { partyId: party.id, items: [line(plain.id, plainVariant.id, 1)] },
@@ -571,9 +586,11 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
       await expect(leads.updateLead(lead.id, { items: [{} as never] }, actor)).rejects.toThrow(
         /no longer exists/i,
       );
+      // A `variantId` on its own is no longer a line: the variant layer is gone,
+      // so a line without a product id names nothing.
       await expect(
-        leads.updateLead(lead.id, { items: [{ productId: plain.id, quantity: 1 } as never] }, actor),
-      ).rejects.toThrow(/variants? no longer exists/i);
+        leads.updateLead(lead.id, { items: [{ variantId: plain.id, quantity: 1 } as never] }, actor),
+      ).rejects.toThrow(/no longer exists/i);
       await expect(leads.updateLead(lead.id, { partyId: 42 as never }, actor)).rejects.toThrow(
         /select a party/i,
       );
@@ -625,13 +642,13 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
   describe('converting to an order', () => {
     async function convertible() {
       const seeded = await seed();
-      const { party, model, white, blue } = seeded;
+      const { party, white, blue } = seeded;
       const lead = await leads.createLead(
         {
           partyId: party.id,
           items: [
-            line(model.id, white.id, 4, { packaging: 'wooden crate' }),
-            line(model.id, blue.id, 6, { packaging: 'wooden crate' }),
+            line(white.productId, white.id, 4, { packaging: 'wooden crate' }),
+            line(blue.productId, blue.id, 6, { packaging: 'wooden crate' }),
           ],
         },
         actor,
@@ -688,22 +705,13 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
     });
 
     it('does not move the snapshotted weight when the master is edited afterwards', async () => {
-      const { model, white, blue, red, lead } = await convertible();
+      const { white, blue, red, lead } = await convertible();
 
       // The catalogue changes *between* quoting and converting — the exact case
       // §8.3 exists to guard against: a corrected weight.
-      await catalog.updateProduct(
-        model.id,
-        {
-          name: 'XYZ',
-          variants: [
-            { id: white.id, code: '1111', label: 'White', weightKg: 40 },
-            { id: blue.id, code: '1112', label: 'Blue', weightKg: 41 },
-            { id: red.id, code: '1113', label: 'Red', weightKg: 42 },
-          ],
-        },
-        actor,
-      );
+      await catalog.updateProduct(white.productId, { name: 'XYZ White', weightKg: 40 }, actor);
+      await catalog.updateProduct(blue.productId, { name: 'XYZ Blue', weightKg: 41 }, actor);
+      await catalog.updateProduct(red.productId, { name: 'XYZ Red', weightKg: 42 }, actor);
 
       const order = await orders.convertLead({ leadId: lead.id }, actor);
 
@@ -712,20 +720,23 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
       expect(order.totalWeightKg).toBe(323);
     });
 
-    it('leaves an existing order untouched when the variant is edited later', async () => {
-      const { model, white, blue, red, lead } = await convertible();
+    it('leaves an existing order untouched when the sub product is edited later', async () => {
+      const { white, blue, red, lead } = await convertible();
       const order = await orders.convertLead({ leadId: lead.id }, actor);
 
       await catalog.updateProduct(
-        model.id,
-        {
-          name: 'XYZ',
-          variants: [
-            { id: white.id, code: '1111-N', label: 'White', weightKg: 40 },
-            { id: blue.id, code: '1112-N', label: 'Blue', weightKg: 41 },
-            { id: red.id, code: '1113-N', label: 'Red', weightKg: 42 },
-          ],
-        },
+        white.productId,
+        { name: 'XYZ White', code: '1111-N', weightKg: 40 },
+        actor,
+      );
+      await catalog.updateProduct(
+        blue.productId,
+        { name: 'XYZ Blue', code: '1112-N', weightKg: 41 },
+        actor,
+      );
+      await catalog.updateProduct(
+        red.productId,
+        { name: 'XYZ Red', code: '1113-N', weightKg: 42 },
         actor,
       );
 
@@ -760,21 +771,25 @@ describe.skipIf(!canRunIntegrationTests)('lead flow (integration)', () => {
       );
     });
 
-    it('carries each line to the order against its own variant, never per product', async () => {
+    it('carries each line to the order against its own sub product, never per product', async () => {
       const { lead, white, blue } = await convertible();
 
       const order = await orders.convertLead({ leadId: lead.id }, actor);
 
       expect(order.items).toHaveLength(2);
-      const byVariant = Object.fromEntries(order.items.map((item) => [item.variantId, item.quantity]));
-      expect(byVariant).toEqual({ [white.id]: 4, [blue.id]: 6 });
+      // Two sub products, so two product ids — a newer line carries no variant id.
+      const byVariant = Object.fromEntries(order.items.map((item) => [item.productId, item.quantity]));
+      expect(byVariant).toEqual({ [white.productId]: 4, [blue.productId]: 6 });
     });
 
 
     it('sums the order weight from the line weights, over the lines that have one', async () => {
-      const { party, model, blue, red } = await seed();
+      const { party, blue, red } = await seed();
       const lead = await leads.createLead(
-        { partyId: party.id, items: [line(model.id, blue.id, 10), line(model.id, red.id, 3)] },
+        {
+          partyId: party.id,
+          items: [line(blue.productId, blue.id, 10), line(red.productId, red.id, 3)],
+        },
         actor,
       );
 

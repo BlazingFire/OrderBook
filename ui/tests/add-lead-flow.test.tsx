@@ -97,30 +97,25 @@ const FIXED = {
   sortOrder: 1,
   alias: null,
   size: 'L-27',
-  multiColour: false,
-  hasVariants: true,
-  variants: [{ id: 'var-1', label: 'White', code: 'OPT-0001', weightKg: 30, isActive: true }],
+  code: 'OPT-0001', weightKg: 30, colours: ['White'],
 };
 
-/** `selectable`: multicolour, one variant with no label. */
+/** Offered in several colours: the counter picks one per line. */
 const MULTI = {
   ...FIXED,
   id: 'prod-2',
   name: 'Orissa Pan',
   sortOrder: 2,
-  multiColour: true,
-  hasVariants: false,
-  variants: [{ id: 'var-2', label: null, code: 'OPT-0002', weightKg: 12, isActive: true }],
+  code: 'OPT-0002', weightKg: 12, colours: ['White', 'Ivory'],
 };
 
-/** `dedicated`: a numbered designer piece — no label, not multicolour; its design is its colour. */
+/** A numbered designer piece — no colours; its design is its colour. */
 const DEDICATED = {
   ...FIXED,
   id: 'prod-3',
   name: '1111',
   sortOrder: 3,
-  hasVariants: false,
-  variants: [{ id: 'var-3', label: null, code: 'OPT-0003', weightKg: 20, isActive: true }],
+  code: 'OPT-0003', weightKg: 20, colours: [] as string[],
 };
 
 const COLOURS = ['White', 'Ivory'].map((name, index) => ({
@@ -646,7 +641,7 @@ describe('the sub-product bar', () => {
       id: 'prod-4',
       name: 'Whitewash Pan',
       sortOrder: 0,
-      variants: [{ id: 'var-4', label: 'Ivory', code: 'OPT-0004', weightKg: 9, isActive: true }],
+      code: 'OPT-0004', weightKg: 9, colours: ['Ivory'],
     };
     live.products = [MULTI, DEDICATED, FIXED, whitewash];
     await openForm();
@@ -654,8 +649,11 @@ describe('the sub-product bar', () => {
 
     fireEvent.change(searchBox(), { target: { value: 'white' } });
     const rows = within(screen.getByRole('listbox')).getAllByRole('button');
+    // The exact name first, then the prefix; MULTI comes along because one of
+    // the colours it is offered in is White.
     expect(rows.map((row) => row.textContent)).toEqual([
       expect.stringContaining(FIXED.name),
+      expect.stringContaining(MULTI.name),
       expect.stringContaining(whitewash.name),
     ]);
   });
@@ -685,16 +683,14 @@ describe('the sub-product bar', () => {
     expect(document.querySelectorAll('[data-walk="qty"]')).toHaveLength(1);
   });
 
-  it('opens on the one variant whose code was typed in full', async () => {
+  it('opens on the sub product whose code was typed in full', async () => {
     const pair = {
       ...FIXED,
       id: 'prod-5',
       name: 'Twin Basin',
       sortOrder: 5,
-      variants: [
-        { id: 'var-5w', label: 'White', code: 'OPT-0005', weightKg: 9, isActive: true },
-        { id: 'var-5i', label: 'Ivory', code: 'OPT-0006', weightKg: 9, isActive: true },
-      ],
+      code: 'OPT-0006',
+      colours: ['White', 'Ivory'],
     };
     live.products = [MULTI, DEDICATED, FIXED, pair];
     await openForm();
@@ -703,8 +699,9 @@ describe('the sub-product bar', () => {
     fireEvent.change(searchBox(), { target: { value: 'opt-0006' } });
     await pressEnter(searchBox());
 
+    // One card: the code names the sub product, and its card opens on the
+    // first of the colours it is offered in.
     expect(await screen.findByLabelText(qtyLabel('OPT-0006'))).toBeTruthy();
-    expect(screen.queryByLabelText(qtyLabel('OPT-0005'))).toBeNull();
   });
 
   it('goes back to the product bar on Backspace in the empty box', async () => {
@@ -818,15 +815,15 @@ describe('the sub product card', () => {
     const [post] = leadPosts(calls);
     const items = (post?.body as { items: Array<Record<string, unknown>> }).items;
     expect(
-      items.map(({ variantId, colour, packaging, grade, quantity }) => ({
-        variantId,
+      items.map(({ productId, colour, packaging, grade, quantity }) => ({
+        productId,
         colour,
         packaging,
         grade,
         quantity,
       })),
     ).toEqual([
-      { variantId: 'var-2', colour: 'White', packaging: 'Grass', grade: 'B', quantity: 10 },
+      { productId: MULTI.id, colour: 'White', packaging: 'Grass', grade: 'B', quantity: 10 },
     ]);
   });
 
@@ -1222,10 +1219,10 @@ describe('a multicolour sub product', () => {
     const [post] = leadPosts(calls);
     const items = (post?.body as { items: Array<Record<string, unknown>> }).items;
     expect(
-      items.map(({ variantId, colour, quantity }) => ({ variantId, colour, quantity })),
+      items.map(({ productId, colour, quantity }) => ({ productId, colour, quantity })),
     ).toEqual([
-      { variantId: 'var-2', colour: 'White', quantity: 10 },
-      { variantId: 'var-2', colour: 'Ivory', quantity: 5 },
+      { productId: MULTI.id, colour: 'White', quantity: 10 },
+      { productId: MULTI.id, colour: 'Ivory', quantity: 5 },
     ]);
   });
 
@@ -1495,8 +1492,8 @@ describe('a dedicated sub product', () => {
     const [post] = leadPosts(calls);
     const items = (post?.body as { items: Array<Record<string, unknown>> }).items;
     expect(
-      items.map(({ variantId, colour, quantity }) => ({ variantId, colour, quantity })),
-    ).toEqual([{ variantId: 'var-3', colour: null, quantity: 3 }]);
+      items.map(({ productId, colour, quantity }) => ({ productId, colour, quantity })),
+    ).toEqual([{ productId: DEDICATED.id, colour: null, quantity: 3 }]);
   });
 });
 

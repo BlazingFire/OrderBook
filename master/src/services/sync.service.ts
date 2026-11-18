@@ -53,6 +53,7 @@ import {
   isTemporaryId,
   type MergeableEntity,
   mergeFields,
+  normalizeColours,
   MUTATION_PERMISSIONS,
   parseHlc,
   sameLines,
@@ -84,7 +85,7 @@ import * as partyRepo from '../repositories/party.repository.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
 import * as userRepo from '../repositories/user.repository.js';
 import * as productRepo from '../repositories/product.repository.js';
-import * as productVariantRepo from '../repositories/product-variant.repository.js';
+import * as customFieldRepo from '../repositories/custom-field.repository.js';
 import * as syncRepo from '../repositories/sync.repository.js';
 import type { TransactionContext } from '../repositories/transaction.js';
 import { actorStamp, publishChange, publishConflict } from './change-bus.js';
@@ -667,10 +668,11 @@ async function mergeUpdate(
     await assertMergeTargetAccessible(entity, current.values, id, actor);
 
     const columns = MASTER_MERGE_COLUMNS[entity] as Record<string, string>;
-    // `variants` is not a column — it is a child table replaced as a set —
-    // but it merges like one field: the whole set wins or loses by HLC, and
+    // A lead's `items` are not a column — child rows replaced as a set —
+    // but they merge like one field: the whole set wins or loses by HLC, and
     // a losing set is recorded as one conflict a person can put back. A
-    // lead's `items` are the same thing.
+    // legacy `variants` set from a panel built before variants were removed
+    // rides the same way and is converted to code/weight/colours below.
     let fields = mutation.fields.filter(
       (field) =>
         field in columns ||
@@ -786,23 +788,37 @@ async function mergeUpdate(
      * rather than bounced. The same `validateProductInput` the catalogue
      * service runs turns that into a refusal somebody can read and act on.
      */
-    const acceptedVariants =
-      entity === 'product' && Array.isArray(outcome.accepted.variants)
-        ? normaliseVariants(outcome.accepted.variants)
-        : null;
+    // A push from a panel built before variants were removed may still
+    // carry the old set (and its `multiColour` switch). Convert it to the
+    // fields that replaced it, under the set's own clock, before anything
+    // validates or writes — the same reading `catalog.service` gives the
+    // online shape.
+    let legacyVariantWrite = false;
+    if (entity === 'product' && Array.isArray(outcome.accepted.variants)) {
+      const derived = legacyVariantProductFields(outcome.accepted.variants);
+      const colours =
+        outcome.accepted.multiColour === true
+          ? (await customFieldRepo.listOptionsForKey(actor.tenantId, 'stock.colour')).map(
+              (option) => option.value,
+            )
+          : derived.colours;
+      outcome.accepted.code = derived.code;
+      outcome.accepted.weightKg = derived.weightKg;
+      outcome.accepted.colours = colours;
+      const stamp = outcome.fieldHlc.variants ?? hlc;
+      outcome.fieldHlc.code = stamp;
+      outcome.fieldHlc.weightKg = stamp;
+      outcome.fieldHlc.colours = stamp;
+      delete outcome.accepted.variants;
+      delete outcome.accepted.multiColour;
+      delete outcome.accepted.hasVariants;
+      delete outcome.fieldHlc.variants;
+      legacyVariantWrite = true;
+    }
 
     if (entity === 'product') {
       try {
-        validateProductInput({
-          ...(outcome.accepted as unknown as ProductInput),
-          // The variant rule needs to know whether the model has variants,
-          // whether or not this push happens to say so.
-          hasVariants:
-            typeof outcome.accepted.hasVariants === 'boolean'
-              ? outcome.accepted.hasVariants
-              : Boolean(current.values.hasVariants),
-          ...(acceptedVariants ? { variants: acceptedVariants } : {}),
-        });
+        validateProductInput(outcome.accepted as unknown as ProductInput);
       } catch (error) {
         if (error instanceof ProductValidationError) throw new ValidationError(error.messageKey);
         throw error;
@@ -818,14 +834,11 @@ async function mergeUpdate(
     }
 
     const wrote =
-      Object.keys(patch).length > 0 || acceptedVariants !== null || acceptedItems !== null;
+      Object.keys(patch).length > 0 || legacyVariantWrite || acceptedItems !== null;
     if (wrote) {
       await writeMergedColumns(entity, actor.tenantId, id, patch, outcome.fieldHlc, hlc, trx);
     }
     if (acceptedItems) await leadRepo.replaceLeadLines(actor.tenantId, id, acceptedItems, trx);
-    if (acceptedVariants) {
-      await productVariantRepo.replaceVariants(actor.tenantId, id, acceptedVariants, trx);
-    }
 
     // The sub-product name rule (docs/catalogue/CATALOGUE_MODEL.md §5) holds
     // offline too. A rename merged here is checked on the row as written, as
@@ -906,21 +919,27 @@ async function mergeUpdate(
   };
 }
 
-/** A variant set as the repository takes it, from a merge payload or a stored conflict value. */
-export function normaliseVariants(variants: unknown[]): Array<{
-  id?: string;
-  code: string;
-  label: string | null;
+/**
+ * A legacy variant set — from a merge payload a pre-removal panel queued,
+ * or a stored conflict value — read as the sub-product fields that replaced
+ * it: the first row's code and weight, and every row's label as a colour
+ * option. The one adapter where the old shape enters; everything past it
+ * speaks only of a sub product's own fields.
+ */
+export function legacyVariantProductFields(variants: unknown[]): {
+  code: string | null;
   weightKg: number | null;
-  sequence?: number;
-}> {
-  return (variants as Array<Record<string, unknown>>).map((variant) => ({
-    ...(typeof variant.id === 'string' ? { id: variant.id } : {}),
-    code: String(variant.code ?? ''),
-    label: typeof variant.label === 'string' ? variant.label : null,
-    weightKg: typeof variant.weightKg === 'number' ? variant.weightKg : null,
-    ...(typeof variant.sequence === 'number' ? { sequence: variant.sequence } : {}),
-  }));
+  colours: string[];
+} {
+  const rows = variants as Array<Record<string, unknown>>;
+  const first = rows[0];
+  return {
+    code: typeof first?.code === 'string' && first.code.trim() ? first.code.trim() : null,
+    weightKg: typeof first?.weightKg === 'number' ? first.weightKg : null,
+    colours: normalizeColours(
+      rows.map((row) => (typeof row.label === 'string' ? row.label : '')),
+    ),
+  };
 }
 
 /**

@@ -31,11 +31,11 @@ async function createLead(): Promise<{ leadId: string; partyId: string; productI
       // Sub-product names are unique inside their product (catalogue v2).
       name: `DSH Tile ${Math.random().toString(36).slice(2, 8)}`,
       categoryName: 'Tiles',
-      variants: [{ code: `DSH-${Math.random().toString(36).slice(2, 8)}` }],
+      code: `DSH-${Math.random().toString(36).slice(2, 8)}`,
     },
     actor,
   );
-  const variantId = product.variants[0]!.id;
+  const variantId = product.id;
 
   const lead = await leadService.createLead(
     {

@@ -53,7 +53,7 @@ describe.skipIf(!canRunIntegrationTests)('product image sequencing (integration)
 
   it('numbers a new photo past the highest sequence in use, not by the photo count', async () => {
     const product = await catalog.createProduct(
-      { categoryName: 'Tiles', variants: [{ code: 'PRD-IMGSEQ' }], name: 'Gapped Gallery' },
+      { categoryName: 'Tiles', code: 'PRD-IMGSEQ', name: 'Gapped Gallery' },
       actor,
     );
 

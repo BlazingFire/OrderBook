@@ -37,10 +37,10 @@ describe.skipIf(!canRunIntegrationTests)('product hierarchy (integration)', () =
   it('snapshots the main product onto the line, keeps a client-sent one, and never rewrites it', async () => {
     const party = await catalog.createParty({ name: 'Hierarchy Party' }, actor);
     const product = await catalog.createProduct(
-      { name: '102 (9")', categoryName: 'One Piece Toilet', variants: [{ code: 'H-03' }] },
+      { name: '102 (9")', categoryName: 'One Piece Toilet', code: 'H-03' },
       actor,
     );
-    const variant = product.variants[0]!;
+    const variant = { id: product.id };
 
     const lead = await leads.createLead(
       {
@@ -74,11 +74,11 @@ describe.skipIf(!canRunIntegrationTests)('product hierarchy (integration)', () =
 
   it('picks categories, then only the models inside one', async () => {
     await catalog.createProduct(
-      { name: '102 (9")', categoryName: 'One Piece Toilet', variants: [{ code: 'H-10' }] },
+      { name: '102 (9")', categoryName: 'One Piece Toilet', code: 'H-10' },
       actor,
     );
     await catalog.createProduct(
-      { name: 'Damru', categoryName: 'One Piece Basin', variants: [{ code: 'H-11' }] },
+      { name: 'Damru', categoryName: 'One Piece Basin', code: 'H-11' },
       actor,
     );
 
@@ -97,11 +97,11 @@ describe.skipIf(!canRunIntegrationTests)('product hierarchy (integration)', () =
 
   it('offers only categories that hold a live product, plus the one already chosen', async () => {
     const product = await catalog.createProduct(
-      { name: 'Hexa', categoryName: 'Urinal', variants: [{ code: 'H-20' }] },
+      { name: 'Hexa', categoryName: 'Urinal', code: 'H-20' },
       actor,
     );
     const empty = await catalog.createProduct(
-      { name: 'Gone', categoryName: 'Discontinued', variants: [{ code: 'H-21' }] },
+      { name: 'Gone', categoryName: 'Discontinued', code: 'H-21' },
       actor,
     );
     await catalog.deleteProduct(empty.id, actor);
@@ -121,15 +121,15 @@ describe.skipIf(!canRunIntegrationTests)('product hierarchy (integration)', () =
 
   it('answers which of the named products are still live: renamed yes, deleted no, unknown no', async () => {
     const kept = await catalog.createProduct(
-      { name: 'Live One', categoryName: 'Urinal', variants: [{ code: 'L-01' }] },
+      { name: 'Live One', categoryName: 'Urinal', code: 'L-01' },
       actor,
     );
     const renamed = await catalog.createProduct(
-      { name: 'Before', categoryName: 'Urinal', variants: [{ code: 'L-02' }] },
+      { name: 'Before', categoryName: 'Urinal', code: 'L-02' },
       actor,
     );
     const removed = await catalog.createProduct(
-      { name: 'Removed', categoryName: 'Urinal', variants: [{ code: 'L-03' }] },
+      { name: 'Removed', categoryName: 'Urinal', code: 'L-03' },
       actor,
     );
     await catalog.updateProduct(renamed.id, { name: 'ZZ After' }, actor);

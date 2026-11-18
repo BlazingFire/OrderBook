@@ -101,11 +101,11 @@ function renderList(view: LocalView = viewOf()) {
   );
 }
 
-/** A sub product of OPT, as the Master lists it: one variant, its label the fixed colour or null. */
+/** A sub product of OPT, as the Master lists it: its own code, colours and print side. */
 function subProduct(
   id: string,
   name: string,
-  variant: { code: string; label: string | null; multiColour?: boolean },
+  sub: { code: string; colours?: string[] },
 ): Product {
   return {
     id,
@@ -118,11 +118,10 @@ function subProduct(
     brand: 'Old brand',
     sortOrder: null,
     size: null,
-    multiColour: variant.multiColour ?? false,
-    hasVariants: variant.label !== null,
-    variants: [
-      { id: `${id}-v`, code: variant.code, label: variant.label, isActive: true, weightKg: null },
-    ],
+    code: sub.code,
+    weightKg: null,
+    colours: sub.colours ?? [],
+    printSide: 'default',
     sync: { hlc: 'hlc-1' },
   } as unknown as Product;
 }
@@ -170,10 +169,10 @@ describe('CatalogScreen sub-product list', () => {
   it('reads each row as the catalogue does: brand, product, and the colour by its rule', async () => {
     listProducts.mockResolvedValueOnce({
       items: [
-        subProduct('p-white', '102 (9")', { code: 'OPT-0001', label: 'White' }),
-        subProduct('p-magenta', 'MAGENTA', { code: 'OPT-0002', label: 'Magenta' }),
-        subProduct('p-orissa', 'ORISSA', { code: 'OPT-0003', label: null, multiColour: true }),
-        subProduct('p-1111', '1111', { code: 'OPT-0004', label: null }),
+        subProduct('p-white', '102 (9")', { code: 'OPT-0001', colours: ['White'] }),
+        subProduct('p-magenta', 'MAGENTA', { code: 'OPT-0002', colours: ['Magenta'] }),
+        subProduct('p-orissa', 'ORISSA', { code: 'OPT-0003', colours: ['White', 'Ivory'] }),
+        subProduct('p-1111', '1111', { code: 'OPT-0004' }),
       ],
       total: 4,
     });

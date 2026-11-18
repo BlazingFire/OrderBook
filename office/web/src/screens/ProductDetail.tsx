@@ -34,10 +34,11 @@ import { ProductImages } from '../components/ProductImages';
 import { codesOf, productLabel, shownColours, weightLabel } from '../productSummary';
 
 /**
- * A sub product's colour under its rule, for a list cell or a detail field:
- * "Multicolour" when the counter picks it, the fixed colour (with its swatch
- * when the colour range has a hex for it, plain text otherwise — a two-letter
- * ring for Black reads as nothing), and nothing at all for a numbered design.
+ * A sub product's colour, for a list cell or a detail field: "Multicolour"
+ * when it offers several and the counter picks one, its one colour (with its
+ * swatch when the colour range has a hex for it, plain text otherwise — a
+ * two-letter ring for Black reads as nothing), and nothing at all for a
+ * numbered design offering none.
  */
 export function SubProductColour({
   product,
@@ -46,7 +47,7 @@ export function SubProductColour({
   product: Product;
   colourHex: (colour: string) => string | undefined;
 }) {
-  if (product.multiColour) {
+  if (product.colours.length > 1) {
     return <StatusPill tone="accent">{t('catalog.colourRule.multicolour')}</StatusPill>;
   }
   const colours = shownColours(product);
@@ -180,12 +181,22 @@ export function ProductDetail({
             />
             {/* Absent rather than a dash for a numbered design: the owner's
                 rule is that no colour is shown for one anywhere. */}
-            {(product.multiColour || shownColours(product).length > 0) && (
+            {(product.colours.length > 1 || shownColours(product).length > 0) && (
               <DetailField
                 label={t('product.detail.colour')}
                 value={<SubProductColour product={product} colourHex={colourHex} />}
               />
             )}
+            <DetailField
+              label={t('product.detail.printSide')}
+              value={t(
+                product.printSide === 'left'
+                  ? 'product.printSide.left'
+                  : product.printSide === 'right'
+                    ? 'product.printSide.right'
+                    : 'product.printSide.default',
+              )}
+            />
           </div>
         </Card>
       </div>

@@ -98,7 +98,7 @@ const PICK_PRODUCT = {
   id: 'prod-1', name: 'Aqua Closet', categoryId: 'cat-1', categoryName: 'ONE PIECE TOILET',
   categoryCode: 'OPT', brand: 'Swisware+', sortOrder: 1, alias: null, size: 'L-27',
   multiColour: false, hasVariants: true,
-  variants: [{ id: 'var-1', label: 'White', code: 'OPT-0001', weightKg: 30, isActive: true }],
+  code: 'OPT-0001', weightKg: 30, colours: ['White'],
 };
 
 const ADMIN = [
@@ -1294,7 +1294,8 @@ describe('New Order', () => {
     expect(calls.filter((call) => call.url === '/api/leads' && call.method === 'POST')).toHaveLength(1);
     expect(body).toMatchObject({
       partyId: 'party-1',
-      items: [expect.objectContaining({ variantId: 'var-1', quantity: 5 })],
+      // A line names its sub product; the variant id is legacy and null since.
+      items: [expect.objectContaining({ productId: 'prod-1', quantity: 5 })],
     });
     expect(topbarTitle()).toBe(t('lead.board.tab.list'));
     expect(await screen.findByText(LEAD.id)).toBeTruthy();
@@ -1435,9 +1436,8 @@ describe('New Order', () => {
 
 const PRODUCT = {
   id: 'prod-1', name: 'Aqua Closet', alias: null, categoryId: 'cat-1', categoryName: 'ONE PIECE TOILET',
-  categoryCode: 'OPT', brand: 'Swisware+', sortOrder: 1, size: 'L-27', multiColour: false,
-  hasVariants: true, images: [],
-  variants: [{ id: 'var-1', label: 'White', code: 'OPT-0001', weightKg: 30, isActive: true }],
+  categoryCode: 'OPT', brand: 'Swisware+', sortOrder: 1, size: 'L-27', multiColour: false, images: [],
+  code: 'OPT-0001', weightKg: 30, colours: ['White'],
   sync: { hlc: 'h1', version: 1, fieldHlc: {} },
 };
 
@@ -3248,8 +3248,8 @@ describe('V6: unread notices pop up on sign-in', () => {
 describe('"Sell today" and the Basic Home product band (2026-10-08)', () => {
   const DAMRU = {
     id: 'prod-9', tenantId: 'tenant-1', name: 'DAMRU', alias: null, categoryId: 'cat-1', categoryName: 'Table Top Basin',
-    categoryCode: 'TTB', brand: 'Swisware+', sortOrder: 1, size: '600 x 400', hasVariants: false, multiColour: false,
-    variants: [{ id: 'var-9', productId: 'prod-9', label: null, code: 'TTB-0009', weightKg: null, sequence: 0, isActive: true }],
+    categoryCode: 'TTB', brand: 'Swisware+', sortOrder: 1, size: '600 x 400',
+    code: 'TTB-0009', weightKg: null, colours: [], printSide: 'default',
     customFields: {}, isActive: true, createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z',
     sync: { version: 1, hlc: '', fieldHlc: {} },
     images: [{ id: 'img-9', productId: 'prod-9', caption: null, isPrimary: true, sequence: 0, width: 800, height: 800, checksum: 'x', blurhash: '', byteSize: 1, uploadedAt: '2026-10-01T00:00:00.000Z' }],

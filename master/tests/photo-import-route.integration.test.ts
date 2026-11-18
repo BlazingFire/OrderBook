@@ -57,7 +57,7 @@ describe.skipIf(!canRunIntegrationTests)('the bulk photo import upload (integrat
 
   it('keeps the whole picture when no crop is sent', async () => {
     const product = await catalog.createProduct(
-      { categoryName: 'Basins', variants: [{ code: 'BAS-0001' }], name: 'Oval Basin' },
+      { categoryName: 'Basins', code: 'BAS-0001', name: 'Oval Basin' },
       admin,
     );
     const photo = await sharp({ create: { width: 640, height: 480, channels: 3, background: '#c08040' } })
@@ -75,7 +75,7 @@ describe.skipIf(!canRunIntegrationTests)('the bulk photo import upload (integrat
 
   it('keeps the whole picture the right way up for a phone photo stored on its side', async () => {
     const product = await catalog.createProduct(
-      { categoryName: 'Basins', variants: [{ code: 'BAS-0002' }], name: 'Round Basin' },
+      { categoryName: 'Basins', code: 'BAS-0002', name: 'Round Basin' },
       admin,
     );
     // Stored 640×480 with EXIF orientation 6: it shows 480×640. A rect the
@@ -95,7 +95,7 @@ describe.skipIf(!canRunIntegrationTests)('the bulk photo import upload (integrat
 
   it('still refuses a crop with only some of its edges', async () => {
     const product = await catalog.createProduct(
-      { categoryName: 'Basins', variants: [{ code: 'BAS-0003' }], name: 'Square Basin' },
+      { categoryName: 'Basins', code: 'BAS-0003', name: 'Square Basin' },
       admin,
     );
     const photo = await sharp({ create: { width: 64, height: 64, channels: 3, background: '#808080' } })
@@ -111,7 +111,7 @@ describe.skipIf(!canRunIntegrationTests)('the bulk photo import upload (integrat
 
   it('needs products.edit, as one photo does', async () => {
     const product = await catalog.createProduct(
-      { categoryName: 'Basins', variants: [{ code: 'BAS-0004' }], name: 'Corner Basin' },
+      { categoryName: 'Basins', code: 'BAS-0004', name: 'Corner Basin' },
       admin,
     );
     const photo = await sharp({ create: { width: 64, height: 64, channels: 3, background: '#808080' } })

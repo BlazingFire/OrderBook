@@ -99,13 +99,13 @@ describe.skipIf(!canRunIntegrationTests)('product master trim migration (integra
     // A new line's colour must be on the company list (W2, 2026-10-07).
     await fields.createValue({ listKey: 'stock.colour', value: 'Ivory', label: 'Ivory' }, actor);
     const anyColour = await catalog.createProduct(
-      { name: 'Any colour', categoryName: 'WATER CLOSET', multiColour: true, variants: [{ code: 'TRM-2' }] },
+      { name: 'Any colour', categoryName: 'WATER CLOSET', colours: ['Ivory', 'White'], code: 'TRM-2' },
       actor,
     );
     const lead = await leads.createLead(
       {
         partyId: party.id,
-        items: [{ productId: anyColour.id, variantId: anyColour.variants[0]!.id, quantity: 1, colour: 'Ivory' }],
+        items: [{ productId: anyColour.id, variantId: anyColour.id, quantity: 1, colour: 'Ivory' }],
       },
       actor,
     );
@@ -118,7 +118,9 @@ describe.skipIf(!canRunIntegrationTests)('product master trim migration (integra
 
   it('TRIM-4: running up() again on a migrated database changes nothing', async () => {
     const actor = await testActor();
-    const { product } = await createTestProduct(actor, { name: 'Survivor', code: 'SRV-1', multiColour: true });
+    const { product } = await createTestProduct(actor, { name: 'Survivor', code: 'SRV-1', colours: ['White', 'Ivory'] });
+    // The flag as a database from before the colour list replaced it holds it.
+    await db()('products').where({ id: product.id }).update({ multi_colour: true });
 
     await productMasterTrim(db());
 

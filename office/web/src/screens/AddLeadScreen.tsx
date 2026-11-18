@@ -71,7 +71,6 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type {
-  ColourRule,
   Lead,
   LineItemInput,
   OptionListItem,
@@ -84,8 +83,8 @@ import type {
 import {
   PICK_MAX_LIMIT,
   colourLabeller,
-  colourRuleOf,
   lineColourText,
+  printSideOf,
   resolveCompanyFeatures,
   shownColour,
 } from '@orderbook/shared';
@@ -243,11 +242,9 @@ function subProductMatches(rows: readonly Product[], term: string): Product[] {
   if (!term) return rows.slice();
   const ranked: Array<{ row: Product; rank: number }> = [];
   for (const row of rows) {
-    const words = [
-      row.name,
-      row.alias ?? '',
-      ...row.variants.flatMap((variant) => [variant.code, variant.label ?? '']),
-    ].map((word) => word.toLowerCase());
+    const words = [row.name, row.alias ?? '', row.code, ...row.colours].map((word) =>
+      word.toLowerCase(),
+    );
     const rank = words.includes(term)
       ? 0
       : words.some((word) => word.startsWith(term))
@@ -296,15 +293,11 @@ function chorded(event: {
 function linesOf(lead: Lead, view: LocalView): DraftLine[] {
   return lead.items.map((item, index) => {
     const product = view.products.find((candidate) => candidate.id === item.productId);
-    // The product's own rule while the catalogue still has it; otherwise read
-    // off the line — a chosen colour only exists on a multicolour one.
-    const rule: ColourRule = product
-      ? colourRuleOf(product)
-      : item.colour
-        ? 'selectable'
-        : item.variantLabel
-          ? 'fixed'
-          : 'dedicated';
+    // The sub product's own colours while the catalogue still has it;
+    // otherwise read off the line — its chosen colour, else its frozen one.
+    const colours =
+      product?.colours ??
+      (item.colour ? [item.colour] : item.variantLabel ? [item.variantLabel] : []);
     return {
       key: `saved-${index + 1}`,
       productId: item.productId,
@@ -315,7 +308,8 @@ function linesOf(lead: Lead, view: LocalView): DraftLine[] {
       alias: item.alias,
       size: item.size,
       packaging: item.packaging ?? '',
-      rule,
+      colours,
+      printSide: product?.printSide ?? 'default',
       grade: item.grade ?? '',
       fromPartyVariant: item.fromPartyVariant,
       notes: item.notes ?? '',
@@ -803,7 +797,7 @@ function AddLeadForm({
 
   // --- The sub product's card ----------------------------------------------
 
-  const readyOptions = { packagingRequired, colourListNonEmpty: colourOptions.length > 0 };
+  const readyOptions = { packagingRequired };
   const newRowKey = (): string => `row-${nextKey.current++}`;
   const newLineKey = (): string => `line-${nextKey.current++}`;
 
@@ -1075,8 +1069,9 @@ function AddLeadForm({
       alias: line.alias,
       code: line.code,
       variantLabel: line.variantLabel,
-      // Only a multicolour sub product carries one; the Master drops any other.
+      // Only a chosen colour travels; a single offered colour is the Master's to fill in.
       colour: line.colour.trim() || null,
+      printSide: printSideOf(line.productName, line.printSide),
       grade: line.grade.trim() || null,
       size: line.size,
       weightKg: line.weightKg,
@@ -1972,7 +1967,9 @@ function AddLeadForm({
                     {group.lines.map((line) => {
                       const colour =
                         line.colour.trim() ||
-                        shownColour(line.variantLabel, line.productName) ||
+                        (line.colours.length === 1
+                          ? shownColour(line.colours[0], line.productName)
+                          : shownColour(line.variantLabel, line.productName)) ||
                         '';
                       return (
                         <AddedLine
@@ -2081,7 +2078,7 @@ function GridCard({
   /** The card is a saved product's lines lifted back, not a new product. */
   editing: boolean;
   ready: boolean;
-  readyOptions: { packagingRequired: boolean; colourListNonEmpty: boolean };
+  readyOptions: { packagingRequired: boolean };
   /** `leads.packagingRequiredOnConvert`, already coalesced by the screen. */
   packagingRequired: boolean;
   packagingOptions: OptionListItem[];
@@ -2117,11 +2114,34 @@ function GridCard({
     (sum, row) => sum + (lineWeight({ weightKg: row.weightKg, quantity: Number(row.qty) }) ?? 0),
     0,
   );
-  const colourList = colourOptions.length > 0;
   /** The row the caret was last in: "another colour" works on it (as on the Master). */
   const [activeRow, setActiveRow] = useState<string | null>(null);
-  const selectableRows = rows.filter((row) => row.rule === 'selectable');
-  const someSelectable = colourList && selectableRows.length > 0;
+  const selectableRows = rows.filter((row) => row.colours.length > 1);
+  const someSelectable = selectableRows.length > 0;
+  // A row's dropdown holds only what its sub product offers, in its own
+  // order — the company list supplies labels and swatches.
+  const optionsForColours = (colours: readonly string[]) =>
+    colours.map((colour) => {
+      const listed = colourOptions.find(
+        (option) => option.value.toLowerCase() === colour.toLowerCase(),
+      );
+      return (
+        listed ?? {
+          id: `colour-${colour}`,
+          tenantId: '',
+          listKey: 'stock.colour',
+          value: colour,
+          label: colour,
+          sequence: 0,
+          isActive: true,
+          hex: null,
+          deletedAt: null,
+          createdAt: '',
+          updatedAt: '',
+          version: 0,
+        }
+      );
+    });
   const moreTarget = someSelectable
     ? (
         selectableRows.find((row) => row.key === activeRow) ??
@@ -2140,8 +2160,8 @@ function GridCard({
           ? t('lead.add.draft.hintPackaging')
           : t('lead.add.draft.hintPieces', { count: pieces });
 
-  /** A selectable row asks for a colour while there is a list to take it from. */
-  const asksColour = (row: GridRow): boolean => row.rule === 'selectable' && colourList;
+  /** A row offering several colours asks for one to be chosen. */
+  const asksColour = (row: GridRow): boolean => row.colours.length > 1;
 
   const offered = rows.filter(
     (row) => row.packaging === '' && suggestedPackaging(row.productId) !== null,
@@ -2394,7 +2414,7 @@ function GridCard({
         </div>
       }
     >
-      {colourOptions.length === 0 && rows.some((row) => row.rule === 'selectable') && (
+      {colourOptions.length === 0 && rows.some((row) => row.colours.length > 1) && (
         <p
           role="note"
           className="ob-small"
@@ -2457,7 +2477,7 @@ function GridCard({
           }}
         >
           {rows.map((row) => {
-            const fixedColour = row.rule === 'fixed' ? row.variantLabel : null;
+            const fixedColour = row.colours.length === 1 ? row.colours[0] : null;
             return (
               <Fragment key={row.key}>
                 <SubRow muted={!isCounted(row)}>
@@ -2470,7 +2490,7 @@ function GridCard({
                   {asksColour(row) ? (
                     <ColourSelect
                       value={row.colour}
-                      options={colourOptions}
+                      options={optionsForColours(row.colours)}
                       labelOf={labelOf}
                       hexOf={colourHex}
                       ariaLabel={`${t('lead.add.draft.colour')} — ${row.code}`}
@@ -2654,10 +2674,10 @@ function ReviewModal({
   onClose: () => void;
   onConfirm: () => void;
 }) {
-  // One row per variant, grade and packaging, in the order they were added.
+  // One row per sub product, grade and packaging, in the order they were added.
   const groups = new Map<string, DraftLine[]>();
   for (const line of lines) {
-    const key = [line.variantId, line.grade, line.packaging].join('|');
+    const key = [line.productId, line.variantId ?? '', line.grade, line.packaging].join('|');
     groups.set(key, [...(groups.get(key) ?? []), line]);
   }
 

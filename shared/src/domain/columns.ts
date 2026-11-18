@@ -37,6 +37,8 @@ export const JSON_COLUMNS = new Set([
   'custom_fields',
   // The Dispatch note saved tick boxes: stored as JSON, read back leniently.
   'note_columns',
+  // A sub product's offered colours: a JSON array of colour values.
+  'colours',
 ]);
 
 export const PARTY_COLUMNS = {
@@ -57,16 +59,17 @@ export const PARTY_COLUMNS = {
 /**
  * `categoryName` and `categoryCode` are deliberately absent: they are
  * conveniences the repository resolves to an id (a name creating the category
- * if it is new), never columns. `variants` is absent too — a child table,
- * replaced as a set by the repository, never merged field by field.
+ * if it is new), never columns.
  */
 export const PRODUCT_COLUMNS = {
   name: 'name',
   alias: 'alias',
   categoryId: 'category_id',
-  hasVariants: 'has_variants',
+  code: 'code',
+  weightKg: 'weight_kg',
   size: 'size',
-  multiColour: 'multi_colour',
+  colours: 'colours',
+  printSide: 'print_side',
   sortOrder: 'sort_order',
   customFields: 'custom_fields',
 } as const satisfies Record<string, string>;

@@ -40,24 +40,21 @@ async function seed() {
   const glazed = await catalog.createProduct(
     {
       categoryName: 'Floor tiles',
-      variants: [{ code: 'GLZ-100' }],
+      code: 'GLZ-100',
       name: 'Glazed Vitrified Tile',
     },
     admin,
   );
   const glossy = await catalog.createProduct(
-    { categoryName: 'Wall tiles', variants: [{ code: 'GLS-200' }], name: 'Glossy Wall Tile' },
+    { categoryName: 'Wall tiles', code: 'GLS-200', name: 'Glossy Wall Tile' },
     admin,
   );
   const rustic = await catalog.createProduct(
     {
       categoryName: 'Floor tiles',
       name: 'Rustic Floor Tile',
-      hasVariants: true,
-      variants: [
-        { code: 'RST-300', label: 'Terracotta' },
-        { code: 'RST-301', label: 'Slate' },
-      ],
+      code: 'RST-300',
+      colours: ['Terracotta', 'Slate'],
     },
     admin,
   );
@@ -77,8 +74,7 @@ async function pickProducts(
   return page;
 }
 
-const codesOf = (page: { items: Product[] }) =>
-  page.items.map((item) => item.variants.map((variant) => variant.code).join(','));
+const codesOf = (page: { items: Product[] }) => page.items.map((item) => item.code);
 
 describe.skipIf(!canRunIntegrationTests)('the picker (integration)', () => {
   beforeAll(setupDatabase);
@@ -111,15 +107,13 @@ describe.skipIf(!canRunIntegrationTests)('the picker (integration)', () => {
     expect(page.items[0]?.name).toBe('Rustic Floor Tile');
   });
 
-  it('finds a model by any of its variant codes, and hands the variants back with it', async () => {
+  it('finds a sub product by any of its colours, and hands the colours back with it', async () => {
     await seed();
 
-    const page = await pickProducts('RST-301');
+    const page = await pickProducts('slate');
     expect(page.items.map((item) => item.name)).toEqual(['Rustic Floor Tile']);
-    expect(page.items[0]?.variants.map((variant) => [variant.code, variant.label])).toEqual([
-      ['RST-300', 'Terracotta'],
-      ['RST-301', 'Slate'],
-    ]);
+    expect(page.items[0]?.code).toBe('RST-300');
+    expect(page.items[0]?.colours).toEqual(['Terracotta', 'Slate']);
   });
 
   it('scopes the second stage of the lead search to the chosen category', async () => {
@@ -151,7 +145,7 @@ describe.skipIf(!canRunIntegrationTests)('the picker (integration)', () => {
     const codes = codesOf(page);
 
     expect(codes).toContain('GLZ-100');
-    expect(codes).toContain('RST-300,RST-301');
+    expect(codes).toContain('RST-300');
   });
 
   it('keeps an included row that has since been deleted', async () => {
@@ -269,7 +263,7 @@ describe.skipIf(!canRunIntegrationTests)('the picker (integration)', () => {
       const make = async (code: string, name: string, sortOrder: number, brand = 'Swisware+') => {
         const category = await catalog.createCategory({ code, name, brand, sortOrder }, admin);
         await catalog.createProduct(
-          { name: `${code} one`, categoryId: category.id, variants: [{ code: '' }] },
+          { name: `${code} one`, categoryId: category.id, code: '' },
           admin,
         );
         return category;
@@ -319,7 +313,7 @@ describe.skipIf(!canRunIntegrationTests)('the picker (integration)', () => {
       // Sixty, past the old 50 cap, added last-first.
       for (let at = 60; at >= 2; at -= 1) {
         await catalog.createProduct(
-          { name: `${1100 + at}`, categoryId: opt.id, sortOrder: at, variants: [{ code: '' }] },
+          { name: `${1100 + at}`, categoryId: opt.id, sortOrder: at, code: '' },
           admin,
         );
       }
@@ -339,7 +333,7 @@ describe.skipIf(!canRunIntegrationTests)('the picker (integration)', () => {
         categoryCode: 'OPT',
         brand: 'Swisware+',
       });
-      expect(page.items[0]?.variants.map((variant) => variant.code)).toEqual(['OPT-0001']);
+      expect(page.items[0]?.code).toBe('OPT-0001');
 
       // Narrowed by the name anywhere, or a code from its start — still in order.
       const narrowed = (await search.pick(

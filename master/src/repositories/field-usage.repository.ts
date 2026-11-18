@@ -3,9 +3,10 @@
  * that hold the raw string (`docs/backend-modules/04-API-CONTRACT.md` §5.2).
  *
  * One query per set, `GROUP BY` over every source table unioned together —
- * never one query per value, and never the stock ledger. `stock.colour` is
- * the variant palette: a colour is "in use" when a product variant carries
- * it as its label, or a lead or order line froze it as `variant_label`.
+ * never one query per value, and never the stock ledger. `stock.colour`
+ * is the palette sub products offer: a colour is "in use" when a sub
+ * product lists it among its colours, or a lead or order line froze it
+ * (`colour`, and `variant_label` on lines from before variants went).
  */
 
 import type { FieldListKey } from '@orderbook/shared';
@@ -39,11 +40,11 @@ const SOURCES: Record<FieldListKey, readonly SourceDefinition[]> = {
   ],
   'stock.colour': [
     {
-      source: 'product_variants',
-      sql: `SELECT label AS value, count(*) AS count
-              FROM product_variants
-             WHERE tenant_id = ? AND label IS NOT NULL AND deleted_at IS NULL
-             GROUP BY label`,
+      source: 'products',
+      sql: `SELECT colour AS value, count(*) AS count
+              FROM products, jsonb_array_elements_text(colours) AS colour
+             WHERE tenant_id = ? AND deleted_at IS NULL
+             GROUP BY colour`,
     },
     {
       source: 'line_items',
@@ -52,7 +53,7 @@ const SOURCES: Record<FieldListKey, readonly SourceDefinition[]> = {
              WHERE tenant_id = ? AND variant_label IS NOT NULL
              GROUP BY variant_label`,
     },
-    // The colour chosen on a multi-colour line is a use of the list as well.
+    // The colour chosen on a line is a use of the list as well.
     {
       source: 'line_items',
       sql: `SELECT colour AS value, count(*) AS count

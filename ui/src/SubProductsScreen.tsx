@@ -39,7 +39,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Product } from '@orderbook/shared';
+import type { PrintSideSetting, Product } from '@orderbook/shared';
 
 import { Button } from './Button.js';
 import {
@@ -73,7 +73,9 @@ import { LoadMorePager } from './CursorPager.js';
 import { ProductDetail, SubProductColour } from './ProductDetail.js';
 import { useCommand } from './KeyboardProvider.js';
 import { ProductDrawer, type CreatedProduct } from './ProductDrawer.js';
+import { Segmented } from './Tabs.js';
 import { rem } from './rem.js';
+import { printSideLabel, printSideOptions } from './printSide.js';
 import { Select } from './SuggestInput.js';
 import { EmptyState, ErrorState, SkeletonTable } from './States.js';
 import { useSubNav } from './SubNavSlot.js';
@@ -282,6 +284,32 @@ export function SubProductsScreen({
     setEditing(product);
   }
 
+  /**
+   * The print side, settable from the row itself beside Edit (owner,
+   * 2026-11-16) — the same field the edit form carries, saved as a
+   * one-field patch: the name rides along because every product write
+   * names the record.
+   */
+  async function setPrintSide(product: Product, printSide: PrintSideSetting): Promise<void> {
+    setPage((current) =>
+      current
+        ? {
+            ...current,
+            items: current.items.map((row) =>
+              row.id === product.id ? { ...row, printSide } : row,
+            ),
+          }
+        : current,
+    );
+    try {
+      await transportRef.current.updateProduct(product.id, { name: product.name, printSide });
+      toast.push(t('product.updated', { name: product.name }));
+    } catch (caught) {
+      toast.push(apiErrorText(caught, 'product.createFailed'), { tone: 'error' });
+      setRefetch((current) => current + 1);
+    }
+  }
+
   function onCreated(product: CreatedProduct): void {
     setDrawerOpen(false);
     onImported?.();
@@ -484,6 +512,30 @@ export function SubProductsScreen({
           weight
         );
       },
+    },
+    {
+      // Beside Edit, per the owner: Default unless this sub product says a side.
+      key: 'printSide',
+      header: t('catalog.products.column.printSide'),
+      priority: 2,
+      width: rem(272),
+      render: (product) =>
+        canEdit ? (
+          <span
+            onClick={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <Segmented<PrintSideSetting>
+              value={product.printSide}
+              label={`${t('product.printSide.label')} — ${product.name}`}
+              options={printSideOptions()}
+              fill
+              onChange={(next) => void setPrintSide(product, next)}
+            />
+          </span>
+        ) : (
+          printSideLabel(product.printSide)
+        ),
     },
     ...(canEdit || canDelete
       ? [

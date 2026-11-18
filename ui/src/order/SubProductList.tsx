@@ -3,8 +3,8 @@
  * shared by the Master and the Office copy (owner, 2026-10-08).
  *
  * A header that stays put while the rows scroll (how many sub products are shown, and the column
- * names), the rows on one grid — photo, code, sub product with its size under it, colour or
- * variants, weight — and a line of keys at the foot. **Compact** draws one short line per row, with
+ * names), the rows on one grid — photo, code, sub product with its size under it, colour,
+ * weight — and a line of keys at the foot. **Compact** draws one short line per row, with
  * no photo and the size beside the name; the choice is this PC's (`useSubListCompact`), and the
  * button that flips it (`SubListCompactToggle`) sits at the right of the search box.
  *
@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { colourRuleOf, shownColour, type Product } from '@orderbook/shared';
+import { shownColour, type Product } from '@orderbook/shared';
 
 import { ColourChip } from '../DataDisplay.js';
 import { formatKg } from '../format.js';
@@ -77,7 +77,7 @@ export function SubListCompactToggle({
   );
 }
 
-/** One weight, or the spread of a legacy sub product's variants; "missing" when one has none. */
+/** The weight, or "missing" when the sub product has none entered. */
 function weightText(weights: Array<number | null>): string {
   if (weights.length === 0) return '—';
   if (weights.some((weight) => weight === null)) return t('product.weight.missingShort');
@@ -151,17 +151,11 @@ export function SubProductList({
         ref={listRef}
       >
         {rows.map((row, index) => {
-          const active = row.variants.filter((variant) => variant.isActive);
-          const first = active[0] ?? row.variants[0];
-          const rule = colourRuleOf(row);
-          const colour =
-            active.length > 1
-              ? active.map((variant) => variant.label ?? variant.code).join(', ')
-              : rule === 'selectable'
-                ? null
-                : shownColour(first?.label, row.name);
-          // A colour-named sub product (a fixed colour, or MAGENTA sold in Magenta) shows its dot.
-          const swatch = rule === 'fixed' && first?.label ? colourHex(first.label) : undefined;
+          const several = row.colours.length > 1;
+          const only = row.colours.length === 1 ? row.colours[0] : undefined;
+          const colour = several ? null : shownColour(only, row.name);
+          // A colour-named sub product (its one colour, or MAGENTA sold in Magenta) shows its dot.
+          const swatch = only ? colourHex(only) : undefined;
           return (
             <button
               key={row.id}
@@ -184,26 +178,20 @@ export function SubProductList({
                   name={row.name}
                 />
               )}
-              <span className="ob-subpick__code">
-                {active.length > 1
-                  ? t('lead.add.products.variantCount', { count: active.length })
-                  : (first?.code ?? '—')}
-              </span>
+              <span className="ob-subpick__code">{row.code || '—'}</span>
               <span className="ob-subpick__name">
                 <span className="ob-ellipsis">{row.name}</span>
                 {row.size && <span className="ob-subpick__size">{row.size}</span>}
               </span>
               <span className="ob-subpick__colour">
-                {swatch && first?.label && <ColourChip name={first.label} hex={swatch} />}
-                {rule === 'selectable' && active.length <= 1 ? (
+                {swatch && only && <ColourChip name={only} hex={swatch} />}
+                {several ? (
                   <span className="ob-subpick__any">{t('product.multiColour.pill')}</span>
                 ) : (
                   colour && <span className="ob-ellipsis">{colour}</span>
                 )}
               </span>
-              <span className="ob-subpick__num">
-                {weightText(active.map((variant) => variant.weightKg))}
-              </span>
+              <span className="ob-subpick__num">{weightText([row.weightKg])}</span>
             </button>
           );
         })}

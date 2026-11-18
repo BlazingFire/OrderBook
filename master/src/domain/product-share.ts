@@ -49,18 +49,9 @@ function formatKg(value: number): string {
   return `${Number(value.toFixed(3))} kg`;
 }
 
-function liveVariants(product: Product) {
-  return product.variants.filter((variant) => variant.isActive);
-}
-
-/** The weight a customer is told: one figure, a range, or nothing while nobody has entered it. */
+/** The weight a customer is told: the sub product's figure, or nothing while nobody has entered it. */
 export function shareWeight(product: Product): string | null {
-  const variants = liveVariants(product);
-  if (variants.length === 0 || variants.some((variant) => variant.weightKg === null)) return null;
-  const weights = variants.map((variant) => variant.weightKg as number);
-  const low = Math.min(...weights);
-  const high = Math.max(...weights);
-  return low === high ? formatKg(low) : `${formatKg(low)} - ${formatKg(high)}`;
+  return product.weightKg === null ? null : formatKg(product.weightKg);
 }
 
 function customFieldText(value: unknown): string {
@@ -106,17 +97,13 @@ export function shareCard(
   labelOf: (key: string) => string = (key) => key,
   text: ShareText = shareText(),
 ): ShareCard {
-  const variants = liveVariants(product);
   const subtitle = [product.categoryName, product.brand].filter(Boolean).join('  |  ');
-
-  const colours = variants.map((variant) => variant.label).filter((label): label is string => Boolean(label));
 
   const candidates: Array<[string, string | null | undefined]> = [
     [text.alias, product.alias],
     [text.size, product.size],
-    [text.code, variants.map((variant) => variant.code).join(', ')],
-    [text.colours, colours.length > 0 ? colours.join(', ') : null],
-    [text.colour, product.multiColour ? text.anyColour : null],
+    [text.code, product.code],
+    [text.colours, product.colours.length > 0 ? product.colours.join(', ') : null],
     [text.weight, shareWeight(product)],
   ];
 

@@ -101,13 +101,11 @@ interface Target {
 function targetsByName(products: readonly Product[]): Map<string, Target> {
   const byCode = new Map<string, Target>();
   for (const product of products) {
-    for (const variant of product.variants) {
-      byCode.set(variant.code.toLowerCase(), {
-        product,
-        matchedAs: variant.code,
-        caption: product.hasVariants ? variant.label : null,
-      });
-    }
+    byCode.set(product.code.toLowerCase(), {
+      product,
+      matchedAs: product.code,
+      caption: product.colours.length === 1 ? (product.colours[0] ?? null) : null,
+    });
   }
 
   // An alias two sub products share names neither, and a code always wins
@@ -147,7 +145,7 @@ export function planPhotoImport<F extends PhotoFileLike>(
   products: readonly Product[],
 ): PhotoPlanRow<F>[] {
   const targets = targetsByName(products);
-  const codes = new Set(products.flatMap((product) => product.variants.map((variant) => variant.code.toLowerCase())));
+  const codes = new Set(products.map((product) => product.code.toLowerCase()));
   const keyed = files.map((file) => {
     const parsed = photoFileKey(file.name);
     const key = parsed && parsed.slot > 1 && codes.has(parsed.full) ? { ...parsed, code: parsed.full, slot: 1 } : parsed;

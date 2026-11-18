@@ -69,7 +69,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Party, Product } from '@orderbook/shared';
+import type { Party, PrintSideSetting, Product } from '@orderbook/shared';
 
 import { ApiError, api, type LocalView } from '../api';
 import { partyFormTransport } from '../partyFormTransport';
@@ -101,6 +101,9 @@ import {
   LoadMorePager,
   Select,
   ProductThumb,
+  printSideLabel,
+  printSideOptions,
+  Segmented,
   SkeletonTable,
   StatusPill,
   rem,
@@ -161,7 +164,8 @@ function matchesProduct(product: Product, term: string, filters: ProductFilters)
         product.categoryName,
         product.categoryCode,
         product.brand,
-        ...product.variants.flatMap((variant) => [variant.code, variant.label]),
+        product.code,
+        ...product.colours,
       ].some((field) => (field ?? '').toLowerCase().includes(term))) &&
     (!filters.brand || product.brand?.toLowerCase() === filters.brand.toLowerCase()) &&
     (!filters.categoryId || product.categoryId === filters.categoryId)
@@ -463,6 +467,22 @@ export function CatalogScreen({
       return;
     }
     setEditingProduct(product);
+  }
+
+  /** The print side from the row itself, beside Edit — the same one-field patch as the Master's list. */
+  async function setPrintSide(product: Product, printSide: PrintSideSetting): Promise<void> {
+    try {
+      await api.updateProduct(product.id, {
+        name: product.name,
+        printSide,
+        baseFieldHlc: product.sync.fieldHlc,
+      });
+      toast.push(t('product.updated', { name: product.name }));
+    } catch (caught) {
+      toast.push(caught instanceof Error ? caught.message : t('product.createFailed'), {
+        tone: 'error',
+      });
+    }
   }
 
   function onProductUpdated(name: string): void {
@@ -1017,6 +1037,30 @@ export function CatalogScreen({
           weight
         );
       },
+    },
+    {
+      // Beside Edit, per the owner: Default unless this sub product says a side.
+      key: 'printSide',
+      header: t('catalog.products.column.printSide'),
+      priority: 2,
+      width: rem(272),
+      render: (product) =>
+        canEditProduct ? (
+          <span
+            onClick={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <Segmented<PrintSideSetting>
+              value={product.printSide}
+              label={`${t('product.printSide.label')} — ${product.name}`}
+              options={printSideOptions()}
+              fill
+              onChange={(next) => void setPrintSide(product, next)}
+            />
+          </span>
+        ) : (
+          printSideLabel(product.printSide)
+        ),
     },
     ...(canEditProduct || canDeleteProduct
       ? [

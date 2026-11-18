@@ -37,45 +37,30 @@ function product(over: Record<string, unknown>): Product {
     categoryCode: 'OPT',
     brand: 'Swisware+',
     size: null,
-    multiColour: false,
+    code: 'OPT-1',
+    weightKg: 25,
+    colours: [],
+    printSide: 'default',
     sortOrder: 1,
     images: [],
-    variants: [],
     ...over,
   } as unknown as Product;
 }
 
-const variant = (id: string, label: string | null, code: string, isActive = true) => ({
-  id,
-  label,
-  code,
-  weightKg: 25,
-  isActive,
-});
-
-const OPTIONS = { packagingRequired: false, colourListNonEmpty: true };
+const OPTIONS = { packagingRequired: false };
 
 describe('buildRows', () => {
-  it('opens a row for every active variant of every sub product, in the order given', () => {
+  it('opens a row for every sub product, in the order given, with its own colours', () => {
     const rows = buildRows(
       [
-        product({
-          id: 'a',
-          name: 'A',
-          variants: [variant('v1', 'White', 'OPT-1'), variant('v2', 'Ivory', 'OPT-2', false)],
-        }),
-        product({
-          id: 'b',
-          name: 'B',
-          multiColour: true,
-          variants: [variant('v3', null, 'OPT-3')],
-        }),
+        product({ id: 'a', name: 'A', code: 'OPT-1', colours: ['White'] }),
+        product({ id: 'b', name: 'B', code: 'OPT-3', colours: ['White', 'Ivory'] }),
       ],
       { nextKey: counter() },
     );
-    expect(rows.map((row) => [row.productId, row.code, row.rule])).toEqual([
-      ['a', 'OPT-1', 'fixed'],
-      ['b', 'OPT-3', 'selectable'],
+    expect(rows.map((row) => [row.productId, row.code, row.colours])).toEqual([
+      ['a', 'OPT-1', ['White']],
+      ['b', 'OPT-3', ['White', 'Ivory']],
     ]);
     expect(rows.map((row) => row.key)).toEqual(['k1', 'k2']);
     expect(rows.every((row) => row.qty === '' && row.packaging === '' && row.colour === '')).toBe(
@@ -86,8 +71,8 @@ describe('buildRows', () => {
   it("carries each row's own product facts, and the party's own names where it has them", () => {
     const rows = buildRows(
       [
-        product({ id: 'a', variants: [variant('v1', 'White', 'OPT-1')] }),
-        product({ id: 'b', name: 'B', variants: [variant('v2', null, 'OPT-2')] }),
+        product({ id: 'a', code: 'OPT-1', colours: ['White'] }),
+        product({ id: 'b', name: 'B', code: 'OPT-2' }),
       ],
       {
         nextKey: counter(),
@@ -108,8 +93,8 @@ describe('addColourRow', () => {
     const next = counter();
     const rows = buildRows(
       [
-        product({ id: 'a', multiColour: true, variants: [variant('v1', null, 'OPT-1')] }),
-        product({ id: 'b', variants: [variant('v2', 'White', 'OPT-2')] }),
+        product({ id: 'a', code: 'OPT-1', colours: ['White', 'Ivory'] }),
+        product({ id: 'b', code: 'OPT-2', colours: ['White'] }),
       ],
       { nextKey: next },
     );
@@ -118,14 +103,14 @@ describe('addColourRow', () => {
     rows[0]!.packaging = 'Box';
     const grown = addColourRow(rows, rows[0]!.key, next);
     expect(grown.map((row) => row.productId)).toEqual(['a', 'a', 'b']);
-    expect(grown[1]).toMatchObject({ colour: '', qty: '', packaging: '', variantId: 'v1' });
+    expect(grown[1]).toMatchObject({ colour: '', qty: '', packaging: '', code: 'OPT-1' });
     expect(new Set(grown.map((row) => row.key)).size).toBe(3);
     // The source row is untouched.
     expect(grown[0]).toMatchObject({ colour: 'White', qty: '10', packaging: 'Box' });
   });
 
   it('does nothing for a key that is not on the card', () => {
-    const rows = buildRows([product({ variants: [variant('v1', 'White', 'X')] })], {
+    const rows = buildRows([product({ code: 'X', colours: ['White'] })], {
       nextKey: counter(),
     });
     expect(addColourRow(rows, 'nope', counter())).toEqual(rows);
@@ -135,25 +120,25 @@ describe('addColourRow', () => {
 describe('when a row and the card can be added', () => {
   const row = (over: Partial<GridRow>): GridRow =>
     ({
-      ...buildRows([product({ variants: [variant('v1', 'White', 'X')] })], {
+      ...buildRows([product({ code: 'X', colours: ['White'] })], {
         nextKey: counter(),
       })[0]!,
       ...over,
     }) as GridRow;
 
   it('ignores a row with no quantity, whatever else is missing', () => {
-    expect(rowProblem(row({ rule: 'selectable', qty: '' }), OPTIONS)).toBeNull();
-    expect(rowProblem(row({ rule: 'selectable', qty: '0' }), OPTIONS)).toBeNull();
+    expect(rowProblem(row({ colours: ['White', 'Ivory'], qty: '' }), OPTIONS)).toBeNull();
+    expect(rowProblem(row({ colours: ['White', 'Ivory'], qty: '0' }), OPTIONS)).toBeNull();
   });
 
-  it('wants a colour on a counted selectable row, unless the company has no colour list', () => {
-    expect(rowProblem(row({ rule: 'selectable', qty: '3' }), OPTIONS)).toBe('colour');
-    expect(rowProblem(row({ rule: 'selectable', qty: '3', colour: 'White' }), OPTIONS)).toBeNull();
+  it('wants a colour on a counted row whose sub product offers several', () => {
+    expect(rowProblem(row({ colours: ['White', 'Ivory'], qty: '3' }), OPTIONS)).toBe('colour');
     expect(
-      rowProblem(row({ rule: 'selectable', qty: '3' }), { ...OPTIONS, colourListNonEmpty: false }),
+      rowProblem(row({ colours: ['White', 'Ivory'], qty: '3', colour: 'White' }), OPTIONS),
     ).toBeNull();
-    // A fixed or dedicated row never asks for one.
-    expect(rowProblem(row({ rule: 'fixed', qty: '3' }), OPTIONS)).toBeNull();
+    // One colour or none never asks for one.
+    expect(rowProblem(row({ colours: ['White'], qty: '3' }), OPTIONS)).toBeNull();
+    expect(rowProblem(row({ colours: [], qty: '3' }), OPTIONS)).toBeNull();
   });
 
   it('wants a packaging on every counted row only while the company requires one', () => {
@@ -169,7 +154,7 @@ describe('when a row and the card can be added', () => {
   it('is ready with at least one counted row and every counted row complete', () => {
     const empty = row({ qty: '' });
     const good = row({ key: 'g', qty: '2' });
-    const bad = row({ key: 'b', qty: '2', rule: 'selectable' });
+    const bad = row({ key: 'b', qty: '2', colours: ['White', 'Ivory'] });
     expect(cardReady([empty], OPTIONS)).toBe(false);
     expect(cardReady([empty, good], OPTIONS)).toBe(true);
     expect(cardReady([good, bad], OPTIONS)).toBe(false);
@@ -182,10 +167,8 @@ describe('rows and lines', () => {
     const next = counter();
     const rows = buildRows(
       [
-        product({
-          id: 'a',
-          variants: [variant('v1', 'White', 'A1'), variant('v2', 'Ivory', 'A2')],
-        }),
+        product({ id: 'a', code: 'A1', colours: ['White'] }),
+        product({ id: 'b', name: 'B', code: 'A2', colours: ['Ivory'] }),
       ],
       { nextKey: next },
     );
@@ -203,14 +186,14 @@ describe('rows and lines', () => {
     const next = counter();
     const saved: GridLine[] = [
       {
-        ...buildRows([product({ variants: [variant('v1', 'White', 'A1')] })], {
+        ...buildRows([product({ code: 'A1', colours: ['White'] })], {
           nextKey: next,
         })[0]!,
         key: 'saved-1',
         quantity: 7,
       } as unknown as GridLine,
       {
-        ...buildRows([product({ id: 'b', variants: [variant('v2', 'Ivory', 'A2')] })], {
+        ...buildRows([product({ id: 'b', code: 'A2', colours: ['Ivory'] })], {
           nextKey: next,
         })[0]!,
         key: 'saved-2',

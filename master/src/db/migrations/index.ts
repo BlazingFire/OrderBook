@@ -68,6 +68,7 @@ import * as noticeSellToday from './20261018000000_notice_sell_today.js';
 import * as todoList from './20261019000000_todo_list.js';
 import * as noteColumns from './20261025000000_note_columns.js';
 import * as variantBlankLabel from './20261105000000_variant_blank_label.js';
+import * as subProductCodeColoursPrintSide from './20261116000000_sub_product_code_colours_print_side.js';
 
 export interface Migration {
   name: string;
@@ -320,6 +321,12 @@ export const migrations: Migration[] = [
   {
     name: '20261105000000_variant_blank_label',
     ...variantBlankLabel,
+  },
+  // 2026-11-16: variants come off the sub product — code, weight, colours and
+  // print side move onto `products`, backfilled; the old table stays dormant.
+  {
+    name: '20261116000000_sub_product_code_colours_print_side',
+    ...subProductCodeColoursPrintSide,
   },
 ];
 

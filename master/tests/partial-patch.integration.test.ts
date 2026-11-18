@@ -36,11 +36,12 @@ describe.skipIf(!canRunIntegrationTests)('partial patch semantics (integration)'
     /** Every product column, filled. */
     const fullProduct = {
       categoryName: 'PLAIN SET',
-      variants: [{ code: 'GOLDEN-SET-WHITE', weightKg: 28.5 }],
+      code: 'GOLDEN-SET-WHITE', weightKg: 28.5,
       name: 'GOLDEN SET',
       alias: 'Golden',
       size: '18x14',
-      multiColour: true,
+      colours: ['White', 'Ivory'],
+      printSide: 'right' as const,
       customFields: { plant: 'Thangadh 2' },
     };
 
@@ -53,9 +54,10 @@ describe.skipIf(!canRunIntegrationTests)('partial patch semantics (integration)'
       expect(after.name).toBe('GOLDEN SET (v2)');
       expect(after.alias).toBe('Golden');
       expect(after.size).toBe('18x14');
-      expect(after.multiColour).toBe(true);
-      // The variant set was not named either, so it stays: the code and the weight.
-      expect(after.variants.map((variant) => [variant.code, variant.weightKg])).toEqual([['GOLDEN-SET-WHITE', 28.5]]);
+      expect(after.colours).toEqual(['White', 'Ivory']);
+      expect(after.printSide).toBe('right');
+      // The code and weight were not named either, so they stay.
+      expect([after.code, after.weightKg]).toEqual(['GOLDEN-SET-WHITE', 28.5]);
       expect(after.customFields).toEqual({ plant: 'Thangadh 2' });
     });
 
@@ -64,12 +66,12 @@ describe.skipIf(!canRunIntegrationTests)('partial patch semantics (integration)'
 
       const after = await catalog.updateProduct(
         created.id,
-        { name: fullProduct.name, alias: null, multiColour: false },
+        { name: fullProduct.name, alias: null, colours: [] },
         actor,
       );
 
       expect(after.alias).toBeNull();
-      expect(after.multiColour).toBe(false);
+      expect(after.colours).toEqual([]);
       // …and the neighbours it did not name are still untouched.
       expect(after.size).toBe('18x14');
     });

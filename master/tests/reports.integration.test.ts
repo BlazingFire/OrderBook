@@ -32,17 +32,16 @@ async function createDispatchedOrder(
       // Sub-product names are unique inside their product (catalogue v2).
       name: `RPT Tile ${Math.random().toString(36).slice(2, 8)}`,
       categoryName: 'Tiles',
-      hasVariants: true,
-      variants: [{ code: `RPT-${Math.random().toString(36).slice(2, 8)}`, label: 'White' }],
+      code: `RPT-${Math.random().toString(36).slice(2, 8)}`,
+      colours: ['White'],
     },
     actor,
   );
-  const variantId = product.variants[0]!.id;
 
   const lead = await leadService.createLead(
     {
       partyId: party.id,
-      items: [{ productId: product.id, variantId, quantity: 10, packaging: 'Box' }],
+      items: [{ productId: product.id, quantity: 10, packaging: 'Box' }],
     },
     actor,
   );
@@ -65,14 +64,14 @@ async function createOpenLead(city: string): Promise<string> {
   const party = await catalogService.createParty({ name: `RPT Open ${city} ${Date.now()}`, city }, actor);
   const code = `RPO-${Math.random().toString(36).slice(2, 8)}`;
   const product = await catalogService.createProduct(
-    { name: `RPT Basin ${code}`, categoryName: 'Basins', variants: [{ code }] },
+    { name: `RPT Basin ${code}`, categoryName: 'Basins', code },
     actor,
   );
   const lead = await leadService.createLead(
     {
       partyId: party.id,
       items: [
-        { productId: product.id, variantId: product.variants[0]!.id, packaging: 'Box', quantity: 5 },
+        { productId: product.id, variantId: product.id, packaging: 'Box', quantity: 5 },
       ],
     },
     actor,
@@ -169,33 +168,28 @@ describe.skipIf(!canRunIntegrationTests)('Reports (integration)', () => {
       expect(thisMonth?.pieces).toBe(10);
     });
 
-    it('RPT-18: the colour buckets are the variant labels the pieces were dispatched in, and a no-variant product is one "No colour" bucket', async () => {
+    it('RPT-18: the colour buckets are the colours the pieces were dispatched in, and a no-colour sub product is one "No colour" bucket', async () => {
       const party = await catalogService.createParty({ name: 'RPT Colours', city: 'Morbi' }, actor);
       const model = await catalogService.createProduct(
         {
           name: 'RPT Basin',
           categoryName: 'Basins',
-          hasVariants: true,
-          variants: [
-            { code: 'RPT-C-1', label: 'White' },
-            { code: 'RPT-C-2', label: 'Magenta' },
-          ],
+          code: 'RPT-C-1',
+          colours: ['White', 'Magenta'],
         },
         actor,
       );
       const plain = await catalogService.createProduct(
-        { name: 'RPT Pan', categoryName: 'Pans', variants: [{ code: 'RPT-P-1' }] },
+        { name: 'RPT Pan', categoryName: 'Pans', code: 'RPT-P-1' },
         actor,
       );
-      const [white, magenta] = model.variants;
-      const [pan] = plain.variants;
       const lead = await leadService.createLead(
         {
           partyId: party.id,
           items: [
-            { productId: model.id, variantId: white!.id, quantity: 5, packaging: 'Box' },
-            { productId: model.id, variantId: magenta!.id, quantity: 10, packaging: 'Box' },
-            { productId: plain.id, variantId: pan!.id, quantity: 7, packaging: 'Box' },
+            { productId: model.id, colour: 'White', quantity: 5, packaging: 'Box' },
+            { productId: model.id, colour: 'Magenta', quantity: 10, packaging: 'Box' },
+            { productId: plain.id, quantity: 7, packaging: 'Box' },
           ],
         },
         actor,

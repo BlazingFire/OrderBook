@@ -99,20 +99,21 @@ describe.skipIf(!canRunIntegrationTests)('catalog service (integration)', () => 
   describe('products', () => {
     const single = (name: string, code: string, extra: Record<string, unknown> = {}) =>
       catalog.createProduct(
-        { name, categoryName: 'Test category', variants: [{ code }], ...extra },
+        { name, categoryName: 'Test category', code, ...extra },
         actor,
       );
 
-    it('refuses a product with no code at all', async () => {
+    it('refuses a product with no code to number from and none supplied', async () => {
       await expect(
-        catalog.createProduct({ name: 'Carrara White', categoryName: 'Basins', variants: [] }, actor),
-      ).rejects.toThrow(/at least one code/i);
+        catalog.createProduct({ name: 'Carrara White', categoryName: 'Basins' }, actor),
+      ).rejects.toMatchObject({ messageKey: 'validation.product.codeRequired' });
     });
 
-    it('keeps the supplied code on the product\'s single variant', async () => {
+    it("keeps the supplied code on the sub product itself", async () => {
       const product = await single('Statuario', 'GVT-6060');
-      expect(product.hasVariants).toBe(false);
-      expect(product.variants.map((variant) => [variant.code, variant.label])).toEqual([['GVT-6060', null]]);
+      expect(product.code).toBe('GVT-6060');
+      expect(product.colours).toEqual([]);
+      expect(product.printSide).toBe('default');
     });
 
     it('refuses a duplicate code across products', async () => {
@@ -127,7 +128,7 @@ describe.skipIf(!canRunIntegrationTests)('catalog service (integration)', () => 
 
     it('requires a category', async () => {
       await expect(
-        catalog.createProduct({ name: 'One', variants: [{ code: 'A1' }] }, actor),
+        catalog.createProduct({ name: 'One', code: 'A1' }, actor),
       ).rejects.toMatchObject({ messageKey: 'validation.product.categoryRequired' });
     });
 
@@ -158,12 +159,12 @@ describe.skipIf(!canRunIntegrationTests)('catalog service (integration)', () => 
       const product = await single('One', 'A1');
       const updated = await catalog.updateProduct(
         product.id,
-        { name: 'One Renamed', variants: [{ id: product.variants[0]?.id, code: 'A1' }] },
+        { name: 'One Renamed', code: 'A1' },
         actor,
       );
 
       expect(updated.name).toBe('One Renamed');
-      expect(updated.variants.map((variant) => variant.code)).toEqual(['A1']);
+      expect(updated.code).toBe('A1');
     });
 
     it('refuses to move a product onto another product\'s code', async () => {
@@ -173,7 +174,7 @@ describe.skipIf(!canRunIntegrationTests)('catalog service (integration)', () => 
       await expect(
         catalog.updateProduct(
           second.id,
-          { name: 'Two', variants: [{ id: second.variants[0]?.id, code: 'A1' }] },
+          { name: 'Two', code: 'A1' },
           actor,
         ),
       ).rejects.toThrow(/already in use/i);
@@ -214,7 +215,7 @@ describe.skipIf(!canRunIntegrationTests)('catalog service (integration)', () => 
     });
 
     it('lists only products with a variant missing its weight when asked', async () => {
-      await single('Weighed', 'W-1', { variants: [{ code: 'W-1', weightKg: 12.5 }] });
+      await single('Weighed', 'W-1', { code: 'W-1', weightKg: 12.5 });
       await single('Unweighed', 'W-2');
 
       const missing = await catalog.listProducts({ missingWeight: true }, actor);
@@ -232,7 +233,7 @@ describe.skipIf(!canRunIntegrationTests)('catalog service (integration)', () => 
     const brand = (value: string) =>
       fields.createValue({ listKey: 'product.brand', value, label: value, hex: null }, actor);
     const subProduct = (name: string, categoryId: string, code = '') =>
-      catalog.createProduct({ name, categoryId, variants: [{ code }] }, actor);
+      catalog.createProduct({ name, categoryId, code }, actor);
     const captured = async <T>(work: () => Promise<T>): Promise<[T, DataChangedEvent[]]> => {
       const events: DataChangedEvent[] = [];
       const stop = onChange((event) => {
@@ -391,7 +392,7 @@ describe.skipIf(!canRunIntegrationTests)('catalog service (integration)', () => 
       for (const sortOrder of ['first', 1.5, -1]) {
         await expect(
           catalog.createProduct(
-            { name: '102', categoryId: opt.id, sortOrder: sortOrder as number, variants: [{ code: '' }] },
+            { name: '102', categoryId: opt.id, sortOrder: sortOrder as number, code: '' },
             actor,
           ),
         ).rejects.toMatchObject({ messageKey: 'validation.category.sortOrder' });
@@ -549,17 +550,17 @@ describe.skipIf(!canRunIntegrationTests)('catalog service (integration)', () => 
 
       const first = await subProduct('102 (9")', opt.id);
       const second = await catalog.createProduct(
-        { name: '111 (9")', categoryCode: 'opt', variants: [{ code: '  ' }] },
+        { name: '111 (9")', categoryCode: 'opt', code: '  ' },
         actor,
       );
-      expect([first.variants[0]?.code, second.variants[0]?.code]).toEqual(['OPT-0001', 'OPT-0002']);
+      expect([first.code, second.code]).toEqual(['OPT-0001', 'OPT-0002']);
 
       await catalog.deleteProduct(second.id, actor);
       const third = await subProduct('103 (9")', opt.id);
-      expect(third.variants[0]?.code).toBe('OPT-0003');
+      expect(third.code).toBe('OPT-0003');
 
       // A typed code is kept as typed.
-      expect((await subProduct('1111', opt.id, '1111')).variants[0]?.code).toBe('1111');
+      expect((await subProduct('1111', opt.id, '1111')).code).toBe('1111');
     });
 
     it('keeps sub-product names unique inside a product, not across products', async () => {

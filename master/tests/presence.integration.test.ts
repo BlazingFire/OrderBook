@@ -119,13 +119,13 @@ function beat(client: Client, payload: unknown): Promise<CommandResult<RecordPre
 async function seedLead() {
   const party = await catalog.createParty({ name: 'Closed Traders' }, admin);
   const product = await catalog.createProduct(
-    { categoryName: 'Tiles', variants: [{ code: 'PR-01' }], name: 'Glazed Tile' },
+    { categoryName: 'Tiles', code: 'PR-01', name: 'Glazed Tile' },
     admin,
   );
   const lead = await leads.createLead(
     {
       partyId: party.id,
-      items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 3, packaging: 'carton' }],
+      items: [{ productId: product.id, variantId: product.id, quantity: 3, packaging: 'carton' }],
     },
     admin,
   );
@@ -137,7 +137,7 @@ async function anotherLead(party: { id: string }, product: Awaited<ReturnType<ty
   return leads.createLead(
     {
       partyId: party.id,
-      items: [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 2, packaging: 'carton' }],
+      items: [{ productId: product.id, variantId: product.id, quantity: 2, packaging: 'carton' }],
     },
     admin,
   );

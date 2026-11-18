@@ -300,10 +300,10 @@ describe.skipIf(!canRunIntegrationTests)('notification centre (integration)', ()
     const owner = await person('owner', 'management', ['leads.view', 'leads.create', 'leads.edit', 'leads.delete']);
     const party = await catalogService.createParty({ name: 'Notice Traders' }, admin);
     const product = await catalogService.createProduct(
-      { name: 'Notice Pan', categoryName: 'Pans', variants: [{ code: 'NTC-01' }] },
+      { name: 'Notice Pan', categoryName: 'Pans', code: 'NTC-01' },
       admin,
     );
-    const items = [{ productId: product.id, variantId: product.variants[0]!.id, quantity: 5 }];
+    const items = [{ productId: product.id, variantId: product.id, quantity: 5 }];
     const lead = await leadService.createLead({ partyId: party.id, ownerId: owner.id, items }, admin);
 
     // The owner's own edit tells nobody.

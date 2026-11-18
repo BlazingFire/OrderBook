@@ -112,7 +112,7 @@ export async function seedSampleData(
   // Resolved as the events run; every later event looks ids up here.
   const partyIds = new Map<string, string>();
   /** Sample key → the ids a line or a party record needs. */
-  const variantIds = new Map<string, { variantId: string; productId: string }>();
+  const subProductIds = new Map<string, string>();
   // The printed swatches, so a photo is drawn in its sub product's colour.
   const colourHex = new Map(
     (await readCatalogueFile()).colours.map((colour) => [colour.name, colour.hex]),
@@ -174,7 +174,7 @@ export async function seedSampleData(
           )
         : null;
       if (!hit) throw new Error(`Sample sub product "${key}" is not in the SWISWARE catalogue`);
-      variantIds.set(key, hit);
+      subProductIds.set(key, hit.productId);
     }
   });
 
@@ -183,7 +183,7 @@ export async function seedSampleData(
   SAMPLE_PRODUCTS.forEach((product, index) => {
     schedule(clock.at(1, 10 + index * 3), async () => {
       for (const [key, weightKg] of Object.entries(product.weights)) {
-        const productId = requireVariant(variantIds, key).productId;
+        const productId = requireSubProduct(subProductIds, key);
         const existing = await productRepo.findProductById(tenantId, productId);
         if (!existing)
           throw new Error(`Sample sub product "${key}" vanished after the catalogue load`);
@@ -194,13 +194,7 @@ export async function seedSampleData(
             name: existing.name,
             alias: product.alias ?? null,
             customFields: { launchYear: product.launchYear },
-            variants: existing.variants.map((variant) => ({
-              id: variant.id,
-              code: variant.code,
-              label: variant.label,
-              weightKg,
-              sequence: variant.sequence,
-            })),
+            weightKg,
           },
           actors.admin,
         );
@@ -210,9 +204,9 @@ export async function seedSampleData(
     if (withImages) {
       schedule(clock.at(1, 11 + index * 3), async () => {
         const [firstCode] = Object.keys(product.weights);
-        const productId = requireVariant(variantIds, firstCode as string).productId;
+        const productId = requireSubProduct(subProductIds, firstCode as string);
         const existing = await productRepo.findProductById(tenantId, productId);
-        const colour = existing?.variants.find((variant) => variant.label)?.label ?? 'White';
+        const colour = existing?.colours[0] ?? 'White';
         try {
           const fileBuffer = await renderTileSwatch({
             baseHex: colourHex.get(colour) ?? '#F4F4F0',
@@ -281,7 +275,7 @@ export async function seedSampleData(
       await catalog.upsertVariant(
         {
           partyId: requireId(partyIds, variant.party, 'party'),
-          productId: requireVariant(variantIds, variant.code).productId,
+          productId: requireSubProduct(subProductIds, variant.code),
           alias: variant.alias ?? null,
           packaging: variant.packaging ?? null,
         },
@@ -324,7 +318,7 @@ export async function seedSampleData(
       counts,
       schedule,
       partyIds,
-      variantIds,
+      subProductIds,
     });
   });
 
@@ -339,7 +333,7 @@ export async function seedSampleData(
   });
   schedule(clock.at(SAMPLE_WINDOW_DAYS - 1, 81), async () => {
     await catalog.deleteProduct(
-      requireVariant(variantIds, SAMPLE_DELETIONS.productCode).productId,
+      requireSubProduct(subProductIds, SAMPLE_DELETIONS.productCode),
       actors.management,
     );
     counts.deleted += 1;
@@ -389,7 +383,7 @@ interface LeadContext {
   counts: SampleDataCounts;
   schedule: (at: Date, run: () => Promise<void>) => void;
   partyIds: Map<string, string>;
-  variantIds: Map<string, { variantId: string; productId: string }>;
+  subProductIds: Map<string, string>;
 }
 
 /**
@@ -428,10 +422,8 @@ function scheduleLeadHistory(lead: SampleLead, progress: LeadProgress, ctx: Lead
           ...(lead.siteLocation ? { siteLocation: lead.siteLocation } : {}),
         },
         items: lead.lines.map((line): LineItemInput => {
-          const ids = requireVariant(ctx.variantIds, line.code);
           return {
-            productId: ids.productId,
-            variantId: ids.variantId,
+            productId: requireSubProduct(ctx.subProductIds, line.code),
             quantity: line.quantity,
             packaging: line.packaging,
             colour: line.colour ?? null,
@@ -628,12 +620,9 @@ function requireId(ids: Map<string, string>, key: string, kind: string): string 
   return id;
 }
 
-function requireVariant(
-  ids: Map<string, { variantId: string; productId: string }>,
-  code: string,
-): { variantId: string; productId: string } {
+function requireSubProduct(ids: Map<string, string>, code: string): string {
   const found = ids.get(code);
-  if (!found) throw new Error(`Sample variant "${code}" was referenced before the catalogue was loaded`);
+  if (!found) throw new Error(`Sample sub product "${code}" was referenced before the catalogue was loaded`);
   return found;
 }
 

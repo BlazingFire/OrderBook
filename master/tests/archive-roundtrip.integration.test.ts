@@ -78,7 +78,7 @@ describe.skipIf(!canRunIntegrationTests)('backup all: export, then restore (inte
     await setUpFirstRun('Roundtrip Ceramics');
     const actor = await testActor();
     const party = await catalog.createParty({ name: 'Roundtrip Traders' }, actor);
-    await catalog.createProduct({ categoryName: 'Tiles', variants: [{ code: 'RT-01' }], name: 'Round Tile' }, actor);
+    await catalog.createProduct({ categoryName: 'Tiles', code: 'RT-01', name: 'Round Tile' }, actor);
 
     // A paired Office panel, with the proof key its rediscovery needs.
     const panelId = randomUUID();

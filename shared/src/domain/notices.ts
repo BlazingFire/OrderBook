@@ -352,13 +352,12 @@ export function sellTodayFor(entries: readonly SellToday[] | undefined, today: s
   return newest;
 }
 
-/** A sub product as a card: its first active code, its main product, its primary photo. */
+/** A sub product as a card: its code, its main product, its primary photo. */
 export function sellTodayProductOf(product: Product): SellTodayProduct {
-  const variant = product.variants.find((each) => each.isActive) ?? product.variants[0];
   return {
     id: product.id,
     name: product.name,
-    code: variant?.code ?? null,
+    code: product.code || null,
     size: product.size,
     mainProduct: product.categoryName || null,
     image: product.images.find((image) => image.isPrimary) ?? product.images[0] ?? null,

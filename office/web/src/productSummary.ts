@@ -1,26 +1,16 @@
 /**
- * The one-line answers the catalogue gives about a product: its code, what it
- * weighs, the product it sits under and the colour it shows.
- *
- * Both are summaries of the **variants**, not fields on the product — a model
- * made in four colours has four codes and four weights — and both have a wrong
- * answer that looks right. A model's code is not its first variant's code, and
- * a model's weight is not the average of its variants'.
+ * The one-line answers the catalogue gives about a sub product: its code,
+ * what it weighs, the product it sits under and the colour it shows. All
+ * are the sub product's own fields; there is no variant layer under it.
  *
  * They live here rather than in `CatalogScreen` because the list row and the
- * detail card have to agree: a row reading "3 variants · 102-W" beside a detail
- * card reading "102-W" is a bug report waiting to be filed.
+ * detail card have to agree.
  */
 
 import type { Product } from '@orderbook/shared';
-import { colourRuleOf, shownColour } from '@orderbook/shared';
+import { shownColour } from '@orderbook/shared';
 
-import { formatKg, t } from '@orderbook/ui';
-
-/** Active variants — the only ones any of these figures counts. */
-function active(product: Product) {
-  return product.variants.filter((variant) => variant.isActive);
-}
+import { formatKg } from '@orderbook/ui';
 
 /** One copy, in the ui kit: a product's name never carries its main-product code. */
 export { productLabel } from '@orderbook/ui';
@@ -39,51 +29,28 @@ export function byCatalogueOrder(
 }
 
 /**
- * The colours worth printing beside a sub product under its rule (§2): the
- * variant's own colour for `fixed`, less one that only repeats the name
- * (`MAGENTA` in Magenta); nothing for `dedicated`, whose design is its colour;
- * and nothing for `selectable`, which the caller shows as "Multicolour"
- * because the counter picks its colour. A model from before catalogue v2 with
- * several colour variants lists each.
+ * The colour worth printing beside a sub product (§2): its one colour when
+ * it offers exactly one, less one that only repeats the name (`MAGENTA` in
+ * Magenta). Nothing when it offers none or several — several is shown as
+ * "Multicolour" by the caller, because the counter picks the colour.
  */
 export function shownColours(product: Product): string[] {
-  if (colourRuleOf(product) !== 'fixed') return [];
-  return active(product).flatMap((variant) => shownColour(variant.label, product.name) ?? []);
+  if (product.colours.length !== 1) return [];
+  return shownColour(product.colours[0], product.name) ? [product.colours[0] as string] : [];
 }
 
-/** The code column: the one code, or how many there are and the first of them. */
+/** The code column: the sub product's own software code. */
 export function codesOf(product: Product): string {
-  const variants = active(product);
-  if (variants.length <= 1) return variants[0]?.code ?? product.variants[0]?.code ?? '—';
-  return t('catalog.products.variantCount', {
-    count: variants.length,
-    first: variants[0]!.code,
-  });
-}
-
-/** A variant whose weight nobody has entered yet — flagged, never treated as zero. */
-function missingWeight(product: Product): boolean {
-  return product.variants.some((variant) => variant.isActive && variant.weightKg === null);
+  return product.code || '—';
 }
 
 /**
- * What the product weighs, or `null` when nobody has measured it yet.
+ * What the sub product weighs, or `null` when nobody has measured it yet.
  *
  * `null` rather than `'0 kg'` on purpose: the caller renders it as the "weight
  * missing" pill, because a lead loaded off a zero weight is a lorry loaded
- * wrong. One figure for a one-form product; a range for a model, because one
- * number for "each of its variants weighs something different" lies.
+ * wrong.
  */
 export function weightLabel(product: Product): string | null {
-  if (missingWeight(product)) return null;
-  const variants = active(product);
-  if (variants.length === 0) return null;
-  if (variants.length === 1) return formatKg(variants[0]!.weightKg);
-
-  const weights = variants.map((variant) => variant.weightKg ?? 0);
-  const low = Math.min(...weights);
-  const high = Math.max(...weights);
-  return low === high
-    ? formatKg(low)
-    : t('product.weight.range', { low: formatKg(low), high: formatKg(high) });
+  return product.weightKg === null ? null : formatKg(product.weightKg);
 }

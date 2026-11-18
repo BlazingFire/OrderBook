@@ -65,12 +65,12 @@ describe.skipIf(!canRunIntegrationTests)('push gate (integration)', () => {
     admin = await testActor();
     const party = await catalog.createParty({ name: 'Gate Traders' }, admin);
     const product = await catalog.createProduct(
-      { categoryName: 'Tiles', variants: [{ code: 'GATE-01' }], name: 'Gate Tile' },
+      { categoryName: 'Tiles', code: 'GATE-01', name: 'Gate Tile' },
       admin,
     );
     item = {
       partyId: party.id,
-      line: { productId: product.id, variantId: product.variants[0]!.id, quantity: 1, packaging: 'carton' },
+      line: { productId: product.id, variantId: product.id, quantity: 1, packaging: 'carton' },
     };
     __resetGateForTests();
     configurePushGate({ windowMs: 100, backlogMs: 6_000, bootMs: 0 });

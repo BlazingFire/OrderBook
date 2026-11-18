@@ -31,7 +31,6 @@ import { normalizeCustomFields } from '../domain/custom-fields.js';
 import { assertOptionValueChange } from '../domain/field-values.js';
 import {
   buildLineSnapshot,
-  listedColour,
   matchExistingLines,
   type KeptLine,
   type LineDraft,
@@ -572,14 +571,15 @@ export async function addRemark(
 }
 
 /**
- * Turn what a panel sent into stored lines — one per variant.
+ * Turn what a panel sent into stored lines — one per sub product and colour.
  *
  * The party's own product records are loaded once for the whole set rather
  * than per line, and only when the lead is in `partyWiseMode` — a lead that
  * is not in that mode must take catalogue values even where a party record
- * exists. The code and the weight come from the product's own variant, which
- * has to exist on the product the line names and still be on offer. A colour
- * is kept only on a multi-colour product and dropped anywhere else.
+ * exists. The code and the weight come from the sub product the line names.
+ * A colour is kept only when the sub product offers it. A legacy variant id
+ * from an older panel is mapped back to its sub product, and refused when
+ * it names a different one than the line does.
  */
 /**
  * Shape check on what a client sent as lines, for every caller: the offline
@@ -591,11 +591,10 @@ export function assertLineDrafts(drafts: unknown): asserts drafts is LineDraft[]
     throw new ValidationError('validation.lead.itemsRequired');
   }
   for (const draft of drafts as Array<{ productId?: unknown; variantId?: unknown } | null>) {
-    if (typeof draft?.productId !== 'string' || !draft.productId) {
+    const hasProduct = typeof draft?.productId === 'string' && Boolean(draft.productId);
+    const hasLegacyVariant = typeof draft?.variantId === 'string' && Boolean(draft.variantId);
+    if (!hasProduct && !hasLegacyVariant) {
       throw new ValidationError('validation.lead.productMissing');
-    }
-    if (typeof draft.variantId !== 'string' || !draft.variantId) {
-      throw new ValidationError('validation.lead.variantMissing');
     }
   }
 }
@@ -616,7 +615,6 @@ export async function buildLines(
 ): Promise<LineSnapshot[]> {
   assertLineDrafts(drafts);
   const kept = matchExistingLines(drafts, options.existing ?? []);
-  let colourOptions: Awaited<ReturnType<typeof customFieldRepo.listOptionsForKey>> | null = null;
 
   const partyVariants = options.partyWiseMode
     ? await variantRepo.listForParty(tenantId, partyId)
@@ -625,36 +623,58 @@ export async function buildLines(
 
   const lines: LineSnapshot[] = [];
   const products = new Map<string, Awaited<ReturnType<typeof productRepo.findProductById>>>();
+  const legacyProducts = new Map<string, string | null>();
 
   for (const [index, draft] of drafts.entries()) {
-    if (!products.has(draft.productId)) {
-      products.set(draft.productId, await productRepo.findProductById(tenantId, draft.productId));
+    // A legacy variant id naming a different sub product than the line does
+    // is refused rather than silently re-pointed, as it always was; naming
+    // the same one — or standing in for a product id an older panel lost —
+    // resolves to that sub product.
+    let legacyProductId: string | null = null;
+    if (draft.variantId) {
+      if (!legacyProducts.has(draft.variantId)) {
+        legacyProducts.set(
+          draft.variantId,
+          await productRepo.findProductIdByLegacyVariantId(tenantId, draft.variantId),
+        );
+      }
+      legacyProductId = legacyProducts.get(draft.variantId) ?? null;
+      if (legacyProductId && draft.productId && legacyProductId !== draft.productId) {
+        throw new ValidationError('validation.lead.variantMissing');
+      }
     }
-    const product = products.get(draft.productId) ?? null;
+    const productId = draft.productId || legacyProductId || '';
+    if (!products.has(productId)) {
+      products.set(productId, await productRepo.findProductById(tenantId, productId));
+    }
+    const product = products.get(productId) ?? null;
     if (!product) throw new ValidationError('validation.lead.productMissing');
-
-    // A variant of another product, or one taken off the form, is refused
-    // rather than silently re-pointed: the line's code and weight are the
-    // variant's, and a wrong one would quote a different article.
-    const variant = product.variants.find((candidate) => candidate.id === draft.variantId);
-    if (!variant || !variant.isActive) throw new ValidationError('validation.lead.variantMissing');
+    // A variant id no dormant row answers to is not a reference at all —
+    // storing it would fail the line's foreign key, so it is dropped the
+    // way an unoffered colour is, never refused.
+    const cleanDraft =
+      draft.variantId && !legacyProductId ? { ...draft, variantId: null } : draft;
 
     const partyVariant = partyVariantByProduct.get(product.id) ?? null;
 
-    // A NEW line's colour must be one the company lists, spelled as listed.
-    // Refused, not dropped: a typo stored as "Blue" would print on a note and
-    // count in a report as a colour nobody makes. Online that is a 400; for a
-    // lead an Office queued offline it is a readable refusal on its outbox,
-    // never a silent store. A line the lead already had is left as stored.
-    let input = draft;
+    // A NEW line's chosen colour must be one the sub product offers,
+    // spelled as offered. Refused, not dropped: a typo stored as "Blue"
+    // would print on a note and count in a report as a colour nobody
+    // makes. Online that is a 400; for a lead an Office queued offline it
+    // is a readable refusal on its outbox, never a silent store. A line
+    // the lead already had is left as stored, and a colour sent for a sub
+    // product that offers none (or only one) needs no check — the snapshot
+    // rule resolves it.
+    let input = cleanDraft;
     const typed = typeof draft.colour === 'string' ? draft.colour.trim() : '';
-    if (kept[index] === null && product.multiColour && typed !== '') {
-      colourOptions ??= await customFieldRepo.listOptionsForKey(tenantId, 'stock.colour');
-      const listed = listedColour(typed, colourOptions);
-      if (listed === undefined) {
+    if (kept[index] === null && product.colours.length > 1 && typed !== '') {
+      const offered = product.colours.find(
+        (colour) => colour.trim().toLowerCase() === typed.toLowerCase(),
+      );
+      if (offered === undefined) {
         throw new ValidationError('validation.lead.colourUnknown', { colour: typed, productName: product.name });
       }
-      input = { ...draft, colour: listed };
+      input = { ...cleanDraft, colour: offered };
     }
 
     const line = buildLineSnapshot(
@@ -667,9 +687,11 @@ export async function buildLines(
         brand: product.brand,
         alias: product.alias,
         size: product.size,
-        multiColour: product.multiColour,
+        code: product.code,
+        weightKg: product.weightKg,
+        colours: product.colours,
+        printSide: product.printSide,
       },
-      { id: variant.id, code: variant.code, label: variant.label, weightKg: variant.weightKg },
       partyVariant
         ? {
             alias: partyVariant.alias,

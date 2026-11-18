@@ -1,18 +1,16 @@
 /**
- * Products — the models a line item snapshots from. Syncable, so rows carry
- * text ids and sync bookkeeping.
+ * Products — the sub products (models) a line item snapshots from.
+ * Syncable, so rows carry text ids and sync bookkeeping.
  *
- * A product is a model in a category; its codes and weights live on
- * `product_variants` (`product-variant.repository.ts`), and every read here
- * carries the variants along, because a product without them cannot be put
- * on a line, stocked or searched by code.
+ * A sub product carries its own software code, weight, colour options and
+ * print side on its `products` row; there is no child table under it.
  *
  * A line item copies what it needs from the product at add time and never
  * re-reads it, which is why editing a product here cannot change what an
  * existing order recorded.
  */
 
-import { columnPatch, PRODUCT_COLUMNS } from '@orderbook/shared';
+import { columnPatch, normalizeColours, PRODUCT_COLUMNS } from '@orderbook/shared';
 import type {
   Product,
   ProductCategory,
@@ -27,7 +25,6 @@ import { ValidationError } from '../lib/errors.js';
 import { allocatePermanentId, allocatePermanentIds } from './identity.repository.js';
 import { firstCount, mapProduct, mapProductCategory } from './mappers.js';
 import { loadImagesFor } from './product-image.repository.js';
-import { loadVariantsFor, replaceVariants } from './product-variant.repository.js';
 import type { TransactionContext } from './transaction.js';
 
 const TABLE = 'products';
@@ -55,11 +52,8 @@ function baseQuery(tenantId: string, runner: Runner = db(), options: { includeDe
   return query;
 }
 
-/** A product whose variants have a weight gap — the "weight missing" chip. */
-const MISSING_WEIGHT = `EXISTS (
-  SELECT 1 FROM product_variants v
-   WHERE v.product_id = p.id AND v.is_active AND v.weight_kg IS NULL
-)`;
+/** A sub product with no weight entered — the "weight missing" chip. */
+const MISSING_WEIGHT = `p.weight_kg IS NULL`;
 
 /**
  * 1.4 D3 (R17): the sortable columns, as SQL. The key comes from the caller, so
@@ -72,11 +66,9 @@ const PRODUCT_SORT_SQL: Record<string, string> = {
   category: 'lower(c.name)',
   name: 'lower(p.name)',
   size: 'lower(p.size)',
-  colours:
-    '(SELECT min(lower(v.label)) FROM product_variants v WHERE v.product_id = p.id AND v.is_active)',
-  code: '(SELECT min(lower(v.code)) FROM product_variants v WHERE v.product_id = p.id AND v.is_active)',
-  weight:
-    '(SELECT min(v.weight_kg) FROM product_variants v WHERE v.product_id = p.id AND v.is_active)',
+  colours: "lower(p.colours ->> 0)",
+  code: 'lower(p.code)',
+  weight: 'p.weight_kg',
 };
 
 const CATALOGUE_ORDER =
@@ -118,15 +110,10 @@ export async function listProducts(
         .orWhereILike('c.name', pattern)
         .orWhereILike('c.code', pattern)
         .orWhereILike('c.brand', pattern)
-        // The codes are on the variants; a code typed into the catalogue
-        // search still has to find its model.
-        .orWhereExists((sub) =>
-          sub
-            .select('v.id')
-            .from('product_variants as v')
-            .whereRaw('v.product_id = p.id')
-            .andWhere((inner) => inner.whereILike('v.code', pattern).orWhereILike('v.label', pattern)),
-        ),
+        // The sub product's own code and colours: a code or colour typed
+        // into the catalogue search still has to find its sub product.
+        .orWhereILike('p.code', pattern)
+        .orWhereRaw('p.colours::text ILIKE ?', [pattern]),
     );
   }
 
@@ -171,15 +158,10 @@ export async function listProducts(
     .offset(options.offset);
 
   const ids = rows.map((row) => String(row.id));
-  const [images, variants] = await Promise.all([
-    loadImagesFor(tenantId, ids),
-    loadVariantsFor(tenantId, ids),
-  ]);
+  const images = await loadImagesFor(tenantId, ids);
 
   return {
-    items: rows.map((row) =>
-      mapProduct(row, images.get(String(row.id)) ?? [], variants.get(String(row.id)) ?? []),
-    ),
+    items: rows.map((row) => mapProduct(row, images.get(String(row.id)) ?? [])),
     total: firstCount(countRows),
     limit: options.limit,
     offset: options.offset,
@@ -198,14 +180,11 @@ export async function findProductById(
   const row = await baseQuery(tenantId, runner, options).andWhere('p.id', id).first();
   if (!row) return null;
 
-  const [images, variants] = await Promise.all([
-    loadImagesFor(tenantId, [id], runner),
-    loadVariantsFor(tenantId, [id], runner),
-  ]);
-  return mapProduct(row, images.get(id) ?? [], variants.get(id) ?? []);
+  const images = await loadImagesFor(tenantId, [id], runner);
+  return mapProduct(row, images.get(id) ?? []);
 }
 
-/** Several products by id, variants attached — for the picker and the snapshot. */
+/** Several products by id — for the picker and the snapshot. */
 export async function findProductsByIds(
   tenantId: string,
   ids: string[],
@@ -220,13 +199,10 @@ export async function findProductsByIds(
     includeDeleted: options.includeDeleted ?? true,
   }).whereIn('p.id', ids);
   const rowIds = rows.map((row) => String(row.id));
-  const [images, variants] = await Promise.all([
-    loadImagesFor(tenantId, rowIds, runner),
-    loadVariantsFor(tenantId, rowIds, runner),
-  ]);
+  const images = await loadImagesFor(tenantId, rowIds, runner);
   for (const row of rows) {
     const id = String(row.id);
-    found.set(id, mapProduct(row, images.get(id) ?? [], variants.get(id) ?? []));
+    found.set(id, mapProduct(row, images.get(id) ?? []));
   }
   return found;
 }
@@ -267,8 +243,6 @@ export async function insertProduct(
     temporary_id: product.temporaryId,
   });
 
-  await replaceVariants(product.tenantId, id, product.input.variants ?? [], trx);
-
   const created = await findProductById(product.tenantId, id, trx);
   if (!created) throw new Error('Product disappeared immediately after insert');
   return created;
@@ -296,9 +270,6 @@ export async function updateProduct(
       updated_at: trx.fn.now(),
     });
   if (!updated) return null;
-
-  // Absent means "leave the variants alone"; present replaces the set.
-  if (input.variants !== undefined) await replaceVariants(tenantId, id, input.variants, trx);
 
   return findProductById(tenantId, id, trx);
 }
@@ -680,10 +651,7 @@ export async function liveSubProducts(
   const { rows } = await runner.raw<{
     rows: Array<{ id: string; name: string; codes: string | null }>;
   }>(
-    `SELECT p.id, p.name,
-            (SELECT string_agg(v.code, ', ' ORDER BY v.sequence)
-               FROM product_variants v
-              WHERE v.product_id = p.id AND v.deleted_at IS NULL) AS codes
+    `SELECT p.id, p.name, p.code AS codes
        FROM ${TABLE} p
       WHERE p.tenant_id = ? AND p.category_id = ? AND p.deleted_at IS NULL
       ORDER BY p.sort_order ASC NULLS LAST, lower(p.name) ASC, p.id ASC`,
@@ -718,31 +686,71 @@ export async function findLiveSubProductByName(
 }
 
 /**
- * The live sub product a (product code, printed name) pair names, with its
- * first variant — the pair that stays the same across catalogue loads, where
- * the generated `CODE-####` codes need not.
+ * The live sub product a (product code, printed name) pair names — the pair
+ * that stays the same across catalogue loads, where the generated
+ * `CODE-####` codes need not.
  */
 export async function findLiveSubProductByCodeAndName(
   tenantId: string,
   categoryCode: string,
   name: string,
   runner: Runner = db(),
-): Promise<{ productId: string; variantId: string } | null> {
+): Promise<{ productId: string } | null> {
   const row = await runner(`${TABLE} as p`)
     .join(`${CATEGORY_TABLE} as c`, 'c.id', 'p.category_id')
-    .join('product_variants as v', 'v.product_id', 'p.id')
     .where('p.tenant_id', tenantId)
     .whereNull('p.deleted_at')
     .whereNull('c.deleted_at')
-    .whereNull('v.deleted_at')
     .whereRaw('lower(c.code) = lower(?)', [categoryCode])
     .whereRaw('lower(p.name) = lower(?)', [name])
-    .orderBy('v.sequence')
-    .first<{ product_id: string; variant_id: string } | undefined>(
-      'p.id as product_id',
-      'v.id as variant_id',
-    );
-  return row ? { productId: String(row.product_id), variantId: String(row.variant_id) } : null;
+    .first<{ product_id: string } | undefined>('p.id as product_id');
+  return row ? { productId: String(row.product_id) } : null;
+}
+
+/** The live sub product already carrying this software code, other than `excludeId`. */
+export async function findLiveProductByCode(
+  tenantId: string,
+  code: string,
+  excludeId: string | null = null,
+  runner: Runner = db(),
+): Promise<{ id: string } | null> {
+  const query = runner(TABLE)
+    .where({ tenant_id: tenantId })
+    .whereNull('deleted_at')
+    .whereRaw('lower(code) = lower(?)', [code.trim()]);
+  if (excludeId) query.whereNot('id', excludeId);
+  const row = await query.first('id');
+  return row ? { id: String(row.id) } : null;
+}
+
+/**
+ * Legacy lookup: the sub product a pre-variant-removal variant row belonged
+ * to. A lead queued offline by an older panel still names its variant; this
+ * is the one remaining read of the dormant `product_variants` table.
+ */
+export async function findProductIdByLegacyVariantId(
+  tenantId: string,
+  variantId: string,
+  runner: Runner = db(),
+): Promise<string | null> {
+  const row = await runner('product_variants')
+    .where({ tenant_id: tenantId, id: variantId })
+    .first('product_id');
+  return row ? String(row.product_id) : null;
+}
+
+/** Legacy lookup by code, the twin of the one above: a code only an old variant ever carried. */
+export async function findProductIdByLegacyVariantCode(
+  tenantId: string,
+  code: string,
+  runner: Runner = db(),
+): Promise<string | null> {
+  const row = await runner('product_variants')
+    .where({ tenant_id: tenantId })
+    .whereNull('deleted_at')
+    .whereRaw('lower(code) = lower(?)', [code.trim()])
+    .first('product_id');
+  return row ? String(row.product_id) : null;
 }
 
 /** `OPT` and 7 → `OPT-0007`: a sub product's software code (§1). */
@@ -751,10 +759,11 @@ export function subProductCode(prefix: string, number: number): string {
 }
 
 /**
- * The next `count` free `PREFIX-####` variant codes, after the highest number
- * any variant has ever carried under that prefix — Recycle Bin rows included,
- * so a binned sub product's code is never handed out again and its restore
- * never collides.
+ * The next `count` free `PREFIX-####` sub-product codes, after the highest
+ * number any sub product has ever carried under that prefix — Recycle Bin
+ * rows included, and the dormant variant codes of the pre-removal era, so a
+ * binned sub product's code is never handed out again and its restore never
+ * collides.
  */
 export async function nextSubProductCodes(
   tenantId: string,
@@ -764,11 +773,14 @@ export async function nextSubProductCodes(
 ): Promise<string[]> {
   const { rows } = await runner.raw<{ rows: Array<{ top: string | null }> }>(
     `SELECT max(substring(code FROM length(?) + 2)::bigint) AS top
-       FROM product_variants
-      WHERE tenant_id = ?
-        AND lower(left(code, length(?) + 1)) = lower(? || '-')
+       FROM (
+         SELECT code FROM products WHERE tenant_id = ? AND code IS NOT NULL
+         UNION ALL
+         SELECT code FROM product_variants WHERE tenant_id = ?
+       ) codes
+      WHERE lower(left(code, length(?) + 1)) = lower(? || '-')
         AND substring(code FROM length(?) + 2) ~ '^[0-9]+$'`,
-    [prefix, tenantId, prefix, prefix, prefix],
+    [prefix, tenantId, tenantId, prefix, prefix, prefix],
   );
   const start = Number(rows[0]?.top ?? 0) + 1;
   return Array.from({ length: count }, (_, index) => subProductCode(prefix, start + index));
@@ -776,7 +788,7 @@ export async function nextSubProductCodes(
 
 /**
  * Every live sub product with what the duplicate finder compares: its
- * Product and that Product's brand, its live variant codes, and how many live
+ * Product and that Product's brand, its code, and how many live
  * lead/order lines quote it (the same test `liveReferencesToProduct` makes).
  */
 export async function listSubProductsForDuplicates(
@@ -798,9 +810,7 @@ export async function listSubProductsForDuplicates(
   const { rows } = await runner.raw<{ rows: Array<Record<string, unknown>> }>(
     `SELECT p.id, p.name, p.size, p.created_at,
             c.id AS category_id, c.name AS category_name, c.brand,
-            COALESCE((SELECT array_agg(v.code ORDER BY v.sequence)
-                        FROM product_variants v
-                       WHERE v.product_id = p.id AND v.deleted_at IS NULL), '{}') AS codes,
+            ARRAY[p.code] AS codes,
             (SELECT count(*)
                FROM line_items li
               WHERE li.tenant_id = p.tenant_id AND li.product_id = p.id
@@ -824,40 +834,6 @@ export async function listSubProductsForDuplicates(
     brand: (row.brand as string | null) ?? null,
     codes: (row.codes as string[]) ?? [],
     lineCount: Number(row.line_count),
-  }));
-}
-
-/**
- * Pending lines quoting any of these variants: pending leads (unconverted)
- * and undispatched orders only — history keeps its snapshot whatever happens.
- */
-export async function pendingLinesQuotingVariants(
-  tenantId: string,
-  variantIds: string[],
-  runner: Runner = db(),
-): Promise<Array<{ variantId: string; code: string; parentId: string }>> {
-  if (variantIds.length === 0) return [];
-  const { rows } = await runner.raw<{
-    rows: Array<{ variant_id: string; code: string; parent_id: string }>;
-  }>(
-    `SELECT li.variant_id, li.code, COALESCE(l.po_number, li.parent_id) AS parent_id
-        FROM line_items li
-        JOIN leads l ON li.parent_type = 'lead' AND l.id = li.parent_id
-         AND l.deleted_at IS NULL AND l.converted_order_id IS NULL
-       WHERE li.tenant_id = ? AND li.variant_id = ANY(?)
-      UNION
-      SELECT li.variant_id, li.code, COALESCE(ld.po_number, li.parent_id)
-        FROM line_items li
-        JOIN orders o ON li.parent_type = 'order' AND o.id = li.parent_id
-         AND o.deleted_at IS NULL AND o.dispatched_at IS NULL
-        LEFT JOIN leads ld ON ld.id = o.lead_id
-       WHERE li.tenant_id = ? AND li.variant_id = ANY(?)`,
-    [tenantId, variantIds, tenantId, variantIds],
-  );
-  return rows.map((row) => ({
-    variantId: String(row.variant_id),
-    code: String(row.code ?? ''),
-    parentId: String(row.parent_id),
   }));
 }
 
@@ -910,6 +886,12 @@ export async function liveReferencesToProduct(
  */
 function columnsFrom(input: ProductInput, categoryId: string | null): Record<string, unknown> {
   const patch = columnPatch(input, PRODUCT_COLUMNS);
+
+  // Colours are stored cleaned, whatever the caller sent: one spelling each,
+  // no blanks — the same list every reader hands back out.
+  if (input.colours !== undefined) {
+    patch.colours = JSON.stringify(normalizeColours(input.colours));
+  }
 
   // The category is resolved by the caller, from an id, a code or a free-text
   // name, so it is settled here rather than copied straight off the input.

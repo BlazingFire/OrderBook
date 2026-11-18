@@ -10,7 +10,7 @@
  *    rather than bounced with a reason. The shared validator runs first.
  *
  * The master is small on purpose (2026-09-21): name, category, alias, size,
- * the colour switch, and the variants' codes, colours and weights. Nothing
+ * and the sub product's own code, colours, weight and print side. Nothing
  * else is stored, so nothing else is tested here.
  */
 
@@ -28,11 +28,11 @@ async function seedProduct() {
   return catalog.createProduct(
     {
       categoryName: 'WATER CLOSET',
-      variants: [{ code: 'EWC-S-TRAP', weightKg: 22 }],
+      code: 'EWC-S-TRAP', weightKg: 22,
       name: 'E.W.C - S TRAP',
       alias: 'EWC S',
       size: 'S trap',
-      multiColour: true,
+      colours: ['White', 'Ivory'],
     },
     admin,
   );
@@ -54,31 +54,31 @@ describe.skipIf(!canRunIntegrationTests)('product attributes (integration)', () 
       categoryName: 'WATER CLOSET',
       alias: 'EWC S',
       size: 'S trap',
-      multiColour: true,
-      hasVariants: false,
+      code: 'EWC-S-TRAP',
+      weightKg: 22,
+      colours: ['White', 'Ivory'],
+      printSide: 'default',
     });
-    expect(product.variants.map((variant) => [variant.code, variant.label, variant.weightKg])).toEqual([
-      ['EWC-S-TRAP', null, 22],
-    ]);
   });
 
-  it('defaults the colour switch to off', async () => {
+  it('defaults to no colours and the Default print side', async () => {
     const product = await catalog.createProduct(
-      { categoryName: 'ONE PIECE TOILET', variants: [{ code: '102' }], name: '102' },
+      { categoryName: 'ONE PIECE TOILET', code: '102', name: '102' },
       admin,
     );
-    expect(product.multiColour).toBe(false);
+    expect(product.colours).toEqual([]);
+    expect(product.printSide).toBe('default');
   });
 
   describe('validation refuses a bad value before the database does', () => {
     it.each([
-      ['a weight of zero', [{ code: 'BAD-1', weightKg: 0 }]],
-      ['a negative weight', [{ code: 'BAD-2', weightKg: -3 }]],
-      ['a blank code', [{ code: '   ' }]],
-      ['no variants at all', []],
-    ])('refuses %s with a readable message', async (_case, variants) => {
+      ['a weight of zero', { code: 'BAD-1', weightKg: 0 }],
+      ['a negative weight', { code: 'BAD-2', weightKg: -3 }],
+      ['a colour named twice', { code: 'BAD-3', colours: ['White', 'white'] }],
+      ['a print side that is none of the three', { code: 'BAD-4', printSide: 'middle' as never }],
+    ])('refuses %s with a readable message', async (_case, fields) => {
       await expect(
-        catalog.createProduct({ categoryName: 'Tiles', name: 'Bad Tile', variants }, admin),
+        catalog.createProduct({ categoryName: 'Tiles', name: 'Bad Tile', ...fields }, admin),
       ).rejects.toBeInstanceOf(ValidationError);
     });
   });

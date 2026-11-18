@@ -22,7 +22,7 @@ function line(over: Partial<LineItem> = {}): LineItem {
     id: `l${seq}`, tenantId: 't', parentType: 'order', parentId: 'OD1',
     productId: `p${seq}`, variantId: `v${seq}`,
     productName: `Sub ${seq}`, categoryName: 'Duragres', categoryCode: 'DUR', brandName: null,
-    alias: null, code: null, variantLabel: 'Ivory', colour: null, size: '600x600', weightKg: 2,
+    alias: null, code: null, variantLabel: 'Ivory', colour: null, printSide: null, size: '600x600', weightKg: 2,
     packaging: 'Box', grade: 'Std', sequence: seq, fromPartyVariant: false, imagePath: null,
     notes: null, quantity: 3, lineWeightKg: 6, createdAt: '', updatedAt: '',
     ...over,
@@ -98,8 +98,19 @@ describe('buildOrderNote', () => {
     expect(model.named.map((l) => l.subProduct)).toEqual(['DAMRU']);
     expect(model.coded).toEqual([]);
   });
-  it('merges lines of one variant, colour, grade and packaging, and keeps different ones apart', () => {
-    const base = { variantId: 'v', productName: 'Rustic' };
+  it('splits by the print-side snapshot over the name rule, both ways', () => {
+    const model = buildOrderNote(orderOf([
+      line({ productName: '1111', printSide: 'left' }),
+      line({ productName: 'MAGENTA', printSide: 'right' }),
+      line({ productName: '7511' }),
+      line({ productName: 'Classic' }),
+    ]));
+    expect(model.named.map((l) => l.subProduct).sort()).toEqual(['1111', 'Classic']);
+    expect(model.coded.flatMap((g) => g.lines.map((l) => l.subProduct)).sort()).toEqual(['7511', 'MAGENTA']);
+  });
+
+  it('merges lines of one sub product, colour, grade and packaging, and keeps different ones apart', () => {
+    const base = { productId: 'p-shared', variantId: null, productName: 'Rustic' };
     const model = buildOrderNote(orderOf([
       line({ ...base, quantity: 2, lineWeightKg: 4 }),
       line({ ...base, quantity: 5, lineWeightKg: 10 }),
@@ -110,7 +121,7 @@ describe('buildOrderNote', () => {
   });
 
   it('gives a merged weight of null when any part has none', () => {
-    const base = { variantId: 'v', productName: 'Rustic' };
+    const base = { productId: 'p-shared', variantId: null, productName: 'Rustic' };
     const model = buildOrderNote(orderOf([
       line({ ...base, lineWeightKg: 4 }),
       line({ ...base, lineWeightKg: null }),

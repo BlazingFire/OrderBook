@@ -108,7 +108,7 @@ function brandOption(value: string): OptionListItem {
 const SWISWARE = brandOption('Swisware+');
 const OTHER = brandOption('Other');
 
-/** A sub product: one variant, its label the fixed colour or null. */
+/** A sub product carrying its own code, weight, colours and print side. */
 function subProduct(
   id: string,
   categoryId: string,
@@ -116,8 +116,9 @@ function subProduct(
     name?: string;
     code?: string;
     sortOrder?: number | null;
-    label?: string | null;
-    multiColour?: boolean;
+    /** The colours it is offered in; one is the fixed colour. */
+    colours?: string[];
+    printSide?: 'default' | 'left' | 'right';
     images?: ProductImage[];
   } = {},
 ): Product {
@@ -131,17 +132,10 @@ function subProduct(
     brand: 'Old brand',
     sortOrder: extra.sortOrder ?? null,
     size: null,
-    multiColour: extra.multiColour ?? false,
-    hasVariants: Boolean(extra.label),
-    variants: [
-      {
-        id: `${id}-v`,
-        code: extra.code ?? `${id}-code`,
-        label: extra.label ?? null,
-        isActive: true,
-        weightKg: 5,
-      },
-    ],
+    code: extra.code ?? `${id}-code`,
+    weightKg: 5,
+    colours: extra.colours ?? [],
+    printSide: extra.printSide ?? 'default',
     images: extra.images ?? [],
     sync: { hlc: 'hlc-1' },
   } as unknown as Product;
@@ -249,8 +243,8 @@ describe('the sub-product list', () => {
     const transport = makeTransport({
       listProducts: vi.fn(async () => ({
         items: [
-          subProduct('p-white', 'c-opt', { name: '102 (9")', label: 'White' }),
-          subProduct('p-orissa', 'c-opt', { name: 'ORISSA', multiColour: true }),
+          subProduct('p-white', 'c-opt', { name: '102 (9")', colours: ['White'] }),
+          subProduct('p-orissa', 'c-opt', { name: 'ORISSA', colours: ['White', 'Ivory'] }),
           subProduct('p-1111', 'c-opt', { name: '1111' }),
         ],
         total: 3,
@@ -288,6 +282,54 @@ describe('the sub-product list', () => {
     renderList(viewOf(), transport);
     await screen.findByText('ORISSA');
     expect(screen.queryByText(/stock/i)).toBeNull();
+  });
+
+  it('offers the print side in the row as three segments, and saves the one pressed', async () => {
+    const transport = makeTransport({
+      listProducts: vi.fn(async () => ({
+        items: [subProduct('p-1', 'c-opt', { name: 'Aqua', printSide: 'left' })],
+        total: 1,
+        limit: 100,
+        offset: 0,
+      })),
+    });
+    renderList(viewOf({ permissions: ['products.view', 'products.edit'] }), transport);
+
+    const group = await screen.findByRole('group', {
+      name: `${t('product.printSide.label')} — Aqua`,
+    });
+    const segments = within(group).getAllByRole('button');
+    expect(segments.map((segment) => segment.textContent)).toEqual([
+      t('product.printSide.default'),
+      t('product.printSide.left'),
+      t('product.printSide.right'),
+    ]);
+    // The stored setting is the one shown as chosen.
+    expect(segments[1]!.getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.click(segments[2]!);
+    await waitFor(() =>
+      expect(transport.updateProduct).toHaveBeenCalledWith('p-1', {
+        name: 'Aqua',
+        printSide: 'right',
+      }),
+    );
+  });
+
+  it('shows the print side as a word, with no control, to a reader who may not edit', async () => {
+    const transport = makeTransport({
+      listProducts: vi.fn(async () => ({
+        items: [subProduct('p-1', 'c-opt', { name: 'Aqua', printSide: 'right' })],
+        total: 1,
+        limit: 100,
+        offset: 0,
+      })),
+    });
+    renderList(viewOf(), transport);
+
+    const row = (await screen.findByText('Aqua')).closest('tr') as HTMLElement;
+    expect(row.textContent).toContain(t('product.printSide.right'));
+    expect(within(row).queryByRole('group')).toBeNull();
   });
 
   it('offers no New or Import without products.create / products.bulk, and no Edit or photo controls without products.edit', async () => {
@@ -426,9 +468,9 @@ describe('the Products page', () => {
           products: [
             // Out of order on purpose: nothing arrives in catalogue order by itself.
             subProduct('p-4', 'c-opt', { name: '1111', sortOrder: 4 }),
-            subProduct('p-2', 'c-opt', { name: 'MAGENTA', sortOrder: 2, label: 'Magenta' }),
-            subProduct('p-1', 'c-opt', { name: '102 (9")', sortOrder: 1, label: 'White' }),
-            subProduct('p-3', 'c-opt', { name: 'ORISSA', sortOrder: 3, multiColour: true }),
+            subProduct('p-2', 'c-opt', { name: 'MAGENTA', sortOrder: 2, colours: ['Magenta'] }),
+            subProduct('p-1', 'c-opt', { name: '102 (9")', sortOrder: 1, colours: ['White'] }),
+            subProduct('p-3', 'c-opt', { name: 'ORISSA', sortOrder: 3, colours: ['White', 'Ivory'] }),
             subProduct('p-x', 'c-other', { name: 'Elsewhere', sortOrder: 1 }),
           ],
         })}

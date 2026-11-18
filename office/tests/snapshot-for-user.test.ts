@@ -60,19 +60,10 @@ const FIXTURE: SyncSnapshot = {
       brand: null,
       sortOrder: null,
       size: null,
-      hasVariants: false,
-      variants: [
-        {
-          id: 'VR0000000001',
-          productId: 'PR0000000001',
-          code: 'C-100',
-          label: null,
-          weightKg: null,
-          sequence: 1,
-          isActive: true,
-        },
-      ],
-      multiColour: false,
+      code: 'C-100',
+      weightKg: null,
+      colours: [],
+      printSide: 'default',
       customFields: {},
       isActive: true,
       createdAt: NOW,
@@ -284,7 +275,7 @@ describe('snapshot for the current user (DSH-1)', () => {
     expect(response.status).toBe(200);
     expect(response.body.permissions).toEqual(['leads.create', 'orders.view']);
     // The records themselves pass through whole — nothing on them is gated per person.
-    expect(response.body.products[0].multiColour).toBe(false);
+    expect(response.body.products[0].colours).toEqual([]);
     expect(response.body.partyVariants[0].productName).toBe('Ivory Basin');
   });
 

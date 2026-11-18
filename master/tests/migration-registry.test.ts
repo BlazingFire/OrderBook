@@ -128,6 +128,8 @@ describe('the migration registry matches the directory', () => {
     '20261025000000_note_columns',
     // 2026-11-05: a variant's colour may be blank, on several rows of one product.
     '20261105000000_variant_blank_label',
+    // 2026-11-16: code, weight, colours and print side move onto `products`.
+    '20261116000000_sub_product_code_colours_print_side',
   ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {

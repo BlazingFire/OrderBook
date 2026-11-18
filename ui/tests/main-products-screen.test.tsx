@@ -96,12 +96,12 @@ function category(id: string, code: string, name: string, brand: string | null):
   };
 }
 
-/** A sub product: one variant, its label the fixed colour or null. */
+/** A sub product carrying its own code, weight, colours and print side. */
 function subProduct(
   id: string,
   categoryId: string,
   hlc: string,
-  extra: { name?: string; sortOrder?: number | null; label?: string | null; multiColour?: boolean } = {},
+  extra: { name?: string; sortOrder?: number | null; colours?: string[] } = {},
 ): Product {
   return {
     id,
@@ -109,11 +109,10 @@ function subProduct(
     categoryId,
     sortOrder: extra.sortOrder ?? null,
     size: null,
-    multiColour: extra.multiColour ?? false,
-    hasVariants: Boolean(extra.label),
-    variants: [
-      { id: `${id}-v`, code: `${id}-code`, label: extra.label ?? null, isActive: true, weightKg: null },
-    ],
+    code: `${id}-code`,
+    weightKg: null,
+    colours: extra.colours ?? [],
+    printSide: 'default',
     sync: { hlc },
   } as unknown as Product;
 }
@@ -167,9 +166,9 @@ describe('MainProductsScreen', () => {
           products: [
             // Out of order on purpose: the snapshot appends upserts.
             subProduct('p-4', 'c-opt', 'h', { name: '1111', sortOrder: 4 }),
-            subProduct('p-2', 'c-opt', 'h', { name: 'MAGENTA', sortOrder: 2, label: 'Magenta' }),
-            subProduct('p-1', 'c-opt', 'h', { name: '102 (9")', sortOrder: 1, label: 'White' }),
-            subProduct('p-3', 'c-opt', 'h', { name: 'ORISSA', sortOrder: 3, multiColour: true }),
+            subProduct('p-2', 'c-opt', 'h', { name: 'MAGENTA', sortOrder: 2, colours: ['Magenta'] }),
+            subProduct('p-1', 'c-opt', 'h', { name: '102 (9")', sortOrder: 1, colours: ['White'] }),
+            subProduct('p-3', 'c-opt', 'h', { name: 'ORISSA', sortOrder: 3, colours: ['White', 'Ivory'] }),
             subProduct('p-x', 'c-other', 'h', { name: 'Elsewhere', sortOrder: 1 }),
           ],
         })}

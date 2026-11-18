@@ -14,6 +14,7 @@
 import type { RoleTier } from './permissions.js';
 import type { ReleaseManifest } from './version.js';
 import type { NoteColumns } from './order-note.js';
+import type { PrintSide, PrintSideSetting } from './colour-rule.js';
 
 export type Uuid = string;
 
@@ -483,38 +484,14 @@ export interface ProductCategoryListRow extends ProductCategory {
 }
 
 /**
- * One sellable variant of a product model — a colour, a pattern, or the
- * product itself when it comes in only one form.
- *
- * Every product code and every weight lives here, never on the product: a
- * model like DAMRU is sold as `41`, `42`, … each with its own code and weight,
- * and a one-form product is simply a model with exactly one variant whose
- * `label` is null. That uniformity is what lets a lead line, a stock row and
- * a reservation all point at a variant id whatever kind of product it is.
+ * One sub product — a model (`102`, `MAGENTA`) inside its Product (the
+ * category). Its software code, weight, colour options and print side all
+ * live here; there is no variant layer under it.
  */
-export interface ProductVariant {
-  id: RecordId;
-  productId: RecordId;
-  /** The business code the counter quotes. Unique across the whole catalogue. */
-  code: string;
-  /** Colour or pattern text ("Blue", "Vitrosa 41", "White + Blue"); null on a no-variant product. */
-  label: string | null;
-  /** Kilograms, or null while nobody has entered it — flagged, never guessed. */
-  weightKg: number | null;
-  /** Form order. */
-  sequence: number;
-  /**
-   * False once an administrator removed the variant from the form while a
-   * line, a stock row or a reservation still pointed at it: the history keeps
-   * its row, the pickers stop offering it.
-   */
-  isActive: boolean;
-}
-
 export interface Product {
   id: RecordId;
   tenantId: Uuid;
-  /** The model's name — "DAMRU", "102", "Golden Set". Codes live on the variants. */
+  /** The model's name — "DAMRU", "102", "Golden Set". */
   name: string;
   alias: string | null;
   /** Every product belongs to a category; the category-first search depends on it. */
@@ -527,21 +504,23 @@ export interface Product {
   /** Catalogue order inside its category; null sorts last. */
   sortOrder: number | null;
   size: string | null;
+  /** The software code the counter quotes (`OPT-0001`). Unique across the whole catalogue per tenant. */
+  code: string;
+  /** Kilograms, or null while nobody has entered it — flagged, never guessed. */
+  weightKg: number | null;
   /**
-   * True when the administrator said the model comes in colours or patterns.
-   * Stored rather than derived so a model with one variant *so far* still
-   * shows the variant selector instead of silently behaving as a plain product.
+   * The colours this sub product is offered in, in display order. None →
+   * no colour is chosen or shown; one → that colour always applies; two or
+   * more → the counter picks per line (several colours of one sub product
+   * are several lines, each with its own quantity).
    */
-  hasVariants: boolean;
-  /** At least one, in form order; exactly one with a null label when `hasVariants` is false. */
-  variants: ProductVariant[];
+  colours: string[];
   /**
-   * True when the model is made in any colour of the company's colour list
-   * ("all colours available in all items" in the catalogue), so a lead line
-   * may name a colour on top of the variant it quotes. The colour is a line
-   * attribute, not a stock key: stock stays per variant.
+   * Which half of a printed note this sub product belongs on: `left`,
+   * `right`, or `default` — the catalogue's original name rule (a purely
+   * numeric name prints right, anything else left; see `printSideOf`).
    */
-  multiColour: boolean;
+  printSide: PrintSideSetting;
   customFields: Record<string, unknown>;
   isActive: boolean;
   createdAt: IsoTimestamp;
@@ -660,21 +639,25 @@ export interface PartyProductVariant {
 export type LineItemParentType = 'lead' | 'order';
 
 /**
- * One variant on a lead or an order: one code, one weight, one quantity.
+ * One sub product on a lead or an order: one code, one weight, one quantity.
  *
- * Two colours of the same model are two lines, each with its own weight — the
- * snapshot fields are frozen at add time, so editing the product afterwards
- * must not rewrite the spec the customer asked for — its code, colour and
- * weight (docs/LEAD_GENERATION_FLOW.md §8.3).
+ * Two colours of the same sub product are two lines — the snapshot fields
+ * are frozen at add time, so editing the product afterwards must not
+ * rewrite the spec the customer asked for — its code, colour and weight
+ * (docs/LEAD_GENERATION_FLOW.md §8.3).
  */
 export interface LineItem {
   id: RecordId;
   tenantId: Uuid;
   parentType: LineItemParentType;
   parentId: RecordId;
-  /** Live references — kept for stock movement and traceability. */
+  /** Live reference — kept for traceability. */
   productId: RecordId;
-  variantId: RecordId;
+  /**
+   * The variant row the line quoted, on lines written before variants were
+   * removed. Null on every newer line; kept so old history still resolves.
+   */
+  variantId: RecordId | null;
 
   // Snapshotted at add time
   productName: string;
@@ -685,19 +668,28 @@ export interface LineItem {
   /** The brand the line was sold under on the day; the lead PDF shows it when lines span two. */
   brandName: string | null;
   alias: string | null;
-  /** The variant's code as it was when the line was added. */
+  /** The sub product's software code as it was when the line was added. */
   code: string | null;
-  /** The variant's colour or pattern text; null for a no-variant product. */
+  /**
+   * The variant's colour text, on lines written before variants were
+   * removed. Null on newer lines, whose colour is `colour`.
+   */
   variantLabel: string | null;
   /**
-   * The colour chosen on the line, from the company's colour list — only on a
-   * `multiColour` product, and null when the variant's own colour was meant.
-   * Several colours of one sub product are several lines on the same variant,
-   * one per colour, each with its own quantity.
+   * The colour on the line, one of the sub product's colour options: the
+   * only colour when it offers one, the chosen one when it offers several,
+   * null when it offers none. Several colours of one sub product are
+   * several lines, one per colour, each with its own quantity.
    */
   colour: string | null;
+  /**
+   * The resolved print side at add time (`left`/`right`), frozen like the
+   * other snapshots. Null on lines from before the setting existed — those
+   * resolve by the Default name rule when they print.
+   */
+  printSide: PrintSide | null;
   size: string | null;
-  /** The variant's weight in kilograms, or null when it had not been entered. */
+  /** The sub product's weight in kilograms, or null when it had not been entered. */
   weightKg: number | null;
 
   /** Chosen manually on every line — never auto-filled. */
@@ -706,8 +698,8 @@ export interface LineItem {
    * The grade the line is sold as, from the company's `line.grade` list.
    *
    * Removed with the product trim on 2026-09-21 and put back on 2026-09-22 at
-   * the owner's request — as a line attribute only. No product, variant or
-   * party record carries a grade: two lines of the same variant may be sold as
+   * the owner's request — as a line attribute only. No product or party
+   * record carries a grade: two lines of the same sub product may be sold as
    * different grades, which is exactly why it cannot live on the catalogue.
    */
   grade: string | null;

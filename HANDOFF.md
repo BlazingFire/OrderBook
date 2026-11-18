@@ -52,6 +52,61 @@ written before the code and several of their stated facts did not survive
 contact with the tree — check a design's claim against the code before acting
 on it.
 
+## Variant system removed: sub product carries code, colours, print side (2026-11-16/17, committed, pushed, not merged)
+
+**State:** branch `remove-variant-system`, committed as **`fc033aac`** and pushed
+to `origin/remove-variant-system`; **`main` is untouched** at `3cb016ae`, and the
+branch is not merged (owner's call). Gate green on that commit. Completed in
+Command Code from the pickup brief `docs/ai-handoffs/variant-removal.md`, now
+deleted; what is durable is here and in `docs/AI_COLLABORATION.md`'s
+2026-11-17 entry (files touched, traps).
+
+**The decision (owner, 2026-11-16):** no variants anywhere. A sub product is
+picked after its Product, offers its own list of colours (dropdown at entry
+where it offers several), and sets its own print side — Left, Right, or
+**Default**, which keeps the old numeric-name rule. Terms are in
+`GLOSSARY.md`. This supersedes the variant half of catalogue v2 §2; brand →
+product → sub product stands.
+
+**Landed:** shared types and rules (`printSideOf`, `resolveLineColour` in
+`colour-rule.ts`), protocol **13**, additive migration
+`20261116000000_sub_product_code_colours_print_side` (backfill from variants;
+`product_variants` left dormant; every current sub product on Default),
+Master repositories/services/sync/conflict restore, catalogue file + parser +
+seed on `Colours | Print side` columns, Office snapshot/pick, dead Rust sheet
+importer deleted, both panels' forms, lists and lead entry. **The Print side
+cell of the sub-product list is a three-segment control** (the kit's
+`Segmented`, filling its cell — `ui/src/printSide.ts` holds the one set of
+labels), not a dropdown: one click picks a side, and the form and drawer
+already used the same control. Legacy panels' queued `variants` payloads
+convert at the catalog service and the offline merge; a bogus legacy
+`variantId` on a line is dropped, never stored.
+
+**Gate (2026-11-17, this machine):** `npm run lint` 0, `npm run typecheck` 0
+(every workspace, both test tsconfigs, both Electron shells), `npm run build` 0,
+`npm run test` exit 0: **402 files passed + 1 skipped** (the Windows-only
+`release-workflow`), **5294 tests passed + 17 skipped**, **113 integration
+suites ran on PostgreSQL 17** (not skipped). Fixes on the way: a line search's
+subtitle now names the line's own `colour` (it read only `variant_label`), and
+the order record's dead "Variant" column is gone from both panels. Docs pass:
+`docs/catalogue/CATALOGUE_MODEL.md`, `docs/schema/02-parties-and-products.md`,
+`docs/schema/03-leads-orders-inventory.md`, `docs/schema/00-overview.md`,
+`docs/STRUCTURE.md`.
+
+**Merging:** when the owner wants it, `git checkout main && git merge --no-ff
+remove-variant-system`, then delete the branch locally and on `origin`.
+
+**Traps:** the migration has already run on this machine's dev database (boot
+log 2026-11-17) — its products carry the new columns; do not "fix" that by
+resetting. `products.code` now sits beside `product_categories.code`: qualify
+`code` in joins. Lines taken before this change have `print_side` NULL and
+resolve by name when printed — that is the design, not missing data. A test
+cluster left by an interrupted run keeps its own `option_lists` rows as
+"seeded", so every suite seeding `stock.colour` fails on
+`error.conflict.optionValueTaken`: delete `%TEMP%\orderbook-test-pg`. Do not
+run a PowerShell `Get-Content|Set-Content` round trip over a source file — it
+double-encodes every non-ASCII character (`—` → `â€”`).
+
 ## Data safety and version 1.5.8 (2026-11-06)
 
 **State:** committed as `37e4ad63` on `fix/157-gate` (worktree `C:\Users\Z\Desktop\OrderBook-r157`), on top of `main` `86f49c2e`.

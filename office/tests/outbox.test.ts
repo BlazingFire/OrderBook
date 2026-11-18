@@ -403,7 +403,7 @@ describe('local view', () => {
           alias: null,
           size: null,
           multiColour: false,
-          variants: [{ id: 'VR1', productId: 'PR0000000001', code: 'GLZ-100', label: null, weightKg: 4 }],
+          code: 'GLZ-100', weightKg: 4,
         },
       ],
       partyVariants: [

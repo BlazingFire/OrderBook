@@ -23,9 +23,9 @@
  *
  * In the owner's words this is a **sub product** (`docs/catalogue/
  * CATALOGUE_MODEL.md` §1): its brand and product (`One Piece Toilet`)
- * are read through its category, and its colour is shown by the rule the
- * catalogue gives it (§2) — the fixed colour, "Multicolour", or, for a
- * numbered design, no Colour field at all.
+ * are read through its category, and its colour is shown from the colours
+ * it offers (§2) — the one colour, "Multicolour" when it offers several,
+ * or, for a numbered design offering none, no Colour field at all.
  *
  * Editing is not done inline — it reuses `ProductDrawer`'s existing edit mode
  * via `onEdit`, which is a real, already-queued write path; duplicating that
@@ -45,10 +45,11 @@ import { ProductImages } from './ProductImages.js';
 import { rem } from './rem.js';
 
 /**
- * A sub product's colour under its rule, for a list cell or a detail field:
- * "Multicolour" when the counter picks it, the fixed colour (with its swatch
- * when the colour range has a hex for it, plain text otherwise — a two-letter
- * ring for Black reads as nothing), and nothing at all for a numbered design.
+ * A sub product's colour, for a list cell or a detail field: "Multicolour"
+ * when it offers several and the counter picks one, its one colour (with its
+ * swatch when the colour range has a hex for it, plain text otherwise — a
+ * two-letter ring for Black reads as nothing), and nothing at all for a
+ * numbered design offering none.
  */
 export function SubProductColour({
   product,
@@ -57,7 +58,7 @@ export function SubProductColour({
   product: Product;
   colourHex: (colour: string) => string | undefined;
 }) {
-  if (product.multiColour) {
+  if (product.colours.length > 1) {
     return <StatusPill tone="accent">{t('catalog.colourRule.multicolour')}</StatusPill>;
   }
   const colours = shownColours(product);
@@ -204,12 +205,22 @@ export function ProductDetail({
             />
             {/* Absent rather than a dash for a numbered design: the owner's
                 rule is that no colour is shown for one anywhere. */}
-            {(product.multiColour || shownColours(product).length > 0) && (
+            {(product.colours.length > 1 || shownColours(product).length > 0) && (
               <DetailField
                 label={t('product.detail.colour')}
                 value={<SubProductColour product={product} colourHex={colourHex} />}
               />
             )}
+            <DetailField
+              label={t('product.detail.printSide')}
+              value={t(
+                product.printSide === 'left'
+                  ? 'product.printSide.left'
+                  : product.printSide === 'right'
+                    ? 'product.printSide.right'
+                    : 'product.printSide.default',
+              )}
+            />
           </div>
         </Card>
       </div>

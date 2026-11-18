@@ -18,8 +18,8 @@ import type { Party, Product, ProductCategory } from './entities.js';
  * `category` answers the first stage of the lead screen's search — typing
  * "toilet" offers *ONE PIECE TOILET*, never a product — and `product` the
  * second, scoped to the chosen category through `PickQuery.categoryId`.
- * Products come back whole, variants included, so the third stage (which
- * colour, which code, which weight) needs no further round trip.
+ * Products come back whole — code, colours, weight, print side — so the
+ * third stage (which colour) needs no further round trip.
  */
 export type PickKind = 'category' | 'product' | 'party';
 

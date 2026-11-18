@@ -34,6 +34,8 @@ const PANEL = 'C0L0R1';
 let actor: ActorContext;
 
 async function seed() {
+  // The list is still what a line's stored value is PRINTED by: a colour
+  // renamed in Fields reads the new way on every note and report.
   for (const value of ['White', 'Ivory', 'Red Brown', 'Magenta']) {
     await fields.createValue({ listKey: 'stock.colour', value, label: value }, actor);
   }
@@ -42,19 +44,19 @@ async function seed() {
     {
       name: 'MODERN',
       categoryName: 'ONE PIECE CLOSET',
-      multiColour: true,
-      variants: [{ code: 'MOD-1', weightKg: 30 }],
+      colours: ['White', 'Ivory', 'Red Brown', 'Magenta'],
+      code: 'MOD-1', weightKg: 30,
     },
     actor,
   );
   const basin = await catalog.createProduct(
-    { name: 'ROMA', categoryName: 'WASH BASIN', multiColour: true, variants: [{ code: 'ROMA-1', weightKg: 12 }] },
+    { name: 'ROMA', categoryName: 'WASH BASIN', colours: ['White', 'Ivory', 'Red Brown', 'Magenta'], code: 'ROMA-1', weightKg: 12 },
     actor,
   );
-  return { party, closet, closetVariant: closet.variants[0]!, basin, basinVariant: basin.variants[0]! };
+  return { party, closet, closetVariant: { id: closet.id }, basin, basinVariant: { id: basin.id } };
 }
 
-const line = (productId: string, variantId: string, quantity: number, extra: Record<string, unknown> = {}) => ({
+const line = (productId: string, variantId: string | null, quantity: number, extra: Record<string, unknown> = {}) => ({
   productId,
   variantId,
   quantity,
@@ -62,10 +64,9 @@ const line = (productId: string, variantId: string, quantity: number, extra: Rec
   ...extra,
 });
 
-/** What the catalogue correction did to a multicolour closet: a fixed White sub product. */
-async function correctToFixedWhite(productId: string, variantId: string): Promise<void> {
-  await db()('products').where({ id: productId }).update({ multi_colour: false, has_variants: true });
-  await db()('product_variants').where({ id: variantId }).update({ label: 'White' });
+/** What a catalogue correction does to an every-colour closet: a White-only sub product. */
+async function correctToFixedWhite(productId: string, _variantId: string): Promise<void> {
+  await db()('products').where({ id: productId }).update({ colours: JSON.stringify(['White']) });
 }
 
 describe.skipIf(!canRunIntegrationTests)('the colour chain (integration)', () => {
@@ -128,9 +129,11 @@ describe.skipIf(!canRunIntegrationTests)('the colour chain (integration)', () =>
         actor,
       );
 
+      // A kept line keeps what it was sold as; a NEW line of a sub product that
+      // offers one colour takes that colour in `colour`, and no legacy label.
       expect(edited.items.map((item) => [item.colour, item.variantLabel])).toEqual([
         ['Ivory', null],
-        [null, 'White'],
+        ['White', null],
       ]);
     });
 
@@ -260,10 +263,10 @@ describe.skipIf(!canRunIntegrationTests)('the colour chain (integration)', () =>
       const { party, basin, basinVariant } = await seed();
       const { product: plain, variant: plainVariant } = await (async () => {
         const created = await catalog.createProduct(
-          { name: 'PLAIN PAN', categoryName: 'PAN', variants: [{ code: 'PAN-1', weightKg: 5 }] },
+          { name: 'PLAIN PAN', categoryName: 'PAN', code: 'PAN-1', weightKg: 5 },
           actor,
         );
-        return { product: created, variant: created.variants[0]! };
+        return { product: created, variant: { id: created.id } };
       })();
       const lead = await leads.createLead(
         {
