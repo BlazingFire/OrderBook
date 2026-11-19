@@ -222,6 +222,14 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-11-19 - Sub-product list cells fit their row; one hairline for Print side and Default packaging (Claude Code, branch main, commit 7585c4fe)
+
+- **Ask (owner, over a screenshot of the sub-product list):** "THIS UI LOOK BAD USE BROWSER CONTROL SEE EDGES AND REFINE UI".
+- **Measured in the browser (Master web on Vite, 1800 px):** rows are 30 px and the in-cell controls were 28 px, nearly touching the row lines; the `MenuSelect` trigger kept `.ob-input`'s dark border (the `.ob-cell-select` rule lost on source order) beside the Print side's light hairline; the cell's `overflow: hidden` clipped the outside focus ring to a stray bar.
+- **Change (`ui/src/base.css` only):** `.ob-cell-fill > .ob-seg--fill, .ob-cell-fill > .ob-input` take `min(var(--ctl-h-md), calc(var(--row-h) - 6px))`; `.ob-input.ob-cell-select` uses `--line` at rest and `--line-strong` + `--bg-hover` on hover/open; in-cell focus rings draw at `outline-offset: -2px`; the fill segmented control is a hairline track with a `--bg-sunken` chosen segment (Left/Right keep the accent).
+- **Verified:** `segmented-fill`, `menu-select`, `master-catalogue`, `popover-menu-keys` (28 tests) pass; both web bundles rebuilt and the CSS served on 4100 and 4200 contains the new rules. **Not verified:** the open menu by eye (the pane was in use), and full `npm run verify`.
+- **Watch:** Default packaging is priority 3 at `rem(200)`, so it drops from the list below about 1500 px wide; it showed at 1800 and not at 1440.
+
 ### 2026-11-19 - A sub product opens on one screen; Edit turns that screen into its form (Command Code, branch main, source touched, uncommitted)
 
 - **Ask (owner, over the FigCraft screen):** "add this screen to product edit and product view / when click and open to view product and when edit this same screen opens" — one composition, two states, no hop to a differently-shaped form.
