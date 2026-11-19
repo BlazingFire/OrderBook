@@ -31,7 +31,13 @@ import type {
 import { ProductValidationError, validateProductInput } from '@orderbook/shared';
 
 import { Button } from './Button.js';
-import { byCatalogueOrder, codesOf, productLabel, shownColours, weightLabel } from './catalogueSummary.js';
+import {
+  byCatalogueOrder,
+  codesOf,
+  productLabel,
+  shownColours,
+  weightLabel,
+} from './catalogueSummary.js';
 import type { CatalogueTransport } from './catalogueSummary.js';
 import { Card } from './Card.js';
 import { ColourName, ColourChip, StatusPill } from './DataDisplay.js';
@@ -119,6 +125,12 @@ export function ProductRecordScreen({
   const baseline = useFormBaseline<unknown>();
   const fields = useRef<HTMLDivElement>(null);
 
+  // The latest photo answer, so the rail shows an upload even where the host ignores
+  // `onPhotosChanged` (the Office edit route); a newer `product` from the host wins.
+  const [photoAnswer, setPhotoAnswer] = useState<Product | null>(null);
+  useEffect(() => setPhotoAnswer(null), [product]);
+  const photosOf = photoAnswer?.id === product.id ? photoAnswer : product;
+
   const set = (field: keyof Draft, value: string): void =>
     setDraft((current) => ({ ...current, [field]: value }));
 
@@ -150,8 +162,7 @@ export function ProductRecordScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, product.id]);
 
-  const dirty =
-    mode === 'edit' && baseline.dirty({ draft, colours, printSide, defaultPackaging });
+  const dirty = mode === 'edit' && baseline.dirty({ draft, colours, printSide, defaultPackaging });
 
   useEffect(() => {
     onDirtyChange?.(Boolean(dirty));
@@ -206,7 +217,9 @@ export function ProductRecordScreen({
 
   useUnsavedWork(
     'product-form',
-    dirty ? { label: t('updates.saveAll.product', { name: draft.name.trim() || '…' }), save } : null,
+    dirty
+      ? { label: t('updates.saveAll.product', { name: draft.name.trim() || '…' }), save }
+      : null,
   );
 
   const products =
@@ -252,10 +265,15 @@ export function ProductRecordScreen({
         }}
       >
         <ProductImages
-          product={product}
+          product={photosOf}
           transport={transport}
-          canEdit={canEdit && !editing}
-          onChanged={onPhotosChanged}
+          // In the form too (owner, 2026-11-19): a photo saves on its own and Save sends no photos,
+          // and the draft reloads only on another record, so neither undoes the other.
+          canEdit={canEdit}
+          onChanged={(next) => {
+            setPhotoAnswer(next);
+            onPhotosChanged(next);
+          }}
           onError={onError}
         />
 
@@ -366,30 +384,36 @@ export function ProductRecordScreen({
               )}
             </div>
 
-            {editing ? (
-              <FormField
-                label={t('product.field.category')}
-                required
-                hint={t('product.field.categoryHint')}
-              >
-                {(id) => (
-                  <Select
-                    id={id}
-                    value={draft.categoryId}
-                    aria-invalid={!draft.categoryId || undefined}
-                    onChange={(event) => set('categoryId', event.target.value)}
-                  >
-                    {products.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {productLabel(category.name, category.brand)}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              </FormField>
-            ) : (
-              <ReadField label={t('product.field.category')} value={productLabel(product.categoryName)} />
-            )}
+            {/* A whole row: product names run long ("18"x14" Vitrosa Double Colour") and were cut at one column. */}
+            <div style={{ gridColumn: '1 / -1' }}>
+              {editing ? (
+                <FormField
+                  label={t('product.field.category')}
+                  required
+                  hint={t('product.field.categoryHint')}
+                >
+                  {(id) => (
+                    <Select
+                      id={id}
+                      value={draft.categoryId}
+                      aria-invalid={!draft.categoryId || undefined}
+                      onChange={(event) => set('categoryId', event.target.value)}
+                    >
+                      {products.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {productLabel(category.name, category.brand)}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                </FormField>
+              ) : (
+                <ReadField
+                  label={t('product.field.category')}
+                  value={productLabel(product.categoryName)}
+                />
+              )}
+            </div>
 
             {editing ? (
               <FormField label={t('product.field.brand')} hint={t('product.field.brandHint')}>

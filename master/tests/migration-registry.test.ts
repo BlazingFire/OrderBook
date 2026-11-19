@@ -133,6 +133,10 @@ describe('the migration registry matches the directory', () => {
     // 2026-11-18: a note's dealer code and grade size per order, and a sub
     // product's default packaging.
     '20261118000000_note_dealer_and_grade_size',
+    // 2026-11-19: 1.5.9's one-time reset marker (`release_resets`, pending until confirmed).
+    '20261119000000_release_reset_1_5_9',
+    // 2026-11-19: `release_resets.confirmed_by` UUID -> TEXT (user ids are text).
+    '20261119000001_release_reset_confirmed_by_text',
   ];
 
   it('is in ascending timestamp order — the array is read start to end, and Knex applies in that order', () => {

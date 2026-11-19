@@ -129,6 +129,8 @@ describe.skipIf(!canRunIntegrationTests)('archive restore across schema levels (
         'notices',
         'todo_marks',
         'todos',
+        // 1.5.9's one-time reset marker (`20261119000000_release_reset_1_5_9`).
+        'release_resets',
       ],
       entries: {
         // The column the migration adds, and the counters it seeds.

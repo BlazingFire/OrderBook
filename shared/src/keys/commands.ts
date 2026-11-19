@@ -69,7 +69,8 @@ export interface CommandDef {
  * already matches on the physical key on a Mac, and `Meta+C` or `Meta+P` would
  * take Copy and Print away from a Mac browser on the shop LAN.
  */
-export type NavEntry = [id: string, token: MessageKey, chord?: string | null];
+// A number pins that Alt+digit (with its Meta twin), so a row can move in the sidebar and keep its digit.
+export type NavEntry = [id: string, token: MessageKey, chord?: string | number | null];
 
 /**
  * The Master's nav order, matching its own sidebar: Work, Catalogue, Admin,
@@ -85,7 +86,6 @@ const MASTER_NAV: NavEntry[] = [
   ['dashboard', 'nav.master.dashboard'],
   ['leads', 'nav.leads'],
   ['orders', 'nav.orders'],
-  ['conflicts', 'nav.master.conflicts'],
   // The Notice board: Alt+N, a plain letter chord (no darwin Meta twin: Cmd+N is New window).
   ['notices', 'nav.notices', 'Alt+N'],
   // An explicit letter chord: Chatroom sits past the tenth row, and Alt+C has no darwin Meta twin.
@@ -93,12 +93,14 @@ const MASTER_NAV: NavEntry[] = [
   // Alt+P: Option+P is a plain letter chord on a Mac, so Cmd+P (print) is left alone.
   ['printroom', 'nav.printroom', 'Alt+P'],
   ['reports', 'nav.reports', 'Alt+R'],
-  ['products', 'nav.products'],
-  ['parties', 'nav.master.parties'],
-  ['partyAccess', 'nav.master.partyAccess'],
+  // Digits pinned from here: Conflicts moved to Admin (owner, 2026-11-19) but keeps Alt+5, the Office's.
+  ['products', 'nav.products', 6],
+  ['parties', 'nav.master.parties', 7],
+  ['partyAccess', 'nav.master.partyAccess', 8],
   // 1.4 D3: Lists (grades, packaging, brands). Alt+G, a plain letter chord.
   ['lists', 'nav.lists', 'Alt+G'],
   ['panels', 'nav.master.panels', 'Alt+O'],
+  ['conflicts', 'nav.master.conflicts', 5],
   ['access', 'nav.master.access', 'Alt+A'],
   // Notice board management, in Admin: Alt+M.
   ['noticesManage', 'nav.noticesManage', 'Alt+M'],
@@ -107,7 +109,7 @@ const MASTER_NAV: NavEntry[] = [
   ['recycleBin', 'nav.master.recycleBin', 'Alt+B'],
   // Delete data (2026-10-14): admin tier only, reached from the sidebar or the palette.
   ['dataDelete', 'nav.master.dataDelete', null],
-  ['settings', 'nav.master.settings'],
+  ['settings', 'nav.master.settings', 9],
   ['updates', 'nav.updates', 'Alt+U'],
 ];
 
@@ -141,7 +143,8 @@ export function navCommands(panel: 'master' | 'office', entries: NavEntry[]): Co
   let digit = 0;
   return entries.map(([tab, titleToken, chord], index) => {
     // Only a row that left its chord out takes a digit, and only nine exist.
-    const auto = chord === undefined && digit < 9 ? (digit += 1) : undefined;
+    const auto =
+      typeof chord === 'number' ? chord : chord === undefined && digit < 9 ? (digit += 1) : undefined;
     return {
       id: `nav.${panel}.${tab}`,
       titleToken,
@@ -150,7 +153,7 @@ export function navCommands(panel: 'master' | 'office', entries: NavEntry[]): Co
       tab,
       // The sidebar position, whatever the chord is.
       navOrder: index + 1,
-      defaultChord: auto ? `Alt+${auto}` : (chord ?? undefined),
+      defaultChord: auto ? `Alt+${auto}` : typeof chord === 'string' ? chord : undefined,
       platformDefaultChord: auto ? { darwin: `Meta+${auto}` } : undefined,
     };
   });

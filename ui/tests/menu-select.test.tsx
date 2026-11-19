@@ -32,6 +32,34 @@ describe('MenuSelect', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
+  it('draws the menu outside the cell, so a clipping table cell cannot hide it, and a second press closes it', () => {
+    render(
+      <table>
+        <tbody>
+          <tr>
+            <td data-testid="cell">
+              <MenuSelect
+                value=""
+                options={OPTIONS}
+                ariaLabel="Packaging"
+                onChange={() => undefined}
+              />
+            </td>
+          </tr>
+        </tbody>
+      </table>,
+    );
+    const trigger = screen.getByRole('button', { name: 'Packaging' });
+    fireEvent.click(trigger);
+    const menu = screen.getByRole('menu');
+    expect(screen.getByTestId('cell').contains(menu)).toBe(false);
+    expect(menu.closest('.ob-popover')?.getAttribute('style')).toContain('position: fixed');
+
+    fireEvent.mouseDown(trigger);
+    fireEvent.click(trigger);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
   it('does not report a pick of the value it already holds', () => {
     const onChange = vi.fn();
     render(<MenuSelect value="" options={OPTIONS} ariaLabel="Packaging" onChange={onChange} />);

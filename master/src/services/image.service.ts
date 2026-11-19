@@ -43,7 +43,7 @@ export interface UploadImageRequest {
   fileBuffer: Buffer;
   crop: ImageCropInput;
   /**
-   * Keep the whole picture, ignoring the crop rect: the bulk photo import
+   * Keep the whole picture, ignoring the crop rect: the catalogue photos
    * (`shared/src/domain/photo-import.ts`) has no editor, and a browser cannot
    * know the size sharp sees after EXIF orientation to send a rect for it.
    */

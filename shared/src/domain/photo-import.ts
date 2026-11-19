@@ -1,5 +1,7 @@
 /**
- * Bulk product photo import (Products -> Photo import on the Master): a folder
+ * Product photo matching by file name (used by the catalogue photos on boot,
+ * `master/src/services/catalogue-photos.service.ts`; the Master's bulk Photo
+ * import screen that first used it was removed on 2026-11-19): a folder
  * of images named by code, each attached to its sub product through the
  * ordinary one-photo upload, so the pipeline, the permission and the change
  * events are the ones a single photo already uses.

@@ -382,7 +382,7 @@ export async function otherDatabaseClients(connectionUrl: string): Promise<strin
  * an old activity row never points at a new record that took its number.
  * Photo files go at the Master's next boot (`sweepOrphanImageVariants`).
  */
-async function clearCatalogueData(
+export async function clearCatalogueData(
   tenantId: string,
   trx: TransactionContext,
 ): Promise<{ removedLeads: number; removedOrders: number }> {

@@ -33,7 +33,7 @@ imagesRoutes.post(
   asyncHandler(async (req, res) => {
     const productId = String(req.params.productId);
     if (!req.file) throw new ValidationError('validation.image.fileRequired');
-    // No crop at all is the whole picture (the bulk photo import); a partial
+    // No crop at all is the whole picture (an upload with no editor); a partial
     // crop is still refused by the rect check, as before.
     const wholeFrame = ['cropX', 'cropY', 'cropWidth', 'cropHeight'].every((key) => req.body[key] === undefined);
 

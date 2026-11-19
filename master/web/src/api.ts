@@ -146,6 +146,9 @@ import type {
   FreshStartInput,
   FreshStartResult,
   FreshStartSummary,
+  ReleaseResetConfirmInput,
+  ReleaseResetResult,
+  ReleaseResetStatus,
   PartyDeletePreview,
 } from '@orderbook/shared';
 import { MASTER_KEY_TOKEN_HEADER, reportQueryParams } from '@orderbook/shared';
@@ -889,7 +892,7 @@ export const api = {
   uploadProductImage: (
     productId: string,
     file: Blob,
-    /** Null keeps the whole picture: the bulk photo import has no crop editor. */
+    /** Null keeps the whole picture, for an upload with no crop editor. */
     crop: {
       cropX: number;
       cropY: number;
@@ -1152,6 +1155,12 @@ export const api = {
     ),
   partyDeletePreview: (id: string) =>
     request<PartyDeletePreview>(`/api/parties/${id}/delete-preview`),
+
+  // --- 1.5.9's one-time reset (shared/src/domain/release-reset.ts) -----------
+
+  releaseResetStatus: () => request<ReleaseResetStatus>('/api/release-reset'),
+  confirmReleaseReset: (input: ReleaseResetConfirmInput) =>
+    post<ReleaseResetResult>('/api/release-reset/confirm', input),
 
   // --- Delete data (shared/src/domain/data-reset.ts) ------------------------
 

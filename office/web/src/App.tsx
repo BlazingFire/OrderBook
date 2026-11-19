@@ -22,6 +22,7 @@ import {
   matchesRecordSearch,
   recordNumber,
   offeredReportKinds,
+  RELEASE_RESET_VERSION,
   REPORT_ENTITIES,
   REPORT_META,
   reportsOffered,
@@ -482,6 +483,25 @@ function OfficePanel() {
       })
       .catch(() => undefined);
   }, [longOffline, disconnectedSince]);
+
+  // 1.5.9's reset dropped orders this panel had not sent: say so once per reset, even across a
+  // restart (the count is kept on disk; the epoch it was shown for is kept here).
+  const resetDropped = connection?.resetDropped ?? null;
+  useEffect(() => {
+    if (!resetDropped) return;
+    const key = 'ob.releaseReset.noted';
+    try {
+      if (window.localStorage.getItem(key) === resetDropped.epoch) return;
+      window.localStorage.setItem(key, resetDropped.epoch);
+    } catch {
+      // Storage refused: shown again next time, which is the safe side.
+    }
+    toast.push(
+      t('releaseReset.droppedOnOffice', { count: resetDropped.count, release: RELEASE_RESET_VERSION }),
+      { tone: 'info' },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetDropped?.epoch]);
 
   // The Master was found at a new address and this panel moved with it: say so once.
   const rediscoveredFrom = connection?.rediscoveredFrom ?? null;
@@ -1871,6 +1891,7 @@ function OfficePanel() {
             groups={groups}
             onOpen={goToTab}
             onNewLead={can('leads.create') ? openNewLead : undefined}
+            userId={session?.userId}
           />
         </>
       ),

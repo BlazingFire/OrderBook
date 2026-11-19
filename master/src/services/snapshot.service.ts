@@ -19,6 +19,7 @@ import { ForbiddenError } from '../lib/errors.js';
 import * as customFieldRepo from '../repositories/custom-field.repository.js';
 import { peekHlc } from '../repositories/identity.repository.js';
 import * as partyAccessRepo from '../repositories/party-access.repository.js';
+import { resetEpochFor } from './release-reset.service.js';
 import * as noticeService from './notice.service.js';
 import * as variantRepo from '../repositories/party-variant.repository.js';
 import * as pipelineRepo from '../repositories/pipeline.repository.js';
@@ -157,6 +158,8 @@ export async function buildSnapshot(actor: ActorContext): Promise<SyncSnapshot> 
     // and the Office image cache sweep must not treat it as one.
     productsComplete: canProducts && products.length < CATALOGUE_SNAPSHOT_LIMIT,
     features,
+    // 1.5.9's reset, once confirmed: an Office that has not seen it drops its unsent orders.
+    resetEpoch: await resetEpochFor(actor.tenantId),
   };
 }
 

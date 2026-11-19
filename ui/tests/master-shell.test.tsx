@@ -655,6 +655,19 @@ describe('a change made elsewhere reaches the screen built from it', () => {
     await waitFor(() => expect(gets(calls, '/api/pipelines')).toBeGreaterThan(before));
   });
 
+  // A packaging added in Fields must reach the sub-product list's Default packaging choices
+  // (owner, 2026-11-19: "make sure its linked") without a reload.
+  it('the Products screen re-reads the option lists when one changes', async () => {
+    const calls = await boot(ADMIN);
+    await open(t('nav.products'));
+    await waitFor(() => expect(gets(calls, '/api/option-lists')).toBeGreaterThan(0));
+    const before = gets(calls, '/api/option-lists');
+
+    await changed('option_list');
+
+    await waitFor(() => expect(gets(calls, '/api/option-lists')).toBeGreaterThan(before));
+  });
+
   it.each(['option_list', 'custom_field'])(
     'the Recycle Bin refetches when a %s row is deleted or restored',
     async (entity) => {

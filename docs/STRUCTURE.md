@@ -6680,7 +6680,7 @@ unchanged. Schema: `docs/schema/06-tenancy-permissions-and-sync.md` section 2d.
 
 ### 11.13 Product photos in bulk, and the catalogue photos (Oct 2026)
 
-- **Photo import (Master, Products > Photo import, `products.edit`).** `master/web/src/screens/PhotoImportScreen.tsx` picks a folder
+- **Photo import — removed 2026-11-19 (owner: "remove this menu completely code too").** The Products > Photo import menu and `master/web/src/screens/PhotoImportScreen.tsx` are gone; what follows describes the matching it used, which the catalogue photos below still run. It picked a folder
   or many files; `shared/src/domain/photo-import.ts` (`planPhotoImport`, `runPhotoImport`; pure, tested in
   `shared/tests/photo-import.test.ts`) matches and runs. A file is matched by its name without the extension, ignoring case,
   to a variant code (`OPT-0011.jpg`) and, failing that, to a sub product's alias when that alias is unique; `OPT-0011_2.jpg` is a

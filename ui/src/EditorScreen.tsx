@@ -59,9 +59,9 @@ export function EditorScreen({
     <div className="ob-editorscreen">
       <header className="ob-editorscreen-head">
         <Button
-          variant="ghost"
-          size="sm"
+          variant="secondary"
           icon="collapse"
+          className="ob-editorscreen-back"
           data-esc-back
           onClick={askBeforeBack ? back : () => void onBack()}
         >

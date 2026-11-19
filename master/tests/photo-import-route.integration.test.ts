@@ -1,6 +1,6 @@
 /**
- * The product photo route as the bulk photo import uses it
- * (`master/web/src/screens/PhotoImportScreen.tsx`): a signed-in Master user
+ * The product photo route with no crop: whole-picture uploads (first used by
+ * the bulk Photo import screen, removed 2026-11-19): a signed-in Master user
  * posts a file with no crop at all, and the whole picture is kept.
  *
  * The browser cannot send a crop rect for a photo it has not decoded, and the

@@ -16,13 +16,36 @@
 
 import { chordFor, type Chord } from '@orderbook/shared';
 
+import { useEffect, useState, type CSSProperties } from 'react';
+
 import type { NavGroup, NavItem } from './AppShell';
+import { Button, IconButton } from './Button';
 import { displayChord } from './CommandPalette';
 import { t } from './i18n.js';
 import { Icon } from './icons';
 import { useKeyboard } from './KeyboardProvider';
 import { EmptyState } from './States';
 import { TILE_ICONS } from './tileIcons';
+
+/** Tile size, in percent of the default, kept per signed-in user in this browser (as theme and scale are). */
+export const TILE_SCALE = { min: 60, max: 160, step: 10, initial: 100 } as const;
+
+export function tileScaleKey(userId: string): string {
+  return `ob.basicHome.tileScale.${userId}`;
+}
+
+/** The saved size for `userId`, or the default; a missing, garbled or out-of-range value reads as the default. */
+export function readTileScale(userId: string | undefined): number {
+  if (!userId) return TILE_SCALE.initial;
+  try {
+    const raw = Number(window.localStorage.getItem(tileScaleKey(userId)));
+    return Number.isFinite(raw) && raw >= TILE_SCALE.min && raw <= TILE_SCALE.max
+      ? raw
+      : TILE_SCALE.initial;
+  } catch {
+    return TILE_SCALE.initial; // Private browsing refuses storage; the default still works.
+  }
+}
 
 /**
  * Where somebody lands after signing in. Office and Management people start
@@ -95,14 +118,38 @@ export function BasicHome({
   groups,
   onOpen,
   onNewLead,
+  userId,
 }: {
   /** The shell's sidebar groups, already filtered by permission. */
   groups: NavGroup[];
   onOpen: (id: string) => void;
   /** Present only for a role that can create a pending order. */
   onNewLead?: () => void;
+  /** The signed-in user, whose own tile size is read and saved. Absent: the default size, no Save. */
+  userId?: string;
 }) {
   const keyboard = useKeyboard();
+  const [saved, setSaved] = useState(() => readTileScale(userId));
+  const [scale, setScale] = useState(saved);
+  // Another person signing in on this PC gets their own size, not the last one's.
+  useEffect(() => {
+    const next = readTileScale(userId);
+    setSaved(next);
+    setScale(next);
+  }, [userId]);
+
+  const nudge = (by: number): void =>
+    setScale((current) => Math.min(TILE_SCALE.max, Math.max(TILE_SCALE.min, current + by)));
+  const save = (): void => {
+    if (!userId) return;
+    try {
+      window.localStorage.setItem(tileScaleKey(userId), String(scale));
+    } catch {
+      // Storage refused: the size still applies for this visit.
+    }
+    setSaved(scale);
+  };
+  const launcherStyle = { '--ob-tile-scale': scale / 100 } as CSSProperties;
 
   const sections = groups
     .map((group, index) => ({
@@ -122,7 +169,39 @@ export function BasicHome({
   }
 
   return (
-    <div className="ob-launcher">
+    <div className="ob-launcher" style={launcherStyle}>
+      <div className="ob-launcher-size" role="group" aria-label={t('basicHome.tileSize')}>
+        <span className="ob-small">{t('basicHome.tileSize')}</span>
+        <IconButton
+          icon="minus"
+          label={t('basicHome.tileSmaller')}
+          disabled={scale <= TILE_SCALE.min}
+          onClick={() => nudge(-TILE_SCALE.step)}
+        />
+        <input
+          type="range"
+          className="ob-launcher-size-range"
+          min={TILE_SCALE.min}
+          max={TILE_SCALE.max}
+          step={TILE_SCALE.step}
+          value={scale}
+          aria-label={t('basicHome.tileSize')}
+          aria-valuetext={`${scale}%`}
+          onChange={(event) => setScale(Number(event.target.value))}
+        />
+        <IconButton
+          icon="plus"
+          label={t('basicHome.tileLarger')}
+          disabled={scale >= TILE_SCALE.max}
+          onClick={() => nudge(TILE_SCALE.step)}
+        />
+        <output className="ob-launcher-size-value">{scale}%</output>
+        {userId && (
+          <Button size="sm" variant="primary" disabled={scale === saved} onClick={save}>
+            {t('basicHome.tileSave')}
+          </Button>
+        )}
+      </div>
       {sections.map((section) => (
         <section key={section.label} className="ob-launcher-section" aria-label={section.label}>
           <h2 className="ob-eyebrow">{section.label}</h2>

@@ -202,6 +202,14 @@ export interface PanelAuthPayload {
 export const PANEL_PROTOCOL_VERSION = 13;
 
 /**
+ * The oldest Office the Master will sync with. 13 reshaped `Product` (no variants); a 1.5.8
+ * Office (12) reads `product.variants` and would break on search and order entry, so the
+ * Master refuses its socket with `panelUpdateRequired` until it updates (owner, 2026-11-19).
+ * Its update comes over HTTP, which this does not touch.
+ */
+export const PANEL_MIN_PROTOCOL = 13;
+
+/**
  * The lowest Master protocol each command needs. A command not listed has
  * existed since protocol 1, which is what a Master that sends no protocol is
  * taken to speak.
@@ -671,6 +679,11 @@ export interface SyncSnapshot {
    * bypass of the whole feature there is. `null` for an unattended panel.
    */
   builtForUserId?: string | null;
+  /**
+   * 1.5.9's one-time reset, once confirmed (`release-reset.ts`): an Office that has not seen
+   * this value drops its unsent orders and catalogue edits before it sends its queue.
+   */
+  resetEpoch?: string | null;
   /**
    * Which run of the Master built this, and where its change ring stood.
    *

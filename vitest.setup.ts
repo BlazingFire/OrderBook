@@ -17,3 +17,11 @@ fs.promises.rm = retrying(fs.promises.rm.bind(fs.promises)) as typeof fs.promise
 fs.rmSync = retrying(fs.rmSync.bind(fs)) as typeof fs.rmSync;
 // `import { rmSync } from 'node:fs'` reads the module's named exports, a copy made at load.
 syncBuiltinESMExports();
+
+/**
+ * The Master refuses an Office below `PANEL_MIN_PROTOCOL` (13, the 1.5.9 catalogue). Many
+ * suites model an older Office on purpose (protocol 2 to 7) to test what it is or is not sent;
+ * they keep doing so with the floor lowered here. `hub-min-protocol.test.ts` clears this and
+ * proves the real floor.
+ */
+process.env.ORDERBOOK_MIN_PANEL_PROTOCOL ??= '1';

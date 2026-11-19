@@ -197,6 +197,8 @@ export interface ConnectionInfo {
   notRecognised?: boolean;
   /** An address that answered as this panel's Master and could not prove it. */
   rediscoveryRefused?: string | null;
+  /** 1.5.9's reset: unsent orders this panel dropped when it first saw it (`sync/release-reset.ts`). */
+  resetDropped?: { epoch: string; count: number } | null;
   /**
    * Why this PC is not paired, when the Master removed it. Kept on disk, so it is
    * still here after a restart, until the PC is paired again.

@@ -59,6 +59,7 @@ import * as offlineAuthEvents from '../services/offline-auth-events.store.js';
 import { buildReport, moveStorage } from '../services/panel-report.service.js';
 import { observe } from '../sync/clock.js';
 import * as localStore from '../sync/local-store.js';
+import { applyResetEpoch, readSeenReset } from '../sync/release-reset.js';
 import { flush, setTransport, stopSync } from '../sync/sync.service.js';
 
 const log = createLogger('master-link');
@@ -171,6 +172,11 @@ interface ConnectionStatus {
   /** The Master at this address does not know this panel; the pairing is kept. */
   notRecognised: boolean;
   /**
+   * 1.5.9's reset: how many unsent orders this panel dropped when it first saw the Master's
+   * reset, and which reset, so the window can say so once. Null when none were dropped.
+   */
+  resetDropped: { epoch: string; count: number } | null;
+  /**
    * An address that answered as this panel's Master on the network and was
    * not trusted (it could not prove it, or two addresses claimed the same id).
    */
@@ -208,6 +214,13 @@ class MasterConnection extends EventEmitter {
   private masterProtocol: number | null = null;
   /** Commands waiting for the Master to say which protocol it speaks (right after a connect). */
   private protocolWaiters: Array<() => void> = [];
+  /** See `ConnectionStatus.resetDropped`; read back from disk so a restart still says it. */
+  private resetDropped: { epoch: string; count: number } | null = null;
+  private readonly resetSeen = readSeenReset().then((seen) => {
+    if (seen && seen.dropped > 0 && !this.resetDropped) {
+      this.resetDropped = { epoch: seen.epoch, count: seen.dropped };
+    }
+  });
   /** True while offline sign-ins are on their way up, so two snapshots do not send them twice. */
   private uploadingAuthEvents = false;
   /** One upload attempt per connection, not one per delta, so a failing one does not repeat on every change. */
@@ -456,6 +469,13 @@ class MasterConnection extends EventEmitter {
       );
 
       void (async () => {
+        // 1.5.9's reset, before anything is sent: orders made against the deleted catalogue
+        // are dropped from the outbox, once per reset (`sync/release-reset.ts`).
+        const dropped = await applyResetEpoch(snapshot.resetEpoch);
+        if (dropped > 0 && snapshot.resetEpoch) {
+          this.resetDropped = { epoch: snapshot.resetEpoch, count: dropped };
+          this.emitStatus();
+        }
         // Persist before flushing: if the push crashes the process, the panel
         // still restarts holding what the Master last told it.
         await localStore.setSnapshot(snapshot, this.cursorFrom(snapshot.seq));
@@ -1013,6 +1033,7 @@ class MasterConnection extends EventEmitter {
       rediscoveredFrom: this.rediscoveredFrom,
       notRecognised: this.notRecognised,
       rediscoveryRefused: this.rediscoveryRefused,
+      resetDropped: this.resetDropped,
     };
   }
 

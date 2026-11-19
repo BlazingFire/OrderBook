@@ -130,6 +130,7 @@ import { LeadsScreen } from './screens/LeadsScreen';
 import { OrdersScreen } from './screens/OrdersScreen';
 import { PartiesScreen } from './screens/PartiesScreen';
 import { ProductsScreen, type ProductsPage } from './screens/ProductsScreen';
+import { ReleaseResetGate } from './screens/ReleaseResetGate';
 import { SignInScreen } from './screens/SignInScreen';
 import { SETTINGS_TAB_IDS, settingsTabIdsFor } from './settingsTabs';
 
@@ -1049,9 +1050,6 @@ function MasterPanel() {
       { key: 'sub', label: t('catalog.nav.subProducts'), icon: 'products' },
       { key: 'main', label: t('catalog.nav.mainProducts'), icon: 'inventory' },
       { key: 'brands', label: t('catalog.nav.brands'), icon: 'edit' },
-      ...(user.permissions.includes('products.edit')
-        ? [{ key: 'photos', label: t('catalog.nav.photoImport'), icon: 'upload' as const }]
-        : []),
     ],
     reports: offeredReportKinds(user.roleTier, user.features, user.permissions).map((kind) => ({
       key: kind,
@@ -1183,14 +1181,6 @@ function MasterPanel() {
         { id: 'dashboard', label: t('nav.master.dashboard'), icon: NAV_ICONS.dashboard },
         canViewLeads ? { id: 'leads', label: t('nav.leads'), icon: NAV_ICONS.leads } : null,
         canViewOrders ? { id: 'orders', label: t('nav.orders'), icon: NAV_ICONS.orders } : null,
-        canResolveConflicts
-          ? {
-              id: 'conflicts',
-              label: t('nav.master.conflicts'),
-              icon: NAV_ICONS.conflicts,
-              count: openConflicts > 0 ? openConflicts : undefined,
-            }
-          : null,
         canViewNotices
           ? {
               id: 'notices',
@@ -1244,6 +1234,15 @@ function MasterPanel() {
       items: [
         canManagePanels
           ? { id: 'panels', label: t('nav.master.panels'), icon: NAV_ICONS.panels }
+          : null,
+        // Under Admin beside Office panels (owner, 2026-11-19): a sync conflict is an administrator's review.
+        canResolveConflicts
+          ? {
+              id: 'conflicts',
+              label: t('nav.master.conflicts'),
+              icon: NAV_ICONS.conflicts,
+              count: openConflicts > 0 ? openConflicts : undefined,
+            }
           : null,
         canManageRoles
           ? { id: 'access', label: t('nav.master.access'), icon: NAV_ICONS.access }
@@ -1596,6 +1595,7 @@ function MasterPanel() {
             groups={groups}
             onOpen={navigate}
             onNewLead={canCreateLead ? openNewLead : undefined}
+            userId={user.id}
           />
         </>
       ),
@@ -2034,6 +2034,8 @@ function MasterPanel() {
       }}
     >
       <FilterBarProvider>
+        {/* 1.5.9's one-time reset: the written warning, to an administrator, until confirmed. */}
+        <ReleaseResetGate enabled={canDeleteData} />
         <AppShell
           groups={groups}
           activeId={activeId}

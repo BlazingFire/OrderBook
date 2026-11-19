@@ -219,9 +219,11 @@ describe('the command catalogue', () => {
       expect(holders('Alt+N')).toEqual([`nav.${panel}.notices`]);
       expect(holders('Alt+M')).toEqual([`nav.${panel}.noticesManage`]);
     }
-    // The digits still run Basic Home to Settings, 1 to 9, on both panels.
+    // The digits still run Basic Home to Settings, 1 to 9, on both panels — by digit, not
+    // sidebar row: the Master's Conflicts sits under Admin and keeps Alt+5 (2026-11-19).
     for (const panel of ['master', 'office'] as const) {
-      const digits = COMMANDS.filter((command) => command.panel === panel && /^Alt\+[1-9]$/.test(command.defaultChord ?? ''));
+      const digits = COMMANDS.filter((command) => command.panel === panel && /^Alt\+[1-9]$/.test(command.defaultChord ?? ''))
+        .sort((a, b) => (a.defaultChord ?? '').localeCompare(b.defaultChord ?? ''));
       expect(digits.map((command) => command.tab)).toEqual([
         'basicHome', 'dashboard', 'leads', 'orders', 'conflicts', 'products', 'parties', 'partyAccess', 'settings',
       ]);

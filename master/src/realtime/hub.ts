@@ -19,6 +19,7 @@ import {
   MASTER_STATION_KEY,
   PRINTROOM_MIN_PROTOCOL,
   panelStationKey,
+  PANEL_MIN_PROTOCOL,
   ROOM_OFFICE_PANELS,
   type ChatPush,
   type ClientToServerEvents,
@@ -511,6 +512,16 @@ export function createRealtimeHub(httpServer: HttpServer): RealtimeHub {
   };
 }
 
+/**
+ * The oldest Office protocol this Master syncs with: `PANEL_MIN_PROTOCOL`, or
+ * `ORDERBOOK_MIN_PANEL_PROTOCOL` to let older Offices in again (support's escape hatch, and
+ * the tests that model an old Office). Read per handshake, so a change needs no rebuild.
+ */
+function minimumPanelProtocol(): number {
+  const raw = Number(process.env.ORDERBOOK_MIN_PANEL_PROTOCOL);
+  return Number.isInteger(raw) && raw > 0 ? raw : PANEL_MIN_PROTOCOL;
+}
+
 async function authenticate(socket: PanelSocket): Promise<void> {
   const auth = socket.handshake.auth as SocketAuthPayload | undefined;
 
@@ -524,6 +535,12 @@ async function authenticate(socket: PanelSocket): Promise<void> {
     // built before the handshake sends none and is taken to speak protocol 1.
     socket.data.protocol =
       Number.isInteger(auth.protocol) && (auth.protocol as number) > 0 ? auth.protocol : undefined;
+    // Too old to read today's catalogue (a 1.5.8 Office expects `product.variants` and would
+    // break on search and order entry): refused until it updates. It keeps working offline on
+    // its saved catalogue, and its update still comes over HTTP, which this does not touch.
+    if ((socket.data.protocol ?? 1) < minimumPanelProtocol()) {
+      throw new UnauthorizedError('error.unauthorized.panelUpdateRequired');
+    }
     return;
   }
 

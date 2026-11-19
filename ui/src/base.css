@@ -179,6 +179,37 @@
   height: var(--ctl-h-lg);
   padding: 0 var(--s-16);
 }
+/* EditorScreen's "Back to list": the way out of every record, so it reads as a button, not a link.
+   Plain tokens only: Chrome 108 (the Win7 floor) has no color-mix(). */
+.ob-btn.ob-editorscreen-back {
+  padding-inline: var(--s-12) var(--s-16);
+  background: var(--accent-tint);
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+  transition:
+    background-color var(--d-fast) var(--e-standard),
+    color var(--d-fast) var(--e-standard);
+}
+.ob-btn.ob-editorscreen-back:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--fg-on-accent);
+}
+.ob-editorscreen-back > svg {
+  transition: transform var(--d-fast) var(--e-standard);
+}
+.ob-editorscreen-back:hover > svg {
+  transform: translateX(-3px);
+}
+html[data-motion='off'] .ob-editorscreen-back > svg {
+  transition: none;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ob-editorscreen-back > svg {
+    transition: none;
+  }
+}
 .ob-btn--lg:has(> svg:first-child) {
   padding-inline-start: var(--s-12);
 }
@@ -3923,8 +3954,9 @@ html[data-motion='off'] .ob-selltoday-ring {
   display: flex;
   flex-direction: column;
   gap: clamp(var(--s-8), 2vh, var(--s-24));
-  /* Icons scale with the window's height so every section fits without a scrollbar. */
-  --ob-face: clamp(2.6rem, 6.5vh, 4rem);
+  /* Icons scale with the window's height so every section fits without a scrollbar, times the
+     person's own Tile size (BasicHome's slider, 0.6 to 1.6). */
+  --ob-face: calc(clamp(2.6rem, 6.5vh, 4rem) * var(--ob-tile-scale, 1));
   padding: 0 var(--s-8);
 }
 
@@ -3936,6 +3968,29 @@ html[data-motion='off'] .ob-selltoday-ring {
 
 .ob-launcher-section > h2 {
   margin: 0;
+}
+
+/* Basic Home's Tile size bar: label, minus, slider, plus, value, Save — one quiet row, top right. */
+.ob-launcher-size {
+  display: flex;
+  align-items: center;
+  gap: var(--s-8);
+  align-self: flex-end;
+  padding: var(--s-4) var(--s-8);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+}
+.ob-launcher-size-range {
+  width: 9rem;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.ob-launcher-size-value {
+  min-width: 3ch;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-secondary);
+  text-align: right;
 }
 
 .ob-launcher-tiles {

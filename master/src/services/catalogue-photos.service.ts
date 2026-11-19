@@ -3,7 +3,7 @@
  * `assets/catalogue/photos/` as `<sub product code>.jpg`, attached on boot to
  * the sub products that still have no photo.
  *
- * Through the bulk photo import's own plan and run
+ * Through the shared photo matching's plan and run
  * (`shared/src/domain/photo-import.ts`) in "skip" mode, and the ordinary
  * upload, so a photo lands exactly as one added by hand would — and **never**
  * over one the company added: a sub product with any photo is left alone,

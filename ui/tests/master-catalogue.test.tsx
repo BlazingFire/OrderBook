@@ -395,6 +395,8 @@ describe('the sub-product list', () => {
     // The same screen, now its form.
     expect(await screen.findByLabelText(new RegExp(t('product.field.name')))).toBeTruthy();
     expect(screen.getByRole('button', { name: t('product.saveChanges') })).toBeTruthy();
+    // The photos stay editable in the form (owner, 2026-11-19): the picker is still on the rail.
+    expect(document.querySelector('input[type="file"]')).not.toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: t('common.cancel') }));
 

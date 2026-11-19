@@ -1,6 +1,6 @@
 {
   "name": "@orderbook/office",
-  "version": "1.5.8",
+  "version": "1.5.9",
   "homepage": "https://github.com/blazingfire/orderbook",
   "private": true,
   "type": "module",

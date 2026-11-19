@@ -70,6 +70,8 @@ import * as noteColumns from './20261025000000_note_columns.js';
 import * as variantBlankLabel from './20261105000000_variant_blank_label.js';
 import * as subProductCodeColoursPrintSide from './20261116000000_sub_product_code_colours_print_side.js';
 import * as noteDealerAndGradeSize from './20261118000000_note_dealer_and_grade_size.js';
+import * as releaseReset159 from './20261119000000_release_reset_1_5_9.js';
+import * as releaseResetConfirmedByText from './20261119000001_release_reset_confirmed_by_text.js';
 
 export interface Migration {
   name: string;
@@ -334,6 +336,17 @@ export const migrations: Migration[] = [
   {
     name: '20261118000000_note_dealer_and_grade_size',
     ...noteDealerAndGradeSize,
+  },
+  // 2026-11-19: 1.5.9's one-time reset marker. Adds a table and a pending row; the deletion
+  // itself waits for an administrator's confirmation (`release-reset.service.ts`).
+  {
+    name: '20261119000000_release_reset_1_5_9',
+    ...releaseReset159,
+  },
+  // 2026-11-19: the confirming user's id is text, not a UUID.
+  {
+    name: '20261119000001_release_reset_confirmed_by_text',
+    ...releaseResetConfirmedByText,
   },
 ];
 

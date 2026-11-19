@@ -2394,6 +2394,8 @@ export const SNAPSHOT_POLICY: Record<keyof SyncSnapshot, SnapshotPolicy> = {
   // on this panel's disk.
   bootId: 'passthrough',
   seq: 'passthrough',
+  // 1.5.9's reset epoch: read by the Office process (`sync/release-reset.ts`); harmless to the window.
+  resetEpoch: 'passthrough',
   parties: 'passthrough',
   products: 'passthrough',
   categories: 'passthrough',

@@ -35,9 +35,7 @@ import {
 import { api } from '../api';
 import { catalogueTransport, optionListTransport } from '../transports';
 
-import { PhotoImportScreen } from './PhotoImportScreen';
-
-export type ProductsPage = 'sub' | 'main' | 'brands' | 'photos';
+export type ProductsPage = 'sub' | 'main' | 'brands';
 
 interface Props {
   page: ProductsPage;
@@ -167,11 +165,6 @@ export function ProductsScreen({
           revision={catalogueRevision + importBump}
         />
       </Activity>
-      {permissions.includes('products.edit') && (
-        <Activity mode={page === 'photos' ? 'visible' : 'hidden'}>
-          <PhotoImportScreen products={products} />
-        </Activity>
-      )}
       <Activity mode={page === 'brands' ? 'visible' : 'hidden'}>
         <BrandsScreen
           permissions={permissions}
