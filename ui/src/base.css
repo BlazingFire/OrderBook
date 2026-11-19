@@ -2690,6 +2690,10 @@ html[data-motion='off'] .ob-navitem-children--open > .ob-navitem-children-inner 
 }
 
 .ob-sidebar-collapse {
+  /* Flex, not text-align: the icon is a block svg, so text-align left it at the edge. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
   height: var(--ctl-h-lg);
   flex: none;
   border-top: 1px solid var(--line);

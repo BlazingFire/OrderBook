@@ -222,6 +222,13 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-11-19 - The collapsed sidebar's expand arrow is centred and nav-icon sized (Claude Code, branch main)
+
+- **Ask (owner, over a crop of the collapsed sidebar's foot):** "make this arrow proper".
+- **Cause:** `.ob-sidebar-collapse` was `display: block` + `text-align: center`, but kit icons are block SVGs, so the arrow sat at the button's left edge; it was also 12 px beside 16 px nav icons.
+- **Change:** `.ob-sidebar-collapse` is a centring flex box (`ui/src/base.css`); the collapsed `expand` icon is 16 px (`ui/src/AppShell.tsx`). The expanded "Collapse" label was already centred and is unchanged.
+- **Verified:** measured in the browser (arrow 16 px, centre equal to the button's both ways); shell suites 9 files / 361 tests, ui typecheck and lint 0; both web bundles rebuilt and the CSS served on 4100 and 4200 carries the rule.
+
 ### 2026-11-19 - Sub-product list cells fit their row; one hairline for Print side and Default packaging (Claude Code, branch main, commit 7585c4fe)
 
 - **Ask (owner, over a screenshot of the sub-product list):** "THIS UI LOOK BAD USE BROWSER CONTROL SEE EDGES AND REFINE UI".

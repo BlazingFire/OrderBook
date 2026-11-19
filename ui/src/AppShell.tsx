@@ -300,7 +300,7 @@ export function AppShell({
           onClick={onToggleCollapsed}
         >
           {collapsed ? (
-            <Icon name="expand" size={12} />
+            <Icon name="expand" size={16} />
           ) : (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <Icon name="collapse" size={12} /> {t('nav.collapse')}
