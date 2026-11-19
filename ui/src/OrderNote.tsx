@@ -136,13 +136,19 @@ function NamedRow({ line, tick, show }: { line: NoteLine; tick: boolean; show: N
  * The Dispatch note's code cell, as the owner's artifact draws it (2026-10-13): the code, its colour and brand
  * on the first line; a grade chip, the packing and `× qty` on the second.
  */
+/** Past this many characters a code's name prints at 11.5 px: "2501 PADESTAL ONLY" then takes two lines of a cell, not three. */
+const LONG_CODE_NAME = 10;
+
 function DispatchCell({ line, caption, show }: { line: NoteLine; caption: string | null; show: NoteColumns }) {
   const brand = line.brand ? brandCode(line.brand) : '';
   return (
     <div className="ob-note-cell ob-note-cell--dispatch">
       {caption !== null && <div className="ob-note-cell-product">{caption}</div>}
       <div className="ob-note-cell-line">
-        <span className="ob-note-cell-name">{line.subProduct}</span>
+        {/* shortcut: counts characters, not measured width; a long name prints smaller so it fits two lines. */}
+        <span className={`ob-note-cell-name${line.subProduct.length > LONG_CODE_NAME ? ' ob-note-cell-name--long' : ''}`}>
+          {line.subProduct}
+        </span>
         {/* A code with no colour shows a dash, as the design does. */}
         {show.colour && <span className="ob-note-cell-tone">{line.colour ?? '—'}</span>}
         {brand && (

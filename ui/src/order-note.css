@@ -698,25 +698,36 @@
   gap: 3px;
 }
 
+/* Name, colour and brand run as one centred text, so a long name wraps onto a second line with them
+   ("461 PADESTAL / ONLY —") and never runs into the next cell. Two lines at most. */
 .ob-note-cell-line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: center;
-  gap: 0 4px;
-  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
   max-width: 100%;
+  text-align: center;
+  /* 15 px, not 16: two lines plus the detail line still fit the 50 px row. */
+  line-height: 15px;
+}
+
+.ob-note-cell-line > * + * {
+  margin-left: 4px;
 }
 
 .ob-note-cell-name {
-  flex: none;
   font-size: 14px;
-  line-height: 16px;
   font-weight: 700;
 }
 
+.ob-note-cell-name--long {
+  font-size: 11.5px;
+}
+
 .ob-note-cell-tone {
-  min-width: 0;
+  display: inline-block;
+  vertical-align: bottom;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;

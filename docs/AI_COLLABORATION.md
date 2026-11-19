@@ -222,6 +222,13 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-11-19 - Dispatch note: long code names wrap to two lines instead of running into the next cell (Claude Code, branch main)
+
+- **Ask (owner, over the Dispatch note's Coded products):** "461, 461 PEDESTAL, 461 PEDESTAL ONLY it's text overlapping … if name is big then it show in two lines … give a proper width for it".
+- **Cause:** `.ob-note-cell-name` was `flex: none`, so a name wider than its ~96–110 px cell could not wrap and printed over its neighbours.
+- **Change:** the cell's first line (name, colour dash, brand) is one centred text block clamped to two lines (`ui/src/order-note.css`), so "2501 PADESTAL / ONLY —" breaks between words; a name over 10 characters prints at 11.5 px (`LONG_CODE_NAME` in `ui/src/OrderNote.tsx`) so it fits two lines, not three. Line height 15 px keeps two lines plus the detail line inside the 50 px row. A single word too long even for that ends in "…" — it never overlaps. The Filling note's cell already cut with "…" and is unchanged.
+- **Verified:** measured on a test page using the real stylesheet at 97 and 103 px cells — no cell wider than its box, two-line names inside the row; ui lint and typecheck 0, ui tests 114 files / 1555 passed. Not checked on the running Master (its web bundle was not rebuilt).
+
 ### 2026-11-19 - 1.5.9: safe install over 1.5.8, Offices turned away until updated, one-time confirmed reset (Claude Code, branch main)
 
 - **Ask (owner):** "make sure it installs on top of the existing software … don't affect its database … ask me if you are unclear". Answers given: turn 1.5.8 Offices away; **for 1.5.9 only**, delete all orders, all products and product photos (users and parties stay), backup first, hold for confirmation on first start, numbering continues, queued offline orders discarded.
