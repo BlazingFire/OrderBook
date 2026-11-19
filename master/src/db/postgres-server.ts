@@ -359,6 +359,11 @@ async function endOfLog(logFile: string): Promise<string> {
   }
 }
 
+/** One argument for a POSIX shell, whatever it contains: single quotes, with any `'` closed and reopened. */
+export function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 async function startCluster(binDir: string, clusterDir: string, socketDir: string): Promise<void> {
   if (await isClusterRunning(binDir, clusterDir)) {
     log.info('Database cluster already running');
@@ -366,7 +371,10 @@ async function startCluster(binDir: string, clusterDir: string, socketDir: strin
   }
 
   const serverOptions = [`-p ${config.database.port}`, `-h 127.0.0.1`];
-  if (process.platform !== 'win32') serverOptions.push(`-k ${socketDir}`);
+  // Quoted: `pg_ctl` hands `--options` to `/bin/sh`, so a socket folder with a
+  // space in it (`~/Library/Application Support/…`, the default on every Mac)
+  // was split into two arguments and PostgreSQL refused to start.
+  if (process.platform !== 'win32') serverOptions.push(`-k ${shellQuote(socketDir)}`);
   serverOptions.push(...pgMemoryOptions(Math.round(os.totalmem() / (1024 * 1024))));
 
   const logFile = path.join(config.dataDir, 'postgres.log');

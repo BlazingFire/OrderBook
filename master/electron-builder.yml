@@ -61,23 +61,7 @@ extraResources:
   # One copy of the scripts, shipped by both panels.
   - from: ../tools/uninstall
     to: uninstall
-  # What the "OrderBook Master Update" scheduled task runs (1.4 R8): a script
-  # that checks the signed manifest and the setup file's hash itself, then runs
-  # the install with administrator rights. Real files under `resources`, which
-  # only an administrator can write, because the task runs them elevated.
-  # `package.json` marks the folder as ES modules, as the shell's own is.
-  - from: electron/dist/apply-staged-update.js
-    to: apply-update/apply-staged-update.js
-  - from: electron/dist/lib/staged-update.js
-    to: apply-update/lib/staged-update.js
-  - from: installer/apply-update/package.json
-    to: apply-update/package.json
-  - from: installer/apply-update/apply-update.cmd
-    to: apply-update/apply-update.cmd
-  # The task re-checks its folders with this before every run, and the installer
-  # runs it to make them (`-Mode Install`).
-  - from: installer/apply-update/update-dirs.ps1
-    to: apply-update/update-dirs.ps1
+  # The Windows update task's files are under `win:` below, not here (2026-11-19).
 
 # One 1024px PNG per panel, rendered by `node tools/make-icons.mjs` from the
 # logo lattice; electron-builder derives the .ico and .icns from it.
@@ -88,6 +72,34 @@ win:
   # conversion of icon.png gives one 256 px image, a blur at taskbar size. The afterPack
   # hook stamps it into the .exe (`tools/exe-icon.cjs`); NSIS uses it for the setup files.
   icon: installer/icon.ico
+  # What the "OrderBook Master Update" scheduled task runs (1.4 R8): a script
+  # that checks the signed manifest and the setup file's hash itself, then runs
+  # the install with administrator rights. Real files under `resources`, which
+  # only an administrator can write, because the task runs them elevated.
+  # `package.json` marks the folder as ES modules, as the shell's own is.
+  # electron-builder adds these to the top-level `extraResources`.
+  #
+  # Windows only, and it has to be. electron-builder turns every `extraResources`
+  # source inside the app folder into an exclude pattern for `app.asar`
+  # (`computeParsedPatterns` in app-builder-lib's platformPackager.js). On
+  # Windows the pattern is built with backslashes and never matches, so the
+  # files stay in the asar. On macOS and Linux it matches, so
+  # `electron/dist/lib/staged-update.js` left the asar. The shell imports it
+  # at startup, so every Mac and Linux Master quit on launch with "A JavaScript
+  # error occurred in the main process". Nothing outside Windows runs this task.
+  extraResources:
+    - from: electron/dist/apply-staged-update.js
+      to: apply-update/apply-staged-update.js
+    - from: electron/dist/lib/staged-update.js
+      to: apply-update/lib/staged-update.js
+    - from: installer/apply-update/package.json
+      to: apply-update/package.json
+    - from: installer/apply-update/apply-update.cmd
+      to: apply-update/apply-update.cmd
+    # The task re-checks its folders with this before every run, and the installer
+    # runs it to make them (`-Mode Install`).
+    - from: installer/apply-update/update-dirs.ps1
+      to: apply-update/update-dirs.ps1
   target:
     - target: nsis
       arch: [x64]
