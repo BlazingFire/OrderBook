@@ -29,8 +29,11 @@ export function ActionButton({
   variant = 'primary',
   size = 'md',
   disabled,
+  arrow = false,
   ...rest
 }: {
+  /** Trailing arrow that leaves forward and becomes a self-drawing check on success. */
+  arrow?: boolean;
   /** Idle label and accessible name. */
   label: string;
   onAction: () => void | Promise<void>;
@@ -93,6 +96,27 @@ export function ActionButton({
         <span className="ob-actionbtn-label" key={shown} aria-hidden="true">
           {shown}
         </span>
+        {arrow && phase !== 'pending' && (
+          <svg
+            className="ob-actionbtn-glyph"
+            key={phase}
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            {phase === 'success' ? (
+              <path className="ob-actionbtn-check" pathLength={1} d="M5 12.5l4.5 4.5L19 7" />
+            ) : (
+              <path className="ob-actionbtn-arrow" d="M5 12h14M13 6l6 6-6 6" />
+            )}
+          </svg>
+        )}
         <span className="ob-sr-only" role="status">
           {shown}
         </span>

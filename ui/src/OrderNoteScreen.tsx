@@ -33,7 +33,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-import { ButtonGroup } from './ActionButtons.js';
+import { ActionButton, ButtonGroup } from './ActionButtons.js';
 import { Button } from './Button.js';
 import { EditorScreen } from './EditorScreen.js';
 import { Checkbox } from './Form.js';
@@ -174,8 +174,10 @@ export function OrderNoteScreen({
   const [savingNoteSettings, setSavingNoteSettings] = useState(false);
   const noteSettingsDirty =
     dealerCode.trim() !== savedDealerCode.trim() || gradeSize !== savedGradeSize;
+  const dealerCodeDirty = dealerCode.trim() !== savedDealerCode.trim();
 
-  async function saveNoteSettings(): Promise<void> {
+  /** Saves and rethrows: the end-of-toolbar ActionButton shows the result itself. */
+  async function commitNoteSettings(): Promise<void> {
     if (!onSaveNoteSettings) return;
     setSavingNoteSettings(true);
     try {
@@ -183,14 +185,25 @@ export function OrderNoteScreen({
         dealerCode: dealerCode.trim() || null,
         noteGradeSize: gradeSize,
       });
-      toast.push(t('orderNote.noteSettingsSaved'), { tone: 'ok' });
-    } catch (caught: unknown) {
-      toast.push(
-        t('orderNote.saveNoteSettingsFailed', { error: caught instanceof Error ? caught.message : '?' }),
-        { tone: 'error' },
-      );
     } finally {
       setSavingNoteSettings(false);
+    }
+  }
+
+  function noteSettingsFailed(caught: unknown): void {
+    toast.push(
+      t('orderNote.saveNoteSettingsFailed', { error: caught instanceof Error ? caught.message : '?' }),
+      { tone: 'error' },
+    );
+  }
+
+  /** Enter in the dealer code field and the Save beside it: no button morph, so a toast. */
+  async function saveNoteSettings(): Promise<void> {
+    try {
+      await commitNoteSettings();
+      toast.push(t('orderNote.noteSettingsSaved'), { tone: 'ok' });
+    } catch (caught: unknown) {
+      noteSettingsFailed(caught);
     }
   }
 
@@ -517,17 +530,33 @@ export function OrderNoteScreen({
         )}
         {onSaveNoteSettings && (
           <>
-            <label className="ob-note-toolbar-item">
-              <span className="ob-small">{t('orderNote.dealerOverride')}</span>
-              <input
-                className="ob-input ob-note-vehicle-input"
-                value={dealerCode}
-                maxLength={24}
-                placeholder={party?.partyCode ?? t('orderNote.dealerOverrideHint')}
-                disabled={printing || saving || savingNoteSettings}
-                onChange={(event) => setDealerCode(event.target.value)}
-              />
-            </label>
+            <span className="ob-note-toolbar-item">
+              <label className="ob-note-toolbar-item">
+                <span className="ob-small">{t('orderNote.dealerOverride')}</span>
+                <input
+                  className="ob-input ob-note-vehicle-input"
+                  value={dealerCode}
+                  maxLength={24}
+                  placeholder={party?.partyCode ?? t('orderNote.dealerOverrideHint')}
+                  disabled={printing || saving || savingNoteSettings}
+                  onChange={(event) => setDealerCode(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && dealerCodeDirty && !savingNoteSettings) {
+                      event.preventDefault();
+                      void saveNoteSettings();
+                    }
+                  }}
+                />
+              </label>
+              <Button
+                variant="secondary"
+                busy={savingNoteSettings}
+                disabled={printing || saving || savingNoteSettings || !dealerCodeDirty}
+                onClick={() => void saveNoteSettings()}
+              >
+                {t('common.save')}
+              </Button>
+            </span>
             <label className="ob-note-toolbar-item">
               <span className="ob-small">{t('orderNote.gradeSize')}</span>
               <select
@@ -548,14 +577,6 @@ export function OrderNoteScreen({
                 ))}
               </select>
             </label>
-            <Button
-              variant="secondary"
-              busy={savingNoteSettings}
-              disabled={printing || saving || savingNoteSettings || !noteSettingsDirty}
-              onClick={() => void saveNoteSettings()}
-            >
-              {t('orderNote.saveNoteSettings')}
-            </Button>
           </>
         )}
         <Checkbox checked={bold} onChange={setBold} label={t('orderNote.bold')} />
@@ -592,6 +613,15 @@ export function OrderNoteScreen({
           </label>
         )}
 
+        {onSaveNoteSettings && (
+          <ActionButton
+            label={t('orderNote.saveNoteSettings')}
+            arrow
+            disabled={printing || saving || savingNoteSettings || !noteSettingsDirty}
+            onAction={commitNoteSettings}
+            onActionError={noteSettingsFailed}
+          />
+        )}
       </div>
 
       <div className="ob-note-canvas">

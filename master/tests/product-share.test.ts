@@ -61,7 +61,7 @@ describe('shareCard', () => {
     expect(card.subtitle).toBe('One Piece Toilet  |  Swisware');
     expect(card.fields).toEqual([
       { label: 'Alias', value: 'Bell' },
-      { label: 'Size', value: '600x600' },
+      // No Size: it is printed in no PDF (owner, 2026-11-18).
       { label: 'Code', value: 'D-1' },
       { label: 'Colours', value: 'White, Ivory' },
       { label: 'Weight', value: '12.5 kg' },
@@ -79,7 +79,7 @@ describe('shareCard', () => {
     const text = shareText();
     const card = shareCard(product({ alias: 'Bell' } as Partial<Product>), undefined, text);
     const labels = card.fields.map((field) => field.label);
-    expect(labels).toEqual(expect.arrayContaining([text.alias, text.size, text.code, text.colours, text.weight]));
+    expect(labels).toEqual(expect.arrayContaining([text.alias, text.code, text.colours, text.weight]));
     expect(text.page(2, 5)).toBe('Page 2 of 5');
   });
 

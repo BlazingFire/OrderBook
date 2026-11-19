@@ -64,7 +64,6 @@ function customFieldText(value: unknown): string {
 /** The fixed words of the sheet, in one language. */
 export interface ShareText {
   alias: string;
-  size: string;
   code: string;
   colours: string;
   colour: string;
@@ -79,7 +78,6 @@ export interface ShareText {
 export function shareText(): ShareText {
   return {
     alias: t('en', 'productShare.pdf.alias'),
-    size: t('en', 'productShare.pdf.size'),
     code: t('en', 'productShare.pdf.code'),
     colours: t('en', 'productShare.pdf.colours'),
     colour: t('en', 'productShare.pdf.colour'),
@@ -101,7 +99,7 @@ export function shareCard(
 
   const candidates: Array<[string, string | null | undefined]> = [
     [text.alias, product.alias],
-    [text.size, product.size],
+    // The size is not printed in any PDF (owner, 2026-11-18).
     [text.code, product.code],
     [text.colours, product.colours.length > 0 ? product.colours.join(', ') : null],
     [text.weight, shareWeight(product)],

@@ -363,7 +363,7 @@ describe('the sub-product list', () => {
     renderList(viewOf({ permissions: ['products.view'] }), transport);
 
     fireEvent.click(await screen.findByText('Aqua'));
-    await screen.findByText(t('product.detail.detailsTitle'));
+    await screen.findByText(t('product.group.identity'));
 
     expect(screen.queryByRole('button', { name: t('catalog.products.new') })).toBeNull();
     expect(screen.queryByRole('button', { name: t('catalog.products.import') })).toBeNull();
@@ -371,6 +371,36 @@ describe('the sub-product list', () => {
     expect(screen.queryByRole('button', { name: t('photo.change') })).toBeNull();
     expect(screen.queryByRole('button', { name: t('photo.remove') })).toBeNull();
     expect(document.querySelector('input[type="file"]')).toBeNull();
+  });
+
+  it('opens the record read-only, and Edit turns the same screen into the form', async () => {
+    const transport = makeTransport({
+      listProducts: vi.fn(async () => ({
+        items: [subProduct('p-1', 'c-opt', { name: 'Aqua', code: 'AQ-1' })],
+        total: 1,
+        limit: 100,
+        offset: 0,
+      })),
+    });
+    renderList(viewOf({ permissions: ['products.view', 'products.edit'] }), transport);
+
+    fireEvent.click(await screen.findByText('Aqua'));
+
+    // The record, read-only: the facts, with no editable name field yet.
+    expect(await screen.findByText(t('product.group.identity'))).toBeTruthy();
+    expect(screen.queryByLabelText(new RegExp(t('product.field.name')))).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: t('product.detail.editAction') }));
+
+    // The same screen, now its form.
+    expect(await screen.findByLabelText(new RegExp(t('product.field.name')))).toBeTruthy();
+    expect(screen.getByRole('button', { name: t('product.saveChanges') })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: t('common.cancel') }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: t('product.detail.editAction') })).toBeTruthy(),
+    );
   });
 
   it('offers New on the list while intake lives on the conflicts screen', async () => {

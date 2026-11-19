@@ -181,8 +181,10 @@ number, and both are cleaned again on the sync push path. Neither is a copy of a
 already had: the fallbacks are exactly what the sheet printed before.
 
 `createdByName` is **not** a column: `mapOrder`/`mapLead` read it from `users.display_name`, which
-both base queries join on `created_by_user_id` as `created_by_name`. The note prints it under the
-signature row of its last page. `created_by_user_id` was already stored; it had simply never been
+both base queries join on `created_by_user_id` as `created_by_name`. The note prints it on the
+**Supervisor** line of its last page — filled in rather than left to sign, on screen and in every
+PDF (the Preview PDF and Print never drew a signature row at all until 2026-11-18; see
+`master/src/domain/lead-pdf.ts`). `created_by_user_id` was already stored; it had simply never been
 resolved to a name.
 
 ## `line_items` — one table, both parents

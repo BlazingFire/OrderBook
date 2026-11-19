@@ -31,6 +31,11 @@
   gap: var(--s-8) var(--s-16);
 }
 
+/* Save note settings sits last, pushed to the right edge of the row. */
+.ob-note-toolbar > .ob-actionbtn:last-child {
+  margin-inline-start: auto;
+}
+
 .ob-note-toolbar-item {
   display: inline-flex;
   align-items: center;
@@ -839,19 +844,20 @@
   padding-top: 4px;
 }
 
-/* Who raised the order, at the foot of the last sheet (the owner, 2026-11-18). */
-.ob-note-created-by {
+/* A name already on the sheet, sitting on the signature line (owner, 2026-11-18). */
+.ob-note-sign-name {
+  height: 20px;
+  border-bottom: 1px solid var(--note-ink);
   display: flex;
-  align-items: baseline;
-  gap: 6px;
-  padding-top: 2px;
-}
-
-.ob-note-created-by-name {
+  align-items: flex-end;
+  padding-bottom: 1px;
   font-size: 10px;
   line-height: 12px;
   font-weight: 600;
   color: var(--note-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ---- Print ----------------------------------------------------------------

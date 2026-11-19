@@ -34,8 +34,15 @@ export function Popover({
     // A menu inside takes focus, moves it with the arrow keys, and gives it back to its trigger on close.
     const opener = document.activeElement as HTMLElement | null;
     const items = () =>
-      Array.from(ref.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)') ?? []);
-    if (ref.current?.querySelector('[role="menu"]')) items()[0]?.focus();
+      Array.from(
+        ref.current?.querySelectorAll<HTMLElement>(
+          '[role="menuitem"]:not(:disabled), [role="menuitemradio"]:not(:disabled)',
+        ) ?? [],
+      );
+    // A picker's menu opens on its chosen item, any other menu on its first.
+    if (ref.current?.querySelector('[role="menu"]')) {
+      (items().find((item) => item.getAttribute('aria-checked') === 'true') ?? items()[0])?.focus();
+    }
     function onMenuKey(e: KeyboardEvent) {
       const list = items();
       const at = list.indexOf(document.activeElement as HTMLElement);
