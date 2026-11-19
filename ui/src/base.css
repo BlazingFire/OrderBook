@@ -1127,11 +1127,17 @@ html[data-motion='off'] .ob-donut-arc {
   height: var(--ctl-h-md);
   padding: var(--s-2);
   border-radius: var(--r-md);
+  /* A hairline, not a grey slab: twenty-five rows of slabs read as noise. */
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line);
 }
-.ob-seg--fill > button[aria-pressed='true'] {
-  box-shadow:
-    0 1px 2px rgb(0 0 0 / 0.06),
-    0 0 0 1px var(--line);
+.ob-seg--fill > button:hover:not(:disabled):not([aria-pressed='true']) {
+  background: var(--bg-hover);
+}
+.ob-seg--fill > button[aria-pressed='true'],
+.ob-seg--fill > button[aria-pressed='true']:disabled:hover {
+  background: var(--bg-sunken);
+  box-shadow: none;
 }
 /* First option is the "follow the default" choice; a picked override wears the accent so it stands out down a long list. */
 .ob-seg--fill > button[aria-pressed='true']:not(:first-child),
@@ -1141,19 +1147,31 @@ html[data-motion='off'] .ob-donut-arc {
   box-shadow: 0 0 0 1px var(--accent);
 }
 
-/* A value picker that is a table cell: quiet until pointed at, muted while it holds no choice. */
-.ob-cell-select {
-  border-color: transparent;
-  background-color: transparent;
-  transition: border-color var(--d-fast) var(--e-standard);
+/* A control that is a table cell clears the row lines by 3px a side, whatever the density. */
+.ob-cell-fill > .ob-seg--fill,
+.ob-cell-fill > .ob-input {
+  height: min(var(--ctl-h-md), calc(var(--row-h) - 6px));
 }
-.ob-cell-select:hover:not(:disabled),
-.ob-cell-select[aria-expanded='true'] {
+/* A value picker in a cell: the same hairline as the Print side beside it, firmer when pointed at. */
+.ob-input.ob-cell-select {
   border-color: var(--line);
-  background-color: var(--bg-surface);
+  background-color: transparent;
+  transition:
+    border-color var(--d-fast) var(--e-standard),
+    background-color var(--d-fast) var(--e-standard);
 }
-.ob-cell-select[data-empty] {
+.ob-input.ob-cell-select:hover:not(:disabled),
+.ob-input.ob-cell-select[aria-expanded='true'] {
+  border-color: var(--line-strong);
+  background-color: var(--bg-hover);
+}
+.ob-input.ob-cell-select[data-empty] {
   color: var(--fg-secondary);
+}
+/* The cell clips (overflow: hidden), so a ring drawn outside the box showed as a stray bar. */
+.ob-cell-fill .ob-input:focus,
+.ob-cell-fill .ob-input:focus-visible {
+  outline-offset: -2px;
 }
 
 /* MenuSelect (the Arc dropdown menu as a value picker). */
