@@ -82,8 +82,26 @@ describe('the pending order PDF — what is on the sheets', () => {
     expect(last).toContain('End of list · 160 items');
     expect(last).toContain('NOTES');
     expect(last).toContain('Handle with care');
-    // Nobody signs this one.
-    expect(words(plans)).not.toMatch(/SUPERVISOR|LOADED BY|CHECKED BY|FILLED BY|VEHICLE/i);
+    // The signature row is drawn, and only on the last sheet (owner, 2026-11-18).
+    expect(last.join(' ')).toMatch(/SUPERVISOR/);
+    expect(last).toContain('LOADED BY');
+    expect(last).toContain('CHECKED BY');
+    expect(first).not.toContain('SUPERVISOR');
+    // Nothing on this sheet is a vehicle: the Dispatch note closes the job out.
+    expect(words(plans)).not.toMatch(/VEHICLE/i);
+  });
+
+  it("prints the record's creator on the Supervisor line, automatically", () => {
+    // "Supervisor name is not visible in any PDF" (owner, 2026-11-18): the name
+    // is printed rather than left for a signature, and it is the creator's.
+    // Through `leadNotePdf`, as the route builds it, so this covers the wire too.
+    const withCreator = leadNotePdf(lead([line({ productName: '111' })], { createdByName: 'Riya Shah' }), PARTY, 'Swisware Ceramics', PRINTED);
+    expect(words(planNotePdf(withCreator, measure))).toContain('Riya Shah');
+
+    // A record whose creator is unknown still prints the line, just empty.
+    const anonymous = words(planNotePdf(order(4, 8), measure));
+    expect(anonymous).toContain('SUPERVISOR');
+    expect(anonymous).not.toContain('Riya Shah');
   });
 
   it('puts every line on the sheets once, in the notes’ own page split', () => {

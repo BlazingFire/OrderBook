@@ -8,7 +8,10 @@
  * it builds the note model and cuts it into pages with the notes' own `buildOrderNote` / `paginateOrderNote`
  * (`shared/src/domain/order-note.ts`), the code the preview and the print use, and hands the pages and the few
  * strings of this document's header to `pdf/note-renderer.ts`. Only the head and the foot differ: no vehicle,
- * no signature row, the party in the strip.
+ * the party in the strip, and a signature row whose Supervisor line carries the creator's name.
+ *
+ * The signature row is a correction (owner, 2026-11-18): it used to be left out — `signatures: false` — so no
+ * PDF ever printed "Supervisor" at all. It is now drawn, with the record's `createdByName` filling that line.
  *
  * Pure: no PDFKit, no database, no clock (the moment is passed in). There is no money on this document: no line
  * carries any.
@@ -53,8 +56,10 @@ export function leadNotePdf(
     partyMeta: [party?.partyCode, party?.city].map((part) => part?.trim()).filter(Boolean).join(' · '),
     numberText: recordNumber(lead),
     notes: lead.notes?.trim() ?? '',
-    // No signature row: nobody signs this one, so its room goes to the lines.
-    pages: paginateOrderNote(model, 'dispatch', { signatures: false, notes: lead.notes }),
+    // The signature row is drawn (owner, 2026-11-18): it carries the creator's
+    // name at Supervisor, so its room is reserved here rather than given to lines.
+    pages: paginateOrderNote(model, 'dispatch', { notes: lead.notes }),
+    createdByName: (lead as { createdByName?: string | null }).createdByName ?? null,
     columns,
     bold,
     namedCount: model.named.length,
@@ -91,8 +96,9 @@ export function orderNotePdf(
     partyMeta: [party?.partyCode, party?.city].map((part) => part?.trim()).filter(Boolean).join(' · '),
     numberText: recordNumber(order),
     notes: order.notes?.trim() ?? '',
-    // No signature row: a preview, not a dispatch sheet to sign.
-    pages: paginateOrderNote(model, 'dispatch', { signatures: false, notes: order.notes }),
+    // The signature row is drawn, as on the pending order's sheet (owner, 2026-11-18).
+    pages: paginateOrderNote(model, 'dispatch', { notes: order.notes }),
+    createdByName: order.createdByName ?? null,
     columns,
     bold,
     namedCount: model.named.length,

@@ -505,6 +505,50 @@ describe('the Dispatch note saved tick boxes', () => {
   });
 });
 
+describe("the order's own dealer code and grade size", () => {
+  it('offers no dealer code field, and so no Save beside it, without a saver', () => {
+    mount();
+    expect(screen.queryByLabelText(t('orderNote.dealerOverride'))).toBeNull();
+    expect(screen.queryByRole('button', { name: t('common.save') })).toBeNull();
+  });
+
+  it('keeps a Save beside the dealer code, inactive until it is edited, and it saves the note settings', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    mount({ record: ORDER, source: 'order', onSaveNoteSettings: save });
+
+    const field = screen.getByLabelText(t('orderNote.dealerOverride')) as HTMLInputElement;
+    expect(field.value).toBe('');
+    const button = screen.getByRole('button', { name: t('common.save') }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.parentElement).toBe(field.closest('label')?.parentElement);
+
+    fireEvent.change(field, { target: { value: ' dwdw ' } });
+    expect(button.disabled).toBe(false);
+
+    fireEvent.click(button);
+    await waitFor(() => expect(save).toHaveBeenCalledWith({ dealerCode: 'dwdw', noteGradeSize: null }));
+    expect(await screen.findByText(t('orderNote.noteSettingsSaved'))).toBeTruthy();
+  });
+
+  it('saves an edited dealer code on Enter, and goes inactive once it matches the saved one', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    mount({ record: { ...ORDER, dealerCode: 'OLD' } as Order, source: 'order', onSaveNoteSettings: save });
+    const field = screen.getByLabelText(t('orderNote.dealerOverride')) as HTMLInputElement;
+    const button = screen.getByRole('button', { name: t('common.save') }) as HTMLButtonElement;
+    expect(field.value).toBe('OLD');
+    expect(button.disabled).toBe(true);
+
+    fireEvent.change(field, { target: { value: 'NEW' } });
+    expect(button.disabled).toBe(false);
+    fireEvent.keyDown(field, { key: 'Enter' });
+    await waitFor(() => expect(save).toHaveBeenCalledWith({ dealerCode: 'NEW', noteGradeSize: null }));
+
+    // Back to what is stored: nothing left to save beside the field.
+    fireEvent.change(field, { target: { value: 'OLD' } });
+    expect(button.disabled).toBe(true);
+  });
+});
+
 describe('the Bold tick box', () => {
   it('starts ticked and toggles the bold sheets', () => {
     mount({ onSaveNoteColumns: async () => undefined });

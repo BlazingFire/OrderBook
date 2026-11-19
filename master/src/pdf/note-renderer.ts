@@ -103,6 +103,13 @@ export interface NotePdfInput {
   columns?: NoteColumns;
   /** The company switch (notes.defaultBold): regular faces when false. */
   bold?: boolean;
+  /**
+   * The account that created the record. Printed at the Supervisor signature
+   * line — the owner's answer to "supervisor name is not visible in any PDF"
+   * (2026-11-18): the line is filled in automatically rather than left blank
+   * for someone to sign.
+   */
+  createdByName?: string | null;
 }
 
 const INK = '#10161a';
@@ -386,6 +393,38 @@ function planPage(input: NotePdfInput, data: NotePage, measure: Measure): PdfOp[
       page.line(PAD_X, top + 62, right, top + 62, '#98a3a9', 1, true);
     }
   }
+
+  // ---- Signatures -----------------------------------------------------------
+  //
+  // The screen has always drawn this row; the PDF never did, so "Supervisor" was
+  // on no printed sheet at all (owner, 2026-11-18). It now draws the same three
+  // slots as the screen, and fills the Supervisor line with the account that
+  // created the record, so the name is on the sheet rather than written on.
+  // The room comes from `paginateOrderNote`'s `L.signature` reservation.
+  if (last) {
+    // `bodyBottom` already has the notes block taken off it, so the signature row
+    // starts at the page's floor — not at `bodyBottom + notesH`, which drew it
+    // past the sheet (the test caught it at 1150 of 1123).
+    const rowTop = PAGE_H - PAD_BOTTOM - L.signature;
+    const slotW = (CONTENT_W - 2 * 26) / 3;
+    const slots = [
+      t('en', 'orderNote.signSupervisor'),
+      t('en', 'orderNote.signLoadedBy'),
+      t('en', 'orderNote.signCheckedBy'),
+    ];
+    slots.forEach((label, index) => {
+      const x = PAD_X + index * (slotW + 26);
+      // The line and its label sit at the foot of the reserved row, as the CSS flex does (`align-items: flex-end`).
+      const lineY = rowTop + L.signature - 26;
+      page.line(x, lineY, x + slotW, lineY, INK, 1);
+      page.text(x, lineY + 4, caps(label), 'bold', 7.5, MUTED, 0.9);
+      // Only the Supervisor slot has a name to print; the other two are signed by hand.
+      if (index === 0 && input.createdByName?.trim()) {
+        page.text(x, centred(lineY - 16, 14, 10, 'body'), clip(measure, input.createdByName.trim(), 'body', 10, slotW - 2), 'body', 10, INK);
+      }
+    });
+  }
+
   return page.ops;
 }
 

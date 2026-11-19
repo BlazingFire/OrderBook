@@ -39,6 +39,7 @@ function product(id: string, code: string, name: string): Product {
     weightKg: null,
     colours: [],
     printSide: 'default',
+    defaultPackaging: null,
     customFields: {},
     isActive: true,
     createdAt: NOW,

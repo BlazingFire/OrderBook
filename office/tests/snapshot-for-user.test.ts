@@ -64,6 +64,7 @@ const FIXTURE: SyncSnapshot = {
       weightKg: null,
       colours: [],
       printSide: 'default',
+      defaultPackaging: null,
       customFields: {},
       isActive: true,
       createdAt: NOW,

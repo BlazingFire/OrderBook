@@ -70,9 +70,11 @@ import { useFilterBar } from './FilterBarSlot.js';
 import { SearchField } from './SearchField.js';
 import { t } from './i18n.js';
 import { LoadMorePager } from './CursorPager.js';
-import { ProductDetail, SubProductColour } from './ProductDetail.js';
+import { SubProductColour } from './ProductDetail.js';
+import { ProductRecordScreen } from './ProductRecordScreen.js';
 import { useCommand } from './KeyboardProvider.js';
 import { ProductDrawer, type CreatedProduct } from './ProductDrawer.js';
+import { MenuSelect } from './MenuSelect.js';
 import { Segmented } from './Tabs.js';
 import { rem } from './rem.js';
 import { printSideLabel, printSideOptions } from './printSide.js';
@@ -107,7 +109,6 @@ export function SubProductsScreen({
   revision,
   onImported,
   focus,
-  onEditProduct,
 }: {
   view: CatalogueView;
   transport: CatalogueTransport;
@@ -120,7 +121,11 @@ export function SubProductsScreen({
    * pop-up, 2026-10-08): its detail opens whether or not it is on the page the list shows.
    */
   focus?: { id: string; nonce: number };
-  /** Edit on the dedicated screen; absent keeps the edit dialog fallback. */
+  /**
+   * Still accepted from hosts that route editing, so a call site does not have
+   * to change: editing happens on the record screen itself now, in place, so
+   * this is never called.
+   */
   onEditProduct?: (id: string) => void;
 }) {
   const toast = useToast();
@@ -156,7 +161,14 @@ export function SubProductsScreen({
    * as a failed upload. Only `images` is taken from it.
    */
   const [photoPatch, setPhotoPatch] = useState<Product | null>(null);
-  const [editing, setEditing] = useState<Product | null>(null);
+  /*
+   * Viewing and editing are the same screen (`ProductRecordScreen`): a row
+   * opens it read-only, and Edit turns it into the form in place. The record
+   * is never thrown away to re-open a dialog, so what is edited is what was
+   * on screen.
+   */
+  const [detailMode, setDetailMode] = useState<'view' | 'edit'>('view');
+  const [detailDirty, setDetailDirty] = useState(false);
   /** The sub product Delete was asked for, from its row or its detail; null while no dialog shows. */
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -276,12 +288,16 @@ export function SubProductsScreen({
     }
   }
 
+  /**
+   * Open a sub product on the record screen, in its form state — from a row's
+   * Edit or from the Edit action on the record itself. The screen is the same
+   * one a row click opens; only its mode changes, so the record is never
+   * swapped out from under the person editing it.
+   */
   function editProduct(product: Product): void {
-    if (onEditProduct) {
-      onEditProduct(product.id);
-      return;
-    }
-    setEditing(product);
+    setPhotoPatch(null);
+    setDetailMode('edit');
+    setOpenId(product.id);
   }
 
   /**
@@ -342,12 +358,6 @@ export function SubProductsScreen({
     onImported?.();
     setRefetch((current) => current + 1);
     toast.push(t('catalog.products.savedOnline', { name: product.name }));
-  }
-
-  function onUpdated(name: string): void {
-    setEditing(null);
-    setRefetch((current) => current + 1);
-    toast.push(t('product.updated', { name }));
   }
 
   function onDrawerError(message: string): void {
@@ -549,6 +559,7 @@ export function SubProductsScreen({
       render: (product) =>
         canEdit ? (
           <span
+            className="ob-cell-fill"
             onClick={(event) => event.stopPropagation()}
             onMouseDown={(event) => event.stopPropagation()}
           >
@@ -569,28 +580,26 @@ export function SubProductsScreen({
       key: 'defaultPackaging',
       header: t('catalog.products.column.defaultPackaging'),
       priority: 3,
-      width: rem(160),
+      width: rem(200),
       render: (product) =>
         canEdit ? (
           <span
+            className="ob-cell-fill"
             onClick={(event) => event.stopPropagation()}
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <select
-              className="ob-input"
+            <MenuSelect
+              className="ob-cell-select"
               value={product.defaultPackaging ?? ''}
-              aria-label={`${t('product.defaultPackaging.label')} — ${product.name}`}
-              onChange={(event) => void setDefaultPackaging(product, event.target.value)}
-            >
-              <option value="">{t('product.defaultPackaging.none')}</option>
-              {view.optionLists
-                .filter((option) => option.listKey === 'line.packaging' && option.isActive)
-                .map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-            </select>
+              ariaLabel={`${t('product.defaultPackaging.label')} — ${product.name}`}
+              options={[
+                { value: '', label: t('product.defaultPackaging.none') },
+                ...view.optionLists
+                  .filter((option) => option.listKey === 'line.packaging' && option.isActive)
+                  .map((option) => ({ value: option.value, label: option.label })),
+              ]}
+              onChange={(next) => void setDefaultPackaging(product, next)}
+            />
           </span>
         ) : (
           product.defaultPackaging ?? '—'
@@ -626,16 +635,6 @@ export function SubProductsScreen({
         onCreated={onCreated}
         onError={onDrawerError}
       />
-      <ProductDrawer
-        open={editing !== null}
-        transport={transport}
-        product={editing}
-        categories={view.categories}
-        optionLists={view.optionLists}
-        onClose={() => setEditing(null)}
-        onUpdated={onUpdated}
-        onError={onDrawerError}
-      />
       <ConfirmDialog
         open={deleteTarget !== null}
         tone="danger"
@@ -655,23 +654,34 @@ export function SubProductsScreen({
         onBack={() => {
           setOpenId(null);
           setPhotoPatch(null);
+          setDetailMode('view');
+          setDetailDirty(false);
           return true;
         }}
         backLabel={t('action.backToList')}
+        unsaved={detailMode === 'edit' && detailDirty}
       >
-        <ProductDetail
+        <ProductRecordScreen
+          key={open.id}
           product={open}
           transport={transport}
           colourHex={colourHex}
           canEdit={canEdit}
-          onEdit={() => {
-            editProduct(open);
-            setOpenId(null);
-            setPhotoPatch(null);
+          mode={detailMode}
+          categories={view.categories}
+          optionLists={view.optionLists}
+          onEdit={() => setDetailMode('edit')}
+          onCancel={() => setDetailMode('view')}
+          onSaved={(name) => {
+            setDetailMode('view');
+            setDetailDirty(false);
+            setRefetch((current) => current + 1);
+            toast.push(t('product.updated', { name }));
           }}
           onDelete={canDelete ? () => setDeleteTarget(open) : undefined}
           onPhotosChanged={setPhotoPatch}
           onError={onDrawerError}
+          onDirtyChange={setDetailDirty}
         />
         {drawers}
       </EditorScreen>

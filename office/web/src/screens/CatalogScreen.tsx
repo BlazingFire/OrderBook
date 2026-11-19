@@ -1047,6 +1047,7 @@ export function CatalogScreen({
       render: (product) =>
         canEditProduct ? (
           <span
+            className="ob-cell-fill"
             onClick={(event) => event.stopPropagation()}
             onMouseDown={(event) => event.stopPropagation()}
           >

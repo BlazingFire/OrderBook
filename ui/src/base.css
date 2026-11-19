@@ -244,6 +244,39 @@
   display: inline-block;
   animation: ob-label-in var(--d-base) var(--e-standard);
 }
+/* ActionButton trailing glyph: the arrow slides in and nudges forward on hover;
+   on success a check draws itself (pathLength=1, so the dash is 1). */
+.ob-actionbtn-glyph {
+  flex: none;
+  margin-inline-start: 2px;
+  transition: transform var(--d-base) var(--e-standard);
+}
+.ob-actionbtn-arrow {
+  animation: ob-arrow-in var(--d-base) var(--e-standard);
+}
+.ob-actionbtn .ob-btn:hover:not(:disabled) .ob-actionbtn-glyph {
+  transform: translateX(2px);
+}
+.ob-actionbtn-check {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: ob-check-draw var(--d-slow, 320ms) var(--e-standard) forwards;
+}
+@keyframes ob-arrow-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ob-check-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
 /* Hold-to-confirm: the fill tracks the hold via --ob-hold-p (0..1), set from JS. */
 .ob-hold {
   position: relative;
@@ -695,6 +728,8 @@ textarea.ob-inline-field {
 html[data-motion='off'] .ob-btn:active:not(:disabled),
 html[data-motion='off'] .ob-icon-btn:active:not(:disabled),
 html[data-motion='off'] .ob-actionbtn-label,
+html[data-motion='off'] .ob-actionbtn-glyph,
+html[data-motion='off'] .ob-actionbtn-arrow,
 html[data-motion='off'] .ob-swap-label,
 html[data-motion='off'] .ob-copy-label,
 html[data-motion='off'] .ob-hold-label,
@@ -712,6 +747,8 @@ html[data-motion='off'] .ob-swipe-face {
   .ob-btn:active:not(:disabled),
   .ob-icon-btn:active:not(:disabled),
   .ob-actionbtn-label,
+  .ob-actionbtn-glyph,
+  .ob-actionbtn-arrow,
   .ob-swap-label,
   .ob-copy-label,
   .ob-hold-label,
@@ -1077,21 +1114,111 @@ html[data-motion='off'] .ob-donut-arc {
  * sitting on a track: the owner's sub-product list shows Default · Left · Right
  * as three touching cells, the chosen one raised. Each segment takes an equal
  * share, so the three read as one cell rather than three chips.
+ *
+ * The segment must not be cut to fit, though: `min-width: max-content` below is
+ * what keeps "Default" reading as *Default* rather than "De…" when the cell is
+ * tighter than the words (owner, 2026-11-18, "full text"). Equal thirds still
+ * hold whenever the column has room; a cell narrower than the labels themselves
+ * clips at the cell edge, as every other table value does.
  */
 .ob-seg--fill {
   display: flex;
   width: 100%;
-  padding: 0;
-  border-radius: var(--r-sm);
+  height: var(--ctl-h-md);
+  padding: var(--s-2);
+  border-radius: var(--r-md);
 }
-.ob-seg--fill > button {
-  flex: 1 1 0;
-  min-width: 0;
-  padding: 0 var(--s-4);
+.ob-seg--fill > button[aria-pressed='true'] {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.06),
+    0 0 0 1px var(--line);
+}
+/* First option is the "follow the default" choice; a picked override wears the accent so it stands out down a long list. */
+.ob-seg--fill > button[aria-pressed='true']:not(:first-child),
+.ob-seg--fill > button[aria-pressed='true']:not(:first-child):disabled:hover {
+  background: var(--accent-tint);
+  color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* A value picker that is a table cell: quiet until pointed at, muted while it holds no choice. */
+.ob-cell-select {
+  border-color: transparent;
+  background-color: transparent;
+  transition: border-color var(--d-fast) var(--e-standard);
+}
+.ob-cell-select:hover:not(:disabled),
+.ob-cell-select[aria-expanded='true'] {
+  border-color: var(--line);
+  background-color: var(--bg-surface);
+}
+.ob-cell-select[data-empty] {
+  color: var(--fg-secondary);
+}
+
+/* MenuSelect (the Arc dropdown menu as a value picker). */
+.ob-menuselect-trigger {
+  display: flex;
+  align-items: center;
+  text-align: left;
+  cursor: pointer;
+}
+.ob-menuselect-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.ob-menuselect {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 12rem;
+  padding: var(--s-4);
+  transform-origin: top left;
+}
+/* One highlight slides between items; the items themselves stay clear. */
+.ob-menuselect-glide {
+  position: absolute;
+  top: 0;
+  left: var(--s-4);
+  right: var(--s-4);
   border-radius: var(--r-sm);
+  background: var(--bg-hover);
+  transition:
+    transform var(--d-fast) var(--e-standard),
+    height var(--d-fast) var(--e-standard);
+  pointer-events: none;
+}
+.ob-menuselect-item {
+  position: relative;
+  justify-content: space-between;
+  gap: var(--s-12);
+}
+.ob-menuselect-item:hover:not(:disabled),
+.ob-menuselect-item:focus-visible {
+  background: transparent;
+}
+.ob-menuselect-item[aria-checked='true'] {
+  font-weight: 550;
+  color: var(--accent);
+}
+html[data-motion='off'] .ob-menuselect-glide {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ob-menuselect-glide {
+    transition: none;
+  }
+}
+.ob-seg--fill > button {
+  flex: 1 1 0;
+  min-width: max-content;
+  height: 100%;
+  padding: 0 var(--s-12);
+  white-space: nowrap;
+  border-radius: var(--r-sm);
+  /* The table cell's size, not the tiny control's — the owner's "full sizer". */
+  font-size: var(--t-body-size);
 }
 
 /*
@@ -1659,6 +1786,22 @@ table.ob-table {
 .ob-table thead th > input[type='checkbox'],
 .ob-table tbody td > input[type='checkbox'] {
   min-width: 1.5rem;
+  overflow: visible;
+}
+
+/*
+ * The wrapper of a control that has to fill its cell (`SubProductsScreen`'s
+ * Print side and Default packaging).
+ *
+ * The cell is a flex container (the `display` `DataTable` sets inline), so this
+ * span is a flex item and is shrink-to-fit: it sized itself to the control's own
+ * intrinsic width — about 105 px inside a 248 px cell — and the segmented
+ * control was then cut to `De…` for every row in the list (owner, 2026-11-18,
+ * "full sizer, full text"). `min-width: 100%` sizes it from the cell instead,
+ * and `overflow: visible` hands the clip back to the control, which has its own.
+ */
+.ob-table tbody td > .ob-cell-fill {
+  min-width: 100%;
   overflow: visible;
 }
 

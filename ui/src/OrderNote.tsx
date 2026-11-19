@@ -336,6 +336,15 @@ function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
   const signatures = filling
     ? [t('orderNote.signFilledBy'), t('orderNote.signCheckedBy'), t('orderNote.signStoreInCharge')]
     : [t('orderNote.signSupervisor'), t('orderNote.signLoadedBy'), t('orderNote.signCheckedBy')];
+  /**
+   * The name already on the sheet, by signature slot. The Dispatch note's
+   * Supervisor line carries the record's creator, printed automatically rather
+   * than left for a signature (owner, 2026-11-18) — the same name the PDF
+   * prints, so the preview and the paper agree.
+   */
+  const signNames: Record<string, string | null> = filling
+    ? { [t('orderNote.signFilledBy')]: props.createdByName ?? null }
+    : { [t('orderNote.signSupervisor')]: props.createdByName ?? null };
 
   return (
     <section className={`ob-note-page ob-note-${props.kind}`}>
@@ -413,17 +422,15 @@ function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
           <div className="ob-note-sign">
             {signatures.map((label) => (
               <div className="ob-note-sign-slot" key={label}>
-                <div className="ob-note-sign-line" />
+                {signNames[label] ? (
+                  <div className="ob-note-sign-name">{signNames[label]}</div>
+                ) : (
+                  <div className="ob-note-sign-line" />
+                )}
                 <div className="ob-note-eyebrow">{label}</div>
               </div>
             ))}
           </div>
-          {props.createdByName && (
-            <div className="ob-note-created-by">
-              <span className="ob-note-eyebrow">{t('orderNote.createdBy')}</span>
-              <span className="ob-note-created-by-name">{props.createdByName}</span>
-            </div>
-          )}
         </>
       )}
       {filling && <Strip props={props} page={page} position="bottom" />}
