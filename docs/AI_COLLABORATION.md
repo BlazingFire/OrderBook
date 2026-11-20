@@ -222,6 +222,11 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-11-20 - Supervisor name at 12 px (Claude Code, branch main)
+
+- **Ask (owner):** "Make it 12 px" — the creator's name on the Supervisor line, after it was found already 10 px.
+- **Change:** `.ob-note-sign-name` 10 → 12 px (line 14 px, inside its 20 px slot) and the PDF's Supervisor name 10 → 12 px, clipped to the slot at the new size.
+
 ### 2026-11-20 - Coded-side category heading at 10 px (Claude Code, branch main)
 
 - **Ask (owner, circling ONE PIECE BASIN and the Supervisor name "Master Max"):** "Increase this red highlight text size. Make it 10px."

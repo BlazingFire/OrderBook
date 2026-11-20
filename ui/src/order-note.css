@@ -865,8 +865,9 @@
   display: flex;
   align-items: flex-end;
   padding-bottom: 1px;
-  font-size: 10px;
-  line-height: 12px;
+  /* 12 px (owner, 2026-11-20; was 10). */
+  font-size: 12px;
+  line-height: 14px;
   font-weight: 600;
   color: var(--note-ink);
   white-space: nowrap;
