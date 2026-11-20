@@ -222,6 +222,21 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-11-20 - No dealer code field on the Dispatch note (Claude Code, branch main)
+
+- **Ask (owner, over the Dispatch note's toolbar):** "in dispatch note there is no need for 'Dealer code on this order' field."
+- **Change:** `OrderNoteScreen` shows the field and its Save only on the Filling note — the Dispatch note's slim header prints no dealer code, so the field edited something that sheet never shows. Grade text size, Bold, Copies and Save note settings stay. The stored override and the Filling note are unchanged.
+- **Verified:** `order-note-screen` 35 tests (new: Dispatch with a saver offers no dealer field but keeps grade size; the two dealer tests now open the Filling note); ui typecheck and lint 0.
+
+### 2026-11-20 - Notes split 50/50, code names print in full, Grade text size sizes both halves (Claude Code, branch main)
+
+- **Ask (owner, over PO/2026-27/00047's Dispatch note):** "partition look like 60-40% so make it 50-50% … some product names are truncate so remove it. Show product full name. And also this Grade text size is only work for left side … make sure that changes apply for both."
+- **Split:** the halves' flex basis (`ui/src/OrderNote.tsx`) and the PDF's (`master/src/pdf/note-renderer.ts`) go 58/42 → 50/50. The named label column lost about a quarter, so `NOTE_LAYOUT.namedCharsPerLine` is 20 (was 26) and a long label takes its tall row sooner.
+- **Full names:** a coded row's height is no longer a constant. `codedRowHeight` (`shared/src/domain/order-note.ts`) estimates the lines each cell's name (and, on Dispatch, colour and brand) wraps to at the cell's width (`codeCell` 108 / `codeCellWide` 96 px) and adds `codeLine` per line past what the floor holds; `fillColumns` picks a row's codes first, then costs it, and stores `height` on the slot; the sheet sets it as `min-height`, so a short estimate grows rather than overlaps. Glyph factors are set wider than Inter measures (0.56–0.68 em) on purpose. The clamp, the "…" and the colour's ellipsis are gone; the Filling note's code wraps too; the PDF wraps the code instead of clipping it. Long names (>10 chars) print at 11.5 px (`noteCodeNameSize`, shared by sheet and PDF).
+- **Found while measuring:** name, colour and brand were adjacent spans with no space, so "PADESTAL"+"White"+"NA" was one unbreakable word that split mid-word. They now have a real space between them (0 px wide: the line is `font-size: 0`, margins set the gap), centred vertically — on a shared baseline the mixed sizes stacked each line 6–8 px taller than planned.
+- **Grade size:** the Dispatch cell's grade chip was a fixed 8.5 px; it now reads `--note-grade-size` like the named half, and a grade larger than the quantity beside it adds to the row's planned height. **Also fixed:** `noteSheetProps` (printroom/print path) never passed `gradeSize` to the sheet, so those prints ignored the setting on both halves. The PDF still prints its grades at fixed sizes — it never carried a grade size.
+- **Verified:** lead PO/2026-27/00047 rendered with the real `OrderNote` and the built stylesheet, measured in the browser at grade 9 and 20: halves 367/367 px, 0 names cut, 0 cells overflowing sideways, 0 rows taller than planned, 0 px body overflow on every page; right and left grade both 9 px / 20 px. New shared tests for the row estimate, a mid-word break, grade room and page count.
+
 ### 2026-11-19 - Dispatch note: long code names wrap to two lines instead of running into the next cell (Claude Code, branch main)
 
 - **Ask (owner, over the Dispatch note's Coded products):** "461, 461 PEDESTAL, 461 PEDESTAL ONLY it's text overlapping … if name is big then it show in two lines … give a proper width for it".

@@ -212,7 +212,11 @@ export function OrderNoteScreen({
     [record, optionLists],
   );
   const header = useMemo(() => noteHeader(record, source), [record, source]);
-  const pages = useMemo(() => paginateOrderNote(model, kind, { notes: record.notes }), [model, kind, record.notes]);
+  const shownGradeSize = gradeSize ?? defaultGradeSize;
+  const pages = useMemo(
+    () => paginateOrderNote(model, kind, { notes: record.notes, gradeSize: shownGradeSize }),
+    [model, kind, record.notes, shownGradeSize],
+  );
 
   useEffect(() => {
     let alive = true;
@@ -240,7 +244,7 @@ export function OrderNoteScreen({
     // This order's own choices win over the party's code and the company size.
     dealerCode: dealerCode.trim() || undefined,
     createdByName: record.createdByName ?? undefined,
-    gradeSize: gradeSize ?? defaultGradeSize,
+    gradeSize: shownGradeSize,
     vehicleNumber: vehicle,
     notes: record.notes,
     totalQuantity: model.totalQuantity,
@@ -530,6 +534,8 @@ export function OrderNoteScreen({
         )}
         {onSaveNoteSettings && (
           <>
+            {/* Filling note only: the Dispatch note's slim header prints no dealer code (owner, 2026-11-20). */}
+            {kind !== 'dispatch' && (
             <span className="ob-note-toolbar-item">
               <label className="ob-note-toolbar-item">
                 <span className="ob-small">{t('orderNote.dealerOverride')}</span>
@@ -557,6 +563,7 @@ export function OrderNoteScreen({
                 {t('common.save')}
               </Button>
             </span>
+            )}
             <label className="ob-note-toolbar-item">
               <span className="ob-small">{t('orderNote.gradeSize')}</span>
               <select

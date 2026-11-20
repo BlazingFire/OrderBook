@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildOrderNote, cleanVehicleNumber, colourLabeller, clampNoteCopies, namedLabel, namedRowHeight, noteCellCaption, noteCodedRowHeight, noteDocument, noteHeader, noteNumber,
-  NOTE_LAYOUT, NOTE_MAX_COPIES, paginateOrderNote,
+  codeCellLines, codedRowHeight, NOTE_LAYOUT, NOTE_MAX_COPIES, noteCodeNameSize, paginateOrderNote,
 } from '../src/index.js';
 import type { Lead, LineItem, NoteKind, NotePage, Order, Party } from '../src/index.js';
 
@@ -346,13 +346,14 @@ describe('the last page', () => {
 
 describe('named rows (design rule)', () => {
   it('use the design rule: label plus room for a brand chip over two lines is tall, branded or not', () => {
-    const fits = 2 * NOTE_LAYOUT.namedCharsPerLine - NOTE_LAYOUT.namedChipChars; // 49 characters
+    const fits = 2 * NOTE_LAYOUT.namedCharsPerLine - NOTE_LAYOUT.namedChipChars; // 37 characters
     const make = (n: number, brandName: string | null) =>
       buildOrderNote(orderOf([line({ productName: 'A'.repeat(n), size: null, brandName })])).named[0]!;
     expect(namedRowHeight(make(fits, null))).toBe(NOTE_LAYOUT.rowNamed);
     expect(namedRowHeight(make(fits + 1, null))).toBe(NOTE_LAYOUT.rowNamedTall);
     expect(namedRowHeight(make(fits, 'Cera'))).toBe(NOTE_LAYOUT.rowNamed);
-    expect(NOTE_LAYOUT.namedCharsPerLine).toBe(26);
+    // 20, not 26, since the halves split 50/50 (owner, 2026-11-20): the label column lost about a quarter.
+    expect(NOTE_LAYOUT.namedCharsPerLine).toBe(20);
   });
 
   it('prints the sub product alone — the size came off the sheet — and grows tall for a three-line label', () => {
@@ -492,5 +493,49 @@ describe('cleanVehicleNumber', () => {
     expect(cleanVehicleNumber('gj 03  ab.1234')).toBe('GJ 03 AB1234');
     expect(cleanVehicleNumber('gj-03 ab/1234')).toBe('GJ-03 AB1234');
     expect(cleanVehicleNumber('')).toBe('');
+  });
+});
+
+describe('coded rows hold their whole names (owner, 2026-11-20: no cut names)', () => {
+  const coded = (productName: string, colour: string | null = 'WHITE') =>
+    buildOrderNote(orderOf([line({ productName, colour, variantLabel: null, categoryName: 'One Piece Toilet', printSide: 'right' })]))
+      .coded[0]!.lines[0]!;
+  const cell = NOTE_LAYOUT.codeCell;
+
+  it('prints a long name smaller, and keeps a short one at 14 px', () => {
+    expect(noteCodeNameSize('101')).toBe(14);
+    expect(noteCodeNameSize('2501 PADESTAL ONLY')).toBe(NOTE_LAYOUT.codeNameSmall);
+  });
+
+  it('plans a row taller when a name wraps past two lines, and never shorter than the floor', () => {
+    const short = coded('101');
+    const long = coded('2501 PADESTAL ONLY WITH FULL PEDESTAL');
+    expect(codeCellLines(short, 'dispatch', cell)).toBe(1);
+    expect(codeCellLines(long, 'dispatch', cell)).toBeGreaterThan(2);
+    expect(codedRowHeight([short], false, 'dispatch', cell, 9)).toBe(NOTE_LAYOUT.rowCoded);
+    const tall = codedRowHeight([short, long], false, 'dispatch', cell, 9);
+    expect(tall).toBe(NOTE_LAYOUT.rowCoded + (codeCellLines(long, 'dispatch', cell) - 2) * NOTE_LAYOUT.codeLine);
+  });
+
+  it('breaks a single word wider than the cell rather than letting it overflow', () => {
+    expect(codeCellLines(coded('X'.repeat(40), null), 'dispatch', cell)).toBeGreaterThan(2);
+  });
+
+  it('adds room for a grade set large, and none at the default size', () => {
+    const short = coded('101');
+    expect(codedRowHeight([short], false, 'dispatch', cell, 9)).toBe(NOTE_LAYOUT.rowCoded);
+    expect(codedRowHeight([short], false, 'dispatch', cell, 20)).toBeGreaterThan(NOTE_LAYOUT.rowCoded);
+  });
+
+  it('prints every row at the height it was planned, and the page keeps them inside the sheet', () => {
+    const items = Array.from({ length: 300 }, (_, i) =>
+      line({ productName: `${100 + i} NEATWARE SPANISIA ${i}`, categoryName: 'One Piece Toilet', colour: 'WHITE', variantLabel: null, printSide: 'right' }));
+    const pages = paginateOrderNote(buildOrderNote(orderOf(items)), 'dispatch', { gradeSize: 20 });
+    const rows = pages.flatMap((page) => page.right.flat()).filter((slot) => slot.kind === 'row');
+    expect(rows.flatMap((row) => row.lines).length).toBe(300);
+    for (const row of rows) expect(noteCodedRowHeight(row)).toBeGreaterThan(NOTE_LAYOUT.rowCoded);
+    // More pages than a short-named order of the same size: the room came from the page count, not the sheet's foot.
+    const plain = paginateOrderNote(buildOrderNote(orderOf(items.map((item, i) => ({ ...item, productName: String(100 + i) })))), 'dispatch');
+    expect(pages.length).toBeGreaterThan(plain.length);
   });
 });

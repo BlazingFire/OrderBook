@@ -22,6 +22,7 @@ import {
   namedRowHeight,
   noteBrandCode,
   noteCellCaption,
+  noteCodeNameSize,
   noteCodedRowHeight,
   noteFigure,
   noteRange,
@@ -355,7 +356,8 @@ function planPage(input: NotePdfInput, data: NotePage, measure: Measure): PdfOp[
   let rightX = PAD_X;
   let rightW = CONTENT_W;
   if (hasLeft && hasRight) {
-    const basis = data.wideLeft ? 1 : 0.58;
+    // Half and half (owner, 2026-11-20), as the sheet's flex basis.
+    const basis = data.wideLeft ? 1 : 0.5;
     const total = CONTENT_W - 1;
     const leftBox = total * basis;
     const rightBox = total - leftBox;
@@ -549,27 +551,35 @@ function planCoded(
         const caption = noteCellCaption(slot, line);
         const productLines = caption !== null ? wrap(measure, caps(caption), face, 8, cellW, 2, 0.64) : [];
         // First line: the code, its colour and its brand, on one baseline; the colour (and brand) drop to a
-        // line of their own when the three do not fit, as the sheet's flex line wraps.
+        // line of their own when the three do not fit, as the sheet's text wraps. The code is never cut: a long
+        // one prints smaller and wraps onto as many lines as it needs, which the row was planned for.
         const brand = line.brand ? noteBrandCode(line.brand) : '';
         const brandW = brand ? measure(brand, 'mono', 7.5, 0.45) : 0;
-        const code = clip(measure, line.subProduct, 'bold', 14, cellW - (brandW ? brandW + 4 : 0));
-        const codeW = measure(code, 'bold', 14);
+        const size = noteCodeNameSize(line.subProduct);
+        const codeLines = wrap(measure, line.subProduct, 'bold', size, cellW, 99);
+        const code = codeLines.at(-1) ?? '';
+        const codeW = measure(code, 'bold', size);
         const fullColour = show.colour ? (line.colour ?? '—') : null;
         const colourW = fullColour ? measure(fullColour, 'body', 10) : 0;
         const oneLine = codeW + (fullColour ? 4 + colourW : 0) + (brand ? 4 + brandW : 0) <= cellW;
         const colour = fullColour && !oneLine ? clip(measure, fullColour, 'body', 10, cellW - (brand ? brandW + 4 : 0)) : fullColour;
-        const contentH = productLines.length * 10 + 16 + (fullColour && !oneLine ? 12 : 0) + 3 + 16;
+        const contentH = productLines.length * 10 + codeLines.length * 16 + (fullColour && !oneLine ? 12 : 0) + 3 + 16;
         let cy = y + (h - 1 - contentH) / 2;
         productLines.forEach((value) => {
           page.textCentre(middle, centred(cy, 10, 8, face), value, face, 8, SOFT, 0.64);
           cy += 10;
         });
-        const baseline = cy + (16 - LINE_BOX.bold * 14) / 2 + ASCENT.bold * 14;
-        const onBaseline = (font: PdfFont, size: number): number => baseline - ASCENT[font] * size;
+        // Every line of the code but its last, centred; the last shares its baseline with the colour and brand.
+        codeLines.slice(0, -1).forEach((value) => {
+          page.text(middle - measure(value, 'bold', size) / 2, centred(cy, 16, size, 'bold'), value, 'bold', size, INK);
+          cy += 16;
+        });
+        const baseline = cy + (16 - LINE_BOX.bold * size) / 2 + ASCENT.bold * size;
+        const onBaseline = (font: PdfFont, at: number): number => baseline - ASCENT[font] * at;
         if (oneLine) {
           const rowW = codeW + (fullColour ? 4 + colourW : 0) + (brand ? 4 + brandW : 0);
           let lx = middle - rowW / 2;
-          page.text(lx, onBaseline('bold', 14), code, 'bold', 14, INK);
+          page.text(lx, onBaseline('bold', size), code, 'bold', size, INK);
           lx += codeW + 4;
           if (fullColour) {
             page.text(lx, onBaseline('body', 10), fullColour, 'body', 10, ROW_TEXT);
@@ -580,7 +590,7 @@ function planCoded(
         } else {
           const rowW = codeW + (brand && !colour ? 4 + brandW : 0);
           const lx = middle - rowW / 2;
-          page.text(lx, onBaseline('bold', 14), code, 'bold', 14, INK);
+          page.text(lx, onBaseline('bold', size), code, 'bold', size, INK);
           if (brand && !colour) page.text(lx + codeW + 4, onBaseline('mono', 7.5), brand, 'mono', 7.5, SOFT, 0.45);
           cy += 16;
           if (colour) {

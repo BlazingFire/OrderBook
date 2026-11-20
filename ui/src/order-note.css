@@ -595,16 +595,14 @@
   color: var(--note-muted);
 }
 
+/* Its height is the page plan's (`codedRowHeight`, set inline as min-height): a long name or a large grade
+   makes the row taller instead of being cut, and min-height lets it grow if an estimate ran short. */
 .ob-note-coderow {
   flex: none;
-  height: var(--note-row-coded);
+  min-height: var(--note-row-coded);
   display: grid;
   grid-template-columns: repeat(var(--note-codes-per-row), minmax(0, 1fr));
   gap: 0 10px;
-}
-
-.ob-note-coderow--labelled {
-  height: var(--note-row-coded-labelled);
 }
 
 .ob-note-cell {
@@ -639,7 +637,15 @@
   min-width: 0;
 }
 
+/* The Filling note's code wraps in full too (owner, 2026-11-20: no cut names). */
+.ob-note-cell-code {
+  flex-wrap: wrap;
+}
+
 .ob-note-cell-code .ob-note-clip {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
   font-size: 14px;
   line-height: 16px;
   font-weight: 700;
@@ -695,19 +701,18 @@
 /* The Dispatch note's cell (owner's artifact, 2026-10-13): code, colour and brand, then grade chip, packing, × qty. */
 .ob-note-cell--dispatch {
   align-items: center;
-  gap: 3px;
+  /* 2 px: two lines of name (30) + the detail line + the dotted rule fill the 50 px row exactly. */
+  gap: 2px;
 }
 
-/* Name, colour and brand run as one centred text, so a long name wraps onto a second line with them
-   ("461 PADESTAL / ONLY —") and never runs into the next cell. Two lines at most. */
+/* Name, colour and brand run as one centred text, so a long name wraps with them ("461 PADESTAL / ONLY —")
+   and never runs into the next cell. Never cut: the row is planned tall enough for every line. */
 .ob-note-cell-line {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
   overflow-wrap: anywhere;
   max-width: 100%;
   text-align: center;
+  /* The spaces between name, colour and brand are break points only: 0 px wide, the margins below set the gap. */
+  font-size: 0;
   /* 15 px, not 16: two lines plus the detail line still fit the 50 px row. */
   line-height: 15px;
 }
@@ -716,22 +721,18 @@
   margin-left: 4px;
 }
 
+/* Centred, not on a shared baseline: with a 0 px container there is no strut, and baselines of 14, 10 and
+   7.5 px text stacked each line 6-8 px taller than the 15 px the page planned. */
+.ob-note-cell-line > * {
+  vertical-align: middle;
+}
+
+/* Its size is set inline (`noteCodeNameSize`): 14 px, or 11.5 px for a long name. */
 .ob-note-cell-name {
-  font-size: 14px;
   font-weight: 700;
 }
 
-.ob-note-cell-name--long {
-  font-size: 11.5px;
-}
-
 .ob-note-cell-tone {
-  display: inline-block;
-  vertical-align: bottom;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 10px;
   line-height: 12px;
   font-weight: 500;
@@ -753,13 +754,14 @@
   max-width: 100%;
 }
 
+/* Sized by Grade text size, like the named half's grade (owner, 2026-11-20). */
 .ob-note-cell-gradechip {
   flex: none;
   padding: 0 1px;
   border: 1px solid var(--note-soft);
   border-radius: 2px;
-  font-size: 8.5px;
-  line-height: 11px;
+  font-size: var(--note-grade-size, 8.5px);
+  line-height: 1.25;
   font-weight: 700;
   text-transform: uppercase;
 }

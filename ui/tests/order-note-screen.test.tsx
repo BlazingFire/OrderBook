@@ -512,9 +512,15 @@ describe("the order's own dealer code and grade size", () => {
     expect(screen.queryByRole('button', { name: t('common.save') })).toBeNull();
   });
 
+  it('offers no dealer code on the Dispatch note, whose header prints none, but keeps the grade size', () => {
+    mount({ record: ORDER, source: 'order', onSaveNoteSettings: vi.fn().mockResolvedValue(undefined) });
+    expect(screen.queryByLabelText(t('orderNote.dealerOverride'))).toBeNull();
+    expect(screen.getByText(t('orderNote.gradeSize'))).toBeTruthy();
+  });
+
   it('keeps a Save beside the dealer code, inactive until it is edited, and it saves the note settings', async () => {
     const save = vi.fn().mockResolvedValue(undefined);
-    mount({ record: ORDER, source: 'order', onSaveNoteSettings: save });
+    mount({ record: ORDER, source: 'order', initialKind: 'filling', onSaveNoteSettings: save });
 
     const field = screen.getByLabelText(t('orderNote.dealerOverride')) as HTMLInputElement;
     expect(field.value).toBe('');
@@ -532,7 +538,7 @@ describe("the order's own dealer code and grade size", () => {
 
   it('saves an edited dealer code on Enter, and goes inactive once it matches the saved one', async () => {
     const save = vi.fn().mockResolvedValue(undefined);
-    mount({ record: { ...ORDER, dealerCode: 'OLD' } as Order, source: 'order', onSaveNoteSettings: save });
+    mount({ record: { ...ORDER, dealerCode: 'OLD' } as Order, source: 'order', initialKind: 'filling', onSaveNoteSettings: save });
     const field = screen.getByLabelText(t('orderNote.dealerOverride')) as HTMLInputElement;
     const button = screen.getByRole('button', { name: t('common.save') }) as HTMLButtonElement;
     expect(field.value).toBe('OLD');

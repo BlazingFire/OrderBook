@@ -61,7 +61,7 @@ describe('the coded half of a note', () => {
 
   it('fills a line with three codes, not one', () => {
     const html = sheet(12, 30);
-    const lines = [...html.matchAll(/ob-note-coderow">((?:(?!ob-note-coderow)[\s\S])*)/g)].map(
+    const lines = [...html.matchAll(/ob-note-coderow"[^>]*>((?:(?!ob-note-coderow)[\s\S])*)/g)].map(
       (match) => (match[1]!.match(/class="ob-note-cell[ "]/g) ?? []).length,
     );
     expect(lines.length).toBeGreaterThan(5);
@@ -92,7 +92,7 @@ describe("the Dispatch note's code cell (owner's artifact, 2026-10-13)", () => {
       />,
     );
     const cell = html.slice(html.indexOf('ob-note-cell--dispatch'));
-    expect(cell).toMatch(/ob-note-cell-line"><span class="ob-note-cell-name">102<\/span><span class="ob-note-cell-tone">Ivory<\/span><span class="ob-note-cell-brand"[^>]*>SW<\/span>/);
+    expect(cell).toMatch(/ob-note-cell-line"><span class="ob-note-cell-name" style="font-size:14px">102<\/span> <span class="ob-note-cell-tone">Ivory<\/span> <span class="ob-note-cell-brand"[^>]*>SW<\/span>/);
     expect(cell).toMatch(/ob-note-cell-gradechip">Prem<\/span><span class="ob-note-cell-pack"[^>]*>Grass<\/span><span class="ob-note-cell-times">×<\/span><span class="ob-note-cell-qty">7<\/span>/);
     // No colour: a dash in its place, as the design prints it.
     const bare = { ...order, items: [line({ productName: '205', categoryName: 'Basin', variantLabel: null, colour: null })] } as Order;
@@ -102,7 +102,7 @@ describe("the Dispatch note's code cell (owner's artifact, 2026-10-13)", () => {
         partyName="Shree Tiles" vehicleNumber="" notes={null} totalQuantity={3} totalWeightKg={6} itemCount={1} namedCount={0}
         codedCount={1} printedAt={new Date('2026-10-13T09:00:00+05:30')} />,
     );
-    expect(plain).toMatch(/ob-note-cell-name">205<\/span><span class="ob-note-cell-tone">—</);
+    expect(plain).toMatch(/ob-note-cell-name" style="font-size:14px">205<\/span> <span class="ob-note-cell-tone">—</);
   });
 
   it("leaves the Filling note's cell as it was", () => {

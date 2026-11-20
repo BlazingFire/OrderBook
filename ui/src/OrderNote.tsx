@@ -13,6 +13,8 @@ import {
   namedRowHeight,
   noteBrandCode,
   noteCellCaption,
+  noteCodedRowHeight,
+  noteCodeNameSize,
   noteFigure,
   noteRange,
   noteStamp,
@@ -41,7 +43,6 @@ const LAYOUT_VARS = {
   '--note-notes': `${NOTE_LAYOUT.notes}px`,
   '--note-column-label': `${NOTE_LAYOUT.columnLabel}px`,
   '--note-row-coded': `${NOTE_LAYOUT.rowCoded}px`,
-  '--note-row-coded-labelled': `${NOTE_LAYOUT.rowCodedLabelled}px`,
   '--note-group-header': `${NOTE_LAYOUT.groupHeader}px`,
 } as CSSProperties;
 
@@ -136,25 +137,31 @@ function NamedRow({ line, tick, show }: { line: NoteLine; tick: boolean; show: N
  * The Dispatch note's code cell, as the owner's artifact draws it (2026-10-13): the code, its colour and brand
  * on the first line; a grade chip, the packing and `× qty` on the second.
  */
-/** Past this many characters a code's name prints at 11.5 px: "2501 PADESTAL ONLY" then takes two lines of a cell, not three. */
-const LONG_CODE_NAME = 10;
-
 function DispatchCell({ line, caption, show }: { line: NoteLine; caption: string | null; show: NoteColumns }) {
   const brand = line.brand ? brandCode(line.brand) : '';
   return (
     <div className="ob-note-cell ob-note-cell--dispatch">
       {caption !== null && <div className="ob-note-cell-product">{caption}</div>}
       <div className="ob-note-cell-line">
-        {/* shortcut: counts characters, not measured width; a long name prints smaller so it fits two lines. */}
-        <span className={`ob-note-cell-name${line.subProduct.length > LONG_CODE_NAME ? ' ob-note-cell-name--long' : ''}`}>
+        {/* The whole name, wrapping as it needs: the row was planned tall enough (`codedRowHeight`). */}
+        <span className="ob-note-cell-name" style={{ fontSize: noteCodeNameSize(line.subProduct) }}>
           {line.subProduct}
         </span>
+        {/* A real space before each part: without one, "PADESTAL", "White" and "NA" read as one unbreakable word. */}
         {/* A code with no colour shows a dash, as the design does. */}
-        {show.colour && <span className="ob-note-cell-tone">{line.colour ?? '—'}</span>}
+        {show.colour && (
+          <>
+            {' '}
+            <span className="ob-note-cell-tone">{line.colour ?? '—'}</span>
+          </>
+        )}
         {brand && (
-          <span className="ob-note-cell-brand" title={line.brand ?? undefined}>
-            {brand}
-          </span>
+          <>
+            {' '}
+            <span className="ob-note-cell-brand" title={line.brand ?? undefined}>
+              {brand}
+            </span>
+          </>
         )}
       </div>
       <div className="ob-note-cell-detail">
@@ -181,7 +188,7 @@ function CodedSlot({ slot, show, kind }: { slot: NoteSlot; show: NoteColumns; ki
     );
   }
   return (
-    <div className={`ob-note-coderow${slot.labelled || slot.sized ? ' ob-note-coderow--labelled' : ''}`}>
+    <div className="ob-note-coderow" style={{ minHeight: noteCodedRowHeight(slot) }}>
       {slot.lines.map((line) => {
         const caption = noteCellCaption(slot, line);
         return kind === 'dispatch' ? (
@@ -360,7 +367,7 @@ function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
         {hasLeft && (
           <div
             className={`ob-note-half ob-note-half--left${hasRight ? '' : ' ob-note-half--only'}`}
-            style={{ flex: `1 1 ${page.wideLeft ? '100%' : '58%'}` }}
+            style={{ flex: `1 1 ${page.wideLeft ? '100%' : '50%'}` }}
           >
             <div className="ob-note-caption">
               <span>{t('orderNote.productLines')}</span>
@@ -390,7 +397,7 @@ function Sheet({ props, page }: { props: OrderNoteProps; page: NotePage }) {
           <div
             className={`ob-note-half ob-note-half--right${hasLeft ? '' : ' ob-note-half--only'}`}
             style={{
-              flex: `1 1 ${page.wideRight ? '100%' : '42%'}`,
+              flex: `1 1 ${page.wideRight ? '100%' : '50%'}`,
               '--note-codes-per-row': page.wideRight ? NOTE_LAYOUT.codesPerRowWide : NOTE_LAYOUT.codesPerRow,
             } as CSSProperties}
           >

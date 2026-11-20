@@ -228,11 +228,25 @@ export const NOTE_LAYOUT = {
    * `rowNamedTall` when the label plus three characters (room for a brand chip) takes more than two
    * lines; the design reserves those three on every row, branded or not.
    */
-  namedCharsPerLine: 26,
+  namedCharsPerLine: 20,
   namedChipChars: 3,
   columnLabel: 13,
-  /** A row of codes under their group's header: code, colour, then pack, grade and quantity. */
+  /**
+   * A row of codes under their group's header: code, colour, then pack, grade and quantity. Its floor: a code
+   * that wraps past two lines, or a grade set large, makes it taller (`codedRowHeight`) — never cut (owner, 2026-11-20).
+   */
   rowCoded: 50,
+  /** One more printed line of a wrapping code name. */
+  codeLine: 15,
+  /** Past this many characters a code's name prints at `codeNameSmall` px rather than 14, so fewer of them wrap. */
+  longCodeName: 10,
+  codeNameSmall: 11.5,
+  /**
+   * A code cell's width: three across a half page (the halves split 50/50, owner 2026-11-20: 734 px of content,
+   * 22 px from the divider, 10 px between cells), or seven across a codes-only page.
+   */
+  codeCell: 108,
+  codeCellWide: 96,
   /**
    * A row of codes with a caption printed on each: their product, for groups too small to earn a header, or
    * their size, for a headed product whose codes come in more than one size (`noteCellCaption`).
@@ -314,6 +328,8 @@ export type NoteSlot =
       /** Each code prints its own size: its headed product comes in more than one size. */
       sized: boolean;
       product: string;
+      /** The printed height the page planned for this line of codes (`codedRowHeight`). */
+      height: number;
     };
 
 export interface NotePage {
@@ -632,8 +648,10 @@ function fillColumns(
   columnCount: number,
   height: number,
   codesPerRow: number,
+  /** Sizes a line of codes from its cells (`codedRowHeight`, bound to the note's kind, cell width and grade size). */
+  rowHeight: (lines: readonly NoteLine[], captioned: boolean) => number,
 ): Filled {
-  const { groupHeader, rowCoded, rowCodedLabelled } = NOTE_LAYOUT;
+  const { groupHeader } = NOTE_LAYOUT;
   const columns: NoteSlot[][] = [];
   let column: NoteSlot[] = [];
   let used = 0;
@@ -655,7 +673,22 @@ function fillColumns(
     const headed = current.lines.length >= NOTE_GROUP_HEADER_MIN;
     const withHeader = needHeader && headed;
     const sized = headed && new Set(current.lines.map((l) => l.size ?? '')).size > 1;
-    const cost = (withHeader ? groupHeader : 0) + (headed && !sized ? rowCoded : rowCodedLabelled);
+
+    // A headed product fills its own lines. Products too small for a header share them, so a line is
+    // never a lone code with two empty places beside it. Chosen first: the line's height depends on its codes.
+    const lines: NoteLine[] = [];
+    let g = group;
+    let l = line;
+    while (lines.length < codesPerRow && g < groups.length && (g === group || (!headed && groups[g]!.lines.length < NOTE_GROUP_HEADER_MIN))) {
+      const taken = (groups[g] as NoteGroup).lines.slice(l, l + codesPerRow - lines.length);
+      lines.push(...taken);
+      l += taken.length;
+      if (l < (groups[g] as NoteGroup).lines.length) break;
+      g += 1;
+      l = 0;
+    }
+    const rowH = rowHeight(lines, !headed || sized);
+    const cost = (withHeader ? groupHeader : 0) + rowH;
 
     if (used + cost > height) {
       if (column.length === 0) break; // height below one row: cannot happen, never loop
@@ -668,20 +701,7 @@ function fillColumns(
       column.push({ kind: 'header', product: current.product, continued: line > 0 });
     }
     needHeader = false;
-    // A headed product fills its own lines. Products too small for a header share them, so a line is
-    // never a lone code with two empty places beside it.
-    const lines: NoteLine[] = [];
-    let g = group;
-    let l = line;
-    while (lines.length < codesPerRow && g < groups.length && (g === group || (!headed && groups[g]!.lines.length < NOTE_GROUP_HEADER_MIN))) {
-      const taken = (groups[g] as NoteGroup).lines.slice(l, l + codesPerRow - lines.length);
-      lines.push(...taken);
-      l += taken.length;
-      if (l < (groups[g] as NoteGroup).lines.length) break;
-      g += 1;
-      l = 0;
-    }
-    column.push({ kind: 'row', lines, labelled: !headed, sized, product: current.product });
+    column.push({ kind: 'row', lines, labelled: !headed, sized, product: current.product, height: rowH });
     used += cost;
     placed += lines.length;
     group = g;
@@ -706,9 +726,74 @@ export function noteCellCaption(slot: Extract<NoteSlot, { kind: 'row' }>, line: 
   return slot.labelled ? line.product : null;
 }
 
-/** A line of codes' printed height: taller when its cells carry a caption. */
+/** A line of codes' printed height, as the page planned it (`codedRowHeight`). */
 export function noteCodedRowHeight(slot: Extract<NoteSlot, { kind: 'row' }>): number {
-  return slot.labelled || slot.sized ? NOTE_LAYOUT.rowCodedLabelled : NOTE_LAYOUT.rowCoded;
+  return slot.height;
+}
+
+/** The px size a code's name prints at: smaller past `longCodeName` characters. */
+export function noteCodeNameSize(subProduct: string): number {
+  return subProduct.length > NOTE_LAYOUT.longCodeName ? NOTE_LAYOUT.codeNameSmall : 14;
+}
+
+// Average glyph width per px of type, for each face a code cell prints. Set wide on purpose: a row planned a
+// line too tall prints some white space, one planned too short would push the page's last rows off the sheet.
+const GLYPH = { name: 0.68, colour: 0.62, brand: 0.72 } as const;
+
+/**
+ * How many lines a code cell's first line takes at `cellWidth`: its name word by word, then (Dispatch) its
+ * colour and brand, wrapped the way the sheet's inline text wraps.
+ */
+export function codeCellLines(line: NoteLine, kind: NoteKind, cellWidth: number): number {
+  const nameSize = kind === 'dispatch' ? noteCodeNameSize(line.subProduct) : 14;
+  const words: { width: number; space: number }[] = line.subProduct
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => ({ width: word.length * nameSize * GLYPH.name, space: nameSize * 0.3 }));
+  if (kind === 'dispatch') {
+    for (const word of (line.colour ?? '—').split(/\s+/).filter(Boolean)) {
+      words.push({ width: word.length * 10 * GLYPH.colour, space: 4 });
+    }
+  }
+  const brand = line.brand ? noteBrandCode(line.brand) : '';
+  if (brand) words.push({ width: brand.length * 7.5 * GLYPH.brand, space: 4 });
+
+  let lines = 1;
+  let used = 0;
+  for (const word of words) {
+    if (used > 0 && used + word.space + word.width > cellWidth) {
+      lines += 1;
+      used = 0;
+    }
+    if (word.width > cellWidth) {
+      // One word wider than the cell breaks anywhere inside it (`overflow-wrap: anywhere`).
+      lines += Math.ceil(word.width / cellWidth) - 1;
+      used = word.width % cellWidth;
+    } else {
+      used += (used > 0 ? word.space : 0) + word.width;
+    }
+  }
+  return lines;
+}
+
+/**
+ * A line of codes' printed height: the floor (taller with a caption), plus a line for each one the longest
+ * name wraps past what the floor holds — two on the Dispatch note, one on the Filling note, whose colour has a
+ * line of its own — plus whatever a grade set larger than the quantity beside it adds to the detail line.
+ */
+export function codedRowHeight(
+  lines: readonly NoteLine[],
+  captioned: boolean,
+  kind: NoteKind,
+  cellWidth: number,
+  gradeSize: number,
+): number {
+  const L = NOTE_LAYOUT;
+  const floor = captioned ? L.rowCodedLabelled : L.rowCoded;
+  const held = kind === 'dispatch' ? 2 : 1;
+  const most = Math.max(1, ...lines.map((line) => codeCellLines(line, kind, cellWidth)));
+  const gradeExtra = Math.max(0, Math.ceil(gradeSize * 1.3 + 2) - 18);
+  return floor + Math.max(0, most - held) * L.codeLine + gradeExtra;
 }
 
 function codedCount(groups: readonly NoteGroup[]): number {
@@ -773,7 +858,7 @@ export function paginateOrderNote(
    * is the record's notes: the last page makes room for all of them, and a note too long for that gets pages of
    * its own.
    */
-  options: { signatures?: boolean; notes?: string | null } = {},
+  options: { signatures?: boolean; notes?: string | null; gradeSize?: number } = {},
 ): NotePage[] {
   const L = NOTE_LAYOUT;
   const filling = kind === 'filling';
@@ -800,6 +885,10 @@ export function paginateOrderNote(
     const wideRight = remainingNamed === 0;
     const columnCount = wideRight ? L.codedColumnsWide : L.codedColumns;
     const perRow = wideRight ? L.codesPerRowWide : L.codesPerRow;
+    const cellWidth = wideRight ? L.codeCellWide : L.codeCell;
+    const rowHeight = (lines: readonly NoteLine[], captioned: boolean): number =>
+      // Absent: no extra height (a grade adds some only from 13 px up).
+      codedRowHeight(lines, captioned, kind, cellWidth, options.gradeSize ?? 0);
 
     const height = (isLast: boolean): number =>
       L.inner -
@@ -812,13 +901,13 @@ export function paginateOrderNote(
 
     // Would the rest of the note fit on this page with the notes and signatures on it?
     const lastHeight = height(true);
-    const probe = fillColumns(model.coded, codedAt, columnCount, lastHeight, perRow);
+    const probe = fillColumns(model.coded, codedAt, columnCount, lastHeight, perRow, rowHeight);
     const fitsLast = remainingNamed <= leftRows(lastHeight) && remainingCoded - probe.placed <= 0;
     // The rest fitting only without the notes and signatures is not a last page: cut it
     // at the last-page height so a page follows to carry the remainder and the
     // signatures, rather than printing them over the final rows.
     const fullHeight = height(false);
-    const fullProbe = fillColumns(model.coded, codedAt, columnCount, fullHeight, perRow);
+    const fullProbe = fillColumns(model.coded, codedAt, columnCount, fullHeight, perRow, rowHeight);
     const fitsFull = remainingNamed <= leftRows(fullHeight) && remainingCoded - fullProbe.placed <= 0;
     let h = fitsLast || fitsFull ? lastHeight : fullHeight;
 
@@ -827,7 +916,7 @@ export function paginateOrderNote(
     // Cut it a little earlier until the tail it leaves is at least `minTailLines`.
     if (!fitsLast) {
       const placedAt = (height: number): number =>
-        leftRows(height) + fillColumns(model.coded, codedAt, columnCount, height, perRow).placed;
+        leftRows(height) + fillColumns(model.coded, codedAt, columnCount, height, perRow, rowHeight).placed;
       const remaining = remainingNamed + remainingCoded;
       const floor = Math.floor(fullHeight / 2);
       let tail = remaining - placedAt(h);
@@ -839,7 +928,7 @@ export function paginateOrderNote(
 
     const left = fillNamed(model.named, namedAt, wideLeft, h);
     const namedSlice = left.flat();
-    const filled = fillColumns(model.coded, codedAt, columnCount, h, perRow);
+    const filled = fillColumns(model.coded, codedAt, columnCount, h, perRow, rowHeight);
 
     const cells = filled.columns.flat().flatMap((slot) => (slot.kind === 'row' ? slot.lines : []));
     const totals = sumOf([...namedSlice, ...cells]);
