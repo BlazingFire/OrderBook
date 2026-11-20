@@ -222,6 +222,12 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-11-20 - Coded-side category heading at 10 px (Claude Code, branch main)
+
+- **Ask (owner, circling ONE PIECE BASIN and the Supervisor name "Master Max"):** "Increase this red highlight text size. Make it 10px."
+- **Change:** the category heading (`.ob-note-group`, and the PDF's `planCoded` header) 9.5 → 10 px, letter spacing kept at 0.03 em; two lines of 11 px still fit the 26 px header. The Supervisor name was already 10 px on the sheet and the PDF, so it is unchanged.
+- **Verified:** note suites 169 passed; master typecheck 0; the CSS served on 4100 carries `font-size:10px`.
+
 ### 2026-11-20 - Filling and Dispatch notes sort their lines by grade (Claude Code, branch main)
 
 - **Ask (owner):** sort by Grade — left side UT, then S.UT, REJ, FOURTH, BHANGAR; right side the same inside each category (ONE PIECE BASIN all UT first, then S.UT …). Asked which left-side reading: **every UT line first across the whole list** (owner's choice), not grade inside each product.

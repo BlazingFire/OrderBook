@@ -531,11 +531,11 @@ function planCoded(
         const h = L.groupHeader;
         const cont = slot.continued ? t('en', 'orderNote.groupContinued') : '';
         const contW = cont ? measure(cont, 'body', 7) + 3 : 0;
-        const lines = wrap(measure, caps(slot.product), face, 9.5, colW - contW, 2, 0.29);
+        const lines = wrap(measure, caps(slot.product), face, 10, colW - contW, 2, 0.3);
         const base = y + h - 3 - lines.length * 11;
-        lines.forEach((value, i) => page.text(x, centred(base + i * 11, 11, 9.5, face), value, face, 9.5, INK, 0.29));
+        lines.forEach((value, i) => page.text(x, centred(base + i * 11, 11, 10, face), value, face, 10, INK, 0.3));
         if (cont) {
-          const lastW = measure(lines.at(-1) ?? '', face, 9.5, 0.29);
+          const lastW = measure(lines.at(-1) ?? '', face, 10, 0.3);
           page.text(x + lastW + 3, centred(y + h - 3 - 11, 11, 7, 'body') + 1, cont, 'body', 7, MUTED);
         }
         page.line(x, y + h - 0.5, x + colW, y + h - 0.5, INK, 1);

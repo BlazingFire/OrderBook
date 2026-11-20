@@ -569,7 +569,8 @@
   padding: 0 0 3px;
   border-bottom: 1px solid var(--note-ink);
   color: var(--note-ink);
-  font-size: 9.5px;
+  /* 10 px (owner, 2026-11-20; was 9.5). Two lines of 11 still fit the 26 px header. */
+  font-size: 10px;
   line-height: 11px;
   font-weight: 700;
   letter-spacing: 0.03em;
