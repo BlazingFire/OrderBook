@@ -222,6 +222,12 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-11-20 - Each grade starts its own line of codes (Claude Code, branch main)
+
+- **Ask (owner, over ONE PIECE BASIN where "41 WHITE S.UT" shared a line with the UT codes):** "In right side every grade show in new line."
+- **Change:** `fillColumns` (`shared/src/domain/order-note.ts`) ends a headed product's line of codes at the first code of another grade (`gradeKey`: case and spaces aside); the codes arrive grade-sorted, so UT fill their lines, then S.UT starts a new one, and so on. Products too small for a header still share lines. A line may now hold fewer than three codes, so a note can run longer: 00047 now takes two pages (NANOVIT SET VITROSA continues on page 2 under its repeated heading).
+- **Verified:** new shared test (two UT, two S.UT, four REJ → three lines, one grade each); note and PDF suites 170 passed; 00047 planned as ONE PIECE BASIN `41 UT | 381 UT` / `41 S.UT | 381 S.UT` / `41 REJ | 41 REJ | 42 REJ`, every other category the same way.
+
 ### 2026-11-20 - Supervisor name at 18 px (Claude Code, branch main)
 
 - **Ask (owner):** "Make it 18 px."

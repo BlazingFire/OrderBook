@@ -478,6 +478,11 @@ function compareLines(a: NoteLine, b: NoteLine): number {
   );
 }
 
+/** A grade as two lines compare it: case and spaces aside, none is its own grade. */
+function gradeKey(line: NoteLine | undefined): string {
+  return (line?.grade ?? '').trim().toUpperCase();
+}
+
 /**
  * Where a grade sorts: its place in the company's Grade list (`line.grade`, in the list's own order — UT, S.UT,
  * REJ, FOURTH, BHANGAR), matched without regard to case or spaces. A grade the list does not hold, and a line
@@ -707,7 +712,14 @@ function fillColumns(
     let g = group;
     let l = line;
     while (lines.length < codesPerRow && g < groups.length && (g === group || (!headed && groups[g]!.lines.length < NOTE_GROUP_HEADER_MIN))) {
-      const taken = (groups[g] as NoteGroup).lines.slice(l, l + codesPerRow - lines.length);
+      let taken = (groups[g] as NoteGroup).lines.slice(l, l + codesPerRow - lines.length);
+      // Inside a headed product each grade starts a line of its own (owner, 2026-11-20): UT codes, then a new
+      // line for S.UT, and so on. The lines arrive grade-sorted, so the run ends at the first other grade.
+      if (headed) {
+        const first = gradeKey(taken[0]);
+        const end = taken.findIndex((code) => gradeKey(code) !== first);
+        if (end > 0) taken = taken.slice(0, end);
+      }
       lines.push(...taken);
       l += taken.length;
       if (l < (groups[g] as NoteGroup).lines.length) break;

@@ -585,3 +585,24 @@ describe('lines sort by grade (owner, 2026-11-20)', () => {
     expect(buildOrderNote(orderOf(items)).named.map((l) => l.subProduct)).toEqual(['A', 'B']);
   });
 });
+
+describe('each grade starts its own line of codes (owner, 2026-11-20)', () => {
+  it('ends a line at a grade change inside a product, and keeps full lines of one grade', () => {
+    const GRADES = ['UT', 'S.UT', 'REJ'];
+    const code = (productName: string, grade: string) =>
+      line({ productName, categoryName: 'ONE PIECE BASIN', grade, printSide: 'right' });
+    const items = [
+      code('41', 'UT'), code('381', 'UT'), code('41', 'S.UT'), code('381', 'S.UT'),
+      code('41', 'REJ'), code('42', 'REJ'), code('43', 'REJ'), code('44', 'REJ'),
+    ];
+    const pages = paginateOrderNote(buildOrderNote(orderOf(items), undefined, GRADES), 'dispatch');
+    const rows = pages[0]!.right.flat().filter((slot) => slot.kind === 'row');
+    // A codes-only page sets seven to a line, so only the grade change ends the first two.
+    expect(rows.map((row) => row.lines.map((l) => `${l.subProduct} ${l.grade}`))).toEqual([
+      ['41 UT', '381 UT'],
+      ['41 S.UT', '381 S.UT'],
+      ['41 REJ', '42 REJ', '43 REJ', '44 REJ'],
+    ]);
+    for (const row of rows) expect(new Set(row.lines.map((l) => l.grade)).size).toBe(1);
+  });
+});
