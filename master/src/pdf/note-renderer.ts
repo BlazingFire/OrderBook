@@ -422,8 +422,8 @@ function planPage(input: NotePdfInput, data: NotePage, measure: Measure): PdfOp[
       page.text(x, lineY + 4, caps(label), 'bold', 7.5, MUTED, 0.9);
       // Only the Supervisor slot has a name to print; the other two are signed by hand.
       if (index === 0 && input.createdByName?.trim()) {
-        // 12 px, as the sheet (owner, 2026-11-20).
-        page.text(x, centred(lineY - 16, 14, 12, 'body'), clip(measure, input.createdByName.trim(), 'body', 12, slotW - 2), 'body', 12, INK);
+        // 18 px on a 22 px line, as the sheet (owner, 2026-11-20).
+        page.text(x, centred(lineY - 23, 22, 18, 'body'), clip(measure, input.createdByName.trim(), 'body', 18, slotW - 2), 'body', 18, INK);
       }
     });
   }

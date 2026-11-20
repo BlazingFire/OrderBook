@@ -860,14 +860,16 @@
 
 /* A name already on the sheet, sitting on the signature line (owner, 2026-11-18). */
 .ob-note-sign-name {
-  height: 20px;
+  /* 26 px, not the line's 20: an 18 px name needs it. Name + label (40 px) still fit the row's 42 inside its padding;
+     the slots sit on one bottom edge (flex-end), so the three lines stay level. */
+  height: 26px;
   border-bottom: 1px solid var(--note-ink);
   display: flex;
   align-items: flex-end;
   padding-bottom: 1px;
-  /* 12 px (owner, 2026-11-20; was 10). */
-  font-size: 12px;
-  line-height: 14px;
+  /* 18 px (owner, 2026-11-20; was 10). */
+  font-size: 18px;
+  line-height: 22px;
   font-weight: 600;
   color: var(--note-ink);
   white-space: nowrap;

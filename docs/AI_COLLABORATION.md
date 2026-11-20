@@ -222,6 +222,12 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-11-20 - Supervisor name at 18 px (Claude Code, branch main)
+
+- **Ask (owner):** "Make it 18 px."
+- **Change:** `.ob-note-sign-name` 18 px on a 22 px line, its slot 26 px tall (was 20: an 18 px name lost its descenders); name + label take 40 of the signature row's 42 px inside its padding, and the slots share a bottom edge, so the three lines stay level and the row's height (`NOTE_LAYOUT.signature`, 62) is unchanged. The PDF draws the name at 18 px on the same line.
+- **Verified:** 00047's note rendered with the built stylesheet: name 18 px, not clipped either way, the three line bottoms level (1081 px), signature row 0 px overflow and inside the sheet; note and PDF suites 77 passed.
+
 ### 2026-11-20 - Supervisor name at 12 px (Claude Code, branch main)
 
 - **Ask (owner):** "Make it 12 px" — the creator's name on the Supervisor line, after it was found already 10 px.
