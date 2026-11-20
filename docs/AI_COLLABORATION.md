@@ -222,6 +222,13 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-11-20 - 1.5.10 released: the note batch (Claude Code, branch main)
+
+- **Ask (owner):** "Commit all this work, push to main branch and release a latest build."
+- **Contents** (`docs/releases/1.5.10.md`): notes sorted by grade (Grade list order), a row per grade on the coded side, 50/50 halves, full code names (rows grow), Grade text size on both halves and on printroom prints, page one filled before the next, heading 10 px, Supervisor 18 px, no dealer code field on the Dispatch toolbar; the long-name wrap fix of 2026-11-19.
+- **Install safety:** no migration and no protocol file changed since 1.5.9 (`git diff af894224..HEAD -- master/src/db/migrations shared/src/protocol` is empty), so it installs over 1.5.9 keeping all data and 1.5.9 Offices keep connecting.
+- **Version:** 1.5.10 in all 8 package.json files. Built locally, signed with key `release-2026-10-01`, pushed `[skip ci]`.
+
 ### 2026-11-20 - Page one fills to its foot before lines move on (Claude Code, branch main)
 
 - **Ask (owner, over 00047's two pages, page one half blank):** "here is to much space in first page so why product goes to second page. Fix this".
