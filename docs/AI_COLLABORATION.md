@@ -222,6 +222,13 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-11-20 - Page one fills to its foot before lines move on (Claude Code, branch main)
+
+- **Ask (owner, over 00047's two pages, page one half blank):** "here is to much space in first page so why product goes to second page. Fix this".
+- **Cause:** `paginateOrderNote` cut every page before the last early, in 10 px steps down to half its height, until the last page held at least `minTailLines` (12) lines — so the notes and signatures never sat under one or two lines. On 00047 that moved 2 named and 8 coded lines off page one: page one 17 + 24, page two 2 + 10.
+- **Change:** the early cut, `minTailLines` and `TAIL_STEP` are removed; a page that is not the last fills to its foot. 00047 is now page one 19 + 32, page two the last 2 codes with the notes and signatures — all 53 cannot share one page with them. A note whose lines fit a page only without the notes and signatures is still cut at the last-page height, so a second page carries them (unchanged). `docs/ORDER_NOTES_PLAN.md` and `docs/STRUCTURE.md` updated.
+- **Tests:** the two orphan tests asserted the removed rule; replaced by "every line printed once" and "page one never holds fewer than a one-page note" (one product, 1..330 codes). Note, shared and PDF suites 674 passed.
+
 ### 2026-11-20 - Each grade starts its own line of codes (Claude Code, branch main)
 
 - **Ask (owner, over ONE PIECE BASIN where "41 WHITE S.UT" shared a line with the UT codes):** "In right side every grade show in new line."

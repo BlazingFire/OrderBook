@@ -307,28 +307,29 @@ describe.each(['filling', 'dispatch'] as NoteKind[])('paginateOrderNote (%s)', (
 });
 
 describe('the last page', () => {
-  it('is never a one-to-five-line orphan: a page before it is cut early enough to leave a fair share', () => {
+  it('prints every line exactly once, however the pages fall', () => {
     for (const [named, coded] of [...PRESETS, [0, 120], [0, 125], [0, 250], [0, 380], [30, 200], [28, 54], [26, 480]] as Array<[number, number]>) {
       for (const kind of ['filling', 'dispatch'] as const) {
         const pages = paginateOrderNote(buildOrderNote(orderWith(named, coded)), kind);
-        const tail = pages.at(-1)!.leftCount + pages.at(-1)!.rightCount;
-        if (pages.length > 1) {
-          expect(tail, `${kind} ${named}+${coded}`).toBeGreaterThanOrEqual(12); // a fair share, not the constant under test
-        }
         expect(printed(pages)).toHaveLength(named + coded);
       }
     }
   });
 
-  it('sweeps every size from one to two pages without an orphan or a lost line', () => {
+  it('fills page one before anything moves on: it never holds fewer than a one-page note (owner, 2026-11-20)', () => {
+    // The early cut that kept 12 lines for the last page left half of page one blank; it is gone. Page one now
+    // carries at least what a note with its notes and signatures on the same page can.
+    // One product, so each added code only adds (two products would reshuffle their rows at every size).
+    const codes = (n: number) =>
+      orderOf(Array.from({ length: n }, (_, i) => line({ productName: String(100 + i), categoryName: 'Alpha', printSide: 'right' })));
+    let onePage = 0;
     for (let coded = 1; coded <= 330; coded += 1) {
-      const pages = paginateOrderNote(buildOrderNote(orderWith(0, coded)), 'dispatch');
-      if (pages.length > 1) {
-        const last = pages.at(-1)!;
-        expect(last.leftCount + last.rightCount, `coded ${coded}`).toBeGreaterThanOrEqual(Math.min(12, coded));
-      }
+      const pages = paginateOrderNote(buildOrderNote(codes(coded)), 'dispatch');
+      if (pages.length === 1) onePage = coded;
+      else expect(pages[0]!.rightCount, `coded ${coded}`).toBeGreaterThanOrEqual(onePage);
       expect(new Set(printed(pages)).size).toBe(coded);
     }
+    expect(onePage).toBeGreaterThan(0);
   });
 
   it('matches the design page counts for its three volumes (Short, Typical, Long) on this plain data', () => {

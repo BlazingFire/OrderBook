@@ -250,7 +250,7 @@ export function paginateOrderNote(model: OrderNoteModel, kind: NoteKind, codeCol
     one column of lines of three codes beside the named half (V7: three places in one line) and
     lines of seven when it has the page, as in the owner's print (the design's columns ran top-down,
     which left a short list as one code to a line);
-  - the page before the last is cut so the last holds at least `minTailLines` (12) lines;
+  - every page but the last is filled to its foot (owner, 2026-11-20: the old `minTailLines` early cut, which kept 12 lines for the last page, left page one half blank and was removed);
   - `102 (9")` lands left, `102` lands right;
   - weight is `null` when any merged line lacks it, and the order override
     wins for the total.

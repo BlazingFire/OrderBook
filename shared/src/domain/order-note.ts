@@ -268,11 +268,6 @@ export const NOTE_LAYOUT = {
   /** Columns of such lines the coded half takes: one, beside the named half or across a page of its own. */
   codedColumns: 1,
   codedColumnsWide: 1,
-  /**
-   * The last page carries the notes and signatures, so the page before it is cut early enough
-   * that the last page holds at least this many lines rather than one or two.
-   */
-  minTailLines: 12,
 } as const;
 
 /**
@@ -361,9 +356,6 @@ export interface NotePage {
 }
 
 const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
-
-/** How far a page is cut back at a time while it balances the tail (px). */
-const TAIL_STEP = 10;
 
 /** Printed lines a note's text takes, counted the same way on every sheet so a page's room is known before it is drawn. */
 export function noteTextLines(text: string): number {
@@ -948,22 +940,10 @@ export function paginateOrderNote(
     const fullHeight = height(false);
     const fullProbe = fillColumns(model.coded, codedAt, columnCount, fullHeight, perRow, rowHeight);
     const fitsFull = remainingNamed <= leftRows(fullHeight) && remainingCoded - fullProbe.placed <= 0;
-    let h = fitsLast || fitsFull ? lastHeight : fullHeight;
-
-    // A page that is not the last must leave the last one a fair share, not one or two lines: the
-    // notes and signatures need a page of their own only if the lines run out exactly at the foot.
-    // Cut it a little earlier until the tail it leaves is at least `minTailLines`.
-    if (!fitsLast) {
-      const placedAt = (height: number): number =>
-        leftRows(height) + fillColumns(model.coded, codedAt, columnCount, height, perRow, rowHeight).placed;
-      const remaining = remainingNamed + remainingCoded;
-      const floor = Math.floor(fullHeight / 2);
-      let tail = remaining - placedAt(h);
-      while (tail > 0 && tail < L.minTailLines && h - TAIL_STEP >= floor) {
-        h -= TAIL_STEP;
-        tail = remaining - placedAt(h);
-      }
-    }
+    // A page that is not the last is filled to its foot (owner, 2026-11-20). It used to be cut early so the
+    // last page held at least 12 lines; that left half of page one blank, which the owner struck off — the
+    // last page may now carry only a line or two above the notes and signatures.
+    const h = fitsLast || fitsFull ? lastHeight : fullHeight;
 
     const left = fillNamed(model.named, namedAt, wideLeft, h);
     const namedSlice = left.flat();
