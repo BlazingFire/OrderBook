@@ -479,6 +479,17 @@ function compareLines(a: NoteLine, b: NoteLine): number {
 }
 
 /**
+ * Where a grade sorts: its place in the company's Grade list (`line.grade`, in the list's own order — UT, S.UT,
+ * REJ, FOURTH, BHANGAR), matched without regard to case or spaces. A grade the list does not hold, and a line
+ * with none, sort after every listed grade.
+ */
+export function gradeRank(grade: string | null | undefined, gradeOrder: readonly string[]): number {
+  const wanted = (grade ?? '').trim().toUpperCase();
+  const at = wanted === '' ? -1 : gradeOrder.findIndex((value) => value.trim().toUpperCase() === wanted);
+  return at === -1 ? gradeOrder.length : at;
+}
+
+/**
  * Merges lines that the store fills as one (same sub product, colour, grade and
  * packaging), splits them by each line's resolved print side — its frozen
  * snapshot, or the Default name rule on a line from before the setting — and
@@ -488,6 +499,8 @@ export function buildOrderNote(
   order: NoteRecord,
   /** The list's label for a stored colour value (`colourLabeller`); the value when absent. */
   labelOf: ColourLabelOf = (colour) => colour,
+  /** The company's Grade list values in the list's order (`gradeRank`); empty sorts by name alone. */
+  gradeOrder: readonly string[] = [],
 ): OrderNoteModel {
   const merged = new Map<string, NoteLine>();
 
@@ -539,8 +552,20 @@ export function buildOrderNote(
     });
   }
 
-  const lines = [...merged.values()].sort(compareLines);
-  const named = lines.filter((line) => line.side === 'left');
+  // By grade first, as the owner asked (2026-11-20): the named half lists every UT line, then every S.UT, and so
+  // on, each grade in name order. The coded half keeps its products in name order (the grouping below takes
+  // them as they come) and lists each product's codes by grade, then name.
+  const rank = (line: NoteLine): number => gradeRank(line.grade, gradeOrder);
+  const lines = [...merged.values()].sort(
+    (a, b) =>
+      collator.compare(a.brand ?? '', b.brand ?? '') ||
+      collator.compare(a.productName, b.productName) ||
+      rank(a) - rank(b) ||
+      compareLines(a, b),
+  );
+  const named = lines
+    .filter((line) => line.side === 'left')
+    .sort((a, b) => rank(a) - rank(b) || compareLines(a, b));
 
   const coded: NoteGroup[] = [];
   const byGroup = new Map<string, NoteGroup>();
@@ -604,6 +629,8 @@ export function noteDocument(
    * `noteGradeSize` still wins over it.
    */
   gradeSize?: number,
+  /** The Grade list's values in order, for the grade-first sort (`buildOrderNote`). */
+  gradeOrder: readonly string[] = [],
 ): NoteDocument {
   return {
     header: noteHeader(record, source),
@@ -620,7 +647,7 @@ export function noteDocument(
     notes: record.notes ?? null,
     columns: parseNoteColumns(record.noteColumns ?? null),
     bold: bold ?? null,
-    model: buildOrderNote(record, labelOf),
+    model: buildOrderNote(record, labelOf, gradeOrder),
   };
 }
 

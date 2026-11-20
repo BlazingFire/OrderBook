@@ -150,6 +150,8 @@ export async function orderPdf(
       colourLabeller(colours),
       order.noteColumns ?? undefined,
       await getSetting(actor.tenantId, 'notes.defaultBold'),
+      // The Grade list in its order: the PDF sorts its lines grade first, as the screen does.
+      (await customFieldRepo.listOptionsForKey(actor.tenantId, 'line.grade')).map((grade) => grade.value),
     ),
   );
   // `PO/2026-27/00042` → `final-order-PO-2026-27-00042.pdf`: a slash cannot be in a file name.

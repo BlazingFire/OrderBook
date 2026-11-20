@@ -222,6 +222,14 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-11-20 - Filling and Dispatch notes sort their lines by grade (Claude Code, branch main)
+
+- **Ask (owner):** sort by Grade — left side UT, then S.UT, REJ, FOURTH, BHANGAR; right side the same inside each category (ONE PIECE BASIN all UT first, then S.UT …). Asked which left-side reading: **every UT line first across the whole list** (owner's choice), not grade inside each product.
+- **Rule:** `gradeRank` (`shared/src/domain/order-note.ts`) is a grade's place in the company's Grade list (`line.grade`, its own order — today UT, S.UT, REJ, FOURTH, BHANGAR, A, B, C), matched ignoring case and spaces; an unlisted grade or none sorts last. Not hard-coded: a grade added in Fields sorts where it is placed. `buildOrderNote` takes the list (`gradeOrder`): the named half sorts grade first, then name; the coded half keeps its products in name order and sorts each product's codes grade first, then name (numbers by value: 41 before 381). With no list it sorts by name, as before.
+- **Every builder passes the list**, so screen, printroom and PDF agree: `OrderNoteScreen` (the snapshot's list, already in sequence order), `noteDocument` ← `print.service`, `leadNotePdf` / `orderNotePdf` ← `lead.service` / `order.service`.
+- **Also fixed:** `print.service` never passed the company Grade text size to `noteDocument`, so a printroom sheet ignored it unless the order had its own size.
+- **Verified:** new shared tests (rank, named grade-first, coded grade inside a category, no-list fallback); shared + ui + note PDF suites 2171 passed; printroom, printroom-push and note-PDF integration suites 49 passed on a fresh test cluster (not skipped); lead PO/2026-27/00047 built as the screen builds it lists left UT×8, S.UT×3, REJ×4, FOURTH×1 and each category UT → S.UT → REJ.
+
 ### 2026-11-20 - No dealer code field on the Dispatch note (Claude Code, branch main)
 
 - **Ask (owner, over the Dispatch note's toolbar):** "in dispatch note there is no need for 'Dealer code on this order' field."

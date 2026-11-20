@@ -43,8 +43,10 @@ export function leadNotePdf(
   columns?: NoteColumns,
   /** The company switch (notes.defaultBold): regular faces when false. */
   bold?: boolean,
+  /** The Grade list's values in order: lines sort grade first (`buildOrderNote`). */
+  gradeOrder: readonly string[] = [],
 ): NotePdfInput {
-  const model = buildOrderNote(lead, labelOf);
+  const model = buildOrderNote(lead, labelOf, gradeOrder);
   // An Order carries `leadCreatedAt`; a Lead does not — that is the whole difference
   // in what the sheet calls itself ("Final order" vs "New order").
   const isOrder = 'leadCreatedAt' in lead;
@@ -86,8 +88,10 @@ export function orderNotePdf(
   columns?: NoteColumns,
   /** The company switch (notes.defaultBold): regular faces when false. */
   bold?: boolean,
+  /** The Grade list's values in order: lines sort grade first (`buildOrderNote`). */
+  gradeOrder: readonly string[] = [],
 ): NotePdfInput {
-  const model = buildOrderNote(order, labelOf);
+  const model = buildOrderNote(order, labelOf, gradeOrder);
   return {
     title: t('en', 'orderNote.finalOrder'),
     companyName,

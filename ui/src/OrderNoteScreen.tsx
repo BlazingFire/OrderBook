@@ -208,7 +208,14 @@ export function OrderNoteScreen({
   }
 
   const model = useMemo(
-    () => buildOrderNote(record, colourLabeller((optionLists ?? []).filter((option) => option.listKey === 'stock.colour'))),
+    () =>
+      buildOrderNote(
+        record,
+        colourLabeller((optionLists ?? []).filter((option) => option.listKey === 'stock.colour')),
+        // The Grade list in its own order (the snapshot sends it sorted by sequence, deleted ones left out):
+        // lines sort grade first (UT, S.UT, REJ, …).
+        (optionLists ?? []).filter((option) => option.listKey === 'line.grade').map((option) => option.value),
+      ),
     [record, optionLists],
   );
   const header = useMemo(() => noteHeader(record, source), [record, source]);

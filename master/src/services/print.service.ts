@@ -292,7 +292,13 @@ export async function sendJob(raw: unknown, actor: ActorContext, origin: PrintOr
   // Bold travels with the send (the dialog's tick); an older sender omits it and
   // falls back to the company switch — either way the sheet freezes what was asked.
   const bold = input.bold ?? (await getSetting(actor.tenantId, 'notes.defaultBold'));
-  const document: NoteDocument = noteDocument(record, input.source, party, vehicle, colourLabeller(colours), bold);
+  // The company grade size (the record's own still wins inside noteDocument) and the Grade list's order, which
+  // sorts the lines grade first. Both were missing here: a printroom sheet ignored the company size.
+  const gradeSize = await getSetting(actor.tenantId, 'notes.gradeSize');
+  const grades = await customFieldRepo.listOptionsForKey(actor.tenantId, 'line.grade');
+  const document: NoteDocument = noteDocument(
+    record, input.source, party, vehicle, colourLabeller(colours), bold, gradeSize, grades.map((grade) => grade.value),
+  );
 
   const { row, created } = await db().transaction(async (trx) => {
     const made = await printRepo.insertJob(trx, {

@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildOrderNote, cleanVehicleNumber, colourLabeller, clampNoteCopies, namedLabel, namedRowHeight, noteCellCaption, noteCodedRowHeight, noteDocument, noteHeader, noteNumber,
-  codeCellLines, codedRowHeight, NOTE_LAYOUT, NOTE_MAX_COPIES, noteCodeNameSize, paginateOrderNote,
+  codeCellLines, codedRowHeight, gradeRank, NOTE_LAYOUT, NOTE_MAX_COPIES, noteCodeNameSize, paginateOrderNote,
 } from '../src/index.js';
 import type { Lead, LineItem, NoteKind, NotePage, Order, Party } from '../src/index.js';
 
@@ -537,5 +537,51 @@ describe('coded rows hold their whole names (owner, 2026-11-20: no cut names)', 
     // More pages than a short-named order of the same size: the room came from the page count, not the sheet's foot.
     const plain = paginateOrderNote(buildOrderNote(orderOf(items.map((item, i) => ({ ...item, productName: String(100 + i) })))), 'dispatch');
     expect(pages.length).toBeGreaterThan(plain.length);
+  });
+});
+
+describe('lines sort by grade (owner, 2026-11-20)', () => {
+  const GRADES = ['UT', 'S.UT', 'REJ', 'FOURTH', 'BHANGAR'];
+
+  it('ranks a grade by its place in the list, ignoring case and spaces; unlisted and blank go last', () => {
+    expect(gradeRank('UT', GRADES)).toBe(0);
+    expect(gradeRank(' s.ut ', GRADES)).toBe(1);
+    expect(gradeRank('BHANGAR', GRADES)).toBe(4);
+    expect(gradeRank('Premium', GRADES)).toBe(5);
+    expect(gradeRank(null, GRADES)).toBe(5);
+  });
+
+  it('lists every UT line first on the named half, then S.UT, REJ, FOURTH, each grade in name order', () => {
+    const items = [
+      line({ productName: 'SOFIYA SET', grade: 'REJ', printSide: 'left' }),
+      line({ productName: 'BIG STERLING SET', grade: 'FOURTH', printSide: 'left' }),
+      line({ productName: 'ANGLO - P', grade: 'S.UT', printSide: 'left' }),
+      line({ productName: 'SOFIYA SET', grade: 'UT', printSide: 'left' }),
+      line({ productName: 'BIG STERLING SET', grade: 'UT', printSide: 'left' }),
+      line({ productName: '18" ORISSA PAN', grade: 'REJ', printSide: 'left' }),
+    ];
+    const named = buildOrderNote(orderOf(items), undefined, GRADES).named;
+    expect(named.map((l) => `${l.subProduct} ${l.grade}`)).toEqual([
+      'BIG STERLING SET UT', 'SOFIYA SET UT', 'ANGLO - P S.UT', '18" ORISSA PAN REJ', 'SOFIYA SET REJ', 'BIG STERLING SET FOURTH',
+    ]);
+  });
+
+  it('keeps the coded products in name order and lists each one\'s codes by grade, then name', () => {
+    const code = (productName: string, categoryName: string, grade: string) =>
+      line({ productName, categoryName, grade, printSide: 'right' });
+    const items = [
+      code('41', 'ONE PIECE BASIN', 'REJ'), code('381', 'ONE PIECE BASIN', 'UT'), code('41', 'ONE PIECE BASIN', 'UT'),
+      code('41', 'ONE PIECE BASIN', 'S.UT'), code('101', 'ONE PIECE TOILET', 'S.UT'), code('101 JET', 'ONE PIECE TOILET', 'UT'),
+      code('101', 'ONE PIECE TOILET', 'UT'),
+    ];
+    const coded = buildOrderNote(orderOf(items), undefined, GRADES).coded;
+    expect(coded.map((g) => g.product)).toEqual(['ONE PIECE BASIN', 'ONE PIECE TOILET']);
+    expect(coded[0]!.lines.map((l) => `${l.subProduct} ${l.grade}`)).toEqual(['41 UT', '381 UT', '41 S.UT', '41 REJ']);
+    expect(coded[1]!.lines.map((l) => `${l.subProduct} ${l.grade}`)).toEqual(['101 UT', '101 JET UT', '101 S.UT']);
+  });
+
+  it('sorts by name alone when no grade list is given, as before', () => {
+    const items = [line({ productName: 'B', grade: 'UT', printSide: 'left' }), line({ productName: 'A', grade: 'REJ', printSide: 'left' })];
+    expect(buildOrderNote(orderOf(items)).named.map((l) => l.subProduct)).toEqual(['A', 'B']);
   });
 });
