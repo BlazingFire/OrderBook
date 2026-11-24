@@ -46,7 +46,8 @@ function soundLead() {
     items: [
       {
         productId: 'PR0000000001',
-        variantId: 'VR0000000001',
+        // What a line added since 1.5.9 sends: there are no variants to name.
+        variantId: null as string | null,
         quantity: 4,
         packaging: 'Packaging 2',
       },
@@ -143,6 +144,7 @@ describe('POST /api/leads', () => {
     const lead = soundLead();
     lead.items[0] = {
       ...lead.items[0],
+      variantId: 'VR0000000001',
       colour: 'Ivory',
     } as never;
 
@@ -187,14 +189,28 @@ describe('POST /api/leads', () => {
     expect(submitted).toBeUndefined();
   });
 
-  it('refuses a line that names a product but no variant', async () => {
+  it.each([
+    ['null', null],
+    ['empty', ''],
+    ['left out', undefined],
+  ])('accepts a line whose variant is %s, as sub products have none since 1.5.9', async (_name, variantId) => {
     const lead = soundLead();
-    lead.items = [{ ...lead.items[0]!, variantId: '' }];
+    lead.items = [{ ...lead.items[0]!, variantId } as never];
+
+    const response = await request(createApp()).post('/api/leads').send(lead);
+
+    expect(response.status).toBe(202);
+    expect(submitted).toMatchObject({ kind: 'lead.create', entity: 'lead' });
+  });
+
+  it('refuses a line that names no product', async () => {
+    const lead = soundLead();
+    lead.items = [{ ...lead.items[0]!, productId: '' }];
 
     const response = await request(createApp()).post('/api/leads').send(lead);
 
     expect(response.status).toBe(400);
-    expect(response.body.message).toMatch(/variant/i);
+    expect(response.body.message).toMatch(/no product/i);
     expect(submitted).toBeUndefined();
   });
 
@@ -295,6 +311,15 @@ describe('PUT /api/leads/:id', () => {
     expect(response.status).toBe(202);
     expect(response.body.status).toBeUndefined();
     expect(awaitSettled).not.toHaveBeenCalled();
+  });
+
+  it('accepts an edit whose lines have no variant', async () => {
+    const response = await request(createApp())
+      .put('/api/leads/LD0000000001')
+      .send({ items: [{ productId: 'PR0000000001', variantId: null, quantity: 2 }] });
+
+    expect(response.status).toBe(202);
+    expect(submitted).toMatchObject({ kind: 'lead.update' });
   });
 
   it('refuses an edit whose lines are malformed', async () => {
