@@ -204,7 +204,7 @@ describe.skipIf(!canRunIntegrationTests)('the colour chain (integration)', () =>
       );
 
       expect(response.results[0]?.status).toBe('rejected');
-      expect(response.results[0]?.error).toMatch(/Blue is not in the company colour list/);
+      expect(response.results[0]?.error).toMatch(/is not offered in Blue/);
       const stored = await leads.getLead(lead.id, actor);
       expect(stored.items.map((item) => item.colour)).toEqual(['Ivory']);
     });

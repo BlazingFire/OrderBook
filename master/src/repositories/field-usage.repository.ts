@@ -83,6 +83,13 @@ const SOURCES: Record<FieldListKey, readonly SourceDefinition[]> = {
   ],
   'line.packaging': [
     {
+      source: 'products',
+      sql: `SELECT default_packaging AS value, count(*) AS count
+              FROM products
+             WHERE tenant_id = ? AND deleted_at IS NULL AND default_packaging IS NOT NULL
+             GROUP BY default_packaging`,
+    },
+    {
       source: 'line_items',
       sql: `SELECT packaging AS value, count(*) AS count
               FROM line_items

@@ -8,7 +8,7 @@
  * dispatch address, expected date, weight.
  */
 
-import type { Order, OrderListQuery, Paginated, PartyScopeFilter, StageCounts } from '@orderbook/shared';
+import type { NoteColumns, Order, OrderListQuery, Paginated, PartyScopeFilter, StageCounts } from '@orderbook/shared';
 import type { Knex } from 'knex';
 
 import { evaluateCompleteness } from '../domain/custom-fields.js';
@@ -186,6 +186,9 @@ export interface NewOrder {
   dispatchAddressLabel: string | null;
   expectedDispatchDate: string | null;
   notes: string | null;
+  noteColumns?: NoteColumns | null;
+  dealerCode?: string | null;
+  noteGradeSize?: number | null;
   customFields: Record<string, unknown>;
   sourcePanelId: string | null;
   createdByUserId: string | null;
@@ -212,6 +215,9 @@ export async function insertOrder(
     expected_dispatch_date: order.expectedDispatchDate,
     total_weight_kg: computeTotalWeightKg(lines),
     notes: order.notes,
+    note_columns: order.noteColumns ? JSON.stringify(order.noteColumns) : null,
+    dealer_code: order.dealerCode ?? null,
+    note_grade_size: order.noteGradeSize ?? null,
     custom_fields: JSON.stringify(order.customFields),
     source_panel_id: order.sourcePanelId,
     created_by_user_id: order.createdByUserId,

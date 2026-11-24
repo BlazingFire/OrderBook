@@ -98,6 +98,12 @@ async function tellLeadPeople(kind: 'lead.edited' | 'lead.deleted', lead: Lead, 
   }
 }
 
+/** The offline merge writes around `updateLead`, so it tells the people itself. */
+export async function tellLeadEdited(id: string, actor: ActorContext): Promise<void> {
+  const lead = await leadRepo.findLeadById(actor.tenantId, id, UNSCOPED_PARTY_ACCESS);
+  if (lead) await tellLeadPeople('lead.edited', lead, actor);
+}
+
 const PAGING = { defaultLimit: 100, maxLimit: 500 };
 
 export async function listLeads(

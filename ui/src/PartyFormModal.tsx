@@ -40,7 +40,7 @@ import { t } from './i18n.js';
 import { useCreatedPartiesPrivate } from './partyPrivacy.js';
 import { useCommand } from './KeyboardProvider.js';
 import { useEnterToAdvance } from './useEnterToAdvance.js';
-import { useFormBaseline, useUnsavedWork } from './unsavedWork.js';
+import { changedFields, useFormBaseline, useUnsavedWork } from './unsavedWork.js';
 
 /** What the caller learns about a party that was just created. */
 export interface CreatedParty {
@@ -64,7 +64,7 @@ export interface PartyFormTransport {
    */
   updateParty(
     id: string,
-    input: PartyInput & { baseFieldHlc?: Record<string, string> },
+    input: Partial<PartyInput> & { baseFieldHlc?: Record<string, string> },
   ): Promise<unknown>;
 }
 
@@ -97,6 +97,23 @@ const EMPTY = {
 
 type Draft = typeof EMPTY;
 
+function inputOf(draft: Draft) {
+  const trimmed = (field: keyof Draft): string | null => draft[field].trim() || null;
+  return {
+    name: draft.name.trim(),
+    phone: trimmed('phone'),
+    altPhone: trimmed('altPhone'),
+    email: trimmed('email'),
+    addressLine1: trimmed('addressLine1'),
+    addressLine2: trimmed('addressLine2'),
+    city: trimmed('city'),
+    state: trimmed('state'),
+    pincode: trimmed('pincode'),
+    gstNumber: trimmed('gstNumber'),
+    notes: trimmed('notes'),
+  };
+}
+
 export function PartyFormModal({
   open,
   transport,
@@ -113,6 +130,8 @@ export function PartyFormModal({
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [busy, setBusy] = useState(false);
   const baseline = useFormBaseline<Draft>();
+  /** The party as the form opened on it: the changes and their clocks are measured from here. */
+  const opened = useRef({ input: inputOf(EMPTY), clocks: {} as Record<string, string> });
   const fields = useRef<HTMLDivElement>(null);
   const transportRef = useRef(transport);
   transportRef.current = transport;
@@ -142,6 +161,7 @@ export function PartyFormModal({
         }
       : { ...EMPTY, name: initialName ?? '' };
     baseline.mark(loaded);
+    opened.current = { input: inputOf(loaded), clocks: editing?.sync.fieldHlc ?? {} };
     setDraft(loaded);
     // Keyed on the record's identity, not the record: an unrelated field
     // arriving through the event stream must not wipe a half-typed draft.
@@ -162,29 +182,18 @@ export function PartyFormModal({
       return false;
     }
 
-    const trimmed = (field: keyof Draft): string | null => draft[field].trim() || null;
-
-    const input = {
-      name,
-      phone: trimmed('phone'),
-      altPhone: trimmed('altPhone'),
-      email: trimmed('email'),
-      addressLine1: trimmed('addressLine1'),
-      addressLine2: trimmed('addressLine2'),
-      city: trimmed('city'),
-      state: trimmed('state'),
-      pincode: trimmed('pincode'),
-      gstNumber: trimmed('gstNumber'),
-      notes: trimmed('notes'),
-    };
+    const input = inputOf(draft);
 
     setBusy(true);
     try {
       if (editing) {
-        await transportRef.current.updateParty(editing.id, {
-          ...input,
-          baseFieldHlc: editing.sync.fieldHlc,
-        });
+        const changes = changedFields(opened.current.input, input);
+        if (Object.keys(changes).length > 0) {
+          await transportRef.current.updateParty(editing.id, {
+            ...changes,
+            baseFieldHlc: opened.current.clocks,
+          });
+        }
         onUpdated?.(name);
       } else {
         const result = await transportRef.current.createParty(input);

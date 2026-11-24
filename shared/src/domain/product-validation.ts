@@ -49,7 +49,7 @@ export class ProductValidationError extends Error {
  * A blank code is not an error here: on create it means "next in sequence",
  * which only the service can mint.
  */
-export function validateProductInput(input: ProductInput): void {
+export function validateProductInput(input: Partial<ProductInput>): void {
   const { sortOrder, weightKg, printSide, colours, defaultPackaging } = input;
   if (sortOrder !== undefined && sortOrder !== null && !(Number.isInteger(sortOrder) && sortOrder >= 0)) {
     throw new ProductValidationError('validation.category.sortOrder');

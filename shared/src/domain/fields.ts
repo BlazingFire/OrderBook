@@ -85,7 +85,7 @@ const FIELD_SETS: readonly FieldSetDefinition[] = [
     listKey: 'line.packaging',
     labelToken: 'fieldSet.line.packaging',
     hasHex: false,
-    usedBy: ['leads', 'orders'],
+    usedBy: ['leads', 'orders', 'products'],
   },
   /*
    * The grades a line may be sold as. Restored on 2026-09-22 after the product

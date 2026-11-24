@@ -406,7 +406,7 @@ export const EN_MESSAGES = {
   'validation.product.restoreCodesTaken': 'Cannot restore — another product now uses {codes}',
   'validation.lead.variantMissing': 'One of the selected sub products no longer exists',
   'validation.lead.colourUnknown':
-    '{colour} is not in the company colour list, so it cannot be added to {productName}',
+    '{productName} is not offered in {colour}, so it cannot be added in that colour',
   // --- Bulk product import: file-level refusals and per-row issues ----------
   'validation.import.fileRequired': 'Choose a CSV or Excel file',
   'validation.import.unsupportedFormat': 'Only .csv and .xlsx files can be imported',
@@ -2931,7 +2931,7 @@ export const EN_MESSAGES = {
   'updates.readyLabel': 'Ready to install',
   'updates.runByHand': 'The file is ready. Run it yourself from:',
   'updates.someBehind':
-    '{count} panel(s) are on a different version from this Master ({version}). They keep working — a panel is never blocked for being out of step.',
+    '{count} panel(s) are on a different version from this Master ({version}). A panel older than 1.5.9 cannot sync until it is updated.',
   'updates.someUnknown':
     '{count} panel(s) have not reported a version yet. They will the next time they connect.',
   'updates.standaloneBody':

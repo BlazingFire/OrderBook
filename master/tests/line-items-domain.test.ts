@@ -188,6 +188,13 @@ describe('an edit keeps what a line was sold as (W2-1)', () => {
     expect(line.variantLabel).toBeNull();
   });
 
+  it('keeps an unchanged colour the sub product stopped offering, however many it still offers', () => {
+    const several = { ...PRODUCT, colours: ['White', 'Pink'] };
+    expect(buildLineSnapshot(draft({ colour: 'Ivory' }), several, null, 1, stored).colour).toBe('Ivory');
+    expect(buildLineSnapshot(draft({ colour: 'Pink' }), several, null, 1, stored).colour).toBe('Pink');
+    expect(buildLineSnapshot(draft({ colour: 'Ivory' }), several, null, 1, null).colour).toBeNull();
+  });
+
   it('still resolves a NEW line of such a sub product to its one colour', () => {
     const line = buildLineSnapshot(draft({ colour: 'Ivory', variantLabel: null }), PRODUCT, null, 1, null);
     expect(line.colour).toBe('White');

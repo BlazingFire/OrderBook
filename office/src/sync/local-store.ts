@@ -225,6 +225,13 @@ async function readSnapshotFile(): Promise<SyncSnapshot | null> {
       cursor = null;
     }
 
+    // Saved by 1.5.8 or older, whose products had neither: the screens read both until the first sync.
+    snapshot.products = snapshot.products.map((product) => ({
+      ...product,
+      code: product.code ?? '',
+      colours: product.colours ?? [],
+      printSide: product.printSide ?? 'default',
+    }));
     revision += 1;
     log.info('Restored the last snapshot from disk');
   } catch {
@@ -344,7 +351,7 @@ function applyOverlay(view: SyncSnapshot, mutation: Mutation): void {
         lead.id === mutation.entityId
           ? {
               ...lead,
-              ...pickLeadFields(mutation),
+              ...pickLeadFields(view, lead, mutation),
               // The clocks the Master's merge will write for these fields, so a
               // second edit queued before this one is acknowledged sends this
               // one as its base instead of clashing with it.
@@ -364,7 +371,7 @@ function applyOverlay(view: SyncSnapshot, mutation: Mutation): void {
         order.id === mutation.entityId
           ? {
               ...order,
-              ...pickOrderFields(mutation),
+              ...pickFields<Order>(mutation),
               sync: {
                 ...order.sync,
                 fieldHlc: { ...order.sync.fieldHlc, ...stampedFields(mutation) },
@@ -392,6 +399,38 @@ function applyOverlay(view: SyncSnapshot, mutation: Mutation): void {
 
     case 'party.create':
       view.parties = [provisionalParty(mutation), ...view.parties];
+      return;
+
+    // Drawn with their clocks, as `lead.update` is: a second edit queued before this one is
+    // acknowledged builds on it instead of putting the old values back.
+    case 'party.update':
+      view.parties = view.parties.map((party) =>
+        party.id === mutation.entityId
+          ? {
+              ...party,
+              ...pickFields<Party>(mutation),
+              sync: { ...party.sync, fieldHlc: { ...party.sync.fieldHlc, ...stampedFields(mutation) } },
+            }
+          : party,
+      );
+      return;
+
+    case 'product.update':
+      view.products = view.products.map((product) => {
+        if (product.id !== mutation.entityId) return product;
+        const patch = pickFields<Product>(mutation);
+        // A blank code is the Master's to number; the old one stands until it answers.
+        if (!patch.code) delete patch.code;
+        const category = view.categories.find((entry) => entry.id === patch.categoryId);
+        return {
+          ...product,
+          ...patch,
+          ...(category
+            ? { categoryName: category.name, categoryCode: category.code, brand: category.brand }
+            : {}),
+          sync: { ...product.sync, fieldHlc: { ...product.sync.fieldHlc, ...stampedFields(mutation) } },
+        };
+      });
       return;
 
     case 'product.create':
@@ -457,9 +496,7 @@ function provisionalLead(view: SyncSnapshot, mutation: Mutation): Lead {
     missingFields: [],
     convertedOrderId: null,
     convertedAt: null,
-    totalWeightKg:
-      Math.round(items.reduce((sum, line) => sum + (line.lineWeightKg ?? 0), 0) * 1000) / 1000,
-    linesWithoutWeight: items.filter((line) => line.lineWeightKg === null).length,
+    ...weightTotals(items),
     sourcePanelId: null,
     createdByUserId: null,
     createdAt: mutation.createdAt,
@@ -469,6 +506,14 @@ function provisionalLead(view: SyncSnapshot, mutation: Mutation): Lead {
     sync: { version: 0, hlc: '', fieldHlc: {}, temporaryId: mutation.entityId },
     items,
     timeline: [],
+  };
+}
+
+function weightTotals(items: LineItem[]): Pick<Lead, 'totalWeightKg' | 'linesWithoutWeight'> {
+  return {
+    totalWeightKg:
+      Math.round(items.reduce((sum, line) => sum + (line.lineWeightKg ?? 0), 0) * 1000) / 1000,
+    linesWithoutWeight: items.filter((line) => line.lineWeightKg === null).length,
   };
 }
 
@@ -606,29 +651,27 @@ function provisionalProduct(mutation: Mutation): Product {
   };
 }
 
-function pickOrderFields(mutation: Mutation): Partial<Order> {
-  const payload = mutation.payload as Partial<Order>;
-  const patch: Partial<Order> = {};
-
-  for (const field of mutation.fields) {
-    if (field in payload) {
-      Object.assign(patch, { [field]: payload[field as keyof Order] });
-    }
-  }
-
-  return patch;
+function pickFields<T>(mutation: Mutation): Partial<T> {
+  return Object.fromEntries(
+    mutation.fields
+      .filter((field) => field in mutation.payload)
+      .map((field) => [field, mutation.payload[field]]),
+  ) as Partial<T>;
 }
 
-function pickLeadFields(mutation: Mutation): Partial<Lead> {
-  const payload = mutation.payload as Partial<Lead>;
-  const patch: Partial<Lead> = {};
-
-  for (const field of mutation.fields) {
-    if (field in payload) {
-      Object.assign(patch, { [field]: payload[field as keyof Lead] });
-    }
+/** The lead's own fields, with the lines built as a new order's are: the payload holds inputs, not lines. */
+function pickLeadFields(view: SyncSnapshot, lead: Lead, mutation: Mutation): Partial<Lead> {
+  const patch = pickFields<Lead>(mutation);
+  if (patch.partyId) {
+    patch.partyName = view.parties.find((party) => party.id === patch.partyId)?.name ?? lead.partyName;
   }
-
+  if (Array.isArray(patch.items)) {
+    const partyWise = patch.partyWiseMode ?? lead.partyWiseMode;
+    patch.items = (patch.items as unknown as Array<Record<string, unknown>>).map((item, index) =>
+      provisionalLine(view, lead.id, item, index, partyWise ? (patch.partyId ?? lead.partyId) : undefined),
+    );
+    Object.assign(patch, weightTotals(patch.items));
+  }
   return patch;
 }
 

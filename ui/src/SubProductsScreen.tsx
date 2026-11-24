@@ -318,7 +318,7 @@ export function SubProductsScreen({
         : current,
     );
     try {
-      await transportRef.current.updateProduct(product.id, { name: product.name, printSide });
+      await transportRef.current.updateProduct(product.id, { printSide });
       toast.push(t('product.updated', { name: product.name }));
     } catch (caught) {
       toast.push(apiErrorText(caught, 'product.createFailed'), { tone: 'error' });
@@ -345,7 +345,7 @@ export function SubProductsScreen({
         : current,
     );
     try {
-      await transportRef.current.updateProduct(product.id, { name: product.name, defaultPackaging: value });
+      await transportRef.current.updateProduct(product.id, { defaultPackaging: value });
       toast.push(t('product.updated', { name: product.name }));
     } catch (caught) {
       toast.push(apiErrorText(caught, 'product.createFailed'), { tone: 'error' });

@@ -428,9 +428,9 @@ function request<T>(path: string, init?: RequestInit): Promise<T> {
   return trackLoad(requestUntracked<T>(path, init));
 }
 
-function requestUntracked<T>(path: string, init?: RequestInit): Promise<T> {
+function requestUntracked<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<T> {
   const method = (init?.method ?? 'GET').toUpperCase();
-  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  const timeout = AbortSignal.timeout(timeoutMs);
 
   const asFailure = (error: unknown): never => {
     if (error instanceof ApiError) throw error;
@@ -701,11 +701,11 @@ export const api = {
   // (correctly) treats as a possible clash against whatever the Master's own
   // screens most recently touched, and records a conflict that never really
   // happened.
-  updateParty: (id: string, input: PartyInput & { baseFieldHlc?: Record<string, string> }) =>
+  updateParty: (id: string, input: Partial<PartyInput> & { baseFieldHlc?: Record<string, string> }) =>
     put<QueuedResult>(`/api/parties/${id}`, input),
 
   createProduct: (input: ProductInput) => post<QueuedResult>('/api/products', input),
-  updateProduct: (id: string, input: ProductInput & { baseFieldHlc?: Record<string, string> }) =>
+  updateProduct: (id: string, input: Partial<ProductInput> & { baseFieldHlc?: Record<string, string> }) =>
     put<QueuedResult>(`/api/products/${id}`, input),
 
   /**
@@ -891,12 +891,21 @@ export const api = {
 
   updateAvailable: () => request<UpdateAvailability>('/api/updates/available'),
   /** Check now (1.4 R6): the Master asks GitHub first, then answers. */
-  checkForUpdates: () => post<UpdateAvailability>('/api/updates/check', {}),
+  // The panel waits up to 20 s for the Master to ask for a newer build.
+  checkForUpdates: () =>
+    trackLoad(requestUntracked<UpdateAvailability>('/api/updates/check', { method: 'POST', body: '{}' }, 30_000)),
   /** Where the download from the Master stands (1.4 R7). */
   updateProgress: () => request<UpdateDownloadProgress>('/api/updates/progress'),
   /** Downloads from the Master and checksums it; the shell runs it. */
   downloadUpdate: () =>
-    post<{ path: string; manifest: ReleaseManifest }>('/api/updates/download', {}),
+    // Answers once the whole setup is here and checked: minutes on a slow network.
+    trackLoad(
+      requestUntracked<{ path: string; manifest: ReleaseManifest }>(
+        '/api/updates/download',
+        { method: 'POST', body: '{}' },
+        30 * 60_000,
+      ),
+    ),
 
   // --- Party Access --------------------------------------------------------
   // Reachable from both panels, gated on admin tier. Forwarded live and failing

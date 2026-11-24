@@ -218,7 +218,7 @@ export async function insertParty(party: NewParty, trx: TransactionContext): Pro
 export async function updateParty(
   tenantId: string,
   id: string,
-  input: PartyInput,
+  input: Partial<PartyInput>,
   meta: { hlc: string; fieldHlc: Record<string, string> },
   trx: TransactionContext,
 ): Promise<Party | null> {
@@ -367,7 +367,7 @@ export async function listLivePartyNameCities(
  * drawer nulled `alt_phone`, `email`, both address lines, `state` and
  * `pincode`. See the contract in `shared/src/domain/columns.ts`.
  */
-function columnsFrom(input: PartyInput): Record<string, unknown> {
+function columnsFrom(input: Partial<PartyInput>): Record<string, unknown> {
   return columnPatch(input, PARTY_COLUMNS);
 }
 

@@ -172,6 +172,52 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
       expect(Number(rows[0].quantity)).toBe(5);
     });
 
+    it('gives a blanked sub-product code the next one, and refuses a taken code by name', async () => {
+      const { product } = await seed();
+      await catalog.createProduct({ categoryName: 'Tiles', code: 'OFF-09', name: 'Gloss' }, actor);
+      const main = await catalog.createCategory({ code: 'TL', name: 'Coded' }, actor);
+      const coded = await catalog.createProduct({ categoryId: main.id, code: 'TL-0001', name: 'One' }, actor);
+      const edit = (id: string, payload: Record<string, unknown>) =>
+        mutation({
+          kind: 'product.update',
+          entity: 'product',
+          entityId: id,
+          hlc: hlcFor(PANEL_A, 100_000),
+          fields: Object.keys(payload),
+          payload,
+        });
+
+      const pushed = await sync.applyPush(
+        { mutations: [edit(coded.id, { code: null }), edit(product.id, { code: 'off-09', alias: 'X' })] },
+        actor,
+      );
+      const refused = pushed.results.filter((result) => result.status === 'rejected');
+      expect((await catalog.getProduct(coded.id, actor)).code).toBe('TL-0002');
+      expect(refused).toHaveLength(1);
+      expect(refused[0]?.error).toMatch(/off-09/i);
+      expect(refused[0]?.error).not.toMatch(/update "products"/);
+    });
+
+    it('lets a one-field edit on the Master leave the name alone', async () => {
+      const { party, product } = await seed();
+      expect((await catalog.updateParty(party.id, { city: 'Bhuj' }, actor)).name).toBe('Offline Traders');
+      expect((await catalog.updateProduct(product.id, { alias: 'M' }, actor)).name).toBe('Matte Tile');
+      await expect(catalog.updateParty(party.id, { name: ' ' }, actor)).rejects.toThrow();
+    });
+
+    it('carries the note settings into the final order and keeps the dispatch note', async () => {
+      const { party, product } = await seed();
+      const lead = await leads.createLead(
+        { partyId: party.id, items: [{ productId: product.id, quantity: 1, packaging: 'Box' }] },
+        actor,
+      );
+      await leads.updateLead(lead.id, { dealerCode: 'DX-9', noteGradeSize: 14 }, actor);
+      const order = await orders.convertLead({ leadId: lead.id }, actor);
+      expect(order).toMatchObject({ dealerCode: 'DX-9', noteGradeSize: 14 });
+      const sent = await orders.dispatchOrder({ orderId: order.id, note: 'lorry AB-12' }, actor);
+      expect(JSON.stringify(sent.timeline)).toContain('lorry AB-12');
+    });
+
     it('resolves a temporary party id inside a lead payload, in the same batch', async () => {
       // The flow this is about: a salesperson opens Add Lead, uses the inline
       // party drawer to add the customer standing at the counter, picks

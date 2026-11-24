@@ -1070,6 +1070,20 @@ describe('the New lead form', () => {
     ).toBeTruthy();
   });
 
+  it('keeps the order in the form, with the reason, when the Master refuses it', async () => {
+    await saveOneLead({
+      queued: true,
+      id: 'L-TMP-1',
+      mutationId: 'mut-1',
+      pendingCount: 0,
+      status: 'rejected',
+      error: 'Not offered in Ivory',
+    });
+    expect(await screen.findByText('Not offered in Ivory')).toBeTruthy();
+    expect(screen.queryByText(t('lead.add.panel.emptyNone'))).toBeNull();
+    expect(screen.getByRole('button', { name: t('lead.add.save') })).toHaveProperty('disabled', false);
+  });
+
   it('says the saved lead is Provisional when the Master is out of reach', async () => {
     // The default answer: queued, with no number (`status` absent or `provisional`).
     await saveOneLead();

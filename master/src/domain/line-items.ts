@@ -175,9 +175,9 @@ export function listedColour(
  * corrected by the person who typed it, so a refusal parked the whole lead
  * in the outbox over a field the line never needed
  * (`docs/catalogue/CATALOGUE_MODEL.md` §2). That rule is for a NEW line only:
- * a `kept` line (`matchExistingLines`) on a sub product that no longer lets
- * a colour be chosen keeps its stored colour and colour text whatever the
- * sub product is today, because it records what was sold.
+ * a `kept` line (`matchExistingLines`) whose colour was not changed, or whose
+ * sub product no longer lets one be chosen, keeps its stored colour and colour
+ * text whatever the sub product is today, because it records what was sold.
  */
 export function buildLineSnapshot(
   draft: LineDraft,
@@ -187,7 +187,10 @@ export function buildLineSnapshot(
   kept: KeptLine | null = null,
 ): LineSnapshot {
   const fromPartyVariant = partyVariant !== null;
-  const carried = kept !== null && product.colours.length <= 1;
+  const carried =
+    kept !== null &&
+    (product.colours.length <= 1 ||
+      (kept.colour !== null && colourKey(kept.colour) === colourKey(draft.colour)));
   const colour = carried ? kept.colour : resolveLineColour(product.colours, draft.colour);
   const productName = draft.productName ?? partyVariant?.productName ?? product.name;
 

@@ -174,6 +174,18 @@ export function useFormBaseline<T>(
 }
 
 /**
+ * The fields of `now` that differ from `opened`: what a save sends, so an untouched
+ * field never overwrites somebody else's change to it. JSON-compared plain data.
+ */
+export function changedFields<T extends object>(opened: T, now: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(now).filter(
+      ([key, value]) => JSON.stringify(value) !== JSON.stringify(opened[key as keyof T]),
+    ),
+  ) as Partial<T>;
+}
+
+/**
  * The "Save all" step of an update, for the Updates screens: resolves true when
  * it is fine to go on and close the window.
  *

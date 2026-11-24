@@ -348,7 +348,8 @@ function linesOf(lead: Lead, view: LeadEntryView): DraftLine[] {
       image: product?.images?.[0],
       packaging: item.packaging ?? '',
       colours,
-      printSide: product?.printSide ?? 'default',
+      // Frozen when the line was sold, not today's product setting.
+      printSide: item.printSide ?? product?.printSide ?? 'default',
       grade: item.grade ?? '',
       fromPartyVariant: item.fromPartyVariant,
       notes: item.notes ?? '',

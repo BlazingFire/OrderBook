@@ -825,6 +825,14 @@ async function mergeUpdate(
         if (error instanceof ProductValidationError) throw new ValidationError(error.messageKey);
         throw error;
       }
+      if ('code' in outcome.accepted) {
+        outcome.accepted.code = await catalogService.settleProductCode(
+          actor.tenantId,
+          id,
+          { categoryId: String(outcome.accepted.categoryId ?? current.values.categoryId) },
+          outcome.accepted.code as string | null,
+        );
+      }
     }
 
     const patch = columnPatch(outcome.accepted, columns);
@@ -912,6 +920,7 @@ async function mergeUpdate(
   // The conflicts wait for the gate, after this mutation's outcome is recorded.
   afterCommit.push(() => storedConflicts.forEach((conflict) => publishConflict(conflict)));
   await republish(entity, actor, id);
+  if (entity === 'lead') await leadService.tellLeadEdited(id, actor);
 
   return {
     mutationId: mutation.mutationId,

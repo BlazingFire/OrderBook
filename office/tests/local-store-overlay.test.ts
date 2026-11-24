@@ -89,6 +89,35 @@ afterEach(async () => {
   await fs.rm(dataDir, { recursive: true, force: true });
 });
 
+describe('a queued edit is drawn, with its clocks', () => {
+  const mutation = (kind: string, entityId: string, payload: Record<string, unknown>) =>
+    ({ ...notesEdit('', H1, {}), kind, entityId, payload, fields: Object.keys(payload) }) as Mutation;
+  const sync = { version: 1, hlc: H0, fieldHlc: {}, temporaryId: null };
+
+  it('on a party, a sub product and the lines of a new order', async () => {
+    await localStore.setSnapshot({
+      ...snapshot(),
+      parties: [{ id: 'PT1', name: 'A', phone: '1', sync }],
+      products: [{ id: 'PR1', name: 'Pan', code: 'PAN-1', colours: ['White'], printSide: 'left', weightKg: 2, sync }],
+      leads: [{ ...lead, partyId: 'PT1', items: [], totalWeightKg: 0 }],
+    } as never);
+    queued = [
+      mutation('party.update', 'PT1', { phone: '2' }),
+      mutation('product.update', 'PR1', { alias: 'P', code: null }),
+      mutation('lead.update', lead.id, { items: [{ productId: 'PR1', variantId: null, quantity: 3 }] }),
+    ];
+    outboxRevision += 1;
+
+    const view = await localStore.getView();
+    expect(view?.parties[0]).toMatchObject({ phone: '2', sync: { fieldHlc: { phone: H1 } } });
+    expect(view?.products[0]).toMatchObject({ alias: 'P', code: 'PAN-1', sync: { fieldHlc: { alias: H1 } } });
+    expect(view?.leads[0]).toMatchObject({
+      totalWeightKg: 6,
+      items: [{ id: `${lead.id}-line-0`, colour: 'White', quantity: 3, lineWeightKg: 6 }],
+    });
+  });
+});
+
 describe('a queued lead edit', () => {
   it("becomes the base of the next edit, so the Master's merge sees no clash", async () => {
     const first = notesEdit('A', H1, { notes: H0 });

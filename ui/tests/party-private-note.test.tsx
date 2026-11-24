@@ -4,7 +4,7 @@
  * party that already has its audience.
  */
 
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { configureUi } from '../src/config.js';
@@ -30,6 +30,24 @@ afterEach(() => {
   setCreatedPartiesPrivate(false);
 });
 
+describe('an edit of a party', () => {
+  it('sends only what changed, with the clocks it opened at', async () => {
+    const party = (phone: string, clock: string) =>
+      ({ id: 'PT1', name: 'Old Co', phone, city: 'Surat', sync: { fieldHlc: { phone: clock, city: 'c0' } } }) as never;
+    const { rerender } = render(form(party('111', 'p0')));
+    // Somebody else's phone arrives while the form is open.
+    rerender(form(party('222', 'p1')));
+    fireEvent.change(screen.getByLabelText(t('party.field.city')), { target: { value: 'Bhuj' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: t('party.saveChanges') }));
+    });
+    expect(transport.updateParty).toHaveBeenCalledWith('PT1', {
+      city: 'Bhuj',
+      baseFieldHlc: { phone: 'p0', city: 'c0' },
+    });
+  });
+});
+
 describe('the party form’s privacy note', () => {
   it('is shown to a creator whose parties are private to them', () => {
     setCreatedPartiesPrivate(true);
@@ -46,7 +64,7 @@ describe('the party form’s privacy note', () => {
 
   it('is not shown when editing a party that already exists', () => {
     setCreatedPartiesPrivate(true);
-    render(form({ id: 'PT0000000001', name: 'Old Co' } as never));
+    render(form({ id: 'PT0000000001', name: 'Old Co', sync: { fieldHlc: {} } } as never));
     expect(screen.queryByTestId('party-private-note')).toBeNull();
   });
 

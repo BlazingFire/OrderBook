@@ -251,7 +251,7 @@ export async function insertProduct(
 export async function updateProduct(
   tenantId: string,
   id: string,
-  input: ProductInput,
+  input: Partial<ProductInput>,
   meta: { hlc: string; fieldHlc: Record<string, string> },
   trx: TransactionContext,
 ): Promise<Product | null> {
@@ -884,7 +884,7 @@ export async function liveReferencesToProduct(
  * `JSONB NOT NULL DEFAULT '{}'` — the constraint any column added here must
  * also meet.
  */
-function columnsFrom(input: ProductInput, categoryId: string | null): Record<string, unknown> {
+function columnsFrom(input: Partial<ProductInput>, categoryId: string | null): Record<string, unknown> {
   const patch = columnPatch(input, PRODUCT_COLUMNS);
 
   // Colours are stored cleaned, whatever the caller sent: one spelling each,
@@ -905,7 +905,7 @@ function columnsFrom(input: ProductInput, categoryId: string | null): Record<str
 }
 
 /** Whether the input names a category at all — absent on all three means "leave it alone". */
-function assertsCategory(input: ProductInput): boolean {
+function assertsCategory(input: Partial<ProductInput>): boolean {
   return (
     input.categoryId !== undefined ||
     input.categoryCode !== undefined ||
@@ -938,7 +938,7 @@ function assertsCategory(input: ProductInput): boolean {
  */
 async function resolveCategoryId(
   tenantId: string,
-  input: ProductInput,
+  input: Partial<ProductInput>,
   trx: TransactionContext,
 ): Promise<string | null> {
   if (input.categoryId) {

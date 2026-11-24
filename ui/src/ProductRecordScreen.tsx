@@ -50,7 +50,7 @@ import { rem } from './rem.js';
 import { Segmented } from './Tabs.js';
 import { printSideLabel, printSideOptions } from './printSide.js';
 import { Select, SuggestInput } from './SuggestInput.js';
-import { useFormBaseline, useUnsavedWork } from './unsavedWork.js';
+import { changedFields, useFormBaseline, useUnsavedWork } from './unsavedWork.js';
 import { useEnterToAdvance } from './useEnterToAdvance.js';
 
 export type ProductRecordMode = 'view' | 'edit';
@@ -68,6 +68,27 @@ type Draft = typeof EMPTY;
 
 function toNumber(value: string): number | null {
   return value.trim() ? Number(value) : null;
+}
+
+function inputOf(values: {
+  draft: Draft;
+  colours: string[];
+  printSide: PrintSideSetting;
+  defaultPackaging: string;
+}): ProductInput {
+  const { draft } = values;
+  const text = (field: keyof Draft): string | null => draft[field].trim() || null;
+  return {
+    name: draft.name.trim(),
+    categoryId: draft.categoryId,
+    alias: text('alias'),
+    size: text('size'),
+    code: text('code'),
+    weightKg: toNumber(draft.weightKg),
+    colours: values.colours.map((colour) => colour.trim()).filter(Boolean),
+    printSide: values.printSide,
+    defaultPackaging: values.defaultPackaging || null,
+  };
 }
 
 export interface ProductRecordScreenProps {
@@ -123,6 +144,8 @@ export function ProductRecordScreen({
   const [defaultPackaging, setDefaultPackaging] = useState('');
   const [busy, setBusy] = useState(false);
   const baseline = useFormBaseline<unknown>();
+  /** The record as the form opened on it: the changes and their clocks are measured from here. */
+  const opened = useRef<{ input: ProductInput; clocks: Record<string, string> | undefined } | null>(null);
   const fields = useRef<HTMLDivElement>(null);
 
   // The latest photo answer, so the rail shows an upload even where the host ignores
@@ -155,6 +178,7 @@ export function ProductRecordScreen({
       defaultPackaging: product.defaultPackaging ?? '',
     };
     baseline.mark(loaded);
+    opened.current = { input: inputOf(loaded), clocks: baseFieldHlc };
     setDraft(loaded.draft);
     setColours(loaded.colours);
     setPrintSide(loaded.printSide);
@@ -181,18 +205,7 @@ export function ProductRecordScreen({
       onError(t('validation.product.categoryRequired'));
       return false;
     }
-    const text = (field: keyof Draft): string | null => draft[field].trim() || null;
-    const input: ProductInput = {
-      name,
-      categoryId: draft.categoryId,
-      alias: text('alias'),
-      size: text('size'),
-      code: draft.code.trim() || null,
-      weightKg: toNumber(draft.weightKg),
-      colours: colours.map((colour) => colour.trim()).filter(Boolean),
-      printSide,
-      defaultPackaging: defaultPackaging || null,
-    };
+    const input = inputOf({ draft, colours, printSide, defaultPackaging });
     try {
       validateProductInput(input);
     } catch (caught) {
@@ -201,10 +214,14 @@ export function ProductRecordScreen({
     }
     setBusy(true);
     try {
-      await transportRef.current.updateProduct(
-        product.id,
-        baseFieldHlc ? { ...input, baseFieldHlc } : input,
-      );
+      const { input: before, clocks } = opened.current ?? { input: {} as ProductInput, clocks: undefined };
+      const changes = changedFields(before, input);
+      if (Object.keys(changes).length > 0) {
+        await transportRef.current.updateProduct(
+          product.id,
+          clocks ? { ...changes, baseFieldHlc: clocks } : changes,
+        );
+      }
       onSaved?.(name);
       return true;
     } catch (caught) {

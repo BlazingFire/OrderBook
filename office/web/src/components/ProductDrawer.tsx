@@ -56,6 +56,7 @@ import {
   useColourHex,
   useCommand,
   useEnterToAdvance,
+  changedFields,
   useFormBaseline,
   useUnsavedWork,
 } from '@orderbook/ui';
@@ -115,6 +116,8 @@ export function ProductDrawer({
   const [defaultPackaging, setDefaultPackaging] = useState('');
   const [busy, setBusy] = useState(false);
   const baseline = useFormBaseline<unknown>();
+  /** The record as the form opened on it: the changes and their clocks are measured from here. */
+  const opened = useRef<{ input: ProductInput; clocks: Record<string, string> } | null>(null);
 
   const set = (field: keyof Draft, value: string): void =>
     setDraft((current) => ({ ...current, [field]: value }));
@@ -151,6 +154,7 @@ export function ProductDrawer({
           defaultPackaging: '',
         };
     baseline.mark(loaded);
+    opened.current = editing ? { input: inputOf(loaded), clocks: editing.sync.fieldHlc } : null;
     setDraft(loaded.draft);
     setColours(loaded.colours);
     setPrintSide(loaded.printSide);
@@ -174,6 +178,33 @@ export function ProductDrawer({
     onClose();
   }
 
+  function inputOf(values: {
+    draft: Draft;
+    colours: string[];
+    printSide: PrintSideSetting;
+    defaultPackaging: string;
+  }): ProductInput {
+    const text = (field: keyof Draft): string | null => values.draft[field].trim() || null;
+    const category = categories.find((entry) => entry.id === values.draft.categoryId);
+    return {
+      name: values.draft.name.trim(),
+      // The id decides on the Master. The name, code and brand ride along
+      // only so a sub product created offline shows under its product in the
+      // list before the Master has answered (`provisionalProduct`).
+      categoryId: values.draft.categoryId,
+      categoryName: category?.name ?? null,
+      categoryCode: category?.code ?? null,
+      categoryBrand: category?.brand ?? null,
+      alias: text('alias'),
+      size: text('size'),
+      code: text('code'),
+      weightKg: toNumber(values.draft.weightKg),
+      colours: values.colours.map((colour) => colour.trim()).filter(Boolean),
+      printSide: values.printSide,
+      defaultPackaging: values.defaultPackaging || null,
+    };
+  }
+
   /** True when the product was saved; false when it was refused or failed (the reason went to `onError`). */
   async function save(): Promise<boolean> {
     const name = draft.name.trim();
@@ -187,25 +218,7 @@ export function ProductDrawer({
       return false;
     }
 
-    const text = (field: keyof Draft): string | null => draft[field].trim() || null;
-
-    const input: ProductInput = {
-      name,
-      // The id decides on the Master. The name, code and brand ride along
-      // only so a sub product created offline shows under its product in the
-      // list before the Master has answered (`provisionalProduct`).
-      categoryId: draft.categoryId,
-      categoryName: chosen?.name ?? null,
-      categoryCode: chosen?.code ?? null,
-      categoryBrand: chosen?.brand ?? null,
-      alias: text('alias'),
-      size: text('size'),
-      code: draft.code.trim() || null,
-      weightKg: toNumber(draft.weightKg),
-      colours: colours.map((colour) => colour.trim()).filter(Boolean),
-      printSide,
-      defaultPackaging: defaultPackaging || null,
-    };
+    const input = inputOf({ draft, colours, printSide, defaultPackaging });
 
     // The same rules the Master applies, so the refusal is immediate and
     // names the problem rather than arriving as a 400 after the round trip.
@@ -222,7 +235,13 @@ export function ProductDrawer({
         // What this screen last saw for each field — lets the Master's merge
         // tell an ordinary sequential edit apart from a real clash against
         // whatever changed elsewhere since.
-        await api.updateProduct(editing.id, { ...input, baseFieldHlc: editing.sync.fieldHlc });
+        const changes = changedFields(opened.current?.input ?? ({} as ProductInput), input);
+        if (Object.keys(changes).length > 0) {
+          await api.updateProduct(editing.id, {
+            ...changes,
+            baseFieldHlc: opened.current?.clocks ?? editing.sync.fieldHlc,
+          });
+        }
         onUpdated?.(name);
       } else {
         const result = await api.createProduct(input);

@@ -108,7 +108,7 @@ export interface CatalogueTransport {
   /** A sub product into the Recycle Bin (`products.delete`); refused while a live order line quotes it. */
   deleteProduct(id: string): Promise<unknown>;
   createProduct(input: ProductInput): Promise<{ id: string }>;
-  updateProduct(id: string, input: ProductInput & { baseFieldHlc?: Record<string, string> }): Promise<unknown>;
+  updateProduct(id: string, input: Partial<ProductInput> & { baseFieldHlc?: Record<string, string> }): Promise<unknown>;
   uploadProductImage(
     productId: string,
     file: Blob,

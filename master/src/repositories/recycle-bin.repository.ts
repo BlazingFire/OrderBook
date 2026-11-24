@@ -91,8 +91,7 @@ const BRANCHES: BranchDefinition[] = [
   {
     entityType: 'product',
     sql: `SELECT 'product' AS entity_type, id, name AS label,
-                 (SELECT string_agg(v.code, ', ' ORDER BY v.sequence, v.code)
-                    FROM product_variants v WHERE v.product_id = products.id) AS sublabel,
+                 code AS sublabel,
                  deleted_at, ${CURSOR_TEXT} AS deleted_at_text, deleted_by, version
             FROM products
            WHERE tenant_id = ? AND deleted_at IS NOT NULL`,

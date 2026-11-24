@@ -819,10 +819,10 @@ export const api = {
    * against whatever an Office panel changed in the meantime — the same
    * envelope the Office's own `updateParty` sends.
    */
-  updateParty: (id: string, input: PartyInput & { baseFieldHlc?: Record<string, string> }) =>
+  updateParty: (id: string, input: Partial<PartyInput> & { baseFieldHlc?: Record<string, string> }) =>
     request<Party>(`/api/parties/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   createProduct: (input: ProductInput) => post<Product>('/api/products', input),
-  updateProduct: (id: string, input: ProductInput) =>
+  updateProduct: (id: string, input: Partial<ProductInput>) =>
     request<Product>(`/api/products/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   /** One page of the catalogue; `limit` is clamped by the server (2000 at most). */
   listProducts: (query: ProductListQuery, signal?: AbortSignal) => {

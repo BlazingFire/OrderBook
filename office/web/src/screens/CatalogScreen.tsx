@@ -473,7 +473,6 @@ export function CatalogScreen({
   async function setPrintSide(product: Product, printSide: PrintSideSetting): Promise<void> {
     try {
       await api.updateProduct(product.id, {
-        name: product.name,
         printSide,
         baseFieldHlc: product.sync.fieldHlc,
       });

@@ -309,7 +309,8 @@ function linesOf(lead: Lead, view: LocalView): DraftLine[] {
       size: item.size,
       packaging: item.packaging ?? '',
       colours,
-      printSide: product?.printSide ?? 'default',
+      // Frozen when the line was sold, not today's product setting.
+      printSide: item.printSide ?? product?.printSide ?? 'default',
       grade: item.grade ?? '',
       fromPartyVariant: item.fromPartyVariant,
       notes: item.notes ?? '',
@@ -1154,6 +1155,8 @@ function AddLeadForm({
       } else {
         // Waits (briefly, and only while the Master is reachable) for the number.
         const queued = await api.createLead(input);
+        // Refused: the form keeps the order, with the reason, so it can be put right and saved again.
+        if (queued.status === 'rejected') throw new Error(queued.error ?? t('lead.add.errors.generic'));
         onSaved(queued.id, queued);
       }
     } catch (caught) {

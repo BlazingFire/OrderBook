@@ -2171,13 +2171,7 @@ function OfficePanel() {
                 setResetNonce((current) => ({ ...current, addLead: (current.addLead ?? 0) + 1 }));
                 // Named by its number when the Master answered in time;
                 // Provisional otherwise, until the `numbered` frame arrives.
-                if (queued?.status === 'rejected') {
-                  void refreshSyncState();
-                  toast.push(translator().tCount('sync.changesRefused', 1), {
-                    tone: 'error',
-                    action: { label: t('action.reviewRefusals'), onClick: showConflicts },
-                  });
-                } else if (queued?.status === 'numbered') {
+                if (queued?.status === 'numbered') {
                   toast.push(
                     t('lead.add.savedOnline', { id: queued.poNumber ?? queued.permanentId ?? id }),
                   );

@@ -162,14 +162,15 @@ export async function createParty(input: PartyInput, actor: ActorContext): Promi
 
 export async function updateParty(
   id: string,
-  input: PartyInput,
+  input: Partial<PartyInput>,
   actor: ActorContext,
 ): Promise<Party> {
   requirePermission(actor, 'parties.edit');
   await requirePartyAccess(id, 'manage', actor);
 
+  // Absent leaves the stored name: the forms send only what changed.
   const name = input.name?.trim();
-  if (!name) throw new ValidationError('validation.party.nameRequired');
+  if (input.name !== undefined && !name) throw new ValidationError('validation.party.nameRequired');
 
   // Read first so the write below can *merge* field_hlc rather than replace
   // it wholesale. A bare `{}` here used to discard every previously recorded
@@ -182,7 +183,7 @@ export async function updateParty(
   const existing = await partyRepo.findPartyById(actor.tenantId, id);
   if (!existing) throw new NotFoundError('Party');
 
-  const merged = { ...input, name };
+  const merged = name === undefined ? input : { ...input, name };
   const touchedColumns = Object.keys(columnPatch(merged, PARTY_COLUMNS));
 
   const party = await db().transaction(async (trx) => {
@@ -616,8 +617,8 @@ async function assertCodeFree(
  */
 async function normalizeLegacyProductInput(
   tenantId: string,
-  input: ProductInput,
-): Promise<ProductInput> {
+  input: Partial<ProductInput>,
+): Promise<Partial<ProductInput>> {
   const raw = input as ProductInput & {
     variants?: Array<{ code?: string; label?: string | null; weightKg?: number | null }>;
     multiColour?: boolean;
@@ -652,7 +653,7 @@ async function normalizeLegacyProductInput(
  * and `shared` cannot import the Master's `AppError` hierarchy — it is consumed
  * by the browser bundles. So it throws a token and this translates it once.
  */
-function assertProductInput(input: ProductInput): void {
+function assertProductInput(input: Partial<ProductInput>): void {
   try {
     validateProductInput(input);
   } catch (error) {
@@ -694,6 +695,22 @@ async function fillBlankCode(
 
   const [code] = await productRepo.nextSubProductCodes(tenantId, prefix, 1);
   return code ?? null;
+}
+
+/**
+ * The code an edit may store: what was typed, or the next `CODE-####` for a blank, and free.
+ * Exported for the offline merge, which writes around this service.
+ */
+export async function settleProductCode(
+  tenantId: string,
+  productId: string,
+  category: { categoryId?: string | null; categoryCode?: string | null },
+  given: string | null | undefined,
+): Promise<string> {
+  const code = await fillBlankCode(tenantId, category, given);
+  if (!code) throw new ValidationError('validation.product.codeRequired');
+  await assertCodeFree(tenantId, code, productId);
+  return code;
 }
 
 /**
@@ -806,15 +823,16 @@ export async function createProduct(rawInput: ProductInput, actor: ActorContext)
 
 export async function updateProduct(
   id: string,
-  rawInput: ProductInput,
+  rawInput: Partial<ProductInput>,
   actor: ActorContext,
 ): Promise<Product> {
   requirePermission(actor, 'products.edit');
 
   const input = await normalizeLegacyProductInput(actor.tenantId, rawInput);
 
+  // Absent leaves the stored name: the forms send only what changed.
   const name = input.name?.trim();
-  if (!name) throw new ValidationError('validation.product.nameRequired');
+  if (rawInput.name !== undefined && !name) throw new ValidationError('validation.product.nameRequired');
 
   // Read first so the write below can *merge* field_hlc rather than replace
   // it wholesale — see the identical comment on `updateParty`. Without this,
@@ -833,19 +851,21 @@ export async function updateProduct(
   // leaves the stored code alone — a one-field patch must not renumber.
   let code: string | undefined;
   if (input.code !== undefined) {
-    code =
-      (await fillBlankCode(
-        actor.tenantId,
-        movesCategory ? input : { categoryId: existing.categoryId },
-        input.code,
-      )) ?? undefined;
-    if (!code) throw new ValidationError('validation.product.codeRequired');
+    code = await settleProductCode(
+      actor.tenantId,
+      id,
+      movesCategory ? input : { categoryId: existing.categoryId },
+      input.code,
+    );
   }
 
   assertProductInput({ ...input, ...(code !== undefined ? { code } : {}) });
-  if (code !== undefined) await assertCodeFree(actor.tenantId, code, id);
 
-  const permitted = { ...input, name, ...(code !== undefined ? { code } : {}) };
+  const permitted = {
+    ...input,
+    ...(name !== undefined ? { name } : {}),
+    ...(code !== undefined ? { code } : {}),
+  };
   const touchedColumns = Object.keys(columnPatch(permitted, PRODUCT_COLUMNS));
 
   const product = await db().transaction(async (trx) => {

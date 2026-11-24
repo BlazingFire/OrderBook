@@ -49,6 +49,7 @@ export async function companyFeatures(tenantId: string): Promise<CompanyFeatures
       read('notices.showSellToday'),
       read('basicHome.productSlideshow'),
       read('notes.defaultBold'),
+      read('notes.gradeSize'),
     ]),
   ) as {
     'security.offlineSignInEnabled': boolean;
