@@ -222,6 +222,14 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-11-24 - Office can save orders again: no variant demanded (Claude Code, branch fix/office-order-no-variant)
+
+- **Ask (owner, screenshot of Office 1.5.10):** saving a new order answers "Product 1 has no variant".
+- **Cause:** 1.5.9 removed variants, so a new line sends `variantId: null`, but `leadPayloadProblem` (`office/src/http/app.ts`) still refused a line without one. Every new order on an Office 1.5.9 or 1.5.10 was refused, and so was an edit adding a line. The Master's own screen was not affected. The test missed it: its fixture named a variant, and one test asserted the refusal.
+- **Change:** that check is removed. Product and quantity are still required; the Master still maps an older line's variant (`buildLines`).
+- **Tests:** `office/tests/lead-route.test.ts` (variant null, empty or left out is queued, an edit too, no product is refused; 11 failed before the fix) and `master/tests/sync.integration.test.ts` (a pushed create and edit with no variant are stored).
+- **Not verified:** a save in the running Office window. Offices need a release carrying this.
+
 ### 2026-11-20 - 1.5.10 released: the note batch (Claude Code, branch main)
 
 - **Ask (owner):** "Commit all this work, push to main branch and release a latest build."

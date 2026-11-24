@@ -2172,9 +2172,8 @@ function leadPayloadProblem(body: unknown, options: { itemsRequired: boolean }):
     if (typeof item.productId !== 'string' || !item.productId) {
       return `${at} has no product`;
     }
-    if (typeof item.variantId !== 'string' || !item.variantId) {
-      return `${at} has no variant`;
-    }
+    // No `variantId` check: sub products have had no variants since 1.5.9, so a new
+    // line sends null and only an older line still names one (`buildLines` on the Master).
     if (!(Number(item.quantity) > 0)) return `${at} needs a quantity`;
   }
 

@@ -128,6 +128,50 @@ describe.skipIf(!canRunIntegrationTests)('offline sync (integration)', () => {
       expect(mapped?.permanent_id).toBe('LD0000000001');
     });
 
+    it('applies a new order and an edit whose lines name no variant, as an Office sends since 1.5.9', async () => {
+      const { party, product } = await seed();
+      const line = { productId: product.id, variantId: null, packaging: 'carton' };
+      const temporaryId = formatTemporaryId(PANEL_A, 8);
+
+      const created = await sync.applyPush(
+        {
+          mutations: [
+            mutation({
+              kind: 'lead.create',
+              entity: 'lead',
+              entityId: temporaryId,
+              payload: { partyId: party.id, items: [{ ...line, quantity: 3 }] },
+            }),
+          ],
+        },
+        actor,
+      );
+      expect(created.results[0]?.status).toBe('applied');
+      const leadId = created.results[0]?.entityId ?? '';
+
+      const edited = await sync.applyPush(
+        {
+          mutations: [
+            mutation({
+              kind: 'lead.update',
+              entity: 'lead',
+              entityId: leadId,
+              hlc: hlcFor(PANEL_A, 100_000),
+              fields: ['items'],
+              payload: { items: [{ ...line, quantity: 5 }] },
+            }),
+          ],
+        },
+        actor,
+      );
+      expect(edited.results[0]?.status).toBe('applied');
+
+      const rows = await db()('line_items').where({ parent_id: leadId });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ product_id: product.id, variant_id: null });
+      expect(Number(rows[0].quantity)).toBe(5);
+    });
+
     it('resolves a temporary party id inside a lead payload, in the same batch', async () => {
       // The flow this is about: a salesperson opens Add Lead, uses the inline
       // party drawer to add the customer standing at the counter, picks
