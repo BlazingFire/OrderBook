@@ -310,7 +310,6 @@ describe('the sub-product list', () => {
     fireEvent.click(segments[2]!);
     await waitFor(() =>
       expect(transport.updateProduct).toHaveBeenCalledWith('p-1', {
-        name: 'Aqua',
         printSide: 'right',
       }),
     );
