@@ -23,10 +23,13 @@
  * Reads the source, in the `credential-invariants.test.ts` style.
  */
 
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+
+import { shellQuote } from '../src/db/postgres-server.js';
 
 const SOURCE = readFileSync(
   path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'db', 'postgres-server.ts'),
@@ -69,5 +72,24 @@ describe('starting the PostgreSQL cluster', () => {
 
   it('keeps --wait, so pg_ctl itself does not return early', () => {
     expect(startClusterBody()).toContain(`'--wait'`);
+  });
+
+  // Every Mac keeps its data under `~/Library/Application Support`, and
+  // `pg_ctl` passes `--options` through `/bin/sh`. The unquoted socket folder
+  // reached PostgreSQL as two arguments and the Master never started
+  // ("postgres: invalid argument: "Support/OrderBook/master/pg-socket"").
+  it('quotes the socket folder for the shell pg_ctl starts PostgreSQL with', () => {
+    expect(startClusterBody()).toContain('`-k ${shellQuote(socketDir)}`');
+  });
+});
+
+describe.skipIf(process.platform === 'win32')('shellQuote', () => {
+  it.each([
+    '/Users/zils/Library/Application Support/OrderBook/master/pg-socket',
+    "/home/o'brien/data dir/pg-socket",
+    '/tmp/$HOME `x` "y"',
+  ])('reaches the shell as exactly one argument: %s', (value) => {
+    const out = execFileSync('/bin/sh', ['-c', `printf '%s\\n' ${shellQuote(value)}`], { encoding: 'utf8' });
+    expect(out).toBe(`${value}\n`);
   });
 });

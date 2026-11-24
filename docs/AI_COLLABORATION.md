@@ -222,6 +222,13 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-11-24 - fix/mac-launch merged into main (Claude Code, branch merge/mac-launch)
+
+- **Ask (owner):** "push all code to main branch", then "Yes, merge it" about `fix/mac-launch` (`c561003c`), the only branch holding code not in main.
+- **Conflict:** this change log only; both sides' entries kept.
+- **Windows packaging unchanged:** `electron-builder --win dir` from the merged tree against the installed 1.5.10: `app.asar` lists the same 405 entries, the five `apply-update` files are byte-identical (`paths.json` and `elevate.exe` come from the installer, not a dir build).
+- **Not verified here:** anything on a Mac or Linux PC; no version bump and no release.
+
 ### 2026-11-20 - 1.5.10 released: the note batch (Claude Code, branch main)
 
 - **Ask (owner):** "Commit all this work, push to main branch and release a latest build."
@@ -288,6 +295,14 @@ was verified, so the next agent can trust the state without re-auditing.
 - **Cause:** `.ob-note-cell-name` was `flex: none`, so a name wider than its ~96–110 px cell could not wrap and printed over its neighbours.
 - **Change:** the cell's first line (name, colour dash, brand) is one centred text block clamped to two lines (`ui/src/order-note.css`), so "2501 PADESTAL / ONLY —" breaks between words; a name over 10 characters prints at 11.5 px (`LONG_CODE_NAME` in `ui/src/OrderNote.tsx`) so it fits two lines, not three. Line height 15 px keeps two lines plus the detail line inside the 50 px row. A single word too long even for that ends in "…" — it never overlaps. The Filling note's cell already cut with "…" and is unchanged.
 - **Verified:** measured on a test page using the real stylesheet at 97 and 103 px cells — no cell wider than its box, two-line names inside the row; ui lint and typecheck 0, ui tests 114 files / 1555 passed. Not checked on the running Master (its web bundle was not rebuilt).
+
+### 2026-11-19 - macOS Master starts: two launch fixes, first real Mac run (Claude Opus 5.5 via Claude Code, branch fix/mac-launch)
+
+- **What changed:** the first macOS build ever launched (Apple silicon, macOS 27, built locally with `npm run release -- --os mac`) turned up two bugs, both macOS-only, and both stopped the Master on every Mac.
+  1. **Shell quit at launch.** `master/electron-builder.yml` listed the Windows update task's files (`electron/dist/apply-staged-update.js`, `electron/dist/lib/staged-update.js`, …) as top-level `extraResources`. electron-builder turns every `extraResources` source inside the app folder into an exclude pattern for `app.asar`. On Windows the pattern has backslashes and never matches; on macOS and Linux it matches. So `lib/staged-update.js` left the asar, and the shell, which imports it, died with "A JavaScript error occurred in the main process". Fix: those five entries moved under `win: extraResources:`, which electron-builder adds to the top-level list. The Windows output is unchanged.
+  2. **PostgreSQL refused to start.** `startCluster` passed `-k <socket dir>` unquoted in `pg_ctl --options`, which `/bin/sh` reads. The Mac data folder is `~/Library/Application Support/OrderBook`, so the path split at the space ("postgres: invalid argument: "Support/OrderBook/master/pg-socket""). Fix: `shellQuote()` in `master/src/db/postgres-server.ts`, plus tests in `master/tests/postgres-launcher.test.ts`.
+- **Verified:** `postgres-launcher`, `postgres-memory`, `staged-update` and `packaging-invariants` tests pass. On a real Apple silicon Mac the Master created its cluster, applied 57 migrations, loaded the catalogue and served the first-run setup screen. The Office reached the pairing screen. Both were checked against an arm64 `.app` from the same tree; the universal DMGs were then rebuilt with both fixes.
+- **Not verified:** the full `npm run verify`; setup, pairing and an order on the Mac; an Intel Mac. The DMGs are unsigned (no Apple identity), so a copy from another Mac needs right-click → Open.
 
 ### 2026-11-19 - 1.5.9: safe install over 1.5.8, Offices turned away until updated, one-time confirmed reset (Claude Code, branch main)
 
