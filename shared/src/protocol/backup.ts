@@ -87,6 +87,23 @@ export type BackupFailureReason =
 
 export const ARCHIVE_FORMAT_VERSION = 2;
 
+/** The sections with their own Backup and Restore buttons (`section-backup.service.ts`). */
+export type SectionBackupName = 'products' | 'orders' | 'parties';
+
+/** What a section restore did, or would do (the preview). */
+export interface SectionRestoreResult {
+  section: SectionBackupName;
+  createdAt: string;
+  company: string;
+  sameCompany: boolean;
+  added: number;
+  changed: number;
+  unchanged: number;
+  photos: number;
+  /** Left out, with the table of what each one needs first. */
+  skipped: Array<{ label: string; reason: string }>;
+}
+
 /** One `data/<table>.ndjson` entry. `bytes` is its uncompressed size. */
 export interface ArchiveTableEntry {
   name: string;

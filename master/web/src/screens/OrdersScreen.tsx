@@ -28,6 +28,7 @@ import type {
 } from '@orderbook/shared';
 
 import { ApiError, api, desktopBridge } from '../api';
+import { SectionBackup } from '../components/SectionBackup';
 import { presenceChannel } from '../presence';
 import { orderRecordTransport } from '../transports';
 import {
@@ -333,6 +334,7 @@ export function OrdersScreen({
         <FilterDivider />
         <span style={{ flex: 1 }} />
         <span className="ob-small">{t('orders.filter.note')}</span>
+        <SectionBackup section="orders" permissions={permissions} />
           </>
         )}
       </>

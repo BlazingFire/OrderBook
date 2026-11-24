@@ -29,6 +29,7 @@ import type {
 } from '@orderbook/shared';
 
 import { ApiError, api, desktopBridge } from '../api';
+import { SectionBackup } from '../components/SectionBackup';
 import { presenceChannel } from '../presence';
 import { leadRecordTransport } from '../transports';
 import { LeadEntry } from './LeadEntry';
@@ -339,6 +340,7 @@ export function LeadsScreen({
             ))}
             <span style={{ flex: 1 }} />
             <span className="ob-small">{t('lead.board.convertedNote')}</span>
+            <SectionBackup section="orders" permissions={permissions} />
           </>
         )}
           </>

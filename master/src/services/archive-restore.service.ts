@@ -333,14 +333,14 @@ async function replayDatabase(
 }
 
 /** A data-only archive of the database as it is now, the newest two kept. */
-async function writeSafetyArchive(): Promise<string> {
+export async function writeSafetyArchive(prefix = SAFETY_PREFIX): Promise<string> {
   const folder = path.join(config.dataDir, 'backups');
   await fs.mkdir(folder, { recursive: true });
-  const fileName = `${SAFETY_PREFIX}${new Date().toISOString().replace(/[:.]/g, '-')}.zip`;
+  const fileName = `${prefix}${new Date().toISOString().replace(/[:.]/g, '-')}.zip`;
   const result = await exportArchive({ folder, fileName, includeUploads: false, audit: false });
 
   const older = (await fs.readdir(folder))
-    .filter((name) => name.startsWith(SAFETY_PREFIX) && name.endsWith('.zip'))
+    .filter((name) => name.startsWith(prefix) && name.endsWith('.zip'))
     .sort()
     .reverse()
     .slice(SAFETY_KEPT);

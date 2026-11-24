@@ -46,6 +46,7 @@ import {
   type PartyListRow,
   type PartyRecord,
 } from '../api';
+import { SectionBackup } from '../components/SectionBackup';
 import { PartyDeleteDialog } from '../components/PartyDeleteDialog';
 import { partyFormTransport } from '../partyFormTransport';
 import { partyImportTransport } from '../transports';
@@ -321,6 +322,7 @@ export function PartiesScreen({
         {/* Absent rather than disabled when the permission is missing — the house rule
             stated in PartyAccessScreen.tsx: a control nobody may use is not a control
             to be greyed, it is one not to render. */}
+        <SectionBackup section="parties" permissions={permissions} />
         <PartyImportControls
           transport={partyImportTransport}
           canExport={permissions.includes('parties.view') && permissions.includes('parties.export')}

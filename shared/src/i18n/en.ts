@@ -325,6 +325,13 @@ export const EN_MESSAGES = {
   'validation.backup.scopeRequired':
     'Choose whether to export the whole database or selected companies',
   'validation.backup.fileRequired': 'Choose a backup file',
+  'validation.sectionBackup.notABackup':
+    'This is not a Products, Orders or Parties backup made by 1.5.12 or later. A whole backup is restored in Settings, under Storage & backup.',
+  'validation.sectionBackup.newer': 'This backup was made by a newer version. Update this Master first.',
+  'validation.sectionBackup.otherSection': 'This is a backup of another section. Restore it from that screen.',
+  'validation.sectionBackup.otherCompany':
+    'This backup is from another Master. Orders can only be restored to the Master they came from.',
+  'validation.sectionBackup.clash': 'Nothing was restored: a record here already uses a value from the backup. {detail}',
   'validation.backup.tenantsRequired': 'Choose at least one company to export',
   'validation.backup.pathRequired': 'Enter the full path of a folder or file on this PC',
   'validation.autoBackup.time': 'Choose a time of day, such as 21:00',
@@ -1036,6 +1043,23 @@ export const EN_MESSAGES = {
   'avatar.error.uploadFailed': 'Could not save the picture',
   'avatar.remove': 'Remove',
   'backup.export.action': 'Export data…',
+  'backup.section.backup': 'Back up',
+  'backup.section.restore': 'Restore',
+  'backup.section.saved': 'Backup saved: {file}',
+  'backup.section.title.products': 'Restore products',
+  'backup.section.title.orders': 'Restore orders',
+  'backup.section.title.parties': 'Restore parties',
+  'backup.section.from': 'Backup of {company}, made {date}.',
+  'backup.section.otherMaster':
+    'It is from another Master: records are matched by code or name, and new ones get new numbers.',
+  'backup.section.counts': '{added} to add, {changed} to put back as they were, {unchanged} already the same.',
+  'backup.section.photos': '{count} photos to add.',
+  'backup.section.skipped': '{count} left out because something they need is missing:',
+  'backup.section.skippedRow': '{label} (restore {reason} first)',
+  'backup.section.note':
+    'Nothing is deleted. Changes made here since the backup to the records counted above are replaced. A safety copy of this Master is saved first.',
+  'backup.section.nothing': 'Everything in this backup is already here. There is nothing to restore.',
+  'backup.section.done': 'Restored: {added} added, {changed} put back.',
   'backup.export.confirm': 'Export',
   'backup.export.done': 'Export ready — check your downloads',
   'backup.export.failed': 'Export failed',

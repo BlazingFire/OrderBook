@@ -40,6 +40,8 @@ import type {
   BackupJobStatus,
   BackupManifest,
   BackupRestorePreview,
+  SectionBackupName,
+  SectionRestoreResult,
   BinCounts,
   BinEntry,
   BinRestoreResult,
@@ -627,6 +629,13 @@ export const api = {
 
   exportStorage: (passphrase: string) =>
     requestBlob('/api/storage/export', { scope: 'whole', passphrase }),
+  backupSection: (section: SectionBackupName) => requestBlob(`/api/storage/section/${section}/backup`, {}),
+  restoreSection: (section: SectionBackupName, file: File, apply: boolean) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('apply', String(apply));
+    return requestForm<SectionRestoreResult>(`/api/storage/section/${section}/restore`, form);
+  },
   previewRestoreStorage: (file: File) => {
     const form = new FormData();
     form.append('file', file);

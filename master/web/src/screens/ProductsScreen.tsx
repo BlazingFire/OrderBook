@@ -33,6 +33,7 @@ import {
 } from '@orderbook/ui';
 
 import { api } from '../api';
+import { SectionBackup } from '../components/SectionBackup';
 import { catalogueTransport, optionListTransport } from '../transports';
 
 export type ProductsPage = 'sub' | 'main' | 'brands';
@@ -130,6 +131,7 @@ export function ProductsScreen({
           transport={catalogueTransport}
           revision={catalogueRevision + importBump}
           onImported={() => setImportBump((current) => current + 1)}
+          tools={<SectionBackup section="products" permissions={permissions} />}
           focus={focus}
           onEditProduct={onEditProduct}
         />

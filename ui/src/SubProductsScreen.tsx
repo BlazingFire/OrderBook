@@ -38,7 +38,7 @@
  * inside the detail; the form stays a dialog because a form is one.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { PrintSideSetting, Product } from '@orderbook/shared';
 
 import { Button } from './Button.js';
@@ -108,12 +108,15 @@ export function SubProductsScreen({
   transport,
   revision,
   onImported,
+  tools,
   focus,
 }: {
   view: CatalogueView;
   transport: CatalogueTransport;
   /** A catalogue write outside this list (import, restore, create); the host refetches what else it shows (brands). */
   onImported?: () => void;
+  /** Buttons before New sub product: the Master's Back up and Restore. */
+  tools?: ReactNode;
   /** Moves when the catalogue changed anywhere; the list is read again. */
   revision: number;
   /**
@@ -441,6 +444,7 @@ export function SubProductsScreen({
             </FilterChip>
           ))}
           <span style={{ flex: 1 }} />
+          {tools}
           {canCreate && (
             <Button variant="primary" size="sm" icon="plus" onClick={() => setDrawerOpen(true)}>
               {t('catalog.products.new')}

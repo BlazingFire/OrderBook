@@ -4,11 +4,16 @@
  * services, so behaviour cannot diverge between the two panels.
  */
 
+import { randomUUID } from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+
 import { Router } from 'express';
 import multer from 'multer';
-import { isPickKind, MASTER_KEY_TOKEN_HEADER } from '@orderbook/shared';
+import { isPickKind, MASTER_KEY_TOKEN_HEADER, type SectionBackupName } from '@orderbook/shared';
 
-import { ValidationError } from '../../lib/errors.js';
+import { config } from '../../config/index.js';
+import { NotFoundError, ValidationError } from '../../lib/errors.js';
 import { exportArchive } from '../../services/archive-export.service.js';
 import { previewArchive, restoreArchive } from '../../services/archive-restore.service.js';
 import { currentJob, startJob } from '../../services/backup-job.js';
@@ -30,6 +35,7 @@ import * as productShareService from '../../services/product-share.service.js';
 import * as leadService from '../../services/lead.service.js';
 import * as orderService from '../../services/order.service.js';
 import * as presenceService from '../../services/presence.service.js';
+import * as sectionBackupService from '../../services/section-backup.service.js';
 import * as searchService from '../../services/search.service.js';
 import * as snapshotService from '../../services/snapshot.service.js';
 import * as storageService from '../../services/storage.service.js';
@@ -159,6 +165,44 @@ dataRoutes.post(
         actorFromRequest(req),
       ),
     );
+  }),
+);
+
+// --- One section at a time: Products, Orders, Parties -----------------------
+
+function sectionOf(value: unknown): SectionBackupName {
+  if (value === 'products' || value === 'orders' || value === 'parties') return value;
+  throw new NotFoundError('Section');
+}
+
+dataRoutes.post(
+  '/storage/section/:section/backup',
+  needs('storage.manage'),
+  asyncHandler(async (req, res) => {
+    const file = await sectionBackupService.exportSection(sectionOf(req.params.section), actorFromRequest(req));
+    res.download(file.path, file.fileName, () => void fs.rm(file.path, { force: true, maxRetries: 5 }).catch(() => undefined));
+  }),
+);
+
+/** `apply=true` writes; anything else is the preview. */
+dataRoutes.post(
+  '/storage/section/:section/restore',
+  needs('storage.manage'),
+  backupUpload.single('file'),
+  asyncHandler(async (req, res) => {
+    const section = sectionOf(req.params.section);
+    if (!req.file) throw new ValidationError('validation.backup.fileRequired');
+    const folder = path.join(config.dataDir, 'tmp');
+    await fs.mkdir(folder, { recursive: true });
+    const file = path.join(folder, `section-upload-${randomUUID()}.zip`);
+    await fs.writeFile(file, req.file.buffer);
+    try {
+      res.json(
+        await sectionBackupService.restoreSection(section, file, req.body?.apply === 'true', actorFromRequest(req)),
+      );
+    } finally {
+      await fs.rm(file, { force: true, maxRetries: 5 }).catch(() => undefined);
+    }
   }),
 );
 
