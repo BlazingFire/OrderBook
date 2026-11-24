@@ -2592,6 +2592,8 @@ exercised only through service integration tests.
 - `master/src/services/backup-export.service.ts` (79) — `exportBackup` (table rows via
   `backup.repository.ts`, scope `whole` or `selected` tenants — `BackupScope`). **Uploaded image files
   are not included.**
+- `master/src/services/section-backup.service.ts` — `exportSection`, `restoreSection`: the Back up and Restore buttons of
+  Products, Orders and Parties (`docs/7-STORAGE-BACKUP-RESTORE.md` section 9).
 - `master/src/services/backup-restore.service.ts` (127) — `previewRestore`,
   `restoreBackup` (§11.8).
 - `master/src/services/storage.service.ts` (92) — `getStorageUsage`: cluster dir,

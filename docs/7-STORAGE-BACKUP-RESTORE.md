@@ -293,3 +293,18 @@ Settings → Storage & backup → Automatic backup
   `OrderBook-Backup-<company>-<date>.zip` files beyond the newest N are
   deleted. Other files and other companies' backups are never touched.
 - Changing the schedule records `backup.schedule_updated`.
+
+## 9. One section at a time (1.5.12)
+
+Products, Orders (new and final together) and Parties each have **Back up** and **Restore** on their own Master
+screen, with `storage.manage`. `master/src/services/section-backup.service.ts`; `POST /api/storage/section/:section/backup`
+and `/restore` (`apply=true` writes, anything else previews).
+
+- The zip holds `manifest.json` (`orderbook-section-backup`, format 1), `data.json` (live rows as PostgreSQL renders
+  them) and, for products, the photo files. Not encrypted. It is not a product zip from 1.5.6 or older, which is refused.
+- A restore adds what is missing and puts back what changed. It never deletes. One transaction, foreign keys and
+  triggers on; the preview is the same transaction rolled back. A data-only safety archive
+  (`<dataDir>/backups/pre-section-restore-*.zip`, newest two) is written first, and every Office takes a full snapshot after.
+- Products and parties also restore onto another Master, matched by code or name; new ones take that Master's ids.
+  Orders restore only to the Master they came from, and one whose party or sub product is gone is left out and named.
+- Counters end past every id and order number that came back. Auto-backup is separate and unchanged.

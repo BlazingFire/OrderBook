@@ -222,6 +222,15 @@ tables with that project's layout and keep the rules in §1–§6 unchanged.*
 Newest first. Each entry records what an agent changed on the repo and what
 was verified, so the next agent can trust the state without re-auditing.
 
+### 2026-11-24 - 1.5.12 released: audit fixes, section backup and restore (Claude Code, branch main)
+
+- **Ask (owner):** "fix all of these and release 1.5.12 and make sure that auto-backup and auto save work as it is in both panel. Product, Order and parties should have backup and restore button".
+- **Audit (1.5.11, scratch Master and Office, three code readers):** data-loss bugs fixed here: whole-form party and product saves, undrawn queued edits, product codes skipped by the merge, a line's colour and print side changed by an order edit, a refused order clearing the form, note settings lost on convert, the dispatch note dropped. Also the grade size setting, the `lead.edited` bell, the 15 s update timeout, a 1.5.8 snapshot, the Recycle Bin code, packaging usage, two wrong messages.
+- **Decided here:** convert carries the order's dealer code, grade size and note ticks. Section backup is Master only, as the product backup was.
+- **New:** `section-backup.service.ts` (`docs/7-STORAGE-BACKUP-RESTORE.md` section 9).
+- **Verified live:** the three sections backed up, damaged and restored exactly on a scratch pair, the Office following; the auto-backup fired; the Office product form sent one field.
+- **Not verified:** a restore between two real Masters, a real update install, printing, macOS and Linux.
+
 ### 2026-11-24 - 1.5.11 released: Office saves orders again (Claude Code, branch main)
 
 - **Ask (owner):** "Push the fix to main and release 1.5.11".
